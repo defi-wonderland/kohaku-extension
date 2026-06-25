@@ -8,6 +8,10 @@ import {
 } from '@ambire-common/controllers/actions/actions'
 import { Filters, Pagination } from '@ambire-common/controllers/activity/activity'
 import { Contact } from '@ambire-common/controllers/addressBook/addressBook'
+import type {
+  RecoveryDeployment,
+  RecoveryTarget
+} from '@ambire-common/controllers/recovery/recovery'
 import { FeeSpeed, SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import { Account, AccountPreferences, AccountStates } from '@ambire-common/interfaces/account'
 import { Banner } from '@ambire-common/interfaces/banner'
@@ -710,6 +714,33 @@ type AddressBookControllerRemoveContact = {
   }
 }
 
+// ── Recovery v0 controller ────────────────────────────────────────────────────
+type RecoveryControllerSetupAction = {
+  type: 'RECOVERY_CONTROLLER_SETUP'
+  params: {
+    deployment: RecoveryDeployment
+    target?: RecoveryTarget
+  }
+}
+type RecoveryControllerSelectTargetAction = {
+  type: 'RECOVERY_CONTROLLER_SELECT_TARGET'
+  params: {
+    target: RecoveryTarget
+  }
+}
+type RecoveryControllerSetNewOwnerAction = {
+  type: 'RECOVERY_CONTROLLER_SET_NEW_OWNER'
+  params: {
+    newOwner: string
+  }
+}
+type RecoveryControllerInitiateAction = {
+  type: 'RECOVERY_CONTROLLER_INITIATE_RECOVERY'
+}
+type RecoveryControllerRefreshStatusAction = {
+  type: 'RECOVERY_CONTROLLER_REFRESH_STATUS'
+}
+
 type ChangeCurrentDappNetworkAction = {
   type: 'CHANGE_CURRENT_DAPP_NETWORK'
   params: { chainId: number; id: string }
@@ -1205,3 +1236,8 @@ export type Action =
   | PrivacyPoolsV1ControllerDestroyLatestBroadcastedAccountOpAction
   | PortfolioControllerLoadAccountsTotalBalances
   | ProviderRpcRequestAction
+  | RecoveryControllerSetupAction
+  | RecoveryControllerSelectTargetAction
+  | RecoveryControllerSetNewOwnerAction
+  | RecoveryControllerInitiateAction
+  | RecoveryControllerRefreshStatusAction

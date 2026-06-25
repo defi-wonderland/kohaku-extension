@@ -48,6 +48,12 @@ export const SETTINGS_LINKS = [
     path: ROUTES.addressBook
   },
   {
+    key: 'recovery',
+    Icon: SidebarSecurityIcon,
+    label: 'Recovery (v0)',
+    path: ROUTES.recovery
+  },
+  {
     key: 'networks',
     Icon: React.memo(NetworksIcon),
     label: 'Networks',

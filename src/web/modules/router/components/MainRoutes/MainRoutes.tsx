@@ -40,6 +40,7 @@ import { SettingsRoutesProvider } from '@web/modules/settings/contexts/SettingsR
 import AboutSettingsScreen from '@web/modules/settings/screens/AboutSettingsScreen'
 import AccountsSettingsScreen from '@web/modules/settings/screens/AccountsSettingsScreen'
 import AddressBookSettingsScreen from '@web/modules/settings/screens/AddressBookSettingsScreen'
+import RecoverySettingsScreen from '@web/modules/settings/screens/RecoverySettingsScreen'
 import DevicePasswordChangeSettingsScreen from '@web/modules/settings/screens/DevicePasswordChangeSettingsScreen'
 import DevicePasswordRecoverySettingsScreen from '@web/modules/settings/screens/DevicePasswordRecoverySettingsScreen'
 import DevicePasswordSetSettingsScreen from '@web/modules/settings/screens/DevicePasswordSetSettingsScreen'
@@ -156,6 +157,7 @@ const MainRoutes = () => {
               />
               <Route path={WEB_ROUTES.manageTokens} element={<ManageTokensSettingsScreen />} />
               <Route path={WEB_ROUTES.addressBook} element={<AddressBookSettingsScreen />} />
+              <Route path={WEB_ROUTES.recovery} element={<RecoverySettingsScreen />} />
               <Route path={WEB_ROUTES.settingsTerms} element={<TermsSettingsScreen />} />
               <Route path={WEB_ROUTES.settingsAbout} element={<AboutSettingsScreen />} />
             </Route>

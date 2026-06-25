@@ -24,6 +24,7 @@ import { AccountPickerControllerStateProvider } from '@web/contexts/accountPicke
 import { AccountsControllerStateProvider } from '@web/contexts/accountsControllerStateContext'
 import { ActivityControllerStateProvider } from '@web/contexts/activityControllerStateContext'
 import { AddressBookControllerStateProvider } from '@web/contexts/addressBookControllerStateContext'
+import { RecoveryControllerStateProvider } from '@web/contexts/recoveryControllerStateContext'
 import { AutoLockControllerStateProvider } from '@web/contexts/autoLockControllerStateContext'
 import { BackgroundServiceProvider } from '@web/contexts/backgroundServiceContext'
 import { BannerControllerStateProvider } from '@web/contexts/bannerControllerStateContext/bannerControllerStateContext'
@@ -91,6 +92,7 @@ const AppInit = () => {
                                                             <DappsControllerStateProvider>
                                                               <DomainsControllerStateProvider>
                                                                 <AddressBookControllerStateProvider>
+                                                                  <RecoveryControllerStateProvider>
                                                                   <SwapAndBridgeControllerStateProvider>
                                                                     <TransferControllerStateProvider>
                                                                       <PrivacyPoolsV1ControllerStateProvider>
@@ -117,6 +119,7 @@ const AppInit = () => {
                                                                       </PrivacyPoolsV1ControllerStateProvider>
                                                                     </TransferControllerStateProvider>
                                                                   </SwapAndBridgeControllerStateProvider>
+                                                                  </RecoveryControllerStateProvider>
                                                                 </AddressBookControllerStateProvider>
                                                               </DomainsControllerStateProvider>
                                                             </DappsControllerStateProvider>

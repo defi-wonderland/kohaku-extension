@@ -719,6 +719,16 @@ export const handleActions = async (
     }
     case 'ADDRESS_BOOK_CONTROLLER_REMOVE_CONTACT':
       return await mainCtrl.addressBook.removeManuallyAddedContact(params.address)
+    case 'RECOVERY_CONTROLLER_SETUP':
+      return mainCtrl.recovery.setup(params.deployment, params.target)
+    case 'RECOVERY_CONTROLLER_SELECT_TARGET':
+      return mainCtrl.recovery.selectTarget(params.target)
+    case 'RECOVERY_CONTROLLER_SET_NEW_OWNER':
+      return mainCtrl.recovery.setNewOwner(params.newOwner)
+    case 'RECOVERY_CONTROLLER_INITIATE_RECOVERY':
+      return await mainCtrl.recovery.initiateRecovery()
+    case 'RECOVERY_CONTROLLER_REFRESH_STATUS':
+      return await mainCtrl.recovery.refreshStatus()
     case 'DOMAINS_CONTROLLER_REVERSE_LOOKUP':
       return await mainCtrl.domains.reverseLookup(params.address)
     case 'DOMAINS_CONTROLLER_SAVE_RESOLVED_REVERSE_LOOKUP':
