@@ -724,6 +724,10 @@ type AddressBookControllerRemoveContact = {
 type RecoveryControllerActivateAction = {
   type: 'RECOVERY_CONTROLLER_ACTIVATE'
 }
+/** Step 1b: bind + authorize the deployed recovery contracts on Account A. */
+type RecoveryControllerInstallAction = {
+  type: 'RECOVERY_CONTROLLER_INSTALL'
+}
 /** Set the new owner (Account B) that will gain control of A after recovery. */
 type RecoveryControllerSetNewOwnerAction = {
   type: 'RECOVERY_CONTROLLER_SET_NEW_OWNER'
@@ -1242,6 +1246,7 @@ export type Action =
   | PortfolioControllerLoadAccountsTotalBalances
   | ProviderRpcRequestAction
   | RecoveryControllerActivateAction
+  | RecoveryControllerInstallAction
   | RecoveryControllerSetNewOwnerAction
   | RecoveryControllerRecoverAction
   | RecoveryControllerRefreshStatusAction

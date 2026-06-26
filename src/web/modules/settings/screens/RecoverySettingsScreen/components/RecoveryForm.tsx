@@ -144,6 +144,12 @@ const RecoveryForm = () => {
     dispatch({ type: 'RECOVERY_CONTROLLER_ACTIVATE' })
   }, [dispatch])
 
+  // ── Step 1b: Install — bind + authorize, a second op on A (gas split) ────────
+  const handleInstall = useCallback(() => {
+    setHasProceeded(true)
+    dispatch({ type: 'RECOVERY_CONTROLLER_INSTALL' })
+  }, [dispatch])
+
   // ── Step 2: pick / set the new owner (Account B) ─────────────────────────────
   const handleCommitNewOwner = useCallback(() => {
     dispatch({
@@ -250,6 +256,23 @@ const RecoveryForm = () => {
         hasBottomSpacing={false}
         style={[spacings.mtSm, { alignSelf: 'flex-start' }]}
       />
+      {/* Step 1b: after the deploy op (controllerAddr known) but before fully
+          activated, the second op binds + authorizes the adapter on A. */}
+      {!!controllerAddr && !isActivatedForSelected && (
+        <Button
+          type="primary"
+          size="small"
+          text={
+            isPreparing && phase === 'install'
+              ? t('Preparing…')
+              : t('Install recovery (authorize on A)')
+          }
+          onPress={handleInstall}
+          disabled={isPreparing}
+          hasBottomSpacing={false}
+          style={[spacings.mtSm, { alignSelf: 'flex-start' }]}
+        />
+      )}
       {isActivatedForSelected && (
         <View style={spacings.mtSm}>
           <Text fontSize={12} appearance="successText">
