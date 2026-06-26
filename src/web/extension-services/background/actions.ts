@@ -8,10 +8,6 @@ import {
 } from '@ambire-common/controllers/actions/actions'
 import { Filters, Pagination } from '@ambire-common/controllers/activity/activity'
 import { Contact } from '@ambire-common/controllers/addressBook/addressBook'
-import type {
-  RecoveryDeployment,
-  RecoveryTarget
-} from '@ambire-common/controllers/recovery/recovery'
 import { FeeSpeed, SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import { Account, AccountPreferences, AccountStates } from '@ambire-common/interfaces/account'
 import { Banner } from '@ambire-common/interfaces/banner'
@@ -405,6 +401,7 @@ type SignAccountOpUpdateAction = {
       | 'PrivacyPools'
       | 'PrivacyPoolsV1'
       | 'Railgun'
+      | 'Recovery'
     accountOp?: AccountOp
     gasPrices?: GasRecommendation[]
     estimation?: FullEstimation
@@ -422,6 +419,7 @@ type MainControllerSignAccountOpUpdateStatus = {
     | 'SWAP_AND_BRIDGE_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
     | 'TRANSFER_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
     | 'PRIVACY_POOLS_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
+    | 'RECOVERY_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
   params: {
     status: SigningStatus
   }
@@ -436,6 +434,7 @@ type MainControllerHandleSignAndBroadcastAccountOp = {
       | 'PrivacyPools'
       | 'Railgun'
       | 'PrivacyPoolsV1'
+      | 'Recovery'
   }
 }
 
@@ -714,29 +713,35 @@ type AddressBookControllerRemoveContact = {
   }
 }
 
-// ── Recovery v0 controller ────────────────────────────────────────────────────
-type RecoveryControllerSetupAction = {
-  type: 'RECOVERY_CONTROLLER_SETUP'
-  params: {
-    deployment: RecoveryDeployment
-    target?: RecoveryTarget
-  }
+// ── Recovery v0 controller (in-extension Activate/Recover on Sepolia) ──────────
+/**
+ * Deploy the recovery contracts FROM the extension and authorize them on the
+ * currently selected account (Account A, the account to be recovered). Builds
+ * the deploy + setAddrPrivilege Calls and prepares the real sign pipeline; the
+ * UI must then fire `MAIN_CONTROLLER_HANDLE_SIGN_AND_BROADCAST_ACCOUNT_OP`
+ * with `updateType: 'Recovery'` to sign + broadcast as A.
+ */
+type RecoveryControllerActivateAction = {
+  type: 'RECOVERY_CONTROLLER_ACTIVATE'
 }
-type RecoveryControllerSelectTargetAction = {
-  type: 'RECOVERY_CONTROLLER_SELECT_TARGET'
-  params: {
-    target: RecoveryTarget
-  }
-}
+/** Set the new owner (Account B) that will gain control of A after recovery. */
 type RecoveryControllerSetNewOwnerAction = {
   type: 'RECOVERY_CONTROLLER_SET_NEW_OWNER'
   params: {
     newOwner: string
   }
 }
-type RecoveryControllerInitiateAction = {
-  type: 'RECOVERY_CONTROLLER_INITIATE_RECOVERY'
+/**
+ * Build `controller.initiateRecovery(newOwner, '0x')` against the deployed
+ * RecoveryController and prepare the real sign pipeline as the currently
+ * selected account (Account B, which sends + pays). The UI must then fire
+ * `MAIN_CONTROLLER_HANDLE_SIGN_AND_BROADCAST_ACCOUNT_OP` with
+ * `updateType: 'Recovery'` to sign + broadcast as B.
+ */
+type RecoveryControllerRecoverAction = {
+  type: 'RECOVERY_CONTROLLER_RECOVER'
 }
+/** Re-read A.privileges(B) on Sepolia to reflect whether B controls A. */
 type RecoveryControllerRefreshStatusAction = {
   type: 'RECOVERY_CONTROLLER_REFRESH_STATUS'
 }
@@ -1236,8 +1241,7 @@ export type Action =
   | PrivacyPoolsV1ControllerDestroyLatestBroadcastedAccountOpAction
   | PortfolioControllerLoadAccountsTotalBalances
   | ProviderRpcRequestAction
-  | RecoveryControllerSetupAction
-  | RecoveryControllerSelectTargetAction
+  | RecoveryControllerActivateAction
   | RecoveryControllerSetNewOwnerAction
-  | RecoveryControllerInitiateAction
+  | RecoveryControllerRecoverAction
   | RecoveryControllerRefreshStatusAction

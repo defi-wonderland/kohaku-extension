@@ -10,6 +10,7 @@ import {
   SIGN_ACCOUNT_OP_PRIVACY_POOLS,
   SIGN_ACCOUNT_OP_PRIVACY_POOLS_V1,
   SIGN_ACCOUNT_OP_RAILGUN,
+  SIGN_ACCOUNT_OP_RECOVERY,
   SignAccountOpType
 } from '@ambire-common/controllers/signAccountOp/helper'
 import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
@@ -294,6 +295,8 @@ export const handleActions = async (
         signAccountOpType = SIGN_ACCOUNT_OP_PRIVACY_POOLS_V1
       } else if (params.updateType === 'Railgun') {
         signAccountOpType = SIGN_ACCOUNT_OP_RAILGUN
+      } else if (params.updateType === 'Recovery') {
+        signAccountOpType = SIGN_ACCOUNT_OP_RECOVERY
       } else {
         signAccountOpType = SIGN_ACCOUNT_OP_TRANSFER
       }
@@ -342,6 +345,10 @@ export const handleActions = async (
 
       if (params.updateType === 'Railgun') {
         return mainCtrl?.railgun?.signAccountOpController?.update(params)
+      }
+
+      if (params.updateType === 'Recovery') {
+        return mainCtrl?.recovery?.signAccountOpController?.update(params)
       }
 
       // 'Transfer&TopUp'
@@ -719,16 +726,16 @@ export const handleActions = async (
     }
     case 'ADDRESS_BOOK_CONTROLLER_REMOVE_CONTACT':
       return await mainCtrl.addressBook.removeManuallyAddedContact(params.address)
-    case 'RECOVERY_CONTROLLER_SETUP':
-      return mainCtrl.recovery.setup(params.deployment, params.target)
-    case 'RECOVERY_CONTROLLER_SELECT_TARGET':
-      return mainCtrl.recovery.selectTarget(params.target)
+    case 'RECOVERY_CONTROLLER_ACTIVATE':
+      return await mainCtrl.recovery.activate()
     case 'RECOVERY_CONTROLLER_SET_NEW_OWNER':
       return mainCtrl.recovery.setNewOwner(params.newOwner)
-    case 'RECOVERY_CONTROLLER_INITIATE_RECOVERY':
-      return await mainCtrl.recovery.initiateRecovery()
+    case 'RECOVERY_CONTROLLER_RECOVER':
+      return await mainCtrl.recovery.recover()
     case 'RECOVERY_CONTROLLER_REFRESH_STATUS':
       return await mainCtrl.recovery.refreshStatus()
+    case 'RECOVERY_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS':
+      return mainCtrl.recovery?.signAccountOpController?.updateStatus(params.status)
     case 'DOMAINS_CONTROLLER_REVERSE_LOOKUP':
       return await mainCtrl.domains.reverseLookup(params.address)
     case 'DOMAINS_CONTROLLER_SAVE_RESOLVED_REVERSE_LOOKUP':
