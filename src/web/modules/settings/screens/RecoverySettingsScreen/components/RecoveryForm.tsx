@@ -179,6 +179,12 @@ const RecoveryForm = () => {
     dispatch({ type: 'RECOVERY_CONTROLLER_RECOVER' })
   }, [dispatch])
 
+  // ── Step 4 (proof): B makes A send 0.000001 ETH to B — proves B controls A ───
+  const handleProve = useCallback(() => {
+    setPendingOpen(true)
+    dispatch({ type: 'RECOVERY_CONTROLLER_PROVE' })
+  }, [dispatch])
+
   const handleRefresh = useCallback(() => {
     dispatch({ type: 'RECOVERY_CONTROLLER_REFRESH_STATUS' })
   }, [dispatch])
@@ -361,6 +367,33 @@ const RecoveryForm = () => {
         style={{ alignSelf: 'flex-start' }}
       />
 
+      {/* ── STEP 4: Prove it — B spends A's funds (only after recovery landed) ──── */}
+      {newOwnerIsAuthorizedOnA && (
+        <>
+          <Text fontSize={14} weight="medium" style={[spacings.mbTy, spacings.mtLg]}>
+            {t('Step 4 — Prove it (B spends from A)')}
+          </Text>
+          <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
+            {t(
+              'With Account B selected, make Account A send 0.000001 ETH to B — using B’s new control over A. If this succeeds, B truly controls A.'
+            )}
+          </Text>
+          <Button
+            type="secondary"
+            size="small"
+            text={
+              isPreparing && phase === 'prove'
+                ? t('Preparing…')
+                : t('Prove it — B spends 0.000001 from A')
+            }
+            onPress={handleProve}
+            disabled={isPreparing}
+            hasBottomSpacing={false}
+            style={{ alignSelf: 'flex-start' }}
+          />
+        </>
+      )}
+
       {/* ── Status panel ──────────────────────────────────────────────────────── */}
       <View
         style={[
@@ -411,6 +444,18 @@ const RecoveryForm = () => {
               <Pressable onPress={() => openTx(txHashes.recover as string)}>
                 <Text fontSize={12} appearance="primary" underline>
                   {shortAddr(txHashes.recover)}
+                </Text>
+              </Pressable>
+            }
+          />
+        )}
+        {!!txHashes?.prove && (
+          <InfoRow
+            label={t('Proof tx (B spent from A)')}
+            value={
+              <Pressable onPress={() => openTx(txHashes.prove as string)}>
+                <Text fontSize={12} appearance="primary" underline>
+                  {shortAddr(txHashes.prove)}
                 </Text>
               </Pressable>
             }

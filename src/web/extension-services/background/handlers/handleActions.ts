@@ -730,6 +730,8 @@ export const handleActions = async (
       return await mainCtrl.recovery.activate()
     case 'RECOVERY_CONTROLLER_INSTALL':
       return await mainCtrl.recovery.installRecovery()
+    case 'RECOVERY_CONTROLLER_PROVE':
+      return await mainCtrl.recovery.proveControl()
     case 'RECOVERY_CONTROLLER_SET_NEW_OWNER':
       return mainCtrl.recovery.setNewOwner(params.newOwner)
     case 'RECOVERY_CONTROLLER_RECOVER':

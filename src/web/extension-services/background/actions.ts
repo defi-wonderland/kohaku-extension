@@ -728,6 +728,10 @@ type RecoveryControllerActivateAction = {
 type RecoveryControllerInstallAction = {
   type: 'RECOVERY_CONTROLLER_INSTALL'
 }
+/** Proof: Account B (selected) makes A send a tiny amount to B, proving B controls A. */
+type RecoveryControllerProveAction = {
+  type: 'RECOVERY_CONTROLLER_PROVE'
+}
 /** Set the new owner (Account B) that will gain control of A after recovery. */
 type RecoveryControllerSetNewOwnerAction = {
   type: 'RECOVERY_CONTROLLER_SET_NEW_OWNER'
@@ -1247,6 +1251,7 @@ export type Action =
   | ProviderRpcRequestAction
   | RecoveryControllerActivateAction
   | RecoveryControllerInstallAction
+  | RecoveryControllerProveAction
   | RecoveryControllerSetNewOwnerAction
   | RecoveryControllerRecoverAction
   | RecoveryControllerRefreshStatusAction
