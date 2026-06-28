@@ -98,8 +98,12 @@ const RecoveryForm = () => {
   // committed to the controller on blur / explicit picker selection.
   const [newOwnerDraft, setNewOwnerDraft] = useState(newOwner || '')
 
-  // Drives the shared Estimation BottomSheet `autoOpen`. Set true the moment we
-  // ask the controller to prepare an op, reset when the op is gone.
+  // `pendingOpen` = the user clicked a step and we asked the background controller
+  // to prepare a signing op. `hasProceeded` (which drives the Estimation BottomSheet
+  // `autoOpen`) must only flip true ONCE the controller actually exists in UI state —
+  // otherwise the sheet opens before the async controller arrives and renders an empty
+  // white bar (its content is gated on `!!signAccountOpController`).
+  const [pendingOpen, setPendingOpen] = useState(false)
   const [hasProceeded, setHasProceeded] = useState(false)
 
   const {
@@ -125,13 +129,16 @@ const RecoveryForm = () => {
     setNewOwnerDraft(newOwner || '')
   }, [newOwner])
 
-  // Open the estimation modal once the controller has prepared a signing op for
-  // either phase (mirrors the Railgun/PrivacyPools two-step "sync then sign" UX).
+  // Only mark "proceeded" + open the modal once the controller has actually prepared
+  // the signing op. Gating on `signAccountOpController` (not the synchronous click)
+  // prevents the empty-white-sheet race.
   useEffect(() => {
-    if (signAccountOpController && hasProceeded) {
+    if (pendingOpen && signAccountOpController) {
+      setHasProceeded(true)
       openEstimationModal()
+      setPendingOpen(false)
     }
-  }, [signAccountOpController, hasProceeded, openEstimationModal])
+  }, [pendingOpen, signAccountOpController, openEstimationModal])
 
   const isActivatedForSelected =
     !!activated && !!accountA && accountA.toLowerCase() === (selectedAddr || '').toLowerCase()
@@ -140,13 +147,13 @@ const RecoveryForm = () => {
 
   // ── Step 1: Activate (selected account = A) ──────────────────────────────────
   const handleActivate = useCallback(() => {
-    setHasProceeded(true)
+    setPendingOpen(true)
     dispatch({ type: 'RECOVERY_CONTROLLER_ACTIVATE' })
   }, [dispatch])
 
   // ── Step 1b: Install — bind + authorize, a second op on A (gas split) ────────
   const handleInstall = useCallback(() => {
-    setHasProceeded(true)
+    setPendingOpen(true)
     dispatch({ type: 'RECOVERY_CONTROLLER_INSTALL' })
   }, [dispatch])
 
@@ -168,7 +175,7 @@ const RecoveryForm = () => {
 
   // ── Step 3: Recover (selected account = B, B sends + pays) ───────────────────
   const handleRecover = useCallback(() => {
-    setHasProceeded(true)
+    setPendingOpen(true)
     dispatch({ type: 'RECOVERY_CONTROLLER_RECOVER' })
   }, [dispatch])
 
