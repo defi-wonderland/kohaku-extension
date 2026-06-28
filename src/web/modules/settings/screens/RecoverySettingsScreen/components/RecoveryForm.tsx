@@ -91,6 +91,7 @@ const RecoveryForm = () => {
     txHashes,
     lastError,
     newOwnerIsAuthorizedOnA,
+    selectedControlsA,
     signAccountOpController
   } = useRecoveryControllerState()
 
@@ -367,8 +368,10 @@ const RecoveryForm = () => {
         style={{ alignSelf: 'flex-start' }}
       />
 
-      {/* ── STEP 4: Prove it — B spends A's funds (only after recovery landed) ──── */}
-      {newOwnerIsAuthorizedOnA && (
+      {/* ── STEP 4: Prove it — B spends A's funds. Shows when the SELECTED account
+            (B) controls the recovered A (selectedControlsA), since by this step the
+            selected account is B, not A. ──────────────────────────────────────────── */}
+      {selectedControlsA && (
         <>
           <Text fontSize={14} weight="medium" style={[spacings.mbTy, spacings.mtLg]}>
             {t('Step 4 — Prove it (B spends from A)')}
