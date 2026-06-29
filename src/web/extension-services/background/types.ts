@@ -17,6 +17,7 @@ import { PortfolioController } from '@ambire-common/controllers/portfolio/portfo
 import { PrivacyPoolsController } from '@ambire-common/controllers/privacyPools/privacyPools'
 import { PrivacyPoolsV1Controller } from '@ambire-common/controllers/privacyPools/privacyPoolsV1'
 import { RailgunController } from '@ambire-common/controllers/railgun/railgun'
+import { RecoveryController } from '@ambire-common/controllers/recovery/recovery'
 import { ProvidersController } from '@ambire-common/controllers/providers/providers'
 import { RequestsController } from '@ambire-common/controllers/requests/requests'
 import { SelectedAccountController } from '@ambire-common/controllers/selectedAccount/selectedAccount'
@@ -46,6 +47,7 @@ export const controllersNestedInMainMapping = {
   privacyPools: PrivacyPoolsController,
   privacyPoolsV1: PrivacyPoolsV1Controller,
   railgun: RailgunController,
+  recovery: RecoveryController,
   phishing: PhishingController,
   dapps: DappsController,
   requests: RequestsController,

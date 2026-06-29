@@ -50,6 +50,7 @@ const WEB_ROUTES = {
   devicePasswordChange: 'settings/device-password-change',
   devicePasswordRecovery: 'settings/device-password-recovery',
   addressBook: 'settings/address-book',
+  recovery: 'settings/recovery-v0',
   manageTokens: 'settings/manage-tokens',
   importPrivateKey: 'import-private-key',
   importSmartAccountJson: 'import-smart-account-json',
