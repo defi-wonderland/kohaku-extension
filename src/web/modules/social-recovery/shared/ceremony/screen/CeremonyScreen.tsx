@@ -31,6 +31,7 @@ import { getUiType } from '@web/utils/uiType'
 import { ceremonyReport, sendCeremonyReport } from '../channel'
 import type { CeremonyStep } from '../device'
 import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
+import { lossLineKeyOf, renderKindLine } from '../kindLine'
 import { parseCeremonySearch } from '../request'
 import { ceremonyMayRun, ResolvedCeremony, runCeremony } from '../run'
 import {
@@ -42,28 +43,13 @@ import {
   outcomeOfThrown
 } from '../verdicts'
 import { createVisibilityGate, VisibilityGate, whenVisible } from '../visibility'
-import { browserPasskeyDevice, browserReportStore, pagePasskeysServed } from './browserDefaults'
+import {
+  browserPasskeyDevice,
+  browserReportStore,
+  pagePasskeysServed,
+  pagePlatform
+} from './browserDefaults'
 import { useCeremonySource } from './CeremonySource'
-
-/*
- * TODO(social-recovery coordinator): five strings this screen needs are not in
- * en.json. They are used through the keys below with a default value until
- * the coordinator adds them; PT-041's report quotes the chapter sentence each
- * serves.
- */
-const MISSING = {
-  cancelAction: { key: 'socialRecovery.ceremony.cancelAction', defaultValue: 'Cancel' },
-  backAction: { key: 'socialRecovery.ceremony.backAction', defaultValue: 'Back' },
-  tryAgainAction: { key: 'socialRecovery.ceremony.tryAgainAction', defaultValue: 'Try again' },
-  tabOnly: {
-    key: 'socialRecovery.ceremony.tabOnly',
-    defaultValue: 'This step runs in a full tab. Open it from Kohaku in a tab.'
-  },
-  nothingToRun: {
-    key: 'socialRecovery.ceremony.nothingToRun',
-    defaultValue: 'Nothing waits for this step. Go back to the row and start it again.'
-  }
-} as const
 
 type Phase = 'resolving' | 'running' | 'reporting' | 'done' | 'nothing'
 
@@ -172,9 +158,6 @@ const CeremonyScreen = () => {
     start()
   }, [start])
 
-  const tr = (entry: { key: string; defaultValue: string }) =>
-    t(entry.key, { defaultValue: entry.defaultValue })
-
   const renderRunning = () => (
     <View style={[flexbox.alignCenter]}>
       {step === 'waitingForPhone' ? (
@@ -204,7 +187,7 @@ const CeremonyScreen = () => {
       )}
       <Button
         type="secondary"
-        text={tr(MISSING.cancelAction)}
+        text={t('socialRecovery.ceremony.cancelAction')}
         onPress={() => abort.current?.abort()}
         style={spacings.mtLg}
       />
@@ -217,7 +200,7 @@ const CeremonyScreen = () => {
     const chip = chipOfOutcome(shown)
     const lineKey = lineKeyOfOutcome(shown)
     const passedEnroll = shown.kind === 'verdict' && shown.verdict === 'passed' && call === 'enroll'
-    const kind = passedEnroll ? (shown.value as EnrollValue).facts?.kind : undefined
+    const facts = passedEnroll ? (shown.value as EnrollValue).facts : undefined
     const hash =
       shown.kind === 'verdict' && shown.verdict === 'passed' ? hashOfValue(shown.value) : null
     const cause =
@@ -250,14 +233,15 @@ const CeremonyScreen = () => {
             {t(lineKey)}
           </Text>
         )}
-        {kind && (
-          <Text appearance="secondaryText" style={spacings.mbSm}>
-            {t(
-              kind === 'synced'
-                ? 'socialRecovery.ceremony.syncedLoss'
-                : 'socialRecovery.ceremony.deviceBoundLoss'
-            )}
-          </Text>
+        {facts && (
+          <>
+            <Text weight="medium" style={spacings.mbSm}>
+              {renderKindLine(facts, pagePlatform(), t)}
+            </Text>
+            <Text appearance="secondaryText" style={spacings.mbSm}>
+              {t(lossLineKeyOf(facts))}
+            </Text>
+          </>
         )}
         {passedEnroll && binding === 'browser-authenticator' && (
           <Text appearance="secondaryText" style={spacings.mbSm}>
@@ -271,11 +255,15 @@ const CeremonyScreen = () => {
         )}
         {phase === 'done' && !returnTo && (
           <View style={[flexbox.directionRow, spacings.mtLg]}>
-            <Button type="secondary" text={tr(MISSING.backAction)} onPress={() => navigate(-1)} />
+            <Button
+              type="secondary"
+              text={t('socialRecovery.ceremony.backAction')}
+              onPress={() => navigate(-1)}
+            />
             {mayRetry && (
               <Button
                 type="primary"
-                text={tr(MISSING.tryAgainAction)}
+                text={t('socialRecovery.ceremony.tryAgainAction')}
                 // eslint-disable-next-line @typescript-eslint/no-misused-promises
                 onPress={start}
                 style={spacings.mlSm}
@@ -288,12 +276,16 @@ const CeremonyScreen = () => {
   }
 
   const renderBody = () => {
-    if (!mayRun) return <Text>{tr(MISSING.tabOnly)}</Text>
+    if (!mayRun) return <Text>{t('socialRecovery.ceremony.tabOnly')}</Text>
     if (!parsed.ok || phase === 'nothing') {
       return (
         <View>
-          <Text style={spacings.mbLg}>{tr(MISSING.nothingToRun)}</Text>
-          <Button type="secondary" text={tr(MISSING.backAction)} onPress={() => navigate(-1)} />
+          <Text style={spacings.mbLg}>{t('socialRecovery.ceremony.nothingToRun')}</Text>
+          <Button
+            type="secondary"
+            text={t('socialRecovery.ceremony.backAction')}
+            onPress={() => navigate(-1)}
+          />
         </View>
       )
     }

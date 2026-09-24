@@ -11,7 +11,8 @@ export {
   browserPasskeyDevice,
   browserReportStore,
   browserReportSubscribe,
-  pagePasskeysServed
+  pagePasskeysServed,
+  pagePlatform
 } from './browserDefaults'
 
 export default CeremonyScreen

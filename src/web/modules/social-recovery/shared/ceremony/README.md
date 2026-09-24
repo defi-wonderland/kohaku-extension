@@ -9,6 +9,7 @@ The full tab every ceremony that dies on focus loss runs in, and the hosts that 
 | File | Holds |
 | --- | --- |
 | `verdicts.ts` | The closed outcome vocabulary: the four calls, the four verdicts, the two dismissal notes, the causes, and the mapping of a method's answer, a thrown error and the local check to one outcome. The chip, note and line keys each outcome renders. |
+| `kindLine.ts` | The kind line's provider and device names, from the AAGUID and the platform. |
 | `webauthn.ts` | The pure passkey rules: the relying party, the rp id hash, the authenticator data flags, the synced or device-bound kind, DER and the high-s rule, and the reading of the browser's own errors. |
 | `visibility.ts` | The visibility gate of D-316. |
 | `device.ts` | The device-call interface a host runs between the method's options and its packaging, and the device for material the caller already holds. |
@@ -43,6 +44,19 @@ Every host returns exactly one `CeremonyOutcome`:
 - The method receives the full origin string `chrome-extension://<id>` as its relying party id (D-372). The passkey device replaces it with the host in the WebAuthn options and keeps every other member the method set.
 - The rp id hash is `sha256("chrome-extension://<id>")`, never the hash of the bare id (D-314). The device compares the hash in the credential's own authenticator data against it and reports a mismatch before the method runs, at enrollment and at a claim.
 - The kind is read from the ceremony's own flags: backup eligible (BE) is synced, otherwise device-bound. `backedUp` (BS), the attachment, the transports and the AAGUID are kept as facts; the place (this device, phone, security key) comes from the attachment and the transports. Nothing is read from the operating system (D-305).
+- The kind line (`kindLine.ts`) reads "Synced passkey · {{provider}}" or "Device-bound passkey · {{device}}", with the names of `socialRecovery.ceremony.providers` and `.devices`. The mapping:
+
+  | Kind | Read from | Name |
+  | --- | --- | --- |
+  | synced | AAGUID `ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4` (Google Password Manager) | `providers.google` |
+  | synced | AAGUID `fbfc3007-154e-4ecc-8c0b-6e020557d7bd` or `dd4ec289-e01d-41c9-bb89-70fa845d4bf2` (iCloud Keychain) | `providers.apple` |
+  | synced | any other AAGUID, a zeroed one or none | `providers.passwordManager` |
+  | device-bound | place `phone` (a phone over the hybrid route) | `devices.thisPhone` |
+  | device-bound | place `this-device` on macOS | `devices.thisMac` |
+  | device-bound | place `this-device` on Android or iOS | `devices.thisPhone` |
+  | device-bound | place `this-device` elsewhere, a security key, or an unknown place | `devices.thisDevice` |
+
+  The provider comes from the authenticator's own facts, the AAGUID, and never from the operating system (D-305). The device comes from the platform: `navigator.userAgentData.platform` where the browser has it, `navigator.platform` and the user agent otherwise. The AAGUIDs are those of the community list `passkeydeveloper/passkey-authenticator-aaguids`; the manual run confirms what Chrome returns under attestation `none`.
 - A high `s` is lowered before the method receives the assertion: the DER signature is parsed, `s > n/2` becomes `n - s` over the P-256 order, and the signature is re-encoded. The method receives a field-by-field copy of the `PublicKeyCredential` with the lowered signature (`NormalizedAssertion`).
 - The phone hand-off asks for a cross-platform authenticator with the `hybrid` hint. A `NotAllowedError` that arrives at or past the prompt's timeout (180 seconds) during a hand-off reads unreachable; before it, cancelled.
 - A page that is not a Chromium extension origin gets no passkey device: the host reports `notSupported` and the screen draws `chromeOnly`.
