@@ -28,23 +28,25 @@ import type { DeviceBinding } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderChip, renderHash } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
-import { ceremonyReport, sendCeremonyReport } from '../channel'
+import { ceremonyReport, sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import type { CeremonyStep } from '../device'
 import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
 import { lossLineKeyOf, renderKindLine } from '../kindLine'
 import { parseCeremonySearch } from '../request'
 import { ceremonyMayRun, ResolvedCeremony, runCeremony } from '../run'
 import {
+  browserErrorNameOf,
   CeremonyOutcome,
   chipOfOutcome,
   lineKeyOfOutcome,
   notSupported,
   noteKeyOfOutcome,
-  outcomeOfThrown
+  unavailable
 } from '../verdicts'
 import { createVisibilityGate, VisibilityGate, whenVisible } from '../visibility'
 import {
   browserPasskeyDevice,
+  browserReportKeys,
   browserReportStore,
   pagePasskeysServed,
   pagePlatform
@@ -83,6 +85,14 @@ const CeremonyScreen = () => {
   const visibility = source.visibility ?? (typeof document !== 'undefined' ? document : undefined)
 
   useEffect(() => {
+    // Reports nobody took within their expiry leave storage (D-310, I-38).
+    const store = source.store ?? browserReportStore
+    browserReportKeys()
+      .then((keys) => sweepCeremonyReports(store, keys))
+      .catch(() => undefined)
+  }, [source.store])
+
+  useEffect(() => {
     mounted.current = true
     if (visibility) gate.current = createVisibilityGate(visibility)
     return () => {
@@ -102,22 +112,28 @@ const CeremonyScreen = () => {
     setStep('preparing')
     setPhase('resolving')
 
+    // A hidden tab dispatches nothing (D-316): not the resolve, not the prompt,
+    // which the browser refuses without focus anyway.
+    if (visibility) await whenVisible(visibility)
+    if (!mounted.current) return
+
     // No resolver wired: this build holds no implementation to run.
     let result: CeremonyOutcome<unknown> = notSupported('no-implementation')
     if (source.resolve) {
       let resolved: ResolvedCeremony | null | undefined
       try {
         resolved = await source.resolve(params)
-      } catch (error) {
-        result = outcomeOfThrown(error)
+      } catch {
+        // The records or the client did not answer: retry may find them.
+        result = unavailable('service-unanswered')
       }
       if (resolved === null) {
         if (mounted.current) setPhase('nothing')
         return
       }
       if (resolved) {
-        if (mounted.current) setBinding(resolved.method.deviceBinding)
-        // A hidden tab starts no prompt: the browser refuses one without focus.
+        if (!mounted.current) return
+        setBinding(resolved.method.deviceBinding)
         if (visibility) await whenVisible(visibility)
         if (!mounted.current) return
         setPhase('running')
@@ -197,35 +213,34 @@ const CeremonyScreen = () => {
   const renderOutcome = (shown: CeremonyOutcome<unknown>) => {
     if (!parsed.ok) return null
     const { call, returnTo } = parsed.params
-    const chip = chipOfOutcome(shown)
-    const lineKey = lineKeyOfOutcome(shown)
+    const chip = chipOfOutcome(shown, call)
+    const noteKey = noteKeyOfOutcome(shown, call)
+    const lineKey = lineKeyOfOutcome(shown, call)
     const passedEnroll = shown.kind === 'verdict' && shown.verdict === 'passed' && call === 'enroll'
     const facts = passedEnroll ? (shown.value as EnrollValue).facts : undefined
     const hash =
       shown.kind === 'verdict' && shown.verdict === 'passed' ? hashOfValue(shown.value) : null
-    const cause =
-      shown.kind === 'verdict' && (shown.verdict === 'failed' || shown.verdict === 'unavailable')
-        ? shown.detail ?? shown.cause
-        : null
+    // The one raw cause text a screen shows: the browser's own error name (frame C-05).
+    const errorName = browserErrorNameOf(shown)
     const mayRetry = shown.kind === 'dismissed' || shown.retry
     const chromeOnly = binding === 'browser-authenticator' && !pagePasskeysServed()
     return (
       <View>
         {chip && (
           <Text weight="semiBold" style={spacings.mbSm}>
-            {renderChip('method', chip)}
+            {chip.set === 'method'
+              ? renderChip('method', chip.chip)
+              : renderChip('collection', chip.chip)}
           </Text>
         )}
         {chromeOnly ? (
           <Text style={spacings.mbSm}>{t('socialRecovery.ceremony.chromeOnly')}</Text>
         ) : (
-          (!passedEnroll || hash) && (
-            <Text style={spacings.mbSm}>{t(noteKeyOfOutcome(shown, call), { hash })}</Text>
-          )
+          noteKey && <Text style={spacings.mbSm}>{t(noteKey, { hash })}</Text>
         )}
-        {cause && (
+        {errorName && (
           <Text appearance="secondaryText" fontSize={12} style={spacings.mbSm}>
-            {cause}
+            {errorName}
           </Text>
         )}
         {lineKey && !chromeOnly && (

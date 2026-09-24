@@ -13,7 +13,7 @@
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { bytesToHex, sha256, stringToBytes } from 'viem'
 
-import { CeremonyStop, dismissed, failed, unavailable } from './verdicts'
+import { CeremonyStop, dismissed, failed, isBrowserErrorName, unavailable } from './verdicts'
 
 // ---------------------------------------------------------------------------
 // The relying party
@@ -350,25 +350,33 @@ const errorMessage = (error: unknown): string =>
     ? (error as { message: string }).message
     : ''
 
+/** The two WebAuthn calls: `create` at enrollment, `get` at a test or a claim. */
+export type WebAuthnCall = 'create' | 'get'
+
 /**
  * Reads an error the `navigator.credentials` call threw, before the method
- * runs (D-372). It returns the stop the host reports, never a verdict of the
- * method:
+ * runs (D-372). It returns the stop the host reports:
  *
- * - `NotAllowedError`: the holder dismissed the prompt, the cancelled note;
- *   the browser refusing an unfocused page or a permission policy, the refused
- *   note; a hand-off rejected at or past its timeout, unavailable with the
- *   unreachable cause (the phone never connected).
+ * - `NotAllowedError` at `create` (enrollment): the holder dismissed the
+ *   prompt, the cancelled note; the browser refusing an unfocused page or a
+ *   permission policy, the refused note.
+ * - `NotAllowedError` at `get` (a test or a claim): failed, with the browser's
+ *   error name as its cause (`browser-error`), since the browser cannot tell a
+ *   dismissed prompt from a missing credential (the coordinator's ruling,
+ *   frame C-05: "Test failed · NotAllowedError").
+ * - `NotAllowedError` at or past the timeout of a phone hand-off, at either
+ *   call: unavailable with the unreachable cause (the phone never connected).
  * - `AbortError`: the holder's own abort, the cancelled note.
  * - `InvalidStateError`, `ConstraintError`, `NotSupportedError`: the
  *   authenticator cannot meet the request, the refused note.
  * - `SecurityError`: the browser or the provider refused the extension's
  *   relying party, failed with the relying-party mismatch (D-314).
- * - Anything else: failed with the error's own message as its cause.
+ * - Any other error the browser names: failed with its name (`browser-error`).
+ *   An error with no such name: failed, `thrown`, with no text a screen shows.
  */
 export const stopOfCeremonyError = (
   error: unknown,
-  context: { handOff?: boolean; elapsedMs?: number; timeoutMs?: number } = {}
+  context: { call?: WebAuthnCall; handOff?: boolean; elapsedMs?: number; timeoutMs?: number } = {}
 ): CeremonyStop => {
   const name = errorName(error)
   const message = errorMessage(error)
@@ -378,6 +386,7 @@ export const stopOfCeremonyError = (
       if (context.handOff && (context.elapsedMs ?? 0) >= timeoutMs) {
         return unavailable('unreachable', name)
       }
+      if (context.call === 'get') return failed('browser-error', name)
       if (/focus|permissions? policy|feature policy/i.test(message)) {
         return dismissed('refused', name)
       }
@@ -392,7 +401,7 @@ export const stopOfCeremonyError = (
     case 'SecurityError':
       return failed('relying-party-mismatch', name)
     default:
-      return failed('thrown', message || name)
+      return name && isBrowserErrorName(name) ? failed('browser-error', name) : failed('thrown')
   }
 }
 

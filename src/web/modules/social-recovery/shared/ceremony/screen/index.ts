@@ -9,6 +9,7 @@ export { CeremonySourceProvider, useCeremonySource } from './CeremonySource'
 export type { CeremonySource } from './CeremonySource'
 export {
   browserPasskeyDevice,
+  browserReportKeys,
   browserReportStore,
   browserReportSubscribe,
   pagePasskeysServed,

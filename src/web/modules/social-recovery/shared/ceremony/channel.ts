@@ -6,9 +6,21 @@
  * in the extension's local storage (the `storage` of
  * `@web/extension-services/background/webapi/storage`, D-310), through the
  * visibility gate: a hidden tab writes nothing until it is shown again, so a
- * hand-off to a phone reports its result when the tab returns (D-316). The
- * caller reads the report when it mounts again, or listens for it, and takes
- * it once. No background controller is involved.
+ * hand-off to a phone reports its result when the tab returns (D-316). No
+ * background controller is involved.
+ *
+ * A report of a passed claim carries the reply and its proof, approval
+ * material that must not outlive its use (D-310, I-38). So a report lives only
+ * until taken and never past its expiry, ten minutes from `reportedAt`:
+ *
+ * - `takeCeremonyReport` and `listenForCeremonyReport` remove the report once
+ *   they deliver it, and deliver it only where its id, call and method are the
+ *   ones the caller expects and `reportedAt` is within the expiry;
+ * - `sweepCeremonyReports` removes every report past its expiry, and every
+ *   malformed one; the tab runs it on mount.
+ *
+ * The caller (the checklist row) files the reply into PT-040's session record
+ * at once, where I-38's wipe governs it, and keeps no copy of the report.
  *
  * Storage and the listener are parameters, so the channel runs under node.
  */
@@ -17,6 +29,12 @@ import { CeremonyCall, CeremonyOutcome, isCeremonyCall, isCeremonyVerdict } from
 import type { VisibilityGate } from './visibility'
 
 export const CEREMONY_RESULT_KEY_PREFIX = 'socialRecoveryCeremonyResult:'
+
+/** How long a report may wait for its caller: ten minutes from `reportedAt`. */
+export const CEREMONY_REPORT_TTL_MS = 10 * 60 * 1000
+
+/** How far ahead of the reader's clock a `reportedAt` may sit and still count. */
+export const CEREMONY_REPORT_CLOCK_SKEW_MS = 60 * 1000
 
 export const ceremonyResultKey = (id: string): string => `${CEREMONY_RESULT_KEY_PREFIX}${id}`
 
@@ -27,7 +45,12 @@ export interface CeremonyReport<T = unknown> {
   method: string
   outcome: CeremonyOutcome<T>
   reportedAt: number
+  /** `reportedAt` plus `CEREMONY_REPORT_TTL_MS`: no reader delivers the report after it. */
+  expiresAt: number
 }
+
+/** What a caller expects a report to be for. */
+export type ReportIdentity = Pick<CeremonyParams, 'id' | 'call' | 'method'>
 
 /** The part of the extension's storage the channel uses. */
 export interface ReportStore {
@@ -54,6 +77,7 @@ export const isCeremonyReport = (value: unknown): value is CeremonyReport => {
   const report = value as Partial<CeremonyReport>
   if (typeof report.id !== 'string' || typeof report.method !== 'string') return false
   if (!isCeremonyCall(report.call) || typeof report.reportedAt !== 'number') return false
+  if (typeof report.expiresAt !== 'number') return false
   const outcome = report.outcome as
     | { kind?: unknown; verdict?: unknown; note?: unknown }
     | undefined
@@ -64,9 +88,28 @@ export const isCeremonyReport = (value: unknown): value is CeremonyReport => {
   )
 }
 
-/** The report the tab writes for `params`. */
+/**
+ * Whether a report reported at `reportedAt` is still within its expiry at
+ * `now`: no older than `CEREMONY_REPORT_TTL_MS`, and not from the future past
+ * a minute of clock skew.
+ */
+export const isWithinExpiry = (reportedAt: number, now: number): boolean =>
+  now >= reportedAt - CEREMONY_REPORT_CLOCK_SKEW_MS && now < reportedAt + CEREMONY_REPORT_TTL_MS
+
+/** Whether `report` is the one `expected` names, and still within its expiry at `now`. */
+export const isReportFor = (
+  report: CeremonyReport,
+  expected: ReportIdentity,
+  now: number
+): boolean =>
+  report.id === expected.id &&
+  report.call === expected.call &&
+  report.method === expected.method &&
+  isWithinExpiry(report.reportedAt, now)
+
+/** The report the tab writes for `params`, expiring ten minutes after `reportedAt`. */
 export const ceremonyReport = <T>(
-  params: Pick<CeremonyParams, 'id' | 'call' | 'method'>,
+  params: ReportIdentity,
   outcome: CeremonyOutcome<T>,
   reportedAt: number
 ): CeremonyReport<T> => ({
@@ -74,7 +117,8 @@ export const ceremonyReport = <T>(
   call: params.call,
   method: params.method,
   outcome,
-  reportedAt
+  reportedAt,
+  expiresAt: reportedAt + CEREMONY_REPORT_TTL_MS
 })
 
 /**
@@ -87,32 +131,86 @@ export const sendCeremonyReport = (
 ): Promise<unknown> =>
   deps.gate.dispatch(() => deps.store.set(ceremonyResultKey(report.id), report))
 
-/** The report stored for `id`, or null. A malformed value reads null. */
+const storedReport = async (id: string, store: ReportStore): Promise<unknown> =>
+  parseMaybeJson(await store.get(ceremonyResultKey(id), null))
+
+/**
+ * The report stored for `expected`, or null: a malformed report, one for
+ * another call or method, and one past its expiry all read null. It removes
+ * nothing.
+ */
 export const readCeremonyReport = async (
-  id: string,
-  store: ReportStore
+  expected: ReportIdentity,
+  store: ReportStore,
+  now: number = Date.now()
 ): Promise<CeremonyReport | null> => {
-  const value = parseMaybeJson(await store.get(ceremonyResultKey(id), null))
-  return isCeremonyReport(value) && value.id === id ? value : null
+  const value = await storedReport(expected.id, store)
+  return isCeremonyReport(value) && isReportFor(value, expected, now) ? value : null
 }
 
-/** Reads the report for `id` and removes it, so a row applies an outcome once. */
+/**
+ * Takes the report for `expected` and removes it, so a row applies an outcome
+ * once and no reply stays behind. A report past its expiry is removed and
+ * reads null. A report for another call or method stays and reads null.
+ */
 export const takeCeremonyReport = async (
-  id: string,
-  store: ReportStore
+  expected: ReportIdentity,
+  store: ReportStore,
+  now: number = Date.now()
 ): Promise<CeremonyReport | null> => {
-  const report = await readCeremonyReport(id, store)
-  if (report) await store.remove(ceremonyResultKey(id))
-  return report
+  const value = await storedReport(expected.id, store)
+  if (value === null || value === undefined) return null
+  const key = ceremonyResultKey(expected.id)
+  if (!isCeremonyReport(value) || !isWithinExpiry(value.reportedAt, now)) {
+    await store.remove(key)
+    return null
+  }
+  if (!isReportFor(value, expected, now)) return null
+  await store.remove(key)
+  return value
 }
 
-/** Calls `onReport` with each well-formed report written for `id`; returns the unsubscribe. */
+/**
+ * Calls `onReport` with the report written for `expected`, then removes it
+ * from storage. A report for another call or method, or past its expiry, is
+ * not delivered. Returns the unsubscribe.
+ */
 export const listenForCeremonyReport = (
-  id: string,
+  expected: ReportIdentity,
   subscribe: ReportSubscribe,
-  onReport: (report: CeremonyReport) => void
+  store: ReportStore,
+  onReport: (report: CeremonyReport) => void,
+  now: () => number = () => Date.now()
 ): (() => void) =>
-  subscribe(ceremonyResultKey(id), (value) => {
+  subscribe(ceremonyResultKey(expected.id), (value) => {
     const parsed = parseMaybeJson(value)
-    if (isCeremonyReport(parsed) && parsed.id === id) onReport(parsed)
+    if (!isCeremonyReport(parsed) || !isReportFor(parsed, expected, now())) return
+    onReport(parsed)
+    store.remove(ceremonyResultKey(expected.id)).catch(() => undefined)
   })
+
+/**
+ * Removes every report under `keys` that is past its expiry or malformed, and
+ * returns how many it removed. `keys` is every key of the store; the others
+ * are left alone.
+ */
+export const sweepCeremonyReports = async (
+  store: ReportStore,
+  keys: readonly string[],
+  now: number = Date.now()
+): Promise<number> => {
+  let removed = 0
+  // eslint-disable-next-line no-restricted-syntax
+  for (const key of keys) {
+    if (key.startsWith(CEREMONY_RESULT_KEY_PREFIX)) {
+      // eslint-disable-next-line no-await-in-loop
+      const value = parseMaybeJson(await store.get(key, null))
+      if (!isCeremonyReport(value) || !isWithinExpiry(value.reportedAt, now)) {
+        // eslint-disable-next-line no-await-in-loop
+        await store.remove(key)
+        removed += 1
+      }
+    }
+  }
+  return removed
+}

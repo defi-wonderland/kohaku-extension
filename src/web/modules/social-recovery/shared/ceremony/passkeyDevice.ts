@@ -29,11 +29,21 @@ import {
   readAuthenticatorData,
   RelyingParty,
   stopOfCeremonyError,
-  toBytes
+  toBytes,
+  WebAuthnCall
 } from './webauthn'
 
 /** The relying party's display name the authenticator may show beside the rp id. */
 export const RELYING_PARTY_NAME = 'Kohaku'
+
+/**
+ * The page's own passkey device: a device that carries the relying party it
+ * was built over, so a host hands the method that relying party's origin
+ * string and never one a caller chose.
+ */
+export interface PasskeyCeremonyDevice extends CeremonyDevice {
+  readonly relyingParty: RelyingParty
+}
 
 /** The part of `navigator.credentials` the device calls. */
 export interface CredentialsLike {
@@ -109,12 +119,14 @@ export const challengeBytes = (challenge: string): Uint8Array =>
   isHex(challenge) ? hexToBytes(challenge) : fromBase64Url(challenge)
 
 /**
- * Whether the method asked for the extension's own relying party: the origin
- * string, the bare host or nothing at all. Any other value is a relying party
- * this extension cannot serve (D-314).
+ * Whether the method asked for the extension's own relying party: the full
+ * origin string `chrome-extension://<id>` and nothing else. The bare id, an
+ * empty string or no value is refused (D-314, D-372): the host hands the
+ * method that origin string itself, so a method that names another value
+ * names a relying party this extension does not serve.
  */
 export const isOwnRelyingParty = (asked: string | undefined, rp: RelyingParty): boolean =>
-  asked === undefined || asked === '' || asked === rp.relyingPartyId || asked === rp.rpId
+  asked === rp.relyingPartyId
 
 /**
  * The options `navigator.credentials.create` takes, from the method's input.
@@ -225,9 +237,10 @@ export const createPasskeyDevice = ({
   timeoutMs = CEREMONY_TIMEOUT_MS,
   now = () => Date.now(),
   randomBytes = defaultRandomBytes
-}: PasskeyDeviceOptions): CeremonyDevice => {
+}: PasskeyDeviceOptions): PasskeyCeremonyDevice => {
   const run = async (
     context: DeviceCallContext,
+    webAuthnCall: WebAuthnCall,
     call: () => Promise<Credential | null>,
     read: (credential: PublicKeyCredentialLike) => DeviceResult
   ): Promise<DeviceResult> => {
@@ -241,6 +254,7 @@ export const createPasskeyDevice = ({
       return {
         ok: false,
         stop: stopOfCeremonyError(error, {
+          call: webAuthnCall,
           handOff: context.handOff,
           elapsedMs: now() - startedAt,
           timeoutMs
@@ -254,12 +268,14 @@ export const createPasskeyDevice = ({
     } catch (error) {
       return {
         ok: false,
-        stop: failed('material-rejected', error instanceof Error ? error.message : undefined)
+        stop: failed('material-rejected')
       }
     }
   }
 
   return {
+    relyingParty,
+
     async enroll(input: unknown, context: DeviceCallContext): Promise<DeviceResult> {
       const asked = input as PasskeyEnrollInput | undefined
       if (!isOwnRelyingParty(asked?.rp?.id, relyingParty)) {
@@ -273,6 +289,7 @@ export const createPasskeyDevice = ({
       })
       return run(
         context,
+        'create',
         () => credentials.create({ publicKey, signal: context.signal }),
         (credential) => {
           const response = credential.response as AttestationResponseLike
@@ -303,6 +320,7 @@ export const createPasskeyDevice = ({
       })
       return run(
         context,
+        'get',
         () => credentials.get({ publicKey, signal: context.signal }),
         (credential) => {
           const response = credential.response as AssertionResponseLike

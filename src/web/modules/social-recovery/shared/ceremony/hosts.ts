@@ -26,6 +26,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { CeremonyDevice, CeremonyStep, DeviceCallContext } from './device'
+import type { PasskeyCeremonyDevice } from './passkeyDevice'
 import {
   CeremonyOutcome,
   dismissed,
@@ -43,11 +44,17 @@ export interface HostContext {
   /** The implementation, read for its `deviceBinding` (sdk.md D-206). */
   method: IRecoveryMethod
   /**
-   * The device call for this method. Where it is absent the host takes
-   * `devices[method.deviceBinding]`, and where that is absent too the host
-   * reports not supported: this build holds no device call for the binding.
+   * The device a caller's record supplies, for a method whose material the
+   * caller already holds (a guardian's address or signature, a zkPassport
+   * result, an Aadhaar QR). Never used for the `browser-authenticator` binding.
    */
   device?: CeremonyDevice
+  /**
+   * The page's own devices by binding. A `browser-authenticator` method always
+   * runs the page's own passkey device from here, so the rp id hash check and
+   * the high-s normalization always run; where it is absent the host reports
+   * not supported.
+   */
   devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
   /** The holder chose the browser's phone hand-off (D-305, D-392). */
   handOff?: boolean
@@ -78,8 +85,36 @@ export interface ClaimValue {
   facts?: PasskeyFacts
 }
 
-const deviceOf = (context: HostContext): CeremonyDevice | undefined =>
-  context.device ?? context.devices?.[context.method.deviceBinding]
+type DeviceChoice = { device: CeremonyDevice; params: unknown }
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+/**
+ * The device a call runs and the params the method receives.
+ *
+ * A `browser-authenticator` method runs the page's own passkey device, never
+ * one a caller's record supplies, and receives the relying party id of that
+ * device: the page's full origin string (D-314, D-372). The lane owns that id;
+ * a value the caller passed is replaced. Any other binding runs the caller's
+ * device, or the page's device for that binding.
+ */
+const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | undefined => {
+  if (context.method.deviceBinding === 'browser-authenticator') {
+    const own = context.devices?.['browser-authenticator'] as
+      | Partial<PasskeyCeremonyDevice>
+      | undefined
+    if (!own?.relyingParty) return undefined
+    return {
+      device: own as CeremonyDevice,
+      params: { ...asRecord(params), relyingPartyId: own.relyingParty.relyingPartyId }
+    }
+  }
+  const device = context.device ?? context.devices?.[context.method.deviceBinding]
+  return device ? { device, params } : undefined
+}
 
 const cancelledByAbort = (context: HostContext) =>
   context.signal?.aborted ? dismissed('cancelled', 'AbortError') : null
@@ -101,13 +136,14 @@ export const enrollHost = async (
 ): Promise<CeremonyOutcome<EnrollValue>> => {
   const aborted = cancelledByAbort(context)
   if (aborted) return aborted
-  const device = deviceOf(context)
-  if (!device) return notSupported('no-implementation')
+  const chosen = chooseDevice(context, context.params)
+  if (!chosen) return notSupported('no-implementation')
+  const { device } = chosen
 
   context.onStep?.('preparing')
   let input: unknown
   try {
-    input = context.orchestrator.enrollInput(context.methodAddress, context.params)
+    input = context.orchestrator.enrollInput(context.methodAddress, chosen.params)
   } catch (error) {
     return outcomeOfThrown(error)
   }
@@ -145,13 +181,14 @@ const signForRequest = async (
 ): Promise<SignedReply> => {
   const aborted = cancelledByAbort(context)
   if (aborted) return { ok: false, outcome: aborted }
-  const device = deviceOf(context)
-  if (!device) return { ok: false, outcome: notSupported('no-implementation') }
+  const chosen = chooseDevice(context, context.params)
+  if (!chosen) return { ok: false, outcome: notSupported('no-implementation') }
+  const { device } = chosen
 
   context.onStep?.('preparing')
   let input: unknown
   try {
-    input = context.orchestrator.signingInput(context.request, context.params)
+    input = context.orchestrator.signingInput(context.request, chosen.params)
   } catch (error) {
     return { ok: false, outcome: outcomeOfThrown(error) }
   }

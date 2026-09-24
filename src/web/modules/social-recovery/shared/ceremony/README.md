@@ -25,25 +25,56 @@ The full tab every ceremony that dies on focus loss runs in, and the hosts that 
 
 Every host returns exactly one `CeremonyOutcome`:
 
-| Outcome | Chip (PT-036) | Retry | When |
-| --- | --- | --- | --- |
-| `passed` | `tested` | no | The method produced its config or reply, and the local check (test access) answered satisfied. |
-| `failed` with a cause | `testFailed` | yes | The method's typed failure `material-rejected`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), or a relying party the extension does not serve (`relying-party-mismatch`). UXC-13: never `notTested`. |
-| `unavailable` with a cause | `testUnavailable` | yes | `device-unavailable`, a node or a service that did not answer (`service-unanswered`), a phone hand-off that never connected (`unreachable`), or a check the local verifier cannot judge (`not-judged`). |
-| `notSupported` | `notSupported` | no | `method-unsupported`, `version-unread`, or no implementation or device in this build (`no-implementation`). |
-| `dismissed` with `cancelled` or `refused` | none, the row keeps its chip | yes | The browser's own error before the method runs: `NotAllowedError` and `AbortError` read cancelled (an unfocused page or a permission policy reads refused); `InvalidStateError`, `ConstraintError` and `NotSupportedError` read refused. The method's own `device-refused` reads refused too. |
+| Outcome | Retry | When |
+| --- | --- | --- |
+| `passed` | no | The method produced its config or reply, and the local check (test access) answered satisfied. |
+| `failed` with a cause | yes | The method's typed failure `material-rejected`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), a relying party the extension does not serve (`relying-party-mismatch`), or the browser's own error at a test or a claim (`browser-error`, its name in `detail`). UXC-13: never `notTested`. |
+| `unavailable` with a cause | yes | `device-unavailable`, a node or a service that did not answer (`service-unanswered`, a resolver that failed among them), a phone hand-off that never connected (`unreachable`), or a check the local verifier cannot judge (`not-judged`). |
+| `notSupported` | no | `method-unsupported`, `version-unread`, or no implementation or device in this build (`no-implementation`). |
+| `dismissed` with `cancelled` or `refused` | yes | The browser's `NotAllowedError` at enrollment; `AbortError`, `InvalidStateError`, `ConstraintError` and `NotSupportedError` at every call; the method's own `device-refused`. Each is read before the method runs. |
 
 "Before the method runs" means before its packaging, `configFrom` or `replyFrom`. The options calls `enrollInput` and `signingInput` run first, since the device needs their output, and act on nothing (sdk.md D-206).
 
-`noteKeyOfOutcome` and `lineKeyOfOutcome` give the `socialRecovery.ceremony.*` note and line a row renders. A relying-party mismatch reads `providerRefused` at enrollment and `relyingPartyMismatch` at a test or a claim.
+### `NotAllowedError`, the coordinator's ruling
+
+- At enrollment (`navigator.credentials.create`) it is the cancelled note, read before the method runs; an unfocused page or a permission policy reads the refused note.
+- At a test or a claim (`navigator.credentials.get`) it is `failed` with the cause `browser-error` and the name `NotAllowedError`, as frame C-05 draws it ("Test failed · NotAllowedError · no credential available on this device"): the browser cannot tell a dismissed prompt from a missing credential.
+- During a phone hand-off, at or past the prompt's timeout (180 seconds), it is `unavailable` with the cause `unreachable` at either call.
+
+### What a row renders, by call
+
+The chip, the note and the line depend on the call that ran: `chipOfOutcome(outcome, call)`, `noteKeyOfOutcome(outcome, call)` and `lineKeyOfOutcome(outcome, call)`. The test chips and the test lines apply to test access alone.
+
+| Call | Passed | Failed | Unavailable | Not supported | Dismissed |
+| --- | --- | --- | --- | --- | --- |
+| `enroll` | chip `notTested` (a row reads not tested until its test runs, D-305, frame C-05h), no note; the kind line and its loss line | the row keeps its chip; `failedNote`, or `providerRefused` for a relying-party mismatch | the row keeps its chip; `unreachableNote` or `testUnavailableLine` | the row keeps its chip; `notSupportedNote` | the row keeps its chip; `cancelledNote` or `refusedNote` |
+| `testAccess` | chip `tested`; `passedNote` with the proof's hash | chip `testFailed`; no note (frame C-05), or `relyingPartyMismatch` for a mismatch; line `testFailedLine`, or `testFailedNoMatch` for `check-rejected` | chip `testUnavailable`; `unreachableNote` or `testUnavailableLine`, shown once | chip `notSupported`; `notSupportedNote`; line `notSupportedLine` | as enroll |
+| `createClaim` | chip `complete` of the checklist set (D-392); `passedNote` with the proof's hash | the row keeps its chip; `failedNote` or `relyingPartyMismatch`; no test line (frame D-07b) | as enroll | as enroll | as enroll |
+| `healthCheck` | never | never | never | no chip; `notSupportedNote` | never |
+
+### Causes on the screen
+
+A screen shows no raw cause slug and no English message: each cause renders through the note or the line above. The one raw text is the browser's own error name, beside the note, as frame C-05 draws it (`browserErrorNameOf`).
+
+| Cause | Renders as |
+| --- | --- |
+| `browser-error` | the error name, for example `NotAllowedError` |
+| `relying-party-mismatch` | `providerRefused` at enrollment, `relyingPartyMismatch` at a test or a claim |
+| `check-rejected` | `testFailedNoMatch` |
+| `unreachable` | `unreachableNote` |
+| `device-unavailable`, `service-unanswered`, `not-judged` | `testUnavailableLine` |
+| `method-unsupported`, `version-unread`, `no-implementation` | `notSupportedNote` |
+| `device-refused` | `refusedNote` |
+| `material-rejected`, `thrown` | `failedNote` (at a test, the chip and `testFailedLine`); no key names these causes yet, a gap reported to the coordinator |
 
 ## The passkey ceremony
 
 - The extension calls the authenticator itself: `navigator.credentials.create` at enrollment, `navigator.credentials.get` at a test and a claim (D-372).
 - `rp.id` and `rpId` are the extension's origin host, read at runtime from `window.location`; the lane commits to no extension id (open question 13).
-- The method receives the full origin string `chrome-extension://<id>` as its relying party id (D-372). The passkey device replaces it with the host in the WebAuthn options and keeps every other member the method set.
+- The lane owns the relying party id. For a `browser-authenticator` method the host sets `params.relyingPartyId` to the page's full origin string, `relyingPartyOf(location).relyingPartyId`, and replaces any value the caller passed. The device accepts only that full origin string back in the method's options: the bare id, an empty string or no value is a relying-party mismatch (D-314, D-372). The passkey device puts the host in the WebAuthn options and keeps every other member the method set.
+- A `browser-authenticator` method always runs the page's own passkey device, never a device a caller's record supplies, so the rp id hash check and the high-s normalization always run.
 - The rp id hash is `sha256("chrome-extension://<id>")`, never the hash of the bare id (D-314). The device compares the hash in the credential's own authenticator data against it and reports a mismatch before the method runs, at enrollment and at a claim.
-- The kind is read from the ceremony's own flags: backup eligible (BE) is synced, otherwise device-bound. `backedUp` (BS), the attachment, the transports and the AAGUID are kept as facts; the place (this device, phone, security key) comes from the attachment and the transports. Nothing is read from the operating system (D-305).
+- The kind is read from the ceremony's own flags: backup eligible (BE) is synced, otherwise device-bound. `backedUp` (BS), the attachment, the transports and the AAGUID are kept as facts; the place (this device, phone, security key) comes from the attachment and the transports. The kind and the provider are never read from the operating system (D-305); the device name of a device-bound passkey comes from the platform, as the table below states.
 - The kind line (`kindLine.ts`) reads "Synced passkey · {{provider}}" or "Device-bound passkey · {{device}}", with the names of `socialRecovery.ceremony.providers` and `.devices`. The mapping:
 
   | Kind | Read from | Name |
@@ -58,7 +89,7 @@ Every host returns exactly one `CeremonyOutcome`:
 
   The provider comes from the authenticator's own facts, the AAGUID, and never from the operating system (D-305). The device comes from the platform: `navigator.userAgentData.platform` where the browser has it, `navigator.platform` and the user agent otherwise. The AAGUIDs are those of the community list `passkeydeveloper/passkey-authenticator-aaguids`; the manual run confirms what Chrome returns under attestation `none`.
 - A high `s` is lowered before the method receives the assertion: the DER signature is parsed, `s > n/2` becomes `n - s` over the P-256 order, and the signature is re-encoded. The method receives a field-by-field copy of the `PublicKeyCredential` with the lowered signature (`NormalizedAssertion`).
-- The phone hand-off asks for a cross-platform authenticator with the `hybrid` hint. A `NotAllowedError` that arrives at or past the prompt's timeout (180 seconds) during a hand-off reads unreachable; before it, cancelled.
+- The phone hand-off asks for a cross-platform authenticator with the `hybrid` hint. A `NotAllowedError` that arrives at or past the prompt's timeout (180 seconds) during a hand-off reads unreachable; before it, the ruling above applies.
 - A page that is not a Chromium extension origin gets no passkey device: the host reports `notSupported` and the screen draws `chromeOnly`.
 
 ## The tab
@@ -69,19 +100,27 @@ The route mounts in the open group of `routes/SocialRecoveryRoutes.tsx`. The cal
 
 The screen:
 
-1. parses the search params, and shows "nothing to run" on a malformed one;
-2. resolves the ceremony through `CeremonySourceProvider`'s `resolve(params)`; `null` means nothing waits under that id, and no provider at all reports `notSupported` with the cause `no-implementation`;
-3. waits until the tab is visible, since the browser refuses a prompt without focus, then runs `runCeremony` with the passkey device for the `browser-authenticator` binding and an abort;
-4. renders progress (the `inProgress` chip, or the phone hand-off copy), the abort, and the outcome;
-5. reports the outcome through the return channel, then navigates to `returnTo` where the caller named one.
+1. parses the search params, and shows "nothing to run" on a malformed one; sweeps the reports past their expiry from storage;
+2. waits until the tab is visible: a hidden tab dispatches nothing, the resolve included (D-316);
+3. resolves the ceremony through `CeremonySourceProvider`'s `resolve(params)`; `null` means nothing waits under that id, a resolver that throws reads `unavailable` with retry, and no provider at all reports `notSupported` with the cause `no-implementation`;
+4. runs `runCeremony` once the tab is visible, with the page's own passkey device for the `browser-authenticator` binding and an abort;
+5. renders progress (the `inProgress` chip, or the phone hand-off copy), the abort, and the outcome by call;
+6. reports the outcome through the return channel, then navigates to `returnTo` where the caller named one.
 
 ## The return channel
 
-The tab writes one `CeremonyReport` (`{ id, call, method, outcome, reportedAt }`) under `socialRecoveryCeremonyResult:<request id>` in the extension's local storage (`storage` of `@web/extension-services/background/webapi/storage`, D-310). No background controller is involved.
+The tab writes one `CeremonyReport` (`{ id, call, method, outcome, reportedAt, expiresAt }`) under `socialRecoveryCeremonyResult:<request id>` in the extension's local storage (`storage` of `@web/extension-services/background/webapi/storage`, D-310). No background controller is involved.
 
 The write goes through the visibility gate: while `document.visibilityState` is not `visible`, nothing is written; the held report is written, in order, when the tab is shown again (D-316). A tab closed while hidden drops its report, and the caller's row stays unchanged.
 
-The caller reads the report when it mounts again with `takeCeremonyReport(id, store)`, which removes it so an outcome applies once, or listens with `listenForCeremonyReport(id, subscribe, onReport)` and `browserReportSubscribe` from `screen/`.
+A passed claim's report carries the reply and its proof, approval material that must not outlive its use (D-310, I-38). So a report lives only until it is taken and never past its expiry, ten minutes from `reportedAt` (`CEREMONY_REPORT_TTL_MS`):
+
+- `takeCeremonyReport({ id, call, method }, store)` delivers the report only where its id, call and method are the ones the caller expects and `reportedAt` is within the expiry, and removes it. An expired report is removed and reads null.
+- `listenForCeremonyReport({ id, call, method }, subscribe, store, onReport)` delivers under the same checks, then removes the report.
+- `readCeremonyReport` makes the same checks and removes nothing.
+- `sweepCeremonyReports(store, keys)` removes every report past its expiry and every malformed one; the tab runs it on mount with `browserReportKeys()`.
+
+The caller, the checklist row for a claim, files the reply into PT-040's session record at once, where I-38's wipe governs it, and keeps no copy of the report.
 
 ## The SDK doubles and the client
 

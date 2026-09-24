@@ -7,14 +7,27 @@ import { browser, isExtension } from '@web/constants/browserapi'
 import { storage } from '@web/extension-services/background/webapi/storage'
 
 import type { ReportStore, ReportSubscribe } from '../channel'
-import type { CeremonyDevice } from '../device'
 import { Platform, platformOf } from '../kindLine'
-import { createPasskeyDevice } from '../passkeyDevice'
+import { createPasskeyDevice, PasskeyCeremonyDevice } from '../passkeyDevice'
 import { passkeysServed } from '../run'
 import { relyingPartyOf } from '../webauthn'
 
 /** The extension's local storage (D-310), the web build's localStorage outside an extension. */
 export const browserReportStore: ReportStore = storage
+
+/**
+ * Every key of the report store, for `sweepCeremonyReports`: the extension's
+ * local storage, or the web build's localStorage outside an extension.
+ */
+export const browserReportKeys = async (): Promise<string[]> => {
+  if (isExtension && browser?.storage?.local) {
+    return Object.keys((await browser.storage.local.get(null)) ?? {})
+  }
+  if (typeof localStorage === 'undefined') return []
+  return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(
+    (key): key is string => key !== null
+  )
+}
 
 /** Storage change events for one key: `storage.onChanged` in the extension, `storage` events outside. */
 export const browserReportSubscribe: ReportSubscribe = (key, onValue) => {
@@ -46,7 +59,7 @@ export const pagePasskeysServed = (): boolean =>
  * passkey (a Gecko or Safari build, or the web dev server): the host then
  * reports not supported and the screen draws "passkeys need Kohaku on Chrome".
  */
-export const browserPasskeyDevice = (): CeremonyDevice | undefined =>
+export const browserPasskeyDevice = (): PasskeyCeremonyDevice | undefined =>
   pagePasskeysServed()
     ? createPasskeyDevice({
         credentials: navigator.credentials,

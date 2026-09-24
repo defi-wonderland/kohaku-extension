@@ -23,6 +23,11 @@ import { CeremonyOutcome, failed } from './verdicts'
  * and create claim need `request`. A method whose material the caller already
  * holds (a guardian's address or signature, a zkPassport result, an Aadhaar
  * QR) passes its own `device`.
+ *
+ * A `browser-authenticator` method ignores `device` and runs the page's own
+ * passkey device from `RunDeps.devices`, and its `params.relyingPartyId` is
+ * replaced with the page's full origin string: the lane owns the relying
+ * party id (D-314, D-372).
  */
 export interface ResolvedCeremony {
   orchestrator: IMethodsOrchestrator
