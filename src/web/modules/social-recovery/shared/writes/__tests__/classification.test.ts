@@ -43,6 +43,7 @@ const NOTHING_REACHED_THE_CHAIN = /\b(?:nothing reached the chain|before it reac
 const STANDS_AS_IT_DID = /\b(?:nothing changed|stands as it did)\b/i
 // The reverted reading: a revert, the gas it spent is gone.
 const REVERTED = /\breverted\b/i
+const REACHED_AND_REVERTED = /\breached the chain and reverted\b/i
 const GAS_GONE = /\bthe gas it spent is gone\b/i
 // D-307's reading of the reverted cancel.
 const ALREADY_GONE = /\bthe attempt (?:was|is) already gone\b/i
@@ -110,10 +111,14 @@ describe('a call that reached the chain and reverted (D-319, the second reading)
         expect(rendered(state)).toMatch(GAS_GONE)
       })
 
+      // "Nothing changed" alone may stand in a revert's reading: the editor's
+      // frame G-05b reads "reached the chain and reverted ... Nothing changed,
+      // the gas it spent is gone" (design/live-frame-strings.md). What tells
+      // the readings apart is whether the call reached the chain.
       it('never reads that nothing reached the chain', () => {
         const state = rendered(failWithReceipt(write, ATTEMPT_ACTIVE, EXECUTED))
         expect(state).not.toMatch(NOTHING_REACHED_THE_CHAIN)
-        expect(state).not.toMatch(STANDS_AS_IT_DID)
+        expect(state).toMatch(REACHED_AND_REVERTED)
       })
 
       // The risk the task names: a revert misread as a call never sent has the
