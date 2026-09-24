@@ -5,7 +5,11 @@
  * prepare's own request validation catches first (D-202, D-205
  * `request.method-stopped`), so a script fails that simulation outright.
  */
-import { kitError } from '@web/modules/social-recovery/sdk-doubles'
+import {
+  ACCOUNT_NOT_ARMED,
+  ACCOUNT_UNFIT,
+  kitError
+} from '@web/modules/social-recovery/sdk-doubles'
 import type {
   AttemptRequest,
   KitError,
@@ -20,7 +24,8 @@ import {
   expectThrown,
   openingOf,
   openRecovery,
-  startLanded
+  startLanded,
+  World
 } from './harness'
 
 const PAST_THE_WAIT = 432_000 + 60
@@ -168,29 +173,32 @@ describe('simulation outcomes', () => {
   describe('an execute the account cannot run', () => {
     // D-110: with the action's authorization removed the setup is dormant, and
     // the account refuses the action's batch; D-105: an account whose code the
-    // action does not serve cannot run it either. Neither prepare may come back
-    // clean.
-    const notClean = async (run: () => Promise<PreparedCall>) => {
-      let prepared: PreparedCall | undefined
-      try {
-        prepared = await run()
-      } catch (e) {
-        expect(e).toBeInstanceOf(Error)
-        return
-      }
-      expect(prepared.simulation?.ok).toBe(false)
+    // action does not serve cannot run it either. Both are the account's own
+    // revert in the simulation (D-202 "Recovery execute"), and a landing of the
+    // same call reverts, leaving the attempt waiting.
+    const refusedByAccount = async (
+      script: (world: World) => void,
+      name: typeof ACCOUNT_NOT_ARMED | typeof ACCOUNT_UNFIT
+    ) => {
+      const { world, recovery, attempt, payload } = await readyAttempt()
+      script(world)
+      const prepared = await recovery.prepareExecuteHandover(attempt, payload)
+      const error = failureOf(prepared)
+      expect(error.name).toBe(name)
+      expect(error.source).toBe('account')
+      expect(() => world.chain.land(prepared)).toThrow()
+      const after = await recovery.recoveryState()
+      expect(after.attempt.state).toBe('Waiting')
+      expect(await world.actionPart.isAuthority(world.keys.held)).toBe(true)
+      expect(await world.actionPart.isAuthority(world.keys.fresh)).toBe(false)
     }
 
     it('refuses to execute over a dormant setup', async () => {
-      const { world, recovery, attempt, payload } = await readyAttempt()
-      world.script.authorized(false)
-      await notClean(() => recovery.prepareExecuteHandover(attempt, payload))
+      await refusedByAccount((world) => world.script.authorized(false), ACCOUNT_NOT_ARMED)
     })
 
     it('refuses to execute on an account the action does not fit', async () => {
-      const { world, recovery, attempt, payload } = await readyAttempt()
-      world.script.code(false)
-      await notClean(() => recovery.prepareExecuteHandover(attempt, payload))
+      await refusedByAccount((world) => world.script.code(false), ACCOUNT_UNFIT)
     })
   })
 })

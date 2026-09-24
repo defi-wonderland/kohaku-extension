@@ -59,7 +59,7 @@ describe('the cut-q-22 seam', () => {
       ['an empty object', {}],
       ['null', null],
       ['a reply with no proof', { kind: 'recovery-proof-reply', version: 1, place: 0 }]
-    ] as const)('answers %s without throwing and never satisfied', async (sample) => {
+    ] as const)('answers %s as rejected, without throwing', async (sample) => {
       const opened = await openRecovery()
       const request = opened.requests[0]!
       const pasted = sample[1] as unknown as ApproverReply
@@ -69,8 +69,8 @@ describe('the cut-q-22 seam', () => {
           answer = await opened.world.walletReads().verifyReply(request, pasted)
         })()
       ).resolves.toBeUndefined()
-      expect(answer).toBeDefined()
-      expect(answer).not.toBe('satisfied')
+      // A verdict is an answer, never a refusal (D-201): malformed input is rejected.
+      expect(answer).toBe('rejected')
     })
   })
 
