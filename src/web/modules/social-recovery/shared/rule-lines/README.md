@@ -20,6 +20,7 @@ const text = renderRuleLines(lines, t) // t is i18n.t or useTranslation().t
 - Input: the setup draft record of `sdk-interfaces/` (`SetupDraft`) or its `clauses`. The lane declares no path type of its own.
 - A clause with one credential is a required row. A clause with more is a group. A group of one member is one method, D-305, and reads as a row.
 - D-305 generates the lines from the whole path, and the editor renders them for the path as it stands, before any refusal shows. So one refused clause silences the whole path: `getRuleLines` returns `[]`. A clause is refused when it has no credential, or its threshold is not a whole number, is below one, is above its member count, or is above the 255 its field counts (contracts D-103, sdk.md `clause.threshold-too-wide`). A threshold of zero is refused like the others: D-305 says a threshold below one sits outside its members like a threshold above them.
+- A path that holds one enrolled method twice also returns `[]`. That covers a row and a group, two rows, or two places in one group. D-305 says one enrolled method appears once across the path, and the editor refuses a duplicate. Two credentials count as the same enrolled method when their `method` addresses match, compared lowercased, and their `config` bytes match exactly as given.
 - The one failure domain line keys on the method family, D-312: two members share a family when their `method` addresses are equal. A passport and an Aadhaar identity read as two domains.
 - Order, D-305: the rows' line or the single-method block, then each group's threshold line followed by its failure domain line, then the different places line, then the sizing rule line.
 
@@ -40,6 +41,7 @@ const text = renderRuleLines(lines, t) // t is i18n.t or useTranslation().t
 | Rows and two or more groups, per group with M of M | `togetherWithRequiredAndGroupsEveryMember` |
 | A group whose members share one method family | its threshold line, then `oneFailureDomain` |
 | Any refused clause anywhere in the path, a clause at threshold zero included | `[]` |
+| The same (method, config) pair twice anywhere in the path | `[]` |
 | Empty path | `[]` |
 
 A group at threshold M reads its every-member line in place of the count line (frame C-04e). Beside a row or another group, the together-with forms keep the any N of M wording at threshold one too, since no member alone can then recover or take the account. Groups keep clause order; the `differentPlaces` line follows the last group.
