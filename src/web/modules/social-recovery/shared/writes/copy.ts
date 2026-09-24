@@ -1,0 +1,332 @@
+/**
+ * The copy of the shared write states and the deposit step: which keys of the
+ * `socialRecovery.writes` block of en.json each state and each variant of the
+ * step reads, in what order. The two components only lay out what these pure
+ * renderers answer, so every rule stays here and in the machine.
+ *
+ * Every string comes from en.json through `t`, which defaults to the app's
+ * i18next instance (shared/display `appTranslate`). The step links to nothing
+ * and promises nowhere that one funding covers both the submission and the
+ * execution (D-303, D-312, D-393).
+ */
+import type { KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
+import {
+  appTranslate,
+  renderChip,
+  renderFullAddress,
+  renderTokenAmount,
+  Translate
+} from '@web/modules/social-recovery/shared/display'
+
+import type { AttemptEnd, RevertCause } from './classify'
+import {
+  DepositRouteKind,
+  DepositStep,
+  NATIVE_DECIMALS,
+  roundDownForDisplay,
+  roundUpForDisplay
+} from './gas'
+import { isOwnerWrite, OwnerWrite } from './kinds'
+import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
+
+// ---------------------------------------------------------------------------
+// Keys
+// ---------------------------------------------------------------------------
+
+const WRITES = 'socialRecovery.writes'
+const GAS = `${WRITES}.gas`
+
+/** The keys of `socialRecovery.writes` this lane reads. */
+export const WRITES_KEYS = {
+  submitting: `${WRITES}.submitting`,
+  submittingRecovery: `${WRITES}.submittingRecovery`,
+  submittingBody: `${WRITES}.submittingBody`,
+  notSent: `${WRITES}.notSent`,
+  reverted: `${WRITES}.reverted`,
+  tryAgain: `${WRITES}.tryAgain`,
+  cancelRevertedTitle: `${WRITES}.cancelRevertedTitle`,
+  cancelReverted: `${WRITES}.cancelReverted`,
+  nowControlledBy: `${WRITES}.nowControlledBy`
+} as const
+
+/** The keys of `socialRecovery.writes.gas` this lane reads. */
+export const GAS_KEYS = {
+  fundTitle: `${GAS}.fundTitle`,
+  sendingKey: `${GAS}.sendingKey`,
+  sendingKeyPays: `${GAS}.sendingKeyPays`,
+  submissionAmount: `${GAS}.submissionAmount`,
+  secondFunding: `${GAS}.secondFunding`,
+  network: `${GAS}.network`,
+  balanceWaiting: `${GAS}.balanceWaiting`,
+  continuesOnItsOwn: `${GAS}.continuesOnItsOwn`,
+  alreadyFunded: `${GAS}.alreadyFunded`,
+  continueUnlocks: `${GAS}.continueUnlocks`,
+  notEnoughGas: `${GAS}.notEnoughGas`,
+  notEnoughGasAccountKey: `${GAS}.notEnoughGasAccountKey`,
+  notEnoughGasSendingKey: `${GAS}.notEnoughGasSendingKey`,
+  shortfall: `${GAS}.shortfall`,
+  shortfallSave: `${GAS}.shortfallSave`,
+  shortfallSubmit: `${GAS}.shortfallSubmit`,
+  shortfallCancel: `${GAS}.shortfallCancel`,
+  transferRoute: `${GAS}.transferRoute`,
+  transferRouteNote: `${GAS}.transferRouteNote`,
+  outsideRoute: `${GAS}.outsideRoute`,
+  transferIsAnOperation: `${GAS}.transferIsAnOperation`,
+  copy: `${GAS}.copy`
+} as const
+
+// TODO(social-recovery coordinator): en.json does not hold the keys below yet.
+// PT-039 reported each one missing with the chapter sentence it serves (see the
+// lane's README.md, "Strings reported missing"). They render through these
+// temporary keys until the coordinator adds them under `socialRecovery.writes`
+// in the setup branch or a `chore/social-recovery-strings-<n>` pull request.
+/** The temporary keys of the strings PT-039 reported missing. */
+export const PENDING_KEYS = {
+  /** D-319: the cause a reverted receipt carries, one sentence per kit error of sdk.md D-205. */
+  cause: (name: KitErrorName): string => `${WRITES}.causes.${name}`,
+  /** D-319: a revert that carries no cause this wallet can name. */
+  causeUnnamed: `${WRITES}.causes.unnamed`,
+  /** D-307: the road that had already ended the attempt a cancel meant to end. */
+  cancelGoneRoad: (road: Exclude<AttemptEnd, 'executed'>): string =>
+    `${WRITES}.cancelGoneRoad.${road}`,
+  /** D-393, frame D-09: the logged-in route's sending key, the key of the chosen account. */
+  keyOf: `${GAS}.keyOf`,
+  /** D-393, frame D-09: the product keeps the funds in the account and its key sends. */
+  accountHoldsFunds: `${GAS}.accountHoldsFunds`,
+  /** D-393, D-373: the fast track's amount line at execution due. */
+  executionAmount: `${GAS}.executionAmount`,
+  /** D-393, frame D-13: the blocker at execution due. */
+  shortfallExecute: `${GAS}.shortfallExecute`,
+  /** Task PT-039, D-312: the network an owner write's key must be funded on. */
+  networkOwner: `${GAS}.networkOwner`
+} as const
+
+// ---------------------------------------------------------------------------
+// Amounts
+// ---------------------------------------------------------------------------
+
+/** An amount the holder sends, rounded up to the step's precision, with the native symbol. */
+export const renderGasAmount = (wei: bigint, symbol: string): string =>
+  `${renderTokenAmount(roundUpForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+
+/** A balance the key holds, rounded down to the step's precision, with the native symbol. */
+export const renderGasBalance = (wei: bigint, symbol: string): string =>
+  `${renderTokenAmount(roundDownForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+
+// ---------------------------------------------------------------------------
+// The shared states
+// ---------------------------------------------------------------------------
+
+/** A state as the screen reads it. */
+export interface RenderedWriteState {
+  status: WriteStatus
+  /** The in-progress chip of the submitting state (D-302). */
+  chip?: string
+  /** The state's own title, where it has one. A write's screen may set its own over it. */
+  title?: string
+  /** The state's sentences, in order. */
+  lines: string[]
+  /** The account's controller as it now stands, after a cancel whose attempt executed (D-307). */
+  controller?: { label: string; address: string }
+  /** The retry action's label, where the state offers the retry. */
+  retry?: string
+  /** Whether the state offers the cancel's move-funds action. */
+  offersMoveFunds: boolean
+}
+
+/** The sentence naming the cause of a revert, for the `{{cause}}` of the reverted reading. */
+export const renderRevertCause = (cause: RevertCause, t: Translate = appTranslate): string =>
+  cause.kind === 'named' ? t(PENDING_KEYS.cause(cause.name)) : t(PENDING_KEYS.causeUnnamed)
+
+const renderAttemptGone = (
+  cause: Extract<RevertCause, { kind: 'attemptGone' }>,
+  t: Translate
+): Pick<RenderedWriteState, 'title' | 'lines' | 'controller'> => {
+  const lines = [t(WRITES_KEYS.cancelReverted)]
+  if (cause.ended && cause.ended !== 'executed') {
+    lines.push(t(PENDING_KEYS.cancelGoneRoad(cause.ended)))
+  }
+  const controller =
+    cause.ended === 'executed' && cause.controller
+      ? { label: t(WRITES_KEYS.nowControlledBy), address: renderFullAddress(cause.controller) }
+      : undefined
+  return {
+    title: t(WRITES_KEYS.cancelRevertedTitle),
+    lines,
+    ...(controller ? { controller } : {})
+  }
+}
+
+/**
+ * The copy of a write's state. The submitting state reads the in-progress chip,
+ * its title and that the key is sending one transaction; the failed state reads
+ * one of its two readings (D-319) or, for a cancel whose attempt was already
+ * gone, D-307's reading. The other states carry no copy of this lane.
+ */
+export const renderWriteState = (
+  state: WriteState,
+  t: Translate = appTranslate
+): RenderedWriteState => {
+  const base = { status: state.status, offersMoveFunds: offersMoveFunds(state) }
+  const retry = canRetry(state) ? { retry: t(WRITES_KEYS.tryAgain) } : {}
+  switch (state.status) {
+    case 'submitting':
+      return {
+        ...base,
+        chip: renderChip('method', 'inProgress', t),
+        title: t(
+          state.write === 'submission' ? WRITES_KEYS.submittingRecovery : WRITES_KEYS.submitting
+        ),
+        lines: [t(WRITES_KEYS.submittingBody)]
+      }
+    case 'failedNotSent':
+      return { ...base, ...retry, lines: [t(WRITES_KEYS.notSent)] }
+    case 'failedReverted':
+      if (state.cause.kind === 'attemptGone') {
+        return { ...base, ...retry, ...renderAttemptGone(state.cause, t) }
+      }
+      return {
+        ...base,
+        ...retry,
+        lines: [t(WRITES_KEYS.reverted, { cause: renderRevertCause(state.cause, t) })]
+      }
+    default:
+      return { ...base, lines: [] }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The deposit step
+// ---------------------------------------------------------------------------
+
+/** One route as the step reads it. */
+export interface RenderedRoute {
+  kind: DepositRouteKind
+  line: string
+  note?: string
+}
+
+/** The deposit step as the screen reads it, in order. */
+export interface RenderedDepositStep {
+  /** The small line over the title, where the variant has one. */
+  eyebrow?: string
+  title: string
+  lead: string[]
+  /** The name of the key over its address, where the variant names it apart from the title. */
+  keyLabel?: string
+  /** The key's address in full, checksummed (D-302: the key to fund). */
+  keyAddress: string
+  copyLabel: string
+  routes: RenderedRoute[]
+  notes: string[]
+  /** The lines of a step that waits for the funds to arrive. */
+  waiting: string[]
+  /** The line under the write's own continue action, where the step waits for the funds. */
+  actionHint?: string
+  /**
+   * The short panel a write's own screen shows when the check at sending comes
+   * up short: its title and its sentence. It leads to the step.
+   */
+  blocker: { title: string; line: string }
+}
+
+/** The shortfall sentence of each owner write: the save's, the cancel's, and any other's. */
+export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
+  save: GAS_KEYS.shortfallSave,
+  ownerWrite: GAS_KEYS.shortfall,
+  cancel: GAS_KEYS.shortfallCancel
+}
+
+/**
+ * The copy of the deposit step, by variant:
+ *
+ * - An owner write (a save, another setup write, the owner's cancel) reads the
+ *   shortfall blocker of D-319 and D-307: not enough gas on the account's key,
+ *   the shortfall, the key's address, both routes, that the transfer is itself
+ *   an operation that key must send and pay for, and the network.
+ * - A recovery call on the fast track reads frame A1-04 and D-09: the key that
+ *   sends the recovery pays its gas and the account cannot pay for itself until
+ *   it is recovered; the key's address; the amount to send from outside; that
+ *   the execution is a second funding at that day's fee; the network; and the
+ *   lines of a step that waits for the funds.
+ * - A recovery call on the logged-in route reads frame D-09's logged-in state:
+ *   the key of the chosen account, both routes and the transfer sentence, then
+ *   the second funding, the network and the waiting lines.
+ *
+ * `balance` is the key's latest balance for the waiting line, the step's own
+ * by default.
+ */
+export const renderDepositStep = (
+  step: DepositStep,
+  options: { balance?: bigint } = {},
+  t: Translate = appTranslate
+): RenderedDepositStep => {
+  const { symbol } = step.network
+  const amount = renderGasAmount(step.shortfall, symbol)
+  const network = step.network.name
+  const keyAddress = renderFullAddress(step.key)
+  const copyLabel = t(GAS_KEYS.copy)
+  const transfer = step.routes.find((route) => route.kind === 'transfer')
+
+  const routes: RenderedRoute[] = step.routes.map((route) =>
+    route.kind === 'transfer'
+      ? {
+          kind: 'transfer',
+          line: t(GAS_KEYS.transferRoute, { amount, account: route.from.name }),
+          note: t(GAS_KEYS.transferRouteNote)
+        }
+      : {
+          kind: 'outside',
+          line: transfer
+            ? t(GAS_KEYS.outsideRoute, { amount })
+            : t(
+                step.write === 'execution'
+                  ? PENDING_KEYS.executionAmount
+                  : GAS_KEYS.submissionAmount,
+                { amount }
+              )
+        }
+  )
+  const transferSentence = transfer ? [t(GAS_KEYS.transferIsAnOperation)] : []
+
+  const { write } = step
+  if (isOwnerWrite(write)) {
+    const shortfall = t(OWNER_SHORTFALL_KEYS[write], { amount })
+    const title = t(GAS_KEYS.notEnoughGasAccountKey)
+    return {
+      ...(write === 'save' ? { eyebrow: t(GAS_KEYS.notEnoughGas) } : {}),
+      title,
+      lead: [shortfall],
+      keyAddress,
+      copyLabel,
+      routes,
+      notes: [...transferSentence, t(PENDING_KEYS.networkOwner, { network })],
+      waiting: [],
+      blocker: { title, line: shortfall }
+    }
+  }
+
+  const balance = renderGasBalance(options.balance ?? step.balance, symbol)
+  return {
+    title: t(GAS_KEYS.fundTitle),
+    lead: [t(step.fastTrack ? GAS_KEYS.sendingKeyPays : PENDING_KEYS.accountHoldsFunds)],
+    keyLabel:
+      step.fastTrack || !step.operates
+        ? t(GAS_KEYS.sendingKey)
+        : t(PENDING_KEYS.keyOf, { account: step.operates.name }),
+    keyAddress,
+    copyLabel,
+    routes,
+    notes: [...transferSentence, t(GAS_KEYS.secondFunding), t(GAS_KEYS.network, { network })],
+    waiting: [
+      t(GAS_KEYS.balanceWaiting, { balance }),
+      t(GAS_KEYS.continuesOnItsOwn),
+      t(GAS_KEYS.alreadyFunded)
+    ],
+    actionHint: t(GAS_KEYS.continueUnlocks),
+    blocker: {
+      title: t(GAS_KEYS.notEnoughGasSendingKey),
+      line: t(step.write === 'execution' ? PENDING_KEYS.shortfallExecute : GAS_KEYS.shortfallSubmit)
+    }
+  }
+}
