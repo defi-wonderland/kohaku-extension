@@ -241,7 +241,14 @@ const nextRequestId = (): number => {
 const sameId = (a: string | number | undefined, b: string | number): boolean =>
   a !== undefined && String(a) === String(b)
 
-/** The sign request the facade adds to the queue for one key and one content. */
+/**
+ * The sign request the facade adds to the queue for one key and one content.
+ * `meta.keyType` carries the handle's key type beside the account address, so
+ * the intent of D-370 (a key addressed by address and key type) travels with
+ * the request. Today the action window does not read it: it picks the key
+ * among the account's keys, which for a listed basic account all sign as the
+ * same address.
+ */
 export const signRequestOf = (
   id: number,
   key: KeyHandle,
@@ -251,7 +258,7 @@ export const signRequestOf = (
 ): SignUserRequest => ({
   id,
   session: new Session({ windowId }),
-  meta: { isSignAction: true, accountAddr: key.addr, chainId },
+  meta: { isSignAction: true, accountAddr: key.addr, keyType: key.type, chainId },
   action: content
 })
 
