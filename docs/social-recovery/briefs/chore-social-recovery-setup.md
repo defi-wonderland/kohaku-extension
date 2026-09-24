@@ -82,7 +82,7 @@ Rules:
 | `socialRecoveryCancel` | `social-recovery/cancel` | PT-066, the owner's cancel |
 | `socialRecoveryManage` | `social-recovery/manage` | PT-067 and PT-068 |
 
-`src/common/modules/router/config/routesConfig/routesConfig.ts` gains one entry per key; the mapped type requires it. The `title` is the feature name UXC-10 fixes, "Account recovery", and the `name` is the surface's own, taken from the frame captions in `design/frame-register.md` (for example "Recover an account", "Approve a recovery"). Titles go through `i18n.t` with keys from item 4.
+`src/common/modules/router/config/routesConfig/routesConfig.ts` gains one entry per key. The mapped type would require it, but `routesConfig.ts` already carries a pre-existing TS2740 error on the base, so the type check does not enforce it; the `routes.test.ts` of the tester lane is the guard. The `title` is the feature name UXC-10 fixes, "Account recovery", and the `name` is the surface's own door or action label from `design/live-frame-strings.md` (for example "Recover an account"); where no frame names a surface (the ceremony tab, the approval page) the name falls back to the feature name or a label the ux owner confirms. Titles go through `i18n.t` with keys from item 4.
 
 `src/web/modules/router/components/MainRoutes/MainRoutes.tsx` gains one import and one line: inside the existing `<Route element={<TabOnlyRoute />}>` group and outside `KeystoreUnlockedRoute`, `<Route path={`${WEB_ROUTES.socialRecovery}/*`} element={<SocialRecoveryRoutes />} />`. This puts every recovery surface in a full tab through `tab.html`, D-316, and leaves the guards to the module, since the guardian page and the fast track run without a keystore.
 
