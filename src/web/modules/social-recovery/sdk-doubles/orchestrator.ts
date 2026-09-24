@@ -26,13 +26,52 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { ScriptedChain } from './chain'
-import { deserializeOrder, digestOfRequest } from './encoding'
+import { deserializeOrder, digestOf, membersOfRequest, typedDataOf } from './encoding'
+import { codedError } from './scripts'
 
 /** The record versions this build of the doubles reads (sdk.md D-207). */
 export const RECORD_VERSION = 1
 
-const reads = (request: ApproverRequest): boolean =>
-  request?.kind === 'recovery-proof-request' && request.version === RECORD_VERSION
+const isText = (value: unknown): value is string => typeof value === 'string'
+const isHexText = (value: unknown): boolean => isText(value) && /^0x[0-9a-fA-F]*$/.test(value)
+const isDecimal = (value: unknown): boolean => isText(value) && /^[0-9]+$/.test(value)
+
+/**
+ * Whether this build reads a request record: its kind, its version, and every
+ * field with its type, so a malformed record is refused as `version-unread`
+ * rather than failing half-way through a digest.
+ */
+const reads = (request: ApproverRequest): boolean => {
+  if (!request || typeof request !== 'object') return false
+  const r = request as unknown as Record<string, unknown>
+  const approval = r.purpose === 'approval'
+  const order = r.order as Record<string, unknown> | undefined
+  return (
+    r.kind === 'recovery-proof-request' &&
+    r.version === RECORD_VERSION &&
+    (approval || r.purpose === 'cancellation') &&
+    isDecimal(r.chainId) &&
+    isHexText(r.manager) &&
+    isText(r.digestVersion) &&
+    isHexText(r.account) &&
+    isHexText(r.action) &&
+    isDecimal(r.attemptId) &&
+    isDecimal(r.setupNonce) &&
+    isHexText(r.setupBodyHash) &&
+    isDecimal(r.validUntil) &&
+    typeof r.place === 'number' &&
+    Number.isInteger(r.place) &&
+    isHexText(r.method) &&
+    isHexText(r.config) &&
+    isHexText(r.salt) &&
+    (!approval ||
+      (isHexText(r.payload) &&
+        !!order &&
+        isHexText(order.token) &&
+        isDecimal(order.amount) &&
+        isHexText(order.payee)))
+  )
+}
 
 export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
   private readonly methods = new Map<string, IRecoveryMethod>()
@@ -57,44 +96,29 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
     return this.methods.get(address.toLowerCase())
   }
 
-  /** The one record four implementation members take, built here and nowhere else. */
+  /**
+   * The one record four implementation members take, built here and nowhere
+   * else: the request, the place, the place's EIP-712 digest and the typed data
+   * of D-204 it is the hash of, `{ domain, types, primaryType, message }` with a
+   * numeric chain id and D-204's members alone.
+   */
   contextOf(request: ApproverRequest, place: number = request.place): MethodContext {
     const at = { ...request, place }
-    const digest = digestOfRequest(at)
-    const approval = request.purpose === 'approval'
-    return {
-      request: at,
-      place,
-      digest,
-      typedData: {
-        domain: {
-          name: 'PolicyManager',
-          version: request.digestVersion,
-          chainId: request.chainId,
-          verifyingContract: request.manager
-        },
-        primaryType: approval ? 'Approval' : 'Cancellation',
-        message: {
-          account: request.account,
-          action: request.action,
-          attemptId: request.attemptId,
-          setupNonce: request.setupNonce,
-          setupBodyHash: request.setupBodyHash,
-          ...(approval ? { payload: request.payload, order: request.order } : {}),
-          validUntil: request.validUntil,
-          place,
-          method: request.method,
-          config: request.config,
-          salt: request.salt
-        },
-        digest
-      }
+    const members = membersOfRequest(at)
+    return { request: at, place, digest: digestOf(members), typedData: typedDataOf(members) }
+  }
+
+  /** The context, or undefined for a request whose values do not make a digest. */
+  private safeContext(request: ApproverRequest, place?: number): MethodContext | undefined {
+    try {
+      return this.contextOf(request, place)
+    } catch {
+      return undefined
     }
   }
 
   describeRequest(request: ApproverRequest): RequestDescription {
-    if (!reads(request))
-      throw new Error('version-unread: this build does not read that request record.')
+    if (!reads(request)) throw codedError('version-unread', { kind: request?.kind })
     const approval = request.purpose === 'approval'
     let handover: RequestDescription['handover']
     if (approval) {
@@ -115,7 +139,7 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
       }
     }
     const method = this.methodFor(request.method)
-    const ctx = this.contextOf(request)
+    const ctx = this.safeContext(request)
     let identityPublic: unknown
     try {
       identityPublic = method ? method.codec.decodeConfig(request.config) : undefined
@@ -135,27 +159,30 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
       validUntil: Number(request.validUntil),
       place: request.place,
       identityPublic,
-      device: method ? method.describe(ctx) : { supported: false }
+      device: method && ctx ? method.describe(ctx) : { supported: false }
     }
   }
 
   async verify(request: ApproverRequest, place: number, proof: Hex): Promise<Verdict> {
     if (this.chain?.verdict) return this.chain.verdict
+    if (!reads(request) || typeof proof !== 'string') return 'not-judged'
     const method = this.methodFor(request.method)
-    if (!method || !reads(request)) return 'not-judged'
-    return method.verify(this.contextOf(request, place), proof)
+    const ctx = this.safeContext(request, place)
+    if (!method || !ctx) return 'not-judged'
+    return method.verify(ctx, proof)
   }
 
   signingInput(request: ApproverRequest, params?: unknown): unknown {
     this.chain?.guardRefusal('orchestrator.signingInput')
-    if (!reads(request))
-      throw new Error('version-unread: this build does not read that request record.')
+    if (!reads(request)) throw codedError('version-unread', { kind: request?.kind })
     const method = this.methodFor(request.method)
-    if (!method) throw new Error(`method-unsupported: no implementation serves ${request.method}.`)
+    if (!method) throw codedError('method-unsupported', { method: request.method })
     if (this.chain?.unmetBindings.has(method.deviceBinding)) {
-      throw new Error(`This runtime cannot meet the ${method.deviceBinding} binding.`)
+      throw codedError('binding-unmet', { deviceBinding: method.deviceBinding })
     }
-    return method.signingInput(this.contextOf(request), params)
+    const ctx = this.safeContext(request)
+    if (!ctx) throw codedError('version-unread', { kind: request.kind })
+    return method.signingInput(ctx, params)
   }
 
   async replyFrom(
@@ -167,7 +194,8 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
     const method = this.methodFor(request.method)
     if (!method) return { kind: 'reply-failure', cause: 'method-unsupported' }
     if (this.chain?.replyFailure) return { kind: 'reply-failure', cause: this.chain.replyFailure }
-    const ctx = this.contextOf(request)
+    const ctx = this.safeContext(request)
+    if (!ctx) return { kind: 'reply-failure', cause: 'version-unread' }
     const proof = await method.replyFrom(ctx, input, material)
     if (typeof proof !== 'string') return proof
     return {
@@ -191,7 +219,7 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
   enrollInput(method: Address, params: unknown): unknown {
     this.chain?.guardRefusal('orchestrator.enrollInput')
     const implementation = this.methodFor(method)
-    if (!implementation) throw new Error(`method-unsupported: no implementation serves ${method}.`)
+    if (!implementation) throw codedError('method-unsupported', { method })
     return implementation.enrollInput(params)
   }
 
