@@ -4,7 +4,7 @@
 
 The layer of `design/ux-interfaces.md` D-370 between the extension and the SDK. Every chain read and every prepared call of the extension passes through it. Screens import `@web/modules/social-recovery/shared/client` and never `sdk-doubles/`; this folder is the only one outside `sdk-doubles/` that imports the doubles (ESLint enforces it), so the swap to the real SDK touches this folder alone.
 
-The React hook is in its own file, `shared/client/useRecoveryClient`, imported by path. `index.ts` does not export it, so the rest of the lane loads in a Node test without the UI's contexts.
+Two files are imported by path and stay out of `index.ts`. The React hook, `shared/client/useRecoveryClient`, stays out so the rest of the lane loads in a Node test without the UI's contexts. The stand-in, `shared/client/stand-in`, stays out so no screen reaches the scripted chain through the lane; tests and development code import it by path.
 
 ## What is here
 
@@ -12,18 +12,18 @@ The React hook is in its own file, `shared/client/useRecoveryClient`, imported b
 | --- | --- |
 | `chains.ts` | The two recovery chains of D-208 (`sepolia`, `mainnet`), their chain ids, and `WALLET_RECOVERY_CHAIN`, the one chain this build reads as a fixed label with no switch (ux.md D-312). |
 | `addresses.ts` | The address book type and the cut-q-7 placeholder addresses of both deployments. |
-| `audited-actions.ts` | The extension's own table of the kit's audited actions and their publishers, the one source of the action a screen offers or names. |
+| `audited-actions.ts` | The extension's own table of the kit's audited actions and their publishers, the one source of the action a screen offers or names, and `publisherKeyOf`. |
 | `descriptors.ts` | The two deployment descriptors of D-208 as data, and `descriptorOf(chain, addressBook)`. |
 | `configuration.ts` | `RecoveryClientConfiguration` and `clientConfigurationOf`, the SDK client configuration it derives. |
 | `provider-adapter.ts` | `createProviderAdapter(rpc)`, the SDK's `IProvider` over the extension's provider, and its two thrown values. |
 | `chain-reads.ts` | `createChainReads(rpc)`: the native balance, the gas estimate and the gas price beside the adapter, for the gas step (PT-039). |
 | `extension-provider.ts` | `networkOf` and `extensionProviderFor`, the extension's provider built through `getRpcProvider`. |
-| `build-client.ts` | `buildRecoveryClient(config)`, the digest-version check and `DigestVersionRefusal`. |
+| `build-client.ts` | `buildRecoveryClient(config)`, the construction checks in D-208's order, and `DigestVersionRefusal`. |
 | `wallet-reads.ts` | `WalletReads`, the cut-q-22 seam of PT-035 under the lane's own name. |
-| `signer.ts`, `signer-port.ts` | The signer facade over the existing sign-message flow, and the UI's own port to that flow. |
+| `signer.ts`, `signer-port.ts` | The signer facade over the request queue, and the UI's own port to that queue. |
 | `sending.ts` | `SPONSOR_RAIL` (none) and `sendingKeyOf`, the key that sends a prepared call. |
-| `stand-in.ts` | `sdkStandIn`, the scripted chain records the doubles serve until the SDK lands. |
-| `useRecoveryClient.ts` | The one hook: the client for an account over the extension's provider, with its states. |
+| `stand-in.ts` | `sdkStandIn`, the scripted chain records the doubles serve until the SDK lands. Imported by path. |
+| `useRecoveryClient.ts` | The one hook: the client for an account over the extension's provider, with its states. Imported by path. |
 
 ## The configuration and the client
 
@@ -48,9 +48,16 @@ The configuration has no field for a signer, a storage or a sponsor rail. The bu
 
 `clientConfigurationOf` takes D-208's shipped numbers from the SDK's exported defaults (today the doubles'), sets the request window to the wallet's own 24 hours (`REQUEST_WINDOW_SECONDS`, D-373), leaves the token allowlist empty (the first release names no payment order, D-312) and adds the account facts the wallet gives.
 
-## The digest-version check
+## The construction checks and the digest version
 
-Before anything is built, `buildRecoveryClient` reads the domain the manager publishes through `eip712Domain()` and compares its version with the descriptor's `digestVersion` and its name with `PolicyManager` (D-208 construction check 5). A disagreement throws a `DigestVersionRefusal` (`name: 'DigestVersionRefusal'`, `state: 'update-the-wallet'`, `carried`, `published`) before the builder's first build, so no client exists and no prepare can run. The account step draws it as the update the wallet state (ux.md D-306, D-319); `isDigestVersionRefusal` tells it apart. The builder runs the same check at construction, and its refusal comes back as the same `DigestVersionRefusal`. Every other failure propagates as thrown: a read that failed, or a construction refusal of the builder about the chain id, the descriptor or the rest of the domain.
+Before anything is built, `buildRecoveryClient` runs D-208's construction checks 2 to 5 in D-208's order:
+
+1. Check 2: the provider's `chainId()` against the descriptor's chain id. A disagreement throws the builder's `ConstructionRefusal` with `check: 'chain-id'`.
+2. Check 3: the domain the manager publishes through `eip712Domain()`, its chain id and its verifying contract against the descriptor. A disagreement throws `check: 'domain'`, so a manager on another chain reads as a construction refusal.
+3. Check 4: the domain's `fields` bitmap against `0x0f` (`MANAGER_DOMAIN_FIELDS`). A disagreement throws `check: 'domain-fields'`.
+4. Check 5: the domain's version against the descriptor's `digestVersion` and its name against `PolicyManager`. A disagreement throws a `DigestVersionRefusal` (`name: 'DigestVersionRefusal'`, `state: 'update-the-wallet'`, `carried`, `published`).
+
+Every refusal comes before the builder's first build, so no client exists and no prepare can run. The account step draws the `DigestVersionRefusal` as the update the wallet state (ux.md D-306, D-319); `isDigestVersionRefusal` tells it apart. The builder runs the same checks at construction, and its digest-version refusal comes back as the same `DigestVersionRefusal`. Every other failure propagates as thrown: a read that failed, or a later construction refusal of the builder.
 
 Until the SDK lands, the domain is read from the stand-in's manager part (`PolicyManagerDouble`), the same instance the builder is handed. With the SDK, the SDK's own construction check makes that read through the provider.
 
@@ -69,7 +76,7 @@ Until the SDK lands, the domain is read from the stand-in's manager part (`Polic
 
 A block tag is `latest`, `finalized` or a number sent as a quantity. A reverted call rejects with a `RevertedCall` carrying the raw revert data (`0x` for a revert with none), found on ethers' `CALL_EXCEPTION` or on the node's own error. A read the provider could not make, or an answer that is not the shape asked for (a missing block among them), rejects with a `ProviderReadFailure` naming the read. No read answers empty (D-209).
 
-`createChainReads(rpc)` runs beside it on the same provider, since the SDK's provider answers no balance and the SDK estimates nothing (D-373): `nativeBalance(address, block?)` (`eth_getBalance`), `estimateGas(call)` (`eth_estimateGas`, a revert rejects as a `RevertedCall`) and `gasPrice()` (`eth_gasPrice`). `gasCallOf(prepared, from)` turns a prepared call anyone may send into the call to estimate, and refuses a call the account sends, which the account library estimates.
+`createChainReads(rpc)` runs beside it on the same provider, since the SDK's provider answers no balance and the SDK estimates nothing (D-373): `nativeBalance(address, block?)` (`eth_getBalance`), `estimateGas(call)` (`eth_estimateGas`, a revert rejects as a `RevertedCall`) and `gasPrice()` (`eth_gasPrice`). `gasCallOf(prepared, from)` turns a prepared call anyone may send (the submission or the execution) into the call to estimate, and refuses a call the account sends, which the account library estimates.
 
 ## The audited-actions table
 
@@ -84,26 +91,53 @@ A publisher is a slug (`ethereumFoundation`), never copy. `publisherKeyOf(row)` 
 - `signTypedData(key, typedData)`: an EIP-712 signature. `types.EIP712Domain` is derived from the domain where the caller leaves it out.
 - `signBytes(key, bytes)`: an EIP-191 personal-message signature over the bytes.
 
-`key` is the keystore's own handle, `{ addr, type }`. The keystore lives in the background, so the facade signs through the existing sign-message flow of `SignMessageController`: it dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_INIT` with the key's address as the account, the chain and the content under a request id of its own, dispatches `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` with `{ keyAddr, keyType }` once the pushed `signMessage` state shows that message, takes the signature from `signedMessage` for that request id and dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_RESET`. `signMessageFlowPort(dispatch, () => accounts)` wires the UI's own dispatch, the event bus and the accounts the wallet lists.
+`key` is the keystore's own handle, `{ addr, type }`. `signRequestPort(dispatch, () => accounts, windowId)` wires the UI's own port: the dispatch and window id of `useBackgroundService`, the `signMessage` and `requests` states the background pushes over the event bus, and the accounts of `useAccountsControllerState`.
+
+### The route: the request queue
+
+ux.md D-316 says every signing request lands in the action window through the request queue. The facade therefore routes each signature through that queue as a request of its own, the same way the wallet's other own requests enter it (the settings screens add their own `calls` requests with `new Session({ windowId })`):
+
+1. The facade dispatches `REQUESTS_CONTROLLER_ADD_USER_REQUEST` with a `SignUserRequest` (`signRequestOf`): a numeric id of its own, an internal session (`new Session({ windowId })`, origin `internal`, no dApp), `meta: { isSignAction: true, accountAddr: key.addr, keyType: key.type, chainId }`, the `typedMessage` or `message` content, and `allowAccountSwitch: true`. `keyType` carries the handle's key type with the request (D-370 addresses the signer by address and key type), so a later change to the action window can honour it.
+2. The queue accepts a wallet-originated `typedMessage` or `message` request with no dApp session. It files the request as a `signMessage` action under the request's own id and opens the action window on it.
+3. The action window's own sign-message screen initialises `SignMessageController` with the request's id as `fromActionId` and signs only when the holder confirms. The facade dispatches nothing to that controller.
+4. The facade takes the signature from the pushed `signMessage` state whose `signedMessage.fromActionId` is its request's id. The background pushes that state before it removes the request from the queue.
+5. The request leaving the queue (`requests.userRequests` and `userRequestsWaitingAccountSwitch`) with no such signature for 3 seconds (`ABSENCE_GRACE_MS`) counts as refused: the holder rejected it or closed the window. The grace covers the moment the queue moves a request between its two lists after an account switch.
+6. With no answer in 10 minutes (`DEFAULT_SIGN_TIMEOUT_MS`), the facade withdraws its request with `REQUESTS_CONTROLLER_REMOVE_USER_REQUEST` and rejects.
+
+### The confirmation the holder sees
+
+- Where the wallet's selected account is not the key's account, the queue first shows its switch-account request. The holder switches the selected account to that account, and the sign request follows. Declining the switch refuses the signature.
+- The action window's "Sign message" screen, with the account and the network (the recovery chain) in its header.
+- The requester line reads "The App is requesting your signature", since the internal session has no name. The lane ships no string and names no requester.
+- The type, "EIP-712 Type" or "Standard Type", then the message: typed data with its verifying contract under "Will verify this signature", or the bytes. A message the wallet cannot humanise shows raw, with "Please read the whole message as we are unable to translate it!".
+- The "Sign" and "Reject" buttons. Where the keystore holds the address under more than one key type, the screen asks the holder which one signs. A Ledger key asks for its device first.
+
+### The key type
+
+Today the action window does not read `meta.keyType`. It chooses the key among the keys of the request's account (the selected account's associated keys), and where the keystore holds that address under more than one key type it asks the holder to choose. For a listed basic account every such key is the one address, so every key type yields the same signature: the choice changes where the key lives (the extension or a device), not what is signed. Honouring the key type in the window, so it signs with the handle's key type and asks no choice, needs a change to the sign-message screen outside this lane (owner list, item 5).
 
 ### What the facade can and cannot sign, for the owner's decision
 
-The owner decides on the missing background action. These are the facts it rests on.
+The owner decides on the missing background action and on the D-316 question below. These are the facts they rest on.
 
-1. The facade signs with no dApp request. It dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_INIT` with a request id of its own. It waits until the pushed `signMessage` state shows that id. It then dispatches `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` with `{ keyAddr, keyType }`, reads `signedMessage.signature` and dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_RESET`.
-2. It can sign when the key is itself a basic account the wallet lists: an EOA account whose associated key is its own address. The flow then returns the key's own EIP-712 signature (`signTypedData` of the keystore signer), or its EIP-191 signature over the bytes (`signMessage`).
-3. It cannot sign for any other key the keystore holds, such as the smart account's controlling key at the slot's index plus 100000 (ux.md D-316). `SignMessageController` looks the address up among the accounts and wraps a smart account's signature in Ambire's envelope. The facade refuses such a key before it dispatches anything, with a `SignerNotWired` error (`member`, `key`, `missingAction: 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY'`).
-4. It cannot sign a bare digest. The flow always adds the EIP-191 prefix to raw bytes.
-5. The missing action is `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`, with params `{ requestId, keyAddr, keyType, content }`, where `content` is a `PlainTextMessage` or a `TypedMessage`. Its handler takes `KeystoreController.getSigner(keyAddr, keyType)` and runs `signer.init` with the external signer controller of that type. It answers `signMessage(content.message)` or `signTypedData(content)`, with no account lookup, no Ambire envelope, no activity record and no request resolution. It sends the signature or the error back to the UI under the request id, as `PROVIDER_RPC_REQUEST` does. The shape is also written on `MISSING_BACKGROUND_ACTION` in `signer.ts`. It does not exist, and this lane adds no background action.
-6. The race: `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` names no message, and one controller serves every request. If a dApp sign request resets the controller between the facade's INIT and HANDLE, the flow signs that dApp message with the facade's key. The flow then checks the signature against the dApp request's account.
-7. The side effects: the background records each signature in the activity's signed messages of that account and raises its "message signed" notification. The facade cannot turn these off.
-8. The early exit: where the account state is missing, the main controller exits before it signs, and the facade waits until its timeout (5 minutes by default).
-9. A dispatched run that returns no signature rejects with a `SignFlowFailure`: `refused` (the flow's sign status went to error), `superseded` (another request took the controller over), `timeout` or `malformed-signature`.
-10. The missing action removes the refusal of item 3, the race of item 6, the side effects of item 7 and the wait of item 8. It removes the prefix limit of item 4 only if it also takes a bare digest as content.
+1. The facade signs with no dApp request. Each signature is a request of its own in the queue, bound to its own id and confirmed by the holder in the action window.
+2. It can sign when the key is itself a basic account the wallet lists: an EOA account whose associated key is its own address. The queue signs for the request's account with that account's keys, so the signature is the key's own EIP-712 signature (`signTypedData` of the keystore signer), or its EIP-191 signature over the bytes (`signMessage`).
+3. It cannot sign for any other key the keystore holds, such as the smart account's controlling key at the slot's index plus 100000 (ux.md D-316). The queue looks the account up among the accounts and wraps a smart account's signature in Ambire's envelope. The facade refuses such a key before it dispatches anything, with a `SignerNotWired` error (`member`, `key`, `missingAction: 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY'`).
+4. It cannot sign a bare digest. The queue has no request that signs without the EIP-191 prefix.
+5. The missing action is `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`, with params `{ requestId, keyAddr, keyType, content }`, where `content` is a `PlainTextMessage` or a `TypedMessage`. Its handler takes `KeystoreController.getSigner(keyAddr, keyType)` and runs `signer.init` with the external signer controller of that type. It answers `signMessage(content.message)` or `signTypedData(content)`, with no account lookup and no Ambire envelope. It sends the signature or the error back to the UI under the request id, as `PROVIDER_RPC_REQUEST` does. Under D-316 it too would land in the action window for the holder's confirmation. The shape is also written on `MISSING_BACKGROUND_ACTION` in `signer.ts`. It does not exist, and this lane adds no background action.
+6. There is no race with a dApp request any more. The facade dispatches no `MAIN_CONTROLLER_SIGN_MESSAGE_INIT`, `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` or `MAIN_CONTROLLER_SIGN_MESSAGE_RESET`. The action window's own screen initialises the controller with the request it shows, and the holder confirms that request alone. The facade accepts only a signature whose `fromActionId` is its own request's id. The earlier route dispatched INIT and HANDLE itself; HANDLE names no message, so a dApp request re-initialised by an open sign-message screen could be signed with the facade's key and resolved to the dApp unseen. That route is removed.
+7. The queue shows one sign-message request at a time. A request added while another one is visible is dropped without a trace in the pushed state, and the facade waits until its timeout. The queue also skips a request while a hardware signing is in progress, with the same outcome.
+8. The side effects: the background records each signature in the activity's signed messages of that account and raises its "message signed" notification. An account switch, where the holder confirms one, changes the wallet's selected account.
+9. The result has no channel of its own. The queue resolves a request's result into the dApp promise it carries, and a request the UI adds carries none. The facade therefore reads the signature from the pushed `signMessage` state, keyed by its request id.
+10. A queued request that returns no signature rejects with a `SignFlowFailure`: `refused` (the request left the queue unsigned), `timeout` (the facade withdrew it) or `malformed-signature`.
 
 ## Which key sends
 
-`SPONSOR_RAIL` is `'none'`: the first release configures no rail (D-312), so every prepared call is sent from a key the signer holds. `sendingKeyOf(prepared, { accountKey, recovererKey })` names it: the account's controlling key for a call whose sender is the account and for every prepared batch, and the recoverer's own key for a call anyone may send.
+`SPONSOR_RAIL` is `'none'`: the first release configures no rail (D-312), so every prepared call is sent from a key the signer holds. `sendingKeyOf(prepared, { accountKey, recovererKey }, recoveryCall?)` names it:
+
+- A call whose sender is the account is sent by the account's controlling key.
+- A batch is sent by the account's controlling key, and only a batch whose every call's sender is the account. Any other batch is refused.
+- A call anyone may send is sent by the recoverer's own key only where the caller names it as one of the two recovery calls, `'submission'` or `'execution'` (`RECOVERY_CALLS`, D-373). The cancel by proofs is not a recovery call: whoever submits it pays for it and it ships in a later milestone (D-373), so it is refused.
 
 ## The hook
 
@@ -111,11 +145,14 @@ The owner decides on the missing background action. These are the facts it rests
 
 ## The stand-in
 
-Until the SDK lands, `buildRecoveryClient` builds through `RecoveryKitBuilderDouble` over `sdkStandIn.chainFor(descriptor, account)`, one scripted chain record per deployment and account for the life of the page. Tests and development runs script that world through it, `sdkStandIn.providerFor(chain)` gives an `IProvider` answered from it, and `sdkStandIn.reset()` forgets every record. When the SDK lands, `stand-in.ts` goes and `build-client.ts` builds through the SDK's builder.
+Until the SDK lands, `buildRecoveryClient` builds through `RecoveryKitBuilderDouble` over `sdkStandIn.chainFor(descriptor, account)`, one scripted chain record per deployment and account for the life of the page. Tests and development code import `shared/client/stand-in` by path and script that world through it; `sdkStandIn.providerFor(chain)` gives an `IProvider` answered from it, and `sdkStandIn.reset()` forgets every record. When the SDK lands, `stand-in.ts` goes and `build-client.ts` builds through the SDK's builder.
 
 The block pins and log reads of the doubles go through the configured provider, while the manager, action and method state comes from the scripted record. A client built over a real node therefore reads the record's state at the node's blocks; a coherent development world passes `sdkStandIn.providerFor(chain)` as the provider.
 
-## Open questions
+## Open questions for the owner
 
-- cut-q-7: the addresses of the manager, methods and action on the test network. Every address in `addresses.ts` is a placeholder until it is answered.
-- The missing background action `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` for a key that is not itself a listed basic account (owner; the facts are in the signer section above).
+1. cut-q-7: the addresses of the manager, methods and action on the test network. Every address in `addresses.ts` is a placeholder until it is answered.
+2. The missing background action `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` for a key that is not itself a listed basic account, and for a bare digest (the facts are in the signer section above).
+3. The D-316 conflict: ux.md D-316 puts every signing request in the action window, so every facade signature now asks the holder to confirm in that window. Are the new key's certification (ux-interfaces.md D-373) and the access tests of the method rows exempt from the action window? If they are, the signing needs a background path the owner rules on; if they are not, the confirmation above stands for them too.
+4. The queue's gaps for a wallet-originated sign request: no result channel of its own (item 9), a silent drop while another sign-message request is visible (item 7), and the requester line "The App is requesting your signature" for a request no dApp made.
+5. The key type in the action window: the request carries `meta.keyType`, and the sign-message screen ignores it and chooses among the account's keys. Honouring it needs a change to that screen (`src/web/modules/sign-message`), outside this lane. For a listed basic account the signature is the same whatever the key type.

@@ -33,6 +33,7 @@ import {
   lastArg,
   namesSignerOrStorage,
   providerDoubleReads,
+  RECOVERY_CALLS,
   RECOVERY_CHAINS,
   RecoveryClientConfiguration,
   sendingKeyOf,
@@ -92,6 +93,18 @@ describe('buildRecoveryClient', () => {
     expect(spies.action).not.toHaveBeenCalled()
     expect(spies.eventManager).not.toHaveBeenCalled()
     expect(spies.codec).not.toHaveBeenCalled()
+  })
+
+  it('hands the builder the wallet request window of 24 hours and no token allowlist (D-373, D-312)', async () => {
+    const spies = spyOnBuilder()
+    const world = createWorld()
+    await buildRecoveryClient(world.config)
+    const configuration = lastArg(spies.config) as {
+      requestWindow?: { default: number }
+      tokens?: unknown[]
+    }
+    expect(configuration.requestWindow?.default).toBe(86400)
+    expect(configuration.tokens).toEqual([])
   })
 
   it('hands the builder a client configuration of the ClientConfiguration members alone', async () => {
@@ -196,24 +209,52 @@ describe('with no rail configured, every prepared call is sent from a key the si
     expect(sendingKeyOf(cancel, { accountKey, recovererKey })).toEqual(accountKey)
   })
 
-  it("sends a call anyone may send from the recoverer's own key", () => {
-    expect(sendingKeyOf(call('anyone'), { accountKey, recovererKey })).toEqual(recovererKey)
+  it("sends the two recovery calls, the submission and the execution, from the recoverer's own key (D-373)", () => {
+    expect(RECOVERY_CALLS).toEqual(['submission', 'execution'])
+    RECOVERY_CALLS.forEach((recoveryCall) =>
+      expect(sendingKeyOf(call('anyone'), { accountKey, recovererKey }, recoveryCall)).toEqual(
+        recovererKey
+      )
+    )
   })
 
-  it('sends a prepared batch, one account transaction, from the controlling key', () => {
-    const batch: PreparedBatch = { kind: 'batch', calls: [call('anyone')], atomic: true, block }
+  it('names no key for a call anyone may send that is not a recovery call, such as the cancel by proofs', () => {
+    expect(() => sendingKeyOf(call('anyone'), { accountKey, recovererKey })).toThrow()
+  })
+
+  it('sends a prepared batch of account calls, one account transaction, from the controlling key', () => {
+    const batch: PreparedBatch = {
+      kind: 'batch',
+      calls: [call('account'), call('account')],
+      atomic: true,
+      block
+    }
     expect(sendingKeyOf(batch, { accountKey, recovererKey })).toEqual(accountKey)
   })
 
+  it('refuses a batch that carries a call whose sender is not the account', () => {
+    const keys = { accountKey, recovererKey }
+    const mixed: PreparedBatch = {
+      kind: 'batch',
+      calls: [call('account'), call('anyone')],
+      atomic: true,
+      block
+    }
+    const foreign: PreparedBatch = { kind: 'batch', calls: [call('anyone')], atomic: true, block }
+    expect(() => sendingKeyOf(mixed, keys)).toThrow()
+    expect(() => sendingKeyOf(foreign, keys)).toThrow()
+  })
+
   it('names no sender where the role key is missing, rather than another key', () => {
-    expect(() => sendingKeyOf(call('anyone'), { accountKey })).toThrow()
+    expect(() => sendingKeyOf(call('anyone'), { accountKey }, 'submission')).toThrow()
     expect(() => sendingKeyOf(call('account'), { recovererKey })).toThrow()
   })
 
   it('never answers a sender outside the keys it was given', () => {
     const keys = { accountKey, recovererKey }
-    ;[call('account'), call('anyone')].forEach((c) =>
-      expect([accountKey, recovererKey]).toContainEqual(sendingKeyOf(c, keys))
+    expect([accountKey, recovererKey]).toContainEqual(sendingKeyOf(call('account'), keys))
+    expect([accountKey, recovererKey]).toContainEqual(
+      sendingKeyOf(call('anyone'), keys, 'execution')
     )
   })
 })

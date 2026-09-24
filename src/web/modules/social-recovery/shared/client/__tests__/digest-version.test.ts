@@ -97,6 +97,37 @@ describe('the digest-version check', () => {
     expect(isDigestVersionRefusal(caught)).toBe(false)
   })
 
+  describe('runs after the chain checks of D-208 steps 2 and 3', () => {
+    it('reads a provider on another chain as the chain-id refusal, even where the version also differs', async () => {
+      const world = createWorld()
+      world.ethers.answeredChainId = 1
+      world.chain.manager.domain.version = 'other'
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(caught).toBeInstanceOf(Error)
+      expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect((caught as { check?: string }).check).toBe('chain-id')
+    })
+
+    it('reads a manager on another chain as a construction refusal, not as update the wallet', async () => {
+      const world = createWorld()
+      world.chain.manager.domain.chainId = 1n
+      world.chain.manager.domain.version = 'other'
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(caught).toBeInstanceOf(Error)
+      expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect((caught as { check?: string }).check).toBe('domain')
+    })
+
+    it('reads a domain whose verifying contract is another manager as a construction refusal', async () => {
+      const world = createWorld()
+      world.chain.manager.domain.verifyingContract = '0x0000000000000000000000000000000000c7ffff'
+      world.chain.manager.domain.version = 'other'
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect((caught as { check?: string }).check).toBe('domain')
+    })
+  })
+
   it('does not read another construction refusal as a version disagreement', async () => {
     const world = createWorld()
     world.chain.manager.domain.fields = '0x1f'

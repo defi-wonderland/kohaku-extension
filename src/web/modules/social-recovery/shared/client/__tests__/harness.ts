@@ -10,10 +10,12 @@
  *   PT-035. The lane reaches that provider through `send` alone
  *   (`ExtensionRpc`); the high-level members are there so a test proves the
  *   lane did not use them. No test reaches a network.
- * - The background is a fake sign-message flow behind the lane's own
- *   `SignMessageFlowPort`: a `jest.fn` dispatch that pushes the
- *   `SignMessageController` states the real background would push, and the
- *   accounts the wallet lists. No keystore and no background runs.
+ * - The background is a fake request queue behind the lane's own
+ *   `SignRequestPort`: a `jest.fn` dispatch, a window id, the accounts the
+ *   wallet lists, and a `push` a test drives by hand with the `requests` and
+ *   `signMessage` controller states the real background would push, so a test
+ *   can put a foreign message between the facade's request and its result.
+ *   No keystore, no action window and no background runs.
  * - The stand-in's scripted chain (`sdkStandIn.chainFor`) is reset before each
  *   world, so one test's domain script never leaks into the next.
  */
@@ -42,18 +44,21 @@ import {
   createProviderAdapter,
   createSignerFacade,
   descriptorOf,
-  sdkStandIn,
   WALLET_RECOVERY_CHAIN,
   type KeyHandle,
   type ListedAccount,
   type RecoveryClientConfiguration,
   type SignerFacade,
-  type SignMessageFlowAction,
-  type SignMessageFlowPort,
-  type SignMessageFlowState
+  type SignerFacadeOptions,
+  type SignRequestAction,
+  type SignRequestPort,
+  type SignRequestUpdate
 } from '@web/modules/social-recovery/shared/client'
+// The stand-in is not part of the barrel a screen imports; tests reach it by path.
+import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 
 export * from '@web/modules/social-recovery/shared/client'
+export { sdkStandIn }
 
 export const SEPOLIA = 11155111
 export const MAINNET = 1
@@ -398,7 +403,7 @@ export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}
 }
 
 // ---------------------------------------------------------------------------
-// The signer facade over a fake sign-message flow
+// The signer facade over a fake request queue
 // ---------------------------------------------------------------------------
 
 /** A basic account the wallet lists: an EOA whose only associated key is its own address. */
@@ -415,71 +420,106 @@ export const smartAccount = (addr: Address, key: Address): ListedAccount => ({
   creation: { factoryAddr: addressOf('factory'), bytecode: '0x00', salt: `0x${'00'.repeat(32)}` }
 })
 
-export interface SignFlowWorld {
+/** The window id the fake port answers, the popup the request opens beside. */
+export const WINDOW_ID = 7
+
+export interface QueueWorld {
   signer: SignerFacade
   dispatch: jest.Mock
   /** The accounts the wallet lists; a test may push more. */
   accounts: ListedAccount[]
-  /** What the fake background does on `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE`. */
-  outcome: { signature?: string; refuse?: boolean }
+  /** Pushes one controller state to every subscribed listener, as the background does. */
+  push: (update: SignRequestUpdate) => void
+  /** How many listeners are subscribed now. */
+  listeners: () => number
 }
 
 /**
- * The facade over a fake background: the dispatch pushes the controller
- * states the real `SignMessageController` would push. On init, the message
- * with `isInitialized`; on the handle, the signed message for that request
- * (or the sign status `ERROR` where the outcome refuses).
+ * The facade over a fake request queue. Nothing answers on its own: a test
+ * reads the request the facade added (`addedRequest`) and pushes the
+ * `requests` and `signMessage` states the background would push.
  */
-export const signFlowOver = (
+export const queueOver = (
   accounts: ListedAccount[] = [],
-  outcome: SignFlowWorld['outcome'] = {}
-): SignFlowWorld => {
-  const listeners = new Set<(state: SignMessageFlowState) => void>()
-  let current: SignMessageFlowState = {}
-  const push = (state: SignMessageFlowState) => {
-    current = state
-    listeners.forEach((l) => l(state))
-  }
-  const world = { accounts, outcome } as SignFlowWorld
-  world.dispatch = jest.fn((action: SignMessageFlowAction) => {
-    // The background answers after the dispatch returns, as the real one does.
-    queueMicrotask(() => {
-      if (action.type === 'MAIN_CONTROLLER_SIGN_MESSAGE_INIT') {
-        push({ isInitialized: true, messageToSign: action.params.messageToSign, statuses: {} })
-      } else if (action.type === 'MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE') {
-        const message = current.messageToSign
-        if (world.outcome.refuse) {
-          push({ ...current, statuses: { sign: 'ERROR' } })
-        } else {
-          push({
-            ...current,
-            statuses: { sign: 'SUCCESS' },
-            signedMessage: {
-              ...(message as object),
-              signature: world.outcome.signature ?? null
-            } as SignMessageFlowState['signedMessage']
-          })
-        }
-      } else if (action.type === 'MAIN_CONTROLLER_SIGN_MESSAGE_RESET') {
-        push({})
-      }
-    })
-  })
-  const port: SignMessageFlowPort = {
+  options: Partial<SignerFacadeOptions> = {}
+): QueueWorld => {
+  const listeners = new Set<(update: SignRequestUpdate) => void>()
+  const world = { accounts } as QueueWorld
+  world.dispatch = jest.fn()
+  world.push = (update) => [...listeners].forEach((l) => l(update))
+  world.listeners = () => listeners.size
+  const port: SignRequestPort = {
     dispatch: world.dispatch,
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    accounts: () => world.accounts
+    accounts: () => world.accounts,
+    windowId: () => WINDOW_ID
   }
-  world.signer = createSignerFacade(port, { chainId: SEPOLIA, timeoutMs: 2000 })
+  world.signer = createSignerFacade(port, { chainId: SEPOLIA, ...options })
   return world
 }
 
 /** Every action the dispatch received, in order. */
-export const dispatched = (dispatch: jest.Mock): SignMessageFlowAction[] =>
-  dispatch.mock.calls.map((c) => c[0] as SignMessageFlowAction)
+export const dispatched = (dispatch: jest.Mock): SignRequestAction[] =>
+  dispatch.mock.calls.map((c) => c[0] as SignRequestAction)
+
+/** The user request the facade added to the queue, the one `ADD_USER_REQUEST` carried. */
+export const addedRequest = (dispatch: jest.Mock) => {
+  const add = dispatched(dispatch).find((a) => a.type === 'REQUESTS_CONTROLLER_ADD_USER_REQUEST')
+  if (!add || add.type !== 'REQUESTS_CONTROLLER_ADD_USER_REQUEST') {
+    throw new Error('The facade added no request to the queue.')
+  }
+  return add.params
+}
+
+/** The `requests` state with the given request ids queued. */
+export const queued = (...requestIds: (string | number)[]): SignRequestUpdate => ({
+  controller: 'requests',
+  state: {
+    userRequests: requestIds.map((requestId) => ({ id: requestId })),
+    userRequestsWaitingAccountSwitch: []
+  }
+})
+
+/** The `signMessage` state carrying a signed message for a request id. */
+export const signedFor = (requestId: string | number, signature: unknown): SignRequestUpdate => ({
+  controller: 'signMessage',
+  state: { signedMessage: { fromActionId: requestId, signature } as never }
+})
+
+/** A promise's state after the pending microtasks ran: pending, resolved or rejected. */
+export const track = <T>(promise: Promise<T>) => {
+  const seen: { status: 'pending' | 'resolved' | 'rejected'; value?: unknown } = {
+    status: 'pending'
+  }
+  promise.then(
+    (value) => {
+      seen.status = 'resolved'
+      seen.value = value
+    },
+    (error) => {
+      seen.status = 'rejected'
+      seen.value = error
+    }
+  )
+  return seen
+}
+
+/** Lets the pending promise callbacks run. */
+export const flush = async (): Promise<void> => {
+  for (let i = 0; i < 5; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.resolve()
+  }
+}
+
+/** Moves the fake clock by `ms` and lets the promise callbacks it released run. */
+export const advance = async (ms: number): Promise<void> => {
+  jest.advanceTimersByTime(ms)
+  await flush()
+}
 
 export type { KeyHandle }
 
