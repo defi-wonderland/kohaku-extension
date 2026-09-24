@@ -15,7 +15,6 @@ import type {
   IEventManager,
   IPolicyManagerInteractor,
   IProvider,
-  IRecoveryActionArming,
   IRecoveryActionInteractor
 } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -23,11 +22,16 @@ import type { ScriptedChain } from './chain'
 import { readBackup, sameAddress, setupBodyOf, setupCommitmentOf, ZERO_HASH } from './encoding'
 import { restoreRefusal } from './scripts'
 
+/**
+ * The parts both clients share. The action part travels as
+ * `IRecoveryActionInteractor` alone: the arming seam goes to the setup client's
+ * constructor beside this context and to nothing else (sdk.md D-201 drawing).
+ */
 export interface ClientContext {
   chain: ScriptedChain
   provider: IProvider
   manager: IPolicyManagerInteractor
-  action: IRecoveryActionInteractor & IRecoveryActionArming
+  action: IRecoveryActionInteractor
   /** The action address the client is bound to (the builder's `.action(address, …)`). */
   actionAddress: Address
   events: IEventManager
