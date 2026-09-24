@@ -156,7 +156,10 @@ export interface BlockRange {
   to: number
 }
 
-/** One raw log as `eth_getLogs` returns it, what `decodeLog` and `IProvider.logs` speak. */
+/**
+ * One raw log as `eth_getLogs` returns it, what `decodeLog` and `IProvider.logs` speak.
+ * Illustrative, sdk.md D-203: the chapter names a raw log and no record for it.
+ */
 export interface RawLog {
   address: Address
   topics: Hex[]
