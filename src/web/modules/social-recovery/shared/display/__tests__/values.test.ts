@@ -7,13 +7,15 @@
  */
 import { getAddress } from 'ethers'
 
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+
 import {
+  ellipsizeName as renderMethodName,
   renderApproval,
   renderFullAddress,
   renderHash,
   renderHiddenValue,
   renderMemberList,
-  renderMethodName,
   renderPaymentOrder,
   renderShortAddress
 } from '..'
@@ -75,11 +77,9 @@ describe('user-typed method name (D-302: caps at 24 characters)', () => {
     const out = renderMethodName(NAME_25)
     expect(out).not.toBe(NAME_25)
     expect(out.endsWith(ELLIPSIS)).toBe(true)
-    const kept = out.slice(0, -1)
-    // The kept part is a prefix of the name and the whole caps at 24 or 24
-    // plus the ellipsis; D-302 fixes the cap, not whether the ellipsis counts.
-    expect(NAME_25.startsWith(kept)).toBe(true)
-    expect([23, 24]).toContain(kept.length)
+    // D-302: the name caps at 24 characters, the ellipsis the last of them.
+    expect(out).toHaveLength(24)
+    expect(NAME_25.startsWith(out.slice(0, -1))).toBe(true)
   })
 
   it('ellipsizes a long name to the same length as a 25-character one', () => {
@@ -116,7 +116,7 @@ describe('approval blob (D-302: twelve and eight)', () => {
 describe('hidden value (D-302: sixteen dots beside a hidden chip)', () => {
   it('renders exactly sixteen dots and the Hidden chip', () => {
     const out = renderHiddenValue()
-    expect(out.value).toBe('•'.repeat(16))
+    expect(out.dots).toBe('•'.repeat(16))
     expect(out.chip).toBe('Hidden')
   })
 })
@@ -127,12 +127,14 @@ describe('member list (D-302: three members then a count of the rest)', () => {
   it('renders a list of three with no count', () => {
     const out = renderMemberList(members.slice(0, 3))
     expect(out.shown).toEqual(['alice.eth', 'bob.eth', 'carol.eth'])
+    expect(out.restCount).toBe(0)
     expect(out.more).toBeNull()
   })
 
   it('renders a list of four as three then "1 more member"', () => {
     const out = renderMemberList(members.slice(0, 4))
     expect(out.shown).toEqual(['alice.eth', 'bob.eth', 'carol.eth'])
+    expect(out.restCount).toBe(1)
     expect(out.more).toBe('1 more member')
   })
 
@@ -143,25 +145,28 @@ describe('member list (D-302: three members then a count of the rest)', () => {
   })
 
   it('renders a list of one or two whole with no count', () => {
-    expect(renderMemberList(['alice.eth'])).toEqual({ shown: ['alice.eth'], more: null })
+    expect(renderMemberList(['alice.eth'])).toEqual({
+      shown: ['alice.eth'],
+      restCount: 0,
+      more: null
+    })
     expect(renderMemberList(['alice.eth', 'bob.eth'])).toEqual({
       shown: ['alice.eth', 'bob.eth'],
+      restCount: 0,
       more: null
     })
   })
 })
 
 describe('payment order (D-302: amount, symbol and payee, or no payment)', () => {
-  const USDC = getAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48')
-  const PAYEE = getAddress('0x1111111111111111111111111111111111111111')
-  const ZERO = '0x0000000000000000000000000000000000000000'
+  const USDC = getAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') as Address
+  const PAYEE = getAddress('0x1111111111111111111111111111111111111111') as Address
+  const ZERO: Address = '0x0000000000000000000000000000000000000000'
   const token = { symbol: 'USDC', decimals: 6 }
 
-  it('renders 12.50 USDC to the payee', () => {
+  it('renders 12.50 USDC to the payee in the full form', () => {
     const out = renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: PAYEE }, token)
-    expect(out.startsWith('12.50 USDC to ')).toBe(true)
-    const payee = out.slice('12.50 USDC to '.length)
-    expect([renderShortAddress(PAYEE), renderFullAddress(PAYEE)]).toContain(payee)
+    expect(out).toBe(`12.50 USDC to ${renderFullAddress(PAYEE)}`)
   })
 
   it('renders an open payee as "to whoever executes"', () => {

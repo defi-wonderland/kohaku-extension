@@ -54,7 +54,10 @@ const renderedChipsAndNouns = (): string[] => {
 
 describe('bans over the display module (I-26, ux-copy.md)', () => {
   it('no exported string, vocabulary or key carries a banned word', () => {
-    expect(hits(collect(display))).toEqual([])
+    const exported = collect(display)
+    // The walk reaches the vocabularies, so an empty walk cannot pass silently.
+    expect(exported).toEqual(expect.arrayContaining(['recoveryRegistry', 'notStarted']))
+    expect(hits(exported)).toEqual([])
   })
 
   it('no rendered chip, noun or password name carries a banned word', () => {
@@ -74,6 +77,6 @@ describe('bans over the display module (I-26, ux-copy.md)', () => {
   it('the rendered hidden value and no-payment words carry no banned word', () => {
     const hidden = display.renderHiddenValue()
     const noPayment = display.renderPaymentOrder(undefined, { symbol: 'USDC', decimals: 6 })
-    expect(hits([hidden.value, hidden.chip, noPayment])).toEqual([])
+    expect(hits([hidden.dots, hidden.chip, noPayment])).toEqual([])
   })
 })
