@@ -34,6 +34,10 @@ const PASSKEY = '0x1000000000000000000000000000000000000001' as Hex
 const PASSPORT = '0x2000000000000000000000000000000000000002' as Hex
 const AADHAAR = '0x3000000000000000000000000000000000000003' as Hex
 const GUARDIAN = '0x4000000000000000000000000000000000000004' as Hex
+// One family written in two letter cases: an address's case is a checksum,
+// never a second module, so the two read as one family.
+const HARDWARE_KEY_LOWER = '0xabcdef000000000000000000000000000000abcd' as Hex
+const HARDWARE_KEY_MIXED = '0xAbCdEf000000000000000000000000000000AbCd' as Hex
 
 let configCounter = 0
 const cred = (method: Hex): Credential => {
@@ -180,24 +184,122 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     name: 'a group of a passport and an Aadhaar identity: two domains, no failure-domain line',
     clauses: [group(1, [PASSPORT, AADHAAR])],
     expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'C-04e: a 3-of-3 all-guardian group: every member, then one failure domain',
+    clauses: [group(3, [GUARDIAN, GUARDIAN, GUARDIAN])],
+    expected: [
+      { key: 'everyMemberMustAnswer' },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'two groups, each of one family: each failure-domain line follows its own group',
+    clauses: [group(1, [GUARDIAN, GUARDIAN]), group(2, [PASSKEY, PASSKEY, PASSKEY])],
+    expected: [
+      { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'togetherWithGroups', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'two groups, only the second of one family: its failure-domain line follows the second group',
+    clauses: [group(1, [PASSPORT, AADHAAR]), group(2, [GUARDIAN, GUARDIAN, GUARDIAN])],
+    expected: [
+      { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'togetherWithGroups', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'one family in mixed-case method addresses: one failure domain',
+    clauses: [group(1, [HARDWARE_KEY_LOWER, HARDWARE_KEY_MIXED])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'oneFailureDomain' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'one row of a passport: the single-method warning',
+    clauses: [row(PASSPORT)],
+    expected: SINGLE_METHOD
+  },
+  {
+    name: 'two rows of two identities: both must answer, and the sizing rule line',
+    clauses: [row(AADHAAR), row(PASSPORT)],
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+  },
+  {
+    name: 'your device and your guardians: together with, and one failure domain',
+    clauses: [row(PASSKEY), group(2, [GUARDIAN, GUARDIAN, GUARDIAN])],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'a passport and an Aadhaar identity at two of two: every member, no failure domain',
+    clauses: [group(2, [PASSPORT, AADHAAR])],
+    expected: [{ key: 'everyMemberMustAnswer' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'two rows and two groups: together with both, the domain line after its group',
+    clauses: [
+      row(PASSKEY),
+      row(PASSPORT),
+      group(1, [GUARDIAN, AADHAAR]),
+      group(2, [GUARDIAN, GUARDIAN, GUARDIAN])
+    ],
+    expected: [
+      { key: 'togetherWithRequiredAndGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'togetherWithRequiredAndGroups', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
   }
 ]
 
-// Further shapes the negative and purity assertions sweep.
-const EXTRA_SHAPES: Clause[][] = [
-  [row(PASSPORT)],
-  [row(AADHAAR), row(PASSPORT)],
-  [row(PASSKEY), group(1, [PASSPORT, AADHAAR])],
-  [row(PASSKEY), group(2, [GUARDIAN, GUARDIAN, GUARDIAN])],
-  [group(2, [PASSPORT, AADHAAR])],
-  [
-    row(PASSKEY),
-    row(PASSPORT),
-    group(1, [GUARDIAN, AADHAAR]),
-    group(2, [GUARDIAN, GUARDIAN, GUARDIAN])
-  ]
+// Paths that earn no line. The coordinator's ruling of 2026-09-24 (brief,
+// "Design sections and deltas"): a path with any refused clause (an empty
+// clause, a threshold above the member count, a non-integer threshold, a
+// threshold above 255) yields no lines, since a refused path recovers
+// nothing. D-305 refuses a threshold below one the same way ("A threshold
+// below one sits outside its members like a threshold above them").
+const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
+  { name: 'an empty path', clauses: [] },
+  { name: 'an empty clause alone', clauses: [{ threshold: 1, credentials: [] }] },
+  {
+    name: 'an empty clause beside a required row: no single-method warning',
+    clauses: [row(PASSKEY), { threshold: 1, credentials: [] }]
+  },
+  { name: 'a single clause at threshold zero', clauses: [group(0, [PASSKEY, PASSPORT])] },
+  {
+    name: 'a clause at threshold zero beside a required row',
+    clauses: [row(PASSKEY), group(0, [PASSPORT, AADHAAR])]
+  },
+  { name: 'a threshold above the size', clauses: [group(3, [PASSKEY, PASSPORT])] },
+  {
+    name: 'a threshold above 255',
+    clauses: [
+      group(
+        256,
+        Array.from({ length: 256 }, () => GUARDIAN)
+      )
+    ]
+  },
+  { name: 'a non-integer threshold', clauses: [group(1.5, [PASSKEY, PASSPORT, GUARDIAN])] },
+  {
+    name: 'a required passkey and a group of 2 at threshold 3: never the single-method warning',
+    clauses: [row(PASSKEY), group(3, [PASSPORT, GUARDIAN])]
+  }
 ]
-const EVERY_SHAPE: Clause[][] = [...SHAPES.map((s) => s.clauses), ...EXTRA_SHAPES]
+
+const EVERY_SHAPE: Clause[][] = [
+  ...SHAPES.map((s) => s.clauses),
+  ...REFUSED_SHAPES.map((s) => s.clauses)
+]
 
 const i18n = i18next.createInstance()
 beforeAll(async () => {
@@ -236,6 +338,20 @@ describe('getRuleLines: the table of shapes (D-305)', () => {
       })
     })
   )
+
+  REFUSED_SHAPES.forEach(({ name, clauses }) =>
+    it(`${name}: no lines`, () => {
+      expect(linesOf(clauses)).toEqual([])
+      expect(getRuleLines(clauses)).toEqual([])
+      expect(renderRuleLines(linesOf(clauses), t)).toEqual([])
+    })
+  )
+
+  it('reads the plain Clause[] form the same as the draft record', () => {
+    EVERY_SHAPE.forEach((clauses) => {
+      expect(getRuleLines(clauses)).toEqual(linesOf(clauses))
+    })
+  })
 
   it('every key it returns names a real string under socialRecovery.ruleLines', () => {
     EVERY_SHAPE.forEach((clauses) => {
@@ -309,8 +425,8 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
 })
 
 describe('negative assertions (D-312, ux-copy.md)', () => {
-  it('renders at least one line for every shape', () => {
-    EVERY_SHAPE.forEach((clauses) =>
+  it('renders at least one line for every shape the editor accepts', () => {
+    SHAPES.forEach(({ clauses }) =>
       expect(renderRuleLines(linesOf(clauses), t).length).toBeGreaterThan(0)
     )
   })
@@ -372,6 +488,9 @@ describe('purity', () => {
       expect(input).toEqual(snapshot)
       const frozen = deepFreeze(structuredClone(input))
       expect(getRuleLines(frozen)).toEqual(first)
+      const plain = deepFreeze(structuredClone(clauses))
+      expect(getRuleLines(plain)).toEqual(first)
+      expect(plain).toEqual(clauses)
     })
   )
 })
