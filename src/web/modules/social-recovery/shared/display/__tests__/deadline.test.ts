@@ -1,14 +1,21 @@
 /**
  * PT-036: the deadline renders as a date and time in the reader's zone, the
  * zone named, with a countdown beside it (D-302), for a fixed now.
+ *
+ * Sources: docs/social-recovery/design/ux.md D-302,
+ * docs/social-recovery/design/live-frame-strings.md K-09 (the deadline line
+ * "13 Aug, 18:04 CEST · 23 hours left"). Every expectation is a literal.
  */
 import i18n from '@common/config/localization/localization'
 import en from '@common/config/localization/translations/en.json'
 
-import { renderDeadline, renderRemaining } from '..'
+import { renderDeadline, renderRemaining, Translate } from '..'
 
-const NOW = new Date('2026-09-24T10:00:00Z')
-const DEADLINE = new Date('2026-09-26T12:30:00Z') // 50 hours 30 minutes later
+// The K-09 example: 13 Aug 18:04 in Berlin (CEST, UTC+2) is 16:04 UTC.
+const DEADLINE = new Date('2026-08-13T16:04:00Z')
+const MINUTE = 60 * 1000
+const HOUR = 60 * MINUTE
+const before = (ms: number) => new Date(DEADLINE.getTime() - ms)
 
 describe('countdown words come from en.json alone', () => {
   it('en.json registers the hour and minute words with their plurals', () => {
@@ -23,14 +30,14 @@ describe('countdown words come from en.json alone', () => {
 
   it('reads the registered keys with a count and passes no fallback text', () => {
     const calls: [string, Record<string, unknown> | undefined][] = []
-    const t = (key: string, options?: Record<string, unknown>) => {
+    const t: Translate = (key, options) => {
       calls.push([key, options])
       return `<${key}>`
     }
-    expect(renderRemaining(50 * 3600 * 1000 + 30 * 60 * 1000, t)).toBe(
+    expect(renderRemaining(50 * HOUR + 30 * MINUTE, t)).toBe(
       '<socialRecovery.display.remainingHours>'
     )
-    expect(renderRemaining(20 * 60 * 1000, t)).toBe('<socialRecovery.display.remainingMinutes>')
+    expect(renderRemaining(20 * MINUTE, t)).toBe('<socialRecovery.display.remainingMinutes>')
     expect(calls).toEqual([
       ['socialRecovery.display.remainingHours', { count: 50 }],
       ['socialRecovery.display.remainingMinutes', { count: 20 }]
@@ -38,47 +45,73 @@ describe('countdown words come from en.json alone', () => {
   })
 })
 
-describe('deadline (D-302)', () => {
-  it('renders the time in Europe/Berlin with the zone named and a countdown', () => {
-    const out = renderDeadline({ deadline: DEADLINE, now: NOW, timeZone: 'Europe/Berlin' })
-    expect(out.passed).toBe(false)
-    expect(out.date).toMatch(/26/)
-    expect(out.date).toMatch(/14:30/)
-    expect(out.zone).toMatch(/^(CEST|GMT\+2)$/)
-    expect(out.date).toContain(out.zone)
-    expect(out.remaining).toBe('50 hours')
-    expect(out.line).toBe(`Valid until ${out.date} · 50 hours left`)
+describe('deadline (D-302, K-09)', () => {
+  it('renders the K-09 example in Europe/Berlin', () => {
+    expect(
+      renderDeadline({ deadline: DEADLINE, now: before(23 * HOUR), timeZone: 'Europe/Berlin' })
+    ).toEqual({
+      date: '13 Aug, 18:04 CEST',
+      zone: 'CEST',
+      remaining: '23 hours',
+      passed: false,
+      line: 'Valid until 13 Aug, 18:04 CEST · 23 hours left'
+    })
   })
 
   it('renders the same instant in America/New_York with its own time and zone', () => {
-    const out = renderDeadline({ deadline: DEADLINE, now: NOW, timeZone: 'America/New_York' })
-    expect(out.date).toMatch(/08:30/)
-    expect(out.zone).toMatch(/^(EDT|GMT-4)$/)
-    expect(out.date).toContain(out.zone)
-    expect(out.line).toContain(out.zone)
-    expect(out.remaining).toBe('50 hours')
+    expect(
+      renderDeadline({ deadline: DEADLINE, now: before(23 * HOUR), timeZone: 'America/New_York' })
+    ).toEqual({
+      date: '13 Aug, 12:04 GMT-4',
+      zone: 'GMT-4',
+      remaining: '23 hours',
+      passed: false,
+      line: 'Valid until 13 Aug, 12:04 GMT-4 · 23 hours left'
+    })
   })
 
   it('is deterministic for a fixed now', () => {
-    const a = renderDeadline({ deadline: DEADLINE, now: NOW, timeZone: 'Europe/Berlin' })
-    const b = renderDeadline({ deadline: DEADLINE, now: new Date(NOW), timeZone: 'Europe/Berlin' })
+    const now = before(23 * HOUR)
+    const a = renderDeadline({ deadline: DEADLINE, now, timeZone: 'Europe/Berlin' })
+    const b = renderDeadline({ deadline: DEADLINE, now: new Date(now), timeZone: 'Europe/Berlin' })
     expect(a).toEqual(b)
   })
 
-  it('shortens the countdown as now advances', () => {
-    const later = new Date('2026-09-26T11:00:00Z')
+  it('counts whole hours down, then whole minutes under one hour', () => {
+    const remaining = (ms: number) =>
+      renderDeadline({ deadline: DEADLINE, now: before(ms), timeZone: 'Europe/Berlin' }).remaining
+    expect(remaining(50 * HOUR + 30 * MINUTE)).toBe('50 hours')
+    expect(remaining(HOUR + 59 * MINUTE)).toBe('1 hour')
+    expect(remaining(HOUR)).toBe('1 hour')
+    expect(remaining(20 * MINUTE)).toBe('20 minutes')
+  })
+
+  it('rounds minutes down: 59 minutes 30 seconds reads 59 minutes', () => {
     expect(
-      renderDeadline({ deadline: DEADLINE, now: later, timeZone: 'Europe/Berlin' }).remaining
-    ).toBe('1 hour')
-    const last = new Date('2026-09-26T12:10:00Z')
+      renderDeadline({
+        deadline: DEADLINE,
+        now: before(59 * MINUTE + 30 * 1000),
+        timeZone: 'Europe/Berlin'
+      }).remaining
+    ).toBe('59 minutes')
+  })
+
+  it('reads at least 1 minute while any time is left', () => {
     expect(
-      renderDeadline({ deadline: DEADLINE, now: last, timeZone: 'Europe/Berlin' }).remaining
-    ).toBe('20 minutes')
+      renderDeadline({ deadline: DEADLINE, now: before(30 * 1000), timeZone: 'Europe/Berlin' })
+        .remaining
+    ).toBe('1 minute')
   })
 
   it('renders no countdown once the deadline has passed', () => {
-    const out = renderDeadline({ deadline: DEADLINE, now: DEADLINE, timeZone: 'Europe/Berlin' })
-    expect(out.passed).toBe(true)
-    expect(out.remaining).toBeNull()
+    expect(
+      renderDeadline({ deadline: DEADLINE, now: DEADLINE, timeZone: 'Europe/Berlin' })
+    ).toEqual({
+      date: '13 Aug, 18:04 CEST',
+      zone: 'CEST',
+      remaining: null,
+      passed: true,
+      line: null
+    })
   })
 })

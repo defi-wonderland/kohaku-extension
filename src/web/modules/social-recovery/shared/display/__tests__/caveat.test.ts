@@ -12,13 +12,17 @@ const CAVEAT = 'The name can change hands. Check the full address.'
 
 describe('resolved name caveat (I-41)', () => {
   it('carries the caveat beside a full address the reader is asked to check', () => {
-    const out = renderResolvedName('alice.eth', 'besideAddressToCheck')
-    expect(out).toEqual({ name: 'alice.eth', caveat: CAVEAT })
+    expect(renderResolvedName('alice.eth', 'besideAddressToCheck')).toEqual({
+      name: 'alice.eth',
+      caveat: CAVEAT
+    })
   })
 
   it('carries the caveat on a name rendered alone for an address the reader acts on', () => {
-    const out = renderResolvedName('alice.eth', 'aloneForAction')
-    expect(out).toEqual({ name: 'alice.eth', caveat: CAVEAT })
+    expect(renderResolvedName('alice.eth', 'aloneForAction')).toEqual({
+      name: 'alice.eth',
+      caveat: CAVEAT
+    })
   })
 
   it('carries no caveat on a name shown for information only', () => {
@@ -35,8 +39,13 @@ describe('resolved name caveat (I-41)', () => {
   })
 
   it('keeps the caveat on an ellipsized name (D-302: 24 characters)', () => {
-    const out = renderResolvedName(`${'a'.repeat(30)}.eth`, 'besideAddressToCheck')
-    expect(out.name).toBe(`${'a'.repeat(23)}…`)
-    expect(out.caveat).toBe(CAVEAT)
+    expect(renderResolvedName(`${'a'.repeat(30)}.eth`, 'besideAddressToCheck')).toEqual({
+      name: `${'a'.repeat(23)}…`,
+      caveat: CAVEAT
+    })
+  })
+
+  it('returns null for an empty name in every use, so no caveat floats with no name', () => {
+    NAME_USES.forEach((use) => expect(renderResolvedName('', use)).toBeNull())
   })
 })
