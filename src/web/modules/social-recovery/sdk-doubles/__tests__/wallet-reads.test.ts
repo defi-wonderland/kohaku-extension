@@ -9,7 +9,12 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 import type { IWalletReadsDouble } from '@web/modules/social-recovery/sdk-doubles'
-import type { Address, CreationRecord, Verdict } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  ApproverReply,
+  CreationRecord,
+  Verdict
+} from '@web/modules/social-recovery/sdk-interfaces'
 
 import { createWorld, eachIt, expectThrown, fillAll, membersOf, openRecovery } from './harness'
 
@@ -46,6 +51,26 @@ describe('the cut-q-22 seam', () => {
       expect(good).toBe('satisfied')
       const forged = { ...reply, proof: `0x${'ab'.repeat(65)}` as const }
       expect(await reads.verifyReply(request, forged)).toBe('rejected')
+    })
+  })
+
+  describe('verifyReply on malformed input', () => {
+    eachIt([
+      ['an empty object', {}],
+      ['null', null],
+      ['a reply with no proof', { kind: 'recovery-proof-reply', version: 1, place: 0 }]
+    ] as const)('answers %s as rejected, without throwing', async (sample) => {
+      const opened = await openRecovery()
+      const request = opened.requests[0]!
+      const pasted = sample[1] as unknown as ApproverReply
+      let answer: unknown
+      await expect(
+        (async () => {
+          answer = await opened.world.walletReads().verifyReply(request, pasted)
+        })()
+      ).resolves.toBeUndefined()
+      // A verdict is an answer, never a refusal (D-201): malformed input is rejected.
+      expect(answer).toBe('rejected')
     })
   })
 

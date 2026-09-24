@@ -41,6 +41,7 @@ import {
 
 import type { ScriptedChain } from './chain'
 import { digestOfRequest, doubleProof, hashOf } from './encoding'
+import { codedError } from './scripts'
 
 /** The four shipped method kinds. */
 export const METHOD_KINDS_SHIPPED = ['wallet', 'passkey', 'zkpassport', 'aadhaar'] as const
@@ -155,7 +156,11 @@ export class WalletMethodDouble extends MethodDouble {
     return this.codec.encodeConfig({ address: address as Address })
   }
 
-  /** The typed data the guardian's wallet signs, handed over as it is. */
+  /**
+   * The typed data the guardian's wallet signs, handed over as it is: D-204's
+   * `{ domain, types, primaryType, message }`, numeric chain id, the `Approval`
+   * or `Cancellation` members alone (the orchestrator builds it into the ctx).
+   */
   signingInput(ctx: MethodContext): unknown {
     return ctx.typedData
   }
@@ -212,7 +217,8 @@ export class PasskeyMethodDouble extends MethodDouble {
   /** `params: { relyingPartyId, userName }`; returns the creation options. */
   enrollInput(params: unknown): unknown {
     const p = params as { relyingPartyId?: string; userName?: string } | undefined
-    if (!p?.relyingPartyId) throw new Error('The passkey enrollment needs a relying party id.')
+    if (!p?.relyingPartyId)
+      throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
     return {
       rp: { id: p.relyingPartyId },
       user: { name: p.userName ?? '' },
@@ -234,7 +240,8 @@ export class PasskeyMethodDouble extends MethodDouble {
   /** `params: { relyingPartyId, credentialId? }`; the digest is the challenge. */
   signingInput(ctx: MethodContext, params?: unknown): unknown {
     const p = params as { relyingPartyId?: string; credentialId?: string } | undefined
-    if (!p?.relyingPartyId) throw new Error('The passkey signing input needs a relying party id.')
+    if (!p?.relyingPartyId)
+      throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
     return {
       challenge: ctx.digest,
       rpId: p.relyingPartyId,
@@ -298,7 +305,7 @@ export class ZkPassportMethodDouble extends MethodDouble {
       purpose?: string
     }
     if (!p?.domain || !p?.scope)
-      throw new Error('The zkPassport request needs a domain and a scope.')
+      throw codedError('params-missing', { method: 'zkpassport', missing: ['domain', 'scope'] })
     return {
       domain: p.domain,
       scope: p.scope,
@@ -377,9 +384,10 @@ export class AadhaarMethodDouble extends MethodDouble {
   ): { nullifierSeed: string; issuerCertificate: string; signal: string } {
     const p = params as { nullifierSeed?: string | number; issuerCertificate?: string } | undefined
     if (p?.nullifierSeed === undefined || !p?.issuerCertificate) {
-      throw new Error(
-        'The Aadhaar proving arguments need a nullifier seed and an issuer certificate.'
-      )
+      throw codedError('params-missing', {
+        method: 'aadhaar',
+        missing: ['nullifierSeed', 'issuerCertificate']
+      })
     }
     return {
       nullifierSeed: String(p.nullifierSeed),
@@ -422,7 +430,7 @@ export class AadhaarMethodDouble extends MethodDouble {
    * satisfying material is the one enrolled: pass the QR data used at enrollment.
    */
   satisfyingMaterial(_request: ApproverRequest, qrData?: Hex): { qrData: Hex } {
-    if (!qrData) throw new Error('Pass the QR data the credential was enrolled with.')
+    if (!qrData) throw codedError('material-missing', { method: 'aadhaar', missing: ['qrData'] })
     return { qrData }
   }
 

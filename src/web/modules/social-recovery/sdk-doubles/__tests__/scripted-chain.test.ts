@@ -118,9 +118,36 @@ describe('scripted chain', () => {
         expect(note!.canceller.toLowerCase()).toBe(world.account.toLowerCase())
       }
       if (canceller === 'proofs') expect(note!.cancelledBy).toBe('cancelByProofs')
+      // The harness scripts "nobody" as a security stop's veto (D-371: the
+      // stopped method authorized the cancel); the setup write is the next test.
       if (canceller === 'nobody') {
-        expect(['cancelByVeto', 'setupWrite']).toContain(note!.cancelledBy)
+        expect(note!.cancelledBy).toBe('cancelByVeto')
+        expect(note!.vetoingMethod.toLowerCase()).toBe(
+          world.descriptor.methodZkpassport.toLowerCase()
+        )
+        expect(note!.usedPlaces).toEqual([])
       }
+    })
+
+    it('reads a setup write over a waiting attempt as its cancel, by nobody', async () => {
+      const world = createWorld()
+      world.script.setupCommitted('private')
+      world.script.attempt('pending')
+      const { attemptId } = (await world.manager.stateOf()).attempt
+      world.script.setupCommitted('shape-visible')
+      const record = await (await world.recoveryClient()).recoveryState()
+      expect(record.attempt.state).toBe('Cancelled')
+      const cancelled = (await notes(world)).filter(
+        (n): n is Extract<Notification, { kind: 'attempt-cancelled' }> =>
+          n.kind === 'attempt-cancelled'
+      )
+      expect(cancelled).toHaveLength(1)
+      const [note] = cancelled
+      expect(note!.attemptId).toBe(attemptId)
+      expect(note!.cancelledBy).toBe('setupWrite')
+      expect(note!.canceller).toBe(ZERO)
+      expect(note!.vetoingMethod).toBe(ZERO)
+      expect(note!.usedPlaces).toEqual([])
     })
   })
 

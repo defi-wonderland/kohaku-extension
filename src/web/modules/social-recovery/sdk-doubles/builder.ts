@@ -32,6 +32,7 @@ import { ActionCodecDouble } from './action-codec'
 import type { ScriptedChain } from './chain'
 import { ClientContext, defaultClientConfiguration } from './context'
 import { sameAddress } from './encoding'
+import { codedError, type CodedError } from './scripts'
 import { EventManagerDouble } from './event-manager'
 import { MethodsOrchestratorDouble } from './orchestrator'
 import { narrowModuleReads, PolicyManagerDouble } from './policy-manager'
@@ -56,13 +57,18 @@ const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
   'auditedActions'
 ]
 
-/** The thrown value of a construction check (sdk.md D-208): an ordinary error naming the check. */
-export interface ConstructionRefusal extends Error {
+/**
+ * The thrown value of a construction check (sdk.md D-208): an ordinary error
+ * carrying the code `construction.<check>` and the check's name in `check`
+ * (`descriptor`, `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
+ * `digest-version`). sdk-interfaces/ declares no construction-refusal shape.
+ */
+export interface ConstructionRefusal extends CodedError {
   check: string
 }
 
 export const constructionRefusal = (check: string, message: string): ConstructionRefusal => {
-  const error = new Error(message) as ConstructionRefusal
+  const error = codedError(`construction.${check}`, { check }, message) as ConstructionRefusal
   error.name = 'ConstructionRefusal'
   error.check = check
   return error
@@ -93,6 +99,9 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
 
   private context?: ClientContext
 
+  /** The action part seen through its arming seam, handed to the setup client alone. */
+  private arming?: IRecoveryActionArming
+
   private checks?: Promise<void>
 
   private setupClient?: Promise<ISetupClient>
@@ -104,7 +113,8 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
   constructor(private readonly chain: ScriptedChain) {}
 
   private set<T>(apply: () => T): this {
-    if (this.frozen) throw new Error('The builder refuses a setter after its first build.')
+    if (this.frozen)
+      throw codedError('builder.frozen', {}, 'The builder refuses a setter after its first build.')
     apply()
     return this
   }
@@ -198,11 +208,13 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     if (!codecs.some((c) => c.actions.some((a) => sameAddress(a, descriptor.action)))) {
       codecs.push(new ActionCodecDouble([descriptor.action]))
     }
+    const actionPart = this.actionBinding?.implementation ?? new RecoveryActionDouble(this.chain)
+    this.arming = actionPart
     this.context = {
       chain: this.chain,
       provider: this.providerPart,
       manager: this.managerPart ?? new PolicyManagerDouble(this.chain),
-      action: this.actionBinding?.implementation ?? new RecoveryActionDouble(this.chain),
+      action: actionPart,
       actionAddress,
       events:
         this.eventsPart ??
@@ -258,7 +270,9 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
 
   buildSetupClient(): Promise<ISetupClient> {
     if (!this.setupClient) {
-      this.setupClient = this.construct().then((ctx) => new SetupClientDouble(ctx))
+      this.setupClient = this.construct().then(
+        (ctx) => new SetupClientDouble(ctx, this.arming as IRecoveryActionArming)
+      )
     }
     return this.setupClient
   }

@@ -111,7 +111,10 @@
       "remainingHours": "{{count}} hour",
       "remainingHours_plural": "{{count}} hours",
       "remainingMinutes": "{{count}} minute",
-      "remainingMinutes_plural": "{{count}} minutes"
+      "remainingMinutes_plural": "{{count}} minutes",
+      "publishers": {
+        "ethereumFoundation": "Ethereum Foundation"
+      }
     },
     "ruleLines": {
       "allMustAnswer": "All {{n}} must answer. Losing any one locks you out.",
