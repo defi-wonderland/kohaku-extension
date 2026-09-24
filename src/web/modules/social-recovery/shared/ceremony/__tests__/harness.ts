@@ -327,7 +327,17 @@ export interface AuthDataOptions {
   signCount?: number
   credentialId?: Uint8Array
   point?: P256Point
+  /** The AAGUID in its dashed form; all zero by default, as attestation `none` may give. */
+  aaguid?: string
 }
+
+/** Google Password Manager's AAGUID, the one the proof of concept saw over hybrid. */
+export const GOOGLE_AAGUID = 'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4'
+/** iCloud Keychain's AAGUID (the community list of passkey provider AAGUIDs). */
+export const APPLE_AAGUID = 'fbfc3007-154e-4ecc-8c0b-6e020557d7bd'
+export const ZERO_AAGUID = '00000000-0000-0000-0000-000000000000'
+/** An AAGUID no list names. */
+export const UNKNOWN_AAGUID = '0badc0de-1234-4abc-8def-0123456789ab'
 
 /**
  * Authenticator data: rpIdHash (32) | flags (1) | signCount (4), then the
@@ -339,7 +349,8 @@ export const authenticatorData = ({
   rpIdHash = ORIGIN_HASH,
   signCount = 0,
   credentialId,
-  point
+  point,
+  aaguid = ZERO_AAGUID
 }: AuthDataOptions): Uint8Array => {
   const head = concatBytes(hexToBytes(rpIdHash), [flags], bigToBytes(BigInt(signCount), 4))
   // eslint-disable-next-line no-bitwise
@@ -347,7 +358,7 @@ export const authenticatorData = ({
   if (!credentialId || !point) throw new Error('attested credential data needs an id and a key')
   return concatBytes(
     head,
-    new Uint8Array(16),
+    hexToBytes(aaguid.replace(/-/g, '')),
     bigToBytes(BigInt(credentialId.length), 2),
     credentialId,
     coseKey(point)
@@ -433,6 +444,8 @@ export interface AttestationOptions {
   attachment?: 'platform' | 'cross-platform'
   transports?: string[]
   rawId?: Uint8Array
+  aaguid?: string
+  rpIdHash?: Hex
 }
 
 /** A `PublicKeyCredential` as `navigator.credentials.create` resolves it. */
@@ -441,10 +454,18 @@ export const fakeAttestation = ({
   point,
   attachment = 'platform',
   transports = ['internal', 'hybrid'],
-  rawId = Uint8Array.from({ length: 20 }, (_, i) => i + 1)
+  rawId = Uint8Array.from({ length: 20 }, (_, i) => i + 1),
+  aaguid,
+  rpIdHash
 }: AttestationOptions): FakeAttestation => {
-  // eslint-disable-next-line no-bitwise
-  const authData = authenticatorData({ flags: flags | FLAGS.AT, credentialId: rawId, point })
+  const authData = authenticatorData({
+    // eslint-disable-next-line no-bitwise
+    flags: flags | FLAGS.AT,
+    credentialId: rawId,
+    point,
+    aaguid,
+    rpIdHash
+  })
   const response = instanceOf('AuthenticatorAttestationResponse', {
     clientDataJSON: toBuffer(clientData('webauthn.create', new Uint8Array(32))),
     attestationObject: toBuffer(attestationObject(authData)),
@@ -477,6 +498,7 @@ export interface AssertionOptions {
   attachment?: 'platform' | 'cross-platform'
   rawId?: Uint8Array
   challenge?: Uint8Array
+  rpIdHash?: Hex
 }
 
 /** A `PublicKeyCredential` as `navigator.credentials.get` resolves it, signature DER. */
@@ -486,9 +508,10 @@ export const fakeAssertion = ({
   flags = SYNCED_FLAGS,
   attachment = 'cross-platform',
   rawId = Uint8Array.from({ length: 20 }, (_, i) => i + 1),
-  challenge = new Uint8Array(32)
+  challenge = new Uint8Array(32),
+  rpIdHash
 }: AssertionOptions): FakeAssertion => {
-  const authData = authenticatorData({ flags, signCount: 0 })
+  const authData = authenticatorData({ flags, signCount: 0, rpIdHash })
   const signature = derSignature(r, s)
   const response = instanceOf('AuthenticatorAssertionResponse', {
     clientDataJSON: toBuffer(clientData('webauthn.get', challenge)),
@@ -660,17 +683,19 @@ export const fakeMethod = (
   deviceBinding: DeviceBinding = 'browser-authenticator'
 ): FakeMethod => ({
   modules: jest.fn<Address[], [unknown]>(() => [PASSKEY_METHOD]),
-  enrollInput: jest.fn((params: unknown) =>
-    script.enrollInput !== undefined ? answerSync(script.enrollInput) : { params }
-  ),
+  enrollInput: jest.fn((params: unknown) => {
+    if (script.enrollInput !== undefined) return answerSync(script.enrollInput)
+    const p = params as { relyingPartyId?: string; userName?: string } | undefined
+    return { rp: { id: p?.relyingPartyId }, user: { name: p?.userName }, params }
+  }),
   configFrom: jest.fn<Promise<Hex | EnrollFailure>, [unknown, unknown]>(async () =>
     answer(script.configFrom ?? CONFIG_HEX)
   ),
-  signingInput: jest.fn((ctx: MethodContext, params?: unknown) =>
-    script.signingInput !== undefined
-      ? answerSync(script.signingInput)
-      : { challenge: ctx.digest, params }
-  ),
+  signingInput: jest.fn((ctx: MethodContext, params?: unknown) => {
+    if (script.signingInput !== undefined) return answerSync(script.signingInput)
+    const p = params as { relyingPartyId?: string } | undefined
+    return { challenge: ctx.digest, rpId: p?.relyingPartyId, params }
+  }),
   replyFrom: jest.fn<Promise<Hex | ReplyFailure>, [MethodContext, unknown, unknown]>(async () =>
     answer(script.replyFrom ?? PROOF_HEX)
   ),
@@ -765,64 +790,67 @@ export const methodRunCount = (method: FakeMethod, orchestrator: FakeOrchestrato
 export const FOUR_VERDICTS = ['passed', 'failed', 'unavailable', 'not-supported'] as const
 export type FourVerdict = typeof FOUR_VERDICTS[number]
 
-/** The notes a row renders in place of an error (D-372, D-305, en.json `ceremony`). */
-export const NOTES = ['cancelled', 'refused', 'unreachable'] as const
+/** The two notes a ceremony returns before the method runs (D-372, D-305). */
+export const NOTES = ['cancelled', 'refused'] as const
 export type Note = typeof NOTES[number]
 
 export type Outcome =
   | { type: 'verdict'; verdict: FourVerdict; cause?: string; retry: boolean; raw: unknown }
-  | { type: 'note'; note: Note; retry?: boolean; raw: unknown }
+  | { type: 'note'; note: Note; raw: unknown }
 
 type CeremonyModule = typeof import('@web/modules/social-recovery/shared/ceremony')
+type BrowserDefaultsModule =
+  typeof import('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults')
+type CeremonyOutcome = import('@web/modules/social-recovery/shared/ceremony').CeremonyOutcome
+type CeremonyCall = import('@web/modules/social-recovery/shared/ceremony').CeremonyCall
+type CeremonyDevice = import('@web/modules/social-recovery/shared/ceremony').CeremonyDevice
 
-/** The lane, loaded after the globals above exist. */
+/* eslint-disable global-require, @typescript-eslint/no-var-requires */
+/** The lane's pure entry, loaded after the globals above exist. */
 export const ceremony = (): CeremonyModule =>
-  // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
   require('@web/modules/social-recovery/shared/ceremony') as CeremonyModule
 
-const VERDICT_ALIASES: Record<string, FourVerdict> = {
+/** The tab's browser defaults: the passkey device over `navigator.credentials` at this page's origin. */
+export const browserDefaults = (): BrowserDefaultsModule =>
+  require('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults') as BrowserDefaultsModule
+/* eslint-enable global-require, @typescript-eslint/no-var-requires */
+
+const LANE_VERDICT: Record<string, FourVerdict> = {
   passed: 'passed',
-  tested: 'passed',
   failed: 'failed',
-  testFailed: 'failed',
   unavailable: 'unavailable',
-  testUnavailable: 'unavailable',
-  'not-supported': 'not-supported',
   notSupported: 'not-supported'
 }
 
-const NOTE_ALIASES: Record<string, Note> = {
-  cancelled: 'cancelled',
-  refused: 'refused',
-  unreachable: 'unreachable'
-}
-
-const causeText = (cause: unknown): string | undefined => {
-  if (cause === undefined || cause === null) return undefined
-  if (typeof cause === 'string') return cause
-  if (cause instanceof Error) return cause.message
-  if (typeof cause === 'object' && 'cause' in (cause as object))
-    return causeText((cause as { cause: unknown }).cause)
-  if (typeof cause === 'object' && 'message' in (cause as object))
-    return String((cause as { message: unknown }).message)
-  return String(cause)
-}
+const TO_LANE_VERDICT = {
+  passed: 'passed',
+  failed: 'failed',
+  unavailable: 'unavailable',
+  'not-supported': 'notSupported'
+} as const
 
 /**
  * Reads one host result as exactly one verdict or one note, and throws on
- * anything else: no result may carry two, none may carry neither.
+ * anything else: no result may carry two, none may carry neither, and no
+ * verdict may fall outside the lane's closed four. The cause text joins the
+ * lane's cause slug and the detail it carries (a thrown refusal's message).
  */
 export const toOutcome = (raw: unknown): Outcome => {
   const r = raw as Record<string, unknown>
   if (!r || typeof r !== 'object') throw new Error(`host result is not a record: ${String(raw)}`)
-  const verdict = typeof r.verdict === 'string' ? VERDICT_ALIASES[r.verdict] : undefined
-  const note = typeof r.note === 'string' ? NOTE_ALIASES[r.note] : undefined
-  if (r.verdict !== undefined && !verdict) throw new Error(`unknown verdict ${String(r.verdict)}`)
-  if (r.note !== undefined && !note) throw new Error(`unknown note ${String(r.note)}`)
-  if (verdict && note) throw new Error('host result carries a verdict and a note at once')
-  if (verdict)
-    return { type: 'verdict', verdict, cause: causeText(r.cause), retry: r.retry === true, raw }
-  if (note) return { type: 'note', note, retry: r.retry === true, raw }
+  if (r.kind === 'verdict') {
+    if ('note' in r) throw new Error('host result carries a verdict and a note at once')
+    const verdict = typeof r.verdict === 'string' ? LANE_VERDICT[r.verdict] : undefined
+    if (!verdict) throw new Error(`unknown verdict ${String(r.verdict)}`)
+    const cause = [r.cause, r.detail].filter((c) => typeof c === 'string' && c).join(': ')
+    return { type: 'verdict', verdict, cause: cause || undefined, retry: r.retry === true, raw }
+  }
+  if (r.kind === 'dismissed') {
+    if ('verdict' in r) throw new Error('host result carries a verdict and a note at once')
+    if (r.note !== 'cancelled' && r.note !== 'refused')
+      throw new Error(`unknown note ${String(r.note)}`)
+    return { type: 'note', note: r.note, raw }
+  }
   throw new Error(`host result carries neither a verdict nor a note: ${JSON.stringify(raw)}`)
 }
 
@@ -830,60 +858,103 @@ export interface HostEnv {
   method: FakeMethod
   orchestrator: FakeOrchestrator
   request?: ApproverRequest
+  /** What the caller's record hands the method; by default the origin string as its relying party id. */
+  params?: unknown
+  /** The holder chose the browser's phone hand-off. */
+  handOff?: boolean
+  /** A device other than the page's own passkey device. */
+  device?: CeremonyDevice
+}
+
+/** The params a caller hands a passkey method: the full origin string as its relying party id (D-372). */
+export const callerParams = () => ({ relyingPartyId: EXTENSION_ORIGIN, userName: 'holder' })
+
+/**
+ * Runs one call the way the tab does: `runCeremony` with the page's own
+ * passkey device (`browserPasskeyDevice`, over the mocked
+ * `navigator.credentials` at this page's origin) for the browser-authenticator
+ * binding. The device is built per call, after the test installed its mock.
+ */
+const runCall = async (call: CeremonyCall, env: HostEnv): Promise<unknown> => {
+  const device = env.device ?? browserDefaults().browserPasskeyDevice()
+  return ceremony().runCeremony(
+    { call, method: 'passkey', id: 'req-1', handOff: env.handOff ?? false },
+    {
+      orchestrator: env.orchestrator,
+      method: env.method,
+      methodAddress: PASSKEY_METHOD,
+      params: env.params ?? callerParams(),
+      request: env.request ?? fixtureRequest()
+    },
+    { devices: device ? { 'browser-authenticator': device } : {} }
+  )
 }
 
 /** The four hosts of D-372, each run to its result. */
 export const hosts = {
-  enroll: async ({ method, orchestrator }: HostEnv): Promise<Outcome> =>
-    toOutcome(
-      await ceremony().runEnrollHost({ method, orchestrator, methodAddress: PASSKEY_METHOD })
-    ),
-  testAccess: async ({ method, orchestrator, request = fixtureRequest() }: HostEnv) =>
-    toOutcome(await ceremony().runTestAccessHost({ method, orchestrator, request })),
-  createClaim: async ({ method, orchestrator, request = fixtureRequest() }: HostEnv) =>
-    toOutcome(await ceremony().runCreateClaimHost({ method, orchestrator, request })),
-  healthCheck: async ({ method, orchestrator, request = fixtureRequest() }: HostEnv) =>
-    toOutcome(await ceremony().runHealthCheckHost({ method, orchestrator, request }))
+  enroll: async (env: HostEnv): Promise<Outcome> => toOutcome(await runCall('enroll', env)),
+  testAccess: async (env: HostEnv): Promise<Outcome> => toOutcome(await runCall('testAccess', env)),
+  createClaim: async (env: HostEnv): Promise<Outcome> =>
+    toOutcome(await runCall('createClaim', env)),
+  healthCheck: async (env: HostEnv): Promise<Outcome> =>
+    toOutcome(await runCall('healthCheck', env))
 }
 export type HostName = keyof typeof hosts
 
 /** The synced or device-bound kind the lane reads from authenticator data. */
-export const kindFromAuthData = (authData: Uint8Array): 'synced' | 'device-bound' =>
-  ceremony().readCredentialKind(authData)
+export const kindFromAuthData = (authData: Uint8Array): string =>
+  ceremony().passkeyFactsOf({ authenticatorData: authData }).kind
 
 /** The lane's high-`s` normalization, on a DER signature. */
 export const normalizeSignature = (signature: Uint8Array): unknown =>
-  ceremony().normalizeLowS(signature)
+  ceremony().normalizeDerSignature(signature).signature
 
-/** The relying party the lane reads at runtime. */
-export const relyingParty = (): { id: string; origin: string; idHash: string } =>
-  ceremony().relyingParty()
+/** The relying party the tab reads at runtime from this page's location. */
+export const relyingParty = (): { id: string; origin: string; idHash: string } => {
+  const rp = ceremony().relyingPartyOf(window.location)
+  return { id: rp.rpId, origin: rp.relyingPartyId, idHash: rp.rpIdHash }
+}
 
-/** The lane's dispatch to the background, held while the tab is hidden. */
-export const backgroundGate = (send: (message: unknown) => void) =>
-  ceremony().createBackgroundDispatch(send)
-
-/** The lane's wait on a phone hand-off. */
-export const awaitHandOff = (connect: () => Promise<unknown>, timeoutMs: number) =>
-  ceremony().awaitHandOff(connect, { timeoutMs })
+/** The lane's visibility gate over this document, as a send that holds while hidden. */
+export const backgroundGate = (send: (message: unknown) => unknown) => {
+  const gate = ceremony().createVisibilityGate(document)
+  // A test reads what `send` received; the promise the gate returns is not the subject.
+  const dispatch = (message: unknown): void => {
+    gate.dispatch(() => send(message)).catch(() => undefined)
+  }
+  return Object.assign(dispatch, { gate })
+}
 
 /** The PT-036 method chip the lane renders a verdict as. */
-export const chipOf = (verdict: FourVerdict): string => ceremony().verdictChip(verdict)
+export const chipOf = (verdict: FourVerdict): string =>
+  ceremony().VERDICT_CHIP[TO_LANE_VERDICT[verdict]]
 
 /** The lane's own closed list of verdicts. */
 export const laneVerdictVocabulary = (): readonly unknown[] => ceremony().CEREMONY_VERDICTS
 
+/** The en.json note an outcome renders on its row. */
+export const noteKeyOf = (outcome: Outcome, call: CeremonyCall): string =>
+  ceremony().noteKeyOfOutcome(outcome.raw as CeremonyOutcome, call)
+
+/** The en.json line an outcome renders under its chip, or null. */
+export const lineKeyOf = (outcome: Outcome): string | null =>
+  ceremony().lineKeyOfOutcome(outcome.raw as CeremonyOutcome)
+
 /** The synced or device-bound kind a passed enrollment carries. */
-export const enrolledKind = (outcome: Outcome): unknown => {
-  const raw = outcome.raw as Record<string, unknown>
-  return raw.kind ?? raw.credentialKind
-}
+export const enrolledKind = (outcome: Outcome): unknown =>
+  (outcome.raw as { value?: { facts?: { kind?: unknown } } }).value?.facts?.kind
 
 // ---------------------------------------------------------------------------
 // The harness's own checks
 // ---------------------------------------------------------------------------
 
-describe('ceremony test harness', () => {
+// Registered only when Jest runs this file itself: a suite that imports the
+// harness does not run its checks again under its own hooks.
+const runningHarnessItself = /[\\/]harness\.ts$/.test(expect.getState().testPath ?? '')
+
+const describeHarness = runningHarnessItself ? describe : () => undefined
+
+describeHarness('ceremony test harness', () => {
   it('round-trips a DER signature with a high s', () => {
     const s = P256_N - BigInt(5)
     const der = derSignature(BigInt(7), s)

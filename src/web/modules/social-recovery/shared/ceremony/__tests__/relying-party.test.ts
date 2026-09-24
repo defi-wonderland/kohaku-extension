@@ -11,7 +11,10 @@
  * relying party id. The lane reads the id at runtime and commits to none (brief,
  * open question 13), so the page here is served from the proof's extension id.
  */
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+
 import {
+  bytesToHex,
   EXTENSION_ID,
   EXTENSION_ORIGIN,
   fakeAssertion,
@@ -21,15 +24,13 @@ import {
   generatePoint,
   hosts,
   installCredentials,
+  methodRunCount,
   ORIGIN_HASH,
   P256Point,
   relyingParty,
   stringsIn,
-  SYNCED_FLAGS,
-  bytesToHex
+  SYNCED_FLAGS
 } from './harness'
-
-type ChromeGlobal = { chrome?: unknown }
 
 let point: P256Point
 let bareIdHash: string
@@ -42,17 +43,6 @@ beforeAll(async () => {
     new TextEncoder().encode(EXTENSION_ID)
   )
   bareIdHash = bytesToHex(new Uint8Array(digest))
-  // The extension's runtime, as Chrome serves it to this page.
-  ;(globalThis as ChromeGlobal).chrome = {
-    runtime: {
-      id: EXTENSION_ID,
-      getURL: (path: string) => `${EXTENSION_ORIGIN}/${path.replace(/^\//, '')}`
-    }
-  }
-})
-
-afterAll(() => {
-  delete (globalThis as ChromeGlobal).chrome
 })
 
 beforeEach(() => {
@@ -105,32 +95,76 @@ describe('the ceremonies', () => {
   )
 })
 
-describe('what the method is handed', () => {
-  it('receives the full origin string as the relying party id at enrollment', async () => {
+describe('the origin string the method names', () => {
+  // D-372: the wallet hands the SDK the full origin string as the relying
+  // party id, so the method's options name `chrome-extension://<id>`. The
+  // browser takes the host: the device replaces the id and keeps the rest.
+  it('becomes the host in the creation options', async () => {
     const method = fakeMethod()
-    const orchestrator = fakeOrchestrator(method)
-    await hosts.enroll({ method, orchestrator })
-    const params = [
-      ...method.enrollInput.mock.calls.map((c) => c[0]),
-      ...orchestrator.enrollInput.mock.calls.map((c) => c[1])
-    ]
-    expect(params.length).toBeGreaterThan(0)
-    expect(stringsIn(params)).toContain(EXTENSION_ORIGIN)
+    await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    const asked = method.enrollInput.mock.results[0].value as { rp: { id: string } }
+    expect(asked.rp.id).toBe(EXTENSION_ORIGIN)
+    const options = creds.create.mock.calls[0][0] as CredentialCreationOptions
+    expect(options.publicKey?.rp.id).toBe(EXTENSION_ID)
   })
 
-  it('receives the full origin string as the relying party id at a claim', async () => {
+  it('becomes the host in the request options', async () => {
     const method = fakeMethod()
-    const orchestrator = fakeOrchestrator(method)
-    await hosts.createClaim({ method, orchestrator })
-    const params = [
-      ...method.signingInput.mock.calls.map((c) => c[1]),
-      ...orchestrator.signingInput.mock.calls.map((c) => c[1])
-    ]
-    expect(params.length).toBeGreaterThan(0)
-    expect(stringsIn(params)).toContain(EXTENSION_ORIGIN)
+    await hosts.createClaim({ method, orchestrator: fakeOrchestrator(method) })
+    const asked = method.signingInput.mock.results[0].value as { rpId: string }
+    expect(asked.rpId).toBe(EXTENSION_ORIGIN)
+    const options = creds.get.mock.calls[0][0] as CredentialRequestOptions
+    expect(options.publicKey?.rpId).toBe(EXTENSION_ID)
   })
 
-  it('is never handed the hash of the bare id', async () => {
+  it('refuses a relying party other than the extension origin before any ceremony', async () => {
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.enroll({
+      method,
+      orchestrator,
+      params: { relyingPartyId: 'https://example.com' }
+    })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
+    expect(creds.create).not.toHaveBeenCalled()
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+})
+
+describe('a credential committed under the bare id', () => {
+  // An authenticator that hashed the bare id (or a build under another id)
+  // does not answer for this origin: the host reads it from the ceremony's own
+  // authenticator data and never lets the method package it.
+  it('is refused at enrollment before the method runs', async () => {
+    creds.restore()
+    creds = installCredentials({
+      create: async () =>
+        fakeAttestation({ flags: SYNCED_FLAGS, point, rpIdHash: bareIdHash as Hex }).credential
+    })
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.enroll({ method, orchestrator })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('is refused at a claim before the method runs', async () => {
+    creds.restore()
+    creds = installCredentials({
+      get: async () =>
+        fakeAssertion({ r: BigInt(5), s: BigInt(6), rpIdHash: bareIdHash as Hex }).credential
+    })
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.createClaim({ method, orchestrator })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('never reaches the method or the outcome of a passed enrollment', async () => {
     const method = fakeMethod()
     const orchestrator = fakeOrchestrator(method)
     const outcome = await hosts.enroll({ method, orchestrator })

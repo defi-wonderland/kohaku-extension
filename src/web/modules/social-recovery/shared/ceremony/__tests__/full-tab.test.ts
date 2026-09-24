@@ -14,6 +14,8 @@ import path from 'path'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 
+import { ceremony } from './harness'
+
 const ROOT = path.resolve(__dirname, '../../../../../../..')
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
 
@@ -87,6 +89,23 @@ describe('the ceremony runs in a full tab', () => {
     expect(mounts).toHaveLength(1)
     expect(mounts[0].start).toBeGreaterThan(group.end)
     expect(mounts[0].end).toBeLessThan(group.closes ?? -1)
+  })
+
+  // TabOnlyRoute keeps an action window that holds a current action, so the
+  // screen keeps its own gate: a full tab runs, the popup and the action
+  // window never do.
+  it('lets the screen run a ceremony in a full tab alone', () => {
+    const { ceremonyMayRun } = ceremony()
+    expect(ceremonyMayRun({ isTab: true, isPopup: false, isActionWindow: false })).toBe(true)
+    expect(ceremonyMayRun({ isTab: false, isPopup: true, isActionWindow: false })).toBe(false)
+    expect(ceremonyMayRun({ isTab: false, isPopup: false, isActionWindow: true })).toBe(false)
+    expect(ceremonyMayRun({ isTab: false, isPopup: false, isActionWindow: false })).toBe(false)
+  })
+
+  it('gates the screen on the page it runs in before it resolves or runs anything', () => {
+    const screen = read('src/web/modules/social-recovery/shared/ceremony/screen/CeremonyScreen.tsx')
+    expect(screen).toMatch(/ceremonyMayRun\(getUiType\(\)\)/)
+    expect(screen).toMatch(/if \(!parsed\.ok \|\| !mayRun\) return/)
   })
 
   it('adds exactly one <Route> for the ceremony screen to the registry', () => {

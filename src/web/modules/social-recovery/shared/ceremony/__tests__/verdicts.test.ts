@@ -27,6 +27,7 @@ import {
   hosts,
   installCredentials,
   laneVerdictVocabulary,
+  lineKeyOf,
   MethodScript,
   Outcome,
   P256Point,
@@ -36,6 +37,11 @@ import {
 } from './harness'
 
 const THROWN_CAUSE = 'the authenticator returned a key of the wrong curve'
+
+/** A node or a service that did not answer: a timeout, and a fetch that never reached it. */
+const timedOut = () =>
+  Object.assign(new Error('the prover service did not answer in time'), { name: 'TimeoutError' })
+const fetchFailed = () => new TypeError('Failed to fetch')
 
 /** A stringify that survives bigints, for the "never not tested" scan. */
 const scan = (value: unknown): string => {
@@ -71,13 +77,28 @@ const CASES: Record<Exclude<HostName, 'healthCheck'>, Case[]> = {
       cause: 'material-rejected'
     },
     {
-      title: 'the device or service did not answer',
+      title: 'the device did not answer',
       script: { configFrom: enrollFailure('device-unavailable') },
+      verdict: 'unavailable'
+    },
+    {
+      title: 'a service did not answer (timeout)',
+      script: { configFrom: { throws: timedOut() } },
+      verdict: 'unavailable'
+    },
+    {
+      title: 'a node did not answer (failed fetch)',
+      script: { configFrom: { throws: fetchFailed() } },
       verdict: 'unavailable'
     },
     {
       title: 'the method cannot serve it',
       script: { configFrom: enrollFailure('method-unsupported') },
+      verdict: 'not-supported'
+    },
+    {
+      title: 'the method cannot read the record version',
+      script: { configFrom: enrollFailure('version-unread') },
       verdict: 'not-supported'
     }
   ],
@@ -107,8 +128,24 @@ const CASES: Record<Exclude<HostName, 'healthCheck'>, Case[]> = {
       verdict: 'unavailable'
     },
     {
-      title: 'the device or service did not answer',
+      title: 'the check could not reach its node (failed fetch)',
+      script: { verify: { throws: fetchFailed() } },
+      verdict: 'unavailable'
+    },
+    {
+      title: 'the check throws a cause',
+      script: { verify: { throws: new Error(THROWN_CAUSE) } },
+      verdict: 'failed',
+      cause: THROWN_CAUSE
+    },
+    {
+      title: 'the device did not answer',
       script: { replyFrom: replyFailure('device-unavailable') },
+      verdict: 'unavailable'
+    },
+    {
+      title: 'a service did not answer (timeout)',
+      script: { replyFrom: { throws: timedOut() } },
       verdict: 'unavailable'
     },
     {
@@ -132,8 +169,13 @@ const CASES: Record<Exclude<HostName, 'healthCheck'>, Case[]> = {
       cause: 'material-rejected'
     },
     {
-      title: 'the device or service did not answer',
+      title: 'the device did not answer',
       script: { replyFrom: replyFailure('device-unavailable') },
+      verdict: 'unavailable'
+    },
+    {
+      title: 'a service did not answer (timeout)',
+      script: { replyFrom: { throws: timedOut() } },
       verdict: 'unavailable'
     },
     {
@@ -165,10 +207,13 @@ const expectOneVerdict = (outcome: Outcome, expected: Case) => {
   expect(outcome.type).toBe('verdict')
   if (outcome.type !== 'verdict') return
   expect(outcome.verdict).toBe(expected.verdict)
-  // UXC-13: a failed test is never a skipped one.
+  // UXC-13: a failed test is never a skipped one, in the result or the row's words.
   expect(scan(outcome.raw)).not.toMatch(/not[\s_-]?tested|skipped/i)
+  expect(lineKeyOf(outcome)).not.toBe('socialRecovery.ceremony.notTestedLine')
+  expect(chipOf(outcome.verdict)).not.toBe('notTested')
   switch (outcome.verdict) {
     case 'failed':
+      expect(lineKeyOf(outcome)).toMatch(/^socialRecovery\.ceremony\.testFailed(Line|NoMatch)$/)
       expect(outcome.cause).toEqual(expect.any(String))
       expect((outcome.cause ?? '').length).toBeGreaterThan(0)
       if (typeof expected.cause === 'string') expect(outcome.cause).toContain(expected.cause)
@@ -176,9 +221,11 @@ const expectOneVerdict = (outcome: Outcome, expected: Case) => {
       break
     case 'unavailable':
       expect(outcome.retry).toBe(true)
+      expect(lineKeyOf(outcome)).toBe('socialRecovery.ceremony.testUnavailableLine')
       break
     case 'not-supported':
       expect(outcome.retry).toBe(false)
+      expect(lineKeyOf(outcome)).toBe('socialRecovery.ceremony.notSupportedLine')
       break
     default:
       break

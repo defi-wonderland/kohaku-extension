@@ -13,8 +13,13 @@
  * that it is backed up. A credential with neither is device bound.
  */
 /* eslint-disable no-bitwise -- the flags are bits */
+import { appTranslate } from '@web/modules/social-recovery/shared/display'
+
 import {
+  APPLE_AAGUID,
   authenticatorData,
+  browserDefaults,
+  ceremony,
   DEVICE_BOUND_FLAGS,
   enrolledKind,
   fakeAttestation,
@@ -22,11 +27,15 @@ import {
   fakeOrchestrator,
   FLAGS,
   generatePoint,
+  GOOGLE_AAGUID,
   hosts,
   installCredentials,
   kindFromAuthData,
+  Outcome,
   P256Point,
-  SYNCED_FLAGS
+  SYNCED_FLAGS,
+  UNKNOWN_AAGUID,
+  ZERO_AAGUID
 } from './harness'
 
 let point: P256Point
@@ -100,5 +109,121 @@ describe('the kind an enrollment reports', () => {
     const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
     expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
     expect(enrolledKind(outcome)).toBe('device-bound')
+  })
+})
+
+/**
+ * The kind line a passed enrollment renders (ux.md D-305): "Synced passkey ·
+ * {{provider}}" or "Device-bound passkey · {{device}}", read through the real
+ * en.json. The provider comes from the authenticator's AAGUID; the device of a
+ * device-bound passkey from where the authenticator sat and the platform the
+ * browser runs on (the coordinator's ruling for PT-041's second pass).
+ */
+describe('the kind line of an enrollment', () => {
+  let creds: ReturnType<typeof installCredentials>
+  const saved = Object.getOwnPropertyDescriptor(navigator, 'platform')
+
+  const setPlatform = (platform: string) =>
+    Object.defineProperty(navigator, 'platform', { configurable: true, get: () => platform })
+
+  afterEach(() => {
+    creds.restore()
+    if (saved) Object.defineProperty(navigator, 'platform', saved)
+    else delete (navigator as unknown as Record<string, unknown>).platform
+  })
+
+  const enrollWith = async (attestation: Parameters<typeof fakeAttestation>[0]) => {
+    creds = installCredentials({ create: async () => fakeAttestation(attestation).credential })
+    const method = fakeMethod()
+    const outcome: Outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    const facts = (
+      outcome.raw as {
+        value: { facts: Parameters<ReturnType<typeof ceremony>['renderKindLine']>[0] }
+      }
+    ).value.facts
+    // The line the screen renders: the page's own platform and the app's own strings.
+    return ceremony().renderKindLine(facts, browserDefaults().pagePlatform(), appTranslate)
+  }
+
+  it("names Google for a synced passkey with Google Password Manager's AAGUID", async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({
+      flags: SYNCED_FLAGS,
+      point,
+      attachment: 'cross-platform',
+      transports: ['hybrid'],
+      aaguid: GOOGLE_AAGUID
+    })
+    expect(line).toBe('Synced passkey · Google')
+  })
+
+  it("names Apple for a synced passkey with iCloud Keychain's AAGUID", async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({
+      flags: SYNCED_FLAGS,
+      point,
+      attachment: 'platform',
+      transports: ['internal', 'hybrid'],
+      aaguid: APPLE_AAGUID
+    })
+    expect(line).toBe('Synced passkey · Apple')
+  })
+
+  it('names your password manager for an unknown AAGUID', async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({ flags: SYNCED_FLAGS, point, aaguid: UNKNOWN_AAGUID })
+    expect(line).toBe('Synced passkey · your password manager')
+  })
+
+  it('names your password manager for a zeroed AAGUID', async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({ flags: SYNCED_FLAGS, point, aaguid: ZERO_AAGUID })
+    expect(line).toBe('Synced passkey · your password manager')
+  })
+
+  it("reads a known provider's AAGUID with BE clear as device bound, never synced", async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({
+      flags: DEVICE_BOUND_FLAGS,
+      point,
+      attachment: 'platform',
+      transports: ['internal'],
+      aaguid: APPLE_AAGUID
+    })
+    expect(line).toBe('Device-bound passkey · this Mac')
+  })
+
+  it('names this phone for a device-bound passkey over the hybrid route', async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({
+      flags: DEVICE_BOUND_FLAGS,
+      point,
+      attachment: 'cross-platform',
+      transports: ['hybrid']
+    })
+    expect(line).toBe('Device-bound passkey · this phone')
+  })
+
+  it('names this Mac for a device-bound platform authenticator on macOS', async () => {
+    setPlatform('MacIntel')
+    const line = await enrollWith({
+      flags: DEVICE_BOUND_FLAGS,
+      point,
+      attachment: 'platform',
+      transports: ['internal']
+    })
+    expect(line).toBe('Device-bound passkey · this Mac')
+  })
+
+  it('names this device for a device-bound platform authenticator elsewhere', async () => {
+    setPlatform('Linux x86_64')
+    const line = await enrollWith({
+      flags: DEVICE_BOUND_FLAGS,
+      point,
+      attachment: 'platform',
+      transports: ['internal']
+    })
+    expect(line).toBe('Device-bound passkey · this device')
   })
 })
