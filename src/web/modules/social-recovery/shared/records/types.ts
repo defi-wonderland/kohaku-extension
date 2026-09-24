@@ -10,9 +10,10 @@
  */
 import type {
   Address,
-  ApproverReply,
   Configuration,
   Credential,
+  Gathering,
+  Hex,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -84,13 +85,23 @@ export const ENROLLMENT_TEST_VERDICTS = [
 export type EnrollmentTestVerdict = typeof ENROLLMENT_TEST_VERDICTS[number]
 
 /**
- * One enrollment not yet saved on chain (D-305): the credential it produced and
- * its access test verdict, with the cause a failed test reported.
+ * The kind line of a passkey row (D-305): a synced passkey follows the provider
+ * account that syncs it; a device-bound passkey lives only on this device. Read
+ * from the authenticator's own flags at enrollment.
+ */
+export const PASSKEY_BACKUP_KINDS = ['synced', 'device-bound'] as const
+export type PasskeyBackupKind = typeof PASSKEY_BACKUP_KINDS[number]
+
+/**
+ * One enrollment not yet saved on chain (D-305): the credential it produced, its
+ * access test verdict with the cause a failed test reported, and for a passkey
+ * its backup kind.
  */
 export interface Enrollment {
   credential: Credential
   test: EnrollmentTestVerdict
   cause?: string
+  backup?: PasskeyBackupKind
 }
 
 /** 4. The enrollments. */
@@ -149,26 +160,41 @@ export type RecoveryWipeEvent = typeof RECOVERY_WIPE_EVENTS[number]
 export type WipeReason = RecoveryWipeEvent
 
 /**
- * The live recovery session: the account being recovered, the attempt id the
- * wallet built the request against, and the approvals gathered so far.
+ * The four events `wipeRecoverySession` takes directly. The submission landing
+ * runs through `landSubmission`, which also writes the countdown record.
+ */
+export type DirectWipeEvent = Exclude<RecoveryWipeEvent, 'submission-landed'>
+
+/**
+ * The live recovery session: the SDK's gathering record (sdk.md D-207), which the
+ * integrator stores so the gathering survives a closed tab. Its request carries
+ * everything a resume needs: the account, the predicted attempt id (the attempt
+ * id the wallet built the request against), the setup nonce the request was
+ * built under and the deadline (`validUntil`), ux-interfaces.md D-373. Its
+ * replies are the approvals. The gathering's purpose is `approval`.
  */
 export interface LiveRecoverySession {
   state: 'live'
-  account: Address
-  predictedAttemptId: bigint
-  approvals: ApproverReply[]
+  gathering: Gathering
 }
 
-/** What a wipe leaves: one reason code and nothing else (I-38). */
+/**
+ * What a wipe leaves: the reason code, the account it names, and for
+ * `deadline-passed` the deadline that passed (the request's `validUntil`, a
+ * decimal string). This is the "one line of reason" of D-310 and I-38, from
+ * which the expired, void and setup changed states of D-392 and D-393 render
+ * after a resume. The gathering, its replies and its attempt id are gone. That
+ * the line carries the account and the deadline is the lane's reading, for the
+ * owner to rule on.
+ */
 export interface WipedRecoverySession {
   state: 'wiped'
   reason: WipeReason
+  account: Address
+  deadline?: string
 }
 
 export type RecoverySessionRecord = LiveRecoverySession | WipedRecoverySession
-
-/** The fields a caller writes into a live session. */
-export type RecoverySessionInput = Omit<LiveRecoverySession, 'state'>
 
 /**
  * The countdown's record after the submission lands: the account address alone.
@@ -180,9 +206,22 @@ export interface CountdownRecord {
 
 /**
  * The decrypted setup cache: the setup the recovery password unlocked on this
- * device, kept after the recovery executes (D-310).
+ * device, kept after the recovery executes (D-310), with the setup nonce it was
+ * read under and, where known, the setup commitment, so a reader compares the
+ * cache with the chain before trusting it. D-310 calls the wallet's storage a
+ * cache re-imported from the chain.
  */
-export type DecryptedSetupCacheRecord = Configuration
+export interface DecryptedSetupCacheRecord {
+  configuration: Configuration
+  setupNonce: bigint
+  setupCommitment?: Hex
+}
+
+/** One account's record in a listing of a chain's sessions or countdowns. */
+export interface ListedRecord<T> {
+  account: Address
+  record: StoredRecord<T>
+}
 
 /**
  * The strings a death state renders from its reason code, keys under
