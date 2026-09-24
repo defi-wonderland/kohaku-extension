@@ -261,23 +261,13 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   }
 ]
 
-// A clause at threshold zero beside other clauses: the implementer documents
-// (rule-lines README, "A clause at threshold zero is not refused here") that
-// it earns no line and the other clauses keep theirs, and the coordinator's
-// ruling leaves threshold zero out of the refused list. The lone row then
-// reads as the one method it is.
-SHAPES.push({
-  name: 'a clause at threshold zero beside a required row: the row keeps its single-method warning',
-  clauses: [row(PASSKEY), group(0, [PASSPORT, AADHAAR])],
-  expected: SINGLE_METHOD
-})
-
 // Paths that earn no line. The coordinator's ruling of 2026-09-24 (brief,
 // "Design sections and deltas"): a path with any refused clause (an empty
 // clause, a threshold above the member count, a non-integer threshold, a
 // threshold above 255) yields no lines, since a refused path recovers
-// nothing. D-305 refuses a threshold below one the same way ("A threshold
-// below one sits outside its members like a threshold above them").
+// nothing. The coordinator's later ruling (D-305 wins): a clause at threshold
+// zero is refused too, "the editor refuses a group nothing has to fill", so
+// every path holding one yields no lines, beside a required row included.
 const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   { name: 'an empty path', clauses: [] },
   { name: 'an empty clause alone', clauses: [{ threshold: 1, credentials: [] }] },
@@ -286,6 +276,14 @@ const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
     clauses: [row(PASSKEY), { threshold: 1, credentials: [] }]
   },
   { name: 'a single clause at threshold zero', clauses: [group(0, [PASSKEY, PASSPORT])] },
+  {
+    name: 'a group at threshold zero beside a required row: no single-method warning',
+    clauses: [row(PASSKEY), group(0, [PASSPORT, AADHAAR])]
+  },
+  {
+    name: 'a group at threshold zero beside a valid group',
+    clauses: [group(2, [PASSKEY, PASSPORT, GUARDIAN]), group(0, [AADHAAR, GUARDIAN])]
+  },
   { name: 'a threshold above the size', clauses: [group(3, [PASSKEY, PASSPORT])] },
   {
     name: 'a negative threshold beside a required row',
