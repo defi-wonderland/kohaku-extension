@@ -101,16 +101,30 @@ export const renderApproval = (approval: Hex | string): string =>
 /** The most characters a name or a user-typed method name renders with (D-302). */
 export const NAME_MAX_LENGTH = 24
 
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+// The user-perceived characters of `text`. Intl.Segmenter is created here, at
+// call time, and never at module load: the gecko manifest's strict_min_version
+// is 115 and Firefox ships Intl.Segmenter only from 125, so on Firefox 115 to
+// 124 a load-time `new Intl.Segmenter` would throw on import and break every
+// recovery screen. Where Intl.Segmenter is absent, the split falls back to
+// code points, which keeps a surrogate pair whole but can split a flag or a
+// joined emoji.
+const splitCharacters = (text: string): string[] => {
+  if (typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    return Array.from(segmenter.segment(text), ({ segment }) => segment)
+  }
+  return Array.from(text)
+}
 
 /**
  * A resolved name or a user-typed method name, whole up to 24 characters and
  * capped at 24 past that, the last one the ellipsis (D-302). Counts grapheme
  * clusters (user-perceived characters), so an emoji, a flag or a letter with
- * its combining marks is never split.
+ * its combining marks is never split; on a browser without Intl.Segmenter
+ * (Firefox before 125) it counts code points instead.
  */
 export const ellipsizeName = (name: string): string => {
-  const chars = Array.from(graphemeSegmenter.segment(name), ({ segment }) => segment)
+  const chars = splitCharacters(name)
   if (chars.length <= NAME_MAX_LENGTH) return name
   return `${chars.slice(0, NAME_MAX_LENGTH - 1).join('')}${ELLIPSIS}`
 }
@@ -359,11 +373,13 @@ export const COUNTDOWN_STATES = ['waiting', 'executionDue'] as const
 export type CountdownState = typeof COUNTDOWN_STATES[number]
 
 /**
- * The countdown state the time left gives: waiting while time is left,
- * execution due once the waiting period has ended (D-302).
+ * The countdown state the time left gives: waiting while a whole second is
+ * left, execution due once the waiting period has ended (D-302). It counts
+ * whole seconds, like `renderCountdownTime`, so 500 ms left never renders
+ * `00:00:00 · waiting`.
  */
 export const countdownStateOf = (remainingMs: number): CountdownState =>
-  remainingMs > 0 ? 'waiting' : 'executionDue'
+  Math.floor(remainingMs / 1000) > 0 ? 'waiting' : 'executionDue'
 
 /**
  * A running attempt's countdown (D-302, K-09): `47:12:06 · waiting` while the
