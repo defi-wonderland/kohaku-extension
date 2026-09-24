@@ -200,6 +200,29 @@ describe('socialRecovery placeholders', () => {
   })
 })
 
+// Keys the coordinator added after review (c40d5dabb, 817ff111b). The walk above
+// already lints them; this block proves they exist, so the lint covers them.
+const LATE_KEYS = [
+  'socialRecovery/writes/gas/shortfallSave',
+  'socialRecovery/writes/gas/shortfallSubmit',
+  'socialRecovery/writes/gas/shortfallCancel',
+  'socialRecovery/ceremony/passedNote'
+]
+
+describe('socialRecovery keys added after review', () => {
+  LATE_KEYS.forEach((keyPath) =>
+    it(`${keyPath} exists, passes every ban and uses allowed placeholders`, () => {
+      const entry = strings.find((candidate) => candidate.keyPath === keyPath)
+      expect(entry).toBeDefined()
+      const { value } = entry as Entry
+      expect(value.trim().length).toBeGreaterThan(0)
+      expect(CASE_INSENSITIVE_BANS.filter(({ pattern }) => pattern.test(value))).toEqual([])
+      expect(PROTECTED_BAN.test(value)).toBe(false)
+      expect(placeholdersOf(value).filter((name) => !isAllowedPlaceholder(name))).toEqual([])
+    })
+  )
+})
+
 describe('copy-lint patterns (self-check)', () => {
   const hits = (text: string) => CASE_INSENSITIVE_BANS.filter(({ pattern }) => pattern.test(text))
 

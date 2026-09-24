@@ -29,6 +29,7 @@ export type DeviceBinding = typeof DEVICE_BINDINGS[number]
 /**
  * The three answers of a local verdict: satisfied, rejected, and not judged
  * where the verdict needs a contract's own word (sdk.md D-206).
+ * Illustrative slugs, sdk.md D-206: the chapter names the three answers in prose.
  */
 export const VERDICTS = ['satisfied', 'rejected', 'not-judged'] as const
 export type Verdict = typeof VERDICTS[number]
@@ -58,6 +59,7 @@ export interface ReplyFailure {
 
 /** The typed failure `configFrom` returns, the same shape as the reply failure (sdk.md D-206). */
 export interface EnrollFailure {
+  // Illustrative, sdk.md D-206: the chapter names the reply's `reply-failure` kind and no enrollment kind.
   kind: 'enroll-failure'
   cause: MethodFailureCause
 }

@@ -7,6 +7,7 @@
 import type {
   Address,
   BlockHeader,
+  BlockTag,
   ClientConfiguration,
   Configuration,
   ConfigurationSource,
@@ -34,13 +35,23 @@ export interface ClientContext {
   codecs: IActionCodec<unknown>[]
 }
 
+/**
+ * The block tags sdk.md D-208 defaults a client to when its configuration names
+ * none: `latest` for reading and `finalized` for watching (reasons in D-203
+ * "Reorgs and finality").
+ */
+export const DEFAULT_BLOCK_TAGS: { read: BlockTag; watch: BlockTag } = {
+  read: 'latest',
+  watch: 'finalized'
+}
+
 /** The client configuration the doubles default to, with the shipped numbers of D-208. */
 export const defaultClientConfiguration = (
   overrides: Partial<ClientConfiguration> = {}
 ): ClientConfiguration => ({
   tokens: [],
   candidateKeys: [],
-  blockTags: { read: 'latest', watch: 'finalized' },
+  blockTags: { ...DEFAULT_BLOCK_TAGS },
   logChunkWidth: 10_000,
   simulate: true,
   defaultWait: 48 * 3600,
@@ -55,8 +66,9 @@ export const defaultClientConfiguration = (
 export const codecFor = (ctx: ClientContext, action: Address): IActionCodec<unknown> | undefined =>
   ctx.codecs.find((c) => c.actions.some((a) => sameAddress(a, action)))
 
+/** The block a read pins at: the configuration's read tag, or D-208's default `latest`. */
 export const pinBlock = (ctx: ClientContext): Promise<BlockHeader> =>
-  ctx.provider.block(ctx.config.blockTags.read)
+  ctx.provider.block((ctx.config.blockTags ?? DEFAULT_BLOCK_TAGS).read)
 
 /**
  * The restore of sdk.md D-202 "Restoring the configuration": pin a block, read

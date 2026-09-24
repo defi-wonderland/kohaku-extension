@@ -43,10 +43,20 @@ export interface PrepareOptions {
 /**
  * A simulation's outcome: success, or a typed error, with the address it ran
  * from (sdk.md D-202). Illustrative shape, sdk.md D-201.
+ *
+ * The error's shape has two sources that disagree. sdk.md D-201's usage block
+ * shows a flat `{ name: 'ProofRejected', place: 1, method: '0xEcdsa' }`; sdk.md
+ * D-205 "Error decoding" says the decoder answers four things, the source, the
+ * name, the selector and the argument values by name. `KitError` follows D-205.
+ * The sdk owner must confirm which shape the SDK returns.
  */
 export type Simulation = { ok: true; from: Address } | { ok: false; from: Address; error: KitError }
 
-/** One call of the batch the action will run, a description and never something to sign (sdk.md D-202). */
+/**
+ * One call of the batch the action will run, a description and never something to sign (sdk.md D-202).
+ * Illustrative, sdk.md D-202: the chapter names the batch, not its record; the fields are Ambire's
+ * `Transaction(to, value, data)` tuple (contracts D-105).
+ */
 export interface DescribedCall {
   to: Address
   value: bigint
@@ -124,6 +134,7 @@ export interface SetupState {
  * The recovery-side reading of the bound account (sdk.md D-202), pinned the
  * same way. `removedKey` is the address a handover would remove, or the value
  * saying no creation triple was given.
+ * `'no-creation-triple'` is illustrative, sdk.md D-202: the chapter names the value in prose alone.
  */
 export interface RecoveryState {
   attempt: Attempt
@@ -191,14 +202,20 @@ export interface SetupConfirmation {
   position?: LogPosition
 }
 
-/** What `moduleInfo(module)` yields: name, version and the method-interface probe (sdk.md D-201). */
+/**
+ * What `moduleInfo(module)` yields: name, version and the method-interface probe (sdk.md D-201).
+ * Illustrative, sdk.md D-201: the chapter lists the three values in prose; the field names are ours.
+ */
 export interface ModuleInfo {
   name: string
   version: string
   supportsInterface: boolean
 }
 
-/** What `actionInfo()` yields: name, version and the policy-action probe (sdk.md D-201). */
+/**
+ * What `actionInfo()` yields: name, version and the policy-action probe (sdk.md D-201).
+ * Illustrative, sdk.md D-201: the chapter lists the three values in prose; the field names are ours.
+ */
 export interface ActionInfo {
   name: string
   version: string
@@ -317,6 +334,8 @@ export interface IMethodModuleReads {
  */
 export interface IPolicyManagerInteractor extends IMethodModuleReads {
   stateOf(): Promise<ActionState>
+  // `place` is bigint here because the manager's `hashApproval` and `hashCancel` take the
+  // contract's uint256 place (contracts D-103), while the D-207 records carry it as a number.
   hashApproval(request: AttemptRequest, place: bigint): Promise<Hex>
   hashCancel(request: CancelRequest, place: bigint): Promise<Hex>
   eip712Domain(): Promise<Domain>
