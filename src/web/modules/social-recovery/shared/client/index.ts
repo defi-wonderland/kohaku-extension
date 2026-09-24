@@ -21,7 +21,9 @@ export {
   auditedActionsOn,
   auditedActionOf,
   isAuditedAction,
+  publisherKeyOf,
   type Publisher,
+  type PublisherKey,
   type AuditedAction,
   type UnknownAction
 } from './audited-actions'

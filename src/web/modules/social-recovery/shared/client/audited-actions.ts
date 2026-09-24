@@ -18,13 +18,14 @@ import type { RecoveryChain } from './chains'
 
 /**
  * The publishers of the audited actions, as slugs. A slug is data, never
- * copy: a screen renders a publisher through an en.json key named after it,
- * and this lane ships no string. The frames read "published by the Ethereum
- * Foundation" (design/live-frame-strings.md); no en.json key holds that name
- * yet, so the coordinator adds it.
+ * copy: a screen renders a publisher's name through its en.json key,
+ * `publisherKeyOf`, and this lane ships no string.
  */
 export const PUBLISHERS = ['ethereumFoundation'] as const
 export type Publisher = typeof PUBLISHERS[number]
+
+/** The en.json key of a publisher's name, `socialRecovery.display.publishers.<slug>`. */
+export type PublisherKey = `socialRecovery.display.publishers.${Publisher}`
 
 /** One audited action on one chain, with its publisher. */
 export interface AuditedAction {
@@ -80,6 +81,13 @@ export const auditedActionOf = (
   )
   return row ? { ...row } : UNKNOWN_ACTION
 }
+
+/**
+ * The en.json key of the publisher of an audited action (or of a publisher
+ * slug). A screen renders the name with `t(publisherKeyOf(row))`.
+ */
+export const publisherKeyOf = (row: Pick<AuditedAction, 'publisher'> | Publisher): PublisherKey =>
+  `socialRecovery.display.publishers.${typeof row === 'string' ? row : row.publisher}`
 
 /** Whether an action is one the kit audited, on the given chain where one is named. */
 export const isAuditedAction = (action: string | undefined, chain?: RecoveryChain): boolean =>
