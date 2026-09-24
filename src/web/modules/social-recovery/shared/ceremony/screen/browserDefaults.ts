@@ -8,6 +8,7 @@ import { storage } from '@web/extension-services/background/webapi/storage'
 
 import type { ReportStore, ReportSubscribe } from '../channel'
 import type { CeremonyDevice } from '../device'
+import { Platform, platformOf } from '../kindLine'
 import { createPasskeyDevice } from '../passkeyDevice'
 import { passkeysServed } from '../run'
 import { relyingPartyOf } from '../webauthn'
@@ -52,3 +53,11 @@ export const browserPasskeyDevice = (): CeremonyDevice | undefined =>
         relyingParty: relyingPartyOf(window.location)
       })
     : undefined
+
+/** The platform this browser runs on, for the device-bound kind line. */
+export const pagePlatform = (): Platform =>
+  typeof navigator === 'undefined'
+    ? 'other'
+    : platformOf(
+        navigator as Navigator & { userAgentData?: { platform?: string; mobile?: boolean } }
+      )

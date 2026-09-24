@@ -9,6 +9,7 @@
  */
 export * from './verdicts'
 export * from './webauthn'
+export * from './kindLine'
 export * from './visibility'
 export * from './device'
 export * from './passkeyDevice'
