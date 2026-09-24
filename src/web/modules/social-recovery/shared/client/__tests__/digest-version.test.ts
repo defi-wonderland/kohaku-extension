@@ -4,15 +4,17 @@
  * client before anything is prepared (sdk.md D-208 construction step 5,
  * ux.md D-319, the "update the wallet" state of D-306).
  */
-import { ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
+import { PolicyManagerDouble, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
 
 import {
   buildRecoveryClient,
   createWorld,
   DigestVersionRefusal,
-  failEverything,
+  isDigestVersionRefusal,
+  MANAGER_DOMAIN_NAME,
   spyOnBuilder,
-  spyOnPrepares
+  spyOnPrepares,
+  thrownBy
 } from './harness'
 
 afterEach(() => jest.restoreAllMocks())
@@ -21,51 +23,86 @@ describe('the digest-version check', () => {
   it('builds the client when the manager domain carries the descriptor digest version', async () => {
     const world = createWorld()
     expect(world.chain.manager.domain.version).toBe(world.descriptor.digestVersion)
+    expect(world.chain.manager.domain.name).toBe(MANAGER_DOMAIN_NAME)
     const client = await buildRecoveryClient(world.config)
-    expect(typeof client.prepareStartAttempt).toBe('function')
+    expect(typeof client.recovery.prepareStartAttempt).toBe('function')
   })
 
-  it('refuses the client with the typed refusal when the domain disagrees', async () => {
+  it('refuses the client with the typed refusal the account step draws as update the wallet', async () => {
     const world = createWorld()
     world.chain.manager.domain.version = `${world.descriptor.digestVersion}-other`
-    const caught = await buildRecoveryClient(world.config).then(
-      () => undefined,
-      (e: unknown) => e
-    )
-    expect(caught).toBeInstanceOf(DigestVersionRefusal)
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(isDigestVersionRefusal(caught)).toBe(true)
+    const refusal = caught as DigestVersionRefusal
+    expect(refusal).toBeInstanceOf(Error)
+    expect(refusal.name).toBe('DigestVersionRefusal')
+    expect(refusal.state).toBe('update-the-wallet')
+    expect(refusal.carried).toEqual({
+      name: MANAGER_DOMAIN_NAME,
+      version: world.descriptor.digestVersion
+    })
+    expect(refusal.published).toEqual({
+      name: MANAGER_DOMAIN_NAME,
+      version: `${world.descriptor.digestVersion}-other`
+    })
   })
 
-  it('refuses before any prepare is possible, and no prepare member was called', async () => {
+  it('refuses a domain whose name is not PolicyManager the same way (D-208 step 5)', async () => {
+    const world = createWorld()
+    world.chain.manager.domain.name = 'SomeOtherManager'
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(isDigestVersionRefusal(caught)).toBe(true)
+  })
+
+  it('refuses before any prepare is possible: no build ran and no prepare member was called', async () => {
     const prepares = spyOnPrepares()
     const builder = spyOnBuilder()
     const world = createWorld()
     world.chain.manager.domain.version = '999'
-    let client: unknown
-    try {
-      client = await buildRecoveryClient(world.config)
-    } catch {
-      client = undefined
-    }
-    expect(client).toBeUndefined()
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(isDigestVersionRefusal(caught)).toBe(true)
     expect(prepares.length).toBeGreaterThan(0)
     prepares.forEach((spy) => expect(spy).not.toHaveBeenCalled())
-    // The builder never handed a client out to the lane.
-    const handedOut = await Promise.allSettled(
-      builder.buildRecoveryClient.mock.results.map((r) => r.value as Promise<unknown>)
-    )
-    handedOut.forEach((r) => expect(r.status).toBe('rejected'))
+    expect(builder.buildSetupClient).not.toHaveBeenCalled()
+    expect(builder.buildRecoveryClient).not.toHaveBeenCalled()
+    expect(builder.recoveryAction).not.toHaveBeenCalled()
+    expect(builder.methodModuleReads).not.toHaveBeenCalled()
+  })
+
+  it("surfaces a disagreement the builder's own construction check finds as the same typed refusal", async () => {
+    const prepares = spyOnPrepares()
+    const world = createWorld()
+    const original = PolicyManagerDouble.prototype.eip712Domain
+    // The lane's own read sees the carried version; the builder's read, the next one, sees another.
+    jest
+      .spyOn(PolicyManagerDouble.prototype, 'eip712Domain')
+      .mockImplementationOnce(function first(this: PolicyManagerDouble) {
+        return original.call(this)
+      })
+      .mockImplementation(async function later(this: PolicyManagerDouble) {
+        const domain = await original.call(this)
+        return { ...domain, version: 'moved' }
+      })
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(isDigestVersionRefusal(caught)).toBe(true)
+    expect((caught as DigestVersionRefusal).state).toBe('update-the-wallet')
+    prepares.forEach((spy) => expect(spy).not.toHaveBeenCalled())
   })
 
   it('does not read a failed domain read as a version disagreement', async () => {
     const world = createWorld()
     world.chain.failRead('manager.eip712Domain')
-    failEverything(world.ethers, new Error('the node did not answer'))
-    const caught = await buildRecoveryClient(world.config).then(
-      () => undefined,
-      (e: unknown) => e
-    )
-    expect(caught).toBeDefined()
-    expect(caught).not.toBeInstanceOf(DigestVersionRefusal)
-    expect(caught instanceof Error || caught instanceof ScriptedReadFailure).toBe(true)
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(caught).toBeInstanceOf(ScriptedReadFailure)
+    expect(isDigestVersionRefusal(caught)).toBe(false)
+  })
+
+  it('does not read another construction refusal as a version disagreement', async () => {
+    const world = createWorld()
+    world.chain.manager.domain.fields = '0x1f'
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(caught).toBeInstanceOf(Error)
+    expect(isDigestVersionRefusal(caught)).toBe(false)
+    expect((caught as { check?: string }).check).toBe('domain-fields')
   })
 })

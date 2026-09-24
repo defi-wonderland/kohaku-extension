@@ -4,10 +4,11 @@
  * extension's own provider once with the arguments D-208 fixes. A read the
  * wrapper could not make reaches the SDK as a failure, never as an empty
  * answer, and a reverted call rejects with the raw revert data (D-208, D-209).
+ * The balance and gas reads run on the same provider beside the adapter, since
+ * the SDK's provider answers four reads and no balance (ux-interfaces.md D-373).
  *
- * The adapter may reach ethers through its high-level members (`getNetwork`,
- * `call`, `getLogs`, `getBlock`) or through raw JSON-RPC `send`; D-208 fixes
- * the arguments, not the ethers member, so each check accepts either route.
+ * D-208 fixes the arguments, not the ethers member, so each check accepts the
+ * high-level ethers member or the raw JSON-RPC `send`.
  */
 import { ScriptedChain } from '@web/modules/social-recovery/sdk-doubles'
 import type {
@@ -21,9 +22,16 @@ import type {
 import {
   adapterOver,
   callException,
+  createChainReads,
   ethersOver,
   EthersMock,
   failEverything,
+  functionMembersOf,
+  isProviderReadFailure,
+  isRevertedCall,
+  NODE_ANSWERS,
+  nodeRevert,
+  thrownBy,
   underlyingCalls
 } from './harness'
 
@@ -31,18 +39,16 @@ const TO = '0x1111111111111111111111111111111111111111' as Address
 const FROM = '0x2222222222222222222222222222222222222222' as Address
 const DATA = '0xdeadbeef00000000000000000000000000000000000000000000000000000001' as Hex
 const TOPIC = `0x${'ab'.repeat(32)}` as Hex
-const REVERT = '0x08c379a0000000000000000000000000000000000000000000000000000000000000002' as Hex
+const REVERT = `0x08c379a0${'00'.repeat(31)}20` as Hex
 
 const hexOf = (n: number): string => `0x${n.toString(16)}`
 
 /** A block tag as ethers or JSON-RPC would carry it: the name, the number, or its hex. */
 const sameTag = (seen: unknown, tag: BlockTag): boolean =>
   seen === tag ||
-  (typeof tag === 'number' && (seen === hexOf(tag) || seen === BigInt(tag))) ||
   (typeof tag === 'number' &&
-    typeof seen === 'string' &&
-    seen.startsWith('0x') &&
-    Number(seen) === tag)
+    (seen === BigInt(tag) ||
+      (typeof seen === 'string' && seen.startsWith('0x') && Number(seen) === tag)))
 
 const sameNumber = (seen: unknown, n: number): boolean =>
   seen === n || seen === BigInt(n) || (typeof seen === 'string' && Number(seen) === n)
@@ -58,7 +64,7 @@ interface World {
 const world = (): World => {
   const chain = new ScriptedChain()
   const ethers = ethersOver(chain)
-  return { chain, ethers, adapter: adapterOver(ethers) as unknown as IProvider }
+  return { chain, ethers, adapter: adapterOver(ethers) }
 }
 
 const onlyCall = (ethers: EthersMock): [string, unknown[]] => {
@@ -68,66 +74,81 @@ const onlyCall = (ethers: EthersMock): [string, unknown[]] => {
 }
 
 describe('the provider adapter, IProvider over the extension provider', () => {
+  it('answers the four reads of D-208 and nothing else', () => {
+    expect(functionMembersOf(world().adapter).sort()).toEqual(['block', 'call', 'chainId', 'logs'])
+  })
+
   describe('chainId()', () => {
     it('reads the chain id once and answers it as a number', async () => {
       const w = world()
       await expect(w.adapter.chainId()).resolves.toBe(w.chain.descriptor.chainId)
       const [member, args] = onlyCall(w.ethers)
-      if (member === 'send') expect(args[0]).toBe('eth_chainId')
+      if (member === 'send') expect(args).toEqual(['eth_chainId', []])
       else expect(member).toBe('getNetwork')
     })
 
     it('surfaces a provider failure as a thrown value', async () => {
       const w = world()
       failEverything(w.ethers, new Error('the node did not answer'))
-      await expect(w.adapter.chainId()).rejects.toBeDefined()
+      const caught = await thrownBy(w.adapter.chainId())
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect((caught as { read?: string }).read).toBe('chainId')
     })
   })
 
   describe('call(to, data, from, block)', () => {
-    it.each<[string, Address | undefined, BlockTag]>([
+    const CALL_CASES: [string, Address | undefined, BlockTag][] = [
       ['a from address at latest', FROM, 'latest'],
       ['no from address at finalized', undefined, 'finalized'],
       ['a from address at a block number', FROM, 1234]
-    ])('runs one eth_call with the target, the calldata, %s', async (_, from, tag) => {
-      const w = world()
-      w.chain.calls.set(`${TO.toLowerCase()}:${DATA.toLowerCase()}`, { result: '0xcafe' })
-      await expect(w.adapter.call(TO, DATA, from, tag)).resolves.toBe('0xcafe')
-      const [member, args] = onlyCall(w.ethers)
-      let tx: Record<string, unknown>
-      let seenTag: unknown
-      if (member === 'send') {
-        expect(args[0]).toBe('eth_call')
-        const params = args[1] as unknown[]
-        tx = params[0] as Record<string, unknown>
-        seenTag = params[1]
-      } else {
-        expect(member).toBe('call')
-        tx = args[0] as Record<string, unknown>
-        seenTag = tx.blockTag
-      }
-      expect(lower(tx.to)).toBe(TO.toLowerCase())
-      expect(lower(tx.data)).toBe(DATA.toLowerCase())
-      if (from) expect(lower(tx.from)).toBe(from.toLowerCase())
-      else expect(tx.from).toBeUndefined()
-      expect(sameTag(seenTag, tag)).toBe(true)
-    })
+    ]
+    CALL_CASES.forEach(([title, from, tag]) =>
+      it(`runs one eth_call with the target, the calldata, ${title}`, async () => {
+        const w = world()
+        w.chain.calls.set(`${TO.toLowerCase()}:${DATA.toLowerCase()}`, { result: '0xcafe' })
+        await expect(w.adapter.call(TO, DATA, from, tag)).resolves.toBe('0xcafe')
+        const [member, args] = onlyCall(w.ethers)
+        let tx: Record<string, unknown>
+        let seenTag: unknown
+        if (member === 'send') {
+          expect(args[0]).toBe('eth_call')
+          const params = args[1] as unknown[]
+          expect(params).toHaveLength(2)
+          tx = params[0] as Record<string, unknown>
+          seenTag = params[1]
+        } else {
+          expect(member).toBe('call')
+          tx = args[0] as Record<string, unknown>
+          seenTag = tx.blockTag
+        }
+        expect(lower(tx.to)).toBe(TO.toLowerCase())
+        expect(lower(tx.data)).toBe(DATA.toLowerCase())
+        if (from) expect(lower(tx.from)).toBe(from.toLowerCase())
+        else expect(tx.from).toBeUndefined()
+        expect(sameTag(seenTag, tag)).toBe(true)
+      })
+    )
 
-    it('rejects a reverted call with the raw revert data', async () => {
-      const w = world()
-      failEverything(w.ethers, callException(REVERT))
-      const caught = await w.adapter.call(TO, DATA, FROM, 'latest').then(
-        () => undefined,
-        (e: unknown) => e
-      )
-      expect(caught).toBeDefined()
-      expect((caught as { data?: unknown }).data).toBe(REVERT)
-    })
+    const REVERT_CASES: [string, unknown][] = [
+      ['an ethers CALL_EXCEPTION', callException(REVERT)],
+      ["the node's own JSON-RPC revert", nodeRevert(REVERT)]
+    ]
+    REVERT_CASES.forEach(([title, thrown]) =>
+      it(`rejects a reverted call with the raw revert data, from ${title}`, async () => {
+        const w = world()
+        failEverything(w.ethers, thrown)
+        const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+        expect(isRevertedCall(caught)).toBe(true)
+        expect((caught as { data?: unknown }).data).toBe(REVERT)
+      })
+    )
 
-    it('surfaces a transport failure as a thrown value, never an empty answer', async () => {
+    it('surfaces a transport failure as a thrown value, never an empty answer nor a revert', async () => {
       const w = world()
       failEverything(w.ethers, new Error('the node did not answer'))
-      await expect(w.adapter.call(TO, DATA, FROM, 'latest')).rejects.toBeDefined()
+      const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(isRevertedCall(caught)).toBe(false)
     })
   })
 
@@ -159,17 +180,16 @@ describe('the provider adapter, IProvider over the extension provider', () => {
         address: TO,
         topics: [TOPIC],
         data: '0x01',
-        blockNumber: 950,
+        blockNumber: hexOf(950),
         blockHash: `0x${'cd'.repeat(32)}`,
-        index: 3,
-        logIndex: 3,
+        logIndex: hexOf(3),
         transactionHash: `0x${'ef'.repeat(32)}`,
         removed: false
       }
-      w.ethers.getLogs.mockResolvedValue([log])
+      w.ethers.getLogs.mockResolvedValue([{ ...log, blockNumber: 950, index: 3 }])
       w.ethers.send.mockImplementation(async (method: string) => {
         if (method !== 'eth_getLogs') throw new Error(method)
-        return [{ ...log, blockNumber: hexOf(950), logIndex: hexOf(3) }]
+        return [log]
       })
       const logs = await w.adapter.logs(filter, { from: 900, to: 1900 })
       expect(logs).toHaveLength(1)
@@ -187,14 +207,15 @@ describe('the provider adapter, IProvider over the extension provider', () => {
     it('surfaces a provider failure as a thrown value, never an empty list', async () => {
       const w = world()
       failEverything(w.ethers, new Error('the node did not answer'))
-      await expect(w.adapter.logs(filter, { from: 900, to: 1900 })).rejects.toBeDefined()
+      const caught = await thrownBy(w.adapter.logs(filter, { from: 900, to: 1900 }))
+      expect(isProviderReadFailure(caught)).toBe(true)
     })
   })
 
   describe('block(tag)', () => {
-    it.each<BlockTag>(['latest', 'finalized', 950])(
-      'reads one block for %s and answers its number, timestamp and hash',
-      async (tag) => {
+    const BLOCK_TAGS: BlockTag[] = ['latest', 'finalized', 950]
+    BLOCK_TAGS.forEach((tag) =>
+      it(`reads one block for ${tag} and answers its number, timestamp and hash`, async () => {
         const w = world()
         const expected = w.chain.blockAt(tag)
         const header = await w.adapter.block(tag)
@@ -211,20 +232,43 @@ describe('the provider adapter, IProvider over the extension provider', () => {
           expect(member).toBe('getBlock')
           expect(sameTag(args[0], tag)).toBe(true)
         }
-      }
+      })
     )
 
     it('surfaces a provider failure as a thrown value', async () => {
       const w = world()
       failEverything(w.ethers, new Error('the node did not answer'))
-      await expect(w.adapter.block('latest')).rejects.toBeDefined()
+      const caught = await thrownBy(w.adapter.block('latest'))
+      expect(isProviderReadFailure(caught)).toBe(true)
     })
 
     it('surfaces a block the node does not know as a thrown value, never an empty answer', async () => {
       const w = world()
       w.ethers.getBlock.mockResolvedValue(null)
       w.ethers.send.mockResolvedValue(null)
-      await expect(w.adapter.block(123456789)).rejects.toBeDefined()
+      const caught = await thrownBy(w.adapter.block(123456789))
+      expect(isProviderReadFailure(caught)).toBe(true)
     })
+  })
+})
+
+describe('the balance and gas reads beside the adapter (D-373)', () => {
+  it('reads a native balance and a gas estimate on the same extension provider', async () => {
+    const w = world()
+    const reads = createChainReads(w.ethers)
+    await expect(reads.nativeBalance(FROM)).resolves.toBe(NODE_ANSWERS.balance)
+    await expect(reads.estimateGas({ from: FROM, to: TO, data: DATA })).resolves.toBe(
+      NODE_ANSWERS.gas
+    )
+    const methods = underlyingCalls(w.ethers).map(([member, args]) =>
+      member === 'send' ? args[0] : member
+    )
+    expect(methods).toEqual(['eth_getBalance', 'eth_estimateGas'])
+  })
+
+  it('surfaces a balance read the provider could not make as a thrown value', async () => {
+    const w = world()
+    failEverything(w.ethers, new Error('the node did not answer'))
+    await expect(createChainReads(w.ethers).nativeBalance(FROM)).rejects.toBeDefined()
   })
 })

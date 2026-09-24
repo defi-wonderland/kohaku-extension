@@ -8,79 +8,112 @@
 import * as fs from 'fs'
 import * as path from 'path'
 
-import type { Address, DeploymentDescriptor } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
   AUDITED_ACTIONS,
   auditedActionOf,
-  DEPLOYMENTS,
+  auditedActionsOn,
+  CHAIN_IDS,
+  deploymentDescriptor,
   DESCRIPTOR_FIELDS,
+  isAuditedAction,
   MAINNET,
+  PLACEHOLDER_ADDRESSES,
+  PUBLISHERS,
+  publisherKeyOf,
+  RECOVERY_CHAINS,
   SEPOLIA,
   UNKNOWN_ACTION
 } from './harness'
 
 const ABSENT = '0x9999999999999999999999999999999999999999' as Address
 
-type Entry = { address: Address; publisher: string; chainId?: number }
+const en: unknown = JSON.parse(
+  fs.readFileSync(
+    path.resolve(__dirname, '../../../../../../common/config/localization/translations/en.json'),
+    'utf8'
+  )
+)
 
-const entries = (): Entry[] =>
-  (Array.isArray(AUDITED_ACTIONS)
-    ? AUDITED_ACTIONS
-    : Object.values(AUDITED_ACTIONS as Record<string, unknown>).flat()) as Entry[]
-
-const descriptors = (): DeploymentDescriptor[] =>
-  Object.values(DEPLOYMENTS as Record<number, DeploymentDescriptor>)
+const translation = (key: string): unknown =>
+  key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en)
 
 describe('the audited-actions table', () => {
-  it('lists at least one action, each with its address and its publisher', () => {
-    expect(entries().length).toBeGreaterThan(0)
-    entries().forEach((e) => {
-      expect(e.address).toMatch(/^0x[0-9a-fA-F]{40}$/)
-      expect(typeof e.publisher).toBe('string')
-      expect(e.publisher.length).toBeGreaterThan(0)
+  it('lists at least one action per chain, each with its address and its publisher', () => {
+    RECOVERY_CHAINS.forEach((chain) => expect(auditedActionsOn(chain).length).toBeGreaterThan(0))
+    AUDITED_ACTIONS.forEach((row) => {
+      expect(row.kind).toBe('audited')
+      expect(row.action).toMatch(/^0x[0-9a-fA-F]{40}$/)
+      expect(PUBLISHERS).toContain(row.publisher)
     })
   })
 
-  it('answers the table entry for an address in the table, whatever its letter case', () => {
-    entries().forEach((e) => {
-      expect(auditedActionOf(e.address)).toMatchObject({
-        address: e.address,
-        publisher: e.publisher
-      })
-      expect(auditedActionOf(e.address.toLowerCase() as Address)).toMatchObject({
-        publisher: e.publisher
-      })
+  it('names each publisher through an en.json key that holds its name', () => {
+    AUDITED_ACTIONS.forEach((row) => {
+      const key = publisherKeyOf(row)
+      expect(key).toBe(`socialRecovery.display.publishers.${row.publisher}`)
+      const name = translation(key)
+      expect(typeof name).toBe('string')
+      expect((name as string).length).toBeGreaterThan(0)
+    })
+  })
+
+  it('answers the table row for an address in the table, whatever its letter case', () => {
+    AUDITED_ACTIONS.forEach((row) => {
+      const upper = `0x${row.action.slice(2).toUpperCase()}`
+      const lower = `0x${row.action.slice(2).toLowerCase()}`
+      expect(upper).not.toBe(lower)
+      expect(auditedActionOf(row.action)).toEqual({ ...row })
+      expect(auditedActionOf(upper, row.chain)).toEqual({ ...row })
+      expect(auditedActionOf(lower, row.chain)).toEqual({ ...row })
+      expect(isAuditedAction(upper, row.chain)).toBe(true)
     })
   })
 
   it('answers the explicit unknown-action value for an address absent from the table', () => {
-    expect(UNKNOWN_ACTION).toBeDefined()
+    expect(UNKNOWN_ACTION).toEqual({ kind: 'unknown-action' })
     expect(auditedActionOf(ABSENT)).toBe(UNKNOWN_ACTION)
+    expect(auditedActionOf(undefined)).toBe(UNKNOWN_ACTION)
+    expect(isAuditedAction(ABSENT)).toBe(false)
+  })
+
+  it('answers unknown for an action audited on another chain than the one named', () => {
+    expect(auditedActionOf(PLACEHOLDER_ADDRESSES.sepolia.action, 'mainnet')).toBe(UNKNOWN_ACTION)
+    expect(auditedActionOf(PLACEHOLDER_ADDRESSES.mainnet.action, 'sepolia')).toBe(UNKNOWN_ACTION)
+  })
+
+  it('hands a screen copies, so no screen can edit the table through a lookup', () => {
+    const offered = auditedActionsOn('sepolia')
+    ;(offered[0] as { publisher: string }).publisher = 'someoneElse'
+    expect(auditedActionsOn('sepolia')[0].publisher).toBe('ethereumFoundation')
+    const found = auditedActionOf(PLACEHOLDER_ADDRESSES.sepolia.action) as { publisher: string }
+    found.publisher = 'someoneElse'
+    expect(
+      (auditedActionOf(PLACEHOLDER_ADDRESSES.sepolia.action) as { publisher: string }).publisher
+    ).toBe('ethereumFoundation')
   })
 
   it('is the one source of each descriptor action and audited set', () => {
-    const tableAddresses = entries().map((e) => e.address.toLowerCase())
-    descriptors().forEach((d) => {
-      expect(tableAddresses).toContain(d.action.toLowerCase())
-      d.auditedActions.forEach((a) => expect(tableAddresses).toContain(a.toLowerCase()))
-      expect(auditedActionOf(d.action)).not.toBe(UNKNOWN_ACTION)
+    RECOVERY_CHAINS.forEach((chain) => {
+      const d = deploymentDescriptor(chain)
+      expect(d.auditedActions).toEqual(auditedActionsOn(chain).map((row) => row.action))
+      expect(auditedActionOf(d.action, chain)).not.toBe(UNKNOWN_ACTION)
     })
   })
 })
 
 describe('the deployment descriptors of D-208', () => {
   it('carries one descriptor for Sepolia and one for Ethereum mainnet', () => {
-    const chains = descriptors()
-      .map((d) => d.chainId)
-      .sort((a, b) => a - b)
-    expect(chains).toEqual([MAINNET, SEPOLIA])
-    expect(DEPLOYMENTS[SEPOLIA].chainId).toBe(SEPOLIA)
-    expect(DEPLOYMENTS[MAINNET].chainId).toBe(MAINNET)
+    expect(deploymentDescriptor('sepolia').chainId).toBe(SEPOLIA)
+    expect(deploymentDescriptor('mainnet').chainId).toBe(MAINNET)
+    expect(CHAIN_IDS).toEqual({ sepolia: SEPOLIA, mainnet: MAINNET })
   })
 
   it('fills every one of the thirteen fields on both descriptors', () => {
-    descriptors().forEach((d) => {
+    RECOVERY_CHAINS.forEach((chain) => {
+      const d = deploymentDescriptor(chain)
+      expect(Object.keys(d).sort()).toEqual([...DESCRIPTOR_FIELDS].sort())
       DESCRIPTOR_FIELDS.forEach((f) => {
         expect(d[f]).toBeDefined()
         expect(d[f]).not.toBeNull()
@@ -93,13 +126,22 @@ describe('the deployment descriptors of D-208', () => {
     })
   })
 
+  it('answers a fresh record every call, so no caller moves the shipped data', () => {
+    const first = deploymentDescriptor('sepolia')
+    first.auditedActions.push(ABSENT)
+    expect(deploymentDescriptor('sepolia').auditedActions).not.toContain(ABSENT)
+  })
+
+  it('uses distinct placeholder addresses on the two chains', () => {
+    const all = RECOVERY_CHAINS.flatMap((chain) =>
+      Object.values(PLACEHOLDER_ADDRESSES[chain]).map((a) => a.toLowerCase())
+    )
+    expect(new Set(all).size).toBe(all.length)
+  })
+
   it('names cut-q-7 beside the placeholder addresses', () => {
     const lane = path.resolve(__dirname, '..')
-    const sources = fs
-      .readdirSync(lane, { recursive: true } as never)
-      .map(String)
-      .filter((f) => /\.tsx?$/.test(f) && !f.includes('__tests__'))
-      .map((f) => fs.readFileSync(path.join(lane, f), 'utf8'))
-    expect(sources.some((s) => s.includes('cut-q-7'))).toBe(true)
+    const addresses = fs.readFileSync(path.join(lane, 'addresses.ts'), 'utf8')
+    expect(addresses).toContain('cut-q-7')
   })
 })
