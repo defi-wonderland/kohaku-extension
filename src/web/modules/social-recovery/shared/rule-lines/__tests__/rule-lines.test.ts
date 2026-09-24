@@ -14,7 +14,7 @@
  * rendering tests run every descriptor through a real i18next instance loaded
  * with the real en.json, which settles whether the key resolves.
  */
-import i18next, { TFunction } from 'i18next'
+import i18next from 'i18next'
 
 import en from '@common/config/localization/translations/en.json'
 import type {
@@ -23,7 +23,8 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces/interactor'
 
-import { buildRuleLines, renderRuleLines } from '..'
+import { getRuleLines, renderRuleLines } from '..'
+import type { Translate } from '..'
 
 type Hex = `0x${string}`
 
@@ -54,8 +55,8 @@ const draft = (clauses: Clause[]): SetupDraft => ({
   privacy: { publicMetadata: '0x' as Hex, backup: 'encrypted' }
 })
 
-const RULE_LINES = (en as { socialRecovery: { ruleLines: Record<string, string> } })
-  .socialRecovery.ruleLines
+const RULE_LINES = (en as { socialRecovery: { ruleLines: Record<string, string> } }).socialRecovery
+  .ruleLines
 const PREFIX = 'socialRecovery.ruleLines.'
 
 const shortKey = (key: string): string => (key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key)
@@ -113,6 +114,15 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     clauses: [group(3, [PASSKEY, PASSPORT, GUARDIAN])],
     expected: [
       { key: 'anyNOfM', params: { n: 3, m: 3, spare: 0 } },
+      { key: 'everyMemberMustAnswer' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'a group at threshold equal to its size beside a required row: together with, every member',
+    clauses: [row(PASSKEY), group(2, [PASSPORT, GUARDIAN])],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 2, m: 2, spare: 0 } },
       { key: 'everyMemberMustAnswer' },
       { key: 'differentPlaces' }
     ]
@@ -177,7 +187,7 @@ beforeAll(async () => {
     initImmediate: false
   })
 })
-const t = ((key: string, params?: Record<string, unknown>) => i18n.t(key, params)) as TFunction
+const t: Translate = (key, params) => String(i18n.t(key, params ? { ...params } : undefined))
 
 // The English a line renders to, filled by hand from en.json, independent of
 // the implementation's rendering path.
@@ -188,19 +198,21 @@ const englishOf = (e: Expected): string =>
     return String(value)
   })
 
-const linesOf = (clauses: Clause[]) => buildRuleLines(draft(clauses))
+const linesOf = (clauses: Clause[]) => getRuleLines(draft(clauses))
 const keysOf = (clauses: Clause[]) => linesOf(clauses).map((l) => shortKey(l.key))
 const renderedAll = () => EVERY_SHAPE.flatMap((clauses) => renderRuleLines(linesOf(clauses), t))
 
-describe('buildRuleLines: the table of shapes (D-305)', () => {
-  it.each(SHAPES)('$name', ({ clauses, expected }) => {
-    const lines = linesOf(clauses)
-    expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
-    lines.forEach((line, i) => {
-      const params = expected[i].params
-      if (params) expect(line.params).toMatchObject(params)
+describe('getRuleLines: the table of shapes (D-305)', () => {
+  SHAPES.forEach(({ name, clauses, expected }) =>
+    it(name, () => {
+      const lines = linesOf(clauses)
+      expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
+      lines.forEach((line, i) => {
+        const params = expected[i].params
+        if (params) expect(line.params).toMatchObject(params)
+      })
     })
-  })
+  )
 
   it('every key it returns names a real string under socialRecovery.ruleLines', () => {
     EVERY_SHAPE.forEach((clauses) => {
@@ -226,14 +238,16 @@ describe('buildRuleLines: the table of shapes (D-305)', () => {
 })
 
 describe('renderRuleLines: the rendered English through the real en.json', () => {
-  it.each(SHAPES)('$name', ({ clauses, expected }) => {
-    const rendered = renderRuleLines(linesOf(clauses), t)
-    expect(rendered).toEqual(expected.map(englishOf))
-    rendered.forEach((s) => {
-      expect(s).not.toMatch(/\{\{|\}\}/)
-      expect(s).not.toMatch(/socialRecovery|ruleLines/)
+  SHAPES.forEach(({ name, clauses, expected }) =>
+    it(name, () => {
+      const rendered = renderRuleLines(linesOf(clauses), t)
+      expect(rendered).toEqual(expected.map(englishOf))
+      rendered.forEach((s) => {
+        expect(s).not.toMatch(/\{\{|\}\}/)
+        expect(s).not.toMatch(/socialRecovery|ruleLines/)
+      })
     })
-  })
+  )
 
   it('renders the exact sentences D-305 states for the placeholder lines', () => {
     expect(renderRuleLines(linesOf([row(PASSKEY), row(PASSPORT), row(GUARDIAN)]), t)[0]).toBe(
@@ -307,17 +321,16 @@ describe('purity', () => {
     return value
   }
 
-  it.each(EVERY_SHAPE.map((clauses, i) => ({ i, clauses })))(
-    'same input twice yields equal output and the input is not mutated (shape $i)',
-    ({ clauses }) => {
+  EVERY_SHAPE.forEach((clauses, i) =>
+    it(`same input twice yields equal output and the input is not mutated (shape ${i})`, () => {
       const input = draft(clauses)
       const snapshot = structuredClone(input)
-      const first = buildRuleLines(input)
-      const second = buildRuleLines(input)
+      const first = getRuleLines(input)
+      const second = getRuleLines(input)
       expect(second).toEqual(first)
       expect(input).toEqual(snapshot)
       const frozen = deepFreeze(structuredClone(input))
-      expect(buildRuleLines(frozen)).toEqual(first)
-    }
+      expect(getRuleLines(frozen)).toEqual(first)
+    })
   )
 })
