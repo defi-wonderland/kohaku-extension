@@ -1,6 +1,6 @@
 # Social recovery ux tasks
 
-One file per task, cut from `cut-provisional.yaml` at `352f91a` of `defi-wonderland/mast-social-recovery-2` (PR #47). Ids are provisional; the cut was never materialized, so a task is named by id and title together. Bodies are verbatim, with `src/ux/...` rewritten to `src/web/modules/social-recovery/...`. Each file ends with the deltas found against the chapter at `bd8780f`; where a body and the chapter differ, the chapter is the rule.
+One file per task, cut from `design-context/spec-v1/cut-provisional.yaml` at `352f91a` of `defi-wonderland/mast-social-recovery-2` (PR #47), which is not copied here. Ids are provisional; the cut was never materialized, so a task is named by id and title together. Bodies are verbatim, with `src/ux/...` rewritten to `src/web/modules/social-recovery/...`. Each file ends with the deltas found against the chapter at `bd8780f`; where a body and the chapter differ, the chapter is the rule.
 
 Round is the half-day in which the task can start, from `depends_on` alone. Within one round every module path is distinct, so a round runs in parallel. The longest chain is eight half-days: PT-035, PT-041, PT-057, PT-058, PT-059, PT-060, PT-061, PT-062. The M-7 tasks (PT-042 to PT-051) wait on the proof of concept D-316 schedules.
 
@@ -73,3 +73,20 @@ Questions the tasks leave open, with the owner of the answer. They are not answe
 | 21 | PT-063 | Which object the page's three chain reads go through, when the builder hands out `IMethodModuleReads` alone | sdk owner |
 | 22 | all | The task bodies predate the chapter by three rounds (the cut consumed R-29); the deltas in each file are the reconciliation and need the ux owner's confirmation | ux owner |
 | 23 | setup | The setup task that owns the shared files: the interfaces file mirroring D-201, the module folder, routes, string keys, the Jest alias mapper, `.gitmodules` pointed at the fork | ux owner |
+
+## Which sdk task builds each interface
+
+From the same cut, for the doubles of PT-035 and the client layer of PT-038. The sdk milestones are M-3 (the pure core), M-4 (the approving side) and M-5 (the chain-facing parts and clients).
+
+| Interface | Real implementation | Sdk task |
+| --- | --- | --- |
+| all twelve declarations | `sdk/interfaces` | PT-017 (M-3), value records PT-071 |
+| `ISetupClient` | `SetupClient` | PT-025 (M-5); validation PT-021, description PT-073, encryption PT-019 (M-3) |
+| `IRecoveryClient` | `RecoveryClient` | PT-026 and PT-074 (M-5); gathering arithmetic PT-020, formats PT-018 and PT-072 (M-3) |
+| `IMethodsOrchestrator` | `MethodsOrchestrator` | PT-027 (M-4) |
+| `IRecoveryMethod` | wallet, passkey, zkPassport, Aadhaar methods | PT-028, PT-029, PT-031, PT-032 (M-4) |
+| `IPolicyManagerInteractor`, `IMethodModuleReads` | `PolicyManager` | PT-022 (M-5) |
+| `IRecoveryActionInteractor`, `IRecoveryActionArming`, `IActionCodec` | `AmbireRecoveryAction` and its codec | PT-024 (M-5) |
+| `IEventManager` | `EventManager` | PT-023 (M-5) |
+| `IProvider` | none in the SDK; the extension's adapter (PT-038) | declared in PT-017 |
+| the builder and deployment descriptors (D-208) | `RecoveryKitBuilder` | PT-030 (M-5) |
