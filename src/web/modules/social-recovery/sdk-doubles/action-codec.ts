@@ -12,6 +12,8 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { decodeAbiParameters, encodeAbiParameters } from 'viem'
 
+import { codedError } from './scripts'
+
 const HANDOVER_LAYOUT = [
   { name: 'newAuthority', type: 'address' },
   { name: 'removedAuthority', type: 'address' }
@@ -28,11 +30,17 @@ export class ActionCodecDouble implements IActionCodec<Handover> {
     return encodeAbiParameters(HANDOVER_LAYOUT, [handover.newAuthority, handover.removedAuthority])
   }
 
+  /** Throws a `MalformedHandover` coded error on bytes that do not decode or do not round-trip. */
   decode(payload: Hex): Handover {
-    const [newAuthority, removedAuthority] = decodeAbiParameters(HANDOVER_LAYOUT, payload)
-    const handover = { newAuthority, removedAuthority }
-    if (this.encode(handover).toLowerCase() !== payload.toLowerCase()) {
-      throw new Error('MalformedHandover: the payload does not re-encode to the same bytes.')
+    let handover: Handover
+    try {
+      const [newAuthority, removedAuthority] = decodeAbiParameters(HANDOVER_LAYOUT, payload)
+      handover = { newAuthority, removedAuthority }
+    } catch {
+      throw codedError('MalformedHandover', { payload, cause: 'undecodable' })
+    }
+    if (this.encode(handover).toLowerCase() !== String(payload).toLowerCase()) {
+      throw codedError('MalformedHandover', { payload, cause: 'not-canonical' })
     }
     return handover
   }

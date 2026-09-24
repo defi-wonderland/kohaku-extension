@@ -28,6 +28,7 @@ import type {
   Address,
   ApproverReply,
   ApproverRequest,
+  AttemptRequest,
   ClientConfiguration,
   Configuration,
   DeploymentDescriptor,
@@ -310,6 +311,43 @@ export const fillAll = async ({ world, recovery, gathering, requests }: Opened) 
   }
   return g
 }
+
+/** The moment a caller judges an opened gathering against: one minute after its pinned block. */
+export const momentOf = (gathering: Gathering) => Number(gathering.request.block.timestamp) + 60
+
+/** A completed opening request over every reply, ready for `prepareStartAttempt`. */
+export const completedRequest = async (opened: Opened) => {
+  const filled = await fillAll(opened)
+  const now = momentOf(opened.gathering)
+  const request = opened.recovery.complete(filled, undefined, now) as AttemptRequest
+  return { filled, now, request }
+}
+
+/**
+ * The whole opening path, landed: a gathering, every reply, the completed
+ * request, its prepared `startAttempt`, and the chain applying it. The attempt
+ * then waits under the committed setup's own wait.
+ */
+export const startLanded = async (world: World = createWorld()) => {
+  const opened = await openRecovery(world)
+  const { request, now } = await completedRequest(opened)
+  const prepared = await opened.recovery.prepareStartAttempt(request, now)
+  world.chain.land(prepared)
+  return { ...opened, request, prepared }
+}
+
+/** The opening notification of the live attempt, whose payload the execute takes (D-209). */
+export const openingOf = async (world: World, attemptId: bigint) => {
+  const at = await world.provider.block('latest')
+  const notes = await world.events.fetch(world.events.accountFilter(), {
+    from: world.descriptor.deployedAt,
+    to: at.number
+  })
+  const opening = notes.find((n) => n.kind === 'attempt-started' && n.attemptId === attemptId)
+  if (opening?.kind !== 'attempt-started') throw new Error('no opening notification')
+  return opening
+}
+
 export const isHex = (value: unknown): value is Hex =>
   typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value)
 export const isAddress = (value: unknown): value is Address =>
@@ -333,7 +371,10 @@ export const membersOf = (value: object): string[] => {
 export const eachIt =
   <T>(values: readonly T[]) =>
   (title: string, fn: (value: T) => unknown) =>
-    values.forEach((value) => it(title.replace('%s', String(value)), () => fn(value)))
+    values.forEach((value) =>
+      // A tuple case is named by its first member, its label.
+      it(title.replace('%s', String(Array.isArray(value) ? value[0] : value)), () => fn(value))
+    )
 
 export const eachDescribe =
   <T>(values: readonly T[]) =>

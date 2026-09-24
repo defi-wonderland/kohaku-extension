@@ -35,6 +35,7 @@ import type {
   DeploymentDescriptor,
   DeviceBinding,
   Domain,
+  Handover,
   Hex,
   KitError,
   MethodFailureCause,
@@ -45,9 +46,11 @@ import type {
   PreparedCall,
   PrivacyLevel,
   TrustedParties,
+  ValidationResult,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { ActionCodecDouble } from './action-codec'
 import {
   addressOf,
   blockHashOf,
@@ -66,7 +69,11 @@ import {
   ZERO_HASH
 } from './encoding'
 import {
+  codedError,
+  kitError,
+  landingRevert,
   ModuleRead,
+  ScriptedFindings,
   ScriptedRead,
   ScriptedReadFailure,
   ScriptedRefusalMember,
@@ -74,6 +81,7 @@ import {
   thrownValueOf,
   ThrownRefusal
 } from './scripts'
+import { acceptanceRevert, decodeHandover, executeRevert } from './verification'
 
 /** The five attempt statuses of ux-interfaces.md D-371. */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
@@ -165,7 +173,7 @@ export type ChainEffect =
   | { kind: 'cancel-by-owner' }
   | { kind: 'cancel-by-proofs'; request: CancelRequest }
   | { kind: 'cancel-by-veto'; method: Address }
-  | { kind: 'execute' }
+  | { kind: 'execute'; attemptId: bigint; payload: Hex }
 
 export interface ReadScript {
   mode: 'throw' | 'unanswered'
@@ -220,6 +228,16 @@ export const doubleDescriptor = (
 
 const BLOCK_TIME = 12
 
+/** The key value a handover grants, fixed at `1` inside the action (contracts D-105). */
+export const KEY_PRIVILEGE: Hex =
+  '0x0000000000000000000000000000000000000000000000000000000000000001'
+
+/** The `verify` gas the doubles charge a module they have no figure for. */
+export const UNKNOWN_VERIFY_COST = 2_000_000n
+
+/** The value the doubles write for another privileged entry, a code entry or a validator. */
+export const CODE_PRIVILEGE: Hex = hashOf({ privilege: 'code-entry' })
+
 export class ScriptedChain {
   readonly descriptor: DeploymentDescriptor
 
@@ -255,6 +273,13 @@ export class ScriptedChain {
   /** One declaration per method module, keyed by lowercase address. */
   readonly methods = new Map<string, MethodDeclaration>()
 
+  /**
+   * Each module's `verify` gas, keyed by lowercase address, which `rule.too-wide`
+   * sums over the costliest satisfying set (D-107). Placeholders until the
+   * method tasks measure them; a module missing here costs `UNKNOWN_VERIFY_COST`.
+   */
+  readonly verifyCosts = new Map<string, bigint>()
+
   manager: { name: string; version: string; supportsInterface: boolean; domain: Domain }
 
   actionInfo: ActionInfo
@@ -271,6 +296,8 @@ export class ScriptedChain {
   private readonly refusals = new Map<ScriptedRefusalMember, ThrownRefusal>()
 
   private readonly simulations = new Map<ScriptedSimulation, KitError>()
+
+  private readonly appended = new Map<ScriptedFindings, ValidationResult>()
 
   /** The failure every `replyFrom` returns while set. */
   replyFailure?: MethodFailureCause
@@ -343,6 +370,15 @@ export class ScriptedChain {
         addressOf('zkpassport-pause-holder')
       )
     })
+    this.verifyCosts.set(d.methodEcdsa.toLowerCase(), 10_000n)
+    this.verifyCosts.set(d.methodPasskey.toLowerCase(), 400_000n)
+    this.verifyCosts.set(d.methodAadhaar.toLowerCase(), 2_000_000n)
+    this.verifyCosts.set(d.methodZkpassport.toLowerCase(), 2_000_000n)
+  }
+
+  /** One module's `verify` gas as the doubles price it (see `verifyCosts`). */
+  verifyCostOf(module: Address): bigint {
+    return this.verifyCosts.get(module.toLowerCase()) ?? UNKNOWN_VERIFY_COST
   }
 
   // -------------------------------------------------------------------------
@@ -377,19 +413,28 @@ export class ScriptedChain {
   }
 
   private emit(notification: Record<string, unknown>): Notification {
+    return this.emitAll([notification])[0]
+  }
+
+  /** Emits the logs of one transaction: one new block, one hash, log indices in order. */
+  private emitAll(notifications: Record<string, unknown>[]): Notification[] {
     const block = this.mine()
-    const n = {
-      ...notification,
-      at: {
-        blockNumber: block.number,
-        blockHash: block.hash,
-        logIndex: 0,
-        transactionHash: hashOf({ tx: block.number, kind: notification.kind }),
-        removed: false
-      }
-    } as Notification
-    this.notifications.push(n)
-    return n
+    const transactionHash = hashOf({ tx: block.number, kinds: notifications.map((n) => n.kind) })
+    const emitted = notifications.map(
+      (notification, logIndex) =>
+        ({
+          ...notification,
+          at: {
+            blockNumber: block.number,
+            blockHash: block.hash,
+            logIndex,
+            transactionHash,
+            removed: false
+          }
+        } as Notification)
+    )
+    this.notifications.push(...emitted)
+    return emitted
   }
 
   // -------------------------------------------------------------------------
@@ -419,12 +464,46 @@ export class ScriptedChain {
     this.supportsAccount = supports
   }
 
-  setAuthorities(keys: Address[]): void {
-    this.authorities = [...keys]
+  /**
+   * The privilege writes that move a list of entries from `before` to `after`,
+   * one `LogPrivilegeChanged` per entry that changed, so the account's privilege
+   * stream and its key list always agree (D-105, D-108).
+   */
+  private privilegeWrites(
+    before: Address[],
+    after: Address[],
+    value: Hex
+  ): Record<string, unknown>[] {
+    const removed = before.filter((a) => !after.some((b) => sameAddress(a, b)))
+    const added = after.filter((a) => !before.some((b) => sameAddress(a, b)))
+    return [
+      ...added.map((addr) => ({
+        kind: 'privilege-changed',
+        account: this.account,
+        addr,
+        priv: value
+      })),
+      ...removed.map((addr) => ({
+        kind: 'privilege-changed',
+        account: this.account,
+        addr,
+        priv: ZERO_HASH
+      }))
+    ]
   }
 
+  /** Replaces the addresses holding a key value, emitting one privilege write per change. */
+  setAuthorities(keys: Address[]): void {
+    const writes = this.privilegeWrites(this.authorities, keys, KEY_PRIVILEGE)
+    this.authorities = [...keys]
+    if (writes.length) this.emitAll(writes)
+  }
+
+  /** Replaces the other privileged entries, emitting one privilege write per change. */
   setOtherPrivileged(addresses: Address[]): void {
+    const writes = this.privilegeWrites(this.otherPrivileged, addresses, CODE_PRIVILEGE)
     this.otherPrivileged = [...addresses]
+    if (writes.length) this.emitAll(writes)
   }
 
   isAuthority(key: Address): boolean {
@@ -531,7 +610,7 @@ export class ScriptedChain {
   }): CommittedSetup {
     const { level, configuration, password } = options
     if (level !== 'public' && !password) {
-      throw new Error(`A ${level} setup needs a recovery password to seal its values.`)
+      throw codedError('setup.password-missing', { level })
     }
     let publicMetadata: Hex = '0x'
     let privateMetadata: Hex
@@ -590,7 +669,9 @@ export class ScriptedChain {
 
   /** Clears the setup, as `clearSetup` does; a waiting attempt is cancelled. */
   clearSetup(): void {
-    if (this.setup.status !== 'committed') throw new Error('NoSetup: no setup stands to clear.')
+    if (this.setup.status !== 'committed') {
+      throw codedError('NoSetup', { account: this.account, action: this.action })
+    }
     if (this.attempt.status === 'waiting') this.cancelAttempt('nobody')
     const nonce = this.setup.setupNonce + 1n
     const n = this.emit({
@@ -600,6 +681,28 @@ export class ScriptedChain {
       nonce
     })
     this.setup = { status: 'none', setupNonce: nonce, setupCommittedAtBlock: n.at.blockNumber }
+  }
+
+  /**
+   * Records a setup write under another action of this account, events only
+   * (the doubles hold one action's state): what the `manager.already-armed`
+   * warning of D-205 pairs, the last commit against the last clear per action.
+   */
+  commitOtherAction(action: Address, nonce = 1n): void {
+    this.emit({
+      kind: 'setup-committed',
+      account: this.account,
+      action,
+      nonce,
+      setupCommitment: hashOf({ other: action.toLowerCase(), nonce }),
+      publicMetadata: '0x',
+      privateMetadata: '0x'
+    })
+  }
+
+  /** Records a clear under another action of this account, events only. */
+  clearOtherAction(action: Address, nonce = 2n): void {
+    this.emit({ kind: 'setup-cleared', account: this.account, action, nonce })
   }
 
   // -------------------------------------------------------------------------
@@ -625,7 +728,9 @@ export class ScriptedChain {
       ignoresPause?: boolean
     } = {}
   ): AttemptRecord {
-    if (this.attempt.status === 'waiting') throw new Error('AttemptAlreadyActive')
+    if (this.attempt.status === 'waiting') {
+      throw codedError('AttemptAlreadyActive', { attemptId: this.attempt.record.attemptId })
+    }
     const committed = this.setup.status === 'committed' ? this.setup : undefined
     let body: { wait: bigint; ignoresPause: boolean } | undefined
     try {
@@ -646,7 +751,12 @@ export class ScriptedChain {
       setupNonce: options.setupNonce ?? this.setup.setupNonce,
       setupBody: options.setupBody ?? committed?.setupBody ?? '0x',
       consumableAfter: options.ready ? opening : opening + wait,
-      payload: options.payload ?? '0x',
+      payload:
+        options.payload ??
+        new ActionCodecDouble([this.action]).encode({
+          newAuthority: addressOf('new-key'),
+          removedAuthority: this.authorities[0] ?? addressOf('lost-key')
+        }),
       order: options.order ?? { token: ZERO_ADDRESS, amount: 0n, payee: ZERO_ADDRESS },
       usedPlaces: options.usedPlaces ?? [0n],
       usedMethods: options.usedMethods ?? [firstMethod],
@@ -682,7 +792,9 @@ export class ScriptedChain {
     canceller: Canceller,
     options: { vetoingMethod?: Address; caller?: Address; usedPlaces?: bigint[] } = {}
   ): void {
-    if (this.attempt.status !== 'waiting') throw new Error('NoActiveAttempt')
+    if (this.attempt.status !== 'waiting') {
+      throw codedError('NoActiveAttempt', { account: this.account, action: this.action })
+    }
     const { record } = this.attempt
     let cancellerAddress: Address = ZERO_ADDRESS
     let vetoingMethod: Address = ZERO_ADDRESS
@@ -722,16 +834,47 @@ export class ScriptedChain {
     }
   }
 
-  /** Spends the waiting attempt, emitting `AttemptConsumed`. */
-  executeAttempt(): void {
-    if (this.attempt.status !== 'waiting') throw new Error('NotConsumable')
+  /**
+   * Spends the waiting attempt and performs its handover, as `executeHandover`
+   * does (contracts D-105, D-108; ux.md D-319 "AttemptConsumed, key rotated"):
+   * `AttemptConsumed`, then the grant of the new key and the revoke of the
+   * removed one, three logs of one transaction. The handover is the one given,
+   * or the one the attempt's payload decodes to. As a script it checks nothing
+   * else; `land` refuses what the chain would revert (see `executeRevert`).
+   */
+  executeAttempt(handover?: Handover): void {
+    if (this.attempt.status !== 'waiting') {
+      throw codedError('NotConsumable', { state: this.attemptRecord().state })
+    }
     const { record } = this.attempt
-    const n = this.emit({
-      kind: 'attempt-consumed',
-      account: this.account,
-      action: this.action,
-      attemptId: record.attemptId
-    })
+    const performed = handover ?? decodeHandover(this, record.payload)
+    if (!performed) throw codedError('MalformedHandover', { payload: record.payload })
+    const after = [
+      ...this.authorities.filter((a) => !sameAddress(a, performed.removedAuthority)),
+      performed.newAuthority
+    ]
+    const logs = [
+      {
+        kind: 'attempt-consumed',
+        account: this.account,
+        action: this.action,
+        attemptId: record.attemptId
+      },
+      {
+        kind: 'privilege-changed',
+        account: this.account,
+        addr: performed.newAuthority,
+        priv: KEY_PRIVILEGE
+      },
+      {
+        kind: 'privilege-changed',
+        account: this.account,
+        addr: performed.removedAuthority,
+        priv: ZERO_HASH
+      }
+    ]
+    this.authorities = after
+    const [n] = this.emitAll(logs)
     this.attempt = { status: 'executed', record, endedAtBlock: n.at.blockNumber }
   }
 
@@ -846,11 +989,39 @@ export class ScriptedChain {
     return this
   }
 
+  /**
+   * Appends findings to a validation's own until cleared, so a test forces any
+   * D-205 row: `setup.validateSetup` (read by `validateSetup` and
+   * `prepareCommitSetup`) or `recovery.validateRequest` (read by
+   * `prepareStartAttempt` and `prepareCancelByProofs`). Appended errors refuse
+   * the prepares as the doubles' own errors do.
+   */
+  appendFindings(member: ScriptedFindings, findings: Partial<ValidationResult>): this {
+    const current = this.appended.get(member) ?? { errors: [], warnings: [] }
+    this.appended.set(member, {
+      errors: [...current.errors, ...(findings.errors ?? [])],
+      warnings: [...current.warnings, ...(findings.warnings ?? [])]
+    })
+    return this
+  }
+
+  clearFindings(member?: ScriptedFindings): this {
+    if (member) this.appended.delete(member)
+    else this.appended.clear()
+    return this
+  }
+
+  appendedFindings(member: ScriptedFindings): ValidationResult {
+    const appended = this.appended.get(member)
+    return { errors: [...(appended?.errors ?? [])], warnings: [...(appended?.warnings ?? [])] }
+  }
+
   /** Clears every script: reads, refusals, simulations and the approving side's answers. */
   clearScripts(): this {
     this.readScripts.clear()
     this.refusals.clear()
     this.simulations.clear()
+    this.appended.clear()
     this.replyFailure = undefined
     this.enrollFailure = undefined
     this.verdict = undefined
@@ -907,13 +1078,69 @@ export class ScriptedChain {
     return this.effects.get(data.toLowerCase())
   }
 
+  /** What the chain would revert one effect with at the head, or undefined. */
+  revertOf(effect: ChainEffect): KitError | undefined {
+    const { account, action } = this
+    switch (effect.kind) {
+      case 'commit':
+        if (effect.setupCommitment === ZERO_HASH) {
+          return kitError('InvalidCommitment', { supplied: effect.setupCommitment })
+        }
+        if (effect.nonce !== this.setup.setupNonce + 1n) {
+          return kitError('WrongSetupNonce', {
+            supplied: effect.nonce,
+            expected: this.setup.setupNonce + 1n
+          })
+        }
+        return undefined
+      case 'clear':
+        return this.setup.status === 'committed'
+          ? undefined
+          : kitError('NoSetup', { account, action })
+      case 'start':
+      case 'cancel-by-proofs':
+        return acceptanceRevert(this, effect.request)
+      case 'cancel-by-owner':
+        return this.attempt.status === 'waiting'
+          ? undefined
+          : kitError('NoActiveAttempt', { account, action })
+      case 'cancel-by-veto': {
+        if (this.attempt.status !== 'waiting')
+          return kitError('NoActiveAttempt', { account, action })
+        const { record } = this.attempt
+        if (!record.usedMethods.some((m) => sameAddress(m, effect.method))) {
+          return kitError('MethodNotUsed', { attemptId: record.attemptId, method: effect.method })
+        }
+        if (record.ignoresPause)
+          return kitError('AttemptIgnoresPause', { attemptId: record.attemptId })
+        if (this.method(effect.method)?.paused !== true) {
+          return kitError('MethodNotStopped', { method: effect.method })
+        }
+        return undefined
+      }
+      case 'execute':
+        return executeRevert(this, effect.attemptId, effect.payload)
+      default:
+        return undefined
+    }
+  }
+
   /**
    * Lands a prepared call or batch as if the integrator sent it, applying each
-   * call's effect in order. It ignores the simulation, as a chain would not; a
-   * call the doubles did not prepare changes nothing.
+   * call's effect in order. It ignores the prepare's simulation and judges the
+   * chain as it stands now: where the chain would revert any call, it throws a
+   * `LandingRevert` carrying the kit error and applies nothing, since a batch
+   * lands whole or not at all. A dormant setup or an account the action does not
+   * fit therefore never executes (D-110, D-205, ux.md D-319). A call the doubles
+   * did not prepare changes nothing.
    */
   land(prepared: PreparedCall | PreparedBatch): void {
     const calls = prepared.kind === 'batch' ? prepared.calls : [prepared]
+    calls.forEach((call) => {
+      const effect = this.effectOf(call.data)
+      const revert = effect ? this.revertOf(effect) : undefined
+      if (revert) throw landingRevert(revert)
+    })
     calls.forEach((call) => {
       const effect = this.effectOf(call.data)
       if (!effect) return
@@ -963,7 +1190,7 @@ export class ScriptedChain {
           this.cancelAttempt('nobody', { vetoingMethod: effect.method })
           break
         case 'execute':
-          this.executeAttempt()
+          this.executeAttempt(decodeHandover(this, effect.payload))
           break
         default:
           break

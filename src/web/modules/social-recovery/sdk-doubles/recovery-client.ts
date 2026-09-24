@@ -2,13 +2,14 @@
  * The `IRecoveryClient` double (sdk.md D-201, D-202, D-207): the two gathering
  * inits over the restore, the four record operations as pure arithmetic over the
  * gathering (requests, filing with its five refusals, assessment, completion),
- * the five prepares with their validation and simulation, and the recovery-side
- * state record.
+ * the five prepares with request validation (D-205) and simulation, and the
+ * recovery-side state record.
  *
- * The simulation stands in for the manager's own verification path: a proof
- * that is not `doubleProof(config, digest)` comes back as `ProofRejected(place,
- * method)`, a stopped method's proof as `MethodStopped(place, method)`, unless a
- * script fails the simulation outright.
+ * Validation refuses at the prepare; the simulation then runs the chain's own
+ * path (`verification.ts`): `ProofRejected(place, method)` for a proof that is
+ * not `doubleProof(config, digest)`, `MethodStopped` for a stop that landed after
+ * the reads validation made, the execute's account reverts for a dormant setup or
+ * an account the action does not fit, unless a script fails it outright.
  */
 import type {
   AddResult,
@@ -46,8 +47,6 @@ import { ClientContext, codecFor, pinBlock, restoreConfiguration } from './conte
 import {
   deserializeOrder,
   digestOf,
-  digestOfSubmission,
-  doubleProof,
   keccak256,
   placesOf,
   readSetupBody,
@@ -57,36 +56,27 @@ import {
   setupCommitmentOf,
   ZERO_ADDRESS
 } from './encoding'
-import { RECORD_VERSION } from './orchestrator'
+import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { finding, kitError, validationRefusal } from './scripts'
+import { codedError, finding, validationRefusal } from './scripts'
+import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
 
 /** How far a caller's moment may sit from the pinned timestamp before `request.moment-skew` (the doubles' span). */
 export const MOMENT_SKEW_SPAN = 15 * 60
 
 type RequestFinding = Finding<RequestErrorCode | RequestWarningCode>
+type RequestRow = [RequestErrorCode, Record<string, unknown>?]
 
-const refuseWith = (...codes: [RequestErrorCode, Record<string, unknown>?][]): never => {
-  throw validationRefusal({
-    errors: codes.map(([code, values]) =>
-      finding(code, code.startsWith('handover') ? 'account' : 'request', values)
-    ),
-    warnings: []
-  })
+/** Every request row of D-205's table carries the subject `request`. */
+const rowsToFindings = (rows: RequestRow[]): Finding[] =>
+  rows.map(([code, values]) => finding(code, 'request', values ?? {}))
+
+const refuseWith = (...rows: RequestRow[]): never => {
+  throw validationRefusal({ errors: rowsToFindings(rows), warnings: [] })
 }
 
 const readsGathering = (g: Gathering): boolean =>
-  g?.kind === 'gathering' && g.version === RECORD_VERSION
-
-/** The clause each place belongs to, from the body's clause sizes (flat numbering, D-103). */
-const clausesOfBody = (setupBody: Hex): { threshold: number; places: number[] }[] => {
-  const body = readSetupBody(setupBody)
-  let next = 0
-  return body.clauses.map((c) => {
-    const places = c.credentials.map(() => next++)
-    return { threshold: c.threshold, places }
-  })
-}
+  !!g && g.kind === 'gathering' && g.version === RECORD_VERSION
 
 const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
   digestOf({
@@ -102,11 +92,15 @@ const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
     payload: g.request.payload,
     order: g.request.order,
     validUntil: g.request.validUntil,
-    place: place.place,
-    method: place.method,
-    config: place.config,
-    salt: place.salt
+    place: place.place
   })
+
+type SimulatedMember =
+  | 'recovery.prepareStartAttempt'
+  | 'recovery.prepareCancelByProofs'
+  | 'recovery.prepareCancelByOwner'
+  | 'recovery.prepareCancelByVeto'
+  | 'recovery.prepareExecuteHandover'
 
 export class RecoveryClientDouble implements IRecoveryClient {
   readonly events: IEventManager
@@ -147,12 +141,36 @@ export class RecoveryClientDouble implements IRecoveryClient {
     return {
       chainId: String(chain.descriptor.chainId),
       manager: chain.descriptor.manager,
-      // The domain version the build cached at construction, never re-read here (D-202).
-      digestVersion: chain.manager.domain.version,
+      // The digest version this build carries, from the descriptor the build was
+      // checked against; never read from the chain live (D-202, D-208).
+      digestVersion: chain.descriptor.digestVersion,
       account: chain.account,
       action: actionAddress,
       block: { number: block.number, timestamp: String(block.timestamp), hash: block.hash }
     }
+  }
+
+  /** The handover rows of D-205 over two authorities (zero keys, one address twice, the reads). */
+  private async handoverRows(handover: Handover): Promise<RequestRow[]> {
+    const { action } = this.ctx
+    const { newAuthority, removedAuthority } = handover
+    if (sameAddress(newAuthority, ZERO_ADDRESS) || sameAddress(removedAuthority, ZERO_ADDRESS)) {
+      return [['handover.malformed', { newAuthority, removedAuthority, cause: 'zero-key' }]]
+    }
+    if (sameAddress(newAuthority, removedAuthority)) {
+      return [['handover.same-authority', { newAuthority, removedAuthority }]]
+    }
+    const rows: RequestRow[] = []
+    const [isAuthority, holds] = await Promise.all([
+      action.isAuthority(removedAuthority),
+      action.holdsAnyPrivilege(newAuthority)
+    ])
+    if (!isAuthority) {
+      rows.push(['handover.removed-not-authority', { removedAuthority, isAuthority }])
+    }
+    if (holds)
+      rows.push(['handover.new-holds-privilege', { newAuthority, holdsAnyPrivilege: holds }])
+    return rows
   }
 
   async initRecoveryGathering(
@@ -161,39 +179,42 @@ export class RecoveryClientDouble implements IRecoveryClient {
     order: PaymentOrder,
     window: GatheringWindow
   ): Promise<Gathering> {
-    const { chain, manager, action, config, actionAddress } = this.ctx
+    const { chain, manager, config, actionAddress } = this.ctx
     chain.guardRefusal('recovery.initRecoveryGathering')
     const block = await pinBlock(this.ctx)
     const state = await manager.stateOf()
     if (state.attempt.state === 'Waiting') {
-      refuseWith(['request.attempt-active', { attemptId: state.attempt.attemptId }])
+      refuseWith([
+        'request.attempt-active',
+        {
+          attemptId: state.attempt.attemptId,
+          consumableAfter: state.attempt.consumableAfter,
+          ownGathering: false
+        }
+      ])
     }
     const configuration = await restoreConfiguration(this.ctx, source, block)
 
-    let { removedAuthority } = handover
+    let removedAuthority = handover.removedAuthority
     if (!removedAuthority) {
       const reading = chain.removedKeyReading(!!config.creation)
-      if (reading.kind === 'unavailable')
-        refuseWith(['handover.removed-unknown', { cause: reading.cause }])
-      else removedAuthority = reading.key
+      if (reading.kind === 'unavailable') {
+        refuseWith([
+          'handover.removed-unknown',
+          { account: chain.account, creationTriple: !!config.creation, cause: reading.cause }
+        ])
+      } else removedAuthority = reading.key
     }
-    const removed = removedAuthority as Address
-    const errors: [RequestErrorCode, Record<string, unknown>][] = []
-    if (sameAddress(handover.newAuthority, removed))
-      errors.push(['handover.same-authority', { key: removed }])
-    if (!(await action.isAuthority(removed)))
-      errors.push(['handover.removed-not-authority', { key: removed }])
-    if (await action.holdsAnyPrivilege(handover.newAuthority)) {
-      errors.push(['handover.new-holds-privilege', { key: handover.newAuthority }])
+    const performed: Handover = {
+      newAuthority: handover.newAuthority,
+      removedAuthority: removedAuthority as Address
     }
-    if (errors.length) refuseWith(...errors)
+    const rows = await this.handoverRows(performed)
+    if (rows.length) refuseWith(...rows)
 
     const codec = codecFor(this.ctx, actionAddress)
-    if (!codec) throw new Error(`No action codec serves ${actionAddress}.`)
-    const payload = codec.encode({
-      newAuthority: handover.newAuthority,
-      removedAuthority: removed
-    } as Handover)
+    if (!codec) throw codedError('action.no-codec', { action: actionAddress })
+    const payload = codec.encode(performed)
 
     return {
       kind: 'gathering',
@@ -217,11 +238,16 @@ export class RecoveryClientDouble implements IRecoveryClient {
     source: ConfigurationSource,
     window: GatheringWindow
   ): Promise<Gathering> {
-    const { chain, manager } = this.ctx
+    const { chain, manager, actionAddress } = this.ctx
     chain.guardRefusal('recovery.initCancelGathering')
     const block = await pinBlock(this.ctx)
     const state = await manager.stateOf()
-    if (state.attempt.state !== 'Waiting') refuseWith(['request.no-active-attempt'])
+    if (state.attempt.state !== 'Waiting') {
+      refuseWith([
+        'request.no-active-attempt',
+        { action: actionAddress, state: state.attempt.state }
+      ])
+    }
     const configuration = await restoreConfiguration(this.ctx, source, block)
     return {
       kind: 'gathering',
@@ -245,8 +271,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
   // -------------------------------------------------------------------------
 
   getApproverRequests(gathering: Gathering): ApproverRequest[] {
-    if (!readsGathering(gathering))
-      throw new Error('version-unread: this build does not read that gathering record.')
+    if (!readsGathering(gathering)) {
+      throw codedError('version-unread', { kind: gathering?.kind, version: gathering?.version })
+    }
     const r = gathering.request
     const setupBodyHash = keccak256(r.setupBody)
     return gathering.places.map((p) => {
@@ -282,13 +309,8 @@ export class RecoveryClientDouble implements IRecoveryClient {
       reason: { kind: 'add-refusal', cause }
     })
     if (this.ctx.chain.addRefusal) return refuse(this.ctx.chain.addRefusal)
-    if (
-      !readsGathering(gathering) ||
-      reply?.kind !== 'recovery-proof-reply' ||
-      reply.version !== RECORD_VERSION
-    ) {
-      return refuse('version-unread')
-    }
+    // The shape first: a malformed paste is refused, never thrown (D-207).
+    if (!readsGathering(gathering) || !replyReadable(reply)) return refuse('version-unread')
     const r = gathering.request
     const bound =
       reply.chainId === r.chainId &&
@@ -319,24 +341,21 @@ export class RecoveryClientDouble implements IRecoveryClient {
   }
 
   assess(gathering: Gathering, now: number): Assessment {
-    if (!readsGathering(gathering))
-      throw new Error('version-unread: this build does not read that gathering record.')
+    if (!readsGathering(gathering)) {
+      throw codedError('version-unread', { kind: gathering?.kind, version: gathering?.version })
+    }
     const r = gathering.request
     const filledSet = new Set(gathering.replies.map((x) => x.place))
-    const filled = gathering.places
-      .map((p) => p.place)
-      .filter((p) => filledSet.has(p))
-      .sort((a, b) => a - b)
-    const missing = gathering.places
-      .map((p) => p.place)
-      .filter((p) => !filledSet.has(p))
-      .sort((a, b) => a - b)
-    const clauses = clausesOfBody(r.setupBody).map((c, clause) => ({
+    const all = gathering.places.map((p) => p.place)
+    const filled = all.filter((p) => filledSet.has(p)).sort((a, b) => a - b)
+    const missing = all.filter((p) => !filledSet.has(p)).sort((a, b) => a - b)
+    // One evaluation, D-204's: false for no clauses and for every threshold at zero.
+    const rule = evaluateRule(r.setupBody, filled)
+    const clauses = rule.clauses.map(({ clause, threshold, filled: count }) => ({
       clause,
-      threshold: c.threshold,
-      filled: c.places.filter((p) => filledSet.has(p)).length
+      threshold,
+      filled: count
     }))
-    const ruleSatisfied = clauses.length > 0 && clauses.every((c) => c.filled >= c.threshold)
     const findings: RequestFinding[] = []
     const validUntil = Number(r.validUntil)
     const pinned = Number(r.block.timestamp)
@@ -348,7 +367,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
       )
     }
     if (Math.abs(now - pinned) > MOMENT_SKEW_SPAN) {
-      findings.push(finding('request.moment-skew', 'request', { now, pinned }))
+      findings.push(
+        finding('request.moment-skew', 'request', { now, pinned, span: MOMENT_SKEW_SPAN })
+      )
     }
     if (
       gathering.purpose === 'cancellation' &&
@@ -362,7 +383,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
         })
       )
     }
-    return { filled, missing, clauses, ruleSatisfied, findings }
+    return { filled, missing, clauses, ruleSatisfied: rule.satisfied, findings }
   }
 
   complete(
@@ -371,29 +392,34 @@ export class RecoveryClientDouble implements IRecoveryClient {
     now: number
   ): AttemptRequest | CancelRequest {
     this.ctx.chain.guardRefusal('recovery.complete')
-    if (!readsGathering(gathering))
-      throw new Error('version-unread: this build does not read that gathering record.')
+    if (!readsGathering(gathering)) {
+      throw codedError('version-unread', { kind: gathering?.kind, version: gathering?.version })
+    }
     const r = gathering.request
-    if (now > Number(r.validUntil))
+    if (now > Number(r.validUntil)) {
       refuseWith(['request.expired', { validUntil: Number(r.validUntil), now }])
-    const clauses = clausesOfBody(r.setupBody)
+    }
     const byPlace = new Map(gathering.places.map((p) => [p.place, p]))
     const filedOrder = new Map(gathering.replies.map((x, i) => [x.place, i]))
+    const whole = evaluateRule(r.setupBody, [...filedOrder.keys()])
+    if (!whole.satisfied) {
+      refuseWith(['request.rule-unsatisfied', { clause: whole.failingClause }])
+    }
 
     let chosen: number[]
     if (selection) {
       chosen = [...new Set(selection)]
-      const satisfied =
-        chosen.every((p) => filedOrder.has(p)) &&
-        clauses.length > 0 &&
-        clauses.every((c) => c.places.filter((p) => chosen.includes(p)).length >= c.threshold)
-      if (!satisfied) refuseWith(['request.rule-unsatisfied', { selection: chosen }])
+      const picked = evaluateRule(r.setupBody, chosen)
+      if (!chosen.every((p) => filedOrder.has(p)) || !picked.satisfied) {
+        refuseWith([
+          'request.rule-unsatisfied',
+          { selection: chosen, clause: picked.failingClause }
+        ])
+      }
     } else {
       // Per clause: no stopped method first, then fewest stoppable, then earliest filed (D-207).
-      chosen = []
-      const unsatisfied = clauses.length === 0
-      clauses.forEach((c) => {
-        const candidates = c.places
+      chosen = whole.clauses.flatMap((c) =>
+        c.places
           .filter((p) => filedOrder.has(p))
           .sort((a, b) => {
             const pa = byPlace.get(a) as GatheringPlace
@@ -404,12 +430,10 @@ export class RecoveryClientDouble implements IRecoveryClient {
               stopped || stoppable || (filedOrder.get(a) as number) - (filedOrder.get(b) as number)
             )
           })
-        if (candidates.length < c.threshold) chosen.push(-1)
-        chosen.push(...candidates.slice(0, c.threshold))
-      })
-      if (unsatisfied || chosen.includes(-1)) refuseWith(['request.rule-unsatisfied'])
+          .slice(0, c.threshold)
+      )
     }
-    const proofs: ProofPlace[] = chosen
+    const proofs: ProofPlace[] = [...chosen]
       .sort((a, b) => a - b)
       .map((p) => {
         const reply = gathering.replies.find((x) => x.place === p) as ApproverReply
@@ -441,65 +465,59 @@ export class RecoveryClientDouble implements IRecoveryClient {
   }
 
   // -------------------------------------------------------------------------
-  // The prepares
+  // Request validation (D-205) and the prepares
   // -------------------------------------------------------------------------
 
-  /** The manager's verification path over the proofs, in the doubles' proof convention. */
-  private proofFailure(request: AttemptRequest | CancelRequest): KitError | undefined {
-    const { chain } = this.ctx
-    const domain = {
-      chainId: chain.manager.domain.chainId,
-      manager: chain.descriptor.manager,
-      digestVersion: chain.manager.domain.version
-    }
-    let ignoresPause = false
-    try {
-      ignoresPause = readSetupBody(request.setupBody).ignoresPause
-    } catch {
-      ignoresPause = false
-    }
-    for (let i = 0; i < request.proofs.length; i++) {
-      const p = request.proofs[i]
-      if (i > 0 && p.place <= request.proofs[i - 1].place)
-        return kitError('PlacesNotStrictlyIncreasing')
-      if (!ignoresPause && chain.method(p.method)?.paused) {
-        return kitError('MethodStopped', { place: p.place, method: p.method })
-      }
-      if (
-        p.proof.toLowerCase() !==
-        doubleProof(p.config, digestOfSubmission(request, domain, i)).toLowerCase()
-      ) {
-        return kitError('ProofRejected', { place: p.place, method: p.method })
-      }
-    }
-    return undefined
-  }
-
-  private async submissionChecks(
+  /**
+   * The request validation the two submission prepares run (D-205): the stored
+   * attempt and setup, the window, the order of places, the rule over the proof
+   * array, each named method's stop, and on an opening request the handover.
+   * Returns the errors; the prepare refuses while any stands.
+   */
+  private async validateRequest(
     request: AttemptRequest | CancelRequest,
-    now: number,
-    purpose: 'approval' | 'cancellation'
-  ): Promise<void> {
-    const { chain, manager, action } = this.ctx
+    now: number
+  ): Promise<Finding[]> {
+    const { chain, manager } = this.ctx
+    const isApproval = 'payload' in request
     const state = await manager.stateOf()
-    const errors: [RequestErrorCode, Record<string, unknown>?][] = []
+    const rows: RequestRow[] = []
     if (now > request.validUntil)
-      errors.push(['request.expired', { validUntil: request.validUntil, now }])
-    if (purpose === 'approval') {
-      if (state.attempt.state === 'Waiting')
-        errors.push(['request.attempt-active', { attemptId: state.attempt.attemptId }])
-      else if (request.attemptId !== state.nextAttemptId) {
-        errors.push([
+      rows.push(['request.expired', { validUntil: request.validUntil, now }])
+    if (isApproval) {
+      if (state.attempt.state === 'Waiting') {
+        rows.push([
+          'request.attempt-active',
+          {
+            attemptId: state.attempt.attemptId,
+            consumableAfter: state.attempt.consumableAfter,
+            ownGathering: state.attempt.attemptId === request.attemptId
+          }
+        ])
+      } else if (request.attemptId !== state.nextAttemptId) {
+        rows.push([
           'request.attempt-id',
-          { expected: state.nextAttemptId, got: request.attemptId }
+          { attemptId: request.attemptId, expected: state.nextAttemptId }
         ])
       }
-    } else if (state.attempt.state !== 'Waiting') errors.push(['request.no-active-attempt'])
-    else if (request.attemptId !== state.attempt.attemptId) {
-      errors.push([
-        'request.attempt-id',
-        { expected: state.attempt.attemptId, got: request.attemptId }
+    } else if (state.attempt.state !== 'Waiting') {
+      rows.push([
+        'request.no-active-attempt',
+        { action: request.action, state: state.attempt.state }
       ])
+    } else {
+      if (request.attemptId !== state.attempt.attemptId) {
+        rows.push([
+          'request.attempt-id',
+          { attemptId: request.attemptId, expected: state.attempt.attemptId }
+        ])
+      }
+      if (state.attempt.setupNonce !== state.setupNonce) {
+        rows.push([
+          'request.stale-attempt',
+          { judgedUnder: state.attempt.setupNonce, currentNonce: state.setupNonce }
+        ])
+      }
     }
     const recomputed = setupCommitmentOf(
       chain.account,
@@ -508,36 +526,63 @@ export class RecoveryClientDouble implements IRecoveryClient {
       request.setupBody
     )
     if (request.setupNonce !== state.setupNonce || recomputed !== state.setupCommitment) {
-      errors.push(['request.body-mismatch', { setupNonce: state.setupNonce }])
+      rows.push(['request.body-mismatch', { recomputed, committed: state.setupCommitment }])
     }
     for (let i = 1; i < request.proofs.length; i++) {
       if (request.proofs[i].place <= request.proofs[i - 1].place) {
-        errors.push(['proof.places-unordered'])
+        rows.push(['proof.places-unordered', { place: request.proofs[i].place }])
         break
       }
     }
-    if (purpose === 'approval') {
-      const codec = codecFor(this.ctx, request.action)
-      try {
-        const handover = codec?.decode((request as AttemptRequest).payload) as Handover | undefined
-        if (handover && (await action.holdsAnyPrivilege(handover.newAuthority))) {
-          errors.push(['handover.new-holds-privilege', { key: handover.newAuthority }])
+    const rule = evaluateRule(
+      request.setupBody,
+      request.proofs.map((p) => Number(p.place))
+    )
+    if (!rule.satisfied) {
+      const failing = rule.clauses.find((c) => c.clause === rule.failingClause)
+      rows.push([
+        'request.rule-unsatisfied',
+        { clause: rule.failingClause, filled: failing?.filled, threshold: failing?.threshold }
+      ])
+    }
+    let ignoresPause = false
+    try {
+      ignoresPause = readSetupBody(request.setupBody).ignoresPause
+    } catch {
+      ignoresPause = false
+    }
+    if (!ignoresPause) {
+      const stops = await Promise.all(request.proofs.map((p) => manager.paused(p.method)))
+      request.proofs.forEach((p, i) => {
+        const stop = stops[i]
+        if (stop.answered && stop.value) {
+          rows.push(['request.method-stopped', { place: p.place, method: p.method, ignoresPause }])
         }
+      })
+    }
+    if (isApproval) {
+      const codec = codecFor(this.ctx, request.action)
+      let handover: Handover | undefined
+      try {
+        handover = codec?.decode((request as AttemptRequest).payload) as Handover | undefined
       } catch {
-        errors.push(['handover.malformed'])
+        handover = undefined
+      }
+      if (!handover) {
+        rows.push([
+          'handover.malformed',
+          { payload: (request as AttemptRequest).payload, cause: 'undecodable' }
+        ])
+      } else {
+        rows.push(...(await this.handoverRows(handover)))
       }
     }
-    if (errors.length) refuseWith(...errors)
+    return [...rowsToFindings(rows), ...chain.appendedFindings('recovery.validateRequest').errors]
   }
 
   private finish(
     call: PreparedCall,
-    member:
-      | 'recovery.prepareStartAttempt'
-      | 'recovery.prepareCancelByProofs'
-      | 'recovery.prepareCancelByOwner'
-      | 'recovery.prepareCancelByVeto'
-      | 'recovery.prepareExecuteHandover',
+    member: SimulatedMember,
     block: BlockHeader,
     options: PrepareOptions | undefined,
     computed: KitError | undefined
@@ -556,14 +601,15 @@ export class RecoveryClientDouble implements IRecoveryClient {
   ): Promise<PreparedCall> {
     this.ctx.chain.guardRefusal('recovery.prepareStartAttempt')
     const block = await pinBlock(this.ctx)
-    await this.submissionChecks(request, now, 'approval')
+    const errors = await this.validateRequest(request, now)
+    if (errors.length) throw validationRefusal({ errors, warnings: [] })
     const call = await this.ctx.manager.prepareStartAttempt(request)
     return this.finish(
       call,
       'recovery.prepareStartAttempt',
       block,
       options,
-      this.proofFailure(request)
+      acceptanceRevert(this.ctx.chain, request)
     )
   }
 
@@ -574,24 +620,30 @@ export class RecoveryClientDouble implements IRecoveryClient {
   ): Promise<PreparedCall> {
     this.ctx.chain.guardRefusal('recovery.prepareCancelByProofs')
     const block = await pinBlock(this.ctx)
-    await this.submissionChecks(request, now, 'cancellation')
+    const errors = await this.validateRequest(request, now)
+    if (errors.length) throw validationRefusal({ errors, warnings: [] })
     const call = await this.ctx.manager.prepareCancelByProofs(request)
     return this.finish(
       call,
       'recovery.prepareCancelByProofs',
       block,
       options,
-      this.proofFailure(request)
+      acceptanceRevert(this.ctx.chain, request)
     )
   }
 
   async prepareCancelByOwner(): Promise<PreparedCall> {
-    this.ctx.chain.guardRefusal('recovery.prepareCancelByOwner')
+    const { chain, manager, actionAddress } = this.ctx
+    chain.guardRefusal('recovery.prepareCancelByOwner')
     const block = await pinBlock(this.ctx)
-    const state = await this.ctx.manager.stateOf()
-    const call = await this.ctx.manager.prepareCancelByOwner(this.ctx.actionAddress)
-    const computed = state.attempt.state === 'Waiting' ? undefined : kitError('NoActiveAttempt')
-    return this.finish(call, 'recovery.prepareCancelByOwner', block, undefined, computed)
+    const call = await manager.prepareCancelByOwner(actionAddress)
+    return this.finish(
+      call,
+      'recovery.prepareCancelByOwner',
+      block,
+      undefined,
+      chain.revertOf({ kind: 'cancel-by-owner' })
+    )
   }
 
   async prepareCancelByVeto(method: Address, options?: PrepareOptions): Promise<PreparedCall> {
@@ -599,21 +651,25 @@ export class RecoveryClientDouble implements IRecoveryClient {
     chain.guardRefusal('recovery.prepareCancelByVeto')
     const block = await pinBlock(this.ctx)
     const state = await manager.stateOf()
-    if (state.attempt.state !== 'Waiting') refuseWith(['request.no-active-attempt'])
-    const { attempt } = state
+    if (state.attempt.state !== 'Waiting') {
+      refuseWith([
+        'request.no-active-attempt',
+        { action: actionAddress, state: state.attempt.state }
+      ])
+    }
     const call = await manager.prepareCancelByVeto(
       chain.account,
       actionAddress,
-      attempt.attemptId,
+      state.attempt.attemptId,
       method
     )
-    const paused = await manager.paused(method)
-    let computed: KitError | undefined
-    if (!attempt.usedMethods.some((m) => sameAddress(m, method)))
-      computed = kitError('MethodNotUsed', { method })
-    else if (attempt.ignoresPause) computed = kitError('AttemptIgnoresPause')
-    else if (!(paused.answered && paused.value)) computed = kitError('MethodNotStopped', { method })
-    return this.finish(call, 'recovery.prepareCancelByVeto', block, options, computed)
+    return this.finish(
+      call,
+      'recovery.prepareCancelByVeto',
+      block,
+      options,
+      chain.revertOf({ kind: 'cancel-by-veto', method })
+    )
   }
 
   async prepareExecuteHandover(
@@ -621,58 +677,39 @@ export class RecoveryClientDouble implements IRecoveryClient {
     payload: Hex,
     options?: PrepareOptions
   ): Promise<PreparedCall> {
-    const { chain, manager, actionAddress } = this.ctx
+    const { chain, actionAddress } = this.ctx
     chain.guardRefusal('recovery.prepareExecuteHandover')
     const block = await pinBlock(this.ctx)
     const codec = codecFor(this.ctx, actionAddress)
-    let handover: Handover
+    let handover: Handover | undefined
     try {
-      handover = codec?.decode(payload) as Handover
-      if (!handover) throw new Error('no codec')
+      handover = codec?.decode(payload) as Handover | undefined
     } catch {
-      return refuseWith(['handover.malformed'])
+      handover = undefined
     }
+    const describe = (name: string, args: unknown, to: Address): DescribedCall => ({
+      to,
+      value: 0n,
+      data: composeCall(chain, { name, args, target: to, sender: 'anyone', block }).data
+    })
+    // The batch the action will run, for a screen and never for signing: the
+    // consume, the grant and the revoke the payload decodes to, and the payment
+    // where the order carries an amount. An undecodable payload describes no
+    // grant and no revoke, and its simulation names `MalformedHandover`.
     const describes: DescribedCall[] = [
-      { to: chain.descriptor.manager, value: 0n, data: '0x' },
-      { to: chain.account, value: 0n, data: '0x' },
-      { to: chain.account, value: 0n, data: '0x' }
+      describe('consume', [attempt.attemptId], chain.descriptor.manager)
     ]
-    describes[0].data = composeCall(chain, {
-      name: 'consume',
-      args: [attempt.attemptId],
-      target: chain.descriptor.manager,
-      sender: 'anyone',
-      block
-    }).data
-    describes[1].data = composeCall(chain, {
-      name: 'setAddrPrivilege',
-      args: [handover.newAuthority, 'key'],
-      target: chain.account,
-      sender: 'anyone',
-      block
-    }).data
-    describes[2].data = composeCall(chain, {
-      name: 'setAddrPrivilege',
-      args: [handover.removedAuthority, 'none'],
-      target: chain.account,
-      sender: 'anyone',
-      block
-    }).data
+    if (handover) {
+      describes.push(describe('setAddrPrivilege', [handover.newAuthority, 'key'], chain.account))
+      describes.push(
+        describe('setAddrPrivilege', [handover.removedAuthority, 'none'], chain.account)
+      )
+    }
     if (attempt.order.amount > 0n) {
       const payee = sameAddress(attempt.order.payee, ZERO_ADDRESS)
         ? simulationFrom(chain, 'anyone', options)
         : attempt.order.payee
-      describes.push({
-        to: attempt.order.token,
-        value: 0n,
-        data: composeCall(chain, {
-          name: 'transfer',
-          args: [payee, attempt.order.amount],
-          target: attempt.order.token,
-          sender: 'anyone',
-          block
-        }).data
-      })
+      describes.push(describe('transfer', [payee, attempt.order.amount], attempt.order.token))
     }
     const call = composeCall(chain, {
       name: 'executeHandover',
@@ -680,24 +717,16 @@ export class RecoveryClientDouble implements IRecoveryClient {
       target: actionAddress,
       sender: 'anyone',
       block,
-      effect: { kind: 'execute' },
+      effect: { kind: 'execute', attemptId: attempt.attemptId, payload },
       describes
     })
-    const state = await manager.stateOf()
-    const live = state.attempt
-    let computed: KitError | undefined
-    if (
-      live.state !== 'Waiting' ||
-      live.attemptId !== attempt.attemptId ||
-      live.consumableAfter > block.timestamp ||
-      keccak256(payload) !== live.payloadHash
-    ) {
-      computed = kitError('NotConsumable', { attemptId: attempt.attemptId }, 'action')
-    } else if (!live.ignoresPause) {
-      const stopped = live.usedMethods.find((m) => chain.method(m)?.paused)
-      if (stopped) computed = kitError('MethodVetoedSpend', { method: stopped })
-    }
-    return this.finish(call, 'recovery.prepareExecuteHandover', block, options, computed)
+    return this.finish(
+      call,
+      'recovery.prepareExecuteHandover',
+      block,
+      options,
+      executeRevert(chain, attempt.attemptId, payload)
+    )
   }
 
   // -------------------------------------------------------------------------

@@ -183,6 +183,29 @@ describe('recovery client double', () => {
       'credential-mismatch': (r) => ({ ...r, salt: `0x${'77'.repeat(32)}` })
     }
 
+    eachIt([
+      ['an empty object', {}, 'version-unread'],
+      ['null', null, 'version-unread'],
+      ['a string', 'not a reply', 'version-unread'],
+      // D-207 does not say whether a record missing its fields fails the read
+      // or the binding rule; the doubles read it as a record they cannot read.
+      [
+        'a reply with no binding fields',
+        { kind: 'recovery-proof-reply', version: 1, place: 0 },
+        'version-unread'
+      ]
+    ] as const)('returns a typed refusal for a malformed pasted reply: %s', async (sample) => {
+      const opened = await openRecovery()
+      const pasted = sample[1] as unknown as ApproverReply
+      let result: ReturnType<IRecoveryClient['addApproverReply']> | undefined
+      expect(() => {
+        result = opened.recovery.addApproverReply(opened.gathering, pasted)
+      }).not.toThrow()
+      expect(result!.reason).toEqual({ kind: 'add-refusal', cause: sample[2] })
+      expect(result!.gathering).toEqual(opened.gathering)
+      expect(result!.displaced).toBeUndefined()
+    })
+
     it('names five refusal kinds, one per rule of D-207', () => {
       expect(Object.keys(tamper).sort()).toEqual([...ADD_REFUSAL_REASONS].sort())
     })

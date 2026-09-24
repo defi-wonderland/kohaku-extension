@@ -27,6 +27,7 @@ import type {
 
 import type { ScriptedChain } from './chain'
 import { digestOfRequest, doubleProof, sameAddress } from './encoding'
+import { replyReadable, requestReadable } from './orchestrator'
 
 /** Why the removed key cannot be named (the causes D-202's inference refuses with). */
 export const REMOVED_KEY_UNAVAILABLE_CAUSES = [
@@ -69,9 +70,17 @@ export class WalletReadsDouble implements IWalletReadsDouble {
     private readonly config: Pick<ClientConfiguration, 'creation' | 'accountImplementation'> = {}
   ) {}
 
+  /**
+   * A malformed paste never throws: a reply or request that fails the record
+   * shape checks `addApproverReply` and the orchestrator use (`replyReadable`,
+   * `requestReadable`: every field present with its type, the digest and the
+   * proof among them), or whose values make no digest, answers `rejected`. Only
+   * a read scripted to fail throws.
+   */
   async verifyReply(request: ApproverRequest, reply: ApproverReply): Promise<Verdict> {
     this.chain.guard('walletReads.verifyReply')
     if (this.chain.verdict) return this.chain.verdict
+    if (!replyReadable(reply) || !requestReadable(request)) return 'rejected'
     if (
       reply.place !== request.place ||
       !sameAddress(reply.method, request.method) ||
@@ -79,10 +88,12 @@ export class WalletReadsDouble implements IWalletReadsDouble {
     ) {
       return 'rejected'
     }
-    return reply.proof.toLowerCase() ===
-      doubleProof(request.config, digestOfRequest(request)).toLowerCase()
-      ? 'satisfied'
-      : 'rejected'
+    try {
+      const expected = doubleProof(request.config, digestOfRequest(request))
+      return reply.proof.toLowerCase() === expected.toLowerCase() ? 'satisfied' : 'rejected'
+    } catch {
+      return 'rejected'
+    }
   }
 
   async removedKey(): Promise<RemovedKeyReading> {
