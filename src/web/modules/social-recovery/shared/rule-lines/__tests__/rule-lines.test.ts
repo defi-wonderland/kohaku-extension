@@ -39,6 +39,10 @@ const GUARDIAN = '0x4000000000000000000000000000000000000004' as Hex
 const HARDWARE_KEY_LOWER = '0xabcdef000000000000000000000000000000abcd' as Hex
 const HARDWARE_KEY_MIXED = '0xAbCdEf000000000000000000000000000000AbCd' as Hex
 
+// Two fixed configs for the duplicate shapes; `cred` below never reaches them.
+const DUP_CONFIG = `0x${'d'.repeat(64)}` as Hex
+const OTHER_CONFIG = `0x${'e'.repeat(64)}` as Hex
+
 let configCounter = 0
 const cred = (method: Hex): Credential => {
   configCounter += 1
@@ -258,6 +262,19 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
       { key: 'oneFailureDomain' },
       { key: 'differentPlaces' }
     ]
+  },
+  {
+    name: 'two different configs of one method address: not a duplicate, lines as usual',
+    clauses: [
+      {
+        threshold: 1,
+        credentials: [
+          { method: PASSKEY, config: DUP_CONFIG },
+          { method: PASSKEY, config: OTHER_CONFIG }
+        ]
+      }
+    ],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'oneFailureDomain' }, { key: 'differentPlaces' }]
   }
 ]
 
@@ -270,6 +287,58 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
 // every path holding one yields no lines, beside a required row included.
 const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   { name: 'an empty path', clauses: [] },
+  // D-305: one enrolled method appears once across the path, and the editor
+  // refuses a duplicate. A duplicate is the same (method, config) pair.
+  {
+    name: 'a 1-of-2 group holding the same credential twice: never either one alone',
+    clauses: [
+      {
+        threshold: 1,
+        credentials: [
+          { method: PASSKEY, config: DUP_CONFIG },
+          { method: PASSKEY, config: DUP_CONFIG }
+        ]
+      }
+    ]
+  },
+  {
+    name: 'a passkey row and the same passkey inside a 2-of-3 group',
+    clauses: [
+      { threshold: 1, credentials: [{ method: PASSKEY, config: DUP_CONFIG }] },
+      {
+        threshold: 2,
+        credentials: [
+          { method: PASSPORT, config: OTHER_CONFIG },
+          { method: PASSKEY, config: DUP_CONFIG },
+          { method: GUARDIAN, config: OTHER_CONFIG }
+        ]
+      }
+    ]
+  },
+  {
+    name: 'the same credential twice under two labels: still a duplicate',
+    clauses: [
+      {
+        threshold: 1,
+        credentials: [
+          { method: PASSKEY, config: DUP_CONFIG, label: 'laptop' },
+          { method: PASSKEY, config: DUP_CONFIG, label: 'phone' }
+        ]
+      }
+    ]
+  },
+  {
+    name: 'the same credential twice, its method address in two letter cases: still a duplicate',
+    clauses: [
+      {
+        threshold: 1,
+        credentials: [
+          { method: HARDWARE_KEY_LOWER, config: DUP_CONFIG },
+          { method: HARDWARE_KEY_MIXED, config: DUP_CONFIG }
+        ]
+      }
+    ]
+  },
   { name: 'an empty clause alone', clauses: [{ threshold: 1, credentials: [] }] },
   {
     name: 'an empty clause beside a required row: no single-method warning',
