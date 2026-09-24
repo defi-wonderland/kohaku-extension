@@ -39,10 +39,10 @@ Every M-6 lane builds into a skeleton that already exists, so no task PR of roun
 | `setup/arm/` | PT-051 |
 | `onboarding/recover/` | PT-052 |
 | `onboarding/fast-track/` | PT-053 |
-| `recovery/entry/` | PT-054 |
+| `recovery/entry/` | PT-054, PT-055, PT-056 |
 | `recovery/checklist/` | PT-057, PT-058, PT-059, PT-070 |
 | `recovery/submit/` | PT-060 |
-| `recovery/wait/` | PT-055, PT-061 |
+| `recovery/wait/` | PT-061 |
 | `recovery/done/` | PT-062 |
 | `guardian-page/` | PT-063, PT-064 |
 | `watcher/` | PT-065 |
