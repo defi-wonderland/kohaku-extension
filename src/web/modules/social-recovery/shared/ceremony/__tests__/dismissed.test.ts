@@ -210,6 +210,27 @@ describe("the method's device-refused", () => {
     const outcome = await hosts.enroll({ method, orchestrator, resolvedDevice: externalDevice() })
     expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
   })
+  it('reads a verdict, not the note, for a browser-authenticator method at enrollment', async () => {
+    browserAnswers()
+    const method = fakeMethod({ configFrom: enrollFailure('device-refused') })
+    const { outcome } = await run('enroll', method)
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('device-refused')
+  })
+  ;(['none', 'in-browser-prover'] as const).forEach((binding) =>
+    it(`reads a verdict, not the note, for a ${binding} method at a claim`, async () => {
+      browserAnswers()
+      const method = fakeMethod({ replyFrom: replyFailure('device-refused') }, binding)
+      const orchestrator = fakeOrchestrator(method)
+      const outcome = await hosts.createClaim({
+        method,
+        orchestrator,
+        resolvedDevice: externalDevice()
+      })
+      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+      if (outcome.type === 'verdict') expect(outcome.cause).toContain('device-refused')
+    })
+  )
   ;(['testAccess', 'createClaim'] as const).forEach((host) =>
     it(`reads a verdict, not the note, for a browser-authenticator method at ${host}`, async () => {
       browserAnswers()
