@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IRecoveryClient` |
 | Invariants | none |
 | Design refs | D-103, D-202, D-302, D-311, D-373, D-393 |
-| Readiness (task map 2026-09-24) | risky |
+| Readiness | risky |
 | Mock-first | completes against the SDK doubles alone |
 
 ## Done

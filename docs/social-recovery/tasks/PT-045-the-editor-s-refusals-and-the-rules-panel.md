@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | none |
 | Invariants | none |
 | Design refs | D-103, D-107, D-305 |
-| Readiness (task map 2026-09-24) | risky |
+| Readiness | risky |
 | Mock-first | completes against the SDK doubles alone |
 
 ## Done

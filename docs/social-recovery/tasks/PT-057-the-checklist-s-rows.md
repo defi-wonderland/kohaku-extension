@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IMethodsOrchestrator`, `IRecoveryClient` |
 | Invariants | none |
 | Design refs | D-202, D-206, D-302, D-310, D-373, D-392 |
-| Readiness (task map 2026-09-24) | risky |
+| Readiness | risky |
 | Mock-first | needs the real thing beyond the doubles |
 
 ## Done

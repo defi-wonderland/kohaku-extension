@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IPolicyManagerInteractor`, `IRecoveryActionInteractor`, `IRecoveryClient` |
 | Invariants | I-38, I-44 |
 | Design refs | D-107, D-202, D-205, D-310, D-373, D-392 |
-| Readiness (task map 2026-09-24) | risky |
+| Readiness | risky |
 | Mock-first | completes against the SDK doubles alone |
 
 ## Done

@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IPolicyManagerInteractor`, `ISetupClient` |
 | Invariants | I-37 |
 | Design refs | D-105, D-108, D-110, D-111, D-202, D-317, D-319, D-371 |
-| Readiness (task map 2026-09-24) | blocked in part |
+| Readiness | blocked in part |
 | Mock-first | completes against the SDK doubles alone |
 
 ## Done

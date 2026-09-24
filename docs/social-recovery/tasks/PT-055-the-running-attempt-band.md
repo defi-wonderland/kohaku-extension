@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IPolicyManagerInteractor` |
 | Invariants | none |
 | Design refs | D-202, D-306, D-371 |
-| Readiness (task map 2026-09-24) | free |
+| Readiness | free |
 | Mock-first | completes against the SDK doubles alone |
 
 ## Done

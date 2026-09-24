@@ -17,7 +17,7 @@ Provisional id from the cut at `352f91a` (PR #47). The chapter copy under `../de
 | Interfaces | `IMethodsOrchestrator` |
 | Invariants | I-27, I-39, I-40 |
 | Design refs | D-103, D-206, D-302, D-308, D-374, D-376 |
-| Readiness (task map 2026-09-24) | blocked |
+| Readiness | blocked |
 | Mock-first | needs the real thing beyond the doubles |
 
 ## Done
