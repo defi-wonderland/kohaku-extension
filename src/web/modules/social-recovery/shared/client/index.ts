@@ -53,6 +53,7 @@ export { createChainReads, gasCallOf, type ChainReads, type GasEstimateCall } fr
 export { networkOf, extensionProviderFor, type ExtensionProvider } from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
+  MANAGER_DOMAIN_FIELDS,
   buildRecoveryClient,
   checkDigestVersion,
   carriedDomainVersion,
@@ -74,7 +75,9 @@ export {
   MISSING_BACKGROUND_ACTION,
   SIGN_FLOW_FAILURE_REASONS,
   DEFAULT_SIGN_TIMEOUT_MS,
+  ABSENCE_GRACE_MS,
   createSignerFacade,
+  signRequestOf,
   typedMessageOf,
   isListedBasicAccountKey,
   signerNotWired,
@@ -86,14 +89,23 @@ export {
   type SignerFacade,
   type SignerMember,
   type SignerFacadeOptions,
-  type SignMessageFlowAction,
-  type SignMessageFlowState,
-  type SignMessageFlowPort,
+  type SignRequestAction,
+  type SignRequestPort,
+  type SignRequestUpdate,
+  type SignMessageState,
+  type RequestsState,
   type ListedAccount,
   type SignerNotWired,
   type SignFlowFailure,
   type SignFlowFailureReason
 } from './signer'
-export { signMessageFlowPort } from './signer-port'
-export { SPONSOR_RAIL, sendingKeyOf, type SendingKeys } from './sending'
-export { sdkStandIn } from './stand-in'
+export { signRequestPort } from './signer-port'
+export {
+  SPONSOR_RAIL,
+  RECOVERY_CALLS,
+  sendingKeyOf,
+  type RecoveryCall,
+  type SendingKeys
+} from './sending'
+// `sdkStandIn` stays out of this module: tests and development code import
+// `shared/client/stand-in` by path, so no screen reaches the scripted chain.

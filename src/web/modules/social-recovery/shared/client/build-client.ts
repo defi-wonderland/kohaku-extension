@@ -8,16 +8,22 @@
  * receives the provider adapter, the descriptor, the account and the client
  * configuration, and nothing else of the extension: no signer and no storage.
  *
- * Before anything is built, the wallet reads the domain the manager publishes
- * through `eip712Domain()` and compares its version and name with the digest
- * version this build carries (sdk.md D-208 construction check 5). A
- * disagreement throws a `DigestVersionRefusal` before any client exists, so no
- * prepare can run; the account step draws it as the update the wallet state
- * (ux.md D-306, D-319). The builder runs the same check again at construction;
- * its refusal is surfaced as the same `DigestVersionRefusal`.
+ * Before anything is built, the wallet runs D-208's construction checks 2 to 5
+ * in D-208's order. It reads the provider's chain id (check 2), then the domain
+ * the manager publishes through `eip712Domain()`: its chain id and verifying
+ * contract (check 3) and its `fields` bitmap (check 4) refuse with the
+ * builder's own `ConstructionRefusal`, so a provider or a manager on another
+ * chain reads as a construction refusal. Only then does it compare the
+ * domain's version and name with the digest version this build carries
+ * (check 5). That disagreement throws a `DigestVersionRefusal` before any
+ * client exists, so no prepare can run; the account step draws it as the
+ * update the wallet state (ux.md D-306, D-319). The builder runs the same
+ * checks again at construction; its digest-version refusal is surfaced as the
+ * same `DigestVersionRefusal`.
  */
 import type { ConstructionRefusal } from '@web/modules/social-recovery/sdk-doubles'
 import {
+  constructionRefusal,
   PolicyManagerDouble,
   RecoveryKitBuilderDouble,
   shippedMethodDoubles,
@@ -34,6 +40,7 @@ import type {
   ISetupClient
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { sameAddress } from './addresses'
 import type { RecoveryChain } from './chains'
 import { clientConfigurationOf, RecoveryClientConfiguration } from './configuration'
 import { descriptorOf } from './descriptors'
@@ -42,6 +49,9 @@ import type { WalletReads } from './wallet-reads'
 
 /** The name every kit manager's domain carries (sdk.md D-208 check 5, contracts D-103). */
 export const MANAGER_DOMAIN_NAME = 'PolicyManager'
+
+/** The `fields` bitmap of the four members the SDK derives under: name, version, chain id, verifying contract (D-208 check 4). */
+export const MANAGER_DOMAIN_FIELDS = '0x0f'
 
 /**
  * What the extension holds for one account: the two entry clients, the two
@@ -127,10 +137,12 @@ const isConstructionRefusal = (value: unknown): value is ConstructionRefusal =>
 /**
  * Builds the recovery kit client for one account from one configuration.
  *
- * Throws a `DigestVersionRefusal` where the manager publishes another digest
- * version, before any client is built. Every other failure propagates as it
- * was thrown: a read that failed, or a construction refusal of the builder
- * (the chain id, the descriptor, the domain's chain and address, its fields).
+ * Throws a `ConstructionRefusal` where the provider answers another chain
+ * (`chain-id`), the manager's domain names another chain or address
+ * (`domain`) or carries other members (`domain-fields`), and a
+ * `DigestVersionRefusal` where it publishes another digest version, all
+ * before any client is built. Every other failure propagates as it was
+ * thrown: a read that failed, or a later construction refusal of the builder.
  */
 export const buildRecoveryClient = async (
   config: RecoveryClientConfiguration
@@ -140,8 +152,30 @@ export const buildRecoveryClient = async (
   const chain = sdkStandIn.chainFor(descriptor, config.account)
   const manager = new PolicyManagerDouble(chain)
 
-  // ux.md D-319: the digest version is checked before anything is built or prepared.
-  checkDigestVersion(await manager.eip712Domain(), descriptor)
+  // sdk.md D-208 check 2: the provider's chain.
+  const chainId = await config.provider.chainId()
+  if (chainId !== descriptor.chainId) {
+    throw constructionRefusal(
+      'chain-id',
+      `The provider answers chain ${chainId}, the descriptor ${descriptor.chainId}.`
+    )
+  }
+  // Checks 3 and 4: the domain's chain and address, then its members.
+  const domain = await manager.eip712Domain()
+  if (
+    Number(domain.chainId) !== descriptor.chainId ||
+    !sameAddress(domain.verifyingContract, descriptor.manager)
+  ) {
+    throw constructionRefusal('domain', 'The manager domain disagrees with the descriptor.')
+  }
+  if (domain.fields.toLowerCase() !== MANAGER_DOMAIN_FIELDS) {
+    throw constructionRefusal(
+      'domain-fields',
+      'The manager domain carries members this build does not derive under.'
+    )
+  }
+  // Check 5, ux.md D-319: the digest version, before anything is built or prepared.
+  checkDigestVersion(domain, descriptor)
 
   const builder = new RecoveryKitBuilderDouble(chain)
   builder
