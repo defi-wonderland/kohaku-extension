@@ -97,7 +97,7 @@ A publisher is a slug (`ethereumFoundation`), never copy. `publisherKeyOf(row)` 
 
 ux.md D-316 says every signing request lands in the action window through the request queue. The facade therefore routes each signature through that queue as a request of its own, the same way the wallet's other own requests enter it (the settings screens add their own `calls` requests with `new Session({ windowId })`):
 
-1. The facade dispatches `REQUESTS_CONTROLLER_ADD_USER_REQUEST` with a `SignUserRequest` (`signRequestOf`): a numeric id of its own, an internal session (`new Session({ windowId })`, origin `internal`, no dApp), `meta: { isSignAction: true, accountAddr: key.addr, chainId }`, the `typedMessage` or `message` content, and `allowAccountSwitch: true`.
+1. The facade dispatches `REQUESTS_CONTROLLER_ADD_USER_REQUEST` with a `SignUserRequest` (`signRequestOf`): a numeric id of its own, an internal session (`new Session({ windowId })`, origin `internal`, no dApp), `meta: { isSignAction: true, accountAddr: key.addr, keyType: key.type, chainId }`, the `typedMessage` or `message` content, and `allowAccountSwitch: true`. `keyType` carries the handle's key type with the request (D-370 addresses the signer by address and key type), so a later change to the action window can honour it.
 2. The queue accepts a wallet-originated `typedMessage` or `message` request with no dApp session. It files the request as a `signMessage` action under the request's own id and opens the action window on it.
 3. The action window's own sign-message screen initialises `SignMessageController` with the request's id as `fromActionId` and signs only when the holder confirms. The facade dispatches nothing to that controller.
 4. The facade takes the signature from the pushed `signMessage` state whose `signedMessage.fromActionId` is its request's id. The background pushes that state before it removes the request from the queue.
@@ -111,6 +111,10 @@ ux.md D-316 says every signing request lands in the action window through the re
 - The requester line reads "The App is requesting your signature", since the internal session has no name. The lane ships no string and names no requester.
 - The type, "EIP-712 Type" or "Standard Type", then the message: typed data with its verifying contract under "Will verify this signature", or the bytes. A message the wallet cannot humanise shows raw, with "Please read the whole message as we are unable to translate it!".
 - The "Sign" and "Reject" buttons. Where the keystore holds the address under more than one key type, the screen asks the holder which one signs. A Ledger key asks for its device first.
+
+### The key type
+
+Today the action window does not read `meta.keyType`. It chooses the key among the keys of the request's account (the selected account's associated keys), and where the keystore holds that address under more than one key type it asks the holder to choose. For a listed basic account every such key is the one address, so every key type yields the same signature: the choice changes where the key lives (the extension or a device), not what is signed. Honouring the key type in the window, so it signs with the handle's key type and asks no choice, needs a change to the sign-message screen outside this lane (owner list, item 5).
 
 ### What the facade can and cannot sign, for the owner's decision
 
@@ -151,3 +155,4 @@ The block pins and log reads of the doubles go through the configured provider, 
 2. The missing background action `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` for a key that is not itself a listed basic account, and for a bare digest (the facts are in the signer section above).
 3. The D-316 conflict: ux.md D-316 puts every signing request in the action window, so every facade signature now asks the holder to confirm in that window. Are the new key's certification (ux-interfaces.md D-373) and the access tests of the method rows exempt from the action window? If they are, the signing needs a background path the owner rules on; if they are not, the confirmation above stands for them too.
 4. The queue's gaps for a wallet-originated sign request: no result channel of its own (item 9), a silent drop while another sign-message request is visible (item 7), and the requester line "The App is requesting your signature" for a request no dApp made.
+5. The key type in the action window: the request carries `meta.keyType`, and the sign-message screen ignores it and chooses among the account's keys. Honouring it needs a change to that screen (`src/web/modules/sign-message`), outside this lane. For a listed basic account the signature is the same whatever the key type.
