@@ -52,7 +52,12 @@ export {
 } from './recovery-action'
 export { ActionCodecDouble } from './action-codec'
 export * from './methods'
-export { MethodsOrchestratorDouble, RECORD_VERSION } from './orchestrator'
+export {
+  MethodsOrchestratorDouble,
+  RECORD_VERSION,
+  replyReadable,
+  requestReadable
+} from './orchestrator'
 export { defaultClientConfiguration, restoreConfiguration, type ClientContext } from './context'
 export { SetupClientDouble, configurationOfDraft, levelOfDraft } from './setup-client'
 export { RecoveryClientDouble, MOMENT_SKEW_SPAN } from './recovery-client'
