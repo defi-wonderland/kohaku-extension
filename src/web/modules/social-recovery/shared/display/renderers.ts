@@ -298,20 +298,10 @@ export const renderDateTimeInZone = (
 export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
-    // TODO(coordinator): register socialRecovery.display.remainingHours in en.json
-    // ("{{count}} hour" / "{{count}} hours"); the default value stands in until then.
-    return t('socialRecovery.display.remainingHours', {
-      count,
-      defaultValue: count === 1 ? `${count} hour` : `${count} hours`
-    })
+    return t('socialRecovery.display.remainingHours', { count })
   }
   const count = Math.max(1, Math.ceil(remainingMs / MINUTE_MS))
-  // TODO(coordinator): register socialRecovery.display.remainingMinutes in en.json
-  // ("{{count}} minute" / "{{count}} minutes"); the default value stands in until then.
-  return t('socialRecovery.display.remainingMinutes', {
-    count,
-    defaultValue: count === 1 ? `${count} minute` : `${count} minutes`
-  })
+  return t('socialRecovery.display.remainingMinutes', { count })
 }
 
 /**
