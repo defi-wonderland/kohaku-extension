@@ -69,9 +69,27 @@ export class WalletReadsDouble implements IWalletReadsDouble {
     private readonly config: Pick<ClientConfiguration, 'creation' | 'accountImplementation'> = {}
   ) {}
 
+  /**
+   * A malformed paste never throws: a reply or request whose fields are not the
+   * record's types, or whose values make no digest, answers `rejected`. Only a
+   * read scripted to fail throws.
+   */
   async verifyReply(request: ApproverRequest, reply: ApproverReply): Promise<Verdict> {
     this.chain.guard('walletReads.verifyReply')
     if (this.chain.verdict) return this.chain.verdict
+    const r = reply as unknown as Record<string, unknown> | null
+    if (
+      !r ||
+      typeof r !== 'object' ||
+      typeof r.place !== 'number' ||
+      typeof r.method !== 'string' ||
+      typeof r.config !== 'string' ||
+      typeof r.proof !== 'string' ||
+      !request ||
+      typeof request.config !== 'string'
+    ) {
+      return 'rejected'
+    }
     if (
       reply.place !== request.place ||
       !sameAddress(reply.method, request.method) ||
@@ -79,10 +97,12 @@ export class WalletReadsDouble implements IWalletReadsDouble {
     ) {
       return 'rejected'
     }
-    return reply.proof.toLowerCase() ===
-      doubleProof(request.config, digestOfRequest(request)).toLowerCase()
-      ? 'satisfied'
-      : 'rejected'
+    try {
+      const expected = doubleProof(request.config, digestOfRequest(request))
+      return reply.proof.toLowerCase() === expected.toLowerCase() ? 'satisfied' : 'rejected'
+    } catch {
+      return 'rejected'
+    }
   }
 
   async removedKey(): Promise<RemovedKeyReading> {

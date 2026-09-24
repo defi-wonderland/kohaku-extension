@@ -114,17 +114,52 @@ export const SCRIPTED_SIMULATIONS = [
 export type ScriptedSimulation = typeof SCRIPTED_SIMULATIONS[number]
 
 /**
+ * The two validations a script can append findings to (sdk.md D-205
+ * "Validation"): setup validation, which `validateSetup` and
+ * `prepareCommitSetup` run, and request validation, which `prepareStartAttempt`
+ * and `prepareCancelByProofs` run. Appended errors refuse the prepares.
+ */
+export const SCRIPTED_FINDINGS = ['setup.validateSetup', 'recovery.validateRequest'] as const
+export type ScriptedFindings = typeof SCRIPTED_FINDINGS[number]
+
+/**
  * A scripted refusal: validation (thrown with findings), restore (thrown with
- * the cause, `getSetup` and the two inits only) or an ordinary error.
+ * the cause, `getSetup` and the two inits only) or an ordinary error carrying a
+ * code.
  */
 export type ThrownRefusal =
   | { kind: 'validation'; findings: ValidationResult }
   | { kind: 'restore'; cause: RestoreCause }
-  | { kind: 'error'; message?: string }
+  | { kind: 'error'; code?: string; message?: string }
+
+/**
+ * An ordinary error carrying a code and its values, what every refusal of the
+ * doubles that is not a validation or a restore refusal throws. The code is a
+ * D-205, D-206 or D-207 slug, a kit error name, or one of the doubles' own codes
+ * the README lists; the message is for a developer and never for a screen.
+ */
+export interface CodedError extends Error {
+  code: string
+  values: Record<string, unknown>
+}
+
+export const codedError = (
+  code: string,
+  values?: Record<string, unknown>,
+  message?: string
+): CodedError => {
+  const error = new Error(message ?? code) as CodedError
+  error.name = 'CodedError'
+  error.code = code
+  error.values = values ?? {}
+  return error
+}
 
 /** The value a scripted read failure throws: a transport failure, never an empty answer. */
 export class ScriptedReadFailure extends Error {
   readonly kind = 'scripted-read-failure'
+
+  readonly code = 'read.unanswered'
 
   constructor(readonly read: ScriptedRead, readonly scripted?: unknown) {
     super(`The read ${read} did not answer (scripted).`)
@@ -167,8 +202,29 @@ export const thrownValueOf = (member: string, refusal: ThrownRefusal): Error => 
     case 'restore':
       return restoreRefusal(refusal.cause)
     default:
-      return new Error(refusal.message ?? `${member} refused (scripted).`)
+      return codedError(
+        refusal.code ?? 'scripted.refused',
+        { member },
+        refusal.message ?? `${member} refused (scripted).`
+      )
   }
+}
+
+/**
+ * What `ScriptedChain.land` throws when the chain would revert the call: the
+ * kit error the revert decodes to, nothing applied (a batch lands whole or not
+ * at all).
+ */
+export interface LandingRevert extends CodedError {
+  error: KitError
+}
+
+export const landingRevert = (error: KitError): LandingRevert => {
+  const name = error.kind === 'known' ? error.name : 'unknown'
+  const thrown = codedError(name, { error }, `The chain reverts the call: ${name}`) as LandingRevert
+  thrown.name = 'LandingRevert'
+  thrown.error = error
+  return thrown
 }
 
 /** A known kit error by name, the shape `decodeRevert` answers (sdk.md D-205). */

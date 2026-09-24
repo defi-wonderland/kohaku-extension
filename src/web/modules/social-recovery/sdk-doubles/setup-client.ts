@@ -2,7 +2,8 @@
  * The `ISetupClient` double (sdk.md D-201, D-202): the two judgments, the commit
  * and clear prepares with their call-or-batch shapes, the confirmation read, the
  * setup-side state record and the restore, over the shared part doubles. Every
- * read goes through a part, so a read scripted to fail there fails here.
+ * read goes through a part, so a read scripted to fail there fails here. The
+ * arming seam reaches this client alone, through its constructor.
  */
 import type {
   Address,
@@ -10,21 +11,29 @@ import type {
   ConfigurationSource,
   Finding,
   IEventManager,
+  IRecoveryActionArming,
   ISetupClient,
+  ModuleInfo,
   PreparedBatch,
   PreparedCall,
   PrepareOptions,
   PrivacyLevel,
+  ReadResult,
   SetupConfirmation,
   SetupDescription,
   SetupDraft,
   SetupState,
+  TrustedParties,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { decodeAbiParameters } from 'viem'
 
 import { ClientContext, pinBlock, restoreConfiguration } from './context'
 import {
+  BACKUP_PADDING_SIZE,
+  backupPlaintextSize,
   clearBackup,
+  levelOfFields,
   placesOf,
   sameAddress,
   sealBackup,
@@ -33,9 +42,12 @@ import {
   ZERO_HASH
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { finding, validationRefusal } from './scripts'
+import { codedError, finding, validationRefusal } from './scripts'
 
 const MAX_WAIT_FIELD = 2n ** 48n
+
+/** The widest threshold the body's `uint8` field holds (D-103). */
+const THRESHOLD_FIELD = 255
 
 export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
   clauses: draft.clauses,
@@ -44,37 +56,61 @@ export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
 })
 
 /**
- * The D-375 level a draft encodes: a clear backup is the public level, a
- * public note beside a sealed backup is shape-visible, and nothing public is
- * private (the default).
+ * The D-375 level a draft encodes, by the one rule the chain reads its fields
+ * with (`levelOfFields`): a clear backup is public, a public note beside a
+ * sealed or empty backup is shape-visible, nothing public is private.
  */
-export const levelOfDraft = (draft: SetupDraft): PrivacyLevel => {
-  if (draft.privacy.backup === 'clear') return 'public'
-  if (draft.privacy.publicMetadata && draft.privacy.publicMetadata !== '0x') return 'shape-visible'
-  return 'private'
-}
+export const levelOfDraft = (draft: SetupDraft): PrivacyLevel =>
+  levelOfFields(draft.privacy.publicMetadata, draft.privacy.backup === 'clear')
 
 const distinctMethods = (draft: SetupDraft): Address[] => {
   const all = draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method))
   return all.filter((m, i) => all.findIndex((x) => sameAddress(x, m)) === i)
 }
 
+interface MethodReads {
+  method: Address
+  moduleInfo: ReadResult<ModuleInfo>
+  parties: ReadResult<TrustedParties>
+  paused: ReadResult<boolean>
+}
+
+/** A module whose views reverted: answered with empty values (see policy-manager.ts). */
+const undeclared = (reads: MethodReads): boolean =>
+  reads.moduleInfo.answered &&
+  reads.moduleInfo.value.name === '' &&
+  reads.moduleInfo.value.version === ''
+
 export class SetupClientDouble implements ISetupClient {
   readonly events: IEventManager
 
-  constructor(private readonly ctx: ClientContext) {
+  constructor(private readonly ctx: ClientContext, private readonly arming: IRecoveryActionArming) {
     this.events = ctx.events
   }
 
-  /** The findings of sdk.md D-205 the doubles reach over their own reads. */
-  private async findings(draft: SetupDraft): Promise<ValidationResult> {
-    const { chain, config, manager, action } = this.ctx
-    const errors: Finding[] = []
-    const warnings: Finding[] = []
+  private async methodReads(draft: SetupDraft): Promise<MethodReads[]> {
+    const { manager } = this.ctx
+    return Promise.all(
+      distinctMethods(draft).map(async (method) => ({
+        method,
+        moduleInfo: await manager.moduleInfo(method),
+        parties: await manager.trustedParties(method),
+        paused: await manager.paused(method)
+      }))
+    )
+  }
 
-    if (draft.clauses.length === 0) errors.push(finding('rule.empty', 'setup'))
+  /** The secondary tier of D-5: the identity pair. */
+  private secondary(method: Address): boolean {
+    const d = this.ctx.chain.descriptor
+    return sameAddress(method, d.methodAadhaar) || sameAddress(method, d.methodZkpassport)
+  }
+
+  /** The clause rows of D-205 over the draft alone. */
+  private clauseRows(draft: SetupDraft, errors: Finding[], warnings: Finding[]): void {
     draft.clauses.forEach((clause, index) => {
       const count = clause.credentials.length
+      const methods = clause.credentials.map((c) => c.method)
       if (count === 0) errors.push(finding('clause.empty', 'clause', { clause: index }))
       if (clause.threshold > count) {
         errors.push(
@@ -85,25 +121,126 @@ export class SetupClientDouble implements ISetupClient {
           })
         )
       }
-      if (clause.threshold > 255) {
+      if (clause.threshold > THRESHOLD_FIELD) {
         errors.push(
           finding('clause.threshold-too-wide', 'clause', {
             clause: index,
-            threshold: clause.threshold
+            threshold: clause.threshold,
+            width: THRESHOLD_FIELD
           })
         )
       }
-      if (clause.threshold === 0)
-        warnings.push(finding('clause.threshold-zero', 'clause', { clause: index }))
-      if (clause.threshold === 1 && count === 1) {
-        warnings.push(finding('clause.single-point', 'clause', { clause: index }))
+      if (clause.threshold === 0 && draft.clauses.some((c) => c.threshold > 0)) {
+        warnings.push(
+          finding('clause.threshold-zero', 'clause', { clause: index, othersMustBeMet: true })
+        )
+      }
+      if (count > 0 && clause.threshold > 0 && (count === 1 || clause.threshold === count)) {
+        warnings.push(
+          finding('clause.single-point', 'clause', {
+            clause: index,
+            threshold: clause.threshold,
+            count
+          })
+        )
+      }
+      if (count >= 2 && clause.threshold > 0 && methods.every((m) => sameAddress(m, methods[0]))) {
+        warnings.push(
+          finding('clause.shared-failure', 'clause', { clause: index, method: methods[0], count })
+        )
+      }
+      if (count > 0 && clause.threshold > 0 && methods.every((m) => this.secondary(m))) {
+        warnings.push(
+          finding('clause.secondary-only', 'clause', {
+            clause: index,
+            methods: methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i),
+            threshold: clause.threshold,
+            forgeableCount: count
+          })
+        )
       }
     })
+  }
+
+  /**
+   * `rule.too-wide` (D-205, D-107): the costliest set that satisfies the rule, a
+   * clause's `threshold` costliest credentials each, summed over their methods'
+   * `verify` gas against the configuration's bound.
+   */
+  private widthRow(draft: SetupDraft): Finding | undefined {
+    const { chain, config } = this.ctx
+    const bound = config.ruleCostBound ?? 10_000_000n
+    const placed = placesOf(chain.account, configurationOfDraft(draft))
+    const chosen = draft.clauses.flatMap((clause, index) =>
+      placed
+        .filter((p) => p.clause === index)
+        .map((p) => ({
+          place: p.place,
+          method: p.credential.method,
+          cost: chain.verifyCostOf(p.credential.method)
+        }))
+        .sort((a, b) => (b.cost > a.cost ? 1 : b.cost < a.cost ? -1 : 0))
+        .slice(0, Math.max(0, clause.threshold))
+    )
+    const cost = chosen.reduce((sum, c) => sum + c.cost, 0n)
+    if (cost <= bound) return undefined
+    return finding('rule.too-wide', 'setup', {
+      places: chosen.map((c) => c.place),
+      methods: chosen.map((c) => ({ method: c.method, cost: c.cost })),
+      cost,
+      bound
+    })
+  }
+
+  /**
+   * `manager.already-armed` (D-205): the manager's events with the action topic
+   * open, the last commit against the last clear per action, for any other
+   * action whose setup still stands for this account.
+   */
+  private async armedElsewhere(blockNumber: number): Promise<Finding[]> {
+    const { chain, events, actionAddress } = this.ctx
+    const history = await events.fetch(events.accountFilter({ anyAction: true }), {
+      from: chain.descriptor.deployedAt,
+      to: blockNumber
+    })
+    const last = new Map<string, { action: Address; kind: string; nonce: bigint }>()
+    history.forEach((n) => {
+      if (
+        (n.kind === 'setup-committed' || n.kind === 'setup-cleared') &&
+        !sameAddress(n.action, actionAddress)
+      ) {
+        last.set(n.action.toLowerCase(), { action: n.action, kind: n.kind, nonce: n.nonce })
+      }
+    })
+    return [...last.values()]
+      .filter((entry) => entry.kind === 'setup-committed')
+      .map((entry) =>
+        finding('manager.already-armed', 'account', { action: entry.action, nonce: entry.nonce })
+      )
+  }
+
+  /** The findings of sdk.md D-205 over the draft and the reads, plus any appended by a script. */
+  private async findings(draft: SetupDraft): Promise<ValidationResult> {
+    const { chain, config, action } = this.ctx
+    const block = await pinBlock(this.ctx)
+    const errors: Finding[] = []
+    const warnings: Finding[] = []
+
+    if (draft.clauses.length === 0) errors.push(finding('rule.empty', 'setup'))
     if (draft.clauses.length > 0 && draft.clauses.every((c) => c.threshold === 0)) {
-      errors.push(finding('rule.all-thresholds-zero', 'setup'))
+      errors.push(
+        finding('rule.all-thresholds-zero', 'setup', {
+          clauses: draft.clauses.map((c, clause) => ({ clause, threshold: c.threshold }))
+        })
+      )
     }
+    this.clauseRows(draft, errors, warnings)
+    const width = this.widthRow(draft)
+    if (width) errors.push(width)
+
+    const placed = placesOf(chain.account, configurationOfDraft(draft))
     const seen = new Map<string, number>()
-    placesOf(chain.account, configurationOfDraft(draft)).forEach(({ place, credential }) => {
+    placed.forEach(({ place, credential }) => {
       const key = `${credential.method.toLowerCase()}:${credential.config.toLowerCase()}`
       if (seen.has(key)) {
         errors.push(
@@ -111,8 +248,24 @@ export class SetupClientDouble implements ISetupClient {
         )
       } else seen.set(key, place)
     })
-    if (draft.wait >= MAX_WAIT_FIELD)
-      errors.push(finding('wait.field-width', 'setup', { wait: draft.wait }))
+    const people = new Map<string, number[]>()
+    placed.forEach(({ place, credential }) => {
+      const label = credential.label?.trim().toLowerCase()
+      if (label) people.set(label, [...(people.get(label) ?? []), place])
+    })
+    people.forEach((places, label) => {
+      if (places.length > 1)
+        warnings.push(finding('rule.repeated-person', 'setup', { label, places }))
+    })
+
+    if (BigInt(block.timestamp) + draft.wait >= MAX_WAIT_FIELD) {
+      errors.push(
+        finding('wait.field-width', 'setup', {
+          wait: draft.wait,
+          room: MAX_WAIT_FIELD - 1n - BigInt(block.timestamp)
+        })
+      )
+    }
     const maximumWait = BigInt(config.maximumWait ?? 30 * 24 * 3600)
     if (draft.wait > maximumWait) {
       errors.push(
@@ -121,33 +274,46 @@ export class SetupClientDouble implements ISetupClient {
     }
     if (draft.wait === 0n) warnings.push(finding('setup.wait-zero', 'setup'))
     else if (draft.wait < BigInt(config.shortWaitBelow ?? 48 * 3600)) {
-      warnings.push(finding('setup.wait-short', 'setup', { wait: draft.wait }))
+      warnings.push(
+        finding('setup.wait-short', 'setup', {
+          wait: draft.wait,
+          minimum: BigInt(config.shortWaitBelow ?? 48 * 3600)
+        })
+      )
     }
     if (draft.privacy.backup === 'clear') warnings.push(finding('backup.clear', 'setup'))
     if (draft.privacy.backup === 'empty') warnings.push(finding('backup.empty', 'setup'))
+    if (draft.privacy.backup !== 'empty') {
+      const size = backupPlaintextSize(configurationOfDraft(draft))
+      if (size > BACKUP_PADDING_SIZE) {
+        errors.push(
+          finding('backup.too-wide', 'setup', {
+            plaintextSize: size,
+            paddingSize: BACKUP_PADDING_SIZE
+          })
+        )
+      }
+    }
 
     // The methods a draft names: shipped, declared, stopped.
-    const methodReads = await Promise.all(
-      distinctMethods(draft).map(async (method) => ({
-        method,
-        parties: await manager.trustedParties(method),
-        paused: await manager.paused(method)
-      }))
-    )
-    methodReads.forEach(({ method, parties, paused }) => {
+    const reads = await this.methodReads(draft)
+    reads.forEach((r) => {
+      const { method } = r
       if (!chain.descriptor.shippedMethods.some((m) => sameAddress(m, method))) {
         warnings.push(
           finding('method.unshipped', 'credential', {
             method,
-            list: chain.descriptor.shippedMethods
+            probe: r.moduleInfo.answered ? r.moduleInfo.value.supportsInterface : undefined,
+            list: chain.descriptor.shippedMethods,
+            listFrom: 'descriptor'
           })
         )
       }
-      if (parties.answered === false && !chain.method(method)) {
-        warnings.push(finding('method.no-declaration', 'credential', { method }))
-      }
-      if (paused.answered && paused.value) {
-        warnings.push(finding('method.stopped', 'credential', { method }))
+      if (undeclared(r)) warnings.push(finding('method.no-declaration', 'credential', { method }))
+      if (r.paused.answered && r.paused.value) {
+        warnings.push(
+          finding('method.stopped', 'credential', { method, ignoresPause: draft.ignoresPause })
+        )
       }
     })
 
@@ -158,12 +324,22 @@ export class SetupClientDouble implements ISetupClient {
         if (!sameAddress(config.accountImplementation, chain.descriptor.servedImplementation)) {
           errors.push(
             finding('action.unsupported', 'action', {
+              action: this.ctx.actionAddress,
+              account: chain.account,
+              supportsAccount: fits,
               implementation: config.accountImplementation,
               served: chain.descriptor.servedImplementation
             })
           )
         }
-      } else warnings.push(finding('action.fit-unchecked', 'action'))
+      } else {
+        warnings.push(
+          finding('action.fit-unchecked', 'action', {
+            action: this.ctx.actionAddress,
+            account: chain.account
+          })
+        )
+      }
     }
     if (
       !chain.descriptor.auditedActions.some((a) => sameAddress(a, this.ctx.actionAddress)) ||
@@ -172,11 +348,19 @@ export class SetupClientDouble implements ISetupClient {
       warnings.push(
         finding('action.unaudited', 'action', {
           action: this.ctx.actionAddress,
-          list: chain.descriptor.auditedActions
+          probe: info.supportsInterface,
+          list: chain.descriptor.auditedActions,
+          listFrom: 'descriptor'
         })
       )
     }
-    return { errors, warnings }
+    warnings.push(...(await this.armedElsewhere(block.number)))
+
+    const appended = chain.appendedFindings('setup.validateSetup')
+    return {
+      errors: [...errors, ...appended.errors],
+      warnings: [...warnings, ...appended.warnings]
+    }
   }
 
   async validateSetup(draft: SetupDraft): Promise<ValidationResult> {
@@ -187,21 +371,7 @@ export class SetupClientDouble implements ISetupClient {
   async describeSetup(draft: SetupDraft): Promise<SetupDescription> {
     const { chain, config, manager, action } = this.ctx
     chain.guard('setup.describeSetup')
-    const methods = distinctMethods(draft)
-    const standing = await Promise.all(
-      methods.map(async (method) => ({
-        method,
-        moduleInfo: await manager.moduleInfo(method),
-        paused: await manager.paused(method),
-        shipped: chain.descriptor.shippedMethods.some((m) => sameAddress(m, method))
-      }))
-    )
-    const parties = await Promise.all(
-      methods.map(async (method) => ({
-        method,
-        trustedParties: await manager.trustedParties(method)
-      }))
-    )
+    const reads = await this.methodReads(draft)
     const candidateKeys = await Promise.all(
       config.candidateKeys.map(async (address) => ({
         address,
@@ -214,7 +384,21 @@ export class SetupClientDouble implements ISetupClient {
       manager.stateOf()
     ])
     const removed = chain.removedKeyReading(!!config.creation)
-    const level = levelOfDraft(draft)
+    const placed = placesOf(chain.account, configurationOfDraft(draft))
+    const passkeyDomains = placed
+      .filter((p) => sameAddress(p.credential.method, chain.descriptor.methodPasskey))
+      .map((p) => {
+        let rpIdHash: string | undefined
+        try {
+          ;[, rpIdHash] = decodeAbiParameters(
+            [{ type: 'bytes' }, { type: 'bytes32' }],
+            p.credential.config
+          )
+        } catch {
+          rpIdHash = undefined
+        }
+        return { place: p.place, rpIdHash, diesWithDomain: true, cancelByVeto: false }
+      })
     return {
       rule: draft.clauses.map((c, clause) => ({
         clause,
@@ -222,18 +406,30 @@ export class SetupClientDouble implements ISetupClient {
         credentials: c.credentials.map((cr) => ({ method: cr.method, label: cr.label }))
       })),
       wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? 48 * 3600) },
-      failureDomains: methods.map((method) => ({
-        method,
-        places: placesOf(chain.account, configurationOfDraft(draft))
-          .filter((p) => sameAddress(p.credential.method, method))
-          .map((p) => p.place)
+      failureDomains: draft.clauses.map((c, clause) => {
+        const methods = c.credentials.map((cr) => cr.method)
+        const distinct = methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i)
+        return {
+          clause,
+          methods: distinct.map((method) => ({
+            method,
+            count: methods.filter((m) => sameAddress(m, method)).length
+          }))
+        }
+      }),
+      parties: reads.map((r) => ({ method: r.method, trustedParties: r.parties })),
+      methodStanding: reads.map((r) => ({
+        method: r.method,
+        shipped: chain.descriptor.shippedMethods.some((m) => sameAddress(m, r.method)),
+        declares: !undeclared(r),
+        moduleInfo: r.moduleInfo,
+        tier: this.secondary(r.method) ? 'secondary' : 'primary',
+        paused: r.paused
       })),
-      parties,
-      methodStanding: standing,
-      passkeyDomains: [],
+      passkeyDomains,
       candidateKeys,
       removedKey: removed.kind === 'named' ? removed.key : 'no-creation-triple',
-      privacy: { level, publicMetadata: draft.privacy.publicMetadata },
+      privacy: { level: levelOfDraft(draft), publicMetadata: draft.privacy.publicMetadata },
       backup: { form: draft.privacy.backup },
       reveals: { publicMetadata: draft.privacy.publicMetadata !== '0x' },
       cancel: { attemptActive: state.attempt.state === 'Waiting' },
@@ -253,7 +449,7 @@ export class SetupClientDouble implements ISetupClient {
     const findings = await this.findings(draft)
     if (findings.errors.length > 0) throw validationRefusal(findings)
     if (draft.privacy.backup === 'encrypted' && !password) {
-      throw new Error('An encrypted backup needs a password.')
+      throw codedError('setup.password-missing', { backup: 'encrypted' })
     }
     const configuration = configurationOfDraft(draft)
     const privateMetadata =
@@ -290,7 +486,7 @@ export class SetupClientDouble implements ISetupClient {
       const call = { ...commit, block: { number: block.number, hash: block.hash } }
       return simulate ? withSimulation(call, from, failure) : call
     }
-    const arming = await action.armingCall()
+    const arming = await this.arming.armingCall()
     const calls = [arming, commit].map((c) => ({
       ...c,
       block: { number: block.number, hash: block.hash }
@@ -334,7 +530,7 @@ export class SetupClientDouble implements ISetupClient {
     const calls = prepared.kind === 'batch' ? prepared.calls : [prepared]
     const commit = calls.map((c) => chain.effectOf(c.data)).find((e) => e?.kind === 'commit')
     if (!commit || commit.kind !== 'commit') {
-      throw new Error('The prepared record carries no commitSetup call.')
+      throw codedError('confirm.no-commit-call', { kind: prepared.kind })
     }
     const recomputed = setupCommitmentOf(
       chain.account,
@@ -343,7 +539,10 @@ export class SetupClientDouble implements ISetupClient {
       setupBodyOf(chain.account, configurationOfDraft(draft))
     )
     if (recomputed !== commit.setupCommitment) {
-      throw new Error('The draft does not recompute to the commitment the prepared record carries.')
+      throw codedError('confirm.commitment-mismatch', {
+        recomputed,
+        carried: commit.setupCommitment
+      })
     }
     const block = await pinBlock(this.ctx)
     const found = (

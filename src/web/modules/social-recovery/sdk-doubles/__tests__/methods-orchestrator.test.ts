@@ -78,6 +78,26 @@ describe('methods orchestrator double', () => {
     expect(isHex(reply.proof)).toBe(true)
   })
 
+  it('hands the wallet EIP-712 typed data: domain, types, primaryType, message, no digest', async () => {
+    const { world, request } = await firstRequest()
+    const input = world.orchestrator().signingInput(request) as Record<string, unknown>
+    expect(Object.keys(input).sort()).toEqual(['domain', 'message', 'primaryType', 'types'])
+    const domain = input.domain as Record<string, unknown>
+    const types = input.types as Record<string, { name: string; type: string }[]>
+    expect(['number', 'bigint']).toContain(typeof domain.chainId)
+    expect(Number(domain.chainId)).toBe(Number(request.chainId))
+    expect(String(domain.verifyingContract).toLowerCase()).toBe(request.manager.toLowerCase())
+    expect(input.primaryType).toBe('Approval')
+    expect(Array.isArray(types[input.primaryType as string])).toBe(true)
+    types[input.primaryType as string]!.forEach((field) => {
+      expect(typeof field.name).toBe('string')
+      expect(typeof field.type).toBe('string')
+    })
+    // The wallet derives the digest itself; none travels inside what it signs.
+    const text = JSON.stringify(input, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))
+    expect(text).not.toMatch(/"digest"/)
+  })
+
   it('returns a scripted reply failure as a typed result, never a thrown error', async () => {
     const { world, request } = await firstRequest()
     world.script.replyFailure('device-refused')

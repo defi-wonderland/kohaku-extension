@@ -22,7 +22,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { ScriptedChain } from './chain'
-import { digestOfSubmission } from './encoding'
+import { digestOfSubmission, ZERO_ADDRESS } from './encoding'
 import { composeCall } from './prepared'
 
 export class PolicyManagerDouble implements IPolicyManagerInteractor {
@@ -53,7 +53,22 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
   async trustedParties(module: Address): Promise<ReadResult<TrustedParties>> {
     if (this.chain.unanswered('manager.trustedParties', module)) return { answered: false }
     const declaration = this.chain.method(module)
-    if (!declaration) return { answered: false }
+    // Like `moduleInfo`: a module with no declaration reverts, which is a contract
+    // answering (D-202), so the read is answered with empty values and
+    // `validateSetup` raises `method.no-declaration`. `{ answered: false }` stays
+    // the failed provider's alone. A judgment call the sdk owner may rule on.
+    if (!declaration) {
+      return {
+        answered: true,
+        value: {
+          admin: ZERO_ADDRESS,
+          pendingAdmin: ZERO_ADDRESS,
+          trustedKeys: [],
+          pauseHolder: ZERO_ADDRESS,
+          pendingPauseHolder: ZERO_ADDRESS
+        }
+      }
+    }
     const p = declaration.trustedParties
     return { answered: true, value: { ...p, trustedKeys: [...p.trustedKeys] } }
   }
@@ -73,18 +88,15 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
     }
   }
 
+  /** The place's digest over the request's D-204 members; no proof at that place is needed. */
   async hashApproval(request: AttemptRequest, place: bigint): Promise<Hex> {
     this.chain.guard('manager.hashApproval')
-    const index = request.proofs.findIndex((p) => p.place === place)
-    if (index < 0) throw new Error('PlaceOutOfRange')
-    return digestOfSubmission(request, this.domainFacts(), index)
+    return digestOfSubmission(request, this.domainFacts(), place)
   }
 
   async hashCancel(request: CancelRequest, place: bigint): Promise<Hex> {
     this.chain.guard('manager.hashCancel')
-    const index = request.proofs.findIndex((p) => p.place === place)
-    if (index < 0) throw new Error('PlaceOutOfRange')
-    return digestOfSubmission(request, this.domainFacts(), index)
+    return digestOfSubmission(request, this.domainFacts(), place)
   }
 
   async eip712Domain(): Promise<Domain> {

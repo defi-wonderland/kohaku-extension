@@ -9,7 +9,7 @@
  * which is `abi.encode(address newAuthority, address removedAuthority)` as
  * contracts D-105 lays it out.
  */
-import { concat, hexToString, keccak256, pad, stringToHex } from 'viem'
+import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex } from 'viem'
 
 import type {
   Address,
@@ -20,6 +20,7 @@ import type {
   Credential,
   Hex,
   PaymentOrder,
+  PrivacyLevel,
   SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -233,23 +234,98 @@ export const readBackup = (privateMetadata: Hex, password?: string): BackupReadi
   return { form: 'unreadable' }
 }
 
-/** Which D-375 level two metadata fields encode, read back from their markers. */
-export const levelOfMetadata = (
-  publicMetadata: Hex,
-  privateMetadata: Hex
-): 'private' | 'shape-visible' | 'public' => {
-  const priv = privateMetadata && privateMetadata !== '0x' ? safeText(privateMetadata) : ''
-  const pub = publicMetadata && publicMetadata !== '0x' ? safeText(publicMetadata) : ''
-  if (priv?.startsWith(CLEAR_MARK) || pub?.startsWith(CLEAR_MARK)) return 'public'
-  if (pub?.startsWith(SHAPE_MARK)) return 'shape-visible'
+/**
+ * Which D-375 level two metadata fields encode. One rule serves the draft and
+ * the chain, so a draft reads as the level the chain reads after it lands: a
+ * clear backup is the public level, a non-empty public note beside a sealed or
+ * empty backup is shape-visible, and nothing public is private (the default).
+ */
+export const levelOfFields = (publicMetadata: Hex, backupIsClear: boolean): PrivacyLevel => {
+  if (backupIsClear) return 'public'
+  if (publicMetadata && publicMetadata !== '0x') return 'shape-visible'
   return 'private'
 }
 
+/** The level the chain's two metadata fields encode (see `levelOfFields`). */
+export const levelOfMetadata = (publicMetadata: Hex, privateMetadata: Hex): PrivacyLevel =>
+  levelOfFields(publicMetadata, readBackup(privateMetadata).form === 'clear')
+
+/** The shape the shape-visible level publishes: thresholds and methods, no config values. */
+export interface PublicShape {
+  wait: bigint
+  ignoresPause: boolean
+  clauses: { threshold: number; methods: Address[] }[]
+}
+
+export type PublicNoteReading =
+  | { kind: 'none' }
+  | { kind: 'shape'; shape: PublicShape }
+  | { kind: 'clear'; configuration: Configuration }
+  | { kind: 'opaque'; bytes: Hex }
+
+/**
+ * Reads a setup event's public note in the doubles' bytes: nothing public
+ * (private), the shape alone (shape-visible), the whole configuration (public),
+ * or bytes another writer put there. With `readBackup` it gives the client layer
+ * the inputs of the four setup states of ux-interfaces.md D-371.
+ */
+export const readPublicNote = (publicMetadata: Hex): PublicNoteReading => {
+  if (!publicMetadata || publicMetadata === '0x') return { kind: 'none' }
+  const text = safeText(publicMetadata)
+  try {
+    if (text?.startsWith(SHAPE_MARK)) {
+      return { kind: 'shape', shape: fromJson<PublicShape>(text.slice(SHAPE_MARK.length)) }
+    }
+    if (text?.startsWith(CLEAR_MARK)) {
+      return {
+        kind: 'clear',
+        configuration: fromJson<Configuration>(text.slice(CLEAR_MARK.length))
+      }
+    }
+  } catch {
+    return { kind: 'opaque', bytes: publicMetadata }
+  }
+  return { kind: 'opaque', bytes: publicMetadata }
+}
+
+/**
+ * The backup's one padding size (sdk.md D-204 "The backup payload"): 16
+ * credentials times the widest shipped config (the passkey's three words) plus a
+ * supplied salt and the method address, in bytes.
+ */
+export const BACKUP_PADDING_SIZE = 16 * (96 + 32 + 20)
+
+const hexBytes = (hex: Hex): number => Math.max(0, (hex.length - 2) / 2)
+
+/**
+ * The backup plaintext's size as the real serialization would count it: the wait
+ * (6 bytes), the pause choice (1), a threshold byte per clause, and per
+ * credential the method address, the config and any supplied salt.
+ */
+export const backupPlaintextSize = (configuration: Configuration): number =>
+  6 +
+  1 +
+  configuration.clauses.reduce(
+    (sum, clause) =>
+      sum +
+      1 +
+      clause.credentials.reduce(
+        (inner, c) => inner + 20 + hexBytes(c.config) + (c.salt ? hexBytes(c.salt) : 0),
+        0
+      ),
+    0
+  )
+
 // ---------------------------------------------------------------------------
-// Digests and proofs (D-204, D-206), in the doubles' hashing.
+// Digests and proofs (D-204, D-206).
 // ---------------------------------------------------------------------------
 
-/** The members a place's digest closes over, every number as a decimal string. */
+/**
+ * The members a place's digest closes over (sdk.md D-204 "The digest"), every
+ * number as a decimal string: the domain, the purpose, and the members of the
+ * `Approval` or `Cancellation` type. The credential (method, config, salt) is not
+ * among them; the place binds it through the body's credential hash.
+ */
 export interface DigestMembers {
   chainId: string
   manager: Address
@@ -264,9 +340,6 @@ export interface DigestMembers {
   order?: SerializedPaymentOrder
   validUntil: string
   place: number
-  method: Address
-  config: Hex
-  salt: Hex
 }
 
 export const serializeOrder = (order: PaymentOrder): SerializedPaymentOrder => ({
@@ -281,58 +354,120 @@ export const deserializeOrder = (order: SerializedPaymentOrder): PaymentOrder =>
   payee: order.payee
 })
 
+const lower = (address: Address): Address => address.toLowerCase() as Address
+
+/** The EIP-712 types of D-204: two message types over one nested `PaymentOrder`. */
+export const APPROVAL_TYPES = {
+  Approval: [
+    { name: 'account', type: 'address' },
+    { name: 'action', type: 'address' },
+    { name: 'attemptId', type: 'uint64' },
+    { name: 'setupNonce', type: 'uint64' },
+    { name: 'setupBodyHash', type: 'bytes32' },
+    { name: 'payload', type: 'bytes' },
+    { name: 'order', type: 'PaymentOrder' },
+    { name: 'validUntil', type: 'uint48' },
+    { name: 'place', type: 'uint256' }
+  ],
+  PaymentOrder: [
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'payee', type: 'address' }
+  ]
+} as const
+
+export const CANCELLATION_TYPES = {
+  Cancellation: [
+    { name: 'account', type: 'address' },
+    { name: 'action', type: 'address' },
+    { name: 'attemptId', type: 'uint64' },
+    { name: 'setupNonce', type: 'uint64' },
+    { name: 'setupBodyHash', type: 'bytes32' },
+    { name: 'validUntil', type: 'uint48' },
+    { name: 'place', type: 'uint256' }
+  ]
+} as const
+
+/** The typed data a wallet signs for one place: `{ domain, types, primaryType, message }`. */
+export interface PlaceTypedData {
+  domain: { name: 'PolicyManager'; version: string; chainId: number; verifyingContract: Address }
+  types: typeof APPROVAL_TYPES | typeof CANCELLATION_TYPES
+  primaryType: 'Approval' | 'Cancellation'
+  message: Record<string, unknown>
+}
+
+/** The `Approval` or `Cancellation` typed data of D-204 over one place's members. */
+export const typedDataOf = (m: DigestMembers): PlaceTypedData => {
+  const domain = {
+    name: 'PolicyManager' as const,
+    version: m.digestVersion,
+    chainId: Number(m.chainId),
+    verifyingContract: lower(m.manager)
+  }
+  const common = {
+    account: lower(m.account),
+    action: lower(m.action),
+    attemptId: BigInt(m.attemptId),
+    setupNonce: BigInt(m.setupNonce),
+    setupBodyHash: m.setupBodyHash
+  }
+  if (m.purpose === 'cancellation') {
+    return {
+      domain,
+      types: CANCELLATION_TYPES,
+      primaryType: 'Cancellation',
+      message: { ...common, validUntil: BigInt(m.validUntil), place: BigInt(m.place) }
+    }
+  }
+  const order = m.order ?? { token: ZERO_ADDRESS, amount: '0', payee: ZERO_ADDRESS }
+  return {
+    domain,
+    types: APPROVAL_TYPES,
+    primaryType: 'Approval',
+    message: {
+      ...common,
+      payload: m.payload ?? '0x',
+      order: { token: lower(order.token), amount: BigInt(order.amount), payee: lower(order.payee) },
+      validUntil: BigInt(m.validUntil),
+      place: BigInt(m.place)
+    }
+  }
+}
+
+/** The EIP-712 digest of one place (sdk.md D-204), over the typed data above. */
 export const digestOf = (m: DigestMembers): Hex =>
-  hashOf({
-    digest: [
-      m.chainId,
-      m.manager.toLowerCase(),
-      m.digestVersion,
-      m.purpose,
-      m.account.toLowerCase(),
-      m.action.toLowerCase(),
-      m.attemptId,
-      m.setupNonce,
-      m.setupBodyHash,
-      m.purpose === 'approval' ? m.payload ?? '0x' : null,
-      m.purpose === 'approval' && m.order
-        ? [m.order.token.toLowerCase(), m.order.amount, m.order.payee.toLowerCase()]
-        : null,
-      m.validUntil,
-      m.place,
-      m.method.toLowerCase(),
-      m.config,
-      m.salt
-    ]
-  })
+  hashTypedData(typedDataOf(m) as unknown as Parameters<typeof hashTypedData>[0])
+
+/** The members one approver's request carries for its place. */
+export const membersOfRequest = (request: ApproverRequest): DigestMembers => ({
+  chainId: request.chainId,
+  manager: request.manager,
+  digestVersion: request.digestVersion,
+  purpose: request.purpose,
+  account: request.account,
+  action: request.action,
+  attemptId: request.attemptId,
+  setupNonce: request.setupNonce,
+  setupBodyHash: request.setupBodyHash,
+  payload: request.payload,
+  order: request.order,
+  validUntil: request.validUntil,
+  place: request.place
+})
 
 /** The digest one approver's request names for its place. */
 export const digestOfRequest = (request: ApproverRequest): Hex =>
-  digestOf({
-    chainId: request.chainId,
-    manager: request.manager,
-    digestVersion: request.digestVersion,
-    purpose: request.purpose,
-    account: request.account,
-    action: request.action,
-    attemptId: request.attemptId,
-    setupNonce: request.setupNonce,
-    setupBodyHash: request.setupBodyHash,
-    payload: request.payload,
-    order: request.order,
-    validUntil: request.validUntil,
-    place: request.place,
-    method: request.method,
-    config: request.config,
-    salt: request.salt
-  })
+  digestOf(membersOfRequest(request))
 
-/** The digest a submitted request's proof at one place must be over. */
+/**
+ * The digest of a submitted request at one place, what the manager's
+ * `hashApproval` and `hashCancel` answer: it needs no proof at that place.
+ */
 export const digestOfSubmission = (
   request: AttemptRequest | CancelRequest,
   domain: { chainId: number | bigint; manager: Address; digestVersion: string },
-  proofIndex: number
+  place: bigint | number
 ): Hex => {
-  const proof = request.proofs[proofIndex]
   const isApproval = 'payload' in request
   return digestOf({
     chainId: domain.chainId.toString(),
@@ -347,10 +482,7 @@ export const digestOfSubmission = (
     payload: isApproval ? (request as AttemptRequest).payload : undefined,
     order: isApproval ? serializeOrder((request as AttemptRequest).order) : undefined,
     validUntil: request.validUntil.toString(),
-    place: Number(proof.place),
-    method: proof.method,
-    config: proof.config,
-    salt: proof.salt
+    place: Number(place)
   })
 }
 
