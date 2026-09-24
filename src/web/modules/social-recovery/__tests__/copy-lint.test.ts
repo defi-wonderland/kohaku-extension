@@ -152,6 +152,52 @@ describe('socialRecovery strings in en.json', () => {
   })
 })
 
+// i18next interpolation: every {{...}} in a value. The rule-line counts use
+// n, m and spare (spare = M minus N, the brief item 4 and the coordinator's
+// ruling); any other placeholder must be a plain identifier that starts with
+// a lowercase letter (no formatter, no nesting, no spaces).
+const PLACEHOLDER = /\{\{([^}]*)\}\}/g
+const COUNT_PLACEHOLDERS = ['n', 'm', 'spare']
+const LOWERCASE_IDENTIFIER = /^[a-z][a-zA-Z0-9]*$/
+
+const placeholdersOf = (value: string): string[] =>
+  Array.from(value.matchAll(PLACEHOLDER), (match) => match[1])
+
+const isAllowedPlaceholder = (name: string) =>
+  COUNT_PLACEHOLDERS.includes(name) || LOWERCASE_IDENTIFIER.test(name)
+
+describe('socialRecovery placeholders', () => {
+  it('uses only n, m, spare or a lowercase identifier inside {{...}}', () => {
+    const offenders = strings.flatMap(({ keyPath, value }) =>
+      placeholdersOf(value)
+        .filter((name) => !isAllowedPlaceholder(name))
+        .map((name) => `${keyPath}: {{${name}}}`)
+    )
+    expect(offenders).toEqual([])
+  })
+
+  it('leaves no unbalanced braces in a value', () => {
+    const offenders = strings
+      .filter(({ value }) => {
+        const stripped = value.replace(PLACEHOLDER, '')
+        return stripped.includes('{{') || stripped.includes('}}')
+      })
+      .map(({ keyPath, value }) => `${keyPath}: ${value}`)
+    expect(offenders).toEqual([])
+  })
+
+  it('carries {{n}}, {{m}} and {{spare}} in the rule lines (D-305)', () => {
+    const ruleLines = isObject(socialRecovery) ? socialRecovery.ruleLines : undefined
+    expect(isObject(ruleLines)).toBe(true)
+    const used = new Set(
+      collectStrings(ruleLines as JsonValue, 'ruleLines').flatMap(({ value }) =>
+        placeholdersOf(value)
+      )
+    )
+    expect(COUNT_PLACEHOLDERS.filter((name) => !used.has(name))).toEqual([])
+  })
+})
+
 describe('copy-lint patterns (self-check)', () => {
   const hits = (text: string) => CASE_INSENSITIVE_BANS.filter(({ pattern }) => pattern.test(text))
 
@@ -179,6 +225,16 @@ describe('copy-lint patterns (self-check)', () => {
         expect(found).toEqual([])
       }
     )
+  })
+
+  it('accepts the count placeholders and lowercase identifiers only', () => {
+    expect(
+      ['n', 'm', 'spare', 'count', 'deadline', 'setupNumber'].every(isAllowedPlaceholder)
+    ).toBe(true)
+    expect(['N', 'M', 'Spare', 'value, number', ' n ', '', '1n'].some(isAllowedPlaceholder)).toBe(
+      false
+    )
+    expect(placeholdersOf('{{n}} of {{m}}, {{spare}} left')).toEqual(['n', 'm', 'spare'])
   })
 
   it('reads Protected case-sensitively', () => {
