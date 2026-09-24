@@ -253,7 +253,8 @@
         "thisDevice": "this device",
         "thisMac": "this Mac",
         "thisPhone": "this phone"
-      }
+      },
+      "unavailableNote": "Could not run · the service did not answer · Try again"
     },
     "records": {
       "expiredTitle": "This request expired",
