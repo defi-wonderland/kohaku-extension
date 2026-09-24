@@ -243,13 +243,18 @@ const writeAllSetup = async (records: Records, account: Address = ACCOUNT) => {
 }
 
 // The one line a wipe keeps for an event, per D-310 and the review's reading:
-// the reason, the account and, for an expired request, its deadline.
-const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord => ({
-  state: 'wiped',
-  reason: event,
-  account: ACCOUNT,
-  ...(event === 'deadline-passed' ? { deadline: VALID_UNTIL } : {})
-})
+// the reason, the account and, for an expired request, its deadline. The
+// submission landing keeps the landed state, the countdown's record, which
+// holds the account address alone.
+const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
+  event === 'submission-landed'
+    ? { state: 'landed', account: ACCOUNT }
+    : {
+        state: 'wiped',
+        reason: event,
+        account: ACCOUNT,
+        ...(event === 'deadline-passed' ? { deadline: VALID_UNTIL } : {})
+      }
 
 const wipeFor = async (records: Records, event: RecoveryWipeEvent) => {
   if (event === 'submission-landed') await records.landSubmission(CHAIN_ID, ACCOUNT)
@@ -383,8 +388,9 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
       await expect(
         attempt(() => records.wipeRecoverySession(CHAIN_ID, addr, 'deadline-passed'))
       ).rejects.toThrow()
-      await expect(attempt(() => records.countdown(CHAIN_ID, addr).write())).rejects.toThrow()
+      await expect(attempt(() => records.countdown(CHAIN_ID, addr).read())).rejects.toThrow()
       await expect(attempt(() => records.landSubmission(CHAIN_ID, addr))).rejects.toThrow()
+      await expect(attempt(() => records.clearWipedSession(CHAIN_ID, addr))).rejects.toThrow()
       expect(storage.raw.size).toBe(0)
     })
   )
@@ -403,7 +409,9 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
         attempt(() => records.wipeRecoverySession(chain, ACCOUNT, 'deadline-passed'))
       ).rejects.toThrow()
       await expect(attempt(() => records.listRecoverySessions(chain))).rejects.toThrow()
-      await expect(attempt(() => records.countdown(chain, ACCOUNT).write())).rejects.toThrow()
+      await expect(attempt(() => records.listCountdowns(chain))).rejects.toThrow()
+      await expect(attempt(() => records.countdown(chain, ACCOUNT).read())).rejects.toThrow()
+      await expect(attempt(() => records.clearWipedSession(chain, ACCOUNT))).rejects.toThrow()
       expect(storage.raw.size).toBe(0)
     })
   )
@@ -784,13 +792,44 @@ describe('the countdown record after the submission lands (D-310, D-393)', () =>
     })
   )
 
-  it('ends with its wipe and leaves the listing empty', async () => {
+  it('ends when its landed session is cleared, and leaves the listing empty', async () => {
     const { records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
     await records.landSubmission(CHAIN_ID, ACCOUNT)
-    await records.countdown(CHAIN_ID, ACCOUNT).wipe()
+    expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(true)
     expect(await records.countdown(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
     expect(await records.listCountdowns(CHAIN_ID)).toEqual([])
+  })
+
+  it('reports its age from the landing', async () => {
+    const { records, clock } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    clock.t = T0 + HOUR
+    await records.landSubmission(CHAIN_ID, ACCOUNT)
+    expect(await records.countdown(CHAIN_ID, ACCOUNT).age(T0 + 4 * HOUR)).toBe(3 * HOUR)
+  })
+
+  it('a new gathering cannot overwrite a landed session: the countdown stays', async () => {
+    const { storage, records } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    await records.landSubmission(CHAIN_ID, ACCOUNT)
+    const before = dump(storage)
+    await expect(
+      records.recoverySession(CHAIN_ID, ACCOUNT).write(gathering(ACCOUNT, [], { attemptId: '8' }))
+    ).rejects.toThrow()
+    expect(dump(storage)).toBe(before)
+    expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+      account: ACCOUNT
+    })
+  })
+
+  it('a second landing is refused and changes nothing', async () => {
+    const { storage, records } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    await records.landSubmission(CHAIN_ID, ACCOUNT)
+    const before = dump(storage)
+    await expect(records.landSubmission(CHAIN_ID, ACCOUNT)).rejects.toThrow()
+    expect(dump(storage)).toBe(before)
   })
 })
 
@@ -846,7 +885,7 @@ describe('the decrypted setup cache after execution (D-310)', () => {
     // The recovery executes: the unlocked setup becomes this device's cache
     // and the countdown ends.
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)
-    await records.countdown(CHAIN_ID, ACCOUNT).wipe()
+    expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(true)
     expect(await records.countdown(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
     await records.saveSetup(CHAIN_ID, ACCOUNT)
     await records.startOverSetup(CHAIN_ID, ACCOUNT)
@@ -913,6 +952,35 @@ describe('the session survives the submission as the countdown record (D-310)', 
     )
   })
 
+  it('the scan skips a key under the prefix that names no account, and a value that is no session', async () => {
+    const { storage, records } = await landAndReset()
+    await storage.set(`socialRecovery:recoverySession:${CHAIN_ID}:junk`, { value: {}, savedAt: T0 })
+    await storage.set(`socialRecovery:recoverySession:${CHAIN_ID}:${OTHER_ACCOUNT.toLowerCase()}`, {
+      value: { state: 'unknown' },
+      savedAt: T0
+    })
+    const sessions = await records.listRecoverySessions(CHAIN_ID)
+    expect(sessions.map((s) => s.account.toLowerCase())).toEqual([ACCOUNT.toLowerCase()])
+  })
+
+  it('a storage without getAll cannot list, and says so', async () => {
+    const { storage } = setup()
+    const { getAll, ...withoutGetAll } = storage
+    expect(getAll).toBeDefined()
+    const records = createWalletRecords({ storage: withoutGetAll, now: () => T0 })
+    await expect(records.listRecoverySessions(CHAIN_ID)).rejects.toThrow(/getAll/)
+    await expect(records.listCountdowns(CHAIN_ID)).rejects.toThrow(/getAll/)
+  })
+
+  it('every wipe is one write too', async () => {
+    const { storage, records } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    storage.calls.set.length = 0
+    await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'setup-changed')
+    expect(storage.calls.set).toHaveLength(1)
+    expect(storage.calls.remove).toEqual([])
+  })
+
   it('the scan finds a record written before this instance existed', async () => {
     const { storage } = await landAndReset()
     const restarted = createWalletRecords({ storage, now: () => T0 })
@@ -966,6 +1034,17 @@ describe('a live request is compared whole, and its replies only grow', () => {
     expect(dump(storage)).toBe(before)
   })
 
+  it('a later reply for the same place displaces the stored one (sdk.md D-207)', async () => {
+    const { records } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    const displaced = gathering(ACCOUNT, [APPROVALS[0], reply(1, '0xabababab')])
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(displaced)
+    expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+      state: 'live',
+      gathering: displaced
+    })
+  })
+
   it('a write that keeps every stored reply and adds one is taken', async () => {
     const { records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(gathering(ACCOUNT, [APPROVALS[0]]))
@@ -978,12 +1057,21 @@ describe('a live request is compared whole, and its replies only grow', () => {
 })
 
 describe('clearWipedSession removes only a wiped or landed session', () => {
-  it('refuses a live session and keeps its approvals', async () => {
+  it('refuses a live session: reports false, removes nothing and keeps its approvals', async () => {
     const { storage, records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
     const before = dump(storage)
-    await expect(attempt(() => records.clearWipedSession(CHAIN_ID, ACCOUNT))).rejects.toThrow()
+    storage.calls.remove.length = 0
+    expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(false)
+    expect(storage.calls.remove).toEqual([])
     expect(dump(storage)).toBe(before)
+    expect(dump(storage)).toContain(PROOF_A)
+  })
+
+  it('reports false with no session and removes nothing', async () => {
+    const { storage, records } = setup()
+    expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(false)
+    expect(storage.calls.remove).toEqual([])
   })
 
   DIRECT_EVENTS.forEach((event) =>
@@ -991,7 +1079,7 @@ describe('clearWipedSession removes only a wiped or landed session', () => {
       const { storage, records } = setup()
       await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
       await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, event)
-      await records.clearWipedSession(CHAIN_ID, ACCOUNT)
+      expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(true)
       expect(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
       expect(storage.raw.size).toBe(0)
     })
@@ -1001,9 +1089,22 @@ describe('clearWipedSession removes only a wiped or landed session', () => {
     const { storage, records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
     await records.landSubmission(CHAIN_ID, ACCOUNT)
-    await records.clearWipedSession(CHAIN_ID, ACCOUNT)
+    expect(await records.clearWipedSession(CHAIN_ID, ACCOUNT)).toBe(true)
     expect(await records.countdown(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
     expect(storage.raw.size).toBe(0)
+  })
+
+  it('after a clear, a new gathering may start', async () => {
+    const { records } = setup()
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
+    await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'another-attempt-opened')
+    await records.clearWipedSession(CHAIN_ID, ACCOUNT)
+    const fresh = gathering(ACCOUNT, [], { attemptId: '8' })
+    await records.recoverySession(CHAIN_ID, ACCOUNT).write(fresh)
+    expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+      state: 'live',
+      gathering: fresh
+    })
   })
 
   it('leaves another account untouched', async () => {
