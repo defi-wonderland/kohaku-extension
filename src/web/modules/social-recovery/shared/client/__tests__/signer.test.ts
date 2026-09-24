@@ -56,15 +56,6 @@ const BYTES = `0x${'22'.repeat(32)}` as Hex
 const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
 const REMOVE = 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
 
-/** Every value found anywhere under a value. */
-const valuesUnder = (value: unknown, depth = 6): unknown[] =>
-  depth > 0 && value && typeof value === 'object'
-    ? Object.values(value as Record<string, unknown>).flatMap((v) => [
-        v,
-        ...valuesUnder(v, depth - 1)
-      ])
-    : []
-
 // Every test runs on fake timers, so a request a test leaves pending never keeps
 // the facade's ten-minute wait alive after the test.
 beforeEach(() => {
@@ -121,11 +112,19 @@ describe('the signer facade over the request queue', () => {
     await signing
   })
 
-  it('carries the key type of the handle into the request it adds (D-370, brief test expectations)', () => {
+  it("carries the key type of the handle in the added request's meta, beside the address and chain (D-370)", () => {
     const q = queueOver([basicAccount(KEY)])
     q.signer.signBytes({ addr: KEY, type: 'trezor' }, BYTES).catch(() => undefined)
-    const { userRequest } = addedRequest(q.dispatch)
-    expect(valuesUnder(userRequest)).toContain('trezor')
+    q.signer.signTypedData({ addr: KEY, type: 'internal' }, TYPED).catch(() => undefined)
+    const requests = dispatched(q.dispatch).flatMap((a) =>
+      a.type === ADD ? [a.params.userRequest] : []
+    )
+    expect(requests).toHaveLength(2)
+    const [bytesRequest, typedRequest] = requests
+    expect(bytesRequest.meta).toMatchObject({ accountAddr: KEY, chainId: BigInt(SEPOLIA) })
+    expect(Object.values(bytesRequest.meta)).toContain('trezor')
+    expect(Object.values(typedRequest.meta)).toContain('internal')
+    expect(Object.values(typedRequest.meta)).not.toContain('trezor')
   })
 
   it('gives each request an id of its own', () => {
