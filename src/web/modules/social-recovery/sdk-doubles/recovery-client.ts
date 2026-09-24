@@ -56,7 +56,7 @@ import {
   setupCommitmentOf,
   ZERO_ADDRESS
 } from './encoding'
-import { RECORD_VERSION } from './orchestrator'
+import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
 import { codedError, finding, validationRefusal } from './scripts'
 import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
@@ -77,36 +77,6 @@ const refuseWith = (...rows: RequestRow[]): never => {
 
 const readsGathering = (g: Gathering): boolean =>
   !!g && g.kind === 'gathering' && g.version === RECORD_VERSION
-
-const isText = (value: unknown): value is string => typeof value === 'string'
-const isHexText = (value: unknown): value is Hex => isText(value) && /^0x[0-9a-fA-F]*$/.test(value)
-
-/**
- * Whether a pasted reply has the record's shape: every field present with its
- * type. A reply that does not is one this build does not read, refused as
- * `version-unread`, never thrown (D-207).
- */
-const replyReadable = (reply: unknown): reply is ApproverReply => {
-  if (!reply || typeof reply !== 'object') return false
-  const r = reply as Record<string, unknown>
-  return (
-    r.kind === 'recovery-proof-reply' &&
-    r.version === RECORD_VERSION &&
-    isText(r.chainId) &&
-    isHexText(r.manager) &&
-    isHexText(r.account) &&
-    isHexText(r.action) &&
-    isText(r.attemptId) &&
-    (r.purpose === 'approval' || r.purpose === 'cancellation') &&
-    typeof r.place === 'number' &&
-    Number.isInteger(r.place) &&
-    isHexText(r.method) &&
-    isHexText(r.config) &&
-    isHexText(r.salt) &&
-    isHexText(r.digest) &&
-    isHexText(r.proof)
-  )
-}
 
 const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
   digestOf({
