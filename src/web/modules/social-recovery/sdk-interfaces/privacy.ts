@@ -15,7 +15,7 @@
  * - public: everything in the clear and no recovery password.
  */
 export const PRIVACY_LEVELS = ['private', 'shape-visible', 'public'] as const
+// D-375 makes `private` the default level. The default is a screen's value to
+// set, so this file declares no runtime constant for it (types and `as const`
+// vocabularies only).
 export type PrivacyLevel = typeof PRIVACY_LEVELS[number]
-
-/** The default level, D-375. */
-export const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = 'private'

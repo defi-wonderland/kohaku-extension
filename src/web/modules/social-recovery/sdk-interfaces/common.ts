@@ -15,8 +15,9 @@ export type Hex = `0x${string}`
 /**
  * The tag a read pins at (sdk.md D-203, D-208): `latest` for a screen somebody
  * waits at, `finalized` for a watcher, or a block number a caller resolved.
+ * sdk.md names these two tags and no other.
  */
-export type BlockTag = 'latest' | 'finalized' | 'safe' | 'pending' | 'earliest' | number
+export type BlockTag = 'latest' | 'finalized' | number
 
 /**
  * One block's number, timestamp and hash, what `IProvider.block(tag)` returns
