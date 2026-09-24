@@ -261,6 +261,17 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   }
 ]
 
+// A clause at threshold zero beside other clauses: the implementer documents
+// (rule-lines README, "A clause at threshold zero is not refused here") that
+// it earns no line and the other clauses keep theirs, and the coordinator's
+// ruling leaves threshold zero out of the refused list. The lone row then
+// reads as the one method it is.
+SHAPES.push({
+  name: 'a clause at threshold zero beside a required row: the row keeps its single-method warning',
+  clauses: [row(PASSKEY), group(0, [PASSPORT, AADHAAR])],
+  expected: SINGLE_METHOD
+})
+
 // Paths that earn no line. The coordinator's ruling of 2026-09-24 (brief,
 // "Design sections and deltas"): a path with any refused clause (an empty
 // clause, a threshold above the member count, a non-integer threshold, a
@@ -275,11 +286,11 @@ const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
     clauses: [row(PASSKEY), { threshold: 1, credentials: [] }]
   },
   { name: 'a single clause at threshold zero', clauses: [group(0, [PASSKEY, PASSPORT])] },
-  {
-    name: 'a clause at threshold zero beside a required row',
-    clauses: [row(PASSKEY), group(0, [PASSPORT, AADHAAR])]
-  },
   { name: 'a threshold above the size', clauses: [group(3, [PASSKEY, PASSPORT])] },
+  {
+    name: 'a negative threshold beside a required row',
+    clauses: [row(PASSKEY), group(-1, [PASSPORT, AADHAAR])]
+  },
   {
     name: 'a threshold above 255',
     clauses: [
