@@ -192,7 +192,22 @@
       "scanCode": "Scan this code with the phone. The step runs there and this tab waits.",
       "waitingForPhone": "Waiting for your phone…",
       "keepTabOpen": "Keep this tab open. The result arrives when you return to it.",
-      "phoneReads": "The phone that opens this reads the account and the new key. Do not forward the link."
+      "phoneReads": "The phone that opens this reads the account and the new key. Do not forward the link.",
+      "cancelAction": "Cancel",
+      "tryAgainAction": "Try again",
+      "backAction": "Back",
+      "tabOnly": "This step continues in a new tab.",
+      "nothingToRun": "There is no step to run here. Go back to the row that sent you.",
+      "providers": {
+        "apple": "Apple",
+        "google": "Google",
+        "passwordManager": "your password manager"
+      },
+      "devices": {
+        "thisDevice": "this device",
+        "thisMac": "this Mac",
+        "thisPhone": "this phone"
+      }
     },
     "records": {
       "expiredTitle": "This request expired",
