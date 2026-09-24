@@ -35,7 +35,11 @@ export const RULE_LINE_KEYS = {
   anyOneOfM: `${PREFIX}.anyOneOfM`,
   togetherWithRequired: `${PREFIX}.togetherWithRequired`,
   togetherWithRequiredAndGroups: `${PREFIX}.togetherWithRequiredAndGroups`,
+  togetherWithGroups: `${PREFIX}.togetherWithGroups`,
   everyMemberMustAnswer: `${PREFIX}.everyMemberMustAnswer`,
+  togetherWithRequiredEveryMember: `${PREFIX}.togetherWithRequiredEveryMember`,
+  togetherWithGroupsEveryMember: `${PREFIX}.togetherWithGroupsEveryMember`,
+  togetherWithRequiredAndGroupsEveryMember: `${PREFIX}.togetherWithRequiredAndGroupsEveryMember`,
   oneFailureDomain: `${PREFIX}.oneFailureDomain`,
   differentPlaces: `${PREFIX}.differentPlaces`,
   sizingRule: `${PREFIX}.sizingRule`
@@ -87,14 +91,29 @@ const groupLine = (clause: Clause, rowCount: number, groupCount: number): RuleLi
   const n = clause.threshold
   const spare = m - n
 
-  if (n === m) return line(RULE_LINE_KEYS.everyMemberMustAnswer)
+  const hasRows = rowCount > 0
+  const hasOtherGroups = groupCount > 1
+
+  // A group whose threshold equals its member count reads every member must
+  // answer in place of the count line (frame C-04e), with the together-with
+  // clause of D-305 where rows or another group stand beside it.
+  if (n === m) {
+    if (hasRows && hasOtherGroups)
+      return line(RULE_LINE_KEYS.togetherWithRequiredAndGroupsEveryMember)
+    if (hasRows) return line(RULE_LINE_KEYS.togetherWithRequiredEveryMember)
+    if (hasOtherGroups) return line(RULE_LINE_KEYS.togetherWithGroupsEveryMember)
+    return line(RULE_LINE_KEYS.everyMemberMustAnswer)
+  }
 
   // D-305: where required rows or a second group stand beside the group, the
   // line adds the together-with clause. It keeps the any N of M form at every
   // threshold, one included, since beside another clause no member alone can
   // recover or take the account.
-  if (groupCount > 1) return line(RULE_LINE_KEYS.togetherWithRequiredAndGroups, { n, m, spare })
-  if (rowCount > 0) return line(RULE_LINE_KEYS.togetherWithRequired, { n, m, spare })
+  if (hasRows && hasOtherGroups) {
+    return line(RULE_LINE_KEYS.togetherWithRequiredAndGroups, { n, m, spare })
+  }
+  if (hasRows) return line(RULE_LINE_KEYS.togetherWithRequired, { n, m, spare })
+  if (hasOtherGroups) return line(RULE_LINE_KEYS.togetherWithGroups, { n, m, spare })
 
   if (n === 1 && m === 2) return line(RULE_LINE_KEYS.eitherOneAlone)
   if (n === 1) return line(RULE_LINE_KEYS.anyOneOfM, { m })
