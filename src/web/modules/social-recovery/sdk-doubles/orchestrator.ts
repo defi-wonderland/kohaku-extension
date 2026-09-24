@@ -41,7 +41,7 @@ const isDecimal = (value: unknown): boolean => isText(value) && /^[0-9]+$/.test(
  * field with its type, so a malformed record is refused as `version-unread`
  * rather than failing half-way through a digest.
  */
-const reads = (request: ApproverRequest): boolean => {
+export const requestReadable = (request: ApproverRequest): boolean => {
   if (!request || typeof request !== 'object') return false
   const r = request as unknown as Record<string, unknown>
   const approval = r.purpose === 'approval'
@@ -70,6 +70,36 @@ const reads = (request: ApproverRequest): boolean => {
         isHexText(order.token) &&
         isDecimal(order.amount) &&
         isHexText(order.payee)))
+  )
+}
+
+const reads = requestReadable
+
+/**
+ * Whether a pasted reply has the record's shape: every field present with its
+ * type, the digest and the proof among them. A reply that does not is one this
+ * build does not read: `addApproverReply` refuses it as `version-unread` and the
+ * seam's `verifyReply` answers `rejected`, never a thrown error (D-207).
+ */
+export const replyReadable = (reply: unknown): reply is ApproverReply => {
+  if (!reply || typeof reply !== 'object') return false
+  const r = reply as Record<string, unknown>
+  return (
+    r.kind === 'recovery-proof-reply' &&
+    r.version === RECORD_VERSION &&
+    isText(r.chainId) &&
+    isHexText(r.manager) &&
+    isHexText(r.account) &&
+    isHexText(r.action) &&
+    isText(r.attemptId) &&
+    (r.purpose === 'approval' || r.purpose === 'cancellation') &&
+    typeof r.place === 'number' &&
+    Number.isInteger(r.place) &&
+    isHexText(r.method) &&
+    isHexText(r.config) &&
+    isHexText(r.salt) &&
+    isHexText(r.digest) &&
+    isHexText(r.proof)
   )
 }
 
