@@ -78,7 +78,7 @@
         "waitingPeriod": "Waiting period",
         "guardian": "Guardian",
         "methodAdmin": "The method's admin",
-        "stopHolder": "The party that can stop this method"
+        "stopHolder": "The party that can stop that method"
       },
       "passwords": {
         "extensionPassword": "Extension password",
@@ -158,14 +158,18 @@
         "notEnoughGasAccountKey": "Not enough gas on your account's key",
         "notEnoughGasSendingKey": "Not enough gas on the sending key",
         "shortfall": "Your account's key holds too little to send this. It needs {{amount}} more.",
+        "shortfallSave": "Your account's key holds too little to send this save. It needs {{amount}} more.",
+        "shortfallSubmit": "Your key holds too little to send this. Fund it, then submit again.",
+        "shortfallCancel": "Your account's key holds too little to send this cancel. Fund it, then cancel again.",
         "transferRoute": "Transfer {{amount}} from {{account}} to its key",
         "transferRouteNote": "One transaction from your smart account to its own key.",
         "outsideRoute": "Or send {{amount}} to this key from outside this wallet.",
-        "transferIsAnOperation": "A transfer out of the account this key operates is itself an operation this key must send and pay for. A key at zero cannot take that route alone.",
+        "transferIsAnOperation": "A transfer out of the account the key operates is itself an operation that key must send and pay for. A key at zero therefore cannot take the first route alone.",
         "copy": "Copy"
       }
     },
     "ceremony": {
+      "passedNote": "check {{hash}} · passed just now",
       "cancelledNote": "Cancelled · you cancelled the prompt, the row is unchanged",
       "refusedNote": "Refused · the device refused the request",
       "failedNote": "Failed · Try again",
