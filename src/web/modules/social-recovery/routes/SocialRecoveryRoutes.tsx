@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 
 import AuthenticatedRoute from '@web/modules/router/components/AuthenticatedRoute'
 import KeystoreUnlockedRoute from '@web/modules/router/components/KeystoreUnlockedRoute'
+import CeremonyScreen from '@web/modules/social-recovery/shared/ceremony/screen'
 
 /**
  * The route registry of the account recovery module.
@@ -43,6 +44,16 @@ const SocialRecoveryRoutes = () => (
         socialRecoveryFastTrack (PT-053), socialRecoveryRecover (PT-052).
         socialRecoveryCeremony (PT-041) mounts in the group its callers need.
       */}
+      {/*
+        PT-041, the ceremony tab. Open group: its callers are the enrollment
+        rows (D-305, owner) and the checklist rows (D-392), and the fast track
+        reaches the checklist from a fresh install (D-303), so the tab must not
+        depend on an account being selected. The tab reads no keystore, holds
+        no signer and runs only a ceremony its caller's record names. A guard
+        would also send a tab waiting on a phone hand-off to the unlock screen
+        on auto-lock and drop the result D-316 says arrives when the tab returns.
+      */}
+      <Route path="ceremony" element={<CeremonyScreen />} />
     </Route>
   </Routes>
 )
