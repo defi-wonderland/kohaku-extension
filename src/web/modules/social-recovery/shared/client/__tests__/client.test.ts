@@ -33,6 +33,7 @@ import {
   lastArg,
   namesSignerOrStorage,
   providerDoubleReads,
+  RECOVERY_CALLS,
   RECOVERY_CHAINS,
   RecoveryClientConfiguration,
   sendingKeyOf,
@@ -208,8 +209,17 @@ describe('with no rail configured, every prepared call is sent from a key the si
     expect(sendingKeyOf(cancel, { accountKey, recovererKey })).toEqual(accountKey)
   })
 
-  it("sends a call anyone may send from the recoverer's own key", () => {
-    expect(sendingKeyOf(call('anyone'), { accountKey, recovererKey })).toEqual(recovererKey)
+  it("sends the two recovery calls, the submission and the execution, from the recoverer's own key (D-373)", () => {
+    expect(RECOVERY_CALLS).toEqual(['submission', 'execution'])
+    RECOVERY_CALLS.forEach((recoveryCall) =>
+      expect(sendingKeyOf(call('anyone'), { accountKey, recovererKey }, recoveryCall)).toEqual(
+        recovererKey
+      )
+    )
+  })
+
+  it('names no key for a call anyone may send that is not a recovery call, such as the cancel by proofs', () => {
+    expect(() => sendingKeyOf(call('anyone'), { accountKey, recovererKey })).toThrow()
   })
 
   it('sends a prepared batch of account calls, one account transaction, from the controlling key', () => {
@@ -236,14 +246,15 @@ describe('with no rail configured, every prepared call is sent from a key the si
   })
 
   it('names no sender where the role key is missing, rather than another key', () => {
-    expect(() => sendingKeyOf(call('anyone'), { accountKey })).toThrow()
+    expect(() => sendingKeyOf(call('anyone'), { accountKey }, 'submission')).toThrow()
     expect(() => sendingKeyOf(call('account'), { recovererKey })).toThrow()
   })
 
   it('never answers a sender outside the keys it was given', () => {
     const keys = { accountKey, recovererKey }
-    ;[call('account'), call('anyone')].forEach((c) =>
-      expect([accountKey, recovererKey]).toContainEqual(sendingKeyOf(c, keys))
+    expect([accountKey, recovererKey]).toContainEqual(sendingKeyOf(call('account'), keys))
+    expect([accountKey, recovererKey]).toContainEqual(
+      sendingKeyOf(call('anyone'), keys, 'execution')
     )
   })
 })

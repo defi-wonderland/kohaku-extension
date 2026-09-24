@@ -17,7 +17,7 @@ describe('the lane barrel', () => {
   })
 
   it('hands a screen no class or function of the doubles', () => {
-    const fromDoubles = new Set(
+    const fromDoubles = new Set<unknown>(
       Object.values(doubles).filter((value) => typeof value === 'function')
     )
     const leaked = Object.entries(lane)
