@@ -2,7 +2,7 @@
 
 - PT-039 The shared write states and the gas step
 
-The submitting and failed states every write of the chapter shares, and the gas check with its deposit step (`docs/social-recovery/design/ux.md` D-303, D-307, D-312, D-319, D-393; `ux-interfaces.md` D-373). Every owner-signed write and both recovery calls render these states and draw none of their own: the setup save, any other setup write, the owner's cancel, the submission and the execution.
+The submitting and failed states every write of the chapter shares, and the gas check with its deposit step (`docs/social-recovery/design/ux.md` D-303, D-307, D-312, D-319, D-393; `ux-interfaces.md` D-373). Every owner-signed write and both recovery calls render these states and draw none of their own: the setup save, the edit, any other setup write, the owner's cancel, the submission and the execution.
 
 Screens import `@web/modules/social-recovery/shared/writes` for the pure module and `@web/modules/social-recovery/shared/writes/components` for the two views. `index.ts` does not export the views, so the pure module loads in a Node test without the UI. The lane reaches the SDK only through `shared/client` (PT-038) and renders values and chips only through `shared/display` (PT-036).
 
@@ -10,12 +10,12 @@ Screens import `@web/modules/social-recovery/shared/writes` for the pure module 
 
 | File | What it holds |
 | --- | --- |
-| `kinds.ts` | `WRITE_KINDS` (`save`, `ownerWrite`, `cancel`, `submission`, `execution`), who pays each (`payerOf`), and `assertWriteDoor`, which refuses a prepared write whose sender does not match its kind. |
+| `kinds.ts` | `WRITE_KINDS` (`save`, `edit`, `ownerWrite`, `cancel`, `submission`, `execution`), who pays each (`payerOf`), and `assertWriteDoor`, which refuses a prepared write whose sender does not match its kind. |
 | `states.ts` | The state types, `WRITE_STATUSES`, `FAILED_STATUSES`, `canRetry` and `offersMoveFunds`. |
 | `classify.ts` | Receipts and failures (`receiptOf`, `writeFailureOf`), the causes of a revert (`revertCauseOf`), `classifyFailure` and `settleReceipt`. |
 | `machine.ts` | `writeReducer`, the one pure reducer over the states, its events and `initialWriteState`. |
 | `gas.ts` | `checkGas`, the deposit step's data (`DepositStep`, `DepositRoute`) and the estimate (`gasEstimateOf`, `FEE_HEADROOM_PERCENT`). |
-| `copy.ts` | The en.json keys the lane reads, the temporary keys of the missing strings, `renderWriteState` and `renderDepositStep`. |
+| `copy.ts` | The en.json keys the lane reads (`WRITES_KEYS`, `GAS_KEYS`, `REVERTED_KEYS`, `causeKey`, `cancelGoneRoadKey`), `renderWriteState` and `renderDepositStep`. |
 | `components/` | `WriteStateView` and `DepositStepView`, which lay out what the two renderers answer. |
 
 ## The states
@@ -78,16 +78,16 @@ The step carries the key's address, the estimate, the balance, the shortfall, th
 | --- | --- |
 | `submitting` | the in-progress chip, `submittingRecovery` for a submission and `submitting` for any other write, `submittingBody` |
 | `failedNotSent` | `notSent`, the retry |
-| `failedReverted` | `reverted` with the cause sentence, the retry |
+| `failedReverted` | the write's own reverted sentence (`REVERTED_KEYS`) with the cause sentence (`causes.<KitErrorName>` or `causes.unnamed`) as `{{cause}}`, the retry |
 | `failedReverted`, gone attempt | `cancelRevertedTitle`, `cancelReverted`, then `nowControlledBy` and the controller in full after an execution, or the road's sentence after another road |
 
 | Deposit step | Reads |
 | --- | --- |
-| Owner write | `notEnoughGas` over a save, `notEnoughGasAccountKey`, the write's shortfall (`shortfallSave`, `shortfall`, `shortfallCancel`), the key in full with `copy`, `transferRoute` with `transferRouteNote`, `outsideRoute`, `transferIsAnOperation`, the network |
-| Recovery call, fast track | `fundTitle`, `sendingKeyPays`, `sendingKey`, the key in full with `copy`, `submissionAmount` (the execution's own line at execution due), `secondFunding`, `network`, `balanceWaiting`, `continuesOnItsOwn`, `alreadyFunded`, `continueUnlocks` |
-| Recovery call, logged in | `fundTitle`, the key of the chosen account, the key in full with `copy`, both routes, `transferIsAnOperation`, `secondFunding`, `network`, the waiting lines |
+| Owner write | `notEnoughGas` over a save, `notEnoughGasAccountKey`, the write's shortfall (`shortfallSave`, `shortfall`, `shortfallCancel`), the key in full with `copy`, `transferRoute` with `transferRouteNote`, `outsideRoute`, `transferIsAnOperation`, `networkOwner` |
+| Recovery call, fast track | `fundTitle`, `sendingKeyPays`, `sendingKey`, the key in full with `copy`, `submissionAmount` (`executionAmount` at execution due), `secondFunding`, `network`, `balanceWaiting`, `continuesOnItsOwn`, `alreadyFunded`, `continueUnlocks` |
+| Recovery call, logged in | `fundTitle`, `accountHoldsFunds`, `keyOf`, the key in full with `copy`, both routes, `transferIsAnOperation`, `secondFunding`, `network`, the waiting lines |
 
-Each step also answers a `blocker`, the short panel a write's own screen shows when the check at sending comes up short: `notEnoughGasSendingKey` with `shortfallSubmit` (the execution's own line at execution due), or the owner write's title and shortfall. No string promises that one funding covers both the submission and the execution.
+Each step also answers a `blocker`, the short panel a write's own screen shows when the check at sending comes up short: `notEnoughGasSendingKey` with `shortfallSubmit` (`shortfallExecute` at execution due), or the owner write's title and shortfall. No string promises that one funding covers both the submission and the execution.
 
 ## The views
 
@@ -96,20 +96,20 @@ Each step also answers a `blocker`, the short panel a write's own screen shows w
 
 Both use the existing components of `src/common/components` over react-native-web.
 
-## Strings reported missing
+## The reverted sentence of each write
 
-The lane adds no key to en.json. These render through temporary keys in `copy.ts` (`PENDING_KEYS`, marked `TODO(social-recovery coordinator)`) until the coordinator adds them under `socialRecovery.writes`.
+`REVERTED_KEYS` picks the reverted reading by the write kind, from each write's own frame. Every one carries the cause as `{{cause}}`.
 
-| Temporary key | For | Chapter sentence |
+| Write | Key | Frame |
 | --- | --- | --- |
-| `causes.<KitErrorName>`, one per kit error of sdk.md D-205 | the `{{cause}}` of `reverted` | D-319: "A call that reached the chain and reverted reads as a revert, names the cause the receipt carries and says the gas it spent is gone." D-373: "The wallet writes the string the screen renders." |
-| `causes.unnamed` | a revert with no cause the wallet can name | D-319, the same sentence |
-| `cancelGoneRoad.cancelByOwner`, `.cancelByProofs`, `.cancelByVeto`, `.setupWrite` | a reverted cancel another road beat | D-307: "Where another road ended the attempt, a cancel by proofs or a setup write, the same state names that road from the attempt read, D-312, with control unchanged and no move-funds action." |
-| `gas.keyOf` (`{{account}}`) | the logged-in route's key label, frame D-09 "The key of Account 1" | D-393: "a gas check on the sending key precedes the submission, the fresh key of the fast track or the chosen account's key on the logged-in route." |
-| `gas.accountHoldsFunds` | frame D-09 "Your account holds the funds and its key sends the transactions." | D-393: "The product keeps funds in the account, and a transfer out of that account is an operation the key holding too little must itself send and pay for." |
-| `gas.executionAmount` (`{{amount}}`) | the fast track's amount line at execution due; `submissionAmount` names the submission | D-393: "a key that holds too little gets the deposit step again." D-373: "one estimate for the submission and one for the execution." |
-| `gas.shortfallExecute` | frame D-13 "Not enough gas on the sending key. Fund it, then execute." | D-393: "The execute now action sends the execution from the recoverer's own key in the first release, after the same gas check the submission had, and a key that holds too little gets the deposit step again." |
-| `gas.networkOwner` (`{{network}}`) | the network line of an owner write's step; `gas.network` names the account being recovered | Task PT-039: "names the network the key must be funded on"; D-312: the wallet names its one chain as a fixed label. |
+| `save` | `revertedSave` | C-07 |
+| `edit` | `revertedEdit` | G-05b |
+| `submission` | `revertedSubmit` | D-11 |
+| `execution` | `revertedExecute` | D-13 |
+| `ownerWrite` | `reverted` | none of its own |
+| `cancel` | `reverted`, only where the decoded cause names a kit error other than `NoActiveAttempt`; every other reverted cancel reads the gone attempt | D2-01 |
+
+Every string the lane shows comes from `socialRecovery.writes` and the chip and value keys of shared/display. The lane adds no key to en.json.
 
 ## Open points
 

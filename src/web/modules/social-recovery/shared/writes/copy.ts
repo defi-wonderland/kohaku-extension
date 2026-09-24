@@ -26,7 +26,7 @@ import {
   roundDownForDisplay,
   roundUpForDisplay
 } from './gas'
-import { isOwnerWrite, OwnerWrite } from './kinds'
+import { isOwnerWrite, OwnerWrite, WriteKind } from './kinds'
 import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,10 @@ export const WRITES_KEYS = {
   submittingBody: `${WRITES}.submittingBody`,
   notSent: `${WRITES}.notSent`,
   reverted: `${WRITES}.reverted`,
+  revertedSave: `${WRITES}.revertedSave`,
+  revertedSubmit: `${WRITES}.revertedSubmit`,
+  revertedExecute: `${WRITES}.revertedExecute`,
+  revertedEdit: `${WRITES}.revertedEdit`,
   tryAgain: `${WRITES}.tryAgain`,
   cancelRevertedTitle: `${WRITES}.cancelRevertedTitle`,
   cancelReverted: `${WRITES}.cancelReverted`,
@@ -72,23 +76,7 @@ export const GAS_KEYS = {
   transferRouteNote: `${GAS}.transferRouteNote`,
   outsideRoute: `${GAS}.outsideRoute`,
   transferIsAnOperation: `${GAS}.transferIsAnOperation`,
-  copy: `${GAS}.copy`
-} as const
-
-// TODO(social-recovery coordinator): en.json does not hold the keys below yet.
-// PT-039 reported each one missing with the chapter sentence it serves (see the
-// lane's README.md, "Strings reported missing"). They render through these
-// temporary keys until the coordinator adds them under `socialRecovery.writes`
-// in the setup branch or a `chore/social-recovery-strings-<n>` pull request.
-/** The temporary keys of the strings PT-039 reported missing. */
-export const PENDING_KEYS = {
-  /** D-319: the cause a reverted receipt carries, one sentence per kit error of sdk.md D-205. */
-  cause: (name: KitErrorName): string => `${WRITES}.causes.${name}`,
-  /** D-319: a revert that carries no cause this wallet can name. */
-  causeUnnamed: `${WRITES}.causes.unnamed`,
-  /** D-307: the road that had already ended the attempt a cancel meant to end. */
-  cancelGoneRoad: (road: Exclude<AttemptEnd, 'executed'>): string =>
-    `${WRITES}.cancelGoneRoad.${road}`,
+  copy: `${GAS}.copy`,
   /** D-393, frame D-09: the logged-in route's sending key, the key of the chosen account. */
   keyOf: `${GAS}.keyOf`,
   /** D-393, frame D-09: the product keeps the funds in the account and its key sends. */
@@ -97,9 +85,35 @@ export const PENDING_KEYS = {
   executionAmount: `${GAS}.executionAmount`,
   /** D-393, frame D-13: the blocker at execution due. */
   shortfallExecute: `${GAS}.shortfallExecute`,
-  /** Task PT-039, D-312: the network an owner write's key must be funded on. */
+  /** The network an owner write's key must be funded on. */
   networkOwner: `${GAS}.networkOwner`
 } as const
+
+/**
+ * The reverted reading of each write (D-319), from its own frame: the save
+ * (C-07), the edit (G-05b), the submission (D-11) and the execution (D-13).
+ * A write with no frame of its own reads the generic `reverted`. A cancel's
+ * revert reads D-307's gone attempt, and the generic `reverted` only where the
+ * decoded cause names another kit error.
+ */
+export const REVERTED_KEYS: { readonly [W in WriteKind]: string } = {
+  save: WRITES_KEYS.revertedSave,
+  edit: WRITES_KEYS.revertedEdit,
+  ownerWrite: WRITES_KEYS.reverted,
+  cancel: WRITES_KEYS.reverted,
+  submission: WRITES_KEYS.revertedSubmit,
+  execution: WRITES_KEYS.revertedExecute
+}
+
+/** The key of the cause sentence of one kit error of sdk.md D-205, `socialRecovery.writes.causes.<name>`. */
+export const causeKey = (name: KitErrorName): string => `${WRITES}.causes.${name}`
+
+/** The key of the cause sentence of a revert the wallet cannot name. */
+export const UNNAMED_CAUSE_KEY = `${WRITES}.causes.unnamed`
+
+/** The key of the sentence naming the road that had already ended the attempt a cancel meant to end (D-307). */
+export const cancelGoneRoadKey = (road: Exclude<AttemptEnd, 'executed'>): string =>
+  `${WRITES}.cancelGoneRoad.${road}`
 
 // ---------------------------------------------------------------------------
 // Amounts
@@ -136,7 +150,7 @@ export interface RenderedWriteState {
 
 /** The sentence naming the cause of a revert, for the `{{cause}}` of the reverted reading. */
 export const renderRevertCause = (cause: RevertCause, t: Translate = appTranslate): string =>
-  cause.kind === 'named' ? t(PENDING_KEYS.cause(cause.name)) : t(PENDING_KEYS.causeUnnamed)
+  cause.kind === 'named' ? t(causeKey(cause.name)) : t(UNNAMED_CAUSE_KEY)
 
 const renderAttemptGone = (
   cause: Extract<RevertCause, { kind: 'attemptGone' }>,
@@ -144,7 +158,7 @@ const renderAttemptGone = (
 ): Pick<RenderedWriteState, 'title' | 'lines' | 'controller'> => {
   const lines = [t(WRITES_KEYS.cancelReverted)]
   if (cause.ended && cause.ended !== 'executed') {
-    lines.push(t(PENDING_KEYS.cancelGoneRoad(cause.ended)))
+    lines.push(t(cancelGoneRoadKey(cause.ended)))
   }
   const controller =
     cause.ended === 'executed' && cause.controller
@@ -160,8 +174,9 @@ const renderAttemptGone = (
 /**
  * The copy of a write's state. The submitting state reads the in-progress chip,
  * its title and that the key is sending one transaction; the failed state reads
- * one of its two readings (D-319) or, for a cancel whose attempt was already
- * gone, D-307's reading. The other states carry no copy of this lane.
+ * one of its two readings (D-319), the reverted one in the write's own words
+ * (`REVERTED_KEYS`), or, for a cancel whose attempt was already gone, D-307's
+ * reading. The other states carry no copy of this lane.
  */
 export const renderWriteState = (
   state: WriteState,
@@ -188,7 +203,7 @@ export const renderWriteState = (
       return {
         ...base,
         ...retry,
-        lines: [t(WRITES_KEYS.reverted, { cause: renderRevertCause(state.cause, t) })]
+        lines: [t(REVERTED_KEYS[state.write], { cause: renderRevertCause(state.cause, t) })]
       }
     default:
       return { ...base, lines: [] }
@@ -233,6 +248,7 @@ export interface RenderedDepositStep {
 /** The shortfall sentence of each owner write: the save's, the cancel's, and any other's. */
 export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
   save: GAS_KEYS.shortfallSave,
+  edit: GAS_KEYS.shortfall,
   ownerWrite: GAS_KEYS.shortfall,
   cancel: GAS_KEYS.shortfallCancel
 }
@@ -279,12 +295,9 @@ export const renderDepositStep = (
           kind: 'outside',
           line: transfer
             ? t(GAS_KEYS.outsideRoute, { amount })
-            : t(
-                step.write === 'execution'
-                  ? PENDING_KEYS.executionAmount
-                  : GAS_KEYS.submissionAmount,
-                { amount }
-              )
+            : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
+                amount
+              })
         }
   )
   const transferSentence = transfer ? [t(GAS_KEYS.transferIsAnOperation)] : []
@@ -300,7 +313,7 @@ export const renderDepositStep = (
       keyAddress,
       copyLabel,
       routes,
-      notes: [...transferSentence, t(PENDING_KEYS.networkOwner, { network })],
+      notes: [...transferSentence, t(GAS_KEYS.networkOwner, { network })],
       waiting: [],
       blocker: { title, line: shortfall }
     }
@@ -309,11 +322,11 @@ export const renderDepositStep = (
   const balance = renderGasBalance(options.balance ?? step.balance, symbol)
   return {
     title: t(GAS_KEYS.fundTitle),
-    lead: [t(step.fastTrack ? GAS_KEYS.sendingKeyPays : PENDING_KEYS.accountHoldsFunds)],
+    lead: [t(step.fastTrack ? GAS_KEYS.sendingKeyPays : GAS_KEYS.accountHoldsFunds)],
     keyLabel:
       step.fastTrack || !step.operates
         ? t(GAS_KEYS.sendingKey)
-        : t(PENDING_KEYS.keyOf, { account: step.operates.name }),
+        : t(GAS_KEYS.keyOf, { account: step.operates.name }),
     keyAddress,
     copyLabel,
     routes,
@@ -326,7 +339,7 @@ export const renderDepositStep = (
     actionHint: t(GAS_KEYS.continueUnlocks),
     blocker: {
       title: t(GAS_KEYS.notEnoughGasSendingKey),
-      line: t(step.write === 'execution' ? PENDING_KEYS.shortfallExecute : GAS_KEYS.shortfallSubmit)
+      line: t(step.write === 'execution' ? GAS_KEYS.shortfallExecute : GAS_KEYS.shortfallSubmit)
     }
   }
 }
