@@ -1,27 +1,37 @@
 /**
- * The UI's own port to the sign-message flow, for `createSignerFacade`: the
- * dispatch of `useBackgroundService`, the `signMessage` controller state the
- * background pushes over the event bus, and the accounts the wallet lists
- * (`useAccountsControllerState().accounts`).
+ * The UI's own port to the request queue, for `createSignerFacade`: the
+ * dispatch and the window id of `useBackgroundService`, the `signMessage` and
+ * `requests` controller states the background pushes over the event bus, and
+ * the accounts the wallet lists (`useAccountsControllerState().accounts`).
  */
 import eventBus from '@web/extension-services/event/eventBus'
 
 import type {
   ListedAccount,
-  SignMessageFlowAction,
-  SignMessageFlowPort,
-  SignMessageFlowState
+  RequestsState,
+  SignMessageState,
+  SignRequestAction,
+  SignRequestPort
 } from './signer'
 
-export const signMessageFlowPort = (
-  dispatch: (action: SignMessageFlowAction) => void,
-  accounts: () => readonly ListedAccount[] | undefined
-): SignMessageFlowPort => ({
+export const signRequestPort = (
+  dispatch: (action: SignRequestAction) => void,
+  accounts: () => readonly ListedAccount[] | undefined,
+  windowId?: number
+): SignRequestPort => ({
   dispatch,
   subscribe(listener) {
-    const onUpdate = (state?: SignMessageFlowState) => listener(state ?? {})
-    eventBus.addEventListener('signMessage', onUpdate)
-    return () => eventBus.removeEventListener('signMessage', onUpdate)
+    const onSignMessage = (state?: SignMessageState) =>
+      listener({ controller: 'signMessage', state: state ?? {} })
+    const onRequests = (state?: RequestsState) =>
+      listener({ controller: 'requests', state: state ?? {} })
+    eventBus.addEventListener('signMessage', onSignMessage)
+    eventBus.addEventListener('requests', onRequests)
+    return () => {
+      eventBus.removeEventListener('signMessage', onSignMessage)
+      eventBus.removeEventListener('requests', onRequests)
+    }
   },
-  accounts: () => accounts() ?? []
+  accounts: () => accounts() ?? [],
+  windowId: () => windowId
 })

@@ -84,9 +84,10 @@ export const createChainReads = (rpc: ExtensionRpc): ChainReads => ({
 
 /**
  * The transaction a key sends for a prepared call whose sender is anyone (the
- * submission, the execution, the cancel by proofs), for its gas estimate. A
- * call whose sender is the account rides the account's own `execute`, which
- * the account library estimates, so this refuses it (sdk.md D-202).
+ * submission and the execution the recoverer's own key sends, D-373), for its
+ * gas estimate. A call whose sender is the account rides the account's own
+ * `execute`, which the account library estimates, so this refuses it
+ * (sdk.md D-202).
  */
 export const gasCallOf = (prepared: PreparedCall, from: Address): GasEstimateCall => {
   if (prepared.sender !== 'anyone') {
