@@ -16,6 +16,7 @@
  * Every function here is pure and runs under Jest's node environment.
  */
 import type {
+  DeviceBinding,
   EnrollFailure,
   MethodFailureCause,
   ReplyFailure,
@@ -296,7 +297,12 @@ export const isMethodFailure = (value: unknown): value is EnrollFailure | ReplyF
 /**
  * One typed failure of the method (sdk.md D-206) as an outcome.
  *
- * - device-refused: the approver's device declined, the refused note.
+ * - device-refused: for an `external-app` method, whose device call runs
+ *   inside `replyFrom`, the approver's device declined: the refused note. For
+ *   every other binding the method ran and answered the refusal itself, so it
+ *   reads as a verdict, failed with that cause (UXC-13, the coordinator's
+ *   ruling). A `browser-authenticator` refusal before the method runs is
+ *   already caught as the browser's own error.
  * - device-unavailable: the device did not answer, unavailable with retry; a
  *   phone hand-off that never connected reads unreachable.
  * - material-rejected: the material was not a config or a proof, failed.
@@ -304,11 +310,13 @@ export const isMethodFailure = (value: unknown): value is EnrollFailure | ReplyF
  */
 export const outcomeOfMethodFailure = (
   failure: EnrollFailure | ReplyFailure,
-  options: { handOff?: boolean } = {}
+  options: { handOff?: boolean; binding?: DeviceBinding } = {}
 ): CeremonyStop => {
   switch (failure.cause) {
     case 'device-refused':
-      return dismissed('refused', failure.cause)
+      return options.binding === 'external-app'
+        ? dismissed('refused', failure.cause)
+        : failed(failure.cause)
     case 'device-unavailable':
       return unavailable(options.handOff ? 'unreachable' : 'device-unavailable')
     case 'method-unsupported':

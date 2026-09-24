@@ -119,6 +119,12 @@ const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | und
 const cancelledByAbort = (context: HostContext) =>
   context.signal?.aborted ? dismissed('cancelled', 'AbortError') : null
 
+/** What `outcomeOfMethodFailure` reads of the call: the hand-off and the method's binding. */
+const failureOptions = (context: HostContext) => ({
+  handOff: context.handOff,
+  binding: context.method.deviceBinding
+})
+
 const deviceContext = (context: HostContext): DeviceCallContext => ({
   signal: context.signal,
   handOff: context.handOff,
@@ -160,7 +166,7 @@ export const enrollHost = async (
       input,
       result.material
     )
-    if (isMethodFailure(config)) return outcomeOfMethodFailure(config, context)
+    if (isMethodFailure(config)) return outcomeOfMethodFailure(config, failureOptions(context))
     return passed({
       config,
       ...(result.facts ? { facts: result.facts } : {}),
@@ -202,7 +208,7 @@ const signForRequest = async (
   try {
     const reply = await context.orchestrator.replyFrom(context.request, input, result.material)
     if (isMethodFailure(reply)) {
-      return { ok: false, outcome: outcomeOfMethodFailure(reply, context) }
+      return { ok: false, outcome: outcomeOfMethodFailure(reply, failureOptions(context)) }
     }
     return { ok: true, reply, ...(result.facts ? { facts: result.facts } : {}) }
   } catch (error) {

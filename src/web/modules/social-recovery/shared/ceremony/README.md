@@ -28,10 +28,10 @@ Every host returns exactly one `CeremonyOutcome`:
 | Outcome | Retry | When |
 | --- | --- | --- |
 | `passed` | no | The method produced its config or reply, and the local check (test access) answered satisfied. |
-| `failed` with a cause | yes | The method's typed failure `material-rejected`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), a relying party the extension does not serve (`relying-party-mismatch`), or the browser's own error at a test or a claim (`browser-error`, its name in `detail`). UXC-13: never `notTested`. |
+| `failed` with a cause | yes | The method's typed failure `material-rejected`, its `device-refused` for every binding but `external-app`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), a relying party the extension does not serve (`relying-party-mismatch`), or the browser's own error at a test or a claim (`browser-error`, its name in `detail`). UXC-13: never `notTested`. |
 | `unavailable` with a cause | yes | `device-unavailable`, a node or a service that did not answer (`service-unanswered`, a resolver that failed among them), a phone hand-off that never connected (`unreachable`), or a check the local verifier cannot judge (`not-judged`). |
 | `notSupported` | no | `method-unsupported`, `version-unread`, or no implementation or device in this build (`no-implementation`). |
-| `dismissed` with `cancelled` or `refused` | yes | The browser's `NotAllowedError` at enrollment; `AbortError`, `InvalidStateError`, `ConstraintError` and `NotSupportedError` at every call; the method's own `device-refused`. Each is read before the method runs. |
+| `dismissed` with `cancelled` or `refused` | yes | The browser's `NotAllowedError` at enrollment; `AbortError`, `InvalidStateError`, `ConstraintError` and `NotSupportedError` at every call. Each is read before the method runs. The one exception is an `external-app` method's `device-refused`, the refused note, since its device call runs inside `replyFrom`. A `browser-authenticator` method's refusal before the method is already the browser's error; a `device-refused` the method returns after it ran is a verdict, failed with that cause (UXC-13). |
 
 "Before the method runs" means before its packaging, `configFrom` or `replyFrom`. The options calls `enrollInput` and `signingInput` run first, since the device needs their output, and act on nothing (sdk.md D-206).
 
@@ -64,7 +64,7 @@ A screen shows no raw cause slug and no English message: each cause renders thro
 | `unreachable` | `unreachableNote` |
 | `device-unavailable`, `service-unanswered`, `not-judged` | `testUnavailableLine` |
 | `method-unsupported`, `version-unread`, `no-implementation` | `notSupportedNote` |
-| `device-refused` | `refusedNote` |
+| `device-refused` | `refusedNote` for an `external-app` method; for any other binding a failed verdict, `failedNote` (at a test, the chip and `testFailedLine`) |
 | `material-rejected`, `thrown` | `failedNote` (at a test, the chip and `testFailedLine`); no key names these causes yet, a gap reported to the coordinator |
 
 ## The passkey ceremony
