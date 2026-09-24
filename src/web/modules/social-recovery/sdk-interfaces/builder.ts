@@ -78,8 +78,8 @@ export interface ClientConfiguration {
   creation?: CreationRecord
   /** The account implementation the integrator is about to deploy, read by the fit check alone. */
   accountImplementation?: Address
-  /** One tag for reading and one for watching, `latest` and `finalized` by default. */
-  blockTags: { read: BlockTag; watch: BlockTag }
+  /** One tag for reading and one for watching; D-208 defaults them to `latest` and `finalized`. */
+  blockTags?: { read: BlockTag; watch: BlockTag }
   /** The block width `fetch` chunks its reads into, the integrator's node's own ceiling. */
   logChunkWidth?: number
   /** Whether a prepare simulates when its own options say nothing. */
@@ -98,6 +98,9 @@ export interface ClientConfiguration {
  * copied from the builder drawing of D-201. Setters return the builder and
  * refuse after the first build; `recoveryAction()` and `methodModuleReads()`
  * count as builds and hand out the narrow seams alone.
+ *
+ * A copied shape of the D-201 builder drawing, outside the frozen list of twelve
+ * interfaces: sdk.md ships `RecoveryKitBuilder` as a class, not as an interface.
  */
 export interface RecoveryKitBuilder {
   provider(p: IProvider): RecoveryKitBuilder
