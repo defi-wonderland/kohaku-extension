@@ -2,10 +2,41 @@
  * PT-036: the deadline renders as a date and time in the reader's zone, the
  * zone named, with a countdown beside it (D-302), for a fixed now.
  */
-import { renderDeadline } from '..'
+import i18n from '@common/config/localization/localization'
+import en from '@common/config/localization/translations/en.json'
+
+import { renderDeadline, renderRemaining } from '..'
 
 const NOW = new Date('2026-09-24T10:00:00Z')
 const DEADLINE = new Date('2026-09-26T12:30:00Z') // 50 hours 30 minutes later
+
+describe('countdown words come from en.json alone', () => {
+  it('en.json registers the hour and minute words with their plurals', () => {
+    const { display } = en.socialRecovery
+    expect(display.remainingHours).toBe('{{count}} hour')
+    expect(display.remainingHours_plural).toBe('{{count}} hours')
+    expect(display.remainingMinutes).toBe('{{count}} minute')
+    expect(display.remainingMinutes_plural).toBe('{{count}} minutes')
+    expect(i18n.exists('socialRecovery.display.remainingHours')).toBe(true)
+    expect(i18n.exists('socialRecovery.display.remainingMinutes')).toBe(true)
+  })
+
+  it('reads the registered keys with a count and passes no fallback text', () => {
+    const calls: [string, Record<string, unknown> | undefined][] = []
+    const t = (key: string, options?: Record<string, unknown>) => {
+      calls.push([key, options])
+      return `<${key}>`
+    }
+    expect(renderRemaining(50 * 3600 * 1000 + 30 * 60 * 1000, t)).toBe(
+      '<socialRecovery.display.remainingHours>'
+    )
+    expect(renderRemaining(20 * 60 * 1000, t)).toBe('<socialRecovery.display.remainingMinutes>')
+    expect(calls).toEqual([
+      ['socialRecovery.display.remainingHours', { count: 50 }],
+      ['socialRecovery.display.remainingMinutes', { count: 20 }]
+    ])
+  })
+})
 
 describe('deadline (D-302)', () => {
   it('renders the time in Europe/Berlin with the zone named and a countdown', () => {
