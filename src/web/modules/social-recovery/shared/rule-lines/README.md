@@ -33,8 +33,14 @@ const text = renderRuleLines(lines, t) // t is i18n.t or useTranslation().t
 | One group, N of M, N from two to M minus one | `anyNOfM` {n, m, spare}, `differentPlaces` |
 | One group, M of M | `everyMemberMustAnswer`, `differentPlaces` |
 | Rows and one group, N below M | `togetherWithRequired` {n, m, spare}, `differentPlaces` |
-| Two or more groups, per group with N below M | `togetherWithRequiredAndGroups` {n, m, spare} |
+| Rows and one group, M of M | `togetherWithRequiredEveryMember`, `differentPlaces` |
+| Two or more groups and no row, per group with N below M | `togetherWithGroups` {n, m, spare} |
+| Two or more groups and no row, per group with M of M | `togetherWithGroupsEveryMember` |
+| Rows and two or more groups, per group with N below M | `togetherWithRequiredAndGroups` {n, m, spare} |
+| Rows and two or more groups, per group with M of M | `togetherWithRequiredAndGroupsEveryMember` |
 | A group whose members share one method family | its threshold line, then `oneFailureDomain` |
+
+A group at threshold M reads its every-member line in place of the count line (frame C-04e). Beside a row or another group, the together-with forms keep the any N of M wording at threshold one too, since no member alone can then recover or take the account. Groups keep clause order; the `differentPlaces` line follows the last group.
 
 The function produces nothing about the identity method's weight, the words primary or offered, or raising a threshold when a secondary credential joins, D-312.
 
