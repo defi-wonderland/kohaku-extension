@@ -26,14 +26,14 @@ The value renderers and the status vocabulary of D-302 (`docs/social-recovery/de
 
 | Value | Renderer | Form |
 | --- | --- | --- |
-| Address, short | `renderShortAddress` | `0x2b0F…6ef5`, checksummed |
-| Address, full | `renderFullAddress` | whole, checksummed, no grouping |
-| Name or method name | `ellipsizeName` | whole up to 24 characters, 23 and `…` past that |
-| Resolved name | `renderResolvedName` | the name and the I-41 caveat or null |
+| Address, short | `renderShortAddress` | `0x2b0F…6ef5`, checksummed; a mixed-case address with a bad checksum is refused |
+| Address, full | `renderFullAddress` | whole, checksummed, no grouping; a mixed-case address with a bad checksum is refused |
+| Name or method name | `ellipsizeName` | whole up to 24 characters, 23 and `…` past that, counted in graphemes |
+| Resolved name | `renderResolvedName` | the name and the I-41 caveat or null; null for an empty or blank name, so the screen shows the address |
 | Hash or challenge | `renderHash` | `0x8f31a27b04ce…5d19c2`, twelve and six |
 | Approval | `renderApproval` | `0x8ba2c71f04e9…5fa37ad3`, twelve and eight |
 | Hidden value | `renderHiddenValue` | sixteen dots and the hidden chip |
 | Member list | `renderMemberList` | three members and `2 more members`; `showAll` for the checklist of D-392 |
-| Payment order | `renderPaymentOrder` | `12.50 USDC to 0x…`, `12.50 USDC to whoever executes` or `No payment` |
+| Payment order | `renderPaymentOrder` | `12.50 USDC to 0x…` with the payee's full address, `12.50 USDC to whoever executes` or `No payment` |
 | Deadline | `renderDeadline` | `Valid until 13 Aug, 18:04 CEST · 23 hours left` |
-| Countdown | `renderCountdown` | `47:12:06 · waiting`, `Execution due` and the two stopped forms |
+| Countdown | `renderCountdown` | `47:12:06 · waiting`, `Execution due` and the two stopped forms; the state derives from the time left |
