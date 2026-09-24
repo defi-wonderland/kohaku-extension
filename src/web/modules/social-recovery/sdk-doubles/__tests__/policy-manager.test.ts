@@ -87,6 +87,22 @@ describe('policy manager double', () => {
     )
   })
 
+  it('hashes an approval for a place the request carries no proof for, without throwing', async () => {
+    const opened = await openRecovery()
+    const now = Number(opened.gathering.request.block.timestamp) + 60
+    const filled = await fillAll(opened)
+    const request = opened.recovery.complete(filled, undefined, now) as AttemptRequest
+    const used = request.proofs.map((p) => p.place)
+    const left = filled.replies.find((r) => !used.includes(BigInt(r.place)))
+    expect(left).toBeDefined()
+    const hash = await opened.world.manager.hashApproval(request, BigInt(left!.place))
+    // contracts D-103: the digest of one place is the request's and the place's,
+    // so it is the one the left-out approver signed.
+    expect(hash).toBe(left!.digest)
+    const empty: AttemptRequest = { ...request, proofs: [] }
+    expect(await opened.world.manager.hashApproval(empty, 0n)).toMatch(/^0x[0-9a-fA-F]{64}$/)
+  })
+
   describe('the three module reads', () => {
     it('answer the scripted declaration, stop and module record', async () => {
       const world = createWorld()
