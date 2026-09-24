@@ -73,9 +73,13 @@ describe('sdk-interfaces barrel (runtime)', () => {
     expect(exported.RESTORE_CAUSES).toHaveLength(3)
   })
 
-  it('holds the three privacy levels of D-375, private as the default', () => {
-    expect(exported.PRIVACY_LEVELS).toHaveLength(3)
-    expect(exported.PRIVACY_LEVELS).toContain(exported.DEFAULT_PRIVACY_LEVEL)
+  // D-375: three levels, private the default. The default lives in a comment
+  // of privacy.ts, since the folder exports types and as-const lists only.
+  it('holds the three privacy levels of D-375, private among them', () => {
+    const levels = exported.PRIVACY_LEVELS as unknown[]
+    expect(levels).toHaveLength(3)
+    expect(new Set(levels).size).toBe(3)
+    expect(levels).toContain('private')
   })
 
   it('loads through @web/modules/social-recovery/sdk-interfaces', () => {

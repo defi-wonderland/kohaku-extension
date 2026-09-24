@@ -47,8 +47,9 @@ The setup task owns these two folders, and they are frozen after it.
 
 ## Rules
 
-- A screen imports `shared/client`, never `sdk-doubles`. Only `shared/client` and the tests of `sdk-doubles` import the doubles, so the swap to the real SDK touches one folder. ESLint enforces this rule (`no-restricted-imports` in the root `.eslintrc.js`).
+- A screen imports `shared/client`, never `sdk-doubles`. Only `shared/client` and the tests of `sdk-doubles` import the doubles, so the swap to the real SDK touches one folder. ESLint enforces this rule (`no-restricted-imports` in the root `.eslintrc.js`). The rule catches static `import` statements and `export ... from` re-exports. It does not catch a dynamic `import()` or a `require()`, so a reviewer checks those.
 - Every string a screen shows is a key under `socialRecovery` in `src/common/config/localization/translations/en.json`, read through `i18n.t('socialRecovery.<group>.<key>')`. Keys are slugs and hold no `.` and no `:`. A lane uses keys and adds none: a lane that finds a missing string reports it to the coordinator, who adds it in the setup branch or in a `chore/social-recovery-strings-<n>` pull request.
 - Every string follows `docs/social-recovery/design/ux-copy.md`. The copy-lint test in `__tests__/` enforces its bans.
+- The four approval values UXC-14 names are the first four value keys under `socialRecovery.display.values` after the account lines: `newKey`, `keyBeingRemoved`, `payment` or `noPayment`, and `deadline`. `controlledBy` and `removed` are the done screen's pair, the one exception D-302 states, and no other screen uses them.
 - Records live in the extension's local storage, never in a background controller (D-310).
 - A test under this folder runs in Jest's node environment and imports through the `@web/...` and `@common/...` aliases. A test that needs a DOM declares `@jest-environment jsdom` in its docblock.

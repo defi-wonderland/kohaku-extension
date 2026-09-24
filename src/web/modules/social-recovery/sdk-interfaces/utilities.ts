@@ -176,6 +176,10 @@ export type KitErrorName = typeof KIT_ERROR_NAMES[number]
  * its argument values by name, or the unknown result with the selector where
  * one exists and the raw bytes (sdk.md D-205). Never thrown.
  * Illustrative shape, sdk.md D-201.
+ *
+ * Two sources disagree on this shape: sdk.md D-201's usage block shows a
+ * simulation error as a flat `{ name, place, method }`, while sdk.md D-205
+ * names the four parts this type follows. The sdk owner must confirm.
  */
 export type KitError =
   | {
@@ -201,6 +205,7 @@ export interface SetupDescription {
   methodStanding: unknown
   passkeyDomains: unknown
   candidateKeys: { address: Address; isAuthority: boolean }[]
+  // `'no-creation-triple'` is illustrative, sdk.md D-205: the chapter names the value in prose alone.
   removedKey: Address | 'no-creation-triple'
   privacy: unknown
   backup: unknown
