@@ -26,14 +26,21 @@ const ZERO_ADDRESS = `0x${'0'.repeat(40)}`
 // ---------------------------------------------------------------------------
 
 /**
- * The address checksummed (EIP-55), whatever the casing it came in. Throws a
- * TypeError on a value that is not a 20-byte hex address.
+ * The address checksummed (EIP-55). An all-lowercase or all-uppercase address
+ * is checksummed; a mixed-case address must already carry its own checksum, so
+ * a mistyped one is refused instead of silently re-checksummed. Throws a
+ * TypeError on a value that is not a 20-byte hex address or whose mixed case
+ * fails its checksum.
  */
 export const checksumAddress = (address: string): Address => {
   if (!ADDRESS_PATTERN.test(address)) {
     throw new TypeError(`Not an address: ${address}`)
   }
-  return getAddress(address.toLowerCase()) as Address
+  try {
+    return getAddress(address) as Address
+  } catch {
+    throw new TypeError(`Bad address checksum: ${address}`)
+  }
 }
 
 /**
@@ -94,13 +101,16 @@ export const renderApproval = (approval: Hex | string): string =>
 /** The most characters a name or a user-typed method name renders with (D-302). */
 export const NAME_MAX_LENGTH = 24
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
 /**
  * A resolved name or a user-typed method name, whole up to 24 characters and
- * capped at 24 past that, the last one the ellipsis (D-302). Counts code
- * points, so an emoji is never split.
+ * capped at 24 past that, the last one the ellipsis (D-302). Counts grapheme
+ * clusters (user-perceived characters), so an emoji, a flag or a letter with
+ * its combining marks is never split.
  */
 export const ellipsizeName = (name: string): string => {
-  const chars = Array.from(name)
+  const chars = Array.from(graphemeSegmenter.segment(name), ({ segment }) => segment)
   if (chars.length <= NAME_MAX_LENGTH) return name
   return `${chars.slice(0, NAME_MAX_LENGTH - 1).join('')}${ELLIPSIS}`
 }
@@ -129,15 +139,21 @@ export const nameNeedsCaveat = (use: NameUse): boolean => use !== 'informationOn
  * full address is what to check. The caveat renders beside a name standing
  * beside a full address to check and beside a name alone for an address to
  * act on; an account line that asks the reader to check nothing is exempt.
+ *
+ * An empty or blank name returns null, no name and no caveat, so the screen
+ * falls back to the address.
  */
 export const renderResolvedName = (
   name: string,
   use: NameUse,
   t: Translate = appTranslate
-): RenderedName => ({
-  name: ellipsizeName(name),
-  caveat: nameNeedsCaveat(use) ? t('socialRecovery.display.nameCaveat') : null
-})
+): RenderedName | null => {
+  if (name.trim() === '') return null
+  return {
+    name: ellipsizeName(name),
+    caveat: nameNeedsCaveat(use) ? t('socialRecovery.display.nameCaveat') : null
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hidden value
@@ -219,8 +235,8 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
  * The payment order as the token's symbol, a human amount and the payee beside
  * it, one form on every screen: `12.50 USDC to 0x…` or `12.50 USDC to whoever
  * executes` where the payee is zero (D-302, contracts D-103). A missing order
- * or a zero amount renders the words no payment. The payee renders in the full
- * form unless the caller passes `payeeForm: 'short'`.
+ * or a zero amount renders the words no payment. The payee always renders in
+ * the full form, the one form D-302 fixes for the payment order.
  *
  * The payment order is a second-release value (D-393); a first-release request
  * names no payment and renders no payment.
@@ -228,7 +244,6 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
 export const renderPaymentOrder = (
   order: PaymentOrder | null | undefined,
   token: PaymentToken | null | undefined,
-  options: { payeeForm?: 'full' | 'short' } = {},
   t: Translate = appTranslate
 ): string => {
   if (!order || order.amount === 0n) {
@@ -241,8 +256,7 @@ export const renderPaymentOrder = (
   if (order.payee.toLowerCase() === ZERO_ADDRESS) {
     return t('socialRecovery.display.paymentOrderOpenPayee', { amount, symbol: token.symbol })
   }
-  const payee =
-    options.payeeForm === 'short' ? renderShortAddress(order.payee) : renderFullAddress(order.payee)
+  const payee = renderFullAddress(order.payee)
   return t('socialRecovery.display.paymentOrder', { amount, symbol: token.symbol, payee })
 }
 
@@ -293,14 +307,15 @@ export const renderDateTimeInZone = (
 
 /**
  * The time left before a deadline in whole hours, or in whole minutes under one
- * hour, `23 hours` (live-frame-strings K-09).
+ * hour, `23 hours` (live-frame-strings K-09). Both round down; under one minute
+ * it reads one minute.
  */
 export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
     return t('socialRecovery.display.remainingHours', { count })
   }
-  const count = Math.max(1, Math.ceil(remainingMs / MINUTE_MS))
+  const count = Math.max(1, Math.floor(remainingMs / MINUTE_MS))
   return t('socialRecovery.display.remainingMinutes', { count })
 }
 
@@ -344,16 +359,28 @@ export const COUNTDOWN_STATES = ['waiting', 'executionDue'] as const
 export type CountdownState = typeof COUNTDOWN_STATES[number]
 
 /**
+ * The countdown state the time left gives: waiting while time is left,
+ * execution due once the waiting period has ended (D-302).
+ */
+export const countdownStateOf = (remainingMs: number): CountdownState =>
+  remainingMs > 0 ? 'waiting' : 'executionDue'
+
+/**
  * A running attempt's countdown (D-302, K-09): `47:12:06 · waiting` while the
  * waiting period runs and `Execution due` once it ends. `stopped` marks a
  * security stop on the attempt, a second-release state: `47:12:06 · stopped`
  * and `Execution due · stopped`.
+ *
+ * The rendered state derives from the time alone, through `countdownStateOf`:
+ * the caller passes no state, so no input can pair a waiting state with a
+ * period that has ended, or the reverse. Zero or less time left renders the
+ * execution-due form.
  */
 export const renderCountdown = (
-  input: { state: CountdownState; remainingMs: number; stopped?: boolean },
+  input: { remainingMs: number; stopped?: boolean },
   t: Translate = appTranslate
 ): string => {
-  if (input.state === 'executionDue') {
+  if (countdownStateOf(input.remainingMs) === 'executionDue') {
     return input.stopped
       ? t('socialRecovery.display.countdownExecutionDueStopped')
       : renderChip('attempt', 'executionDue', t)
