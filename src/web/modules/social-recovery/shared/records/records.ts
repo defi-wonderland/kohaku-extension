@@ -247,7 +247,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
         const current = await readKey<RecoverySessionRecord>(key)
         if (current.status === 'present' && current.value.state === 'landed') {
           throw new Error(
-            'A landed session holds the countdown: clear it once its attempt ends, then gather again'
+            'A landed session holds the countdown: end it once its attempt ends, then gather again'
           )
         }
         if (current.status === 'present' && current.value.state === 'live') {
@@ -353,16 +353,32 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     return { value: { account: landedAccount }, savedAt: written.savedAt }
   }
 
-  /**
-   * Removes a session record in its wiped or landed state, so old sessions do
-   * not accumulate. Never removes a live session. Returns whether it removed one.
-   */
-  const clearWipedSession = async (chainId: ChainId, account: Address): Promise<boolean> => {
+  const removeSessionIn = async (
+    chainId: ChainId,
+    account: Address,
+    state: 'wiped' | 'landed'
+  ): Promise<boolean> => {
     const current = await readSession(chainId, account)
-    if (current.status !== 'present' || current.value.state === 'live') return false
+    if (current.status !== 'present' || current.value.state !== state) return false
     await storage.remove(recordKeys.recoverySession(chainId, account))
     return true
   }
+
+  /**
+   * Removes a session record in its wiped state, once its death screen is read,
+   * so old sessions do not accumulate. Touches nothing in any other state, so a
+   * live session and a running countdown stay. Returns whether it removed one.
+   */
+  const clearWipedSession = (chainId: ChainId, account: Address): Promise<boolean> =>
+    removeSessionIn(chainId, account, 'wiped')
+
+  /**
+   * Removes a session record in its landed state, once the attempt it counts
+   * down to has ended (executed or cancelled, D-393). Touches nothing in any
+   * other state. Returns whether it removed one.
+   */
+  const endCountdown = (chainId: ChainId, account: Address): Promise<boolean> =>
+    removeSessionIn(chainId, account, 'landed')
 
   // --- the countdown -------------------------------------------------------
 
@@ -414,6 +430,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     wipeRecoverySession,
     landSubmission,
     clearWipedSession,
+    endCountdown,
     countdown,
     listCountdowns,
     decryptedSetupCache
