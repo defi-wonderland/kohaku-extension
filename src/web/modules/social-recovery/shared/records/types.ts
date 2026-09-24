@@ -192,7 +192,8 @@ export interface LiveRecoverySession {
  */
 export interface WipedRecoverySession {
   state: 'wiped'
-  reason: WipeReason
+  /** One of the four direct events; the submission landing leaves the landed state instead. */
+  reason: DirectWipeEvent
   account: Address
   deadline?: string
 }
