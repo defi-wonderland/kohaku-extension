@@ -117,19 +117,82 @@ describe('the origin string the method names', () => {
     expect(options.publicKey?.rpId).toBe(EXTENSION_ID)
   })
 
-  it('refuses a relying party other than the extension origin before any ceremony', async () => {
+  // The lane owns the relying party id (PR #10 review): whatever the caller's
+  // record passed, the method receives the page's full origin string.
+  ;[EXTENSION_ID, 'https://example.com', ''].forEach((passed) =>
+    it(`hands the method the origin string where the caller passed ${JSON.stringify(
+      passed
+    )}`, async () => {
+      const method = fakeMethod()
+      const orchestrator = fakeOrchestrator(method)
+      const outcome = await hosts.enroll({
+        method,
+        orchestrator,
+        params: { relyingPartyId: passed, userName: 'holder' }
+      })
+      const handed = method.enrollInput.mock.calls.map((c) => c[0] as { relyingPartyId?: string })
+      expect(handed.map((p) => p.relyingPartyId)).toEqual([EXTENSION_ORIGIN])
+      expect(stringsIn(method.enrollInput.mock.calls)).not.toContain(passed || 'never-empty')
+      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    })
+  )
+
+  it('hands the method the origin string at a claim where the caller passed the bare id', async () => {
     const method = fakeMethod()
     const orchestrator = fakeOrchestrator(method)
-    const outcome = await hosts.enroll({
-      method,
-      orchestrator,
-      params: { relyingPartyId: 'https://example.com' }
+    await hosts.createClaim({ method, orchestrator, params: { relyingPartyId: EXTENSION_ID } })
+    const handed = method.signingInput.mock.calls.map((c) => c[1] as { relyingPartyId?: string })
+    expect(handed.map((p) => p.relyingPartyId)).toEqual([EXTENSION_ORIGIN])
+  })
+
+  // The device accepts the full origin string back and nothing else.
+  ;[
+    ['the bare id', { rp: { id: EXTENSION_ID } }],
+    ['another origin', { rp: { id: 'https://example.com' } }],
+    ['no relying party', { rp: {} }]
+  ].forEach(([title, options]) =>
+    it(`refuses creation options that name ${title as string}, before any ceremony`, async () => {
+      const method = fakeMethod({ enrollInput: options })
+      const orchestrator = fakeOrchestrator(method)
+      const outcome = await hosts.enroll({ method, orchestrator })
+      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+      if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
+      expect(creds.create).not.toHaveBeenCalled()
+      expect(methodRunCount(method, orchestrator)).toBe(0)
     })
+  )
+
+  it('refuses request options that name the bare id, before any ceremony', async () => {
+    const method = fakeMethod({
+      signingInput: { challenge: `0x${'ab'.repeat(32)}`, rpId: EXTENSION_ID }
+    })
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.createClaim({ method, orchestrator })
     expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
     if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
-    expect(creds.create).not.toHaveBeenCalled()
+    expect(creds.get).not.toHaveBeenCalled()
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
+})
+
+describe('the device of a browser-authenticator method', () => {
+  // A caller's record may name a device for a method whose material it holds;
+  // a passkey method always runs the page's own device, so the rp id hash check
+  // and the high-s rule always run.
+  ;(['enroll', 'testAccess', 'createClaim'] as const).forEach((host) =>
+    it(`ignores a device the caller's record supplies at ${host}`, async () => {
+      const supplied = {
+        enroll: jest.fn(async () => ({ ok: true as const, material: { credential: {} } })),
+        sign: jest.fn(async () => ({ ok: true as const, material: { assertion: {} } }))
+      }
+      const method = fakeMethod()
+      const orchestrator = fakeOrchestrator(method)
+      await hosts[host]({ method, orchestrator, resolvedDevice: supplied })
+      expect(supplied.enroll).not.toHaveBeenCalled()
+      expect(supplied.sign).not.toHaveBeenCalled()
+      expect(host === 'enroll' ? creds.create : creds.get).toHaveBeenCalledTimes(1)
+    })
+  )
 })
 
 describe('a credential committed under the bare id', () => {

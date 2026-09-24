@@ -90,8 +90,7 @@ describe('the ceremony tab strings', () => {
     // The first argument of each t(...) call, up to its first comma or paren.
     const calls = [...(screen?.text ?? '').matchAll(/\bt\(\s*([^,)]+)/g)].map((m) => m[1].trim())
     expect(calls.length).toBeGreaterThan(10)
-    const allowed =
-      /^('socialRecovery\.[A-Za-z0-9_.]+'$|noteKeyOfOutcome\(|lossLineKeyOf\(|lineKey$)/
+    const allowed = /^('socialRecovery\.[A-Za-z0-9_.]+'$|noteKey$|lossLineKeyOf\(|lineKey$)/
     calls.forEach((arg) =>
       expect({ arg, allowed: allowed.test(arg) }).toEqual({ arg, allowed: true })
     )
@@ -124,17 +123,46 @@ describe('the keys an outcome selects', () => {
   it('resolves the note of every outcome at every call', () => {
     const { CEREMONY_CALLS, noteKeyOfOutcome } = lane()
     CEREMONY_CALLS.forEach((call) =>
-      everyOutcome().forEach((outcome) => expectResolves(noteKeyOfOutcome(outcome, call)))
+      everyOutcome().forEach((outcome) => {
+        const key = noteKeyOfOutcome(outcome, call)
+        if (key !== null) expectResolves(key)
+      })
     )
   })
 
-  it('resolves the line of every outcome, and never selects the not-tested line', () => {
-    const { lineKeyOfOutcome } = lane()
-    everyOutcome().forEach((outcome) => {
-      const key = lineKeyOfOutcome(outcome)
-      if (key === null) return
-      expect(key).not.toBe('socialRecovery.ceremony.notTestedLine')
-      expectResolves(key)
+  it('resolves the line of every outcome at every call, and never selects the not-tested line', () => {
+    const { CEREMONY_CALLS, lineKeyOfOutcome } = lane()
+    CEREMONY_CALLS.forEach((call) =>
+      everyOutcome().forEach((outcome) => {
+        const key = lineKeyOfOutcome(outcome, call)
+        if (key === null) return
+        expect(key).not.toBe('socialRecovery.ceremony.notTestedLine')
+        expectResolves(key)
+      })
+    )
+  })
+
+  it('shows every outcome with a note, a line or a chip: no row is left without words', () => {
+    const { CEREMONY_CALLS, chipOfOutcome, lineKeyOfOutcome, noteKeyOfOutcome } = lane()
+    CEREMONY_CALLS.filter((call) => call !== 'healthCheck').forEach((call) =>
+      everyOutcome().forEach((outcome) => {
+        const words = [
+          chipOfOutcome(outcome, call),
+          noteKeyOfOutcome(outcome, call),
+          lineKeyOfOutcome(outcome, call)
+        ].filter((w) => w !== null)
+        expect({ call, outcome, words: words.length > 0 }).toEqual({ call, outcome, words: true })
+      })
+    )
+  })
+
+  it('shows a browser error name alone as raw text, never a cause slug or a message', () => {
+    const { browserErrorNameOf, failed, unavailable, HOST_CAUSES } = lane()
+    expect(browserErrorNameOf(failed('browser-error', 'NotAllowedError'))).toBe('NotAllowedError')
+    expect(browserErrorNameOf(failed('browser-error', 'the prompt closed'))).toBeNull()
+    expect(browserErrorNameOf(failed('thrown', 'boom'))).toBeNull()
+    HOST_CAUSES.forEach((cause) => {
+      expect(browserErrorNameOf(unavailable(cause, 'TimeoutError'))).toBeNull()
     })
   })
 

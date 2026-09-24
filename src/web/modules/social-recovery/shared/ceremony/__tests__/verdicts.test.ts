@@ -11,6 +11,11 @@
  * that does not answer yields unavailable with retry, a method that cannot
  * serve the document yields not supported with no retry. The health-check host
  * is a third-release shell that returns not supported (brief, delta 2).
+ *
+ * What a row renders depends on the call (the PR #10 review, README "What a
+ * row renders, by call"): the test chips and lines serve test access alone, a
+ * passed enrollment reads not tested until its test runs, and a claim reads the
+ * checklist's chips.
  */
 import { METHOD_CHIPS } from '@web/modules/social-recovery/shared/display'
 
@@ -31,9 +36,12 @@ import {
   MethodScript,
   Outcome,
   P256Point,
+  noteKeyOf,
   replyFailure,
+  rowChipOf,
   SYNCED_FLAGS,
-  chipOf
+  testChipOf,
+  ceremony
 } from './harness'
 
 const THROWN_CAUSE = 'the authenticator returned a key of the wrong curve'
@@ -203,17 +211,58 @@ beforeEach(() => {
 
 afterEach(() => restore())
 
-const expectOneVerdict = (outcome: Outcome, expected: Case) => {
+type Call = keyof typeof CASES
+
+const NOTE = (key: string) => `socialRecovery.ceremony.${key}`
+
+/** The chip, note and line a row renders for one verdict of `call` (README table). */
+const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
+  const chip = rowChipOf(outcome, call)
+  const note = noteKeyOf(outcome, call)
+  const line = lineKeyOf(outcome, call)
+  // UXC-13 on every call: nothing a failed or unavailable run renders reads not tested.
+  if (outcome.verdict !== 'passed') {
+    expect(chip).not.toBe('method:notTested')
+    expect(line).not.toBe(NOTE('notTestedLine'))
+  }
+  const unavailableNote = /unreachable/.test(outcome.cause ?? '')
+    ? NOTE('unreachableNote')
+    : NOTE('testUnavailableLine')
+  if (call === 'testAccess') {
+    const expected = {
+      passed: ['method:tested', NOTE('passedNote'), null],
+      failed: [
+        'method:testFailed',
+        null,
+        /check-rejected/.test(outcome.cause ?? '')
+          ? NOTE('testFailedNoMatch')
+          : NOTE('testFailedLine')
+      ],
+      unavailable: ['method:testUnavailable', unavailableNote, null],
+      'not-supported': ['method:notSupported', NOTE('notSupportedNote'), NOTE('notSupportedLine')]
+    }[outcome.verdict]
+    expect([chip, note, line]).toEqual(expected)
+    return
+  }
+  const passedChip = call === 'enroll' ? 'method:notTested' : 'collection:complete'
+  const passedNote = call === 'enroll' ? null : NOTE('passedNote')
+  const expected = {
+    passed: [passedChip, passedNote, null],
+    failed: [null, NOTE('failedNote'), null],
+    unavailable: [null, unavailableNote, null],
+    'not-supported': [null, NOTE('notSupportedNote'), null]
+  }[outcome.verdict]
+  expect([chip, note, line]).toEqual(expected)
+}
+
+const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
   expect(outcome.type).toBe('verdict')
   if (outcome.type !== 'verdict') return
   expect(outcome.verdict).toBe(expected.verdict)
-  // UXC-13: a failed test is never a skipped one, in the result or the row's words.
+  // UXC-13: a failed test is never a skipped one.
   expect(scan(outcome.raw)).not.toMatch(/not[\s_-]?tested|skipped/i)
-  expect(lineKeyOf(outcome)).not.toBe('socialRecovery.ceremony.notTestedLine')
-  expect(chipOf(outcome.verdict)).not.toBe('notTested')
   switch (outcome.verdict) {
     case 'failed':
-      expect(lineKeyOf(outcome)).toMatch(/^socialRecovery\.ceremony\.testFailed(Line|NoMatch)$/)
       expect(outcome.cause).toEqual(expect.any(String))
       expect((outcome.cause ?? '').length).toBeGreaterThan(0)
       if (typeof expected.cause === 'string') expect(outcome.cause).toContain(expected.cause)
@@ -221,15 +270,14 @@ const expectOneVerdict = (outcome: Outcome, expected: Case) => {
       break
     case 'unavailable':
       expect(outcome.retry).toBe(true)
-      expect(lineKeyOf(outcome)).toBe('socialRecovery.ceremony.testUnavailableLine')
       break
     case 'not-supported':
       expect(outcome.retry).toBe(false)
-      expect(lineKeyOf(outcome)).toBe('socialRecovery.ceremony.notSupportedLine')
       break
     default:
       break
   }
+  expectRow(outcome, call)
 }
 
 ;(Object.keys(CASES) as (keyof typeof CASES)[]).forEach((host) =>
@@ -239,7 +287,7 @@ const expectOneVerdict = (outcome: Outcome, expected: Case) => {
         const method = fakeMethod(c.script)
         const orchestrator = fakeOrchestrator(method)
         const outcome = await hosts[host]({ method, orchestrator })
-        expectOneVerdict(outcome, c)
+        expectOneVerdict(outcome, c, host)
       })
     )
 
@@ -287,10 +335,144 @@ describe('the verdict vocabulary', () => {
     expect(new Set(lane).size).toBe(4)
   })
 
-  it('renders each verdict with its own PT-036 method chip, never not tested', () => {
-    const chips = FOUR_VERDICTS.map((v) => chipOf(v))
+  it('gives a test access one PT-036 method chip per verdict, never not tested', () => {
+    const chips = FOUR_VERDICTS.map((v) => testChipOf(v))
     expect(chips).toEqual(['tested', 'testFailed', 'testUnavailable', 'notSupported'])
     chips.forEach((chip) => expect(METHOD_CHIPS as readonly string[]).toContain(chip))
     expect(chips).not.toContain('notTested')
+  })
+})
+
+/**
+ * One test per call: the chip, the note and the line a row renders for every
+ * outcome the call can end in, built with the lane's own constructors. The
+ * expectations are the README's table, which the PR #10 review settled.
+ */
+describe('what a row renders, by call', () => {
+  const lane = () => ceremony()
+  type LaneOutcome = Parameters<ReturnType<typeof ceremony>['chipOfOutcome']>[0]
+  const row = (outcome: LaneOutcome, call: Call | 'healthCheck') => {
+    const { chipOfOutcome, noteKeyOfOutcome, lineKeyOfOutcome } = lane()
+    const chip = chipOfOutcome(outcome, call)
+    return [
+      chip ? `${chip.set}:${chip.chip}` : null,
+      noteKeyOfOutcome(outcome, call),
+      lineKeyOfOutcome(outcome, call)
+    ]
+  }
+
+  it("enroll: a passed enrollment reads not tested; every other outcome keeps the row's chip with its note", () => {
+    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    expect(row(passed({ config: '0x01' }), 'enroll')).toEqual(['method:notTested', null, null])
+    expect(row(failed('material-rejected'), 'enroll')).toEqual([null, NOTE('failedNote'), null])
+    expect(row(failed('thrown'), 'enroll')).toEqual([null, NOTE('failedNote'), null])
+    expect(row(failed('relying-party-mismatch'), 'enroll')).toEqual([
+      null,
+      NOTE('providerRefused'),
+      null
+    ])
+    expect(row(unavailable('device-unavailable'), 'enroll')).toEqual([
+      null,
+      NOTE('testUnavailableLine'),
+      null
+    ])
+    expect(row(unavailable('unreachable'), 'enroll')).toEqual([null, NOTE('unreachableNote'), null])
+    expect(row(notSupported('method-unsupported'), 'enroll')).toEqual([
+      null,
+      NOTE('notSupportedNote'),
+      null
+    ])
+    expect(row(dismissed('cancelled'), 'enroll')).toEqual([null, NOTE('cancelledNote'), null])
+    expect(row(dismissed('refused'), 'enroll')).toEqual([null, NOTE('refusedNote'), null])
+  })
+
+  it('testAccess: the four test chips, a failed test with its line and never not tested', () => {
+    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    expect(row(passed({ proof: '0x01' }), 'testAccess')).toEqual([
+      'method:tested',
+      NOTE('passedNote'),
+      null
+    ])
+    expect(row(failed('thrown'), 'testAccess')).toEqual([
+      'method:testFailed',
+      null,
+      NOTE('testFailedLine')
+    ])
+    expect(row(failed('browser-error', 'NotAllowedError'), 'testAccess')).toEqual([
+      'method:testFailed',
+      null,
+      NOTE('testFailedLine')
+    ])
+    expect(row(failed('check-rejected'), 'testAccess')).toEqual([
+      'method:testFailed',
+      null,
+      NOTE('testFailedNoMatch')
+    ])
+    expect(row(failed('relying-party-mismatch'), 'testAccess')).toEqual([
+      'method:testFailed',
+      NOTE('relyingPartyMismatch'),
+      NOTE('testFailedLine')
+    ])
+    // An unavailable test shows its line once, as the note.
+    expect(row(unavailable('not-judged'), 'testAccess')).toEqual([
+      'method:testUnavailable',
+      NOTE('testUnavailableLine'),
+      null
+    ])
+    expect(row(unavailable('unreachable'), 'testAccess')).toEqual([
+      'method:testUnavailable',
+      NOTE('unreachableNote'),
+      null
+    ])
+    expect(row(notSupported('method-unsupported'), 'testAccess')).toEqual([
+      'method:notSupported',
+      NOTE('notSupportedNote'),
+      NOTE('notSupportedLine')
+    ])
+    expect(row(dismissed('cancelled'), 'testAccess')).toEqual([null, NOTE('cancelledNote'), null])
+  })
+
+  it("createClaim: a passed claim reads complete; a failed claim keeps the row's chip with the failed note and no test line", () => {
+    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    expect(row(passed({ reply: {} }), 'createClaim')).toEqual([
+      'collection:complete',
+      NOTE('passedNote'),
+      null
+    ])
+    expect(row(failed('material-rejected'), 'createClaim')).toEqual([
+      null,
+      NOTE('failedNote'),
+      null
+    ])
+    expect(row(failed('browser-error', 'NotAllowedError'), 'createClaim')).toEqual([
+      null,
+      NOTE('failedNote'),
+      null
+    ])
+    expect(row(failed('relying-party-mismatch'), 'createClaim')).toEqual([
+      null,
+      NOTE('relyingPartyMismatch'),
+      null
+    ])
+    expect(row(unavailable('service-unanswered'), 'createClaim')).toEqual([
+      null,
+      NOTE('testUnavailableLine'),
+      null
+    ])
+    expect(row(notSupported('version-unread'), 'createClaim')).toEqual([
+      null,
+      NOTE('notSupportedNote'),
+      null
+    ])
+    expect(row(dismissed('refused'), 'createClaim')).toEqual([null, NOTE('refusedNote'), null])
+  })
+
+  it('healthCheck: the shell selects no chip and no test line', () => {
+    const { notSupported } = lane()
+    expect(row(notSupported('no-implementation'), 'healthCheck')).toEqual([
+      null,
+      NOTE('notSupportedNote'),
+      null
+    ])
   })
 })

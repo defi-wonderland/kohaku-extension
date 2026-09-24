@@ -4,102 +4,237 @@
  */
 /**
  * PT-041 done entry: a ceremony the holder dismissed or the browser refused
- * returns before the method runs, as its own note (ux-interfaces.md D-372: the
- * extension reads that one case from the browser's own error). The brief: a
- * `NotAllowedError` before the method runs yields the cancelled or refused note
- * and the method's call count is zero.
+ * returns before the method runs, read from the browser's own error
+ * (ux-interfaces.md D-372). The brief: a `NotAllowedError` before the method
+ * runs yields the cancelled or refused note and the method's call count is zero.
+ *
+ * The coordinator's ruling after the PR #10 review (frame C-05, "Test failed ·
+ * NotAllowedError · no credential available on this device") scopes the note
+ * to enrollment: at a test or a claim, `navigator.credentials.get` cannot tell a
+ * dismissed prompt from a missing credential, so a `NotAllowedError` there
+ * reads test failed with the browser's error name as its cause. The method
+ * still never runs.
  */
 import {
+  browserErrorNameOf,
+  ceremony,
+  enrollFailure,
+  fakeAssertion,
+  fakeAttestation,
   fakeMethod,
   fakeOrchestrator,
   generatePoint,
-  HostName,
   hosts,
   installCredentials,
+  lineKeyOf,
   methodRunCount,
+  noteKeyOf,
   notAllowedError,
   P256Point,
-  fakeAttestation,
-  fakeAssertion,
+  replyFailure,
+  rowChipOf,
   SYNCED_FLAGS
 } from './harness'
 
-// The hosts that run a ceremony: create at enrollment, get at a test and a claim.
-const CEREMONY_HOSTS: { host: Exclude<HostName, 'healthCheck'>; call: 'create' | 'get' }[] = [
-  { host: 'enroll', call: 'create' },
-  { host: 'testAccess', call: 'get' },
-  { host: 'createClaim', call: 'get' }
-]
+const NOTE = (key: string) => `socialRecovery.ceremony.${key}`
 
 let point: P256Point
+let creds: ReturnType<typeof installCredentials>
 
 beforeAll(async () => {
   point = await generatePoint()
 })
 
-CEREMONY_HOSTS.forEach(({ host, call }) =>
-  describe(`the ${host} host, ${call} rejects with NotAllowedError`, () => {
-    let creds: ReturnType<typeof installCredentials>
+afterEach(() => creds?.restore())
 
-    beforeEach(() => {
-      creds = installCredentials({
-        create: async () => {
-          if (call === 'create') throw notAllowedError()
-          return fakeAttestation({ flags: SYNCED_FLAGS, point }).credential
-        },
-        get: async () => {
-          if (call === 'get') throw notAllowedError()
-          return fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
-        }
-      })
+/** A browser whose `create` and `get` both reject with `error`. */
+const browserRejects = (error: () => unknown) => {
+  creds = installCredentials({
+    create: async () => {
+      throw error()
+    },
+    get: async () => {
+      throw error()
+    }
+  })
+}
+
+const browserAnswers = () => {
+  creds = installCredentials({
+    create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point }).credential,
+    get: async () => fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+  })
+}
+
+const run = async (host: 'enroll' | 'testAccess' | 'createClaim', method = fakeMethod()) => {
+  const orchestrator = fakeOrchestrator(method)
+  const outcome = await hosts[host]({ method, orchestrator })
+  return { outcome, method, orchestrator }
+}
+
+describe('NotAllowedError at enrollment (create)', () => {
+  beforeEach(() => browserRejects(notAllowedError))
+
+  it('returns the cancelled or refused note', async () => {
+    const { outcome } = await run('enroll')
+    expect(outcome.type).toBe('note')
+    if (outcome.type === 'note') expect(['cancelled', 'refused']).toContain(outcome.note)
+  })
+
+  it('ran the ceremony once and the method zero times', async () => {
+    const { method, orchestrator } = await run('enroll')
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it("never reads the dismissal as a failed test, and keeps the row's chip", async () => {
+    const { outcome } = await run('enroll')
+    expect(outcome).not.toMatchObject({ type: 'verdict' })
+    expect(rowChipOf(outcome, 'enroll')).toBeNull()
+    expect(noteKeyOf(outcome, 'enroll')).toBe(NOTE('cancelledNote'))
+  })
+
+  it('reads refused where the browser refused an unfocused page', async () => {
+    browserRejects(() => new DOMException('The document is not focused.', 'NotAllowedError'))
+    const { outcome, method, orchestrator } = await run('enroll')
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+})
+;(['testAccess', 'createClaim'] as const).forEach((host) =>
+  describe(`NotAllowedError at ${host} (get), the ruling of frame C-05`, () => {
+    beforeEach(() => browserRejects(notAllowedError))
+
+    it("reads failed with the browser's error name as its cause", async () => {
+      const { outcome } = await run(host)
+      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed', retry: true })
+      if (outcome.type === 'verdict') expect(outcome.cause).toContain('NotAllowedError')
+      expect(browserErrorNameOf(outcome)).toBe('NotAllowedError')
     })
 
-    afterEach(() => creds.restore())
-
-    it('returns the cancelled or refused note', async () => {
-      const method = fakeMethod()
-      const orchestrator = fakeOrchestrator(method)
-      const outcome = await hosts[host]({ method, orchestrator })
-      expect(outcome.type).toBe('note')
-      if (outcome.type === 'note') expect(['cancelled', 'refused']).toContain(outcome.note)
-    })
-
-    it('ran the ceremony once and the method zero times', async () => {
-      const method = fakeMethod()
-      const orchestrator = fakeOrchestrator(method)
-      await hosts[host]({ method, orchestrator })
-      expect(creds[call]).toHaveBeenCalledTimes(1)
+    it('still runs the method zero times', async () => {
+      const { method, orchestrator } = await run(host)
+      expect(creds.get).toHaveBeenCalledTimes(1)
       expect(methodRunCount(method, orchestrator)).toBe(0)
     })
 
-    it('never reads the dismissal as a failed test', async () => {
-      const method = fakeMethod()
-      const orchestrator = fakeOrchestrator(method)
-      const outcome = await hosts[host]({ method, orchestrator })
-      expect(outcome).not.toMatchObject({ type: 'verdict' })
+    it('never reads not tested (UXC-13)', async () => {
+      const { outcome } = await run(host)
+      expect(rowChipOf(outcome, host)).not.toBe('method:notTested')
+      expect(lineKeyOf(outcome, host)).not.toBe(NOTE('notTestedLine'))
+      if (host === 'testAccess') {
+        expect(rowChipOf(outcome, host)).toBe('method:testFailed')
+        expect(lineKeyOf(outcome, host)).toBe(NOTE('testFailedLine'))
+      } else {
+        expect(noteKeyOf(outcome, host)).toBe(NOTE('failedNote'))
+      }
     })
   })
 )
 
-describe('a ceremony that completes', () => {
-  let creds: ReturnType<typeof installCredentials>
-
-  beforeEach(() => {
-    creds = installCredentials({
-      create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point }).credential,
-      get: async () => fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+describe("the browser's other errors", () => {
+  ;(['enroll', 'testAccess', 'createClaim'] as const).forEach((host) =>
+    it(`reads AbortError at ${host} as the cancelled note, before the method runs`, async () => {
+      browserRejects(() => new DOMException('The operation was aborted.', 'AbortError'))
+      const { outcome, method, orchestrator } = await run(host)
+      expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+      expect(methodRunCount(method, orchestrator)).toBe(0)
     })
+  )
+
+  it("reads the holder's own abort as cancelled, with no ceremony at all", async () => {
+    browserAnswers()
+    const controller = new AbortController()
+    controller.abort()
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.enroll({ method, orchestrator, signal: controller.signal })
+    expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+    expect(creds.create).not.toHaveBeenCalled()
+    expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 
-  afterEach(() => creds.restore())
+  it('reads SecurityError at enrollment as the provider that refused Kohaku', async () => {
+    browserRejects(() => new DOMException('The relying party ID is not valid.', 'SecurityError'))
+    const { outcome, method, orchestrator } = await run('enroll')
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('relying-party-mismatch')
+    expect(noteKeyOf(outcome, 'enroll')).toBe(NOTE('providerRefused'))
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('reads SecurityError at a test as the relying-party mismatch', async () => {
+    browserRejects(() => new DOMException('The relying party ID is not valid.', 'SecurityError'))
+    const { outcome, method, orchestrator } = await run('testAccess')
+    expect(noteKeyOf(outcome, 'testAccess')).toBe(NOTE('relyingPartyMismatch'))
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('reads InvalidStateError at enrollment as the refused note', async () => {
+    browserRejects(() => new DOMException('The credential already exists.', 'InvalidStateError'))
+    const { outcome, method, orchestrator } = await run('enroll')
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+})
+
+/**
+ * The method's own `device-refused` (sdk.md D-206): the approver's device
+ * declined. The coordinator's finding: it reads the refused note for an
+ * external-app method alone (the phone app declined). A browser-authenticator
+ * method's refusal is read from the browser's own error before the method
+ * runs; a `device-refused` the method returns after it ran is its typed
+ * failure, one of the four verdicts.
+ */
+describe("the method's device-refused", () => {
+  const externalDevice = () =>
+    ceremony().providedMaterialDevice({ enroll: { result: {} }, sign: { proofs: '0x01' } })
+
+  it('reads the refused note for an external-app method at a claim', async () => {
+    browserAnswers()
+    const method = fakeMethod({ replyFrom: replyFailure('device-refused') }, 'external-app')
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.createClaim({
+      method,
+      orchestrator,
+      resolvedDevice: externalDevice()
+    })
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+    expect(creds.get).not.toHaveBeenCalled()
+  })
+
+  it('reads the refused note for an external-app method at enrollment', async () => {
+    browserAnswers()
+    const method = fakeMethod({ configFrom: enrollFailure('device-refused') }, 'external-app')
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.enroll({ method, orchestrator, resolvedDevice: externalDevice() })
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+  })
+  ;(['testAccess', 'createClaim'] as const).forEach((host) =>
+    it(`reads a verdict, not the note, for a browser-authenticator method at ${host}`, async () => {
+      browserAnswers()
+      const method = fakeMethod({ replyFrom: replyFailure('device-refused') })
+      const { outcome } = await run(host, method)
+      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+      if (outcome.type === 'verdict') expect(outcome.cause).toContain('device-refused')
+    })
+  )
+})
+
+describe('a ceremony that completes', () => {
+  beforeEach(() => browserAnswers())
 
   // The control of the tests above: the same fakes run the method once the
-  // browser answers, so a zero count above is the dismissal's doing.
-  CEREMONY_HOSTS.forEach(({ host, call }) =>
+  // browser answers, so a zero count above is the browser error's doing.
+  ;(
+    [
+      { host: 'enroll', call: 'create' },
+      { host: 'testAccess', call: 'get' },
+      { host: 'createClaim', call: 'get' }
+    ] as const
+  ).forEach(({ host, call }) =>
     it(`the ${host} host calls ${call} and then the method`, async () => {
-      const method = fakeMethod()
-      const orchestrator = fakeOrchestrator(method)
-      await hosts[host]({ method, orchestrator })
+      const { method, orchestrator } = await run(host)
       expect(creds[call]).toHaveBeenCalledTimes(1)
       expect(methodRunCount(method, orchestrator)).toBeGreaterThan(0)
     })

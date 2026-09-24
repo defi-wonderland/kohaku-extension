@@ -102,11 +102,8 @@ describe('the ceremony runs in a full tab', () => {
     expect(ceremonyMayRun({ isTab: false, isPopup: false, isActionWindow: false })).toBe(false)
   })
 
-  it('gates the screen on the page it runs in before it resolves or runs anything', () => {
-    const screen = read('src/web/modules/social-recovery/shared/ceremony/screen/CeremonyScreen.tsx')
-    expect(screen).toMatch(/ceremonyMayRun\(getUiType\(\)\)/)
-    expect(screen).toMatch(/if \(!parsed\.ok \|\| !mayRun\) return/)
-  })
+  // The screen's own gate, rendered, is in screen.test.ts: in the popup and in
+  // an action window it resolves, prompts and reports nothing.
 
   it('adds exactly one <Route> for the ceremony screen to the registry', () => {
     const tags = routeTags(stripComments(read(REGISTRY)))

@@ -230,7 +230,43 @@ describe('a hand-off to a phone', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 
-  it('reads cancelled, not unreachable, when the holder closes the prompt early', async () => {
+  it('reads unreachable at enrollment too when the phone never connects', async () => {
+    const { CEREMONY_TIMEOUT_MS } = ceremony()
+    let clock = 1_000_000
+    jest.spyOn(Date, 'now').mockImplementation(() => clock)
+    creds = installCredentials({
+      create: async () => {
+        clock += CEREMONY_TIMEOUT_MS
+        throw notAllowedError()
+      }
+    })
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    const outcome = await hosts.enroll({ method, orchestrator, handOff: true })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'unavailable', retry: true })
+    expect(noteKeyOf(outcome, 'enroll')).toBe('socialRecovery.ceremony.unreachableNote')
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('reads cancelled, not unreachable, when the holder closes the enrollment prompt early', async () => {
+    let clock = 1_000_000
+    jest.spyOn(Date, 'now').mockImplementation(() => clock)
+    creds = installCredentials({
+      create: async () => {
+        clock += 5_000
+        throw notAllowedError()
+      }
+    })
+    const method = fakeMethod()
+    const outcome = await hosts.enroll({
+      method,
+      orchestrator: fakeOrchestrator(method),
+      handOff: true
+    })
+    expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+  })
+
+  it('reads test failed, not unreachable, when the test prompt closes early (frame C-05)', async () => {
     let clock = 1_000_000
     jest.spyOn(Date, 'now').mockImplementation(() => clock)
     creds = installCredentials({
@@ -245,6 +281,7 @@ describe('a hand-off to a phone', () => {
       orchestrator: fakeOrchestrator(method),
       handOff: true
     })
-    expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('NotAllowedError')
   })
 })

@@ -862,8 +862,10 @@ export interface HostEnv {
   params?: unknown
   /** The holder chose the browser's phone hand-off. */
   handOff?: boolean
-  /** A device other than the page's own passkey device. */
-  device?: CeremonyDevice
+  /** The device the caller's record supplies (`ResolvedCeremony.device`). */
+  resolvedDevice?: CeremonyDevice
+  /** The holder's abort. */
+  signal?: AbortSignal
 }
 
 /** The params a caller hands a passkey method: the full origin string as its relying party id (D-372). */
@@ -876,7 +878,7 @@ export const callerParams = () => ({ relyingPartyId: EXTENSION_ORIGIN, userName:
  * binding. The device is built per call, after the test installed its mock.
  */
 const runCall = async (call: CeremonyCall, env: HostEnv): Promise<unknown> => {
-  const device = env.device ?? browserDefaults().browserPasskeyDevice()
+  const page = browserDefaults().browserPasskeyDevice()
   return ceremony().runCeremony(
     { call, method: 'passkey', id: 'req-1', handOff: env.handOff ?? false },
     {
@@ -884,9 +886,10 @@ const runCall = async (call: CeremonyCall, env: HostEnv): Promise<unknown> => {
       method: env.method,
       methodAddress: PASSKEY_METHOD,
       params: env.params ?? callerParams(),
-      request: env.request ?? fixtureRequest()
+      request: env.request ?? fixtureRequest(),
+      ...(env.resolvedDevice ? { device: env.resolvedDevice } : {})
     },
-    { devices: device ? { 'browser-authenticator': device } : {} }
+    { devices: page ? { 'browser-authenticator': page } : {}, signal: env.signal }
   )
 }
 
@@ -925,20 +928,30 @@ export const backgroundGate = (send: (message: unknown) => unknown) => {
   return Object.assign(dispatch, { gate })
 }
 
-/** The PT-036 method chip the lane renders a verdict as. */
-export const chipOf = (verdict: FourVerdict): string =>
+/** The PT-036 method chip a verdict selects on a test access. */
+export const testChipOf = (verdict: FourVerdict): string =>
   ceremony().VERDICT_CHIP[TO_LANE_VERDICT[verdict]]
+
+/** The chip a row shows after `call`, as `set:chip`, or null where the row keeps its chip. */
+export const rowChipOf = (outcome: Outcome, call: CeremonyCall): string | null => {
+  const chip = ceremony().chipOfOutcome(outcome.raw as CeremonyOutcome, call)
+  return chip ? `${chip.set}:${chip.chip}` : null
+}
 
 /** The lane's own closed list of verdicts. */
 export const laneVerdictVocabulary = (): readonly unknown[] => ceremony().CEREMONY_VERDICTS
 
-/** The en.json note an outcome renders on its row. */
-export const noteKeyOf = (outcome: Outcome, call: CeremonyCall): string =>
+/** The en.json note an outcome of `call` renders on its row, or null. */
+export const noteKeyOf = (outcome: Outcome, call: CeremonyCall): string | null =>
   ceremony().noteKeyOfOutcome(outcome.raw as CeremonyOutcome, call)
 
-/** The en.json line an outcome renders under its chip, or null. */
-export const lineKeyOf = (outcome: Outcome): string | null =>
-  ceremony().lineKeyOfOutcome(outcome.raw as CeremonyOutcome)
+/** The en.json line an outcome of `call` renders under its chip, or null. */
+export const lineKeyOf = (outcome: Outcome, call: CeremonyCall): string | null =>
+  ceremony().lineKeyOfOutcome(outcome.raw as CeremonyOutcome, call)
+
+/** The one raw text a screen may show for an outcome: the browser's error name. */
+export const browserErrorNameOf = (outcome: Outcome): string | null =>
+  ceremony().browserErrorNameOf(outcome.raw as CeremonyOutcome)
 
 /** The synced or device-bound kind a passed enrollment carries. */
 export const enrolledKind = (outcome: Outcome): unknown =>
