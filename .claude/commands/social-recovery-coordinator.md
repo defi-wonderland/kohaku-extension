@@ -18,11 +18,12 @@ Optional argument: `$ARGUMENTS` names a task id, a wave, or an action (for examp
 
 ## Branches and repositories
 
-- Integration branch: `dev/wonderland` on `ethereum/kohaku-extension`, cut from `main`. Every task PR targets it. It merges to `main` at the end. Nothing goes to a fork.
+- Integration branch: `dev/wonderland` on the Wonderland fork `defi-wonderland/kohaku-extension` (git remote `wonderland`), cut from upstream `main`. Every task PR targets it on the fork. At the end `dev/wonderland` goes upstream to `ethereum/kohaku-extension` as one PR, which the owner opens. Keep the fork's `main` equal to upstream `main`; never push to `origin` (upstream) or to a personal fork.
+- Prior work: the fork's branch `wonderland/recovery-v0` (June 2026, 13 commits) holds a recovery prototype with an in-extension activate and recover GUI and ambire-common bumps for a recovery controller. It is evidence for PR #54's questions and for PT-042, PT-051 and PT-075, not a base to build on; read it before those briefs.
 - Task branches: `feat/PT-0NN-<slug>` for a task, `fix/PT-0NN-<slug>` for a repair, `chore/<slug>` for setup. Ids are provisional; always name a task by id and title together.
 - One worktree per task under `.claude/worktrees/`. First commands in a fresh worktree: `git submodule update --init`, `cd src/ambire-common && npm install`, back at the root `yarn install`. A `.env` is required for a build; copy the one from the main checkout and keep one agreed `BROWSER_EXTENSION_PUBLIC_KEY` on every build, since every passkey binds to the extension id it derives.
-- kohaku-commons: `src/ambire-common` is the submodule of `ethereum/kohaku-commons`, pinned at a commit. A task that changes it (PT-075 always; PT-042 for the picker default in `accountPicker.ts`; PT-053 if the keystore needs a new call) is two PRs: a branch and PR on kohaku-commons first, then the extension task PR that bumps the pointer and carries the screens. Record both in the brief. Never leave a pointer at a commit that is not on a kohaku-commons branch.
-- Access: pushes to both repositories need write rights the owner obtains; until then prepare branches locally and say so on the board.
+- kohaku-commons: `src/ambire-common` is the submodule of `ethereum/kohaku-commons`, pinned at a commit. A task that changes it (PT-075 always; PT-042 for the picker default in `accountPicker.ts`; PT-053 if the keystore needs a new call) is two PRs: a branch and PR on the fork `defi-wonderland/kohaku-commons` first, then the extension task PR that bumps the pointer and carries the screens. Record both in the brief. A pointer must name a commit reachable from the URL in `.gitmodules`, or `git submodule update` fails for everyone and CI with it; the setup task therefore points `.gitmodules` at the fork on `dev/wonderland`, and the upstream PR at the end points it back once the commons changes are upstream. Never leave a pointer at a commit that is on no branch.
+- Access: the owner has write rights on both Wonderland forks and none on the `ethereum` repositories. The upstream PRs at the end are the owner's to open.
 
 ## Rules the code keeps
 

@@ -4,7 +4,9 @@ The design and the task split of the social recovery feature of the Kohaku exten
 
 ## Where the text comes from
 
-The design was written in `defi-wonderland/mast-social-recovery-2`. That repository stays the design tool. The implementation runs here, on the branch `dev/wonderland`, one pull request per task, merged to `main` at the end.
+The design was written in `defi-wonderland/mast-social-recovery-2`. That repository stays the design tool. The implementation runs on the Wonderland fork `defi-wonderland/kohaku-extension`, on the branch `dev/wonderland`, one pull request per task. At the end `dev/wonderland` goes upstream to `ethereum/kohaku-extension` as one pull request. Changes to the account library go the same way through `defi-wonderland/kohaku-commons`.
+
+The fork's branch `wonderland/recovery-v0` (June 2026) holds an earlier recovery prototype, an in-extension activate and recover GUI with account-library changes for a recovery controller. It is evidence for the proof of concept D-316 schedules and for the create door, the arming save and the signing repair. It is not a base for this work.
 
 Every file under `design/` is a verbatim copy from branch `dev` of that repository at commit `bd8780f7ad59a451035b15920c00015a2eee6e9b` (2026-09-24), with one exception: `design/ux.md` carries one extra paragraph in D-316, the proof-of-concept paragraph of pull request #54 of that repository, which was open at the time of the copy. The design is frozen at that commit. A correction to the design is a change in that repository first and a fresh copy here second, so this folder never drifts silently.
 
