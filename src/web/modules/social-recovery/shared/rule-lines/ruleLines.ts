@@ -13,7 +13,8 @@
  * clause therefore earns no line at all, since a line about the rest of the
  * path would read a lockout as a rescue. A threshold of zero is refused like
  * the others: it sits outside its members like a threshold above them, and
- * the editor refuses a group nothing has to fill (D-305).
+ * the editor refuses a group nothing has to fill (D-305). A path that holds one
+ * enrolled method twice, anywhere, is refused the same way.
  *
  * The one failure domain line keys on the method family (D-312, 2026-09-17).
  * A credential's family is its method module, so two credentials share a
@@ -92,6 +93,25 @@ const isRefused = (clause: Clause): boolean =>
   clause.threshold > clause.credentials.length ||
   clause.threshold > MAX_THRESHOLD
 
+/**
+ * One enrolled method appears once across the path, never both as a required
+ * row and a member (D-305), and the editor refuses a duplicate. A credential
+ * is the same enrolled method when its method address (lowercased) and its
+ * config bytes (as given) both match; the address holds no `|`, so the joined
+ * key is unambiguous.
+ */
+const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
+  const seen = new Set<string>()
+  return clauses.some((clause) =>
+    clause.credentials.some((credential) => {
+      const id = `${credential.method.toLowerCase()}|${credential.config}`
+      if (seen.has(id)) return true
+      seen.add(id)
+      return false
+    })
+  )
+}
+
 const sharesOneFamily = (credentials: readonly Credential[]): boolean => {
   const first = familyOf(credentials[0])
   return credentials.every((credential) => familyOf(credential) === first)
@@ -142,7 +162,7 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
  */
 export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
   const clauses = clausesOf(path)
-  if (clauses.some(isRefused)) return []
+  if (clauses.some(isRefused) || holdsDuplicate(clauses)) return []
 
   const rows = clauses.filter((clause) => clause.credentials.length === 1)
   const groups = clauses.filter((clause) => clause.credentials.length > 1)
