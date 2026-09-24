@@ -11,8 +11,9 @@
  * D-305 generates the lines from the whole path, and the editor renders them
  * for the path as it stands, before any refusal shows. A path with a refused
  * clause therefore earns no line at all, since a line about the rest of the
- * path would read a lockout as a rescue. A clause at threshold zero requires
- * nothing and earns no line of its own; the other clauses keep theirs.
+ * path would read a lockout as a rescue. A threshold of zero is refused like
+ * the others: it sits outside its members like a threshold above them, and
+ * the editor refuses a group nothing has to fill (D-305).
  *
  * The one failure domain line keys on the method family (D-312, 2026-09-17).
  * A credential's family is its method module, so two credentials share a
@@ -81,18 +82,15 @@ const MAX_THRESHOLD = 255
 
 /**
  * A refused clause: no credential, a threshold that is not a whole number, a
- * threshold below zero or above its members, or a threshold above the 255 its
+ * threshold below one or above its members, or a threshold above the 255 its
  * field counts. One refused clause silences the whole path's lines.
  */
 const isRefused = (clause: Clause): boolean =>
   clause.credentials.length === 0 ||
   !Number.isInteger(clause.threshold) ||
-  clause.threshold < 0 ||
+  clause.threshold < 1 ||
   clause.threshold > clause.credentials.length ||
   clause.threshold > MAX_THRESHOLD
-
-/** A clause at threshold zero requires nothing, so it earns no line of its own. */
-const requiresSomething = (clause: Clause): boolean => clause.threshold > 0
 
 const sharesOneFamily = (credentials: readonly Credential[]): boolean => {
   const first = familyOf(credentials[0])
@@ -146,10 +144,9 @@ export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
   const clauses = clausesOf(path)
   if (clauses.some(isRefused)) return []
 
-  const counted = clauses.filter(requiresSomething)
-  const rows = counted.filter((clause) => clause.credentials.length === 1)
-  const groups = counted.filter((clause) => clause.credentials.length > 1)
-  const methodCount = counted.reduce((sum, clause) => sum + clause.credentials.length, 0)
+  const rows = clauses.filter((clause) => clause.credentials.length === 1)
+  const groups = clauses.filter((clause) => clause.credentials.length > 1)
+  const methodCount = clauses.reduce((sum, clause) => sum + clause.credentials.length, 0)
 
   if (methodCount === 0) return []
 
