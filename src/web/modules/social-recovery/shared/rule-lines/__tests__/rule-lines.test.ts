@@ -42,6 +42,9 @@ const HARDWARE_KEY_MIXED = '0xAbCdEf000000000000000000000000000000AbCd' as Hex
 // Two fixed configs for the duplicate shapes; `cred` below never reaches them.
 const DUP_CONFIG = `0x${'d'.repeat(64)}` as Hex
 const OTHER_CONFIG = `0x${'e'.repeat(64)}` as Hex
+// One config's bytes written in two letter cases: configs compare as hex bytes.
+const CASE_CONFIG_LOWER = `0x${'ab'.repeat(32)}` as Hex
+const CASE_CONFIG_MIXED = `0x${'aB'.repeat(16)}${'Ab'.repeat(16)}` as Hex
 
 let configCounter = 0
 const cred = (method: Hex): Credential => {
@@ -313,6 +316,13 @@ const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
           { method: GUARDIAN, config: OTHER_CONFIG }
         ]
       }
+    ]
+  },
+  {
+    name: 'two rows whose configs differ only in letter case: the same hex bytes, a duplicate',
+    clauses: [
+      { threshold: 1, credentials: [{ method: PASSKEY, config: CASE_CONFIG_LOWER }] },
+      { threshold: 1, credentials: [{ method: PASSKEY, config: CASE_CONFIG_MIXED }] }
     ]
   },
   {
