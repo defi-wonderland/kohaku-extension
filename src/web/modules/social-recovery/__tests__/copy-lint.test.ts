@@ -119,12 +119,14 @@ describe('socialRecovery strings in en.json', () => {
     expect(offenders).toEqual([])
   })
 
-  it.each(CASE_INSENSITIVE_BANS)('carries no $rule banned term "$term"', ({ pattern }) => {
-    const offenders = strings
-      .filter(({ value }) => pattern.test(value))
-      .map(({ keyPath, value }) => `${keyPath}: ${value}`)
-    expect(offenders).toEqual([])
-  })
+  CASE_INSENSITIVE_BANS.forEach(({ rule, term, pattern }) =>
+    it(`carries no ${rule} banned term "${term}"`, () => {
+      const offenders = strings
+        .filter(({ value }) => pattern.test(value))
+        .map(({ keyPath, value }) => `${keyPath}: ${value}`)
+      expect(offenders).toEqual([])
+    })
+  )
 
   it('carries no UXC-6 banned label "Protected" (case-sensitive)', () => {
     const offenders = strings
