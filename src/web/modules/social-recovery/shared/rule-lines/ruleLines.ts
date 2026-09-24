@@ -96,15 +96,16 @@ const isRefused = (clause: Clause): boolean =>
 /**
  * One enrolled method appears once across the path, never both as a required
  * row and a member (D-305), and the editor refuses a duplicate. A credential
- * is the same enrolled method when its method address (lowercased) and its
- * config bytes (as given) both match; the address holds no `|`, so the joined
- * key is unambiguous.
+ * is the same enrolled method when its method address and its config bytes
+ * both match. Both are hex, so both compare lowercased: two strings that
+ * differ only in letter case are the same bytes. The address holds no `|`, so
+ * the joined key is unambiguous.
  */
 const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
   const seen = new Set<string>()
   return clauses.some((clause) =>
     clause.credentials.some((credential) => {
-      const id = `${credential.method.toLowerCase()}|${credential.config}`
+      const id = `${credential.method.toLowerCase()}|${credential.config.toLowerCase()}`
       if (seen.has(id)) return true
       seen.add(id)
       return false
