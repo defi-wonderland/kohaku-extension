@@ -1,3 +1,41 @@
 # shared/rule-lines
 
 - PT-037 The rule lines
+
+The rule lines of `docs/social-recovery/design/ux.md` D-305: one pure function that turns a path's shape into the lines that state its consequences. The recommended-path card, the setup and management editors, the review, the recoverer's readout and the done screen's exits all render their lines from it. The SDK returns no verdict on a rule, so these lines are the wallet's own calls on rule quality.
+
+## Use
+
+```ts
+import { getRuleLines, renderRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
+
+const lines = getRuleLines(draft) // or getRuleLines(draft.clauses)
+const text = renderRuleLines(lines, t) // t is i18n.t or useTranslation().t
+```
+
+`getRuleLines` returns ordered descriptors `{ key, params }`. `key` is a full `en.json` key under `socialRecovery.ruleLines`, and `params` holds the placeholders `n`, `m` and `spare` (M minus N) the string needs. `RULE_LINE_KEYS` names every key, so a surface can pick or drop a line by key, for example the sizing rule line the editor alone states.
+
+## How it reads a shape
+
+- Input: the setup draft record of `sdk-interfaces/` (`SetupDraft`) or its `clauses`. The lane declares no path type of its own.
+- A clause with one credential is a required row. A clause with more is a group. A group of one member is one method, D-305, and reads as a row.
+- A clause the editor refuses (no credential, a threshold below one or above its members) earns no line.
+- The one failure domain line keys on the method family, D-312: two members share a family when their `method` addresses are equal. A passport and an Aadhaar identity read as two domains.
+- Order, D-305: the rows' line or the single-method block, then each group's threshold line followed by its failure domain line, then the different places line, then the sizing rule line.
+
+| Shape | Lines |
+| --- | --- |
+| One method (one row, or a group of one) | `singleMethod`, `secondMethodOffer`, `platformFate` |
+| Two rows | `bothMustAnswer`, `differentPlaces`, `sizingRule` |
+| N rows, N of three or more | `allMustAnswer` {n}, `differentPlaces` |
+| One group, 1 of 2 | `eitherOneAlone`, `differentPlaces` |
+| One group, 1 of M, M of three or more | `anyOneOfM` {m}, `differentPlaces` |
+| One group, N of M, N from two to M minus one | `anyNOfM` {n, m, spare}, `differentPlaces` |
+| One group, M of M | `everyMemberMustAnswer`, `differentPlaces` |
+| Rows and one group, N below M | `togetherWithRequired` {n, m, spare}, `differentPlaces` |
+| Two or more groups, per group with N below M | `togetherWithRequiredAndGroups` {n, m, spare} |
+| A group whose members share one method family | its threshold line, then `oneFailureDomain` |
+
+The function produces nothing about the identity method's weight, the words primary or offered, or raising a threshold when a secondary credential joins, D-312.
+
+Tests live in `__tests__/`, which the tester of PT-037 owns.
