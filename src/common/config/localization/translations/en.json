@@ -107,7 +107,11 @@
       "deadlineValidUntil": "Valid until {{date}} · {{remaining}} left",
       "countdownWaiting": "{{time}} · waiting",
       "countdownStopped": "{{time}} · stopped",
-      "countdownExecutionDueStopped": "Execution due · stopped"
+      "countdownExecutionDueStopped": "Execution due · stopped",
+      "remainingHours": "{{count}} hour",
+      "remainingHours_plural": "{{count}} hours",
+      "remainingMinutes": "{{count}} minute",
+      "remainingMinutes_plural": "{{count}} minutes"
     },
     "ruleLines": {
       "allMustAnswer": "All {{n}} must answer. Losing any one locks you out.",
@@ -123,7 +127,11 @@
       "everyMemberMustAnswer": "Every member must answer.",
       "oneFailureDomain": "One failure domain. These members fail together if their kind does.",
       "differentPlaces": "Keep the methods of your path in different places.",
-      "sizingRule": "A group of any one of two is the shape this wallet prefers at two methods."
+      "sizingRule": "A group of any one of two is the shape this wallet prefers at two methods.",
+      "togetherWithGroups": "Together with one member of each other group, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
+      "togetherWithRequiredEveryMember": "Together with your required methods, every member of this group must answer.",
+      "togetherWithGroupsEveryMember": "Together with one member of each other group, every member of this group must answer.",
+      "togetherWithRequiredAndGroupsEveryMember": "Together with your required methods and one member of each other group, every member of this group must answer."
     },
     "writes": {
       "submitting": "Submitting",
