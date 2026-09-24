@@ -8,6 +8,12 @@
  * clause with more is a group. A group of one member is one method (D-305), so
  * it reads as a row: the draft record draws no line between the two.
  *
+ * D-305 generates the lines from the whole path, and the editor renders them
+ * for the path as it stands, before any refusal shows. A path with a refused
+ * clause therefore earns no line at all, since a line about the rest of the
+ * path would read a lockout as a rescue. A clause at threshold zero requires
+ * nothing and earns no line of its own; the other clauses keep theirs.
+ *
  * The one failure domain line keys on the method family (D-312, 2026-09-17).
  * A credential's family is its method module, so two credentials share a
  * family when their `method` addresses are equal. A passport and an Aadhaar
@@ -70,16 +76,23 @@ const line = (key: RuleLineKey, params: RuleLineParams = {}): RuleLine => ({ key
 
 const familyOf = (credential: Credential): string => credential.method.toLowerCase()
 
+/** The widest threshold the clause's field counts (contracts D-103, sdk.md `clause.threshold-too-wide`). */
+const MAX_THRESHOLD = 255
+
 /**
- * A clause the editor refuses (no credential, or a threshold outside its
- * members) earns no line: the editor's refusal speaks for it, and a line on an
- * unsatisfiable clause would read a lockout as a rescue.
+ * A refused clause: no credential, a threshold that is not a whole number, a
+ * threshold below zero or above its members, or a threshold above the 255 its
+ * field counts. One refused clause silences the whole path's lines.
  */
-const isSatisfiable = (clause: Clause): boolean =>
-  clause.credentials.length > 0 &&
-  Number.isInteger(clause.threshold) &&
-  clause.threshold >= 1 &&
-  clause.threshold <= clause.credentials.length
+const isRefused = (clause: Clause): boolean =>
+  clause.credentials.length === 0 ||
+  !Number.isInteger(clause.threshold) ||
+  clause.threshold < 0 ||
+  clause.threshold > clause.credentials.length ||
+  clause.threshold > MAX_THRESHOLD
+
+/** A clause at threshold zero requires nothing, so it earns no line of its own. */
+const requiresSomething = (clause: Clause): boolean => clause.threshold > 0
 
 const sharesOneFamily = (credentials: readonly Credential[]): boolean => {
   const first = familyOf(credentials[0])
@@ -130,10 +143,13 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
  * different places, and the sizing rule line.
  */
 export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
-  const satisfiable = clausesOf(path).filter(isSatisfiable)
-  const rows = satisfiable.filter((clause) => clause.credentials.length === 1)
-  const groups = satisfiable.filter((clause) => clause.credentials.length > 1)
-  const methodCount = satisfiable.reduce((sum, clause) => sum + clause.credentials.length, 0)
+  const clauses = clausesOf(path)
+  if (clauses.some(isRefused)) return []
+
+  const counted = clauses.filter(requiresSomething)
+  const rows = counted.filter((clause) => clause.credentials.length === 1)
+  const groups = counted.filter((clause) => clause.credentials.length > 1)
+  const methodCount = counted.reduce((sum, clause) => sum + clause.credentials.length, 0)
 
   if (methodCount === 0) return []
 
