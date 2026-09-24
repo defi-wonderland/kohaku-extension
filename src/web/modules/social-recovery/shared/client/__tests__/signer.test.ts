@@ -121,10 +121,18 @@ describe('the signer facade over the request queue', () => {
     )
     expect(requests).toHaveLength(2)
     const [bytesRequest, typedRequest] = requests
-    expect(bytesRequest.meta).toMatchObject({ accountAddr: KEY, chainId: BigInt(SEPOLIA) })
-    expect(Object.values(bytesRequest.meta)).toContain('trezor')
-    expect(Object.values(typedRequest.meta)).toContain('internal')
-    expect(Object.values(typedRequest.meta)).not.toContain('trezor')
+    expect(bytesRequest.meta).toEqual({
+      isSignAction: true,
+      accountAddr: KEY,
+      keyType: 'trezor',
+      chainId: BigInt(SEPOLIA)
+    })
+    expect(typedRequest.meta).toEqual({
+      isSignAction: true,
+      accountAddr: KEY,
+      keyType: 'internal',
+      chainId: BigInt(SEPOLIA)
+    })
   })
 
   it('gives each request an id of its own', () => {
