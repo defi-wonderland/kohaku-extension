@@ -1,0 +1,51 @@
+# Glossary
+
+The terms the ux chapter coins, each with a plain definition and the section that introduces it. The chapter is the authority; a definition here that disagrees with the section it points at is a defect in this file.
+
+- Account recovery is the feature name the user sees for the whole thing, never a social recovery kit. Introduced in `design/frontend/ux.md`.
+- A recovery path is the kit's rule, one AND of clauses. Introduced in `design/frontend/ux.md`.
+- A method is the kit's credential, one enrolled thing that proves one row. Introduced in `design/frontend/ux.md`.
+- A guardian is a person whose wallet signature is one method, and in the wallet a guardian is an address rather than a name. Introduced in `design/frontend/ux.md § D-302`.
+- A member is the word for a guardian inside a group header and nowhere else. Introduced in `design/frontend/ux.md § D-302`.
+- A waiting period is the kit's wait, the delay between a submitted request and its execution. Introduced in `design/frontend/ux.md`.
+- An approval is what a guardian produces, the kit's proof. Introduced in `design/frontend/ux.md`.
+- The policy manager is the kit's core contract of D-4, which judges the approvals and releases a recovery exactly once, and its screen word is the recovery registry. Introduced in `design/frontend/ux.md § D-302`.
+- The recovery action is the contract the account authorizes for the kit, which spends that release into the key change, and its screen word is the recovery module. Introduced in `design/frontend/ux.md § D-302`.
+- A publisher is the screen word for the action's author. Introduced in `design/frontend/ux.md § D-302`.
+- A place is the kit's flat index of a credential across the path, called a slot by the interfaces and shown as a row on the screens. Introduced in `design/frontend/ux.md`.
+- To execute is what a recovery does when the waiting period ends, which the kit calls spending the approval. Introduced in `design/frontend/ux.md`.
+- The wallet is the Kohaku extension unless another integrator is named, and it is also the screen word for whatever the SDK computed, read or refused. Introduced in `design/frontend/ux.md § D-302`.
+- A holder is the person whose account carries the recovery setup. Introduced in `design/frontend/ux.md § D-301`.
+- A recoverer is the party running a recovery and asking the guardians for their approvals. Introduced in `design/frontend/ux.md § D-301`, `design/frontend/ux.md § D-302`.
+- The setup draft is the unsaved setup the wallet owns rather than the kit. Introduced in `design/frontend/ux.md § D-300`.
+- The recovery session is the gathering state the wallet owns rather than the kit. Introduced in `design/frontend/ux.md § D-300`.
+- The backup set is the backup material the wallet owns rather than the kit. Introduced in `design/frontend/ux.md § D-300`.
+- The watcher is the wallet surface that follows a running attempt, module `ux/watcher`. Introduced in `design/frontend/ux.md § D-300`.
+- The guardian page is the page the extension serves a guardian, module `ux/guardian-page`. Introduced in `design/frontend/ux.md § D-300`, `design/frontend/ux.md § D-308`.
+- The safety grading is the wallet's grade of a configuration, which ships with D-313. Introduced in `design/frontend/ux.md § D-300`.
+- The nudge is the banner that draws a holder without a recovery path into setup. Introduced in `design/frontend/ux.md § D-304`.
+- The fast track is the recovery route the recover door opens for a holder on a fresh install. Introduced in `design/frontend/ux.md § D-316`, `design/frontend/ux.md § D-303`.
+- The create door, the import door and the recover door are the three entries of the welcome screen. Introduced in `design/frontend/ux.md § D-316`.
+- The action window is where every signing request lands, through the request queue. Introduced in `design/frontend/ux.md § D-316`.
+- A host adapter is what the extension gives the SDK's client, a provider for reads and, from the second release, the sponsor rail. Introduced in `design/frontend/ux.md § D-316`.
+- The extension password is the password that unlocks the device. Introduced in `design/frontend/ux.md § D-302`.
+- The recovery password is the password that decrypts the recovery setup at the two hidden privacy levels. Introduced in `design/frontend/ux.md § D-302`.
+- A security stop is the screen word for a method's pause, and the row word for it is stopped. Introduced in `design/frontend/ux.md § D-302`.
+- A blockie is the image a screen draws beside an address, and no section of this chapter defines it. Introduced in `design/frontend/ux.md § D-302`.
+- The Recovery Card is the card that carries what a fresh device needs. Introduced in `design/frontend/ux.md § D-318`.
+- The checklist is the recoverer's surface for collecting a complete set of approvals under one deadline. Introduced in `design/frontend/ux.md § D-392`.
+- A group is a set of rows that counts as one unit in every headline, built in D-305 and edited in D-309. Introduced in `design/frontend/ux.md § D-302`.
+- The payment order is the token's symbol, a human amount and the payee, or the words no payment. Introduced in `design/frontend/ux.md § D-302`.
+- An approval blob is the rendered form of a guardian's approval, twelve leading and eight trailing digits. Introduced in `design/frontend/ux.md § D-302`.
+- A hidden chip is the chip beside a value rendered as sixteen dots. Introduced in `design/frontend/ux.md § D-302`.
+- The relying party is the origin a passkey is minted under and asserts under, the extension's own origin, whose id the one public key every holder-facing build carries in its manifest fixes. Introduced in `design/frontend/ux.md § D-314`, `design/frontend/ux-interfaces.md § D-372`.
+- The rp id hash is the hash a passkey's config commits on chain beside its public key, the hash of the full origin string `chrome-extension://` followed by the extension's id and never of the bare id. Introduced in `design/frontend/ux.md § D-314`, `design/frontend/ux-interfaces.md § D-372`.
+- The done screen is the terminal screen after a recovery ran, and the one exception to one name per value. Introduced in `design/frontend/ux.md § D-302`.
+- The setup number is the screen word for the setup version, and the attempt number the screen word for the attempt's id. Introduced in `design/frontend/ux.md § D-302`.
+- A method's admin is the screen word for a method's key admin, and the party that can stop that method is the screen word for its pause holder. Introduced in `design/frontend/ux.md § D-302`.
+- A frame code is the per-screen code a wireframe frame carries, `C-06e`, and it is never renamed. Introduced in `design/frontend/ux.md § D-302`.
+- An outdated band is the dated band a superseded wireframe frame moves to. Introduced in `design/frontend/ux.md § D-302`.
+- The method chips are not started, in progress, tested, not tested, test failed, test unavailable, not supported, not yet active, saved and live, one per state of a method in setup. Introduced in `design/frontend/ux.md § D-302`.
+- The collection chips are not asked, waiting, declined, unanswered, complete, not needed, did not answer and stopped, one per state of a row while approvals gather. Introduced in `design/frontend/ux.md § D-302`.
+- The request chips are expired, void and setup changed for a dead request, and not submitted, recovery in progress, execution due, waiting, stopped and cancelled for a session and its attempt. Introduced in `design/frontend/ux.md § D-302`.
+- The overview chips are set up, not set up, Recovery ready, needs attention, path locked, not active, cannot recover and still needed, one per state the management surfaces report. Introduced in `design/frontend/ux.md § D-302`.

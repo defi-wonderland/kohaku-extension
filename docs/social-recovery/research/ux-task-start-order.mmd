@@ -1,0 +1,134 @@
+%% UX task start order, from the provisional cut at 352f91a (PR #47).
+%% One column per dispatch round (a half-day). An arrow means depends_on.
+%% Thick arrows mark the longest chain (8 half-days).
+%% Colours mark lanes: foundations, onboarding, setup, recovery, guardian page, watcher+cancel, management, signing.
+
+flowchart LR
+  subgraph R0["Round 0"]
+    PT035["PT-035 SDK doubles"]
+    PT036["PT-036 Display rules"]
+    PT037["PT-037 Rule lines"]
+    PT040["PT-040 Wallet's records"]
+    PT075["PT-075 Typed-data signing"]
+  end
+  subgraph R1["Round 1"]
+    PT038["PT-038 Client, provider, signer"]
+    PT041["PT-041 Ceremony tab"]
+    PT043["PT-043 Presets"]
+    PT044["PT-044 Path editor"]
+    PT047["PT-047 Waiting period + privacy"]
+    PT048["PT-048 Recovery Card"]
+    PT052["PT-052 Recover door + gate"]
+  end
+  subgraph R2["Round 2"]
+    PT039["PT-039 Write states + gas"]
+    PT042["PT-042 Create door picker"]
+    PT045["PT-045 Editor refusals"]
+    PT046["PT-046 Passkey + guardian rows"]
+    PT049["PT-049 Review lead + trust list"]
+    PT054["PT-054 Recovery entry"]
+    PT057["PT-057 Checklist rows"]
+    PT063["PT-063 Approval page reading"]
+    PT065["PT-065 Watcher"]
+  end
+  subgraph R3["Round 3"]
+    PT050["PT-050 Review doors + save gate"]
+    PT053["PT-053 Fast track"]
+    PT056["PT-056 Readout"]
+    PT058["PT-058 Guardian row + paste check"]
+    PT064["PT-064 Approval page signing"]
+    PT066["PT-066 Banner + owner's cancel"]
+    PT067["PT-067 Overview + dormant states"]
+    PT069["PT-069 Identity rows at enrollment"]
+  end
+  subgraph R4["Round 4"]
+    PT051["PT-051 Arming save"]
+    PT055["PT-055 Running-attempt band"]
+    PT059["PT-059 Deadline, polls, deaths"]
+    PT068["PT-068 Management editor"]
+  end
+  subgraph R5["Round 5"]
+    PT060["PT-060 Submission confirmation"]
+    PT070["PT-070 Identity rows at recovery"]
+  end
+  subgraph R6["Round 6"]
+    PT061["PT-061 Wait + endings"]
+  end
+  subgraph R7["Round 7"]
+    PT062["PT-062 Done screen"]
+  end
+
+  %% critical path
+  PT035 ==> PT041 ==> PT057 ==> PT058 ==> PT059 ==> PT060 ==> PT061 ==> PT062
+
+  %% other dependencies
+  PT035 --> PT038
+  PT035 --> PT044
+  PT036 --> PT039
+  PT036 --> PT041
+  PT036 --> PT042
+  PT036 --> PT047
+  PT036 --> PT048
+  PT036 --> PT049
+  PT036 --> PT052
+  PT036 --> PT054
+  PT036 --> PT063
+  PT037 --> PT044
+  PT037 --> PT049
+  PT037 --> PT062
+  PT038 --> PT039
+  PT038 --> PT042
+  PT038 --> PT046
+  PT038 --> PT049
+  PT038 --> PT054
+  PT038 --> PT063
+  PT038 --> PT065
+  PT039 --> PT051
+  PT039 --> PT053
+  PT039 --> PT060
+  PT039 --> PT066
+  PT039 --> PT067
+  PT040 --> PT043
+  PT040 --> PT044
+  PT040 --> PT046
+  PT040 --> PT047
+  PT040 --> PT048
+  PT040 --> PT051
+  PT040 --> PT053
+  PT040 --> PT054
+  PT040 --> PT057
+  PT040 --> PT065
+  PT040 --> PT067
+  PT041 --> PT046
+  PT044 --> PT045
+  PT044 --> PT068
+  PT046 --> PT069
+  PT049 --> PT050
+  PT049 --> PT068
+  PT050 --> PT051
+  PT052 --> PT053
+  PT054 --> PT056
+  PT056 --> PT055
+  PT059 --> PT070
+  PT063 --> PT064
+  PT065 --> PT066
+  PT066 --> PT055
+  PT067 --> PT068
+
+  classDef found fill:#dbe7ff,stroke:#3b5bdb,color:#111
+  classDef onb fill:#ffe8cc,stroke:#e8590c,color:#111
+  classDef setup fill:#d3f9d8,stroke:#2f9e44,color:#111
+  classDef rec fill:#fff3bf,stroke:#e67700,color:#111
+  classDef guard fill:#f3d9fa,stroke:#9c36b5,color:#111
+  classDef watch fill:#ffd8d8,stroke:#c92a2a,color:#111
+  classDef mgmt fill:#c5f6fa,stroke:#0b7285,color:#111
+  classDef sign fill:#e9ecef,stroke:#495057,color:#111
+
+  class PT035,PT036,PT037,PT038,PT039,PT040,PT041 found
+  class PT042,PT052,PT053 onb
+  class PT043,PT044,PT045,PT046,PT047,PT048,PT049,PT050,PT051,PT069 setup
+  class PT054,PT055,PT056,PT057,PT058,PT059,PT060,PT061,PT062,PT070 rec
+  class PT063,PT064 guard
+  class PT065,PT066 watch
+  class PT067,PT068 mgmt
+  class PT075 sign
