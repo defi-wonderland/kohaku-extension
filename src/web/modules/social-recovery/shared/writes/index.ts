@@ -80,7 +80,10 @@ export {
 export {
   WRITES_KEYS,
   GAS_KEYS,
-  PENDING_KEYS,
+  REVERTED_KEYS,
+  UNNAMED_CAUSE_KEY,
+  causeKey,
+  cancelGoneRoadKey,
   OWNER_SHORTFALL_KEYS,
   renderGasAmount,
   renderGasBalance,

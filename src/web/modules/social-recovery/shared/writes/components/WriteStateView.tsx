@@ -6,7 +6,9 @@
  *
  * A write's screen may set its own title over the state (the setup could not
  * be saved, the recovery could not be started) and its own sentence after the
- * reading (what stays on this device), from its own keys. Its own actions,
+ * reading, from its own keys. The reverted reading already speaks in the
+ * write's own words (`REVERTED_KEYS`), so a note belongs after the not-sent
+ * reading, where the frame adds what stays on this device. Its own actions,
  * such as back or the cancel's move-funds action where `offersMoveFunds`
  * answers true, go in as children.
  */

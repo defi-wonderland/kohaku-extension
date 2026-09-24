@@ -3,8 +3,9 @@
  * and its deposit step, the one submitting state, and the one failed state
  * with its two readings, each a state of its own.
  *
- * Every write renders these and no write defines its own: the setup save, any
- * other setup write, the owner's cancel, the submission and the execution.
+ * Every write renders these and no write defines its own: the setup save, the
+ * edit, any other setup write, the owner's cancel, the submission and the
+ * execution.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
