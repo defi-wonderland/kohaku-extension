@@ -75,7 +75,7 @@ A block tag is `latest`, `finalized` or a number sent as a quantity. A reverted 
 
 `AUDITED_ACTIONS` holds one row per audited action per chain: `{ kind: 'audited', chain, action, publisher }`. `auditedActionsOn(chain)` is the only list a screen offers (D-319). `auditedActionOf(address, chain?)` answers the row or `UNKNOWN_ACTION` (`{ kind: 'unknown-action' }`), the lane's explicit value for an address the table does not hold. The descriptors' `auditedActions` sets are read from the table.
 
-A publisher is a slug (`ethereumFoundation`), never copy. The frames read "published by the Ethereum Foundation", and no en.json key holds that name yet; the coordinator adds it.
+A publisher is a slug (`ethereumFoundation`), never copy. `publisherKeyOf(row)` answers the en.json key of its name, `socialRecovery.display.publishers.<slug>`, and a screen renders it with `t(publisherKeyOf(row))`. The lane holds no English name.
 
 ## The signer facade
 
@@ -86,14 +86,20 @@ A publisher is a slug (`ethereumFoundation`), never copy. The frames read "publi
 
 `key` is the keystore's own handle, `{ addr, type }`. The keystore lives in the background, so the facade signs through the existing sign-message flow of `SignMessageController`: it dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_INIT` with the key's address as the account, the chain and the content under a request id of its own, dispatches `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` with `{ keyAddr, keyType }` once the pushed `signMessage` state shows that message, takes the signature from `signedMessage` for that request id and dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_RESET`. `signMessageFlowPort(dispatch, () => accounts)` wires the UI's own dispatch, the event bus and the accounts the wallet lists.
 
-What the flow can do, and so what the facade does:
+### What the facade can and cannot sign, for the owner's decision
 
-- It signs for a key that is itself a basic account the wallet lists (an EOA account whose associated key is its own address). The signature is the key's own: `signTypedData` of the keystore signer, `signMessage` for the bytes.
-- It cannot sign for any other key the keystore holds, such as the smart account's controlling key at the slot's index plus 100000 (ux.md D-316): the flow looks the address up among the accounts and wraps a smart account's signature in Ambire's envelope. The facade refuses such a key with a `SignerNotWired` error (`member`, `key`, `missingAction: 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY'`) before dispatching anything. That background action does not exist; its shape is written on `MISSING_BACKGROUND_ACTION` in `signer.ts`, and adding it is the owner's call.
-- It signs no bare digest: raw bytes always carry the EIP-191 prefix.
-- A dispatched run that returns no signature rejects with a `SignFlowFailure`: `refused` (the flow's sign status went to error), `superseded` (another request took the controller over), `timeout` (5 minutes by default) or `malformed-signature`.
+The owner decides on the missing background action. These are the facts it rests on.
 
-The flow has side effects the facade cannot turn off. The background records each signature in the activity's signed messages of that account and raises its "message signed" notification. A dApp sign request open in the action window at the same moment shares the one controller, and `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` names no message: the facade dispatches it only after the state shows its own message, but a re-initialisation that lands between the two is signed with the facade's key, and the flow then verifies that signature against the other request's account. The missing background action above removes all three.
+1. The facade signs with no dApp request. It dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_INIT` with a request id of its own. It waits until the pushed `signMessage` state shows that id. It then dispatches `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` with `{ keyAddr, keyType }`, reads `signedMessage.signature` and dispatches `MAIN_CONTROLLER_SIGN_MESSAGE_RESET`.
+2. It can sign when the key is itself a basic account the wallet lists: an EOA account whose associated key is its own address. The flow then returns the key's own EIP-712 signature (`signTypedData` of the keystore signer), or its EIP-191 signature over the bytes (`signMessage`).
+3. It cannot sign for any other key the keystore holds, such as the smart account's controlling key at the slot's index plus 100000 (ux.md D-316). `SignMessageController` looks the address up among the accounts and wraps a smart account's signature in Ambire's envelope. The facade refuses such a key before it dispatches anything, with a `SignerNotWired` error (`member`, `key`, `missingAction: 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY'`).
+4. It cannot sign a bare digest. The flow always adds the EIP-191 prefix to raw bytes.
+5. The missing action is `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`, with params `{ requestId, keyAddr, keyType, content }`, where `content` is a `PlainTextMessage` or a `TypedMessage`. Its handler takes `KeystoreController.getSigner(keyAddr, keyType)` and runs `signer.init` with the external signer controller of that type. It answers `signMessage(content.message)` or `signTypedData(content)`, with no account lookup, no Ambire envelope, no activity record and no request resolution. It sends the signature or the error back to the UI under the request id, as `PROVIDER_RPC_REQUEST` does. The shape is also written on `MISSING_BACKGROUND_ACTION` in `signer.ts`. It does not exist, and this lane adds no background action.
+6. The race: `MAIN_CONTROLLER_HANDLE_SIGN_MESSAGE` names no message, and one controller serves every request. If a dApp sign request resets the controller between the facade's INIT and HANDLE, the flow signs that dApp message with the facade's key. The flow then checks the signature against the dApp request's account.
+7. The side effects: the background records each signature in the activity's signed messages of that account and raises its "message signed" notification. The facade cannot turn these off.
+8. The early exit: where the account state is missing, the main controller exits before it signs, and the facade waits until its timeout (5 minutes by default).
+9. A dispatched run that returns no signature rejects with a `SignFlowFailure`: `refused` (the flow's sign status went to error), `superseded` (another request took the controller over), `timeout` or `malformed-signature`.
+10. The missing action removes the refusal of item 3, the race of item 6, the side effects of item 7 and the wait of item 8. It removes the prefix limit of item 4 only if it also takes a bare digest as content.
 
 ## Which key sends
 
@@ -112,5 +118,4 @@ The block pins and log reads of the doubles go through the configured provider, 
 ## Open questions
 
 - cut-q-7: the addresses of the manager, methods and action on the test network. Every address in `addresses.ts` is a placeholder until it is answered.
-- The missing background action `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` for a key that is not itself a listed basic account (ux owner).
-- The publisher's display name has no en.json key yet (coordinator).
+- The missing background action `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` for a key that is not itself a listed basic account (owner; the facts are in the signer section above).
