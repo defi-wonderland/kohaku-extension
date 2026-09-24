@@ -16,7 +16,8 @@ import type {
   BlockTag,
   FilterSpec,
   Hex,
-  IProvider
+  IProvider,
+  PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
@@ -27,6 +28,7 @@ import {
   EthersMock,
   failEverything,
   functionMembersOf,
+  gasCallOf,
   isProviderReadFailure,
   isRevertedCall,
   NODE_ANSWERS,
@@ -269,6 +271,69 @@ describe('the balance and gas reads beside the adapter (D-373)', () => {
   it('surfaces a balance read the provider could not make as a thrown value', async () => {
     const w = world()
     failEverything(w.ethers, new Error('the node did not answer'))
-    await expect(createChainReads(w.ethers).nativeBalance(FROM)).rejects.toBeDefined()
+    const caught = await thrownBy(createChainReads(w.ethers).nativeBalance(FROM))
+    expect(isProviderReadFailure(caught)).toBe(true)
+  })
+
+  it('reads the gas price with one eth_gasPrice and answers it in wei', async () => {
+    const w = world()
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
+    expect(underlyingCalls(w.ethers)).toEqual([['send', ['eth_gasPrice', []]]])
+  })
+
+  it('estimates the gas of the transaction it was given, the sender included', async () => {
+    const w = world()
+    await createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA, value: 5n })
+    const [member, args] = onlyCall(w.ethers)
+    expect(member).toBe('send')
+    expect(args[0]).toBe('eth_estimateGas')
+    expect((args[1] as unknown[])[0]).toMatchObject({ from: FROM, to: TO, data: DATA })
+    expect(sameNumber(((args[1] as unknown[])[0] as { value: unknown }).value, 5)).toBe(true)
+  })
+
+  it('rejects the estimate of a call that would revert with its raw revert data', async () => {
+    const w = world()
+    failEverything(w.ethers, callException(REVERT))
+    const caught = await thrownBy(
+      createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isRevertedCall(caught)).toBe(true)
+    expect((caught as { data?: unknown; read?: unknown }).data).toBe(REVERT)
+    expect((caught as { read?: unknown }).read).toBe('estimateGas')
+  })
+
+  it('surfaces an estimate the provider could not make as a read failure, not a revert', async () => {
+    const w = world()
+    failEverything(w.ethers, new Error('the node did not answer'))
+    const caught = await thrownBy(
+      createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isProviderReadFailure(caught)).toBe(true)
+    expect(isRevertedCall(caught)).toBe(false)
+  })
+})
+
+describe('gasCallOf, the transaction a key sends for a prepared call', () => {
+  const block = { number: 1, hash: `0x${'00'.repeat(32)}` as Hex }
+  const prepared = (sender: 'account' | 'anyone'): PreparedCall => ({
+    kind: 'call',
+    target: TO,
+    value: 7n,
+    data: DATA,
+    sender,
+    block
+  })
+
+  it('turns a call anyone may send into the call to estimate from the given key', () => {
+    expect(gasCallOf(prepared('anyone'), FROM)).toEqual({
+      from: FROM,
+      to: TO,
+      data: DATA,
+      value: 7n
+    })
+  })
+
+  it('refuses a call the account sends, which the account library estimates', () => {
+    expect(() => gasCallOf(prepared('account'), FROM)).toThrow()
   })
 })
