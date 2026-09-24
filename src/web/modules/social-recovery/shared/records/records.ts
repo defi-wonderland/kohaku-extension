@@ -28,12 +28,13 @@ import {
   SETUP_RECORD_NAMES,
   SetupRecordName,
   SetupRecordValues,
-  StoredRecord,
-  WipedRecoverySession
+  StoredRecord
 } from './types'
 
 /** The prefix of every storage key this lane writes. */
 export const RECORDS_KEY_PREFIX = 'socialRecovery'
+
+const ACCOUNT_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 const chainPart = (chainId: ChainId | string): string => {
   const text = typeof chainId === 'bigint' ? chainId.toString(10) : String(chainId)
@@ -42,7 +43,7 @@ const chainPart = (chainId: ChainId | string): string => {
 }
 
 const accountPart = (account: Address): string => {
-  if (typeof account !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(account)) {
+  if (typeof account !== 'string' || !ACCOUNT_PATTERN.test(account)) {
     throw new Error(`Invalid account address: ${String(account)}`)
   }
   return account.toLowerCase()
@@ -50,36 +51,56 @@ const accountPart = (account: Address): string => {
 
 const sameAddress = (a: Address, b: Address): boolean => a.toLowerCase() === b.toLowerCase()
 
+/** The key prefix every recovery session on one chain shares. */
+const recoverySessionPrefix = (chainId: ChainId): string =>
+  `${RECORDS_KEY_PREFIX}:recoverySession:${chainPart(chainId)}:`
+
 /**
- * The storage keys. Every record that belongs to an account is keyed by chain
- * and account: the setup records, the recovery session, the countdown and the
- * setup cache. Two index records list the accounts that hold a session or a
- * countdown on a chain, for the home surface.
+ * The storage keys. Every record belongs to an account and is keyed by chain
+ * and account: the six setup records, the recovery session (whose landed state
+ * is the countdown's record) and the setup cache.
  */
 export const recordKeys = {
   setup: (name: SetupRecordName, chainId: ChainId, account: Address): string =>
     `${RECORDS_KEY_PREFIX}:${name}:${chainPart(chainId)}:${accountPart(account)}`,
   recoverySession: (chainId: ChainId, account: Address): string =>
-    `${RECORDS_KEY_PREFIX}:recoverySession:${chainPart(chainId)}:${accountPart(account)}`,
-  countdown: (chainId: ChainId, account: Address): string =>
-    `${RECORDS_KEY_PREFIX}:countdown:${chainPart(chainId)}:${accountPart(account)}`,
-  recoverySessionIndex: (chainId: ChainId): string =>
-    `${RECORDS_KEY_PREFIX}:recoverySessionIndex:${chainPart(chainId)}`,
-  countdownIndex: (chainId: ChainId): string =>
-    `${RECORDS_KEY_PREFIX}:countdownIndex:${chainPart(chainId)}`,
+    `${recoverySessionPrefix(chainId)}${accountPart(account)}`,
   decryptedSetupCache: (chainId: ChainId, account: Address): string =>
     `${RECORDS_KEY_PREFIX}:decryptedSetupCache:${chainPart(chainId)}:${accountPart(account)}`
-}
-
-/** The value of an index record: the accounts that hold a record of its kind on a chain. */
-interface AccountIndex {
-  accounts: Address[]
 }
 
 const isStoredRecord = (stored: unknown): stored is StoredRecord<unknown> => {
   if (typeof stored !== 'object' || stored === null || !('value' in stored)) return false
   const { savedAt } = stored as { savedAt?: unknown }
   return typeof savedAt === 'number' && Number.isFinite(savedAt)
+}
+
+const SESSION_STATES = ['live', 'wiped', 'landed']
+
+const isSessionRecord = (value: unknown): value is RecoverySessionRecord =>
+  typeof value === 'object' &&
+  value !== null &&
+  SESSION_STATES.includes((value as { state?: unknown }).state as string)
+
+/**
+ * Deep equality over the JSON-like values a gathering holds. A key whose value
+ * is `undefined` counts as absent, as it does once stored.
+ */
+const sameValue = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    return a.every((item, i) => sameValue(item, b[i]))
+  }
+  const left = a as Record<string, unknown>
+  const right = b as Record<string, unknown>
+  const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined)
+  const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined)
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => right[key] !== undefined && sameValue(left[key], right[key]))
+  )
 }
 
 /** The age of a read record in milliseconds at `at`, or `null` for an absent record. */
@@ -89,27 +110,13 @@ export const recordAge = <T>(read: RecordRead<T>, at: number): number | null =>
 export const isRecoveryWipeEvent = (event: unknown): event is RecoveryWipeEvent =>
   typeof event === 'string' && (RECOVERY_WIPE_EVENTS as readonly string[]).includes(event)
 
-/** The account a session record names, live or wiped. */
+/** The account a session record names, in any state. */
 export const sessionAccount = (session: RecoverySessionRecord): Address =>
   session.state === 'live' ? session.gathering.request.account : session.account
 
 /** The attempt id the live session's request was built against (the predicted attempt id). */
 export const predictedAttemptId = (session: LiveRecoverySession): bigint =>
   BigInt(session.gathering.request.attemptId)
-
-/**
- * Whether two gatherings carry the same request: a write may update the replies
- * of a live session but never replace its request, which would wipe it without
- * one of the five reasons.
- */
-const sameRequest = (a: Gathering['request'], b: Gathering['request']): boolean =>
-  a.chainId === b.chainId &&
-  sameAddress(a.manager, b.manager) &&
-  sameAddress(a.account, b.account) &&
-  sameAddress(a.action, b.action) &&
-  a.attemptId === b.attemptId &&
-  a.setupNonce === b.setupNonce &&
-  a.validUntil === b.validUntil
 
 /** One record's typed read, write, wipe and age. */
 export interface RecordAccessor<T> {
@@ -127,19 +134,18 @@ export type SetupRecords = {
 export interface RecoverySessionAccessor {
   read(): Promise<RecordRead<RecoverySessionRecord>>
   /**
-   * Writes the live session from the SDK's gathering. Refuses a gathering whose
-   * request names another account or chain, a cancellation gathering, and a
-   * gathering whose request differs from the live session's own.
+   * Writes the live session from the SDK's gathering. Refuses a cancellation
+   * gathering, a gathering whose request names another account or chain, a
+   * landed session, and over a live session a gathering whose request differs
+   * in any field or that leaves a filled place without a reply.
    */
   write(gathering: Gathering): Promise<StoredRecord<RecoverySessionRecord>>
   age(at?: number): Promise<number | null>
 }
 
+/** The countdown's record, read from the session in its landed state. */
 export interface CountdownAccessor {
   read(): Promise<RecordRead<CountdownRecord>>
-  /** Writes the countdown record, the account address alone. */
-  write(): Promise<StoredRecord<CountdownRecord>>
-  wipe(): Promise<void>
   age(at?: number): Promise<number | null>
 }
 
@@ -171,44 +177,6 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     },
     age: async (at?: number) => recordAge(await readKey<T>(key), at ?? now())
   })
-
-  // --- the account indexes -------------------------------------------------
-
-  const readIndex = async (indexKey: string): Promise<Address[]> => {
-    const read = await readKey<AccountIndex>(indexKey)
-    return read.status === 'present' && Array.isArray(read.value.accounts)
-      ? read.value.accounts
-      : []
-  }
-
-  // The index is written before the record it lists, so an interrupted write
-  // leaves at worst an index entry whose record reads absent, which a listing skips.
-  const addToIndex = async (indexKey: string, account: Address): Promise<void> => {
-    const accounts = await readIndex(indexKey)
-    if (accounts.some((listed) => sameAddress(listed, account))) return
-    await writeKey<AccountIndex>(indexKey, { accounts: [...accounts, account] })
-  }
-
-  const removeFromIndex = async (indexKey: string, account: Address): Promise<void> => {
-    const accounts = await readIndex(indexKey)
-    const kept = accounts.filter((listed) => !sameAddress(listed, account))
-    if (kept.length === accounts.length) return
-    if (kept.length) await writeKey<AccountIndex>(indexKey, { accounts: kept })
-    else await storage.remove(indexKey)
-  }
-
-  const listIndexed = async <T>(
-    indexKey: string,
-    recordKey: (account: Address) => string
-  ): Promise<ListedRecord<T>[]> => {
-    const accounts = await readIndex(indexKey)
-    const reads = await Promise.all(accounts.map((account) => readKey<T>(recordKey(account))))
-    return reads.flatMap((read, i) =>
-      read.status === 'present'
-        ? [{ account: accounts[i], record: { value: read.value, savedAt: read.savedAt } }]
-        : []
-    )
-  }
 
   // --- the six setup records -----------------------------------------------
 
@@ -254,9 +222,6 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   const readSession = (chainId: ChainId, account: Address) =>
     readKey<RecoverySessionRecord>(recordKeys.recoverySession(chainId, account))
 
-  const writeWiped = (chainId: ChainId, account: Address, wiped: WipedRecoverySession) =>
-    writeKey<RecoverySessionRecord>(recordKeys.recoverySession(chainId, account), wiped)
-
   /**
    * The recovery session of one account on one chain. Its live body is the
    * SDK's gathering (sdk.md D-207); a write for another account touches another
@@ -280,34 +245,65 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
           throw new Error(`The gathering names chain ${request.chainId}, not ${chainPart(chainId)}`)
         }
         const current = await readKey<RecoverySessionRecord>(key)
-        if (
-          current.status === 'present' &&
-          current.value.state === 'live' &&
-          !sameRequest(current.value.gathering.request, request)
-        ) {
+        if (current.status === 'present' && current.value.state === 'landed') {
           throw new Error(
-            'A live session holds another request: wipe it with one of the five events first'
+            'A landed session holds the countdown: clear it once its attempt ends, then gather again'
           )
         }
-        await addToIndex(recordKeys.recoverySessionIndex(chainId), request.account)
+        if (current.status === 'present' && current.value.state === 'live') {
+          const stored = current.value.gathering
+          // Any change to the request would replace it, a wipe without one of the five reasons.
+          if (!sameValue(stored.request, request)) {
+            throw new Error(
+              'A live session holds another request: wipe it with one of the five events first'
+            )
+          }
+          // A reply may be displaced by a later reply for the same place (sdk.md D-207),
+          // never dropped.
+          const places = new Set(gathering.replies.map((reply) => reply.place))
+          const dropped = stored.replies.filter((reply) => !places.has(reply.place))
+          if (dropped.length) {
+            throw new Error(
+              `The write drops the reply at place ${dropped.map((reply) => reply.place).join(', ')}`
+            )
+          }
+        }
         return writeKey<RecoverySessionRecord>(key, { state: 'live', gathering })
       },
       age: async (at?: number) => recordAge(await readKey<RecoverySessionRecord>(key), at ?? now())
     }
   }
 
-  /** Every recovery session stored on a chain, live or wiped, for the home surface. */
-  const listRecoverySessions = (chainId: ChainId) =>
-    listIndexed<RecoverySessionRecord>(recordKeys.recoverySessionIndex(chainId), (account) =>
-      recordKeys.recoverySession(chainId, account)
+  /** Every session record stored on a chain, by a prefix scan over the storage's entries. */
+  const scanSessions = async (chainId: ChainId): Promise<ListedRecord<RecoverySessionRecord>[]> => {
+    if (!storage.getAll) {
+      throw new Error('This storage cannot list its entries: it has no getAll')
+    }
+    const prefix = recoverySessionPrefix(chainId)
+    const entries = Object.entries(await storage.getAll())
+      .filter(([key]) => key.startsWith(prefix) && ACCOUNT_PATTERN.test(key.slice(prefix.length)))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    return entries.flatMap(([, stored]) =>
+      isStoredRecord(stored) && isSessionRecord(stored.value)
+        ? [
+            {
+              account: sessionAccount(stored.value),
+              record: { value: stored.value, savedAt: stored.savedAt }
+            }
+          ]
+        : []
     )
+  }
+
+  /** Every recovery session stored on a chain, live, wiped or landed, for the home surface. */
+  const listRecoverySessions = (chainId: ChainId) => scanSessions(chainId)
 
   /**
    * One of four events wipes a live recovery session: the deadline passed,
    * another attempt opened, the setup changed or the recoverer abandoned. The
    * gathering, with its replies and its attempt id, is deleted, and the session
    * keeps the reason, the account and, for `deadline-passed`, the deadline.
-   * Returns whether it wiped anything: an absent or already wiped session is
+   * Returns whether it wiped anything: an absent, wiped or landed session is
    * left unchanged. `submission-landed` runs through `landSubmission`; it and
    * any value outside the vocabulary, a security stop or a pause among them,
    * throw and wipe nothing (I-38).
@@ -326,7 +322,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     const current = await readSession(chainId, account)
     if (current.status !== 'present' || current.value.state !== 'live') return false
     const { request } = current.value.gathering
-    await writeWiped(chainId, account, {
+    await writeKey<RecoverySessionRecord>(recordKeys.recoverySession(chainId, account), {
       state: 'wiped',
       reason: event,
       account: request.account,
@@ -335,39 +331,11 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     return true
   }
 
-  // --- the countdown -------------------------------------------------------
-
-  /** The countdown record of one account on one chain; its body is the account address alone. */
-  const countdown = (chainId: ChainId, account: Address): CountdownAccessor => {
-    const key = recordKeys.countdown(chainId, account)
-    const indexKey = recordKeys.countdownIndex(chainId)
-    return {
-      read: () => readKey<CountdownRecord>(key),
-      write: async () => {
-        await addToIndex(indexKey, account)
-        return writeKey<CountdownRecord>(key, { account })
-      },
-      wipe: async () => {
-        await storage.remove(key)
-        await removeFromIndex(indexKey, account)
-      },
-      age: async (at?: number) => recordAge(await readKey<CountdownRecord>(key), at ?? now())
-    }
-  }
-
-  /** Every countdown record stored on a chain, for the home surface. */
-  const listCountdowns = (chainId: ChainId) =>
-    listIndexed<CountdownRecord>(recordKeys.countdownIndex(chainId), (account) =>
-      recordKeys.countdown(chainId, account)
-    )
-
   /**
    * The submission landed: the live session survives as the countdown's record,
-   * which holds the account address alone, and the session is wiped with the
-   * reason `submission-landed`. Refuses when no live session exists. The storage
-   * helper's `set` writes one key, so the two records are two writes, the
-   * countdown first: an interrupted call never loses the account, and the next
-   * call finds the session still live and completes the wipe.
+   * `{ state: 'landed', account }`, written in one set in place of the live
+   * session, so the gathering, its replies and its attempt id are gone in the
+   * same write. Refuses when no live session exists.
    */
   const landSubmission = async (
     chainId: ChainId,
@@ -377,15 +345,51 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     if (current.status !== 'present' || current.value.state !== 'live') {
       throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
     }
-    const sessionAddress = current.value.gathering.request.account
-    const written = await countdown(chainId, sessionAddress).write()
-    await writeWiped(chainId, account, {
-      state: 'wiped',
-      reason: 'submission-landed',
-      account: sessionAddress
-    })
-    return written
+    const landedAccount = current.value.gathering.request.account
+    const written = await writeKey<RecoverySessionRecord>(
+      recordKeys.recoverySession(chainId, account),
+      { state: 'landed', account: landedAccount }
+    )
+    return { value: { account: landedAccount }, savedAt: written.savedAt }
   }
+
+  /**
+   * Removes a session record in its wiped or landed state, so old sessions do
+   * not accumulate. Never removes a live session. Returns whether it removed one.
+   */
+  const clearWipedSession = async (chainId: ChainId, account: Address): Promise<boolean> => {
+    const current = await readSession(chainId, account)
+    if (current.status !== 'present' || current.value.state === 'live') return false
+    await storage.remove(recordKeys.recoverySession(chainId, account))
+    return true
+  }
+
+  // --- the countdown -------------------------------------------------------
+
+  const asCountdown = (read: RecordRead<RecoverySessionRecord>): RecordRead<CountdownRecord> =>
+    read.status === 'present' && read.value.state === 'landed'
+      ? { status: 'present', value: { account: read.value.account }, savedAt: read.savedAt }
+      : ABSENT
+
+  /** The countdown's record of one account: the session in its landed state, the account alone. */
+  const countdown = (chainId: ChainId, account: Address): CountdownAccessor => ({
+    read: async () => asCountdown(await readSession(chainId, account)),
+    age: async (at?: number) =>
+      recordAge(asCountdown(await readSession(chainId, account)), at ?? now())
+  })
+
+  /** Every countdown on a chain, the landed sessions, for the home surface. */
+  const listCountdowns = async (chainId: ChainId): Promise<ListedRecord<CountdownRecord>[]> =>
+    (await scanSessions(chainId)).flatMap(({ record }) =>
+      record.value.state === 'landed'
+        ? [
+            {
+              account: record.value.account,
+              record: { value: { account: record.value.account }, savedAt: record.savedAt }
+            }
+          ]
+        : []
+    )
 
   // --- the decrypted setup cache -------------------------------------------
 
@@ -408,9 +412,10 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     recoverySession,
     listRecoverySessions,
     wipeRecoverySession,
+    landSubmission,
+    clearWipedSession,
     countdown,
     listCountdowns,
-    landSubmission,
     decryptedSetupCache
   }
 }

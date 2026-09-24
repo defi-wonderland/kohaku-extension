@@ -21,11 +21,14 @@ import type {
  * The storage the records sit on: the extension's own helper
  * (`src/web/extension-services/background/webapi/storage.ts`) or, in a test, an
  * in-memory double. `get` may return the default for a falsy stored value.
+ * `getAll` returns every stored entry by key, what the helper's `get()` with no
+ * key returns; the list functions need it and refuse a storage without it.
  */
 export interface RecordStorage {
   get(key: string, defaultValue?: unknown): Promise<unknown>
   set(key: string, value: unknown): Promise<unknown>
   remove(key: string): Promise<unknown>
+  getAll?(): Promise<Record<string, unknown>>
 }
 
 /** The chain a record belongs to, as the network's chain id. */
@@ -161,7 +164,7 @@ export type WipeReason = RecoveryWipeEvent
 
 /**
  * The four events `wipeRecoverySession` takes directly. The submission landing
- * runs through `landSubmission`, which also writes the countdown record.
+ * runs through `landSubmission`, which turns the session into its landed state.
  */
 export type DirectWipeEvent = Exclude<RecoveryWipeEvent, 'submission-landed'>
 
@@ -194,11 +197,25 @@ export interface WipedRecoverySession {
   deadline?: string
 }
 
-export type RecoverySessionRecord = LiveRecoverySession | WipedRecoverySession
+/**
+ * The session after the submission lands: it survives as the countdown's record,
+ * holding the account address alone (D-310). The attempt id comes from the
+ * attempt read (D-371). The submission landing is the fifth wipe event: the
+ * gathering, its replies and its attempt id are gone.
+ */
+export interface LandedRecoverySession {
+  state: 'landed'
+  account: Address
+}
+
+export type RecoverySessionRecord =
+  | LiveRecoverySession
+  | WipedRecoverySession
+  | LandedRecoverySession
 
 /**
- * The countdown's record after the submission lands: the account address alone.
- * The attempt id comes from the attempt read (D-371).
+ * The countdown's record as `countdown(chainId, account)` reads it from the
+ * landed session: the account address alone.
  */
 export interface CountdownRecord {
   account: Address
