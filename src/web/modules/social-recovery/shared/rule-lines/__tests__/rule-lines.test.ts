@@ -71,8 +71,13 @@ const SINGLE_METHOD: Expected[] = [
 
 // The table of shapes of the brief's "Test expectations", with the lines D-305
 // states for each, in D-305's order: the rows' line or the single-method
-// warning with its offer, the group's count line, every member must answer,
-// one failure domain, the setup line on different places, the sizing rule.
+// warning with its offer, the group's count line, one failure domain, the
+// setup line on different places, the sizing rule. Coordinator rulings on
+// D-305 beside frame C-04e: at threshold equal to member count the every
+// member line replaces the count line; beside rows or other groups it takes
+// the together-with form; two groups and no row read togetherWithGroups; a
+// threshold of one beside rows or groups keeps the together-with any N of M
+// wording with n = 1.
 const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   {
     name: 'one row: the single-method warning with the second passkey or hardware key offer',
@@ -112,18 +117,36 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   {
     name: 'a group at threshold equal to its size: every member must answer',
     clauses: [group(3, [PASSKEY, PASSPORT, GUARDIAN])],
-    expected: [
-      { key: 'anyNOfM', params: { n: 3, m: 3, spare: 0 } },
-      { key: 'everyMemberMustAnswer' },
-      { key: 'differentPlaces' }
-    ]
+    expected: [{ key: 'everyMemberMustAnswer' }, { key: 'differentPlaces' }]
   },
   {
     name: 'a group at threshold equal to its size beside a required row: together with, every member',
     clauses: [row(PASSKEY), group(2, [PASSPORT, GUARDIAN])],
+    expected: [{ key: 'togetherWithRequiredEveryMember' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a group at threshold equal to its size beside another group only: together with, every member',
+    clauses: [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR])],
     expected: [
-      { key: 'togetherWithRequired', params: { n: 2, m: 2, spare: 0 } },
-      { key: 'everyMemberMustAnswer' },
+      { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'togetherWithGroupsEveryMember' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'a group at threshold equal to its size beside a row and another group: together with both, every member',
+    clauses: [row(PASSKEY), group(1, [PASSPORT, AADHAAR]), group(2, [GUARDIAN, PASSKEY])],
+    expected: [
+      { key: 'togetherWithRequiredAndGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'togetherWithRequiredAndGroupsEveryMember' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'a group of two at threshold one beside a required row: together with, any 1 of these 2',
+    clauses: [row(PASSKEY), group(1, [PASSPORT, AADHAAR])],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 1, m: 2, spare: 1 } },
       { key: 'differentPlaces' }
     ]
   },
@@ -139,8 +162,8 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     name: 'two groups: together with one member of each other group',
     clauses: [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])],
     expected: [
-      { key: 'togetherWithRequiredAndGroups', params: { n: 1, m: 2, spare: 1 } },
-      { key: 'togetherWithRequiredAndGroups', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'togetherWithGroups', params: { n: 2, m: 3, spare: 1 } },
       { key: 'differentPlaces' }
     ]
   },
@@ -264,6 +287,24 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
     ).toBe(
       'Together with your required methods, any 2 of these 3 recover this account. Losing more than 1 locks you out.'
     )
+    expect(
+      renderRuleLines(
+        linesOf([group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])]),
+        t
+      )
+    ).toEqual([
+      'Together with one member of each other group, any 1 of these 2 recover this account. Losing more than 1 locks you out.',
+      'Together with one member of each other group, any 2 of these 3 recover this account. Losing more than 1 locks you out.',
+      'Keep the methods of your path in different places.'
+    ])
+    expect(renderRuleLines(linesOf([group(3, [PASSKEY, PASSPORT, GUARDIAN])]), t)).toEqual([
+      'Every member must answer.',
+      'Keep the methods of your path in different places.'
+    ])
+    expect(renderRuleLines(linesOf([row(PASSKEY), group(2, [PASSPORT, GUARDIAN])]), t)).toEqual([
+      'Together with your required methods, every member of this group must answer.',
+      'Keep the methods of your path in different places.'
+    ])
   })
 })
 
