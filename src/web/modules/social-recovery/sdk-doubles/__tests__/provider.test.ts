@@ -44,7 +44,7 @@ describe('provider double', () => {
     'throws a scripted %s failure',
     async (member) => {
       const world = createWorld()
-      world.script.failRead(member)
+      world.script.failRead(`provider.${member}`)
       const run = {
         chainId: () => world.provider.chainId(),
         block: () => world.provider.block('latest'),

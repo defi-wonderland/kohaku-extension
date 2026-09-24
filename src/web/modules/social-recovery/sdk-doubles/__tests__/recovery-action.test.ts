@@ -2,6 +2,8 @@
  * The recovery action double (IRecoveryActionInteractor and IRecoveryActionArming,
  * sdk.md D-201, D-202 "Policies setup", "The read surface").
  */
+import type { ValidationRefusal } from '@web/modules/social-recovery/sdk-interfaces'
+
 import { createWorld, eachIt, expectThrown, isHex, membersOf } from './harness'
 
 describe('recovery action double', () => {
@@ -66,7 +68,7 @@ describe('recovery action double', () => {
     'throws a scripted %s read failure',
     async (member) => {
       const world = createWorld()
-      world.script.failRead(member)
+      world.script.failRead(`action.${member}`)
       await expectThrown(() => world.actionPart[member]())
     }
   )
@@ -75,8 +77,18 @@ describe('recovery action double', () => {
     'throws a scripted %s read failure',
     async (member) => {
       const world = createWorld()
-      world.script.failRead(member)
+      world.script.failRead(`action.${member}`)
       await expectThrown(() => world.actionPart[member](world.keys.held))
+    }
+  )
+
+  eachIt(['armingCall', 'disarmingCall'] as const)(
+    'throws %s with the scripted code',
+    async (member) => {
+      const world = createWorld()
+      world.script.refuse(`action.${member}`, 'action.unsupported')
+      const error = (await expectThrown(() => world.actionPart[member]())) as ValidationRefusal
+      expect(error.findings.errors.map((f) => f.code)).toContain('action.unsupported')
     }
   )
 })

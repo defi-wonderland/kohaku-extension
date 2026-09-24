@@ -144,7 +144,7 @@ describe('setup client double', () => {
 
     it('throws an ordinary error carrying the findings when scripted to refuse', async () => {
       const world = createWorld()
-      world.script.refuse('prepareCommitSetup', 'rule.empty')
+      world.script.refuse('setup.prepareCommitSetup', 'rule.empty')
       const setup = await world.setupClient()
       const error = (await expectThrown(() =>
         setup.prepareCommitSetup(world.draft('private'), 'pw')
@@ -190,7 +190,7 @@ describe('setup client double', () => {
     it('throws when scripted to refuse', async () => {
       const world = createWorld()
       world.script.setupCommitted('private')
-      world.script.refuse('prepareClearSetup', 'action.unsupported')
+      world.script.refuse('setup.prepareClearSetup', 'action.unsupported')
       const setup = await world.setupClient()
       const error = (await expectThrown(() => setup.prepareClearSetup())) as ValidationRefusal
       expect(error.findings.errors.map((f) => f.code)).toContain('action.unsupported')
@@ -268,7 +268,7 @@ describe('setup client double', () => {
     const setup = await world.setupClient()
     const empty = await setup.setupState()
     expect(empty.hasSetup).toBe(false)
-    world.script.failRead('setupState')
+    world.script.failRead('setup.setupState')
     await expectThrown(() => setup.setupState())
   })
 })

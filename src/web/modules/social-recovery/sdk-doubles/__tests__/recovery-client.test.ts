@@ -8,81 +8,25 @@ import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
   type ApproverReply,
-  type ApproverRequest,
   type AttemptRequest,
   type CancelRequest,
-  type Gathering,
-  type IMethodsOrchestrator,
   type IRecoveryClient,
-  type PaymentOrder,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
-  World,
-  ZERO,
   createWorld,
   eachIt,
   expectThrown,
+  fillAll,
   isAddress,
   isHex,
-  membersOf
+  membersOf,
+  NO_PAYMENT,
+  openRecovery,
+  replyFor,
+  WINDOW
 } from './harness'
-
-const NO_PAYMENT: PaymentOrder = { token: ZERO, amount: 0n, payee: ZERO }
-const WINDOW = 24 * 3600
-
-const replyFor = async (
-  orchestrator: IMethodsOrchestrator,
-  request: ApproverRequest
-): Promise<ApproverReply> => {
-  const input = orchestrator.signingInput(request)
-  const reply = await orchestrator.replyFrom(request, input, `0x${'ab'.repeat(65)}`)
-  expect(reply.kind).toBe('recovery-proof-reply')
-  return reply as ApproverReply
-}
-
-interface Opened {
-  world: World
-  recovery: IRecoveryClient
-  orchestrator: IMethodsOrchestrator
-  gathering: Gathering
-  requests: ApproverRequest[]
-}
-
-const openRecovery = async (): Promise<Opened> => {
-  const world = createWorld()
-  const committed = world.script.setupCommitted('private')
-  world.script.attempt('none')
-  world.script.authorized(true)
-  const recovery = await world.recoveryClient()
-  const gathering = await recovery.initRecoveryGathering(
-    { configuration: committed.configuration },
-    { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
-    NO_PAYMENT,
-    { window: WINDOW }
-  )
-  return {
-    world,
-    recovery,
-    orchestrator: world.orchestrator(),
-    gathering,
-    requests: recovery.getApproverRequests(gathering)
-  }
-}
-
-const fillAll = async ({ recovery, orchestrator, gathering, requests }: Opened) => {
-  let g = gathering
-  // Replies file one at a time: each add returns the record the next one reads.
-  // eslint-disable-next-line no-restricted-syntax
-  for (const request of requests) {
-    // eslint-disable-next-line no-await-in-loop
-    const added = recovery.addApproverReply(g, await replyFor(orchestrator, request))
-    expect(added.reason).toBeUndefined()
-    g = added.gathering
-  }
-  return g
-}
 
 describe('recovery client double', () => {
   it('exposes every member of IRecoveryClient', async () => {
@@ -191,7 +135,7 @@ describe('recovery client double', () => {
     it('throws when scripted to refuse', async () => {
       const world = createWorld()
       const committed = world.script.setupCommitted('private')
-      world.script.refuse('initRecoveryGathering', 'handover.new-holds-privilege')
+      world.script.refuse('recovery.initRecoveryGathering', 'handover.new-holds-privilege')
       const recovery = await world.recoveryClient()
       await expectThrown(() =>
         recovery.initRecoveryGathering(
@@ -207,7 +151,7 @@ describe('recovery client double', () => {
   describe('addApproverReply', () => {
     it('files a reply into a new record and leaves the one passed in untouched', async () => {
       const opened = await openRecovery()
-      const reply = await replyFor(opened.orchestrator, opened.requests[0]!)
+      const reply = await replyFor(opened.world, opened.requests[0]!)
       const before = JSON.parse(
         JSON.stringify(opened.gathering, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))
       )
@@ -222,7 +166,7 @@ describe('recovery client double', () => {
 
     it('replaces a second reply for one place and names the one it displaced', async () => {
       const opened = await openRecovery()
-      const first = await replyFor(opened.orchestrator, opened.requests[0]!)
+      const first = await replyFor(opened.world, opened.requests[0]!)
       const second = { ...first, proof: `0x${'cd'.repeat(65)}` as const }
       const g1 = opened.recovery.addApproverReply(opened.gathering, first).gathering
       const added = opened.recovery.addApproverReply(g1, second)
@@ -247,7 +191,7 @@ describe('recovery client double', () => {
       'returns the %s refusal as a typed result, never a thrown error',
       async (cause) => {
         const opened = await openRecovery()
-        const reply = tamper[cause](await replyFor(opened.orchestrator, opened.requests[0]!))
+        const reply = tamper[cause](await replyFor(opened.world, opened.requests[0]!))
         let result: ReturnType<IRecoveryClient['addApproverReply']> | undefined
         expect(() => {
           result = opened.recovery.addApproverReply(opened.gathering, reply)
@@ -314,6 +258,15 @@ describe('recovery client double', () => {
   })
 
   describe('the cancellation gathering', () => {
+    it('refuses where no attempt is waiting', async () => {
+      const world = createWorld()
+      const committed = world.script.setupCommitted('private')
+      const recovery = await world.recoveryClient()
+      await expectThrown(() =>
+        recovery.initCancelGathering({ configuration: committed.configuration }, { window: 3600 })
+      )
+    })
+
     it('opens over the live attempt id with its consumableAfter and completes into a CancelRequest', async () => {
       const world = createWorld()
       const committed = world.script.setupCommitted('private')
@@ -334,6 +287,8 @@ describe('recovery client double', () => {
         expect(r.purpose).toBe('cancellation')
         expect(r.payload).toBeUndefined()
         expect(r.order).toBeUndefined()
+        expect(r).not.toHaveProperty('consumableAfter')
+        expect(r).not.toHaveProperty('block')
       })
       const orchestrator = world.orchestrator()
       const filled = await fillAll({ world, recovery, orchestrator, gathering, requests })
@@ -410,7 +365,7 @@ describe('recovery client double', () => {
       const world = createWorld()
       world.script.setupCommitted('private')
       world.script.attempt('pending')
-      world.script.refuse(member, 'request.expired')
+      world.script.refuse(`recovery.${member}`, 'request.expired')
       const recovery = await world.recoveryClient()
       const state = await recovery.recoveryState()
       const stub = {} as AttemptRequest & CancelRequest
@@ -430,7 +385,7 @@ describe('recovery client double', () => {
     const world = createWorld()
     world.script.setupCommitted('private')
     const recovery = await world.recoveryClient()
-    world.script.failRead('recoveryState')
+    world.script.failRead('recovery.recoveryState')
     await expectThrown(() => recovery.recoveryState())
   })
 })

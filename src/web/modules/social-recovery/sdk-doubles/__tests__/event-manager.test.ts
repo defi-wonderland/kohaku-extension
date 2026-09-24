@@ -48,7 +48,10 @@ describe('event manager double', () => {
       )
     )
     const wide = world.events.accountFilter({ anyAction: true })
-    expect(wide.topics.length).toBeLessThanOrEqual(accountFilter.topics.length)
+    // The one option leaves the action topic open (D-203 "Filters").
+    expect(wide.topics).toContain(null)
+    expect(accountFilter.topics).not.toContain(null)
+    expect(wide.topics.length).toBe(accountFilter.topics.length)
   })
 
   it('serves SetupCommitted for a committed setup, in log order with a position', async () => {
@@ -131,7 +134,7 @@ describe('event manager double', () => {
     const world = createWorld()
     world.script.setupNone()
     expect(await everything(world)).toEqual([])
-    world.script.failRead('fetch')
+    world.script.failRead('events.fetch')
     await expectThrown(() => everything(world))
   })
 })

@@ -7,31 +7,16 @@ import {
   METHOD_FAILURE_CAUSES,
   VERDICTS,
   type ApproverReply,
-  type Hex,
   type ApproverRequest,
-  type PaymentOrder,
   type ReplyFailure
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isHex, membersOf, ZERO } from './harness'
-
-const NO_PAYMENT: PaymentOrder = { token: ZERO, amount: 0n, payee: ZERO }
-const MATERIAL: Hex = `0x${'ab'.repeat(65)}`
+import { createWorld, expectThrown, isHex, membersOf, openRecovery } from './harness'
 
 const firstRequest = async () => {
-  const world = createWorld()
-  const committed = world.script.setupCommitted('private')
-  world.script.attempt('none')
-  const recovery = await world.recoveryClient()
-  const gathering = await recovery.initRecoveryGathering(
-    { configuration: committed.configuration },
-    { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
-    NO_PAYMENT,
-    { window: 3600 }
-  )
-  const request = JSON.parse(
-    JSON.stringify(recovery.getApproverRequests(gathering)[0])
-  ) as ApproverRequest
+  const { world, requests } = await openRecovery()
+  // The request crosses a JSON round trip, the way a link carries it.
+  const request = JSON.parse(JSON.stringify(requests[0])) as ApproverRequest
   return { world, request }
 }
 
@@ -64,10 +49,11 @@ describe('methods orchestrator double', () => {
     expect(described.purpose).toBe('approval')
     expect(described.place).toBe(request.place)
     expect(described.validUntil).toBe(Number(request.validUntil))
-    expect(described.handover).toEqual({
-      decoded: true,
-      value: { newAuthority: world.keys.fresh, removedAuthority: world.keys.held }
-    })
+    // Addresses compare case-insensitively: the codec decodes checksummed ones.
+    const { handover } = described
+    if (!handover?.decoded) throw new Error('the handover did not decode')
+    expect(handover.value.newAuthority.toLowerCase()).toBe(world.keys.fresh.toLowerCase())
+    expect(handover.value.removedAuthority.toLowerCase()).toBe(world.keys.held.toLowerCase())
   })
 
   it('builds the signing input and the reply from the request alone', async () => {
@@ -75,7 +61,11 @@ describe('methods orchestrator double', () => {
     const orchestrator = world.orchestrator()
     const input = orchestrator.signingInput(request)
     expect(input).toBeDefined()
-    const reply = (await orchestrator.replyFrom(request, input, MATERIAL)) as ApproverReply
+    const reply = (await orchestrator.replyFrom(
+      request,
+      input,
+      world.material(request)
+    )) as ApproverReply
     expect(reply.kind).toBe('recovery-proof-reply')
     ;(['chainId', 'manager', 'account', 'action', 'attemptId', 'purpose'] as const).forEach(
       (field) => expect(reply[field]).toBe(request[field])
@@ -90,28 +80,42 @@ describe('methods orchestrator double', () => {
 
   it('returns a scripted reply failure as a typed result, never a thrown error', async () => {
     const { world, request } = await firstRequest()
-    world.script.refuse('replyFrom', 'device-refused')
+    world.script.replyFailure('device-refused')
     const orchestrator = world.orchestrator()
-    const reply = (await orchestrator.replyFrom(
-      request,
-      orchestrator.signingInput(request),
-      MATERIAL
-    )) as ReplyFailure
+    let reply: ReplyFailure | undefined
+    await expect(
+      (async () => {
+        reply = (await orchestrator.replyFrom(
+          request,
+          orchestrator.signingInput(request),
+          world.material(request)
+        )) as ReplyFailure
+      })()
+    ).resolves.toBeUndefined()
     expect(reply).toEqual({ kind: 'reply-failure', cause: 'device-refused' })
-    expect(METHOD_FAILURE_CAUSES).toContain(reply.cause)
+    expect(METHOD_FAILURE_CAUSES).toContain(reply!.cause)
   })
 
   it('throws signingInput when scripted to refuse', async () => {
     const { world, request } = await firstRequest()
-    world.script.refuse('signingInput', 'version-unread')
+    world.script.refuse('orchestrator.signingInput', 'request.expired')
     const orchestrator = world.orchestrator()
     await expectThrown(async () => orchestrator.signingInput(request))
   })
 
-  it('answers a verdict, never a refusal', async () => {
+  it('answers a verdict, never a refusal: satisfied for a good proof, rejected for another', async () => {
     const { world, request } = await firstRequest()
-    const verdict = await world.orchestrator().verify(request, request.place, MATERIAL)
-    expect(VERDICTS).toContain(verdict)
+    const orchestrator = world.orchestrator()
+    const reply = (await orchestrator.replyFrom(
+      request,
+      orchestrator.signingInput(request),
+      world.material(request)
+    )) as ApproverReply
+    const good = await orchestrator.verify(request, request.place, reply.proof)
+    const bad = await orchestrator.verify(request, request.place, `0x${'ab'.repeat(65)}`)
+    expect(VERDICTS).toContain(good)
+    expect(good).toBe('satisfied')
+    expect(bad).toBe('rejected')
   })
 
   it('enrolls through enrollInput and configFrom, a failure being a typed result', async () => {
@@ -121,8 +125,17 @@ describe('methods orchestrator double', () => {
     const input = orchestrator.enrollInput(method, { address: world.keys.held })
     const config = await orchestrator.configFrom(method, input, world.keys.held)
     expect(isHex(config)).toBe(true)
-    world.script.refuse('configFrom', 'material-rejected')
+    world.script.enrollFailure('material-rejected')
     const failed = await world.orchestrator().configFrom(method, input, world.keys.held)
     expect(failed).toEqual({ kind: 'enroll-failure', cause: 'material-rejected' })
+  })
+
+  it('throws enrollInput when scripted to refuse', async () => {
+    const world = createWorld()
+    world.script.refuse('orchestrator.enrollInput', 'request.expired')
+    const orchestrator = world.orchestrator()
+    await expectThrown(async () =>
+      orchestrator.enrollInput(world.descriptor.methodEcdsa, { address: world.keys.held })
+    )
   })
 })

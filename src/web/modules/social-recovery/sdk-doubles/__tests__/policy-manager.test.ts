@@ -9,7 +9,16 @@ import {
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, expectThrown, isAddress, isHex, membersOf } from './harness'
+import {
+  createWorld,
+  eachIt,
+  expectThrown,
+  fillAll,
+  isAddress,
+  isHex,
+  membersOf,
+  openRecovery
+} from './harness'
 
 const MEMBERS = [
   'moduleInfo',
@@ -62,12 +71,20 @@ describe('policy manager double', () => {
     expect(typeof (await world.manager.supportsInterface('0x01ffc9a7'))).toBe('boolean')
   })
 
-  it('hashes an approval and a cancel to 32 bytes', async () => {
-    const world = createWorld()
-    const approval = await world.manager.hashApproval({} as AttemptRequest, 0n)
-    const cancel = await world.manager.hashCancel({} as CancelRequest, 0n)
-    expect(approval).toMatch(/^0x[0-9a-fA-F]{64}$/)
-    expect(cancel).toMatch(/^0x[0-9a-fA-F]{64}$/)
+  it('hashes an approval to the digest the reply carries for that place', async () => {
+    const opened = await openRecovery()
+    const now = Number(opened.gathering.request.block.timestamp) + 60
+    const filled = await fillAll(opened)
+    const request = opened.recovery.complete(filled, undefined, now) as AttemptRequest
+    const [first] = request.proofs
+    const hash = await opened.world.manager.hashApproval(request, first!.place)
+    expect(hash).toMatch(/^0x[0-9a-fA-F]{64}$/)
+    const reply = filled.replies.find((r) => BigInt(r.place) === first!.place)!
+    expect(hash).toBe(reply.digest)
+    const asCancel: CancelRequest = { ...request }
+    expect(await opened.world.manager.hashCancel(asCancel, first!.place)).toMatch(
+      /^0x[0-9a-fA-F]{64}$/
+    )
   })
 
   describe('the three module reads', () => {
@@ -95,22 +112,28 @@ describe('policy manager double', () => {
     })
 
     eachIt(['moduleInfo', 'paused', 'trustedParties'] as const)(
-      'tell a failed %s read from an answer',
+      'throw a %s read scripted to fail',
       async (member) => {
         const world = createWorld()
         const module = world.descriptor.methodEcdsa
         const answered = await world.manager[member](module)
         expect(answered.answered).toBe(true)
-        world.script.failRead(member)
-        let result: { answered: boolean } | undefined
-        try {
-          result = await world.manager[member](module)
-        } catch (e) {
-          expect(e).toBeInstanceOf(Error)
-        }
-        // D-202 "The read surface": a module read that failed says it was not
-        // answered, never an answered default.
-        if (result) expect(result).toEqual({ answered: false })
+        world.script.failRead(`manager.${member}`)
+        // Brief: every read can be scripted to fail by throwing; the
+        // `{ answered: false }` shape of D-202 is the next test's.
+        await expectThrown(() => world.manager[member](module))
+      }
+    )
+
+    eachIt(['manager.moduleInfo', 'manager.paused', 'manager.trustedParties'] as const)(
+      'answer %s scripted unanswered as { answered: false }',
+      async (read) => {
+        const world = createWorld()
+        world.script.leaveUnanswered(read)
+        const member = read.split('.')[1] as 'moduleInfo' | 'paused' | 'trustedParties'
+        expect(await world.manager[member](world.descriptor.methodEcdsa)).toEqual({
+          answered: false
+        })
       }
     )
   })
@@ -119,7 +142,7 @@ describe('policy manager double', () => {
     'throws a scripted %s read failure',
     async (member) => {
       const world = createWorld()
-      world.script.failRead(member)
+      world.script.failRead(`manager.${member}`)
       await expectThrown(() => world.manager[member]())
     }
   )
@@ -159,12 +182,28 @@ describe('policy manager double', () => {
       })
     })
 
-    it('throw with the scripted code', async () => {
+    eachIt([
+      'prepareCommitSetup',
+      'prepareClearSetup',
+      'prepareStartAttempt',
+      'prepareCancelByProofs',
+      'prepareCancelByOwner',
+      'prepareCancelByVeto'
+    ] as const)('throw %s with the scripted code', async (member) => {
       const world = createWorld()
-      world.script.refuse('prepareClearSetup', 'action.unsupported')
-      const error = (await expectThrown(() =>
-        world.manager.prepareClearSetup(world.descriptor.action)
-      )) as ValidationRefusal
+      const { manager, descriptor, account } = world
+      world.script.refuse(`manager.${member}`, 'action.unsupported')
+      const run = {
+        prepareCommitSetup: () =>
+          manager.prepareCommitSetup(descriptor.action, `0x${'00'.repeat(32)}`, 1n, '0x', '0x'),
+        prepareClearSetup: () => manager.prepareClearSetup(descriptor.action),
+        prepareStartAttempt: () => manager.prepareStartAttempt({} as AttemptRequest),
+        prepareCancelByProofs: () => manager.prepareCancelByProofs({} as CancelRequest),
+        prepareCancelByOwner: () => manager.prepareCancelByOwner(descriptor.action),
+        prepareCancelByVeto: () =>
+          manager.prepareCancelByVeto(account, descriptor.action, 1n, descriptor.methodEcdsa)
+      }
+      const error = (await expectThrown(run[member])) as ValidationRefusal
       expect(error.findings.errors.map((f) => f.code)).toContain('action.unsupported')
     })
   })

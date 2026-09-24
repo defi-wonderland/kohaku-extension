@@ -4,10 +4,35 @@
  * through the SDK interfaces of `sdk-interfaces/` and scripts the chain record
  * through the `World` below, so a rename in the doubles changes this file alone.
  */
+import {
+  ActionCodecDouble,
+  addressOf,
+  EventManagerDouble,
+  kitFor,
+  PolicyManagerDouble,
+  ProviderDouble,
+  RecoveryActionDouble,
+  ScriptedChain,
+  shippedMethodDoubles,
+  WalletMethodDouble,
+  WalletReadsDouble,
+  type AnyMethodDouble,
+  type IWalletReadsDouble,
+  type ModuleRead,
+  type RecoveryKitBuilderDouble,
+  type ScriptedRead,
+  type ScriptedRefusalMember
+} from '@web/modules/social-recovery/sdk-doubles'
+import { clearNote, shapeNote } from '@web/modules/social-recovery/sdk-doubles/encoding'
 import type {
   Address,
+  ApproverReply,
+  ApproverRequest,
+  ClientConfiguration,
   Configuration,
   DeploymentDescriptor,
+  FindingCode,
+  Gathering,
   Hex,
   IActionCodec,
   IEventManager,
@@ -19,11 +44,12 @@ import type {
   IRecoveryClient,
   IRecoveryMethod,
   ISetupClient,
+  MethodFailureCause,
+  ModuleInfo,
+  PaymentOrder,
   PrivacyLevel,
-  RecoveryKitBuilder,
   SetupDraft,
-  TrustedParties,
-  ModuleInfo
+  TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 /** The attempt statuses D-371 and D-373 name. */
@@ -37,6 +63,8 @@ export type Canceller = typeof CANCELLERS[number]
 export const METHOD_KINDS = ['wallet', 'passkey', 'zkPassport', 'aadhaar'] as const
 export type MethodKind = typeof METHOD_KINDS[number]
 
+export const PASSWORD = 'correct horse battery staple'
+
 export interface CommittedSetup {
   configuration: Configuration
   draft: SetupDraft
@@ -44,6 +72,7 @@ export interface CommittedSetup {
 }
 
 export interface World {
+  chain: ScriptedChain
   descriptor: DeploymentDescriptor
   account: Address
   provider: IProvider
@@ -52,13 +81,21 @@ export interface World {
   events: IEventManager
   codec: IActionCodec
   methods: Record<MethodKind, IRecoveryMethod>
+  /** The cut-q-22 seam, bound to the given client configuration. */
+  walletReads(
+    config?: Pick<ClientConfiguration, 'creation' | 'accountImplementation'>
+  ): IWalletReadsDouble
   /** A fresh builder wired with every double of this world. */
-  builder(): RecoveryKitBuilder
+  builder(config?: Partial<ClientConfiguration>): RecoveryKitBuilderDouble
   setupClient(): Promise<ISetupClient>
   recoveryClient(): Promise<IRecoveryClient>
   orchestrator(): IMethodsOrchestrator
+  /** The configuration every setup of this world commits: wallet guardians only. */
+  configuration: Configuration
   /** A draft the setup client accepts, at a privacy level. */
   draft(level: PrivacyLevel): SetupDraft
+  /** The material a willing approver's device returns for a request. */
+  material(request: ApproverRequest): unknown
   /** A key the account holds today and an address holding nothing. */
   keys: { held: Address; fresh: Address }
   script: {
@@ -72,18 +109,207 @@ export interface World {
       patch: { paused?: boolean; trustedParties?: TrustedParties; moduleInfo?: ModuleInfo }
     ): void
     keysUpdated(module: Address, current: Hex[]): void
-    /** The next and every later call of this member throws. */
-    failRead(member: string): void
-    /** The member refuses with this code. */
-    refuse(member: string, code: string): void
+    /** Every later call of this read throws. */
+    failRead(read: ScriptedRead): void
+    /** A module read answers `{ answered: false }`. */
+    leaveUnanswered(read: ModuleRead): void
+    /** The member refuses, throwing a validation refusal carrying this code. */
+    refuse(member: ScriptedRefusalMember, code: string): void
+    /** Every `replyFrom` returns this typed failure. */
+    replyFailure(cause: MethodFailureCause): void
+    /** Every `configFrom` returns this typed failure. */
+    enrollFailure(cause: MethodFailureCause): void
   }
 }
 
+const walletConfig = (label: string): Hex =>
+  new WalletMethodDouble().codec.encodeConfig({ address: addressOf(label) })
+
 export const createWorld = (): World => {
-  throw new Error('wired to the doubles once the implementation lands')
+  const chain = new ScriptedChain()
+  const { descriptor } = chain
+  const provider = new ProviderDouble(chain)
+  const doubles = shippedMethodDoubles(chain)
+  const byKind = (kind: AnyMethodDouble['kind']) => doubles.find((d) => d.kind === kind)!
+  const methods: Record<MethodKind, IRecoveryMethod> = {
+    wallet: byKind('wallet'),
+    passkey: byKind('passkey'),
+    zkPassport: byKind('zkpassport'),
+    aadhaar: byKind('aadhaar')
+  }
+  const ecdsa = descriptor.methodEcdsa
+  const configuration: Configuration = {
+    clauses: [
+      {
+        threshold: 2,
+        credentials: [
+          { method: ecdsa, config: walletConfig('ana') },
+          { method: ecdsa, config: walletConfig('ben') },
+          { method: ecdsa, config: walletConfig('carla') }
+        ]
+      },
+      { threshold: 1, credentials: [{ method: ecdsa, config: walletConfig('hardware-wallet') }] }
+    ],
+    wait: 432_000n,
+    ignoresPause: false
+  }
+  const keys = { held: chain.authorities[0]!, fresh: addressOf('fresh-key') }
+  const codec = new ActionCodecDouble([descriptor.action])
+  const builder = (config: Partial<ClientConfiguration> = {}) => {
+    const kit = kitFor(chain, config)
+    doubles.forEach((m) => kit.method(m))
+    return kit
+  }
+  let kit: RecoveryKitBuilderDouble | undefined
+  const sharedKit = () => {
+    kit = kit ?? builder()
+    return kit
+  }
+  const draft = (level: PrivacyLevel): SetupDraft => {
+    const publicMetadata: Hex =
+      level === 'private'
+        ? '0x'
+        : level === 'shape-visible'
+        ? shapeNote(configuration)
+        : clearNote(configuration)
+    return {
+      wait: configuration.wait,
+      clauses: configuration.clauses,
+      ignoresPause: configuration.ignoresPause,
+      privacy: { publicMetadata, backup: level === 'public' ? 'clear' : 'encrypted' }
+    }
+  }
+  const payload = codec.encode({ newAuthority: keys.fresh, removedAuthority: keys.held })
+  const cancel = (canceller: Canceller) => {
+    // "Nobody" here is a security stop's veto; a setup write is the other nobody.
+    if (canceller === 'nobody') {
+      chain.cancelAttempt('nobody', { vetoingMethod: descriptor.methodZkpassport })
+    } else chain.cancelAttempt(canceller)
+  }
+
+  return {
+    chain,
+    descriptor,
+    account: chain.account,
+    provider,
+    manager: new PolicyManagerDouble(chain),
+    actionPart: new RecoveryActionDouble(chain),
+    events: new EventManagerDouble(chain, provider),
+    codec,
+    methods,
+    walletReads: (config = {}) => new WalletReadsDouble(chain, config),
+    builder,
+    setupClient: () => sharedKit().buildSetupClient(),
+    recoveryClient: () => sharedKit().buildRecoveryClient(),
+    orchestrator: () => sharedKit().buildMethodsOrchestrator(),
+    configuration,
+    draft,
+    material: (request) => {
+      const method = doubles.find((d) =>
+        d.modules(descriptor).some((m) => m.toLowerCase() === request.method.toLowerCase())
+      )!
+      return method.satisfyingMaterial(request)
+    },
+    keys,
+    script: {
+      setupNone: () => {
+        if (chain.setup.status === 'committed') chain.clearSetup()
+      },
+      setupCommitted: (level) => {
+        const password = level === 'public' ? undefined : PASSWORD
+        chain.commitSetup({ level, configuration, password })
+        return { configuration, draft: draft(level), password }
+      },
+      attempt: (status, canceller = 'account') => {
+        if (status === 'none') return
+        chain.openAttempt({ ready: status !== 'pending', payload })
+        if (status === 'cancelled') cancel(canceller)
+        if (status === 'executed') chain.executeAttempt()
+      },
+      authorized: (held) => chain.setAuthorized(held),
+      code: (present) => chain.setHasCode(present),
+      method: (module, patch) => {
+        chain.declareMethod(module, patch)
+      },
+      keysUpdated: (module, current) => chain.updateTrustedKeys(module, current),
+      failRead: (read) => {
+        chain.failRead(read)
+      },
+      leaveUnanswered: (read) => {
+        chain.leaveUnanswered(read)
+      },
+      refuse: (member, code) => {
+        chain.refuse(member, {
+          kind: 'validation',
+          findings: {
+            errors: [{ code: code as FindingCode, subject: 'request', values: {} }],
+            warnings: []
+          }
+        })
+      },
+      replyFailure: (cause) => {
+        chain.replyFailure = cause
+      },
+      enrollFailure: (cause) => {
+        chain.enrollFailure = cause
+      }
+    }
+  }
 }
 
 export const ZERO: Address = '0x0000000000000000000000000000000000000000'
+export const NO_PAYMENT: PaymentOrder = { token: ZERO, amount: 0n, payee: ZERO }
+export const WINDOW = 24 * 3600
+
+/** One approver's reply: the signing input, then the material a willing device returns. */
+export const replyFor = async (world: World, request: ApproverRequest): Promise<ApproverReply> => {
+  const orchestrator = world.orchestrator()
+  const input = orchestrator.signingInput(request)
+  const reply = await orchestrator.replyFrom(request, input, world.material(request))
+  expect(reply.kind).toBe('recovery-proof-reply')
+  return reply as ApproverReply
+}
+
+export interface Opened {
+  world: World
+  recovery: IRecoveryClient
+  orchestrator: IMethodsOrchestrator
+  gathering: Gathering
+  requests: ApproverRequest[]
+}
+
+/** A committed private setup, no attempt, and an opening gathering over it. */
+export const openRecovery = async (world: World = createWorld()): Promise<Opened> => {
+  const committed = world.script.setupCommitted('private')
+  world.script.authorized(true)
+  const recovery = await world.recoveryClient()
+  const gathering = await recovery.initRecoveryGathering(
+    { configuration: committed.configuration },
+    { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
+    NO_PAYMENT,
+    { window: WINDOW }
+  )
+  return {
+    world,
+    recovery,
+    orchestrator: world.orchestrator(),
+    gathering,
+    requests: recovery.getApproverRequests(gathering)
+  }
+}
+
+/** Files one reply per request, each add reading the record the last one returned. */
+export const fillAll = async ({ world, recovery, gathering, requests }: Opened) => {
+  let g = gathering
+  // eslint-disable-next-line no-restricted-syntax
+  for (const request of requests) {
+    // eslint-disable-next-line no-await-in-loop
+    const added = recovery.addApproverReply(g, await replyFor(world, request))
+    expect(added.reason).toBeUndefined()
+    g = added.gathering
+  }
+  return g
+}
 export const isHex = (value: unknown): value is Hex =>
   typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value)
 export const isAddress = (value: unknown): value is Address =>
@@ -136,6 +362,7 @@ if (expect.getState().testPath === __filename) {
     it('builds a world with the four shipped method kinds', () => {
       const world = createWorld()
       expect(Object.keys(world.methods).sort()).toEqual([...METHOD_KINDS].sort())
+      expect(world.configuration.clauses.length).toBeGreaterThan(0)
     })
   })
 }
