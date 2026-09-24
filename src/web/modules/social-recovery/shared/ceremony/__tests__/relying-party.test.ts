@@ -95,15 +95,13 @@ describe('the ceremonies', () => {
     const options = creds.create.mock.calls[0][0] as CredentialCreationOptions
     expect(options.publicKey?.rp.id).toBe(EXTENSION_ID)
   })
-
-  it.each(['testAccess', 'createClaim'] as const)(
-    'assert at %s under rpId = the extension origin host',
-    async (host) => {
+  ;(['testAccess', 'createClaim'] as const).forEach((host) =>
+    it(`assert at ${host} under rpId = the extension origin host`, async () => {
       const method = fakeMethod()
       await hosts[host]({ method, orchestrator: fakeOrchestrator(method) })
       const options = creds.get.mock.calls[0][0] as CredentialRequestOptions
       expect(options.publicKey?.rpId).toBe(EXTENSION_ID)
-    }
+    })
   )
 })
 

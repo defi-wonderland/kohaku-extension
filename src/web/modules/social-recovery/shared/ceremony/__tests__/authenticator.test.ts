@@ -77,40 +77,41 @@ describe('enrollment', () => {
     expect(Math.min(...packagedAt)).toBeGreaterThan(created)
   })
 })
+;(['testAccess', 'createClaim'] as const).forEach((host) =>
+  describe(`the ${host} host`, () => {
+    it('calls navigator.credentials.get, never create', async () => {
+      const assertion = fakeAssertion({ r: BigInt(11), s: BigInt(12) })
+      creds = installCredentials({ get: async () => assertion.credential })
+      const method = fakeMethod()
+      await hosts[host]({ method, orchestrator: fakeOrchestrator(method) })
+      expect(creds.get).toHaveBeenCalledTimes(1)
+      expect(creds.create).not.toHaveBeenCalled()
+      expect(creds.get.mock.calls[0][0]).toHaveProperty('publicKey')
+    })
 
-describe.each(['testAccess', 'createClaim'] as const)('the %s host', (host) => {
-  it('calls navigator.credentials.get, never create', async () => {
-    const assertion = fakeAssertion({ r: BigInt(11), s: BigInt(12) })
-    creds = installCredentials({ get: async () => assertion.credential })
-    const method = fakeMethod()
-    await hosts[host]({ method, orchestrator: fakeOrchestrator(method) })
-    expect(creds.get).toHaveBeenCalledTimes(1)
-    expect(creds.create).not.toHaveBeenCalled()
-    expect(creds.get.mock.calls[0][0]).toHaveProperty('publicKey')
+    it('hands the assertion to the method, after the ceremony', async () => {
+      const assertion = fakeAssertion({ r: BigInt(11), s: BigInt(12) })
+      creds = installCredentials({ get: async () => assertion.credential })
+      const method = fakeMethod()
+      const orchestrator = fakeOrchestrator(method)
+      await hosts[host]({ method, orchestrator })
+
+      const packaged = materials(method, orchestrator)
+      expect(packaged.length).toBeGreaterThan(0)
+      const assertionReached = packaged.some((material) =>
+        carries(material, {
+          objects: [assertion.credential, assertion.credential.response],
+          bytes: [assertion.authData, assertion.signature]
+        })
+      )
+      expect(assertionReached).toBe(true)
+
+      const asked = creds.get.mock.invocationCallOrder[0]
+      const packagedAt = [
+        ...method.replyFrom.mock.invocationCallOrder,
+        ...orchestrator.replyFrom.mock.invocationCallOrder
+      ]
+      expect(Math.min(...packagedAt)).toBeGreaterThan(asked)
+    })
   })
-
-  it('hands the assertion to the method, after the ceremony', async () => {
-    const assertion = fakeAssertion({ r: BigInt(11), s: BigInt(12) })
-    creds = installCredentials({ get: async () => assertion.credential })
-    const method = fakeMethod()
-    const orchestrator = fakeOrchestrator(method)
-    await hosts[host]({ method, orchestrator })
-
-    const packaged = materials(method, orchestrator)
-    expect(packaged.length).toBeGreaterThan(0)
-    const assertionReached = packaged.some((material) =>
-      carries(material, {
-        objects: [assertion.credential, assertion.credential.response],
-        bytes: [assertion.authData, assertion.signature]
-      })
-    )
-    expect(assertionReached).toBe(true)
-
-    const asked = creds.get.mock.invocationCallOrder[0]
-    const packagedAt = [
-      ...method.replyFrom.mock.invocationCallOrder,
-      ...orchestrator.replyFrom.mock.invocationCallOrder
-    ]
-    expect(Math.min(...packagedAt)).toBeGreaterThan(asked)
-  })
-})
+)

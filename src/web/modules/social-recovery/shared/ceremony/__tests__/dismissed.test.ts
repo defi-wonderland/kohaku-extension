@@ -37,9 +37,8 @@ beforeAll(async () => {
   point = await generatePoint()
 })
 
-describe.each(CEREMONY_HOSTS)(
-  'the $host host, $call rejects with NotAllowedError',
-  ({ host, call }) => {
+CEREMONY_HOSTS.forEach(({ host, call }) =>
+  describe(`the ${host} host, ${call} rejects with NotAllowedError`, () => {
     let creds: ReturnType<typeof installCredentials>
 
     beforeEach(() => {
@@ -79,7 +78,7 @@ describe.each(CEREMONY_HOSTS)(
       const outcome = await hosts[host]({ method, orchestrator })
       expect(outcome).not.toMatchObject({ type: 'verdict' })
     })
-  }
+  })
 )
 
 describe('a ceremony that completes', () => {
@@ -96,14 +95,13 @@ describe('a ceremony that completes', () => {
 
   // The control of the tests above: the same fakes run the method once the
   // browser answers, so a zero count above is the dismissal's doing.
-  it.each(CEREMONY_HOSTS)(
-    'the $host host calls $call and then the method',
-    async ({ host, call }) => {
+  CEREMONY_HOSTS.forEach(({ host, call }) =>
+    it(`the ${host} host calls ${call} and then the method`, async () => {
       const method = fakeMethod()
       const orchestrator = fakeOrchestrator(method)
       await hosts[host]({ method, orchestrator })
       expect(creds[call]).toHaveBeenCalledTimes(1)
       expect(methodRunCount(method, orchestrator)).toBeGreaterThan(0)
-    }
+    })
   )
 })

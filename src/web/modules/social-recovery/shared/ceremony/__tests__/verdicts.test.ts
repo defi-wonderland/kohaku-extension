@@ -185,19 +185,23 @@ const expectOneVerdict = (outcome: Outcome, expected: Case) => {
   }
 }
 
-describe.each(Object.keys(CASES) as (keyof typeof CASES)[])('the %s host', (host) => {
-  it.each(CASES[host].map((c) => [c.title, c] as const))('%s', async (_title, c) => {
-    const method = fakeMethod(c.script)
-    const orchestrator = fakeOrchestrator(method)
-    const outcome = await hosts[host]({ method, orchestrator })
-    expectOneVerdict(outcome, c)
-  })
+;(Object.keys(CASES) as (keyof typeof CASES)[]).forEach((host) =>
+  describe(`the ${host} host`, () => {
+    CASES[host].forEach((c) =>
+      it(c.title, async () => {
+        const method = fakeMethod(c.script)
+        const orchestrator = fakeOrchestrator(method)
+        const outcome = await hosts[host]({ method, orchestrator })
+        expectOneVerdict(outcome, c)
+      })
+    )
 
-  it('reaches every one of the four verdicts, and no other', () => {
-    const reached = new Set(CASES[host].map((c) => c.verdict))
-    expect([...reached].sort()).toEqual([...FOUR_VERDICTS].sort())
+    it('reaches every one of the four verdicts, and no other', () => {
+      const reached = new Set(CASES[host].map((c) => c.verdict))
+      expect([...reached].sort()).toEqual([...FOUR_VERDICTS].sort())
+    })
   })
-})
+)
 
 describe('the health-check host (third release, a shell)', () => {
   it('returns not supported with no retry', async () => {

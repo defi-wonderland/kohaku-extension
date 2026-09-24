@@ -55,22 +55,23 @@ describe('the high-s normalization', () => {
     expect(normalized(R, P256_HALF_N + BigInt(1)).parsed.s).toBe(P256_HALF_N)
   })
 
-  it.each([
+  const LOW: [string, bigint][] = [
     ['the largest low s, (n - 1) / 2', P256_HALF_N],
     ['a low s with its top byte clear', P256_N - HIGH_S],
     ['s = 1', BigInt(1)]
-  ])('leaves %s unchanged', (_title, s) => {
-    const input = derSignature(R, s)
-    const { out, parsed } = normalized(R, s)
-    expect(parsed).toMatchObject({ r: R, s })
-    // Unchanged means unchanged: a DER answer is the same bytes.
-    if (parsed.form === 'der') expect(Array.from(asBytes(out) ?? [])).toEqual(Array.from(input))
-  })
+  ]
+  LOW.forEach(([title, s]) =>
+    it(`leaves ${title} unchanged`, () => {
+      const input = derSignature(R, s)
+      const { out, parsed } = normalized(R, s)
+      expect(parsed).toMatchObject({ r: R, s })
+      // Unchanged means unchanged: a DER answer is the same bytes.
+      if (parsed.form === 'der') expect(Array.from(asBytes(out) ?? [])).toEqual(Array.from(input))
+    })
+  )
 })
-
-describe.each(['createClaim', 'testAccess'] as const)(
-  'the %s host normalizes before the method receives the assertion',
-  (host) => {
+;(['createClaim', 'testAccess'] as const).forEach((host) =>
+  describe(`the ${host} host normalizes before the method receives the assertion`, () => {
     let creds: ReturnType<typeof installCredentials>
 
     afterEach(() => creds.restore())
@@ -100,5 +101,5 @@ describe.each(['createClaim', 'testAccess'] as const)(
       expect(signatures.length).toBeGreaterThan(0)
       signatures.forEach((sig) => expect(sig.s).toBe(low))
     })
-  }
+  })
 )

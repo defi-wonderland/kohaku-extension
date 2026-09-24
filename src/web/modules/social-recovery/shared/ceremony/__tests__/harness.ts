@@ -43,11 +43,12 @@ import type {
 // jsdom 20 has no TextEncoder, no TextDecoder and no crypto.subtle. They are
 // installed here, before the lane loads (the lane is required lazily below),
 // so a module that builds an encoder at load time finds one.
+interface NodeEncoder {
+  encode(input?: string): Uint8Array
+  encodeInto(source: string, destination: Uint8Array): { read: number; written: number }
+}
 if (typeof globalThis.TextEncoder === 'undefined') {
-  const util = require('util') as {
-    TextEncoder: typeof globalThis.TextEncoder
-    TextDecoder: typeof globalThis.TextDecoder
-  }
+  const util = require('util') as { TextEncoder: new () => NodeEncoder; TextDecoder: unknown }
   const nodeEncoder = new util.TextEncoder()
   // Node's encoder returns Node's Uint8Array, which fails `instanceof
   // Uint8Array` inside jsdom's realm; this one copies into the page's own.
@@ -658,18 +659,24 @@ export const fakeMethod = (
   script: MethodScript = {},
   deviceBinding: DeviceBinding = 'browser-authenticator'
 ): FakeMethod => ({
-  modules: jest.fn(() => [PASSKEY_METHOD]),
+  modules: jest.fn<Address[], [unknown]>(() => [PASSKEY_METHOD]),
   enrollInput: jest.fn((params: unknown) =>
     script.enrollInput !== undefined ? answerSync(script.enrollInput) : { params }
   ),
-  configFrom: jest.fn(async () => answer(script.configFrom ?? CONFIG_HEX)),
+  configFrom: jest.fn<Promise<Hex | EnrollFailure>, [unknown, unknown]>(async () =>
+    answer(script.configFrom ?? CONFIG_HEX)
+  ),
   signingInput: jest.fn((ctx: MethodContext, params?: unknown) =>
     script.signingInput !== undefined
       ? answerSync(script.signingInput)
       : { challenge: ctx.digest, params }
   ),
-  replyFrom: jest.fn(async () => answer(script.replyFrom ?? PROOF_HEX)),
-  verify: jest.fn(async () => answer(script.verify ?? 'satisfied')),
+  replyFrom: jest.fn<Promise<Hex | ReplyFailure>, [MethodContext, unknown, unknown]>(async () =>
+    answer(script.replyFrom ?? PROOF_HEX)
+  ),
+  verify: jest.fn<Promise<Verdict>, [MethodContext, Hex]>(async () =>
+    answer(script.verify ?? 'satisfied')
+  ),
   codec: opaqueCodec,
   deviceBinding,
   describe: jest.fn(() => ({ kind: 'webauthn-authenticator' as const })),
