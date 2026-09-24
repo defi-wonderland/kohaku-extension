@@ -87,8 +87,11 @@ describe('user-typed method name (D-302: caps at 24 characters)', () => {
     expect(ellipsizeName(`${'a'.repeat(22)}${flag}cc`)).toBe(`${'a'.repeat(22)}${flag}…`)
   })
 
-  it('returns null for an empty name', () => {
-    expect(ellipsizeName('')).toBeNull()
+  // The empty-name rule (null, no name and no caveat) lives in
+  // renderResolvedName and is tested in caveat.test.ts; the cut itself keeps
+  // an empty user-typed name empty.
+  it('leaves an empty name empty', () => {
+    expect(ellipsizeName('')).toBe('')
   })
 })
 

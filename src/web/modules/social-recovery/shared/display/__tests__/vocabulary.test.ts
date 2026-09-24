@@ -218,7 +218,7 @@ describe('kit nouns and password names (D-302)', () => {
   it("renders the method's admin and pause holder under their D-302 words", () => {
     expect(PARTY_NOUNS.map((noun) => render(nounKey(noun)))).toEqual([
       "The method's admin",
-      'The party that can stop this method'
+      'The party that can stop that method'
     ])
   })
 

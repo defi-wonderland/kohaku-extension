@@ -48,4 +48,15 @@ describe('resolved name caveat (I-41)', () => {
   it('returns null for an empty name in every use, so no caveat floats with no name', () => {
     NAME_USES.forEach((use) => expect(renderResolvedName('', use)).toBeNull())
   })
+
+  it('returns null for a blank name in every use', () => {
+    NAME_USES.forEach((use) => expect(renderResolvedName('  \t', use)).toBeNull())
+  })
+
+  it('narrows to a name with its caveat when the name is not empty', () => {
+    const out = renderResolvedName('bob.eth', 'aloneForAction')
+    expect(out).not.toBeNull()
+    expect(out!.name).toBe('bob.eth')
+    expect(out!.caveat).toBe(CAVEAT)
+  })
 })

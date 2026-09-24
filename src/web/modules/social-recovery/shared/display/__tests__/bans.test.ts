@@ -82,10 +82,10 @@ const renderedValues = (): string[] => {
     display.renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: PAYEE }, TOKEN),
     display.renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: ZERO }, TOKEN),
     deadline.line ?? '',
-    display.renderCountdown({ state: 'waiting', remainingMs: 1000 }),
-    display.renderCountdown({ state: 'waiting', remainingMs: 1000, stopped: true }),
-    display.renderCountdown({ state: 'executionDue', remainingMs: 0 }),
-    display.renderCountdown({ state: 'executionDue', remainingMs: 0, stopped: true })
+    display.renderCountdown({ remainingMs: 1000 }),
+    display.renderCountdown({ remainingMs: 1000, stopped: true }),
+    display.renderCountdown({ remainingMs: 0 }),
+    display.renderCountdown({ remainingMs: 0, stopped: true })
   ]
 }
 
@@ -108,7 +108,7 @@ describe('bans over the display module (I-26, ux-copy.md)', () => {
         'Setup changed',
         'Still needed',
         'Guardian',
-        'The party that can stop this method',
+        'The party that can stop that method',
         'Controlled by'
       ])
     )
