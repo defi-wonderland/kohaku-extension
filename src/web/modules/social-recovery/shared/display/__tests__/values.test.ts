@@ -213,8 +213,9 @@ describe('payment order (D-302: amount, symbol and payee, or no payment, one for
     expect(renderPaymentOrder(undefined, token)).toBe('No payment')
   })
 
-  it('takes no option that changes the form: its third parameter is the translate function', () => {
-    // Compile-time: a payee-form option would make this false and fail ts-jest.
+  it('takes the translate function as its third parameter and passes it the full payee', () => {
+    // Compile-time, held by `npx tsc --noEmit` (ts-jest reports no type error
+    // here): a payee-form option in the third place would make this false.
     type Third = Parameters<typeof renderPaymentOrder>[2]
     const thirdIsTranslate: Third extends Translate | undefined ? true : false = true
     expect(thirdIsTranslate).toBe(true)

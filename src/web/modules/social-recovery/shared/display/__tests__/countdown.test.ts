@@ -43,9 +43,19 @@ describe('attempt countdown (K-09)', () => {
     expect(renderCountdown({ remainingMs: -5000, stopped: true })).toBe('Execution due · stopped')
   })
 
-  it('derives the state from the time left: waiting above zero, execution due at or below', () => {
-    expect(countdownStateOf(1)).toBe('waiting')
+  it('renders execution due, never 00:00:00 · waiting, with less than one whole second left', () => {
+    expect(renderCountdown({ remainingMs: 500 })).toBe('Execution due')
+    expect(renderCountdown({ remainingMs: 500 })).not.toBe('00:00:00 · waiting')
+    expect(renderCountdown({ remainingMs: 999 })).toBe('Execution due')
+    expect(renderCountdown({ remainingMs: 500, stopped: true })).toBe('Execution due · stopped')
+  })
+
+  it('derives the state from whole seconds left: waiting from one second, execution due below', () => {
     expect(countdownStateOf(REMAINING)).toBe('waiting')
+    expect(countdownStateOf(1000)).toBe('waiting')
+    expect(countdownStateOf(999)).toBe('executionDue')
+    expect(countdownStateOf(500)).toBe('executionDue')
+    expect(countdownStateOf(1)).toBe('executionDue')
     expect(countdownStateOf(0)).toBe('executionDue')
     expect(countdownStateOf(-1)).toBe('executionDue')
   })
