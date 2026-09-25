@@ -6,11 +6,17 @@
  * en.json.
  *
  * The views are not mounted: the repository's Jest runs ts-jest under
- * `jsx: react-native`, which leaves JSX untransformed.
+ * `jsx: react-native`, which leaves JSX untransformed. The one check on the
+ * view sources themselves is that neither opens a link (D-312: the step
+ * renders no faucet link), since a link a view added would bypass the
+ * renderers.
  *
  * Sources: briefs/PT-039.md ("Shape"), task file done entries 1 to 3,
  * design/ux.md D-303, D-307, D-312, D-319, D-393.
  */
+import fs from 'fs'
+import path from 'path'
+
 import { appTranslate, renderChip } from '@web/modules/social-recovery/shared/display'
 
 import {
@@ -226,4 +232,23 @@ describe('DepositStepView: what renderDepositStep answers', () => {
       ].forEach((s) => expect(s ?? '').not.toMatch(LINK))
     })
   })
+})
+
+describe('neither view opens a link (D-312)', () => {
+  const VIEWS = path.resolve(__dirname, '..', 'components')
+  const viewFiles = fs.readdirSync(VIEWS).filter((file) => /\.tsx$/.test(file))
+
+  it('reads both view sources', () => {
+    expect(viewFiles.sort()).toEqual(['DepositStepView.tsx', 'WriteStateView.tsx'])
+  })
+
+  viewFiles.forEach((file) =>
+    it(`${file} calls no Linking, sets no href and names no faucet`, () => {
+      const source = fs.readFileSync(path.join(VIEWS, file), 'utf8')
+      expect(source).not.toMatch(/\bLinking\b/)
+      expect(source).not.toMatch(/\bhref\b/)
+      expect(source).not.toMatch(/\bopenURL\b|\bwindow\.open\b|\bhttps?:\/\//)
+      expect(source).not.toMatch(/faucet/i)
+    })
+  )
 })
