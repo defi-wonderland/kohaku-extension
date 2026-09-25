@@ -14,7 +14,11 @@ import type { Finding, RequestErrorCode, RequestWarningCode } from './utilities'
 export const GATHERING_PURPOSES = ['approval', 'cancellation'] as const
 export type GatheringPurpose = typeof GATHERING_PURPOSES[number]
 
-/** A place's stop standing, two-valued: its method is stopped or it is not. */
+/**
+ * A place's stop standing. Its method is stopped only when the method's pause
+ * read returns exactly `true`; a revert, an empty return or any other value
+ * reads as not stopped.
+ */
 export const PLACE_STANDINGS = ['stopped', 'not-stopped'] as const
 export type PlaceStanding = typeof PLACE_STANDINGS[number]
 

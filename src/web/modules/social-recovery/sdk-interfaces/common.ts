@@ -8,7 +8,8 @@ export type { Address, Hex }
 
 /**
  * The tag a read pins at: `latest` for a screen somebody waits at, `finalized`
- * for a watcher, or a block number a caller resolved. No other tag exists.
+ * for a watcher, or a block number a caller resolved. The SDK takes no other
+ * tag.
  */
 export type BlockTag = 'latest' | 'finalized' | number
 
