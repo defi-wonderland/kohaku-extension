@@ -1,25 +1,19 @@
 /**
  * `buildRecoveryClient`: the one recovery kit client the extension builds for
- * an account (ux-interfaces.md D-370), with the digest-version check of
- * ux.md D-319 inside it.
+ * an account, with the digest-version check inside it.
  *
- * The client is built through the SDK's builder (sdk.md D-201, D-208), today
- * PT-035's builder double over the stand-in's scripted chain. The builder
- * receives the provider adapter, the descriptor, the account and the client
- * configuration, and nothing else of the extension: no signer and no storage.
+ * The client is built through the SDK's builder, today the builder double over
+ * the stand-in's scripted chain. The builder receives the provider adapter, the
+ * descriptor, the account and the client configuration, and nothing else of
+ * the extension: no signer and no storage.
  *
- * Before anything is built, the wallet runs D-208's construction checks 2 to 5
- * in D-208's order. It reads the provider's chain id (check 2), then the domain
- * the manager publishes through `eip712Domain()`: its chain id and verifying
- * contract (check 3) and its `fields` bitmap (check 4) refuse with the
- * builder's own `ConstructionRefusal`, so a provider or a manager on another
- * chain reads as a construction refusal. Only then does it compare the
- * domain's version and name with the digest version this build carries
- * (check 5). That disagreement throws a `DigestVersionRefusal` before any
- * client exists, so no prepare can run; the account step draws it as the
- * update the wallet state (ux.md D-306, D-319). The builder runs the same
- * checks again at construction; its digest-version refusal is surfaced as the
- * same `DigestVersionRefusal`.
+ * The SDK's construction checks run before anything is built, in the SDK's
+ * order: the provider's chain id, the manager domain's chain id and verifying
+ * contract, its `fields` bitmap, then its digest version. A refused digest
+ * version throws a `DigestVersionRefusal` before any client exists, so no
+ * prepare can run; the account step draws it as the update-the-wallet state.
+ * The builder runs the same checks again at construction, and its
+ * digest-version refusal is surfaced as the same `DigestVersionRefusal`.
  */
 import type { ConstructionRefusal } from '@web/modules/social-recovery/sdk-doubles'
 import {
@@ -47,17 +41,17 @@ import { descriptorOf } from './descriptors'
 import { sdkStandIn } from './stand-in'
 import type { WalletReads } from './wallet-reads'
 
-/** The name every kit manager's domain carries (sdk.md D-208 check 5, contracts D-103). */
+/** The name every kit manager's domain carries. */
 export const MANAGER_DOMAIN_NAME = 'PolicyManager'
 
-/** The `fields` bitmap of the four members the SDK derives under: name, version, chain id, verifying contract (D-208 check 4). */
+/** The `fields` bitmap of the four members the SDK derives under: name, version, chain id, verifying contract. */
 export const MANAGER_DOMAIN_FIELDS = '0x0f'
 
 /**
  * What the extension holds for one account: the two entry clients, the two
  * narrow seams the builder hands out, the approving side, and the wallet's
  * own reads. The builder constructed every part once, so all of them read the
- * same manager, action and events (sdk.md D-201).
+ * same manager, action and events.
  */
 export interface RecoveryKitClient {
   chain: RecoveryChain
@@ -69,9 +63,9 @@ export interface RecoveryKitClient {
   action: IRecoveryActionInteractor
   /** `IMethodModuleReads` alone; the manager part is never handed out whole. */
   moduleReads: IMethodModuleReads
-  /** The approving side of D-206, over the builder's method registry; it reads no chain. */
+  /** The approving side, over the builder's method registry; it reads no chain. */
   approving: IMethodsOrchestrator
-  /** The cut-q-22 reads (wallet-reads.ts). */
+  /** The wallet's own reads the SDK does not offer (wallet-reads.ts). */
   walletReads: WalletReads
 }
 
@@ -90,7 +84,7 @@ export interface DigestVersionRefusal extends Error {
   state: 'update-the-wallet'
   /** What this build derives under. */
   carried: DomainVersion
-  /** What the manager publishes, where this lane read it. */
+  /** What the manager publishes, where the wallet read it. */
   published?: DomainVersion
 }
 
@@ -120,9 +114,9 @@ export const carriedDomainVersion = (descriptor: DeploymentDescriptor): DomainVe
 })
 
 /**
- * sdk.md D-208 construction check 5 over the domain the manager published:
- * its version must be the descriptor's digest version and its name
- * `PolicyManager`. Throws a `DigestVersionRefusal` otherwise.
+ * The digest-version check over the domain the manager published: its version
+ * must be the descriptor's digest version and its name `PolicyManager`.
+ * Throws a `DigestVersionRefusal` otherwise.
  */
 export const checkDigestVersion = (domain: Domain, descriptor: DeploymentDescriptor): void => {
   const carried = carriedDomainVersion(descriptor)
@@ -152,7 +146,7 @@ export const buildRecoveryClient = async (
   const chain = sdkStandIn.chainFor(descriptor, config.account)
   const manager = new PolicyManagerDouble(chain)
 
-  // sdk.md D-208 check 2: the provider's chain.
+  // The provider's chain.
   const chainId = await config.provider.chainId()
   if (chainId !== descriptor.chainId) {
     throw constructionRefusal(
@@ -160,7 +154,9 @@ export const buildRecoveryClient = async (
       `The provider answers chain ${chainId}, the descriptor ${descriptor.chainId}.`
     )
   }
-  // Checks 3 and 4: the domain's chain and address, then its members.
+  // The domain's chain and address, then its members. Until the SDK lands the
+  // domain comes from the stand-in's manager part, the instance the builder is
+  // handed; the SDK's own construction check reads it through the provider.
   const domain = await manager.eip712Domain()
   if (
     Number(domain.chainId) !== descriptor.chainId ||
@@ -174,7 +170,7 @@ export const buildRecoveryClient = async (
       'The manager domain carries members this build does not derive under.'
     )
   }
-  // Check 5, ux.md D-319: the digest version, before anything is built or prepared.
+  // The digest version, before anything is built or prepared.
   checkDigestVersion(domain, descriptor)
 
   const builder = new RecoveryKitBuilderDouble(chain)
@@ -184,7 +180,7 @@ export const buildRecoveryClient = async (
     .account(config.account)
     .config(clientConfiguration)
     .policyManager(manager)
-  // The builder's method registry: the four shipped methods (sdk.md D-206, D-208).
+  // The builder's method registry: the four shipped methods.
   shippedMethodDoubles(chain).forEach((method) => builder.method(method))
 
   try {

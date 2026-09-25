@@ -2,10 +2,9 @@
  * The extension's own chain reads beside the provider adapter.
  *
  * The SDK's provider answers four reads and no balance, and the SDK estimates
- * nothing (ux-interfaces.md D-373). The extension therefore reads the sending
- * key's native balance and estimates each transaction's gas itself, on the
- * same provider the adapter wraps. The gas step of PT-039 reads these; the
- * SDK never sees them.
+ * nothing. The extension therefore reads the sending key's native balance and
+ * estimates each transaction's gas itself, on the same provider the adapter
+ * wraps. The gas step reads these; the SDK never sees them.
  */
 import type {
   Address,
@@ -84,10 +83,9 @@ export const createChainReads = (rpc: ExtensionRpc): ChainReads => ({
 
 /**
  * The transaction a key sends for a prepared call whose sender is anyone (the
- * submission and the execution the recoverer's own key sends, D-373), for its
- * gas estimate. A call whose sender is the account rides the account's own
- * `execute`, which the account library estimates, so this refuses it
- * (sdk.md D-202).
+ * submission and the execution the recoverer's own key sends), for its gas
+ * estimate. A call whose sender is the account rides the account's own
+ * `execute`, which the account library estimates, so this refuses it.
  */
 export const gasCallOf = (prepared: PreparedCall, from: Address): GasEstimateCall => {
   if (prepared.sender !== 'anyone') {

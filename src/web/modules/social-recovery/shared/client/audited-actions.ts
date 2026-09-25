@@ -1,15 +1,12 @@
 /**
  * The extension's own table of the kit's audited actions and their publishers.
  *
- * ux.md D-302 names the action the recovery module and its author the
- * publisher. ux.md D-317 (the trust list) and D-319 (the arming step) say the
- * wallet names the action with its author "read from the wallet's own table of
- * the kit's audited actions" and "offers the kit's audited actions and nothing
- * else". This table is that one source: a screen offers, names or judges an
+ * The wallet offers the kit's audited actions and nothing else, and names each
+ * with its publisher from this table. A screen offers, names or judges an
  * action only through `auditedActionsOn` and `auditedActionOf`, and the
- * descriptors' `auditedActions` sets (sdk.md D-208) are read from it.
+ * descriptors' `auditedActions` sets are read from it.
  *
- * The action addresses are cut-q-7 placeholders (addresses.ts).
+ * The action addresses are placeholders to replace once deployed (addresses.ts).
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -19,7 +16,7 @@ import type { RecoveryChain } from './chains'
 /**
  * The publishers of the audited actions, as slugs. A slug is data, never
  * copy: a screen renders a publisher's name through its en.json key,
- * `publisherKeyOf`, and this lane ships no string.
+ * `publisherKeyOf`, and this folder ships no string.
  */
 export const PUBLISHERS = ['ethereumFoundation'] as const
 export type Publisher = typeof PUBLISHERS[number]
@@ -40,21 +37,21 @@ export const AUDITED_ACTIONS = [
   {
     kind: 'audited',
     chain: 'sepolia',
-    // cut-q-7 placeholder address.
+    // Placeholder address, to replace once deployed.
     action: PLACEHOLDER_ADDRESSES.sepolia.action,
     publisher: 'ethereumFoundation'
   },
   {
     kind: 'audited',
     chain: 'mainnet',
-    // cut-q-7 placeholder address.
+    // Placeholder address, to replace once deployed.
     action: PLACEHOLDER_ADDRESSES.mainnet.action,
     publisher: 'ethereumFoundation'
   }
 ] as const
 
 /**
- * The lane's explicit answer for an address the table does not hold. A screen
+ * The explicit answer for an address the table does not hold. A screen
  * names no publisher for it and offers it nowhere.
  */
 export const UNKNOWN_ACTION = Object.freeze({ kind: 'unknown-action' } as const)
@@ -62,7 +59,7 @@ export type UnknownAction = typeof UNKNOWN_ACTION
 
 const rows = (): readonly AuditedAction[] => AUDITED_ACTIONS
 
-/** The audited actions of one chain, the only list a screen offers (ux.md D-319). */
+/** The audited actions of one chain, the only list a screen offers. */
 export const auditedActionsOn = (chain: RecoveryChain): AuditedAction[] =>
   rows()
     .filter((row) => row.chain === chain)
