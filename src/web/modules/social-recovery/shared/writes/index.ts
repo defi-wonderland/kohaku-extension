@@ -1,0 +1,118 @@
+/**
+ * shared/writes: the submitting and failed states every social recovery write
+ * shares, and the gas check with its deposit step.
+ *
+ * The two React components live in `./components`, imported by path, so this
+ * module loads in a Node test without the UI.
+ */
+export {
+  WRITE_KINDS,
+  OWNER_WRITES,
+  RECOVERY_CALLS,
+  PAYERS,
+  isWriteKind,
+  isOwnerWrite,
+  isRecoveryCall,
+  payerOf,
+  assertWriteDoor,
+  type WriteKind,
+  type OwnerWrite,
+  type RecoveryCall,
+  type Payer
+} from './kinds'
+export {
+  WRITE_STATUSES,
+  FAILED_STATUSES,
+  isFailedState,
+  canRetry,
+  offersMoveFunds,
+  type WriteStatus,
+  type FailedStatus,
+  type IdleState,
+  type CheckingGasState,
+  type GasReadErrorState,
+  type NeedsDepositState,
+  type SubmittingState,
+  type LandedState,
+  type FailedNotSentState,
+  type FailedRevertedState,
+  type FailedState,
+  type WriteState
+} from './states'
+export {
+  ATTEMPT_ENDS,
+  ATTEMPT_STILL_RUNNING,
+  REPLACED_REASONS,
+  REVERT_CAUSE_KINDS,
+  EXECUTION_STILL_READY_CAUSES,
+  NO_RETRY_CAUSES,
+  receiptOf,
+  writeFailureOf,
+  kitErrorNameOf,
+  revertCauseOf,
+  retryCanFix,
+  leavesAttemptReady,
+  gasSpentOf,
+  classifyFailure,
+  settleReceipt,
+  type ReplacedReason,
+  type WriteReceipt,
+  type WriteFailure,
+  type AttemptEnd,
+  type AttemptAfterCancel,
+  type RevertCause,
+  type FailureContext
+} from './classify'
+export {
+  WRITE_EVENT_TYPES,
+  WRITE_ANSWER_TYPES,
+  initialWriteState,
+  writeReducer,
+  type WriteEvent,
+  type WriteRun,
+  type WriteMachineState
+} from './machine'
+export {
+  NATIVE_DECIMALS,
+  FEE_HEADROOM_PERCENT,
+  GAS_DISPLAY_DECIMALS,
+  ACCOUNT_FACTORY,
+  VALUE_TRANSFER_GAS,
+  DEPOSIT_ROUTES,
+  roundUpForDisplay,
+  roundDownForDisplay,
+  gasEstimateOf,
+  gasTransactionOf,
+  transferTransactionOf,
+  transferEstimateCallOf,
+  transferFeeOf,
+  holdsEnough,
+  depositStepOf,
+  checkGas,
+  type GasNetwork,
+  type WalletAccountRef,
+  type GasEstimate,
+  type DepositRouteKind,
+  type DepositRoute,
+  type DepositStep,
+  type GasCheck,
+  type GasCheckInput
+} from './gas'
+export {
+  WRITES_KEYS,
+  GAS_KEYS,
+  REVERTED_KEYS,
+  revertedKeyOf,
+  UNNAMED_CAUSE_KEY,
+  causeKey,
+  cancelGoneRoadKey,
+  OWNER_SHORTFALL_KEYS,
+  renderGasAmount,
+  renderGasBalance,
+  renderRevertCause,
+  renderWriteState,
+  renderDepositStep,
+  type RenderedWriteState,
+  type RenderedRoute,
+  type RenderedDepositStep
+} from './copy'
