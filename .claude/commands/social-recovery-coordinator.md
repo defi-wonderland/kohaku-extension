@@ -29,7 +29,7 @@ Optional argument: `$ARGUMENTS` names a task id, a wave, or an action (for examp
 
 - Screens build and test against the SDK doubles (PT-035) until the SDK lands, and import only the extension's own client layer (PT-038), never the doubles directly.
 - Code lives under `src/web/modules/social-recovery/<lane>/...`; the task file names the exact folder. Records live in local storage, never in a background controller (D-310). Ceremonies that die on focus loss run in a full tab through `tab.html` and `TabOnlyRoute`, never in the action popup (D-316).
-- Shared files (`MainRoutes.tsx`, `WEB_ROUTES`, `en.json`, the manifest, `jest.config.js`, `webpack.config.js`) change only in the setup task, so parallel PRs do not collide. If a task needs a shared change, stop and ask.
+- Shared files (`MainRoutes.tsx`, the route constants, `routesConfig.ts`, `en.json`, `jest.config.js`, `webpack.config.js`, `.eslintrc.js`, `.gitmodules`, the manifest) change only in the setup task, so parallel PRs do not collide. The one exception is a task's single `<Route>` line in `routes/SocialRecoveryRoutes.tsx`. If a task needs a shared change, stop and ask.
 - Strings go into the i18n table and follow `design/ux-copy.md`; the banned words are `policy`, `proof`, `relayer`, `EIP-712`, `atomic`, `Protected`, `your people`, `full wallet password`.
 - The M-7 tasks (PT-042 to PT-051) wait on the proof of concept D-316 schedules (the four questions of PR #54). Do not start them before the owner records its result.
 - A task's `check: fuzz` has no runner here; the owner decides what a high-risk task's deeper test set is. Do not invent one.
