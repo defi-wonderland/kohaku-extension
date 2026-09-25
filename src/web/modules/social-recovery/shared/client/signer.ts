@@ -19,9 +19,11 @@
  *    request's id, shows the holder the message, and signs only when the
  *    holder confirms. The facade dispatches nothing to that controller.
  * 3. The facade takes the signature from the `signMessage` controller state
- *    whose `signedMessage` carries its request's id. A request that leaves the
- *    queue with no such signature (the holder rejected it or closed the
- *    window) is refused. A request with no answer in time is withdrawn.
+ *    whose `signedMessage` carries its request's id, and accepts it only if
+ *    it recovers, in this page, to the key's address over the facade's own
+ *    content. A request that leaves the queue with no such signature (the
+ *    holder rejected it or closed the window) is refused. A request with no
+ *    answer in time is withdrawn.
  *
  * The queue signs for an account the wallet lists with that account's keys.
  * A key that is itself a basic account (an EOA the wallet lists, its own only
@@ -32,7 +34,8 @@
  * the background action that is missing. Raw bytes always carry the EIP-191
  * prefix: the queue has no request that signs a bare digest.
  */
-import { isHexString } from 'ethers'
+import { getBytes, isHexString, TypedDataField, verifyMessage, verifyTypedData } from 'ethers'
+import { v4 as uuidv4 } from 'uuid'
 
 import { Session } from '@ambire-common/classes/session'
 import type { SignedMessage } from '@ambire-common/controllers/activity/types'
@@ -153,9 +156,16 @@ export const isSignerNotWired = (value: unknown): value is SignerNotWired =>
 /**
  * Why a queued request returned no signature: it left the queue with none
  * (the holder rejected it or closed the action window), no answer came in
- * time (the facade then withdraws it), or the answer was not a hex signature.
+ * time (the facade then withdraws it), the answer was not a hex signature,
+ * or the signature does not recover to the key's address over the facade's
+ * own content.
  */
-export const SIGN_FLOW_FAILURE_REASONS = ['refused', 'timeout', 'malformed-signature'] as const
+export const SIGN_FLOW_FAILURE_REASONS = [
+  'refused',
+  'timeout',
+  'malformed-signature',
+  'signer-mismatch'
+] as const
 export type SignFlowFailureReason = typeof SIGN_FLOW_FAILURE_REASONS[number]
 
 export interface SignFlowFailure extends Error {
@@ -218,28 +228,67 @@ export const typedMessageOf = (typedData: TypedDataToSign): TypedMessage => {
   }
 }
 
-/** Whether a key is itself a basic account the wallet lists, the one case the queue signs as the key. */
-export const isListedBasicAccountKey = (
+/**
+ * The basic account the wallet lists for a key: an account at the key's own
+ * address, with no creation code, whose associated keys hold that address.
+ * The one case the queue signs as the key. Undefined for any other key.
+ */
+export const listedBasicAccountOf = (
   accounts: readonly ListedAccount[],
   key: KeyHandle
-): boolean =>
-  accounts.some(
+): ListedAccount | undefined =>
+  accounts.find(
     (account) =>
       sameAddress(account.addr, key.addr) &&
       !account.creation &&
       account.associatedKeys.some((associated) => sameAddress(associated, key.addr))
   )
 
-let requestCount = 0
+/** Whether a key is itself a basic account the wallet lists, the one case the queue signs as the key. */
+export const isListedBasicAccountKey = (
+  accounts: readonly ListedAccount[],
+  key: KeyHandle
+): boolean => listedBasicAccountOf(accounts, key) !== undefined
 
-/** A numeric request id, as the wallet's other own requests use, unique within the page. */
-const nextRequestId = (): number => {
-  requestCount = (requestCount + 1) % 1000
-  return Date.now() * 1000 + requestCount
-}
+/**
+ * A request id no other page makes: the facade's prefix and a random UUID.
+ * The queue takes a string id as it takes a number (`UserRequest['id']`).
+ */
+const nextRequestId = (): string => `social-recovery-signer:${uuidv4()}`
 
 const sameId = (a: string | number | undefined, b: string | number): boolean =>
   a !== undefined && String(a) === String(b)
+
+/** Keeps the types the primary type reaches, without `EIP712Domain`, as ethers' encoder wants them. */
+const reachableTypes = (typed: TypedMessage): Record<string, TypedDataField[]> => {
+  const reached: Record<string, TypedDataField[]> = {}
+  const visit = (name: string) => {
+    const fields = typed.types[name]
+    if (!fields || reached[name] || name === 'EIP712Domain') return
+    reached[name] = fields.map((field) => ({ name: field.name, type: field.type }))
+    fields.forEach((field) => visit(field.type.replace(/(\[\d*\])+$/, '')))
+  }
+  visit(typed.primaryType)
+  return reached
+}
+
+/**
+ * The address a signature recovers to over the facade's own content: EIP-712
+ * over the typed message, EIP-191 over the bytes. Undefined where the
+ * signature cannot be recovered at all.
+ */
+export const recoveredSignerOf = (
+  content: PlainTextMessage | TypedMessage,
+  signature: Hex
+): string | undefined => {
+  try {
+    return content.kind === 'typedMessage'
+      ? verifyTypedData(content.domain, reachableTypes(content), content.message, signature)
+      : verifyMessage(getBytes(content.message), signature)
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * The sign request the facade adds to the queue for one key and one content.
@@ -247,10 +296,12 @@ const sameId = (a: string | number | undefined, b: string | number): boolean =>
  * the intent of D-370 (a key addressed by address and key type) travels with
  * the request. Today the action window does not read it: it picks the key
  * among the account's keys, which for a listed basic account all sign as the
- * same address.
+ * same address. `key.addr` must be the listed account's own address as the
+ * wallet holds it, since the queue and the sign-message controller compare
+ * addresses with exact case.
  */
 export const signRequestOf = (
-  id: number,
+  id: string,
   key: KeyHandle,
   chainId: bigint,
   content: PlainTextMessage | TypedMessage,
@@ -275,9 +326,13 @@ export const createSignerFacade = (
     key: KeyHandle,
     content: PlainTextMessage | TypedMessage
   ): Promise<Hex> => {
-    if (!isListedBasicAccountKey(port.accounts(), key)) {
+    const listed = listedBasicAccountOf(port.accounts(), key)
+    if (!listed) {
       return Promise.reject(signerNotWired(member, key))
     }
+    // The queue and the sign-message controller compare addresses with exact
+    // case, so the request carries the listed account's own (checksum-cased) address.
+    const requestKey: KeyHandle = { addr: listed.addr as Address, type: key.type }
     const id = nextRequestId()
     return new Promise<Hex>((resolve, reject) => {
       let done = false
@@ -308,10 +363,20 @@ export const createSignerFacade = (
         if (update.controller === 'signMessage') {
           const signed = update.state.signedMessage
           if (!signed || !sameId(signed.fromActionId, id)) return
-          if (typeof signed.signature === 'string' && isHexString(signed.signature)) {
-            finish({ signature: signed.signature as Hex })
-          } else {
+          if (typeof signed.signature !== 'string' || !isHexString(signed.signature)) {
             finish({ error: signFlowFailure(member, 'malformed-signature') })
+            return
+          }
+          // Verified in this page: the signature must recover to the key over
+          // the facade's own content, whatever the background reports.
+          const signature = signed.signature as Hex
+          const recovered = recoveredSignerOf(content, signature)
+          if (recovered === undefined) {
+            finish({ error: signFlowFailure(member, 'malformed-signature') })
+          } else if (!sameAddress(recovered, key.addr)) {
+            finish({ error: signFlowFailure(member, 'signer-mismatch') })
+          } else {
+            finish({ signature })
           }
           return
         }
@@ -337,7 +402,7 @@ export const createSignerFacade = (
       port.dispatch({
         type: 'REQUESTS_CONTROLLER_ADD_USER_REQUEST',
         params: {
-          userRequest: signRequestOf(id, key, chainId, content, port.windowId()),
+          userRequest: signRequestOf(id, requestKey, chainId, content, port.windowId()),
           allowAccountSwitch: true
         }
       })
