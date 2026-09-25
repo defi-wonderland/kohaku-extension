@@ -1,6 +1,6 @@
 /**
  * The records' default storage: the extension's own helper over
- * `browser.storage.local` (D-310). No controller and no background message.
+ * `browser.storage.local`. No controller and no background message.
  * `getAll` is the helper's `get()` with no key, which returns every entry.
  */
 import { get, remove, set } from '@web/extension-services/background/webapi/storage'
