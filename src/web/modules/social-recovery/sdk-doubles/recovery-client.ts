@@ -1,15 +1,15 @@
 /**
- * The `IRecoveryClient` double (sdk.md D-201, D-202, D-207): the two gathering
- * inits over the restore, the four record operations as pure arithmetic over the
- * gathering (requests, filing with its five refusals, assessment, completion),
- * the five prepares with request validation (D-205) and simulation, and the
- * recovery-side state record.
+ * The `IRecoveryClient` double: the two gathering inits over the restore, the
+ * four record operations as pure arithmetic over the gathering (requests, filing
+ * with its five refusals, assessment, completion), the five prepares with
+ * request validation and simulation, and the recovery-side state record.
  *
- * Validation refuses at the prepare; the simulation then runs the chain's own
- * path (`verification.ts`): `ProofRejected(place, method)` for a proof that is
- * not `doubleProof(config, digest)`, `MethodStopped` for a stop that landed after
- * the reads validation made, the execute's account reverts for a dormant setup or
- * an account the action does not fit, unless a script fails it outright.
+ * Validation refuses at the prepare, a stopped method among its rows
+ * (`request.method-stopped`); the simulation then runs the chain's own path
+ * (`verification.ts`): `ProofRejected(place, method)` for a proof that is not
+ * `doubleProof(config, digest)`, `MethodStopped` for a stop that landed after
+ * the reads validation made, the execute's account reverts for a dormant setup
+ * or an account the action does not fit, unless a script fails it outright.
  */
 import type {
   AddResult,
@@ -61,13 +61,17 @@ import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './p
 import { codedError, finding, validationRefusal } from './scripts'
 import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
 
-/** How far a caller's moment may sit from the pinned timestamp before `request.moment-skew` (the doubles' span). */
+/**
+ * How far a caller's moment may sit from the pinned timestamp before
+ * `request.moment-skew`. The client configuration has no field for it, so the
+ * span is the doubles' own.
+ */
 export const MOMENT_SKEW_SPAN = 15 * 60
 
 type RequestFinding = Finding<RequestErrorCode | RequestWarningCode>
 type RequestRow = [RequestErrorCode, Record<string, unknown>?]
 
-/** Every request row of D-205's table carries the subject `request`. */
+/** Every request row carries the subject `request`. */
 const rowsToFindings = (rows: RequestRow[]): Finding[] =>
   rows.map(([code, values]) => finding(code, 'request', values ?? {}))
 
@@ -94,6 +98,31 @@ const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
     validUntil: g.request.validUntil,
     place: place.place
   })
+
+/** Every way to pick `size` of `places`, each pick in the order given. */
+const picksOf = (places: number[], size: number): number[][] => {
+  if (size <= 0) return [[]]
+  if (places.length < size) return []
+  const [first, ...rest] = places
+  return [...picksOf(rest, size - 1).map((pick) => [first, ...pick]), ...picksOf(rest, size)]
+}
+
+/** How `complete` ranks one satisfying set: lower sorts first, field by field. */
+interface SetRank {
+  /** 1 where any place of the set is on a stopped method. */
+  stopped: number
+  /** The distinct methods of the set that carry a stop. */
+  stoppable: number
+  /** The filing positions of the set's replies, ascending. */
+  filed: number[]
+}
+
+const compareRanks = (a: SetRank, b: SetRank): number => {
+  if (a.stopped !== b.stopped) return a.stopped - b.stopped
+  if (a.stoppable !== b.stoppable) return a.stoppable - b.stoppable
+  const i = a.filed.findIndex((position, j) => position !== b.filed[j])
+  return i < 0 ? 0 : a.filed[i] - b.filed[i]
+}
 
 type SimulatedMember =
   | 'recovery.prepareStartAttempt'
@@ -122,13 +151,30 @@ export class RecoveryClientDouble implements IRecoveryClient {
           manager.paused(credential.method),
           manager.trustedParties(credential.method)
         ])
+        // An unanswered read says nothing about the method's stop, so the init
+        // refuses rather than record a default nobody read. An undeclared
+        // module does answer, with empty values, and is not refused.
+        if (!paused.answered) {
+          throw codedError('read.unanswered', {
+            read: 'manager.paused',
+            module: credential.method,
+            place
+          })
+        }
+        if (!parties.answered) {
+          throw codedError('read.unanswered', {
+            read: 'manager.trustedParties',
+            module: credential.method,
+            place
+          })
+        }
         const entry: GatheringPlace = {
           place,
           method: credential.method,
           config: credential.config,
           salt,
-          standing: paused.answered && paused.value ? 'stopped' : 'not-stopped',
-          stoppable: parties.answered && !sameAddress(parties.value.pauseHolder, ZERO_ADDRESS)
+          standing: paused.value ? 'stopped' : 'not-stopped',
+          stoppable: !sameAddress(parties.value.pauseHolder, ZERO_ADDRESS)
         }
         if (credential.label) entry.label = credential.label
         return entry
@@ -142,7 +188,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       chainId: String(chain.descriptor.chainId),
       manager: chain.descriptor.manager,
       // The digest version this build carries, from the descriptor the build was
-      // checked against; never read from the chain live (D-202, D-208).
+      // checked against; never read from the chain live.
       digestVersion: chain.descriptor.digestVersion,
       account: chain.account,
       action: actionAddress,
@@ -150,7 +196,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
     }
   }
 
-  /** The handover rows of D-205 over two authorities (zero keys, one address twice, the reads). */
+  /** The handover rows over two authorities (zero keys, one address twice, the reads). */
   private async handoverRows(handover: Handover): Promise<RequestRow[]> {
     const { action } = this.ctx
     const { newAuthority, removedAuthority } = handover
@@ -309,7 +355,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       reason: { kind: 'add-refusal', cause }
     })
     if (this.ctx.chain.addRefusal) return refuse(this.ctx.chain.addRefusal)
-    // The shape first: a malformed paste is refused, never thrown (D-207).
+    // The shape first: a malformed paste is refused, never thrown.
     if (!readsGathering(gathering) || !replyReadable(reply)) return refuse('version-unread')
     const r = gathering.request
     const bound =
@@ -349,7 +395,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
     const all = gathering.places.map((p) => p.place)
     const filled = all.filter((p) => filledSet.has(p)).sort((a, b) => a - b)
     const missing = all.filter((p) => !filledSet.has(p)).sort((a, b) => a - b)
-    // One evaluation, D-204's: false for no clauses and for every threshold at zero.
+    // One rule evaluation everywhere: false for no clauses and for every threshold at zero.
     const rule = evaluateRule(r.setupBody, filled)
     const clauses = rule.clauses.map(({ clause, threshold, filled: count }) => ({
       clause,
@@ -417,21 +463,33 @@ export class RecoveryClientDouble implements IRecoveryClient {
         ])
       }
     } else {
-      // Per clause: no stopped method first, then fewest stoppable, then earliest filed (D-207).
-      chosen = whole.clauses.flatMap((c) =>
-        c.places
-          .filter((p) => filedOrder.has(p))
-          .sort((a, b) => {
-            const pa = byPlace.get(a) as GatheringPlace
-            const pb = byPlace.get(b) as GatheringPlace
-            const stopped = Number(pa.standing === 'stopped') - Number(pb.standing === 'stopped')
-            const stoppable = Number(pa.stoppable) - Number(pb.stoppable)
-            return (
-              stopped || stoppable || (filedOrder.get(a) as number) - (filedOrder.get(b) as number)
-            )
-          })
-          .slice(0, c.threshold)
+      // The satisfying sets are ranked as whole sets: a set with no stopped
+      // method first, then the fewest distinct methods that carry a stop, then
+      // the earliest filed replies. Each candidate holds exactly its clause's
+      // threshold of filed places, the smallest a satisfying set can be; a larger
+      // set never ranks first, since a satisfying subset of it names no more
+      // stopped or stoppable methods.
+      const placeOf = (p: number): GatheringPlace => byPlace.get(p) as GatheringPlace
+      const rankOf = (set: number[]): SetRank => ({
+        stopped: set.some((p) => placeOf(p).standing === 'stopped') ? 1 : 0,
+        stoppable: new Set(
+          set.filter((p) => placeOf(p).stoppable).map((p) => placeOf(p).method.toLowerCase())
+        ).size,
+        filed: set.map((p) => filedOrder.get(p) as number).sort((a, b) => a - b)
+      })
+      const candidates = whole.clauses.reduce<number[][]>(
+        (sets, c) => {
+          const picks = picksOf(
+            c.places.filter((p) => filedOrder.has(p)),
+            c.threshold
+          )
+          return sets.flatMap((set) => picks.map((pick) => [...set, ...pick]))
+        },
+        [[]]
       )
+      chosen = candidates
+        .map((set) => ({ set, rank: rankOf(set) }))
+        .reduce((best, next) => (compareRanks(next.rank, best.rank) < 0 ? next : best)).set
     }
     const proofs: ProofPlace[] = [...chosen]
       .sort((a, b) => a - b)
@@ -465,11 +523,11 @@ export class RecoveryClientDouble implements IRecoveryClient {
   }
 
   // -------------------------------------------------------------------------
-  // Request validation (D-205) and the prepares
+  // Request validation and the prepares
   // -------------------------------------------------------------------------
 
   /**
-   * The request validation the two submission prepares run (D-205): the stored
+   * The request validation the two submission prepares run: the stored
    * attempt and setup, the window, the order of places, the rule over the proof
    * array, each named method's stop, and on an opening request the handover.
    * Returns the errors; the prepare refuses while any stands.
@@ -668,7 +726,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       'recovery.prepareCancelByVeto',
       block,
       options,
-      chain.revertOf({ kind: 'cancel-by-veto', method })
+      chain.revertOf({ kind: 'cancel-by-veto', attemptId: state.attempt.attemptId, method })
     )
   }
 
@@ -706,6 +764,8 @@ export class RecoveryClientDouble implements IRecoveryClient {
       )
     }
     if (attempt.order.amount > 0n) {
+      // An open payee pays whoever executes. `PreparedCall` has no field for a
+      // warning, so the `payment.open-payee` warning is not carried.
       const payee = sameAddress(attempt.order.payee, ZERO_ADDRESS)
         ? simulationFrom(chain, 'anyone', options)
         : attempt.order.payee
@@ -744,7 +804,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
       nextAttemptId: state.nextAttemptId,
       setupCommitment: state.setupCommitment,
       setupNonce: state.setupNonce,
-      // The frozen record has no value for a replay that names none or several; see README.
+      // `RecoveryState.removedKey` has no value for a replay that names no key or
+      // several, so both read as 'no-creation-triple'; the wallet reads'
+      // `removedKey()` names the cause.
       removedKey: removed.kind === 'named' ? removed.key : 'no-creation-triple',
       block
     }

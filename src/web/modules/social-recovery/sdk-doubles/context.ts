@@ -1,8 +1,8 @@
 /**
  * What the two client doubles are built over: the scripted chain, the shared
- * parts (one instance each, per sdk.md D-201), the client configuration and the
- * codec registry. The builder double assembles it; a test may assemble it too.
- * Also the configuration restore of sdk.md D-202, which both clients run.
+ * parts (one instance each, the same for both clients), the client configuration
+ * and the codec registry. The builder double assembles it; a test may assemble
+ * it too. Also the configuration restore, which both clients run.
  */
 import type {
   Address,
@@ -25,7 +25,7 @@ import { restoreRefusal } from './scripts'
 /**
  * The parts both clients share. The action part travels as
  * `IRecoveryActionInteractor` alone: the arming seam goes to the setup client's
- * constructor beside this context and to nothing else (sdk.md D-201 drawing).
+ * constructor beside this context and to nothing else.
  */
 export interface ClientContext {
   chain: ScriptedChain
@@ -40,16 +40,15 @@ export interface ClientContext {
 }
 
 /**
- * The block tags sdk.md D-208 defaults a client to when its configuration names
- * none: `latest` for reading and `finalized` for watching (reasons in D-203
- * "Reorgs and finality").
+ * The block tags a client defaults to when its configuration names none:
+ * `latest` for reading and `finalized` for watching.
  */
 export const DEFAULT_BLOCK_TAGS: { read: BlockTag; watch: BlockTag } = {
   read: 'latest',
   watch: 'finalized'
 }
 
-/** The client configuration the doubles default to, with the shipped numbers of D-208. */
+/** The client configuration the doubles default to, with the SDK's shipped default numbers. */
 export const defaultClientConfiguration = (
   overrides: Partial<ClientConfiguration> = {}
 ): ClientConfiguration => ({
@@ -70,15 +69,15 @@ export const defaultClientConfiguration = (
 export const codecFor = (ctx: ClientContext, action: Address): IActionCodec<unknown> | undefined =>
   ctx.codecs.find((c) => c.actions.some((a) => sameAddress(a, action)))
 
-/** The block a read pins at: the configuration's read tag, or D-208's default `latest`. */
+/** The block a read pins at: the configuration's read tag, or `latest` by default. */
 export const pinBlock = (ctx: ClientContext): Promise<BlockHeader> =>
   ctx.provider.block((ctx.config.blockTags ?? DEFAULT_BLOCK_TAGS).read)
 
 /**
- * The restore of sdk.md D-202 "Restoring the configuration": pin a block, read
- * `stateOf`, open the latest `SetupCommitted`'s backup with the password (or take
- * the configuration given), then check the commitment. Throws a
- * `RestoreRefusal` naming the step that refused.
+ * The configuration restore: pin a block, read `stateOf`, open the latest
+ * `SetupCommitted`'s backup with the password (or take the configuration
+ * given), then check the commitment. Throws a `RestoreRefusal` naming the step
+ * that refused.
  */
 export const restoreConfiguration = async (
   ctx: ClientContext,
@@ -107,13 +106,13 @@ export const restoreConfiguration = async (
     if (reading.form === 'empty') {
       throw restoreRefusal('restore.no-backup', { setup: 'standing', backup: 'none' })
     }
-    // The clear backup has no reader here (sdk.md D-202): its holder passes the configuration.
+    // The clear backup has no reader here: its holder passes the configuration itself.
     if (reading.form !== 'encrypted' || !reading.opened) {
       throw restoreRefusal('restore.backup-unopened')
     }
     configuration = reading.configuration
   } else {
-    configuration = source.configuration
+    configuration = source
   }
   const recomputed = setupCommitmentOf(
     ctx.chain.account,

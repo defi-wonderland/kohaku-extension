@@ -1,8 +1,3 @@
-/**
- * The scripted chain record (brief "Interfaces and invariants", task Done
- * judgment two): every state D-371 and D-373 name can be set and reads back
- * consistently through the interactor, the read seam and the event manager.
- */
 import { PRIVACY_LEVELS, type Notification } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { ATTEMPT_STATUSES, CANCELLERS, World, ZERO, createWorld, eachIt } from './harness'
@@ -44,8 +39,8 @@ describe('scripted chain', () => {
         expect(state.hasSetup).toBe(true)
         expect(state.setupCommitment).toBe(onChain.setupCommitment)
 
-        // D-375: private shows nothing in the public field; shape-visible shows
-        // the shape there and keeps the values encrypted; public is all clear.
+        // Private shows nothing in the public field; shape-visible shows the
+        // shape there and keeps the values encrypted; public is all clear.
         if (level === 'private') expect(last!.publicMetadata).toBe('0x')
         else expect(last!.publicMetadata).not.toBe('0x')
         expect(last!.privateMetadata).not.toBe('0x')
@@ -80,8 +75,8 @@ describe('scripted chain', () => {
           expect(kinds).toContain('attempt-started')
           expect(record.nextAttemptId).toBeGreaterThan(record.attempt.attemptId)
         }
-        // Ready is the wallet's own computation (D-371): consumableAfter against
-        // the timestamp of the block the record pins.
+        // Ready is the wallet's own computation: consumableAfter against the
+        // timestamp of the block the record pins.
         if (status === 'pending') {
           expect(record.attempt.consumableAfter).toBeGreaterThan(record.block.timestamp)
         }
@@ -108,7 +103,7 @@ describe('scripted chain', () => {
       expect(cancelled).toHaveLength(1)
       const [note] = cancelled
       expect(note!.attemptId).toBe(record.attempt.attemptId)
-      // D-203 "Typed notifications": cancelledBy is derived from the raw fields.
+      // cancelledBy derives from the raw fields.
       if (note!.vetoingMethod !== ZERO) expect(note!.cancelledBy).toBe('cancelByVeto')
       else if (note!.usedPlaces.length > 0) expect(note!.cancelledBy).toBe('cancelByProofs')
       else if (note!.canceller === ZERO) expect(note!.cancelledBy).toBe('setupWrite')
@@ -118,8 +113,8 @@ describe('scripted chain', () => {
         expect(note!.canceller.toLowerCase()).toBe(world.account.toLowerCase())
       }
       if (canceller === 'proofs') expect(note!.cancelledBy).toBe('cancelByProofs')
-      // The harness scripts "nobody" as a security stop's veto (D-371: the
-      // stopped method authorized the cancel); the setup write is the next test.
+      // The harness scripts "nobody" as a security stop's veto, the stopped
+      // method authorizing the cancel; the setup write is the next test.
       if (canceller === 'nobody') {
         expect(note!.cancelledBy).toBe('cancelByVeto')
         expect(note!.vetoingMethod.toLowerCase()).toBe(

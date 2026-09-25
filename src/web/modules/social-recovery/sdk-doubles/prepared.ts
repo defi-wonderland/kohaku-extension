@@ -1,8 +1,7 @@
 /**
- * The doubles' prepared-call composer (sdk.md D-202 "The prepared call and the
- * prepared batch"). The calldata is the doubles' own bytes, a four-byte tag of
- * the function name followed by its arguments as JSON, unique per prepare, so
- * the scripted chain can land what it prepared.
+ * The doubles' prepared-call composer. The calldata is the doubles' own bytes, a
+ * four-byte tag of the function name followed by its arguments as JSON, unique
+ * per prepare, so the scripted chain can land what it prepared.
  */
 import type {
   Address,
@@ -64,7 +63,10 @@ export const shouldSimulate = (
   fallback: boolean | undefined
 ) => options?.simulate ?? fallback ?? true
 
-/** The address a simulation runs from (sdk.md D-202, fourth rule). */
+/**
+ * The address a simulation runs from: the account for a call the account sends,
+ * otherwise the caller's `from` or an arbitrary sender.
+ */
 export const simulationFrom = (
   chain: ScriptedChain,
   sender: Sender,
@@ -81,7 +83,7 @@ export const withSimulation = (
   simulation: error ? { ok: false, from, error } : { ok: true, from }
 })
 
-/** One atomic batch pinned at one block (sdk.md D-202). */
+/** One atomic batch pinned at one block. */
 export const composeBatch = (calls: PreparedCall[], block: BlockHeader): PreparedBatch => ({
   kind: 'batch',
   calls,

@@ -1,8 +1,3 @@
-/**
- * Regression tests for the fixes of the PR #8 review that the verification pass
- * found untested, one `describe` per review row, numbered as the review numbers
- * them. Each names the design section it holds the doubles to.
- */
 import {
   addressOf,
   levelOfDraft,
@@ -61,7 +56,7 @@ const coded = async (run: () => unknown) => {
   return caught as CodedError
 }
 
-describe('row 6: validateSetup computes the D-205 rows', () => {
+describe('validateSetup computes its own findings', () => {
   it('raises clause.shared-failure on a clause whose credentials share one method', async () => {
     const world = createWorld()
     const { warnings } = await (await world.setupClient()).validateSetup(world.draft('private'))
@@ -200,14 +195,14 @@ describe('row 6: validateSetup computes the D-205 rows', () => {
   })
 })
 
-describe('row 9: the gathering derives under the descriptor’s digest version (D-202, D-200)', () => {
+describe('the gathering derives under the descriptor’s digest version', () => {
   it('keeps the descriptor’s digestVersion after the chain’s domain version moves', async () => {
     const world = createWorld()
     world.script.setupCommitted('private')
     const recovery = await world.recoveryClient()
     world.chain.manager.domain = { ...world.chain.manager.domain, version: '99' }
     const gathering = await recovery.initRecoveryGathering(
-      { configuration: world.configuration },
+      world.configuration,
       { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
       NO_PAYMENT,
       { window: WINDOW }
@@ -219,7 +214,7 @@ describe('row 9: the gathering derives under the descriptor’s digest version (
   })
 })
 
-describe('row 10: an all-zero rule satisfies nothing (D-205 rule.all-thresholds-zero, D-207)', () => {
+describe('an all-zero rule satisfies nothing', () => {
   it('assesses unsatisfied and refuses to complete with request.rule-unsatisfied', async () => {
     const world = createWorld()
     const zero: Configuration = {
@@ -229,7 +224,7 @@ describe('row 10: an all-zero rule satisfies nothing (D-205 rule.all-thresholds-
     world.chain.commitSetup({ level: 'private', configuration: zero, password: PASSWORD })
     const recovery = await world.recoveryClient()
     const gathering = await recovery.initRecoveryGathering(
-      { configuration: zero },
+      zero,
       { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
       NO_PAYMENT,
       { window: WINDOW }
@@ -247,14 +242,14 @@ describe('row 10: an all-zero rule satisfies nothing (D-205 rule.all-thresholds-
   })
 })
 
-describe('row 11: a zero key is handover.malformed, subject request (D-205, contracts D-105)', () => {
+describe('a zero key is handover.malformed, under the request subject', () => {
   it('refuses a zero newAuthority at the opening init', async () => {
     const world = createWorld()
     world.script.setupCommitted('private')
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: ZERO, removedAuthority: world.keys.held },
         NO_PAYMENT,
         { window: WINDOW }
@@ -280,14 +275,14 @@ describe('row 11: a zero key is handover.malformed, subject request (D-205, cont
   })
 })
 
-describe('row 12: every handover finding carries the subject request (D-205 request table)', () => {
+describe('every handover finding carries the request subject', () => {
   it('raises new-holds-privilege and removed-not-authority under the request subject', async () => {
     const world = createWorld()
     world.script.setupCommitted('private')
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: world.keys.held, removedAuthority: world.keys.fresh },
         NO_PAYMENT,
         { window: WINDOW }
@@ -307,7 +302,7 @@ describe('row 12: every handover finding carries the subject request (D-205 requ
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: world.keys.held, removedAuthority: world.keys.held },
         NO_PAYMENT,
         { window: WINDOW }
@@ -318,7 +313,7 @@ describe('row 12: every handover finding carries the subject request (D-205 requ
   })
 })
 
-describe('row 14: one level rule for drafts and chain fields (D-375)', () => {
+describe('one privacy level rule for drafts and chain fields', () => {
   it('reads an opaque public note as shape-visible in the draft and on the chain after land', async () => {
     const world = createWorld()
     const note: Hex = '0xdeadbeef'
@@ -354,7 +349,7 @@ describe('row 14: one level rule for drafts and chain fields (D-375)', () => {
   })
 })
 
-describe('row 15: every refusal carries a code', () => {
+describe('every refusal carries a code', () => {
   it('builder.frozen: a setter after the first build', async () => {
     const world = createWorld()
     const builder = world.builder()
@@ -399,7 +394,7 @@ describe('row 15: every refusal carries a code', () => {
   })
 })
 
-describe('gap 2: an undeclared module is a contract answering, a failed provider is not (D-202, D-371)', () => {
+describe('an undeclared module is a contract answering, a failed provider is not', () => {
   it('answers moduleInfo and trustedParties with empty values and warns method.no-declaration', async () => {
     const world = createWorld()
     const module = addressOf('third-party-method')
@@ -427,7 +422,7 @@ describe('gap 2: an undeclared module is a contract answering, a failed provider
     ])
   })
 
-  it('answers { answered: false } for a scripted provider failure, and no no-declaration warning', async () => {
+  it('answers { answered: false } for a scripted provider failure', async () => {
     const world = createWorld()
     const module = world.descriptor.methodEcdsa
     world.script.leaveUnanswered('manager.moduleInfo')
@@ -437,7 +432,7 @@ describe('gap 2: an undeclared module is a contract answering, a failed provider
   })
 })
 
-describe('N2: verifyReply rejects a pasted reply with no digest', () => {
+describe('verifyReply rejects a pasted reply with no digest', () => {
   it('answers rejected, without throwing', async () => {
     const opened = await openRecovery()
     const request = opened.requests[0]!
@@ -450,8 +445,8 @@ describe('N2: verifyReply rejects a pasted reply with no digest', () => {
   })
 })
 
-describe('row 4: the wallet signs D-204’s typed data, whose hash is the reply’s digest', () => {
-  it('holds the Approval members of D-204 alone', async () => {
+describe('the wallet signs the approval’s typed data, whose hash is the reply’s digest', () => {
+  it('holds the Approval members alone', async () => {
     const opened = await openRecovery()
     const request = opened.requests[0]!
     const input = opened.orchestrator.signingInput(request) as {
