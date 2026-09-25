@@ -214,7 +214,7 @@
         "setupWrite": "A change to the setup already ended it."
       },
       "revertedExecuteGone": "Could not execute. The transaction reached the chain and reverted. {{cause}} The gas it spent is gone.",
-      "gasCheckFailed": "Could not read the balance of the sending key. Try again."
+      "gasCheckFailed": "Could not finish the gas check. The node did not answer."
     },
     "ceremony": {
       "passedNote": "check {{hash}} · passed just now",
