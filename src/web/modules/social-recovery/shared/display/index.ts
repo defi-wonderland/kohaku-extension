@@ -1,6 +1,8 @@
 /**
- * shared/display: the value renderers and the status vocabulary of D-302 that
- * every recovery surface calls (PT-036). See README.md beside this file.
+ * The value renderers and the status vocabulary every recovery surface calls.
+ * Each value type renders in one form and each status word exists once, here: a
+ * screen imports them and never truncates a value or spells a chip, a noun or a
+ * password name on its own.
  */
 export * from './translate'
 export * from './vocabulary'
