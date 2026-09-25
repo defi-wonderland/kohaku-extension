@@ -66,10 +66,9 @@ const withSentHash = (hashes: readonly Hex[], hash: Hex): readonly Hex[] =>
   hashes.some((known) => sameHash(known, hash)) ? hashes : [...hashes, hash]
 
 /**
- * What moves a write. No send path exists yet, so the consumer drives the
- * send: it reports each hash with `sent`, supplies the decoded cause of a
- * revert on `receipt` or `error`, and sends `attemptRead` after a cancel's
- * revert.
+ * What moves a write. The consumer drives the send: it reports each hash with
+ * `sent`, supplies the decoded cause of a revert on `receipt` or `error`, and
+ * sends `attemptRead` after a cancel's revert.
  */
 export type WriteEvent =
   /** Runs the gas check and opens a new run: from `idle`, or from a state that offers the retry. */
@@ -80,7 +79,11 @@ export type WriteEvent =
   | { type: 'recheck' }
   /** The wallet broadcast the call. */
   | { type: 'sent'; run: number; transactionHash: Hex }
-  /** A receipt came back, with the revert's decoded cause where the wallet read one. */
+  /**
+   * A receipt came back for a hash announced with `sent` (or named by an
+   * `error`) before it, with the revert's decoded cause where the wallet read
+   * one. A receipt for any other hash leaves the state as it was.
+   */
   | {
       type: 'receipt'
       run: number
@@ -167,10 +170,10 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
 
     case 'receipt':
       if (state.status !== 'submitting') return state
-      // Only a receipt for a hash the run announced with `sent` settles the
-      // write: the same key sends other transactions too, such as the deposit
-      // step's transfer. A repriced replacement settles once its hash was
-      // announced with a second `sent`.
+      // Only a receipt for a hash the run announced with `sent`, or that an
+      // error of the run named, settles the write: the same key sends other
+      // transactions too, such as the deposit step's transfer. A repriced
+      // replacement settles once its hash was announced with a second `sent`.
       if (!sentHashesOf(state).some((hash) => sameHash(hash, event.receipt.transactionHash))) {
         return state
       }
@@ -189,7 +192,10 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
       // A call another transaction replaced never ran, whatever the replacement did.
       if (found.replaced) return { ...classifyFailure(found, context), run }
       // An error that carries its receipt (ethers' `CALL_EXCEPTION` from `wait()`,
-      // or a repriced replacement's) settles by it.
+      // or a repriced replacement's) settles by it, and a hash it names becomes
+      // the call's, without the announced-hash check. So the consumer sends an
+      // `error` only from this write's gas check, its send, or waiting on its own
+      // hash, never from another transaction of the key.
       if (found.receipt) return { ...settleReceipt(found.receipt, context, event.cause), run }
       const transactionHash =
         found.transactionHash ??
