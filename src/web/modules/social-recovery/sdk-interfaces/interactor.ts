@@ -1,15 +1,13 @@
 /**
- * sdk.md D-202 Contract interactor: the two entry clients, the manager part and
- * its module-read seam, the action part and its arming seam, the prepared call
- * and batch, the two state records, the configuration and confirmation records,
- * and the module and action records.
+ * The contract interactor: the two entry clients, the manager part and its
+ * module-read seam, the action part and its arming seam, the prepared call and
+ * batch, the two state records, the configuration and confirmation records, and
+ * the module and action records.
  *
- * Hand-written from docs/social-recovery/design/sdk.md, frozen at design commit
- * bd8780f7ad59a451035b15920c00015a2eee6e9b of defi-wonderland/mast-social-recovery-2.
  * Imported from no SDK package. Types only. The manager's `ActionState` and
- * `Attempt` fields keep the contracts chapter's names (contracts D-103).
+ * `Attempt` fields keep the manager contract's own names.
  *
- * Refusals throw (sdk.md D-201): `prepareCommitSetup`, `prepareClearSetup`,
+ * Refusals throw: `prepareCommitSetup`, `prepareClearSetup`,
  * `prepareStartAttempt`, `prepareCancelByProofs`, `prepareCancelByVeto`,
  * `prepareExecuteHandover`, `initRecoveryGathering`, `initCancelGathering`,
  * `complete`, `getSetup` and `confirmSetup` throw an ordinary error; a refusal
@@ -30,11 +28,11 @@ import type {
 } from './gathering'
 import type { KitError, SetupDescription, ValidationResult } from './utilities'
 
-/** The two doors of the kit's surface, the caller a target accepts a call from (sdk.md D-202). */
+/** The two doors of the kit's surface, the caller a target accepts a call from. */
 export const SENDERS = ['account', 'anyone'] as const
 export type Sender = typeof SENDERS[number]
 
-/** The options every prepare but `prepareCancelByOwner` takes (sdk.md D-201). */
+/** The options every prepare but `prepareCancelByOwner` takes. */
 export interface PrepareOptions {
   simulate?: boolean
   from?: Address
@@ -42,20 +40,15 @@ export interface PrepareOptions {
 
 /**
  * A simulation's outcome: success, or a typed error, with the address it ran
- * from (sdk.md D-202). Illustrative shape, sdk.md D-201.
- *
- * The error's shape has two sources that disagree. sdk.md D-201's usage block
- * shows a flat `{ name: 'ProofRejected', place: 1, method: '0xEcdsa' }`; sdk.md
- * D-205 "Error decoding" says the decoder answers four things, the source, the
- * name, the selector and the argument values by name. `KitError` follows D-205.
- * The sdk owner must confirm which shape the SDK returns.
+ * from. The error is a decoded `KitError`: the source, the name, the selector
+ * and the argument values by name. The SDK owner has yet to confirm this shape
+ * against a flat `{ name, place, method }` record.
  */
 export type Simulation = { ok: true; from: Address } | { ok: false; from: Address; error: KitError }
 
 /**
- * One call of the batch the action will run, a description and never something to sign (sdk.md D-202).
- * Illustrative, sdk.md D-202: the chapter names the batch, not its record; the fields are Ambire's
- * `Transaction(to, value, data)` tuple (contracts D-105).
+ * One call of the batch the action will run, a description and never something
+ * to sign. The fields are Ambire's `Transaction(to, value, data)` tuple.
  */
 export interface DescribedCall {
   to: Address
@@ -64,9 +57,9 @@ export interface DescribedCall {
 }
 
 /**
- * The record every write comes back as (sdk.md D-202). It has no members of its
- * own, so it persists and moves as it stands. `simulation` is absent when the
- * integrator skipped it; `describes` is present on the execute alone.
+ * The record every write comes back as. It has no members of its own, so it
+ * persists and moves as it stands. `simulation` is absent when the integrator
+ * skipped it; `describes` is present on the execute alone.
  */
 export interface PreparedCall {
   kind: 'call'
@@ -81,8 +74,7 @@ export interface PreparedCall {
 
 /**
  * The second shape: a list of prepared calls that are one transaction, flagged
- * atomic, each carrying its own simulation at the one block the batch pinned
- * (sdk.md D-202).
+ * atomic, each carrying its own simulation at the one block the batch pinned.
  */
 export interface PreparedBatch {
   kind: 'batch'
@@ -91,11 +83,11 @@ export interface PreparedBatch {
   block: { number: number; hash: Hex }
 }
 
-/** The manager's `AttemptState` enum (contracts D-103). */
+/** The manager's `AttemptState` enum. */
 export const ATTEMPT_STATES = ['None', 'Waiting', 'Cancelled', 'Consumed'] as const
 export type AttemptState = typeof ATTEMPT_STATES[number]
 
-/** The manager's `Attempt` record, under the manager's own names (contracts D-103, sdk.md D-202). */
+/** The manager's `Attempt` record, under the manager's own names. */
 export interface Attempt {
   state: AttemptState
   attemptId: bigint
@@ -107,7 +99,7 @@ export interface Attempt {
   ignoresPause: boolean
 }
 
-/** What `stateOf` returns (contracts D-103). */
+/** What the manager's `stateOf` returns. */
 export interface ActionState {
   setupCommitment: Hex
   setupNonce: bigint
@@ -117,8 +109,8 @@ export interface ActionState {
 }
 
 /**
- * The setup-side reading of the bound account (sdk.md D-202 "The two state
- * records"), pinned to one block carried by number, timestamp and hash.
+ * The setup-side reading of the bound account, pinned to one block carried by
+ * number, timestamp and hash.
  */
 export interface SetupState {
   isAuthorized: boolean
@@ -131,10 +123,9 @@ export interface SetupState {
 }
 
 /**
- * The recovery-side reading of the bound account (sdk.md D-202), pinned the
- * same way. `removedKey` is the address a handover would remove, or the value
- * saying no creation triple was given.
- * `'no-creation-triple'` is illustrative, sdk.md D-202: the chapter names the value in prose alone.
+ * The recovery-side reading of the bound account, pinned the same way.
+ * `removedKey` is the address a handover would remove, or `'no-creation-triple'`
+ * when no creation triple was given; that literal is the extension's own.
  */
 export interface RecoveryState {
   attempt: Attempt
@@ -148,7 +139,7 @@ export interface RecoveryState {
 /**
  * One credential of a draft or a configuration: method address, config in the
  * method's own layout, the contact-book label the commitment does not cover,
- * and a salt where the holder supplied one (sdk.md D-201 usage block, D-202).
+ * and a salt where the holder supplied one.
  */
 export interface Credential {
   method: Address
@@ -157,20 +148,20 @@ export interface Credential {
   salt?: Hex
 }
 
-/** One clause of the rule: a threshold over its credentials (sdk.md D-201 usage block). */
+/** One clause of the rule: a threshold over its credentials. */
 export interface Clause {
   threshold: number
   credentials: Credential[]
 }
 
-/** The three states of the backup payload (sdk.md D-204). */
+/** The three states of the backup payload. */
 export const BACKUP_FORMS = ['encrypted', 'clear', 'empty'] as const
 export type BackupForm = typeof BACKUP_FORMS[number]
 
 /**
- * The setup draft `validateSetup`, `describeSetup` and `prepareCommitSetup` read
- * (sdk.md D-201 usage block, copied as written; illustrative, sdk.md D-201).
- * A draft holds the privacy dial and the backup choice a configuration does not.
+ * The setup draft `validateSetup`, `describeSetup` and `prepareCommitSetup`
+ * read. A draft holds the privacy dial and the backup choice a configuration
+ * does not.
  */
 export interface SetupDraft {
   wait: bigint
@@ -181,8 +172,7 @@ export interface SetupDraft {
 
 /**
  * The holder's private configuration, what the commitment closes over: the
- * clauses, any supplied salts, the wait and the pause choice (sdk.md D-202
- * "Restoring the configuration"). Not a draft.
+ * clauses, any supplied salts, the wait and the pause choice. Not a draft.
  */
 export interface Configuration {
   clauses: Clause[]
@@ -190,10 +180,14 @@ export interface Configuration {
   ignoresPause: boolean
 }
 
-/** The source of a restore: the password that opens the backup, or the configuration itself (sdk.md D-202). */
-export type ConfigurationSource = { password: string } | { configuration: Configuration }
+/**
+ * The source of a restore: the password that opens the backup, or the
+ * configuration itself. A caller that already holds the configuration, for
+ * example a cached copy, passes it directly.
+ */
+export type ConfigurationSource = { password: string } | Configuration
 
-/** What `confirmSetup` returns; `landed: false` is an answer, not a refusal (sdk.md D-202). */
+/** What `confirmSetup` returns; `landed: false` is an answer, not a refusal. */
 export interface SetupConfirmation {
   landed: boolean
   nonce: bigint
@@ -203,8 +197,8 @@ export interface SetupConfirmation {
 }
 
 /**
- * What `moduleInfo(module)` yields: name, version and the method-interface probe (sdk.md D-201).
- * Illustrative, sdk.md D-201: the chapter lists the three values in prose; the field names are ours.
+ * What `moduleInfo(module)` yields: name, version and the method-interface
+ * probe. The SDK names the three values; the field names are the extension's.
  */
 export interface ModuleInfo {
   name: string
@@ -213,8 +207,8 @@ export interface ModuleInfo {
 }
 
 /**
- * What `actionInfo()` yields: name, version and the policy-action probe (sdk.md D-201).
- * Illustrative, sdk.md D-201: the chapter lists the three values in prose; the field names are ours.
+ * What `actionInfo()` yields: name, version and the policy-action probe. The
+ * SDK names the three values; the field names are the extension's.
  */
 export interface ActionInfo {
   name: string
@@ -222,7 +216,7 @@ export interface ActionInfo {
   supportsInterface: boolean
 }
 
-/** The five values a method's `trustedParties` declares, under the contract's names (contracts D-104). */
+/** The five values a method's `trustedParties` declares, under the contract's names. */
 export interface TrustedParties {
   admin: Address
   pendingAdmin: Address
@@ -231,7 +225,7 @@ export interface TrustedParties {
   pendingPauseHolder: Address
 }
 
-/** The ERC-5267 domain `eip712Domain()` returns (sdk.md D-204, D-208). */
+/** The ERC-5267 domain `eip712Domain()` returns. */
 export interface Domain {
   fields: Hex
   name: string
@@ -244,8 +238,7 @@ export interface Domain {
 
 /**
  * The handover the opening init takes: the new authority always, the removed
- * one optional only where the client configuration carries the creation triple
- * (sdk.md D-201, D-202).
+ * one optional only where the client configuration carries the creation triple.
  */
 export interface HandoverInput {
   newAuthority: Address
@@ -254,7 +247,7 @@ export interface HandoverInput {
 
 /**
  * The entry a holder's integrator builds while the holder still holds their
- * key (sdk.md D-201, D-202). Frozen by D-202.
+ * key.
  */
 export interface ISetupClient {
   validateSetup(draft: SetupDraft): Promise<ValidationResult>
@@ -275,9 +268,9 @@ export interface ISetupClient {
 }
 
 /**
- * The entry built when a key is lost (sdk.md D-201, D-202, D-207). Frozen by
- * D-202. `now` is the moment the caller judges against; the SDK reads no wall
- * clock. `selection` defaults to none (pass undefined).
+ * The entry built when a key is lost. `now` is the moment the caller judges
+ * against; the SDK reads no wall clock. `selection` defaults to none (pass
+ * undefined).
  */
 export interface IRecoveryClient {
   initRecoveryGathering(
@@ -317,8 +310,8 @@ export interface IRecoveryClient {
 }
 
 /**
- * The read seam over the manager part's three module views (sdk.md D-201),
- * what the builder's `methodModuleReads()` hands out. Frozen by D-202.
+ * The read seam over the manager part's three module views, what the builder's
+ * `methodModuleReads()` hands out.
  */
 export interface IMethodModuleReads {
   moduleInfo(module: Address): Promise<ReadResult<ModuleInfo>>
@@ -327,15 +320,14 @@ export interface IMethodModuleReads {
 }
 
 /**
- * The shared part for the manager, bound to the account and the action
- * (sdk.md D-201, D-202). Frozen by D-202. Its six prepares take the contract's
- * own argument lists and encode; the clients validate and simulate around them.
- * The builder never hands it out whole.
+ * The shared part for the manager, bound to the account and the action. Its six
+ * prepares take the contract's own argument lists and encode; the clients
+ * validate and simulate around them. The builder never hands it out whole.
  */
 export interface IPolicyManagerInteractor extends IMethodModuleReads {
   stateOf(): Promise<ActionState>
   // `place` is bigint here because the manager's `hashApproval` and `hashCancel` take the
-  // contract's uint256 place (contracts D-103), while the D-207 records carry it as a number.
+  // contract's uint256 place, while the gathering records carry it as a number.
   hashApproval(request: AttemptRequest, place: bigint): Promise<Hex>
   hashCancel(request: CancelRequest, place: bigint): Promise<Hex>
   eip712Domain(): Promise<Domain>
@@ -362,9 +354,9 @@ export interface IPolicyManagerInteractor extends IMethodModuleReads {
 }
 
 /**
- * The shared part for one action contract, bound to the account (sdk.md D-201,
- * D-202), what the builder's `recoveryAction()` hands out. Frozen by D-202. It
- * reads and disarms and prepares no spend.
+ * The shared part for one action contract, bound to the account, what the
+ * builder's `recoveryAction()` hands out. It reads and disarms and prepares no
+ * spend.
  */
 export interface IRecoveryActionInteractor {
   supportsAccount(): Promise<boolean>
@@ -377,7 +369,7 @@ export interface IRecoveryActionInteractor {
 
 /**
  * The arming seam, handed to the setup client alone and never returned by the
- * builder (sdk.md D-201). Frozen by D-202.
+ * builder.
  */
 export interface IRecoveryActionArming {
   armingCall(): Promise<PreparedCall>

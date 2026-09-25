@@ -1,19 +1,16 @@
 /**
- * sdk.md D-205 Utilities: the finding codes of validation, the three restore
- * causes, the three descriptions, the decoded error and the refusal shapes the
- * throwing members carry.
- *
- * Hand-written from docs/social-recovery/design/sdk.md, frozen at design commit
- * bd8780f7ad59a451035b15920c00015a2eee6e9b of defi-wonderland/mast-social-recovery-2.
- * Imported from no SDK package. Types only. A utility returns codes, names and
- * values and never sentences; the words are the extension's (en.json).
+ * The utilities: the finding codes of validation, the three restore causes, the
+ * three descriptions, the decoded error and the refusal shapes the throwing
+ * members carry. Imported from no SDK package; types only. A utility returns
+ * codes, names and values and never sentences; the words are the extension's
+ * (en.json).
  */
 import type { Address, Hex } from './common'
 import type { Notification } from './events'
 import type { Handover, PaymentOrder } from './formats'
 import type { AttemptState } from './interactor'
 
-/** Setup errors: the reverts the chain would produce later and the delegated guards (sdk.md D-205). */
+/** Setup errors: the reverts the chain would produce later and the delegated guards. */
 export const SETUP_ERROR_CODES = [
   'rule.empty',
   'clause.empty',
@@ -29,7 +26,7 @@ export const SETUP_ERROR_CODES = [
 ] as const
 export type SetupErrorCode = typeof SETUP_ERROR_CODES[number]
 
-/** Setup warnings: the risks the design discloses rather than forbids (sdk.md D-205). */
+/** Setup warnings: the risks the design discloses rather than forbids. */
 export const SETUP_WARNING_CODES = [
   'clause.single-point',
   'clause.threshold-zero',
@@ -49,7 +46,7 @@ export const SETUP_WARNING_CODES = [
 ] as const
 export type SetupWarningCode = typeof SETUP_WARNING_CODES[number]
 
-/** Request errors (sdk.md D-205). `handover.removed-unknown` is raised by a gathering init. */
+/** Request errors. `handover.removed-unknown` is raised by a gathering init. */
 export const REQUEST_ERROR_CODES = [
   'request.attempt-id',
   'request.expired',
@@ -68,7 +65,7 @@ export const REQUEST_ERROR_CODES = [
 ] as const
 export type RequestErrorCode = typeof REQUEST_ERROR_CODES[number]
 
-/** Request warnings (sdk.md D-205). `method.unshipped` repeats the setup code at the second moment. */
+/** Request warnings. `method.unshipped` repeats the setup code at the second moment. */
 export const REQUEST_WARNING_CODES = [
   'payment.insufficient',
   'method.unshipped',
@@ -82,7 +79,7 @@ export const REQUEST_WARNING_CODES = [
 ] as const
 export type RequestWarningCode = typeof REQUEST_WARNING_CODES[number]
 
-/** The three restore causes the value `getSetup` throws carries (sdk.md D-202, D-205). */
+/** The three restore causes the value `getSetup` throws carries. */
 export const RESTORE_CAUSES = [
   'restore.no-backup',
   'restore.backup-unopened',
@@ -92,7 +89,7 @@ export type RestoreCause = typeof RESTORE_CAUSES[number]
 
 export type FindingCode = SetupErrorCode | SetupWarningCode | RequestErrorCode | RequestWarningCode
 
-/** The subject a finding is about (sdk.md D-205 tables). */
+/** The subject a finding is about. */
 export const FINDING_SUBJECTS = [
   'setup',
   'clause',
@@ -107,7 +104,7 @@ export type FindingSubject = typeof FINDING_SUBJECTS[number]
 
 /**
  * One finding: a stable code, the subject it is about and the concrete values
- * behind it (sdk.md D-205 "Validation"). Illustrative shape, sdk.md D-201.
+ * behind it.
  */
 export interface Finding<C extends string = FindingCode> {
   code: C
@@ -115,7 +112,7 @@ export interface Finding<C extends string = FindingCode> {
   values: Record<string, unknown>
 }
 
-/** The two finding sets one validation returns; neither operation throws on a finding (sdk.md D-205). */
+/** The two finding sets one validation returns; neither operation throws on a finding. */
 export interface ValidationResult {
   errors: Finding[]
   warnings: Finding[]
@@ -123,7 +120,7 @@ export interface ValidationResult {
 
 /**
  * The thrown refusal of a prepare whose validation found errors: an ordinary
- * error carrying the findings (sdk.md D-201 "Refusals throw").
+ * error carrying the findings.
  */
 export interface ValidationRefusal extends Error {
   findings: ValidationResult
@@ -131,17 +128,17 @@ export interface ValidationRefusal extends Error {
 
 /**
  * The thrown refusal of `getSetup` and of the two gathering inits that run the
- * restore: an ordinary error carrying the restore cause (sdk.md D-201, D-205).
+ * restore: an ordinary error carrying the restore cause.
  */
 export interface RestoreRefusal extends Error {
   cause: Finding<RestoreCause>
 }
 
-/** Where a decoded revert came from (sdk.md D-205 "Error decoding"). */
+/** Where a decoded revert came from. */
 export const KIT_ERROR_SOURCES = ['manager', 'action', 'account', 'language'] as const
 export type KitErrorSource = typeof KIT_ERROR_SOURCES[number]
 
-/** The closed set of twenty-five kit errors, twenty-one on the manager and four on the action (sdk.md D-205). */
+/** The closed set of twenty-five kit errors, twenty-one on the manager and four on the action. */
 export const KIT_ERROR_NAMES = [
   'InvalidCommitment',
   'WrongSetupNonce',
@@ -174,12 +171,8 @@ export type KitErrorName = typeof KIT_ERROR_NAMES[number]
 /**
  * What `decodeRevert` answers: the source, the error's name, its selector and
  * its argument values by name, or the unknown result with the selector where
- * one exists and the raw bytes (sdk.md D-205). Never thrown.
- * Illustrative shape, sdk.md D-201.
- *
- * Two sources disagree on this shape: sdk.md D-201's usage block shows a
- * simulation error as a flat `{ name, place, method }`, while sdk.md D-205
- * names the four parts this type follows. The sdk owner must confirm.
+ * one exists and the raw bytes. Never thrown. The SDK owner has yet to confirm
+ * this shape against a flat `{ name, place, method }` record.
  */
 export type KitError =
   | {
@@ -192,10 +185,10 @@ export type KitError =
   | { kind: 'unknown'; selector?: Hex; data: Hex }
 
 /**
- * The setup description (sdk.md D-205 "Describe"), the disclosure I-15 binds.
- * Every field is computed completely; the values are codes and data.
- * Illustrative shape: the field list is frozen, the value shapes follow the
- * table's "values" column.
+ * The setup description, shown in full before a commit so the holder sees who
+ * could act on their account. Every field is computed completely; the values
+ * are codes and data. The field list is fixed; the value shapes stay open until
+ * the SDK fixes them.
  */
 export interface SetupDescription {
   rule: unknown
@@ -205,7 +198,7 @@ export interface SetupDescription {
   methodStanding: unknown
   passkeyDomains: unknown
   candidateKeys: { address: Address; isAuthority: boolean }[]
-  // `'no-creation-triple'` is illustrative, sdk.md D-205: the chapter names the value in prose alone.
+  // The SDK names this value but no literal; `'no-creation-triple'` is the extension's own.
   removedKey: Address | 'no-creation-triple'
   privacy: unknown
   backup: unknown
@@ -216,9 +209,8 @@ export interface SetupDescription {
 }
 
 /**
- * The request description an approver reads before producing a proof
- * (sdk.md D-205). `handover` and `order` are absent on a cancellation.
- * Illustrative shape, sdk.md D-201.
+ * The request description an approver reads before producing a proof.
+ * `handover` and `order` are absent on a cancellation.
  */
 export interface RequestDescription {
   account: Address
@@ -238,8 +230,7 @@ export interface RequestDescription {
 
 /**
  * The status description `describeStatus(setupState, recoveryState, latest)`
- * returns, the one description no class exposes (sdk.md D-205).
- * Illustrative shape, sdk.md D-201.
+ * returns, the one description no class exposes.
  */
 export interface StatusDescription {
   block: { hash: Hex } | { mismatched: true }
