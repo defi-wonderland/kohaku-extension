@@ -151,7 +151,9 @@ const inMemoryQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
  * so its read and its write never interleave with another update of the same
  * key. It holds the Web Locks lock named by the key, which every extension page
  * and the worker share, or where that API is missing the in-memory queue of
- * the key.
+ * the key. A task must never start another update of its own key: the same
+ * holder cannot take a Web Locks lock twice, and the in-memory queue would
+ * wait for itself.
  */
 const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
