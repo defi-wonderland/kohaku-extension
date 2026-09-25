@@ -38,17 +38,39 @@ import {
 } from './classify'
 import type { GasCheck } from './gas'
 import type { WriteKind } from './kinds'
-import { canRetry, IdleState, WriteState } from './states'
+import { canRetry, IdleState, SubmittingState, WriteState } from './states'
 
 /** The run a state belongs to: 0 before the first `start`, one more at each accepted `start`. */
 export interface WriteRun {
   run: number
 }
 
-/** A write's state in the machine: one of the shared states, with its run. */
-export type WriteMachineState = WriteState & WriteRun
+/**
+ * A write's state in the machine: one of the shared states, with its run. The
+ * submitting state also keeps `sentHashes`, every hash the run's call went out
+ * under: the first one and each replacement after it.
+ */
+export type WriteMachineState =
+  | (Exclude<WriteState, SubmittingState> & WriteRun)
+  | (SubmittingState & WriteRun & { sentHashes?: readonly Hex[] })
 
-/** What moves a write. */
+type SubmittingInRun = Extract<WriteMachineState, { status: 'submitting' }>
+
+const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
+
+/** The hashes the run's call went out under; the stored hash where the state keeps no list. */
+const sentHashesOf = (state: SubmittingInRun): readonly Hex[] =>
+  state.sentHashes ?? (state.transactionHash ? [state.transactionHash] : [])
+
+const withSentHash = (hashes: readonly Hex[], hash: Hex): readonly Hex[] =>
+  hashes.some((known) => sameHash(known, hash)) ? hashes : [...hashes, hash]
+
+/**
+ * What moves a write. No send path exists yet, so the consumer drives the
+ * send: it reports each hash with `sent`, supplies the decoded cause of a
+ * revert on `receipt` or `error`, and sends `attemptRead` after a cancel's
+ * revert.
+ */
 export type WriteEvent =
   /** Runs the gas check and opens a new run: from `idle`, or from a state that offers the retry. */
   | { type: 'start' }
@@ -131,16 +153,27 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
       return state.status === 'needsDeposit' ? { status: 'checkingGas', write, run } : state
 
     case 'sent':
-      // A second hash in the same run replaces the first: the wallet sent the
-      // same call again at another fee.
+      // A second hash in the same run is the same call sent again at another
+      // fee: it becomes the stored hash and joins the ones before it.
       return state.status === 'submitting'
-        ? { status: 'submitting', write, transactionHash: event.transactionHash, run }
+        ? {
+            status: 'submitting',
+            write,
+            transactionHash: event.transactionHash,
+            sentHashes: withSentHash(sentHashesOf(state), event.transactionHash),
+            run
+          }
         : state
 
     case 'receipt':
       if (state.status !== 'submitting') return state
-      // The receipt may name another hash than the one sent: within the run,
-      // that is a repriced replacement of the same call, so it settles the write.
+      // Only a receipt for a hash the run announced with `sent` settles the
+      // write: the same key sends other transactions too, such as the deposit
+      // step's transfer. A repriced replacement settles once its hash was
+      // announced with a second `sent`.
+      if (!sentHashesOf(state).some((hash) => sameHash(hash, event.receipt.transactionHash))) {
+        return state
+      }
       return {
         ...settleReceipt(event.receipt, { write, attemptAfter: event.attemptAfter }, event.cause),
         run
@@ -162,13 +195,14 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
         found.transactionHash ??
         event.transactionHash ??
         (state.status === 'submitting' ? state.transactionHash : undefined)
-      return {
-        ...classifyFailure(
-          { error: event.error, ...(transactionHash ? { transactionHash } : {}) },
-          context
-        ),
-        run
-      }
+      const failure = classifyFailure(
+        { error: event.error, ...(transactionHash ? { transactionHash } : {}) },
+        context
+      )
+      if (failure.status !== 'submitting' || !failure.transactionHash) return { ...failure, run }
+      // A hash the error names is the call's too, so its receipt settles the write.
+      const earlier = state.status === 'submitting' ? sentHashesOf(state) : []
+      return { ...failure, sentHashes: withSentHash(earlier, failure.transactionHash), run }
     }
 
     case 'attemptRead':

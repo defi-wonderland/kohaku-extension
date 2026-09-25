@@ -103,9 +103,8 @@ export const GAS_KEYS = {
  * The reverted reading of each write: the save, the edit, the submission and
  * the execution each have their own sentence. Any other setup write reads the
  * generic `reverted`, and so does a cancel whose attempt is not gone. The
- * execution's entry is its "still ready"
- * reading; `revertedKeyOf` picks `revertedExecuteGone` for a cause that ends
- * the attempt.
+ * execution's entry is its "still ready" reading; `revertedKeyOf` picks
+ * `revertedExecuteGone` for a cause that ends the attempt.
  */
 export const REVERTED_KEYS: { readonly [W in WriteKind]: string } = {
   save: WRITES_KEYS.revertedSave,
