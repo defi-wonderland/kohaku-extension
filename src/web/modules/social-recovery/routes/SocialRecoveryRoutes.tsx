@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 
 import AuthenticatedRoute from '@web/modules/router/components/AuthenticatedRoute'
 import KeystoreUnlockedRoute from '@web/modules/router/components/KeystoreUnlockedRoute'
+import CeremonyScreen from '@web/modules/social-recovery/shared/ceremony/screen'
 
 /**
  * The route registry of the account recovery module.
@@ -43,6 +44,13 @@ const SocialRecoveryRoutes = () => (
         socialRecoveryFastTrack and socialRecoveryRecover. socialRecoveryCeremony
         mounts in the group its callers need.
       */}
+      {/*
+        The ceremony tab runs in the open group because its callers include a
+        fresh install with no keystore. The tab reads no keystore and holds no
+        signer, so it needs no guard. A guard would also send a tab waiting on a
+        phone hand-off to the unlock screen on auto-lock and lose the result.
+      */}
+      <Route path="ceremony" element={<CeremonyScreen />} />
     </Route>
   </Routes>
 )
