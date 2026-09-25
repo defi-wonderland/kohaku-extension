@@ -24,6 +24,12 @@ describe('resolved name caveat', () => {
     })
   })
 
+  it('carries the caveat in every use but information only', () => {
+    NAME_USES.filter((use) => use !== 'informationOnly').forEach((use) =>
+      expect(renderResolvedName('alice.eth', use)?.caveat).toBe(CAVEAT)
+    )
+  })
+
   it('keeps the caveat on a name cut at 24 characters', () => {
     expect(renderResolvedName(`${'a'.repeat(30)}.eth`, 'besideAddressToCheck')).toEqual({
       name: `${'a'.repeat(23)}…`,
@@ -37,12 +43,5 @@ describe('resolved name caveat', () => {
 
   it('returns null for a blank name in every use', () => {
     NAME_USES.forEach((use) => expect(renderResolvedName('  \t', use)).toBeNull())
-  })
-
-  it('narrows to a name with its caveat when the name is not empty', () => {
-    const out = renderResolvedName('bob.eth', 'aloneForAction')
-    expect(out).not.toBeNull()
-    expect(out!.name).toBe('bob.eth')
-    expect(out!.caveat).toBe(CAVEAT)
   })
 })
