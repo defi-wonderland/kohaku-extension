@@ -18,7 +18,7 @@ import {
   Translate
 } from '@web/modules/social-recovery/shared/display'
 
-import type { AttemptEnd, RevertCause } from './classify'
+import { AttemptEnd, leavesAttemptReady, RevertCause } from './classify'
 import {
   DepositRouteKind,
   DepositStep,
@@ -47,6 +47,8 @@ export const WRITES_KEYS = {
   revertedSubmit: `${WRITES}.revertedSubmit`,
   revertedExecute: `${WRITES}.revertedExecute`,
   revertedEdit: `${WRITES}.revertedEdit`,
+  revertedExecuteGone: `${WRITES}.revertedExecuteGone`,
+  gasCheckFailed: `${WRITES}.gasCheckFailed`,
   tryAgain: `${WRITES}.tryAgain`,
   cancelRevertedTitle: `${WRITES}.cancelRevertedTitle`,
   cancelReverted: `${WRITES}.cancelReverted`,
@@ -92,9 +94,10 @@ export const GAS_KEYS = {
 /**
  * The reverted reading of each write (D-319), from its own frame: the save
  * (C-07), the edit (G-05b), the submission (D-11) and the execution (D-13).
- * A write with no frame of its own reads the generic `reverted`. A cancel's
- * revert reads D-307's gone attempt, and the generic `reverted` only where the
- * decoded cause names another kit error.
+ * A write with no frame of its own reads the generic `reverted`, and so does a
+ * cancel whose attempt is not gone. The execution's entry is its "still ready"
+ * reading; `revertedKeyOf` picks `revertedExecuteGone` for a cause that ends
+ * the attempt.
  */
 export const REVERTED_KEYS: { readonly [W in WriteKind]: string } = {
   save: WRITES_KEYS.revertedSave,
@@ -104,6 +107,18 @@ export const REVERTED_KEYS: { readonly [W in WriteKind]: string } = {
   submission: WRITES_KEYS.revertedSubmit,
   execution: WRITES_KEYS.revertedExecute
 }
+
+/**
+ * The reverted sentence of a write for its cause. An execution reads that the
+ * recovery is still ready only for a cause that leaves the attempt ready
+ * (`leavesAttemptReady`: the wait has not ended, a security stop holds, or a
+ * cause the wallet cannot name), and `revertedExecuteGone` otherwise, the
+ * fifth ending of D-393, which offers no retry.
+ */
+export const revertedKeyOf = (write: WriteKind, cause: RevertCause): string =>
+  write === 'execution' && !leavesAttemptReady(cause)
+    ? WRITES_KEYS.revertedExecuteGone
+    : REVERTED_KEYS[write]
 
 /** The key of the cause sentence of one kit error of sdk.md D-205, `socialRecovery.writes.causes.<name>`. */
 export const causeKey = (name: KitErrorName): string => `${WRITES}.causes.${name}`
@@ -175,8 +190,10 @@ const renderAttemptGone = (
  * The copy of a write's state. The submitting state reads the in-progress chip,
  * its title and that the key is sending one transaction; the failed state reads
  * one of its two readings (D-319), the reverted one in the write's own words
- * (`REVERTED_KEYS`), or, for a cancel whose attempt was already gone, D-307's
- * reading. The other states carry no copy of this lane.
+ * (`revertedKeyOf`), or, for a cancel whose attempt was already gone, D-307's
+ * reading; a gas check that could not read says so with the retry (D-393). The
+ * retry renders only where a retry can fix the state (`canRetry`). The other
+ * states carry no copy of this lane.
  */
 export const renderWriteState = (
   state: WriteState,
@@ -194,6 +211,8 @@ export const renderWriteState = (
         ),
         lines: [t(WRITES_KEYS.submittingBody)]
       }
+    case 'gasReadError':
+      return { ...base, ...retry, lines: [t(WRITES_KEYS.gasCheckFailed)] }
     case 'failedNotSent':
       return { ...base, ...retry, lines: [t(WRITES_KEYS.notSent)] }
     case 'failedReverted':
@@ -203,7 +222,11 @@ export const renderWriteState = (
       return {
         ...base,
         ...retry,
-        lines: [t(REVERTED_KEYS[state.write], { cause: renderRevertCause(state.cause, t) })]
+        lines: [
+          t(revertedKeyOf(state.write, state.cause), {
+            cause: renderRevertCause(state.cause, t)
+          })
+        ]
       }
     default:
       return { ...base, lines: [] }
@@ -262,12 +285,17 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
  *   an operation that key must send and pay for, and the network.
  * - A recovery call on the fast track reads frame A1-04 and D-09: the key that
  *   sends the recovery pays its gas and the account cannot pay for itself until
- *   it is recovered; the key's address; the amount to send from outside; that
- *   the execution is a second funding at that day's fee; the network; and the
- *   lines of a step that waits for the funds.
+ *   it is recovered; the key's address; the amount to send from outside; the
+ *   network; and the lines of a step that waits for the funds.
  * - A recovery call on the logged-in route reads frame D-09's logged-in state:
  *   the key of the chosen account, both routes and the transfer sentence, then
- *   the second funding, the network and the waiting lines.
+ *   the network and the waiting lines.
+ *
+ * The step before the submission alone adds that the execution is a second
+ * funding asked for again at execution due, at that day's fee (D-303); the
+ * step at execution due is that second funding. Each route shows its own
+ * amount: the transfer's carries the transfer's own fee, the deposit from
+ * outside the shortfall alone.
  *
  * `balance` is the key's latest balance for the waiting line, the step's own
  * by default.
@@ -284,22 +312,24 @@ export const renderDepositStep = (
   const copyLabel = t(GAS_KEYS.copy)
   const transfer = step.routes.find((route) => route.kind === 'transfer')
 
-  const routes: RenderedRoute[] = step.routes.map((route) =>
-    route.kind === 'transfer'
-      ? {
-          kind: 'transfer',
-          line: t(GAS_KEYS.transferRoute, { amount, account: route.from.name }),
-          note: t(GAS_KEYS.transferRouteNote)
-        }
-      : {
-          kind: 'outside',
-          line: transfer
-            ? t(GAS_KEYS.outsideRoute, { amount })
-            : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
-                amount
-              })
-        }
-  )
+  const routes: RenderedRoute[] = step.routes.map((route) => {
+    const routeAmount = renderGasAmount(route.amount, symbol)
+    if (route.kind === 'transfer') {
+      return {
+        kind: 'transfer',
+        line: t(GAS_KEYS.transferRoute, { amount: routeAmount, account: route.from.name }),
+        note: t(GAS_KEYS.transferRouteNote)
+      }
+    }
+    return {
+      kind: 'outside',
+      line: transfer
+        ? t(GAS_KEYS.outsideRoute, { amount: routeAmount })
+        : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
+            amount: routeAmount
+          })
+    }
+  })
   const transferSentence = transfer ? [t(GAS_KEYS.transferIsAnOperation)] : []
 
   const { write } = step
@@ -330,7 +360,11 @@ export const renderDepositStep = (
     keyAddress,
     copyLabel,
     routes,
-    notes: [...transferSentence, t(GAS_KEYS.secondFunding), t(GAS_KEYS.network, { network })],
+    notes: [
+      ...transferSentence,
+      ...(step.write === 'submission' ? [t(GAS_KEYS.secondFunding)] : []),
+      t(GAS_KEYS.network, { network })
+    ],
     waiting: [
       t(GAS_KEYS.balanceWaiting, { balance }),
       t(GAS_KEYS.continuesOnItsOwn),

@@ -1,22 +1,29 @@
 /**
  * The write machine: one pure reducer over the shared states (states.ts).
  *
- *   idle ──start──▶ checkingGas ──gasChecked(enough)──▶ submitting ──sent──▶ submitting(hash)
- *                        │  ▲                                  │
- *     gasChecked(deposit)│  │recheck                  receipt / error
- *                        ▼  │                                  ▼
- *                   needsDeposit                 landed | failedNotSent | failedReverted
+ *                     ┌──error(read failed)──▶ gasReadError ───start──┐
+ *                     │                                                 │
+ *   idle ──start──▶ checkingGas ◀──────────────────────────────────────┘
+ *                     │  ▲   └──gasChecked(enough)──▶ submitting ──sent──▶ submitting(hash)
+ *  gasChecked(deposit)│  │recheck                            │
+ *                     ▼  │                          receipt / error
+ *                needsDeposit                                ▼
+ *                                          landed | failedNotSent | failedReverted
  *
  * A failed state that offers the retry goes back to `checkingGas` on `start`,
- * since a retry runs the gas check again at that moment's fee. An event a state
- * does not take leaves the state as it was (the same object), so a late answer
- * of an earlier run never moves the screen.
+ * since a retry runs the gas check again at that moment's fee. A read of the
+ * gas check that could not run (a `ProviderReadFailure`) is `gasReadError`,
+ * never the not-sent reading (D-393). An event a state does not take leaves
+ * the state as it was (the same object), so a late answer of an earlier run
+ * never moves the screen.
  */
 import type { Hex, KitError } from '@web/modules/social-recovery/sdk-interfaces'
+import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client'
 
 import {
   AttemptAfterCancel,
   classifyFailure,
+  revertCauseOf,
   settleReceipt,
   WriteReceipt,
   writeFailureOf
@@ -27,7 +34,7 @@ import { canRetry, IdleState, WriteState } from './states'
 
 /** What moves a write. */
 export type WriteEvent =
-  /** Runs the gas check: from `idle`, or from a failed state that offers the retry. */
+  /** Runs the gas check: from `idle`, or from a state that offers the retry. */
   | { type: 'start' }
   /** The gas check answered: `enough` sends, `deposit` shows the step. */
   | { type: 'gasChecked'; check: GasCheck }
@@ -96,9 +103,16 @@ export const writeReducer = (state: WriteState, event: WriteEvent): WriteState =
 
     case 'error': {
       if (state.status !== 'checkingGas' && state.status !== 'submitting') return state
+      // A read of the gas check that could not run: the check runs again (D-393).
+      if (state.status === 'checkingGas' && isProviderReadFailure(event.error)) {
+        return { status: 'gasReadError', write, error: event.error }
+      }
       const context = { write, attemptAfter: event.attemptAfter }
       const found = writeFailureOf(event.error)
-      // An error that carries its receipt (ethers' `CALL_EXCEPTION` from `wait()`) settles by it.
+      // A call another transaction replaced never ran, whatever the replacement did.
+      if (found.replaced) return classifyFailure(found, context)
+      // An error that carries its receipt (ethers' `CALL_EXCEPTION` from `wait()`,
+      // or a repriced replacement's) settles by it.
       if (found.receipt) return settleReceipt(found.receipt, context, event.cause)
       const transactionHash =
         found.transactionHash ??
@@ -111,15 +125,10 @@ export const writeReducer = (state: WriteState, event: WriteEvent): WriteState =
     }
 
     case 'attemptRead':
-      if (state.status !== 'failedReverted' || state.cause.kind !== 'attemptGone') return state
-      return {
-        ...state,
-        cause: {
-          kind: 'attemptGone',
-          ended: event.attemptAfter.ended,
-          ...(event.attemptAfter.controller ? { controller: event.attemptAfter.controller } : {})
-        }
-      }
+      // The attempt read judges a reverted cancel again: gone, with its road and
+      // controller, or still running, the plain reverted reading (D-307).
+      if (state.status !== 'failedReverted' || state.write !== 'cancel') return state
+      return { ...state, cause: revertCauseOf(write, state.decoded, event.attemptAfter) }
 
     case 'reset':
       return state.status === 'idle' ? state : { status: 'idle', write }

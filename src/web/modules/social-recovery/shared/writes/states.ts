@@ -7,9 +7,9 @@
  * edit, any other setup write, the owner's cancel, the submission and the
  * execution.
  */
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex, KitError } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { RevertCause, WriteReceipt } from './classify'
+import { ReplacedReason, retryCanFix, RevertCause, WriteReceipt } from './classify'
 import type { DepositStep } from './gas'
 import type { WriteKind } from './kinds'
 
@@ -17,6 +17,7 @@ import type { WriteKind } from './kinds'
 export const WRITE_STATUSES = [
   'idle',
   'checkingGas',
+  'gasReadError',
   'needsDeposit',
   'submitting',
   'landed',
@@ -39,6 +40,18 @@ export interface IdleState {
 export interface CheckingGasState {
   status: 'checkingGas'
   write: WriteKind
+}
+
+/**
+ * A read of the gas check could not run: the balance, the estimate or the gas
+ * price (a `ProviderReadFailure`). It is part of the gas check, not a reading
+ * of the failed state: the write was never about to be sent, so it offers the
+ * check again rather than reading that the transaction was rejected (D-393).
+ */
+export interface GasReadErrorState {
+  status: 'gasReadError'
+  write: WriteKind
+  error: unknown
 }
 
 /** The sending key holds too little: the deposit step, rather than a failed transaction. */
@@ -70,18 +83,23 @@ export interface LandedState {
  * The first reading of the failed state: the wallet never sent the call, so
  * nothing reached the chain and the account stands as it did. `error` is what
  * the wallet met before any transaction hash: a refused signature, a gas
- * estimate that would revert, a read or a broadcast that failed.
+ * estimate that would revert, or a broadcast that failed. `replaced` is
+ * present where another transaction took the call's place before it was mined
+ * (`cancelled` or `replaced`), so the call itself never ran.
  */
 export interface FailedNotSentState {
   status: 'failedNotSent'
   write: WriteKind
   error: unknown
+  replaced?: ReplacedReason
 }
 
 /**
  * The second reading of the failed state: the call reached the chain and
  * reverted. It names the cause the receipt carries, and the gas it spent is
- * gone (`gasSpent` where the receipt carries both factors).
+ * gone (`gasSpent` where the receipt carries both factors). `decoded` keeps
+ * the kit error the wallet decoded, so the attempt read of a cancel can judge
+ * the cause again once it returns.
  */
 export interface FailedRevertedState {
   status: 'failedReverted'
@@ -89,6 +107,7 @@ export interface FailedRevertedState {
   transactionHash: Hex
   receipt: WriteReceipt
   cause: RevertCause
+  decoded?: KitError
   gasSpent?: bigint
 }
 
@@ -99,6 +118,7 @@ export type FailedState = FailedNotSentState | FailedRevertedState
 export type WriteState =
   | IdleState
   | CheckingGasState
+  | GasReadErrorState
   | NeedsDepositState
   | SubmittingState
   | LandedState
@@ -108,28 +128,30 @@ export const isFailedState = (state: WriteState): state is FailedState =>
   (FAILED_STATUSES as readonly string[]).includes(state.status)
 
 /**
- * Whether the failed state offers the retry. Every failed state does but a
- * cancel whose attempt was already gone: nothing is left to cancel, D-307.
+ * Whether the state offers the retry. A gas check that could not read runs
+ * again, and a call never sent is sent again. A reverted call is retried only
+ * where a retry can fix its cause (`retryCanFix`): never for a cancel whose
+ * attempt was already gone (D-307), for the submission's acceptance errors, or
+ * for an execution the fifth ending of D-393 closed.
  */
 export const canRetry = (state: WriteState): boolean =>
+  state.status === 'gasReadError' ||
   state.status === 'failedNotSent' ||
-  (state.status === 'failedReverted' && state.cause.kind !== 'attemptGone')
+  (state.status === 'failedReverted' && retryCanFix(state.write, state.cause))
 
 /**
  * Whether the failed state offers the cancel's move-funds action (D-307 and
  * the cancel's failed states of frame D2-01). A cancel the wallet never sent
- * offers it beside the retry, since the waiting period keeps running. A cancel
- * that reverted because the attempt executed offers it beside the controller
- * the state names. A cancel another road beat keeps control unchanged and
- * offers none, and neither does a gone attempt whose read has not returned.
- * No other write offers it.
+ * offers it beside the retry, since the waiting period keeps running, and so
+ * does a cancel that reverted while the attempt still runs, or before the
+ * attempt read says otherwise. A cancel that reverted because the attempt
+ * executed offers it beside the controller the state names. A cancel another
+ * road beat keeps control unchanged and offers none, and neither does a gone
+ * attempt whose read has not returned. No other write offers it.
  */
 export const offersMoveFunds = (state: WriteState): boolean => {
   if (state.write !== 'cancel') return false
   if (state.status === 'failedNotSent') return true
-  return (
-    state.status === 'failedReverted' &&
-    state.cause.kind === 'attemptGone' &&
-    state.cause.ended === 'executed'
-  )
+  if (state.status !== 'failedReverted') return false
+  return state.cause.kind !== 'attemptGone' || state.cause.ended === 'executed'
 }
