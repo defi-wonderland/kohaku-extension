@@ -1,13 +1,12 @@
 /**
- * PT-040 brief, "Test expectations": no import from
- * `@web/extension-services/background/controllers` or from
- * `@ambire-common/controllers`, nor from any other `controllers` folder. The
- * records live in local storage, never in a worker controller (D-310).
+ * The records live in the extension's local storage, never in a background
+ * controller, since the worker restarts and clears its controllers. So no
+ * production file of the records imports from a controllers folder.
  */
 import fs from 'fs'
 import path from 'path'
 
-const LANE = path.resolve(__dirname, '..')
+const RECORDS_DIR = path.resolve(__dirname, '..')
 
 const productionFiles = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -36,17 +35,13 @@ const specifiers = (source: string): string[] => {
 }
 
 describe('shared/records imports no controller', () => {
-  const files = productionFiles(LANE)
-
-  it('has production code to check', () => {
-    expect(files.length).toBeGreaterThan(0)
-  })
-
   it('imports nothing from a controllers folder', () => {
+    const files = productionFiles(RECORDS_DIR)
+    expect(files.length).toBeGreaterThan(0)
     const offenders = files.flatMap((file) =>
       specifiers(fs.readFileSync(file, 'utf8'))
         .filter((spec) => /(^|\/)controllers(\/|$)/.test(spec))
-        .map((spec) => `${path.relative(LANE, file)}: ${spec}`)
+        .map((spec) => `${path.relative(RECORDS_DIR, file)}: ${spec}`)
     )
     expect(offenders).toEqual([])
   })

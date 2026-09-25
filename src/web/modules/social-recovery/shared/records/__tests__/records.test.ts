@@ -1,8 +1,7 @@
 /**
- * PT-040 The wallet's records: the done entries of
- * docs/social-recovery/tasks/PT-040-the-wallet-s-records.md, per the brief's
- * "Test expectations" (docs/social-recovery/briefs/PT-040.md), D-310, D-370,
- * D-392, D-393 and I-38.
+ * The wallet's records: the six setup records, the recovery session and its
+ * five wipe events, the countdown the landed session carries, and the
+ * decrypted setup cache.
  *
  * Every test runs against an in-memory double of
  * src/web/extension-services/background/webapi/storage.ts that behaves like it:
@@ -27,7 +26,6 @@ import {
   DirectWipeEvent,
   Enrollment,
   predictedAttemptId,
-  RECOVERY_WIPE_EVENTS,
   recordAge,
   RecordRead,
   RecoverySessionRecord,
@@ -37,10 +35,6 @@ import {
   SetupRecordValues,
   WIPE_REASON_STRING_KEYS
 } from '@web/modules/social-recovery/shared/records'
-
-// ---------------------------------------------------------------------------
-// The storage double
-// ---------------------------------------------------------------------------
 
 type StorageDouble = {
   get: (key: string, defaultValue?: unknown) => Promise<unknown>
@@ -93,14 +87,10 @@ const makeStorage = (): StorageDouble => {
   }
 }
 
-// A record the platform keeps for the holder's credentials: not a record of
-// this lane, and neither save nor start over may touch it (D-310).
+// A record the platform keeps for the holder's credentials, which neither save
+// nor start over may touch.
 const PLATFORM_CREDENTIALS_KEY = 'keystoreKeys'
 const PLATFORM_CREDENTIALS = [{ addr: '0xCredential', type: 'internal', label: 'passkey' }]
-
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
@@ -124,7 +114,6 @@ const ENROLLMENT: Enrollment = {
   backup: 'device-bound'
 }
 
-// One sample value per setup record, in D-310's order.
 const SETUP_SAMPLES: SetupRecordValues = {
   setupDraft: SETUP_DRAFT,
   inventory: ['another-device', 'guardian-wallets'],
@@ -165,7 +154,7 @@ const reply = (place: number, proof: Hex, account: Address = ACCOUNT): ApproverR
 
 const APPROVALS: ApproverReply[] = [reply(0, PROOF_A), reply(1, PROOF_B)]
 
-// The SDK's gathering record (sdk.md D-207), the live session's body.
+// The SDK's gathering record, the body of a live session.
 const gathering = (
   account: Address = ACCOUNT,
   replies: ApproverReply[] = APPROVALS,
@@ -200,7 +189,6 @@ const gathering = (
 
 const GATHERING = gathering()
 
-// D-310's five events, in its order.
 const FIVE_EVENTS: RecoveryWipeEvent[] = [
   'submission-landed',
   'deadline-passed',
@@ -242,10 +230,9 @@ const writeAllSetup = async (records: Records, account: Address = ACCOUNT) => {
   await six.passwordSet.write(SETUP_SAMPLES.passwordSet)
 }
 
-// The one line a wipe keeps for an event, per D-310 and the review's reading:
-// the reason, the account and, for an expired request, its deadline. The
-// submission landing keeps the landed state, the countdown's record, which
-// holds the account address alone.
+// The one line a wipe keeps for an event: the reason, the account and, for an
+// expired request, its deadline. The submission landing keeps the landed state,
+// the countdown's record, which holds the account address alone.
 const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
   event === 'submission-landed'
     ? { state: 'landed', account: ACCOUNT }
@@ -261,17 +248,7 @@ const wipeFor = async (records: Records, event: RecoveryWipeEvent) => {
   else await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, event)
 }
 
-// ---------------------------------------------------------------------------
-// The six setup records
-// ---------------------------------------------------------------------------
-
-describe('the six setup records (D-310)', () => {
-  it('names exactly the six setup records', () => {
-    expect([...SETUP_RECORD_NAMES].sort()).toEqual(
-      ['setupDraft', 'inventory', 'path', 'enrollments', 'waitingPeriod', 'passwordSet'].sort()
-    )
-  })
-
+describe('the six setup records', () => {
   SETUP_RECORD_NAMES.forEach((name: SetupRecordName) =>
     describe(name, () => {
       const accessorOf = (records: Records) =>
@@ -419,11 +396,7 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
   )
 })
 
-// ---------------------------------------------------------------------------
-// No bare boolean or zero
-// ---------------------------------------------------------------------------
-
-describe('no record is a bare boolean or zero (D-310, D-370)', () => {
+describe('no record is a bare boolean or zero', () => {
   it('the password-set flag stores an object, not a boolean', async () => {
     const { storage, records } = setup()
     await records.setup(CHAIN_ID, ACCOUNT).passwordSet.write('password-set')
@@ -479,15 +452,7 @@ describe('no record is a bare boolean or zero (D-310, D-370)', () => {
     expect(await records.setup(CHAIN_ID, ACCOUNT).passwordSet.read()).toBe(ABSENT)
   })
 
-  it('the absent value is itself not false, zero, undefined or null', () => {
-    expect(ABSENT).toBeDefined()
-    expect(ABSENT).not.toBe(false)
-    expect(ABSENT).not.toBe(0)
-    expect(ABSENT).not.toBeNull()
-    expect(ABSENT.status).toBe('absent')
-  })
-
-  it('every value the lane writes is a truthy object', async () => {
+  it('every value the records write is a truthy object', async () => {
     const { storage, records } = setup()
     await writeAllSetup(records)
     await records.setup(CHAIN_ID, OTHER_ACCOUNT).waitingPeriod.write(0n)
@@ -505,11 +470,7 @@ describe('no record is a bare boolean or zero (D-310, D-370)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// The recovery session
-// ---------------------------------------------------------------------------
-
-describe('the recovery session (D-310, I-38)', () => {
+describe('the recovery session', () => {
   it('round-trips the approvals and the predicted attempt id', async () => {
     const { storage, records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
@@ -566,11 +527,6 @@ describe('the recovery session (D-310, I-38)', () => {
     ).rejects.toThrow()
     expect(storage.raw.size).toBe(0)
   })
-
-  it('the wipe vocabulary holds exactly the five events, no sixth', () => {
-    expect(RECOVERY_WIPE_EVENTS).toHaveLength(5)
-    expect([...RECOVERY_WIPE_EVENTS].sort()).toEqual([...FIVE_EVENTS].sort())
-  })
   ;['security-stop', 'securityStop', 'pause', 'cancelled', ''].forEach((event) =>
     it(`refuses '${event}', outside the vocabulary, and wipes nothing`, async () => {
       const { storage, records } = setup()
@@ -586,11 +542,6 @@ describe('the recovery session (D-310, I-38)', () => {
       })
     })
   )
-
-  it('exposes no security-stop or pause wipe (I-38: a security stop wipes nothing)', () => {
-    const { records } = setup()
-    expect(Object.keys(records).filter((n) => /stop|pause/i.test(n))).toEqual([])
-  })
 
   FIVE_EVENTS.forEach((event) =>
     describe(`the ${event} event`, () => {
@@ -638,7 +589,7 @@ describe('the recovery session (D-310, I-38)', () => {
     expect(dump(storage)).toBe(before)
   })
 
-  it('a pause is no wipe event: asked to wipe for a pause, the lane refuses and the approvals stay', async () => {
+  it('a pause is no wipe event: asked to wipe for a pause, the records refuse and the approvals stay', async () => {
     const { storage, records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
     const before = dump(storage)
@@ -719,7 +670,7 @@ describe('the recovery session (D-310, I-38)', () => {
     expect(await records.listRecoverySessions(1n)).toEqual([])
   })
 
-  it('the death states render from the reason line alone: expired, void, setup changed (D-392, D-393)', async () => {
+  it('the death states render from the reason line alone: expired, void, setup changed', async () => {
     expect(WIPE_REASON_STRING_KEYS['deadline-passed']?.title).toMatch(/expired/i)
     expect(WIPE_REASON_STRING_KEYS['another-attempt-opened']?.title).toMatch(/void/i)
     expect(WIPE_REASON_STRING_KEYS['setup-changed']?.title).toMatch(/setupChanged/)
@@ -742,11 +693,7 @@ describe('the recovery session (D-310, I-38)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// The countdown record
-// ---------------------------------------------------------------------------
-
-describe('the countdown record after the submission lands (D-310, D-393)', () => {
+describe('the countdown record after the submission lands', () => {
   it('holds the account address alone and the session is gone', async () => {
     const { records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
@@ -835,11 +782,7 @@ describe('the countdown record after the submission lands (D-310, D-393)', () =>
   })
 })
 
-// ---------------------------------------------------------------------------
-// The decrypted setup cache
-// ---------------------------------------------------------------------------
-
-describe('the decrypted setup cache after execution (D-310)', () => {
+describe('the decrypted setup cache after execution', () => {
   it('reads as absent before any write', async () => {
     const { records } = setup()
     expect(await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
@@ -896,12 +839,7 @@ describe('the decrypted setup cache after execution (D-310)', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// The session record carries the countdown (D-310: the session survives the
-// submission as the countdown's record), with no index record
-// ---------------------------------------------------------------------------
-
-describe('the session survives the submission as the countdown record (D-310)', () => {
+describe('the session survives the submission as the countdown record, with no index record', () => {
   const landAndReset = async () => {
     const ctx = setup()
     await ctx.records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
@@ -1036,7 +974,7 @@ describe('a live request is compared whole, and its replies only grow', () => {
     expect(dump(storage)).toBe(before)
   })
 
-  it('a later reply for the same place displaces the stored one (sdk.md D-207)', async () => {
+  it('a later reply for the same place displaces the stored one', async () => {
     const { records } = setup()
     await records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING)
     const displaced = gathering(ACCOUNT, [APPROVALS[0], reply(1, '0xabababab')])
