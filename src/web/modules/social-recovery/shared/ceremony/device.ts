@@ -1,7 +1,7 @@
 /**
  * The device call a host runs between the method's options and the method's
- * packaging (ux-interfaces.md D-372): the extension calls the authenticator,
- * the phone or the prover itself and hands the method the material.
+ * packaging: the extension calls the authenticator, the phone or the prover
+ * itself and hands the method the material.
  *
  * A device returns the material, or a stop read before the method runs: the
  * cancelled or refused note, a relying party the extension does not serve, a
@@ -11,7 +11,7 @@
 import type { CeremonyCall, CeremonyStop } from './verdicts'
 import type { PasskeyFacts } from './webauthn'
 
-/** The steps a host renders while it runs (D-372: progress, abort and failure). */
+/** The steps a host renders while it runs. */
 export const CEREMONY_STEPS = [
   'preparing',
   'waitingForDevice',
@@ -24,9 +24,9 @@ export type CeremonyStep = typeof CEREMONY_STEPS[number]
 export interface DeviceCallContext {
   /** Aborts the device call; an aborted call is the cancelled note. */
   signal?: AbortSignal
-  /** The holder chose the browser's phone hand-off (D-305, D-392). */
+  /** The holder chose the browser's phone hand-off. */
   handOff?: boolean
-  /** The call of D-372 the device serves; a test and a claim read a dismissal apart. */
+  /** The lifecycle call the device serves; a test and a claim read a dismissal apart. */
   call?: CeremonyCall
   onStep?: (step: CeremonyStep) => void
 }

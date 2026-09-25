@@ -26,8 +26,8 @@ import { CeremonyOutcome, failed } from './verdicts'
  *
  * A `browser-authenticator` method ignores `device` and runs the page's own
  * passkey device from `RunDeps.devices`, and its `params.relyingPartyId` is
- * replaced with the page's full origin string: the lane owns the relying
- * party id (D-314, D-372).
+ * replaced with the page's full origin string: the host owns the relying
+ * party id.
  */
 export interface ResolvedCeremony {
   orchestrator: IMethodsOrchestrator
@@ -84,9 +84,9 @@ export const runCeremony = async (
 
 /**
  * Whether this surface may run a ceremony: a full tab, never the action popup
- * and never the action window (D-316). TabOnlyRoute already moves the popup to
- * a tab; it keeps an action window that holds a current action, so the screen
- * keeps this gate too.
+ * and never the action window, since a ceremony dies when its page loses
+ * focus. TabOnlyRoute already moves the popup to a tab; it keeps an action
+ * window that holds a current action, so the screen keeps this gate too.
  */
 export const ceremonyMayRun = (ui: {
   isTab: boolean
@@ -96,8 +96,8 @@ export const ceremonyMayRun = (ui: {
 
 /**
  * Whether this page can serve a passkey: a Chromium extension origin with a
- * credentials container (D-314, D-305). Any other build draws the one state
- * "passkeys need Kohaku on Chrome" and runs no passkey ceremony.
+ * credentials container. Any other build draws the one state "passkeys need
+ * Kohaku on Chrome" and runs no passkey ceremony.
  */
 export const passkeysServed = (page: { protocol: string; hasCredentials: boolean }): boolean =>
   page.protocol === 'chrome-extension:' && page.hasCredentials

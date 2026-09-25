@@ -1,9 +1,11 @@
 /**
  * The source the ceremony screen reads its ceremony from, injected through
- * React context. The screen imports no SDK double: PT-038's follow-up provides
- * a resolver over its client and PT-040's records, and a test provides its own.
- * With no provider the screen runs nothing and reports not supported, since
- * this build then holds no implementation for any method.
+ * React context. The screen imports no SDK double: a provider mounted above
+ * the route supplies a resolver over the client and the wallet's records, and
+ * a test provides its own. `resolve` returns null where nothing waits under
+ * the request id; one that throws reads unavailable with retry. With no
+ * provider the screen runs nothing and reports not supported, since this build
+ * then holds no implementation for any method.
  */
 import React, { createContext, ReactNode, useContext, useMemo } from 'react'
 

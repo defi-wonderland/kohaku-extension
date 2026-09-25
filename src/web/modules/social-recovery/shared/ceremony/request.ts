@@ -4,10 +4,10 @@
  *
  * `tab.html#/social-recovery/ceremony?call=enroll&method=passkey&id=<request id>`
  *
- * - `call`: one of the four calls of D-372.
+ * - `call`: one of the four lifecycle calls.
  * - `method`: the method kind the caller's row holds, a slug such as `passkey`.
- * - `id`: the request id the caller stored its ceremony under (PT-040's records
- *   once they land) and the key the verdict returns under.
+ * - `id`: the request id the caller stored its ceremony under and the key the
+ *   verdict returns under.
  * - `handOff`: `phone` where the holder chose the browser's phone hand-off.
  * - `returnTo`: the in-extension path the tab returns to once it has reported.
  */

@@ -1,7 +1,7 @@
 /**
- * The visibility rule of D-316: a hidden tab dispatches nothing to the
- * background until it is shown again, so a ceremony that hands off to a phone
- * reports its result when the tab returns.
+ * The visibility rule: a hidden tab dispatches nothing until it is shown
+ * again, the report's storage write included, so a ceremony that hands off to
+ * a phone reports its result when the tab returns.
  *
  * The gate takes the document as a parameter, so it runs under Jest's node
  * environment with a fabricated source and in the tab with `document`.
@@ -32,7 +32,7 @@ export interface VisibilityGate {
 
 type Held = { run: () => void; drop: (reason: Error) => void }
 
-/** A gate over `source` (D-316). */
+/** A gate over `source`. */
 export const createVisibilityGate = (source: VisibilitySource): VisibilityGate => {
   let held: Held[] = []
   let disposed = false

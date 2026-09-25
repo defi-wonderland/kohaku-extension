@@ -1,17 +1,17 @@
 /**
- * The closed vocabulary every ceremony host returns (ux-interfaces.md D-372):
- * four verdicts and one dismissal that is not a verdict.
+ * The closed vocabulary every ceremony host returns: four verdicts and one
+ * dismissal that is not a verdict.
  *
  * - passed: the method produced its config or its reply, and the local check
  *   (where the call runs one) answered satisfied.
- * - failed: the method or the check refused, with the cause it reported.
- *   UXC-13: a failed test reads "test failed" with its cause, never "not tested".
+ * - failed: the method or the check refused, with the cause it reported. A
+ *   failed test reads "test failed" with its cause, never "not tested".
  * - unavailable: a node, a service or a phone did not answer; retry is offered.
  * - notSupported: the method cannot serve this document; no retry, since the
  *   answer will not change.
  * - dismissed: the holder cancelled the prompt or the browser refused it, read
- *   from the browser's own error BEFORE the method runs (D-372). The row keeps
- *   its chip and shows the cancelled or refused note.
+ *   from the browser's own error BEFORE the method runs. The row keeps its chip
+ *   and shows the cancelled or refused note.
  *
  * Every function here is pure and runs under Jest's node environment.
  */
@@ -24,40 +24,41 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CollectionChip, MethodChip } from '@web/modules/social-recovery/shared/display'
 
-/** The four calls of a method's lifecycle (D-372). */
+/** The four calls of a method's lifecycle. */
 export const CEREMONY_CALLS = ['enroll', 'testAccess', 'createClaim', 'healthCheck'] as const
 export type CeremonyCall = typeof CEREMONY_CALLS[number]
 
 export const isCeremonyCall = (value: unknown): value is CeremonyCall =>
   typeof value === 'string' && (CEREMONY_CALLS as readonly string[]).includes(value)
 
-/** The four verdicts, a closed set (D-372, D-305). */
+/** The four verdicts, a closed set. */
 export const CEREMONY_VERDICTS = ['passed', 'failed', 'unavailable', 'notSupported'] as const
 export type CeremonyVerdict = typeof CEREMONY_VERDICTS[number]
 
 export const isCeremonyVerdict = (value: unknown): value is CeremonyVerdict =>
   typeof value === 'string' && (CEREMONY_VERDICTS as readonly string[]).includes(value)
 
-/** The two notes a ceremony returns before the method runs (D-372, D-305). */
+/** The two notes a ceremony returns before the method runs. */
 export const DISMISSAL_NOTES = ['cancelled', 'refused'] as const
 export type DismissalNote = typeof DISMISSAL_NOTES[number]
 
 /**
- * The causes a verdict other than passed names: the method's own five
- * (sdk.md D-206) and the host's own eight.
+ * The causes a verdict other than passed names: the method's own five and the
+ * host's own eight.
  *
- * - `thrown`: the method threw a refusal (enrollInput and signingInput throw, D-201).
+ * - `thrown`: the method threw a refusal (enrollInput and signingInput throw).
  * - `check-rejected`: the local check answered rejected.
  * - `relying-party-mismatch`: the credential or the assertion was minted under a
- *   relying party other than the extension's own origin (D-314). At enrollment
- *   this is the provider that refused Kohaku (the 1Password case).
- * - `unreachable`: a phone hand-off that never connected (D-392).
+ *   relying party other than the extension's own origin. At enrollment this is
+ *   the provider that refused Kohaku (the 1Password case).
+ * - `unreachable`: a phone hand-off that never connected.
  * - `service-unanswered`: a node or a service did not answer.
- * - `not-judged`: the local check needs a contract's own word (sdk.md D-206).
+ * - `not-judged`: the local check needs a contract's own word.
  * - `no-implementation`: this build holds no implementation for the method, or
  *   no device call for its binding.
  * - `browser-error`: the browser's own error at a test or a claim, its name in
- *   `detail` (the coordinator's ruling on `NotAllowedError`, frame C-05).
+ *   `detail`, for example `NotAllowedError` at a test access, where the browser
+ *   cannot tell a dismissed prompt from a missing credential.
  */
 export const HOST_CAUSES = [
   'thrown',
@@ -147,9 +148,9 @@ export const dismissed = (note: DismissalNote, detail?: string): DismissedOutcom
 // ---------------------------------------------------------------------------
 
 /**
- * The method chip of PT-036's vocabulary each verdict selects on a TEST
- * ACCESS (D-302, D-305). The test chips apply to test access alone: an
- * enrollment is not a test, and a claim reads the checklist's chips.
+ * The method chip of the `shared/display` vocabulary each verdict selects on
+ * a TEST ACCESS. The test chips apply to test access alone: an enrollment is
+ * not a test, and a claim reads the checklist's chips.
  */
 export const VERDICT_CHIP: { readonly [V in CeremonyVerdict]: MethodChip } = {
   passed: 'tested',
@@ -158,7 +159,7 @@ export const VERDICT_CHIP: { readonly [V in CeremonyVerdict]: MethodChip } = {
   notSupported: 'notSupported'
 }
 
-/** A chip a row shows: a method chip in setup, a collection chip on the checklist (D-302). */
+/** A chip a row shows: a method chip in setup, a collection chip on the checklist. */
 export type RowChip =
   | { set: 'method'; chip: MethodChip }
   | { set: 'collection'; chip: CollectionChip }
@@ -169,11 +170,10 @@ export type RowChip =
  * - testAccess: the four test chips (tested, test failed, test unavailable,
  *   not supported).
  * - enroll: a passed enrollment reads not tested, since a row reads not tested
- *   until its test runs (D-305, frame C-05h); any other outcome keeps the row's
- *   chip and shows its note.
- * - createClaim: a passed claim reads complete, the checklist's chip (D-302,
- *   D-392); any other outcome keeps the row's chip and shows its note (frame
- *   D-07b).
+ *   until its test runs; any other outcome keeps the row's chip and shows its
+ *   note.
+ * - createClaim: a passed claim reads complete, the checklist's chip; any
+ *   other outcome keeps the row's chip and shows its note.
  * - healthCheck: the shell selects no chip.
  * - A dismissal keeps the row's chip on every call.
  */
@@ -197,7 +197,7 @@ export const chipOfOutcome = (
 
 /**
  * The note under `socialRecovery.ceremony` an outcome of `call` renders on its
- * row (D-305, D-392), or null where the chip and the line say it all.
+ * row, or null where the chip and the line say it all.
  *
  * - Dismissed: the cancelled or the refused note.
  * - Passed: a test or a claim reads the passed note with its hash; a passed
@@ -209,8 +209,8 @@ export const chipOfOutcome = (
  *   never shows a test line.
  * - Failed: a relying-party mismatch reads the provider's refusal at
  *   enrollment and the mismatch note at a test or a claim; a failed test reads
- *   no note (frame C-05: the chip, the browser's error name and the line); an
- *   enrollment or a claim reads the failed note (frame D-07b).
+ *   no note (the chip, the browser's error name and the line say it); an
+ *   enrollment or a claim reads the failed note.
  */
 export const noteKeyOfOutcome = (
   outcome: CeremonyOutcome<unknown>,
@@ -245,8 +245,8 @@ export const noteKeyOfOutcome = (
 }
 
 /**
- * The line a TEST ACCESS verdict carries under its chip (D-305, UXC-13): a
- * failed test reads test failed with its line and never the not-tested line.
+ * The line a TEST ACCESS verdict carries under its chip: a failed test reads
+ * test failed with its line and never the not-tested line.
  * Every other call carries no test line. An unavailable test carries none
  * either, since its note already reads the test-unavailable line.
  */
@@ -275,8 +275,8 @@ export const isBrowserErrorName = (value: unknown): value is string =>
 
 /**
  * The browser's own error name an outcome carries, or null. A screen shows
- * this name beside the note (frame C-05) and no other raw cause text: every
- * other cause renders through its en.json key.
+ * this name beside the note and no other raw cause text: every other cause
+ * renders through its en.json key.
  */
 export const browserErrorNameOf = (outcome: CeremonyOutcome<unknown>): string | null =>
   outcome.kind === 'verdict' &&
@@ -297,14 +297,14 @@ export const isMethodFailure = (value: unknown): value is EnrollFailure | ReplyF
     (value as { kind?: unknown }).kind === 'reply-failure')
 
 /**
- * One typed failure of the method (sdk.md D-206) as an outcome.
+ * One typed failure of the method as an outcome.
  *
  * - device-refused: for an `external-app` method, whose device call runs
  *   inside `replyFrom`, the approver's device declined: the refused note. For
  *   every other binding the method ran and answered the refusal itself, so it
- *   reads as a verdict, failed with that cause (UXC-13, the coordinator's
- *   ruling). A `browser-authenticator` refusal before the method runs is
- *   already caught as the browser's own error.
+ *   reads as a verdict, failed with that cause, never not tested. A
+ *   `browser-authenticator` refusal before the method runs is already caught
+ *   as the browser's own error.
  * - device-unavailable: the device did not answer, unavailable with retry; a
  *   phone hand-off that never connected reads unreachable.
  * - material-rejected: the material was not a config or a proof, failed.
@@ -357,7 +357,7 @@ const messageOf = (error: unknown): string | undefined => {
 
 /**
  * An error the method threw as an outcome. A method that throws a cause yields
- * failed with that cause, never not tested (UXC-13). One that says a node or a
+ * failed with that cause, never not tested. One that says a node or a
  * service did not answer yields unavailable with retry.
  */
 export const outcomeOfThrown = (error: unknown): CeremonyStop =>
@@ -366,7 +366,7 @@ export const outcomeOfThrown = (error: unknown): CeremonyStop =>
     : failed('thrown', messageOf(error))
 
 /**
- * The local check's verdict (sdk.md D-206) as an outcome: satisfied passes,
+ * The local check's verdict as an outcome: satisfied passes,
  * rejected fails with its cause, and not judged, a check that needs a
  * contract's own word, reads unavailable with retry, since no local answer
  * exists and no failure was found.

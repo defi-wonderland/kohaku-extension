@@ -1,19 +1,23 @@
 /**
- * One host per call of a method's lifecycle (ux-interfaces.md D-372): enroll,
- * test access, create claim and health check.
+ * One host per call of a method's lifecycle: enroll, test access, create claim
+ * and health check.
  *
  * A host takes the orchestrator and the method implementation as injected
  * parameters typed by `sdk-interfaces`, and never imports the SDK doubles: the
- * ESLint fence keeps them to `shared/client`, and the wiring through PT-038's
- * client is a later follow-up. Each host renders its steps through `onStep`,
- * honours `signal` as the abort, and returns exactly one outcome of
- * `verdicts.ts`: one of the four verdicts, or the dismissal read before the
- * method runs.
+ * ESLint fence keeps them to `shared/client`. The tab gets both from the
+ * resolver of `CeremonySourceProvider`; a test passes its own. Each host
+ * renders its steps through `onStep`, honours `signal` as the abort, and
+ * returns exactly one outcome of `verdicts.ts`: one of the four verdicts, or
+ * the dismissal read before the method runs.
  *
  * "The method runs" means its packaging: `configFrom` at enrollment and
  * `replyFrom` at a test or a claim. The options calls, `enrollInput` and
  * `signingInput`, run before the device, since the device needs their output,
- * and act on nothing (sdk.md D-206).
+ * and act on nothing.
+ *
+ * The orchestrator's calls take no abort signal, so a host checks the signal
+ * again after every call it awaits: an abort that arrives while the method
+ * packages or checks ends in the cancelled note, and its answer is dropped.
  */
 import type {
   Address,
@@ -42,7 +46,7 @@ import type { PasskeyFacts } from './webauthn'
 
 export interface HostContext {
   orchestrator: IMethodsOrchestrator
-  /** The implementation, read for its `deviceBinding` (sdk.md D-206). */
+  /** The implementation, read for its `deviceBinding`. */
   method: IRecoveryMethod
   /**
    * The device a caller's record supplies, for a method whose material the
@@ -57,7 +61,7 @@ export interface HostContext {
    * not supported.
    */
   devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
-  /** The holder chose the browser's phone hand-off (D-305, D-392). */
+  /** The holder chose the browser's phone hand-off. */
   handOff?: boolean
   signal?: AbortSignal
   onStep?: (step: CeremonyStep) => void
@@ -98,9 +102,9 @@ const asRecord = (value: unknown): Record<string, unknown> =>
  *
  * A `browser-authenticator` method runs the page's own passkey device, never
  * one a caller's record supplies, and receives the relying party id of that
- * device: the page's full origin string (D-314, D-372). The lane owns that id;
- * a value the caller passed is replaced. Any other binding runs the caller's
- * device, or the page's device for that binding.
+ * device: the page's full origin string. The host owns that id; a value the
+ * caller passed is replaced. Any other binding runs the caller's device, or
+ * the page's device for that binding.
  */
 const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | undefined => {
   if (context.method.deviceBinding === 'browser-authenticator') {
@@ -120,6 +124,25 @@ const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | und
 const cancelledByAbort = (context: HostContext) =>
   context.signal?.aborted ? dismissed('cancelled', 'AbortError') : null
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+/**
+ * The material the method's packaging receives. An in-page prover's material
+ * takes an optional abort signal beside its data, since its proof runs for
+ * tens of seconds inside `configFrom` or `replyFrom`: the host hands it the
+ * ceremony's signal where the device set none. No other binding's material
+ * takes a signal, so it passes unchanged.
+ */
+const materialFor = (context: HostContext, material: unknown): unknown => {
+  if (context.method.deviceBinding !== 'in-browser-prover' || !context.signal) return material
+  if (!isPlainRecord(material) || material.signal !== undefined) return material
+  return { ...material, signal: context.signal }
+}
+
 /** What `outcomeOfMethodFailure` reads of the call: the hand-off and the method's binding. */
 const failureOptions = (context: HostContext) => ({
   handOff: context.handOff,
@@ -134,10 +157,9 @@ const deviceContext = (context: HostContext, call: CeremonyCall): DeviceCallCont
 })
 
 /**
- * Enroll: the options, the ceremony, then the config (sdk.md D-206). A
- * dismissed or refused ceremony returns before `configFrom` runs; an
- * enrollment failure reads failed with its cause, a relying party the provider
- * refused among them (D-314).
+ * Enroll: the options, the ceremony, then the config. A dismissed or refused
+ * ceremony returns before `configFrom` runs; an enrollment failure reads
+ * failed with its cause, a relying party the provider refused among them.
  */
 export const enrollHost = async (
   context: HostContext & { methodAddress: Address; params: unknown }
@@ -166,8 +188,10 @@ export const enrollHost = async (
     const config = await context.orchestrator.configFrom(
       context.methodAddress,
       input,
-      result.material
+      materialFor(context, result.material)
     )
+    const abortedInMethod = cancelledByAbort(context)
+    if (abortedInMethod) return abortedInMethod
     if (isMethodFailure(config)) return outcomeOfMethodFailure(config, failureOptions(context))
     return passed({
       config,
@@ -175,7 +199,7 @@ export const enrollHost = async (
       ...(result.credentialId ? { credentialId: result.credentialId } : {})
     })
   } catch (error) {
-    return outcomeOfThrown(error)
+    return cancelledByAbort(context) ?? outcomeOfThrown(error)
   }
 }
 
@@ -209,21 +233,27 @@ const signForRequest = async (
 
   context.onStep?.('packaging')
   try {
-    const reply = await context.orchestrator.replyFrom(context.request, input, result.material)
+    const reply = await context.orchestrator.replyFrom(
+      context.request,
+      input,
+      materialFor(context, result.material)
+    )
+    const abortedInMethod = cancelledByAbort(context)
+    if (abortedInMethod) return { ok: false, outcome: abortedInMethod }
     if (isMethodFailure(reply)) {
       return { ok: false, outcome: outcomeOfMethodFailure(reply, failureOptions(context)) }
     }
     return { ok: true, reply, ...(result.facts ? { facts: result.facts } : {}) }
   } catch (error) {
-    return { ok: false, outcome: outcomeOfThrown(error) }
+    return { ok: false, outcome: cancelledByAbort(context) ?? outcomeOfThrown(error) }
   }
 }
 
 /**
  * Test access: sign the test challenge the caller's request carries, then run
- * the local check the wallet never enforces (D-305, D-372). The caller builds
- * the request whose digest is the test challenge; the host judges the proof
- * through the orchestrator's own verdict member, so no page holds a ctx.
+ * the local check the wallet never enforces. The caller builds the request
+ * whose digest is the test challenge; the host judges the proof through the
+ * orchestrator's own verdict member, so no page holds a ctx.
  */
 export const testAccessHost = async (
   context: HostContext & { request: ApproverRequest; params?: unknown }
@@ -237,19 +267,21 @@ export const testAccessHost = async (
       context.request.place,
       signed.reply.proof
     )
+    const abortedInCheck = cancelledByAbort(context)
+    if (abortedInCheck) return abortedInCheck
     return outcomeOfCheck(verdict, {
       proof: signed.reply.proof,
       ...(signed.facts ? { facts: signed.facts } : {})
     })
   } catch (error) {
-    return outcomeOfThrown(error)
+    return cancelledByAbort(context) ?? outcomeOfThrown(error)
   }
 }
 
 /**
- * Create claim: the reply for one place of a request (D-372). The method's
- * packaging runs its own local check before a reply leaves the device
- * (sdk.md D-206), so the host adds none.
+ * Create claim: the reply for one place of a request. The method's packaging
+ * runs its own local check before a reply leaves the device, so the host adds
+ * none. An abort before the reply returns publishes no claim.
  */
 export const createClaimHost = async (
   context: HostContext & { request: ApproverRequest; params?: unknown }
@@ -260,10 +292,9 @@ export const createClaimHost = async (
 }
 
 /**
- * Health check: the unattended access test of D-309, a third-release feature
- * (D-313). A shell that answers not supported, with no retry, and asks nothing
- * of the method or the device. Marked as a shell: replace it when the
- * management surfaces that carry it land.
+ * Health check: the unattended access test. This build does not run it, so
+ * the host is a shell that answers not supported, with no retry, and asks
+ * nothing of the method or the device.
  */
 export const HEALTH_CHECK_IS_SHELL = true
 

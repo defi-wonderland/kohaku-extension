@@ -1,11 +1,13 @@
 /**
- * The ceremony tab (PT-041): the full tab every ceremony that dies on focus
- * loss runs in (ux.md D-316). It reads its ceremony from the route's search
- * params, resolves it through the injected source, runs the host of its call,
- * reports the outcome through the return channel once the tab is visible, and
- * returns to `returnTo` where the caller named one.
+ * The ceremony tab: the full tab every ceremony that dies on focus loss runs
+ * in. It reads its ceremony from the route's search params, resolves it
+ * through the injected source, runs the host of its call, reports the outcome
+ * through the return channel once the tab is visible, and returns to
+ * `returnTo` where the caller named one.
  *
- * The screen stays thin: every decision is a pure function of the lane.
+ * A report that storage refuses stays in memory: the tab shows the delivery
+ * failure and offers a retry that writes the report again and runs no second
+ * ceremony.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
@@ -32,7 +34,7 @@ import { sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import type { CeremonyStep } from '../device'
 import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
 import { lossLineKeyOf, renderKindLine } from '../kindLine'
-import { parseCeremonySearch } from '../request'
+import { CeremonyParams, parseCeremonySearch } from '../request'
 import { ceremonyMayRun, ResolvedCeremony, runCeremony } from '../run'
 import {
   browserErrorNameOf,
@@ -53,7 +55,7 @@ import {
 } from './browserDefaults'
 import { useCeremonySource } from './CeremonySource'
 
-type Phase = 'resolving' | 'running' | 'reporting' | 'done' | 'nothing'
+type Phase = 'resolving' | 'running' | 'reporting' | 'undelivered' | 'done' | 'nothing'
 
 const hashOfValue = (value: unknown): string | null => {
   const v = value as Partial<TestAccessValue & ClaimValue>
@@ -87,8 +89,8 @@ const CeremonyScreen = () => {
   useEffect(() => {
     mounted.current = true
     if (visibility) gate.current = createVisibilityGate(visibility)
-    // Reports nobody took within their expiry leave storage (D-310, I-38). A
-    // removal is a storage write, so it waits for the tab to be shown (D-316).
+    // Reports nobody took within their expiry leave storage. A removal is a
+    // storage write, so it waits for the tab to be shown.
     const store = source.store ?? browserReportStore
     const sweep = () => browserReportKeys().then((keys) => sweepCeremonyReports(store, keys))
     const sweeping = gate.current ? gate.current.dispatch(sweep) : sweep()
@@ -101,6 +103,43 @@ const CeremonyScreen = () => {
     }
   }, [visibility, source.store])
 
+  /**
+   * Writes the report of `result` and returns to `returnTo`. A write that
+   * storage refuses while the tab stays open leaves `result` in memory and
+   * shows the delivery failure, whose retry calls this again with the same
+   * result and runs no second ceremony.
+   */
+  const deliver = useCallback(
+    async (params: CeremonyParams, result: CeremonyOutcome<unknown>) => {
+      const held = gate.current
+      if (!mounted.current || !held) return
+      setPhase('reporting')
+
+      // The report is stamped inside the gate, when it is written.
+      const sending = sendCeremonyReport(params, result, {
+        store: source.store ?? browserReportStore,
+        gate: held
+      })
+      setReportHeld(held.pending() > 0)
+      try {
+        await sending
+      } catch {
+        // The tab closed first, and its gate dropped the held write.
+        if (!mounted.current) return
+        // The tab stays open: storage refused the write, or the gate it waited
+        // in was replaced. The retry writes through the current gate.
+        setReportHeld(false)
+        setPhase('undelivered')
+        return
+      }
+      if (!mounted.current) return
+      setReportHeld(false)
+      setPhase('done')
+      if (params.returnTo) navigate(params.returnTo, { replace: true })
+    },
+    [source.store, navigate]
+  )
+
   const start = useCallback(async () => {
     if (!parsed.ok || !mayRun) return
     const { params } = parsed
@@ -110,8 +149,8 @@ const CeremonyScreen = () => {
     setStep('preparing')
     setPhase('resolving')
 
-    // A hidden tab dispatches nothing (D-316): not the resolve, not the prompt,
-    // which the browser refuses without focus anyway.
+    // A hidden tab dispatches nothing: not the resolve, not the prompt, which
+    // the browser refuses without focus anyway.
     if (visibility) await whenVisible(visibility)
     if (!mounted.current) return
 
@@ -146,25 +185,8 @@ const CeremonyScreen = () => {
     }
     if (!mounted.current || !gate.current) return
     setOutcome(result)
-    setPhase('reporting')
-
-    // The report is stamped inside the gate, when it is written (D-316).
-    const sending = sendCeremonyReport(params, result, {
-      store: source.store ?? browserReportStore,
-      gate: gate.current
-    })
-    setReportHeld(gate.current.pending() > 0)
-    try {
-      await sending
-    } catch {
-      // The gate was disposed first: the tab closed before it was shown again.
-      return
-    }
-    if (!mounted.current) return
-    setReportHeld(false)
-    setPhase('done')
-    if (params.returnTo) navigate(params.returnTo, { replace: true })
-  }, [parsed, mayRun, source, visibility, navigate])
+    await deliver(params, result)
+  }, [parsed, mayRun, source, visibility, deliver])
 
   useEffect(() => {
     if (started.current) return
@@ -211,7 +233,8 @@ const CeremonyScreen = () => {
 
   const renderOutcome = (shown: CeremonyOutcome<unknown>) => {
     if (!parsed.ok) return null
-    const { call, returnTo } = parsed.params
+    const { params } = parsed
+    const { call, returnTo } = params
     const chip = chipOfOutcome(shown, call)
     const noteKey = noteKeyOfOutcome(shown, call)
     const lineKey = lineKeyOfOutcome(shown, call)
@@ -219,7 +242,7 @@ const CeremonyScreen = () => {
     const facts = passedEnroll ? (shown.value as EnrollValue).facts : undefined
     const hash =
       shown.kind === 'verdict' && shown.verdict === 'passed' ? hashOfValue(shown.value) : null
-    // The one raw cause text a screen shows: the browser's own error name (frame C-05).
+    // The one raw cause text a screen shows: the browser's own error name.
     const errorName = browserErrorNameOf(shown)
     const mayRetry = shown.kind === 'dismissed' || shown.retry
     const chromeOnly = binding === 'browser-authenticator' && !pagePasskeysServed()
@@ -266,6 +289,25 @@ const CeremonyScreen = () => {
           <Text appearance="secondaryText" style={spacings.mbSm}>
             {t('socialRecovery.ceremony.keepTabOpen')}
           </Text>
+        )}
+        {phase === 'undelivered' && (
+          <>
+            <Text style={spacings.mbSm}>{t('socialRecovery.ceremony.undeliveredNote')}</Text>
+            <View style={[flexbox.directionRow, spacings.mtLg]}>
+              <Button
+                type="secondary"
+                text={t('socialRecovery.ceremony.backAction')}
+                onPress={() => navigate(-1)}
+              />
+              <Button
+                type="primary"
+                text={t('socialRecovery.ceremony.tryAgainAction')}
+                // eslint-disable-next-line @typescript-eslint/no-misused-promises
+                onPress={() => deliver(params, shown)}
+                style={spacings.mlSm}
+              />
+            </View>
+          </>
         )}
         {phase === 'done' && !returnTo && (
           <View style={[flexbox.directionRow, spacings.mtLg]}>

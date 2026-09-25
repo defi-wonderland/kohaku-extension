@@ -3,11 +3,8 @@
  * authenticator data, the synced or device-bound kind, the high-s rule of a
  * P-256 signature and the reading of the browser's own errors.
  *
- * Sources: docs/social-recovery/design/ux.md D-305, D-314 and D-316,
- * ux-interfaces.md D-372, sdk.md D-206, and the passkey proof of concept of
- * 2026-09-23 (the deltas of the PT-041 brief). Nothing here touches
- * `navigator`, `window` or storage, so every function runs under Jest's node
- * environment.
+ * Nothing here touches `navigator`, `window` or storage, so every function
+ * runs under Jest's node environment.
  */
 /* eslint-disable no-bitwise -- byte handling of the authenticator data and of DER */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
@@ -27,15 +24,15 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * The extension's relying party, three values from one origin (D-314, D-372).
+ * The extension's relying party, three values from one origin.
  *
  * - `rpId`: the origin's host, the extension id. The value `rp.id` and `rpId`
  *   take in the `navigator.credentials` calls.
  * - `relyingPartyId`: the full origin string `chrome-extension://<id>`. The
- *   value the wallet hands the SDK as the relying party id, D-372.
+ *   value the wallet hands the SDK as the relying party id.
  * - `rpIdHash`: `sha256(relyingPartyId)`, the hash the passkey config commits
  *   and the hash Chromium writes into the authenticator data of an extension
- *   origin. Never the hash of the bare id, D-314.
+ *   origin. Never the hash of the bare id.
  */
 export interface RelyingParty {
   rpId: string
@@ -43,21 +40,21 @@ export interface RelyingParty {
   rpIdHash: Hex
 }
 
-/** The hash the config commits: sha256 of the full origin string, never of the bare id (D-314). */
+/** The hash the config commits: sha256 of the full origin string, never of the bare id. */
 export const rpIdHashOf = (origin: string): Hex => sha256(stringToBytes(origin))
 
 /**
- * The relying party of the page at `location`, read at runtime: the lane
- * commits to no extension id (open question 13). A `location` whose protocol is
- * not an extension scheme yields the same shape over its own origin, which is
- * what the web dev build and a test see.
+ * The relying party of the page at `location`, read at runtime, so the code
+ * fixes no extension id. A `location` whose protocol is not an extension
+ * scheme yields the same shape over its own origin, which is what the web dev
+ * build and a test see.
  */
 export const relyingPartyOf = (location: { protocol: string; host: string }): RelyingParty => {
   const relyingPartyId = `${location.protocol}//${location.host}`
   return { rpId: location.host, relyingPartyId, rpIdHash: rpIdHashOf(relyingPartyId) }
 }
 
-/** Whether the page runs from a Chromium extension origin, the one origin passkeys serve (D-314). */
+/** Whether the page runs from a Chromium extension origin, the one origin passkeys serve. */
 export const isExtensionOrigin = (location: { protocol: string }): boolean =>
   location.protocol === 'chrome-extension:'
 
@@ -179,7 +176,7 @@ export const authDataFromAttestationObject = (
 // The kind: synced or device-bound
 // ---------------------------------------------------------------------------
 
-/** The two kinds a passkey row names (D-305), read from the ceremony's own flags. */
+/** The two kinds a passkey row names, read from the ceremony's own flags. */
 export const PASSKEY_KINDS = ['synced', 'device-bound'] as const
 export type PasskeyKind = typeof PASSKEY_KINDS[number]
 
@@ -188,8 +185,8 @@ export const AUTHENTICATOR_PLACES = ['this-device', 'phone', 'security-key', 'un
 export type AuthenticatorPlace = typeof AUTHENTICATOR_PLACES[number]
 
 /**
- * What the ceremony itself reports about the credential (D-305, D-372). The
- * kind comes from the backup flags alone and never from the operating system.
+ * What the ceremony itself reports about the credential. The kind comes from
+ * the backup flags alone and never from the operating system.
  * The place names where the authenticator sat, for the row's `{{device}}`.
  */
 export interface PasskeyFacts {
@@ -320,9 +317,8 @@ export const encodeDerSignature = ({ r, s }: { r: bigint; s: bigint }): Uint8Arr
 
 /**
  * The signature the method receives: a high `s` becomes `n - s` and the DER is
- * re-encoded; a low `s` returns the same bytes unchanged. A Google Password
- * Manager assertion returned a high `s` in the proof of concept, and the
- * verifier rejects one (sdk.md D-206, the PT-041 brief).
+ * re-encoded; a low `s` returns the same bytes unchanged. Google Password
+ * Manager can return a high `s`, and the verifier rejects one.
  */
 export const normalizeDerSignature = (
   der: ArrayBuffer | ArrayBufferView
@@ -362,18 +358,17 @@ export type WebAuthnCall = 'create' | 'get'
 
 /**
  * Reads an error the `navigator.credentials` call threw, before the method
- * runs (D-372). It returns the stop the host reports:
+ * runs. It returns the stop the host reports:
  *
  * - `NotAllowedError` at a test access (`get`): failed, with the browser's
  *   error name as its cause (`browser-error`), since the browser cannot tell a
- *   dismissed prompt from a missing credential (the coordinator's ruling,
- *   frame C-05: "Test failed · NotAllowedError").
+ *   dismissed prompt from a missing credential. The row reads
+ *   "Test failed · NotAllowedError".
  * - `NotAllowedError` at an enrollment (`create`) or a claim (`get`): the
- *   holder dismissed the prompt, the cancelled note (frame D-07b draws a
- *   dismissed claim as cancelled); the browser refusing an unfocused page or a
- *   permission policy, the refused note.
+ *   holder dismissed the prompt, the cancelled note; the browser refusing an
+ *   unfocused page or a permission policy, the refused note.
  *
- * `lifecycle` names the call of D-372 that ran the prompt. Without it, `get`
+ * `lifecycle` names the lifecycle call that ran the prompt. Without it, `get`
  * reads as a test access.
  * - `NotAllowedError` at or past the timeout of a phone hand-off, at either
  *   call: unavailable with the unreachable cause (the phone never connected).
@@ -381,7 +376,7 @@ export type WebAuthnCall = 'create' | 'get'
  * - `InvalidStateError`, `ConstraintError`, `NotSupportedError`: the
  *   authenticator cannot meet the request, the refused note.
  * - `SecurityError`: the browser or the provider refused the extension's
- *   relying party, failed with the relying-party mismatch (D-314).
+ *   relying party, failed with the relying-party mismatch.
  * - Any other error the browser names: failed with its name (`browser-error`).
  *   An error with no such name: failed, `thrown`, with no text a screen shows.
  */

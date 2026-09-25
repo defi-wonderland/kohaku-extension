@@ -12,7 +12,7 @@ import { createPasskeyDevice, PasskeyCeremonyDevice } from '../passkeyDevice'
 import { passkeysServed } from '../run'
 import { relyingPartyOf } from '../webauthn'
 
-/** The extension's local storage (D-310), the web build's localStorage outside an extension. */
+/** The extension's local storage, the web build's localStorage outside an extension. */
 export const browserReportStore: ReportStore = storage
 
 /**
