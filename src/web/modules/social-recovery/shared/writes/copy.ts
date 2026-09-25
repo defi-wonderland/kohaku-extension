@@ -42,6 +42,12 @@ export const WRITES_KEYS = {
   submittingRecovery: `${WRITES}.submittingRecovery`,
   submittingBody: `${WRITES}.submittingBody`,
   notSent: `${WRITES}.notSent`,
+  /**
+   * A transaction another one from the same key replaced before it was mined
+   * (ethers' `TRANSACTION_REPLACED`, `cancelled` or `replaced`): it reached no
+   * revert and spent no gas of its own, and its call never ran.
+   */
+  replaced: `${WRITES}.replaced`,
   reverted: `${WRITES}.reverted`,
   revertedSave: `${WRITES}.revertedSave`,
   revertedSubmit: `${WRITES}.revertedSubmit`,
@@ -77,6 +83,8 @@ export const GAS_KEYS = {
   transferRoute: `${GAS}.transferRoute`,
   transferRouteNote: `${GAS}.transferRouteNote`,
   outsideRoute: `${GAS}.outsideRoute`,
+  /** An owner write's deposit from outside, where the step offers no transfer route. */
+  outsideRouteAlone: `${GAS}.outsideRouteAlone`,
   transferIsAnOperation: `${GAS}.transferIsAnOperation`,
   copy: `${GAS}.copy`,
   /** D-393, frame D-09: the logged-in route's sending key, the key of the chosen account. */
@@ -214,7 +222,12 @@ export const renderWriteState = (
     case 'gasReadError':
       return { ...base, ...retry, lines: [t(WRITES_KEYS.gasCheckFailed)] }
     case 'failedNotSent':
-      return { ...base, ...retry, lines: [t(WRITES_KEYS.notSent)] }
+      // A replaced transaction was sent: it never ran, but it did not fail to reach the chain.
+      return {
+        ...base,
+        ...retry,
+        lines: [t(state.replaced ? WRITES_KEYS.replaced : WRITES_KEYS.notSent)]
+      }
     case 'failedReverted':
       if (state.cause.kind === 'attemptGone') {
         return { ...base, ...retry, ...renderAttemptGone(state.cause, t) }
@@ -325,6 +338,8 @@ export const renderDepositStep = (
       kind: 'outside',
       line: transfer
         ? t(GAS_KEYS.outsideRoute, { amount: routeAmount })
+        : isOwnerWrite(step.write)
+        ? t(GAS_KEYS.outsideRouteAlone, { amount: routeAmount })
         : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
             amount: routeAmount
           })

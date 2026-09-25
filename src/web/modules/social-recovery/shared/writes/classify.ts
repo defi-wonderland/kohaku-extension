@@ -249,8 +249,11 @@ const plainCause = (cause?: KitError): RevertCause => {
  * wallet could not decode or that names another kit error, reads the plain
  * reverted reading, with the retry and the move-funds action: an owner whose
  * cancel ran out of gas while the attack runs must not read that nothing is
- * left to cancel. Every other write names the kit error it decoded, or reads as
- * a revert with no cause it can name.
+ * left to cancel. Under an attempt read that says the attempt still runs, a
+ * decoded `NoActiveAttempt` or `NoSetup` names no cause, since the read
+ * contradicts it (a new attempt may have opened since the revert). Every other
+ * write names the kit error it decoded, or reads as a revert with no cause it
+ * can name.
  */
 export const revertCauseOf = (
   write: WriteKind,
@@ -259,7 +262,14 @@ export const revertCauseOf = (
 ): RevertCause => {
   if (write !== 'cancel') return plainCause(cause)
   if (attemptAfter) {
-    if (attemptAfter.ended === ATTEMPT_STILL_RUNNING) return plainCause(cause)
+    if (attemptAfter.ended === ATTEMPT_STILL_RUNNING) {
+      // The read contradicts a decoded "nothing to cancel": a new attempt may
+      // have opened since the revert, so that cause is not named.
+      const known = kitErrorNameOf(cause)
+      return known === 'NoActiveAttempt' || known === 'NoSetup'
+        ? { kind: 'unnamed' }
+        : plainCause(cause)
+    }
     return {
       kind: 'attemptGone',
       ended: attemptAfter.ended,

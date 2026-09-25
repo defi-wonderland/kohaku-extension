@@ -35,6 +35,7 @@ import {
   ChainReads,
   gasCallOf,
   GasEstimateCall,
+  isRevertedCall,
   KeyHandle,
   sameAddress
 } from '@web/modules/social-recovery/shared/client'
@@ -73,10 +74,16 @@ export interface GasNetwork {
   nativeAssetSymbol: string
 }
 
-/** An account this wallet holds, by its address and the name the wallet gives it. */
+/**
+ * An account this wallet holds, by its address and the name the wallet gives
+ * it. `deployed` is false where the account has no code yet (the wallet's own
+ * account state knows), so its transfer must deploy it through the account
+ * factory first.
+ */
 export interface WalletAccountRef {
   address: Address
   name: string
+  deployed?: boolean
 }
 
 /** The estimate of one transaction: its gas, the gas price, their product and the amount asked for. */
@@ -161,6 +168,17 @@ export interface GasCheckInput {
    * transfer route. Every step but the fast track's needs it.
    */
   operates?: WalletAccountRef
+  /**
+   * The transaction the key sends for the transfer route, built through the
+   * account library, carrying its one call to the key with no value (the check
+   * adds what the value costs). By default the account's own `executeBySender`
+   * (`transferTransactionOf`), which holds only for an account with code. For
+   * an account with no code yet (`operates.deployed` false, or a write whose
+   * own transaction deploys it through `ACCOUNT_FACTORY`), the check takes no
+   * default: pass the factory's deploy-and-transfer transaction, or the step
+   * offers the deposit from outside alone.
+   */
+  transferTransaction?: GasEstimateCall
   /** The fast track's step (D-303). Only a recovery call takes it. */
   fastTrack?: boolean
   /** The fee headroom in percent, `FEE_HEADROOM_PERCENT` by default. */
@@ -254,6 +272,49 @@ export const transferTransactionOf = (account: Address, key: Address): GasEstima
   data: ACCOUNT_OPERATIONS.encodeFunctionData('executeBySender', [[[key, 0n, '0x']]]) as Hex
 })
 
+/**
+ * The transaction the transfer route's own fee is estimated on, tied to the
+ * key and to the account it drains. An account with code runs the transfer as
+ * its own `executeBySender` (`transferTransactionOf`, or the caller's, to the
+ * account). An account with no code yet has nothing to call: its transfer
+ * deploys it through the factory and runs the call in one transaction, which
+ * the account library builds, so the caller passes it (to `ACCOUNT_FACTORY`)
+ * and the check never estimates a call to the empty address. Where the caller
+ * passed none for such an account, this answers undefined: the check cannot
+ * price the transfer, so the step offers the deposit from outside alone.
+ * Throws a TypeError where the transaction comes from another address or goes
+ * elsewhere.
+ */
+export const transferEstimateCallOf = (
+  input: Pick<GasCheckInput, 'key' | 'operates' | 'transaction' | 'transferTransaction'>
+): GasEstimateCall | undefined => {
+  const { key, operates, transaction, transferTransaction } = input
+  if (!operates) {
+    throw new TypeError(
+      'The transfer route drains the account the key operates: pass that account.'
+    )
+  }
+  const noCode =
+    operates.deployed === false || (!!transaction && sameAddress(transaction.to, ACCOUNT_FACTORY))
+  if (!transferTransaction) {
+    return noCode ? undefined : transferTransactionOf(operates.address, key.addr)
+  }
+  if (!sameAddress(transferTransaction.from, key.addr)) {
+    throw new TypeError(
+      `The transfer to estimate comes from ${transferTransaction.from}, not from the sending key ${key.addr}.`
+    )
+  }
+  const to = noCode ? ACCOUNT_FACTORY : operates.address
+  if (!sameAddress(transferTransaction.to, to)) {
+    throw new TypeError(
+      `The transfer to estimate goes to ${transferTransaction.to}, not to ${to}${
+        noCode ? ', the account factory that deploys the account' : ', the account'
+      }.`
+    )
+  }
+  return { ...transferTransaction }
+}
+
 /** The fee of the transfer route from its estimated gas, with the value's own cost and the headroom. */
 export const transferFeeOf = (
   gas: bigint,
@@ -269,10 +330,11 @@ export const holdsEnough = (estimate: GasEstimate, balance: bigint): boolean =>
  * The deposit step from an estimate and a balance that falls short of it.
  * Off the fast track it offers the transfer from the account the key operates,
  * whose amount is the shortfall plus `transferFee`, the transfer's own fee
- * (`transferFeeOf`), and the deposit from outside, the shortfall alone.
- * Throws a TypeError where the balance covers the estimate, since such a key
- * skips the step, and where a step off the fast track has no account the key
- * operates or no fee for the transfer.
+ * (`transferFeeOf`), and the deposit from outside, the shortfall alone. With
+ * no `transferFee` (the transfer's estimate reverted, so the account cannot
+ * run it now) the step offers the deposit from outside alone. Throws a
+ * TypeError where the balance covers the estimate, since such a key skips the
+ * step, and where a step off the fast track has no account the key operates.
  */
 export const depositStepOf = (args: {
   write: WriteKind
@@ -289,9 +351,9 @@ export const depositStepOf = (args: {
     throw new TypeError('The key holds enough: the deposit step is skipped.')
   }
   const fastTrack = isRecoveryCall(write) && args.fastTrack === true
-  if (!fastTrack && (!operates || !transferFee)) {
+  if (!fastTrack && !operates) {
     throw new TypeError(
-      "Off the fast track the step offers the transfer from the account the key operates: pass that account and the transfer's own fee."
+      'Off the fast track the step offers the transfer from the account the key operates: pass that account.'
     )
   }
   const shortfall = estimate.required - balance
@@ -330,11 +392,14 @@ export const depositStepOf = (args: {
  * this transaction, the gas price and the key's balance. Answers `enough`
  * where the balance covers the estimate with its headroom. Otherwise, off the
  * fast track, it estimates the transfer route's own transaction through the
- * same provider (`transferTransactionOf`) and answers the deposit step.
+ * same provider (`transferEstimateCallOf`) and answers the deposit step.
  *
  * A read that could not run rejects with its `ProviderReadFailure`, which the
- * machine reads as `gasReadError`; an estimate of a call that would revert
- * rejects with its `RevertedCall`, which it reads as a call never sent.
+ * machine reads as `gasReadError`. An estimate of the write that would revert
+ * rejects with its `RevertedCall`, which it reads as a call never sent. An
+ * estimate of the transfer that would revert does not fail the check: the
+ * account cannot run that transfer now, so the step drops that route and
+ * keeps the deposit from outside.
  */
 export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
   assertWriteDoor(input.write, input.prepared)
@@ -345,6 +410,7 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
     )
   }
   const transaction = gasTransactionOf(input)
+  const transferCall = fastTrack ? undefined : transferEstimateCallOf(input)
   const [gas, gasPrice, balance] = await Promise.all([
     input.reads.estimateGas(transaction),
     input.reads.gasPrice(),
@@ -354,16 +420,18 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
   if (holdsEnough(estimate, balance)) {
     return { kind: 'enough', write: input.write, key: input.key.addr, estimate, balance }
   }
-  const transferFee =
-    !fastTrack && input.operates
-      ? transferFeeOf(
-          await input.reads.estimateGas(
-            transferTransactionOf(input.operates.address, input.key.addr)
-          ),
-          gasPrice,
-          input.feeHeadroomPercent
-        )
-      : undefined
+  let transferFee: GasEstimate | undefined
+  if (transferCall) {
+    try {
+      transferFee = transferFeeOf(
+        await input.reads.estimateGas(transferCall),
+        gasPrice,
+        input.feeHeadroomPercent
+      )
+    } catch (thrown) {
+      if (!isRevertedCall(thrown)) throw thrown
+    }
+  }
   return {
     kind: 'deposit',
     step: depositStepOf({

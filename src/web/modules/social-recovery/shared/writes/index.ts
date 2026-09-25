@@ -77,6 +77,7 @@ export {
   gasEstimateOf,
   gasTransactionOf,
   transferTransactionOf,
+  transferEstimateCallOf,
   transferFeeOf,
   holdsEnough,
   depositStepOf,
