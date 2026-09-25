@@ -395,8 +395,6 @@ const routesConfig: RouteConfig = {
     title: Platform.select({ default: i18n.t('Networks') }),
     name: Platform.select({ default: i18n.t('Networks') })
   },
-  // Account recovery (social recovery). The title is the feature name
-  // (ux-copy.md UXC-10); the name is the surface's own, from the frame captions.
   [ROUTES.socialRecovery]: {
     route: ROUTES.socialRecovery,
     title: Platform.select({ default: i18n.t('socialRecovery.routes.title') }),

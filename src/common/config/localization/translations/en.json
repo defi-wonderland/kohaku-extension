@@ -111,7 +111,10 @@
       "remainingHours": "{{count}} hour",
       "remainingHours_plural": "{{count}} hours",
       "remainingMinutes": "{{count}} minute",
-      "remainingMinutes_plural": "{{count}} minutes"
+      "remainingMinutes_plural": "{{count}} minutes",
+      "publishers": {
+        "ethereumFoundation": "Ethereum Foundation"
+      }
     },
     "ruleLines": {
       "allMustAnswer": "All {{n}} must answer. Losing any one locks you out.",
@@ -165,8 +168,55 @@
         "transferRouteNote": "One transaction from your smart account to its own key.",
         "outsideRoute": "Or send {{amount}} to this key from outside this wallet.",
         "transferIsAnOperation": "A transfer out of the account the key operates is itself an operation that key must send and pay for. A key at zero therefore cannot take the first route alone.",
-        "copy": "Copy"
-      }
+        "copy": "Copy",
+        "keyOf": "The key of {{account}}",
+        "accountHoldsFunds": "Your account holds the funds and its key sends the transactions.",
+        "executionAmount": "Send at most {{amount}} to this key for the execution. The exact amount follows the fee of that day.",
+        "shortfallExecute": "Not enough gas on the sending key. Fund it, then execute.",
+        "networkOwner": "Send on {{network}}, the network of this account.",
+        "outsideRouteAlone": "Send {{amount}} to this key from outside this wallet."
+      },
+      "revertedSave": "The transaction reached the chain and reverted. {{cause}} Nothing was saved, your recovery path is not active yet, and the gas it spent is gone. Everything you enrolled is still here.",
+      "revertedSubmit": "The transaction reached the chain and reverted. {{cause}} No waiting period has started and the gas it spent is gone. Everything you collected is still here.",
+      "revertedExecute": "Could not execute. The transaction reached the chain and reverted. {{cause}} The recovery is still ready and the gas it spent is gone.",
+      "revertedEdit": "The transaction reached the chain and reverted. {{cause}} Nothing changed, the gas it spent is gone, and your edits are still here.",
+      "causes": {
+        "InvalidCommitment": "The setup sent is one the recovery registry cannot accept.",
+        "WrongSetupNonce": "The setup number is not the one this transaction was built for.",
+        "MethodStopped": "A method in the path is under a security stop.",
+        "MethodVetoedSpend": "A method the recovery used is under a security stop. Nothing executes while the stop is on.",
+        "MethodNotUsed": "The named method was not part of this recovery.",
+        "AttemptIgnoresPause": "This recovery's setup does not honor a security stop.",
+        "MethodNotStopped": "The named method is not stopped.",
+        "PlaceOutOfRange": "An approval named a row the recovery path does not have.",
+        "NoSetup": "This account has no recovery setup under this recovery module.",
+        "NoActiveAttempt": "No recovery is running for this account.",
+        "AttemptAlreadyActive": "A recovery is already running for this account.",
+        "WrongAttemptId": "The attempt number is not the one the registry expects.",
+        "SetupCommitmentMismatch": "The recovery path sent does not match the setup on chain.",
+        "StaleAttempt": "The setup changed after this recovery was judged.",
+        "CredentialMismatch": "A method in the request does not match the one enrolled at that row.",
+        "PlacesNotStrictlyIncreasing": "The approvals are not in the order the registry requires.",
+        "RequestExpired": "The request arrived after its own deadline.",
+        "ProofRejected": "A method did not accept the approval given for it.",
+        "RuleUnsatisfied": "The approvals collected do not satisfy the recovery path.",
+        "WaitNotOver": "The waiting period has not ended yet.",
+        "WrongPayload": "The handover sent is not the one this recovery approved.",
+        "BatchNotApproved": "The transaction is not the one this recovery approved.",
+        "MalformedHandover": "The recovery module could not read the handover: it does not decode, names a zero key, or names one key on both sides.",
+        "ReservedAuthority": "The key being removed no longer holds control, or the new key already holds a privilege on this account.",
+        "NotConsumable": "This recovery cannot execute in its current state.",
+        "unnamed": "The chain gave no cause the wallet can name."
+      },
+      "cancelGoneRoad": {
+        "cancelByOwner": "Your own key already cancelled it.",
+        "cancelByProofs": "A set of approvals signed for cancel already ended it.",
+        "cancelByVeto": "A security stop already ended it.",
+        "setupWrite": "A change to the setup already ended it."
+      },
+      "revertedExecuteGone": "Could not execute. The transaction reached the chain and reverted. {{cause}} The gas it spent is gone.",
+      "gasCheckFailed": "Could not finish the gas check. The node did not answer.",
+      "replaced": "Another transaction from this key took this one's place before it ran. Nothing changed."
     },
     "ceremony": {
       "passedNote": "check {{hash}} · passed just now",
@@ -192,7 +242,23 @@
       "scanCode": "Scan this code with the phone. The step runs there and this tab waits.",
       "waitingForPhone": "Waiting for your phone…",
       "keepTabOpen": "Keep this tab open. The result arrives when you return to it.",
-      "phoneReads": "The phone that opens this reads the account and the new key. Do not forward the link."
+      "phoneReads": "The phone that opens this reads the account and the new key. Do not forward the link.",
+      "cancelAction": "Cancel",
+      "tryAgainAction": "Try again",
+      "backAction": "Back",
+      "tabOnly": "This step continues in a new tab.",
+      "nothingToRun": "There is no step to run here. Go back to the row that sent you.",
+      "providers": {
+        "apple": "Apple",
+        "google": "Google",
+        "passwordManager": "your password manager"
+      },
+      "devices": {
+        "thisDevice": "this device",
+        "thisMac": "this Mac",
+        "thisPhone": "this phone"
+      },
+      "unavailableNote": "Could not run · the service did not answer · Try again"
     },
     "records": {
       "expiredTitle": "This request expired",

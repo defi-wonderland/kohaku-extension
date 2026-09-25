@@ -1,12 +1,9 @@
 /**
- * The record types of the wallet's records (PT-040), docs/social-recovery/design/ux.md
- * D-310 and ux-interfaces.md D-370.
- *
- * The setup draft is the SDK's own `SetupDraft` (sdk-interfaces, sdk.md D-202) and
- * the path is the `clauses` it holds, the record PT-037's rule lines read. The
- * other records are this lane's own types. No record is a bare boolean or zero,
- * since the storage read returns the default for either: every stored record is
- * a `StoredRecord`, an object carrying its value and `savedAt`.
+ * The record types. The setup draft is the SDK's own `SetupDraft` and the path
+ * is the `clauses` it holds; the other records are this module's own types.
+ * No record is a bare boolean or zero, since the storage read returns the
+ * default for either: every stored record is a `StoredRecord`, an object
+ * carrying its value and `savedAt`.
  */
 import type {
   Address,
@@ -52,17 +49,16 @@ export type RecordRead<T> = AbsentRecord | ({ status: 'present' } & StoredRecord
 export const ABSENT: AbsentRecord = Object.freeze({ status: 'absent' as const })
 
 // ---------------------------------------------------------------------------
-// The six setup records (D-310, D-305)
+// The six setup records
 // ---------------------------------------------------------------------------
 
-/** 1. The setup draft: the SDK's own record (sdk.md D-202). */
+/** 1. The setup draft: the SDK's own record. */
 export type SetupDraftRecord = SetupDraft
 
 /**
- * 2. The inventory, the answer to "What do you have" (D-305): another device,
+ * 2. The inventory, the answer to "What do you have": another device,
  * guardians with wallets, a passport, an Aadhaar identity, and keys the holder
- * keeps on paper or hardware. The second-release wizard's step, kept as a record
- * since D-310 lists it.
+ * keeps on paper or hardware.
  */
 export const INVENTORY_ITEMS = [
   'another-device',
@@ -74,10 +70,10 @@ export const INVENTORY_ITEMS = [
 export type InventoryItem = typeof INVENTORY_ITEMS[number]
 export type InventoryRecord = InventoryItem[]
 
-/** 3. The path: the clauses the setup draft holds, the record PT-037's rule lines read. */
+/** 3. The path: the clauses the setup draft holds, the record the rule lines read. */
 export type PathRecord = SetupDraft['clauses']
 
-/** The access test verdicts an enrollment carries (D-305): passed, or one of the four verdict states. */
+/** The access test verdicts an enrollment carries: passed, or one of the four verdict states. */
 export const ENROLLMENT_TEST_VERDICTS = [
   'passed',
   'not-tested',
@@ -88,7 +84,7 @@ export const ENROLLMENT_TEST_VERDICTS = [
 export type EnrollmentTestVerdict = typeof ENROLLMENT_TEST_VERDICTS[number]
 
 /**
- * The kind line of a passkey row (D-305): a synced passkey follows the provider
+ * The kind line of a passkey row: a synced passkey follows the provider
  * account that syncs it; a device-bound passkey lives only on this device. Read
  * from the authenticator's own flags at enrollment.
  */
@@ -96,7 +92,7 @@ export const PASSKEY_BACKUP_KINDS = ['synced', 'device-bound'] as const
 export type PasskeyBackupKind = typeof PASSKEY_BACKUP_KINDS[number]
 
 /**
- * One enrollment not yet saved on chain (D-305): the credential it produced, its
+ * One enrollment not yet saved on chain: the credential it produced, its
  * access test verdict with the cause a failed test reported, and for a passkey
  * its backup kind.
  */
@@ -141,14 +137,14 @@ export interface SetupRecordValues {
 }
 
 // ---------------------------------------------------------------------------
-// The recovery session, the five wipe events and the countdown (D-310, I-38)
+// The recovery session, the five wipe events and the countdown
 // ---------------------------------------------------------------------------
 
 /**
- * The five events that wipe the recovery session (D-310): the submission lands,
- * the request's deadline passes, another attempt opens, the setup changes, or
- * the recoverer abandons. A closed vocabulary: a security stop or a pause is not
- * one of them and wipes nothing (I-38).
+ * The five events that wipe the recovery session: the submission lands, the
+ * request's deadline passes, another attempt opens, the setup changes, or the
+ * recoverer abandons. A closed vocabulary: a security stop or a pause is not
+ * one of them and wipes nothing.
  */
 export const RECOVERY_WIPE_EVENTS = [
   'submission-landed',
@@ -169,12 +165,12 @@ export type WipeReason = RecoveryWipeEvent
 export type DirectWipeEvent = Exclude<RecoveryWipeEvent, 'submission-landed'>
 
 /**
- * The live recovery session: the SDK's gathering record (sdk.md D-207), which the
- * integrator stores so the gathering survives a closed tab. Its request carries
- * everything a resume needs: the account, the predicted attempt id (the attempt
- * id the wallet built the request against), the setup nonce the request was
- * built under and the deadline (`validUntil`), ux-interfaces.md D-373. Its
- * replies are the approvals. The gathering's purpose is `approval`.
+ * The live recovery session: the SDK's gathering record, stored so the
+ * gathering survives a closed tab. Its request carries everything a resume
+ * needs: the account, the predicted attempt id (the attempt id the wallet built
+ * the request against), the setup nonce the request was built under and the
+ * deadline (`validUntil`). Its replies are the approvals. The gathering's
+ * purpose is `approval`.
  */
 export interface LiveRecoverySession {
   state: 'live'
@@ -184,11 +180,8 @@ export interface LiveRecoverySession {
 /**
  * What a wipe leaves: the reason code, the account it names, and for
  * `deadline-passed` the deadline that passed (the request's `validUntil`, a
- * decimal string). This is the "one line of reason" of D-310 and I-38, from
- * which the expired, void and setup changed states of D-392 and D-393 render
- * after a resume. The gathering, its replies and its attempt id are gone. That
- * the line carries the account and the deadline is the lane's reading, for the
- * owner to rule on.
+ * decimal string), from which the expired, void and setup changed states render
+ * after a resume. The gathering, its replies and its attempt id are gone.
  */
 export interface WipedRecoverySession {
   state: 'wiped'
@@ -199,10 +192,9 @@ export interface WipedRecoverySession {
 }
 
 /**
- * The session after the submission lands: it survives as the countdown's record,
- * holding the account address alone (D-310). The attempt id comes from the
- * attempt read (D-371). The submission landing is the fifth wipe event: the
- * gathering, its replies and its attempt id are gone.
+ * The session after the submission lands: it survives as the countdown's
+ * record, holding the account address alone. The countdown reads the attempt id
+ * from the chain. The gathering, its replies and its attempt id are gone.
  */
 export interface LandedRecoverySession {
   state: 'landed'
@@ -215,6 +207,26 @@ export type RecoverySessionRecord =
   | LandedRecoverySession
 
 /**
+ * The token a stored recovery session carries. Every update stores a new one,
+ * so an update can refuse when the session changed after its caller read it.
+ */
+export type SessionRevision = string
+
+/**
+ * The revision an update of the recovery session expects to find: the one its
+ * caller read, or `null` when the caller read no session.
+ */
+export type ExpectedRevision = SessionRevision | null
+
+/** A stored recovery session: its value, when it was written and its revision. */
+export interface StoredSession extends StoredRecord<RecoverySessionRecord> {
+  revision: SessionRevision
+}
+
+/** A read of the recovery session. */
+export type SessionRead = AbsentRecord | ({ status: 'present' } & StoredSession)
+
+/**
  * The countdown's record as `countdown(chainId, account)` reads it from the
  * landed session: the account address alone.
  */
@@ -222,12 +234,17 @@ export interface CountdownRecord {
   account: Address
 }
 
+/** A read of the countdown, with the revision of the landed session it reads from. */
+export type CountdownRead =
+  | AbsentRecord
+  | ({ status: 'present'; revision: SessionRevision } & StoredRecord<CountdownRecord>)
+
 /**
  * The decrypted setup cache: the setup the recovery password unlocked on this
- * device, kept after the recovery executes (D-310), with the setup nonce it was
- * read under and, where known, the setup commitment, so a reader compares the
- * cache with the chain before trusting it. D-310 calls the wallet's storage a
- * cache re-imported from the chain.
+ * device, kept after the recovery executes, with the setup nonce it was read
+ * under and, where known, the setup commitment. The chain stays the source: a
+ * reader compares the nonce or the commitment with the chain before trusting
+ * the cache.
  */
 export interface DecryptedSetupCacheRecord {
   configuration: Configuration
@@ -235,16 +252,16 @@ export interface DecryptedSetupCacheRecord {
   setupCommitment?: Hex
 }
 
-/** One account's record in a listing of a chain's sessions or countdowns. */
+/** One account's record in a listing of a chain's sessions or countdowns, with its revision. */
 export interface ListedRecord<T> {
   account: Address
-  record: StoredRecord<T>
+  record: StoredRecord<T> & { revision: SessionRevision }
 }
 
 /**
  * The strings a death state renders from its reason code, keys under
- * `socialRecovery.records` in en.json (D-392, D-393). The submission landing
- * renders the countdown and the recoverer's own abandon renders no death state.
+ * `socialRecovery.records` in en.json. The submission landing renders the
+ * countdown and the recoverer's own abandon renders no death state.
  */
 export const WIPE_REASON_STRING_KEYS: Record<WipeReason, { title: string; body: string } | null> = {
   'submission-landed': null,

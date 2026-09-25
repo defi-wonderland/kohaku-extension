@@ -1,15 +1,12 @@
 /**
- * sdk.md D-203 Event reader and notification: `IEventManager`, the fourteen
- * typed notifications, the three filters and the range `fetch` takes.
- *
- * Hand-written from docs/social-recovery/design/sdk.md, frozen at design commit
- * bd8780f7ad59a451035b15920c00015a2eee6e9b of defi-wonderland/mast-social-recovery-2.
- * Imported from no SDK package. Types only.
+ * The event reader and its notifications: `IEventManager`, the fourteen typed
+ * notifications, the three filters and the range `fetch` takes. Imported from
+ * no SDK package; types only.
  */
 import type { Address, Hex } from './common'
 import type { PaymentOrder } from './formats'
 
-// Illustrative block, sdk.md D-203 "Typed notifications", copied as written.
+/** Where a notification's log sits, and whether a reorg removed it. */
 export type LogPosition = {
   blockNumber: number
   blockHash: Hex
@@ -18,7 +15,7 @@ export type LogPosition = {
   removed: boolean
 }
 
-/** The manager function that cancelled the attempt, as far as one log can tell (sdk.md D-203). */
+/** The manager function that cancelled the attempt, as far as one log can tell. */
 export const CANCELLED_BY = [
   'cancelByOwner',
   'cancelByProofs',
@@ -27,7 +24,7 @@ export const CANCELLED_BY = [
 ] as const
 export type CancelledBy = typeof CANCELLED_BY[number]
 
-/** The fourteen notification kinds, one per event the reader owns (sdk.md D-203). */
+/** The fourteen notification kinds, one per event the reader owns. */
 export const NOTIFICATION_KINDS = [
   'setup-committed',
   'setup-cleared',
@@ -46,7 +43,7 @@ export const NOTIFICATION_KINDS = [
 ] as const
 export type NotificationKind = typeof NOTIFICATION_KINDS[number]
 
-// Illustrative block, sdk.md D-203 "Typed notifications", copied as written.
+/** One typed notification per owned event, each carrying the position of its log. */
 export type Notification =
   | {
       kind: 'setup-committed'
@@ -134,7 +131,7 @@ export type Notification =
 
 /**
  * A filter: one or more addresses and a topics array of hex strings, no block
- * range and no client-library object (sdk.md D-203 "Filters").
+ * range and no client-library object.
  */
 export interface FilterSpec {
   addresses: Address[]
@@ -143,23 +140,19 @@ export interface FilterSpec {
 
 /**
  * The one option of the per-account filter: leave the action topic open so one
- * query returns every action the account committed (sdk.md D-203).
- * Illustrative shape, sdk.md D-201.
+ * query returns every action the account committed.
  */
 export interface AccountFilterOptions {
   anyAction?: boolean
 }
 
-/** The blocks one read covers, a first and a last, both required (sdk.md D-203). */
+/** The blocks one read covers, a first and a last, both required. */
 export interface BlockRange {
   from: number
   to: number
 }
 
-/**
- * One raw log as `eth_getLogs` returns it, what `decodeLog` and `IProvider.logs` speak.
- * Illustrative, sdk.md D-203: the chapter names a raw log and no record for it.
- */
+/** One raw log as `eth_getLogs` returns it, what `decodeLog` and `IProvider.logs` speak. */
 export interface RawLog {
   address: Address
   topics: Hex[]
@@ -172,8 +165,8 @@ export interface RawLog {
 }
 
 /**
- * The shared part for the logs (sdk.md D-201, D-203). Frozen by D-203.
- * `decodeLog` returns undefined for a log the reader does not own.
+ * The shared part for the logs. `decodeLog` returns undefined for a log the
+ * reader does not own.
  */
 export interface IEventManager {
   accountFilter(options?: AccountFilterOptions): FilterSpec

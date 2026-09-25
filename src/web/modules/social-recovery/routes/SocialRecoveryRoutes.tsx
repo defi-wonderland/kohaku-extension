@@ -8,10 +8,10 @@ import KeystoreUnlockedRoute from '@web/modules/router/components/KeystoreUnlock
  * The route registry of the account recovery module.
  *
  * MainRoutes mounts this element once at `social-recovery/*` inside its
- * TabOnlyRoute group, so every recovery surface opens in a full tab (ux.md
- * D-316) and this file owns the guards. The paths below are relative to that
- * mount: a screen's path is its WEB_ROUTES value without the `social-recovery/`
- * prefix, for example `setup` for WEB_ROUTES.socialRecoverySetup.
+ * TabOnlyRoute group, so every recovery surface opens in a full tab and this
+ * file owns the guards. The paths below are relative to that mount: a screen's
+ * path is its WEB_ROUTES value without the `social-recovery/` prefix, for
+ * example `setup` for WEB_ROUTES.socialRecoverySetup.
  *
  * A task adds exactly one <Route> line for its screen inside the group its
  * surface belongs to, and nothing else in this file.
@@ -29,9 +29,9 @@ const SocialRecoveryRoutes = () => (
     <Route element={<KeystoreUnlockedRoute />}>
       <Route element={<AuthenticatedRoute />}>
         {/*
-          Keys that mount here: socialRecoverySetup (M-7), socialRecoveryManage
-          (PT-067, PT-068), socialRecoveryCancel (PT-066), socialRecoveryCreate
-          (PT-042), socialRecoveryRecovery (PT-054 to PT-062).
+          The owner's surfaces mount here: socialRecoverySetup,
+          socialRecoveryManage, socialRecoveryCancel, socialRecoveryCreate and
+          socialRecoveryRecovery.
         */}
       </Route>
     </Route>
@@ -39,9 +39,9 @@ const SocialRecoveryRoutes = () => (
     {/* The open surfaces: no guard, since the guardian page and the fast track run without a keystore. */}
     <Route>
       {/*
-        Keys that mount here: socialRecoveryApprove (PT-063, PT-064),
-        socialRecoveryFastTrack (PT-053), socialRecoveryRecover (PT-052).
-        socialRecoveryCeremony (PT-041) mounts in the group its callers need.
+        The open surfaces mount here: socialRecoveryApprove,
+        socialRecoveryFastTrack and socialRecoveryRecover. socialRecoveryCeremony
+        mounts in the group its callers need.
       */}
     </Route>
   </Routes>

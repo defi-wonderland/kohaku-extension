@@ -1,23 +1,27 @@
 /**
- * The wallet's records (PT-040): the extension's storage of every record
- * docs/social-recovery/design/ux.md D-310 names, in the extension's local storage
- * and never in a background controller, since the worker restarts and clears its
- * controllers. The SDK stores nothing (ux-interfaces.md D-370), so the setup
- * draft, the recovery session and the setup cache live here and the SDK sees
- * them only as arguments.
+ * The wallet's records: the social recovery records this device keeps, in the
+ * extension's local storage and never in a background controller, since the
+ * worker restarts and clears its controllers. The SDK stores nothing, so the
+ * setup draft, the recovery session and the setup cache live here and the SDK
+ * sees them only as arguments.
  *
- * Every record is stored as `{ value, savedAt }`, never as a bare boolean or zero,
- * since the storage helper's read returns the default for a falsy stored value.
- * A read of a record that is not stored returns `ABSENT`.
+ * Every record is stored as `{ value, savedAt }`, `savedAt` in ms since epoch,
+ * never as a bare boolean or zero, since the storage helper's read returns the
+ * default for a falsy stored value. The recovery session also stores its
+ * `revision`. A read of a record that is not stored, or not stored in that
+ * shape, returns `ABSENT`. The helper stores rich JSON, so a `bigint` value
+ * survives.
  */
 import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
   ABSENT,
   ChainId,
+  CountdownRead,
   CountdownRecord,
   DecryptedSetupCacheRecord,
   DirectWipeEvent,
+  ExpectedRevision,
   ListedRecord,
   LiveRecoverySession,
   RECOVERY_WIPE_EVENTS,
@@ -25,13 +29,16 @@ import {
   RecordStorage,
   RecoverySessionRecord,
   RecoveryWipeEvent,
+  SessionRead,
+  SessionRevision,
   SETUP_RECORD_NAMES,
   SetupRecordName,
   SetupRecordValues,
-  StoredRecord
+  StoredRecord,
+  StoredSession
 } from './types'
 
-/** The prefix of every storage key this lane writes. */
+/** The prefix of every storage key the records use. */
 export const RECORDS_KEY_PREFIX = 'socialRecovery'
 
 const ACCOUNT_PATTERN = /^0x[0-9a-fA-F]{40}$/
@@ -56,9 +63,14 @@ const recoverySessionPrefix = (chainId: ChainId): string =>
   `${RECORDS_KEY_PREFIX}:recoverySession:${chainPart(chainId)}:`
 
 /**
- * The storage keys. Every record belongs to an account and is keyed by chain
- * and account: the six setup records, the recovery session (whose landed state
- * is the countdown's record) and the setup cache.
+ * The storage keys, `socialRecovery:<record>:<chainId>:<account>` with the
+ * account in lowercase, so a write for one account never touches another:
+ *
+ * - `setupDraft`, `inventory`, `path`, `enrollments`, `waitingPeriod` and
+ *   `passwordSet`: the six setup records;
+ * - `recoverySession`: the live gathering, the reason line a wipe leaves, or in
+ *   its landed state the countdown's record;
+ * - `decryptedSetupCache`: the setup the recovery password unlocked.
  */
 export const recordKeys = {
   setup: (name: SetupRecordName, chainId: ChainId, account: Address): string =>
@@ -82,6 +94,12 @@ const isSessionRecord = (value: unknown): value is RecoverySessionRecord =>
   value !== null &&
   SESSION_STATES.includes((value as { state?: unknown }).state as string)
 
+const isStoredSession = (stored: unknown): stored is StoredSession => {
+  if (!isStoredRecord(stored) || !isSessionRecord(stored.value)) return false
+  const { revision } = stored as { revision?: unknown }
+  return typeof revision === 'string' && revision !== ''
+}
+
 /**
  * Deep equality over the JSON-like values a gathering holds. A key whose value
  * is `undefined` counts as absent, as it does once stored.
@@ -100,6 +118,63 @@ const sameValue = (a: unknown, b: unknown): boolean => {
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every((key) => right[key] !== undefined && sameValue(left[key], right[key]))
+  )
+}
+
+const newRevision = (): SessionRevision => {
+  const bytes = new Uint8Array(12)
+  globalThis.crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// One queue per storage object and key: an update of a key starts once the
+// previous update of that key has settled, so its read and its write never
+// interleave with another update of the same key. Every instance over the same
+// storage object shares the queues. The queues live in this JS context only.
+const queues = new WeakMap<RecordStorage, Map<string, Promise<void>>>()
+
+const inQueue = <R>(storage: RecordStorage, key: string, task: () => Promise<R>): Promise<R> => {
+  const byKey = queues.get(storage) ?? new Map<string, Promise<void>>()
+  queues.set(storage, byKey)
+  const run = (byKey.get(key) ?? Promise.resolve()).then(task)
+  const settled = run.then(
+    () => undefined,
+    () => undefined
+  )
+  byKey.set(key, settled)
+  settled
+    .then(() => {
+      if (byKey.get(key) === settled) byKey.delete(key)
+    })
+    .catch(() => undefined)
+  return run
+}
+
+/**
+ * The refusal of a recovery session update whose caller read an older
+ * revision: another update changed the session after that read. Nothing was
+ * written. Read the session again and retry from that read.
+ */
+export class SessionRevisionConflict extends Error {
+  constructor(key: string) {
+    super(`The recovery session ${key} changed after it was read: read it again and retry`)
+    this.name = 'SessionRevisionConflict'
+    // Keeps `instanceof` working where the build compiles classes to functions.
+    Object.setPrototypeOf(this, SessionRevisionConflict.prototype)
+  }
+}
+
+export const isSessionRevisionConflict = (error: unknown): error is SessionRevisionConflict =>
+  error instanceof SessionRevisionConflict
+
+/** The revision an update passes after this read: the read's revision, or `null` when absent. */
+export const revisionOf = (read: SessionRead | CountdownRead): ExpectedRevision =>
+  read.status === 'present' ? read.revision : null
+
+const assertExpectedRevision = (expected: unknown): void => {
+  if (expected === null || (typeof expected === 'string' && expected !== '')) return
+  throw new Error(
+    'An update of the recovery session takes the revision its caller read, or null for no session'
   )
 }
 
@@ -132,20 +207,23 @@ export type SetupRecords = {
 }
 
 export interface RecoverySessionAccessor {
-  read(): Promise<RecordRead<RecoverySessionRecord>>
+  read(): Promise<SessionRead>
   /**
-   * Writes the live session from the SDK's gathering. Refuses a cancellation
-   * gathering, a gathering whose request names another account or chain, a
-   * landed session, and over a live session a gathering whose request differs
-   * in any field or that leaves a filled place without a reply.
+   * Writes the live session from the SDK's gathering. `expectedRevision` is the
+   * revision of the caller's read, or `null` when it read no session; when the
+   * stored revision differs, the write throws `SessionRevisionConflict` and
+   * writes nothing. Refuses a cancellation gathering, a gathering whose request
+   * names another account or chain, a landed session, and over a live session a
+   * gathering whose request differs in any field or that leaves a filled place
+   * without a reply. Over a wiped session it starts the new gathering.
    */
-  write(gathering: Gathering): Promise<StoredRecord<RecoverySessionRecord>>
+  write(gathering: Gathering, expectedRevision: ExpectedRevision): Promise<StoredSession>
   age(at?: number): Promise<number | null>
 }
 
 /** The countdown's record, read from the session in its landed state. */
 export interface CountdownAccessor {
-  read(): Promise<RecordRead<CountdownRecord>>
+  read(): Promise<CountdownRead>
   age(at?: number): Promise<number | null>
 }
 
@@ -169,21 +247,23 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     return record
   }
 
+  const removeKey = (key: string): Promise<void> =>
+    inQueue(storage, key, async () => {
+      await storage.remove(key)
+    })
+
   const accessor = <T>(key: string): RecordAccessor<T> => ({
     read: () => readKey<T>(key),
-    write: (value: T) => writeKey<T>(key, value),
-    wipe: async () => {
-      await storage.remove(key)
-    },
+    write: (value: T) => inQueue(storage, key, () => writeKey<T>(key, value)),
+    wipe: () => removeKey(key),
     age: async (at?: number) => recordAge(await readKey<T>(key), at ?? now())
   })
 
   // --- the six setup records -----------------------------------------------
 
   const wipeSetupRecords = async (chainId: ChainId, account: Address): Promise<void> => {
-    await Promise.all(
-      SETUP_RECORD_NAMES.map((name) => storage.remove(recordKeys.setup(name, chainId, account)))
-    )
+    const keys = SETUP_RECORD_NAMES.map((name) => recordKeys.setup(name, chainId, account))
+    await Promise.all(keys.map(removeKey))
   }
 
   /**
@@ -219,19 +299,59 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
 
   // --- the recovery session ------------------------------------------------
 
+  const readSessionAt = async (key: string): Promise<SessionRead> => {
+    const stored = await storage.get(key, undefined)
+    if (!isStoredSession(stored)) return ABSENT
+    return {
+      status: 'present',
+      value: stored.value,
+      savedAt: stored.savedAt,
+      revision: stored.revision
+    }
+  }
+
+  const writeSessionAt = async (
+    key: string,
+    value: RecoverySessionRecord
+  ): Promise<StoredSession> => {
+    const record: StoredSession = { value, savedAt: now(), revision: newRevision() }
+    await storage.set(key, record)
+    return record
+  }
+
   const readSession = (chainId: ChainId, account: Address) =>
-    readKey<RecoverySessionRecord>(recordKeys.recoverySession(chainId, account))
+    readSessionAt(recordKeys.recoverySession(chainId, account))
+
+  /**
+   * Runs one update of a recovery session in its key's queue: reads the stored
+   * session, throws `SessionRevisionConflict` when its revision is not the one
+   * the caller read, and otherwise hands the read to `apply`.
+   */
+  const updateSession = async <R>(
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision,
+    apply: (current: SessionRead, key: string) => Promise<R>
+  ): Promise<R> => {
+    const key = recordKeys.recoverySession(chainId, account)
+    assertExpectedRevision(expectedRevision)
+    return inQueue(storage, key, async () => {
+      const current = await readSessionAt(key)
+      if (revisionOf(current) !== expectedRevision) throw new SessionRevisionConflict(key)
+      return apply(current, key)
+    })
+  }
 
   /**
    * The recovery session of one account on one chain. Its live body is the
-   * SDK's gathering (sdk.md D-207); a write for another account touches another
-   * key and never wipes this one.
+   * SDK's gathering; a write for another account touches another key and never
+   * wipes this one.
    */
   const recoverySession = (chainId: ChainId, account: Address): RecoverySessionAccessor => {
     const key = recordKeys.recoverySession(chainId, account)
     return {
-      read: () => readKey<RecoverySessionRecord>(key),
-      write: async (gathering: Gathering) => {
+      read: () => readSessionAt(key),
+      write: async (gathering: Gathering, expectedRevision: ExpectedRevision) => {
         const { request } = gathering
         if (gathering.purpose !== 'approval') {
           throw new Error(
@@ -244,33 +364,35 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
         if (chainPart(request.chainId) !== chainPart(chainId)) {
           throw new Error(`The gathering names chain ${request.chainId}, not ${chainPart(chainId)}`)
         }
-        const current = await readKey<RecoverySessionRecord>(key)
-        if (current.status === 'present' && current.value.state === 'landed') {
-          throw new Error(
-            'A landed session holds the countdown: end it once its attempt ends, then gather again'
-          )
-        }
-        if (current.status === 'present' && current.value.state === 'live') {
-          const stored = current.value.gathering
-          // Any change to the request would replace it, a wipe without one of the five reasons.
-          if (!sameValue(stored.request, request)) {
+        return updateSession(chainId, account, expectedRevision, async (current) => {
+          if (current.status === 'present' && current.value.state === 'landed') {
             throw new Error(
-              'A live session holds another request: wipe it with one of the five events first'
+              'A landed session holds the countdown: end it once its attempt ends, then gather again'
             )
           }
-          // A reply may be displaced by a later reply for the same place (sdk.md D-207),
-          // never dropped.
-          const places = new Set(gathering.replies.map((reply) => reply.place))
-          const dropped = stored.replies.filter((reply) => !places.has(reply.place))
-          if (dropped.length) {
-            throw new Error(
-              `The write drops the reply at place ${dropped.map((reply) => reply.place).join(', ')}`
-            )
+          if (current.status === 'present' && current.value.state === 'live') {
+            const stored = current.value.gathering
+            // A new request would replace the gathering: that takes a wipe first.
+            if (!sameValue(stored.request, request)) {
+              throw new Error(
+                'A live session holds another request: wipe it with one of the five events first'
+              )
+            }
+            // A later reply for the same place may displace a stored reply; no reply is dropped.
+            const places = new Set(gathering.replies.map((reply) => reply.place))
+            const dropped = stored.replies.filter((reply) => !places.has(reply.place))
+            if (dropped.length) {
+              throw new Error(
+                `The write drops the reply at place ${dropped
+                  .map((reply) => reply.place)
+                  .join(', ')}`
+              )
+            }
           }
-        }
-        return writeKey<RecoverySessionRecord>(key, { state: 'live', gathering })
+          return writeSessionAt(key, { state: 'live', gathering })
+        })
       },
-      age: async (at?: number) => recordAge(await readKey<RecoverySessionRecord>(key), at ?? now())
+      age: async (at?: number) => recordAge(await readSessionAt(key), at ?? now())
     }
   }
 
@@ -284,11 +406,11 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
       .filter(([key]) => key.startsWith(prefix) && ACCOUNT_PATTERN.test(key.slice(prefix.length)))
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     return entries.flatMap(([, stored]) =>
-      isStoredRecord(stored) && isSessionRecord(stored.value)
+      isStoredSession(stored)
         ? [
             {
               account: sessionAccount(stored.value),
-              record: { value: stored.value, savedAt: stored.savedAt }
+              record: { value: stored.value, savedAt: stored.savedAt, revision: stored.revision }
             }
           ]
         : []
@@ -306,12 +428,14 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
    * Returns whether it wiped anything: an absent, wiped or landed session is
    * left unchanged. `submission-landed` runs through `landSubmission`; it and
    * any value outside the vocabulary, a security stop or a pause among them,
-   * throw and wipe nothing (I-38).
+   * throw and wipe nothing. Throws `SessionRevisionConflict` when the session
+   * changed after the caller read `expectedRevision`.
    */
   const wipeRecoverySession = async (
     chainId: ChainId,
     account: Address,
-    event: DirectWipeEvent
+    event: DirectWipeEvent,
+    expectedRevision: ExpectedRevision
   ): Promise<boolean> => {
     if (!isRecoveryWipeEvent(event)) {
       throw new Error(`Not a recovery wipe event: ${String(event)}`)
@@ -319,72 +443,92 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     if ((event as RecoveryWipeEvent) === 'submission-landed') {
       throw new Error('The submission landing runs through landSubmission')
     }
-    const current = await readSession(chainId, account)
-    if (current.status !== 'present' || current.value.state !== 'live') return false
-    const { request } = current.value.gathering
-    await writeKey<RecoverySessionRecord>(recordKeys.recoverySession(chainId, account), {
-      state: 'wiped',
-      reason: event,
-      account: request.account,
-      ...(event === 'deadline-passed' ? { deadline: request.validUntil } : {})
+    return updateSession(chainId, account, expectedRevision, async (current, key) => {
+      if (current.status !== 'present' || current.value.state !== 'live') return false
+      const { request } = current.value.gathering
+      await writeSessionAt(key, {
+        state: 'wiped',
+        reason: event,
+        account: request.account,
+        ...(event === 'deadline-passed' ? { deadline: request.validUntil } : {})
+      })
+      return true
     })
-    return true
   }
 
   /**
    * The submission landed: the live session survives as the countdown's record,
    * `{ state: 'landed', account }`, written in one set in place of the live
    * session, so the gathering, its replies and its attempt id are gone in the
-   * same write. Refuses when no live session exists.
+   * same write. Refuses when no live session exists, and throws
+   * `SessionRevisionConflict` when the session changed after the caller read
+   * `expectedRevision`.
    */
   const landSubmission = async (
     chainId: ChainId,
-    account: Address
-  ): Promise<StoredRecord<CountdownRecord>> => {
-    const current = await readSession(chainId, account)
-    if (current.status !== 'present' || current.value.state !== 'live') {
-      throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
-    }
-    const landedAccount = current.value.gathering.request.account
-    const written = await writeKey<RecoverySessionRecord>(
-      recordKeys.recoverySession(chainId, account),
-      { state: 'landed', account: landedAccount }
-    )
-    return { value: { account: landedAccount }, savedAt: written.savedAt }
-  }
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<StoredRecord<CountdownRecord> & { revision: SessionRevision }> =>
+    updateSession(chainId, account, expectedRevision, async (current, key) => {
+      if (current.status !== 'present' || current.value.state !== 'live') {
+        throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
+      }
+      const landedAccount = current.value.gathering.request.account
+      const written = await writeSessionAt(key, { state: 'landed', account: landedAccount })
+      return {
+        value: { account: landedAccount },
+        savedAt: written.savedAt,
+        revision: written.revision
+      }
+    })
 
-  const removeSessionIn = async (
+  const removeSessionIn = (
     chainId: ChainId,
     account: Address,
-    state: 'wiped' | 'landed'
-  ): Promise<boolean> => {
-    const current = await readSession(chainId, account)
-    if (current.status !== 'present' || current.value.state !== state) return false
-    await storage.remove(recordKeys.recoverySession(chainId, account))
-    return true
-  }
+    state: 'wiped' | 'landed',
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean> =>
+    updateSession(chainId, account, expectedRevision, async (current, key) => {
+      if (current.status !== 'present' || current.value.state !== state) return false
+      await storage.remove(key)
+      return true
+    })
 
   /**
    * Removes a session record in its wiped state, once its death screen is read,
    * so old sessions do not accumulate. Touches nothing in any other state, so a
    * live session and a running countdown stay. Returns whether it removed one.
+   * Throws `SessionRevisionConflict` when the session changed after the caller
+   * read `expectedRevision`.
    */
-  const clearWipedSession = (chainId: ChainId, account: Address): Promise<boolean> =>
-    removeSessionIn(chainId, account, 'wiped')
+  const clearWipedSession = async (
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean> => removeSessionIn(chainId, account, 'wiped', expectedRevision)
 
   /**
    * Removes a session record in its landed state, once the attempt it counts
-   * down to has ended (executed or cancelled, D-393). Touches nothing in any
-   * other state. Returns whether it removed one.
+   * down to has ended (executed or cancelled). Touches nothing in any other
+   * state. Returns whether it removed one. Throws `SessionRevisionConflict`
+   * when the session changed after the caller read `expectedRevision`.
    */
-  const endCountdown = (chainId: ChainId, account: Address): Promise<boolean> =>
-    removeSessionIn(chainId, account, 'landed')
+  const endCountdown = async (
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean> => removeSessionIn(chainId, account, 'landed', expectedRevision)
 
   // --- the countdown -------------------------------------------------------
 
-  const asCountdown = (read: RecordRead<RecoverySessionRecord>): RecordRead<CountdownRecord> =>
+  const asCountdown = (read: SessionRead): CountdownRead =>
     read.status === 'present' && read.value.state === 'landed'
-      ? { status: 'present', value: { account: read.value.account }, savedAt: read.savedAt }
+      ? {
+          status: 'present',
+          value: { account: read.value.account },
+          savedAt: read.savedAt,
+          revision: read.revision
+        }
       : ABSENT
 
   /** The countdown's record of one account: the session in its landed state, the account alone. */
@@ -401,7 +545,11 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
         ? [
             {
               account: record.value.account,
-              record: { value: { account: record.value.account }, savedAt: record.savedAt }
+              record: {
+                value: { account: record.value.account },
+                savedAt: record.savedAt,
+                revision: record.revision
+              }
             }
           ]
         : []
@@ -412,7 +560,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   /**
    * This device's cache of the setup the recovery password unlocked, with the
    * setup nonce it was read under. It stays after the recovery executes; no
-   * wipe of this lane touches it.
+   * wipe of these records touches it.
    */
   const decryptedSetupCache = (
     chainId: ChainId,
