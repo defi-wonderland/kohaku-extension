@@ -20,6 +20,7 @@ import {
   offersMoveFunds,
   readingOf,
   REPLACEMENT_HASH,
+  sentFor,
   sentFrom,
   submittingFrom,
   TX_HASH,
@@ -241,6 +242,55 @@ describe('an answer of the current run', () => {
     })
     expect(readingOf(landed)).toBe('landed')
     expect(landed).toMatchObject({ transactionHash: REPLACEMENT_HASH, run: second.run })
+  })
+
+  it('the first hash still settles the write after a repriced hash was announced', () => {
+    const sent = sentFor('cancel')
+    const resent = writeReducer(sent, {
+      type: 'sent',
+      run: sent.run,
+      transactionHash: REPLACEMENT_HASH
+    })
+    const landed = writeReducer(resent, {
+      type: 'receipt',
+      run: sent.run,
+      receipt: { transactionHash: TX_HASH, status: 1 }
+    })
+    expect(readingOf(landed)).toBe('landed')
+    expect(landed).toMatchObject({ transactionHash: TX_HASH, run: sent.run })
+  })
+
+  it('an error with no hash keeps every announced hash, so the first one still settles', () => {
+    const sent = sentFor('cancel')
+    const resent = writeReducer(sent, {
+      type: 'sent',
+      run: sent.run,
+      transactionHash: REPLACEMENT_HASH
+    })
+    const timedOut = writeReducer(resent, {
+      type: 'error',
+      run: sent.run,
+      error: new Error('timeout')
+    })
+    expect(timedOut.status).toBe('submitting')
+    const settled = writeReducer(timedOut, {
+      type: 'receipt',
+      run: sent.run,
+      receipt: { transactionHash: TX_HASH, status: 0 }
+    })
+    expect(settled).toMatchObject({ status: 'failedReverted', transactionHash: TX_HASH })
+  })
+
+  it('an announced hash settles whatever the case of its letters', () => {
+    const upper: Hex = `0x${'AB'.repeat(32)}`
+    const lower: Hex = `0x${'ab'.repeat(32)}`
+    const sent = sentFor('cancel', upper)
+    const landed = writeReducer(sent, {
+      type: 'receipt',
+      run: sent.run,
+      receipt: { transactionHash: lower, status: 1 }
+    })
+    expect(readingOf(landed)).toBe('landed')
   })
 
   it('a receipt for a hash the run never announced is ignored, and the announced one still settles', () => {
