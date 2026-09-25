@@ -16,7 +16,7 @@ import path from 'path'
 import React from 'react'
 import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import ts from 'typescript'
 
 import {
@@ -45,7 +45,10 @@ import {
 } from './harness'
 
 const mockUi = { isTab: true, isPopup: false, isActionWindow: false }
-const mockSource: { current: Record<string, unknown> } = { current: {} }
+const mockSource: { current: Record<string, unknown>; listeners: Set<() => void> } = {
+  current: {},
+  listeners: new Set()
+}
 
 jest.mock('@web/utils/uiType', () => ({ getUiType: () => mockUi }))
 // The keys the mount sweep reads: jsdom gives an extension origin no storage,
@@ -55,11 +58,20 @@ jest.mock('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults',
   ...jest.requireActual('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults'),
   browserReportKeys: () => mockReportKeys()
 }))
-jest.mock('@web/modules/social-recovery/shared/ceremony/screen/CeremonySource', () => ({
-  __esModule: true,
-  useCeremonySource: () => mockSource.current,
-  CeremonySourceProvider: ({ children }: { children: unknown }) => children
-}))
+// The source is an external store, so a test can hand the mounted tab a new
+// one the way a provider that re-renders with another value would.
+jest.mock('@web/modules/social-recovery/shared/ceremony/screen/CeremonySource', () => {
+  const R = jest.requireActual('react')
+  const subscribe = (listener: () => void) => {
+    mockSource.listeners.add(listener)
+    return () => mockSource.listeners.delete(listener)
+  }
+  return {
+    __esModule: true,
+    useCeremonySource: () => R.useSyncExternalStore(subscribe, () => mockSource.current),
+    CeremonySourceProvider: ({ children }: { children: unknown }) => children
+  }
+})
 jest.mock('@common/components/Button', () => {
   const R = jest.requireActual('react')
   return {
@@ -130,6 +142,7 @@ const loadScreen = (): React.ComponentType => {
 let point: P256Point
 let root: Root | null = null
 let container: HTMLElement | null = null
+let printedErrors = 0
 
 beforeAll(async () => {
   point = await generatePoint()
@@ -139,6 +152,7 @@ beforeAll(async () => {
   const printError = console.error.bind(console)
   jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
     if (String(args[0]).includes('ReactDOMTestUtils.act')) return
+    printedErrors += 1
     printError(...args)
   })
 })
@@ -165,25 +179,51 @@ const fakeStore = () => ({
   remove: jest.fn<Promise<unknown>, [string]>(async () => null)
 })
 
-const render = async (search: string) => {
+/** Renders the tab at `search`; with `from`, the tab was opened from that page. */
+const render = async (search: string, from?: string) => {
   const Screen = loadScreen()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
+  const tab = `/social-recovery/ceremony${search}`
+  const page = from
+    ? React.createElement(
+        Routes,
+        null,
+        React.createElement(Route, {
+          path: '/social-recovery/ceremony',
+          element: React.createElement(Screen)
+        }),
+        React.createElement(Route, {
+          path: from,
+          element: React.createElement('p', null, `the page at ${from}`)
+        })
+      )
+    : React.createElement(Screen)
   await act(async () => {
     root?.render(
       React.createElement(
         MemoryRouter,
         {
-          initialEntries: [`/social-recovery/ceremony${search}`],
+          initialEntries: from ? [from, tab] : [tab],
+          initialIndex: from ? 1 : 0,
           future: { v7_startTransition: true, v7_relativeSplatPath: true }
         },
-        React.createElement(Screen)
+        page
       )
     )
   })
   await act(async () => flush(20))
   return container
+}
+
+/** Hands the mounted tab a new source. */
+const swapSource = async (next: Record<string, unknown>) => {
+  await act(async () => {
+    mockSource.current = next
+    mockSource.listeners.forEach((listener) => listener())
+    await flush(20)
+  })
 }
 
 const source = (script: MethodScript = {}) => {
@@ -495,28 +535,60 @@ describe('a cancel while the method still runs', () => {
   })
 })
 
-describe('a report the store fails to write', () => {
-  const DELIVERY_FAILED = 'Not delivered · the result did not reach the row'
+const DELIVERY_FAILED = 'Not delivered · the result did not reach the row'
+const CLAIM_IDENTITY = { id: 'req-1', call: 'createClaim', method: 'passkey' } as const
+const refusal = () => new Error('QUOTA_BYTES quota exceeded')
 
+let browser: ReturnType<typeof installCredentials> | null = null
+
+afterEach(() => {
+  browser?.restore()
+  browser = null
+})
+
+/** A browser that answers the claim's prompt; with `hide`, the holder switched away first. */
+const answeringBrowser = (hide = false) => {
+  browser = installCredentials({
+    get: async () => {
+      if (hide) setVisibility('hidden')
+      return fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+    }
+  })
+  return browser
+}
+
+/** Backs a fake store with a map, and plays each write to the listeners of its key. */
+const backWithMap = (store: ReturnType<typeof fakeStore>) => {
+  const map = new Map<string, unknown>()
+  const listeners = new Map<string, Set<(value: unknown) => void>>()
+  store.set.mockImplementation(async (key, value) => {
+    map.set(key, value)
+    listeners.get(key)?.forEach((listener) => listener(value))
+    return null
+  })
+  store.get.mockImplementation(async (key, fallback) => (map.has(key) ? map.get(key) : fallback))
+  store.remove.mockImplementation(async (key) => {
+    map.delete(key)
+    return null
+  })
+  const subscribe = (key: string, onValue: (value: unknown) => void) => {
+    const keyListeners = listeners.get(key) ?? new Set()
+    keyListeners.add(onValue)
+    listeners.set(key, keyListeners)
+    return () => {
+      keyListeners.delete(onValue)
+    }
+  }
+  return { map, subscribe }
+}
+
+describe('a report the store fails to write', () => {
   it('keeps the result and offers a retry that writes the same report with no new ceremony', async () => {
-    const creds = installCredentials({
-      get: async () => fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
-    })
+    const creds = answeringBrowser()
     setVisibility('visible', false)
     const { method, orchestrator, store, resolve } = source()
-    const map = new Map<string, unknown>()
-    store.set.mockImplementation(async (key: string, value: unknown) => {
-      map.set(key, value)
-      return null
-    })
-    store.get.mockImplementation(async (key: string, fallback?: unknown) =>
-      map.has(key) ? map.get(key) : fallback
-    )
-    store.remove.mockImplementation(async (key: string) => {
-      map.delete(key)
-      return null
-    })
-    store.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
+    const { map } = backWithMap(store)
+    store.set.mockRejectedValueOnce(refusal())
 
     const page = await render(CLAIM)
     expect(store.set).toHaveBeenCalledTimes(1)
@@ -534,13 +606,177 @@ describe('a report the store fails to write', () => {
     expect(methodRunCount(method, orchestrator)).toBe(ran)
     expect(page.textContent).not.toContain(DELIVERY_FAILED)
 
-    const report = await ceremony().takeCeremonyReport(
-      { id: 'req-1', call: 'createClaim', method: 'passkey' },
-      store,
-      Date.now()
-    )
+    const report = await ceremony().takeCeremonyReport(CLAIM_IDENTITY, store, Date.now())
     expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
     expect(report?.outcome).toEqual((store.set.mock.calls[0][1] as { outcome: unknown }).outcome)
-    creds.restore()
+  })
+
+  it('stamps the retried write at the time of the retry', async () => {
+    answeringBrowser()
+    let clock = new Date('2026-09-24T12:00:00Z').getTime()
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(() => clock)
+    try {
+      setVisibility('visible', false)
+      const { store } = source()
+      store.set.mockRejectedValueOnce(refusal())
+      const page = await render(CLAIM)
+      const refusedAt = clock
+
+      clock += 4 * 60 * 1000
+      await press(page, 'Try again')
+      const [refused, retried] = store.set.mock.calls.map(
+        (call) => call[1] as { reportedAt: number; expiresAt: number }
+      )
+      expect(refused.reportedAt).toBe(refusedAt)
+      expect(retried.reportedAt).toBe(refusedAt + 4 * 60 * 1000)
+      expect(retried.expiresAt).toBe(retried.reportedAt + ceremony().CEREMONY_REPORT_TTL_MS)
+    } finally {
+      dateNow.mockRestore()
+    }
+  })
+
+  it('leaves through Back to the page that opened the tab, and writes nothing more', async () => {
+    answeringBrowser()
+    setVisibility('visible', false)
+    const { store } = source()
+    store.set.mockRejectedValueOnce(refusal())
+    const page = await render(CLAIM, '/social-recovery/setup')
+    expect(page.textContent).toContain(DELIVERY_FAILED)
+
+    await press(page, 'Back')
+    expect(page.textContent).toBe('the page at /social-recovery/setup')
+    expect(store.set).toHaveBeenCalledTimes(1)
+  })
+
+  it('delivers the retried write to a caller that listens for it', async () => {
+    answeringBrowser()
+    setVisibility('visible', false)
+    const { store } = source()
+    const { map, subscribe } = backWithMap(store)
+    store.set.mockRejectedValueOnce(refusal())
+    const onReport = jest.fn()
+    const stop = ceremony().listenForCeremonyReport(CLAIM_IDENTITY, subscribe, store, onReport)
+
+    const page = await render(CLAIM)
+    expect(onReport).not.toHaveBeenCalled()
+
+    await press(page, 'Try again')
+    expect(onReport).toHaveBeenCalledTimes(1)
+    expect(onReport.mock.calls[0][0]).toMatchObject({
+      ...CLAIM_IDENTITY,
+      outcome: { kind: 'verdict', verdict: 'passed' }
+    })
+    expect(map.size).toBe(0)
+    stop()
+  })
+})
+
+describe('a gate replaced while the report waits', () => {
+  it('reads undelivered, and the retry writes through the new gate', async () => {
+    setVisibility('visible', false)
+    const creds = answeringBrowser(true)
+    const { store } = source()
+    const page = await render(CLAIM)
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(page.textContent).toContain('Keep this tab open.')
+    expect(store.set).not.toHaveBeenCalled()
+
+    const next = fakeStore()
+    await swapSource({ ...mockSource.current, store: next })
+    expect(page.textContent).toContain(DELIVERY_FAILED)
+    expect(page.textContent).toContain('passed just now')
+
+    await act(async () => {
+      setVisibility('visible')
+      await flush(20)
+    })
+    expect(store.set).not.toHaveBeenCalled()
+    expect(next.set).not.toHaveBeenCalled()
+
+    await press(page, 'Try again')
+    expect(next.set).toHaveBeenCalledTimes(1)
+    expect((next.set.mock.calls[0][1] as { outcome: unknown }).outcome).toMatchObject({
+      kind: 'verdict',
+      verdict: 'passed'
+    })
+    expect(store.set).not.toHaveBeenCalled()
+    expect(creds.get).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a tab closed while its report waits', () => {
+  it('writes nothing and reports nothing, even once the page is shown again', async () => {
+    setVisibility('visible', false)
+    answeringBrowser(true)
+    const { store } = source()
+    const errors = printedErrors
+    await render(CLAIM)
+    expect(store.set).not.toHaveBeenCalled()
+
+    await act(async () => root?.unmount())
+    root = null
+    await act(async () => {
+      setVisibility('visible')
+      await flush(20)
+    })
+    expect(store.set).not.toHaveBeenCalled()
+    expect(container?.textContent).toBe('')
+    expect(printedErrors).toBe(errors)
+  })
+})
+
+describe('a cancel while the ceremony resolves', () => {
+  it('writes the cancelled report, not unavailable, when the resolve then fails', async () => {
+    const creds = answeringBrowser()
+    setVisibility('visible', false)
+    const { store, resolve } = source()
+    let fail: (error: Error) => void = () => undefined
+    resolve.mockImplementation(
+      () =>
+        new Promise<never>((_, reject) => {
+          fail = reject
+        })
+    )
+    const page = await render(CLAIM)
+    expect(resolve).toHaveBeenCalledTimes(1)
+
+    await press(page, 'Cancel')
+    await act(async () => {
+      fail(new Error('the records did not answer'))
+      await flush(20)
+    })
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(reported(store)).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+    expect(carries(reported(store), { strings: ['service-unanswered'] })).toBe(false)
+    expect(creds.get).not.toHaveBeenCalled()
+    expect(page.textContent).toContain('Cancelled')
+    expect(page.textContent).not.toContain('Could not run')
+  })
+
+  it('prompts nothing and writes the cancelled report when the resolve then answers', async () => {
+    const creds = answeringBrowser()
+    setVisibility('visible', false)
+    const { store, resolve, method, orchestrator } = source()
+    const answer = resolve.getMockImplementation()
+    let release: () => void = () => undefined
+    const released = new Promise<void>((done) => {
+      release = done
+    })
+    resolve.mockImplementation(async () => {
+      await released
+      if (!answer) throw new Error('the source has no resolve')
+      return answer()
+    })
+    const page = await render(CLAIM)
+
+    await press(page, 'Cancel')
+    await act(async () => {
+      release()
+      await flush(20)
+    })
+    expect(creds.get).not.toHaveBeenCalled()
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(reported(store)).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
   })
 })

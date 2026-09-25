@@ -9,6 +9,8 @@
  * and at a claim it stays the cancelled note. The method never runs in any of
  * them.
  */
+import type { CeremonyStop } from '@web/modules/social-recovery/shared/ceremony'
+
 import {
   browserErrorNameOf,
   carries,
@@ -19,6 +21,7 @@ import {
   fakeAttestation,
   fakeMethod,
   fakeOrchestrator,
+  flush,
   generatePoint,
   hosts,
   installCredentials,
@@ -328,6 +331,48 @@ describe('a cancel while the method still runs', () => {
   )
 })
 
+describe('a device stop that arrives after a cancel', () => {
+  beforeEach(() => browserAnswers())
+
+  /** A phone that answers only once the holder has cancelled, and then with a stop. */
+  const lateStopDevice = (signal: AbortSignal, stop: CeremonyStop) => {
+    const settle = () =>
+      new Promise<{ ok: false; stop: CeremonyStop }>((resolve) => {
+        signal.addEventListener('abort', () => resolve({ ok: false, stop }))
+      })
+    return { enroll: jest.fn(settle), sign: jest.fn(settle) }
+  }
+
+  const STOPS: [string, () => CeremonyStop][] = [
+    ['an unreachable phone', () => ceremony().unavailable('unreachable')],
+    ['a refusal', () => ceremony().dismissed('refused')]
+  ]
+
+  STOPS.forEach(([title, stop]) =>
+    (['enroll', 'testAccess', 'createClaim'] as const).forEach((host) =>
+      it(`reads cancelled at ${host} over ${title}, and runs no method`, async () => {
+        const controller = new AbortController()
+        const device = lateStopDevice(controller.signal, stop())
+        const method = fakeMethod({}, 'external-app')
+        const orchestrator = fakeOrchestrator(method)
+        const running = hosts[host]({
+          method,
+          orchestrator,
+          resolvedDevice: device,
+          signal: controller.signal
+        })
+        await flush()
+        expect(host === 'enroll' ? device.enroll : device.sign).toHaveBeenCalledTimes(1)
+
+        controller.abort()
+        const outcome = await running
+        expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+        expect(methodRunCount(method, orchestrator)).toBe(0)
+      })
+    )
+  )
+})
+
 describe('the material the method receives', () => {
   beforeEach(() => browserAnswers())
 
@@ -359,4 +404,42 @@ describe('the material the method receives', () => {
     })
     expect(method.configFrom.mock.calls[0][1]).toEqual({ result: {} })
   })
+
+  const proverClaimWith = async (material: unknown, signal: AbortSignal) => {
+    const method = fakeMethod({}, 'in-browser-prover')
+    const orchestrator = fakeOrchestrator(method)
+    await hosts.createClaim({
+      method,
+      orchestrator,
+      resolvedDevice: ceremony().providedMaterialDevice({ sign: material }),
+      signal
+    })
+    return method.replyFrom.mock.calls[0][2]
+  }
+
+  it("keeps an in-browser prover's own signal", async () => {
+    const own = new AbortController().signal
+    const material = { proofs: '0x01', signal: own }
+    const received = await proverClaimWith(material, new AbortController().signal)
+    expect(received).toBe(material)
+    expect((received as { signal: AbortSignal }).signal).toBe(own)
+  })
+
+  class ProverMaterial {
+    readonly proofs = '0x01'
+  }
+  ;(
+    [
+      ['a byte array', new Uint8Array([1, 2, 3])],
+      ['a class instance', new ProverMaterial()],
+      ['an array', [{ proofs: '0x01' }]],
+      ['a hex string', '0x01']
+    ] as const
+  ).forEach(([title, material]) =>
+    it(`hands an in-browser prover ${title} unchanged`, async () => {
+      const received = await proverClaimWith(material, new AbortController().signal)
+      expect(received).toBe(material)
+      expect(received).not.toHaveProperty('signal')
+    })
+  )
 })

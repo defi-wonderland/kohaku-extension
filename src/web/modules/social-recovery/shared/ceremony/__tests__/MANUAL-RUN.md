@@ -12,14 +12,14 @@ The tests in this folder mock `navigator.credentials`. The checks below need a r
 ## Checks
 
 1. Open the ceremony from the action popup. It redirects to `tab.html#/social-recovery/ceremony`, and the popup closes. The ceremony never starts in the popup or in an action window.
-2. Enroll with iCloud Keychain. The tab reads passed and "Synced passkey · Apple". The authenticator data has BE set, and its rp id hash equals the hash from the set-up, not `sha256("<id>")`. Record the AAGUID: a zeroed one reads "your password manager" instead.
+2. Enroll with iCloud Keychain. The tab shows "Not tested" and "Synced passkey · Apple". The authenticator data has BE set, and its rp id hash equals the hash from the set-up, not `sha256("<id>")`. Record the AAGUID: a zeroed one reads "your password manager" instead.
 3. Enroll with the security key. The line reads "Device-bound passkey · this device" ("this Mac" for a device-bound platform passkey on a Mac).
-4. Test access with the credential of check 2: passed. Test access with the other credential's record: test failed with its cause, never not tested.
+4. Test access with the credential of check 2: the tab shows "Tested" and "check … · passed just now". Test access with the other credential's record: the tab shows "Test failed" with its cause, never "Not tested".
 5. Create a claim for one place of a request. The assertion's `rpId` is the extension id, and the method receives the signature.
 6. Repeat check 5 with the phone over hybrid until an assertion has `s > n/2`. The method receives `n - s`, and a verifier that rejects high `s` accepts it.
-7. Cancel the browser prompt at enroll, test access and create claim. Enroll and create claim read "Cancelled" and keep the row's chip. Test access reads "Test failed" with `NotAllowedError`. The method never runs.
+7. Cancel the browser prompt at enroll, test access and create claim. Enroll and create claim show "Cancelled · you cancelled the prompt, the row is unchanged" and no chip. Test access shows "Test failed", `NotAllowedError` and "This method may never work." The method never runs.
 8. Let the browser refuse (cancel the security key's PIN prompt, or deny the platform prompt). Enroll reads cancelled or refused, never failed. Record the error name.
-9. Start test access with the phone hand-off, and switch to another tab before you approve on the phone. Nothing is written under `socialRecoveryCeremonyResult:<id>` while the tab is hidden. Return after more than ten minutes: the report is written then, and the row that opened the tab still receives it.
+9. Start test access with the phone hand-off, and switch to another tab before you approve on the phone. While the tab is hidden, the extension's storage holds nothing under `socialRecoveryCeremonyResult:<id>`. Return after more than ten minutes: the tab shows "Tested", and the report appears in storage then, with a `reportedAt` of the time you returned.
 10. Start the hand-off at enroll and at test access, and never scan the code. After the prompt's 180 seconds, both read unreachable with Try again. Close the prompt early instead: enroll reads cancelled, test access reads test failed with `NotAllowedError`. Try again starts a new hand-off.
 11. Create the passkey in 1Password over hybrid. A `SecurityError` reads the provider-refused note. Record the error name Chrome gives: a `NotAllowedError` reads cancelled instead.
 12. Enroll with one build, then load a build with another manifest key (another extension id) and run test access with the stored record. It reads test failed with `NotAllowedError`, never passed and never the relying-party mismatch note.
