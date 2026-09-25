@@ -4,11 +4,14 @@
  *
  * A host takes the orchestrator and the method implementation as injected
  * parameters typed by `sdk-interfaces`, and never imports the SDK doubles: the
- * ESLint fence keeps them to `shared/client`. The tab gets both from the
- * resolver of `CeremonySourceProvider`; a test passes its own. Each host
- * renders its steps through `onStep`, honours `signal` as the abort, and
- * returns exactly one outcome of `verdicts.ts`: one of the four verdicts, or
- * the dismissal read before the method runs.
+ * ESLint fence keeps them to `shared/client`. The tab is to get both from a
+ * resolver that a `CeremonySourceProvider` above the route supplies; that
+ * wiring comes with a later task, and until then the tab runs nothing and
+ * reports not supported. A test passes its own. Each host renders its steps
+ * through `onStep`, honours `signal` as the abort, and returns exactly one
+ * outcome of `verdicts.ts`: one of the four verdicts, or a dismissal. A
+ * dismissal is the browser's own dismissal, read before the method runs, or
+ * the holder's Cancel at any step.
  *
  * "The method runs" means its packaging: `configFrom` at enrollment and
  * `replyFrom` at a test or a claim. The options calls, `enrollInput` and
@@ -179,7 +182,7 @@ export const enrollHost = async (
   }
 
   const result = await device.enroll(input, deviceContext(context, 'enroll'))
-  if (!result.ok) return result.stop
+  if (!result.ok) return cancelledByAbort(context) ?? result.stop
   const abortedAfterDevice = cancelledByAbort(context)
   if (abortedAfterDevice) return abortedAfterDevice
 
@@ -227,7 +230,7 @@ const signForRequest = async (
   }
 
   const result = await device.sign(input, deviceContext(context, call))
-  if (!result.ok) return { ok: false, outcome: result.stop }
+  if (!result.ok) return { ok: false, outcome: cancelledByAbort(context) ?? result.stop }
   const abortedAfterDevice = cancelledByAbort(context)
   if (abortedAfterDevice) return { ok: false, outcome: abortedAfterDevice }
 

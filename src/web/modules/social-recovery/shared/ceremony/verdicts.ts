@@ -9,9 +9,10 @@
  * - unavailable: a node, a service or a phone did not answer; retry is offered.
  * - notSupported: the method cannot serve this document; no retry, since the
  *   answer will not change.
- * - dismissed: the holder cancelled the prompt or the browser refused it, read
- *   from the browser's own error BEFORE the method runs. The row keeps its chip
- *   and shows the cancelled or refused note.
+ * - dismissed: the browser's own dismissal, a prompt the holder cancelled or
+ *   the browser refused, read from its error BEFORE the method runs; or the
+ *   holder's Cancel at any step, which drops whatever the method answers. The
+ *   row keeps its chip and shows the cancelled or refused note.
  *
  * Every function here is pure and runs under Jest's node environment.
  */
@@ -38,7 +39,10 @@ export type CeremonyVerdict = typeof CEREMONY_VERDICTS[number]
 export const isCeremonyVerdict = (value: unknown): value is CeremonyVerdict =>
   typeof value === 'string' && (CEREMONY_VERDICTS as readonly string[]).includes(value)
 
-/** The two notes a ceremony returns before the method runs. */
+/**
+ * The two notes of a dismissal: the browser's own dismissal before the method
+ * runs, or the holder's Cancel at any step.
+ */
 export const DISMISSAL_NOTES = ['cancelled', 'refused'] as const
 export type DismissalNote = typeof DISMISSAL_NOTES[number]
 

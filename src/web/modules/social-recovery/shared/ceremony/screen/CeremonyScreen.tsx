@@ -40,6 +40,7 @@ import {
   browserErrorNameOf,
   CeremonyOutcome,
   chipOfOutcome,
+  dismissed,
   lineKeyOfOutcome,
   notSupported,
   noteKeyOfOutcome,
@@ -161,8 +162,11 @@ const CeremonyScreen = () => {
       try {
         resolved = await source.resolve(params)
       } catch {
-        // The records or the client did not answer: retry may find them.
-        result = unavailable('service-unanswered')
+        // A Cancel pressed while the resolve ran wins. Otherwise the records or
+        // the client did not answer: retry may find them.
+        result = controller.signal.aborted
+          ? dismissed('cancelled', 'AbortError')
+          : unavailable('service-unanswered')
       }
       if (resolved === null) {
         if (mounted.current) setPhase('nothing')

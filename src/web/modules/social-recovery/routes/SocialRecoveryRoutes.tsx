@@ -46,8 +46,9 @@ const SocialRecoveryRoutes = () => (
       */}
       {/*
         The ceremony tab runs in the open group because its callers include a
-        fresh install with no keystore. A guard would also send a tab waiting on
-        a phone hand-off to the unlock screen on auto-lock and lose the result.
+        fresh install with no keystore. The tab reads no keystore and holds no
+        signer, so it needs no guard. A guard would also send a tab waiting on a
+        phone hand-off to the unlock screen on auto-lock and lose the result.
       */}
       <Route path="ceremony" element={<CeremonyScreen />} />
     </Route>
