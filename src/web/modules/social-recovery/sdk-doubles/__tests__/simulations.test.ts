@@ -143,6 +143,50 @@ describe('simulation outcomes', () => {
     expect(error.name).toBe('AttemptIgnoresPause')
   })
 
+  it('AttemptIgnoresPause before MethodNotUsed: a veto naming an unused method against an attempt that ignores stops', async () => {
+    const world = createWorld()
+    world.script.setupCommitted('private')
+    const { methodZkpassport: used, methodAadhaar: unused } = world.descriptor
+    world.chain.openAttempt({
+      payload: world.codec.encode({
+        newAuthority: world.keys.fresh,
+        removedAuthority: world.keys.held
+      }),
+      usedMethods: [used],
+      ignoresPause: true
+    })
+    world.chain.setPaused(unused, true)
+    const recovery = await world.recoveryClient()
+    const prepared = await recovery.prepareCancelByVeto(unused)
+    expect(failureOf(prepared).name).toBe('AttemptIgnoresPause')
+    expect(() => world.chain.land(prepared)).toThrow()
+    expect((await recovery.recoveryState()).attempt.state).toBe('Waiting')
+  })
+
+  it('StaleAttempt: a veto against a waiting attempt judged under an earlier setup', async () => {
+    const world = createWorld()
+    world.script.setupCommitted('private')
+    const { setupNonce } = await world.manager.stateOf()
+    const stoppable = world.descriptor.methodZkpassport
+    world.chain.openAttempt({
+      payload: world.codec.encode({
+        newAuthority: world.keys.fresh,
+        removedAuthority: world.keys.held
+      }),
+      usedMethods: [stoppable],
+      ignoresPause: false,
+      setupNonce: setupNonce - 1n
+    })
+    world.chain.setPaused(stoppable, true)
+    const recovery = await world.recoveryClient()
+    const prepared = await recovery.prepareCancelByVeto(stoppable)
+    const error = failureOf(prepared)
+    expect(error.name).toBe('StaleAttempt')
+    expect(error.args).toEqual({ judgedUnder: setupNonce - 1n, currentNonce: setupNonce })
+    expect(() => world.chain.land(prepared)).toThrow()
+    expect((await recovery.recoveryState()).attempt.state).toBe('Waiting')
+  })
+
   it('MethodNotStopped: a veto naming a used method that is not stopped', async () => {
     const world = createWorld()
     const { recovery } = await startLanded(world)
