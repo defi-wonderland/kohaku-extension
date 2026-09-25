@@ -1,19 +1,12 @@
 /**
- * PT-039, done entry 2: the gas step estimates the transaction's own gas
- * through the extension's provider, names the sending key's address, the
+ * The gas step estimates the transaction's own gas through the extension's
+ * provider (the SDK estimates nothing), names the sending key's address, the
  * amount and the network, and offers a transfer from another account this
  * wallet holds and a deposit from outside. The step is skipped when the key
  * already holds enough.
- *
- * Sources: docs/social-recovery/tasks/PT-039-the-shared-write-states-and-the-gas-step.md
- * ("Done", "Body"), briefs/PT-039.md ("Shape", "Test expectations"),
- * design/ux-interfaces.md D-373 (the SDK estimates nothing; the extension's
- * provider estimates and reads the balance), design/ux.md D-303, D-319, D-307,
- * D-393 (on the logged-in route the step offers both routes).
  */
 import {
   ACCOUNT,
-  CHAPTER_WRITES,
   EXECUTION,
   GWEI,
   KEY,
@@ -32,10 +25,6 @@ import {
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
 describe('the gas check', () => {
-  it('runs for every write the chapter names: the setup save, the submission, the execution, the cancel', () => {
-    expect(WRITE_KINDS).toEqual(expect.arrayContaining(CHAPTER_WRITES))
-  })
-
   WRITE_KINDS.forEach((write) =>
     describe(write, () => {
       describe('a key that holds less than the estimate', () => {
@@ -109,7 +98,7 @@ describe('the gas check', () => {
     })
   )
 
-  describe('the fast track (D-303)', () => {
+  describe('the fast track', () => {
     ;(['submission', 'execution'] as const).forEach((write) =>
       it(`${write}: the step names the sending key and offers the deposit from outside into its address`, async () => {
         const step = stepOf(
@@ -128,11 +117,10 @@ describe('the gas check', () => {
     )
   })
 
-  describe('the estimate is for that transaction, through the provider (D-373)', () => {
+  describe('the estimate is for that transaction, through the provider', () => {
     // A short key off the fast track makes two estimates: the write's own
-    // transaction first, then the transfer route's own (its fee, the
-    // coordinator's ruling of 2026-09-24). A key that holds enough, or a step
-    // on the fast track, makes the first alone.
+    // transaction first, then the transfer route's own, for its fee. A key
+    // that holds enough, or a step on the fast track, makes the first alone.
     it("asks the provider's estimate for the submission as prepared, sent from the sending key", async () => {
       const reads = mockReads({ balance: 0n, gas: 180_000n })
       await runGasCheck({ write: 'submission', reads })

@@ -1,15 +1,10 @@
 /**
- * PT-039, done entry 1: the failed state carries its two readings. A call the
- * wallet never sent reads that nothing reached the chain and the account
- * stands as it did; a call that reached the chain and reverted reads as a
- * revert, names the cause the receipt carries and says the gas it spent is
- * gone. The reverted cancel reads D-307's: the attempt is already gone, with
- * the account's controller as it now stands.
- *
- * Sources: docs/social-recovery/tasks/PT-039-the-shared-write-states-and-the-gas-step.md
- * ("Done", "Body", the risk reason), briefs/PT-039.md ("Shape", "Test
- * expectations"), design/ux.md D-319 (the two readings) and D-307 (the
- * reverted cancel). Strings through the real en.json.
+ * The failed state carries its two readings. A call the wallet never sent
+ * reads that nothing reached the chain and the account stands as it did; a
+ * call that reached the chain and reverted reads as a revert, names the cause
+ * the receipt carries and says the gas it spent is gone. A reverted cancel may
+ * read that the attempt is already gone, with the account's controller as it
+ * now stands. Strings through the real en.json.
  */
 import { providerReadFailure, revertedCall } from '@web/modules/social-recovery/shared/client'
 import { appTranslate } from '@web/modules/social-recovery/shared/display'
@@ -50,7 +45,7 @@ const STANDS_AS_IT_DID = /\b(?:nothing changed|stands as it did)\b/i
 const REVERTED = /\breverted\b/i
 const REACHED_AND_REVERTED = /\breached the chain and reverted\b/i
 const GAS_GONE = /\bthe gas it spent is gone\b/i
-// D-307's reading of the reverted cancel.
+// The reverted cancel's reading when the attempt had already ended.
 const ALREADY_GONE = /\bthe attempt (?:was|is) already gone\b/i
 
 const ATTEMPT_ACTIVE = kitError('AttemptAlreadyActive')
@@ -60,7 +55,7 @@ const STILL_RUNNING = { ended: ATTEMPT_STILL_RUNNING }
 
 const rendered = (state: WriteState) => text(copyOfState(state))
 
-describe('a call the wallet never sent (D-319, the first reading)', () => {
+describe('a call the wallet never sent, the first reading', () => {
   const errors: [string, () => unknown][] = [
     ['the holder rejected the request', userRejected],
     ['the node refused the transaction', nodeRefused],
@@ -99,9 +94,6 @@ describe('a call the wallet never sent (D-319, the first reading)', () => {
         expect(readingOf(estimateReverts)).toBe('notSent')
       })
 
-      // The coordinator's ruling of 2026-09-24 (brief, "Dependencies and base"):
-      // a failed gas read renders its own line with the retry (D-393), and is
-      // neither reading of the failed state.
       it('a gas check whose read could not run is gasReadError, not a failed reading', () => {
         const checking = writeReducer(initialWriteState(write), { type: 'start' })
         const readFailed = writeReducer(checking, {
@@ -116,7 +108,7 @@ describe('a call the wallet never sent (D-319, the first reading)', () => {
   )
 })
 
-describe('a call that reached the chain and reverted (D-319, the second reading)', () => {
+describe('a call that reached the chain and reverted, the second reading', () => {
   WRITE_KINDS.forEach((write) =>
     describe(write, () => {
       it('a receipt with status zero reads reverted, with the gas gone', () => {
@@ -126,19 +118,18 @@ describe('a call that reached the chain and reverted (D-319, the second reading)
         expect(rendered(state)).toMatch(GAS_GONE)
       })
 
-      // "Nothing changed" alone may stand in a revert's reading: the editor's
-      // frame G-05b reads "reached the chain and reverted ... Nothing changed,
-      // the gas it spent is gone" (design/live-frame-strings.md). What tells
-      // the readings apart is whether the call reached the chain.
+      // A revert's reading may also say that nothing changed, as the edit's
+      // does. What tells the readings apart is whether the call reached the
+      // chain.
       it('never reads that nothing reached the chain', () => {
         const state = rendered(failWithReceipt(write, ATTEMPT_ACTIVE, EXECUTED))
         expect(state).not.toMatch(NOTHING_REACHED_THE_CHAIN)
         expect(state).toMatch(REACHED_AND_REVERTED)
       })
 
-      // The risk the task names: a revert misread as a call never sent has the
-      // holder retry a call that cannot land. ethers' wait() throws on a mined
-      // revert, carrying the hash and the status-zero receipt.
+      // A revert misread as a call never sent has the holder retry a call that
+      // cannot land. ethers' wait() throws on a mined revert, carrying the hash
+      // and the status-zero receipt.
       it('an error that carries a hash and a status-zero receipt reads reverted, never not sent', () => {
         const state = failThrown(write, minedAndReverted(), EXECUTED)
         expect(readingOf(state)).toBe('reverted')
@@ -175,11 +166,11 @@ describe('a call that reached the chain and reverted (D-319, the second reading)
     })
   )
 
-  // The cancel names the attempt gone in place of a cause (D-307, below).
+  // The cancel may name the attempt gone in place of a cause, below.
   WRITE_KINDS.filter((w) => w !== 'cancel').forEach((write) =>
     describe(`${write}: the cause the receipt carries`, () => {
-      // Logic alone: a marker answers the cause slot, so the lane's choice of
-      // sentence shows whatever en.json holds.
+      // A marker answers the cause slot, so the test sees which cause sentence
+      // the module chose, whatever en.json holds.
       const marked = (key: string, options?: Record<string, unknown>) =>
         /\.causes\./.test(key) ? `<${key}>` : appTranslate(key, options)
 
@@ -209,10 +200,10 @@ describe('a call that reached the chain and reverted (D-319, the second reading)
   )
 })
 
-describe('the reverted cancel (D-307)', () => {
+describe('the reverted cancel', () => {
   const nothingToCancel = kitError('NoActiveAttempt')
 
-  it('is the reverted reading of D-319', () => {
+  it('is the reverted reading', () => {
     const state = failWithReceipt('cancel', nothingToCancel, EXECUTED)
     expect(readingOf(state)).toBe('reverted')
     expect(rendered(state)).toMatch(REVERTED)
@@ -225,10 +216,9 @@ describe('the reverted cancel (D-307)', () => {
     expect(rendered(failWithReceipt('cancel', nothingToCancel))).toMatch(ALREADY_GONE)
   })
 
-  // The coordinator's ruling of 2026-09-24: the gone reading is decided only
-  // from the attempt read or a decoded cause, never from an undecoded revert.
-  // A cancel that ran out of gas while the attack runs must not read that
-  // nothing is left to cancel.
+  // The gone reading rests only on the attempt read or a decoded cause, never
+  // on an undecoded revert: a cancel that ran out of gas while the attack runs
+  // must not read that nothing is left to cancel.
   describe('a cancel revert while the attempt may still run', () => {
     const plain = (state: WriteState) => {
       expect(readingOf(state)).toBe('reverted')

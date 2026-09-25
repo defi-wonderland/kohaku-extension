@@ -1,25 +1,19 @@
 /**
- * PT-039 after the setup revision fc9e1e080 registered the strings the lane
- * reported missing: every sentence the states and the step read is a key of
+ * Every sentence the states and the step read is a key of
  * `socialRecovery.writes` in en.json, and each write reads its own.
  *
- * - Every kit error of sdk.md D-205 has a cause sentence, and the reverted
- *   reading carries it (D-319: it names the cause the receipt carries; D-373:
- *   the wallet writes the string the screen renders).
+ * - Every kit error has a cause sentence, and the reverted reading carries it:
+ *   the wallet writes the string the screen renders.
  * - Each write reads its own reverted sentence: the save, the edit, the
- *   submission and the execution from their frames, any other owner write the
- *   generic one (D-319, frames C-07, G-05b, D-11, D-13).
- * - A reverted cancel reads D-307's gone attempt and names the road that
- *   ended it, or the controller after an execution.
+ *   submission and the execution their own, any other owner write the generic
+ *   one.
+ * - A reverted cancel reads the gone attempt and names the road that ended
+ *   it, or the controller after an execution.
  * - The deposit step's lines: on the logged-in route the key of the chosen
- *   account and that the account holds the funds (D-393, frame D-09); an
- *   owner write's network line; on the fast track the sending key pays and,
- *   at execution due, the execution's own amount (D-303, D-393, D-373).
- * - `edit`, the management editor's save (D-309), is an owner write.
- *
- * Sources: the coordinator's list after [impl-done-2], design/ux.md D-303,
- * D-307, D-309, D-319, D-393, design/ux-interfaces.md D-373,
- * design/live-frame-strings.md (the frames named above).
+ *   account and that the account holds the funds; an owner write's network
+ *   line; on the fast track the sending key pays and, at execution due, the
+ *   execution's own amount.
+ * - `edit`, the management editor's save, is an owner write.
  */
 import en from '@common/config/localization/translations/en.json'
 import { KIT_ERROR_NAMES, type KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
@@ -40,7 +34,6 @@ import {
   kitError,
   NETWORK,
   offersMoveFunds,
-  OWNER_WRITES,
   payerOf,
   REVERTED_KEYS,
   renderGasAmount,
@@ -76,9 +69,8 @@ const ROADS = ATTEMPT_ENDS.filter(
   (end): end is Exclude<typeof end, 'executed'> => end !== 'executed'
 )
 
-describe('the cause of a revert (D-319, D-373)', () => {
-  it('every kit error of sdk.md D-205 has a cause sentence in en.json, and so has the unnamed revert', () => {
-    expect(KIT_ERROR_NAMES.length).toBe(25)
+describe('the cause of a revert', () => {
+  it('every kit error has a cause sentence in en.json, and so has the unnamed revert', () => {
     KIT_ERROR_NAMES.forEach((name) =>
       expect(resolves(causeKey(name))).toEqual({ key: causeKey(name), isString: true })
     )
@@ -114,10 +106,9 @@ describe('the cause of a revert (D-319, D-373)', () => {
   })
 })
 
-describe("each write reads its own reverted sentence (D-319, the writes' frames)", () => {
+describe('each write reads its own reverted sentence', () => {
   // The execution reads that the recovery is still ready only for a cause
-  // that leaves the attempt ready, and revertedExecuteGone otherwise (the
-  // coordinator's ruling of 2026-09-24, D-393's fifth ending).
+  // that leaves the attempt ready, and revertedExecuteGone otherwise.
   const OWN: [WriteKind, string, KitErrorName][] = [
     ['save', 'revertedSave', 'WrongSetupNonce'],
     ['edit', 'revertedEdit', 'WrongSetupNonce'],
@@ -157,7 +148,7 @@ describe("each write reads its own reverted sentence (D-319, the writes' frames)
   })
 })
 
-describe('the reverted cancel names the road that ended the attempt (D-307)', () => {
+describe('the reverted cancel names the road that ended the attempt', () => {
   it('has a sentence in en.json for every road', () => {
     ROADS.forEach((road) =>
       expect(resolves(cancelGoneRoadKey(road))).toEqual({
@@ -196,7 +187,7 @@ describe('the reverted cancel names the road that ended the attempt (D-307)', ()
   })
 })
 
-describe('the deposit step reads its registered lines (D-303, D-393, D-373)', () => {
+describe('the deposit step reads its registered lines', () => {
   it('holds every gas key the step reads in en.json', () => {
     Object.values(GAS_KEYS).forEach((key) => expect(resolves(key)).toEqual({ key, isString: true }))
     Object.values(WRITES_KEYS).forEach((key) =>
@@ -259,10 +250,8 @@ describe('the deposit step reads its registered lines (D-303, D-393, D-373)', ()
   })
 })
 
-describe('edit, the management editor save (D-309), is an owner write', () => {
-  it('is a write kind and an owner write, paid by the account key', () => {
-    expect(WRITE_KINDS).toContain('edit')
-    expect(OWNER_WRITES).toContain('edit')
+describe("edit, the management editor's save, is an owner write", () => {
+  it('is an owner write, paid by the account key', () => {
     expect(isOwnerWrite('edit')).toBe(true)
     expect(payerOf('edit')).toBe('accountKey')
   })

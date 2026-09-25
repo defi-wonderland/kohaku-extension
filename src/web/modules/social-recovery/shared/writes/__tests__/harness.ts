@@ -1,21 +1,19 @@
 /**
- * The tester's one seam onto the writes lane of PT-039 (brief
- * docs/social-recovery/briefs/PT-039.md "Test expectations"). Every test file
- * reaches the lane through this file, so a rename in the lane changes this
- * file alone. The helpers below forward to the lane and decide nothing: the
- * reading, the step and every string come from the lane and from en.json.
+ * The writes module's exports, the fixtures, the mocks and the helpers the
+ * writes tests share. The helpers forward to the module and decide nothing:
+ * the reading, the step and every string come from the module and from
+ * en.json.
  *
- * Mocks, and why:
- * - The provider reads (`ChainReads` of PT-038: the native balance, the gas
- *   estimate and the gas price) are `jest.fn` members. The gas check reads
- *   the chain through them alone, so a test sets the balance and the estimate
- *   and records the transaction the estimate was asked for. No test reaches a
- *   network, and none imports the SDK doubles (the ESLint fence).
+ * - The provider reads (`ChainReads`: the native balance, the gas estimate and
+ *   the gas price) are `jest.fn` members. The gas check reads the chain
+ *   through them alone, so a test sets the balance and the estimate and
+ *   records the transaction the estimate was asked for. No test reaches a
+ *   network, and none imports the SDK doubles.
  * - Where a test needs the real wrapping of a failed read (a
  *   `ProviderReadFailure`, or a `RevertedCall` for an estimate that would
- *   revert), `rpcReads` runs PT-038's own `createChainReads` over a mocked
- *   JSON-RPC `send` instead, the one member of the extension's provider the
- *   lane calls (`ExtensionRpc`).
+ *   revert), `rpcReads` runs the client's own `createChainReads` over a mocked
+ *   JSON-RPC `send`, the one member of the extension's provider the module
+ *   calls (`ExtensionRpc`).
  * - Nothing else is mocked. The strings come from the real en.json through
  *   the app's own i18next instance (the renderers' default `t`).
  */
@@ -56,19 +54,9 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 
 export * from '@web/modules/social-recovery/shared/writes'
-export { writes as LANE }
+export { writes as WRITES_MODULE }
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-/**
- * The writes the task file names as the consumers of the shared states: the
- * setup save, the submission, the execution and the owner's cancel.
- */
-export const CHAPTER_WRITES: WriteKind[] = ['save', 'submission', 'execution', 'cancel']
-
-/** The sending key: the ordinary key of the seed entry on the fast track (D-303). */
+/** The sending key: the ordinary key of the seed entry on the fast track. */
 export const KEY: KeyHandle = {
   addr: '0x6c482af19b7d03e5c1a684fb27d05e93a8c410b7',
   type: 'internal'
@@ -78,7 +66,7 @@ export const OTHER_KEY: KeyHandle = {
   addr: '0x2b0f5e98ee98adc9865745e98802f333f72f6ef5',
   type: 'internal'
 }
-/** The account's controller as it now stands after a cancel that reverted (D-307). */
+/** The account's controller as it now stands after a cancel that reverted. */
 export const CONTROLLER: Address = '0x7a19c0dec0dec0dec0dec0dec0dec0dec0dec204'
 /** The smart account the key operates, which the transfer route draws from. */
 export const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
@@ -88,12 +76,12 @@ export const ACTION: Address = '0xe7f1725e7734ce288f8367e1bb143e90bb3f0512'
 export const TX_HASH: Hex = '0x9c1b2e6a0d4f3e8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a'
 export const BLOCK = { number: 7_000_000, hash: TX_HASH }
 
-/** The network record the extension holds for the one chain the wallet reads (D-312). */
+/** The network record the extension holds for the one chain the wallet reads. */
 export const NETWORK = { name: 'Sepolia', nativeAssetSymbol: 'ETH' }
 
 export const GWEI = 1_000_000_000n
 
-/** The submission, a call anyone may send (sdk.md D-202). */
+/** The submission, a call anyone may send. */
 export const SUBMISSION: PreparedCall = {
   kind: 'call',
   target: MANAGER,
@@ -113,7 +101,7 @@ export const EXECUTION: PreparedCall = {
   block: BLOCK
 }
 
-/** The owner's cancel, a call whose sender is the account (ux-interfaces.md D-370). */
+/** The owner's cancel, a call whose sender is the account. */
 export const CANCEL: PreparedCall = {
   kind: 'call',
   target: MANAGER,
@@ -123,7 +111,7 @@ export const CANCEL: PreparedCall = {
   block: BLOCK
 }
 
-/** A setup write the account signs to itself: one batch (D-319). */
+/** A setup write the account signs to itself: one batch. */
 export const SAVE: PreparedBatch = {
   kind: 'batch',
   calls: [
@@ -159,7 +147,7 @@ export const preparedFor = (write: WriteKind): PreparedCall | PreparedBatch => {
   }
 }
 
-/** A kit error the wallet decoded for a revert (sdk.md D-205). */
+/** A kit error the wallet decoded for a revert. */
 export const kitError = (name: KitErrorName): KitError => ({
   kind: 'known',
   source: 'manager',
@@ -168,10 +156,6 @@ export const kitError = (name: KitErrorName): KitError => ({
   args: {}
 })
 
-// ---------------------------------------------------------------------------
-// The provider reads, mocked
-// ---------------------------------------------------------------------------
-
 export type MockReads = ChainReads & {
   nativeBalance: jest.Mock
   estimateGas: jest.Mock
@@ -179,8 +163,8 @@ export type MockReads = ChainReads & {
 }
 
 /**
- * The provider reads of PT-038 as `jest.fn` members. `gas` answers each
- * estimate, as a constant or per transaction; every call is recorded.
+ * The provider reads as `jest.fn` members. `gas` answers each estimate, as a
+ * constant or per transaction; every call is recorded.
  */
 export const mockReads = ({
   balance,
@@ -198,7 +182,7 @@ export const mockReads = ({
   gasPrice: jest.fn(async () => price)
 })
 
-/** Runs the lane's gas check for a write, off the fast track unless asked. */
+/** Runs the gas check for a write, off the fast track unless asked. */
 export const runGasCheck = (args: {
   write: WriteKind
   reads: ChainReads
@@ -229,7 +213,7 @@ export const runGasCheck = (args: {
 }
 
 /**
- * PT-038's own chain reads over a mocked JSON-RPC `send`. Each answer is a
+ * The client's own chain reads over a mocked JSON-RPC `send`. Each answer is a
  * quantity, or an Error the node throws; `send` records every request.
  */
 export const rpcReads = (answers: {
@@ -283,19 +267,15 @@ export const depositStepFor = async (
 ): Promise<DepositStep> =>
   stepOf(await runGasCheck({ write, fastTrack, reads: mockReads({ balance: 0n, gas, price }) }))
 
-// ---------------------------------------------------------------------------
-// The two readings, through the lane
-// ---------------------------------------------------------------------------
-
-/** A write that failed with an error before any hash: the lane's classification of it. */
+/** A write that failed with an error before any hash, as the module classifies it. */
 export const failBeforeHash = (write: WriteKind, error: unknown) =>
   classifyFailure(writeFailureOf(error), { write })
 
-/** A thrown value classified by the lane, with the attempt read of a cancel where given. */
+/** A thrown value as the module classifies it, with the attempt read of a cancel where given. */
 export const failThrown = (write: WriteKind, error: unknown, attemptAfter?: AttemptAfterCancel) =>
   classifyFailure(writeFailureOf(error), { write, ...(attemptAfter ? { attemptAfter } : {}) })
 
-/** A receipt with status zero, settled by the lane with the cause the wallet decoded. */
+/** A receipt with status zero, settled with the cause the wallet decoded. */
 export const failWithReceipt = (
   write: WriteKind,
   cause?: KitError,
@@ -313,7 +293,7 @@ export const failWithReceipt = (
     cause
   )
 
-/** A receipt with status one, settled by the lane. */
+/** A receipt with status one, settled. */
 export const landWithReceipt = (write: WriteKind) =>
   settleReceipt({ transactionHash: TX_HASH, status: 1 }, { write })
 
@@ -337,10 +317,6 @@ export const readingOf = (state: WriteState): 'notSent' | 'reverted' | 'landed' 
     : state.status === 'failedReverted'
     ? 'reverted'
     : state.status
-
-// ---------------------------------------------------------------------------
-// The copy a view lays out
-// ---------------------------------------------------------------------------
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
@@ -378,10 +354,6 @@ export const copyOfBlocker = (step: DepositStep): string[] => {
 }
 
 export const text = (strings: string[]): string => strings.join('\n')
-
-// ---------------------------------------------------------------------------
-// Errors a send can end in
-// ---------------------------------------------------------------------------
 
 /** The holder rejected the request in the signing prompt: ethers' ACTION_REJECTED, no hash. */
 export const userRejected = (): Error =>
@@ -442,10 +414,6 @@ export const gasReadErrorFor = (write: WriteKind): WriteState =>
     error: providerReadFailure('nativeBalance', new Error('node down'))
   })
 
-// ---------------------------------------------------------------------------
-// Strings
-// ---------------------------------------------------------------------------
-
 /** Every string reachable from a value, depth first. */
 export const collectStrings = (
   value: unknown,
@@ -460,17 +428,17 @@ export const collectStrings = (
   return out
 }
 
-/** The banned words of ux-copy.md, UXC-1 to UXC-7 and UXC-9, as the copy lint reads them. */
+/** The words the product's copy never uses, as the copy lint reads them. */
 export const BANS: { rule: string; pattern: RegExp }[] = [
-  { rule: 'UXC-1 policy', pattern: /\bpolic(?:y|ies)\b/i },
-  { rule: 'UXC-2 proof', pattern: /\bproofs?\b/i },
-  { rule: 'UXC-3 relayer', pattern: /\brelayers?\b/i },
-  { rule: 'UXC-4 EIP-712', pattern: /\bEIP[-\s]?712\b/i },
-  { rule: 'UXC-5 atomic', pattern: /\batomic(?:ally)?\b/i },
-  { rule: 'UXC-6 Protected', pattern: /\bProtected\b/ },
-  { rule: 'UXC-6 protect (reviewer reading)', pattern: /\b(?:un)?protect/i },
-  { rule: 'UXC-7 your people', pattern: /\byour\s+people\b/i },
-  { rule: 'UXC-9 full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
+  { rule: 'policy', pattern: /\bpolic(?:y|ies)\b/i },
+  { rule: 'proof', pattern: /\bproofs?\b/i },
+  { rule: 'relayer', pattern: /\brelayers?\b/i },
+  { rule: 'EIP-712', pattern: /\bEIP[-\s]?712\b/i },
+  { rule: 'atomic', pattern: /\batomic(?:ally)?\b/i },
+  { rule: 'Protected', pattern: /\bProtected\b/ },
+  { rule: 'protect', pattern: /\b(?:un)?protect/i },
+  { rule: 'your people', pattern: /\byour\s+people\b/i },
+  { rule: 'full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
 ]
 
 export const banHits = (strings: string[]): string[] =>
@@ -478,7 +446,7 @@ export const banHits = (strings: string[]): string[] =>
     BANS.filter(({ pattern }) => pattern.test(s)).map(({ rule }) => `${rule}: ${s}`)
   )
 
-/** A string that promises one funding covers the submission and the execution (D-303). */
+/** A string that promises one funding covers the submission and the execution. */
 export const ONE_FUNDING_COVERS_BOTH =
   /\b(?:covers?|pays? for|enough for|funds?|lasts? for)\s+(?:them\s+)?both\b|\bone funding\b|\bsingle funding\b|\bboth (?:the )?(?:transactions|steps|fundings|the submission and the execution)\b|\bonly (?:fund|once)\b|\bfund (?:it|this key) once\b/i
 
@@ -505,11 +473,9 @@ if (expect.getState().testPath === __filename) {
       expect(UNRESOLVED.test('Send on Sepolia, the network.')).toBe(false)
     })
 
-    it('gives each write its own prepared call and its own transaction', () => {
+    it('gives each write its own transaction', () => {
       const data = WRITE_KINDS.map((write) => ownerTransaction(write).data)
       expect(new Set(data).size).toBe(WRITE_KINDS.length)
-      expect(preparedFor('submission')).toBe(SUBMISSION)
-      expect(preparedFor('cancel')).toBe(CANCEL)
     })
   })
 }

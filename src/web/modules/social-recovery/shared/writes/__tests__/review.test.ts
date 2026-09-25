@@ -1,25 +1,17 @@
 /**
- * PT-039 after the fresh review of PR #11 and the coordinator's rulings of
- * 2026-09-24 (brief, "Dependencies and base"):
- *
- * - a retry is offered only for causes a retry can fix: the submission's
- *   acceptance errors and the execution's fifth ending offer none, and the
- *   execution's "still ready" sentence renders only for causes that leave the
- *   attempt ready (revertedExecuteGone otherwise);
- * - the transfer route's amount includes the transfer's own fee, so after
- *   the transfer lands the check run again answers enough;
- * - a failed gas read renders its own line with the retry (gasCheckFailed);
- * - an owner write's transaction is tied to the prepared write: from the key,
- *   to the account the key operates or the account factory;
- * - a transaction another one replaced before it was mined never ran.
- *
- * Sources: docs/social-recovery/briefs/PT-039.md, the task file's risk reason
- * (a misread failure has the holder retry a call that cannot land),
- * design/ux.md D-319, D-393 (the fifth ending offers no retry; a submission
- * rejected because an attempt already runs gets its own copy, since retrying
- * cannot help), D-307, ux-interfaces.md D-373.
+ * - A retry is offered only for causes a retry can fix: the submission's
+ *   acceptance errors and an execution whose attempt has ended offer none, and
+ *   the execution's "still ready" sentence renders only for causes that leave
+ *   the attempt ready (revertedExecuteGone otherwise). A misread failure has
+ *   the holder retry a call that cannot land.
+ * - The transfer route's amount includes the transfer's own fee, so after the
+ *   transfer lands the check run again answers enough.
+ * - A failed gas read renders its own line with the retry (gasCheckFailed).
+ * - An owner write's transaction is tied to the prepared write: from the key,
+ *   to the account the key operates or the account factory.
+ * - A transaction another one replaced before it was mined never ran.
  */
-import { KIT_ERROR_NAMES } from '@web/modules/social-recovery/sdk-interfaces'
+import { KIT_ERROR_NAMES, type KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client'
 import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
@@ -29,7 +21,6 @@ import {
   canRetry,
   causeKey,
   copyOfState,
-  EXECUTION_STILL_READY_CAUSES,
   failThrown,
   failWithReceipt,
   GWEI,
@@ -60,6 +51,9 @@ import {
 
 const REVERTED_AND_GONE = /\bthe gas it spent is gone\b/i
 const STILL_READY = /\bthe recovery is still ready\b/i
+// The execution's causes that leave the attempt ready: the wait has not ended,
+// or a security stop holds a method the recovery used.
+const LEAVE_THE_ATTEMPT_READY: KitErrorName[] = ['WaitNotOver', 'MethodVetoedSpend']
 
 /** The retry as a holder meets it: offered on screen, and taken by the machine. */
 const retry = (state: WriteState) => ({
@@ -69,7 +63,7 @@ const retry = (state: WriteState) => ({
 })
 
 describe('a retry is offered only where a retry can fix the cause', () => {
-  it('a submission rejected because an attempt already runs offers no retry (D-393)', () => {
+  it('a submission rejected because an attempt already runs offers no retry', () => {
     const state = failWithReceipt('submission', kitError('AttemptAlreadyActive'))
     expect(retry(state)).toEqual({ offered: false, shown: false, takes: false })
     expect(text(copyOfState(state))).toContain(appTranslate(causeKey('AttemptAlreadyActive')))
@@ -91,7 +85,7 @@ describe('a retry is offered only where a retry can fix the cause', () => {
   KIT_ERROR_NAMES.forEach((name) =>
     it(`execution, ${name}: "still ready" and the retry only where the cause leaves the attempt ready`, () => {
       const state = failWithReceipt('execution', kitError(name))
-      const ready = EXECUTION_STILL_READY_CAUSES.includes(name)
+      const ready = LEAVE_THE_ATTEMPT_READY.includes(name)
       const reading = text(copyOfState(state))
       expect({ name, stillReady: STILL_READY.test(reading), retry: canRetry(state) }).toEqual({
         name,
@@ -101,8 +95,7 @@ describe('a retry is offered only where a retry can fix the cause', () => {
     })
   )
 
-  it('the execution keeps the attempt ready for the wait not over, a security stop, or a cause it cannot name', () => {
-    expect([...EXECUTION_STILL_READY_CAUSES].sort()).toEqual(['MethodVetoedSpend', 'WaitNotOver'])
+  it('an execution revert with a cause the wallet cannot name keeps the attempt ready, with the retry', () => {
     const unnamed = failWithReceipt('execution')
     expect(text(copyOfState(unnamed))).toMatch(STILL_READY)
     expect(retry(unnamed)).toEqual({ offered: true, shown: true, takes: true })
@@ -120,7 +113,7 @@ describe('a retry is offered only where a retry can fix the cause', () => {
   })
 
   WRITE_KINDS.forEach((write) =>
-    it(`${write}: every cause the lane lists as unfixable offers no retry`, () => {
+    it(`${write}: every cause the module lists as unfixable offers no retry`, () => {
       NO_RETRY_CAUSES[write].forEach((name) =>
         expect({ name, retry: canRetry(failWithReceipt(write, kitError(name))) }).toEqual({
           name,
@@ -131,7 +124,7 @@ describe('a retry is offered only where a retry can fix the cause', () => {
   )
 })
 
-describe("the transfer route carries the transfer's own fee (D-319, D-393)", () => {
+describe("the transfer route carries the transfer's own fee", () => {
   const TRANSFER_GAS = 46_000n
   const WRITE_GAS = 180_000n
   const PRICE = 3n * GWEI
@@ -183,7 +176,7 @@ describe("the transfer route carries the transfer's own fee (D-319, D-393)", () 
   })
 })
 
-describe('a gas read that could not run renders gasCheckFailed with the retry (D-393)', () => {
+describe('a gas read that could not run renders gasCheckFailed with the retry', () => {
   const failed = async (answers: Parameters<typeof rpcReads>[0]) => {
     const { reads } = rpcReads(answers)
     const thrown = await runGasCheck({ write: 'submission', reads }).catch((error) => error)

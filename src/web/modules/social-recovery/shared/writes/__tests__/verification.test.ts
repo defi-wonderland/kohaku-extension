@@ -1,21 +1,14 @@
 /**
- * PT-039 after the verification pass of PR #11 ([impl-done-4], [impl-done-5],
- * setup c46f043cf):
- *
- * - an account with no code yet pays for its transfer through the factory's
+ * - An account with no code yet pays for its transfer through the factory's
  *   deploy-and-transfer, which the caller builds, so its route asks for more
- *   and a recheck after the transfer answers enough;
- * - a transfer estimate that reverts drops the transfer route and keeps the
- *   deposit from outside, rather than reading the check as not sent;
- * - under an attempt read that says the attempt still runs, a decoded "no
- *   recovery is running" is not named, since the read contradicts it;
- * - a replaced transaction reads its own en.json sentence, never that it
- *   failed to reach the chain;
- * - a failed gas read names the gas check, not one read.
- *
- * Sources: the coordinator's list after the verification pass,
- * docs/social-recovery/briefs/PT-039.md, design/ux.md D-307, D-319 (a deposit
- * of an account with no code prepends the deployment), D-393.
+ *   and a recheck after the transfer answers enough.
+ * - A transfer estimate that reverts drops the transfer route and keeps the
+ *   deposit from outside, rather than reading the check as not sent.
+ * - Under an attempt read that says the attempt still runs, a decoded "no
+ *   recovery is running" is not named, since the read contradicts it.
+ * - A replaced transaction reads its own en.json sentence, never that it
+ *   failed to reach the chain.
+ * - A failed gas read names the gas check, not one read.
  */
 import { revertedCall, providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import { appTranslate } from '@web/modules/social-recovery/shared/display'
@@ -79,7 +72,7 @@ const gasFor = (call: { data: string }) => {
   return WRITE_GAS
 }
 
-describe('an account with no code pays its transfer through the factory (D-319)', () => {
+describe('an account with no code pays its transfer through the factory', () => {
   const transferOf = async (undeployed: boolean, balance = 0n) => {
     const reads = mockReads({ balance, gas: gasFor, price: PRICE })
     const step = stepOf(
@@ -213,7 +206,7 @@ describe('a transfer estimate that reverts drops the transfer route and keeps th
   })
 })
 
-describe('a cancel revert under an attempt read that says the attempt still runs (D-307)', () => {
+describe('a cancel revert under an attempt read that says the attempt still runs', () => {
   const STILL_RUNNING = { ended: ATTEMPT_STILL_RUNNING }
   const NO_RECOVERY_RUNNING = t(causeKey('NoActiveAttempt'))
   const NO_SETUP = t(causeKey('NoSetup'))

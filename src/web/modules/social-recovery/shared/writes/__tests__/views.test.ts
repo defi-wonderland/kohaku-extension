@@ -1,18 +1,13 @@
 /**
- * PT-039, what the two views show: `WriteStateView` and `DepositStepView` lay
- * out what `renderWriteState` and `renderDepositStep` answer (brief, "Shape":
- * the rules live in the functions). This file checks that answer, the
- * rendered output, state by state and variant by variant, through the real
- * en.json.
+ * What the two views show: `WriteStateView` and `DepositStepView` lay out what
+ * `renderWriteState` and `renderDepositStep` answer, since the rules live in
+ * the functions. This file checks that answer, the rendered output, state by
+ * state and variant by variant, through the real en.json.
  *
  * The views are not mounted: the repository's Jest runs ts-jest under
  * `jsx: react-native`, which leaves JSX untransformed. The one check on the
- * view sources themselves is that neither opens a link (D-312: the step
- * renders no faucet link), since a link a view added would bypass the
- * renderers.
- *
- * Sources: briefs/PT-039.md ("Shape"), task file done entries 1 to 3,
- * design/ux.md D-303, D-307, D-312, D-319, D-393.
+ * view sources themselves is that neither opens a link (the step renders no
+ * faucet link), since a link a view added would bypass the renderers.
  */
 import fs from 'fs'
 import path from 'path'
@@ -76,7 +71,7 @@ describe('WriteStateView: what renderWriteState answers', () => {
         expect(r.retry).toBe(t(WRITES_KEYS.tryAgain))
       })
 
-      it('the states that carry no copy of this lane render nothing', () => {
+      it('the states that carry no copy of this module render nothing', () => {
         const idle = initialWriteState(write)
         const checking = writeReducer(idle, { type: 'start' })
         ;[idle, checking, landWithReceipt(write)].forEach((state) => {
@@ -210,7 +205,7 @@ describe('DepositStepView: what renderDepositStep answers', () => {
     )
   })
 
-  it('no field of any variant renders a link or a faucet (D-312)', async () => {
+  it('no field of any variant renders a link or a faucet', async () => {
     const steps = await Promise.all(
       STEP_CASES.map(({ write, fastTrack }) => depositStepFor(write, fastTrack))
     )
@@ -234,13 +229,10 @@ describe('DepositStepView: what renderDepositStep answers', () => {
   })
 })
 
-describe('neither view opens a link (D-312)', () => {
+describe('neither view opens a link', () => {
   const VIEWS = path.resolve(__dirname, '..', 'components')
-  const viewFiles = fs.readdirSync(VIEWS).filter((file) => /\.tsx$/.test(file))
-
-  it('reads both view sources', () => {
-    expect(viewFiles.sort()).toEqual(['DepositStepView.tsx', 'WriteStateView.tsx'])
-  })
+  // Read by name, so a view that moves fails the read rather than skipping the check.
+  const viewFiles = ['DepositStepView.tsx', 'WriteStateView.tsx']
 
   viewFiles.forEach((file) =>
     it(`${file} calls no Linking, sets no href and names no faucet`, () => {

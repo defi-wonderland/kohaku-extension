@@ -1,21 +1,14 @@
 /**
- * PT-039, done entries 2 and 3, through the real en.json: the step names the
- * sending key's address, the amount and the network; it says a transfer out
- * of the account the key operates is itself an operation that key must pay
- * for; the recovery call's step says the execution after the waiting period
- * is a second funding asked for again at the fee of that day and promises
- * nowhere that one funding covers both; no string names a faucet; no string
- * carries a banned word of ux-copy.md.
+ * Through the real en.json: the step names the sending key's address, the
+ * amount and the network; it says a transfer out of the account the key
+ * operates is itself an operation that key must pay for; the recovery call's
+ * step says the execution after the waiting period is a second funding asked
+ * for again at the fee of that day and promises nowhere that one funding
+ * covers both; no string names a faucet; no string carries a banned word.
  *
  * The strings are the ones the two views lay out: `renderWriteState` and
  * `renderDepositStep` answer them and `WriteStateView` and `DepositStepView`
  * lay out every field (views.test.ts checks those fields one by one).
- *
- * Sources: docs/social-recovery/tasks/PT-039-the-shared-write-states-and-the-gas-step.md
- * ("Done", "Body"), briefs/PT-039.md ("Test expectations"), design/ux.md
- * D-303 and D-393 (the second funding), D-312 (no faucet link), D-319 and
- * D-307 (the blocker's two routes and the transfer sentence),
- * design/ux-interfaces.md D-373, design/ux-copy.md.
  */
 import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
@@ -38,7 +31,6 @@ import {
   GWEI,
   KEY,
   kitError,
-  LANE,
   minedAndReverted,
   NETWORK,
   ONE_FUNDING_COVERS_BOTH,
@@ -49,7 +41,8 @@ import {
   text,
   UNRESOLVED,
   userRejected,
-  WRITE_KINDS
+  WRITE_KINDS,
+  WRITES_MODULE
 } from './harness'
 
 const TRANSFER_IS_AN_OPERATION =
@@ -63,13 +56,12 @@ const LINK = /\bhttps?:\/\/|\bwww\./i
 
 const TRANSFER_CASES = STEP_CASES.filter((c) => !c.fastTrack)
 // The step before the submission says the execution is a second funding; the
-// step at execution due is that second funding and does not say it again (the
-// coordinator's ruling of 2026-09-24).
+// step at execution due is that second funding and does not say it again.
 const SUBMISSION_CASES = STEP_CASES.filter((c) => c.write === 'submission')
 const EXECUTION_CASES = STEP_CASES.filter((c) => c.write === 'execution')
 const FAST_TRACK_CASES = STEP_CASES.filter((c) => c.fastTrack)
 
-/** Every string the lane renders: each variant of the step and its blocker, and every state of every write. */
+/** Every string the module renders: each variant of the step and its blocker, and every state of every write. */
 const everyRenderedString = async (): Promise<string[]> => {
   const steps = await Promise.all(
     STEP_CASES.map(async ({ write, fastTrack }) => {
@@ -144,7 +136,7 @@ describe('the deposit step, rendered through en.json', () => {
   )
 
   SUBMISSION_CASES.forEach(({ name, write, fastTrack }) =>
-    describe(`${name}: the second funding (D-303, D-393, D-373)`, () => {
+    describe(`${name}: the second funding`, () => {
       it('says the execution after the waiting period is a second funding', async () => {
         const rendered = text(copyOfStep(await depositStepFor(write, fastTrack)))
         expect(rendered).toMatch(SECOND_FUNDING)
@@ -174,7 +166,7 @@ describe('the deposit step, rendered through en.json', () => {
   })
 
   FAST_TRACK_CASES.forEach(({ name, write }) =>
-    describe(`${name} (D-303)`, () => {
+    describe(name, () => {
       it('names the key as the sending key', async () => {
         expect(text(copyOfStep(await depositStepFor(write, true)))).toMatch(
           /\bthe key that sends\b/i
@@ -188,25 +180,25 @@ describe('the deposit step, rendered through en.json', () => {
   )
 })
 
-describe('what no string of the lane says', () => {
-  it('no rendered string contains faucet or a link (D-312)', async () => {
+describe('what no string of the module says', () => {
+  it('no rendered string contains faucet or a link', async () => {
     const strings = await everyRenderedString()
     expect(strings.length).toBeGreaterThan(50)
     expect(strings.filter((s) => FAUCET.test(s))).toEqual([])
     expect(strings.filter((s) => LINK.test(s))).toEqual([])
   })
 
-  it('no rendered string says one funding covers both (D-303)', async () => {
+  it('no rendered string says one funding covers both', async () => {
     const strings = await everyRenderedString()
     expect(strings.filter((s) => ONE_FUNDING_COVERS_BOTH.test(s))).toEqual([])
   })
 
-  it('no rendered string carries a banned word of ux-copy.md', async () => {
+  it('no rendered string carries a banned word', async () => {
     expect(banHits(await everyRenderedString())).toEqual([])
   })
 
-  it('no exported string of the lane names a faucet, promises one funding or carries a banned word', () => {
-    const exported = collectStrings(LANE)
+  it('no exported string of the module names a faucet, promises one funding or carries a banned word', () => {
+    const exported = collectStrings(WRITES_MODULE)
     expect(exported).toEqual(expect.arrayContaining(['submitting', 'failedNotSent']))
     expect(exported.filter((s) => FAUCET.test(s))).toEqual([])
     expect(exported.filter((s) => ONE_FUNDING_COVERS_BOTH.test(s))).toEqual([])
