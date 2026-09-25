@@ -1,16 +1,15 @@
 /**
- * The shared submitting and failed states (ux.md D-319), rendered from a
- * write's state, with a spinner while the gas check runs and its own line with
- * the retry where a read of the check could not run (D-393). Every write of
- * the chapter renders this view and none draws its own: the copy comes from
- * `renderWriteState` and the rules from the machine, so this component only
- * lays them out.
+ * The shared submitting and failed states, rendered from a write's state,
+ * with a spinner while the gas check runs and its own line with the retry
+ * where a read of the check could not run. Every social recovery write renders
+ * this view and none draws its own: the copy comes from `renderWriteState` and
+ * the rules from the machine, so this component only lays them out.
  *
  * A write's screen may set its own title over the state (the setup could not
  * be saved, the recovery could not be started) and its own sentence after the
  * reading, from its own keys. The reverted reading already speaks in the
  * write's own words (`revertedKeyOf`), so a note belongs after the not-sent
- * reading, where the frame adds what stays on this device. Its own actions,
+ * reading, where the screen adds what stays on this device. Its own actions,
  * such as back or the cancel's move-funds action where `offersMoveFunds`
  * answers true, go in as children.
  */

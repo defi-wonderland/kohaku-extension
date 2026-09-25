@@ -1,7 +1,7 @@
 /**
- * The states every write of the chapter shares (ux.md D-319): the gas check
- * and its deposit step, the one submitting state, and the one failed state
- * with its two readings, each a state of its own.
+ * The states every social recovery write shares: the gas check and its
+ * deposit step, the one submitting state, and the one failed state with its
+ * two readings, each a state of its own.
  *
  * Every write renders these and no write defines its own: the setup save, the
  * edit, any other setup write, the owner's cancel, the submission and the
@@ -26,7 +26,7 @@ export const WRITE_STATUSES = [
 ] as const
 export type WriteStatus = typeof WRITE_STATUSES[number]
 
-/** The two readings of the one failed state (D-319), each its own status. */
+/** The two readings of the one failed state, each its own status. */
 export const FAILED_STATUSES = ['failedNotSent', 'failedReverted'] as const
 export type FailedStatus = typeof FAILED_STATUSES[number]
 
@@ -46,7 +46,7 @@ export interface CheckingGasState {
  * A read of the gas check could not run: the balance, the estimate or the gas
  * price (a `ProviderReadFailure`). It is part of the gas check, not a reading
  * of the failed state: the write was never about to be sent, so it offers the
- * check again rather than reading that the transaction was rejected (D-393).
+ * check again rather than reading that the transaction was rejected.
  */
 export interface GasReadErrorState {
   status: 'gasReadError'
@@ -131,8 +131,7 @@ export const isFailedState = (state: WriteState): state is FailedState =>
  * Whether the state offers the retry. A gas check that could not read runs
  * again, and a call never sent is sent again. A reverted call is retried only
  * where a retry can fix its cause (`retryCanFix`): never for a cancel whose
- * attempt was already gone (D-307), for the submission's acceptance errors, or
- * for an execution the fifth ending of D-393 closed.
+ * attempt was already gone, nor for a kit error of the write's `NO_RETRY_CAUSES`.
  */
 export const canRetry = (state: WriteState): boolean =>
   state.status === 'gasReadError' ||
@@ -140,11 +139,10 @@ export const canRetry = (state: WriteState): boolean =>
   (state.status === 'failedReverted' && retryCanFix(state.write, state.cause))
 
 /**
- * Whether the failed state offers the cancel's move-funds action (D-307 and
- * the cancel's failed states of frame D2-01). A cancel the wallet never sent
- * offers it beside the retry, since the waiting period keeps running, and so
- * does a cancel that reverted while the attempt still runs, or before the
- * attempt read says otherwise. A cancel that reverted because the attempt
+ * Whether the failed state offers the cancel's move-funds action. A cancel the
+ * wallet never sent offers it beside the retry, since the waiting period keeps
+ * running, and so does a cancel that reverted while the attempt still runs, or
+ * before the attempt read says otherwise. A cancel that reverted because the attempt
  * executed offers it beside the controller the state names. A cancel another
  * road beat keeps control unchanged and offers none, and neither does a gone
  * attempt whose read has not returned. No other write offers it.

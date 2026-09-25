@@ -1,27 +1,25 @@
 /**
- * The writes of the chapter that share the submitting and failed states and
- * the gas check (PT-039).
+ * The social recovery writes that share the submitting and failed states and
+ * the gas check: every owner-signed write and both recovery calls.
  *
- * Every owner-signed write and both recovery calls inherit them (ux.md D-319,
- * D-307, D-393). Which key pays follows from the write: the account's own
- * operations (a setup save, an edit, any other setup write, the owner's cancel) are
- * sent by the account's controlling key, and the two recovery calls anyone may
- * send (the submission, the execution) by the recoverer's own key, since the
- * first release configures no sponsor (ux.md D-312, shared/client `sending.ts`).
+ * Which key pays follows from the write: the account's own operations (a
+ * setup save, an edit, any other setup write, the owner's cancel) are sent by
+ * the account's controlling key, and the two recovery calls anyone may send
+ * (the submission, the execution) by the recoverer's own key, since the first
+ * release configures no sponsor (shared/client `sending.ts`).
  */
 import type { PreparedBatch, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 
 /**
- * The writes of the chapter, by the copy they need:
+ * The writes, by the copy they need:
  *
- * - `save`: the setup save, the arming batch of D-319 (frame C-07);
- * - `edit`: the editor's save of D-309, the recovery password's change among
- *   them (frame G-05b);
+ * - `save`: the setup save, the batch that arms the recovery setup;
+ * - `edit`: the editor's save, the recovery password's change among them;
  * - `ownerWrite`: any other setup write the account's key sends, the removal
- *   among them, with no failed-state frame of its own;
- * - `cancel`: the owner's cancel of D-307 (frame D2-01);
- * - `submission`: the start of a recovery, D-393 (frame D-11);
- * - `execution`: the execution at execution due, D-393 (frame D-13).
+ *   among them, with no reverted sentence of its own;
+ * - `cancel`: the owner's cancel of a running recovery attempt;
+ * - `submission`: the start of a recovery;
+ * - `execution`: the execution at execution due.
  */
 export const WRITE_KINDS = [
   'save',

@@ -1,14 +1,14 @@
 /**
- * The deposit step (ux.md D-303, D-319, D-307, D-393), rendered from the gas
- * check's data. The copy comes from `renderDepositStep` and the rules from
- * the gas check, so this component only lays them out: the key's address in
- * full with a copy action, the routes that fill it, the notes and, for a
- * recovery call, the lines of a step that waits for the funds.
+ * The deposit step, rendered from the gas check's data. The copy comes from
+ * `renderDepositStep` and the rules from the gas check, so this component only
+ * lays them out: the key's address in full with a copy action, the routes that
+ * fill it, the notes and, for a recovery call, the lines of a step that waits
+ * for the funds.
  *
  * `variant="blocker"` renders the short panel a write's own screen shows when
- * the check at sending comes up short (frame D-11's no-gas state), which leads
- * to the step. The write's own actions (continue, back, fund the key) go in as
- * children. The step links to nothing.
+ * the check at sending comes up short, which leads to the step. The write's
+ * own actions (continue, back, fund the key) go in as children. The step links
+ * to nothing.
  */
 import React, { ReactNode, useCallback } from 'react'
 import { View } from 'react-native'

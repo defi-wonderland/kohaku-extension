@@ -1,26 +1,25 @@
 /**
- * The gas check and its deposit step (ux.md D-303, D-319, D-307, D-393,
- * ux-interfaces.md D-373).
+ * The gas check and its deposit step.
  *
  * The check runs before every call a key the wallet holds sends. It estimates
  * that transaction's own gas and reads the gas price and the sending key's
  * balance through the extension's provider (shared/client `createChainReads`),
- * since the SDK estimates nothing and its provider answers no balance, D-373.
- * A key that holds enough skips the step. A key that holds too little gets the
+ * since the SDK estimates nothing and its provider answers no balance. A key
+ * that holds enough skips the step. A key that holds too little gets the
  * deposit step rather than a failed transaction: the key's address, the
  * estimated amount, the network the key must be funded on and the routes that
  * fill it.
  *
  * The routes: a transfer from another account this wallet holds, the account
  * the key operates, and a deposit from outside into the address the step
- * shows. The transfer is itself an operation that key sends and pays for
- * (D-319, D-393), so its amount carries the transfer's own fee, estimated
- * through the same provider: after the transfer lands, the check run again
- * answers enough. On the fast track the key operates no account yet, so the
- * step offers the deposit from outside alone (D-393: on the logged-in route
- * the step offers both routes). The first release configures no sponsor, and
- * the step links to no service that hands out test-network funds (D-312, the
- * owner's ruling of 2026-09-22).
+ * shows. The transfer is itself an operation that key sends and pays for, so
+ * its amount is the shortfall plus the transfer's own fee, estimated through
+ * the same provider: after the transfer lands, the check run again answers
+ * enough. The deposit from outside asks for the shortfall alone. On the fast
+ * track the key operates no account yet, so the step offers the deposit from
+ * outside alone; on the logged-in route it offers both routes. The first
+ * release configures no sponsor, and the step links to no service that hands
+ * out test-network funds.
  */
 import { Interface } from 'ethers'
 
@@ -54,9 +53,9 @@ export const NATIVE_DECIMALS = 18
 export const FEE_HEADROOM_PERCENT = 20
 
 /**
- * The factory the account library deploys a Kohaku account through (contracts
- * D-102, ambire-common `AMBIRE_ACCOUNT_FACTORY`). A save for an account with no
- * code yet goes to it, the deployment prepended to the batch (D-319).
+ * The factory the account library deploys a Kohaku account through
+ * (ambire-common `AMBIRE_ACCOUNT_FACTORY`). A save for an account with no code
+ * yet goes to it, the deployment prepended to the batch.
  */
 export const ACCOUNT_FACTORY = AMBIRE_ACCOUNT_FACTORY as Address
 
@@ -122,7 +121,7 @@ export interface DepositStep {
   write: WriteKind
   /** The account's controlling key for an owner write, the sending key for a recovery call. */
   payer: Payer
-  /** The fast track's step (D-303): a recovery call from the fresh key of a fresh install. */
+  /** The fast track's step: a recovery call from the fresh key of a fresh install. */
   fastTrack: boolean
   /** The address of the key that sends the write and pays its gas. */
   key: Address
@@ -159,7 +158,7 @@ export interface GasCheckInput {
    * execute: a call whose sender is the account, or a batch. The account
    * library builds it from the prepared write, to the account the key operates
    * (`operates`), or to `ACCOUNT_FACTORY` where it deploys an account with no
-   * code yet (D-319); `gasCallOf` refuses those calls. A call anyone may send
+   * code yet; `gasCallOf` refuses those calls. A call anyone may send
    * is estimated as it stands, so this is ignored for one.
    */
   transaction?: GasEstimateCall
@@ -179,7 +178,7 @@ export interface GasCheckInput {
    * offers the deposit from outside alone.
    */
   transferTransaction?: GasEstimateCall
-  /** The fast track's step (D-303). Only a recovery call takes it. */
+  /** The fast track's step. Only a recovery call takes it. */
   fastTrack?: boolean
   /** The fee headroom in percent, `FEE_HEADROOM_PERCENT` by default. */
   feeHeadroomPercent?: number
@@ -216,7 +215,7 @@ export const gasEstimateOf = (
  * from the key (`gasCallOf`); a write the account sends as the transaction the
  * account library built for it. That one must come from the key and go to the
  * account the key operates, or to `ACCOUNT_FACTORY` where it deploys the
- * account (D-319), so the check never estimates a transaction of another
+ * account, so the check never estimates a transaction of another
  * account. Throws a TypeError where it is missing or fails either tie.
  */
 export const gasTransactionOf = (
@@ -252,9 +251,9 @@ export const gasTransactionOf = (
   return { ...transaction }
 }
 
-// The account's own batch its privileged key sends with no signature
-// (contracts.md: `executeBySender` runs a batch for the address holding the
-// entry). The transfer route is that operation with one call to the key.
+// The account's own batch, which a key with privileges on the account sends
+// with no signature (`executeBySender`). The transfer route is that operation
+// with one call to the key.
 const ACCOUNT_OPERATIONS = new Interface([
   'function executeBySender((address to, uint256 value, bytes data)[] calls) payable'
 ])
