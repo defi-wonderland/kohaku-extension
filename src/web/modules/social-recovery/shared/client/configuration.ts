@@ -1,12 +1,12 @@
 /**
- * What the extension builds one client from (ux-interfaces.md D-370), and the
- * SDK client configuration of sdk.md D-208 it derives.
+ * What the extension builds one client from, and the SDK client configuration
+ * it derives.
  *
  * The configuration names one chain, the address book of the manager, the
  * methods and the action, the provider adapter, and the account the client
  * binds. It has no field for a signer, a storage or a sponsor rail: the SDK
  * stores nothing and holds no signer, so the extension keeps both outside the
- * client, and the first release configures no rail (ux.md D-312).
+ * client, and the first release configures no rail.
  */
 import { defaultClientConfiguration } from '@web/modules/social-recovery/sdk-doubles'
 import type {
@@ -19,7 +19,7 @@ import type {
 import type { AddressBook } from './addresses'
 import type { RecoveryChain } from './chains'
 
-/** The account facts the client configuration carries where the wallet has them (sdk.md D-208). */
+/** The account facts the client configuration carries where the wallet has them. */
 export interface AccountFacts {
   /** The account's creation triple and block, read by the handover builder alone. */
   creation?: CreationRecord
@@ -30,11 +30,11 @@ export interface AccountFacts {
 }
 
 export interface RecoveryClientConfiguration extends AccountFacts {
-  /** The one chain the wallet reads, a fixed label with no switch (ux.md D-312). */
+  /** The one chain the wallet reads, a fixed label with no switch. */
   chain: RecoveryChain
   /** The account the client binds. */
   account: Address
-  /** The deployed manager, methods and action (cut-q-7 placeholders until deployment). */
+  /** The deployed manager, methods and action (placeholders until deployment). */
   addressBook: AddressBook
   /** The provider adapter over the extension's own provider (`createProviderAdapter`). */
   provider: IProvider
@@ -44,15 +44,15 @@ export interface RecoveryClientConfiguration extends AccountFacts {
  * The width of a request's validity window: the wallet's own 24 hours, counted
  * from the moment the request is created. The client configuration's width
  * entry is set to the same value so the SDK's window check never fires under
- * it (ux-interfaces.md D-373).
+ * it.
  */
 export const REQUEST_WINDOW_SECONDS = 24 * 3600
 
 /**
- * The SDK client configuration of one extension configuration: D-208's
- * shipped numbers, the request window of D-373, no token allowlist (the first
- * release names no payment order, ux.md D-312) and the account facts where
- * the wallet has them.
+ * The SDK client configuration of one extension configuration: the SDK's
+ * shipped numbers, the wallet's own request window, no token allowlist (the
+ * first release names no payment order) and the account facts where the wallet
+ * has them.
  */
 export const clientConfigurationOf = (config: RecoveryClientConfiguration): ClientConfiguration => {
   const shipped = defaultClientConfiguration()

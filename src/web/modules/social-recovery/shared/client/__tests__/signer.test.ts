@@ -1,9 +1,8 @@
 /**
- * PT-038 done entry 2: the signer facade signs typed data or raw bytes for a
- * key the keystore holds, addressed by the keystore's own handle of address and
- * key type, and exposes no key export (ux-interfaces.md D-370). It signs by
- * adding its own request to the request queue, which lands in the action
- * window (ux.md D-316); the queue is a fake behind the lane's
+ * The signer facade signs typed data or raw bytes for a key the keystore
+ * holds, addressed by the keystore's own handle of address and key type, and
+ * exposes no key export. It signs by adding its own request to the request
+ * queue, which lands in the action window; the queue is a fake behind the
  * `SignRequestPort` (harness.ts), driven by hand.
  *
  * Every signature a test pushes is a real one, made with an ethers `Wallet`
@@ -14,7 +13,7 @@
  * Known limit, not a defect: the queue signs only for a key that is itself a
  * basic account the wallet lists. For any other key the facade refuses with
  * `SignerNotWired`, naming the missing background action
- * `KEYSTORE_CONTROLLER_SIGN_WITH_KEY` (brief "Dependencies and base").
+ * `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`.
  */
 import { getBytes, Wallet } from 'ethers'
 
@@ -150,7 +149,7 @@ describe('the signer facade over the request queue', () => {
     await expect(signing).resolves.toBe(SIG.otherKeyBytes)
   })
 
-  it("carries the key type of the handle in the added request's meta, beside the address and chain (D-370)", () => {
+  it("carries the key type of the handle in the added request's meta, beside the address and chain", () => {
     const q = queueOver([basicAccount(KEY)])
     q.signer.signBytes({ addr: KEY, type: 'trezor' }, BYTES).catch(() => undefined)
     q.signer.signTypedData({ addr: KEY, type: 'internal' }, TYPED).catch(() => undefined)
@@ -197,7 +196,7 @@ describe('the signer facade over the request queue', () => {
 
     it('gives different ids to two facades created in the same millisecond, each in its own page', () => {
       jest.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000)
-      // Two extension pages load the lane apart, so each holds its own module state.
+      // Two extension pages load the client module apart, so each holds its own module state.
       const load = (): typeof import('@web/modules/social-recovery/shared/client/signer') => {
         let loaded: unknown
         jest.isolateModules(() => {

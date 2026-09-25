@@ -1,13 +1,12 @@
 /**
- * PT-038 done entry 1, the provider adapter: `IProvider`'s four reads of
- * sdk.md D-208 (the one normative list, brief delta 2), each routed through the
- * extension's own provider once with the arguments D-208 fixes. A read the
- * wrapper could not make reaches the SDK as a failure, never as an empty
- * answer, and a reverted call rejects with the raw revert data (D-208, D-209).
- * The balance and gas reads run on the same provider beside the adapter, since
- * the SDK's provider answers four reads and no balance (ux-interfaces.md D-373).
+ * The provider adapter answers `IProvider`'s four reads, each routed once
+ * through the extension's own provider with the arguments the SDK fixes. A read
+ * the adapter could not make reaches the SDK as a failure, never as an empty
+ * answer, and a reverted call rejects with the raw revert data. The balance and
+ * gas reads run on the same provider beside the adapter, since the SDK's
+ * provider answers four reads and no balance.
  *
- * D-208 fixes the arguments, not the ethers member, so each check accepts the
+ * The SDK fixes the arguments, not the ethers member, so each check accepts the
  * high-level ethers member or the raw JSON-RPC `send`.
  */
 import { ScriptedChain } from '@web/modules/social-recovery/sdk-doubles'
@@ -76,7 +75,7 @@ const onlyCall = (ethers: EthersMock): [string, unknown[]] => {
 }
 
 describe('the provider adapter, IProvider over the extension provider', () => {
-  it('answers the four reads of D-208 and nothing else', () => {
+  it('answers the four reads and nothing else', () => {
     expect(functionMembersOf(world().adapter).sort()).toEqual(['block', 'call', 'chainId', 'logs'])
   })
 
@@ -254,7 +253,7 @@ describe('the provider adapter, IProvider over the extension provider', () => {
   })
 })
 
-describe('the balance and gas reads beside the adapter (D-373)', () => {
+describe('the balance and gas reads beside the adapter', () => {
   it('reads a native balance and a gas estimate on the same extension provider', async () => {
     const w = world()
     const reads = createChainReads(w.ethers)

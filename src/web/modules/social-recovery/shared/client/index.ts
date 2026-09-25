@@ -1,7 +1,7 @@
 /**
- * The client layer (PT-038): the one place the extension reaches the SDK,
- * today the doubles of PT-035. Screens import this module and never
- * `sdk-doubles/`, so the swap to the real SDK touches this folder alone.
+ * The client layer: the one place the extension reaches the SDK, today its
+ * doubles. Screens import this module and never `sdk-doubles/`, so the swap to
+ * the real SDK touches this folder alone.
  *
  * The React hook lives in its own file, `useRecoveryClient`, imported by path,
  * so this module loads in a Node test without the UI's contexts.
@@ -50,7 +50,12 @@ export {
   type ProviderReadFailure
 } from './provider-adapter'
 export { createChainReads, gasCallOf, type ChainReads, type GasEstimateCall } from './chain-reads'
-export { networkOf, extensionProviderFor, type ExtensionProvider } from './extension-provider'
+export {
+  networkOf,
+  providerKeyOf,
+  extensionProviderFor,
+  type ExtensionProvider
+} from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
   MANAGER_DOMAIN_FIELDS,

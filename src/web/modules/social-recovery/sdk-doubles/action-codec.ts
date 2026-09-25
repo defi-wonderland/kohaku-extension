@@ -1,8 +1,7 @@
 /**
- * The `IActionCodec` double for the shipped action (sdk.md D-204): the payload
- * is `abi.encode(address newAuthority, address removedAuthority)`, the layout of
- * contracts D-105, and the decoder refuses bytes its encoder would not
- * reproduce.
+ * The `IActionCodec` double for the shipped action: the payload is
+ * `abi.encode(address newAuthority, address removedAuthority)`, the action's
+ * real layout, and the decoder refuses bytes its encoder would not reproduce.
  */
 import type {
   Address,

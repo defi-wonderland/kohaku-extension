@@ -1,20 +1,18 @@
 /**
- * The provider adapter: the SDK's `IProvider` (sdk.md D-208) over the
- * extension's own provider.
+ * The provider adapter: the SDK's `IProvider` over the extension's own
+ * provider.
  *
  * The adapter speaks to that provider through one member, `send(method,
  * params)`, the JSON-RPC request every provider `getRpcProvider` builds
  * answers: ethers' `JsonRpcProvider`, Ambire's `BrowserProvider` over the
  * Helios light client and `ColibriRpcProvider` with its prover. So a read may
- * route through a light client and its prover, which is the `send` of
- * ux-interfaces.md D-370.
+ * route through a light client and its prover.
  *
- * The four reads are D-208's normative list and nothing else: the chain id,
- * one `eth_call` honouring `from` and a block tag, one `eth_getLogs` over a
- * filter and two blocks, and `block(tag)`. The two obligations of D-209 hold:
- * a reverted call rejects with its raw revert data (`RevertedCall`), and a
- * read the provider could not make rejects (`ProviderReadFailure`), never
- * answering empty.
+ * The four reads are the SDK's list and nothing else: the chain id, one
+ * `eth_call` honouring `from` and a block tag, one `eth_getLogs` over a filter
+ * and two blocks, and `block(tag)`. A reverted call rejects with its raw revert
+ * data (`RevertedCall`), and a read the provider could not make rejects
+ * (`ProviderReadFailure`), never answering empty.
  */
 import { isHexString } from 'ethers'
 
@@ -30,14 +28,14 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 /**
- * The one member of the extension's provider this lane calls. Every provider
+ * The one member of the extension's provider this folder calls. Every provider
  * `getRpcProvider` returns satisfies it, and a test mocks it alone.
  */
 export interface ExtensionRpc {
   send(method: string, params: unknown[]): Promise<unknown>
 }
 
-/** Every read this lane makes through the extension's provider. */
+/** Every read this folder makes through the extension's provider. */
 export const PROVIDER_READS = [
   'chainId',
   'call',
@@ -56,7 +54,7 @@ export interface RevertedCall extends Error {
   read: 'call' | 'estimateGas'
 }
 
-/** A read the provider could not make. It is a failure, never an empty answer (sdk.md D-209). */
+/** A read the provider could not make. It is a failure, never an empty answer. */
 export interface ProviderReadFailure extends Error {
   name: 'ProviderReadFailure'
   read: ProviderRead

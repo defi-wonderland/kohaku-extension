@@ -4,8 +4,8 @@
  * It is built through `getRpcProvider` of ambire-common from the network record
  * the UI reads through `useNetworksControllerState`, so it honours the
  * network's selected RPC URL and its provider kind: a plain JSON-RPC provider,
- * the Helios light client or Colibri with its prover (ux-interfaces.md D-370).
- * The provider adapter and the chain reads both run on it.
+ * the Helios light client or Colibri with its prover. The provider adapter and
+ * the chain reads both run on it.
  */
 import type { Network } from '@ambire-common/interfaces/network'
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
@@ -13,7 +13,7 @@ import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import { CHAIN_IDS, RecoveryChain } from './chains'
 import type { ExtensionRpc } from './provider-adapter'
 
-/** The extension's provider as this lane holds it: the JSON-RPC request and its teardown. */
+/** The extension's provider as this folder holds it: the JSON-RPC request and its teardown. */
 export interface ExtensionProvider extends ExtensionRpc {
   destroy(): void
 }
@@ -25,5 +25,35 @@ export const networkOf = (
 ): Network | undefined =>
   (networks ?? []).find((network) => Number(network.chainId) === CHAIN_IDS[chain])
 
-/** Builds the extension's provider for one network record. The caller destroys it. */
+/**
+ * A key that changes whenever a field `getRpcProvider` builds the provider
+ * from changes: the chain, the RPC URLs and the selected one, the provider
+ * kind, the batch size, the light client's consensus RPC URL and network kind,
+ * and Colibri's prover URL.
+ *
+ * The light client's checkpoint is left out. The background's own light client
+ * writes each new checkpoint it reaches into the network record, so keying on
+ * it would restart this provider, and its sync, each time. The checkpoint only
+ * seeds a light client's first sync, and a provider built later reads the
+ * latest one.
+ */
+export const providerKeyOf = (network: Network): string =>
+  JSON.stringify([
+    network.chainId.toString(),
+    network.rpcUrls,
+    network.selectedRpcUrl,
+    network.rpcProvider ?? 'rpc',
+    network.batchMaxCount ?? null,
+    network.consensusRpcUrl ?? null,
+    network.isOptimistic ?? null,
+    network.isLinea ?? null,
+    network.proverRpcUrl ?? null
+  ])
+
+/**
+ * Builds the extension's provider for one network record. The caller destroys
+ * it: `destroy()` shuts a Helios light client down, a pending one included,
+ * and stops a JSON-RPC provider. Colibri's client offers no teardown of its
+ * own and holds no timer for the reads this folder makes.
+ */
 export const extensionProviderFor = (network: Network): ExtensionProvider => getRpcProvider(network)
