@@ -28,7 +28,7 @@ import type { DeviceBinding } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderChip, renderHash } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
-import { ceremonyReport, sendCeremonyReport, sweepCeremonyReports } from '../channel'
+import { sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import type { CeremonyStep } from '../device'
 import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
 import { lossLineKeyOf, renderKindLine } from '../kindLine'
@@ -85,23 +85,21 @@ const CeremonyScreen = () => {
   const visibility = source.visibility ?? (typeof document !== 'undefined' ? document : undefined)
 
   useEffect(() => {
-    // Reports nobody took within their expiry leave storage (D-310, I-38).
-    const store = source.store ?? browserReportStore
-    browserReportKeys()
-      .then((keys) => sweepCeremonyReports(store, keys))
-      .catch(() => undefined)
-  }, [source.store])
-
-  useEffect(() => {
     mounted.current = true
     if (visibility) gate.current = createVisibilityGate(visibility)
+    // Reports nobody took within their expiry leave storage (D-310, I-38). A
+    // removal is a storage write, so it waits for the tab to be shown (D-316).
+    const store = source.store ?? browserReportStore
+    const sweep = () => browserReportKeys().then((keys) => sweepCeremonyReports(store, keys))
+    const sweeping = gate.current ? gate.current.dispatch(sweep) : sweep()
+    sweeping.catch(() => undefined)
     return () => {
       mounted.current = false
       abort.current?.abort()
       gate.current?.dispose()
       gate.current = null
     }
-  }, [visibility])
+  }, [visibility, source.store])
 
   const start = useCallback(async () => {
     if (!parsed.ok || !mayRun) return
@@ -150,7 +148,8 @@ const CeremonyScreen = () => {
     setOutcome(result)
     setPhase('reporting')
 
-    const sending = sendCeremonyReport(ceremonyReport(params, result, Date.now()), {
+    // The report is stamped inside the gate, when it is written (D-316).
+    const sending = sendCeremonyReport(params, result, {
       store: source.store ?? browserReportStore,
       gate: gate.current
     })

@@ -204,8 +204,9 @@ export const chipOfOutcome = (
  *   enrollment reads no note, the kind line takes its place.
  * - Not supported: the not-supported note.
  * - Unavailable: a hand-off that never connected reads unreachable; any other
- *   cause reads the test-unavailable line here, once, and `lineKeyOfOutcome`
- *   adds none.
+ *   cause reads the test-unavailable line at a test, once (`lineKeyOfOutcome`
+ *   adds none), and the unavailable note at an enrollment or a claim, which
+ *   never shows a test line.
  * - Failed: a relying-party mismatch reads the provider's refusal at
  *   enrollment and the mismatch note at a test or a claim; a failed test reads
  *   no note (frame C-05: the chip, the browser's error name and the line); an
@@ -228,9 +229,10 @@ export const noteKeyOfOutcome = (
     case 'notSupported':
       return 'socialRecovery.ceremony.notSupportedNote'
     case 'unavailable':
-      return outcome.cause === 'unreachable'
-        ? 'socialRecovery.ceremony.unreachableNote'
-        : 'socialRecovery.ceremony.testUnavailableLine'
+      if (outcome.cause === 'unreachable') return 'socialRecovery.ceremony.unreachableNote'
+      return call === 'testAccess'
+        ? 'socialRecovery.ceremony.testUnavailableLine'
+        : 'socialRecovery.ceremony.unavailableNote'
     case 'failed':
     default:
       if (outcome.cause === 'relying-party-mismatch') {

@@ -255,6 +255,7 @@ export const createPasskeyDevice = ({
         ok: false,
         stop: stopOfCeremonyError(error, {
           call: webAuthnCall,
+          lifecycle: context.call,
           handOff: context.handOff,
           elapsedMs: now() - startedAt,
           timeoutMs

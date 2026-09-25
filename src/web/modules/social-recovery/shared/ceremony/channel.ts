@@ -122,14 +122,23 @@ export const ceremonyReport = <T>(
 })
 
 /**
- * Writes the report through the gate: at once where the tab is visible, when
- * it is shown again where it is hidden (D-316).
+ * Writes the report of `outcome` through the gate: at once where the tab is
+ * visible, when it is shown again where it is hidden (D-316). `reportedAt`
+ * and `expiresAt` are stamped inside the dispatch, at write time, so a
+ * hand-off that ends while the tab is hidden still reports a fresh result
+ * when the tab returns, however long it stayed hidden.
  */
-export const sendCeremonyReport = (
-  report: CeremonyReport,
-  deps: { store: ReportStore; gate: VisibilityGate }
+export const sendCeremonyReport = <T>(
+  identity: ReportIdentity,
+  outcome: CeremonyOutcome<T>,
+  deps: { store: ReportStore; gate: VisibilityGate; now?: () => number }
 ): Promise<unknown> =>
-  deps.gate.dispatch(() => deps.store.set(ceremonyResultKey(report.id), report))
+  deps.gate.dispatch(() =>
+    deps.store.set(
+      ceremonyResultKey(identity.id),
+      ceremonyReport(identity, outcome, (deps.now ?? Date.now)())
+    )
+  )
 
 const storedReport = async (id: string, store: ReportStore): Promise<unknown> =>
   parseMaybeJson(await store.get(ceremonyResultKey(id), null))

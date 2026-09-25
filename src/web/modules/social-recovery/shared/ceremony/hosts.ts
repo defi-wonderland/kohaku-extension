@@ -28,6 +28,7 @@ import type {
 import type { CeremonyDevice, CeremonyStep, DeviceCallContext } from './device'
 import type { PasskeyCeremonyDevice } from './passkeyDevice'
 import {
+  CeremonyCall,
   CeremonyOutcome,
   dismissed,
   isMethodFailure,
@@ -125,9 +126,10 @@ const failureOptions = (context: HostContext) => ({
   binding: context.method.deviceBinding
 })
 
-const deviceContext = (context: HostContext): DeviceCallContext => ({
+const deviceContext = (context: HostContext, call: CeremonyCall): DeviceCallContext => ({
   signal: context.signal,
   handOff: context.handOff,
+  call,
   onStep: context.onStep
 })
 
@@ -154,7 +156,7 @@ export const enrollHost = async (
     return outcomeOfThrown(error)
   }
 
-  const result = await device.enroll(input, deviceContext(context))
+  const result = await device.enroll(input, deviceContext(context, 'enroll'))
   if (!result.ok) return result.stop
   const abortedAfterDevice = cancelledByAbort(context)
   if (abortedAfterDevice) return abortedAfterDevice
@@ -183,7 +185,8 @@ type SignedReply =
 
 /** The signing half test access and create claim share: options, ceremony, reply. */
 const signForRequest = async (
-  context: HostContext & { request: ApproverRequest; params?: unknown }
+  context: HostContext & { request: ApproverRequest; params?: unknown },
+  call: 'testAccess' | 'createClaim'
 ): Promise<SignedReply> => {
   const aborted = cancelledByAbort(context)
   if (aborted) return { ok: false, outcome: aborted }
@@ -199,7 +202,7 @@ const signForRequest = async (
     return { ok: false, outcome: outcomeOfThrown(error) }
   }
 
-  const result = await device.sign(input, deviceContext(context))
+  const result = await device.sign(input, deviceContext(context, call))
   if (!result.ok) return { ok: false, outcome: result.stop }
   const abortedAfterDevice = cancelledByAbort(context)
   if (abortedAfterDevice) return { ok: false, outcome: abortedAfterDevice }
@@ -225,7 +228,7 @@ const signForRequest = async (
 export const testAccessHost = async (
   context: HostContext & { request: ApproverRequest; params?: unknown }
 ): Promise<CeremonyOutcome<TestAccessValue>> => {
-  const signed = await signForRequest(context)
+  const signed = await signForRequest(context, 'testAccess')
   if (!signed.ok) return signed.outcome
   context.onStep?.('checking')
   try {
@@ -251,7 +254,7 @@ export const testAccessHost = async (
 export const createClaimHost = async (
   context: HostContext & { request: ApproverRequest; params?: unknown }
 ): Promise<CeremonyOutcome<ClaimValue>> => {
-  const signed = await signForRequest(context)
+  const signed = await signForRequest(context, 'createClaim')
   if (!signed.ok) return signed.outcome
   return passed({ reply: signed.reply, ...(signed.facts ? { facts: signed.facts } : {}) })
 }

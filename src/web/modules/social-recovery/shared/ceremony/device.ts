@@ -8,7 +8,7 @@
  * phone that never connected. A host never calls the method's packaging after
  * a stop.
  */
-import type { CeremonyStop } from './verdicts'
+import type { CeremonyCall, CeremonyStop } from './verdicts'
 import type { PasskeyFacts } from './webauthn'
 
 /** The steps a host renders while it runs (D-372: progress, abort and failure). */
@@ -26,6 +26,8 @@ export interface DeviceCallContext {
   signal?: AbortSignal
   /** The holder chose the browser's phone hand-off (D-305, D-392). */
   handOff?: boolean
+  /** The call of D-372 the device serves; a test and a claim read a dismissal apart. */
+  call?: CeremonyCall
   onStep?: (step: CeremonyStep) => void
 }
 

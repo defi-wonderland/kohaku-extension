@@ -13,7 +13,14 @@
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { bytesToHex, sha256, stringToBytes } from 'viem'
 
-import { CeremonyStop, dismissed, failed, isBrowserErrorName, unavailable } from './verdicts'
+import {
+  CeremonyCall,
+  CeremonyStop,
+  dismissed,
+  failed,
+  isBrowserErrorName,
+  unavailable
+} from './verdicts'
 
 // ---------------------------------------------------------------------------
 // The relying party
@@ -357,13 +364,17 @@ export type WebAuthnCall = 'create' | 'get'
  * Reads an error the `navigator.credentials` call threw, before the method
  * runs (D-372). It returns the stop the host reports:
  *
- * - `NotAllowedError` at `create` (enrollment): the holder dismissed the
- *   prompt, the cancelled note; the browser refusing an unfocused page or a
- *   permission policy, the refused note.
- * - `NotAllowedError` at `get` (a test or a claim): failed, with the browser's
+ * - `NotAllowedError` at a test access (`get`): failed, with the browser's
  *   error name as its cause (`browser-error`), since the browser cannot tell a
  *   dismissed prompt from a missing credential (the coordinator's ruling,
  *   frame C-05: "Test failed · NotAllowedError").
+ * - `NotAllowedError` at an enrollment (`create`) or a claim (`get`): the
+ *   holder dismissed the prompt, the cancelled note (frame D-07b draws a
+ *   dismissed claim as cancelled); the browser refusing an unfocused page or a
+ *   permission policy, the refused note.
+ *
+ * `lifecycle` names the call of D-372 that ran the prompt. Without it, `get`
+ * reads as a test access.
  * - `NotAllowedError` at or past the timeout of a phone hand-off, at either
  *   call: unavailable with the unreachable cause (the phone never connected).
  * - `AbortError`: the holder's own abort, the cancelled note.
@@ -376,7 +387,13 @@ export type WebAuthnCall = 'create' | 'get'
  */
 export const stopOfCeremonyError = (
   error: unknown,
-  context: { call?: WebAuthnCall; handOff?: boolean; elapsedMs?: number; timeoutMs?: number } = {}
+  context: {
+    call?: WebAuthnCall
+    lifecycle?: CeremonyCall
+    handOff?: boolean
+    elapsedMs?: number
+    timeoutMs?: number
+  } = {}
 ): CeremonyStop => {
   const name = errorName(error)
   const message = errorMessage(error)
@@ -386,7 +403,8 @@ export const stopOfCeremonyError = (
       if (context.handOff && (context.elapsedMs ?? 0) >= timeoutMs) {
         return unavailable('unreachable', name)
       }
-      if (context.call === 'get') return failed('browser-error', name)
+      const isTest = context.lifecycle ? context.lifecycle === 'testAccess' : context.call === 'get'
+      if (isTest) return failed('browser-error', name)
       if (/focus|permissions? policy|feature policy/i.test(message)) {
         return dismissed('refused', name)
       }

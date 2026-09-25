@@ -28,17 +28,19 @@ Every host returns exactly one `CeremonyOutcome`:
 | Outcome | Retry | When |
 | --- | --- | --- |
 | `passed` | no | The method produced its config or reply, and the local check (test access) answered satisfied. |
-| `failed` with a cause | yes | The method's typed failure `material-rejected`, its `device-refused` for every binding but `external-app`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), a relying party the extension does not serve (`relying-party-mismatch`), or the browser's own error at a test or a claim (`browser-error`, its name in `detail`). UXC-13: never `notTested`. |
+| `failed` with a cause | yes | The method's typed failure `material-rejected`, its `device-refused` for every binding but `external-app`, a thrown refusal (`thrown`), the check's `rejected` (`check-rejected`), a relying party the extension does not serve (`relying-party-mismatch`), or the browser's own error (`browser-error`, its name in `detail`): `NotAllowedError` at a test access, and any other error the browser names. UXC-13: never `notTested`. |
 | `unavailable` with a cause | yes | `device-unavailable`, a node or a service that did not answer (`service-unanswered`, a resolver that failed among them), a phone hand-off that never connected (`unreachable`), or a check the local verifier cannot judge (`not-judged`). |
 | `notSupported` | no | `method-unsupported`, `version-unread`, or no implementation or device in this build (`no-implementation`). |
-| `dismissed` with `cancelled` or `refused` | yes | The browser's `NotAllowedError` at enrollment; `AbortError`, `InvalidStateError`, `ConstraintError` and `NotSupportedError` at every call. Each is read before the method runs. The one exception is an `external-app` method's `device-refused`, the refused note, since its device call runs inside `replyFrom`. A `browser-authenticator` method's refusal before the method is already the browser's error; a `device-refused` the method returns after it ran is a verdict, failed with that cause (UXC-13). |
+| `dismissed` with `cancelled` or `refused` | yes | The browser's `NotAllowedError` at an enrollment or a claim; `AbortError`, `InvalidStateError`, `ConstraintError` and `NotSupportedError` at every call. Each is read before the method runs. The one exception is an `external-app` method's `device-refused`, the refused note, since its device call runs inside `replyFrom`. A `browser-authenticator` method's refusal before the method is already the browser's error; a `device-refused` the method returns after it ran is a verdict, failed with that cause (UXC-13). |
 
 "Before the method runs" means before its packaging, `configFrom` or `replyFrom`. The options calls `enrollInput` and `signingInput` run first, since the device needs their output, and act on nothing (sdk.md D-206).
 
 ### `NotAllowedError`, the coordinator's ruling
 
-- At enrollment (`navigator.credentials.create`) it is the cancelled note, read before the method runs; an unfocused page or a permission policy reads the refused note.
-- At a test or a claim (`navigator.credentials.get`) it is `failed` with the cause `browser-error` and the name `NotAllowedError`, as frame C-05 draws it ("Test failed · NotAllowedError · no credential available on this device"): the browser cannot tell a dismissed prompt from a missing credential.
+- At an enrollment (`navigator.credentials.create`) it is the cancelled note, read before the method runs; an unfocused page or a permission policy reads the refused note.
+- At a test access (`navigator.credentials.get`) it is `failed` with the cause `browser-error` and the name `NotAllowedError`, as frame C-05 draws it ("Test failed · NotAllowedError · no credential available on this device"): the browser cannot tell a dismissed prompt from a missing credential.
+- At a claim (`navigator.credentials.get`) it is the cancelled note, as frame D-07b draws a dismissed claim ("Cancelled · you cancelled the prompt, the row is unchanged"); an unfocused page or a permission policy reads the refused note.
+- The device learns the call from the host (`DeviceCallContext.call`), and `stopOfCeremonyError` reads it as `lifecycle`.
 - During a phone hand-off, at or past the prompt's timeout (180 seconds), it is `unavailable` with the cause `unreachable` at either call.
 
 ### What a row renders, by call
@@ -47,9 +49,9 @@ The chip, the note and the line depend on the call that ran: `chipOfOutcome(outc
 
 | Call | Passed | Failed | Unavailable | Not supported | Dismissed |
 | --- | --- | --- | --- | --- | --- |
-| `enroll` | chip `notTested` (a row reads not tested until its test runs, D-305, frame C-05h), no note; the kind line and its loss line | the row keeps its chip; `failedNote`, or `providerRefused` for a relying-party mismatch | the row keeps its chip; `unreachableNote` or `testUnavailableLine` | the row keeps its chip; `notSupportedNote` | the row keeps its chip; `cancelledNote` or `refusedNote` |
+| `enroll` | chip `notTested` (a row reads not tested until its test runs, D-305, frame C-05h), no note; the kind line and its loss line | the row keeps its chip; `failedNote`, or `providerRefused` for a relying-party mismatch | the row keeps its chip; `unreachableNote` or `unavailableNote`, never a test line | the row keeps its chip; `notSupportedNote` | the row keeps its chip; `cancelledNote` or `refusedNote` |
 | `testAccess` | chip `tested`; `passedNote` with the proof's hash | chip `testFailed`; no note (frame C-05), or `relyingPartyMismatch` for a mismatch; line `testFailedLine`, or `testFailedNoMatch` for `check-rejected` | chip `testUnavailable`; `unreachableNote` or `testUnavailableLine`, shown once | chip `notSupported`; `notSupportedNote`; line `notSupportedLine` | as enroll |
-| `createClaim` | chip `complete` of the checklist set (D-392); `passedNote` with the proof's hash | the row keeps its chip; `failedNote` or `relyingPartyMismatch`; no test line (frame D-07b) | as enroll | as enroll | as enroll |
+| `createClaim` | chip `complete` of the checklist set (D-392); `passedNote` with the proof's hash | the row keeps its chip; `failedNote` or `relyingPartyMismatch`; no test line (frame D-07b) | as enroll | as enroll | as enroll; a `NotAllowedError` reads `cancelledNote` (frame D-07b) |
 | `healthCheck` | never | never | never | no chip; `notSupportedNote` | never |
 
 ### Causes on the screen
@@ -62,7 +64,7 @@ A screen shows no raw cause slug and no English message: each cause renders thro
 | `relying-party-mismatch` | `providerRefused` at enrollment, `relyingPartyMismatch` at a test or a claim |
 | `check-rejected` | `testFailedNoMatch` |
 | `unreachable` | `unreachableNote` |
-| `device-unavailable`, `service-unanswered`, `not-judged` | `testUnavailableLine` |
+| `device-unavailable`, `service-unanswered`, `not-judged` | `testUnavailableLine` at a test access, `unavailableNote` at an enrollment or a claim |
 | `method-unsupported`, `version-unread`, `no-implementation` | `notSupportedNote` |
 | `device-refused` | `refusedNote` for an `external-app` method; for any other binding a failed verdict, `failedNote` (at a test, the chip and `testFailedLine`) |
 | `material-rejected`, `thrown` | `failedNote` (at a test, the chip and `testFailedLine`); no key names these causes yet, a gap reported to the coordinator |
@@ -109,7 +111,7 @@ The screen:
 
 ## The return channel
 
-The tab writes one `CeremonyReport` (`{ id, call, method, outcome, reportedAt, expiresAt }`) under `socialRecoveryCeremonyResult:<request id>` in the extension's local storage (`storage` of `@web/extension-services/background/webapi/storage`, D-310). No background controller is involved.
+The tab writes one `CeremonyReport` (`{ id, call, method, outcome, reportedAt, expiresAt }`, stamped when it is written) under `socialRecoveryCeremonyResult:<request id>` in the extension's local storage (`storage` of `@web/extension-services/background/webapi/storage`, D-310). No background controller is involved.
 
 The write goes through the visibility gate: while `document.visibilityState` is not `visible`, nothing is written; the held report is written, in order, when the tab is shown again (D-316). A tab closed while hidden drops its report, and the caller's row stays unchanged.
 
@@ -118,7 +120,8 @@ A passed claim's report carries the reply and its proof, approval material that 
 - `takeCeremonyReport({ id, call, method }, store)` delivers the report only where its id, call and method are the ones the caller expects and `reportedAt` is within the expiry, and removes it. An expired report is removed and reads null.
 - `listenForCeremonyReport({ id, call, method }, subscribe, store, onReport)` delivers under the same checks, then removes the report.
 - `readCeremonyReport` makes the same checks and removes nothing.
-- `sweepCeremonyReports(store, keys)` removes every report past its expiry and every malformed one; the tab runs it on mount with `browserReportKeys()`.
+- `sweepCeremonyReports(store, keys)` removes every report past its expiry and every malformed one; the tab runs it on mount with `browserReportKeys()`, through the visibility gate, since a removal is a storage write.
+- `sendCeremonyReport(identity, outcome, { store, gate })` stamps `reportedAt` and `expiresAt` inside the gate's dispatch, at write time. A hand-off that ends while the tab is hidden and returns after ten minutes still writes a fresh report (D-316).
 
 The caller, the checklist row for a claim, files the reply into PT-040's session record at once, where I-38's wipe governs it, and keeps no copy of the report.
 
