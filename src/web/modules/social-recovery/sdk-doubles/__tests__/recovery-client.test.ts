@@ -1,4 +1,4 @@
-import { addressOf, type CodedError } from '@web/modules/social-recovery/sdk-doubles'
+import { addressOf, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
@@ -112,8 +112,19 @@ const completeInPlaceOrder = async (world: World, clauses: Configuration['clause
     filled = added.gathering
   }
   expect(filled.replies.map((r) => r.place)).toEqual(gathering.places.map((p) => p.place))
-  const request = recovery.complete(filled, undefined, momentOf(gathering)) as AttemptRequest
-  return { gathering, chosen: request.proofs.map((p) => p.place) }
+  const now = momentOf(gathering)
+  const request = recovery.complete(filled, undefined, now) as AttemptRequest
+  return { recovery, gathering, request, now, chosen: request.proofs.map((p) => p.place) }
+}
+
+/** The unanswered-read refusal, checked for its class, its code and what it names. */
+const expectUnanswered = (
+  error: Error,
+  values: { read: string; module: Address; place: number }
+) => {
+  expect(error).toBeInstanceOf(ScriptedReadFailure)
+  expect((error as ScriptedReadFailure).code).toBe('read.unanswered')
+  expect((error as ScriptedReadFailure).values).toEqual(values)
 }
 
 describe('recovery client double', () => {
@@ -206,11 +217,8 @@ describe('recovery client double', () => {
         ])
         world.chain.leaveUnanswered(read, world.descriptor.methodZkpassport)
         const recovery = await world.recoveryClient()
-        const error = (await expectThrown(() =>
-          openGathering(world, recovery, configuration)
-        )) as CodedError
-        expect(error.code).toBe('read.unanswered')
-        expect(error.values).toEqual({ read, module: world.descriptor.methodZkpassport, place: 1 })
+        const error = await expectThrown(() => openGathering(world, recovery, configuration))
+        expectUnanswered(error, { read, module: world.descriptor.methodZkpassport, place: 1 })
       }
     )
 
@@ -447,11 +455,10 @@ describe('recovery client double', () => {
         world.script.attempt('pending')
         world.chain.leaveUnanswered(read, world.descriptor.methodZkpassport)
         const recovery = await world.recoveryClient()
-        const error = (await expectThrown(() =>
+        const error = await expectThrown(() =>
           recovery.initCancelGathering(configuration, { window: 3600 })
-        )) as CodedError
-        expect(error.code).toBe('read.unanswered')
-        expect(error.values).toEqual({ read, module: world.descriptor.methodZkpassport, place: 1 })
+        )
+        expectUnanswered(error, { read, module: world.descriptor.methodZkpassport, place: 1 })
       }
     )
 
@@ -488,6 +495,17 @@ describe('recovery client double', () => {
   })
 
   describe('the prepares', () => {
+    it('refuses startAttempt while the paused read of a method it names goes unanswered', async () => {
+      const world = createWorld()
+      const zkPassport = world.descriptor.methodZkpassport
+      const { recovery, request, now } = await completeInPlaceOrder(world, [
+        { threshold: 2, credentials: [walletAt(world, 'ana'), passportAt(world, 'passport')] }
+      ])
+      world.chain.leaveUnanswered('manager.paused', zkPassport)
+      const error = await expectThrown(() => recovery.prepareStartAttempt(request, now))
+      expectUnanswered(error, { read: 'manager.paused', module: zkPassport, place: 1 })
+    })
+
     it('prepares startAttempt on the manager, sent by anyone', async () => {
       const opened = await openRecovery()
       const now = Number(opened.gathering.request.block.timestamp) + 60
