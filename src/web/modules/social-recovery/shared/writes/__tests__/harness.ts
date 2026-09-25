@@ -48,6 +48,7 @@ import {
   renderWriteState,
   settleReceipt,
   WRITE_KINDS,
+  WalletAccountRef,
   WriteKind,
   writeFailureOf,
   writeReducer,
@@ -206,6 +207,10 @@ export const runGasCheck = (args: {
   prepared?: PreparedCall | PreparedBatch
   /** The transaction the key sends for an owner write; the write's own by default. */
   transaction?: GasEstimateCall
+  /** The account the key operates; `ACCOUNT_REF`, deployed, by default. */
+  operates?: WalletAccountRef
+  /** The transaction the key sends for the transfer route, where the caller builds it. */
+  transferTransaction?: GasEstimateCall
 }): Promise<GasCheck> => {
   const key = args.key ?? KEY
   const prepared = args.prepared ?? preparedFor(args.write)
@@ -218,7 +223,8 @@ export const runGasCheck = (args: {
     reads: args.reads,
     network: NETWORK,
     ...(ownerWrite ? { transaction } : {}),
-    ...(args.fastTrack ? { fastTrack: true } : { operates: ACCOUNT_REF })
+    ...(args.transferTransaction ? { transferTransaction: args.transferTransaction } : {}),
+    ...(args.fastTrack ? { fastTrack: true } : { operates: args.operates ?? ACCOUNT_REF })
   })
 }
 
