@@ -1,7 +1,6 @@
 /**
- * shared/writes (PT-039): the submitting and failed states every write of the
- * chapter shares, and the gas check with its deposit step. See README.md
- * beside this file.
+ * shared/writes: the submitting and failed states every social recovery write
+ * shares, and the gas check with its deposit step.
  *
  * The two React components live in `./components`, imported by path, so this
  * module loads in a Node test without the UI.
@@ -64,7 +63,15 @@ export {
   type RevertCause,
   type FailureContext
 } from './classify'
-export { WRITE_EVENT_TYPES, initialWriteState, writeReducer, type WriteEvent } from './machine'
+export {
+  WRITE_EVENT_TYPES,
+  WRITE_ANSWER_TYPES,
+  initialWriteState,
+  writeReducer,
+  type WriteEvent,
+  type WriteRun,
+  type WriteMachineState
+} from './machine'
 export {
   NATIVE_DECIMALS,
   FEE_HEADROOM_PERCENT,
