@@ -257,8 +257,23 @@ describe('the signer facade over the request queue', () => {
         expect(signing.status).toBe('rejected')
         expect(signing.value).not.toBe(SIG[signature])
         expect(isSignFlowFailure(signing.value)).toBe(true)
+        expect((signing.value as SignFlowFailure).reason).toBe('signer-mismatch')
+        // A later correct signature cannot revive a refused request.
+        q.push(signedFor(userRequest.id, kind === 'bytes' ? SIG.bytes : SIG.typed))
+        await flush()
+        expect(signing.status).toBe('rejected')
       })
     )
+
+    it('refuses a hex answer no address can be recovered from as malformed', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const unrecoverable = `0x${'00'.repeat(65)}` as Hex
+      q.push(signedFor(addedRequest(q.dispatch).userRequest.id, unrecoverable))
+      await flush()
+      expect(signing.status).toBe('rejected')
+      expect((signing.value as SignFlowFailure).reason).toBe('malformed-signature')
+    })
   })
 
   describe('a foreign message between the request and its result', () => {
