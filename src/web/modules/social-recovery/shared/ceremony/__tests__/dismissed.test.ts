@@ -8,12 +8,13 @@
  * (ux-interfaces.md D-372). The brief: a `NotAllowedError` before the method
  * runs yields the cancelled or refused note and the method's call count is zero.
  *
- * The coordinator's ruling after the PR #10 review (frame C-05, "Test failed ·
- * NotAllowedError · no credential available on this device") scopes the note
- * to enrollment: at a test or a claim, `navigator.credentials.get` cannot tell a
- * dismissed prompt from a missing credential, so a `NotAllowedError` there
- * reads test failed with the browser's error name as its cause. The method
- * still never runs.
+ * The coordinator's refined ruling: at a test access, a `NotAllowedError` from
+ * `navigator.credentials.get` reads test failed with the browser's error name
+ * as its cause (frame C-05, "Test failed · NotAllowedError · no credential
+ * available on this device"), since the browser cannot tell a dismissed
+ * prompt from a missing credential. At an enrollment and at a claim it stays
+ * the cancelled note (frame D-07b draws a dismissed claim as cancelled). The
+ * method never runs in any of them.
  */
 import {
   browserErrorNameOf,
@@ -101,36 +102,59 @@ describe('NotAllowedError at enrollment (create)', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 })
-;(['testAccess', 'createClaim'] as const).forEach((host) =>
-  describe(`NotAllowedError at ${host} (get), the ruling of frame C-05`, () => {
-    beforeEach(() => browserRejects(notAllowedError))
+describe('NotAllowedError at testAccess (get), frame C-05', () => {
+  beforeEach(() => browserRejects(notAllowedError))
 
-    it("reads failed with the browser's error name as its cause", async () => {
-      const { outcome } = await run(host)
-      expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed', retry: true })
-      if (outcome.type === 'verdict') expect(outcome.cause).toContain('NotAllowedError')
-      expect(browserErrorNameOf(outcome)).toBe('NotAllowedError')
-    })
-
-    it('still runs the method zero times', async () => {
-      const { method, orchestrator } = await run(host)
-      expect(creds.get).toHaveBeenCalledTimes(1)
-      expect(methodRunCount(method, orchestrator)).toBe(0)
-    })
-
-    it('never reads not tested (UXC-13)', async () => {
-      const { outcome } = await run(host)
-      expect(rowChipOf(outcome, host)).not.toBe('method:notTested')
-      expect(lineKeyOf(outcome, host)).not.toBe(NOTE('notTestedLine'))
-      if (host === 'testAccess') {
-        expect(rowChipOf(outcome, host)).toBe('method:testFailed')
-        expect(lineKeyOf(outcome, host)).toBe(NOTE('testFailedLine'))
-      } else {
-        expect(noteKeyOf(outcome, host)).toBe(NOTE('failedNote'))
-      }
-    })
+  it("reads failed with the browser's error name as its cause", async () => {
+    const { outcome } = await run('testAccess')
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed', retry: true })
+    if (outcome.type === 'verdict') expect(outcome.cause).toContain('NotAllowedError')
+    expect(browserErrorNameOf(outcome)).toBe('NotAllowedError')
   })
-)
+
+  it('still runs the method zero times', async () => {
+    const { method, orchestrator } = await run('testAccess')
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it('reads test failed with its line, never not tested (UXC-13)', async () => {
+    const { outcome } = await run('testAccess')
+    expect(rowChipOf(outcome, 'testAccess')).toBe('method:testFailed')
+    expect(lineKeyOf(outcome, 'testAccess')).toBe(NOTE('testFailedLine'))
+    expect(lineKeyOf(outcome, 'testAccess')).not.toBe(NOTE('notTestedLine'))
+  })
+})
+
+describe('NotAllowedError at createClaim (get), frame D-07b', () => {
+  beforeEach(() => browserRejects(notAllowedError))
+
+  it('reads the cancelled note, not a failed verdict', async () => {
+    const { outcome } = await run('createClaim')
+    expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+    expect(outcome).not.toMatchObject({ type: 'verdict' })
+  })
+
+  it('still runs the method zero times', async () => {
+    const { method, orchestrator } = await run('createClaim')
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  it("keeps the row's chip and shows the cancelled note, with no test line", async () => {
+    const { outcome } = await run('createClaim')
+    expect(rowChipOf(outcome, 'createClaim')).toBeNull()
+    expect(noteKeyOf(outcome, 'createClaim')).toBe(NOTE('cancelledNote'))
+    expect(lineKeyOf(outcome, 'createClaim')).toBeNull()
+    expect(browserErrorNameOf(outcome)).toBeNull()
+  })
+
+  it('reads refused where the browser refused an unfocused page', async () => {
+    browserRejects(() => new DOMException('The document is not focused.', 'NotAllowedError'))
+    const { outcome } = await run('createClaim')
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+  })
+})
 
 describe("the browser's other errors", () => {
   ;(['enroll', 'testAccess', 'createClaim'] as const).forEach((host) =>

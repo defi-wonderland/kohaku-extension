@@ -27,6 +27,7 @@ import ts from 'typescript'
 import {
   callerParams,
   ceremony,
+  enrollFailure,
   fakeAssertion,
   fakeAttestation,
   fakeMethod,
@@ -36,9 +37,11 @@ import {
   generatePoint,
   installCredentials,
   MethodScript,
+  methodRunCount,
   notAllowedError,
   P256Point,
   PASSKEY_METHOD,
+  replyFailure,
   resetVisibility,
   setVisibility,
   SYNCED_FLAGS
@@ -48,6 +51,13 @@ const mockUi = { isTab: true, isPopup: false, isActionWindow: false }
 const mockSource: { current: Record<string, unknown> } = { current: {} }
 
 jest.mock('@web/utils/uiType', () => ({ getUiType: () => mockUi }))
+// The keys the mount sweep reads: jsdom gives an extension origin no storage,
+// so the test names the keys the store holds.
+const mockReportKeys = jest.fn(async (): Promise<string[]> => [])
+jest.mock('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults', () => ({
+  ...jest.requireActual('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults'),
+  browserReportKeys: () => mockReportKeys()
+}))
 jest.mock('@web/modules/social-recovery/shared/ceremony/screen/CeremonySource', () => ({
   __esModule: true,
   useCeremonySource: () => mockSource.current,
@@ -148,6 +158,8 @@ afterEach(async () => {
   mockUi.isTab = true
   mockUi.isPopup = false
   mockUi.isActionWindow = false
+  mockReportKeys.mockReset()
+  mockReportKeys.mockImplementation(async () => [])
 })
 
 const fakeStore = () => ({
@@ -194,6 +206,7 @@ const source = (script: MethodScript = {}) => {
 
 const ENROLL = '?call=enroll&method=passkey&id=req-1'
 const TEST = '?call=testAccess&method=passkey&id=req-1'
+const CLAIM = '?call=createClaim&method=passkey&id=req-1'
 
 /** The outcome of the one report the tab wrote. */
 const reported = (store: ReturnType<typeof fakeStore>) =>
@@ -300,5 +313,141 @@ describe('the ceremony tab screen', () => {
     expect(text).toContain('This method may never work.')
     expect(text).not.toContain('Not tested')
     expect(text).not.toContain('The operation either timed out')
+  })
+
+  it('shows "Cancelled" for a claim whose prompt was dismissed (frame D-07b)', async () => {
+    setVisibility('visible', false)
+    creds.restore()
+    creds = installCredentials({
+      get: async () => {
+        throw notAllowedError()
+      }
+    })
+    const { store, method, orchestrator } = source()
+    const page = await render(CLAIM)
+    expect(reported(store)).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+    const text = page.textContent ?? ''
+    expect(text).toContain('Cancelled')
+    expect(text).not.toContain('Test failed')
+    expect(text).not.toContain('NotAllowedError')
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+  })
+
+  // The fifth pass: an enrollment or a claim is not a test.
+  ;[
+    ['an enrollment', ENROLL, { configFrom: enrollFailure('device-unavailable') }],
+    ['a claim', CLAIM, { replyFrom: replyFailure('device-unavailable') }]
+  ].forEach(([what, search, script]) =>
+    it(`shows the unavailable note and no test line for ${
+      what as string
+    } that could not run`, async () => {
+      setVisibility('visible', false)
+      const { store } = source(script as MethodScript)
+      const page = await render(search as string)
+      expect(reported(store)).toMatchObject({ kind: 'verdict', verdict: 'unavailable' })
+      const text = page.textContent ?? ''
+      expect(text).toContain('Could not run · the service did not answer · Try again')
+      expect(text).not.toContain('The check could not run.')
+      expect(text).not.toContain('Test unavailable')
+    })
+  )
+
+  it('shows the test line and chip for a test that could not run', async () => {
+    setVisibility('visible', false)
+    const { store } = source({ verify: 'not-judged' })
+    const page = await render(TEST)
+    expect(reported(store)).toMatchObject({ kind: 'verdict', verdict: 'unavailable' })
+    const text = page.textContent ?? ''
+    expect(text).toContain('Test unavailable')
+    expect(text).toContain('The check could not run. The verifier could not be reached.')
+    expect(text).not.toContain('Could not run · the service did not answer')
+  })
+})
+
+describe('the mount sweep of expired reports', () => {
+  const STALE = 'socialRecoveryCeremonyResult:old'
+
+  beforeEach(() => {
+    mockReportKeys.mockImplementation(async () => [STALE, 'someOtherKey'])
+  })
+
+  it('reads and removes nothing while the tab is hidden', async () => {
+    setVisibility('hidden', false)
+    const { store } = source()
+    await render(ENROLL)
+    expect(mockReportKeys).not.toHaveBeenCalled()
+    expect(store.get).not.toHaveBeenCalled()
+    expect(store.remove).not.toHaveBeenCalled()
+  })
+
+  it('removes the expired report once the tab is shown, and nothing else', async () => {
+    const creds = installCredentials({
+      create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point }).credential
+    })
+    setVisibility('hidden', false)
+    const { store } = source()
+    await render(ENROLL)
+    await act(async () => {
+      setVisibility('visible')
+      await flush(20)
+    })
+    expect(mockReportKeys).toHaveBeenCalledTimes(1)
+    expect(store.remove).toHaveBeenCalledWith(STALE)
+    expect(store.remove).not.toHaveBeenCalledWith('someOtherKey')
+    creds.restore()
+  })
+})
+
+describe('a hand-off that returns after eleven minutes', () => {
+  it('writes the report stamped on return, and the row still takes it', async () => {
+    const { takeCeremonyReport, CEREMONY_REPORT_TTL_MS } = ceremony()
+    let clock = new Date('2026-09-24T12:00:00Z').getTime()
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(() => clock)
+    setVisibility('visible', false)
+    // The holder switches away while the phone answers.
+    const creds = installCredentials({
+      get: async () => {
+        setVisibility('hidden')
+        return fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+      }
+    })
+    const { store } = source()
+    const map = new Map<string, unknown>()
+    store.set.mockImplementation(async (key: string, value: unknown) => {
+      map.set(key, value)
+      return null
+    })
+    store.get.mockImplementation(async (key: string, fallback?: unknown) =>
+      map.has(key) ? map.get(key) : fallback
+    )
+    store.remove.mockImplementation(async (key: string) => {
+      map.delete(key)
+      return null
+    })
+
+    await render(`${TEST}&handOff=phone`)
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(store.set).not.toHaveBeenCalled()
+
+    clock += 11 * 60 * 1000
+    const shownAt = clock
+    await act(async () => {
+      setVisibility('visible')
+      await flush(20)
+    })
+    expect(store.set).toHaveBeenCalledTimes(1)
+    const written = store.set.mock.calls[0][1] as { reportedAt: number; expiresAt: number }
+    expect(written.reportedAt).toBe(shownAt)
+    expect(written.expiresAt).toBe(shownAt + CEREMONY_REPORT_TTL_MS)
+
+    clock += 5_000
+    const report = await takeCeremonyReport(
+      { id: 'req-1', call: 'testAccess', method: 'passkey' },
+      store,
+      Date.now()
+    )
+    expect(report).toMatchObject({ outcome: { kind: 'verdict', verdict: 'passed' } })
+    creds.restore()
+    dateNow.mockRestore()
   })
 })

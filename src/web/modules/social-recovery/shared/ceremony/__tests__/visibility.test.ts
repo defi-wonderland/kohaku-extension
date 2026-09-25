@@ -127,34 +127,109 @@ describe('the dispatch to the background', () => {
   })
 })
 
-describe('the report the tab writes', () => {
-  const fakeStore = () => ({
-    get: jest.fn(async () => null),
-    set: jest.fn(async () => null),
-    remove: jest.fn(async () => null)
-  })
+/** A storage double over a Map; every member is a spy. */
+const mapStore = () => {
+  const map = new Map<string, unknown>()
+  return {
+    map,
+    get: jest.fn(async (key: string, fallback?: unknown) =>
+      map.has(key) ? map.get(key) : fallback
+    ),
+    set: jest.fn(async (key: string, value: unknown) => {
+      map.set(key, value)
+      return null
+    }),
+    remove: jest.fn(async (key: string) => {
+      map.delete(key)
+      return null
+    })
+  }
+}
 
+const IDENTITY = { id: 'req-1', call: 'testAccess', method: 'passkey' } as const
+
+describe('the report the tab writes', () => {
   it('writes nothing to the extension storage while hidden, and writes once shown', async () => {
-    const { ceremonyReport, ceremonyResultKey, createVisibilityGate, passed, sendCeremonyReport } =
-      ceremony()
+    const { ceremonyResultKey, createVisibilityGate, passed, sendCeremonyReport } = ceremony()
     setVisibility('hidden', false)
-    const store = fakeStore()
+    const store = mapStore()
     const gate = createVisibilityGate(document)
-    const report = ceremonyReport(
-      { id: 'req-1', call: 'testAccess', method: 'passkey' },
-      passed({ proof: '0x01' }),
-      1
-    )
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    sendCeremonyReport(report, { store, gate })
+    sendCeremonyReport(IDENTITY, passed({ proof: '0x01' }), { store, gate })
     await flush()
     expect(store.set).not.toHaveBeenCalled()
 
     setVisibility('visible')
     await flush()
     expect(store.set).toHaveBeenCalledTimes(1)
-    expect(store.set).toHaveBeenCalledWith(ceremonyResultKey('req-1'), report)
+    expect(store.set.mock.calls[0][0]).toBe(ceremonyResultKey('req-1'))
+    expect(store.set.mock.calls[0][1]).toMatchObject({
+      ...IDENTITY,
+      outcome: { verdict: 'passed' }
+    })
     gate.dispose()
+  })
+
+  // The fifth pass: the report is stamped when it is written, inside the gate,
+  // so a hand-off whose tab returns after the ten-minute expiry still delivers.
+  describe('a ceremony that ends while hidden and is shown eleven minutes later', () => {
+    const T0 = new Date('2026-09-24T12:00:00Z').getTime()
+    const ELEVEN_MINUTES = 11 * 60 * 1000
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+      jest.setSystemTime(T0)
+    })
+
+    afterEach(() => jest.useRealTimers())
+
+    it('stamps the report at the moment it is written', async () => {
+      const { createVisibilityGate, passed, sendCeremonyReport, CEREMONY_REPORT_TTL_MS } =
+        ceremony()
+      setVisibility('hidden', false)
+      const store = mapStore()
+      const gate = createVisibilityGate(document)
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      sendCeremonyReport(IDENTITY, passed({ proof: '0x01' }), { store, gate })
+      await flush()
+      jest.advanceTimersByTime(ELEVEN_MINUTES)
+      expect(store.set).not.toHaveBeenCalled()
+
+      setVisibility('visible')
+      await flush()
+      const written = store.set.mock.calls[0][1] as { reportedAt: number; expiresAt: number }
+      expect(written.reportedAt).toBe(T0 + ELEVEN_MINUTES)
+      expect(written.expiresAt).toBe(T0 + ELEVEN_MINUTES + CEREMONY_REPORT_TTL_MS)
+      gate.dispose()
+    })
+
+    it('still delivers the report to takeCeremonyReport', async () => {
+      const { createVisibilityGate, passed, sendCeremonyReport, takeCeremonyReport } = ceremony()
+      setVisibility('hidden', false)
+      const store = mapStore()
+      const gate = createVisibilityGate(document)
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      sendCeremonyReport(IDENTITY, passed({ proof: '0x01' }), { store, gate })
+      await flush()
+      jest.advanceTimersByTime(ELEVEN_MINUTES)
+      setVisibility('visible')
+      await flush()
+
+      // The row that opened the tab takes it a moment later.
+      jest.advanceTimersByTime(5_000)
+      const report = await takeCeremonyReport(IDENTITY, store, Date.now())
+      expect(report).toMatchObject({ ...IDENTITY, outcome: { verdict: 'passed' } })
+      expect(store.map.size).toBe(0)
+      gate.dispose()
+    })
+
+    it('would have expired had it been stamped when the ceremony ended (the control)', async () => {
+      const { ceremonyReport, ceremonyResultKey, passed, takeCeremonyReport } = ceremony()
+      const store = mapStore()
+      store.map.set(ceremonyResultKey('req-1'), ceremonyReport(IDENTITY, passed({}), T0))
+      jest.advanceTimersByTime(ELEVEN_MINUTES)
+      expect(await takeCeremonyReport(IDENTITY, store, Date.now())).toBeNull()
+    })
   })
 })
 
@@ -174,7 +249,7 @@ describe('a hand-off to a phone', () => {
   })
 
   it('reports a result that arrived while the tab was hidden only when the tab returns', async () => {
-    const { ceremonyReport, createVisibilityGate, sendCeremonyReport } = ceremony()
+    const { createVisibilityGate, sendCeremonyReport } = ceremony()
     setVisibility('visible', false)
     // The holder switches away; the phone answers while the tab is hidden.
     creds = installCredentials({
@@ -192,15 +267,13 @@ describe('a hand-off to a phone', () => {
     expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
     expect(document.visibilityState).toBe('hidden')
 
-    const store = { get: jest.fn(), set: jest.fn(async () => null), remove: jest.fn() }
+    const store = mapStore()
     const gate = createVisibilityGate(document)
-    const report = ceremonyReport(
-      { id: 'req-1', call: 'testAccess', method: 'passkey' },
-      outcome.raw as Parameters<typeof ceremonyReport>[1],
-      1
-    )
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    sendCeremonyReport(report, { store, gate })
+    sendCeremonyReport(IDENTITY, outcome.raw as Parameters<typeof sendCeremonyReport>[1], {
+      store,
+      gate
+    })
     await flush()
     expect(store.set).not.toHaveBeenCalled()
 

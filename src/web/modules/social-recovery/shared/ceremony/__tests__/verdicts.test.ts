@@ -225,9 +225,11 @@ const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
     expect(chip).not.toBe('method:notTested')
     expect(line).not.toBe(NOTE('notTestedLine'))
   }
+  // A test that could not run reads the test-unavailable line; an enrollment or
+  // a claim is not a test and reads the unavailable note (the fifth pass).
   const unavailableNote = /unreachable/.test(outcome.cause ?? '')
     ? NOTE('unreachableNote')
-    : NOTE('testUnavailableLine')
+    : NOTE(call === 'testAccess' ? 'testUnavailableLine' : 'unavailableNote')
   if (call === 'testAccess') {
     const expected = {
       passed: ['method:tested', NOTE('passedNote'), null],
@@ -371,9 +373,15 @@ describe('what a row renders, by call', () => {
       NOTE('providerRefused'),
       null
     ])
+    // An enrollment is not a test: the unavailable note, never the test line.
     expect(row(unavailable('device-unavailable'), 'enroll')).toEqual([
       null,
-      NOTE('testUnavailableLine'),
+      NOTE('unavailableNote'),
+      null
+    ])
+    expect(row(unavailable('service-unanswered'), 'enroll')).toEqual([
+      null,
+      NOTE('unavailableNote'),
       null
     ])
     expect(row(unavailable('unreachable'), 'enroll')).toEqual([null, NOTE('unreachableNote'), null])
@@ -413,8 +421,14 @@ describe('what a row renders, by call', () => {
       NOTE('relyingPartyMismatch'),
       NOTE('testFailedLine')
     ])
-    // An unavailable test shows its line once, as the note.
+    // An unavailable test shows its line once, as the note, and never the
+    // unavailable note of an enrollment or a claim.
     expect(row(unavailable('not-judged'), 'testAccess')).toEqual([
+      'method:testUnavailable',
+      NOTE('testUnavailableLine'),
+      null
+    ])
+    expect(row(unavailable('service-unanswered'), 'testAccess')).toEqual([
       'method:testUnavailable',
       NOTE('testUnavailableLine'),
       null
@@ -454,9 +468,20 @@ describe('what a row renders, by call', () => {
       NOTE('relyingPartyMismatch'),
       null
     ])
+    // A claim is not a test: the unavailable note, never the test line.
     expect(row(unavailable('service-unanswered'), 'createClaim')).toEqual([
       null,
-      NOTE('testUnavailableLine'),
+      NOTE('unavailableNote'),
+      null
+    ])
+    expect(row(unavailable('device-unavailable'), 'createClaim')).toEqual([
+      null,
+      NOTE('unavailableNote'),
+      null
+    ])
+    expect(row(unavailable('unreachable'), 'createClaim')).toEqual([
+      null,
+      NOTE('unreachableNote'),
       null
     ])
     expect(row(notSupported('version-unread'), 'createClaim')).toEqual([
