@@ -190,9 +190,18 @@ export const isSignFlowFailure = (value: unknown): value is SignFlowFailure =>
 /**
  * How long the facade waits for the holder's confirmation, a hardware key's
  * included. The queue shows one sign-message request at a time and drops one
- * added while another is visible, so such a request ends here. The withdrawal
- * reaches `userRequests` alone: a request still waiting for an account switch
- * stays until the action window closes.
+ * added while another is visible, so such a request ends here. It also skips a
+ * request while a swap, bridge or transfer signs with a hardware wallet in the
+ * action window, so that request times out too.
+ *
+ * The withdrawal reaches `userRequests` alone: a request still waiting for an
+ * account switch stays until the action window closes. A holder who accepts
+ * that switch after the timeout still sees the sign screen; the signature then
+ * reaches no caller, but the activity records it.
+ *
+ * Each signature adds an entry to the account's activity and raises a "message
+ * signed" notification, and an accepted switch changes the wallet's selected
+ * account.
  */
 export const DEFAULT_SIGN_TIMEOUT_MS = 10 * 60 * 1000
 

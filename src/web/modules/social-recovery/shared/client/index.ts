@@ -50,12 +50,7 @@ export {
   type ProviderReadFailure
 } from './provider-adapter'
 export { createChainReads, gasCallOf, type ChainReads, type GasEstimateCall } from './chain-reads'
-export {
-  networkOf,
-  providerKeyOf,
-  extensionProviderFor,
-  type ExtensionProvider
-} from './extension-provider'
+export { networkOf, extensionProviderFor, type ExtensionProvider } from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
   MANAGER_DOMAIN_FIELDS,
