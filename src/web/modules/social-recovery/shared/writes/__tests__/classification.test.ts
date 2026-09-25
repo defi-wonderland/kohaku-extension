@@ -26,6 +26,7 @@ import {
   nodeRefused,
   offersMoveFunds,
   readingOf,
+  sentFor,
   submittingFor,
   text,
   TX_HASH,
@@ -33,6 +34,7 @@ import {
   userRejected,
   waitTimedOut,
   walletFailed,
+  withRun,
   WRITE_KINDS,
   writeReducer,
   WriteState
@@ -81,7 +83,12 @@ describe('a call the wallet never sent, the first reading', () => {
       })
 
       it('a failure of the send, through the machine, reads never sent', () => {
-        const state = writeReducer(submittingFor(write), { type: 'error', error: userRejected() })
+        const submitting = submittingFor(write)
+        const state = writeReducer(submitting, {
+          type: 'error',
+          run: submitting.run,
+          error: userRejected()
+        })
         expect(readingOf(state)).toBe('notSent')
       })
 
@@ -89,6 +96,7 @@ describe('a call the wallet never sent, the first reading', () => {
         const checking = writeReducer(initialWriteState(write), { type: 'start' })
         const estimateReverts = writeReducer(checking, {
           type: 'error',
+          run: checking.run,
           error: revertedCall('estimateGas', '0x')
         })
         expect(readingOf(estimateReverts)).toBe('notSent')
@@ -98,6 +106,7 @@ describe('a call the wallet never sent, the first reading', () => {
         const checking = writeReducer(initialWriteState(write), { type: 'start' })
         const readFailed = writeReducer(checking, {
           type: 'error',
+          run: checking.run,
           error: providerReadFailure('nativeBalance', new Error('node down'))
         })
         expect(readFailed.status).toBe('gasReadError')
@@ -138,22 +147,31 @@ describe('a call that reached the chain and reverted, the second reading', () =>
       })
 
       it('the same error through the machine reads reverted', () => {
-        const sent = writeReducer(submittingFor(write), { type: 'sent', transactionHash: TX_HASH })
-        const state = writeReducer(sent, { type: 'error', error: minedAndReverted() })
+        const sent = sentFor(write)
+        const state = writeReducer(sent, {
+          type: 'error',
+          run: sent.run,
+          error: minedAndReverted()
+        })
         expect(readingOf(state)).toBe('reverted')
       })
 
       it('a hash with no receipt never reads that nothing was sent', () => {
         expect(readingOf(failThrown(write, waitTimedOut()))).not.toBe('notSent')
-        const sent = writeReducer(submittingFor(write), { type: 'sent', transactionHash: TX_HASH })
-        const state = writeReducer(sent, { type: 'error', error: new Error('timeout') })
+        const sent = sentFor(write)
+        const state = writeReducer(sent, {
+          type: 'error',
+          run: sent.run,
+          error: new Error('timeout')
+        })
         expect(readingOf(state)).not.toBe('notSent')
       })
 
       it('a receipt with status zero through the machine reads reverted', () => {
-        const sent = writeReducer(submittingFor(write), { type: 'sent', transactionHash: TX_HASH })
+        const sent = sentFor(write)
         const state = writeReducer(sent, {
           type: 'receipt',
+          run: sent.run,
           receipt: { transactionHash: TX_HASH, status: 0 },
           cause: ATTEMPT_ACTIVE
         })
@@ -238,8 +256,10 @@ describe('the reverted cancel', () => {
     it('the attempt read that says the attempt still runs keeps the plain revert', () => {
       plain(failWithReceipt('cancel', undefined, STILL_RUNNING))
       plain(failWithReceipt('cancel', nothingToCancel, STILL_RUNNING))
-      const read = writeReducer(failWithReceipt('cancel'), {
+      const reverted = withRun(failWithReceipt('cancel'))
+      const read = writeReducer(reverted, {
         type: 'attemptRead',
+        run: reverted.run,
         attemptAfter: STILL_RUNNING
       })
       plain(read)
@@ -252,8 +272,10 @@ describe('the reverted cancel', () => {
     })
 
     it('the attempt read that says it executed turns the plain revert into the gone attempt', () => {
-      const read = writeReducer(failWithReceipt('cancel'), {
+      const reverted = withRun(failWithReceipt('cancel'))
+      const read = writeReducer(reverted, {
         type: 'attemptRead',
+        run: reverted.run,
         attemptAfter: EXECUTED
       })
       expect(rendered(read)).toMatch(ALREADY_GONE)
@@ -282,8 +304,12 @@ describe('the reverted cancel', () => {
   })
 
   it('names the controller once the attempt read returns', () => {
-    const before = failWithReceipt('cancel', nothingToCancel)
-    const after = writeReducer(before, { type: 'attemptRead', attemptAfter: EXECUTED })
+    const before = withRun(failWithReceipt('cancel', nothingToCancel))
+    const after = writeReducer(before, {
+      type: 'attemptRead',
+      run: before.run,
+      attemptAfter: EXECUTED
+    })
     expect(rendered(after).toLowerCase()).toContain(CONTROLLER.toLowerCase())
   })
 

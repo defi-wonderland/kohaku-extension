@@ -49,6 +49,7 @@ import {
   WalletAccountRef,
   WriteKind,
   writeFailureOf,
+  WriteMachineState,
   writeReducer,
   WriteState
 } from '@web/modules/social-recovery/shared/writes'
@@ -245,10 +246,10 @@ export const stepOf = (check: GasCheck): DepositStep => {
 }
 
 /** The state the write machine moves to when the check answers. */
-export const stateAfterGasCheck = (check: GasCheck): WriteState => {
+export const stateAfterGasCheck = (check: GasCheck): WriteMachineState => {
   const write = check.kind === 'enough' ? check.write : check.step.write
   const checking = writeReducer(initialWriteState(write), { type: 'start' })
-  return writeReducer(checking, { type: 'gasChecked', check })
+  return writeReducer(checking, { type: 'gasChecked', run: checking.run, check })
 }
 
 /** Every variant of the deposit step: each owner write, and each recovery call on both routes. */
@@ -297,18 +298,41 @@ export const failWithReceipt = (
 export const landWithReceipt = (write: WriteKind) =>
   settleReceipt({ transactionHash: TX_HASH, status: 1 }, { write })
 
-/** The submitting state a write enters once the check answers enough, through the machine. */
-export const submittingFor = (write: WriteKind): WriteState =>
-  writeReducer(writeReducer(initialWriteState(write), { type: 'start' }), {
+/** A state the module classified, as the machine holds it in the run it settled in. */
+export const withRun = (state: WriteState, run = 1): WriteMachineState => ({ ...state, run })
+
+/** The gas check's answer for a key that holds enough. */
+export const enoughCheck = (write: WriteKind): GasCheck => ({
+  kind: 'enough',
+  write,
+  key: KEY.addr,
+  estimate: { gas: 1n, gasPrice: 1n, cost: 1n, required: 1n },
+  balance: 1n
+})
+
+/** The submitting state a new run enters from `from` once the check answers enough, through the machine. */
+export const submittingFrom = (from: WriteMachineState): WriteMachineState => {
+  const checking = writeReducer(from, { type: 'start' })
+  return writeReducer(checking, {
     type: 'gasChecked',
-    check: {
-      kind: 'enough',
-      write,
-      key: KEY.addr,
-      estimate: { gas: 1n, gasPrice: 1n, cost: 1n, required: 1n },
-      balance: 1n
-    }
+    run: checking.run,
+    check: enoughCheck(from.write)
   })
+}
+
+/** The submitting state a write enters once the check answers enough, through the machine. */
+export const submittingFor = (write: WriteKind): WriteMachineState =>
+  submittingFrom(initialWriteState(write))
+
+/** The submitting state of a new run from `from` once the wallet broadcast the call with `hash`. */
+export const sentFrom = (from: WriteMachineState, hash: Hex = TX_HASH): WriteMachineState => {
+  const submitting = submittingFrom(from)
+  return writeReducer(submitting, { type: 'sent', run: submitting.run, transactionHash: hash })
+}
+
+/** The submitting state once the wallet broadcast the call, through the machine. */
+export const sentFor = (write: WriteKind, hash: Hex = TX_HASH): WriteMachineState =>
+  sentFrom(initialWriteState(write), hash)
 
 /** Which reading a state is. */
 export const readingOf = (state: WriteState): 'notSent' | 'reverted' | 'landed' | string =>
@@ -408,11 +432,14 @@ export const replacedBy = (
   })
 
 /** The state a write moves to when a read of its gas check could not run. */
-export const gasReadErrorFor = (write: WriteKind): WriteState =>
-  writeReducer(writeReducer(initialWriteState(write), { type: 'start' }), {
+export const gasReadErrorFor = (write: WriteKind): WriteMachineState => {
+  const checking = writeReducer(initialWriteState(write), { type: 'start' })
+  return writeReducer(checking, {
     type: 'error',
+    run: checking.run,
     error: providerReadFailure('nativeBalance', new Error('node down'))
   })
+}
 
 /** Every string reachable from a value, depth first. */
 export const collectStrings = (

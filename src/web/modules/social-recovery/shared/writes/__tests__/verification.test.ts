@@ -45,6 +45,7 @@ import {
   transferTransactionOf,
   UNNAMED_CAUSE_KEY,
   VALUE_TRANSFER_GAS,
+  withRun,
   WRITE_KINDS,
   writeReducer,
   WRITES_KEYS,
@@ -202,7 +203,9 @@ describe('a transfer estimate that reverts drops the transfer route and keeps th
       .mockRejectedValueOnce(providerReadFailure('estimateGas', new Error('node down')))
     const thrown = await runGasCheck({ write: 'submission', reads }).catch((error) => error)
     const checking = writeReducer(initialWriteState('submission'), { type: 'start' })
-    expect(writeReducer(checking, { type: 'error', error: thrown }).status).toBe('gasReadError')
+    expect(writeReducer(checking, { type: 'error', run: checking.run, error: thrown }).status).toBe(
+      'gasReadError'
+    )
   })
 })
 
@@ -229,8 +232,12 @@ describe('a cancel revert under an attempt read that says the attempt still runs
   })
 
   it('the gone reading of a decoded NoActiveAttempt, then the read that says it still runs, drops the sentence', () => {
-    const gone = failWithReceipt('cancel', kitError('NoActiveAttempt'))
-    const read = writeReducer(gone, { type: 'attemptRead', attemptAfter: STILL_RUNNING })
+    const gone = withRun(failWithReceipt('cancel', kitError('NoActiveAttempt')))
+    const read = writeReducer(gone, {
+      type: 'attemptRead',
+      run: gone.run,
+      attemptAfter: STILL_RUNNING
+    })
     expect(readingOf(read)).toBe('reverted')
     expect(text(copyOfState(read))).not.toContain(NO_RECOVERY_RUNNING)
     expect(text(copyOfState(read))).not.toMatch(/already gone/i)
@@ -274,7 +281,9 @@ describe('a failed gas read names the gas check, not one read', () => {
     const { reads } = rpcReads({ balance: 0n, gas: new Error('socket hang up') })
     const thrown = await runGasCheck({ write: 'save', reads }).catch((error) => error)
     const checking = writeReducer(initialWriteState('save'), { type: 'start' })
-    const r = renderWriteState(writeReducer(checking, { type: 'error', error: thrown }))
+    const r = renderWriteState(
+      writeReducer(checking, { type: 'error', run: checking.run, error: thrown })
+    )
     expect(r.lines).toEqual([t(WRITES_KEYS.gasCheckFailed)])
     expect(r.lines[0]).toMatch(/\bgas check\b/i)
     expect(r.lines[0]).not.toMatch(/\bbalance\b/i)

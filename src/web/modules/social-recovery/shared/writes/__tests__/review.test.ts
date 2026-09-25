@@ -37,12 +37,12 @@ import {
   replacedBy,
   rpcReads,
   runGasCheck,
+  sentFor,
   stepOf,
-  submittingFor,
   text,
   transferTransactionOf,
-  TX_HASH,
   VALUE_TRANSFER_GAS,
+  withRun,
   WRITE_KINDS,
   writeReducer,
   WRITES_KEYS,
@@ -56,11 +56,14 @@ const STILL_READY = /\bthe recovery is still ready\b/i
 const LEAVE_THE_ATTEMPT_READY: KitErrorName[] = ['WaitNotOver', 'MethodVetoedSpend']
 
 /** The retry as a holder meets it: offered on screen, and taken by the machine. */
-const retry = (state: WriteState) => ({
-  offered: canRetry(state),
-  shown: renderWriteState(state).retry !== undefined,
-  takes: writeReducer(state, { type: 'start' }) !== state
-})
+const retry = (state: WriteState) => {
+  const machine = withRun(state)
+  return {
+    offered: canRetry(state),
+    shown: renderWriteState(state).retry !== undefined,
+    takes: writeReducer(machine, { type: 'start' }) !== machine
+  }
+}
 
 describe('a retry is offered only where a retry can fix the cause', () => {
   it('a submission rejected because an attempt already runs offers no retry', () => {
@@ -181,7 +184,10 @@ describe('a gas read that could not run renders gasCheckFailed with the retry', 
     const { reads } = rpcReads(answers)
     const thrown = await runGasCheck({ write: 'submission', reads }).catch((error) => error)
     const checking = writeReducer(initialWriteState('submission'), { type: 'start' })
-    return { thrown, state: writeReducer(checking, { type: 'error', error: thrown }) }
+    return {
+      thrown,
+      state: writeReducer(checking, { type: 'error', run: checking.run, error: thrown })
+    }
   }
 
   it('a failed balance read: gasReadError, the gasCheckFailed line, the retry runs the check again', async () => {
@@ -245,22 +251,27 @@ describe('a transaction replaced before it was mined', () => {
             expect(text(copyOfState(state))).not.toMatch(REVERTED_AND_GONE)
             expect(canRetry(state)).toBe(true)
           })
-          const sent = writeReducer(submittingFor(write), {
-            type: 'sent',
-            transactionHash: TX_HASH
+          const sent = sentFor(write)
+          const machine = writeReducer(sent, {
+            type: 'error',
+            run: sent.run,
+            error: replacedBy(reason, 1)
           })
-          const machine = writeReducer(sent, { type: 'error', error: replacedBy(reason, 1) })
           expect(readingOf(machine)).toBe('notSent')
         })
       )
 
       it('repriced: the same call at another fee settles by the replacement receipt', () => {
-        const sent = writeReducer(submittingFor(write), { type: 'sent', transactionHash: TX_HASH })
+        const sent = sentFor(write)
         expect(
-          readingOf(writeReducer(sent, { type: 'error', error: replacedBy('repriced', 1) }))
+          readingOf(
+            writeReducer(sent, { type: 'error', run: sent.run, error: replacedBy('repriced', 1) })
+          )
         ).toBe('landed')
         expect(
-          readingOf(writeReducer(sent, { type: 'error', error: replacedBy('repriced', 0) }))
+          readingOf(
+            writeReducer(sent, { type: 'error', run: sent.run, error: replacedBy('repriced', 0) })
+          )
         ).toBe('reverted')
         expect(readingOf(failThrown(write, replacedBy('repriced', 0)))).toBe('reverted')
       })
