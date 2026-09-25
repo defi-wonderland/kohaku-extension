@@ -127,37 +127,51 @@ const newRevision = (): SessionRevision => {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// One queue per storage object and key: an update of a key starts once the
-// previous update of that key has settled, so its read and its write never
-// interleave with another update of the same key. Every instance over the same
-// storage object shares the queues. The queues live in this JS context only.
-const queues = new WeakMap<RecordStorage, Map<string, Promise<void>>>()
+// The fallback queue, one per key: used only where the Web Locks API is missing,
+// and it spans this JS context alone.
+const queues = new Map<string, Promise<void>>()
 
-const inQueue = <R>(storage: RecordStorage, key: string, task: () => Promise<R>): Promise<R> => {
-  const byKey = queues.get(storage) ?? new Map<string, Promise<void>>()
-  queues.set(storage, byKey)
-  const run = (byKey.get(key) ?? Promise.resolve()).then(task)
+const inMemoryQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
+  const run = (queues.get(key) ?? Promise.resolve()).then(task)
   const settled = run.then(
     () => undefined,
     () => undefined
   )
-  byKey.set(key, settled)
+  queues.set(key, settled)
   settled
     .then(() => {
-      if (byKey.get(key) === settled) byKey.delete(key)
+      if (queues.get(key) === settled) queues.delete(key)
     })
     .catch(() => undefined)
   return run
 }
 
 /**
+ * Runs one update of a key after the previous update of that key has settled,
+ * so its read and its write never interleave with another update of the same
+ * key. It holds the Web Locks lock named by the key, which every extension page
+ * and the worker share, or where that API is missing the in-memory queue of
+ * the key.
+ */
+const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+  if (locks) return locks.request(key, () => task()) as Promise<R>
+  return inMemoryQueue(key, task)
+}
+
+/**
  * The refusal of a recovery session update whose caller read an older
- * revision: another update changed the session after that read. Nothing was
- * written. Read the session again and retry from that read.
+ * revision: another update changed the session after that read, and nothing
+ * was written. A retry reads the session again. Only while that fresh read is
+ * live does the caller re-apply its change to the fresh gathering and pass the
+ * fresh revision; in every other state the change is void. Writing the old
+ * in-memory gathering with the fresh revision would bring wiped approvals back.
  */
 export class SessionRevisionConflict extends Error {
   constructor(key: string) {
-    super(`The recovery session ${key} changed after it was read: read it again and retry`)
+    super(
+      `The recovery session ${key} changed after it was read. Read it again: re-apply the change to the fresh read only while it is live; in any other state the change is void`
+    )
     this.name = 'SessionRevisionConflict'
     // Keeps `instanceof` working where the build compiles classes to functions.
     Object.setPrototypeOf(this, SessionRevisionConflict.prototype)
@@ -248,13 +262,13 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   }
 
   const removeKey = (key: string): Promise<void> =>
-    inQueue(storage, key, async () => {
+    inQueue(key, async () => {
       await storage.remove(key)
     })
 
   const accessor = <T>(key: string): RecordAccessor<T> => ({
     read: () => readKey<T>(key),
-    write: (value: T) => inQueue(storage, key, () => writeKey<T>(key, value)),
+    write: (value: T) => inQueue(key, () => writeKey<T>(key, value)),
     wipe: () => removeKey(key),
     age: async (at?: number) => recordAge(await readKey<T>(key), at ?? now())
   })
@@ -322,12 +336,8 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   const readSession = (chainId: ChainId, account: Address) =>
     readSessionAt(recordKeys.recoverySession(chainId, account))
 
-  /**
-   * Runs one update of a recovery session in its key's queue: reads the stored
-   * session, throws `SessionRevisionConflict` when its revision is not the one
-   * the caller read, and otherwise hands the read to `apply`.
-   */
-  const updateSession = async <R>(
+  /** Runs `apply` on the stored session in its key's queue. */
+  const inSessionQueue = async <R>(
     chainId: ChainId,
     account: Address,
     expectedRevision: ExpectedRevision,
@@ -335,12 +345,28 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   ): Promise<R> => {
     const key = recordKeys.recoverySession(chainId, account)
     assertExpectedRevision(expectedRevision)
-    return inQueue(storage, key, async () => {
-      const current = await readSessionAt(key)
-      if (revisionOf(current) !== expectedRevision) throw new SessionRevisionConflict(key)
+    return inQueue(key, async () => apply(await readSessionAt(key), key))
+  }
+
+  const checkRevision = (current: SessionRead, expectedRevision: ExpectedRevision, key: string) => {
+    if (revisionOf(current) !== expectedRevision) throw new SessionRevisionConflict(key)
+  }
+
+  /**
+   * Runs one update of a recovery session in its key's queue: reads the stored
+   * session, throws `SessionRevisionConflict` when its revision is not the one
+   * the caller read, and otherwise hands the read to `apply`.
+   */
+  const updateSession = <R>(
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision,
+    apply: (current: SessionRead, key: string) => Promise<R>
+  ): Promise<R> =>
+    inSessionQueue(chainId, account, expectedRevision, async (current, key) => {
+      checkRevision(current, expectedRevision, key)
       return apply(current, key)
     })
-  }
 
   /**
    * The recovery session of one account on one chain. Its live body is the
@@ -482,24 +508,28 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
       }
     })
 
+  // A session in another state, or no session, returns false with no revision
+  // check, so a caller whose read found no such session never meets a conflict.
   const removeSessionIn = (
     chainId: ChainId,
     account: Address,
     state: 'wiped' | 'landed',
     expectedRevision: ExpectedRevision
   ): Promise<boolean> =>
-    updateSession(chainId, account, expectedRevision, async (current, key) => {
+    inSessionQueue(chainId, account, expectedRevision, async (current, key) => {
       if (current.status !== 'present' || current.value.state !== state) return false
+      checkRevision(current, expectedRevision, key)
       await storage.remove(key)
       return true
     })
 
   /**
    * Removes a session record in its wiped state, once its death screen is read,
-   * so old sessions do not accumulate. Touches nothing in any other state, so a
-   * live session and a running countdown stay. Returns whether it removed one.
-   * Throws `SessionRevisionConflict` when the session changed after the caller
-   * read `expectedRevision`.
+   * so old sessions do not accumulate, and returns true. In any other state, or
+   * with no session, it touches nothing and returns false whatever the
+   * revision, so a live session and a running countdown stay. On a wiped
+   * session it throws `SessionRevisionConflict` when the stored revision is not
+   * `expectedRevision`.
    */
   const clearWipedSession = async (
     chainId: ChainId,
@@ -509,9 +539,10 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
 
   /**
    * Removes a session record in its landed state, once the attempt it counts
-   * down to has ended (executed or cancelled). Touches nothing in any other
-   * state. Returns whether it removed one. Throws `SessionRevisionConflict`
-   * when the session changed after the caller read `expectedRevision`.
+   * down to has ended (executed or cancelled), and returns true. In any other
+   * state, or with no session, it touches nothing and returns false whatever
+   * the revision. On a landed session it throws `SessionRevisionConflict` when
+   * the stored revision is not `expectedRevision`.
    */
   const endCountdown = async (
     chainId: ChainId,
