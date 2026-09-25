@@ -27,11 +27,13 @@ import {
   DirectWipeEvent,
   Enrollment,
   ExpectedRevision,
+  extensionRecordStorage,
   isSessionRevisionConflict,
   predictedAttemptId,
   recordAge,
   recordKeys,
   RecordRead,
+  RecordStorage,
   RecoverySessionRecord,
   RecoveryWipeEvent,
   revisionOf,
@@ -42,6 +44,28 @@ import {
   SetupRecordValues,
   WIPE_REASON_STRING_KEYS
 } from '@web/modules/social-recovery/shared/records'
+
+// The extension's `browser.storage.local` for `extensionRecordStorage`: one
+// in-memory store, holding what the helper writes.
+jest.mock('@web/constants/browserapi', () => {
+  const entries = new Map<string, unknown>()
+  return {
+    isExtension: true,
+    browser: {
+      storage: {
+        local: {
+          get: async () => Object.fromEntries(entries),
+          set: async (items: Record<string, unknown>) => {
+            Object.entries(items).forEach(([key, value]) => entries.set(key, value))
+          },
+          remove: async (keys: string[]) => {
+            keys.forEach((key) => entries.delete(key))
+          }
+        }
+      }
+    }
+  }
+})
 
 type StorageDouble = {
   get: (key: string, defaultValue?: unknown) => Promise<unknown>
@@ -1183,8 +1207,8 @@ describe('endCountdown removes only a landed session', () => {
 
 // Holds the next read of `key` once it has taken the stored value, until
 // released: the reader has seen the session but has not yet acted on it.
-const holdNextRead = (storage: StorageDouble, key: string) => {
-  const { get } = storage
+const holdNextRead = (storage: Pick<RecordStorage, 'get'>, key: string) => {
+  const get = storage.get.bind(storage)
   let reached: () => void = () => {}
   let release: () => void = () => {}
   const held = new Promise<void>((resolve) => {
@@ -1313,7 +1337,7 @@ describe('a session update refuses when the session changed after its caller rea
     expect(replies.map((r) => r.proof)).toEqual([PROOF_A, PROOF_B])
   })
 
-  it('every session update that names a stale revision is refused with the conflict and writes nothing', async () => {
+  it('a write, a wipe or a landing that names a stale revision is refused with the conflict and writes nothing', async () => {
     const { storage, records } = setup()
     const session = records.recoverySession(CHAIN_ID, ACCOUNT)
     const first = await session.write(gathering(ACCOUNT, [APPROVALS[0]]), null)
@@ -1324,15 +1348,96 @@ describe('a session update refuses when the session changed after its caller rea
       session.write(GATHERING, stale),
       session.write(GATHERING, null),
       records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', stale),
-      records.landSubmission(CHAIN_ID, ACCOUNT, stale),
-      records.clearWipedSession(CHAIN_ID, ACCOUNT, stale),
-      records.endCountdown(CHAIN_ID, ACCOUNT, stale)
+      records.landSubmission(CHAIN_ID, ACCOUNT, stale)
     ])
     expect(
       outcomes.map((o) => o.status === 'rejected' && isSessionRevisionConflict(o.reason))
-    ).toEqual([true, true, true, true, true, true])
+    ).toEqual([true, true, true, true])
     expect(dump(storage)).toBe(before)
     expect(present(await session.read()).value).toEqual({ state: 'live', gathering: GATHERING })
+  })
+
+  it('a clear of a wiped session or an end of a landed one that names a stale revision is refused with the conflict', async () => {
+    const { storage, records } = setup()
+    await writeSession(records, GATHERING)
+    const liveRead = await records.recoverySession(CHAIN_ID, ACCOUNT).read()
+    await wipeSession(records, 'recoverer-abandoned')
+    await writeSession(records, gathering(OTHER_ACCOUNT, []), OTHER_ACCOUNT)
+    const otherLiveRead = await records.recoverySession(CHAIN_ID, OTHER_ACCOUNT).read()
+    await landSession(records, OTHER_ACCOUNT)
+    const before = dump(storage)
+    await expect(
+      records.clearWipedSession(CHAIN_ID, ACCOUNT, revisionOf(liveRead))
+    ).rejects.toBeInstanceOf(SessionRevisionConflict)
+    await expect(
+      records.endCountdown(CHAIN_ID, OTHER_ACCOUNT, revisionOf(otherLiveRead))
+    ).rejects.toBeInstanceOf(SessionRevisionConflict)
+    await expect(records.clearWipedSession(CHAIN_ID, ACCOUNT, null)).rejects.toBeInstanceOf(
+      SessionRevisionConflict
+    )
+    expect(dump(storage)).toBe(before)
+  })
+
+  it('a clear or an end on a session in another state returns false and writes nothing, whatever revision is passed', async () => {
+    const { storage, records } = setup()
+    const third = '0x6666666666666666666666666666666666666666' as Address
+    const noSession = '0x7777777777777777777777777777777777777777' as Address
+    await writeSession(records, GATHERING)
+    await writeSession(records, gathering(OTHER_ACCOUNT, []), OTHER_ACCOUNT)
+    await wipeSession(records, 'deadline-passed', OTHER_ACCOUNT)
+    await writeSession(records, gathering(third, []), third)
+    await landSession(records, third)
+    const before = dump(storage)
+    storage.calls.set.length = 0
+    storage.calls.remove.length = 0
+    const other = 'f'.repeat(24)
+    // A clear touches only a wiped session and an end only a landed one.
+    const cases: [SessionUpdate, Address][] = [
+      [(r, revision) => r.clearWipedSession(CHAIN_ID, ACCOUNT, revision), ACCOUNT],
+      [(r, revision) => r.clearWipedSession(CHAIN_ID, third, revision), third],
+      [(r, revision) => r.clearWipedSession(CHAIN_ID, noSession, revision), noSession],
+      [(r, revision) => r.endCountdown(CHAIN_ID, ACCOUNT, revision), ACCOUNT],
+      [(r, revision) => r.endCountdown(CHAIN_ID, OTHER_ACCOUNT, revision), OTHER_ACCOUNT],
+      [(r, revision) => r.endCountdown(CHAIN_ID, noSession, revision), noSession]
+    ]
+    const results = await Promise.all(
+      cases.flatMap(([update, account]) =>
+        [null, other].map(async (revision) => [
+          await update(records, revision),
+          await update(records, await revisionNow(records, account, CHAIN_ID))
+        ])
+      )
+    )
+    expect(results.flat().every((result) => result === false)).toBe(true)
+    expect(results.flat()).toHaveLength(24)
+    expect(storage.calls.set).toEqual([])
+    expect(storage.calls.remove).toEqual([])
+    expect(dump(storage)).toBe(before)
+  })
+
+  it('an end of the countdown from a countdown read that found none returns false while the session is live', async () => {
+    const { storage, records } = setup()
+    await writeSession(records, GATHERING)
+    const countdownRead = await records.countdown(CHAIN_ID, ACCOUNT).read()
+    expect(countdownRead).toBe(ABSENT)
+    const before = dump(storage)
+    expect(await records.endCountdown(CHAIN_ID, ACCOUNT, revisionOf(countdownRead))).toBe(false)
+    expect(dump(storage)).toBe(before)
+    expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+      state: 'live',
+      gathering: GATHERING
+    })
+    await wipeSession(records, 'setup-changed')
+    expect(
+      await records.endCountdown(
+        CHAIN_ID,
+        ACCOUNT,
+        revisionOf(await records.countdown(CHAIN_ID, ACCOUNT).read())
+      )
+    ).toBe(false)
+    expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual(
+      wipedLine('setup-changed')
+    )
   })
 
   it('an update that names the revision of a session since removed is refused', async () => {
@@ -1472,4 +1577,93 @@ describe('the revision an update names', () => {
     expect(await records.listRecoverySessions(CHAIN_ID)).toEqual([])
     expect(await records.listCountdowns(CHAIN_ID)).toEqual([])
   })
+})
+
+// Runs `run` with `navigator` set to `value`, then puts the original back.
+const withNavigator = async (value: unknown, run: () => Promise<void>) => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  Object.defineProperty(globalThis, 'navigator', { value, configurable: true, writable: true })
+  try {
+    await run()
+  } finally {
+    if (saved) Object.defineProperty(globalThis, 'navigator', saved)
+    else delete (globalThis as { navigator?: unknown }).navigator
+  }
+}
+
+// Two reply writes from one read, the first held after its read: the second
+// must wait for the first, then meet the conflict; a retry keeps both replies.
+const raceTwoReplyWrites = async (
+  first: { records: Records; storage: Pick<RecordStorage, 'get'> },
+  second: Records
+) => {
+  await first.records.recoverySession(CHAIN_ID, ACCOUNT).write(gathering(ACCOUNT, []), null)
+  const read = await first.records.recoverySession(CHAIN_ID, ACCOUNT).read()
+  const hold = holdNextRead(first.storage, SESSION_KEY)
+  const write = first.records
+    .recoverySession(CHAIN_ID, ACCOUNT)
+    .write(gathering(ACCOUNT, [APPROVALS[0]]), revisionOf(read))
+  await hold.held
+  const other = second
+    .recoverySession(CHAIN_ID, ACCOUNT)
+    .write(gathering(ACCOUNT, [APPROVALS[1]]), revisionOf(read))
+  hold.release()
+  const [firstOutcome, secondOutcome] = await Promise.allSettled([write, other])
+  expect(firstOutcome).toMatchObject({ status: 'fulfilled' })
+  expect(secondOutcome).toMatchObject(CONFLICT)
+  const session = second.recoverySession(CHAIN_ID, ACCOUNT)
+  const fresh = await session.read()
+  await session.write(gathering(ACCOUNT, [...repliesOf(fresh), APPROVALS[1]]), revisionOf(fresh))
+  const replies = repliesOf(await first.records.recoverySession(CHAIN_ID, ACCOUNT).read())
+  expect(replies.map((r) => r.proof)).toEqual([PROOF_A, PROOF_B])
+}
+
+describe('updates of one session run one at a time, across wrappers and pages', () => {
+  it('two wrapper objects over one extension store share one queue per session', async () => {
+    await extensionRecordStorage.remove(SESSION_KEY)
+    const firstStorage = { ...extensionRecordStorage }
+    const first = createWalletRecords({ storage: firstStorage, now: () => T0 })
+    const second = createWalletRecords({ storage: { ...extensionRecordStorage }, now: () => T0 })
+    await raceTwoReplyWrites({ records: first, storage: firstStorage }, second)
+    expect(await extensionRecordStorage.get(SESSION_KEY)).toMatchObject({
+      value: { state: 'live', gathering: GATHERING }
+    })
+    await extensionRecordStorage.remove(SESSION_KEY)
+  })
+
+  it('with the Web Locks API, every session update takes the lock named by the session key', async () => {
+    const names: string[] = []
+    const locks = {
+      request: async (name: string, callback: () => Promise<unknown>) => {
+        names.push(name)
+        return callback()
+      }
+    }
+    await withNavigator({ locks }, async () => {
+      const { records } = setup()
+      expect(await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))).toMatchObject({
+        value: { state: 'live' }
+      })
+      await writeSession(records, GATHERING)
+      expect(await wipeSession(records, 'recoverer-abandoned')).toBe(true)
+      expect(await clearWiped(records)).toBe(true)
+      await writeSession(records, GATHERING)
+      expect(await landSession(records)).toMatchObject({ value: { account: ACCOUNT } })
+      expect(await endSessionCountdown(records)).toBe(true)
+    })
+    expect(names).toEqual(Array(7).fill(SESSION_KEY))
+  })
+  ;(
+    [
+      ['a navigator without the Web Locks API', {}],
+      ['no navigator', undefined]
+    ] as const
+  ).forEach(([label, value]) =>
+    it(`with ${label}, updates of one session still run one at a time`, async () => {
+      await withNavigator(value, async () => {
+        const { storage, records } = setup()
+        await raceTwoReplyWrites({ records, storage }, records)
+      })
+    })
+  )
 })
