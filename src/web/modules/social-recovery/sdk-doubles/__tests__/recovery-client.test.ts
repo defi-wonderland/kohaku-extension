@@ -377,6 +377,8 @@ describe('recovery client double', () => {
 
     it('completes with a set naming no stopped method before the earliest filed', async () => {
       const world = createWorld()
+      withStop(world, world.descriptor.methodEcdsa)
+      withStop(world, world.descriptor.methodPasskey)
       world.chain.setPaused(world.descriptor.methodZkpassport, true)
       const { gathering, chosen } = await completeInPlaceOrder(world, [
         {
@@ -393,6 +395,8 @@ describe('recovery client double', () => {
         'not-stopped',
         'not-stopped'
       ])
+      // Every candidate set names two stoppable methods, so only the stopped step decides.
+      expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true])
       expect(chosen).toEqual([1n, 2n])
     })
 
