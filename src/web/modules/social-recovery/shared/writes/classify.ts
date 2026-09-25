@@ -11,7 +11,9 @@
  * The two are distinct states, never one state with a flag: a holder who reads
  * that the wallet sent nothing retries a call that cannot land. The owner's
  * cancel adds its own reading of the revert (ux.md D-307): the attempt is
- * already gone, with the account's controller as it now stands.
+ * already gone, with the account's controller as it now stands. That reading
+ * rests on the attempt read after the revert, or on a decoded cause that says
+ * nothing was left to cancel, never on a revert the wallet could not decode.
  *
  * A transaction hash with no receipt is neither reading. The call may still
  * land, so it stays in the submitting state and keeps waiting for its receipt.
@@ -48,17 +50,28 @@ export interface WriteReceipt {
 }
 
 /**
+ * How a sent transaction was replaced before it was mined, where it was not
+ * merely repriced (ethers' `TRANSACTION_REPLACED`): `cancelled`, replaced by a
+ * transaction that sends nothing, or `replaced`, by another transaction. The
+ * write's own call never ran.
+ */
+export const REPLACED_REASONS = ['cancelled', 'replaced'] as const
+export type ReplacedReason = typeof REPLACED_REASONS[number]
+
+/**
  * What the wallet knows of a write that did not land. `error` is what the send
  * threw; `transactionHash` is present once the wallet broadcast the call;
  * `receipt` is present once one came back; `cause` is the revert the wallet
  * decoded for that receipt (the SDK's error decoding over the call), where it
- * read one.
+ * read one; `replaced` is present where another transaction took the call's
+ * place before it was mined.
  */
 export interface WriteFailure {
   error?: unknown
   transactionHash?: Hex
   receipt?: WriteReceipt
   cause?: KitError
+  replaced?: ReplacedReason
 }
 
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
@@ -109,21 +122,40 @@ export const receiptOf = (value: unknown): WriteReceipt | undefined => {
   }
 }
 
+const isReplacedReason = (value: unknown): value is ReplacedReason =>
+  typeof value === 'string' && (REPLACED_REASONS as readonly string[]).includes(value)
+
 /**
- * Reads what a thrown value tells about the call: a receipt it carries (ethers'
- * `CALL_EXCEPTION` from `wait()` carries the reverted receipt) or the hash of a
- * transaction it names (`transactionHash`, `hash`, `transaction.hash`). A value
- * that carries neither is an error before any hash.
+ * Reads what a thrown value tells about the call:
+ *
+ * - ethers' `TRANSACTION_REPLACED`: a `repriced` replacement is the same call
+ *   at another fee, so it settles by the replacement's receipt; a `cancelled`
+ *   or `replaced` one means the call never ran, whatever the replacement's
+ *   receipt says, so it carries that reason and no receipt;
+ * - a receipt it carries (ethers' `CALL_EXCEPTION` from `wait()` carries the
+ *   reverted receipt);
+ * - the hash of a transaction it names (`transactionHash`, `hash`,
+ *   `transaction.hash`).
+ *
+ * A value that carries none of these is an error before any hash.
  */
 export const writeFailureOf = (thrown: unknown): WriteFailure => {
   const seen = new Set<unknown>()
   let receipt: WriteReceipt | undefined
   let transactionHash: Hex | undefined
+  let replaced: ReplacedReason | undefined
 
   const visit = (value: unknown, depth: number): void => {
     if (depth > 4 || !value || typeof value !== 'object' || seen.has(value)) return
     seen.add(value)
     const record = value as Record<string, unknown>
+    if (record.code === 'TRANSACTION_REPLACED' && !replaced && !receipt) {
+      if (isReplacedReason(record.reason)) {
+        replaced = record.reason
+        return
+      }
+      if (record.reason === 'repriced') receipt = receiptOf(record.receipt)
+    }
     if (!receipt) receipt = receiptOf(record.receipt)
     if (!transactionHash) {
       if (isTransactionHash(record.transactionHash)) transactionHash = record.transactionHash
@@ -133,6 +165,7 @@ export const writeFailureOf = (thrown: unknown): WriteFailure => {
   }
 
   visit(thrown, 0)
+  if (replaced) return { error: thrown, replaced }
   return {
     error: thrown,
     ...(receipt ? { receipt, transactionHash: receipt.transactionHash } : {}),
@@ -152,16 +185,20 @@ export const writeFailureOf = (thrown: unknown): WriteFailure => {
 export const ATTEMPT_ENDS = ['executed', ...CANCELLED_BY] as const
 export type AttemptEnd = typeof ATTEMPT_ENDS[number]
 
+/** The attempt read's answer where the attempt a cancel meant to end still runs. */
+export const ATTEMPT_STILL_RUNNING = 'stillRunning' as const
+
 /**
  * The attempt read after a reverted cancel (ux.md D-307): how the attempt had
- * ended and the account's controller as it now stands. The controller is the
- * key the consume event handed the account after an execution, and the
- * account's own key where another road ended the attempt.
+ * ended and the account's controller as it now stands, or that it still runs.
+ * The controller is the key the consume event handed the account after an
+ * execution, and the account's own key where another road ended the attempt.
+ * An attempt that still runs reads the plain reverted reading, with the retry
+ * and the move-funds action, since the attack goes on.
  */
-export interface AttemptAfterCancel {
-  ended: AttemptEnd
-  controller?: Address
-}
+export type AttemptAfterCancel =
+  | { ended: AttemptEnd; controller?: Address }
+  | { ended: typeof ATTEMPT_STILL_RUNNING }
 
 /**
  * The cause a reverted state names.
@@ -171,9 +208,9 @@ export interface AttemptAfterCancel {
  * - `unnamed`: a revert that carries no cause the wallet can name, with its raw
  *   data where it read any.
  * - `attemptGone`: the owner's cancel reverted because the attempt was already
- *   gone (D-307). `ended` and `controller` are present once the attempt read
- *   after the revert returned; until then the state names no controller rather
- *   than one it guessed.
+ *   gone (D-307). `ended` names the road, and `controller` the account's
+ *   controller after an execution, once the attempt read returned; before it,
+ *   the state names no controller rather than one it guessed.
  */
 export type RevertCause =
   | { kind: 'named'; name: KitErrorName; error: KitError }
@@ -185,31 +222,54 @@ export const REVERT_CAUSE_KINDS = ['named', 'unnamed', 'attemptGone'] as const
 const isKitErrorName = (name: string): name is KitErrorName =>
   (KIT_ERROR_NAMES as readonly string[]).includes(name)
 
-/** The kit error the manager raises on a cancel with nothing to cancel (contracts D-103). */
-const NOTHING_TO_CANCEL: KitErrorName = 'NoActiveAttempt'
+/** The kit error of the decoded cause, where the wallet decoded one it knows. */
+export const kitErrorNameOf = (cause?: KitError): KitErrorName | undefined =>
+  cause?.kind === 'known' && isKitErrorName(cause.name) ? cause.name : undefined
+
+const plainCause = (cause?: KitError): RevertCause => {
+  const known = kitErrorNameOf(cause)
+  if (known !== undefined && cause) return { kind: 'named', name: known, error: cause }
+  return cause?.kind === 'unknown' ? { kind: 'unnamed', data: cause.data } : { kind: 'unnamed' }
+}
 
 /**
- * The cause of a revert for a write. A reverted cancel reads that the attempt
- * was already gone (D-307), since the owner's cancel names no id and reverts
- * only when nothing is left to cancel, unless the decoded cause names another
- * kit error, which then reads as that error. Every other write names the kit
- * error it decoded, or reads as a revert with no cause it can name.
+ * The cause of a revert for a write.
+ *
+ * A reverted cancel reads that the attempt was already gone (D-307) only on
+ * one of three grounds:
+ *
+ * - the attempt read after the revert says the attempt ended, which also names
+ *   the road and, after an execution, the controller;
+ * - no read yet, and the decoded cause is `NoActiveAttempt`: nothing was left
+ *   to cancel, road unknown until the read returns;
+ * - no read yet, and the decoded cause is `NoSetup`: a setup write cleared the
+ *   setup, which ended the attempt, so the road is the setup write.
+ *
+ * An attempt read that says the attempt still runs, and any cancel revert the
+ * wallet could not decode or that names another kit error, reads the plain
+ * reverted reading, with the retry and the move-funds action: an owner whose
+ * cancel ran out of gas while the attack runs must not read that nothing is
+ * left to cancel. Every other write names the kit error it decoded, or reads as
+ * a revert with no cause it can name.
  */
 export const revertCauseOf = (
   write: WriteKind,
   cause?: KitError,
   attemptAfter?: AttemptAfterCancel
 ): RevertCause => {
-  const known = cause?.kind === 'known' && isKitErrorName(cause.name) ? cause.name : undefined
-  if (write === 'cancel' && (known === undefined || known === NOTHING_TO_CANCEL)) {
+  if (write !== 'cancel') return plainCause(cause)
+  if (attemptAfter) {
+    if (attemptAfter.ended === ATTEMPT_STILL_RUNNING) return plainCause(cause)
     return {
       kind: 'attemptGone',
-      ...(attemptAfter ? { ended: attemptAfter.ended } : {}),
-      ...(attemptAfter?.controller ? { controller: attemptAfter.controller } : {})
+      ended: attemptAfter.ended,
+      ...(attemptAfter.controller ? { controller: attemptAfter.controller } : {})
     }
   }
-  if (known !== undefined && cause) return { kind: 'named', name: known, error: cause }
-  return cause?.kind === 'unknown' ? { kind: 'unnamed', data: cause.data } : { kind: 'unnamed' }
+  const known = kitErrorNameOf(cause)
+  if (known === 'NoActiveAttempt') return { kind: 'attemptGone' }
+  if (known === 'NoSetup') return { kind: 'attemptGone', ended: 'setupWrite' }
+  return plainCause(cause)
 }
 
 /** The gas a reverted receipt spent, where the receipt carries both factors. */
@@ -217,6 +277,81 @@ export const gasSpentOf = (receipt: WriteReceipt): bigint | undefined =>
   receipt.gasUsed !== undefined && receipt.effectiveGasPrice !== undefined
     ? receipt.gasUsed * receipt.effectiveGasPrice
     : undefined
+
+// ---------------------------------------------------------------------------
+// What a retry can fix
+// ---------------------------------------------------------------------------
+
+/**
+ * The execution's causes that leave the attempt ready (D-393): the wait has
+ * not ended yet, or a security stop holds a method the recovery used. The
+ * execution's "still ready" reading renders for these and for a revert with no
+ * cause the wallet can name; every other cause is the fifth ending, which
+ * offers no retry.
+ */
+export const EXECUTION_STILL_READY_CAUSES: readonly KitErrorName[] = [
+  'WaitNotOver',
+  'MethodVetoedSpend'
+]
+
+/**
+ * The submission's acceptance errors: the manager refused the request itself,
+ * and sending the same request again cannot land (D-393: a submission rejected
+ * because an attempt already runs, or refused while a method is stopped, gets
+ * its own copy, since retrying cannot help).
+ */
+const SUBMISSION_ACCEPTANCE_ERRORS: readonly KitErrorName[] = [
+  'NoSetup',
+  'AttemptAlreadyActive',
+  'WrongAttemptId',
+  'WrongSetupNonce',
+  'SetupCommitmentMismatch',
+  'StaleAttempt',
+  'PlaceOutOfRange',
+  'CredentialMismatch',
+  'PlacesNotStrictlyIncreasing',
+  'RequestExpired',
+  'ProofRejected',
+  'MethodStopped',
+  'RuleUnsatisfied',
+  'MalformedHandover',
+  'ReservedAuthority'
+]
+
+/**
+ * The kit errors no retry of the same write fixes, by write. A failed state
+ * whose decoded cause is one of these offers no retry.
+ *
+ * - The save and the edit: a commitment the recovery registry refuses.
+ * - Another setup write: the removal of a setup that is not there.
+ * - The cancel: none here; a cancel with nothing left to cancel reads the gone
+ *   attempt, which offers no retry either.
+ * - The submission: the manager's acceptance errors.
+ * - The execution: every cause but the two that leave the attempt ready.
+ */
+export const NO_RETRY_CAUSES: { readonly [W in WriteKind]: readonly KitErrorName[] } = {
+  save: ['InvalidCommitment'],
+  edit: ['InvalidCommitment'],
+  ownerWrite: ['NoSetup'],
+  cancel: [],
+  submission: SUBMISSION_ACCEPTANCE_ERRORS,
+  execution: KIT_ERROR_NAMES.filter((name) => !EXECUTION_STILL_READY_CAUSES.includes(name))
+}
+
+/** Whether a revert of a write leaves something a retry can fix. */
+export const retryCanFix = (write: WriteKind, cause: RevertCause): boolean => {
+  if (cause.kind === 'attemptGone') return false
+  if (cause.kind === 'named') return !NO_RETRY_CAUSES[write].includes(cause.name)
+  return true
+}
+
+/**
+ * Whether a reverted execution leaves the attempt ready (D-393): a cause of
+ * `EXECUTION_STILL_READY_CAUSES`, or one the wallet cannot name.
+ */
+export const leavesAttemptReady = (cause: RevertCause): boolean =>
+  cause.kind === 'unnamed' ||
+  (cause.kind === 'named' && EXECUTION_STILL_READY_CAUSES.includes(cause.name))
 
 // ---------------------------------------------------------------------------
 // The classification
@@ -241,6 +376,7 @@ const revertedState = (
     transactionHash: receipt.transactionHash,
     receipt,
     cause: revertCauseOf(context.write, cause, context.attemptAfter),
+    ...(cause ? { decoded: cause } : {}),
     ...(gasSpent !== undefined ? { gasSpent } : {})
   }
 }
@@ -249,9 +385,12 @@ const revertedState = (
  * Classifies a write that did not land (D-319), by whether a transaction hash
  * exists and whether a receipt with status zero came back:
  *
+ * - a transaction another one replaced before it was mined, other than a mere
+ *   repricing, reads `failedNotSent` with that reason: the write's own call
+ *   never ran, whatever the replacement did;
  * - a receipt with status zero reads `failedReverted`, with the cause the
- *   receipt carries and its gas gone; a cancel's reads that the attempt was
- *   already gone (D-307);
+ *   receipt carries and its gas gone; a cancel's may read that the attempt was
+ *   already gone (D-307, `revertCauseOf`);
  * - no receipt and no transaction hash reads `failedNotSent`: nothing reached
  *   the chain and the account stands as it did;
  * - a transaction hash with no receipt is neither: the call may still land, so
@@ -266,6 +405,14 @@ export const classifyFailure = (
   context: FailureContext
 ): FailedState | SubmittingState => {
   const { receipt } = failure
+  if (failure.replaced) {
+    return {
+      status: 'failedNotSent',
+      write: context.write,
+      error: failure.error,
+      replaced: failure.replaced
+    }
+  }
   if (receipt) {
     if (receipt.status === 1) {
       throw new TypeError('A receipt with status one is no failure: settle it as landed.')
