@@ -1618,6 +1618,27 @@ const raceTwoReplyWrites = async (
   expect(replies.map((r) => r.proof)).toEqual([PROOF_A, PROOF_B])
 }
 
+// A stand-in for the Web Locks API that records each lock name and runs one
+// task at a time per name, first in first out: the next task starts once the
+// previous one has settled.
+const exclusiveLocks = () => {
+  const names: string[] = []
+  const tails = new Map<string, Promise<void>>()
+  const request = (name: string, callback: () => Promise<unknown>) => {
+    names.push(name)
+    const run = (tails.get(name) ?? Promise.resolve()).then(() => callback())
+    tails.set(
+      name,
+      run.then(
+        () => undefined,
+        () => undefined
+      )
+    )
+    return run
+  }
+  return { names, request }
+}
+
 describe('updates of one session run one at a time, across wrappers and pages', () => {
   it('two wrapper objects over one extension store share one queue per session', async () => {
     await extensionRecordStorage.remove(SESSION_KEY)
@@ -1632,13 +1653,7 @@ describe('updates of one session run one at a time, across wrappers and pages', 
   })
 
   it('with the Web Locks API, every session update takes the lock named by the session key', async () => {
-    const names: string[] = []
-    const locks = {
-      request: async (name: string, callback: () => Promise<unknown>) => {
-        names.push(name)
-        return callback()
-      }
-    }
+    const locks = exclusiveLocks()
     await withNavigator({ locks }, async () => {
       const { records } = setup()
       expect(await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))).toMatchObject({
@@ -1651,7 +1666,16 @@ describe('updates of one session run one at a time, across wrappers and pages', 
       expect(await landSession(records)).toMatchObject({ value: { account: ACCOUNT } })
       expect(await endSessionCountdown(records)).toBe(true)
     })
-    expect(names).toEqual(Array(7).fill(SESSION_KEY))
+    expect(locks.names).toEqual(Array(7).fill(SESSION_KEY))
+  })
+
+  it('with the Web Locks API, two reply writes from one read run one at a time through the lock', async () => {
+    const locks = exclusiveLocks()
+    await withNavigator({ locks }, async () => {
+      const { storage, records } = setup()
+      await raceTwoReplyWrites({ records, storage }, records)
+    })
+    expect(locks.names).toEqual(Array(4).fill(SESSION_KEY))
   })
   ;(
     [
