@@ -1,12 +1,8 @@
 /**
- * The privacy levels the setup screen offers, mirrored from
- * docs/social-recovery/design/ux-interfaces.md D-375 as written. These are the
- * extension's and the SDK's encoding over the two metadata fields of the setup
- * event; the contract defines no levels and reads neither field.
- *
- * Copied at design commit bd8780f7ad59a451035b15920c00015a2eee6e9b of
- * defi-wonderland/mast-social-recovery-2. Whether a screen offers two levels or
- * three is a screen decision (cut-q-23), not this file's.
+ * The privacy levels the setup screen offers. These are the extension's and the
+ * SDK's encoding over the two metadata fields of the setup event; the contract
+ * defines no levels and reads neither field. Whether a screen offers two levels
+ * or three is the screen's choice.
  *
  * - private, the default: shape and values encrypted into the private field,
  *   nothing readable in the public one.
@@ -15,7 +11,6 @@
  * - public: everything in the clear and no recovery password.
  */
 export const PRIVACY_LEVELS = ['private', 'shape-visible', 'public'] as const
-// D-375 makes `private` the default level. The default is a screen's value to
-// set, so this file declares no runtime constant for it (types and `as const`
-// vocabularies only).
+// `private` is the default level. The default is a screen's value to set, so
+// this file declares no runtime constant for it.
 export type PrivacyLevel = typeof PRIVACY_LEVELS[number]

@@ -3,3 +3,15 @@
 ## Social recovery
 
 The social recovery feature is designed and split into tasks under `docs/social-recovery/`. Read `docs/social-recovery/README.md` first. The ux chapter `docs/social-recovery/design/ux.md` is the rule where any other text differs from it. The tasks live in `docs/social-recovery/tasks/`, and their code goes under `src/web/modules/social-recovery/`. Work happens on the branch `dev/wonderland`, one pull request per task.
+
+Rules for the code under `src/web/modules/social-recovery/`:
+
+- Every task builds in its own folder and touches no file another task touches. The shared files (`MainRoutes.tsx`, the route constants, `routesConfig.ts`, `en.json`, `jest.config.js`, `.eslintrc.js`, the manifest) change only in the setup task.
+- `sdk-interfaces/` declares the SDK's interfaces as types and `as const` lists only, imported from no SDK package. A change there is a design change first.
+- `routes/SocialRecoveryRoutes.tsx` is the module's route registry, mounted once at `social-recovery/*` inside the full-tab group. A task adds exactly one `<Route>` line for its screen inside the guard group its surface needs: the owner's group (keystore unlocked and an account) or the open group (no keystore). Every recovery surface opens in a full tab, never in the action popup.
+- A screen imports `shared/client`, never `sdk-doubles`. Only `shared/client` and the tests of `sdk-doubles` import the doubles. ESLint enforces this for static imports; a reviewer checks dynamic imports and `require`.
+- Every string a screen shows is a key under `socialRecovery` in `src/common/config/localization/translations/en.json`, read through `i18n.t('socialRecovery.<group>.<key>')`. Keys are slugs with no `.` and no `:`. A lane uses keys and adds none; a missing string is reported to the coordinator. Strings never use the words policy, proof, relayer, EIP-712, atomic, Protected, "your people" or "full wallet password"; the copy-lint test enforces the bans.
+- Records live in the extension's local storage, never in a background controller.
+- Every signing request goes through the request queue into the action window.
+- Tests run in Jest's node environment and import through the `@web/...` and `@common/...` aliases. A test that needs a DOM declares `@jest-environment jsdom` in its docblock. Tests check behaviour; a test that only restates a declaration is not written.
+- Code, comments, test names and file names never reference the design documents, task ids, decision ids, invariant ids, copy-rule ids or frame ids. A comment states the rule in plain words or is not written. No README files inside the module. No overhead comments in shared files; match the surrounding style.
