@@ -27,6 +27,15 @@ describe('recovery action double', () => {
     expect(await world.actionPart.holdsAnyPrivilege(world.keys.fresh)).toBe(false)
   })
 
+  it('answers actionInfo with the scripted name, version and interface answer', async () => {
+    const world = createWorld()
+    expect(await world.actionPart.actionInfo()).toEqual(world.chain.actionInfo)
+    world.chain.actionInfo = { name: 'OtherAction', version: '7', supportsInterface: false }
+    const scripted = { name: 'OtherAction', version: '7', supportsInterface: false }
+    expect(await world.actionPart.actionInfo()).toEqual(scripted)
+    expect(await (await world.builder().recoveryAction()).actionInfo()).toEqual(scripted)
+  })
+
   it('prepares the arming and the disarming write on the account, sent by the account', async () => {
     const world = createWorld()
     const arming = await world.actionPart.armingCall()
