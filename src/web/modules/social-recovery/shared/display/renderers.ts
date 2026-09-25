@@ -53,8 +53,11 @@ export const renderShortAddress = (address: string): string => {
 
 /**
  * The full form: the address whole, checksummed, with no grouping of its
- * digits. The recovery surfaces use it on every review or confirmation block and
- * wherever the reader copies or compares the address.
+ * digits. The recovery surfaces use it on every review or confirmation block, on
+ * the cancel banner, on the guardian row's new key, on the approval page's
+ * fields, on the key to fund, on the Recovery Card and wherever the reader
+ * copies or compares the address: a truncated key is what an attacker grinding a
+ * look-alike address imitates.
  */
 export const renderFullAddress = (address: string): string => checksumAddress(address)
 
