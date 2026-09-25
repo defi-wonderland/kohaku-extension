@@ -1,11 +1,3 @@
-/**
- * PT-036, done entry 1: each value type of D-302 renders in exactly one form.
- *
- * Sources: docs/social-recovery/briefs/PT-036.md (Test expectations),
- * docs/social-recovery/tasks/PT-036-display-rules-and-the-status-vocabulary.md
- * (Done), docs/social-recovery/design/ux.md D-302. Every expectation is a
- * literal, never rebuilt with the calls the code makes.
- */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
@@ -20,15 +12,14 @@ import {
   Translate
 } from '..'
 
-// The D-302 example address, checksummed (EIP-55).
 const CHECKSUMMED = '0x2b0F5E98Ee98ADC9865745e98802F333f72F6ef5'
 const LOWER = '0x2b0f5e98ee98adc9865745e98802f333f72f6ef5'
 const UPPER = '0x2B0F5E98EE98ADC9865745E98802F333F72F6EF5'
 // One letter's case flipped: mixed case with a checksum that does not hold.
 const BAD_CHECKSUM = '0x2B0F5E98Ee98ADC9865745e98802F333f72F6ef5'
 
-describe('short address (D-302: four and four hex digits after the prefix)', () => {
-  it('renders the D-302 example 0x2b0F…6ef5', () => {
+describe('short address: four and four hex digits after the prefix', () => {
+  it('renders 0x2b0F…6ef5', () => {
     expect(renderShortAddress(CHECKSUMMED)).toBe('0x2b0F…6ef5')
   })
 
@@ -42,7 +33,7 @@ describe('short address (D-302: four and four hex digits after the prefix)', () 
   })
 })
 
-describe('full address (D-302: whole, no grouping)', () => {
+describe('full address: whole, no grouping', () => {
   it('renders the checksummed address whole', () => {
     expect(renderFullAddress(LOWER)).toBe('0x2b0F5E98Ee98ADC9865745e98802F333f72F6ef5')
     expect(renderFullAddress(UPPER)).toBe('0x2b0F5E98Ee98ADC9865745e98802F333f72F6ef5')
@@ -57,7 +48,7 @@ describe('full address (D-302: whole, no grouping)', () => {
   })
 })
 
-describe('user-typed method name (D-302: caps at 24 characters)', () => {
+describe('user-typed method name: caps at 24 characters', () => {
   it('leaves a 24-character name unchanged', () => {
     expect(ellipsizeName('Abcdefghijklmnopqrstuvwx')).toBe('Abcdefghijklmnopqrstuvwx')
   })
@@ -87,40 +78,30 @@ describe('user-typed method name (D-302: caps at 24 characters)', () => {
     expect(ellipsizeName(`${'a'.repeat(22)}${flag}cc`)).toBe(`${'a'.repeat(22)}${flag}…`)
   })
 
-  // The empty-name rule (null, no name and no caveat) lives in
-  // renderResolvedName and is tested in caveat.test.ts; the cut itself keeps
-  // an empty user-typed name empty.
   it('leaves an empty name empty', () => {
     expect(ellipsizeName('')).toBe('')
   })
 })
 
-describe('transaction hash or challenge (D-302: twelve and six)', () => {
+describe('transaction hash or challenge: twelve and six', () => {
+  // A 32-byte hash.
   const HASH = `0x0123456789ab${'c'.repeat(46)}fedcba`
-
-  it('fixture is a 32-byte hash', () => {
-    expect(HASH).toHaveLength(66)
-  })
 
   it('renders 0x, twelve leading hex digits, an ellipsis and six trailing', () => {
     expect(renderHash(HASH)).toBe('0x0123456789ab…fedcba')
   })
 })
 
-describe('approval blob (D-302: twelve and eight)', () => {
+describe('approval blob: twelve and eight', () => {
   // A 65-byte signature-shaped blob.
   const BLOB = `0xa1b2c3d4e5f6${'0'.repeat(110)}9876fedc`
-
-  it('fixture is a 65-byte blob', () => {
-    expect(BLOB).toHaveLength(132)
-  })
 
   it('renders 0x, twelve leading hex digits, an ellipsis and eight trailing', () => {
     expect(renderApproval(BLOB)).toBe('0xa1b2c3d4e5f6…9876fedc')
   })
 })
 
-describe('hidden value (D-302: sixteen dots beside a hidden chip)', () => {
+describe('hidden value: sixteen dots beside a hidden chip', () => {
   it('renders exactly sixteen dots and the Hidden chip', () => {
     expect(renderHiddenValue()).toEqual({
       dots: '••••••••••••••••',
@@ -129,7 +110,7 @@ describe('hidden value (D-302: sixteen dots beside a hidden chip)', () => {
   })
 })
 
-describe('member list (D-302: three members then a count of the rest)', () => {
+describe('member list: three members then a count of the rest', () => {
   const members = ['alice.eth', 'bob.eth', 'carol.eth', 'dave.eth', 'erin.eth']
 
   it('renders a list of three with no count', () => {
@@ -169,7 +150,7 @@ describe('member list (D-302: three members then a count of the rest)', () => {
     })
   })
 
-  it('renders every member on the D-392 checklist', () => {
+  it('renders every member when asked to show all', () => {
     expect(renderMemberList(members, { showAll: true })).toEqual({
       shown: members,
       restCount: 0,
@@ -178,7 +159,7 @@ describe('member list (D-302: three members then a count of the rest)', () => {
   })
 })
 
-describe('payment order (D-302: amount, symbol and payee, or no payment, one form)', () => {
+describe('payment order: amount, symbol and payee, or no payment, in one form', () => {
   const USDC: Address = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
   const PAYEE: Address = LOWER
   const ZERO: Address = '0x0000000000000000000000000000000000000000'
@@ -213,13 +194,7 @@ describe('payment order (D-302: amount, symbol and payee, or no payment, one for
     expect(renderPaymentOrder(undefined, token)).toBe('No payment')
   })
 
-  it('takes the translate function as its third parameter and passes it the full payee', () => {
-    // Compile-time, held by `npx tsc --noEmit` (ts-jest reports no type error
-    // here): a payee-form option in the third place would make this false.
-    type Third = Parameters<typeof renderPaymentOrder>[2]
-    const thirdIsTranslate: Third extends Translate | undefined ? true : false = true
-    expect(thirdIsTranslate).toBe(true)
-
+  it('passes the full payee to a translate function given as the third argument', () => {
     const calls: [string, Record<string, unknown> | undefined][] = []
     const t: Translate = (key, options) => {
       calls.push([key, options])

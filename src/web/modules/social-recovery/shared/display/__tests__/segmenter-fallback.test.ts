@@ -1,19 +1,11 @@
-/**
- * PT-036: the name cut works where Intl.Segmenter does not exist. Firefox 115,
- * the floor of the gecko manifest, lacks it, so the display module must load
- * and cut a name without it (D-302: a name caps at 24 characters).
- *
- * The module is loaded fresh after the delete, so neither a segmenter built at
- * load time nor one cached by an earlier test can hide the missing API.
- */
 type IntlWithSegmenter = { Segmenter?: unknown }
 const intl = Intl as unknown as IntlWithSegmenter
 
 type DisplayModule = typeof import('..')
 
-// A fresh copy of the module, loaded while Intl.Segmenter is absent. A plain
-// require: ts-jest's dynamic-import helper does not exist in an isolated
-// module registry.
+// Loaded fresh after the delete, so no segmenter built at load time or cached
+// by an earlier test hides the missing API. A plain require: ts-jest's
+// dynamic-import helper does not exist in an isolated module registry.
 const loadFresh = (): DisplayModule => {
   let loaded: DisplayModule | undefined
   jest.isolateModules(() => {

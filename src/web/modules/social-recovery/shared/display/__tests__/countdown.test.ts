@@ -1,17 +1,8 @@
-/**
- * PT-036: a running attempt's countdown in its four K-09 forms (D-302).
- *
- * Sources: docs/social-recovery/design/ux.md D-302 (an attempt's countdown
- * reads waiting or execution due, and stopped from the second release),
- * docs/social-recovery/design/live-frame-strings.md K-09 ("47:12:06 · waiting",
- * "Execution due", "47:12:06 · stopped", "Execution due · stopped").
- * The state derives from the time left alone; the caller passes none.
- */
 import { countdownStateOf, renderCountdown } from '..'
 
 const REMAINING = (47 * 3600 + 12 * 60 + 6) * 1000 // 47:12:06
 
-describe('attempt countdown (K-09)', () => {
+describe('attempt countdown', () => {
   it('renders the waiting form while time is left', () => {
     expect(renderCountdown({ remainingMs: REMAINING })).toBe('47:12:06 · waiting')
   })
