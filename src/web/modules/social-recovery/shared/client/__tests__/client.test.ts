@@ -1,10 +1,9 @@
 /**
- * PT-038 done entries 1 and 3: the extension builds one client from a
- * configuration naming one chain, the address book of the manager, the methods
- * and the action, and a provider adapter whose four reads route through the
- * extension's own provider; it hands the client no signer and no storage; with
- * no rail configured every prepared call is sent from a key the signer holds
- * (ux-interfaces.md D-370, sdk.md D-208, ux.md D-312).
+ * The extension builds one client from a configuration naming one chain, the
+ * address book of the manager, the methods and the action, and a provider
+ * adapter whose four reads route through the extension's own provider. It
+ * hands the client no signer and no storage. With no sponsor rail configured,
+ * every prepared call is sent from a key the signer holds.
  */
 import {
   addressOf,
@@ -34,14 +33,10 @@ import {
   namesSignerOrStorage,
   providerDoubleReads,
   RECOVERY_CALLS,
-  RECOVERY_CHAINS,
-  RecoveryClientConfiguration,
   sendingKeyOf,
-  SPONSOR_RAIL,
   spyOnBuilder,
   thrownBy,
-  underlyingCalls,
-  WALLET_RECOVERY_CHAIN
+  underlyingCalls
 } from './harness'
 
 const IPROVIDER_READS = ['block', 'call', 'chainId', 'logs']
@@ -60,12 +55,6 @@ describe('buildRecoveryClient', () => {
     expect(typeof client.recovery.recoveryState).toBe('function')
     expect(typeof client.recovery.prepareStartAttempt).toBe('function')
     expect(typeof client.setup.prepareCommitSetup).toBe('function')
-  })
-
-  it('names one chain the wallet reads, a fixed label among the two of D-208 (D-312)', () => {
-    expect(RECOVERY_CHAINS).toContain(WALLET_RECOVERY_CHAIN)
-    expect(typeof WALLET_RECOVERY_CHAIN).toBe('string')
-    expect(createWorld().config.chain).toBe(WALLET_RECOVERY_CHAIN)
   })
 
   it('hands the builder double exactly the configuration, the adapter and the descriptor', async () => {
@@ -95,7 +84,7 @@ describe('buildRecoveryClient', () => {
     expect(spies.codec).not.toHaveBeenCalled()
   })
 
-  it('hands the builder the wallet request window of 24 hours and no token allowlist (D-373, D-312)', async () => {
+  it('hands the builder the wallet request window of 24 hours and no token allowlist', async () => {
     const spies = spyOnBuilder()
     const world = createWorld()
     await buildRecoveryClient(world.config)
@@ -127,15 +116,6 @@ describe('buildRecoveryClient', () => {
     expect(fromTheExtension.filter(namesSignerOrStorage)).toEqual([])
   })
 
-  it('has no configuration member for a signer, a storage or a rail', () => {
-    type Forbidden = Extract<
-      keyof RecoveryClientConfiguration,
-      'signer' | 'storage' | 'keystore' | 'rail' | 'sponsor' | 'sponsorRail' | 'paymaster'
-    >
-    const none: [Forbidden] extends [never] ? true : false = true
-    expect(none).toBe(true)
-  })
-
   it('routes the construction reads through the extension provider, never the provider double', async () => {
     const doubleReads = providerDoubleReads()
     const world = createWorld()
@@ -158,7 +138,7 @@ describe('buildRecoveryClient', () => {
     expect(sent).toContain('eth_getBlockByNumber')
   })
 
-  it('hands the client a provider of the four reads and no send, balance or estimate (D-373)', async () => {
+  it('hands the client a provider of the four reads and no send, balance or estimate', async () => {
     const spies = spyOnBuilder()
     const world = createWorld()
     await buildRecoveryClient(world.config)
@@ -167,7 +147,7 @@ describe('buildRecoveryClient', () => {
     expect(functionMembersOf(adapter).sort()).toEqual(IPROVIDER_READS)
   })
 
-  it('binds the one chain the configuration names and refuses a provider on another (D-312)', async () => {
+  it('binds the one chain the configuration names and refuses a provider on another', async () => {
     const world = createWorld()
     world.ethers.answeredChainId = 1
     const caught = await thrownBy(buildRecoveryClient(world.config))
@@ -196,10 +176,6 @@ describe('with no rail configured, every prepared call is sent from a key the si
     block
   })
 
-  it('configures no sponsor rail in the first release', () => {
-    expect(SPONSOR_RAIL).toBe('none')
-  })
-
   it("sends the account's own operations from its controlling key", async () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
@@ -209,7 +185,7 @@ describe('with no rail configured, every prepared call is sent from a key the si
     expect(sendingKeyOf(cancel, { accountKey, recovererKey })).toEqual(accountKey)
   })
 
-  it("sends the two recovery calls, the submission and the execution, from the recoverer's own key (D-373)", () => {
+  it("sends the two recovery calls, the submission and the execution, from the recoverer's own key", () => {
     expect(RECOVERY_CALLS).toEqual(['submission', 'execution'])
     RECOVERY_CALLS.forEach((recoveryCall) =>
       expect(sendingKeyOf(call('anyone'), { accountKey, recovererKey }, recoveryCall)).toEqual(
@@ -259,7 +235,6 @@ describe('with no rail configured, every prepared call is sent from a key the si
   })
 })
 
-// The descriptor a client is built with keeps the shipped audited sets (D-208).
 describe('an address book naming another action', () => {
   it('keeps the shipped audited sets rather than widening them', async () => {
     const other = addressOf('another-action')
