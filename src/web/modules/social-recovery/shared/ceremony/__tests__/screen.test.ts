@@ -21,6 +21,7 @@ import ts from 'typescript'
 
 import {
   callerParams,
+  carries,
   ceremony,
   enrollFailure,
   fakeAssertion,
@@ -36,6 +37,7 @@ import {
   notAllowedError,
   P256Point,
   PASSKEY_METHOD,
+  PROOF_HEX,
   replyFailure,
   resetVisibility,
   setVisibility,
@@ -206,6 +208,21 @@ const CLAIM = '?call=createClaim&method=passkey&id=req-1'
 /** The outcome of the one report the tab wrote. */
 const reported = (store: ReturnType<typeof fakeStore>) =>
   (store.set.mock.calls[0][1] as { outcome: unknown }).outcome
+
+/** Clicks the one button that reads `text`. */
+const press = async (page: HTMLElement, text: string) => {
+  const buttons = Array.from(page.querySelectorAll('button'))
+  const matching = buttons.filter((b) => b.textContent === text)
+  if (matching.length !== 1) {
+    throw new Error(
+      `${matching.length} "${text}" buttons among: ${buttons.map((b) => b.textContent).join(', ')}`
+    )
+  }
+  await act(async () => {
+    matching[0].click()
+    await flush(20)
+  })
+}
 
 describe('the ceremony tab screen', () => {
   let creds: ReturnType<typeof installCredentials>
@@ -443,5 +460,87 @@ describe('a hand-off that returns after eleven minutes', () => {
     expect(report).toMatchObject({ outcome: { kind: 'verdict', verdict: 'passed' } })
     creds.restore()
     dateNow.mockRestore()
+  })
+})
+
+describe('a cancel while the method still runs', () => {
+  it('writes the cancelled report and no claim', async () => {
+    const creds = installCredentials({
+      get: async () => fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+    })
+    setVisibility('visible', false)
+    const { method, store } = source()
+    let finish: (proof: typeof PROOF_HEX) => void = () => undefined
+    method.replyFrom.mockImplementation(
+      () =>
+        new Promise<typeof PROOF_HEX>((resolve) => {
+          finish = resolve
+        })
+    )
+    const page = await render(CLAIM)
+    expect(method.replyFrom).toHaveBeenCalledTimes(1)
+    expect(store.set).not.toHaveBeenCalled()
+
+    await press(page, 'Cancel')
+    await act(async () => {
+      finish(PROOF_HEX)
+      await flush(20)
+    })
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(reported(store)).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+    expect(carries(store.set.mock.calls, { strings: [PROOF_HEX] })).toBe(false)
+    expect(page.textContent).toContain('Cancelled')
+    expect(page.textContent).not.toContain('passed just now')
+    creds.restore()
+  })
+})
+
+describe('a report the store fails to write', () => {
+  const DELIVERY_FAILED = 'Not delivered · the result did not reach the row'
+
+  it('keeps the result and offers a retry that writes the same report with no new ceremony', async () => {
+    const creds = installCredentials({
+      get: async () => fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+    })
+    setVisibility('visible', false)
+    const { method, orchestrator, store, resolve } = source()
+    const map = new Map<string, unknown>()
+    store.set.mockImplementation(async (key: string, value: unknown) => {
+      map.set(key, value)
+      return null
+    })
+    store.get.mockImplementation(async (key: string, fallback?: unknown) =>
+      map.has(key) ? map.get(key) : fallback
+    )
+    store.remove.mockImplementation(async (key: string) => {
+      map.delete(key)
+      return null
+    })
+    store.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'))
+
+    const page = await render(CLAIM)
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(map.size).toBe(0)
+    const text = page.textContent ?? ''
+    expect(text).toContain('passed just now')
+    expect(text).toContain(DELIVERY_FAILED)
+    expect(text).not.toContain('QUOTA_BYTES')
+    const ran = methodRunCount(method, orchestrator)
+
+    await press(page, 'Try again')
+    expect(store.set).toHaveBeenCalledTimes(2)
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(resolve).toHaveBeenCalledTimes(1)
+    expect(methodRunCount(method, orchestrator)).toBe(ran)
+    expect(page.textContent).not.toContain(DELIVERY_FAILED)
+
+    const report = await ceremony().takeCeremonyReport(
+      { id: 'req-1', call: 'createClaim', method: 'passkey' },
+      store,
+      Date.now()
+    )
+    expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
+    expect(report?.outcome).toEqual((store.set.mock.calls[0][1] as { outcome: unknown }).outcome)
+    creds.restore()
   })
 })

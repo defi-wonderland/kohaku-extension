@@ -11,7 +11,9 @@
  */
 import {
   browserErrorNameOf,
+  carries,
   ceremony,
+  CONFIG_HEX,
   enrollFailure,
   fakeAssertion,
   fakeAttestation,
@@ -25,6 +27,7 @@ import {
   noteKeyOf,
   notAllowedError,
   P256Point,
+  PROOF_HEX,
   replyFailure,
   rowChipOf,
   SYNCED_FLAGS
@@ -277,4 +280,83 @@ describe('a ceremony that completes', () => {
       expect(methodRunCount(method, orchestrator)).toBeGreaterThan(0)
     })
   )
+})
+
+describe('a cancel while the method still runs', () => {
+  beforeEach(() => browserAnswers())
+
+  const ANSWERS = { configFrom: CONFIG_HEX, replyFrom: PROOF_HEX, verify: 'satisfied' } as const
+
+  const MEMBERS = [
+    { host: 'enroll', member: 'configFrom' },
+    { host: 'testAccess', member: 'replyFrom' },
+    { host: 'testAccess', member: 'verify' },
+    { host: 'createClaim', member: 'replyFrom' }
+  ] as const
+
+  ;(['answers', 'throws'] as const).forEach((settles) =>
+    MEMBERS.forEach(({ host, member }) =>
+      it(`reads cancelled at ${host} when the holder cancels during ${member} and it then ${settles}, and hands on no result`, async () => {
+        const controller = new AbortController()
+        const method = fakeMethod()
+        let reached: () => void = () => undefined
+        const memberRuns = new Promise<void>((resolve) => {
+          reached = resolve
+        })
+        // The member settles only once the holder has cancelled.
+        ;(method[member] as jest.Mock).mockImplementation(() => {
+          reached()
+          return new Promise((resolve, reject) => {
+            controller.signal.addEventListener('abort', () =>
+              settles === 'answers'
+                ? resolve(ANSWERS[member])
+                : reject(new Error('the method stopped'))
+            )
+          })
+        })
+        const orchestrator = fakeOrchestrator(method)
+        const running = hosts[host]({ method, orchestrator, signal: controller.signal })
+        await Promise.race([memberRuns, running])
+        expect(method[member]).toHaveBeenCalledTimes(1)
+
+        controller.abort()
+        const outcome = await running
+        expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
+        expect(carries(outcome.raw, { strings: [PROOF_HEX, CONFIG_HEX] })).toBe(false)
+      })
+    )
+  )
+})
+
+describe('the material the method receives', () => {
+  beforeEach(() => browserAnswers())
+
+  const suppliedDevice = () =>
+    ceremony().providedMaterialDevice({ enroll: { result: {} }, sign: { proofs: '0x01' } })
+
+  it('carries the ceremony abort signal for an in-browser prover', async () => {
+    const controller = new AbortController()
+    const method = fakeMethod({}, 'in-browser-prover')
+    const orchestrator = fakeOrchestrator(method)
+    await hosts.createClaim({
+      method,
+      orchestrator,
+      resolvedDevice: suppliedDevice(),
+      signal: controller.signal
+    })
+    expect(method.replyFrom.mock.calls[0][2]).toEqual({ proofs: '0x01', signal: controller.signal })
+  })
+
+  it('carries no signal for an external-app method', async () => {
+    const controller = new AbortController()
+    const method = fakeMethod({}, 'external-app')
+    const orchestrator = fakeOrchestrator(method)
+    await hosts.enroll({
+      method,
+      orchestrator,
+      resolvedDevice: suppliedDevice(),
+      signal: controller.signal
+    })
+    expect(method.configFrom.mock.calls[0][1]).toEqual({ result: {} })
+  })
 })
