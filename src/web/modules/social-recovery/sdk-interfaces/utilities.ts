@@ -171,8 +171,7 @@ export type KitErrorName = typeof KIT_ERROR_NAMES[number]
 /**
  * What `decodeRevert` answers: the source, the error's name, its selector and
  * its argument values by name, or the unknown result with the selector where
- * one exists and the raw bytes. Never thrown. The SDK owner has yet to confirm
- * this shape against a flat `{ name, place, method }` record.
+ * one exists and the raw bytes. Never thrown.
  */
 export type KitError =
   | {
