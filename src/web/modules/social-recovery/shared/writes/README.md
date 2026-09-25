@@ -50,7 +50,7 @@ idle ──start──▶ checkingGas ◀─────────────
 
 `classifyFailure(failure, { write, attemptAfter })` decides by whether a transaction hash exists and whether a receipt with status zero came back:
 
-- A transaction another one replaced before it was mined, other than a mere repricing (ethers' `TRANSACTION_REPLACED` with reason `cancelled` or `replaced`), reads `failedNotSent` with that reason in `replaced`, never `landed`: the write's own call never ran. A `repriced` replacement is the same call, so it settles by the replacement's receipt.
+- A transaction another one replaced before it was mined, other than a mere repricing (ethers' `TRANSACTION_REPLACED` with reason `cancelled` or `replaced`), reads `failedNotSent` with that reason in `replaced`, never `landed`: the write's own call never ran. It renders its own line (`writes.replaced`), never the line that the transaction never reached the chain and never that its gas is gone. A `repriced` replacement is the same call, so it settles by the replacement's receipt.
 - A receipt with status zero reads `failedReverted`, with `gasSpent` where the receipt carries `gasUsed` and `effectiveGasPrice`, and `decoded`, the kit error the wallet decoded.
 - No receipt and no hash reads `failedNotSent`: a refused signature, a gas estimate that would revert, or a broadcast that failed. A read of the gas check that could not run is `gasReadError` instead.
 - A hash with no receipt is neither reading. The call may still land, so the answer is the submitting state with that hash, which keeps waiting for its receipt.
@@ -67,7 +67,7 @@ The cause of a revert (`RevertCause`):
   - no read yet, and the decoded cause is `NoActiveAttempt`: the state names no road and no controller rather than one it guessed;
   - no read yet, and the decoded cause is `NoSetup`: a setup write cleared the setup, so the state names that road.
 
-  It never offers the retry. An attempt read of `{ ended: 'stillRunning' }`, and any cancel revert the wallet could not decode or that names another kit error, reads the plain reverted reading with the retry and the move-funds action: an owner whose cancel ran out of gas while the attack runs must not read that nothing is left to cancel. `attemptRead` moves a reverted cancel between the two readings as the read answers.
+  It never offers the retry. An attempt read of `{ ended: 'stillRunning' }`, and any cancel revert the wallet could not decode or that names another kit error, reads the plain reverted reading with the retry and the move-funds action: an owner whose cancel ran out of gas while the attack runs must not read that nothing is left to cancel. Under `stillRunning` a decoded `NoActiveAttempt` or `NoSetup` names no cause, since the read contradicts it (a new attempt may have opened since the revert). `attemptRead` moves a reverted cancel between the two readings as the read answers.
 
 What a retry can fix: `canRetry` offers the retry for `gasReadError`, for `failedNotSent`, and for `failedReverted` only where `retryCanFix(write, cause)`. That excludes the gone attempt and the kit errors of `NO_RETRY_CAUSES[write]`:
 
@@ -87,7 +87,12 @@ What a retry can fix: `canRetry` offers the retry for `gasReadError`, for `faile
 2. The transaction to estimate (`gasTransactionOf`): a call anyone may send as it stands, from the key, through `gasCallOf` of shared/client. A write the account sends rides the account's own execute, so the caller passes `transaction`, the transaction the key sends, built through the account library from the prepared write. It must come from the key and go to the account the key operates (`operates.address`), or to `ACCOUNT_FACTORY` (ambire-common's `AMBIRE_ACCOUNT_FACTORY`) where it deploys an account with no code yet (D-319); anything else is a TypeError.
 3. Three reads through the extension's provider (`createChainReads` of shared/client), one request each: the estimate of that transaction, the gas price and the key's balance. A read that could not run rejects with its `ProviderReadFailure`, which the reducer reads as `gasReadError`; an estimate that would revert rejects with its `RevertedCall`, which it reads as `failedNotSent`.
 4. `required` is the estimate times the gas price plus `FEE_HEADROOM_PERCENT` (20). A balance at or above it answers `{ kind: 'enough' }` and the step is skipped.
-5. Otherwise, off the fast track, a fourth read estimates the transfer route's own transaction (`transferTransactionOf`: the key sends the account's `executeBySender` with one call to the key, contracts D-102). The estimate runs with no value, so it does not revert where the account holds less than the amount at the time of the check; `transferFeeOf` adds `VALUE_TRANSFER_GAS` (the EVM's value-call and new-account costs, 9000 and 25000) and the headroom. It answers `{ kind: 'deposit', step }`.
+5. Otherwise, off the fast track, a fourth read estimates the transfer route's own transaction (`transferEstimateCallOf`), and it answers `{ kind: 'deposit', step }`:
+   - An account with code runs the transfer as its own `executeBySender` with one call to the key (`transferTransactionOf`, contracts D-102), or as the caller's `transferTransaction` to the account.
+   - An account with no code yet (`operates.deployed` false, or a write whose own transaction goes to `ACCOUNT_FACTORY`) has nothing to call: its transfer deploys it through the factory and runs the call in one transaction. The account library builds that one, so the caller passes it as `transferTransaction`, to `ACCOUNT_FACTORY`. Without it the check never estimates a call to the empty address: the step offers the deposit from outside alone.
+   - A transfer transaction from another address, or to anywhere else, is a TypeError.
+   - The estimate runs with no value, so it does not revert where the account holds less than the amount at the time of the check; `transferFeeOf` adds `VALUE_TRANSFER_GAS` (the EVM's value-call and new-account costs, 9000 and 25000) and the headroom.
+   - A transfer estimate that reverts does not fail the check: the account cannot run that transfer now, so the step drops that route and keeps the deposit from outside. A transfer read that could not run rejects as `gasReadError`, like the others.
 
 The step carries the key's address, the estimate, the balance, the shortfall, the network name and symbol, and the routes. The deposit from outside asks for the shortfall. The transfer asks for the shortfall plus the transfer's own fee (`fee` on the route), since the key sends and pays for the transfer itself (D-319, D-393): after the transfer lands, the check run again answers enough. Each amount is rounded up to six decimals, so a holder who sends what the step shows covers it. Off the fast track, `operates` (the account this wallet holds that the key operates) is required and the step offers both routes, the transfer from it and the deposit from outside. On the fast track the key operates no account yet, so the step offers the deposit from outside alone (D-393: on the logged-in route the step offers both routes). The step links to no service that hands out test-network funds (D-312, the owner's ruling of 2026-09-22), and the first release configures no sponsor.
 
@@ -99,7 +104,7 @@ The step carries the key's address, the estimate, the balance, the shortfall, th
 | --- | --- |
 | `gasReadError` | `gasCheckFailed`, the retry |
 | `submitting` | the in-progress chip, `submittingRecovery` for a submission and `submitting` for any other write, `submittingBody` |
-| `failedNotSent` | `notSent`, the retry |
+| `failedNotSent` | `notSent`, or `replaced` for a replaced transaction, the retry |
 | `failedReverted` | the write's own reverted sentence (`revertedKeyOf`) with the cause sentence (`causes.<KitErrorName>` or `causes.unnamed`) as `{{cause}}`, the retry where a retry can fix the cause |
 | `failedReverted`, gone attempt | `cancelRevertedTitle`, `cancelReverted`, then `nowControlledBy` and the controller in full after an execution, or the road's sentence after another road |
 
@@ -109,7 +114,7 @@ The step carries the key's address, the estimate, the balance, the shortfall, th
 | Recovery call, fast track | `fundTitle`, `sendingKeyPays`, `sendingKey`, the key in full with `copy`, `submissionAmount` (`executionAmount` at execution due), `secondFunding` before the submission alone, `network`, `balanceWaiting`, `continuesOnItsOwn`, `alreadyFunded`, `continueUnlocks` |
 | Recovery call, logged in | `fundTitle`, `accountHoldsFunds`, `keyOf`, the key in full with `copy`, both routes, `transferIsAnOperation`, `secondFunding` before the submission alone, `network`, the waiting lines |
 
-Each route renders its own amount: `transferRoute` the shortfall with the transfer's fee, `outsideRoute`, `submissionAmount` and `executionAmount` the shortfall. The shortfall sentence of an owner write names the shortfall. `secondFunding` renders on the step before the submission alone (D-303); the step at execution due is that second funding.
+Each route renders its own amount: `transferRoute` the shortfall with the transfer's fee, `outsideRoute`, `submissionAmount` and `executionAmount` the shortfall. Where the step offers no transfer route, `transferIsAnOperation` does not render, and an owner write's deposit from outside reads `gas.outsideRouteAlone` in place of `outsideRoute`. The shortfall sentence of an owner write names the shortfall. `secondFunding` renders on the step before the submission alone (D-303); the step at execution due is that second funding.
 
 Each step also answers a `blocker`, the short panel a write's own screen shows when the check at sending comes up short: `notEnoughGasSendingKey` with `shortfallSubmit` (`shortfallExecute` at execution due), or the owner write's title and shortfall. No string promises that one funding covers both the submission and the execution.
 
@@ -134,6 +139,15 @@ Both use the existing components of `src/common/components` over react-native-we
 | `cancel` | `reverted` for the plain reading; the gone attempt reads `cancelRevertedTitle`, `cancelReverted` and its road or controller | D2-01 |
 
 Every string the lane shows comes from `socialRecovery.writes` and the chip and value keys of shared/display. The lane adds no key to en.json.
+
+## Strings reported missing
+
+These render through temporary keys in `copy.ts` (`PENDING_KEYS`, marked `TODO(social-recovery coordinator)`) until the coordinator adds them under `socialRecovery.writes`.
+
+| Temporary key | For | Proposed string | Chapter sentence |
+| --- | --- | --- | --- |
+| `replaced` | a transaction another one from the same key replaced before it was mined (`cancelled` or `replaced`) | "Another transaction from this key took this one's place before it ran. Nothing changed." | D-319: "A holder who reads that the wallet sent nothing retries a call that cannot land." The call was sent, so the not-sent line is false; it never ran, so the reverted line is false too. |
+| `gas.outsideRouteAlone` (`{{amount}}`) | an owner write's deposit from outside where the step offers no transfer route (the transfer's estimate reverted, or the account has no code and no deploy-and-transfer transaction was given) | "Send {{amount}} to this key from outside this wallet." | D-319: "That blocker offers both routes that fill it, a transfer from another account this wallet holds and a deposit from outside into the address it shows." `outsideRoute` opens with "Or", which reads wrong alone. |
 
 ## Open points
 

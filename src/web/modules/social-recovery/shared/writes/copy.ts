@@ -91,6 +91,22 @@ export const GAS_KEYS = {
   networkOwner: `${GAS}.networkOwner`
 } as const
 
+// TODO(social-recovery coordinator): en.json does not hold the two keys below
+// yet. PT-039 reported both missing with their sentences (README.md, "Strings
+// reported missing"). They render through these temporary keys until the
+// coordinator adds them under `socialRecovery.writes`.
+/** The temporary keys of the strings PT-039 reported missing. */
+export const PENDING_KEYS = {
+  /**
+   * A transaction another one from the same key replaced before it was mined
+   * (ethers' `TRANSACTION_REPLACED`, `cancelled` or `replaced`): it reached no
+   * revert and spent no gas of its own, and its call never ran.
+   */
+  replaced: `${WRITES}.replaced`,
+  /** An owner write's deposit from outside, where the step offers no transfer route. */
+  outsideRouteAlone: `${GAS}.outsideRouteAlone`
+} as const
+
 /**
  * The reverted reading of each write (D-319), from its own frame: the save
  * (C-07), the edit (G-05b), the submission (D-11) and the execution (D-13).
@@ -214,7 +230,12 @@ export const renderWriteState = (
     case 'gasReadError':
       return { ...base, ...retry, lines: [t(WRITES_KEYS.gasCheckFailed)] }
     case 'failedNotSent':
-      return { ...base, ...retry, lines: [t(WRITES_KEYS.notSent)] }
+      // A replaced transaction was sent: it never ran, but it did not fail to reach the chain.
+      return {
+        ...base,
+        ...retry,
+        lines: [t(state.replaced ? PENDING_KEYS.replaced : WRITES_KEYS.notSent)]
+      }
     case 'failedReverted':
       if (state.cause.kind === 'attemptGone') {
         return { ...base, ...retry, ...renderAttemptGone(state.cause, t) }
@@ -325,6 +346,8 @@ export const renderDepositStep = (
       kind: 'outside',
       line: transfer
         ? t(GAS_KEYS.outsideRoute, { amount: routeAmount })
+        : isOwnerWrite(step.write)
+        ? t(PENDING_KEYS.outsideRouteAlone, { amount: routeAmount })
         : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
             amount: routeAmount
           })
