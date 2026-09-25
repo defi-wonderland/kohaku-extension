@@ -1,6 +1,6 @@
 /**
- * The Jest alias mapper of the setup brief, item 5: a unit test under the
- * module folder imports through the tsconfig path aliases.
+ * The Jest module name mapper: a unit test under the module folder imports
+ * through the tsconfig path aliases.
  */
 import isInt from '@common/utils/isInt'
 import underline2Camelcase from '@web/utils/underline2Camelcase'

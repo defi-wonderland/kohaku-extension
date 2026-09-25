@@ -81,9 +81,7 @@ const WEB_ROUTES = {
   pp2Transfer: 'PPv2Transfer',
   pp2Import: 'PPv2Import',
 
-  // Account recovery (social recovery) routes. Every surface mounts under
-  // `social-recovery/*` through the module's own route registry,
-  // src/web/modules/social-recovery/routes/SocialRecoveryRoutes.tsx.
+  // Account recovery (social recovery) routes
   socialRecovery: 'social-recovery',
   socialRecoveryCeremony: 'social-recovery/ceremony',
   socialRecoverySetup: 'social-recovery/setup',

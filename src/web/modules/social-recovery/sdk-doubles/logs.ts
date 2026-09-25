@@ -3,8 +3,8 @@
  * notifications out as `RawLog`s and how the event manager double reads them
  * back. The first topic is keccak256 of the event's name (not its ABI signature),
  * the manager's two indexed topics are the account and the action as the real
- * events index them (sdk.md D-203 "Filters"), and the data is the notification's
- * fields as JSON bytes. Only the doubles read these bytes.
+ * events index them, and the data is the notification's fields as JSON bytes.
+ * Only the doubles read these bytes.
  */
 import type {
   Address,
@@ -17,7 +17,7 @@ import { keccak256, stringToHex } from 'viem'
 
 import { hexJson, jsonHex, topicOf } from './encoding'
 
-/** The Solidity event behind each notification kind (sdk.md D-203 table). */
+/** The Solidity event behind each notification kind. */
 export const EVENT_NAMES: Record<NotificationKind, string> = {
   'setup-committed': 'SetupCommitted',
   'setup-cleared': 'SetupCleared',

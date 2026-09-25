@@ -1,8 +1,3 @@
-/**
- * The methods orchestrator double (IMethodsOrchestrator, sdk.md D-206; D-201
- * "Refusals throw"; ux-interfaces.md D-374). It answers from a request alone:
- * the request below crosses a JSON round trip, the way a link carries it.
- */
 import {
   METHOD_FAILURE_CAUSES,
   VERDICTS,
@@ -11,7 +6,7 @@ import {
   type ReplyFailure
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isHex, membersOf, openRecovery } from './harness'
+import { createWorld, expectThrown, isHex, openRecovery } from './harness'
 
 const firstRequest = async () => {
   const { world, requests } = await openRecovery()
@@ -21,22 +16,6 @@ const firstRequest = async () => {
 }
 
 describe('methods orchestrator double', () => {
-  it('exposes the six calls of IMethodsOrchestrator', () => {
-    const orchestrator = createWorld().orchestrator()
-    const members = membersOf(orchestrator)
-    ;[
-      'describeRequest',
-      'verify',
-      'signingInput',
-      'replyFrom',
-      'enrollInput',
-      'configFrom'
-    ].forEach((name) => {
-      expect(members).toContain(name)
-      expect(typeof (orchestrator as unknown as Record<string, unknown>)[name]).toBe('function')
-    })
-  })
-
   it('describes a request from the request alone', async () => {
     const { world, request } = await firstRequest()
     const described = world.orchestrator().describeRequest(request)

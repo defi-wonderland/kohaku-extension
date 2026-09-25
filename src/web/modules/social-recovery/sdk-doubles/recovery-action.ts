@@ -1,8 +1,8 @@
 /**
- * The action part double (sdk.md D-201, D-202): `IRecoveryActionInteractor` and
- * `IRecoveryActionArming` over the scripted chain, bound to its account. The
- * arming seam goes to the setup client alone; the builder double hands the part
- * out through `narrowActionInteractor`, which carries no `armingCall`.
+ * The action part double: `IRecoveryActionInteractor` and `IRecoveryActionArming`
+ * over the scripted chain, bound to its account. The arming seam goes to the
+ * setup client alone; the builder double hands the part out through
+ * `narrowActionInteractor`, which carries no `armingCall`.
  */
 import type {
   ActionInfo,
@@ -21,7 +21,7 @@ export class RecoveryActionDouble implements IRecoveryActionInteractor, IRecover
 
   /**
    * The contract's `supportsAccount(account)`: an address with no code is a no,
-   * which D-105 folds into one answer with an implementation it does not serve.
+   * the same answer as an implementation the action does not serve.
    */
   async supportsAccount(): Promise<boolean> {
     this.chain.guard('action.supportsAccount')
@@ -88,7 +88,7 @@ export const ACTION_INTERACTOR_MEMBERS = [
 /**
  * The action part seen through `IRecoveryActionInteractor` alone: a fresh object
  * with the six members, so `armingCall` is absent at runtime as well as in the
- * type (sdk.md D-201 "The arming call has no public home").
+ * type: the arming call reaches the setup client alone.
  */
 export const narrowActionInteractor = (
   part: IRecoveryActionInteractor
