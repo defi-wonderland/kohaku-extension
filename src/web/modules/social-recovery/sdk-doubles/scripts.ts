@@ -8,6 +8,7 @@
 import { keccak256, stringToHex } from 'viem'
 
 import type {
+  Address,
   Finding,
   FindingCode,
   FindingSubject,
@@ -156,15 +157,27 @@ export const codedError = (
   return error
 }
 
-/** The value a scripted read failure throws: a transport failure, never an empty answer. */
+/**
+ * The value a read that did not answer throws: a transport failure, never an
+ * empty answer. A module read that answers `{ answered: false }` where a client
+ * needs its value is thrown the same way, with the module and the place.
+ */
 export class ScriptedReadFailure extends Error {
   readonly kind = 'scripted-read-failure'
 
   readonly code = 'read.unanswered'
 
-  constructor(readonly read: ScriptedRead, readonly scripted?: unknown) {
+  /** The read, and the module and place it was made for where it was made per place. */
+  readonly values: { read: ScriptedRead; module?: Address; place?: number }
+
+  constructor(
+    readonly read: ScriptedRead,
+    readonly scripted?: unknown,
+    where: { module?: Address; place?: number } = {}
+  ) {
     super(`The read ${read} did not answer (scripted).`)
     this.name = 'ScriptedReadFailure'
+    this.values = { read, ...where }
   }
 }
 

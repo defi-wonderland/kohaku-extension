@@ -50,7 +50,8 @@ export type FitCheckReading =
 /**
  * The extension-owned seam over the three reads no SDK member makes. The
  * `Double` suffix marks that the shape lives with the doubles; the real
- * implementation behind `shared/client` answers the same shape.
+ * implementation behind `shared/client` answers the same shape until the SDK
+ * adopts or renames these reads.
  */
 export interface IWalletReadsDouble {
   /** The module's own verdict over one pasted reply against the request it answers. */

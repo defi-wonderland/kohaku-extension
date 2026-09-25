@@ -58,7 +58,13 @@ import {
 } from './encoding'
 import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { codedError, finding, validationRefusal } from './scripts'
+import {
+  codedError,
+  finding,
+  type ModuleRead,
+  ScriptedReadFailure,
+  validationRefusal
+} from './scripts'
 import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
 
 /**
@@ -78,6 +84,10 @@ const rowsToFindings = (rows: RequestRow[]): Finding[] =>
 const refuseWith = (...rows: RequestRow[]): never => {
   throw validationRefusal({ errors: rowsToFindings(rows), warnings: [] })
 }
+
+/** The refusal for a module read a client needs that did not answer, at one place. */
+const unansweredRead = (read: ModuleRead, module: Address, place: number): ScriptedReadFailure =>
+  new ScriptedReadFailure(read, undefined, { module, place })
 
 const readsGathering = (g: Gathering): boolean =>
   !!g && g.kind === 'gathering' && g.version === RECORD_VERSION
@@ -154,19 +164,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
         // An unanswered read says nothing about the method's stop, so the init
         // refuses rather than record a default nobody read. An undeclared
         // module does answer, with empty values, and is not refused.
-        if (!paused.answered) {
-          throw codedError('read.unanswered', {
-            read: 'manager.paused',
-            module: credential.method,
-            place
-          })
-        }
+        if (!paused.answered) throw unansweredRead('manager.paused', credential.method, place)
         if (!parties.answered) {
-          throw codedError('read.unanswered', {
-            read: 'manager.trustedParties',
-            module: credential.method,
-            place
-          })
+          throw unansweredRead('manager.trustedParties', credential.method, place)
         }
         const entry: GatheringPlace = {
           place,
@@ -613,7 +613,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
       const stops = await Promise.all(request.proofs.map((p) => manager.paused(p.method)))
       request.proofs.forEach((p, i) => {
         const stop = stops[i]
-        if (stop.answered && stop.value) {
+        // As at the inits: an unanswered stop read refuses, never reads as not stopped.
+        if (!stop.answered) throw unansweredRead('manager.paused', p.method, Number(p.place))
+        if (stop.value) {
           rows.push(['request.method-stopped', { place: p.place, method: p.method, ignoresPause }])
         }
       })
