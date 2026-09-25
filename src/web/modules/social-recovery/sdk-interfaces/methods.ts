@@ -1,15 +1,11 @@
 /**
- * sdk.md D-206 Methods orchestrator: `IMethodsOrchestrator` and
- * `IRecoveryMethod`, the ctx the orchestrator builds, the verdict, the two
- * typed failures and the closed device-binding set.
- *
- * Hand-written from docs/social-recovery/design/sdk.md, frozen at design commit
- * bd8780f7ad59a451035b15920c00015a2eee6e9b of defi-wonderland/mast-social-recovery-2.
- * Imported from no SDK package. Types only.
+ * The methods orchestrator: `IMethodsOrchestrator` and `IRecoveryMethod`, the
+ * ctx the orchestrator builds, the verdict, the two typed failures and the
+ * closed device-binding set. Imported from no SDK package; types only.
  *
  * The approving side reads no chain and holds no provider. `signingInput` and
  * `enrollInput` throw when they refuse; `replyFrom` and `configFrom` return the
- * typed failures below; a verdict is an answer, never a refusal (sdk.md D-201).
+ * typed failures below; a verdict is an answer, never a refusal.
  */
 import type { Address, Hex } from './common'
 import type { IMethodCodec } from './formats'
@@ -17,7 +13,7 @@ import type { DeploymentDescriptor } from './builder'
 import type { ApproverReply, ApproverRequest } from './gathering'
 import type { RequestDescription } from './utilities'
 
-/** Where the approver's device has to be, one of four values and no other (sdk.md D-206). */
+/** Where the approver's device has to be, one of four values and no other. */
 export const DEVICE_BINDINGS = [
   'none',
   'browser-authenticator',
@@ -28,19 +24,18 @@ export type DeviceBinding = typeof DEVICE_BINDINGS[number]
 
 /**
  * The three answers of a local verdict: satisfied, rejected, and not judged
- * where the verdict needs a contract's own word (sdk.md D-206).
- * Illustrative slugs, sdk.md D-206: the chapter names the three answers in prose.
+ * where the verdict needs a contract's own word. The slugs are the extension's
+ * own.
  */
 export const VERDICTS = ['satisfied', 'rejected', 'not-judged'] as const
 export type Verdict = typeof VERDICTS[number]
 
 /**
  * The five causes a reply failure names, and the enrollment failure the same
- * shape serves (sdk.md D-206): the device refused, the device was unavailable,
- * the material was the wrong shape for this method, no implementation serves
- * the method, or the record's kind or version is one this build does not read.
- * The slugs past `device-refused` (written in sdk.md D-201's usage block) are
- * illustrative, sdk.md D-201.
+ * shape serves: the device refused, the device was unavailable, the material was
+ * the wrong shape for this method, no implementation serves the method, or the
+ * record's kind or version is one this build does not read. `device-refused` is
+ * the SDK's own slug; the others are the extension's.
  */
 export const METHOD_FAILURE_CAUSES = [
   'device-refused',
@@ -51,23 +46,23 @@ export const METHOD_FAILURE_CAUSES = [
 ] as const
 export type MethodFailureCause = typeof METHOD_FAILURE_CAUSES[number]
 
-/** The typed failure `replyFrom` returns instead of throwing (sdk.md D-201, D-206). */
+/** The typed failure `replyFrom` returns instead of throwing. */
 export interface ReplyFailure {
   kind: 'reply-failure'
   cause: MethodFailureCause
 }
 
-/** The typed failure `configFrom` returns, the same shape as the reply failure (sdk.md D-206). */
+/** The typed failure `configFrom` returns, the same shape as the reply failure. */
 export interface EnrollFailure {
-  // Illustrative, sdk.md D-206: the chapter names the reply's `reply-failure` kind and no enrollment kind.
+  // The SDK names no enrollment kind; `enroll-failure` is the extension's own.
   kind: 'enroll-failure'
   cause: MethodFailureCause
 }
 
 /**
- * The device kinds a method implementation's `describe` states (sdk.md D-206):
- * a wallet signing typed data, a WebAuthn authenticator, an external proving
- * app or a prover inside the page. Illustrative slugs, sdk.md D-201.
+ * The device kinds a method implementation's `describe` states: a wallet
+ * signing typed data, a WebAuthn authenticator, an external proving app or a
+ * prover inside the page. The slugs are the extension's own.
  */
 export const DEVICE_KINDS = [
   'wallet-typed-data',
@@ -79,8 +74,8 @@ export type DeviceKind = typeof DEVICE_KINDS[number]
 
 /**
  * Facts about the approver's device, values a page may read and never a
- * judgment (sdk.md D-206). Every implementation states its device kind; the
- * rest is the implementation's own.
+ * judgment. Every implementation states its device kind; the rest is the
+ * implementation's own.
  */
 export interface DeviceFacts {
   kind: DeviceKind
@@ -89,9 +84,9 @@ export interface DeviceFacts {
 
 /**
  * The one record four implementation members take, built by the orchestrator
- * and nothing else (sdk.md D-206): the request's own members, the place this
- * call fills, the digest D-204 derives for that place and the typed data the
- * domain and the purpose give it. Illustrative shape, sdk.md D-201.
+ * and nothing else: the request's own members, the place this call fills, the
+ * digest the formatter derives for that place and the typed data the domain and
+ * the purpose give it.
  */
 export interface MethodContext {
   request: ApproverRequest
@@ -101,8 +96,8 @@ export interface MethodContext {
 }
 
 /**
- * The client-side half of one method module (sdk.md D-201, D-206), ten members.
- * The input, params and material records are the implementation's own.
+ * The client-side half of one method module, ten members. The input, params and
+ * material records are the implementation's own.
  */
 export interface IRecoveryMethod {
   modules(descriptor: DeploymentDescriptor): Address[]
@@ -118,10 +113,9 @@ export interface IRecoveryMethod {
 }
 
 /**
- * The entry of both sides that hold a credential rather than an account
- * (sdk.md D-201, D-206), its six calls, `verify` being its own verdict member
- * that builds the ctx for one place. It works from
- * the request alone and binds nothing about a deployment.
+ * The entry of both sides that hold a credential rather than an account, its six
+ * calls, `verify` being its own verdict member that builds the ctx for one
+ * place. It works from the request alone and binds nothing about a deployment.
  */
 export interface IMethodsOrchestrator {
   describeRequest(request: ApproverRequest): RequestDescription
