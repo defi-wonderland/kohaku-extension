@@ -9,7 +9,9 @@ const PREFIX = 'socialRecovery.ruleLines'
 
 /**
  * Every key this function emits, each one under `socialRecovery.ruleLines` in
- * `en.json`. A surface picks or drops a line by its key.
+ * `en.json`. A surface picks or drops a line by its key. The function emits the
+ * sizing rule line for every path of two rows and no group, but only the editor
+ * shows it, so the other screens drop it by key.
  */
 export const RULE_LINE_KEYS = {
   allMustAnswer: `${PREFIX}.allMustAnswer`,
@@ -66,8 +68,8 @@ const MAX_THRESHOLD = 255
 
 /**
  * A refused clause: no credential, a threshold that is not a whole number, a
- * threshold below one or above its members, or a threshold above the 255 its
- * field counts.
+ * threshold below one, which asks nothing of its members, a threshold above
+ * its members, or a threshold above the 255 its field counts.
  */
 const isRefused = (clause: Clause): boolean =>
   clause.credentials.length === 0 ||
@@ -78,9 +80,9 @@ const isRefused = (clause: Clause): boolean =>
 
 /**
  * One enrolled method may appear only once across the path. Two credentials are
- * the same method when their method addresses and config bytes match; both are
- * hex, so they compare lowercased. The address holds no `|`, so the joined key
- * is unambiguous.
+ * the same enrolled method when their method addresses and config bytes match;
+ * both are hex, so they compare lowercased. The address holds no `|`, so the
+ * joined key is unambiguous.
  */
 const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
   const seen = new Set<string>()
@@ -136,11 +138,11 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
   Array.isArray(path) ? path : (path as Pick<SetupDraft, 'clauses'>).clauses
 
 /**
- * The rule lines of a path, in this order: the required rows' line (or, for a
- * single method, its warning, the offer of a second method and the platform
- * line), each group's threshold line followed by its failure domain line, the
- * different places line, and the sizing rule line for a path of two rows and
- * no group.
+ * The rule lines of a path. A single method earns its warning, the offer of a
+ * second method and the platform line, and nothing else. Otherwise, in this
+ * order: the rows' line when the path has no group, each group's threshold line
+ * followed by its failure domain line, the different places line, and the
+ * sizing rule line for a path of two rows and no group.
  */
 export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
   const clauses = clausesOf(path)
