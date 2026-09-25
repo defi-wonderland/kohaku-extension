@@ -41,8 +41,7 @@ export interface PrepareOptions {
 /**
  * A simulation's outcome: success, or a typed error, with the address it ran
  * from. The error is a decoded `KitError`: the source, the name, the selector
- * and the argument values by name. The SDK owner has yet to confirm this shape
- * against a flat `{ name, place, method }` record.
+ * and the argument values by name.
  */
 export type Simulation = { ok: true; from: Address } | { ok: false; from: Address; error: KitError }
 
