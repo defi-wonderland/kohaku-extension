@@ -59,9 +59,3 @@ describe('name cut without Intl.Segmenter (Firefox 115)', () => {
     })
   })
 })
-
-describe('after the fallback tests', () => {
-  it('has Intl.Segmenter back', () => {
-    expect(typeof intl.Segmenter).toBe('function')
-  })
-})

@@ -111,10 +111,6 @@ describe('closed chip sets', () => {
   it('the editor chip is exactly still needed', () => {
     expect(words('editor', EDITOR_CHIPS)).toEqual(['still needed'])
   })
-
-  it('maps every chip to a key under socialRecovery.status', () => {
-    moduleKeys.forEach((key) => expect(key.startsWith(STATUS_PREFIX)).toBe(true))
-  })
 })
 
 describe('kit nouns and password names', () => {

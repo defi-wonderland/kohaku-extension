@@ -89,7 +89,7 @@ describe('banned words in the display module', () => {
 
   it('no rendered chip of any set, noun of any list, name or label carries a banned word', () => {
     const rendered = renderedVocabulary()
-    // The walk must reach every list, so an empty walk cannot pass silently.
+    // Samples from several lists, so an empty walk cannot pass silently.
     expect(rendered).toEqual(
       expect.arrayContaining([
         'Not submitted',
