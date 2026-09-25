@@ -4,13 +4,12 @@ import en from '@common/config/localization/translations/en.json'
 import type {
   Clause,
   Credential,
+  Hex,
   SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces/interactor'
+} from '@web/modules/social-recovery/sdk-interfaces'
 
 import { getRuleLines, renderRuleLines } from '..'
 import type { Translate } from '..'
-
-type Hex = `0x${string}`
 
 // One method address per family: the failure-domain line keys on the method
 // address.
@@ -64,12 +63,7 @@ const SINGLE_METHOD: Expected[] = [
   { key: 'platformFate' }
 ]
 
-// Each accepted shape with its lines in order: the rows' line or the
-// single-method warning with its offer, each group's count line followed by
-// its failure-domain line, the different-places line, the sizing rule. A
-// group at threshold equal to its size reads the every-member line in place
-// of the count line. Beside rows or other groups a group line takes the
-// together-with form, and a threshold of one keeps the any N of M wording.
+// Each shape the editor accepts, with the lines it earns in order.
 const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   {
     name: 'one row: the single-method warning with the second passkey or hardware key offer',
@@ -262,10 +256,11 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   }
 ]
 
-// Paths that earn no line: a path with any refused clause recovers nothing,
-// so it yields no lines, even beside a valid row or group. A clause is
-// refused when it is empty, when its threshold is below one, above its size,
-// above 255 or not a whole number, or when it repeats a credential.
+// Paths that earn no line: a refused path recovers nothing, so it yields no
+// lines, even beside a valid row or group. A path is refused when a clause is
+// empty, when a threshold is below one, above its clause's size, above 255 or
+// not a whole number, or when the path holds one credential twice, in one
+// clause or across two.
 const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   { name: 'an empty path', clauses: [] },
   // A duplicate is the same (method, config) pair anywhere on the path.
@@ -453,7 +448,13 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
     })
   )
 
-  it('renders the exact sentences of the lines that fill placeholders', () => {
+  it('renders at least one line for every shape the editor accepts', () => {
+    SHAPES.forEach(({ clauses }) =>
+      expect(renderRuleLines(linesOf(clauses), t).length).toBeGreaterThan(0)
+    )
+  })
+
+  it('renders the exact English of sample paths', () => {
     expect(renderRuleLines(linesOf([row(PASSKEY), row(PASSPORT), row(GUARDIAN)]), t)[0]).toBe(
       'All 3 must answer. Losing any one locks you out.'
     )
@@ -490,12 +491,6 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
 })
 
 describe('words and lines the output never carries', () => {
-  it('renders at least one line for every shape the editor accepts', () => {
-    SHAPES.forEach(({ clauses }) =>
-      expect(renderRuleLines(linesOf(clauses), t).length).toBeGreaterThan(0)
-    )
-  })
-
   it('no output contains "primary" or "offered"', () => {
     renderedAll().forEach((s) => {
       expect(s).not.toMatch(/\bprimary\b/i)
