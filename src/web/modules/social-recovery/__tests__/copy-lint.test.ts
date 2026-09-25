@@ -198,9 +198,9 @@ describe('socialRecovery placeholders', () => {
   })
 })
 
-// Keys that must exist: the gas shortfall lines of the three writes and the
-// ceremony note. The walk above already lints them; this block proves they
-// exist, so the lint covers them.
+// Keys that must exist: the gas shortfall lines of save, submit and cancel,
+// and the ceremony's passed note. The walk above already lints them; this
+// block proves they exist, so the lint covers them.
 const REQUIRED_KEYS = [
   'socialRecovery/writes/gas/shortfallSave',
   'socialRecovery/writes/gas/shortfallSubmit',

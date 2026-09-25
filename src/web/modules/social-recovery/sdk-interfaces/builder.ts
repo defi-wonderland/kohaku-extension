@@ -62,9 +62,9 @@ export interface CreationRecord {
 
 /**
  * What a client accepts. `tokens`, `candidateKeys`, `creation` and `blockTags`
- * are the SDK's own names; the other names are the extension's, over the values
- * the SDK lists. No method list travels here: the builder's registry is the one
- * list.
+ * follow the SDK's examples; the other names are the extension's, over the
+ * values the SDK lists. No method list travels here: the builder's registry is
+ * the one list.
  */
 export interface ClientConfiguration {
   /** The token allowlist the unknown-token warning reads. */
