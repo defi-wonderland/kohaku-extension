@@ -1,37 +1,16 @@
 /**
- * The rule lines of D-305: the wallet's own calls on a path's consequences,
- * generated from the path's shape. The SDK returns no verdict on a rule, so
- * these lines are where the holder reads what a shape costs.
- *
- * The input is the setup draft record of `sdk-interfaces/` (sdk.md D-202), or
- * its clauses alone. A clause with one credential is a required row, and a
- * clause with more is a group. A group of one member is one method (D-305), so
- * it reads as a row: the draft record draws no line between the two.
- *
- * D-305 generates the lines from the whole path, and the editor renders them
- * for the path as it stands, before any refusal shows. A path with a refused
- * clause therefore earns no line at all, since a line about the rest of the
- * path would read a lockout as a rescue. A threshold of zero is refused like
- * the others: it sits outside its members like a threshold above them, and
- * the editor refuses a group nothing has to fill (D-305). A path that holds one
- * enrolled method twice, anywhere, is refused the same way.
- *
- * The one failure domain line keys on the method family (D-312, 2026-09-17).
- * A credential's family is its method module, so two credentials share a
- * family when their `method` addresses are equal. A passport and an Aadhaar
- * identity sit behind two modules and read as two domains.
- *
- * Nothing here produces the identity method's weight line, the words primary
- * or offered, or the kit's guidance to raise a threshold when a secondary
- * credential joins a clause (D-305, D-312).
- *
+ * Turns a recovery path's shape into the lines that state its consequences.
+ * The SDK returns no verdict on a rule, so these lines are the wallet's own.
  * Pure: the same input yields equal output and the input is never mutated.
  */
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
 const PREFIX = 'socialRecovery.ruleLines'
 
-/** Every key this function emits, each one under `socialRecovery.ruleLines` in `en.json`. */
+/**
+ * Every key this function emits, each one under `socialRecovery.ruleLines` in
+ * `en.json`. A surface picks or drops a line by its key.
+ */
 export const RULE_LINE_KEYS = {
   allMustAnswer: `${PREFIX}.allMustAnswer`,
   bothMustAnswer: `${PREFIX}.bothMustAnswer`,
@@ -76,15 +55,19 @@ export type RuleLinesInput = Pick<SetupDraft, 'clauses'> | readonly Clause[]
 
 const line = (key: RuleLineKey, params: RuleLineParams = {}): RuleLine => ({ key, params })
 
+/**
+ * A credential's method family is its method module address. The members of
+ * one family share one failure domain.
+ */
 const familyOf = (credential: Credential): string => credential.method.toLowerCase()
 
-/** The widest threshold the clause's field counts (contracts D-103, sdk.md `clause.threshold-too-wide`). */
+/** The clause threshold is a one-byte field, so it counts up to 255. */
 const MAX_THRESHOLD = 255
 
 /**
  * A refused clause: no credential, a threshold that is not a whole number, a
  * threshold below one or above its members, or a threshold above the 255 its
- * field counts. One refused clause silences the whole path's lines.
+ * field counts.
  */
 const isRefused = (clause: Clause): boolean =>
   clause.credentials.length === 0 ||
@@ -94,12 +77,10 @@ const isRefused = (clause: Clause): boolean =>
   clause.threshold > MAX_THRESHOLD
 
 /**
- * One enrolled method appears once across the path, never both as a required
- * row and a member (D-305), and the editor refuses a duplicate. A credential
- * is the same enrolled method when its method address and its config bytes
- * both match. Both are hex, so both compare lowercased: two strings that
- * differ only in letter case are the same bytes. The address holds no `|`, so
- * the joined key is unambiguous.
+ * One enrolled method may appear only once across the path. Two credentials are
+ * the same method when their method addresses and config bytes match; both are
+ * hex, so they compare lowercased. The address holds no `|`, so the joined key
+ * is unambiguous.
  */
 const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
   const seen = new Set<string>()
@@ -127,8 +108,8 @@ const groupLine = (clause: Clause, rowCount: number, groupCount: number): RuleLi
   const hasOtherGroups = groupCount > 1
 
   // A group whose threshold equals its member count reads every member must
-  // answer in place of the count line (frame C-04e), with the together-with
-  // clause of D-305 where rows or another group stand beside it.
+  // answer in place of the count line, with the together-with wording where
+  // rows or another group stand beside it.
   if (n === m) {
     if (hasRows && hasOtherGroups)
       return line(RULE_LINE_KEYS.togetherWithRequiredAndGroupsEveryMember)
@@ -137,10 +118,9 @@ const groupLine = (clause: Clause, rowCount: number, groupCount: number): RuleLi
     return line(RULE_LINE_KEYS.everyMemberMustAnswer)
   }
 
-  // D-305: where required rows or a second group stand beside the group, the
-  // line adds the together-with clause. It keeps the any N of M form at every
-  // threshold, one included, since beside another clause no member alone can
-  // recover or take the account.
+  // Beside rows or another group, the line keeps the any N of M form at every
+  // threshold, one included, since no member alone can then recover or take
+  // the account.
   if (hasRows && hasOtherGroups) {
     return line(RULE_LINE_KEYS.togetherWithRequiredAndGroups, { n, m, spare })
   }
@@ -156,15 +136,20 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
   Array.isArray(path) ? path : (path as Pick<SetupDraft, 'clauses'>).clauses
 
 /**
- * The rule lines of a path, in D-305's order: the required rows' line (or the
- * single-method warning with its offer and the platform line), each group's
- * threshold line followed by its failure domain line, the setup line about
- * different places, and the sizing rule line.
+ * The rule lines of a path, in this order: the required rows' line (or, for a
+ * single method, its warning, the offer of a second method and the platform
+ * line), each group's threshold line followed by its failure domain line, the
+ * different places line, and the sizing rule line for a path of two rows and
+ * no group.
  */
 export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
   const clauses = clausesOf(path)
+  // One refused clause or one method held twice silences the whole path, since
+  // a line about the rest of the path would read a lockout as a rescue.
   if (clauses.some(isRefused) || holdsDuplicate(clauses)) return []
 
+  // A clause with one credential is a required row, so a group of one member
+  // reads as a row.
   const rows = clauses.filter((clause) => clause.credentials.length === 1)
   const groups = clauses.filter((clause) => clause.credentials.length > 1)
   const methodCount = clauses.reduce((sum, clause) => sum + clause.credentials.length, 0)
