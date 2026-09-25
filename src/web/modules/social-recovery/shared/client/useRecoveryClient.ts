@@ -86,7 +86,8 @@ export const useRecoveryClient = (
     try {
       provider = extensionProviderFor(current)
     } catch (error: unknown) {
-      // `getRpcProvider` refuses a record with no usable RPC URL or an unknown kind.
+      // `getRpcProvider` refuses a record with no usable RPC URL, or a provider
+      // kind it does not know or the chain does not support.
       setState({ status: 'failed', error })
       return undefined
     }

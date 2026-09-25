@@ -191,7 +191,8 @@ export const isSignFlowFailure = (value: unknown): value is SignFlowFailure =>
  * How long the facade waits for the holder's confirmation, a hardware key's
  * included. The queue shows one sign-message request at a time and drops one
  * added while another is visible, so such a request ends here. It also skips a
- * request while a hardware signing runs, so that request times out too.
+ * request while a swap, bridge or transfer signs with a hardware wallet in the
+ * action window, so that request times out too.
  *
  * The withdrawal reaches `userRequests` alone: a request still waiting for an
  * account switch stays until the action window closes. A holder who accepts
