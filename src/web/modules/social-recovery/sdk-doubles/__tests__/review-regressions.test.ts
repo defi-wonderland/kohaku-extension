@@ -134,6 +134,19 @@ describe('validateSetup computes its own findings', () => {
     expect(repeated!.values.places).toEqual([0, 1])
   })
 
+  it('raises action.unaudited for an action outside the audited list, and not for the listed one', async () => {
+    const world = createWorld()
+    const listed = await (await world.setupClient()).validateSetup(world.draft('private'))
+    expect(codes(listed.warnings)).not.toContain('action.unaudited')
+    const other = addressOf('unaudited-action')
+    const setup = await world.builder().action(other, world.actionPart).buildSetupClient()
+    const { warnings } = await setup.validateSetup(world.draft('private'))
+    const unaudited = warnings.filter((f) => f.code === 'action.unaudited')
+    expect(unaudited).toHaveLength(1)
+    expect(unaudited[0]!.subject).toBe('action')
+    expect(String(unaudited[0]!.values.action).toLowerCase()).toBe(other.toLowerCase())
+  })
+
   it('raises manager.already-armed for another action whose setup still stands', async () => {
     const world = createWorld()
     const other = addressOf('another-action')

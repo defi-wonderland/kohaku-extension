@@ -2,12 +2,14 @@ import { addressOf, type CodedError } from '@web/modules/social-recovery/sdk-dou
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
+  type Address,
   type ApproverReply,
   type ApproverRequest,
   type AttemptRequest,
   type CancelRequest,
   type Configuration,
   type Credential,
+  type Hex,
   type IRecoveryClient,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -30,10 +32,17 @@ import {
   ZERO
 } from './harness'
 
-/** A willing approver's reply; the zkPassport request takes its app's domain and scope. */
+/**
+ * A willing approver's reply. The zkPassport request takes its app's domain and
+ * scope, the passkey request its relying party; the wallet request takes neither.
+ */
 const replyOf = async (world: World, request: ApproverRequest) => {
   const orchestrator = world.orchestrator()
-  const input = orchestrator.signingInput(request, { domain: 'wallet.example', scope: 'recovery' })
+  const input = orchestrator.signingInput(request, {
+    domain: 'wallet.example',
+    scope: 'recovery',
+    relyingPartyId: 'wallet.example'
+  })
   const reply = await orchestrator.replyFrom(request, input, world.material(request))
   expect(reply.kind).toBe('recovery-proof-reply')
   return reply as ApproverReply
@@ -51,6 +60,26 @@ const passportAt = (world: World, id: string): Credential => ({
   })
 })
 
+const passkeyAt = (world: World, key: Hex): Credential => ({
+  method: world.descriptor.methodPasskey,
+  config: world.methods.passkey.codec.encodeConfig({
+    publicKey: key,
+    rpIdHash: keccak256(stringToHex('wallet.example'))
+  })
+})
+
+/** Gives a method a pause holder, so it carries a stop. */
+const withStop = (world: World, module: Address) =>
+  world.script.method(module, {
+    trustedParties: {
+      admin: ZERO,
+      pendingAdmin: ZERO,
+      trustedKeys: [],
+      pauseHolder: addressOf(`pause-holder:${module}`),
+      pendingPauseHolder: ZERO
+    }
+  })
+
 /** Commits a private setup over the given clauses and returns its configuration. */
 const commitOver = (world: World, clauses: Configuration['clauses']): Configuration => {
   const configuration: Configuration = { ...world.configuration, clauses }
@@ -65,6 +94,27 @@ const openGathering = (world: World, recovery: IRecoveryClient, configuration: C
     NO_PAYMENT,
     { window: WINDOW }
   )
+
+/**
+ * Commits the clauses, opens a gathering, files one reply per place in place
+ * order and completes with no selection.
+ */
+const completeInPlaceOrder = async (world: World, clauses: Configuration['clauses']) => {
+  const configuration = commitOver(world, clauses)
+  const recovery = await world.recoveryClient()
+  const gathering = await openGathering(world, recovery, configuration)
+  let filled = gathering
+  // eslint-disable-next-line no-restricted-syntax
+  for (const request of recovery.getApproverRequests(gathering)) {
+    // eslint-disable-next-line no-await-in-loop
+    const added = recovery.addApproverReply(filled, await replyOf(world, request))
+    expect(added.reason).toBeUndefined()
+    filled = added.gathering
+  }
+  expect(filled.replies.map((r) => r.place)).toEqual(gathering.places.map((p) => p.place))
+  const request = recovery.complete(filled, undefined, momentOf(gathering)) as AttemptRequest
+  return { gathering, chosen: request.proofs.map((p) => p.place) }
+}
 
 describe('recovery client double', () => {
   it('reads the recovery state record pinned to one block', async () => {
@@ -317,19 +367,31 @@ describe('recovery client double', () => {
       })
     })
 
+    it('completes with a set naming no stopped method before the earliest filed', async () => {
+      const world = createWorld()
+      world.chain.setPaused(world.descriptor.methodZkpassport, true)
+      const { gathering, chosen } = await completeInPlaceOrder(world, [
+        {
+          threshold: 2,
+          credentials: [
+            passportAt(world, 'passport'),
+            walletAt(world, 'ana'),
+            passkeyAt(world, '0x04aa')
+          ]
+        }
+      ])
+      expect(gathering.places.map((p) => p.standing)).toEqual([
+        'stopped',
+        'not-stopped',
+        'not-stopped'
+      ])
+      expect(chosen).toEqual([1n, 2n])
+    })
+
     it('completes with the set naming the fewest stoppable methods before the earliest filed', async () => {
       const world = createWorld()
-      // The wallet method carries a stop here too, so all three places are stoppable.
-      world.script.method(world.descriptor.methodEcdsa, {
-        trustedParties: {
-          admin: ZERO,
-          pendingAdmin: ZERO,
-          trustedKeys: [],
-          pauseHolder: addressOf('wallet-pause-holder'),
-          pendingPauseHolder: ZERO
-        }
-      })
-      const configuration = commitOver(world, [
+      withStop(world, world.descriptor.methodEcdsa)
+      const { gathering, chosen } = await completeInPlaceOrder(world, [
         {
           threshold: 2,
           credentials: [
@@ -339,20 +401,22 @@ describe('recovery client double', () => {
           ]
         }
       ])
-      const recovery = await world.recoveryClient()
-      const gathering = await openGathering(world, recovery, configuration)
       expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true])
-      let filled = gathering
-      // eslint-disable-next-line no-restricted-syntax
-      for (const request of recovery.getApproverRequests(gathering)) {
-        // eslint-disable-next-line no-await-in-loop
-        const added = recovery.addApproverReply(filled, await replyOf(world, request))
-        expect(added.reason).toBeUndefined()
-        filled = added.gathering
-      }
-      expect(filled.replies.map((r) => r.place)).toEqual([0, 1, 2])
-      const request = recovery.complete(filled, undefined, momentOf(gathering)) as AttemptRequest
-      expect(request.proofs.map((p) => p.place)).toEqual([0n, 2n])
+      expect(chosen).toEqual([0n, 2n])
+    })
+
+    it('ranks whole sets across clauses by their distinct stoppable methods', async () => {
+      const world = createWorld()
+      withStop(world, world.descriptor.methodEcdsa)
+      withStop(world, world.descriptor.methodPasskey)
+      const { gathering, chosen } = await completeInPlaceOrder(world, [
+        { threshold: 1, credentials: [passportAt(world, 'passport'), walletAt(world, 'ana')] },
+        { threshold: 1, credentials: [walletAt(world, 'ben'), passkeyAt(world, '0x04aa')] }
+      ])
+      expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true, true])
+      // One pick per clause in filing order would be {0, 2}, naming two stoppable
+      // methods; {1, 2} names the wallet method alone.
+      expect(chosen).toEqual([1n, 2n])
     })
 
     it('refuses to complete a record whose window has passed', async () => {
