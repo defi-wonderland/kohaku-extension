@@ -22,7 +22,12 @@ import {
 import { ChainReads, createChainReads } from './chain-reads'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
 import type { AccountFacts } from './configuration'
-import { extensionProviderFor, networkOf, providerKeyOf } from './extension-provider'
+import {
+  ExtensionProvider,
+  extensionProviderFor,
+  networkOf,
+  providerKeyOf
+} from './extension-provider'
 import { createProviderAdapter } from './provider-adapter'
 
 export type RecoveryClientState =
@@ -30,6 +35,16 @@ export type RecoveryClientState =
   | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads }
   | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
   | { status: 'failed'; error: unknown }
+
+const LOADING: RecoveryClientState = { status: 'loading' }
+
+/** Every input the effect builds from, as one key. */
+const buildKeyOf = (
+  account: Address | undefined,
+  networkKey: string,
+  factsKey: string,
+  attempt: number
+): string => JSON.stringify([account ?? null, networkKey, factsKey, attempt])
 
 export const useRecoveryClient = (
   account: Address | undefined,
@@ -44,12 +59,18 @@ export const useRecoveryClient = (
   const networkKey = network ? providerKeyOf(network) : networks ? 'missing' : 'loading'
   const factsKey = JSON.stringify(facts)
   const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<RecoveryClientState>({ status: 'loading' })
+  const buildKey = buildKeyOf(account, networkKey, factsKey, attempt)
+  const [stored, setStored] = useState<{ key: string; state: RecoveryClientState }>({
+    key: buildKey,
+    state: LOADING
+  })
 
   useEffect(() => {
+    const key = buildKeyOf(account, networkKey, factsKey, attempt)
+    const setState = (next: RecoveryClientState) => setStored({ key, state: next })
     const current = networkRef.current
     if (!account || networkKey === 'loading') {
-      setState({ status: 'loading' })
+      setState(LOADING)
       return undefined
     }
     if (!current) {
@@ -61,9 +82,16 @@ export const useRecoveryClient = (
       })
       return undefined
     }
+    let provider: ExtensionProvider
+    try {
+      provider = extensionProviderFor(current)
+    } catch (error: unknown) {
+      // `getRpcProvider` refuses a record with no usable RPC URL or an unknown kind.
+      setState({ status: 'failed', error })
+      return undefined
+    }
     let live = true
-    setState({ status: 'loading' })
-    const provider = extensionProviderFor(current)
+    setState(LOADING)
     buildRecoveryClient({
       ...(JSON.parse(factsKey) as AccountFacts),
       chain: WALLET_RECOVERY_CHAIN,
@@ -90,5 +118,9 @@ export const useRecoveryClient = (
 
   const retry = useCallback(() => setAttempt((n) => n + 1), [])
 
+  // After an input changes, the render comes before the effect, and the same
+  // commit destroys the stored client's provider: a state stored for other
+  // inputs reads as loading.
+  const state = stored.key === buildKey ? stored.state : LOADING
   return { ...state, retry }
 }

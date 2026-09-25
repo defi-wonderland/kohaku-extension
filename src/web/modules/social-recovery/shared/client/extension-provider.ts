@@ -45,15 +45,17 @@ export const providerKeyOf = (network: Network): string =>
     network.rpcProvider ?? 'rpc',
     network.batchMaxCount ?? null,
     network.consensusRpcUrl ?? null,
-    network.isOptimistic ?? null,
-    network.isLinea ?? null,
+    !!network.isOptimistic,
+    !!network.isLinea,
     network.proverRpcUrl ?? null
   ])
 
 /**
  * Builds the extension's provider for one network record. The caller destroys
  * it: `destroy()` shuts a Helios light client down, a pending one included,
- * and stops a JSON-RPC provider. Colibri's client offers no teardown of its
- * own and holds no timer for the reads this folder makes.
+ * and stops a JSON-RPC provider. Colibri's own client has a `destroy()` that
+ * only stops its `startLightClient` poll, which `ColibriRpcProvider` never
+ * starts, so the provider's inherited `destroy()` leaves no timer behind for
+ * the reads this folder makes.
  */
 export const extensionProviderFor = (network: Network): ExtensionProvider => getRpcProvider(network)
