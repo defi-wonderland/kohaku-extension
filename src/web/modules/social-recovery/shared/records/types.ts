@@ -58,7 +58,8 @@ export type SetupDraftRecord = SetupDraft
 /**
  * 2. The inventory, the answer to "What do you have": another device,
  * guardians with wallets, a passport, an Aadhaar identity, and keys the holder
- * keeps on paper or hardware.
+ * keeps on paper or hardware. The guided setup wizard fills it at its "What do
+ * you have" step, a step that comes with the wizard in a later release.
  */
 export const INVENTORY_ITEMS = [
   'another-device',
