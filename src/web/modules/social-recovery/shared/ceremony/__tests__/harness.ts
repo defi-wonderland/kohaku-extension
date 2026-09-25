@@ -784,7 +784,7 @@ export const methodRunCount = (method: FakeMethod, orchestrator: FakeOrchestrato
 /** The four verdicts every test reports, under the tests' own names. */
 export type FourVerdict = 'passed' | 'failed' | 'unavailable' | 'not-supported'
 
-/** The two notes a ceremony returns before the method runs. */
+/** The two notes of a dismissal. */
 export type Note = 'cancelled' | 'refused'
 
 export type Outcome =
