@@ -1,8 +1,3 @@
-/**
- * The action codec double (IActionCodec, sdk.md D-201, D-204): the action
- * addresses it serves and two pure functions over the handover layout; the
- * decoder refuses bytes its encoder would not reproduce.
- */
 import type { Handover } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { createWorld, isHex } from './harness'

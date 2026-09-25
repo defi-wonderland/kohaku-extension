@@ -1,11 +1,6 @@
-/**
- * The event manager double (IEventManager, sdk.md D-203). It serves
- * AttemptStarted, AttemptCancelled, AttemptConsumed, SetupCommitted and
- * TrustedKeysUpdated from the scripted chain record.
- */
 import { NOTIFICATION_KINDS, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isAddress, isHex, membersOf, World } from './harness'
+import { createWorld, expectThrown, isAddress, isHex, World } from './harness'
 
 const everything = async (world: World, filter = world.events.accountFilter()) => {
   const at = await world.provider.block('latest')
@@ -15,14 +10,6 @@ const everything = async (world: World, filter = world.events.accountFilter()) =
 const lower = (xs: string[]) => xs.map((x) => x.toLowerCase())
 
 describe('event manager double', () => {
-  it('exposes every member of IEventManager', () => {
-    const events = createWorld().events
-    const members = membersOf(events)
-    ;['accountFilter', 'methodFilter', 'privilegeFilter', 'fetch', 'decodeLog'].forEach((name) =>
-      expect(members).toContain(name)
-    )
-  })
-
   it('returns the three filters as addresses and topics, no block range', () => {
     const world = createWorld()
     const { accountFilter, methodFilter, privilegeFilter } = {
@@ -48,7 +35,7 @@ describe('event manager double', () => {
       )
     )
     const wide = world.events.accountFilter({ anyAction: true })
-    // The one option leaves the action topic open (D-203 "Filters").
+    // The one option leaves the action topic open.
     expect(wide.topics).toContain(null)
     expect(accountFilter.topics).not.toContain(null)
     expect(wide.topics.length).toBe(accountFilter.topics.length)

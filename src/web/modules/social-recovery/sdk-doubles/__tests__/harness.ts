@@ -1,8 +1,7 @@
 /**
- * The tester's one seam onto the doubles of PT-035 (brief
- * docs/social-recovery/briefs/PT-035.md). Every test file reads the doubles
- * through the SDK interfaces of `sdk-interfaces/` and scripts the chain record
- * through the `World` below, so a rename in the doubles changes this file alone.
+ * Every test file reads the doubles through the SDK interfaces of
+ * `sdk-interfaces/` and scripts the chain record through the `World` below, so
+ * a rename in the doubles changes this file alone.
  */
 import {
   ActionCodecDouble,
@@ -53,11 +52,11 @@ import type {
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-/** The attempt statuses D-371 and D-373 name. */
+/** The attempt statuses a test can script. */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
 export type AttemptStatus = typeof ATTEMPT_STATUSES[number]
 
-/** The three cancellers the task body names: the account, a caller with proofs, nobody. */
+/** Who cancels a scripted attempt: the account, a caller with proofs, nobody. */
 export const CANCELLERS = ['account', 'proofs', 'nobody'] as const
 export type Canceller = typeof CANCELLERS[number]
 
@@ -82,7 +81,7 @@ export interface World {
   events: IEventManager
   codec: IActionCodec
   methods: Record<MethodKind, IRecoveryMethod>
-  /** The cut-q-22 seam, bound to the given client configuration. */
+  /** The wallet reads double, bound to the given client configuration. */
   walletReads(
     config?: Pick<ClientConfiguration, 'creation' | 'accountImplementation'>
   ): IWalletReadsDouble
@@ -336,7 +335,7 @@ export const startLanded = async (world: World = createWorld()) => {
   return { ...opened, request, prepared }
 }
 
-/** The opening notification of the live attempt, whose payload the execute takes (D-209). */
+/** The opening notification of the live attempt, whose payload the execute takes. */
 export const openingOf = async (world: World, attemptId: bigint) => {
   const at = await world.provider.block('latest')
   const notes = await world.events.fetch(world.events.accountFilter(), {
@@ -400,10 +399,12 @@ export const expectThrown = async (run: () => Promise<unknown>) => {
 // only when Jest runs this file, never from a file that imports the harness.
 if (expect.getState().testPath === __filename) {
   describe('harness', () => {
-    it('builds a world with the four shipped method kinds', () => {
+    it('builds a world whose own drafts pass setup validation at every level', async () => {
       const world = createWorld()
-      expect(Object.keys(world.methods).sort()).toEqual([...METHOD_KINDS].sort())
-      expect(world.configuration.clauses.length).toBeGreaterThan(0)
+      const setup = await world.setupClient()
+      const levels: PrivacyLevel[] = ['private', 'shape-visible', 'public']
+      const findings = await Promise.all(levels.map((l) => setup.validateSetup(world.draft(l))))
+      findings.forEach(({ errors }) => expect(errors).toEqual([]))
     })
   })
 }

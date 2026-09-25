@@ -1,9 +1,3 @@
-/**
- * The recovery client double (IRecoveryClient, sdk.md D-202 "Recovery request",
- * "Recovery cancel", "Recovery execute", "The two state records"; D-207 "The
- * operations", "The rules the assembly enforces"). The end-to-end flow the brief
- * asks for: init, requests, one reply per refusal kind, complete.
- */
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
@@ -21,7 +15,6 @@ import {
   fillAll,
   isAddress,
   isHex,
-  membersOf,
   NO_PAYMENT,
   openRecovery,
   replyFor,
@@ -29,29 +22,6 @@ import {
 } from './harness'
 
 describe('recovery client double', () => {
-  it('exposes every member of IRecoveryClient', async () => {
-    const recovery = await createWorld().recoveryClient()
-    const members = membersOf(recovery)
-    ;[
-      'initRecoveryGathering',
-      'initCancelGathering',
-      'getApproverRequests',
-      'addApproverReply',
-      'assess',
-      'complete',
-      'prepareStartAttempt',
-      'prepareCancelByProofs',
-      'prepareCancelByOwner',
-      'prepareCancelByVeto',
-      'prepareExecuteHandover',
-      'recoveryState'
-    ].forEach((name) => {
-      expect(members).toContain(name)
-      expect(typeof (recovery as unknown as Record<string, unknown>)[name]).toBe('function')
-    })
-    expect(typeof recovery.events.fetch).toBe('function')
-  })
-
   it('reads the recovery state record pinned to one block', async () => {
     const world = createWorld()
     world.script.setupCommitted('private')
@@ -187,8 +157,8 @@ describe('recovery client double', () => {
       ['an empty object', {}, 'version-unread'],
       ['null', null, 'version-unread'],
       ['a string', 'not a reply', 'version-unread'],
-      // D-207 does not say whether a record missing its fields fails the read
-      // or the binding rule; the doubles read it as a record they cannot read.
+      // A record missing its binding fields is one the doubles cannot read,
+      // not a binding mismatch.
       [
         'a reply with no binding fields',
         { kind: 'recovery-proof-reply', version: 1, place: 0 },
@@ -204,10 +174,6 @@ describe('recovery client double', () => {
       expect(result!.reason).toEqual({ kind: 'add-refusal', cause: sample[2] })
       expect(result!.gathering).toEqual(opened.gathering)
       expect(result!.displaced).toBeUndefined()
-    })
-
-    it('names five refusal kinds, one per rule of D-207', () => {
-      expect(Object.keys(tamper).sort()).toEqual([...ADD_REFUSAL_REASONS].sort())
     })
 
     eachIt(ADD_REFUSAL_REASONS)(

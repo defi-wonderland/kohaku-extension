@@ -1,9 +1,7 @@
 /**
- * Land, then read (review item 7): every write the doubles prepare is landed
- * through `ScriptedChain.land`, as if the integrator sent it, and the chain is
- * read back through the clients, the parts and the event stream (sdk.md D-202
- * "Policies setup", "Recovery request", "Recovery cancel", "Recovery execute";
- * D-203; contracts D-105 for the handover's two privilege writes).
+ * Every write the doubles prepare is landed through `ScriptedChain.land`, as if
+ * the integrator sent it, and the chain is read back through the clients, the
+ * parts and the event stream.
  */
 import type {
   CancelRequest,

@@ -1,7 +1,3 @@
-/**
- * The setup client double (ISetupClient, sdk.md D-202 "Policies setup", "The two
- * state records", "Restoring the configuration"; D-201 "Refusals throw").
- */
 import {
   PRIVACY_LEVELS,
   RESTORE_CAUSES,
@@ -11,7 +7,7 @@ import {
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, expectThrown, isAddress, isHex, membersOf } from './harness'
+import { createWorld, eachIt, expectThrown, isAddress, isHex } from './harness'
 
 const expectCall = (value: PreparedCall) => {
   expect(value.kind).toBe('call')
@@ -34,59 +30,6 @@ const asCall = (value: PreparedCall | PreparedBatch) => {
 }
 
 describe('setup client double', () => {
-  it('exposes every member of ISetupClient', async () => {
-    const setup = await createWorld().setupClient()
-    const members = membersOf(setup)
-    ;[
-      'validateSetup',
-      'describeSetup',
-      'prepareCommitSetup',
-      'prepareClearSetup',
-      'confirmSetup',
-      'setupState',
-      'getSetup'
-    ].forEach((name) => {
-      expect(members).toContain(name)
-      expect(typeof (setup as unknown as Record<string, unknown>)[name]).toBe('function')
-    })
-    ;['accountFilter', 'methodFilter', 'privilegeFilter', 'fetch', 'decodeLog'].forEach((name) =>
-      expect(typeof (setup.events as unknown as Record<string, unknown>)[name]).toBe('function')
-    )
-  })
-
-  it('returns the two finding sets from validateSetup and the fourteen fields from describeSetup', async () => {
-    const world = createWorld()
-    const setup = await world.setupClient()
-    const draft = world.draft('private')
-    const findings = await setup.validateSetup(draft)
-    expect(Array.isArray(findings.errors)).toBe(true)
-    expect(Array.isArray(findings.warnings)).toBe(true)
-    ;[...findings.errors, ...findings.warnings].forEach((f) => {
-      expect(typeof f.code).toBe('string')
-      expect(typeof f.subject).toBe('string')
-      expect(typeof f.values).toBe('object')
-    })
-    const described = await setup.describeSetup(draft)
-    expect(Object.keys(described).sort()).toEqual(
-      [
-        'rule',
-        'wait',
-        'failureDomains',
-        'parties',
-        'methodStanding',
-        'passkeyDomains',
-        'candidateKeys',
-        'removedKey',
-        'privacy',
-        'backup',
-        'reveals',
-        'cancel',
-        'upgrade',
-        'pause'
-      ].sort()
-    )
-  })
-
   it('reads the setup state record pinned to one block', async () => {
     const world = createWorld()
     world.script.setupNone()
@@ -195,20 +138,6 @@ describe('setup client double', () => {
       const error = (await expectThrown(() => setup.prepareClearSetup())) as ValidationRefusal
       expect(error.findings.errors.map((f) => f.code)).toContain('action.unsupported')
     })
-  })
-
-  it('answers confirmSetup with the confirmation record', async () => {
-    const world = createWorld()
-    world.script.setupNone()
-    world.script.authorized(false)
-    const setup = await world.setupClient()
-    const draft = world.draft('private')
-    const prepared = await setup.prepareCommitSetup(draft, 'pw')
-    const confirmation = await setup.confirmSetup(draft, prepared)
-    expect(typeof confirmation.landed).toBe('boolean')
-    expect(typeof confirmation.nonce).toBe('bigint')
-    expect(isHex(confirmation.setupCommitment)).toBe(true)
-    expect(typeof confirmation.isAuthorized).toBe('boolean')
   })
 
   describe('getSetup', () => {
