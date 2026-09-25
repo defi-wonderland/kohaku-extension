@@ -229,10 +229,13 @@ describe('DepositStepView: what renderDepositStep answers', () => {
   })
 })
 
-describe('neither view opens a link', () => {
+describe('no view opens a link', () => {
   const VIEWS = path.resolve(__dirname, '..', 'components')
-  // Read by name, so a view that moves fails the read rather than skipping the check.
-  const viewFiles = ['DepositStepView.tsx', 'WriteStateView.tsx']
+  const viewFiles = fs.readdirSync(VIEWS).filter((file) => /\.tsx$/.test(file))
+
+  it('scans every view in the folder, the write state view and the deposit step view among them', () => {
+    expect(viewFiles).toEqual(expect.arrayContaining(['DepositStepView.tsx', 'WriteStateView.tsx']))
+  })
 
   viewFiles.forEach((file) =>
     it(`${file} calls no Linking, sets no href and names no faucet`, () => {

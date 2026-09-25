@@ -69,7 +69,7 @@ describe('the shared write states exist once', () => {
           .readFileSync(file, 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '')
           .replace(/^\s*\/\/.*$/gm, '')
-        return (code.match(/['"`](?:submitting|failed\w*)['"`]/gi) ?? []).map((literal) =>
+        return (code.match(/['"`]\w*(?:submit|fail)\w*['"`]/gi) ?? []).map((literal) =>
           literal.slice(1, -1)
         )
       })

@@ -1,10 +1,12 @@
 /**
  * A screen may reset a write, or retry it, while the answers of the run before
  * are still on their way. Each `start` opens a new run, and the machine takes
- * only the answers of the current run: a late receipt, error, gas check or
- * attempt read of an earlier run leaves the state as it was. So a late landed
- * receipt of a cancel the holder left behind never hides the revert of the
- * cancel that followed it.
+ * only the answers of the current run: a late receipt, error, hash, gas check
+ * or attempt read of an earlier run leaves the state as it was. So a late
+ * landed receipt of a cancel the holder left behind never hides the revert of
+ * the cancel that followed it. Within the run, a receipt settles the write
+ * only for a hash the wallet announced: the first one, or a repriced
+ * replacement's.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -14,18 +16,21 @@ import {
   depositStepFor,
   enoughCheck,
   initialWriteState,
+  minedAndReverted,
   offersMoveFunds,
   readingOf,
   REPLACEMENT_HASH,
   sentFrom,
+  submittingFrom,
   TX_HASH,
-  userRejected,
-  writeReducer,
-  WriteMachineState
+  waitTimedOut,
+  writeReducer
 } from './harness'
 
 const HASH_A = TX_HASH
 const HASH_B: Hex = `0x${'b'.repeat(64)}`
+/** The hash of another transaction from the same key, such as the transfer route's. */
+const OTHER_HASH: Hex = `0x${'d'.repeat(64)}`
 
 /** A cancel sent with hash A, reset by the holder, then sent again with hash B. */
 const cancelSentAgain = () => {
@@ -85,19 +90,52 @@ describe('an answer of an earlier run', () => {
 
   it('a late error from the previous run is ignored', () => {
     const { first, second } = cancelSentAgain()
-    expect(writeReducer(second, { type: 'error', run: first.run, error: userRejected() })).toBe(
-      second
-    )
+    ;[waitTimedOut(HASH_A), minedAndReverted(HASH_A)].forEach((error) => {
+      const late = writeReducer(second, { type: 'error', run: first.run, error })
+      expect(late).toBe(second)
+      expect(late).toMatchObject({
+        status: 'submitting',
+        transactionHash: HASH_B,
+        run: second.run
+      })
+    })
     const checking = writeReducer(writeReducer(first, { type: 'reset' }), { type: 'start' })
-    expect(writeReducer(checking, { type: 'error', run: first.run, error: userRejected() })).toBe(
-      checking
-    )
+    const lateWhileChecking = writeReducer(checking, {
+      type: 'error',
+      run: first.run,
+      error: waitTimedOut(HASH_A)
+    })
+    expect(lateWhileChecking).toBe(checking)
+    expect(lateWhileChecking).toMatchObject({ status: 'checkingGas', run: checking.run })
   })
 
   it('a late error from the run a retry left behind is ignored', () => {
     const { first, second } = cancelRetried()
-    expect(writeReducer(second, { type: 'error', run: first.run, error: userRejected() })).toBe(
-      second
+    const late = writeReducer(second, {
+      type: 'error',
+      run: first.run,
+      error: minedAndReverted(HASH_A)
+    })
+    expect(late).toBe(second)
+    expect(late).toMatchObject({ status: 'submitting', transactionHash: HASH_B, run: second.run })
+  })
+
+  it('a late hash from the previous run is ignored, before and after the current run sent', () => {
+    const { first, second } = cancelSentAgain()
+    const resent = writeReducer(second, {
+      type: 'sent',
+      run: second.run,
+      transactionHash: REPLACEMENT_HASH
+    })
+    expect(writeReducer(resent, { type: 'sent', run: first.run, transactionHash: HASH_A })).toBe(
+      resent
+    )
+
+    const waiting = submittingFrom(writeReducer(first, { type: 'reset' }))
+    expect(waiting).toMatchObject({ status: 'submitting', run: second.run })
+    expect(waiting).not.toHaveProperty('transactionHash')
+    expect(writeReducer(waiting, { type: 'sent', run: first.run, transactionHash: HASH_A })).toBe(
+      waiting
     )
   })
 
@@ -137,16 +175,99 @@ describe('an answer of an earlier run', () => {
   })
 })
 
+describe('a start while a run is under way', () => {
+  it('during the gas check changes nothing, and the check still answers', () => {
+    const checking = writeReducer(initialWriteState('cancel'), { type: 'start' })
+    expect(writeReducer(checking, { type: 'start' })).toBe(checking)
+    expect(
+      writeReducer(checking, {
+        type: 'gasChecked',
+        run: checking.run,
+        check: enoughCheck('cancel')
+      }).status
+    ).toBe('submitting')
+  })
+
+  it('at the deposit step changes nothing, and the recheck still answers', async () => {
+    const checking = writeReducer(initialWriteState('cancel'), { type: 'start' })
+    const needsDeposit = writeReducer(checking, {
+      type: 'gasChecked',
+      run: checking.run,
+      check: { kind: 'deposit', step: await depositStepFor('cancel', false) }
+    })
+    expect(needsDeposit.status).toBe('needsDeposit')
+    expect(writeReducer(needsDeposit, { type: 'start' })).toBe(needsDeposit)
+    const rechecking = writeReducer(needsDeposit, { type: 'recheck' })
+    expect(
+      writeReducer(rechecking, {
+        type: 'gasChecked',
+        run: checking.run,
+        check: enoughCheck('cancel')
+      }).status
+    ).toBe('submitting')
+  })
+
+  it('while submitting, before and after the hash, changes nothing, and the receipt still settles', () => {
+    const submitting = submittingFrom(initialWriteState('cancel'))
+    expect(writeReducer(submitting, { type: 'start' })).toBe(submitting)
+    const sent = writeReducer(submitting, {
+      type: 'sent',
+      run: submitting.run,
+      transactionHash: HASH_A
+    })
+    expect(writeReducer(sent, { type: 'start' })).toBe(sent)
+    const landed = writeReducer(sent, {
+      type: 'receipt',
+      run: sent.run,
+      receipt: { transactionHash: HASH_A, status: 1 }
+    })
+    expect(readingOf(landed)).toBe('landed')
+    expect(landed).toMatchObject({ transactionHash: HASH_A, run: sent.run })
+  })
+})
+
 describe('an answer of the current run', () => {
   it('a repriced replacement receipt within the current run still lands', () => {
     const { second } = cancelSentAgain()
-    const landed = writeReducer(second, {
+    const resent = writeReducer(second, {
+      type: 'sent',
+      run: second.run,
+      transactionHash: REPLACEMENT_HASH
+    })
+    const landed = writeReducer(resent, {
       type: 'receipt',
       run: second.run,
       receipt: { transactionHash: REPLACEMENT_HASH, status: 1 }
     })
     expect(readingOf(landed)).toBe('landed')
     expect(landed).toMatchObject({ transactionHash: REPLACEMENT_HASH, run: second.run })
+  })
+
+  it('a receipt for a hash the run never announced is ignored, and the announced one still settles', () => {
+    const { second } = cancelSentAgain()
+    ;([0, 1] as const).forEach((status) =>
+      expect(
+        writeReducer(second, {
+          type: 'receipt',
+          run: second.run,
+          receipt: { transactionHash: OTHER_HASH, status }
+        })
+      ).toBe(second)
+    )
+    const waiting = submittingFrom(initialWriteState('cancel'))
+    expect(
+      writeReducer(waiting, {
+        type: 'receipt',
+        run: waiting.run,
+        receipt: { transactionHash: OTHER_HASH, status: 1 }
+      })
+    ).toBe(waiting)
+    const settled = writeReducer(second, {
+      type: 'receipt',
+      run: second.run,
+      receipt: { transactionHash: HASH_B, status: 0 }
+    })
+    expect(settled).toMatchObject({ status: 'failedReverted', transactionHash: HASH_B })
   })
 
   it('a second hash within the run replaces the first', () => {
@@ -162,7 +283,7 @@ describe('an answer of the current run', () => {
   it("the deposit step's recheck stays in the run, so the check it runs still answers", async () => {
     const checking = writeReducer(initialWriteState('cancel'), { type: 'start' })
     const step = await depositStepFor('cancel', false)
-    const needsDeposit: WriteMachineState = writeReducer(checking, {
+    const needsDeposit = writeReducer(checking, {
       type: 'gasChecked',
       run: checking.run,
       check: { kind: 'deposit', step }

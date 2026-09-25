@@ -71,6 +71,7 @@ const ROADS = ATTEMPT_ENDS.filter(
 
 describe('the cause of a revert', () => {
   it('every kit error has a cause sentence in en.json, and so has the unnamed revert', () => {
+    expect(KIT_ERROR_NAMES.length).toBeGreaterThan(0)
     KIT_ERROR_NAMES.forEach((name) =>
       expect(resolves(causeKey(name))).toEqual({ key: causeKey(name), isString: true })
     )
@@ -85,6 +86,7 @@ describe('the cause of a revert', () => {
 
   WRITE_KINDS.filter((w) => w !== 'cancel').forEach((write) =>
     it(`${write}: the rendered reverted reading carries the sentence of every kit error`, () => {
+      expect(KIT_ERROR_NAMES.length).toBeGreaterThan(0)
       KIT_ERROR_NAMES.forEach((name) => {
         const reading = text(copyOfState(failWithReceipt(write, kitError(name))))
         const sentence = String(lookup(causeKey(name)))
