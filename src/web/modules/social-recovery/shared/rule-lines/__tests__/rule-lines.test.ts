@@ -1,19 +1,3 @@
-/**
- * PT-037 The rule lines.
- *
- * Sources: docs/social-recovery/briefs/PT-037.md ("Test expectations"),
- * docs/social-recovery/tasks/PT-037-the-rule-lines.md (Done),
- * docs/social-recovery/design/ux.md D-305 (every rule line and the shape that
- * earns it) and D-312 (one failure domain keyed on the method family; no
- * identity weight line, no "primary", no "offered"),
- * docs/social-recovery/design/ux-copy.md (UXC bans).
- *
- * The expected lines below were derived from D-305 before the implementation
- * was read. Keys are compared by their last segment, so a descriptor may carry
- * either the short key or the full `socialRecovery.ruleLines.<name>` path; the
- * rendering tests run every descriptor through a real i18next instance loaded
- * with the real en.json, which settles whether the key resolves.
- */
 import i18next from 'i18next'
 
 import en from '@common/config/localization/translations/en.json'
@@ -28,8 +12,8 @@ import type { Translate } from '..'
 
 type Hex = `0x${string}`
 
-// One method address per family: the draft's credentials carry the method
-// address, and D-312 keys the failure domain on the family.
+// One method address per family: the failure-domain line keys on the method
+// address.
 const PASSKEY = '0x1000000000000000000000000000000000000001' as Hex
 const PASSPORT = '0x2000000000000000000000000000000000000002' as Hex
 const AADHAAR = '0x3000000000000000000000000000000000000003' as Hex
@@ -80,15 +64,12 @@ const SINGLE_METHOD: Expected[] = [
   { key: 'platformFate' }
 ]
 
-// The table of shapes of the brief's "Test expectations", with the lines D-305
-// states for each, in D-305's order: the rows' line or the single-method
-// warning with its offer, the group's count line, one failure domain, the
-// setup line on different places, the sizing rule. Coordinator rulings on
-// D-305 beside frame C-04e: at threshold equal to member count the every
-// member line replaces the count line; beside rows or other groups it takes
-// the together-with form; two groups and no row read togetherWithGroups; a
-// threshold of one beside rows or groups keeps the together-with any N of M
-// wording with n = 1.
+// Each accepted shape with its lines in order: the rows' line or the
+// single-method warning with its offer, each group's count line followed by
+// its failure-domain line, the different-places line, the sizing rule. A
+// group at threshold equal to its size reads the every-member line in place
+// of the count line. Beside rows or other groups a group line takes the
+// together-with form, and a threshold of one keeps the any N of M wording.
 const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   {
     name: 'one row: the single-method warning with the second passkey or hardware key offer',
@@ -193,7 +174,7 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
   },
   {
-    name: 'C-04e: a 3-of-3 all-guardian group: every member, then one failure domain',
+    name: 'a 3-of-3 all-guardian group: every member, then one failure domain',
     clauses: [group(3, [GUARDIAN, GUARDIAN, GUARDIAN])],
     expected: [
       { key: 'everyMemberMustAnswer' },
@@ -281,17 +262,13 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   }
 ]
 
-// Paths that earn no line. The coordinator's ruling of 2026-09-24 (brief,
-// "Design sections and deltas"): a path with any refused clause (an empty
-// clause, a threshold above the member count, a non-integer threshold, a
-// threshold above 255) yields no lines, since a refused path recovers
-// nothing. The coordinator's later ruling (D-305 wins): a clause at threshold
-// zero is refused too, "the editor refuses a group nothing has to fill", so
-// every path holding one yields no lines, beside a required row included.
+// Paths that earn no line: a path with any refused clause recovers nothing,
+// so it yields no lines, even beside a valid row or group. A clause is
+// refused when it is empty, when its threshold is below one, above its size,
+// above 255 or not a whole number, or when it repeats a credential.
 const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   { name: 'an empty path', clauses: [] },
-  // D-305: one enrolled method appears once across the path, and the editor
-  // refuses a duplicate. A duplicate is the same (method, config) pair.
+  // A duplicate is the same (method, config) pair anywhere on the path.
   {
     name: 'a 1-of-2 group holding the same credential twice: never either one alone',
     clauses: [
@@ -415,7 +392,7 @@ const linesOf = (clauses: Clause[]) => getRuleLines(draft(clauses))
 const keysOf = (clauses: Clause[]) => linesOf(clauses).map((l) => shortKey(l.key))
 const renderedAll = () => EVERY_SHAPE.flatMap((clauses) => renderRuleLines(linesOf(clauses), t))
 
-describe('getRuleLines: the table of shapes (D-305)', () => {
+describe('getRuleLines: the lines each path shape earns', () => {
   SHAPES.forEach(({ name, clauses, expected }) =>
     it(name, () => {
       const lines = linesOf(clauses)
@@ -476,7 +453,7 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
     })
   )
 
-  it('renders the exact sentences D-305 states for the placeholder lines', () => {
+  it('renders the exact sentences of the lines that fill placeholders', () => {
     expect(renderRuleLines(linesOf([row(PASSKEY), row(PASSPORT), row(GUARDIAN)]), t)[0]).toBe(
       'All 3 must answer. Losing any one locks you out.'
     )
@@ -512,7 +489,7 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
   })
 })
 
-describe('negative assertions (D-312, ux-copy.md)', () => {
+describe('words and lines the output never carries', () => {
   it('renders at least one line for every shape the editor accepts', () => {
     SHAPES.forEach(({ clauses }) =>
       expect(renderRuleLines(linesOf(clauses), t).length).toBeGreaterThan(0)
@@ -534,7 +511,7 @@ describe('negative assertions (D-312, ux-copy.md)', () => {
     })
   })
 
-  it('no output contains a banned word of ux-copy.md', () => {
+  it('no output contains a banned product word', () => {
     const bans = [
       /\bpolic(?:y|ies)\b/i,
       /\bproofs?\b/i,
