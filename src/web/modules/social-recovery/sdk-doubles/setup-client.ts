@@ -1,9 +1,9 @@
 /**
- * The `ISetupClient` double (sdk.md D-201, D-202): the two judgments, the commit
- * and clear prepares with their call-or-batch shapes, the confirmation read, the
- * setup-side state record and the restore, over the shared part doubles. Every
- * read goes through a part, so a read scripted to fail there fails here. The
- * arming seam reaches this client alone, through its constructor.
+ * The `ISetupClient` double: the two judgments, the commit and clear prepares
+ * with their call-or-batch shapes, the confirmation read, the setup-side state
+ * record and the restore, over the shared part doubles. Every read goes through
+ * a part, so a read scripted to fail there fails here. The arming seam reaches
+ * this client alone, through its constructor.
  */
 import type {
   Address,
@@ -46,7 +46,7 @@ import { codedError, finding, validationRefusal } from './scripts'
 
 const MAX_WAIT_FIELD = 2n ** 48n
 
-/** The widest threshold the body's `uint8` field holds (D-103). */
+/** The widest threshold the body's `uint8` field holds. */
 const THRESHOLD_FIELD = 255
 
 export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
@@ -56,7 +56,7 @@ export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
 })
 
 /**
- * The D-375 level a draft encodes, by the one rule the chain reads its fields
+ * The privacy level a draft encodes, by the one rule the chain reads its fields
  * with (`levelOfFields`): a clear backup is public, a public note beside a
  * sealed or empty backup is shape-visible, nothing public is private.
  */
@@ -100,13 +100,13 @@ export class SetupClientDouble implements ISetupClient {
     )
   }
 
-  /** The secondary tier of D-5: the identity pair. */
+  /** The secondary tier: the identity pair, Aadhaar and zkPassport. */
   private secondary(method: Address): boolean {
     const d = this.ctx.chain.descriptor
     return sameAddress(method, d.methodAadhaar) || sameAddress(method, d.methodZkpassport)
   }
 
-  /** The clause rows of D-205 over the draft alone. */
+  /** The clause rows over the draft alone. */
   private clauseRows(draft: SetupDraft, errors: Finding[], warnings: Finding[]): void {
     draft.clauses.forEach((clause, index) => {
       const count = clause.credentials.length
@@ -163,7 +163,7 @@ export class SetupClientDouble implements ISetupClient {
   }
 
   /**
-   * `rule.too-wide` (D-205, D-107): the costliest set that satisfies the rule, a
+   * `rule.too-wide`: the costliest set that satisfies the rule, a
    * clause's `threshold` costliest credentials each, summed over their methods'
    * `verify` gas against the configuration's bound.
    */
@@ -193,7 +193,7 @@ export class SetupClientDouble implements ISetupClient {
   }
 
   /**
-   * `manager.already-armed` (D-205): the manager's events with the action topic
+   * `manager.already-armed`: the manager's events with the action topic
    * open, the last commit against the last clear per action, for any other
    * action whose setup still stands for this account.
    */
@@ -219,7 +219,7 @@ export class SetupClientDouble implements ISetupClient {
       )
   }
 
-  /** The findings of sdk.md D-205 over the draft and the reads, plus any appended by a script. */
+  /** The setup findings over the draft and the reads, plus any appended by a script. */
   private async findings(draft: SetupDraft): Promise<ValidationResult> {
     const { chain, config, action } = this.ctx
     const block = await pinBlock(this.ctx)
@@ -317,7 +317,7 @@ export class SetupClientDouble implements ISetupClient {
       }
     })
 
-    // The action check of D-202: the fit check read three ways, and the audit list.
+    // The action check: the fit check read three ways, and the audit list.
     const [fits, info] = await Promise.all([action.supportsAccount(), action.actionInfo()])
     if (!fits) {
       if (config.accountImplementation) {
@@ -368,6 +368,10 @@ export class SetupClientDouble implements ISetupClient {
     return this.findings(draft)
   }
 
+  /**
+   * The interfaces type most values of a `SetupDescription` as `unknown`; the
+   * shapes below are the doubles' own, and a screen must not rely on them.
+   */
   async describeSetup(draft: SetupDraft): Promise<SetupDescription> {
     const { chain, config, manager, action } = this.ctx
     chain.guard('setup.describeSetup')
@@ -428,6 +432,7 @@ export class SetupClientDouble implements ISetupClient {
       })),
       passkeyDomains,
       candidateKeys,
+      // No value exists for a replay that names no key or several; see `recoveryState`.
       removedKey: removed.kind === 'named' ? removed.key : 'no-creation-triple',
       privacy: { level: levelOfDraft(draft), publicMetadata: draft.privacy.publicMetadata },
       backup: { form: draft.privacy.backup },

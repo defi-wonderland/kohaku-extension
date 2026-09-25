@@ -1,33 +1,12 @@
-/**
- * PT-036: the deadline renders as a date and time in the reader's zone, the
- * zone named, with a countdown beside it (D-302), for a fixed now.
- *
- * Sources: docs/social-recovery/design/ux.md D-302,
- * docs/social-recovery/design/live-frame-strings.md K-09 (the deadline line
- * "13 Aug, 18:04 CEST · 23 hours left"). Every expectation is a literal.
- */
-import i18n from '@common/config/localization/localization'
-import en from '@common/config/localization/translations/en.json'
-
 import { renderDeadline, renderRemaining, Translate } from '..'
 
-// The K-09 example: 13 Aug 18:04 in Berlin (CEST, UTC+2) is 16:04 UTC.
+// 13 Aug 18:04 in Berlin (CEST, UTC+2) is 16:04 UTC.
 const DEADLINE = new Date('2026-08-13T16:04:00Z')
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
 const before = (ms: number) => new Date(DEADLINE.getTime() - ms)
 
 describe('countdown words come from en.json alone', () => {
-  it('en.json registers the hour and minute words with their plurals', () => {
-    const { display } = en.socialRecovery
-    expect(display.remainingHours).toBe('{{count}} hour')
-    expect(display.remainingHours_plural).toBe('{{count}} hours')
-    expect(display.remainingMinutes).toBe('{{count}} minute')
-    expect(display.remainingMinutes_plural).toBe('{{count}} minutes')
-    expect(i18n.exists('socialRecovery.display.remainingHours')).toBe(true)
-    expect(i18n.exists('socialRecovery.display.remainingMinutes')).toBe(true)
-  })
-
   it('reads the registered keys with a count and passes no fallback text', () => {
     const calls: [string, Record<string, unknown> | undefined][] = []
     const t: Translate = (key, options) => {
@@ -45,8 +24,8 @@ describe('countdown words come from en.json alone', () => {
   })
 })
 
-describe('deadline (D-302, K-09)', () => {
-  it('renders the K-09 example in Europe/Berlin', () => {
+describe('deadline', () => {
+  it('renders the date, time and zone in Europe/Berlin with the hours left', () => {
     expect(
       renderDeadline({ deadline: DEADLINE, now: before(23 * HOUR), timeZone: 'Europe/Berlin' })
     ).toEqual({

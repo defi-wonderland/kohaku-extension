@@ -1,5 +1,5 @@
 /**
- * The translate function every renderer of this lane takes.
+ * The translate function every renderer here takes.
  *
  * A renderer is a pure function of its inputs and of `t`: it reads no clock,
  * no zone and no storage of its own. The default `t` reads the app's i18next

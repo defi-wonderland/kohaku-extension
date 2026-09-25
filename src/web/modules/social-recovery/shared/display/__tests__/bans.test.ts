@@ -1,11 +1,3 @@
-/**
- * PT-036, done entries 3 and 4, I-26: Protected appears nowhere, and the banned
- * words of ux-copy.md reach no rendered chip, noun, label or value and no
- * exported string.
- *
- * Sources: docs/social-recovery/design/ux-copy.md (UXC-1 to UXC-7, UXC-9),
- * docs/social-recovery/design/invariants.yaml I-26, ux.md D-302.
- */
 import en from '@common/config/localization/translations/en.json'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
@@ -13,17 +5,16 @@ import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import * as display from '..'
 
 const BANS: { rule: string; pattern: RegExp }[] = [
-  { rule: 'UXC-1 policy', pattern: /\bpolic(?:y|ies)\b/i },
-  { rule: 'UXC-2 proof', pattern: /\bproofs?\b/i },
-  { rule: 'UXC-3 relayer', pattern: /\brelayers?\b/i },
-  { rule: 'UXC-4 EIP-712', pattern: /\bEIP[-\s]?712\b/i },
-  { rule: 'UXC-5 atomic', pattern: /\batomic(?:ally)?\b/i },
-  { rule: 'UXC-6 Protected', pattern: /\bProtected\b/ },
-  { rule: 'UXC-7 your people', pattern: /\byour\s+people\b/i },
-  { rule: 'UXC-9 full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
+  { rule: 'policy', pattern: /\bpolic(?:y|ies)\b/i },
+  { rule: 'proof', pattern: /\bproofs?\b/i },
+  { rule: 'relayer', pattern: /\brelayers?\b/i },
+  { rule: 'EIP-712', pattern: /\bEIP[-\s]?712\b/i },
+  { rule: 'atomic', pattern: /\batomic(?:ally)?\b/i },
+  { rule: 'Protected', pattern: /\bProtected\b/ },
+  { rule: 'your people', pattern: /\byour\s+people\b/i },
+  { rule: 'full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
 ]
 
-// Every string reachable from a value, depth first.
 const collect = (value: unknown, out: string[] = [], seen = new Set<unknown>()): string[] => {
   if (typeof value === 'string') out.push(value)
   else if (value && typeof value === 'object' && !seen.has(value)) {
@@ -43,8 +34,6 @@ const USDC: Address = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 const ZERO: Address = '0x0000000000000000000000000000000000000000'
 const TOKEN = { symbol: 'USDC', decimals: 6 }
 
-// Every chip of every set, every noun of every list, every password name,
-// value label and wallet word, as rendered.
 const renderedVocabulary = (): string[] => [
   ...(Object.keys(display.CHIP_SETS) as display.ChipSetName[]).flatMap((set) =>
     (display.CHIP_SETS[set] as readonly string[]).map((chip) =>
@@ -63,7 +52,6 @@ const renderedVocabulary = (): string[] => [
   ])
 ]
 
-// One output of every value renderer.
 const renderedValues = (): string[] => {
   const hidden = display.renderHiddenValue()
   const members = display.renderMemberList(['a', 'b', 'c', 'd', 'e'])
@@ -89,10 +77,10 @@ const renderedValues = (): string[] => {
   ]
 }
 
-describe('bans over the display module (I-26, ux-copy.md)', () => {
+describe('banned words in the display module', () => {
   it('no exported string, vocabulary or key carries a banned word', () => {
     const exported = collect(display)
-    // The walk reaches the vocabularies, so an empty walk cannot pass silently.
+    // The walk must reach the vocabularies, so an empty walk cannot pass silently.
     expect(exported).toEqual(
       expect.arrayContaining(['recoveryRegistry', 'notStarted', 'stillNeeded', 'guardian'])
     )
@@ -101,7 +89,7 @@ describe('bans over the display module (I-26, ux-copy.md)', () => {
 
   it('no rendered chip of any set, noun of any list, name or label carries a banned word', () => {
     const rendered = renderedVocabulary()
-    // 10 + 8 + 5 + 5 + 1 + 3 + 1 chips, 6 + 4 + 2 nouns: the walk is whole.
+    // Samples from several lists, so an empty walk cannot pass silently.
     expect(rendered).toEqual(
       expect.arrayContaining([
         'Not submitted',
@@ -115,7 +103,7 @@ describe('bans over the display module (I-26, ux-copy.md)', () => {
     expect(hits(rendered)).toEqual([])
   })
 
-  it('no rendered chip, noun or label says protect or unprotected (UXC-6 reviewer rule)', () => {
+  it('no rendered chip, noun or label says protect or unprotected', () => {
     expect(renderedVocabulary().filter((s) => /protect/i.test(s))).toEqual([])
   })
 

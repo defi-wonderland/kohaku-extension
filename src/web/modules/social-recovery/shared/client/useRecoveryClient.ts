@@ -4,8 +4,8 @@
  * the balance and gas reads on the same provider beside it.
  *
  * A refused digest version comes back as the `update-the-wallet` state the
- * account step draws (ux.md D-306, D-319); any other failure as `failed`,
- * with `retry`, never as an empty answer.
+ * account step draws; any other failure as `failed`, with `retry`, never as an
+ * empty answer.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -22,7 +22,7 @@ import {
 import { ChainReads, createChainReads } from './chain-reads'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
 import type { AccountFacts } from './configuration'
-import { extensionProviderFor, networkOf } from './extension-provider'
+import { extensionProviderFor, networkOf, providerKeyOf } from './extension-provider'
 import { createProviderAdapter } from './provider-adapter'
 
 export type RecoveryClientState =
@@ -39,11 +39,9 @@ export const useRecoveryClient = (
   const network = networkOf(networks, WALLET_RECOVERY_CHAIN)
   const networkRef = useRef(network)
   networkRef.current = network
-  const networkKey = network
-    ? `${network.chainId}:${network.selectedRpcUrl}:${network.rpcProvider ?? 'rpc'}`
-    : networks
-    ? 'missing'
-    : 'loading'
+  // A change to any field the provider is built from rebuilds the provider
+  // and the client; the effect's cleanup destroys the previous provider first.
+  const networkKey = network ? providerKeyOf(network) : networks ? 'missing' : 'loading'
   const factsKey = JSON.stringify(facts)
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<RecoveryClientState>({ status: 'loading' })

@@ -1,7 +1,7 @@
 /**
- * The `IEventManager` double (sdk.md D-203): three filters with no block range,
- * a chunked `fetch` through the provider, and a decoder that owns a log by its
- * emitting address alone (the manager, the account, a descriptor method or a
+ * The `IEventManager` double: three filters with no block range, a chunked
+ * `fetch` through the provider, and a decoder that owns a log by its emitting
+ * address alone (the manager, the account, a descriptor method or a
  * module a registered implementation serves). It serves every notification the
  * scripted chain emitted, `SetupCommitted`, `AttemptStarted`, `AttemptCancelled`,
  * `AttemptConsumed` and `TrustedKeysUpdated` among them.
@@ -69,7 +69,7 @@ export class EventManagerDouble implements IEventManager {
     const notifications: Notification[] = []
     for (let from = range.from; from <= range.to; from += this.chunkWidth) {
       const to = Math.min(range.to, from + this.chunkWidth - 1)
-      // A chunk the provider does not answer fails the whole read (sdk.md D-203).
+      // A chunk the provider does not answer fails the whole read.
       // eslint-disable-next-line no-await-in-loop
       const logs = await this.provider.logs(filter, { from, to })
       logs.forEach((log) => {

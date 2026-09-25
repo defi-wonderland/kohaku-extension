@@ -7,7 +7,7 @@
  * Every string comes from en.json through `t`, which defaults to the app's
  * i18next instance (shared/display `appTranslate`). The step links to nothing
  * and promises nowhere that one funding covers both the submission and the
- * execution (D-303, D-312, D-393).
+ * execution.
  */
 import type { KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import {
@@ -36,7 +36,7 @@ import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
 const WRITES = 'socialRecovery.writes'
 const GAS = `${WRITES}.gas`
 
-/** The keys of `socialRecovery.writes` this lane reads. */
+/** The keys of `socialRecovery.writes` the write states read. */
 export const WRITES_KEYS = {
   submitting: `${WRITES}.submitting`,
   submittingRecovery: `${WRITES}.submittingRecovery`,
@@ -61,7 +61,7 @@ export const WRITES_KEYS = {
   nowControlledBy: `${WRITES}.nowControlledBy`
 } as const
 
-/** The keys of `socialRecovery.writes.gas` this lane reads. */
+/** The keys of `socialRecovery.writes.gas` the deposit step reads. */
 export const GAS_KEYS = {
   fundTitle: `${GAS}.fundTitle`,
   sendingKey: `${GAS}.sendingKey`,
@@ -87,23 +87,23 @@ export const GAS_KEYS = {
   outsideRouteAlone: `${GAS}.outsideRouteAlone`,
   transferIsAnOperation: `${GAS}.transferIsAnOperation`,
   copy: `${GAS}.copy`,
-  /** D-393, frame D-09: the logged-in route's sending key, the key of the chosen account. */
+  /** The logged-in route's sending key, the key of the chosen account. */
   keyOf: `${GAS}.keyOf`,
-  /** D-393, frame D-09: the product keeps the funds in the account and its key sends. */
+  /** The logged-in route: the funds stay in the account and its key sends. */
   accountHoldsFunds: `${GAS}.accountHoldsFunds`,
-  /** D-393, D-373: the fast track's amount line at execution due. */
+  /** The fast track's amount line at execution due. */
   executionAmount: `${GAS}.executionAmount`,
-  /** D-393, frame D-13: the blocker at execution due. */
+  /** The blocker at execution due. */
   shortfallExecute: `${GAS}.shortfallExecute`,
   /** The network an owner write's key must be funded on. */
   networkOwner: `${GAS}.networkOwner`
 } as const
 
 /**
- * The reverted reading of each write (D-319), from its own frame: the save
- * (C-07), the edit (G-05b), the submission (D-11) and the execution (D-13).
- * A write with no frame of its own reads the generic `reverted`, and so does a
- * cancel whose attempt is not gone. The execution's entry is its "still ready"
+ * The reverted reading of each write: the save, the edit, the submission and
+ * the execution each have their own sentence. Any other setup write reads the
+ * generic `reverted`, and so does a cancel whose attempt is not gone. The
+ * execution's entry is its "still ready"
  * reading; `revertedKeyOf` picks `revertedExecuteGone` for a cause that ends
  * the attempt.
  */
@@ -120,21 +120,21 @@ export const REVERTED_KEYS: { readonly [W in WriteKind]: string } = {
  * The reverted sentence of a write for its cause. An execution reads that the
  * recovery is still ready only for a cause that leaves the attempt ready
  * (`leavesAttemptReady`: the wait has not ended, a security stop holds, or a
- * cause the wallet cannot name), and `revertedExecuteGone` otherwise, the
- * fifth ending of D-393, which offers no retry.
+ * cause the wallet cannot name), and `revertedExecuteGone` otherwise, a cause
+ * that ends the attempt, which offers no retry.
  */
 export const revertedKeyOf = (write: WriteKind, cause: RevertCause): string =>
   write === 'execution' && !leavesAttemptReady(cause)
     ? WRITES_KEYS.revertedExecuteGone
     : REVERTED_KEYS[write]
 
-/** The key of the cause sentence of one kit error of sdk.md D-205, `socialRecovery.writes.causes.<name>`. */
+/** The key of the cause sentence of one kit error, `socialRecovery.writes.causes.<name>`. */
 export const causeKey = (name: KitErrorName): string => `${WRITES}.causes.${name}`
 
 /** The key of the cause sentence of a revert the wallet cannot name. */
 export const UNNAMED_CAUSE_KEY = `${WRITES}.causes.unnamed`
 
-/** The key of the sentence naming the road that had already ended the attempt a cancel meant to end (D-307). */
+/** The key of the sentence naming the road that had already ended the attempt a cancel meant to end. */
 export const cancelGoneRoadKey = (road: Exclude<AttemptEnd, 'executed'>): string =>
   `${WRITES}.cancelGoneRoad.${road}`
 
@@ -157,13 +157,13 @@ export const renderGasBalance = (wei: bigint, symbol: string): string =>
 /** A state as the screen reads it. */
 export interface RenderedWriteState {
   status: WriteStatus
-  /** The in-progress chip of the submitting state (D-302). */
+  /** The in-progress chip of the submitting state. */
   chip?: string
   /** The state's own title, where it has one. A write's screen may set its own over it. */
   title?: string
   /** The state's sentences, in order. */
   lines: string[]
-  /** The account's controller as it now stands, after a cancel whose attempt executed (D-307). */
+  /** The account's controller as it now stands, after a cancel whose attempt executed. */
   controller?: { label: string; address: string }
   /** The retry action's label, where the state offers the retry. */
   retry?: string
@@ -197,11 +197,11 @@ const renderAttemptGone = (
 /**
  * The copy of a write's state. The submitting state reads the in-progress chip,
  * its title and that the key is sending one transaction; the failed state reads
- * one of its two readings (D-319), the reverted one in the write's own words
- * (`revertedKeyOf`), or, for a cancel whose attempt was already gone, D-307's
- * reading; a gas check that could not read says so with the retry (D-393). The
+ * one of its two readings, the reverted one in the write's own words
+ * (`revertedKeyOf`), or, for a cancel whose attempt was already gone, the gone
+ * attempt's reading; a gas check that could not read says so with the retry. The
  * retry renders only where a retry can fix the state (`canRetry`). The other
- * states carry no copy of this lane.
+ * states carry no copy here.
  */
 export const renderWriteState = (
   state: WriteState,
@@ -265,7 +265,7 @@ export interface RenderedDepositStep {
   lead: string[]
   /** The name of the key over its address, where the variant names it apart from the title. */
   keyLabel?: string
-  /** The key's address in full, checksummed (D-302: the key to fund). */
+  /** The address of the key to fund, in full and checksummed. */
   keyAddress: string
   copyLabel: string
   routes: RenderedRoute[]
@@ -292,20 +292,20 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
 /**
  * The copy of the deposit step, by variant:
  *
- * - An owner write (a save, another setup write, the owner's cancel) reads the
- *   shortfall blocker of D-319 and D-307: not enough gas on the account's key,
- *   the shortfall, the key's address, both routes, that the transfer is itself
- *   an operation that key must send and pay for, and the network.
- * - A recovery call on the fast track reads frame A1-04 and D-09: the key that
- *   sends the recovery pays its gas and the account cannot pay for itself until
- *   it is recovered; the key's address; the amount to send from outside; the
- *   network; and the lines of a step that waits for the funds.
- * - A recovery call on the logged-in route reads frame D-09's logged-in state:
- *   the key of the chosen account, both routes and the transfer sentence, then
- *   the network and the waiting lines.
+ * - An owner write (a save, another setup write, the owner's cancel) reads:
+ *   not enough gas on the account's key, the shortfall, the key's address,
+ *   both routes, that the transfer is itself an operation that key must send
+ *   and pay for, and the network.
+ * - A recovery call on the fast track reads: the key that sends the recovery
+ *   pays its gas and the account cannot pay for itself until it is recovered;
+ *   the key's address; the amount to send from outside; the network; and the
+ *   lines of a step that waits for the funds.
+ * - A recovery call on the logged-in route reads: the key of the chosen
+ *   account, both routes and the transfer sentence, then the network and the
+ *   waiting lines.
  *
  * The step before the submission alone adds that the execution is a second
- * funding asked for again at execution due, at that day's fee (D-303); the
+ * funding asked for again at execution due, at that day's fee; the
  * step at execution due is that second funding. Each route shows its own
  * amount: the transfer's carries the transfer's own fee, the deposit from
  * outside the shortfall alone.

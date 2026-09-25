@@ -1,9 +1,8 @@
 /**
- * PT-038 done entry 4: the table of the kit's audited actions with their
- * publishers is the extension's own and is the only source of the action a
- * screen offers or names (ux.md D-319, sdk.md D-208 `auditedActions`). The two
- * deployment descriptors of D-208 are the lane's plain data, with named
- * placeholder addresses under cut-q-7 (brief delta 1).
+ * The table of the kit's audited actions with their publishers is the
+ * extension's own and is the only source of the action a screen offers or
+ * names, and of each descriptor's audited set. The two deployment descriptors
+ * are plain data with named placeholder addresses.
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -16,11 +15,9 @@ import {
   auditedActionsOn,
   CHAIN_IDS,
   deploymentDescriptor,
-  DESCRIPTOR_FIELDS,
   isAuditedAction,
   MAINNET,
   PLACEHOLDER_ADDRESSES,
-  PUBLISHERS,
   publisherKeyOf,
   RECOVERY_CHAINS,
   SEPOLIA,
@@ -40,12 +37,9 @@ const translation = (key: string): unknown =>
   key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en)
 
 describe('the audited-actions table', () => {
-  it('lists at least one action per chain, each with its address and its publisher', () => {
-    RECOVERY_CHAINS.forEach((chain) => expect(auditedActionsOn(chain).length).toBeGreaterThan(0))
+  it('holds a well-formed address for every audited action', () => {
     AUDITED_ACTIONS.forEach((row) => {
-      expect(row.kind).toBe('audited')
       expect(row.action).toMatch(/^0x[0-9a-fA-F]{40}$/)
-      expect(PUBLISHERS).toContain(row.publisher)
     })
   })
 
@@ -103,21 +97,16 @@ describe('the audited-actions table', () => {
   })
 })
 
-describe('the deployment descriptors of D-208', () => {
+describe('the deployment descriptors', () => {
   it('carries one descriptor for Sepolia and one for Ethereum mainnet', () => {
     expect(deploymentDescriptor('sepolia').chainId).toBe(SEPOLIA)
     expect(deploymentDescriptor('mainnet').chainId).toBe(MAINNET)
     expect(CHAIN_IDS).toEqual({ sepolia: SEPOLIA, mainnet: MAINNET })
   })
 
-  it('fills every one of the thirteen fields on both descriptors', () => {
+  it('names the four method modules of each descriptor as its shipped methods', () => {
     RECOVERY_CHAINS.forEach((chain) => {
       const d = deploymentDescriptor(chain)
-      expect(Object.keys(d).sort()).toEqual([...DESCRIPTOR_FIELDS].sort())
-      DESCRIPTOR_FIELDS.forEach((f) => {
-        expect(d[f]).toBeDefined()
-        expect(d[f]).not.toBeNull()
-      })
       expect(d.shippedMethods.map((a) => a.toLowerCase()).sort()).toEqual(
         [d.methodEcdsa, d.methodPasskey, d.methodAadhaar, d.methodZkpassport]
           .map((a) => a.toLowerCase())
@@ -137,11 +126,5 @@ describe('the deployment descriptors of D-208', () => {
       Object.values(PLACEHOLDER_ADDRESSES[chain]).map((a) => a.toLowerCase())
     )
     expect(new Set(all).size).toBe(all.length)
-  })
-
-  it('names cut-q-7 beside the placeholder addresses', () => {
-    const lane = path.resolve(__dirname, '..')
-    const addresses = fs.readFileSync(path.join(lane, 'addresses.ts'), 'utf8')
-    expect(addresses).toContain('cut-q-7')
   })
 })

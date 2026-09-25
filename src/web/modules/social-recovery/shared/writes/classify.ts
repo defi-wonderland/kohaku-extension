@@ -1,6 +1,6 @@
 /**
  * The classification of a write's end: landed, or one of the two readings of
- * the failed state every write of the chapter inherits (ux.md D-319).
+ * the failed state every social recovery write shares.
  *
  * - A call the wallet never sent, an error before any transaction hash, reads
  *   that nothing reached the chain and the account stands as it did.
@@ -10,10 +10,10 @@
  *
  * The two are distinct states, never one state with a flag: a holder who reads
  * that the wallet sent nothing retries a call that cannot land. The owner's
- * cancel adds its own reading of the revert (ux.md D-307): the attempt is
- * already gone, with the account's controller as it now stands. That reading
- * rests on the attempt read after the revert, or on a decoded cause that says
- * nothing was left to cancel, never on a revert the wallet could not decode.
+ * cancel adds its own reading of the revert: the attempt is already gone,
+ * with the account's controller as it now stands. That reading rests on the
+ * attempt read after the revert, or on a decoded cause that says nothing was
+ * left to cancel, never on a revert the wallet could not decode.
  *
  * A transaction hash with no receipt is neither reading. The call may still
  * land, so it stays in the submitting state and keeps waiting for its receipt.
@@ -39,7 +39,7 @@ import type {
 // Receipts and failures
 // ---------------------------------------------------------------------------
 
-/** The part of a transaction receipt this lane reads. */
+/** The part of a transaction receipt the classification reads. */
 export interface WriteReceipt {
   transactionHash: Hex
   /** 1 for a call that ran, 0 for a call that reverted. */
@@ -189,8 +189,8 @@ export type AttemptEnd = typeof ATTEMPT_ENDS[number]
 export const ATTEMPT_STILL_RUNNING = 'stillRunning' as const
 
 /**
- * The attempt read after a reverted cancel (ux.md D-307): how the attempt had
- * ended and the account's controller as it now stands, or that it still runs.
+ * The attempt read after a reverted cancel: how the attempt had ended and the
+ * account's controller as it now stands, or that it still runs.
  * The controller is the key the consume event handed the account after an
  * execution, and the account's own key where another road ended the attempt.
  * An attempt that still runs reads the plain reverted reading, with the retry
@@ -203,14 +203,14 @@ export type AttemptAfterCancel =
 /**
  * The cause a reverted state names.
  *
- * - `named`: a kit error of sdk.md D-205 the wallet decoded, which it names in
- *   its own words.
+ * - `named`: a kit error the wallet decoded (`KIT_ERROR_NAMES`), which it names
+ *   in its own words.
  * - `unnamed`: a revert that carries no cause the wallet can name, with its raw
  *   data where it read any.
  * - `attemptGone`: the owner's cancel reverted because the attempt was already
- *   gone (D-307). `ended` names the road, and `controller` the account's
- *   controller after an execution, once the attempt read returned; before it,
- *   the state names no controller rather than one it guessed.
+ *   gone. `ended` names the road, and `controller` the account's controller
+ *   after an execution, once the attempt read returned; before it, the state
+ *   names no controller rather than one it guessed.
  */
 export type RevertCause =
   | { kind: 'named'; name: KitErrorName; error: KitError }
@@ -235,8 +235,8 @@ const plainCause = (cause?: KitError): RevertCause => {
 /**
  * The cause of a revert for a write.
  *
- * A reverted cancel reads that the attempt was already gone (D-307) only on
- * one of three grounds:
+ * A reverted cancel reads that the attempt was already gone only on one of
+ * three grounds:
  *
  * - the attempt read after the revert says the attempt ended, which also names
  *   the road and, after an execution, the controller;
@@ -293,11 +293,10 @@ export const gasSpentOf = (receipt: WriteReceipt): bigint | undefined =>
 // ---------------------------------------------------------------------------
 
 /**
- * The execution's causes that leave the attempt ready (D-393): the wait has
- * not ended yet, or a security stop holds a method the recovery used. The
- * execution's "still ready" reading renders for these and for a revert with no
- * cause the wallet can name; every other cause is the fifth ending, which
- * offers no retry.
+ * The execution's causes that leave the attempt ready: the wait has not ended
+ * yet, or a security stop holds a method the recovery used. The execution's
+ * "still ready" reading renders for these and for a revert with no cause the
+ * wallet can name; every other cause ends the attempt and offers no retry.
  */
 export const EXECUTION_STILL_READY_CAUSES: readonly KitErrorName[] = [
   'WaitNotOver',
@@ -306,9 +305,7 @@ export const EXECUTION_STILL_READY_CAUSES: readonly KitErrorName[] = [
 
 /**
  * The submission's acceptance errors: the manager refused the request itself,
- * and sending the same request again cannot land (D-393: a submission rejected
- * because an attempt already runs, or refused while a method is stopped, gets
- * its own copy, since retrying cannot help).
+ * and sending the same request again cannot land.
  */
 const SUBMISSION_ACCEPTANCE_ERRORS: readonly KitErrorName[] = [
   'NoSetup',
@@ -356,7 +353,7 @@ export const retryCanFix = (write: WriteKind, cause: RevertCause): boolean => {
 }
 
 /**
- * Whether a reverted execution leaves the attempt ready (D-393): a cause of
+ * Whether a reverted execution leaves the attempt ready: a cause of
  * `EXECUTION_STILL_READY_CAUSES`, or one the wallet cannot name.
  */
 export const leavesAttemptReady = (cause: RevertCause): boolean =>
@@ -370,7 +367,7 @@ export const leavesAttemptReady = (cause: RevertCause): boolean =>
 /** What classifying a write's end needs beside the end itself. */
 export interface FailureContext {
   write: WriteKind
-  /** For a cancel: the attempt read after the revert, where it returned (D-307). */
+  /** For a cancel: the attempt read after the revert, where it returned. */
   attemptAfter?: AttemptAfterCancel
 }
 
@@ -392,7 +389,7 @@ const revertedState = (
 }
 
 /**
- * Classifies a write that did not land (D-319), by whether a transaction hash
+ * Classifies a write that did not land, by whether a transaction hash
  * exists and whether a receipt with status zero came back:
  *
  * - a transaction another one replaced before it was mined, other than a mere
@@ -400,7 +397,7 @@ const revertedState = (
  *   never ran, whatever the replacement did;
  * - a receipt with status zero reads `failedReverted`, with the cause the
  *   receipt carries and its gas gone; a cancel's may read that the attempt was
- *   already gone (D-307, `revertCauseOf`);
+ *   already gone (`revertCauseOf`);
  * - no receipt and no transaction hash reads `failedNotSent`: nothing reached
  *   the chain and the account stands as it did;
  * - a transaction hash with no receipt is neither: the call may still land, so

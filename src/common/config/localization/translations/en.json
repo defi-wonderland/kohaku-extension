@@ -258,7 +258,8 @@
         "thisMac": "this Mac",
         "thisPhone": "this phone"
       },
-      "unavailableNote": "Could not run · the service did not answer · Try again"
+      "unavailableNote": "Could not run · the service did not answer · Try again",
+      "undeliveredNote": "Not delivered · the result did not reach the row · Try again"
     },
     "records": {
       "expiredTitle": "This request expired",

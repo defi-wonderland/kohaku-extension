@@ -1,8 +1,7 @@
 /**
- * PT-038 done entry 3: the digest version the manager publishes through its
- * domain is checked when the client is built, and a disagreement refuses the
- * client before anything is prepared (sdk.md D-208 construction step 5,
- * ux.md D-319, the "update the wallet" state of D-306).
+ * The digest version the manager publishes through its domain is checked when
+ * the client is built. A disagreement refuses the client before anything is
+ * prepared, as the "update the wallet" state of the account step.
  */
 import { PolicyManagerDouble, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
 
@@ -47,7 +46,7 @@ describe('the digest-version check', () => {
     })
   })
 
-  it('refuses a domain whose name is not PolicyManager the same way (D-208 step 5)', async () => {
+  it('refuses a domain whose name is not PolicyManager the same way', async () => {
     const world = createWorld()
     world.chain.manager.domain.name = 'SomeOtherManager'
     const caught = await thrownBy(buildRecoveryClient(world.config))
@@ -73,7 +72,7 @@ describe('the digest-version check', () => {
     const prepares = spyOnPrepares()
     const world = createWorld()
     const original = PolicyManagerDouble.prototype.eip712Domain
-    // The lane's own read sees the carried version; the builder's read, the next one, sees another.
+    // The client's own read sees the carried version; the builder's read, the next one, sees another.
     jest
       .spyOn(PolicyManagerDouble.prototype, 'eip712Domain')
       .mockImplementationOnce(function first(this: PolicyManagerDouble) {
@@ -97,7 +96,7 @@ describe('the digest-version check', () => {
     expect(isDigestVersionRefusal(caught)).toBe(false)
   })
 
-  describe('runs after the chain checks of D-208 steps 2 and 3', () => {
+  describe('runs after the provider chain check and the domain check', () => {
     it('reads a provider on another chain as the chain-id refusal, even where the version also differs', async () => {
       const world = createWorld()
       world.ethers.answeredChainId = 1

@@ -1,10 +1,7 @@
 /**
- * sdk.md D-208 Factories: `IProvider`, the deployment descriptor, the client
- * configuration and the shape of `RecoveryKitBuilder`.
- *
- * Hand-written from docs/social-recovery/design/sdk.md, frozen at design commit
- * bd8780f7ad59a451035b15920c00015a2eee6e9b of defi-wonderland/mast-social-recovery-2.
- * Imported from no SDK package. Types only.
+ * The factories: `IProvider`, the deployment descriptor, the client
+ * configuration and the shape of `RecoveryKitBuilder`. Imported from no SDK
+ * package; types only.
  */
 import type { Address, BlockHeader, BlockTag, Hex } from './common'
 import type { BlockRange, FilterSpec, IEventManager, RawLog } from './events'
@@ -21,10 +18,9 @@ import type { IMethodsOrchestrator, IRecoveryMethod } from './methods'
 
 /**
  * The integrator's four-member chain access, the only object the SDK reaches a
- * chain through (sdk.md D-201, D-208). Frozen by D-208. It cannot send a
- * transaction, holds no subscription and makes no code read. `call` rejects a
- * reverted call with the raw revert data; a read it could not make reaches the
- * SDK as a failure and never as an empty answer.
+ * chain through. It cannot send a transaction, holds no subscription and makes
+ * no code read. `call` rejects a reverted call with the raw revert data; a read
+ * it could not make reaches the SDK as a failure and never as an empty answer.
  */
 export interface IProvider {
   chainId(): Promise<number>
@@ -34,8 +30,8 @@ export interface IProvider {
 }
 
 /**
- * The record of one deployment (sdk.md D-208). Every field is required, so a
- * partial descriptor is a type error rather than a silent default.
+ * The record of one deployment. Every field is required, so a partial
+ * descriptor is a type error rather than a silent default.
  */
 export interface DeploymentDescriptor {
   chainId: number
@@ -55,7 +51,7 @@ export interface DeploymentDescriptor {
 
 /**
  * The account's creation triple and its creation block, where the integrator
- * has them (sdk.md D-201 usage block, D-208).
+ * has them.
  */
 export interface CreationRecord {
   factory: Address
@@ -65,10 +61,10 @@ export interface CreationRecord {
 }
 
 /**
- * What a client accepts (sdk.md D-208). `tokens`, `candidateKeys`, `creation`
- * and `blockTags` are the names of sdk.md D-201's usage block; the other names
- * are illustrative, sdk.md D-201, over the values D-208 lists. No method list
- * travels here: the builder's registry is the one list.
+ * What a client accepts. `tokens`, `candidateKeys`, `creation` and `blockTags`
+ * follow the SDK's examples; the other names are the extension's, over the
+ * values the SDK lists. No method list travels here: the builder's registry is
+ * the one list.
  */
 export interface ClientConfiguration {
   /** The token allowlist the unknown-token warning reads. */
@@ -78,13 +74,13 @@ export interface ClientConfiguration {
   creation?: CreationRecord
   /** The account implementation the integrator is about to deploy, read by the fit check alone. */
   accountImplementation?: Address
-  /** One tag for reading and one for watching; D-208 defaults them to `latest` and `finalized`. */
+  /** One tag for reading and one for watching; they default to `latest` and `finalized`. */
   blockTags?: { read: BlockTag; watch: BlockTag }
   /** The block width `fetch` chunks its reads into, the integrator's node's own ceiling. */
   logChunkWidth?: number
   /** Whether a prepare simulates when its own options say nothing. */
   simulate?: boolean
-  /** The six numbers of contracts D-107, each an exported default the integrator may override (seconds, gas). */
+  /** The six timing and cost numbers, each an exported default the integrator may override (seconds, gas). */
   defaultWait?: number
   shortWaitBelow?: number
   maximumWait?: number
@@ -94,13 +90,12 @@ export interface ClientConfiguration {
 }
 
 /**
- * The shape of the one class that constructs a class (sdk.md D-201, D-208),
- * copied from the builder drawing of D-201. Setters return the builder and
- * refuse after the first build; `recoveryAction()` and `methodModuleReads()`
- * count as builds and hand out the narrow seams alone.
+ * The shape of the one class that constructs a class. Setters return the
+ * builder and refuse after the first build; `recoveryAction()` and
+ * `methodModuleReads()` count as builds and hand out the narrow seams alone.
  *
- * A copied shape of the D-201 builder drawing, outside the frozen list of twelve
- * interfaces: sdk.md ships `RecoveryKitBuilder` as a class, not as an interface.
+ * Outside the twelve interfaces: the SDK ships `RecoveryKitBuilder` as a class,
+ * so this is its shape, not an interface the SDK exports.
  */
 export interface RecoveryKitBuilder {
   provider(p: IProvider): RecoveryKitBuilder

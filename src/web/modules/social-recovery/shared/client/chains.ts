@@ -1,25 +1,23 @@
 /**
  * The chains the wallet can read a recovery on, and the one it does read.
  *
- * sdk.md D-208 ships a default descriptor for two chains, Sepolia for the
- * showcase and Ethereum mainnet for the production target. ux.md D-312
- * (2026-09-22) rules that the wallet reads one chain, named by its
- * configuration, and names it as a fixed label with no switch.
+ * The SDK ships a default descriptor for two chains, Sepolia and Ethereum
+ * mainnet. The wallet reads one of them, named by its configuration, and shows
+ * it as a fixed label with no switch.
  */
 
 export const RECOVERY_CHAINS = ['sepolia', 'mainnet'] as const
 export type RecoveryChain = typeof RECOVERY_CHAINS[number]
 
-/** The chain id of each recovery chain (sdk.md D-208 `chainId`). */
+/** The chain id of each recovery chain. */
 export const CHAIN_IDS = {
   sepolia: 11155111,
   mainnet: 1
 } as const
 
 /**
- * The one chain this build reads (ux.md D-312). The first release runs its
- * demo on the test network; the mainnet descriptor stays a placeholder until
- * that deployment lands. No screen offers a switch.
+ * The one chain this build reads. The first release runs on the test network;
+ * the mainnet descriptor stays a placeholder until that deployment lands.
  */
 export const WALLET_RECOVERY_CHAIN: RecoveryChain = 'sepolia'
 

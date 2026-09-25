@@ -1,21 +1,17 @@
 /**
- * The tester's one seam onto the client lane of PT-038 (brief
- * docs/social-recovery/briefs/PT-038.md "Test expectations"). Every test file
- * reaches the lane's exports and the mocks through this file, so a rename in the
- * lane changes this file alone.
+ * The client module's exports, the mocks and the helpers the client tests share.
  *
- * Mocks, and why:
  * - The extension's own provider is mocked as an `ethers`-shaped object of
- *   `jest.fn` members whose JSON-RPC `send` answers from a `ScriptedChain` of
- *   PT-035. The lane reaches that provider through `send` alone
- *   (`ExtensionRpc`); the high-level members are there so a test proves the
- *   lane did not use them. No test reaches a network.
- * - The background is a fake request queue behind the lane's own
- *   `SignRequestPort`: a `jest.fn` dispatch, a window id, the accounts the
- *   wallet lists, and a `push` a test drives by hand with the `requests` and
- *   `signMessage` controller states the real background would push, so a test
- *   can put a foreign message between the facade's request and its result.
- *   No keystore, no action window and no background runs.
+ *   `jest.fn` members whose JSON-RPC `send` answers from a `ScriptedChain`. The
+ *   client reaches that provider through `send` alone (`ExtensionRpc`); the
+ *   high-level members are there so a test proves the client did not use them.
+ *   No test reaches a network.
+ * - The background is a fake request queue behind the `SignRequestPort`: a
+ *   `jest.fn` dispatch, a window id, the accounts the wallet lists, and a
+ *   `push` a test drives by hand with the `requests` and `signMessage`
+ *   controller states the real background would push, so a test can put a
+ *   foreign message between the facade's request and its result. No keystore,
+ *   no action window and no background runs.
  * - The stand-in's scripted chain (`sdkStandIn.chainFor`) is reset before each
  *   world, so one test's domain script never leaks into the next.
  */
@@ -63,7 +59,7 @@ export { sdkStandIn }
 export const SEPOLIA = 11155111
 export const MAINNET = 1
 
-/** The members of `ClientConfiguration` (sdk-interfaces/builder.ts, sdk.md D-208). */
+/** The members an SDK client configuration may carry. */
 export const CLIENT_CONFIGURATION_KEYS: (keyof ClientConfiguration)[] = [
   'tokens',
   'candidateKeys',
@@ -80,30 +76,9 @@ export const CLIENT_CONFIGURATION_KEYS: (keyof ClientConfiguration)[] = [
   'ruleCostBound'
 ]
 
-/** The thirteen fields of the deployment descriptor (sdk.md D-208). */
-export const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
-  'chainId',
-  'manager',
-  'methodEcdsa',
-  'methodPasskey',
-  'methodAadhaar',
-  'methodZkpassport',
-  'action',
-  'servedImplementation',
-  'deployedAt',
-  'digestVersion',
-  'managerVersion',
-  'shippedMethods',
-  'auditedActions'
-]
-
 /** Whether a member name hands a signer, a key or storage to the SDK side. */
 export const namesSignerOrStorage = (name: string): boolean =>
   /signer|storage|keystore|seed|privatekey|mnemonic/i.test(name) || /^sign([A-Z]|$)/.test(name)
-
-// ---------------------------------------------------------------------------
-// The extension's own provider, mocked over a scripted chain
-// ---------------------------------------------------------------------------
 
 const SELECTOR = {
   eip712Domain: id('eip712Domain()').slice(0, 10),
@@ -151,7 +126,7 @@ const READ_MEMBERS = [
   'send'
 ] as const
 
-/** The underlying reads the lane made on the mock, in order, as `[member, args]`. */
+/** The underlying reads the client made on the mock, in order, as `[member, args]`. */
 export const underlyingCalls = (mock: EthersMock): [string, unknown[]][] =>
   READ_MEMBERS.flatMap((member) =>
     mock[member].mock.calls.map((args) => [member, args] as [string, unknown[]])
@@ -213,7 +188,7 @@ export const ethersOver = (chain: ScriptedChain): EthersMock => {
   return mock
 }
 
-/** Every underlying member rejects with `error`, whichever route the lane takes. */
+/** Every underlying member rejects with `error`, whichever route the client takes. */
 export const failEverything = (mock: EthersMock, error: unknown): void => {
   READ_MEMBERS.forEach((m) =>
     mock[m].mockImplementation(async () => {
@@ -235,10 +210,6 @@ export const nodeRevert = (data: Hex) => ({ code: 3, message: 'execution reverte
 
 /** The adapter over a mocked extension provider. */
 export const adapterOver = (ethers: EthersMock): IProvider => createProviderAdapter(ethers)
-
-// ---------------------------------------------------------------------------
-// Spies on the doubles
-// ---------------------------------------------------------------------------
 
 const PREPARE = /^prepare|^armingCall$|^disarmingCall$/
 
@@ -361,10 +332,6 @@ export const thrownBy = (run: Promise<unknown>): Promise<unknown> =>
     (e: unknown) => e
   )
 
-// ---------------------------------------------------------------------------
-// The client world
-// ---------------------------------------------------------------------------
-
 export interface World {
   /** The stand-in's scripted chain record the client is built against. */
   chain: ScriptedChain
@@ -372,14 +339,14 @@ export interface World {
   ethers: EthersMock
   /** The adapter over it, the configuration's provider. */
   adapter: IProvider
-  /** The lane's configuration for the one chain the wallet reads. */
+  /** The client configuration for the one chain the wallet reads. */
   config: RecoveryClientConfiguration
   descriptor: DeploymentDescriptor
   account: Address
 }
 
 /**
- * A world on the chain this build reads: the lane's own address book and
+ * A world on the chain this build reads: the client's own address book and
  * descriptor, the stand-in's scripted chain for them (reset first), the
  * extension provider mocked over it and the adapter the configuration names.
  */
@@ -402,10 +369,6 @@ export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}
   return { chain, ethers, adapter, config, descriptor, account }
 }
 
-// ---------------------------------------------------------------------------
-// The signer facade over a fake request queue
-// ---------------------------------------------------------------------------
-
 /** A basic account the wallet lists: an EOA whose only associated key is its own address. */
 export const basicAccount = (addr: Address): ListedAccount => ({
   addr,
@@ -413,7 +376,7 @@ export const basicAccount = (addr: Address): ListedAccount => ({
   creation: null
 })
 
-/** A smart account the wallet lists, controlled by `key` (the index plus 100000 of ux.md D-316). */
+/** A smart account the wallet lists, controlled by `key`. */
 export const smartAccount = (addr: Address, key: Address): ListedAccount => ({
   addr,
   associatedKeys: [key],
@@ -542,7 +505,7 @@ if (expect.getState().testPath === __filename) {
       expect(Number(decoded[3])).toBe(chain.descriptor.chainId)
     })
 
-    it('builds a world whose scripted chain carries the lane descriptor', () => {
+    it('builds a world whose scripted chain carries the client descriptor', () => {
       const world = createWorld()
       expect(world.chain.descriptor).toEqual(world.descriptor)
       expect(world.chain).toBe(sdkStandIn.chainFor(world.descriptor, world.account))

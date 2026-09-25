@@ -1,14 +1,8 @@
 /**
- * The cut-q-22 seam (brief delta 4): the three members that are not SDK members,
- * the verify per pasted reply (ux-interfaces.md D-373, D-374), the read naming
- * the key a recovery would remove (D-371, D-373) and the fit check against the
- * code the account will carry (D-371), scripted under one extension-owned seam
- * with a doc comment naming cut-q-22.
+ * The three wallet reads the extension owns beside the SDK: the verify of a
+ * pasted reply, the key a recovery would remove, and the fit check against the
+ * code the account will carry.
  */
-import { readFileSync } from 'fs'
-import { join } from 'path'
-
-import type { IWalletReadsDouble } from '@web/modules/social-recovery/sdk-doubles'
 import type {
   Address,
   ApproverReply,
@@ -16,7 +10,7 @@ import type {
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, expectThrown, fillAll, membersOf, openRecovery } from './harness'
+import { createWorld, eachIt, expectThrown, fillAll, openRecovery } from './harness'
 
 const CREATION: CreationRecord = {
   factory: '0x00000000000000000000000000000000000000fa',
@@ -25,21 +19,7 @@ const CREATION: CreationRecord = {
   block: 950
 }
 
-describe('the cut-q-22 seam', () => {
-  it('is declared under a doc comment naming cut-q-22', () => {
-    const source = readFileSync(join(__dirname, '..', 'wallet-reads.ts'), 'utf8')
-    const at = source.indexOf('export interface IWalletReadsDouble')
-    expect(at).toBeGreaterThan(-1)
-    const comment = source.slice(source.lastIndexOf('/**', at), at)
-    expect(comment).toContain('cut-q-22')
-  })
-
-  it('exposes the three members', () => {
-    const reads: IWalletReadsDouble = createWorld().walletReads()
-    const members = membersOf(reads)
-    ;['verifyReply', 'removedKey', 'fitCheck'].forEach((name) => expect(members).toContain(name))
-  })
-
+describe('wallet reads double', () => {
   describe('verifyReply', () => {
     it('satisfies a pasted reply that proves the request and rejects one that does not', async () => {
       const opened = await openRecovery()
@@ -69,7 +49,7 @@ describe('the cut-q-22 seam', () => {
           answer = await opened.world.walletReads().verifyReply(request, pasted)
         })()
       ).resolves.toBeUndefined()
-      // A verdict is an answer, never a refusal (D-201): malformed input is rejected.
+      // A verdict is an answer, never a refusal: malformed input is rejected.
       expect(answer).toBe('rejected')
     })
   })
