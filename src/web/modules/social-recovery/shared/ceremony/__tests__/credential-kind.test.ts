@@ -3,11 +3,6 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041 done entry: the extension reads the synced or device-bound kind from
- * the ceremony's own flags (ux-interfaces.md D-372, D-305: the method answers a
- * kind alone through `deviceBinding`). The brief: the kind is read from the
- * flags of a fabricated authenticator data, both ways.
- *
  * Byte 32 of the authenticator data holds the flags; BE (0x08) says the
  * credential is backup eligible, a multi-device (synced) credential, BS (0x10)
  * that it is backed up. A credential with neither is device bound.
@@ -86,9 +81,8 @@ describe('the kind an enrollment reports', () => {
   afterEach(() => creds.restore())
 
   // The attachment is set against the flags each time: a phone's synced
-  // passkey arrives cross-platform (Google Password Manager over hybrid in the
-  // proof of concept), and a platform authenticator can be device bound. The
-  // kind follows the flags, never the attachment.
+  // passkey arrives cross-platform, and a platform authenticator can be device
+  // bound. The kind follows the flags, never the attachment.
   it('reports synced from the flags of a cross-platform credential', async () => {
     creds = installCredentials({
       create: async () =>
@@ -113,11 +107,9 @@ describe('the kind an enrollment reports', () => {
 })
 
 /**
- * The kind line a passed enrollment renders (ux.md D-305): "Synced passkey ·
- * {{provider}}" or "Device-bound passkey · {{device}}", read through the real
- * en.json. The provider comes from the authenticator's AAGUID; the device of a
+ * The provider comes from the authenticator's AAGUID; the device of a
  * device-bound passkey from where the authenticator sat and the platform the
- * browser runs on (the coordinator's ruling for PT-041's second pass).
+ * browser runs on. The line is read through the real en.json.
  */
 describe('the kind line of an enrollment', () => {
   let creds: ReturnType<typeof installCredentials>

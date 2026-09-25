@@ -1,36 +1,29 @@
-# PT-041 manual run in a Chrome profile
+# Manual run with a real authenticator
 
-The Jest tests in this folder mock `navigator.credentials`, so no test here reaches a real authenticator. The passkey ceremony needs one, and the brief sets no Playwright run for this task. The coordinator lists every item below as untested in the pull request until someone runs it and records the result.
-
-## Before the run is possible
-
-The tab resolves its ceremony through `CeremonySourceProvider`. No provider is mounted until PT-038's follow-up wires a resolver over the client and PT-040's records, and without one the tab reports not supported (`no-implementation`) for every call. A run before that needs a development-only provider mounted above the route that hands the tab an orchestrator, a passkey method and a request. Record which one the run used.
+The tests in this folder mock `navigator.credentials`. The checks below need a real authenticator in Chrome. Run them by hand and record each result.
 
 ## Set-up
 
-- Build a holder-facing build (`yarn build:web:webkit`) whose manifest carries the one public key every holder-facing build carries (D-314). Write down the extension id Chrome shows.
-- Load it unpacked in a Chrome profile that has no other Kohaku build loaded (dev and prod share one extension id). Keep exactly one Kohaku tab open.
-- Compute `sha256("chrome-extension://<id>")` outside the extension, for example `printf 'chrome-extension://<id>' | shasum -a 256`, to compare against the committed hash.
-- Have at hand: a platform authenticator that syncs (Touch ID with iCloud Keychain), a device-bound authenticator (a hardware security key with no sync), and an Android phone with Google Password Manager for the hybrid QR hand-off. 1Password on a phone is optional, for the refusal note.
+- Mount a `CeremonySourceProvider` above the ceremony route that hands the tab an orchestrator, a passkey method and a request. Without one, every call reports not supported. Record which provider the run used.
+- Build the extension (`yarn build:web:webkit`) with the manifest key of the release builds. Load it unpacked in a Chrome profile with no other Kohaku build, and keep one Kohaku tab open. Write down the extension id.
+- Compute the expected rp id hash: `printf 'chrome-extension://<id>' | shasum -a 256`.
+- Have a synced platform authenticator (Touch ID with iCloud Keychain), a hardware security key with no sync, and an Android phone with Google Password Manager. 1Password on a phone is optional.
 
-## What the run must cover
+## Checks
 
-1. Full tab, never the popup: open the ceremony from the action popup. It must redirect to `tab.html#/social-recovery/ceremony` and the popup must close. The ceremony must never start inside the popup or inside an action window.
-2. Enroll in the tab, synced: create a passkey with iCloud Keychain. The tab reports passed and the kind line reads "Synced passkey · Apple". Record the AAGUID Chrome returned under attestation `none`: a zeroed AAGUID makes the line read "your password manager" instead, which the tests cannot see. Check that the credential's authenticator data carries BE, and that its rp id hash equals the hash from the set-up, not `sha256("<id>")`.
-3. Enroll in the tab, device bound: create a passkey on the hardware key. The kind line reads "Device-bound passkey · this device". Where a platform authenticator on the Mac gives a device-bound passkey, the line reads "this Mac". The kind follows the BE flag alone.
-4. Test access in the tab: run the test for the credential of item 2. The tab reports passed. Run it again with the other credential's record, so the check does not match. The tab reports test failed with its cause, never not tested.
-5. Create claim in the tab: produce a claim for one place of a request. The assertion's `rpId` is the extension id. The method receives the signature.
-6. High `s`: repeat item 5 with the Google Password Manager passkey over hybrid until an assertion comes back with `s > n/2` (the proof of concept saw one). The signature the method receives has `s = n - s`, and a verifier that rejects high `s` accepts it.
-7. Dismiss: start each of enroll, test access and create claim, then cancel the browser's prompt. At enrollment and at a claim the row shows "Cancelled" and keeps its chip (frame D-07b for the claim). At a test the row reads "Test failed · NotAllowedError" (frame C-05, "NotAllowedError · no credential available on this device"). In all three the method never ran.
-8. Refusal: let the browser refuse the ceremony (for example, cancel the security key's PIN prompt, or deny the platform prompt). At enrollment the row shows the cancelled or refused note, never failed. Record which error name Chrome gave.
-9. Hand-off to a phone: start test access with the phone hand-off, scan the QR code, and switch to another tab before approving on the phone. Nothing is written to the extension storage (`socialRecoveryCeremonyResult:<id>`) while the ceremony tab is hidden. Return to the tab more than ten minutes later: the report is written then, and the row that opened the tab still receives it.
-10. Hand-off that never connects: start the hand-off at enrollment and at a test, and never scan the code. Once the prompt's 180 seconds run out, the row reads unreachable with Try again at both calls. Close the prompt early instead: at enrollment the row reads cancelled, at a test it reads test failed with `NotAllowedError`. Try again starts a new hand-off.
-11. Provider refusal: create the passkey in 1Password over hybrid. The lane reads a `SecurityError` as the provider-refused note that points at the browser's own passkey store. Record the error name Chrome gives for 1Password: a `NotAllowedError` would read cancelled instead.
-12. Changed extension id: enroll with one build, then load a build signed with another manifest key (a different extension id) and run test access with the stored record. The browser finds no credential for the new origin and rejects `navigator.credentials.get` with a `NotAllowedError`, so the row reads test failed with that error name as its cause. It is not the relying-party mismatch note, and it never reads passed. Record the error name and message Chrome gave.
-13. Health check: open the health-check host. It reports not supported with no retry, and no authenticator prompt appears.
+1. Open the ceremony from the action popup. It redirects to `tab.html#/social-recovery/ceremony`, and the popup closes. The ceremony never starts in the popup or in an action window.
+2. Enroll with iCloud Keychain. The tab reads passed and "Synced passkey · Apple". The authenticator data has BE set, and its rp id hash equals the hash from the set-up, not `sha256("<id>")`. Record the AAGUID: a zeroed one reads "your password manager" instead.
+3. Enroll with the security key. The line reads "Device-bound passkey · this device" ("this Mac" for a device-bound platform passkey on a Mac).
+4. Test access with the credential of check 2: passed. Test access with the other credential's record: test failed with its cause, never not tested.
+5. Create a claim for one place of a request. The assertion's `rpId` is the extension id, and the method receives the signature.
+6. Repeat check 5 with the phone over hybrid until an assertion has `s > n/2`. The method receives `n - s`, and a verifier that rejects high `s` accepts it.
+7. Cancel the browser prompt at enroll, test access and create claim. Enroll and create claim read "Cancelled" and keep the row's chip. Test access reads "Test failed" with `NotAllowedError`. The method never runs.
+8. Let the browser refuse (cancel the security key's PIN prompt, or deny the platform prompt). Enroll reads cancelled or refused, never failed. Record the error name.
+9. Start test access with the phone hand-off, and switch to another tab before you approve on the phone. Nothing is written under `socialRecoveryCeremonyResult:<id>` while the tab is hidden. Return after more than ten minutes: the report is written then, and the row that opened the tab still receives it.
+10. Start the hand-off at enroll and at test access, and never scan the code. After the prompt's 180 seconds, both read unreachable with Try again. Close the prompt early instead: enroll reads cancelled, test access reads test failed with `NotAllowedError`. Try again starts a new hand-off.
+11. Create the passkey in 1Password over hybrid. A `SecurityError` reads the provider-refused note. Record the error name Chrome gives: a `NotAllowedError` reads cancelled instead.
+12. Enroll with one build, then load a build with another manifest key (another extension id) and run test access with the stored record. It reads test failed with `NotAllowedError`, never passed and never the relying-party mismatch note.
+13. Open the health check. It reports not supported with no retry, and no prompt appears.
+14. On a Safari or Firefox build, the tab reads "Passkeys need Kohaku on Chrome."
 
-## Not covered by the proof of concept
-
-- The iPhone hybrid routes. The proof of concept did not run them, so a run that skips them records them as untested and does not claim them.
-- A second Apple device asserting the iCloud Keychain passkey.
-- Safari and Firefox. The first release supports passkeys on Chromium alone (D-314); on another build the tab draws "Passkeys need Kohaku on Chrome".
+Record the iPhone hybrid routes and a second Apple device as untested when the run skips them.

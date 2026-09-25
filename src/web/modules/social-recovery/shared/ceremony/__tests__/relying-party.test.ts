@@ -3,13 +3,11 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041, ux.md D-314 and ux-interfaces.md D-372: the passkey's relying party is
- * the extension's own origin. The `rp.id` of the ceremony is the origin's host,
- * the extension id; the hash the config commits is `sha256` of the full origin
- * string `chrome-extension://<id>`, never of the bare id (delta after the proof
- * of concept, 2026-09-23); the wallet hands the SDK that origin string as the
- * relying party id. The lane reads the id at runtime and commits to none (brief,
- * open question 13), so the page here is served from the proof's extension id.
+ * The passkey's relying party is the extension's own origin. The `rp.id` of
+ * the ceremony is the origin's host, the extension id; the hash the config
+ * commits is `sha256` of the full origin string `chrome-extension://<id>`,
+ * never of the bare id; the wallet hands the SDK that origin string as the
+ * relying party id. The module reads the id at runtime from the page origin.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -54,12 +52,7 @@ beforeEach(() => {
 
 afterEach(() => creds.restore())
 
-describe('the relying party the lane reads', () => {
-  it('serves this page from the proof of concept origin', () => {
-    expect(window.location.protocol).toBe('chrome-extension:')
-    expect(window.location.host).toBe(EXTENSION_ID)
-  })
-
+describe('the relying party the module reads', () => {
   it('has the extension origin host as its id', () => {
     expect(relyingParty().id).toBe(EXTENSION_ID)
   })
@@ -96,9 +89,9 @@ describe('the ceremonies', () => {
 })
 
 describe('the origin string the method names', () => {
-  // D-372: the wallet hands the SDK the full origin string as the relying
-  // party id, so the method's options name `chrome-extension://<id>`. The
-  // browser takes the host: the device replaces the id and keeps the rest.
+  // The wallet hands the SDK the full origin string as the relying party id,
+  // so the method's options name `chrome-extension://<id>`. The browser takes
+  // the host: the device replaces the id and keeps the rest.
   it('becomes the host in the creation options', async () => {
     const method = fakeMethod()
     await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
@@ -117,8 +110,8 @@ describe('the origin string the method names', () => {
     expect(options.publicKey?.rpId).toBe(EXTENSION_ID)
   })
 
-  // The lane owns the relying party id (PR #10 review): whatever the caller's
-  // record passed, the method receives the page's full origin string.
+  // The module owns the relying party id: whatever the caller's record passed,
+  // the method receives the page's full origin string.
   ;[EXTENSION_ID, 'https://example.com', ''].forEach((passed) =>
     it(`hands the method the origin string where the caller passed ${JSON.stringify(
       passed

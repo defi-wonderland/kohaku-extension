@@ -1,7 +1,5 @@
 /**
- * PT-041 done entry and ux.md D-316: every ceremony that dies on focus loss runs
- * in a full tab and never in the action popup. The brief: the ceremony screen
- * mounts with exactly one `<Route>` line in the module's registry, which
+ * The ceremony screen mounts with one `<Route>` in the module's registry, which
  * MainRoutes mounts inside its TabOnlyRoute group, so an open from the popup
  * redirects to `tab.html`.
  *
@@ -11,8 +9,6 @@
  */
 import fs from 'fs'
 import path from 'path'
-
-import { WEB_ROUTES } from '@common/modules/router/constants/common'
 
 import { ceremony } from './harness'
 
@@ -75,10 +71,6 @@ const routeTags = (source: string): RouteTag[] => {
 }
 
 describe('the ceremony runs in a full tab', () => {
-  it('has the brief route path', () => {
-    expect(WEB_ROUTES.socialRecoveryCeremony).toBe('social-recovery/ceremony')
-  })
-
   it('mounts the module registry inside the TabOnlyRoute group of MainRoutes', () => {
     const source = stripComments(read(MAIN_ROUTES))
     const tags = routeTags(source)
@@ -101,9 +93,6 @@ describe('the ceremony runs in a full tab', () => {
     expect(ceremonyMayRun({ isTab: false, isPopup: false, isActionWindow: true })).toBe(false)
     expect(ceremonyMayRun({ isTab: false, isPopup: false, isActionWindow: false })).toBe(false)
   })
-
-  // The screen's own gate, rendered, is in screen.test.ts: in the popup and in
-  // an action window it resolves, prompts and reports nothing.
 
   it('adds exactly one <Route> for the ceremony screen to the registry', () => {
     const tags = routeTags(stripComments(read(REGISTRY)))

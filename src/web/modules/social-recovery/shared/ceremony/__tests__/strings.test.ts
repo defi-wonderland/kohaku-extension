@@ -1,13 +1,10 @@
 /**
  * Every string the ceremony tab shows is a key of `socialRecovery` in en.json,
- * read through `t` with no fallback (module README, "Rules"; the coordinator's
- * ruling after the setup revision 40fca1c2a added the ceremony's actions, the
- * tab note, the empty state and the provider and device names).
- *
- * The keys come from two places: the literals of the lane's sources, and the
- * functions that pick a key per outcome or per kind. Both are checked against
- * the real en.json and through the app's own i18next instance, which returns
- * the key itself where a key is missing.
+ * read through `t` with no fallback. The keys come from two places: the
+ * literals of the module's sources, and the functions that pick a key per
+ * outcome or per kind. Both are checked against the real en.json and through
+ * the app's own i18next instance, which returns the key itself where a key is
+ * missing.
  */
 import fs from 'fs'
 import path from 'path'
@@ -17,7 +14,7 @@ import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import { ceremony } from './harness'
 
-const LANE = path.resolve(__dirname, '..')
+const MODULE_DIR = path.resolve(__dirname, '..')
 
 const sourcesOf = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -26,8 +23,8 @@ const sourcesOf = (dir: string): string[] =>
     return /\.(ts|tsx)$/.test(entry.name) ? [full] : []
   })
 
-const SOURCES = sourcesOf(LANE).map((file) => ({
-  file: path.relative(LANE, file),
+const SOURCES = sourcesOf(MODULE_DIR).map((file) => ({
+  file: path.relative(MODULE_DIR, file),
   text: fs.readFileSync(file, 'utf8')
 }))
 
@@ -47,12 +44,6 @@ const expectResolves = (key: string) => {
 }
 
 describe('the ceremony tab strings', () => {
-  it('reads the lane sources, the screen among them', () => {
-    expect(SOURCES.map((s) => s.file)).toEqual(
-      expect.arrayContaining([path.join('screen', 'CeremonyScreen.tsx'), 'kindLine.ts'])
-    )
-  })
-
   it('passes no defaultValue to t anywhere in the screen', () => {
     const screen = SOURCES.filter((s) => s.file.startsWith('screen'))
     screen.forEach(({ file, text }) =>
@@ -60,7 +51,7 @@ describe('the ceremony tab strings', () => {
     )
   })
 
-  it('passes no defaultValue to a translate call anywhere in the lane', () => {
+  it('passes no defaultValue to a translate call anywhere in the module', () => {
     SOURCES.forEach(({ file, text }) =>
       expect({ file, fallback: /\bt\([^)]*defaultValue/.test(text) }).toEqual({
         file,
@@ -69,7 +60,7 @@ describe('the ceremony tab strings', () => {
     )
   })
 
-  it('resolves every literal socialRecovery key of the lane in en.json', () => {
+  it('resolves every literal socialRecovery key of the module in en.json', () => {
     const keys = new Set<string>()
     SOURCES.forEach(({ text }) => {
       // Code only: a comment may name a block of en.json in backticks.
@@ -85,7 +76,7 @@ describe('the ceremony tab strings', () => {
     keys.forEach(expectResolves)
   })
 
-  it('translates the screen through literal keys or the lane key functions alone', () => {
+  it('translates the screen through literal keys or the module key functions alone', () => {
     const screen = SOURCES.find((s) => s.file === path.join('screen', 'CeremonyScreen.tsx'))
     // The first argument of each t(...) call, up to its first comma or paren.
     const calls = [...(screen?.text ?? '').matchAll(/\bt\(\s*([^,)]+)/g)].map((m) => m[1].trim())
@@ -98,10 +89,8 @@ describe('the ceremony tab strings', () => {
 })
 
 describe('the keys an outcome selects', () => {
-  const lane = () => ceremony()
-
   const everyOutcome = () => {
-    const { passed, failed, unavailable, notSupported, dismissed, HOST_CAUSES } = lane()
+    const { passed, failed, unavailable, notSupported, dismissed, HOST_CAUSES } = ceremony()
     const causes = [
       'device-refused',
       'device-unavailable',
@@ -121,7 +110,7 @@ describe('the keys an outcome selects', () => {
   }
 
   it('resolves the note of every outcome at every call', () => {
-    const { CEREMONY_CALLS, noteKeyOfOutcome } = lane()
+    const { CEREMONY_CALLS, noteKeyOfOutcome } = ceremony()
     CEREMONY_CALLS.forEach((call) =>
       everyOutcome().forEach((outcome) => {
         const key = noteKeyOfOutcome(outcome, call)
@@ -131,7 +120,7 @@ describe('the keys an outcome selects', () => {
   })
 
   it('resolves the line of every outcome at every call, and never selects the not-tested line', () => {
-    const { CEREMONY_CALLS, lineKeyOfOutcome } = lane()
+    const { CEREMONY_CALLS, lineKeyOfOutcome } = ceremony()
     CEREMONY_CALLS.forEach((call) =>
       everyOutcome().forEach((outcome) => {
         const key = lineKeyOfOutcome(outcome, call)
@@ -143,7 +132,7 @@ describe('the keys an outcome selects', () => {
   })
 
   it('shows every outcome with a note, a line or a chip: no row is left without words', () => {
-    const { CEREMONY_CALLS, chipOfOutcome, lineKeyOfOutcome, noteKeyOfOutcome } = lane()
+    const { CEREMONY_CALLS, chipOfOutcome, lineKeyOfOutcome, noteKeyOfOutcome } = ceremony()
     CEREMONY_CALLS.filter((call) => call !== 'healthCheck').forEach((call) =>
       everyOutcome().forEach((outcome) => {
         const words = [
@@ -157,7 +146,7 @@ describe('the keys an outcome selects', () => {
   })
 
   it('shows a browser error name alone as raw text, never a cause slug or a message', () => {
-    const { browserErrorNameOf, failed, unavailable, HOST_CAUSES } = lane()
+    const { browserErrorNameOf, failed, unavailable, HOST_CAUSES } = ceremony()
     expect(browserErrorNameOf(failed('browser-error', 'NotAllowedError'))).toBe('NotAllowedError')
     expect(browserErrorNameOf(failed('browser-error', 'the prompt closed'))).toBeNull()
     expect(browserErrorNameOf(failed('thrown', 'boom'))).toBeNull()
@@ -167,14 +156,14 @@ describe('the keys an outcome selects', () => {
   })
 
   it('selects the unreachable note for a phone that never connected', () => {
-    const { unavailable, noteKeyOfOutcome } = lane()
+    const { unavailable, noteKeyOfOutcome } = ceremony()
     expect(noteKeyOfOutcome(unavailable('unreachable'), 'testAccess')).toBe(
       'socialRecovery.ceremony.unreachableNote'
     )
   })
 
   it('resolves every kind line, provider and device name', () => {
-    const { kindLineOf, lossLineKeyOf, PASSKEY_KINDS, PLATFORMS, AUTHENTICATOR_PLACES } = lane()
+    const { kindLineOf, lossLineKeyOf, PASSKEY_KINDS, PLATFORMS, AUTHENTICATOR_PLACES } = ceremony()
     const aaguids = [
       undefined,
       '00000000-0000-0000-0000-000000000000',

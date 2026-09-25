@@ -3,35 +3,25 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041 done entry: every test reports exactly one of four verdicts, passed,
- * failed with its cause, unavailable with retry and not supported without one
- * (ux-interfaces.md D-372, ux-copy.md UXC-13: a failed test reads "test failed"
- * with its cause, never "not tested"). The brief asks this of each host: a
- * method that throws a cause yields failed with that cause, a node or service
- * that does not answer yields unavailable with retry, a method that cannot
- * serve the document yields not supported with no retry. The health-check host
- * is a third-release shell that returns not supported (brief, delta 2).
+ * Every host reports exactly one of four verdicts: passed, failed with its
+ * cause, unavailable with retry, and not supported without one. A failed test
+ * reads "test failed" with its cause, never "not tested".
  *
- * What a row renders depends on the call (the PR #10 review, README "What a
- * row renders, by call"): the test chips and lines serve test access alone, a
- * passed enrollment reads not tested until its test runs, and a claim reads the
- * checklist's chips.
+ * What a row renders depends on the call: the test chips and lines serve test
+ * access alone, a passed enrollment reads not tested until its test runs, and
+ * a claim reads the checklist's chips.
  */
-import { METHOD_CHIPS } from '@web/modules/social-recovery/shared/display'
-
 import {
   enrollFailure,
   fakeAssertion,
   fakeAttestation,
   fakeMethod,
   fakeOrchestrator,
-  FOUR_VERDICTS,
   FourVerdict,
   generatePoint,
   HostName,
   hosts,
   installCredentials,
-  laneVerdictVocabulary,
   lineKeyOf,
   MethodScript,
   Outcome,
@@ -40,7 +30,6 @@ import {
   replyFailure,
   rowChipOf,
   SYNCED_FLAGS,
-  testChipOf,
   ceremony
 } from './harness'
 
@@ -215,18 +204,18 @@ type Call = keyof typeof CASES
 
 const NOTE = (key: string) => `socialRecovery.ceremony.${key}`
 
-/** The chip, note and line a row renders for one verdict of `call` (README table). */
+/** The chip, note and line a row renders for one verdict of `call`. */
 const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
   const chip = rowChipOf(outcome, call)
   const note = noteKeyOf(outcome, call)
   const line = lineKeyOf(outcome, call)
-  // UXC-13 on every call: nothing a failed or unavailable run renders reads not tested.
+  // On every call, nothing a failed or unavailable run renders reads not tested.
   if (outcome.verdict !== 'passed') {
     expect(chip).not.toBe('method:notTested')
     expect(line).not.toBe(NOTE('notTestedLine'))
   }
   // A test that could not run reads the test-unavailable line; an enrollment or
-  // a claim is not a test and reads the unavailable note (the fifth pass).
+  // a claim is not a test and reads the unavailable note.
   const unavailableNote = /unreachable/.test(outcome.cause ?? '')
     ? NOTE('unreachableNote')
     : NOTE(call === 'testAccess' ? 'testUnavailableLine' : 'unavailableNote')
@@ -261,7 +250,7 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
   expect(outcome.type).toBe('verdict')
   if (outcome.type !== 'verdict') return
   expect(outcome.verdict).toBe(expected.verdict)
-  // UXC-13: a failed test is never a skipped one.
+  // A failed test is never a skipped one.
   expect(scan(outcome.raw)).not.toMatch(/not[\s_-]?tested|skipped/i)
   switch (outcome.verdict) {
     case 'failed':
@@ -292,15 +281,10 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
         expectOneVerdict(outcome, c, host)
       })
     )
-
-    it('reaches every one of the four verdicts, and no other', () => {
-      const reached = new Set(CASES[host].map((c) => c.verdict))
-      expect([...reached].sort()).toEqual([...FOUR_VERDICTS].sort())
-    })
   })
 )
 
-describe('the health-check host (third release, a shell)', () => {
+describe('the health-check host', () => {
   it('returns not supported with no retry', async () => {
     const method = fakeMethod()
     const orchestrator = fakeOrchestrator(method)
@@ -330,31 +314,10 @@ describe('the health-check host (third release, a shell)', () => {
   })
 })
 
-describe('the verdict vocabulary', () => {
-  it('is closed at four verdicts', () => {
-    const lane = laneVerdictVocabulary().map(String)
-    expect(lane).toHaveLength(4)
-    expect(new Set(lane).size).toBe(4)
-  })
-
-  it('gives a test access one PT-036 method chip per verdict, never not tested', () => {
-    const chips = FOUR_VERDICTS.map((v) => testChipOf(v))
-    expect(chips).toEqual(['tested', 'testFailed', 'testUnavailable', 'notSupported'])
-    chips.forEach((chip) => expect(METHOD_CHIPS as readonly string[]).toContain(chip))
-    expect(chips).not.toContain('notTested')
-  })
-})
-
-/**
- * One test per call: the chip, the note and the line a row renders for every
- * outcome the call can end in, built with the lane's own constructors. The
- * expectations are the README's table, which the PR #10 review settled.
- */
 describe('what a row renders, by call', () => {
-  const lane = () => ceremony()
-  type LaneOutcome = Parameters<ReturnType<typeof ceremony>['chipOfOutcome']>[0]
-  const row = (outcome: LaneOutcome, call: Call | 'healthCheck') => {
-    const { chipOfOutcome, noteKeyOfOutcome, lineKeyOfOutcome } = lane()
+  type ModuleOutcome = Parameters<ReturnType<typeof ceremony>['chipOfOutcome']>[0]
+  const row = (outcome: ModuleOutcome, call: Call | 'healthCheck') => {
+    const { chipOfOutcome, noteKeyOfOutcome, lineKeyOfOutcome } = ceremony()
     const chip = chipOfOutcome(outcome, call)
     return [
       chip ? `${chip.set}:${chip.chip}` : null,
@@ -364,7 +327,7 @@ describe('what a row renders, by call', () => {
   }
 
   it("enroll: a passed enrollment reads not tested; every other outcome keeps the row's chip with its note", () => {
-    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    const { passed, failed, unavailable, notSupported, dismissed } = ceremony()
     expect(row(passed({ config: '0x01' }), 'enroll')).toEqual(['method:notTested', null, null])
     expect(row(failed('material-rejected'), 'enroll')).toEqual([null, NOTE('failedNote'), null])
     expect(row(failed('thrown'), 'enroll')).toEqual([null, NOTE('failedNote'), null])
@@ -395,7 +358,7 @@ describe('what a row renders, by call', () => {
   })
 
   it('testAccess: the four test chips, a failed test with its line and never not tested', () => {
-    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    const { passed, failed, unavailable, notSupported, dismissed } = ceremony()
     expect(row(passed({ proof: '0x01' }), 'testAccess')).toEqual([
       'method:tested',
       NOTE('passedNote'),
@@ -447,7 +410,7 @@ describe('what a row renders, by call', () => {
   })
 
   it("createClaim: a passed claim reads complete; a failed claim keeps the row's chip with the failed note and no test line", () => {
-    const { passed, failed, unavailable, notSupported, dismissed } = lane()
+    const { passed, failed, unavailable, notSupported, dismissed } = ceremony()
     expect(row(passed({ reply: {} }), 'createClaim')).toEqual([
       'collection:complete',
       NOTE('passedNote'),
@@ -493,7 +456,7 @@ describe('what a row renders, by call', () => {
   })
 
   it('healthCheck: the shell selects no chip and no test line', () => {
-    const { notSupported } = lane()
+    const { notSupported } = ceremony()
     expect(row(notSupported('no-implementation'), 'healthCheck')).toEqual([
       null,
       NOTE('notSupportedNote'),

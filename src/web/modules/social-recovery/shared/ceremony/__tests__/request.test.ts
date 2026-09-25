@@ -1,13 +1,6 @@
-/**
- * The route's search params (README, "The tab"): the call, the method kind,
- * the request id, the phone hand-off and the path the tab returns to. A
- * malformed search runs nothing, and `returnTo` never leaves the extension.
- */
 import { ceremony } from './harness'
 
-const lane = () => ceremony()
-
-const parse = (search: string) => lane().parseCeremonySearch(search)
+const parse = (search: string) => ceremony().parseCeremonySearch(search)
 
 describe('parseCeremonySearch', () => {
   it('reads a well-formed search', () => {
@@ -19,7 +12,7 @@ describe('parseCeremonySearch', () => {
 
   it('reads URLSearchParams as well as a string', () => {
     const query = new URLSearchParams({ call: 'testAccess', method: 'passkey', id: 'abc_DEF-9' })
-    expect(lane().parseCeremonySearch(query)).toMatchObject({
+    expect(ceremony().parseCeremonySearch(query)).toMatchObject({
       ok: true,
       params: { call: 'testAccess', id: 'abc_DEF-9' }
     })
@@ -105,13 +98,13 @@ describe('the path a caller opens', () => {
       handOff: true,
       returnTo: '/social-recovery/recovery'
     }
-    const target = lane().ceremonyPath(params)
+    const target = ceremony().ceremonyPath(params)
     expect(target.startsWith('/social-recovery/ceremony?')).toBe(true)
     expect(parse(target.slice(target.indexOf('?')))).toEqual({ ok: true, params })
   })
 
   it('carries no handOff and no returnTo where the caller named none', () => {
-    const search = lane().ceremonySearch({
+    const search = ceremony().ceremonySearch({
       call: 'enroll',
       method: 'passkey',
       id: 'r',

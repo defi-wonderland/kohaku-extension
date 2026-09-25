@@ -3,16 +3,11 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * The ceremony tab screen, rendered (ux.md D-316): it runs nothing outside a
- * full tab, resolves and runs nothing while the tab is hidden, writes its
- * report to the extension's storage only once the tab is shown, and shows no
- * raw slug.
- *
  * The repository's Jest config compiles TSX with `jsx: react-native`, which
  * keeps the JSX, so a test cannot import a component. This file transpiles the
  * screen with the TypeScript compiler's React JSX and evaluates it under
  * Jest's own `require`, so every import resolves through the aliases and the
- * mocks below. The shared components are stubs; the lane's modules, i18next
+ * mocks below. The shared components are stubs; the ceremony module, i18next
  * and en.json are real.
  */
 /* eslint-disable global-require, import/no-dynamic-require, @typescript-eslint/no-var-requires */
@@ -235,7 +230,7 @@ describe('the ceremony tab screen', () => {
     expect(page.textContent).toContain('Synced passkey')
   })
 
-  // D-316: the full-tab rule, kept by the screen itself as well as TabOnlyRoute.
+  // The screen keeps the full-tab rule itself as well as TabOnlyRoute.
   ;[
     ['the action popup', { isTab: false, isPopup: true, isActionWindow: false }],
     ['an action window', { isTab: false, isPopup: false, isActionWindow: true }]
@@ -252,7 +247,6 @@ describe('the ceremony tab screen', () => {
     })
   )
 
-  // D-316: a hidden tab dispatches nothing, the resolve included.
   it('resolves and prompts nothing while hidden, then runs once shown', async () => {
     setVisibility('hidden', false)
     const { resolve, store } = source()
@@ -296,7 +290,7 @@ describe('the ceremony tab screen', () => {
     expect(text).toContain('Failed · Try again')
   })
 
-  it("shows the browser's error name beside test failed (frame C-05)", async () => {
+  it("shows the browser's error name beside test failed", async () => {
     setVisibility('visible', false)
     creds.restore()
     creds = installCredentials({
@@ -315,7 +309,7 @@ describe('the ceremony tab screen', () => {
     expect(text).not.toContain('The operation either timed out')
   })
 
-  it('shows "Cancelled" for a claim whose prompt was dismissed (frame D-07b)', async () => {
+  it('shows "Cancelled" for a claim whose prompt was dismissed', async () => {
     setVisibility('visible', false)
     creds.restore()
     creds = installCredentials({
@@ -333,7 +327,7 @@ describe('the ceremony tab screen', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 
-  // The fifth pass: an enrollment or a claim is not a test.
+  // An enrollment or a claim is not a test.
   ;[
     ['an enrollment', ENROLL, { configFrom: enrollFailure('device-unavailable') }],
     ['a claim', CLAIM, { replyFrom: replyFailure('device-unavailable') }]

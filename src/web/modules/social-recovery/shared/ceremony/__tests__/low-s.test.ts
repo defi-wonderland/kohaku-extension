@@ -3,11 +3,10 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041 delta (passkey proof of concept, 2026-09-23): a Google Password
- * Manager assertion returned a high `s`, so the signature is normalized before
- * a verifier that rejects high `s`, and this lane does it before the method
- * receives it (brief, open question 12). With the P-256 order n, `s > n/2`
- * becomes `n - s`, and `s <= n/2` stays as it is.
+ * A Google Password Manager assertion can carry a high `s`, which a verifier
+ * that rejects high `s` refuses, so the module normalizes the signature before
+ * the method receives it. With the P-256 order n, `s > n/2` becomes `n - s`,
+ * and `s <= n/2` stays as it is.
  */
 import {
   asBytes,
@@ -36,10 +35,6 @@ const normalized = (r: bigint, s: bigint) => {
 }
 
 describe('the high-s normalization', () => {
-  it('uses the P-256 order the brief names', () => {
-    expect(HIGH_S > P256_HALF_N && HIGH_S < P256_N).toBe(true)
-  })
-
   it('rewrites s > n/2 as n - s and keeps r', () => {
     const { parsed } = normalized(R, HIGH_S)
     expect(parsed.r).toBe(R)

@@ -2,11 +2,6 @@
  * @jest-environment jsdom
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
-/**
- * PT-041 done entry: the extension calls the authenticator itself, create at
- * enrollment and get at a claim, and hands the result to the method
- * (ux-interfaces.md D-372: the method packages it into the proof).
- */
 import {
   carries,
   fakeAssertion,

@@ -1,16 +1,12 @@
 /**
- * The return channel (README, "The return channel"; the PR #10 review): the
- * tab writes one report under `socialRecoveryCeremonyResult:<id>` in the
- * extension's local storage (D-310). A report of a passed claim carries
- * approval material that must not outlive its use (I-38), so a report expires
- * ten minutes after `reportedAt`, is delivered only for the id, call and
- * method the caller expects, and leaves storage once taken or heard.
+ * A report of a passed claim carries approval material that must not outlive
+ * its use, so a report expires ten minutes after `reportedAt`, is delivered
+ * only for the id, call and method the caller expects, and leaves storage once
+ * taken or heard.
  */
 import { ceremony } from './harness'
 
 const T0 = 1_790_000_000_000
-
-const lane = () => ceremony()
 
 /** A storage double over a Map; every member is a spy. */
 const mapStore = (entries: [string, unknown][] = []) => {
@@ -49,7 +45,7 @@ const EXPECTED = { id: 'req-1', call: 'createClaim', method: 'passkey' } as cons
 type Identity = Parameters<ReturnType<typeof ceremony>['ceremonyReport']>[0]
 
 const reportAt = (reportedAt: number, identity: Partial<Identity> = {}) => {
-  const { ceremonyReport, passed } = lane()
+  const { ceremonyReport, passed } = ceremony()
   return ceremonyReport(
     { ...EXPECTED, ...identity },
     passed({ reply: { proof: '0x01' } }),
@@ -57,12 +53,10 @@ const reportAt = (reportedAt: number, identity: Partial<Identity> = {}) => {
   )
 }
 
-const key = (id: string = EXPECTED.id) => lane().ceremonyResultKey(id)
+const key = (id: string = EXPECTED.id) => ceremony().ceremonyResultKey(id)
 
 describe('a report the tab writes', () => {
   it('expires ten minutes after it was reported', () => {
-    const { CEREMONY_REPORT_TTL_MS } = lane()
-    expect(CEREMONY_REPORT_TTL_MS).toBe(10 * 60 * 1000)
     expect(reportAt(T0).expiresAt).toBe(T0 + 10 * 60 * 1000)
   })
 
@@ -74,7 +68,7 @@ describe('a report the tab writes', () => {
 describe('takeCeremonyReport', () => {
   it('delivers the expected report within its expiry and removes it', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    const report = await lane().takeCeremonyReport(EXPECTED, store, T0 + 60_000)
+    const report = await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 60_000)
     expect(report).toMatchObject({ ...EXPECTED, reportedAt: T0 })
     expect(store.remove).toHaveBeenCalledWith(key())
     expect(store.map.has(key())).toBe(false)
@@ -82,35 +76,37 @@ describe('takeCeremonyReport', () => {
 
   it('delivers it once: a second take reads null', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    await lane().takeCeremonyReport(EXPECTED, store, T0 + 1)
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0 + 2)).toBeNull()
+    await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 2)).toBeNull()
   })
 
   it('reads a report stored as a JSON string', async () => {
     const store = mapStore([[key(), JSON.stringify(reportAt(T0))]])
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
   })
 
   it('reads null at its expiry and removes it', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    const report = await lane().takeCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000)
+    const report = await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000)
     expect(report).toBeNull()
     expect(store.map.has(key())).toBe(false)
   })
 
   it('delivers it one millisecond before its expiry', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000 - 1)).not.toBeNull()
+    expect(
+      await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000 - 1)
+    ).not.toBeNull()
   })
 
   it('reads null for a report stamped in the future past a minute of skew', async () => {
     const store = mapStore([[key(), reportAt(T0 + 2 * 60 * 1000)]])
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
   })
 
   it('reads null and removes a malformed value', async () => {
     const store = mapStore([[key(), { id: 'req-1', outcome: 'passed' }]])
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
     expect(store.map.has(key())).toBe(false)
   })
 
@@ -123,14 +119,14 @@ describe('takeCeremonyReport', () => {
     it(`reads null and leaves a report for ${title} in place`, async () => {
       const stored = reportAt(T0, identity)
       const store = mapStore([[key(), stored]])
-      expect(await lane().takeCeremonyReport(EXPECTED, store, T0 + 1)).toBeNull()
+      expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toBeNull()
       expect(store.map.get(key())).toBe(stored)
     })
   )
 
   it('reads null where nothing was written', async () => {
     const store = mapStore()
-    expect(await lane().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0)).toBeNull()
     expect(store.remove).not.toHaveBeenCalled()
   })
 })
@@ -138,15 +134,15 @@ describe('takeCeremonyReport', () => {
 describe('readCeremonyReport', () => {
   it('reads the expected report and removes nothing', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    expect(await lane().readCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
+    expect(await ceremony().readCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
     expect(store.remove).not.toHaveBeenCalled()
   })
 
   it('reads null past the expiry or for another call', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
-    expect(await lane().readCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000)).toBeNull()
+    expect(await ceremony().readCeremonyReport(EXPECTED, store, T0 + 10 * 60 * 1000)).toBeNull()
     expect(
-      await lane().readCeremonyReport({ ...EXPECTED, call: 'enroll' }, store, T0 + 1)
+      await ceremony().readCeremonyReport({ ...EXPECTED, call: 'enroll' }, store, T0 + 1)
     ).toBeNull()
   })
 })
@@ -156,7 +152,7 @@ describe('listenForCeremonyReport', () => {
     const store = mapStore()
     const { subscribe, emit } = subscriptions()
     const onReport = jest.fn()
-    lane().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
+    ceremony().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
     const report = reportAt(T0)
     store.map.set(key(), report)
     emit(key(), report)
@@ -169,7 +165,7 @@ describe('listenForCeremonyReport', () => {
 
   it('listens on the key of the expected id alone', () => {
     const { subscribe } = subscriptions()
-    lane().listenForCeremonyReport(EXPECTED, subscribe, mapStore(), jest.fn())
+    ceremony().listenForCeremonyReport(EXPECTED, subscribe, mapStore(), jest.fn())
     expect(subscribe).toHaveBeenCalledTimes(1)
     expect(subscribe.mock.calls[0][0]).toBe(key())
   })
@@ -187,7 +183,7 @@ describe('listenForCeremonyReport', () => {
       const store = mapStore([[key(), value]])
       const { subscribe, emit } = subscriptions()
       const onReport = jest.fn()
-      lane().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
+      ceremony().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
       emit(key(), value)
       await Promise.resolve()
       expect(onReport).not.toHaveBeenCalled()
@@ -199,7 +195,7 @@ describe('listenForCeremonyReport', () => {
     const store = mapStore()
     const { subscribe, emit } = subscriptions()
     const onReport = jest.fn()
-    lane().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
+    ceremony().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
     emit(key(), JSON.stringify(reportAt(T0)))
     expect(onReport).toHaveBeenCalledTimes(1)
   })
@@ -207,7 +203,7 @@ describe('listenForCeremonyReport', () => {
   it('stops listening once unsubscribed', () => {
     const { subscribe, emit } = subscriptions()
     const onReport = jest.fn()
-    const unsubscribe = lane().listenForCeremonyReport(
+    const unsubscribe = ceremony().listenForCeremonyReport(
       EXPECTED,
       subscribe,
       mapStore(),
@@ -229,7 +225,7 @@ describe('sweepCeremonyReports', () => {
       [key('broken'), 'not a report'],
       ['someOtherKey', { id: 'x' }]
     ])
-    const removed = await lane().sweepCeremonyReports(store, [...store.map.keys()], T0 + 1)
+    const removed = await ceremony().sweepCeremonyReports(store, [...store.map.keys()], T0 + 1)
     expect(removed).toBe(2)
     expect([...store.map.keys()].sort()).toEqual([key('fresh'), 'someOtherKey'].sort())
   })

@@ -3,16 +3,8 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041 done entry and ux.md D-316: a hidden tab dispatches nothing to the
- * background until it is shown again, and a hand-off to a phone reports its
- * result when the tab returns. The brief: with `document.visibilityState ===
- * 'hidden'` no dispatch happens, and it resumes when visible. The task body: a
- * hand-off that never connects reads unreachable (en.json
- * `socialRecovery.ceremony.unreachableNote`, "the phone never connected · Try
- * again").
- *
- * The lane's dispatch is the report the tab writes to the extension's storage
- * through its visibility gate (README, "The return channel").
+ * The tab's dispatch is the report it writes to the extension's storage
+ * through its visibility gate.
  */
 import {
   backgroundGate,
@@ -170,8 +162,8 @@ describe('the report the tab writes', () => {
     gate.dispose()
   })
 
-  // The fifth pass: the report is stamped when it is written, inside the gate,
-  // so a hand-off whose tab returns after the ten-minute expiry still delivers.
+  // The report is stamped when it is written, inside the gate, so a hand-off
+  // whose tab returns after the ten-minute expiry still delivers.
   describe('a ceremony that ends while hidden and is shown eleven minutes later', () => {
     const T0 = new Date('2026-09-24T12:00:00Z').getTime()
     const ELEVEN_MINUTES = 11 * 60 * 1000
@@ -339,7 +331,7 @@ describe('a hand-off to a phone', () => {
     expect(outcome).toMatchObject({ type: 'note', note: 'cancelled' })
   })
 
-  it('reads test failed, not unreachable, when the test prompt closes early (frame C-05)', async () => {
+  it('reads test failed, not unreachable, when the test prompt closes early', async () => {
     let clock = 1_000_000
     jest.spyOn(Date, 'now').mockImplementation(() => clock)
     creds = installCredentials({

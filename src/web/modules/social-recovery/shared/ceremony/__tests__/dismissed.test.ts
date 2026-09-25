@@ -3,18 +3,11 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * PT-041 done entry: a ceremony the holder dismissed or the browser refused
- * returns before the method runs, read from the browser's own error
- * (ux-interfaces.md D-372). The brief: a `NotAllowedError` before the method
- * runs yields the cancelled or refused note and the method's call count is zero.
- *
- * The coordinator's refined ruling: at a test access, a `NotAllowedError` from
- * `navigator.credentials.get` reads test failed with the browser's error name
- * as its cause (frame C-05, "Test failed · NotAllowedError · no credential
- * available on this device"), since the browser cannot tell a dismissed
- * prompt from a missing credential. At an enrollment and at a claim it stays
- * the cancelled note (frame D-07b draws a dismissed claim as cancelled). The
- * method never runs in any of them.
+ * At a test access, a `NotAllowedError` from `navigator.credentials.get` reads
+ * test failed with the browser's error name as its cause, since the browser
+ * cannot tell a dismissed prompt from a missing credential. At an enrollment
+ * and at a claim it stays the cancelled note. The method never runs in any of
+ * them.
  */
 import {
   browserErrorNameOf,
@@ -102,7 +95,7 @@ describe('NotAllowedError at enrollment (create)', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 })
-describe('NotAllowedError at testAccess (get), frame C-05', () => {
+describe('NotAllowedError at testAccess (get)', () => {
   beforeEach(() => browserRejects(notAllowedError))
 
   it("reads failed with the browser's error name as its cause", async () => {
@@ -118,7 +111,7 @@ describe('NotAllowedError at testAccess (get), frame C-05', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
 
-  it('reads test failed with its line, never not tested (UXC-13)', async () => {
+  it('reads test failed with its line, never not tested', async () => {
     const { outcome } = await run('testAccess')
     expect(rowChipOf(outcome, 'testAccess')).toBe('method:testFailed')
     expect(lineKeyOf(outcome, 'testAccess')).toBe(NOTE('testFailedLine'))
@@ -126,7 +119,7 @@ describe('NotAllowedError at testAccess (get), frame C-05', () => {
   })
 })
 
-describe('NotAllowedError at createClaim (get), frame D-07b', () => {
+describe('NotAllowedError at createClaim (get)', () => {
   beforeEach(() => browserRejects(notAllowedError))
 
   it('reads the cancelled note, not a failed verdict', async () => {
@@ -203,12 +196,11 @@ describe("the browser's other errors", () => {
 })
 
 /**
- * The method's own `device-refused` (sdk.md D-206): the approver's device
- * declined. The coordinator's finding: it reads the refused note for an
- * external-app method alone (the phone app declined). A browser-authenticator
- * method's refusal is read from the browser's own error before the method
- * runs; a `device-refused` the method returns after it ran is its typed
- * failure, one of the four verdicts.
+ * The method's own `device-refused` reads the refused note for an external-app
+ * method alone (the phone app declined). A browser-authenticator method's
+ * refusal is read from the browser's own error before the method runs; a
+ * `device-refused` the method returns after it ran is its typed failure, one
+ * of the four verdicts.
  */
 describe("the method's device-refused", () => {
   const externalDevice = () =>
@@ -234,6 +226,7 @@ describe("the method's device-refused", () => {
     const outcome = await hosts.enroll({ method, orchestrator, resolvedDevice: externalDevice() })
     expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
   })
+
   it('reads a verdict, not the note, for a browser-authenticator method at enrollment', async () => {
     browserAnswers()
     const method = fakeMethod({ configFrom: enrollFailure('device-refused') })

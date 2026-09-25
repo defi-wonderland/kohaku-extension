@@ -3,17 +3,13 @@
  * @jest-environment-options {"url": "chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj/tab.html#/social-recovery/ceremony"}
  */
 /**
- * The tester's one seam onto PT-041, the ceremony tab and the method hosts
- * (brief docs/social-recovery/briefs/PT-041.md, task file
- * docs/social-recovery/tasks/PT-041-the-ceremony-tab-and-the-method-hosts.md).
- *
- * Every test file reads the lane through the adapter at the bottom of this
- * file, so a rename in the lane changes this file alone. The adapter is strict:
- * a host result that is not exactly one of the four verdicts or one note throws
- * instead of being coerced.
+ * Every test file reads the ceremony module through the adapter at the bottom
+ * of this file, so a rename in the module changes this file alone. The adapter
+ * is strict: a host result that is not exactly one of the four verdicts or one
+ * note throws instead of being coerced.
  *
  * The fakes of `IRecoveryMethod` and `IMethodsOrchestrator` are hand-written and
- * typed by `sdk-interfaces/`: the ESLint fence forbids this lane to import the
+ * typed by `sdk-interfaces/`: the ESLint fence forbids this module to import the
  * doubles of `sdk-doubles/`. `navigator.credentials` is mocked; no test reaches
  * a real authenticator.
  */
@@ -36,12 +32,12 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 // ---------------------------------------------------------------------------
-// The jsdom globals the lane needs and jest-environment-jsdom 29 leaves out
+// The jsdom globals the module needs and jest-environment-jsdom 29 leaves out
 // ---------------------------------------------------------------------------
 
 /* eslint-disable global-require, @typescript-eslint/no-var-requires */
 // jsdom 20 has no TextEncoder, no TextDecoder and no crypto.subtle. They are
-// installed here, before the lane loads (the lane is required lazily below),
+// installed here, before the module loads (it is required lazily below),
 // so a module that builds an encoder at load time finds one.
 interface NodeEncoder {
   encode(input?: string): Uint8Array
@@ -76,17 +72,16 @@ if (!globalThis.crypto?.subtle) {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** The extension id of the passkey proof of concept of 2026-09-23. */
+/** The id of a real Chrome build, the page origin every test runs under. */
 export const EXTENSION_ID = 'cgjhdpkjghcgpplimocodhjgcceglpoj'
 
-/** The full origin string the relying party hash commits (D-314 delta). */
+/** The full origin string the relying party hash commits. */
 export const EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`
 
 /**
  * `sha256("chrome-extension://cgjhdpkjghcgpplimocodhjgcceglpoj")`, the rp id
- * hash every real authenticator committed in the proof of concept
- * (src/web/poc/passkey-rp/README.md on feat/passkey-rp-poc). A fixed vector, so
- * the test does not compute the expected value the way the lane does.
+ * hash real authenticators committed for that build. A fixed vector, so the
+ * test does not compute the expected value the way the module does.
  */
 export const ORIGIN_HASH: Hex = '0x6a28d0a23c3534862fbdfb5c1689fc35b89dcd9367cbc2e33d4b0cb2f76c6535'
 
@@ -145,7 +140,7 @@ const bytesToBig = (bytes: Uint8Array): bigint =>
 const base64url = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-/** Reads any byte-like value the lane may hand on: bytes, a buffer, a view or 0x hex. */
+/** Reads any byte-like value the module may hand on: bytes, a buffer, a view or 0x hex. */
 export const asBytes = (value: unknown): Uint8Array | null => {
   // Realm-blind checks: WebCrypto in jsdom hands back Node's buffers.
   const tag = Object.prototype.toString.call(value)
@@ -214,7 +209,7 @@ export const parseSignature = (value: unknown): ParsedSignature | null => {
 /**
  * Every signature anywhere inside `value`: byte-like leaves that parse as one,
  * and `{ r, s }` pairs held as bigints or hex. The claim host hands the method
- * a material whose shape is the lane's own, so the test looks everywhere.
+ * a material whose shape is the module's own, so the test looks everywhere.
  */
 export const signaturesIn = (value: unknown, depth = 0, seen = new Set<unknown>()) => {
   const found: ParsedSignature[] = []
@@ -250,7 +245,7 @@ const includesBytes = (hay: Uint8Array, needle: Uint8Array): boolean => {
 
 /**
  * Whether `value` carries any of `needles` anywhere inside it: the same object,
- * the same string, or bytes (or hex) that contain the needle's bytes. The lane
+ * the same string, or bytes (or hex) that contain the needle's bytes. The module
  * shapes the material it hands the method, so the test looks everywhere.
  */
 export const carries = (
@@ -297,7 +292,7 @@ export interface P256Point {
   y: Uint8Array
 }
 
-/** A real P-256 public point, so a lane that imports the key finds a valid one. */
+/** A real P-256 public point, so a module that imports the key finds a valid one. */
 export const generatePoint = async (): Promise<P256Point> => {
   const pair = (await globalThis.crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
@@ -331,7 +326,7 @@ export interface AuthDataOptions {
   aaguid?: string
 }
 
-/** Google Password Manager's AAGUID, the one the proof of concept saw over hybrid. */
+/** Google Password Manager's AAGUID. */
 export const GOOGLE_AAGUID = 'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4'
 /** iCloud Keychain's AAGUID (the community list of passkey provider AAGUIDs). */
 export const APPLE_AAGUID = 'fbfc3007-154e-4ecc-8c0b-6e020557d7bd'
@@ -395,7 +390,7 @@ export const attestationObject = (authData: Uint8Array): Uint8Array =>
 type Ctor = new (...args: never[]) => object
 
 /**
- * The WebAuthn classes jsdom lacks, so a lane that checks `instanceof
+ * The WebAuthn classes jsdom lacks, so a module that checks `instanceof
  * PublicKeyCredential` or calls one of its statics runs. Installed once.
  */
 export const installWebAuthnClasses = () => {
@@ -783,16 +778,14 @@ export const methodRunCount = (method: FakeMethod, orchestrator: FakeOrchestrato
   orchestrator.verify.mock.calls.length
 
 // ---------------------------------------------------------------------------
-// The adapter onto the lane
+// The adapter onto the module
 // ---------------------------------------------------------------------------
 
-/** The four verdicts every test reports (D-372), under the tests' own names. */
-export const FOUR_VERDICTS = ['passed', 'failed', 'unavailable', 'not-supported'] as const
-export type FourVerdict = typeof FOUR_VERDICTS[number]
+/** The four verdicts every test reports, under the tests' own names. */
+export type FourVerdict = 'passed' | 'failed' | 'unavailable' | 'not-supported'
 
-/** The two notes a ceremony returns before the method runs (D-372, D-305). */
-export const NOTES = ['cancelled', 'refused'] as const
-export type Note = typeof NOTES[number]
+/** The two notes a ceremony returns before the method runs. */
+export type Note = 'cancelled' | 'refused'
 
 export type Outcome =
   | { type: 'verdict'; verdict: FourVerdict; cause?: string; retry: boolean; raw: unknown }
@@ -806,7 +799,7 @@ type CeremonyCall = import('@web/modules/social-recovery/shared/ceremony').Cerem
 type CeremonyDevice = import('@web/modules/social-recovery/shared/ceremony').CeremonyDevice
 
 /* eslint-disable global-require, @typescript-eslint/no-var-requires */
-/** The lane's pure entry, loaded after the globals above exist. */
+/** The module's pure entry, loaded after the globals above exist. */
 export const ceremony = (): CeremonyModule =>
   require('@web/modules/social-recovery/shared/ceremony') as CeremonyModule
 
@@ -815,32 +808,25 @@ export const browserDefaults = (): BrowserDefaultsModule =>
   require('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults') as BrowserDefaultsModule
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
-const LANE_VERDICT: Record<string, FourVerdict> = {
+const MODULE_VERDICT: Record<string, FourVerdict> = {
   passed: 'passed',
   failed: 'failed',
   unavailable: 'unavailable',
   notSupported: 'not-supported'
 }
 
-const TO_LANE_VERDICT = {
-  passed: 'passed',
-  failed: 'failed',
-  unavailable: 'unavailable',
-  'not-supported': 'notSupported'
-} as const
-
 /**
  * Reads one host result as exactly one verdict or one note, and throws on
  * anything else: no result may carry two, none may carry neither, and no
- * verdict may fall outside the lane's closed four. The cause text joins the
- * lane's cause slug and the detail it carries (a thrown refusal's message).
+ * verdict may fall outside the closed four. The cause text joins the module's
+ * cause slug and the detail it carries (a thrown refusal's message).
  */
 export const toOutcome = (raw: unknown): Outcome => {
   const r = raw as Record<string, unknown>
   if (!r || typeof r !== 'object') throw new Error(`host result is not a record: ${String(raw)}`)
   if (r.kind === 'verdict') {
     if ('note' in r) throw new Error('host result carries a verdict and a note at once')
-    const verdict = typeof r.verdict === 'string' ? LANE_VERDICT[r.verdict] : undefined
+    const verdict = typeof r.verdict === 'string' ? MODULE_VERDICT[r.verdict] : undefined
     if (!verdict) throw new Error(`unknown verdict ${String(r.verdict)}`)
     const cause = [r.cause, r.detail].filter((c) => typeof c === 'string' && c).join(': ')
     return { type: 'verdict', verdict, cause: cause || undefined, retry: r.retry === true, raw }
@@ -868,7 +854,7 @@ export interface HostEnv {
   signal?: AbortSignal
 }
 
-/** The params a caller hands a passkey method: the full origin string as its relying party id (D-372). */
+/** The params a caller hands a passkey method: the full origin string as its relying party id. */
 export const callerParams = () => ({ relyingPartyId: EXTENSION_ORIGIN, userName: 'holder' })
 
 /**
@@ -893,7 +879,7 @@ const runCall = async (call: CeremonyCall, env: HostEnv): Promise<unknown> => {
   )
 }
 
-/** The four hosts of D-372, each run to its result. */
+/** The four hosts, each run to its result. */
 export const hosts = {
   enroll: async (env: HostEnv): Promise<Outcome> => toOutcome(await runCall('enroll', env)),
   testAccess: async (env: HostEnv): Promise<Outcome> => toOutcome(await runCall('testAccess', env)),
@@ -904,11 +890,11 @@ export const hosts = {
 }
 export type HostName = keyof typeof hosts
 
-/** The synced or device-bound kind the lane reads from authenticator data. */
+/** The synced or device-bound kind the module reads from authenticator data. */
 export const kindFromAuthData = (authData: Uint8Array): string =>
   ceremony().passkeyFactsOf({ authenticatorData: authData }).kind
 
-/** The lane's high-`s` normalization, on a DER signature. */
+/** The module's high-`s` normalization, on a DER signature. */
 export const normalizeSignature = (signature: Uint8Array): unknown =>
   ceremony().normalizeDerSignature(signature).signature
 
@@ -918,7 +904,7 @@ export const relyingParty = (): { id: string; origin: string; idHash: string } =
   return { id: rp.rpId, origin: rp.relyingPartyId, idHash: rp.rpIdHash }
 }
 
-/** The lane's visibility gate over this document, as a send that holds while hidden. */
+/** The module's visibility gate over this document, as a send that holds while hidden. */
 export const backgroundGate = (send: (message: unknown) => unknown) => {
   const gate = ceremony().createVisibilityGate(document)
   // A test reads what `send` received; the promise the gate returns is not the subject.
@@ -928,18 +914,11 @@ export const backgroundGate = (send: (message: unknown) => unknown) => {
   return Object.assign(dispatch, { gate })
 }
 
-/** The PT-036 method chip a verdict selects on a test access. */
-export const testChipOf = (verdict: FourVerdict): string =>
-  ceremony().VERDICT_CHIP[TO_LANE_VERDICT[verdict]]
-
 /** The chip a row shows after `call`, as `set:chip`, or null where the row keeps its chip. */
 export const rowChipOf = (outcome: Outcome, call: CeremonyCall): string | null => {
   const chip = ceremony().chipOfOutcome(outcome.raw as CeremonyOutcome, call)
   return chip ? `${chip.set}:${chip.chip}` : null
 }
-
-/** The lane's own closed list of verdicts. */
-export const laneVerdictVocabulary = (): readonly unknown[] => ceremony().CEREMONY_VERDICTS
 
 /** The en.json note an outcome of `call` renders on its row, or null. */
 export const noteKeyOf = (outcome: Outcome, call: CeremonyCall): string | null =>
@@ -996,23 +975,19 @@ describeHarness('ceremony test harness', () => {
     expect(data[32]).toBe(SYNCED_FLAGS)
   })
 
-  it('has the P-256 half order below n', () => {
-    expect(P256_HALF_N * BigInt(2) + BigInt(1)).toBe(P256_N)
-  })
-
   it('counts no method run on fresh fakes', () => {
     const method = fakeMethod()
     expect(methodRunCount(method, fakeOrchestrator(method))).toBe(0)
   })
 
-  it('gives jsdom the TextEncoder and WebCrypto the lane needs', async () => {
+  it('gives jsdom the TextEncoder and WebCrypto the module needs', async () => {
     expect(new TextEncoder().encode('a')).toEqual(Uint8Array.from([0x61]))
     const point = await generatePoint()
     expect(point.x).toHaveLength(32)
     expect(point.y).toHaveLength(32)
   })
 
-  it('fabricates credentials the lane can check with instanceof', async () => {
+  it('fabricates credentials the module can check with instanceof', async () => {
     const { credential, authData } = fakeAttestation({
       flags: SYNCED_FLAGS,
       point: await generatePoint()
