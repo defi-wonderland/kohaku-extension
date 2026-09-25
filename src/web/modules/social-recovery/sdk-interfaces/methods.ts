@@ -34,8 +34,8 @@ export type Verdict = typeof VERDICTS[number]
  * The five causes a reply failure names, and the enrollment failure the same
  * shape serves: the device refused, the device was unavailable, the material was
  * the wrong shape for this method, no implementation serves the method, or the
- * record's kind or version is one this build does not read. `device-refused` is
- * the SDK's own slug; the others are the extension's.
+ * record's kind or version is one this build does not read. `device-refused`
+ * follows the SDK's examples; the others are the extension's.
  */
 export const METHOD_FAILURE_CAUSES = [
   'device-refused',
