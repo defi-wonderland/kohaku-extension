@@ -94,7 +94,6 @@ export {
 export {
   WRITES_KEYS,
   GAS_KEYS,
-  PENDING_KEYS,
   REVERTED_KEYS,
   revertedKeyOf,
   UNNAMED_CAUSE_KEY,

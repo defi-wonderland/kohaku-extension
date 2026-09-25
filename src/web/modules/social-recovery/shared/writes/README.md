@@ -138,16 +138,7 @@ Both use the existing components of `src/common/components` over react-native-we
 | `ownerWrite` | `reverted` | none of its own |
 | `cancel` | `reverted` for the plain reading; the gone attempt reads `cancelRevertedTitle`, `cancelReverted` and its road or controller | D2-01 |
 
-Every string the lane shows comes from `socialRecovery.writes` and the chip and value keys of shared/display. The lane adds no key to en.json.
-
-## Strings reported missing
-
-These render through temporary keys in `copy.ts` (`PENDING_KEYS`, marked `TODO(social-recovery coordinator)`) until the coordinator adds them under `socialRecovery.writes`.
-
-| Temporary key | For | Proposed string | Chapter sentence |
-| --- | --- | --- | --- |
-| `replaced` | a transaction another one from the same key replaced before it was mined (`cancelled` or `replaced`) | "Another transaction from this key took this one's place before it ran. Nothing changed." | D-319: "A holder who reads that the wallet sent nothing retries a call that cannot land." The call was sent, so the not-sent line is false; it never ran, so the reverted line is false too. |
-| `gas.outsideRouteAlone` (`{{amount}}`) | an owner write's deposit from outside where the step offers no transfer route (the transfer's estimate reverted, or the account has no code and no deploy-and-transfer transaction was given) | "Send {{amount}} to this key from outside this wallet." | D-319: "That blocker offers both routes that fill it, a transfer from another account this wallet holds and a deposit from outside into the address it shows." `outsideRoute` opens with "Or", which reads wrong alone. |
+Every string the lane shows comes from `socialRecovery.writes` and the chip and value keys of shared/display. The lane adds no key to en.json. `writes.replaced` (a transaction another one replaced before it ran) and `writes.gas.outsideRouteAlone` (an owner write's deposit from outside where the step offers no transfer route) were reported missing by this lane and registered by the coordinator.
 
 ## Open points
 

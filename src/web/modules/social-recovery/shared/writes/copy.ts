@@ -42,6 +42,12 @@ export const WRITES_KEYS = {
   submittingRecovery: `${WRITES}.submittingRecovery`,
   submittingBody: `${WRITES}.submittingBody`,
   notSent: `${WRITES}.notSent`,
+  /**
+   * A transaction another one from the same key replaced before it was mined
+   * (ethers' `TRANSACTION_REPLACED`, `cancelled` or `replaced`): it reached no
+   * revert and spent no gas of its own, and its call never ran.
+   */
+  replaced: `${WRITES}.replaced`,
   reverted: `${WRITES}.reverted`,
   revertedSave: `${WRITES}.revertedSave`,
   revertedSubmit: `${WRITES}.revertedSubmit`,
@@ -77,6 +83,8 @@ export const GAS_KEYS = {
   transferRoute: `${GAS}.transferRoute`,
   transferRouteNote: `${GAS}.transferRouteNote`,
   outsideRoute: `${GAS}.outsideRoute`,
+  /** An owner write's deposit from outside, where the step offers no transfer route. */
+  outsideRouteAlone: `${GAS}.outsideRouteAlone`,
   transferIsAnOperation: `${GAS}.transferIsAnOperation`,
   copy: `${GAS}.copy`,
   /** D-393, frame D-09: the logged-in route's sending key, the key of the chosen account. */
@@ -89,22 +97,6 @@ export const GAS_KEYS = {
   shortfallExecute: `${GAS}.shortfallExecute`,
   /** The network an owner write's key must be funded on. */
   networkOwner: `${GAS}.networkOwner`
-} as const
-
-// TODO(social-recovery coordinator): en.json does not hold the two keys below
-// yet. PT-039 reported both missing with their sentences (README.md, "Strings
-// reported missing"). They render through these temporary keys until the
-// coordinator adds them under `socialRecovery.writes`.
-/** The temporary keys of the strings PT-039 reported missing. */
-export const PENDING_KEYS = {
-  /**
-   * A transaction another one from the same key replaced before it was mined
-   * (ethers' `TRANSACTION_REPLACED`, `cancelled` or `replaced`): it reached no
-   * revert and spent no gas of its own, and its call never ran.
-   */
-  replaced: `${WRITES}.replaced`,
-  /** An owner write's deposit from outside, where the step offers no transfer route. */
-  outsideRouteAlone: `${GAS}.outsideRouteAlone`
 } as const
 
 /**
@@ -234,7 +226,7 @@ export const renderWriteState = (
       return {
         ...base,
         ...retry,
-        lines: [t(state.replaced ? PENDING_KEYS.replaced : WRITES_KEYS.notSent)]
+        lines: [t(state.replaced ? WRITES_KEYS.replaced : WRITES_KEYS.notSent)]
       }
     case 'failedReverted':
       if (state.cause.kind === 'attemptGone') {
@@ -347,7 +339,7 @@ export const renderDepositStep = (
       line: transfer
         ? t(GAS_KEYS.outsideRoute, { amount: routeAmount })
         : isOwnerWrite(step.write)
-        ? t(PENDING_KEYS.outsideRouteAlone, { amount: routeAmount })
+        ? t(GAS_KEYS.outsideRouteAlone, { amount: routeAmount })
         : t(step.write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount, {
             amount: routeAmount
           })
