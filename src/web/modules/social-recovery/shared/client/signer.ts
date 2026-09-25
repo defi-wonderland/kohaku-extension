@@ -1,14 +1,13 @@
 /**
- * The signer facade (ux-interfaces.md D-370): typed data or raw bytes signed
- * for a key the keystore holds, addressed by the keystore's own handle of
- * address and key type. It exposes those two members and nothing else, so no
- * key, seed or export reaches a screen through it, whatever the keystore's
- * own settings surfaces do.
+ * The signer facade: typed data or raw bytes signed for a key the keystore
+ * holds, addressed by the keystore's own handle of address and key type. It
+ * exposes those two members and nothing else, so no key, seed or export
+ * reaches a screen through it.
  *
  * The keystore and its signers live in the background and the UI reaches them
- * only by dispatch. ux.md D-316 says every signing request lands in the action
- * window through the request queue, so the facade routes each signature
- * through that queue as a request of its own:
+ * only by dispatch. Every signature goes through the action window for the
+ * holder's confirmation, so the facade routes each one through the request
+ * queue as a request of its own:
  *
  * 1. It dispatches `REQUESTS_CONTROLLER_ADD_USER_REQUEST` with a sign request
  *    under an id of its own: the key's address as the account, the recovery
@@ -29,10 +28,9 @@
  * A key that is itself a basic account (an EOA the wallet lists, its own only
  * associated key) therefore gets its own plain signature: EIP-712 over typed
  * data, EIP-191 over bytes. Any other key, such as the smart account's
- * controlling key at the slot's index plus 100000 (ux.md D-316), cannot sign
- * through it, and the facade refuses such a key with `SignerNotWired`, naming
- * the background action that is missing. Raw bytes always carry the EIP-191
- * prefix: the queue has no request that signs a bare digest.
+ * controlling key at the slot's index plus 100000, cannot sign through it, and
+ * the facade refuses such a key with `SignerNotWired`. Raw bytes always carry
+ * the EIP-191 prefix: the queue has no request that signs a bare digest.
  */
 import { getBytes, isHexString, TypedDataField, verifyMessage, verifyTypedData } from 'ethers'
 import { v4 as uuidv4 } from 'uuid'
@@ -51,7 +49,7 @@ import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from './addresses'
 
-/** The keystore's own handle of a key: its address and its type (ux-interfaces.md D-370). */
+/** The keystore's own handle of a key: its address and its type. */
 export interface KeyHandle {
   addr: Address
   type: Key['type']
@@ -115,23 +113,24 @@ export interface SignRequestPort {
   windowId(): number | undefined
 }
 
-/**
- * The background action the facade would need to sign for any key the
- * keystore holds, and for a bare digest. It does not exist: a new background
- * action touches a shared file and is the owner's call. Its shape: params
- * `{ requestId, keyAddr, keyType, content }`, where `content` is a
- * `PlainTextMessage` or a `TypedMessage`; the handler takes
- * `KeystoreController.getSigner(keyAddr, keyType)`, runs `signer.init` with
- * the external signer controller of that type, answers
- * `signMessage(content.message)` or `signTypedData(content)` with no account
- * lookup and no Ambire envelope, and sends the signature or the error back to
- * the UI under the request id (the pattern `PROVIDER_RPC_REQUEST` uses). Under
- * ux.md D-316 it too would land in the action window for the holder's
- * confirmation.
- */
+/** The background action a `SignerNotWired` key needs. It does not exist yet. */
 export const MISSING_BACKGROUND_ACTION = 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY' as const
 
-/** The facade was asked for a key the request queue cannot sign for. */
+/**
+ * The facade was asked for a key the request queue cannot sign for: any key
+ * that is not itself a basic account the wallet lists.
+ *
+ * Signing for such a key, or a bare digest, needs the background action
+ * `MISSING_BACKGROUND_ACTION`, which does not exist yet. Its shape: params
+ * `{ requestId, keyAddr, keyType, content }`, where `content` is a
+ * `PlainTextMessage` or a `TypedMessage`. The handler takes
+ * `KeystoreController.getSigner(keyAddr, keyType)`, runs `signer.init` with the
+ * external signer controller of that type, and answers
+ * `signMessage(content.message)` or `signTypedData(content)` with no account
+ * lookup and no Ambire envelope. It sends the signature or the error back to
+ * the UI under the request id, as `PROVIDER_RPC_REQUEST` does, and it too
+ * goes through the action window for the holder's confirmation.
+ */
 export interface SignerNotWired extends Error {
   name: 'SignerNotWired'
   member: SignerMember
@@ -188,7 +187,13 @@ export const signFlowFailure = (
 export const isSignFlowFailure = (value: unknown): value is SignFlowFailure =>
   value instanceof Error && value.name === 'SignFlowFailure'
 
-/** How long the facade waits for the holder's confirmation, a hardware key's included. */
+/**
+ * How long the facade waits for the holder's confirmation, a hardware key's
+ * included. The queue shows one sign-message request at a time and drops one
+ * added while another is visible, so such a request ends here. The withdrawal
+ * reaches `userRequests` alone: a request still waiting for an account switch
+ * stays until the action window closes.
+ */
 export const DEFAULT_SIGN_TIMEOUT_MS = 10 * 60 * 1000
 
 /** How long the request must stay out of the queue, with no signature, before it counts as refused. */
@@ -293,12 +298,11 @@ export const recoveredSignerOf = (
 /**
  * The sign request the facade adds to the queue for one key and one content.
  * `meta.keyType` carries the handle's key type beside the account address, so
- * the intent of D-370 (a key addressed by address and key type) travels with
- * the request. Today the action window does not read it: it picks the key
- * among the account's keys, which for a listed basic account all sign as the
- * same address. `key.addr` must be the listed account's own address as the
- * wallet holds it, since the queue and the sign-message controller compare
- * addresses with exact case.
+ * the key type travels with the request. Today the action window does not read
+ * it: it picks the key among the account's keys, which for a listed basic
+ * account all sign as the same address. `key.addr` must be the listed
+ * account's own address as the wallet holds it, since the queue and the
+ * sign-message controller compare addresses with exact case.
  */
 export const signRequestOf = (
   id: string,

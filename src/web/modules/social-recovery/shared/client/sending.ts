@@ -1,15 +1,14 @@
 /**
- * Which key sends a prepared call (ux-interfaces.md D-370).
+ * Which key sends a prepared call.
  *
  * Whether the extension configured a sponsor rail decides it. The first
- * release configures none (ux.md D-312), so every prepared call is sent from a
- * key the signer holds: the account's controlling key for the account's own
- * operations (a setup write, the owner's cancel, and every prepared batch,
- * which the account runs as one transaction, sdk.md D-202), and the
- * recoverer's own key for the two recovery calls, the submission and the
- * execution (D-373). The cancel by proofs is not a recovery call: whoever
- * submits it pays for it, and it ships in a later milestone (D-373), so no key
- * is named for it here.
+ * release configures none, so every prepared call is sent from a key the
+ * signer holds: the account's controlling key for the account's own operations
+ * (a setup write, the owner's cancel, and every prepared batch, which the
+ * account runs as one transaction), and the recoverer's own key for the two
+ * recovery calls, the submission and the execution. The cancel by proofs is
+ * not a recovery call: whoever submits it pays for it, and it is not part of
+ * this release, so no key is named for it here.
  */
 import type { PreparedBatch, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -18,7 +17,7 @@ import type { KeyHandle } from './signer'
 /** The sponsor rail this build configured: none in the first release. */
 export const SPONSOR_RAIL = 'none' as const
 
-/** The two recovery calls the recoverer's own key sends (ux-interfaces.md D-373). */
+/** The two recovery calls the recoverer's own key sends. */
 export const RECOVERY_CALLS = ['submission', 'execution'] as const
 export type RecoveryCall = typeof RECOVERY_CALLS[number]
 

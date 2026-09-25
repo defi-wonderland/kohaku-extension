@@ -1,7 +1,7 @@
 /**
- * The `IMethodsOrchestrator` double (sdk.md D-206): the approving and enrolling
- * side, holding a method registry and a codec registry and no provider. It works
- * from the request alone: the request's chain id, manager and digest version
+ * The `IMethodsOrchestrator` double: the approving and enrolling side, holding
+ * a method registry and a codec registry and no provider. It works from the
+ * request alone: the request's chain id, manager and digest version
  * make the domain, its action picks the codec, its method picks the
  * implementation. It builds the `ctx` and nothing else does.
  *
@@ -29,7 +29,7 @@ import type { ScriptedChain } from './chain'
 import { deserializeOrder, digestOf, membersOfRequest, typedDataOf } from './encoding'
 import { codedError } from './scripts'
 
-/** The record versions this build of the doubles reads (sdk.md D-207). */
+/** The record version this build of the doubles reads. */
 export const RECORD_VERSION = 1
 
 const isText = (value: unknown): value is string => typeof value === 'string'
@@ -79,7 +79,7 @@ const reads = requestReadable
  * Whether a pasted reply has the record's shape: every field present with its
  * type, the digest and the proof among them. A reply that does not is one this
  * build does not read: `addApproverReply` refuses it as `version-unread` and the
- * seam's `verifyReply` answers `rejected`, never a thrown error (D-207).
+ * seam's `verifyReply` answers `rejected`, never a thrown error.
  */
 export const replyReadable = (reply: unknown): reply is ApproverReply => {
   if (!reply || typeof reply !== 'object') return false
@@ -129,8 +129,8 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
   /**
    * The one record four implementation members take, built here and nowhere
    * else: the request, the place, the place's EIP-712 digest and the typed data
-   * of D-204 it is the hash of, `{ domain, types, primaryType, message }` with a
-   * numeric chain id and D-204's members alone.
+   * it is the hash of, `{ domain, types, primaryType, message }` with a numeric
+   * chain id and the `Approval` or `Cancellation` members alone.
    */
   contextOf(request: ApproverRequest, place: number = request.place): MethodContext {
     const at = { ...request, place }

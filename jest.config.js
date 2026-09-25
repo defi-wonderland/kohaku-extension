@@ -21,8 +21,7 @@ module.exports = {
     path.join('<rootDir>', 'vendor/') // Ruby
   ],
   setupFiles: [],
-  // The eight path aliases of tsconfig.json, so a unit test imports through
-  // `@web/...` or `@common/...` like the code it tests.
+  // The path aliases of tsconfig.json, so a unit test imports like the code it tests
   moduleNameMapper: {
     '^@ambire-common/(.*)$': '<rootDir>/src/ambire-common/src/$1',
     '^@contracts/(.*)$': '<rootDir>/src/ambire-common/contracts/$1',
@@ -32,8 +31,7 @@ module.exports = {
     '^@web/(.*)$': '<rootDir>/src/web/$1',
     '^@benzin/(.*)$': '<rootDir>/src/benzin/$1',
     '^@legends/(.*)$': '<rootDir>/src/legends/$1',
-    // The web build renders react-native through react-native-web, whose
-    // CommonJS build Jest loads without a transform.
+    // The web build renders react-native through react-native-web
     '^react-native$': 'react-native-web'
   }
 }

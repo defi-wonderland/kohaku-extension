@@ -1,10 +1,8 @@
 /**
- * Copy lint over the social recovery strings of en.json.
- *
- * Sources: docs/social-recovery/design/ux-copy.md (UXC-1 to UXC-7, UXC-9),
- * docs/social-recovery/design/ux.md D-300 (the string table is the copy-lint
- * surface) and D-302 (the closed chip vocabulary, I-26),
- * docs/social-recovery/briefs/chore-social-recovery-setup.md item 4.
+ * Copy lint over the social recovery strings of en.json. It guards the banned
+ * terms, the case-sensitive ban on the label "Protected" (anywhere in en.json),
+ * the closed chip vocabulary of the status block, the i18next key separators
+ * and the placeholders inside {{...}}.
  */
 import fs from 'fs'
 import path from 'path'
@@ -53,21 +51,21 @@ const collectKeys = (node: JsonValue, keyPath: string, out: Entry[] = []): Entry
 // Whole-word bans. "Word-bounded" means a longer word that merely contains the
 // term (proofread, waterproof, relayed) is not a hit, but the plural of
 // the banned word is, since the ban names the term and its plural is the term.
-const CASE_INSENSITIVE_BANS: { rule: string; term: string; pattern: RegExp }[] = [
-  { rule: 'UXC-1', term: 'policy', pattern: /\bpolic(?:y|ies)\b/i },
-  { rule: 'UXC-2', term: 'proof', pattern: /\bproofs?\b/i },
-  { rule: 'UXC-3', term: 'relayer', pattern: /\brelayers?\b/i },
+const CASE_INSENSITIVE_BANS: { term: string; pattern: RegExp }[] = [
+  { term: 'policy', pattern: /\bpolic(?:y|ies)\b/i },
+  { term: 'proof', pattern: /\bproofs?\b/i },
+  { term: 'relayer', pattern: /\brelayers?\b/i },
   // Hyphen, space or nothing between EIP and 712.
-  { rule: 'UXC-4', term: 'EIP-712', pattern: /\bEIP[-\s]?712\b/i },
-  { rule: 'UXC-5', term: 'atomic', pattern: /\batomic(?:ally)?\b/i },
-  { rule: 'UXC-7', term: 'your people', pattern: /\byour\s+people\b/i },
-  { rule: 'UXC-9', term: 'full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
+  { term: 'EIP-712', pattern: /\bEIP[-\s]?712\b/i },
+  { term: 'atomic', pattern: /\batomic(?:ally)?\b/i },
+  { term: 'your people', pattern: /\byour\s+people\b/i },
+  { term: 'full wallet password', pattern: /\bfull\s+wallet\s+passwords?\b/i }
 ]
 
-// UXC-6 / I-26: the label Protected, case-sensitive, whole word.
+// The label Protected is banned: case-sensitive, whole word.
 const PROTECTED_BAN = /\bProtected\b/
 
-// D-302, the closed chip vocabulary.
+// The closed chip vocabulary: the status block must hold every chip below.
 const CHIP_VOCABULARY = [
   // a method in setup
   'not started',
@@ -119,8 +117,8 @@ describe('socialRecovery strings in en.json', () => {
     expect(offenders).toEqual([])
   })
 
-  CASE_INSENSITIVE_BANS.forEach(({ rule, term, pattern }) =>
-    it(`carries no ${rule} banned term "${term}"`, () => {
+  CASE_INSENSITIVE_BANS.forEach(({ term, pattern }) =>
+    it(`carries no banned term "${term}"`, () => {
       const offenders = strings
         .filter(({ value }) => pattern.test(value))
         .map(({ keyPath, value }) => `${keyPath}: ${value}`)
@@ -128,14 +126,14 @@ describe('socialRecovery strings in en.json', () => {
     })
   )
 
-  it('carries no UXC-6 banned label "Protected" (case-sensitive)', () => {
+  it('carries no banned label "Protected" (case-sensitive)', () => {
     const offenders = strings
       .filter(({ value }) => PROTECTED_BAN.test(value))
       .map(({ keyPath, value }) => `${keyPath}: ${value}`)
     expect(offenders).toEqual([])
   })
 
-  it('has "Protected" nowhere in en.json, as a key or a value (I-26)', () => {
+  it('has "Protected" nowhere in en.json, as a key or a value', () => {
     const all = [...collectStrings(en, ''), ...collectKeys(en, '')]
     const offenders = all
       .filter(({ value }) => PROTECTED_BAN.test(value))
@@ -143,7 +141,7 @@ describe('socialRecovery strings in en.json', () => {
     expect(offenders).toEqual([])
   })
 
-  it('holds the whole D-302 chip vocabulary among the values of socialRecovery.status', () => {
+  it('holds the whole chip vocabulary among the values of socialRecovery.status', () => {
     const status = isObject(socialRecovery) ? socialRecovery.status : undefined
     expect(isObject(status)).toBe(true)
     const statusValues = new Set(
@@ -155,9 +153,9 @@ describe('socialRecovery strings in en.json', () => {
 })
 
 // i18next interpolation: every {{...}} in a value. The rule-line counts use
-// n, m and spare (spare = M minus N, the brief item 4 and the coordinator's
-// ruling); any other placeholder must be a plain identifier that starts with
-// a lowercase letter (no formatter, no nesting, no spaces).
+// n, m and spare (spare = M minus N); any other placeholder must be a plain
+// identifier that starts with a lowercase letter (no formatter, no nesting,
+// no spaces).
 const PLACEHOLDER = /\{\{([^}]*)\}\}/g
 const COUNT_PLACEHOLDERS = ['n', 'm', 'spare']
 const LOWERCASE_IDENTIFIER = /^[a-z][a-zA-Z0-9]*$/
@@ -188,7 +186,7 @@ describe('socialRecovery placeholders', () => {
     expect(offenders).toEqual([])
   })
 
-  it('carries {{n}}, {{m}} and {{spare}} in the rule lines (D-305)', () => {
+  it('carries {{n}}, {{m}} and {{spare}} in the rule lines', () => {
     const ruleLines = isObject(socialRecovery) ? socialRecovery.ruleLines : undefined
     expect(isObject(ruleLines)).toBe(true)
     const used = new Set(
@@ -200,17 +198,18 @@ describe('socialRecovery placeholders', () => {
   })
 })
 
-// Keys the coordinator added after review (c40d5dabb, 817ff111b). The walk above
-// already lints them; this block proves they exist, so the lint covers them.
-const LATE_KEYS = [
+// Keys that must exist: the gas shortfall lines of save, submit and cancel,
+// and the ceremony's passed note. The walk above already lints them; this
+// block proves they exist, so the lint covers them.
+const REQUIRED_KEYS = [
   'socialRecovery/writes/gas/shortfallSave',
   'socialRecovery/writes/gas/shortfallSubmit',
   'socialRecovery/writes/gas/shortfallCancel',
   'socialRecovery/ceremony/passedNote'
 ]
 
-describe('socialRecovery keys added after review', () => {
-  LATE_KEYS.forEach((keyPath) =>
+describe('socialRecovery required keys', () => {
+  REQUIRED_KEYS.forEach((keyPath) =>
     it(`${keyPath} exists, passes every ban and uses allowed placeholders`, () => {
       const entry = strings.find((candidate) => candidate.keyPath === keyPath)
       expect(entry).toBeDefined()

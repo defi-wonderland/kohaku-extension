@@ -1,13 +1,14 @@
 /**
- * The doubles' own byte arithmetic. None of it is the SDK's: the real formats
- * (sdk.md D-204) ABI-encode the setup body, derive EIP-712 digests and seal the
- * backup under a real cipher. The doubles only need values that are
- * deterministic, distinct and round-trip, so they hash canonical JSON with
- * keccak256. A screen never reads these bytes as anything but opaque `Hex`.
+ * The doubles' byte arithmetic. The setup body, the commitment, the backup and
+ * the public note are the doubles' own bytes, not the SDK's: the real formats
+ * ABI-encode the setup body and seal the backup under a real cipher. The doubles
+ * only need values that are deterministic, distinct and round-trip, so they hash
+ * canonical JSON with keccak256. A screen never reads these bytes as anything
+ * but opaque `Hex`.
  *
- * The one real encoding here is the handover payload (the action codec double),
- * which is `abi.encode(address newAuthority, address removedAuthority)` as
- * contracts D-105 lays it out.
+ * Two encodings are the real ones: a place's EIP-712 digest (`typedDataOf`,
+ * `digestOf`) and the handover payload (the action codec double),
+ * `abi.encode(address newAuthority, address removedAuthority)`.
  */
 import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex } from 'viem'
 
@@ -57,7 +58,7 @@ export const topicOf = (address: Address): Hex => pad(address.toLowerCase() as H
 export const sameAddress = (a: string | undefined, b: string | undefined): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase()
 
-/** The default salt of D-110, keccak256(account, place), in the doubles' hashing. */
+/** The default salt, keccak256(account, place), in the doubles' hashing. */
 export const defaultSalt = (account: Address, place: number): Hex =>
   hashOf({ salt: account.toLowerCase(), place })
 
@@ -72,7 +73,7 @@ export interface PlacedCredential {
   salt: Hex
 }
 
-/** The flat place numbering of D-103: body order across every clause. */
+/** The flat place numbering: body order across every clause. */
 export const placesOf = (account: Address, configuration: Configuration): PlacedCredential[] => {
   const placed: PlacedCredential[] = []
   configuration.clauses.forEach((clause, clauseIndex) => {
@@ -89,7 +90,7 @@ export const placesOf = (account: Address, configuration: Configuration): Placed
   return placed
 }
 
-/** The doubles' setup body: what the real body of D-103 carries, as JSON bytes. */
+/** The doubles' setup body: what the real body carries, as JSON bytes. */
 export interface DoubleSetupBody {
   wait: bigint
   ignoresPause: boolean
@@ -133,7 +134,7 @@ export const withoutLabels = (configuration: Configuration): Configuration => ({
 })
 
 // ---------------------------------------------------------------------------
-// The backup payload and the public note (D-204, D-375), in the doubles' bytes.
+// The backup payload and the public note, in the doubles' bytes.
 // ---------------------------------------------------------------------------
 
 const SEALED_MARK = 'kohaku-double:sealed:'
@@ -235,7 +236,7 @@ export const readBackup = (privateMetadata: Hex, password?: string): BackupReadi
 }
 
 /**
- * Which D-375 level two metadata fields encode. One rule serves the draft and
+ * Which privacy level two metadata fields encode. One rule serves the draft and
  * the chain, so a draft reads as the level the chain reads after it lands: a
  * clear backup is the public level, a non-empty public note beside a sealed or
  * empty backup is shape-visible, and nothing public is private (the default).
@@ -267,7 +268,8 @@ export type PublicNoteReading =
  * Reads a setup event's public note in the doubles' bytes: nothing public
  * (private), the shape alone (shape-visible), the whole configuration (public),
  * or bytes another writer put there. With `readBackup` it gives the client layer
- * the inputs of the four setup states of ux-interfaces.md D-371.
+ * what it needs to tell the four setup readings apart: none, sealed, shape
+ * readable, fully readable.
  */
 export const readPublicNote = (publicMetadata: Hex): PublicNoteReading => {
   if (!publicMetadata || publicMetadata === '0x') return { kind: 'none' }
@@ -289,9 +291,9 @@ export const readPublicNote = (publicMetadata: Hex): PublicNoteReading => {
 }
 
 /**
- * The backup's one padding size (sdk.md D-204 "The backup payload"): 16
- * credentials times the widest shipped config (the passkey's three words) plus a
- * supplied salt and the method address, in bytes.
+ * The backup's one padding size: 16 credentials times the widest shipped config
+ * (the passkey's three words) plus a supplied salt and the method address, in
+ * bytes.
  */
 export const BACKUP_PADDING_SIZE = 16 * (96 + 32 + 20)
 
@@ -317,12 +319,12 @@ export const backupPlaintextSize = (configuration: Configuration): number =>
   )
 
 // ---------------------------------------------------------------------------
-// Digests and proofs (D-204, D-206).
+// Digests and proofs.
 // ---------------------------------------------------------------------------
 
 /**
- * The members a place's digest closes over (sdk.md D-204 "The digest"), every
- * number as a decimal string: the domain, the purpose, and the members of the
+ * The members a place's digest closes over, every number as a decimal string:
+ * the domain, the purpose, and the members of the
  * `Approval` or `Cancellation` type. The credential (method, config, salt) is not
  * among them; the place binds it through the body's credential hash.
  */
@@ -356,7 +358,7 @@ export const deserializeOrder = (order: SerializedPaymentOrder): PaymentOrder =>
 
 const lower = (address: Address): Address => address.toLowerCase() as Address
 
-/** The EIP-712 types of D-204: two message types over one nested `PaymentOrder`. */
+/** The EIP-712 types: two message types over one nested `PaymentOrder`. */
 export const APPROVAL_TYPES = {
   Approval: [
     { name: 'account', type: 'address' },
@@ -396,7 +398,12 @@ export interface PlaceTypedData {
   message: Record<string, unknown>
 }
 
-/** The `Approval` or `Cancellation` typed data of D-204 over one place's members. */
+/**
+ * The `Approval` or `Cancellation` typed data over one place's members. Its
+ * message carries `bigint` values, which `JSON.stringify` refuses, so a JSON
+ * export of it needs a serializer that writes each one as a decimal string, as
+ * `eth_signTypedData_v4` accepts.
+ */
 export const typedDataOf = (m: DigestMembers): PlaceTypedData => {
   const domain = {
     name: 'PolicyManager' as const,
@@ -434,7 +441,7 @@ export const typedDataOf = (m: DigestMembers): PlaceTypedData => {
   }
 }
 
-/** The EIP-712 digest of one place (sdk.md D-204), over the typed data above. */
+/** The EIP-712 digest of one place, over the typed data above. */
 export const digestOf = (m: DigestMembers): Hex =>
   hashTypedData(typedDataOf(m) as unknown as Parameters<typeof hashTypedData>[0])
 

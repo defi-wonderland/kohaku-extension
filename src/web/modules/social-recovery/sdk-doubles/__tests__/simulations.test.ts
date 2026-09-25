@@ -1,9 +1,8 @@
 /**
- * The simulation outcomes (review item 7; sdk.md D-202 "Simulation", fifth rule:
- * a failure comes back as a typed error, never a thrown one). Each kit error is
- * earned by the chain state that produces it, except MethodStopped, which the
- * prepare's own request validation catches first (D-202, D-205
- * `request.method-stopped`), so a script fails that simulation outright.
+ * A failed simulation comes back as a typed kit error, never a thrown one. Each
+ * kit error below comes from the chain state that produces it, except
+ * MethodStopped: the prepare's own request validation refuses a stopped method
+ * first (`request.method-stopped`), so a script fails that simulation outright.
  */
 import {
   ACCOUNT_NOT_ARMED,
@@ -171,11 +170,11 @@ describe('simulation outcomes', () => {
   })
 
   describe('an execute the account cannot run', () => {
-    // D-110: with the action's authorization removed the setup is dormant, and
-    // the account refuses the action's batch; D-105: an account whose code the
-    // action does not serve cannot run it either. Both are the account's own
-    // revert in the simulation (D-202 "Recovery execute"), and a landing of the
-    // same call reverts, leaving the attempt waiting.
+    // With the action's authorization removed the setup is dormant, and the
+    // account refuses the action's batch; an account whose code the action does
+    // not serve cannot run it either. Both are the account's own revert in the
+    // simulation, and a landing of the same call reverts, leaving the attempt
+    // waiting.
     const refusedByAccount = async (
       script: (world: World) => void,
       name: typeof ACCOUNT_NOT_ARMED | typeof ACCOUNT_UNFIT

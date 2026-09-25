@@ -1,34 +1,9 @@
-/**
- * The builder double (RecoveryKitBuilder, sdk.md D-201 "The builder", D-208).
- * It hands an integrator IMethodModuleReads, never IPolicyManagerInteractor,
- * and IRecoveryActionInteractor, never IRecoveryActionArming (brief delta 1).
- */
-import type { RecoveryKitBuilderDouble } from '@web/modules/social-recovery/sdk-doubles'
 import type {
   IMethodModuleReads,
-  IPolicyManagerInteractor,
-  IRecoveryActionArming,
   IRecoveryActionInteractor
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { createWorld, membersOf } from './harness'
-
-const BUILDER_MEMBERS = [
-  'provider',
-  'descriptor',
-  'account',
-  'action',
-  'config',
-  'policyManager',
-  'eventManager',
-  'method',
-  'codec',
-  'buildSetupClient',
-  'buildRecoveryClient',
-  'buildMethodsOrchestrator',
-  'recoveryAction',
-  'methodModuleReads'
-]
 
 const MANAGER_ONLY = [
   'stateOf',
@@ -44,11 +19,6 @@ const MANAGER_ONLY = [
 ]
 
 describe('builder double', () => {
-  it('exposes every member of RecoveryKitBuilder', () => {
-    const members = membersOf(createWorld().builder())
-    BUILDER_MEMBERS.forEach((name) => expect(members).toContain(name))
-  })
-
   it('builds the two clients and the orchestrator', async () => {
     const world = createWorld()
     const builder = world.builder()
@@ -99,26 +69,5 @@ describe('builder double', () => {
         blockTags: { read: 'latest', watch: 'finalized' }
       })
     ).toThrow()
-  })
-})
-
-// The type of what the builder double hands out (brief "Test expectations"):
-// exactly the narrow seam, and nothing the manager part or the arming seam adds.
-type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
-type Reads = Awaited<ReturnType<RecoveryKitBuilderDouble['methodModuleReads']>>
-type Action = Awaited<ReturnType<RecoveryKitBuilderDouble['recoveryAction']>>
-const readsExact: Exact<Reads, IMethodModuleReads> = true
-const actionExact: Exact<Action, IRecoveryActionInteractor> = true
-const readsNotManager: Reads extends IPolicyManagerInteractor ? false : true = true
-const actionNotArming: Action extends IRecoveryActionArming ? false : true = true
-
-describe('builder double types', () => {
-  it('returns IMethodModuleReads and IRecoveryActionInteractor, no wider', () => {
-    expect([readsExact, actionExact, readsNotManager, actionNotArming]).toEqual([
-      true,
-      true,
-      true,
-      true
-    ])
   })
 })

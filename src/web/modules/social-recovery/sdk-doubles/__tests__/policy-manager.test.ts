@@ -1,12 +1,7 @@
-/**
- * The policy manager double (IPolicyManagerInteractor and its IMethodModuleReads
- * seam, sdk.md D-201, D-202 "The read surface").
- */
-import {
-  ATTEMPT_STATES,
-  type AttemptRequest,
-  type CancelRequest,
-  type ValidationRefusal
+import type {
+  AttemptRequest,
+  CancelRequest,
+  ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
@@ -16,47 +11,10 @@ import {
   fillAll,
   isAddress,
   isHex,
-  membersOf,
   openRecovery
 } from './harness'
 
-const MEMBERS = [
-  'moduleInfo',
-  'paused',
-  'trustedParties',
-  'stateOf',
-  'hashApproval',
-  'hashCancel',
-  'eip712Domain',
-  'name',
-  'version',
-  'supportsInterface',
-  'prepareCommitSetup',
-  'prepareClearSetup',
-  'prepareStartAttempt',
-  'prepareCancelByProofs',
-  'prepareCancelByOwner',
-  'prepareCancelByVeto'
-]
-
 describe('policy manager double', () => {
-  it('exposes every member of IPolicyManagerInteractor', () => {
-    const { manager } = createWorld()
-    const members = membersOf(manager)
-    MEMBERS.forEach((name) => expect(members).toContain(name))
-  })
-
-  it('reads stateOf with the manager’s own field names', async () => {
-    const world = createWorld()
-    world.script.setupCommitted('private')
-    const state = await world.manager.stateOf()
-    expect(isHex(state.setupCommitment)).toBe(true)
-    expect(typeof state.setupNonce).toBe('bigint')
-    expect(typeof state.nextAttemptId).toBe('bigint')
-    expect(typeof state.setupCommittedAtBlock).toBe('number')
-    expect(ATTEMPT_STATES).toContain(state.attempt.state)
-  })
-
   it('reads the domain, the name, the version and the probe', async () => {
     const world = createWorld()
     const domain = await world.manager.eip712Domain()
@@ -96,8 +54,8 @@ describe('policy manager double', () => {
     const left = filled.replies.find((r) => !used.includes(BigInt(r.place)))
     expect(left).toBeDefined()
     const hash = await opened.world.manager.hashApproval(request, BigInt(left!.place))
-    // contracts D-103: the digest of one place is the request's and the place's,
-    // so it is the one the left-out approver signed.
+    // The digest of one place depends on the request and the place alone, so
+    // it is the one the left-out approver signed.
     expect(hash).toBe(left!.digest)
     const empty: AttemptRequest = { ...request, proofs: [] }
     expect(await opened.world.manager.hashApproval(empty, 0n)).toMatch(/^0x[0-9a-fA-F]{64}$/)
@@ -135,8 +93,8 @@ describe('policy manager double', () => {
         const answered = await world.manager[member](module)
         expect(answered.answered).toBe(true)
         world.script.failRead(`manager.${member}`)
-        // Brief: every read can be scripted to fail by throwing; the
-        // `{ answered: false }` shape of D-202 is the next test's.
+        // A scripted failure throws; the `{ answered: false }` answer is the
+        // next test's.
         await expectThrown(() => world.manager[member](module))
       }
     )

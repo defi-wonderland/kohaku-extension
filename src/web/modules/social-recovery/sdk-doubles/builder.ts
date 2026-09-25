@@ -1,7 +1,7 @@
 /**
- * The `RecoveryKitBuilder` double (sdk.md D-201, D-208): setters that return
- * the builder and refuse after the first build, one memoized instance of each
- * shared part handed to both clients, the construction checks, and the two
+ * The `RecoveryKitBuilder` double: setters that return the builder and refuse
+ * after the first build, one memoized instance of each shared part handed to
+ * both clients, the construction checks, and the two
  * narrow getters. `recoveryAction()` hands out `IRecoveryActionInteractor` and
  * never the arming seam; `methodModuleReads()` hands out `IMethodModuleReads`
  * and never the manager part. Both return fresh objects carrying only their
@@ -58,10 +58,11 @@ const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
 ]
 
 /**
- * The thrown value of a construction check (sdk.md D-208): an ordinary error
- * carrying the code `construction.<check>` and the check's name in `check`
- * (`descriptor`, `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
- * `digest-version`). sdk-interfaces/ declares no construction-refusal shape.
+ * The thrown value of a construction check: an ordinary error carrying the code
+ * `construction.<check>` and the check's name in `check` (`descriptor`,
+ * `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
+ * `digest-version`). The interfaces declare no construction-refusal shape, so
+ * this one is the doubles' own.
  */
 export interface ConstructionRefusal extends CodedError {
   check: string
@@ -230,7 +231,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     return this.context
   }
 
-  /** The construction checks of D-208, run once per builder and memoized. */
+  /** The construction checks, run once per builder and memoized. */
   private construct(): Promise<ClientContext> {
     this.frozen = true
     if (!this.checks) {
@@ -316,7 +317,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
 /**
  * A builder already bound to the scripted chain: its provider double, its
  * descriptor, its account and a client configuration (the doubles' default
- * unless given). Methods are the integrator's to register, as D-206 says.
+ * unless given). Methods are the integrator's to register.
  */
 export const kitFor = (
   chain: ScriptedChain,

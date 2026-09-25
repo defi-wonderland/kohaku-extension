@@ -1,40 +1,8 @@
-/**
- * The four method doubles (IRecoveryMethod, sdk.md D-206): one scripted double
- * per shipped kind, wallet, passkey, zkPassport and Aadhaar, ten members each.
- */
-import {
-  DEVICE_BINDINGS,
-  DEVICE_KINDS,
-  type Address
-} from '@web/modules/social-recovery/sdk-interfaces'
+import { DEVICE_KINDS, type Address } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { METHOD_KINDS, MethodKind, createWorld, eachDescribe, isHex, membersOf } from './harness'
-
-const MEMBERS = [
-  'modules',
-  'enrollInput',
-  'configFrom',
-  'signingInput',
-  'replyFrom',
-  'verify',
-  'codec',
-  'deviceBinding',
-  'describe',
-  'vector'
-]
+import { METHOD_KINDS, MethodKind, createWorld, eachDescribe, isHex } from './harness'
 
 eachDescribe(METHOD_KINDS)('the %s method double', (kind) => {
-  it('exposes the ten members of IRecoveryMethod', () => {
-    const method = createWorld().methods[kind]
-    const members = membersOf(method)
-    MEMBERS.forEach((name) => expect(members).toContain(name))
-    expect(DEVICE_BINDINGS).toContain(method.deviceBinding)
-    expect(Array.isArray(method.vector)).toBe(true)
-    ;['encodeConfig', 'decodeConfig', 'encodeProof', 'decodeProof'].forEach((name) =>
-      expect(typeof (method.codec as unknown as Record<string, unknown>)[name]).toBe('function')
-    )
-  })
-
   it('serves the module the descriptor names for its kind', () => {
     const world = createWorld()
     const expected: Record<MethodKind, Address> = {

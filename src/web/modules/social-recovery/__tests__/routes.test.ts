@@ -1,6 +1,7 @@
 /**
- * The social recovery routes of the setup brief, item 3
- * (docs/social-recovery/briefs/chore-social-recovery-setup.md).
+ * The social recovery routes: the ten WEB_ROUTES keys and their paths, one
+ * routesConfig entry per path with the feature name as its title, and no path
+ * shared with a route outside the module.
  *
  * routesConfig is keyed by the route PATH, like every existing entry
  * (`[ROUTES.x]: { route: ROUTES.x, ... }`), so an entry is looked up as
@@ -12,7 +13,7 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 // routesConfig imports `Platform` from react-native; jest.config.js maps
 // react-native to react-native-web, so no mock is needed here.
 
-// UXC-10 (docs/social-recovery/design/ux-copy.md): the feature name.
+// The feature name, the title of every social recovery route.
 const FEATURE_NAME = 'Account recovery'
 
 const EXPECTED_ROUTES: Record<string, string> = {
@@ -36,7 +37,7 @@ const config = routesConfig as unknown as Record<string, Entry>
 const socialRecoveryKeys = Object.keys(webRoutes).filter((key) => key.startsWith('socialRecovery'))
 
 describe('social recovery routes', () => {
-  it('declares the ten keys the brief names, with the brief paths', () => {
+  it('declares the ten social recovery keys with their paths', () => {
     Object.entries(EXPECTED_ROUTES).forEach(([key, path]) => {
       expect({ key, path: webRoutes[key] }).toEqual({ key, path })
     })
@@ -54,7 +55,7 @@ describe('social recovery routes', () => {
   )
 
   socialRecoveryKeys.forEach((key) =>
-    it(`${key} entry resolves its title to the feature name (UXC-10)`, () => {
+    it(`${key} entry resolves its title to the feature name`, () => {
       const entry = config[webRoutes[key]]
       expect(entry).toBeDefined()
       // i18n.t returns the key itself when the key is missing from en.json,
