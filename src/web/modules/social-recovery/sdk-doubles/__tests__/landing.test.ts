@@ -3,6 +3,7 @@
  * the integrator sent it, and the chain is read back through the clients, the
  * parts and the event stream.
  */
+import type { LandingRevert } from '@web/modules/social-recovery/sdk-doubles'
 import type {
   CancelRequest,
   Notification,
@@ -164,10 +165,7 @@ describe('land, then read', () => {
     it('lands cancelByProofs: Cancelled, by the places the cancel request filled', async () => {
       const world = createWorld()
       const { recovery, request } = await startLanded(world)
-      const gathering = await recovery.initCancelGathering(
-        { configuration: world.configuration },
-        { window: 3600 }
-      )
+      const gathering = await recovery.initCancelGathering(world.configuration, { window: 3600 })
       const requests = recovery.getApproverRequests(gathering)
       const filled = await fillAll({
         world,
@@ -201,6 +199,47 @@ describe('land, then read', () => {
       expect(note!.attemptId).toBe(request.attemptId)
       expect(note!.cancelledBy).toBe('cancelByVeto')
       expect(note!.vetoingMethod.toLowerCase()).toBe(used!.toLowerCase())
+    })
+
+    it('lands no veto prepared for an earlier attempt over the next one', async () => {
+      const world = createWorld()
+      const { recovery, request } = await startLanded(world)
+      const [used] = (await recovery.recoveryState()).attempt.usedMethods
+      world.chain.setPaused(used!, true)
+      const stale = await recovery.prepareCancelByVeto(used!)
+      expect(stale.simulation?.ok).toBe(true)
+      world.chain.land(await recovery.prepareCancelByOwner())
+      world.chain.openAttempt({
+        usedMethods: [used!],
+        ignoresPause: false,
+        payload: request.payload
+      })
+      const next = (await recovery.recoveryState()).attempt
+      expect(next.state).toBe('Waiting')
+      expect(next.attemptId).toBe(request.attemptId + 1n)
+
+      let thrown: unknown
+      try {
+        world.chain.land(stale)
+      } catch (e) {
+        thrown = e
+      }
+      expect(thrown).toBeInstanceOf(Error)
+      const { code, error } = thrown as LandingRevert
+      expect(code).toBe('WrongAttemptId')
+      expect(error.kind === 'known' && error.args).toEqual({
+        supplied: request.attemptId,
+        expected: next.attemptId
+      })
+      expect((await recovery.recoveryState()).attempt).toEqual(next)
+      const cancelled = () =>
+        stream(world).then((notes) => ofKind(notes, 'attempt-cancelled').map((n) => n.attemptId))
+      expect(await cancelled()).toEqual([request.attemptId])
+
+      const fresh = await recovery.prepareCancelByVeto(used!)
+      expect(fresh.simulation?.ok).toBe(true)
+      world.chain.land(fresh)
+      expect(await cancelled()).toEqual([request.attemptId, next.attemptId])
     })
   })
 

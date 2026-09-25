@@ -284,7 +284,7 @@ export const openRecovery = async (world: World = createWorld()): Promise<Opened
   world.script.authorized(true)
   const recovery = await world.recoveryClient()
   const gathering = await recovery.initRecoveryGathering(
-    { configuration: committed.configuration },
+    committed.configuration,
     { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
     NO_PAYMENT,
     { window: WINDOW }

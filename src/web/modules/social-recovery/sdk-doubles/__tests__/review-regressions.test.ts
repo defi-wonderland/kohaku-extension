@@ -202,7 +202,7 @@ describe('the gathering derives under the descriptor’s digest version', () => 
     const recovery = await world.recoveryClient()
     world.chain.manager.domain = { ...world.chain.manager.domain, version: '99' }
     const gathering = await recovery.initRecoveryGathering(
-      { configuration: world.configuration },
+      world.configuration,
       { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
       NO_PAYMENT,
       { window: WINDOW }
@@ -224,7 +224,7 @@ describe('an all-zero rule satisfies nothing', () => {
     world.chain.commitSetup({ level: 'private', configuration: zero, password: PASSWORD })
     const recovery = await world.recoveryClient()
     const gathering = await recovery.initRecoveryGathering(
-      { configuration: zero },
+      zero,
       { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
       NO_PAYMENT,
       { window: WINDOW }
@@ -249,7 +249,7 @@ describe('a zero key is handover.malformed, under the request subject', () => {
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: ZERO, removedAuthority: world.keys.held },
         NO_PAYMENT,
         { window: WINDOW }
@@ -282,7 +282,7 @@ describe('every handover finding carries the request subject', () => {
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: world.keys.held, removedAuthority: world.keys.fresh },
         NO_PAYMENT,
         { window: WINDOW }
@@ -302,7 +302,7 @@ describe('every handover finding carries the request subject', () => {
     const recovery = await world.recoveryClient()
     const refusal = await refusalOf(() =>
       recovery.initRecoveryGathering(
-        { configuration: world.configuration },
+        world.configuration,
         { newAuthority: world.keys.held, removedAuthority: world.keys.held },
         NO_PAYMENT,
         { window: WINDOW }

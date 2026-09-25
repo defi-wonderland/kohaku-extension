@@ -144,9 +144,7 @@ describe('setup client double', () => {
     it('restores the configuration from the configuration itself', async () => {
       const world = createWorld()
       const committed = world.script.setupCommitted('public')
-      const restored = await (
-        await world.setupClient()
-      ).getSetup({ configuration: committed.configuration })
+      const restored = await (await world.setupClient()).getSetup(committed.configuration)
       expect(restored).toEqual(committed.configuration)
     })
 
@@ -185,9 +183,7 @@ describe('setup client double', () => {
       const committed = world.script.setupCommitted('private')
       const setup = await world.setupClient()
       const other = { ...committed.configuration, wait: committed.configuration.wait + 1n }
-      expect(await restoreCause(() => setup.getSetup({ configuration: other }))).toBe(
-        'restore.commitment-mismatch'
-      )
+      expect(await restoreCause(() => setup.getSetup(other))).toBe('restore.commitment-mismatch')
     })
   })
 

@@ -1,12 +1,17 @@
+import { addressOf, type CodedError } from '@web/modules/social-recovery/sdk-doubles'
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
   type ApproverReply,
+  type ApproverRequest,
   type AttemptRequest,
   type CancelRequest,
+  type Configuration,
+  type Credential,
   type IRecoveryClient,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { keccak256, stringToHex } from 'viem'
 
 import {
   createWorld,
@@ -15,11 +20,51 @@ import {
   fillAll,
   isAddress,
   isHex,
+  momentOf,
   NO_PAYMENT,
   openRecovery,
+  PASSWORD,
   replyFor,
-  WINDOW
+  WINDOW,
+  World,
+  ZERO
 } from './harness'
+
+/** A willing approver's reply; the zkPassport request takes its app's domain and scope. */
+const replyOf = async (world: World, request: ApproverRequest) => {
+  const orchestrator = world.orchestrator()
+  const input = orchestrator.signingInput(request, { domain: 'wallet.example', scope: 'recovery' })
+  const reply = await orchestrator.replyFrom(request, input, world.material(request))
+  expect(reply.kind).toBe('recovery-proof-reply')
+  return reply as ApproverReply
+}
+
+const walletAt = (world: World, label: string): Credential => ({
+  method: world.descriptor.methodEcdsa,
+  config: world.methods.wallet.codec.encodeConfig({ address: addressOf(label) })
+})
+
+const passportAt = (world: World, id: string): Credential => ({
+  method: world.descriptor.methodZkpassport,
+  config: world.methods.zkPassport.codec.encodeConfig({
+    uniqueIdentifier: keccak256(stringToHex(id))
+  })
+})
+
+/** Commits a private setup over the given clauses and returns its configuration. */
+const commitOver = (world: World, clauses: Configuration['clauses']): Configuration => {
+  const configuration: Configuration = { ...world.configuration, clauses }
+  world.chain.commitSetup({ level: 'private', configuration, password: PASSWORD })
+  return configuration
+}
+
+const openGathering = (world: World, recovery: IRecoveryClient, configuration: Configuration) =>
+  recovery.initRecoveryGathering(
+    configuration,
+    { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
+    NO_PAYMENT,
+    { window: WINDOW }
+  )
 
 describe('recovery client double', () => {
   it('reads the recovery state record pinned to one block', async () => {
@@ -94,12 +139,46 @@ describe('recovery client double', () => {
       const recovery = await world.recoveryClient()
       await expectThrown(() =>
         recovery.initRecoveryGathering(
-          { configuration: committed.configuration },
+          committed.configuration,
           { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
           NO_PAYMENT,
           { window: WINDOW }
         )
       )
+    })
+
+    eachIt(['manager.paused', 'manager.trustedParties'] as const)(
+      'refuses to open while the %s read of a method goes unanswered',
+      async (read) => {
+        const world = createWorld()
+        const configuration = commitOver(world, [
+          { threshold: 1, credentials: [walletAt(world, 'ana'), passportAt(world, 'passport')] }
+        ])
+        world.chain.leaveUnanswered(read, world.descriptor.methodZkpassport)
+        const recovery = await world.recoveryClient()
+        const error = (await expectThrown(() =>
+          openGathering(world, recovery, configuration)
+        )) as CodedError
+        expect(error.code).toBe('read.unanswered')
+        expect(error.values).toEqual({ read, module: world.descriptor.methodZkpassport, place: 1 })
+      }
+    )
+
+    it('opens over a module that declares nothing, which answers with empty values', async () => {
+      const world = createWorld()
+      const undeclared = addressOf('third-party-method')
+      const configuration = commitOver(world, [
+        {
+          threshold: 1,
+          credentials: [walletAt(world, 'ana'), { method: undeclared, config: '0x01' }]
+        }
+      ])
+      const gathering = await openGathering(world, await world.recoveryClient(), configuration)
+      expect(gathering.places[1]).toMatchObject({
+        method: undeclared,
+        standing: 'not-stopped',
+        stoppable: false
+      })
     })
 
     it('throws when scripted to refuse', async () => {
@@ -109,7 +188,7 @@ describe('recovery client double', () => {
       const recovery = await world.recoveryClient()
       await expectThrown(() =>
         recovery.initRecoveryGathering(
-          { configuration: committed.configuration },
+          committed.configuration,
           { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
           NO_PAYMENT,
           { window: WINDOW }
@@ -238,6 +317,44 @@ describe('recovery client double', () => {
       })
     })
 
+    it('completes with the set naming the fewest stoppable methods before the earliest filed', async () => {
+      const world = createWorld()
+      // The wallet method carries a stop here too, so all three places are stoppable.
+      world.script.method(world.descriptor.methodEcdsa, {
+        trustedParties: {
+          admin: ZERO,
+          pendingAdmin: ZERO,
+          trustedKeys: [],
+          pauseHolder: addressOf('wallet-pause-holder'),
+          pendingPauseHolder: ZERO
+        }
+      })
+      const configuration = commitOver(world, [
+        {
+          threshold: 2,
+          credentials: [
+            walletAt(world, 'ana'),
+            passportAt(world, 'passport'),
+            walletAt(world, 'ben')
+          ]
+        }
+      ])
+      const recovery = await world.recoveryClient()
+      const gathering = await openGathering(world, recovery, configuration)
+      expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true])
+      let filled = gathering
+      // eslint-disable-next-line no-restricted-syntax
+      for (const request of recovery.getApproverRequests(gathering)) {
+        // eslint-disable-next-line no-await-in-loop
+        const added = recovery.addApproverReply(filled, await replyOf(world, request))
+        expect(added.reason).toBeUndefined()
+        filled = added.gathering
+      }
+      expect(filled.replies.map((r) => r.place)).toEqual([0, 1, 2])
+      const request = recovery.complete(filled, undefined, momentOf(gathering)) as AttemptRequest
+      expect(request.proofs.map((p) => p.place)).toEqual([0n, 2n])
+    })
+
     it('refuses to complete a record whose window has passed', async () => {
       const opened = await openRecovery()
       const filled = await fillAll(opened)
@@ -252,9 +369,27 @@ describe('recovery client double', () => {
       const committed = world.script.setupCommitted('private')
       const recovery = await world.recoveryClient()
       await expectThrown(() =>
-        recovery.initCancelGathering({ configuration: committed.configuration }, { window: 3600 })
+        recovery.initCancelGathering(committed.configuration, { window: 3600 })
       )
     })
+
+    eachIt(['manager.paused', 'manager.trustedParties'] as const)(
+      'refuses to open while the %s read of a method goes unanswered',
+      async (read) => {
+        const world = createWorld()
+        const configuration = commitOver(world, [
+          { threshold: 1, credentials: [walletAt(world, 'ana'), passportAt(world, 'passport')] }
+        ])
+        world.script.attempt('pending')
+        world.chain.leaveUnanswered(read, world.descriptor.methodZkpassport)
+        const recovery = await world.recoveryClient()
+        const error = (await expectThrown(() =>
+          recovery.initCancelGathering(configuration, { window: 3600 })
+        )) as CodedError
+        expect(error.code).toBe('read.unanswered')
+        expect(error.values).toEqual({ read, module: world.descriptor.methodZkpassport, place: 1 })
+      }
+    )
 
     it('opens over the live attempt id with its consumableAfter and completes into a CancelRequest', async () => {
       const world = createWorld()
@@ -262,10 +397,9 @@ describe('recovery client double', () => {
       world.script.attempt('pending')
       const recovery = await world.recoveryClient()
       const state = await recovery.recoveryState()
-      const gathering = await recovery.initCancelGathering(
-        { configuration: committed.configuration },
-        { window: 3600 }
-      )
+      const gathering = await recovery.initCancelGathering(committed.configuration, {
+        window: 3600
+      })
       expect(gathering.purpose).toBe('cancellation')
       expect(gathering.request.attemptId).toBe(state.attempt.attemptId.toString())
       expect(gathering.request.consumableAfter).toBe(state.attempt.consumableAfter.toString())
