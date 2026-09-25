@@ -21,14 +21,12 @@ import {
   NETWORK,
   OTHER_KEY,
   ownerTransaction,
-  readingOf,
   runGasCheck,
   stateAfterGasCheck,
   stepOf,
   SUBMISSION,
-  WRITE_KINDS,
-  writeReducer,
-  initialWriteState
+  transferTransactionOf,
+  WRITE_KINDS
 } from './harness'
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
@@ -131,11 +129,15 @@ describe('the gas check', () => {
   })
 
   describe('the estimate is for that transaction, through the provider (D-373)', () => {
+    // A short key off the fast track makes two estimates: the write's own
+    // transaction first, then the transfer route's own (its fee, the
+    // coordinator's ruling of 2026-09-24). A key that holds enough, or a step
+    // on the fast track, makes the first alone.
     it("asks the provider's estimate for the submission as prepared, sent from the sending key", async () => {
       const reads = mockReads({ balance: 0n, gas: 180_000n })
       await runGasCheck({ write: 'submission', reads })
 
-      expect(reads.estimateGas).toHaveBeenCalledTimes(1)
+      expect(reads.estimateGas).toHaveBeenCalledTimes(2)
       const [call] = reads.estimateGas.mock.calls[0]
       expect(same(call.from, KEY.addr)).toBe(true)
       expect(same(call.to, SUBMISSION.target)).toBe(true)
@@ -150,15 +152,42 @@ describe('the gas check', () => {
       expect(same(call.to, EXECUTION.target)).toBe(true)
       expect(call.data).toBe(EXECUTION.data)
     })
-    ;(['save', 'ownerWrite', 'cancel'] as const).forEach((write) =>
-      it(`${write}: asks the estimate for the transaction the key sends for that write`, async () => {
+    ;(['save', 'edit', 'ownerWrite', 'cancel'] as const).forEach((write) =>
+      it(`${write}: asks the estimate for the transaction the key sends for that write, then the transfer's`, async () => {
         const reads = mockReads({ balance: 0n, gas: 180_000n })
         await runGasCheck({ write, reads })
 
-        expect(reads.estimateGas).toHaveBeenCalledTimes(1)
+        expect(reads.estimateGas).toHaveBeenCalledTimes(2)
         expect(reads.estimateGas.mock.calls[0][0]).toEqual(ownerTransaction(write))
+        expect(reads.estimateGas.mock.calls[1][0]).toEqual(transferTransactionOf(ACCOUNT, KEY.addr))
       })
     )
+
+    it("a key that holds enough, or a step on the fast track, asks one estimate: the write's own", async () => {
+      const rich = mockReads({ balance: 10n ** 18n, gas: 180_000n })
+      await runGasCheck({ write: 'submission', reads: rich })
+      expect(rich.estimateGas).toHaveBeenCalledTimes(1)
+
+      const fast = mockReads({ balance: 0n, gas: 180_000n })
+      await runGasCheck({ write: 'submission', fastTrack: true, reads: fast })
+      expect(fast.estimateGas).toHaveBeenCalledTimes(1)
+      expect(fast.estimateGas.mock.calls[0][0].data).toBe(SUBMISSION.data)
+    })
+
+    it("the transfer route's amount carries the transfer's own fee; the deposit from outside the shortfall", async () => {
+      const gas = (call: { data: string }) =>
+        call.data === transferTransactionOf(ACCOUNT, KEY.addr).data ? 40_000n : 180_000n
+      const step = stepOf(
+        await runGasCheck({ write: 'submission', reads: mockReads({ balance: 0n, gas }) })
+      )
+      const transfer = step.routes.find((route) => route.kind === 'transfer')
+      const outside = step.routes.find((route) => route.kind === 'outside')
+      if (transfer?.kind !== 'transfer' || !outside) throw new Error('expected both routes')
+      expect(transfer.fee.gas).toBeGreaterThanOrEqual(40_000n)
+      expect(transfer.amount).toBeGreaterThanOrEqual(step.shortfall + transfer.fee.required)
+      expect(outside.amount).toBeGreaterThanOrEqual(step.shortfall)
+      expect(outside.amount).toBeLessThan(transfer.amount)
+    })
 
     it("reads the sending key's balance through the provider", async () => {
       const reads = mockReads({ balance: 0n, gas: 180_000n })
@@ -205,15 +234,6 @@ describe('the gas check', () => {
       })
       expect(small.kind).toBe('enough')
       expect(large.kind).toBe('deposit')
-    })
-
-    it('a read that fails leaves the write in the first reading: nothing was sent', async () => {
-      const reads = mockReads({ balance: 0n, gas: 1n })
-      reads.estimateGas.mockRejectedValueOnce(new Error('node down'))
-      const checking = writeReducer(initialWriteState('submission'), { type: 'start' })
-      const failure = await runGasCheck({ write: 'submission', reads }).catch((error) => error)
-      expect(failure).toBeInstanceOf(Error)
-      expect(readingOf(writeReducer(checking, { type: 'error', error: failure }))).toBe('notSent')
     })
   })
 })

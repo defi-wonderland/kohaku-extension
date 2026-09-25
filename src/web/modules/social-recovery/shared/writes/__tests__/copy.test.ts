@@ -9,8 +9,7 @@
  *
  * The strings are the ones the two views lay out: `renderWriteState` and
  * `renderDepositStep` answer them and `WriteStateView` and `DepositStepView`
- * show every field (views.test.ts). Jest here does not transform JSX, so the
- * views themselves are read, not mounted.
+ * lay out every field (views.test.ts checks those fields one by one).
  *
  * Sources: docs/social-recovery/tasks/PT-039-the-shared-write-states-and-the-gas-step.md
  * ("Done", "Body"), briefs/PT-039.md ("Test expectations"), design/ux.md
@@ -18,9 +17,12 @@
  * D-307 (the blocker's two routes and the transfer sentence),
  * design/ux-interfaces.md D-373, design/ux-copy.md.
  */
+import { appTranslate } from '@web/modules/social-recovery/shared/display'
+
 import {
   ACCOUNT_REF,
   ATTEMPT_ENDS,
+  ATTEMPT_STILL_RUNNING,
   banHits,
   collectStrings,
   CONTROLLER,
@@ -31,6 +33,8 @@ import {
   failBeforeHash,
   failThrown,
   failWithReceipt,
+  GAS_KEYS,
+  gasReadErrorFor,
   GWEI,
   KEY,
   kitError,
@@ -39,6 +43,7 @@ import {
   NETWORK,
   ONE_FUNDING_COVERS_BOTH,
   renderGasAmount,
+  replacedBy,
   STEP_CASES,
   submittingFor,
   text,
@@ -57,7 +62,11 @@ const FAUCET = /faucet/i
 const LINK = /\bhttps?:\/\/|\bwww\./i
 
 const TRANSFER_CASES = STEP_CASES.filter((c) => !c.fastTrack)
-const RECOVERY_CASES = STEP_CASES.filter((c) => c.write === 'submission' || c.write === 'execution')
+// The step before the submission says the execution is a second funding; the
+// step at execution due is that second funding and does not say it again (the
+// coordinator's ruling of 2026-09-24).
+const SUBMISSION_CASES = STEP_CASES.filter((c) => c.write === 'submission')
+const EXECUTION_CASES = STEP_CASES.filter((c) => c.write === 'execution')
 const FAST_TRACK_CASES = STEP_CASES.filter((c) => c.fastTrack)
 
 /** Every string the lane renders: each variant of the step and its blocker, and every state of every write. */
@@ -70,16 +79,24 @@ const everyRenderedString = async (): Promise<string[]> => {
   )
   const states = WRITE_KINDS.flatMap((write) => [
     ...copyOfState(submittingFor(write)),
+    ...copyOfState(gasReadErrorFor(write)),
     ...copyOfState(failBeforeHash(write, userRejected())),
+    ...copyOfState(failThrown(write, replacedBy('cancelled'))),
     ...copyOfState(failWithReceipt(write, kitError('AttemptAlreadyActive'))),
+    ...copyOfState(failWithReceipt(write, kitError('WaitNotOver'))),
+    ...copyOfState(failWithReceipt(write, kitError('NotConsumable'))),
     ...copyOfState(failWithReceipt(write)),
     ...copyOfState(failThrown(write, minedAndReverted()))
   ])
-  const cancels = ATTEMPT_ENDS.flatMap((ended) =>
-    copyOfState(
-      failWithReceipt('cancel', kitError('NoActiveAttempt'), { ended, controller: CONTROLLER })
-    )
-  )
+  const cancels = [
+    ...ATTEMPT_ENDS.flatMap((ended) =>
+      copyOfState(
+        failWithReceipt('cancel', kitError('NoActiveAttempt'), { ended, controller: CONTROLLER })
+      )
+    ),
+    ...copyOfState(failWithReceipt('cancel', undefined, { ended: ATTEMPT_STILL_RUNNING })),
+    ...copyOfState(failWithReceipt('cancel', kitError('NoSetup')))
+  ]
   return [...steps.flat(), ...states, ...cancels]
 }
 
@@ -126,7 +143,7 @@ describe('the deposit step, rendered through en.json', () => {
     })
   )
 
-  RECOVERY_CASES.forEach(({ name, write, fastTrack }) =>
+  SUBMISSION_CASES.forEach(({ name, write, fastTrack }) =>
     describe(`${name}: the second funding (D-303, D-393, D-373)`, () => {
       it('says the execution after the waiting period is a second funding', async () => {
         const rendered = text(copyOfStep(await depositStepFor(write, fastTrack)))
@@ -141,6 +158,20 @@ describe('the deposit step, rendered through en.json', () => {
       })
     })
   )
+
+  EXECUTION_CASES.forEach(({ name, write, fastTrack }) =>
+    describe(`${name}: the step is the second funding itself`, () => {
+      it('does not say again that the execution is a second funding', async () => {
+        const lines = copyOfStep(await depositStepFor(write, fastTrack))
+        expect(lines).not.toContain(appTranslate(GAS_KEYS.secondFunding))
+        expect(text(lines)).not.toMatch(SECOND_FUNDING)
+      })
+    })
+  )
+
+  it('on the fast track at execution due, the amount follows the fee of that day', async () => {
+    expect(text(copyOfStep(await depositStepFor('execution', true)))).toMatch(FEE_OF_THAT_DAY)
+  })
 
   FAST_TRACK_CASES.forEach(({ name, write }) =>
     describe(`${name} (D-303)`, () => {

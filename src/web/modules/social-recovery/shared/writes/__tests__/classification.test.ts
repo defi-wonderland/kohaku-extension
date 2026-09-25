@@ -15,6 +15,10 @@ import { providerReadFailure, revertedCall } from '@web/modules/social-recovery/
 import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import {
+  ATTEMPT_STILL_RUNNING,
+  cancelGoneRoadKey,
+  canRetry,
+  causeKey,
   CONTROLLER,
   copyOfState,
   failBeforeHash,
@@ -25,6 +29,7 @@ import {
   landWithReceipt,
   minedAndReverted,
   nodeRefused,
+  offersMoveFunds,
   readingOf,
   submittingFor,
   text,
@@ -51,6 +56,7 @@ const ALREADY_GONE = /\bthe attempt (?:was|is) already gone\b/i
 const ATTEMPT_ACTIVE = kitError('AttemptAlreadyActive')
 const WAIT_NOT_OVER = kitError('WaitNotOver')
 const EXECUTED = { ended: 'executed' as const, controller: CONTROLLER }
+const STILL_RUNNING = { ended: ATTEMPT_STILL_RUNNING }
 
 const rendered = (state: WriteState) => text(copyOfState(state))
 
@@ -84,18 +90,27 @@ describe('a call the wallet never sent (D-319, the first reading)', () => {
         expect(readingOf(state)).toBe('notSent')
       })
 
-      it('a gas check whose estimate would revert, or whose read failed, reads never sent', () => {
+      it('a gas check whose estimate would revert reads never sent', () => {
         const checking = writeReducer(initialWriteState(write), { type: 'start' })
         const estimateReverts = writeReducer(checking, {
           type: 'error',
           error: revertedCall('estimateGas', '0x')
         })
+        expect(readingOf(estimateReverts)).toBe('notSent')
+      })
+
+      // The coordinator's ruling of 2026-09-24 (brief, "Dependencies and base"):
+      // a failed gas read renders its own line with the retry (D-393), and is
+      // neither reading of the failed state.
+      it('a gas check whose read could not run is gasReadError, not a failed reading', () => {
+        const checking = writeReducer(initialWriteState(write), { type: 'start' })
         const readFailed = writeReducer(checking, {
           type: 'error',
           error: providerReadFailure('nativeBalance', new Error('node down'))
         })
-        expect(readingOf(estimateReverts)).toBe('notSent')
-        expect(readingOf(readFailed)).toBe('notSent')
+        expect(readFailed.status).toBe('gasReadError')
+        expect(rendered(readFailed)).not.toMatch(NOTHING_REACHED_THE_CHAIN)
+        expect(rendered(readFailed)).not.toMatch(REVERTED)
       })
     })
   )
@@ -204,10 +219,65 @@ describe('the reverted cancel (D-307)', () => {
     expect(rendered(state)).toMatch(GAS_GONE)
   })
 
-  it('names the attempt as already gone', () => {
+  it('names the attempt as already gone on the attempt read, or on a decoded NoActiveAttempt', () => {
     expect(rendered(failWithReceipt('cancel', nothingToCancel, EXECUTED))).toMatch(ALREADY_GONE)
-    // A cancel reverts only when nothing is left to cancel: with no decoded cause, the same.
     expect(rendered(failWithReceipt('cancel', undefined, EXECUTED))).toMatch(ALREADY_GONE)
+    expect(rendered(failWithReceipt('cancel', nothingToCancel))).toMatch(ALREADY_GONE)
+  })
+
+  // The coordinator's ruling of 2026-09-24: the gone reading is decided only
+  // from the attempt read or a decoded cause, never from an undecoded revert.
+  // A cancel that ran out of gas while the attack runs must not read that
+  // nothing is left to cancel.
+  describe('a cancel revert while the attempt may still run', () => {
+    const plain = (state: WriteState) => {
+      expect(readingOf(state)).toBe('reverted')
+      expect(rendered(state)).not.toMatch(ALREADY_GONE)
+      expect(rendered(state)).toMatch(REACHED_AND_REVERTED)
+      expect(rendered(state)).toMatch(GAS_GONE)
+      expect(canRetry(state)).toBe(true)
+      expect(rendered(state)).toMatch(/\btry again\b/i)
+      expect(offersMoveFunds(state)).toBe(true)
+    }
+
+    it('an undecoded revert with no attempt read yet reads the plain revert, with retry and move funds', () => {
+      plain(failWithReceipt('cancel'))
+      plain(failThrown('cancel', minedAndReverted()))
+    })
+
+    it('the attempt read that says the attempt still runs keeps the plain revert', () => {
+      plain(failWithReceipt('cancel', undefined, STILL_RUNNING))
+      plain(failWithReceipt('cancel', nothingToCancel, STILL_RUNNING))
+      const read = writeReducer(failWithReceipt('cancel'), {
+        type: 'attemptRead',
+        attemptAfter: STILL_RUNNING
+      })
+      plain(read)
+    })
+
+    it('a decoded cause other than NoActiveAttempt or NoSetup reads the plain revert with that cause', () => {
+      const state = failWithReceipt('cancel', kitError('WrongAttemptId'))
+      plain(state)
+      expect(rendered(state)).toContain(appTranslate(causeKey('WrongAttemptId')))
+    })
+
+    it('the attempt read that says it executed turns the plain revert into the gone attempt', () => {
+      const read = writeReducer(failWithReceipt('cancel'), {
+        type: 'attemptRead',
+        attemptAfter: EXECUTED
+      })
+      expect(rendered(read)).toMatch(ALREADY_GONE)
+      expect(rendered(read).toLowerCase()).toContain(CONTROLLER.toLowerCase())
+      expect(canRetry(read)).toBe(false)
+    })
+  })
+
+  it('NoSetup decoded on a cancel reads the gone attempt, naming the setup write as the road', () => {
+    const state = failWithReceipt('cancel', kitError('NoSetup'))
+    expect(rendered(state)).toMatch(ALREADY_GONE)
+    expect(copyOfState(state)).toContain(appTranslate(cancelGoneRoadKey('setupWrite')))
+    expect(canRetry(state)).toBe(false)
+    expect(offersMoveFunds(state)).toBe(false)
   })
 
   it("names the account's controller as it now stands", () => {

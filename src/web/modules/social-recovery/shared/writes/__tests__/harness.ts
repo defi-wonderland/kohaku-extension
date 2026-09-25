@@ -11,6 +11,11 @@
  *   the chain through them alone, so a test sets the balance and the estimate
  *   and records the transaction the estimate was asked for. No test reaches a
  *   network, and none imports the SDK doubles (the ESLint fence).
+ * - Where a test needs the real wrapping of a failed read (a
+ *   `ProviderReadFailure`, or a `RevertedCall` for an estimate that would
+ *   revert), `rpcReads` runs PT-038's own `createChainReads` over a mocked
+ *   JSON-RPC `send` instead, the one member of the extension's provider the
+ *   lane calls (`ExtensionRpc`).
  * - Nothing else is mocked. The strings come from the real en.json through
  *   the app's own i18next instance (the renderers' default `t`).
  */
@@ -23,10 +28,13 @@ import type {
   PreparedBatch,
   PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type {
-  ChainReads,
-  GasEstimateCall,
-  KeyHandle
+import {
+  createChainReads,
+  providerReadFailure,
+  toQuantity,
+  type ChainReads,
+  type GasEstimateCall,
+  type KeyHandle
 } from '@web/modules/social-recovery/shared/client'
 import * as writes from '@web/modules/social-recovery/shared/writes'
 import {
@@ -196,20 +204,49 @@ export const runGasCheck = (args: {
   key?: KeyHandle
   fastTrack?: boolean
   prepared?: PreparedCall | PreparedBatch
+  /** The transaction the key sends for an owner write; the write's own by default. */
+  transaction?: GasEstimateCall
 }): Promise<GasCheck> => {
   const key = args.key ?? KEY
   const prepared = args.prepared ?? preparedFor(args.write)
   const ownerWrite = prepared.kind === 'batch' || prepared.sender === 'account'
+  const transaction = args.transaction ?? ownerTransaction(args.write, key.addr)
   return checkGas({
     write: args.write,
     prepared,
     key,
     reads: args.reads,
     network: NETWORK,
-    ...(ownerWrite ? { transaction: ownerTransaction(args.write, key.addr) } : {}),
+    ...(ownerWrite ? { transaction } : {}),
     ...(args.fastTrack ? { fastTrack: true } : { operates: ACCOUNT_REF })
   })
 }
+
+/**
+ * PT-038's own chain reads over a mocked JSON-RPC `send`. Each answer is a
+ * quantity, or an Error the node throws; `send` records every request.
+ */
+export const rpcReads = (answers: {
+  balance: bigint | Error
+  gas: bigint | Error
+  price?: bigint
+}): { reads: ChainReads; send: jest.Mock } => {
+  const answer = (value: bigint | Error) => {
+    if (value instanceof Error) throw value
+    return toQuantity(value)
+  }
+  const send = jest.fn(async (method: string) => {
+    if (method === 'eth_getBalance') return answer(answers.balance)
+    if (method === 'eth_estimateGas') return answer(answers.gas)
+    if (method === 'eth_gasPrice') return answer(answers.price ?? 2n * GWEI)
+    throw new Error(`unexpected request ${method}`)
+  })
+  return { reads: createChainReads({ send }), send }
+}
+
+/** A node's answer to an estimate of a call that would revert: code 3 with the revert data. */
+export const nodeRevert = (): Error =>
+  Object.assign(new Error('execution reverted'), { code: 3, data: '0x' })
 
 /** The deposit step of a check that came up short; throws where the key held enough. */
 export const stepOf = (check: GasCheck): DepositStep => {
@@ -368,6 +405,36 @@ export const minedAndReverted = (hash: Hex = TX_HASH): Error =>
 /** A wait that timed out after the broadcast: the hash is known, no receipt came back. */
 export const waitTimedOut = (hash: Hex = TX_HASH): Error =>
   Object.assign(new Error('timeout'), { code: 'TIMEOUT', transaction: { hash } })
+
+/** The hash of the transaction that took the write's place. */
+export const REPLACEMENT_HASH: Hex =
+  '0x1111111111111111111111111111111111111111111111111111111111111111'
+
+/**
+ * ethers' `TRANSACTION_REPLACED` from `wait()`: another transaction with the
+ * same nonce was mined in the write's place. `repriced` is the same call at
+ * another fee; `cancelled` and `replaced` mean the write's call never ran. The
+ * receipt is the replacement's.
+ */
+export const replacedBy = (
+  reason: 'repriced' | 'cancelled' | 'replaced',
+  replacementStatus: 0 | 1 = 1
+): Error =>
+  Object.assign(new Error('transaction was replaced'), {
+    code: 'TRANSACTION_REPLACED',
+    reason,
+    cancelled: reason !== 'repriced',
+    hash: TX_HASH,
+    replacement: { hash: REPLACEMENT_HASH },
+    receipt: { hash: REPLACEMENT_HASH, status: replacementStatus, blockNumber: 7_000_002 }
+  })
+
+/** The state a write moves to when a read of its gas check could not run. */
+export const gasReadErrorFor = (write: WriteKind): WriteState =>
+  writeReducer(writeReducer(initialWriteState(write), { type: 'start' }), {
+    type: 'error',
+    error: providerReadFailure('nativeBalance', new Error('node down'))
+  })
 
 // ---------------------------------------------------------------------------
 // Strings

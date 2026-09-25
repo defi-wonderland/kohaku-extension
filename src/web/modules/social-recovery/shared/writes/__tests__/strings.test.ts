@@ -22,7 +22,7 @@
  * design/live-frame-strings.md (the frames named above).
  */
 import en from '@common/config/localization/translations/en.json'
-import { KIT_ERROR_NAMES } from '@web/modules/social-recovery/sdk-interfaces'
+import { KIT_ERROR_NAMES, type KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import { appTranslate, renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 import {
@@ -55,6 +55,7 @@ import {
   UNNAMED_CAUSE_KEY,
   UNRESOLVED,
   WRITE_KINDS,
+  WriteKind,
   WRITES_KEYS,
   GAS_KEYS
 } from './harness'
@@ -114,12 +115,16 @@ describe('the cause of a revert (D-319, D-373)', () => {
 })
 
 describe("each write reads its own reverted sentence (D-319, the writes' frames)", () => {
-  const OWN: [string, string][] = [
-    ['save', 'revertedSave'],
-    ['edit', 'revertedEdit'],
-    ['submission', 'revertedSubmit'],
-    ['execution', 'revertedExecute'],
-    ['ownerWrite', 'reverted']
+  // The execution reads that the recovery is still ready only for a cause
+  // that leaves the attempt ready, and revertedExecuteGone otherwise (the
+  // coordinator's ruling of 2026-09-24, D-393's fifth ending).
+  const OWN: [WriteKind, string, KitErrorName][] = [
+    ['save', 'revertedSave', 'WrongSetupNonce'],
+    ['edit', 'revertedEdit', 'WrongSetupNonce'],
+    ['submission', 'revertedSubmit', 'WrongSetupNonce'],
+    ['execution', 'revertedExecute', 'WaitNotOver'],
+    ['execution', 'revertedExecuteGone', 'WrongSetupNonce'],
+    ['ownerWrite', 'reverted', 'WrongSetupNonce']
   ]
 
   it('maps every write to a reverted key en.json holds', () => {
@@ -128,14 +133,12 @@ describe("each write reads its own reverted sentence (D-319, the writes' frames)
     )
   })
 
-  OWN.forEach(([write, key]) =>
-    it(`${write} renders socialRecovery.writes.${key} with the cause in its slot`, () => {
-      const cause = kitError('WrongSetupNonce')
+  OWN.forEach(([write, key, name]) =>
+    it(`${write} with ${name} renders socialRecovery.writes.${key} with the cause in its slot`, () => {
       const expected = appTranslate(`socialRecovery.writes.${key}`, {
-        cause: appTranslate(causeKey('WrongSetupNonce'))
+        cause: appTranslate(causeKey(name))
       })
-      const state = failWithReceipt(write as typeof WRITE_KINDS[number], cause)
-      expect(copyOfState(state)).toContain(expected)
+      expect(copyOfState(failWithReceipt(write, kitError(name)))).toContain(expected)
     })
   )
 
