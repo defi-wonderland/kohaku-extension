@@ -30,9 +30,7 @@ module.exports = {
     {
       // Account recovery: a screen imports shared/client, never the SDK doubles.
       // Only shared/client and the doubles' own folder (with its tests) may
-      // import them (docs/social-recovery/README.md). The base configs leave
-      // no-restricted-imports off, so this override adds the rule to these
-      // files alone.
+      // import them.
       files: ['src/web/modules/social-recovery/**/*.{ts,tsx,js,jsx}'],
       excludedFiles: [
         'src/web/modules/social-recovery/shared/client/**',

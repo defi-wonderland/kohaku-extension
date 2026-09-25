@@ -1,9 +1,9 @@
 /* eslint-disable max-classes-per-file -- the four shipped method doubles share one base and one file */
 /**
- * One scripted `IRecoveryMethod` double per shipped kind (sdk.md D-206): wallet
+ * One scripted `IRecoveryMethod` double per shipped kind: wallet
  * (`method-ecdsa`), passkey, zkPassport and Aadhaar. Each carries the ten members
- * with the params and material records D-206's tables name, and none runs a
- * device, a prover or real cryptography.
+ * with its kind's params and material records, and none runs a device, a
+ * prover or real cryptography.
  *
  * The doubles' proof convention: a proof satisfies a credential exactly when it
  * equals `doubleProof(config, digest)`. The wallet, passkey and zkPassport
@@ -157,7 +157,7 @@ export class WalletMethodDouble extends MethodDouble {
   }
 
   /**
-   * The typed data the guardian's wallet signs, handed over as it is: D-204's
+   * The typed data the guardian's wallet signs, handed over as it is:
    * `{ domain, types, primaryType, message }`, numeric chain id, the `Approval`
    * or `Cancellation` members alone (the orchestrator builds it into the ctx).
    */

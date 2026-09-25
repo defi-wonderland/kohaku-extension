@@ -1,9 +1,8 @@
 /**
  * What the chain itself would decide, shared by the simulations inside the
- * prepares and by `ScriptedChain.land`: the local rule evaluation of sdk.md
- * D-204, the manager's acceptance path at `startAttempt` and `cancelByProofs`
- * (contracts D-103, the error rows of sdk.md D-205 "Error decoding"), and the
- * action's execute path with the account's batch behind it (D-105, D-110).
+ * prepares and by `ScriptedChain.land`: the local rule evaluation, the manager's
+ * acceptance path at `startAttempt` and `cancelByProofs`, and the action's
+ * execute path with the account's batch behind it.
  *
  * A proof passes the doubles' verification exactly when it equals
  * `doubleProof(config, digest)`.
@@ -32,10 +31,11 @@ import {
 import { kitError } from './scripts'
 
 /**
- * The doubles' stand-in names for the account's own reverts at the execute
- * (sdk.md D-205 carries the account's reverts as a class the action task pins):
- * the account does not honour the action (a dormant setup, D-110), or the
- * account holds no code or code the action does not serve (D-105).
+ * The doubles' stand-in names for the account's own reverts at the execute: the
+ * account does not honour the action (a dormant setup), or the account holds no
+ * code or code the action does not serve. Both carry `source: 'account'`. The
+ * real account's revert names will differ, so the client layer maps these two
+ * by that source and these names.
  */
 export const ACCOUNT_NOT_ARMED = 'AccountNotArmed'
 export const ACCOUNT_UNFIT = 'AccountUnfit'
@@ -48,9 +48,9 @@ export interface RuleEvaluation {
 }
 
 /**
- * The local rule evaluation of D-204 over a body and a set of filled places:
- * every clause meets its threshold, false for a body with no clauses and false
- * for a rule whose every clause sits at zero.
+ * The local rule evaluation over a body and a set of filled places: every
+ * clause meets its threshold, false for a body with no clauses and false for a
+ * rule whose every clause sits at zero.
  */
 export const evaluateRule = (setupBody: Hex, filled: number[]): RuleEvaluation => {
   let body
@@ -95,9 +95,9 @@ export const malformedHandover = (h: Handover): boolean =>
   sameAddress(h.newAuthority, h.removedAuthority)
 
 /**
- * The manager's acceptance of a submitted request at the head block, in D-103's
- * order: the window, the attempt, the setup, then each proof (order, place,
- * credential, stop, verdict), then the rule.
+ * The manager's acceptance of a submitted request at the head block, in the
+ * contract's order: the window, the attempt, the setup, then each proof (order,
+ * place, credential, stop, verdict), then the rule.
  */
 export const acceptanceRevert = (
   chain: ScriptedChain,
@@ -191,8 +191,8 @@ export const acceptanceRevert = (
 }
 
 /**
- * The execute path at the head block (D-105, D-108, D-110): the action's
- * pre-check (the payload decodes in its layout, the attempt is waiting at its
+ * The execute path at the head block: the action's pre-check (the payload
+ * decodes in its layout, the attempt is waiting at its
  * wait and committed to this payload, the two authorities are what the handover
  * needs), then the account, which must honour the action and be one the action
  * serves, then the consume inside the batch, which a stopped used method vetoes.

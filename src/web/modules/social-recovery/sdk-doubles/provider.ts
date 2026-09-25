@@ -1,8 +1,8 @@
 /**
- * The `IProvider` double (sdk.md D-208): the integrator's four reads, answered
- * from the scripted chain. `call` answers what `chain.calls` scripts for
- * `${to}:${data}`, rejects a scripted revert with its raw data, and answers `0x`
- * otherwise. A read scripted to fail rejects; it never answers empty.
+ * The `IProvider` double: the integrator's four reads, answered from the
+ * scripted chain. `call` answers what `chain.calls` scripts for `${to}:${data}`,
+ * rejects a scripted revert with its raw data, and answers `0x` otherwise. A
+ * read scripted to fail rejects; it never answers empty.
  */
 import type {
   Address,

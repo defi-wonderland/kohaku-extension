@@ -1,10 +1,9 @@
 /**
  * The failure and refusal vocabulary of the scripted chain: which reads can be
  * scripted to fail, which members can be scripted to refuse, and the thrown
- * values they produce. The thrown shapes are the ones sdk.md D-201 "Refusals
- * throw" fixes and utilities.ts declares: an ordinary error, a
- * `ValidationRefusal` carrying the findings, a `RestoreRefusal` carrying the
- * restore cause.
+ * values they produce. The thrown shapes are the ones the interfaces'
+ * `utilities.ts` declares: an ordinary error, a `ValidationRefusal` carrying the
+ * findings, a `RestoreRefusal` carrying the restore cause.
  */
 import { keccak256, stringToHex } from 'viem'
 
@@ -58,7 +57,7 @@ export type ScriptedRead = typeof SCRIPTED_READS[number]
 
 /**
  * The three module reads answer `{ answered: false }` rather than throwing when
- * the provider failed (sdk.md D-202 "The read surface"); a script chooses either.
+ * the provider failed; a script chooses either.
  */
 export const MODULE_READS = [
   'manager.moduleInfo',
@@ -68,8 +67,8 @@ export const MODULE_READS = [
 export type ModuleRead = typeof MODULE_READS[number]
 
 /**
- * Every member whose refusal is a thrown value (sdk.md D-201 "Refusals throw"),
- * beside the manager part's and the action part's own prepares.
+ * Every member whose refusal is a thrown value, beside the manager part's and
+ * the action part's own prepares.
  */
 export const SCRIPTED_REFUSALS = [
   'setup.prepareCommitSetup',
@@ -100,7 +99,7 @@ export type ScriptedRefusalMember = typeof SCRIPTED_REFUSALS[number]
 /**
  * The prepares whose simulation a script can fail. A failed simulation is not a
  * refusal: the prepare returns its record with `simulation.ok === false` and the
- * typed error (sdk.md D-202 "Simulation", fifth rule).
+ * typed error.
  */
 export const SCRIPTED_SIMULATIONS = [
   'setup.prepareCommitSetup',
@@ -114,10 +113,10 @@ export const SCRIPTED_SIMULATIONS = [
 export type ScriptedSimulation = typeof SCRIPTED_SIMULATIONS[number]
 
 /**
- * The two validations a script can append findings to (sdk.md D-205
- * "Validation"): setup validation, which `validateSetup` and
- * `prepareCommitSetup` run, and request validation, which `prepareStartAttempt`
- * and `prepareCancelByProofs` run. Appended errors refuse the prepares.
+ * The two validations a script can append findings to: setup validation, which
+ * `validateSetup` and `prepareCommitSetup` run, and request validation, which
+ * `prepareStartAttempt` and `prepareCancelByProofs` run. Appended errors refuse
+ * the prepares.
  */
 export const SCRIPTED_FINDINGS = ['setup.validateSetup', 'recovery.validateRequest'] as const
 export type ScriptedFindings = typeof SCRIPTED_FINDINGS[number]
@@ -134,9 +133,11 @@ export type ThrownRefusal =
 
 /**
  * An ordinary error carrying a code and its values, what every refusal of the
- * doubles that is not a validation or a restore refusal throws. The code is a
- * D-205, D-206 or D-207 slug, a kit error name, or one of the doubles' own codes
- * the README lists; the message is for a developer and never for a screen.
+ * doubles that is not a validation or a restore refusal throws. The interfaces
+ * declare no such shape, so it is the doubles' own. The code is a finding or
+ * refusal slug, a kit error name, or a code of the doubles' own (such as
+ * `action.no-codec`, `builder.frozen` or `scripted.refused`), which the real
+ * SDK may not share. The message is for a developer and never for a screen.
  */
 export interface CodedError extends Error {
   code: string
@@ -227,7 +228,7 @@ export const landingRevert = (error: KitError): LandingRevert => {
   return thrown
 }
 
-/** A known kit error by name, the shape `decodeRevert` answers (sdk.md D-205). */
+/** A known kit error by name, the shape `decodeRevert` answers. */
 export const kitError = (
   name: string,
   args: Record<string, unknown> = {},

@@ -1,24 +1,25 @@
 /**
- * The one scripted chain record every double reads (PT-035).
+ * The one scripted chain record every double reads.
  *
  * It holds what the kit's contracts would hold for one account under one action
  * on one deployment: the setup (none or committed under one of the three privacy
- * levels of ux-interfaces.md D-375), the attempt (none, pending, ready,
- * cancelled by the account, by a caller with proofs or by nobody, or executed),
- * the account's authorization of the action, whether the account holds code, one
+ * levels), the attempt (none, pending, ready, cancelled by the account, by a
+ * caller with proofs or by nobody, or executed), the account's authorization of
+ * the action, whether the account holds code, one
  * declaration per method (`moduleInfo`, `paused`, `trustedParties`), the
  * manager's views (`stateOf`, `setupCommittedAtBlock`, `eip712Domain`) and the
  * action's views (`supportsAccount`, `isAuthority`, `holdsAnyPrivilege`).
  *
  * Every state change goes through a member below, and each one appends the event
- * the contract would emit, in a freshly mined block, so the interactor, the event
- * manager and the read seam always agree: a committed setup has its
- * `SetupCommitted`, an executed attempt its `AttemptStarted` and
- * `AttemptConsumed`, and so on (sdk.md D-203 "The events").
+ * the contract would emit, in a freshly mined block (one transaction per block,
+ * log indices in order), so the interactor, the event manager and the read seam
+ * always agree: a committed setup has its `SetupCommitted`, an executed attempt
+ * its `AttemptStarted` and `AttemptConsumed`, and so on.
  *
  * The record also holds the scripts: reads that fail, members that refuse,
  * simulations that fail and the answers of the approving side. The doubles read
  * those scripts at every call, so a test changes the world between two calls.
+ * Every script stands until it is cleared.
  */
 import type {
   ActionInfo,
@@ -83,20 +84,20 @@ import {
 } from './scripts'
 import { acceptanceRevert, decodeHandover, executeRevert } from './verification'
 
-/** The five attempt statuses of ux-interfaces.md D-371. */
+/** The five attempt statuses the wallet computes (see `attemptStatus`). */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
 export type AttemptStatus = typeof ATTEMPT_STATUSES[number]
 
 /**
- * Who cancelled (ux-interfaces.md D-371, D-373): the account (`cancelByOwner`),
- * a caller with proofs (`cancelByProofs`), or nobody, where no party authorized
- * the cancel: a security stop's veto (`cancelByVeto`, with the vetoing method)
- * or a setup write (the log's zero canceller).
+ * Who cancelled: the account (`cancelByOwner`), a caller with proofs
+ * (`cancelByProofs`), or nobody, where no party authorized the cancel: a
+ * security stop's veto (`cancelByVeto`, with the vetoing method) or a setup
+ * write (the log's zero canceller).
  */
 export const CANCELLERS = ['account', 'proofs', 'nobody'] as const
 export type Canceller = typeof CANCELLERS[number]
 
-/** One method module's declaration, the three module views (sdk.md D-201, D-202). */
+/** One method module's declaration: what its three module views answer. */
 export interface MethodDeclaration {
   moduleInfo: ModuleInfo
   paused: boolean
@@ -113,7 +114,7 @@ export interface NoSetup {
 
 export interface CommittedSetup {
   status: 'committed'
-  /** The D-375 level the two metadata fields encode, read back from them. */
+  /** The privacy level the two metadata fields encode, read back from them. */
   level: PrivacyLevel
   setupNonce: bigint
   setupCommitment: Hex
@@ -172,7 +173,7 @@ export type ChainEffect =
   | { kind: 'start'; request: AttemptRequest }
   | { kind: 'cancel-by-owner' }
   | { kind: 'cancel-by-proofs'; request: CancelRequest }
-  | { kind: 'cancel-by-veto'; method: Address }
+  | { kind: 'cancel-by-veto'; attemptId: bigint; method: Address }
   | { kind: 'execute'; attemptId: bigint; payload: Hex }
 
 export interface ReadScript {
@@ -228,7 +229,7 @@ export const doubleDescriptor = (
 
 const BLOCK_TIME = 12
 
-/** The key value a handover grants, fixed at `1` inside the action (contracts D-105). */
+/** The key value a handover grants, fixed at `1` inside the action. */
 export const KEY_PRIVILEGE: Hex =
   '0x0000000000000000000000000000000000000000000000000000000000000001'
 
@@ -275,8 +276,8 @@ export class ScriptedChain {
 
   /**
    * Each module's `verify` gas, keyed by lowercase address, which `rule.too-wide`
-   * sums over the costliest satisfying set (D-107). Placeholders until the
-   * method tasks measure them; a module missing here costs `UNKNOWN_VERIFY_COST`.
+   * sums over the costliest satisfying set. The defaults are placeholders, not
+   * measured costs; a module missing here costs `UNKNOWN_VERIFY_COST`.
    */
   readonly verifyCosts = new Map<string, bigint>()
 
@@ -441,7 +442,7 @@ export class ScriptedChain {
   // The kit slot and the account's privilege table
   // -------------------------------------------------------------------------
 
-  /** The kit slot of D-105 for this action, in the doubles' hashing. */
+  /** The account's kit slot for this action, in the doubles' hashing. */
   get kitSlot(): Address {
     return addressOf(`kit-slot:${this.action.toLowerCase()}`)
   }
@@ -467,7 +468,7 @@ export class ScriptedChain {
   /**
    * The privilege writes that move a list of entries from `before` to `after`,
    * one `LogPrivilegeChanged` per entry that changed, so the account's privilege
-   * stream and its key list always agree (D-105, D-108).
+   * stream and its key list always agree.
    */
   private privilegeWrites(
     before: Address[],
@@ -519,8 +520,9 @@ export class ScriptedChain {
   }
 
   /**
-   * The inference of D-202 that names the key a handover removes: with a
-   * creation record, the one entry still holding a key value; otherwise nothing.
+   * The inference that names the key a handover removes: with a creation
+   * record, the one entry still holding a key value; otherwise the reason it
+   * cannot name one.
    */
   removedKeyReading(hasCreationRecord: boolean):
     | { kind: 'named'; key: Address }
@@ -598,10 +600,10 @@ export class ScriptedChain {
   // -------------------------------------------------------------------------
 
   /**
-   * Commits a setup under one privacy level of D-375, as the account would:
-   * private (nothing public, values sealed), shape-visible (shape public, values
-   * sealed) or public (everything clear, no password). A waiting attempt is
-   * cancelled by the write, as D-103 does.
+   * Commits a setup under one privacy level, as the account would: private
+   * (nothing public, values sealed), shape-visible (shape public, values sealed)
+   * or public (everything clear, no password). A waiting attempt is cancelled
+   * by the write, as the manager does.
    */
   commitSetup(options: {
     level: PrivacyLevel
@@ -686,7 +688,7 @@ export class ScriptedChain {
   /**
    * Records a setup write under another action of this account, events only
    * (the doubles hold one action's state): what the `manager.already-armed`
-   * warning of D-205 pairs, the last commit against the last clear per action.
+   * warning pairs, the last commit against the last clear per action.
    */
   commitOtherAction(action: Address, nonce = 1n): void {
     this.emit({
@@ -836,11 +838,11 @@ export class ScriptedChain {
 
   /**
    * Spends the waiting attempt and performs its handover, as `executeHandover`
-   * does (contracts D-105, D-108; ux.md D-319 "AttemptConsumed, key rotated"):
-   * `AttemptConsumed`, then the grant of the new key and the revoke of the
-   * removed one, three logs of one transaction. The handover is the one given,
-   * or the one the attempt's payload decodes to. As a script it checks nothing
-   * else; `land` refuses what the chain would revert (see `executeRevert`).
+   * does: `AttemptConsumed`, then the grant of the new key and the revoke of the
+   * removed one, three logs of one transaction, and the key list rotates. The
+   * handover is the one given, or the one the attempt's payload decodes to. As
+   * a script it checks nothing else; `land` refuses what the chain would revert
+   * (see `executeRevert`).
    */
   executeAttempt(handover?: Handover): void {
     if (this.attempt.status !== 'waiting') {
@@ -878,7 +880,7 @@ export class ScriptedChain {
     this.attempt = { status: 'executed', record, endedAtBlock: n.at.blockNumber }
   }
 
-  /** The D-371 status the wallet computes: ready is a waiting attempt whose wait is over at the head. */
+  /** The status the wallet computes: ready is a waiting attempt whose wait is over at the head. */
   attemptStatus(): AttemptStatus {
     switch (this.attempt.status) {
       case 'none':
@@ -890,7 +892,7 @@ export class ScriptedChain {
     }
   }
 
-  /** The manager's `stateOf(account, action)` over the record (contracts D-103). */
+  /** The manager's `stateOf(account, action)` over the record. */
   stateOf(): ActionState {
     const committed = this.setup.status === 'committed'
     return {
@@ -991,7 +993,7 @@ export class ScriptedChain {
 
   /**
    * Appends findings to a validation's own until cleared, so a test forces any
-   * D-205 row: `setup.validateSetup` (read by `validateSetup` and
+   * validation row: `setup.validateSetup` (read by `validateSetup` and
    * `prepareCommitSetup`) or `recovery.validateRequest` (read by
    * `prepareStartAttempt` and `prepareCancelByProofs`). Appended errors refuse
    * the prepares as the doubles' own errors do.
@@ -1108,6 +1110,13 @@ export class ScriptedChain {
         if (this.attempt.status !== 'waiting')
           return kitError('NoActiveAttempt', { account, action })
         const { record } = this.attempt
+        // A veto names the attempt it was prepared for; it never ends a later one.
+        if (record.attemptId !== effect.attemptId) {
+          return kitError('WrongAttemptId', {
+            supplied: effect.attemptId,
+            expected: record.attemptId
+          })
+        }
         if (!record.usedMethods.some((m) => sameAddress(m, effect.method))) {
           return kitError('MethodNotUsed', { attemptId: record.attemptId, method: effect.method })
         }
@@ -1131,8 +1140,8 @@ export class ScriptedChain {
    * chain as it stands now: where the chain would revert any call, it throws a
    * `LandingRevert` carrying the kit error and applies nothing, since a batch
    * lands whole or not at all. A dormant setup or an account the action does not
-   * fit therefore never executes (D-110, D-205, ux.md D-319). A call the doubles
-   * did not prepare changes nothing.
+   * fit therefore never executes. A call the doubles did not prepare changes
+   * nothing.
    */
   land(prepared: PreparedCall | PreparedBatch): void {
     const calls = prepared.kind === 'batch' ? prepared.calls : [prepared]
