@@ -1,12 +1,12 @@
 /**
  * The passkey device: the extension calls the authenticator itself,
  * `navigator.credentials.create` at enrollment and `navigator.credentials.get`
- * at a claim and at an access test, and hands the method the result
- * (ux-interfaces.md D-372, sdk.md D-206).
+ * at a claim and at an access test, and hands the method the result.
  *
  * - `rp.id` and `rpId` are the extension's origin host; the method receives
  *   the full origin string as its relying party id, and the credential's rp id
- *   hash must equal `sha256("chrome-extension://<id>")` (D-314).
+ *   hash must equal `sha256("chrome-extension://<id>")`, never the hash of the
+ *   bare id. A mismatch is reported before the method runs.
  * - The synced or device-bound kind comes from the ceremony's own flags.
  * - A high `s` is lowered before the method receives the assertion.
  * - A browser error is read before the method runs.
@@ -59,7 +59,7 @@ export interface PasskeyDeviceOptions {
   randomBytes?: (length: number) => Uint8Array
 }
 
-/** The creation options a passkey method's `enrollInput` returns (sdk.md D-206). */
+/** The creation options a passkey method's `enrollInput` returns. */
 export interface PasskeyEnrollInput {
   rp?: { id?: string; name?: string }
   user?: { id?: string; name?: string; displayName?: string }
@@ -70,7 +70,7 @@ export interface PasskeyEnrollInput {
   challenge?: string
 }
 
-/** The request options a passkey method's `signingInput` returns (sdk.md D-206). */
+/** The request options a passkey method's `signingInput` returns. */
 export interface PasskeySigningInput {
   challenge: Hex | string
   rpId?: string
@@ -121,9 +121,9 @@ export const challengeBytes = (challenge: string): Uint8Array =>
 /**
  * Whether the method asked for the extension's own relying party: the full
  * origin string `chrome-extension://<id>` and nothing else. The bare id, an
- * empty string or no value is refused (D-314, D-372): the host hands the
- * method that origin string itself, so a method that names another value
- * names a relying party this extension does not serve.
+ * empty string or no value is refused: the host hands the method that origin
+ * string itself, so a method that names another value names a relying party
+ * this extension does not serve.
  */
 export const isOwnRelyingParty = (asked: string | undefined, rp: RelyingParty): boolean =>
   asked === rp.relyingPartyId

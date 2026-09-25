@@ -1,10 +1,10 @@
 /**
- * The `IPolicyManagerInteractor` double (sdk.md D-201, D-202): the manager's
- * views and its six prepares over the scripted chain, and the three module
- * views it carries for the methods. Its prepares take the contract's own
- * argument lists, encode and return a call with no simulation; the client
- * doubles validate and simulate around them. The builder double never hands
- * this part out whole (see `narrowModuleReads`).
+ * The `IPolicyManagerInteractor` double: the manager's views and its six
+ * prepares over the scripted chain, and the three module views it carries for
+ * the methods. Its prepares take the contract's own argument lists, encode and
+ * return a call with no simulation; the client doubles validate and simulate
+ * around them. The builder double never hands this part out whole (see
+ * `narrowModuleReads`).
  */
 import type {
   ActionState,
@@ -46,17 +46,17 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
 
   async paused(module: Address): Promise<ReadResult<boolean>> {
     if (this.chain.unanswered('manager.paused', module)) return { answered: false }
-    // The two-valued rule of D-111: only an exact true is stopped.
+    // Two-valued: only an exact true is stopped; anything else is not stopped.
     return { answered: true, value: this.chain.method(module)?.paused === true }
   }
 
   async trustedParties(module: Address): Promise<ReadResult<TrustedParties>> {
     if (this.chain.unanswered('manager.trustedParties', module)) return { answered: false }
     const declaration = this.chain.method(module)
-    // Like `moduleInfo`: a module with no declaration reverts, which is a contract
-    // answering (D-202), so the read is answered with empty values and
-    // `validateSetup` raises `method.no-declaration`. `{ answered: false }` stays
-    // the failed provider's alone. A judgment call the sdk owner may rule on.
+    // Like `moduleInfo`: a module with no declaration reverts, which is the
+    // contract answering, so the read is answered with empty values and
+    // `validateSetup` raises `method.no-declaration`. Only a provider that
+    // failed answers `{ answered: false }`.
     if (!declaration) {
       return {
         answered: true,
@@ -88,7 +88,7 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
     }
   }
 
-  /** The place's digest over the request's D-204 members; no proof at that place is needed. */
+  /** The place's digest over the request's members; no proof at that place is needed. */
   async hashApproval(request: AttemptRequest, place: bigint): Promise<Hex> {
     this.chain.guard('manager.hashApproval')
     return digestOfSubmission(request, this.domainFacts(), place)
@@ -201,7 +201,7 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
       target: this.manager,
       sender: 'anyone',
       block: this.chain.head,
-      effect: { kind: 'cancel-by-veto', method }
+      effect: { kind: 'cancel-by-veto', attemptId, method }
     })
   }
 }
@@ -212,7 +212,7 @@ export const MODULE_READ_MEMBERS = ['moduleInfo', 'paused', 'trustedParties'] as
 /**
  * The manager part seen through the module-read seam: a fresh object holding
  * the three views alone, so no prepare and no manager view reaches its holder
- * even at runtime (sdk.md D-201, D-208).
+ * even at runtime.
  */
 export const narrowModuleReads = (part: IMethodModuleReads): IMethodModuleReads => ({
   moduleInfo: (module) => part.moduleInfo(module),

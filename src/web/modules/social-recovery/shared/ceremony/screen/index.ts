@@ -1,7 +1,7 @@
 /**
  * The ceremony tab screen and the source it reads its ceremony from. Kept
- * apart from the lane's pure entry, since it imports React, the browser and
- * the extension's storage.
+ * apart from the pure entry of `shared/ceremony`, since it imports React, the
+ * browser and the extension's storage.
  */
 import CeremonyScreen from './CeremonyScreen'
 

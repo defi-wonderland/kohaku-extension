@@ -1,12 +1,13 @@
 /**
- * The SDK doubles (PT-035): in-memory implementations of the SDK interfaces of
+ * The SDK doubles: in-memory implementations of the SDK interfaces of
  * `@web/modules/social-recovery/sdk-interfaces`, driven by one scripted chain
- * record. Only `shared/client` (PT-038) and this folder's tests import them;
- * screens import the client layer (docs/social-recovery/README.md).
+ * record (`ScriptedChain`). They stand in for the real SDK until it ships. Only
+ * `shared/client` and this folder's tests import them; a screen imports
+ * `shared/client`, which ESLint enforces.
  *
- * Frozen against sdk.md at design commit bd8780f7ad59a451035b15920c00015a2eee6e9b,
- * the commit `sdk-interfaces/` records. The one interface declared here is the
- * cut-q-22 seam, `IWalletReadsDouble` (wallet-reads.ts).
+ * The doubles implement the interface types and add nothing to them. The one
+ * interface declared here is `IWalletReadsDouble` (wallet-reads.ts), three reads
+ * the wallet needs that no SDK member makes.
  */
 export * from './chain'
 export * from './scripts'

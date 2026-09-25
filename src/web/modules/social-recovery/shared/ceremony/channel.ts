@@ -4,14 +4,15 @@
  *
  * The tab writes one report under `socialRecoveryCeremonyResult:<request id>`
  * in the extension's local storage (the `storage` of
- * `@web/extension-services/background/webapi/storage`, D-310), through the
+ * `@web/extension-services/background/webapi/storage`), through the
  * visibility gate: a hidden tab writes nothing until it is shown again, so a
- * hand-off to a phone reports its result when the tab returns (D-316). No
+ * hand-off to a phone reports its result when the tab returns. A tab closed
+ * while hidden drops its report, and the caller's row stays unchanged. No
  * background controller is involved.
  *
  * A report of a passed claim carries the reply and its proof, approval
- * material that must not outlive its use (D-310, I-38). So a report lives only
- * until taken and never past its expiry, ten minutes from `reportedAt`:
+ * material that must not outlive its use. So a report lives only until taken
+ * and never past its expiry, ten minutes from `reportedAt`:
  *
  * - `takeCeremonyReport` and `listenForCeremonyReport` remove the report once
  *   they deliver it, and deliver it only where its id, call and method are the
@@ -19,8 +20,9 @@
  * - `sweepCeremonyReports` removes every report past its expiry, and every
  *   malformed one; the tab runs it on mount.
  *
- * The caller (the checklist row) files the reply into PT-040's session record
- * at once, where I-38's wipe governs it, and keeps no copy of the report.
+ * The caller (the checklist row) files the reply into its session record at
+ * once, which deletes it with the recovery it was gathered for, and keeps no
+ * copy of the report.
  *
  * Storage and the listener are parameters, so the channel runs under node.
  */
@@ -123,7 +125,7 @@ export const ceremonyReport = <T>(
 
 /**
  * Writes the report of `outcome` through the gate: at once where the tab is
- * visible, when it is shown again where it is hidden (D-316). `reportedAt`
+ * visible, when it is shown again where it is hidden. `reportedAt`
  * and `expiresAt` are stamped inside the dispatch, at write time, so a
  * hand-off that ends while the tab is hidden still reports a fresh result
  * when the tab returns, however long it stayed hidden.

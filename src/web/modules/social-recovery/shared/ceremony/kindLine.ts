@@ -1,5 +1,5 @@
 /**
- * The passkey row's kind line (ux.md D-305): "Synced passkey · {{provider}}"
+ * The passkey row's kind line: "Synced passkey · {{provider}}"
  * or "Device-bound passkey · {{device}}", with the names of the
  * `socialRecovery.ceremony.providers` and `.devices` blocks of en.json.
  *
@@ -28,8 +28,6 @@ export type Platform = typeof PLATFORMS[number]
 /**
  * The AAGUIDs that name a platform provider, from the community list of
  * passkey provider AAGUIDs (github.com/passkeydeveloper/passkey-authenticator-aaguids).
- * The manual run in a Chrome profile confirms what Chrome returns under
- * attestation `none`.
  */
 export const PROVIDER_AAGUIDS: {
   readonly [aaguid: string]: Exclude<PasskeyProvider, 'passwordManager'>
@@ -96,7 +94,7 @@ export const kindLineOf = (
         nameKey: `socialRecovery.ceremony.devices.${deviceOf(facts, platform)}`
       }
 
-/** The loss line under a kind (D-305). */
+/** The loss line under a kind. */
 export const lossLineKeyOf = (facts: Pick<PasskeyFacts, 'kind'>): string =>
   facts.kind === 'synced'
     ? 'socialRecovery.ceremony.syncedLoss'
