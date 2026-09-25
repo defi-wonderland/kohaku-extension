@@ -1117,11 +1117,17 @@ export class ScriptedChain {
             expected: record.attemptId
           })
         }
-        if (!record.usedMethods.some((m) => sameAddress(m, effect.method))) {
-          return kitError('MethodNotUsed', { attemptId: record.attemptId, method: effect.method })
+        if (record.setupNonce !== this.setup.setupNonce) {
+          return kitError('StaleAttempt', {
+            judgedUnder: record.setupNonce,
+            currentNonce: this.setup.setupNonce
+          })
         }
         if (record.ignoresPause)
           return kitError('AttemptIgnoresPause', { attemptId: record.attemptId })
+        if (!record.usedMethods.some((m) => sameAddress(m, effect.method))) {
+          return kitError('MethodNotUsed', { attemptId: record.attemptId, method: effect.method })
+        }
         if (this.method(effect.method)?.paused !== true) {
           return kitError('MethodNotStopped', { method: effect.method })
         }

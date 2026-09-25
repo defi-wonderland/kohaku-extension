@@ -231,7 +231,11 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     return this.context
   }
 
-  /** The construction checks, run once per builder and memoized. */
+  /**
+   * The construction checks, run once per builder and memoized. The client
+   * configuration has no version-escape option, so the builder double never
+   * escapes a check that a real client could escape.
+   */
   private construct(): Promise<ClientContext> {
     this.frozen = true
     if (!this.checks) {
