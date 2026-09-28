@@ -24,7 +24,11 @@ import {
   shippedMethodDoubles,
   WalletReadsDouble
 } from '@web/modules/social-recovery/sdk-doubles'
-import type { DeploymentDescriptor, Domain } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  DeploymentDescriptor,
+  Domain,
+  IRecoveryMethod
+} from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from './addresses'
 import { clientConfigurationOf } from './configuration'
@@ -134,7 +138,17 @@ export const buildRecoveryClient = async (
     .config(clientConfiguration)
     .policyManager(manager)
   // The builder's method registry: the four shipped methods.
-  shippedMethodDoubles(chain).forEach((method) => builder.method(method))
+  const methods: IRecoveryMethod[] = shippedMethodDoubles(chain)
+  methods.forEach((method) => builder.method(method))
+  // Each slug of the address book to the registered method serving its module.
+  const methodsBySlug = new Map(
+    Object.entries(config.addressBook.methods).flatMap(([slug, module]) => {
+      const served = methods.find((method) =>
+        method.modules(descriptor).some((address) => sameAddress(address, module))
+      )
+      return served ? [[slug, served] as const] : []
+    })
+  )
 
   try {
     const setup = await builder.buildSetupClient()
@@ -155,6 +169,7 @@ export const buildRecoveryClient = async (
       action,
       moduleReads,
       approving,
+      methodFor: (slug: string) => methodsBySlug.get(slug),
       walletReads
     })
   } catch (thrown) {
