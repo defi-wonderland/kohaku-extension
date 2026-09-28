@@ -85,8 +85,8 @@ const CeremonyScreen = () => {
   const started = useRef(false)
   const abort = useRef<AbortController | null>(null)
   const gate = useRef<VisibilityGate | null>(null)
-  // The store the gate serves, read when a report is written, so a run that
-  // began before a new store arrived writes to the new one.
+  // The store the gate serves, read each time a report is handed to the gate,
+  // so a run that began before a new store arrived writes to the new one.
   const reportStore = useRef<ReportStore>(source.store ?? browserReportStore)
   const visibility = source.visibility ?? (typeof document !== 'undefined' ? document : undefined)
 
