@@ -1,6 +1,6 @@
 import { maxUint256 } from 'viem'
 
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
   checksumAddress,
@@ -45,25 +45,25 @@ describe('address checksum: one case is checksummed, a mixed case must hold', ()
   })
 
   it('refuses the forty digits without the 0x prefix', () => {
-    const bare = LOWER.slice(2)
+    const bare = LOWER.slice(2) as Address
     expectRefusal(() => checksumAddress(bare), `Not an address: ${bare}`)
   })
 
   it('refuses 39 or 41 hex digits', () => {
-    const short = LOWER.slice(0, -1)
-    const long = `${LOWER}0`
+    const short = LOWER.slice(0, -1) as Address
+    const long = `${LOWER}0` as Address
     expectRefusal(() => checksumAddress(short), `Not an address: ${short}`)
     expectRefusal(() => checksumAddress(long), `Not an address: ${long}`)
   })
 
   it('refuses forty digits with one that is not hex', () => {
-    const nonHex = `${LOWER.slice(0, -1)}g`
+    const nonHex = `${LOWER.slice(0, -1)}g` as Address
     expectRefusal(() => checksumAddress(nonHex), `Not an address: ${nonHex}`)
   })
 
   it('refuses an address with a space before it or a newline after it', () => {
-    const leadingSpace = ` ${LOWER}`
-    const trailingNewline = `${LOWER}\n`
+    const leadingSpace = ` ${LOWER}` as Address
+    const trailingNewline = `${LOWER}\n` as Address
     expectRefusal(() => checksumAddress(leadingSpace), `Not an address: ${leadingSpace}`)
     expectRefusal(() => checksumAddress(trailingNewline), `Not an address: ${trailingNewline}`)
   })
@@ -136,7 +136,7 @@ describe('user-typed method name: caps at 24 characters', () => {
 
 describe('transaction hash or challenge: twelve and six', () => {
   // A 32-byte hash.
-  const HASH = `0x0123456789ab${'c'.repeat(46)}fedcba`
+  const HASH: Hex = `0x0123456789ab${'c'.repeat(46)}fedcba`
 
   it('renders 0x, twelve leading hex digits, an ellipsis and six trailing', () => {
     expect(renderHash(HASH)).toBe('0x0123456789ab…fedcba')
@@ -145,7 +145,7 @@ describe('transaction hash or challenge: twelve and six', () => {
 
 describe('approval blob: twelve and eight', () => {
   // A 65-byte signature-shaped blob.
-  const BLOB = `0xa1b2c3d4e5f6${'0'.repeat(110)}9876fedc`
+  const BLOB: Hex = `0xa1b2c3d4e5f6${'0'.repeat(110)}9876fedc`
 
   it('renders 0x, twelve leading hex digits, an ellipsis and eight trailing', () => {
     expect(renderApproval(BLOB)).toBe('0xa1b2c3d4e5f6…9876fedc')
@@ -160,8 +160,8 @@ describe('hash and approval: only 0x and hex digits render', () => {
     '0123456789abcdef',
     '0X0123456789abcdef',
     '0x0123456789abcdeg'
-  ]
-  const SHORT_HEX = ['0x', '0xabc', '0xABCdef']
+  ] as Hex[]
+  const SHORT_HEX: Hex[] = ['0x', '0xabc', '0xABCdef']
 
   it('refuses a value that is not 0x and hex digits, naming the value', () => {
     NOT_HEX.forEach((value) => {
