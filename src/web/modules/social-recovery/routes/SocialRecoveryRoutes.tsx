@@ -41,15 +41,9 @@ const SocialRecoveryRoutes = () => (
     <Route>
       {/*
         The open surfaces mount here: socialRecoveryApprove,
-        socialRecoveryFastTrack and socialRecoveryRecover. socialRecoveryCeremony
-        mounts in the group its callers need.
+        socialRecoveryFastTrack and socialRecoveryRecover.
       */}
-      {/*
-        The ceremony tab runs in the open group because its callers include a
-        fresh install with no keystore. The tab reads no keystore and holds no
-        signer, so it needs no guard. A guard would also send a tab waiting on a
-        phone hand-off to the unlock screen on auto-lock and lose the result.
-      */}
+      {/* The passkey ceremony tab. It needs no guard, because a fresh install with no keystore also opens it. */}
       <Route path="ceremony" element={<CeremonyScreen />} />
     </Route>
   </Routes>
