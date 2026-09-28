@@ -1,6 +1,9 @@
+import { maxUint256 } from 'viem'
+
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
+  checksumAddress,
   ellipsizeName,
   renderApproval,
   renderFullAddress,
@@ -23,6 +26,48 @@ const LOWER = '0x2b0f5e98ee98adc9865745e98802f333f72f6ef5'
 const UPPER = '0x2B0F5E98EE98ADC9865745E98802F333F72F6EF5'
 // One letter's case flipped: mixed case with a checksum that does not hold.
 const BAD_CHECKSUM = '0x2B0F5E98Ee98ADC9865745e98802F333f72F6ef5'
+
+describe('address checksum: one case is checksummed, a mixed case must hold', () => {
+  it('checksums a lowercase address', () => {
+    expect(checksumAddress(LOWER)).toBe(CHECKSUMMED)
+  })
+
+  it('returns a mixed-case address whose checksum holds as it is', () => {
+    expect(checksumAddress(CHECKSUMMED)).toBe(CHECKSUMMED)
+  })
+
+  it('checksums an all-uppercase address', () => {
+    expect(checksumAddress(UPPER)).toBe(CHECKSUMMED)
+  })
+
+  it('refuses a mixed-case address whose checksum does not hold', () => {
+    expectRefusal(() => checksumAddress(BAD_CHECKSUM), `Bad address checksum: ${BAD_CHECKSUM}`)
+  })
+
+  it('refuses the forty digits without the 0x prefix', () => {
+    const bare = LOWER.slice(2)
+    expectRefusal(() => checksumAddress(bare), `Not an address: ${bare}`)
+  })
+
+  it('refuses 39 or 41 hex digits', () => {
+    const short = LOWER.slice(0, -1)
+    const long = `${LOWER}0`
+    expectRefusal(() => checksumAddress(short), `Not an address: ${short}`)
+    expectRefusal(() => checksumAddress(long), `Not an address: ${long}`)
+  })
+
+  it('refuses forty digits with one that is not hex', () => {
+    const nonHex = `${LOWER.slice(0, -1)}g`
+    expectRefusal(() => checksumAddress(nonHex), `Not an address: ${nonHex}`)
+  })
+
+  it('refuses an address with a space before it or a newline after it', () => {
+    const leadingSpace = ` ${LOWER}`
+    const trailingNewline = `${LOWER}\n`
+    expectRefusal(() => checksumAddress(leadingSpace), `Not an address: ${leadingSpace}`)
+    expectRefusal(() => checksumAddress(trailingNewline), `Not an address: ${trailingNewline}`)
+  })
+})
 
 describe('short address: four and four hex digits after the prefix', () => {
   it('renders 0x2b0F…6ef5', () => {
@@ -107,6 +152,37 @@ describe('approval blob: twelve and eight', () => {
   })
 })
 
+describe('hash and approval: only 0x and hex digits render', () => {
+  const NOT_HEX = [
+    '',
+    'hash',
+    ' 0xab',
+    '0123456789abcdef',
+    '0X0123456789abcdef',
+    '0x0123456789abcdeg'
+  ]
+  const SHORT_HEX = ['0x', '0xabc', '0xABCdef']
+
+  it('refuses a value that is not 0x and hex digits, naming the value', () => {
+    NOT_HEX.forEach((value) => {
+      expectRefusal(() => renderHash(value), `Not hex: ${value}`)
+      expectRefusal(() => renderApproval(value), `Not hex: ${value}`)
+    })
+  })
+
+  it('renders a short hex value whole: empty, odd length or uppercase digits', () => {
+    SHORT_HEX.forEach((value) => {
+      expect(renderHash(value)).toBe(value)
+      expect(renderApproval(value)).toBe(value)
+    })
+  })
+
+  it('renders eighteen digits of a hash whole and truncates nineteen', () => {
+    expect(renderHash(`0x${'a'.repeat(18)}`)).toBe(`0x${'a'.repeat(18)}`)
+    expect(renderHash(`0x${'a'.repeat(19)}`)).toBe(`0x${'a'.repeat(12)}…${'a'.repeat(6)}`)
+  })
+})
+
 describe('hidden value: sixteen dots beside a hidden chip', () => {
   it('renders exactly sixteen dots and the Hidden chip', () => {
     expect(renderHiddenValue()).toEqual({
@@ -183,6 +259,30 @@ describe('token amount', () => {
   it('still renders with zero decimals and with six', () => {
     expect(renderTokenAmount(12n, 0)).toBe('12.00')
     expect(renderTokenAmount(12_500_000n, 6)).toBe('12.50')
+  })
+
+  it('renders the largest uint256 at 18 decimals with every digit', () => {
+    expect(renderTokenAmount(maxUint256, 18)).toBe(
+      '115792089237316195423570985008687907853269984665640564039457.584007913129639935'
+    )
+  })
+
+  it('renders an amount at more than 80 decimals', () => {
+    expect(renderTokenAmount(1n, 100)).toBe(`0.${'0'.repeat(99)}1`)
+    expect(renderTokenAmount(BigInt(`123${'0'.repeat(98)}`), 100)).toBe('1.23')
+  })
+
+  it('renders the largest uint256 at 255 decimals, the most a token declares', () => {
+    expect(renderTokenAmount(maxUint256, 255)).toBe(`0.${'0'.repeat(177)}${maxUint256}`)
+  })
+
+  it('refuses 256 decimals, one past what a token declares', () => {
+    expectRefusal(() => renderTokenAmount(1n, 256), 'Not token decimals: 256')
+  })
+
+  it('renders an amount of 2^511 or more whole', () => {
+    const amount = BigInt(`0x8${'0'.repeat(127)}`)
+    expect(renderTokenAmount(amount, 0)).toBe(`${amount}.00`)
   })
 })
 
