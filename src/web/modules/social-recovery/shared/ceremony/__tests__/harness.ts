@@ -66,7 +66,13 @@ if (!globalThis.crypto?.subtle) {
   const { webcrypto } = require('crypto') as { webcrypto: Crypto }
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true })
 }
+// viem builds a TextEncoder when it loads, so it loads after the globals above
+// and a jsdom test reads its helpers from here.
+const viem = require('viem') as typeof import('viem')
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
+
+export const { bytesToHex, hexToBytes, zeroHash } = viem
+const { isHex, numberToBytes } = viem
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,17 +103,6 @@ export const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 // Bytes
 // ---------------------------------------------------------------------------
 
-export const hexToBytes = (hex: string): Uint8Array => {
-  const clean = hex.startsWith('0x') ? hex.slice(2) : hex
-  const even = clean.length % 2 ? `0${clean}` : clean
-  const out = new Uint8Array(even.length / 2)
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(even.slice(i * 2, i * 2 + 2), 16)
-  return out
-}
-
-export const bytesToHex = (bytes: Uint8Array): Hex =>
-  `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`
-
 export const concatBytes = (...parts: (Uint8Array | number[])[]): Uint8Array => {
   const arrays = parts.map((p) => (p instanceof Uint8Array ? p : Uint8Array.from(p)))
   const out = new Uint8Array(arrays.reduce((n, a) => n + a.length, 0))
@@ -127,9 +122,7 @@ export const toBuffer = (bytes: Uint8Array): ArrayBuffer => {
 }
 
 const bigToBytes = (value: bigint, length?: number): Uint8Array => {
-  let hex = value.toString(16)
-  if (hex.length % 2) hex = `0${hex}`
-  const bytes = hexToBytes(hex)
+  const bytes = numberToBytes(value)
   if (length === undefined || bytes.length >= length) return bytes
   return concatBytes(new Uint8Array(length - bytes.length), bytes)
 }
@@ -147,7 +140,7 @@ export const asBytes = (value: unknown): Uint8Array | null => {
   if (tag === '[object ArrayBuffer]') return new Uint8Array(value as ArrayBuffer)
   if (ArrayBuffer.isView(value))
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-  if (typeof value === 'string' && /^0x([0-9a-fA-F]{2})*$/.test(value)) return hexToBytes(value)
+  if (isHex(value) && value.length % 2 === 0) return hexToBytes(value)
   return null
 }
 
@@ -221,7 +214,7 @@ export const signaturesIn = (value: unknown, depth = 0, seen = new Set<unknown>(
   const record = value as Record<string, unknown>
   const toBig = (v: unknown): bigint | null => {
     if (typeof v === 'bigint') return v
-    if (typeof v === 'string' && /^0x[0-9a-fA-F]+$/.test(v)) return BigInt(v)
+    if (isHex(v) && v !== '0x') return BigInt(v)
     return null
   }
   const r = toBig(record.r)
@@ -314,7 +307,7 @@ export const coseKey = ({ x, y }: P256Point): Uint8Array =>
 
 /** The SPKI DER of an ES256 public key, what `getPublicKey()` returns. */
 export const spki = ({ x, y }: P256Point): Uint8Array =>
-  concatBytes(hexToBytes('3059301306072a8648ce3d020106082a8648ce3d030107034200'), [0x04], x, y)
+  concatBytes(hexToBytes('0x3059301306072a8648ce3d020106082a8648ce3d030107034200'), [0x04], x, y)
 
 export interface AuthDataOptions {
   flags: number
@@ -353,7 +346,7 @@ export const authenticatorData = ({
   if (!credentialId || !point) throw new Error('attested credential data needs an id and a key')
   return concatBytes(
     head,
-    hexToBytes(aaguid.replace(/-/g, '')),
+    hexToBytes(`0x${aaguid.replace(/-/g, '')}`),
     bigToBytes(BigInt(credentialId.length), 2),
     credentialId,
     coseKey(point)

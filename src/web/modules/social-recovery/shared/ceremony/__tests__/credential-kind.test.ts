@@ -30,7 +30,8 @@ import {
   P256Point,
   SYNCED_FLAGS,
   UNKNOWN_AAGUID,
-  ZERO_AAGUID
+  ZERO_AAGUID,
+  zeroHash
 } from './harness'
 
 let point: P256Point
@@ -62,7 +63,6 @@ describe('the kind read from authenticator data flags', () => {
 
   it('reads the kind from BE and BS alone, whatever the other bits say', () => {
     // UP and UV clear, the rp id hash all zero: only BE and BS decide.
-    const zeroHash = `0x${'00'.repeat(32)}` as const
     expect(
       kindFromAuthData(authenticatorData({ flags: FLAGS.BE | FLAGS.BS, rpIdHash: zeroHash }))
     ).toBe('synced')
