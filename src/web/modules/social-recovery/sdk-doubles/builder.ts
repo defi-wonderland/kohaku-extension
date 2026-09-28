@@ -15,6 +15,7 @@ import type {
   Address,
   ClientConfiguration,
   DeploymentDescriptor,
+  Hex,
   IActionCodec,
   IEventManager,
   IMethodModuleReads,
@@ -41,6 +42,12 @@ import { ProviderDouble } from './provider'
 import { narrowActionInteractor, RecoveryActionDouble } from './recovery-action'
 import { RecoveryClientDouble } from './recovery-client'
 import { SetupClientDouble } from './setup-client'
+
+/**
+ * The EIP-5267 `fields` bitmap of the manager's domain: name, version, chain id
+ * and verifying contract, the four members the digests derive under.
+ */
+export const MANAGER_DOMAIN_FIELDS: Hex = '0x0f'
 
 const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
   'chainId',
@@ -292,7 +299,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
         ) {
           throw constructionRefusal('domain', 'The manager’s domain disagrees with the descriptor.')
         }
-        if (domain.fields.toLowerCase() !== '0x0f') {
+        if (domain.fields.toLowerCase() !== MANAGER_DOMAIN_FIELDS) {
           throw constructionRefusal(
             'domain-fields',
             'The manager’s domain carries members this build does not derive under.'
