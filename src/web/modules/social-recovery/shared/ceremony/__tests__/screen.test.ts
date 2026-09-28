@@ -179,14 +179,20 @@ const fakeStore = () => ({
   remove: jest.fn<Promise<unknown>, [string]>(async () => null)
 })
 
-/** Renders the tab at `search`; with `from`, the tab was opened from that page. */
-const render = async (search: string, from?: string) => {
+/**
+ * Renders the tab at `search`. With `from`, the tab was opened from that page;
+ * with `strict`, it renders inside React's StrictMode.
+ */
+const render = async (
+  search: string,
+  { from, strict }: { from?: string; strict?: boolean } = {}
+) => {
   const Screen = loadScreen()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
   const tab = `/social-recovery/ceremony${search}`
-  const page = from
+  const routed = from
     ? React.createElement(
         Routes,
         null,
@@ -200,18 +206,17 @@ const render = async (search: string, from?: string) => {
         })
       )
     : React.createElement(Screen)
+  const page = React.createElement(
+    MemoryRouter,
+    {
+      initialEntries: from ? [from, tab] : [tab],
+      initialIndex: from ? 1 : 0,
+      future: { v7_startTransition: true, v7_relativeSplatPath: true }
+    },
+    routed
+  )
   await act(async () => {
-    root?.render(
-      React.createElement(
-        MemoryRouter,
-        {
-          initialEntries: from ? [from, tab] : [tab],
-          initialIndex: from ? 1 : 0,
-          future: { v7_startTransition: true, v7_relativeSplatPath: true }
-        },
-        page
-      )
-    )
+    root?.render(strict ? React.createElement(React.StrictMode, null, page) : page)
   })
   await act(async () => flush(20))
   return container
@@ -640,7 +645,7 @@ describe('a report the store fails to write', () => {
     setVisibility('visible', false)
     const { store } = source()
     store.set.mockRejectedValueOnce(refusal())
-    const page = await render(CLAIM, '/social-recovery/setup')
+    const page = await render(CLAIM, { from: '/social-recovery/setup' })
     expect(page.textContent).toContain(DELIVERY_FAILED)
 
     await press(page, 'Back')
@@ -778,5 +783,98 @@ describe('a cancel while the ceremony resolves', () => {
     expect(methodRunCount(method, orchestrator)).toBe(0)
     expect(store.set).toHaveBeenCalledTimes(1)
     expect(reported(store)).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+  })
+})
+
+/** A browser that answers the claim's prompt and keeps the abort signal it was given. */
+const signalKeepingBrowser = () => {
+  const seen: { signal?: AbortSignal } = {}
+  browser = installCredentials({
+    get: async (options) => {
+      seen.signal = options?.signal
+      return fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential
+    }
+  })
+  return { creds: browser, seen }
+}
+
+/** Holds the method's reply until the test calls the returned release. */
+const holdReply = (method: ReturnType<typeof source>['method']) => {
+  let finish: (proof: typeof PROOF_HEX) => void = () => undefined
+  method.replyFrom.mockImplementation(
+    () =>
+      new Promise<typeof PROOF_HEX>((resolve) => {
+        finish = resolve
+      })
+  )
+  return async () =>
+    act(async () => {
+      finish(PROOF_HEX)
+      await flush(20)
+    })
+}
+
+describe('a store handed to the tab while the method runs', () => {
+  /** Runs a claim whose method answers only after the tab received a new store. */
+  const claimAcrossAStoreSwap = async () => {
+    setVisibility('visible', false)
+    const { creds, seen } = signalKeepingBrowser()
+    const { method, store } = source()
+    const release = holdReply(method)
+    const page = await render(CLAIM)
+    expect(method.replyFrom).toHaveBeenCalledTimes(1)
+
+    const next = fakeStore()
+    await swapSource({ ...mockSource.current, store: next })
+    const abortedBySwap = seen.signal?.aborted
+    await release()
+    return { creds, store, next, page, abortedBySwap }
+  }
+
+  it('lets the ceremony finish and report passed, not cancelled, with one report', async () => {
+    const { creds, store, next, page, abortedBySwap } = await claimAcrossAStoreSwap()
+    expect(abortedBySwap).toBe(false)
+    expect(page.textContent).toContain('passed just now')
+    expect(page.textContent).not.toContain('Cancelled')
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    const written = [...store.set.mock.calls, ...next.set.mock.calls]
+    expect(written).toHaveLength(1)
+    expect((written[0][1] as { outcome: unknown }).outcome).toMatchObject({
+      kind: 'verdict',
+      verdict: 'passed'
+    })
+  })
+})
+
+describe('the tab inside React StrictMode', () => {
+  it('starts the ceremony once and writes one report', async () => {
+    setVisibility('visible', false)
+    const creds = answeringBrowser()
+    const { store, resolve } = source()
+    const page = await render(CLAIM, { strict: true })
+    expect(resolve).toHaveBeenCalledTimes(1)
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(reported(store)).toMatchObject({ kind: 'verdict', verdict: 'passed' })
+    expect(page.textContent).toContain('passed just now')
+  })
+})
+
+describe('a tab closed while the method runs', () => {
+  it('aborts the ceremony and writes nothing', async () => {
+    setVisibility('visible', false)
+    const { seen } = signalKeepingBrowser()
+    const { method, store } = source()
+    const release = holdReply(method)
+    await render(CLAIM)
+    expect(method.replyFrom).toHaveBeenCalledTimes(1)
+    expect(seen.signal?.aborted).toBe(false)
+
+    await act(async () => root?.unmount())
+    root = null
+    expect(seen.signal?.aborted).toBe(true)
+
+    await release()
+    expect(store.set).not.toHaveBeenCalled()
   })
 })
