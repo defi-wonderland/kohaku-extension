@@ -1,16 +1,17 @@
 /**
- * What the classification of a write's end takes for a transaction hash and
- * for a quantity of a receipt.
+ * What the classification of a write's end takes from a thrown value: a
+ * transaction hash, and the receipt ethers carries on it.
  *
  * - A hash is `0x` and exactly 64 hex digits, in either case. A thrown value
  *   that names one and carries no receipt keeps the write waiting for its
  *   receipt, and a status-zero receipt that carries one reads reverted. A
  *   thrown value with anything else in its place reads that nothing was sent.
- * - A quantity of a receipt (the gas used, the gas price) is a bigint, a safe
- *   whole number from zero, a `0x` hex string with at least one digit, or a
- *   string of decimal digits. Anything else, a negative among them, is left
- *   out, and a revert whose receipt lacks a factor of its gas names no gas
- *   spent.
+ * - The receipt is ethers' `TransactionReceipt`: a numeric status, and the gas
+ *   used and the gas price as bigints, whose product is the gas the revert
+ *   spent. A gas factor that is missing, or of another type, is left out, and
+ *   the revert names no gas spent. A node's raw JSON receipt is not the shape
+ *   ethers gives, so a thrown value that carries only one reads that nothing
+ *   was sent.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -41,22 +42,18 @@ const NOT_HASHES: [string, string][] = [
   ['a letter past f, at the length of a hash', `0x${'g'.repeat(64)}`]
 ]
 
-/** ethers' error from `wait()` on a mined revert, carrying a node's JSON receipt. */
+/** ethers' error from `wait()` on a mined revert, carrying the receipt given and no transaction. */
 const minedAndRevertedWith = (receipt: Record<string, unknown>): Error =>
   Object.assign(new Error('transaction execution reverted'), { code: 'CALL_EXCEPTION', receipt })
 
-/** A node's status-zero receipt with the fields given. */
-const nodeReceipt = (fields: Record<string, unknown>) => ({
-  transactionHash: TX_HASH,
-  status: '0x0',
-  ...fields
-})
-
-/** Thrown values that name `value`: a wait with no receipt, a mined revert with ethers' receipt and with a node's. */
+/**
+ * Thrown values that name `value`: a wait with no receipt, a mined revert
+ * with the transaction and its receipt, and one with the receipt alone.
+ */
 const thrownNaming = (value: string): Error[] => [
   waitTimedOut(value as Hex),
   minedAndReverted(value as Hex),
-  minedAndRevertedWith({ transactionHash: value, status: '0x0' })
+  minedAndRevertedWith({ hash: value, status: 0 })
 ]
 
 describe('a transaction hash', () => {
@@ -64,17 +61,17 @@ describe('a transaction hash', () => {
     HASHES.forEach(([name, hash]) =>
       it(name, () => {
         WRITE_KINDS.forEach((write) => {
-          const [waiting, ethersReceipt, nodeShape] = thrownNaming(hash)
+          const [waiting, withTransaction, receiptAlone] = thrownNaming(hash)
           expect(failThrown(write, waiting)).toEqual({
             status: 'submitting',
             write,
             transactionHash: hash
           })
-          expect(failThrown(write, ethersReceipt)).toMatchObject({
+          expect(failThrown(write, withTransaction)).toMatchObject({
             status: 'failedReverted',
             transactionHash: hash
           })
-          expect(failThrown(write, nodeShape)).toMatchObject({
+          expect(failThrown(write, receiptAlone)).toMatchObject({
             status: 'failedReverted',
             transactionHash: hash
           })
@@ -96,49 +93,57 @@ describe('a transaction hash', () => {
   })
 })
 
-describe('the gas a mined revert spent, at a gas price of 2 gwei', () => {
-  const spentWith = (gasUsed: unknown, price: Record<string, unknown>) =>
+describe('the gas a mined revert spent', () => {
+  const spentWith = (gas: Record<string, unknown>) =>
     WRITE_KINDS.map((write) =>
-      failThrown(write, minedAndRevertedWith(nodeReceipt({ gasUsed, ...price })))
+      failThrown(write, minedAndRevertedWith({ hash: TX_HASH, status: 0, ...gas }))
     )
 
-  const QUANTITIES: [string, unknown, bigint][] = [
-    ['0x0a', '0x0a', 10n],
-    ['a hex string in upper case, 0xFF', '0xFF', 255n],
-    ['0x0', '0x0', 0n],
-    ['a string of decimal digits, 51234', '51234', 51_234n],
-    ['a whole number, 51234', 51_234, 51_234n],
-    ['a bigint, 51234', 51_234n, 51_234n]
-  ]
+  it('is the gas used times the gas price', () => {
+    spentWith({ gasUsed: 51_234n, gasPrice: 2n * GWEI }).forEach((state) =>
+      expect(state).toMatchObject({ status: 'failedReverted', gasSpent: 51_234n * 2n * GWEI })
+    )
+  })
 
-  const NOT_QUANTITIES: [string, unknown][] = [
-    ['0x alone', '0x'],
-    ['0X with a capital X', '0X0a'],
-    ['a hex string with a letter past f', '0x0g'],
-    ['a negative decimal string', '-5'],
-    ['a negative hex string', '-0x5']
-  ]
+  it('is zero for zero gas used, not left out', () => {
+    spentWith({ gasUsed: 0n, gasPrice: 2n * GWEI }).forEach((state) =>
+      expect(state).toMatchObject({ status: 'failedReverted', gasSpent: 0n })
+    )
+  })
 
-  QUANTITIES.forEach(([name, value, gas]) =>
-    it(`gas used as ${name} is read`, () => {
-      spentWith(value, { effectiveGasPrice: '2000000000' }).forEach((state) =>
-        expect(state).toMatchObject({ status: 'failedReverted', gasSpent: gas * 2n * GWEI })
-      )
+  it('is not named for a receipt with no gas price, and the write still reads reverted', () => {
+    spentWith({ gasUsed: 51_234n }).forEach((state) => {
+      expect(readingOf(state)).toBe('reverted')
+      expect(state).not.toHaveProperty('gasSpent')
     })
-  )
+  })
 
-  NOT_QUANTITIES.forEach(([name, value]) =>
-    it(`gas used as ${name} is left out: the write reads reverted and names no gas spent`, () => {
-      spentWith(value, { effectiveGasPrice: '2000000000' }).forEach((state) => {
+  it('is not named for a gas factor that is no bigint, and the write still reads reverted', () => {
+    const factors = [
+      { gasUsed: '0x0a', gasPrice: 2n * GWEI },
+      { gasUsed: 10, gasPrice: 2n * GWEI },
+      { gasUsed: 10n, gasPrice: '0x77359400' }
+    ]
+    factors.forEach((gas) =>
+      spentWith(gas).forEach((state) => {
         expect(readingOf(state)).toBe('reverted')
         expect(state).not.toHaveProperty('gasSpent')
       })
-    })
-  )
+    )
+  })
+})
 
-  it('a gas price in hex stands in for a missing effective gas price', () => {
-    spentWith('0x0a', { gasPrice: '0x77359400' }).forEach((state) =>
-      expect(state).toMatchObject({ status: 'failedReverted', gasSpent: 20n * GWEI })
+describe("a node's raw JSON receipt", () => {
+  it('carried alone by a thrown value is no receipt: the write reads that nothing was sent', () => {
+    const rawReceipt = {
+      transactionHash: TX_HASH,
+      status: '0x0',
+      blockNumber: '0x6acfc1',
+      gasUsed: '0x0a',
+      effectiveGasPrice: '0x77359400'
+    }
+    WRITE_KINDS.forEach((write) =>
+      expect(readingOf(failThrown(write, minedAndRevertedWith(rawReceipt)))).toBe('notSent')
     )
   })
 })
