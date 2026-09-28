@@ -366,6 +366,12 @@ export const deserializeOrder = (order: SerializedPaymentOrder): PaymentOrder =>
 
 const lower = (address: Address): Address => address.toLowerCase() as Address
 
+/**
+ * The EIP-5267 `fields` bitmap of the manager's domain: name, version, chain id
+ * and verifying contract, the four members the digests derive under.
+ */
+export const MANAGER_DOMAIN_FIELDS: Hex = '0x0f'
+
 /** The EIP-712 types: two message types over one nested `PaymentOrder`. */
 export const APPROVAL_TYPES = {
   Approval: [

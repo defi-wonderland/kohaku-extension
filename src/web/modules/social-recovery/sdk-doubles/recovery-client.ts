@@ -54,6 +54,7 @@ import {
 import {
   deserializeOrder,
   digestOf,
+  distinctAddresses,
   keccak256,
   placesOf,
   readSetupBody,
@@ -64,13 +65,7 @@ import {
 } from './encoding'
 import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import {
-  codedError,
-  finding,
-  type ModuleRead,
-  ScriptedReadFailure,
-  validationRefusal
-} from './scripts'
+import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
 import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
 
 /**
@@ -90,10 +85,6 @@ const rowsToFindings = (rows: RequestRow[]): Finding[] =>
 const refuseWith = (...rows: RequestRow[]): never => {
   throw validationRefusal({ errors: rowsToFindings(rows), warnings: [] })
 }
-
-/** The refusal for a module read a client needs that did not answer, at one place. */
-const unansweredRead = (read: ModuleRead, module: Address, place: number): ScriptedReadFailure =>
-  new ScriptedReadFailure(read, undefined, { module, place })
 
 const readsGathering = (g: Gathering): boolean =>
   !!g && g.kind === 'gathering' && g.version === RECORD_VERSION
@@ -478,9 +469,9 @@ export class RecoveryClientDouble implements IRecoveryClient {
       const placeOf = (p: number): GatheringPlace => byPlace.get(p) as GatheringPlace
       const rankOf = (set: number[]): SetRank => ({
         stopped: set.some((p) => placeOf(p).standing === 'stopped') ? 1 : 0,
-        stoppable: new Set(
-          set.filter((p) => placeOf(p).stoppable).map((p) => placeOf(p).method.toLowerCase())
-        ).size,
+        stoppable: distinctAddresses(
+          set.filter((p) => placeOf(p).stoppable).map((p) => placeOf(p).method)
+        ).length,
         filed: set.map((p) => filedOrder.get(p) as number).sort((a, b) => a - b)
       })
       const candidates = whole.clauses.reduce<number[][]>(

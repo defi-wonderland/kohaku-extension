@@ -63,6 +63,7 @@ import {
   hashOf,
   keccak256,
   levelOfMetadata,
+  MANAGER_DOMAIN_FIELDS,
   readSetupBody,
   sameAddress,
   sealBackup,
@@ -341,7 +342,7 @@ export class ScriptedChain {
       version: this.descriptor.managerVersion,
       supportsInterface: true,
       domain: {
-        fields: '0x0f',
+        fields: MANAGER_DOMAIN_FIELDS,
         name: 'PolicyManager',
         version: this.descriptor.digestVersion,
         chainId: BigInt(this.descriptor.chainId),
