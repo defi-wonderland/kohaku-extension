@@ -128,6 +128,11 @@ const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
 const METHOD: Address = '0x3333333333333333333333333333333333333333'
 const MANAGER: Address = '0x4444444444444444444444444444444444444444'
 const ACTION: Address = '0x5555555555555555555555555555555555555555'
+// One address in three spellings: lower case, its checksum, and a mixed case
+// that fails the checksum.
+const LOWER: Address = '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed'
+const CHECKSUMMED: Address = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed'
+const MISCASED: Address = '0x5AAeb6053F3E94C9b9A09f33669435E7Ef1BeAed'
 const CHAIN_ID = 11155111n
 const T0 = 1_700_000_000_000
 const HOUR = 60 * 60 * 1000
@@ -401,6 +406,18 @@ describe('the six setup records', () => {
     ])
   })
 
+  it('keys an address alike in lower case, in its checksum and in a mixed case that fails the checksum', async () => {
+    const { storage, records } = setup()
+    await records.setup(CHAIN_ID, MISCASED).inventory.write(['passport'])
+    const reads = await Promise.all(
+      [LOWER, CHECKSUMMED, MISCASED].map((spelling) =>
+        records.setup(CHAIN_ID, spelling).inventory.read()
+      )
+    )
+    reads.forEach((read) => expect(present(read).value).toEqual(['passport']))
+    expect([...storage.raw.keys()]).toEqual([`socialRecovery:inventory:${CHAIN_ID}:${LOWER}`])
+  })
+
   it('an enrollment keeps its passkey backup kind', async () => {
     const { records } = setup()
     const synced: Enrollment = { ...ENROLLMENT, backup: 'synced' }
@@ -432,6 +449,23 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
       expect(storage.raw.size).toBe(0)
     })
   )
+
+  it("refuses '0x' and '0x123', which type-check as an Address, and writes nothing", async () => {
+    const { storage, records } = setup()
+    const typed: Address[] = ['0x', '0x123']
+    const refused = (fn: () => unknown) =>
+      expect(attempt(fn)).rejects.toThrow(/Invalid account address/)
+    await Promise.all(
+      typed.map(async (addr) => {
+        await refused(() => records.setup(CHAIN_ID, addr).passwordSet.write('password-set'))
+        await refused(() => records.setupSavedAt(CHAIN_ID, addr))
+        await refused(() => records.recoverySession(CHAIN_ID, addr).write(gathering(addr), null))
+        await refused(() => records.landSubmission(CHAIN_ID, addr, null))
+        await refused(() => records.decryptedSetupCache(CHAIN_ID, addr).write(CACHE))
+      })
+    )
+    expect(storage.raw.size).toBe(0)
+  })
 
   BAD_CHAINS.forEach((bad) =>
     it(`refuses the chain id ${String(bad)} and writes nothing`, async () => {
@@ -574,6 +608,30 @@ describe('the recovery session', () => {
     await expect(writeSession(records, { ...GATHERING, purpose: 'cancellation' })).rejects.toThrow(
       /approval gathering, not cancellation/
     )
+    expect(storage.raw.size).toBe(0)
+  })
+
+  it('a write takes a gathering whose request names the account in another letter case', async () => {
+    const pairs: [Address, Address][] = [
+      [LOWER, CHECKSUMMED],
+      [CHECKSUMMED, MISCASED],
+      [MISCASED, LOWER]
+    ]
+    await Promise.all(
+      pairs.map(async ([account, named]) => {
+        const { records } = setup()
+        await writeSession(records, gathering(named, []), account)
+        expect(present(await records.recoverySession(CHAIN_ID, LOWER).read()).value).toEqual({
+          state: 'live',
+          gathering: gathering(named, [])
+        })
+      })
+    )
+  })
+
+  it('a write refuses a gathering whose request names no valid account, and writes nothing', async () => {
+    const { storage, records } = setup()
+    await expect(writeSession(records, gathering('0x123'))).rejects.toThrow(/0x123/)
     expect(storage.raw.size).toBe(0)
   })
   ;['security-stop', 'securityStop', 'pause', 'cancelled', ''].forEach((event) =>
@@ -959,6 +1017,49 @@ describe('the session survives the submission as the countdown record, with no i
     expect(sessions.map((s) => s.account.toLowerCase())).toEqual([ACCOUNT.toLowerCase()])
   })
 
+  const SESSIONS_PREFIX = `socialRecovery:recoverySession:${CHAIN_ID}:`
+  const landedRecord = (account: Address) => ({
+    value: { state: 'landed', account },
+    savedAt: T0,
+    revision: 'a'.repeat(24)
+  })
+
+  it('the scan skips a key whose address part is not an address', async () => {
+    const { storage, records } = await landAndReset()
+    const notAddresses = [
+      '',
+      '0x',
+      '0x123',
+      `${LOWER}00`,
+      LOWER.slice(2),
+      `0x${'g'.repeat(40)}`,
+      ` ${LOWER}`,
+      `${LOWER}:${LOWER}`
+    ]
+    await Promise.all(
+      notAddresses.map((part) => storage.set(`${SESSIONS_PREFIX}${part}`, landedRecord(LOWER)))
+    )
+    expect((await records.listRecoverySessions(CHAIN_ID)).map((s) => s.account)).toEqual([ACCOUNT])
+    expect((await records.listCountdowns(CHAIN_ID)).map((c) => c.account)).toEqual([ACCOUNT])
+  })
+
+  it('the scan finds a key whose address is in lower case, in its checksum or in a mixed case that fails the checksum', async () => {
+    const { storage, records } = setup()
+    const spellings: Address[] = [
+      '0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb',
+      CHECKSUMMED,
+      '0xFB6916095ca1df60bB79Ce92cE3Ea74c37c5d359'
+    ]
+    await Promise.all(
+      spellings.map((account) => storage.set(`${SESSIONS_PREFIX}${account}`, landedRecord(account)))
+    )
+    const expected = [...spellings].sort()
+    const sessions = await records.listRecoverySessions(CHAIN_ID)
+    expect(sessions.map((s) => s.account).sort()).toEqual(expected)
+    const countdowns = await records.listCountdowns(CHAIN_ID)
+    expect(countdowns.map((c) => c.account).sort()).toEqual(expected)
+  })
+
   it('a storage without getAll cannot list, and says so', async () => {
     const { storage } = setup()
     const { getAll, ...withoutGetAll } = storage
@@ -1002,6 +1103,83 @@ describe('a live request is compared whole, and its replies only grow', () => {
       await expect(writeSession(records, gathering(ACCOUNT, APPROVALS, change))).rejects.toThrow(
         /holds another request/
       )
+      expect(dump(storage)).toBe(before)
+    })
+  )
+
+  // The block passes through a variable, so its key outside the block type is allowed.
+  const blockWithUndefined = { ...GATHERING.request.block, note: undefined }
+  const UNDEFINED_KEYS: [string, Partial<Gathering['request']>][] = [
+    ['an optional key', { payload: undefined }],
+    ['every optional key', { payload: undefined, order: undefined, consumableAfter: undefined }],
+    ['a key inside the block', { block: blockWithUndefined }]
+  ]
+
+  UNDEFINED_KEYS.forEach(([label, change]) =>
+    it(`a request that differs only by ${label} holding undefined is the same request`, async () => {
+      const { records } = setup()
+      await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))
+      await writeSession(records, gathering(ACCOUNT, APPROVALS, change))
+      expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+        state: 'live',
+        gathering: GATHERING
+      })
+    })
+  )
+
+  it('a request that differs by a key holding null is another request', async () => {
+    const { storage, records } = setup()
+    await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))
+    const before = dump(storage)
+    await expect(
+      writeSession(records, gathering(ACCOUNT, APPROVALS, { payload: null as unknown as Hex }))
+    ).rejects.toThrow(/holds another request/)
+    expect(dump(storage)).toBe(before)
+  })
+
+  it('inside an array, undefined and null count as the same entry, since the storage keeps both as null', async () => {
+    const { storage, records } = setup()
+    // The request type holds no array, so the list goes in through a cast.
+    const withList = (list: unknown[]) => ({ list } as unknown as Partial<Gathering['request']>)
+    await writeSession(records, gathering(ACCOUNT, [], withList(['0x01', undefined])))
+    await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]], withList(['0x01', undefined])))
+    await writeSession(records, gathering(ACCOUNT, APPROVALS, withList(['0x01', null])))
+    expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
+      state: 'live',
+      gathering: gathering(ACCOUNT, APPROVALS, withList(['0x01', null]))
+    })
+    const before = dump(storage)
+    await expect(
+      writeSession(records, gathering(ACCOUNT, APPROVALS, withList(['0x01'])))
+    ).rejects.toThrow(/holds another request/)
+    await expect(
+      writeSession(records, gathering(ACCOUNT, APPROVALS, withList(['0x01', '0x02'])))
+    ).rejects.toThrow(/holds another request/)
+    expect(dump(storage)).toBe(before)
+  })
+
+  const withoutRequest = Object.fromEntries(
+    Object.entries(GATHERING).filter(([key]) => key !== 'request')
+  )
+  ;(
+    [
+      ['no request', withoutRequest],
+      ['a null request', { ...GATHERING, request: null }]
+    ] as const
+  ).forEach(([label, stored]) =>
+    it(`a stored live session with ${label} is refused as holding another request, and nothing is written`, async () => {
+      const { storage, records } = setup()
+      await storage.set(recordKeys.recoverySession(CHAIN_ID, ACCOUNT), {
+        value: { state: 'live', gathering: stored },
+        savedAt: T0,
+        revision: 'c'.repeat(24)
+      })
+      const before = dump(storage)
+      storage.calls.set.length = 0
+      await expect(writeSession(records, GATHERING)).rejects.toThrow(
+        /^A live session holds another request: wipe it/
+      )
+      expect(storage.calls.set).toEqual([])
       expect(dump(storage)).toBe(before)
     })
   )
@@ -1576,6 +1754,51 @@ describe('the revision an update names', () => {
     expect(await records.countdown(CHAIN_ID, OTHER_ACCOUNT).read()).toBe(ABSENT)
     expect(await records.listRecoverySessions(CHAIN_ID)).toEqual([])
     expect(await records.listCountdowns(CHAIN_ID)).toEqual([])
+  })
+})
+
+describe('the revision a session update stores', () => {
+  // Five updates in a row, each storing a revision: two writes, a wipe, a write and a landing.
+  const fiveRevisions = async () => {
+    const { records } = setup()
+    const session = records.recoverySession(CHAIN_ID, ACCOUNT)
+    const first = await session.write(gathering(ACCOUNT, [APPROVALS[0]]), null)
+    const second = await session.write(GATHERING, first.revision)
+    await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'recoverer-abandoned', second.revision)
+    const wiped = revisionOf(await session.read())
+    const third = await session.write(GATHERING, wiped)
+    const landed = await records.landSubmission(CHAIN_ID, ACCOUNT, third.revision)
+    return [first.revision, second.revision, wiped, third.revision, landed.revision]
+  }
+
+  it('differs from every revision stored before it', async () => {
+    const revisions = await fiveRevisions()
+    expect(new Set(revisions).size).toBe(5)
+  })
+
+  it('is 0x followed by 24 lower-case hex digits', async () => {
+    const revisions = await fiveRevisions()
+    revisions.forEach((revision) => expect(revision).toMatch(/^0x[0-9a-f]{24}$/))
+  })
+
+  it('a session stored with a revision of 24 hex digits and no prefix still reads, lists and takes an update that names it', async () => {
+    const { storage, records } = setup()
+    const unprefixed = '0123456789abcdef01234567'
+    await storage.set(recordKeys.recoverySession(CHAIN_ID, ACCOUNT), {
+      value: { state: 'live', gathering: gathering(ACCOUNT, [APPROVALS[0]]) },
+      savedAt: T0,
+      revision: unprefixed
+    })
+    const session = records.recoverySession(CHAIN_ID, ACCOUNT)
+    expect(revisionOf(await session.read())).toBe(unprefixed)
+    const listed = await records.listRecoverySessions(CHAIN_ID)
+    expect(listed.map(({ record }) => record.revision)).toEqual([unprefixed])
+    const written = await session.write(GATHERING, unprefixed)
+    expect(written.revision).not.toBe(unprefixed)
+    await expect(session.write(GATHERING, unprefixed)).rejects.toBeInstanceOf(
+      SessionRevisionConflict
+    )
+    expect(present(await session.read()).value).toEqual({ state: 'live', gathering: GATHERING })
   })
 })
 
