@@ -237,9 +237,13 @@ export interface PaymentToken {
 
 /**
  * A token amount in human units, with at least two decimals and no trailing
- * zero past them: `12500000` at six decimals reads `12.50`.
+ * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
+ * on a negative amount, which no token transfer carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
+  if (amount < 0n) {
+    throw new TypeError(`Not a token amount: ${amount}`)
+  }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
   const trimmed = fraction.replace(/0+$/, '')
   return `${whole}.${trimmed.padEnd(2, '0')}`
@@ -250,7 +254,8 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
  * it, one form on every screen: `12.50 USDC to 0x…`, or `12.50 USDC to whoever
  * executes` where the payee is the zero address, which leaves it open. A missing
  * order or a zero amount renders the words no payment. The payee always renders
- * in the full form.
+ * in the full form. The payee passes the address check before the zero test, so
+ * a malformed zero address throws a TypeError instead of reading as open.
  *
  * The payment order belongs to a later release; a request of the first release
  * names no payment and renders no payment.
@@ -267,10 +272,10 @@ export const renderPaymentOrder = (
     throw new TypeError('A payment order renders only with its token symbol and decimals')
   }
   const amount = renderTokenAmount(order.amount, token.decimals)
-  if (order.payee.toLowerCase() === ZERO_ADDRESS) {
+  const payee = renderFullAddress(order.payee)
+  if (payee === ZERO_ADDRESS) {
     return t('socialRecovery.display.paymentOrderOpenPayee', { amount, symbol: token.symbol })
   }
-  const payee = renderFullAddress(order.payee)
   return t('socialRecovery.display.paymentOrder', { amount, symbol: token.symbol, payee })
 }
 
@@ -297,7 +302,19 @@ export interface RenderedDeadline {
   line: string | null
 }
 
-const toMs = (value: Date | number): number => (typeof value === 'number' ? value : value.getTime())
+// The largest distance from the epoch, in milliseconds, that a Date can hold.
+const MAX_TIME_MS = 8.64e15
+
+// A time as epoch milliseconds. NaN, an infinity, an invalid Date or a time past
+// what a Date can hold throws a TypeError here, so the date format never throws
+// a RangeError on it and the time left never reads NaN.
+const toMs = (value: Date | number): number => {
+  const ms = typeof value === 'number' ? value : value.getTime()
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_TIME_MS) {
+    throw new TypeError(`Not a time: ${String(value)}`)
+  }
+  return ms
+}
 
 /** The date and time of `at` in `timeZone`, the zone named, and the zone alone. */
 export const renderDateTimeInZone = (
@@ -337,7 +354,8 @@ export const renderRemaining = (remainingMs: number, t: Translate = appTranslate
  * The deadline as a date and time in the reader's zone, the zone named, with
  * the time left beside it: `Valid until 13 Aug, 18:04 CEST ·
  * 23 hours left`. `now` and the reader's zone are parameters, so the output
- * depends on nothing else.
+ * depends on nothing else. A deadline or a `now` that is not a valid time throws
+ * a TypeError.
  */
 export const renderDeadline = (
   input: { deadline: Date | number; now: Date | number; timeZone: string; locale?: string },
