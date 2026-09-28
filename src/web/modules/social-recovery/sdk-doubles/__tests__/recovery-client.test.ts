@@ -1,4 +1,4 @@
-import { addressOf, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
+import { addressOf } from '@web/modules/social-recovery/sdk-doubles'
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
@@ -13,20 +13,24 @@ import {
   type IRecoveryClient,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { keccak256, sha256, stringToHex } from 'viem'
+import { sha256, stringToHex } from 'viem'
 
 import {
   createWorld,
   eachIt,
   expectThrown,
+  expectUnanswered,
   fillAll,
   isAddress,
   isHex,
   momentOf,
   NO_PAYMENT,
   openRecovery,
+  passportAt,
   PASSWORD,
   replyFor,
+  upperCased,
+  walletAt,
   WINDOW,
   World,
   ZERO
@@ -47,18 +51,6 @@ const replyOf = async (world: World, request: ApproverRequest) => {
   expect(reply.kind).toBe('recovery-proof-reply')
   return reply as ApproverReply
 }
-
-const walletAt = (world: World, label: string): Credential => ({
-  method: world.descriptor.methodEcdsa,
-  config: world.methods.wallet.codec.encodeConfig({ address: addressOf(label) })
-})
-
-const passportAt = (world: World, id: string): Credential => ({
-  method: world.descriptor.methodZkpassport,
-  config: world.methods.zkPassport.codec.encodeConfig({
-    uniqueIdentifier: keccak256(stringToHex(id))
-  })
-})
 
 const passkeyAt = (world: World, key: Hex): Credential => ({
   method: world.descriptor.methodPasskey,
@@ -115,16 +107,6 @@ const completeInPlaceOrder = async (world: World, clauses: Configuration['clause
   const now = momentOf(gathering)
   const request = recovery.complete(filled, undefined, now) as AttemptRequest
   return { recovery, gathering, request, now, chosen: request.proofs.map((p) => p.place) }
-}
-
-/** The unanswered-read refusal, checked for its class, its code and what it names. */
-const expectUnanswered = (
-  error: Error,
-  values: { read: string; module: Address; place: number }
-) => {
-  expect(error).toBeInstanceOf(ScriptedReadFailure)
-  expect((error as ScriptedReadFailure).code).toBe('read.unanswered')
-  expect((error as ScriptedReadFailure).values).toEqual(values)
 }
 
 describe('recovery client double', () => {
@@ -523,6 +505,22 @@ describe('recovery client double', () => {
       expect(call.sender).toBe('anyone')
       expect(call.target.toLowerCase()).toBe(opened.world.descriptor.manager.toLowerCase())
       expect(call.describes).toBeUndefined()
+    })
+
+    it('lands an attempt that records each method it used once, as its first proof spells it', async () => {
+      const world = createWorld()
+      const ecdsa = world.descriptor.methodEcdsa
+      const upper = upperCased(ecdsa)
+      world.script.authorized(true)
+      const { recovery, request, now } = await completeInPlaceOrder(world, [
+        {
+          threshold: 2,
+          credentials: [{ ...walletAt(world, 'ana'), method: upper }, walletAt(world, 'ben')]
+        }
+      ])
+      expect(request.proofs.map((p) => p.method)).toEqual([upper, ecdsa])
+      world.chain.land(await recovery.prepareStartAttempt(request, now))
+      expect((await recovery.recoveryState()).attempt.usedMethods).toEqual([upper])
     })
 
     it('prepares cancelByOwner sent by the account and cancelByVeto sent by anyone', async () => {

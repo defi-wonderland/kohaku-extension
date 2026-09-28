@@ -1,6 +1,7 @@
+import { addressOf, EventManagerDouble } from '@web/modules/social-recovery/sdk-doubles'
 import { NOTIFICATION_KINDS, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isAddress, isHex, World } from './harness'
+import { createWorld, expectThrown, isAddress, isHex, upperCased, World } from './harness'
 
 const everything = async (world: World, filter = world.events.accountFilter()) => {
   const at = await world.provider.block('latest')
@@ -39,6 +40,24 @@ describe('event manager double', () => {
     expect(wide.topics).toContain(null)
     expect(accountFilter.topics).not.toContain(null)
     expect(wide.topics.length).toBe(accountFilter.topics.length)
+  })
+
+  it('names each method module once in the method filter, under the spelling first given', () => {
+    const world = createWorld()
+    const d = world.descriptor
+    const extra = addressOf('third-party-method')
+    const events = new EventManagerDouble(world.chain, world.provider, [
+      upperCased(d.methodPasskey),
+      extra,
+      upperCased(extra)
+    ])
+    expect(events.methodFilter().addresses).toEqual([
+      d.methodEcdsa,
+      d.methodPasskey,
+      d.methodAadhaar,
+      d.methodZkpassport,
+      extra
+    ])
   })
 
   it('serves SetupCommitted for a committed setup, in log order with a position', async () => {
