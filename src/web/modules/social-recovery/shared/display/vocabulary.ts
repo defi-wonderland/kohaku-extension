@@ -8,7 +8,9 @@
  * No chip says the account is protected: a status speaks of the recovery setup,
  * never of the account's safety from a stolen key.
  */
-import { appTranslate, Translate } from './translate'
+import i18n from '@common/config/localization'
+
+import type { Translate } from './translate'
 
 // ---------------------------------------------------------------------------
 // Status chips
@@ -129,7 +131,7 @@ export const chipKey = <S extends ChipSetName>(set: S, chip: Chip<S>): string =>
 export const renderChip = <S extends ChipSetName>(
   set: S,
   chip: Chip<S>,
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => t(chipKey(set, chip))
 
 // ---------------------------------------------------------------------------
@@ -166,7 +168,7 @@ export type Noun = KitNoun | ConceptNoun | PartyNoun
 export const nounKey = (noun: Noun): string => `socialRecovery.display.nouns.${noun}`
 
 /** The screen word of one noun. */
-export const renderNoun = (noun: Noun, t: Translate = appTranslate): string => t(nounKey(noun))
+export const renderNoun = (noun: Noun, t: Translate = i18n.t): string => t(nounKey(noun))
 
 /**
  * The two passwords and their one name each: the extension
@@ -181,7 +183,7 @@ export const passwordKey = (name: PasswordName): string =>
   `socialRecovery.display.passwords.${name}`
 
 /** The screen name of one password. */
-export const renderPasswordName = (name: PasswordName, t: Translate = appTranslate): string =>
+export const renderPasswordName = (name: PasswordName, t: Translate = i18n.t): string =>
   t(passwordKey(name))
 
 // ---------------------------------------------------------------------------
@@ -223,7 +225,7 @@ export type ValueLabel = typeof VALUE_LABELS[number]
 export const valueLabelKey = (label: ValueLabel): string => `socialRecovery.display.values.${label}`
 
 /** The screen name of one value label. */
-export const renderValueLabel = (label: ValueLabel, t: Translate = appTranslate): string =>
+export const renderValueLabel = (label: ValueLabel, t: Translate = i18n.t): string =>
   t(valueLabelKey(label))
 
 /**
@@ -233,7 +235,7 @@ export const renderValueLabel = (label: ValueLabel, t: Translate = appTranslate)
 export const renderApprovalValueName = (
   value: ApprovalValue,
   options: { doneScreen?: boolean } = {},
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => {
   if (options.doneScreen && (value === 'newKey' || value === 'keyBeingRemoved')) {
     return renderValueLabel(DONE_VALUE_NAMES[value], t)
@@ -252,5 +254,5 @@ export type WalletWord = typeof WALLET_WORDS[number]
 export const walletWordKey = (word: WalletWord): string => `socialRecovery.display.${word}`
 
 /** The screen words of one wallet word. */
-export const renderWalletWord = (word: WalletWord, t: Translate = appTranslate): string =>
+export const renderWalletWord = (word: WalletWord, t: Translate = i18n.t): string =>
   t(walletWordKey(word))

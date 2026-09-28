@@ -7,9 +7,10 @@
  */
 import { formatUnits, getAddress } from 'ethers'
 
+import i18n from '@common/config/localization'
 import type { Address, Hex, PaymentOrder } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { appTranslate, Translate } from './translate'
+import type { Translate } from './translate'
 import { renderChip, renderValueLabel } from './vocabulary'
 
 /** The one ellipsis every truncation uses. */
@@ -160,7 +161,7 @@ export const nameNeedsCaveat = (use: NameUse): boolean => use !== 'informationOn
 export const renderResolvedName = (
   name: string,
   use: NameUse,
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedName | null => {
   if (name.trim() === '') return null
   return {
@@ -184,7 +185,7 @@ export interface RenderedHiddenValue {
  * A hidden value as sixteen dots beside a hidden chip, so a masked value never
  * looks like a load failure.
  */
-export const renderHiddenValue = (t: Translate = appTranslate): RenderedHiddenValue => ({
+export const renderHiddenValue = (t: Translate = i18n.t): RenderedHiddenValue => ({
   dots: t('socialRecovery.display.hiddenValue'),
   chip: t('socialRecovery.display.hiddenChip')
 })
@@ -212,7 +213,7 @@ export interface RenderedMemberList<T> {
 export const renderMemberList = <T>(
   members: readonly T[],
   options: { showAll?: boolean } = {},
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedMemberList<T> => {
   if (options.showAll || members.length <= MEMBER_LIST_VISIBLE) {
     return { shown: members, restCount: 0, more: null }
@@ -267,7 +268,7 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
 export const renderPaymentOrder = (
   order: PaymentOrder | null | undefined,
   token: PaymentToken | null | undefined,
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => {
   if (!order || order.amount === 0n) {
     return renderValueLabel('noPayment', t)
@@ -355,7 +356,7 @@ export const renderDateTimeInZone = (
  * hour, `23 hours`. Both round down; under one minute it reads one minute. A
  * time left that is not finite throws a TypeError.
  */
-export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
+export const renderRemaining = (remainingMs: number, t: Translate = i18n.t): string => {
   checkRemainingMs(remainingMs)
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
@@ -374,7 +375,7 @@ export const renderRemaining = (remainingMs: number, t: Translate = appTranslate
  */
 export const renderDeadline = (
   input: { deadline: Date | number; now: Date | number; timeZone: string; locale?: string },
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedDeadline => {
   const { date, zone } = renderDateTimeInZone(input.deadline, input.timeZone, input.locale)
   const remainingMs = toMs(input.deadline) - toMs(input.now)
@@ -430,7 +431,7 @@ export const countdownStateOf = (remainingMs: number): CountdownState =>
  */
 export const renderCountdown = (
   input: { remainingMs: number; stopped?: boolean },
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => {
   if (countdownStateOf(input.remainingMs) === 'executionDue') {
     return input.stopped
