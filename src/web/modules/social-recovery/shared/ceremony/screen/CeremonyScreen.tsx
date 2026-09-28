@@ -30,7 +30,7 @@ import type { DeviceBinding } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderChip, renderHash } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
-import { sendCeremonyReport, sweepCeremonyReports } from '../channel'
+import { ReportStore, sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import type { CeremonyStep } from '../device'
 import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
 import { lossLineKeyOf, renderKindLine } from '../kindLine'
@@ -85,6 +85,9 @@ const CeremonyScreen = () => {
   const started = useRef(false)
   const abort = useRef<AbortController | null>(null)
   const gate = useRef<VisibilityGate | null>(null)
+  // The store the gate serves, read when a report is written, so a run that
+  // began before a new store arrived writes to the new one.
+  const reportStore = useRef<ReportStore>(source.store ?? browserReportStore)
   const visibility = source.visibility ?? (typeof document !== 'undefined' ? document : undefined)
 
   useEffect(() => {
@@ -92,6 +95,7 @@ const CeremonyScreen = () => {
     // Reports nobody took within their expiry leave storage. A removal is a
     // storage write, so it waits for the tab to be shown.
     const store = source.store ?? browserReportStore
+    reportStore.current = store
     const sweep = () => browserReportKeys().then((keys) => sweepCeremonyReports(store, keys))
     const sweeping = gate.current ? gate.current.dispatch(sweep) : sweep()
     sweeping.catch(() => undefined)
@@ -127,7 +131,7 @@ const CeremonyScreen = () => {
 
       // The report is stamped inside the gate, when it is written.
       const sending = sendCeremonyReport(params, result, {
-        store: source.store ?? browserReportStore,
+        store: reportStore.current,
         gate: held
       })
       setReportHeld(held.pending() > 0)
@@ -147,7 +151,7 @@ const CeremonyScreen = () => {
       setPhase('done')
       if (params.returnTo) navigate(params.returnTo, { replace: true })
     },
-    [source.store, navigate]
+    [navigate]
   )
 
   const start = useCallback(async () => {
