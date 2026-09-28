@@ -12,6 +12,7 @@ import {
   ProviderDouble,
   RecoveryActionDouble,
   ScriptedChain,
+  ScriptedReadFailure,
   shippedMethodDoubles,
   WalletMethodDouble,
   WalletReadsDouble,
@@ -31,6 +32,7 @@ import type {
   AttemptRequest,
   ClientConfiguration,
   Configuration,
+  Credential,
   DeploymentDescriptor,
   FindingCode,
   Gathering,
@@ -52,6 +54,7 @@ import type {
   SetupDraft,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { keccak256, stringToHex } from 'viem'
 
 /** The attempt statuses a test can script. */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
@@ -112,8 +115,8 @@ export interface World {
     keysUpdated(module: Address, current: Hex[]): void
     /** Every later call of this read throws. */
     failRead(read: ScriptedRead): void
-    /** A module read answers `{ answered: false }`. */
-    leaveUnanswered(read: ModuleRead): void
+    /** A module read answers `{ answered: false }`, for every module or for the one named. */
+    leaveUnanswered(read: ModuleRead, module?: Address): void
     /** The member refuses, throwing a validation refusal carrying this code. */
     refuse(member: ScriptedRefusalMember, code: string): void
     /** Every `replyFrom` returns this typed failure. */
@@ -237,8 +240,8 @@ export const createWorld = (seed: ChainSeed = {}): World => {
       failRead: (read) => {
         chain.failRead(read)
       },
-      leaveUnanswered: (read) => {
-        chain.leaveUnanswered(read)
+      leaveUnanswered: (read, module) => {
+        chain.leaveUnanswered(read, module)
       },
       refuse: (member, code) => {
         chain.refuse(member, {
@@ -262,6 +265,28 @@ export const createWorld = (seed: ChainSeed = {}): World => {
 export const ZERO: Address = '0x0000000000000000000000000000000000000000'
 export const NO_PAYMENT: PaymentOrder = { token: ZERO, amount: 0n, payee: ZERO }
 export const WINDOW = 24 * 3600
+
+/** One address in another letter case: the hex digits upper-cased, the prefix kept. */
+export const upperCased = (address: Address): Address =>
+  `0x${address.slice(2).toUpperCase()}` as Address
+
+/** A wallet guardian's credential under the world's ECDSA method. */
+export const walletAt = (world: World, label: string): Credential => ({
+  method: world.descriptor.methodEcdsa,
+  config: world.methods.wallet.codec.encodeConfig({ address: addressOf(label) })
+})
+
+/** A zkPassport credential over one identifier, under the given spelling of its method. */
+export const passportAt = (
+  world: World,
+  id: string,
+  method: Address = world.descriptor.methodZkpassport
+): Credential => ({
+  method,
+  config: world.methods.zkPassport.codec.encodeConfig({
+    uniqueIdentifier: keccak256(stringToHex(id))
+  })
+})
 
 /** One approver's reply: the signing input, then the material a willing device returns. */
 export const replyFor = async (world: World, request: ApproverRequest): Promise<ApproverReply> => {
@@ -395,6 +420,16 @@ export const expectThrown = async (run: () => Promise<unknown>) => {
   expect(answered).toBe(false)
   expect(caught).toBeInstanceOf(Error)
   return caught as Error
+}
+
+/** The unanswered-read refusal, checked for its class, its code and exactly what it names. */
+export const expectUnanswered = (
+  error: Error,
+  values: { read: ScriptedRead; module: Address; place?: number }
+) => {
+  expect(error).toBeInstanceOf(ScriptedReadFailure)
+  expect((error as ScriptedReadFailure).code).toBe('read.unanswered')
+  expect((error as ScriptedReadFailure).values).toStrictEqual(values)
 }
 
 // Jest runs every file under __tests__, this one included; its own check runs
