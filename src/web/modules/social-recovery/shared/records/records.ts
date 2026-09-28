@@ -108,8 +108,10 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
  * read checks the session's state and not its gathering, so a stored request
  * may be missing, and a missing one is never equal.
  */
-const sameStoredValue = (stored: Gathering['request'], named: Gathering['request']): boolean =>
-  stored !== undefined && isEqual(parse(stringify(stored)), parse(stringify(named)))
+const sameStoredValue = (
+  stored: Gathering['request'] | undefined,
+  named: Gathering['request']
+): boolean => stored !== undefined && isEqual(parse(stringify(stored)), parse(stringify(named)))
 
 const newRevision = (): SessionRevision =>
   bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
@@ -281,7 +283,6 @@ export const createWalletRecords = ({
   const inSessionQueue = async <R>(
     chainId: ChainId,
     account: Address,
-    expectedRevision: ExpectedRevision,
     apply: (current: SessionRead, key: string) => Promise<R>
   ): Promise<R> => {
     const key = recordKeys.recoverySession(chainId, account)
@@ -303,7 +304,7 @@ export const createWalletRecords = ({
     expectedRevision: ExpectedRevision,
     apply: (current: SessionRead, key: string) => Promise<R>
   ): Promise<R> =>
-    inSessionQueue(chainId, account, expectedRevision, async (current, key) => {
+    inSessionQueue(chainId, account, async (current, key) => {
       checkRevision(current, expectedRevision, key)
       return apply(current, key)
     })
@@ -431,7 +432,7 @@ export const createWalletRecords = ({
     chainId: ChainId,
     account: Address,
     expectedRevision: ExpectedRevision
-  ): Promise<StoredRecord<CountdownRecord> & { revision: SessionRevision }> =>
+  ) =>
     updateSession(chainId, account, expectedRevision, async (current, key) => {
       if (current.status !== 'present' || current.value.state !== 'live') {
         throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
@@ -453,7 +454,7 @@ export const createWalletRecords = ({
     state: 'wiped' | 'landed',
     expectedRevision: ExpectedRevision
   ): Promise<boolean> =>
-    inSessionQueue(chainId, account, expectedRevision, async (current, key) => {
+    inSessionQueue(chainId, account, async (current, key) => {
       if (current.status !== 'present' || current.value.state !== state) return false
       checkRevision(current, expectedRevision, key)
       await storage.remove(key)
