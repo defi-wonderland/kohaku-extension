@@ -64,20 +64,27 @@ const DepositStepView = ({
   const t: Translate = (key, options) => String(i18nT(key, options))
   const rendered = renderDepositStep(step, balance === undefined ? {} : { balance }, t)
 
-  // The result of the last copy to the clipboard. A failed copy shows a line,
-  // so the holder selects the address by hand rather than pasting an older
-  // one. A copy through `onCopy` reports no result here.
-  const [copyResult, setCopyResult] = useState<'idle' | 'copied' | 'notCopied'>('idle')
+  // The result of the last copy to the clipboard, with the address it was
+  // started for. A failed copy shows a line, so the holder selects the address
+  // by hand rather than pasting an older one. The line shows only while the
+  // step still shows that address: a result for another key's address, or one
+  // that came back after the address changed, shows nothing. A copy through
+  // `onCopy` reports no result here.
+  const [copyResult, setCopyResult] = useState<{ address: string; copied: boolean } | null>(null)
 
   const copy = useCallback(() => {
-    if (onCopy) onCopy(rendered.keyAddress)
+    const address = rendered.keyAddress
+    if (onCopy) onCopy(address)
     else {
       // On web the clipboard answers false, or rejects, where it could not copy.
-      setStringAsync(rendered.keyAddress)
-        .then((copied) => setCopyResult(copied ? 'copied' : 'notCopied'))
-        .catch(() => setCopyResult('notCopied'))
+      setStringAsync(address)
+        .then((copied) => setCopyResult({ address, copied }))
+        .catch(() => setCopyResult({ address, copied: false }))
     }
   }, [onCopy, rendered.keyAddress])
+
+  const copyFailedHere =
+    !!copyResult && copyResult.address === rendered.keyAddress && !copyResult.copied
 
   const keyBlock = (
     <View style={spacings.mbSm}>
@@ -98,7 +105,7 @@ const DepositStepView = ({
           hasBottomSpacing={false}
         />
       </View>
-      {copyResult === 'notCopied' && (
+      {copyFailedHere && (
         <Text fontSize={12} appearance="errorText" style={spacings.mtMi}>
           {rendered.copyFailed}
         </Text>
