@@ -278,7 +278,7 @@ describe('the replaced reading reads its own en.json sentence', () => {
 
 describe('a failed gas read names the gas check, not one read', () => {
   it('reads gasCheckFailed, which names the check and the node, and no balance', async () => {
-    const { reads } = rpcReads({ balance: 0n, gas: new Error('socket hang up') })
+    const reads = rpcReads({ balance: 0n, gas: new Error('socket hang up') })
     const thrown = await runGasCheck({ write: 'save', reads }).catch((error) => error)
     const checking = writeReducer(initialWriteState('save'), { type: 'start' })
     const r = renderWriteState(

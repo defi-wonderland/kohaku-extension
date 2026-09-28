@@ -224,21 +224,20 @@ export const rpcReads = (answers: {
   balance: bigint | Error
   gas: bigint | Error
   price?: bigint
-}): { reads: ChainReads; send: jest.Mock } => {
+}): ChainReads => {
   const answer = async (value: bigint | Error): Promise<bigint> => {
     if (value instanceof Error) throw value
     return value
   }
-  const send = jest.fn(async (method: string) => {
-    if (method === 'eth_gasPrice') return numberToHex(answers.price ?? 2n * GWEI)
-    throw new Error(`unexpected request ${method}`)
-  })
   const provider: ChainReadsProvider = {
-    getBalance: jest.fn(() => answer(answers.balance)),
-    estimateGas: jest.fn(() => answer(answers.gas)),
-    send
+    getBalance: () => answer(answers.balance),
+    estimateGas: () => answer(answers.gas),
+    send: async (method: string) => {
+      if (method === 'eth_gasPrice') return numberToHex(answers.price ?? 2n * GWEI)
+      throw new Error(`unexpected request ${method}`)
+    }
   }
-  return { reads: createChainReads(provider), send }
+  return createChainReads(provider)
 }
 
 /** A node's answer to an estimate of a call that would revert: code 3 with the revert data. */

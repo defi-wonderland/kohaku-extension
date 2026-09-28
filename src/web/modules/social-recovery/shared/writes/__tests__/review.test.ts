@@ -181,7 +181,7 @@ describe("the transfer route carries the transfer's own fee", () => {
 
 describe('a gas read that could not run renders gasCheckFailed with the retry', () => {
   const failed = async (answers: Parameters<typeof rpcReads>[0]) => {
-    const { reads } = rpcReads(answers)
+    const reads = rpcReads(answers)
     const thrown = await runGasCheck({ write: 'submission', reads }).catch((error) => error)
     const checking = writeReducer(initialWriteState('submission'), { type: 'start' })
     return {

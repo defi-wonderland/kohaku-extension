@@ -9,9 +9,11 @@
  * - The receipt is ethers' `TransactionReceipt`: a numeric status, and the gas
  *   used and the gas price as bigints, whose product is the gas the revert
  *   spent. A gas factor that is missing, or of another type, is left out, and
- *   the revert names no gas spent. A node's raw JSON receipt is not the shape
- *   ethers gives, so a thrown value that carries only one reads that nothing
- *   was sent.
+ *   the revert names no gas spent. A receipt with no status, as before
+ *   Byzantium, is never read.
+ * - A node's raw JSON receipt is not the shape ethers gives, so the write does
+ *   not settle from it; the hash it names says the call reached the chain, so
+ *   the write waits for its receipt under that hash.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -20,6 +22,7 @@ import {
   GWEI,
   minedAndReverted,
   readingOf,
+  receiptOf,
   TX_HASH,
   waitTimedOut,
   WRITE_KINDS
@@ -133,17 +136,50 @@ describe('the gas a mined revert spent', () => {
   })
 })
 
-describe("a node's raw JSON receipt", () => {
-  it('carried alone by a thrown value is no receipt: the write reads that nothing was sent', () => {
-    const rawReceipt = {
-      transactionHash: TX_HASH,
-      status: '0x0',
-      blockNumber: '0x6acfc1',
-      gasUsed: '0x0a',
-      effectiveGasPrice: '0x77359400'
-    }
+describe('the status of a receipt', () => {
+  it('a receipt with no status, as before Byzantium, is never read: a thrown value carrying one waits under its hash', () => {
+    expect(receiptOf({ hash: TX_HASH, status: null })).toBeUndefined()
     WRITE_KINDS.forEach((write) =>
-      expect(readingOf(failThrown(write, minedAndRevertedWith(rawReceipt)))).toBe('notSent')
+      expect(failThrown(write, minedAndRevertedWith({ hash: TX_HASH, status: null }))).toEqual({
+        status: 'submitting',
+        write,
+        transactionHash: TX_HASH
+      })
+    )
+  })
+})
+
+describe("a node's raw JSON receipt carried by a thrown value", () => {
+  /** A mined revert as a node's JSON-RPC answer holds it: quantities as hex strings. */
+  const rawReceipt = (transactionHash: string) => ({
+    transactionHash,
+    status: '0x0',
+    blockNumber: '0x6acfc1',
+    gasUsed: '0x0a',
+    effectiveGasPrice: '0x77359400'
+  })
+
+  describe('keeps the write waiting in submitting under its transactionHash', () => {
+    HASHES.forEach(([name, hash]) =>
+      it(name, () => {
+        WRITE_KINDS.forEach((write) =>
+          expect(failThrown(write, minedAndRevertedWith(rawReceipt(hash)))).toEqual({
+            status: 'submitting',
+            write,
+            transactionHash: hash
+          })
+        )
+      })
+    )
+  })
+
+  it('whose transactionHash is not a transaction hash reads that nothing was sent', () => {
+    NOT_HASHES.forEach(([, value]) =>
+      WRITE_KINDS.forEach((write) =>
+        expect(readingOf(failThrown(write, minedAndRevertedWith(rawReceipt(value))))).toBe(
+          'notSent'
+        )
+      )
     )
   })
 })
