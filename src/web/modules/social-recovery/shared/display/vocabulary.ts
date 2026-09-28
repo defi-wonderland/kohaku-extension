@@ -117,10 +117,6 @@ const CHIP_SET_BLOCK: { readonly [S in ChipSetName]: string } = {
   editor: 'editor'
 }
 
-/** Tells whether `value` is a chip of `set`. */
-export const isChip = <S extends ChipSetName>(set: S, value: string): value is Chip<S> =>
-  (CHIP_SETS[set] as readonly string[]).includes(value)
-
 /** The i18n key of one chip, `socialRecovery.status.<block>.<chip>`. */
 export const chipKey = <S extends ChipSetName>(set: S, chip: Chip<S>): string =>
   `socialRecovery.status.${CHIP_SET_BLOCK[set]}.${chip}`

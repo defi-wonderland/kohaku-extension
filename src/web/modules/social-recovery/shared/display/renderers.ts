@@ -36,7 +36,7 @@ export const ELLIPSIS = '…'
  * TypeError on a value that is not a 20-byte hex address or whose mixed case
  * fails its checksum.
  */
-export const checksumAddress = (address: string): Address => {
+export const checksumAddress = (address: Address): Address => {
   if (!isAddress(address, { strict: false })) {
     throw new TypeError(`Not an address: ${address}`)
   }
@@ -54,7 +54,7 @@ export const checksumAddress = (address: string): Address => {
  * checksummed, `0x2b0F…6ef5`. The recovery surfaces use it wherever the
  * reader neither copies nor compares the address.
  */
-export const renderShortAddress = (address: string): string => {
+export const renderShortAddress = (address: Address): string => {
   const full = checksumAddress(address)
   return `${full.slice(0, 6)}${ELLIPSIS}${full.slice(-4)}`
 }
@@ -67,13 +67,13 @@ export const renderShortAddress = (address: string): string => {
  * copies or compares the address: a truncated key is what an attacker grinding a
  * look-alike address imitates.
  */
-export const renderFullAddress = (address: string): string => checksumAddress(address)
+export const renderFullAddress = (address: Address): string => checksumAddress(address)
 
 // ---------------------------------------------------------------------------
 // Hashes and approvals
 // ---------------------------------------------------------------------------
 
-const truncateHex = (value: string, lead: number, tail: number): string => {
+const truncateHex = (value: Hex, lead: number, tail: number): string => {
   if (!isHex(value)) {
     throw new TypeError(`Not hex: ${value}`)
   }
@@ -92,14 +92,14 @@ export const APPROVAL_DIGITS = { lead: 12, tail: 8 } as const
  * A transaction hash or a challenge as twelve leading and six trailing digits,
  * `0x8f31a27b04ce…5d19c2`. A value that short or shorter renders whole.
  */
-export const renderHash = (hash: Hex | string): string =>
+export const renderHash = (hash: Hex): string =>
   truncateHex(hash, HASH_DIGITS.lead, HASH_DIGITS.tail)
 
 /**
  * An approval blob as twelve leading and eight trailing digits,
  * `0x8ba2c71f04e9…5fa37ad3`. A value that short or shorter renders whole.
  */
-export const renderApproval = (approval: Hex | string): string =>
+export const renderApproval = (approval: Hex): string =>
   truncateHex(approval, APPROVAL_DIGITS.lead, APPROVAL_DIGITS.tail)
 
 // ---------------------------------------------------------------------------
