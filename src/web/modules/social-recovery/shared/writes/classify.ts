@@ -18,6 +18,8 @@
  * A transaction hash with no receipt is neither reading. The call may still
  * land, so it stays in the submitting state and keeps waiting for its receipt.
  */
+import { isHex } from 'viem'
+
 import type {
   Address,
   Hex,
@@ -74,10 +76,8 @@ export interface WriteFailure {
   replaced?: ReplacedReason
 }
 
-const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
-
-const isTransactionHash = (value: unknown): value is Hex =>
-  typeof value === 'string' && HASH_PATTERN.test(value)
+/** A transaction hash: `0x` and exactly 64 hex digits. */
+const isTransactionHash = (value: unknown): value is Hex => isHex(value) && value.length === 66
 
 const statusOf = (value: unknown): 0 | 1 | undefined => {
   if (value === 0 || value === 0n || value === '0x0' || value === '0x00' || value === false)
@@ -89,7 +89,8 @@ const statusOf = (value: unknown): 0 | 1 | undefined => {
 const bigintOf = (value: unknown): bigint | undefined => {
   if (typeof value === 'bigint') return value
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return BigInt(value)
-  if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|[0-9]+)$/.test(value)) return BigInt(value)
+  if (typeof value === 'string' && ((isHex(value) && value.length > 2) || /^[0-9]+$/.test(value)))
+    return BigInt(value)
   return undefined
 }
 

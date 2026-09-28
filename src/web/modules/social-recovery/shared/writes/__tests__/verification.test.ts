@@ -10,8 +10,8 @@
  *   failed to reach the chain.
  * - A failed gas read names the gas check, not one read.
  */
+import i18n from '@common/config/localization'
 import { revertedCall, providerReadFailure } from '@web/modules/social-recovery/shared/client'
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import {
   ACCOUNT,
@@ -52,7 +52,7 @@ import {
   initialWriteState
 } from './harness'
 
-const t = appTranslate
+const t = i18n.t
 const PRICE = 3n * GWEI
 const WRITE_GAS = 180_000n
 const DEPLOYED_TRANSFER_GAS = 46_000n

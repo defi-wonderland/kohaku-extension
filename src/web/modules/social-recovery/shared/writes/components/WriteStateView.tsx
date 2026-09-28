@@ -21,7 +21,6 @@ import Spinner from '@common/components/Spinner'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 import { renderWriteState } from '../copy'
 import type { WriteState } from '../states'
@@ -40,8 +39,7 @@ export interface WriteStateViewProps {
 }
 
 const WriteStateView = ({ state, title, note, onRetry, children, testID }: WriteStateViewProps) => {
-  const { t: i18nT } = useTranslation()
-  const t: Translate = (key, options) => String(i18nT(key, options))
+  const { t } = useTranslation()
 
   if (state.status === 'checkingGas') {
     return (

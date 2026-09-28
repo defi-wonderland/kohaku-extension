@@ -5,13 +5,14 @@
  * renderers answer, so every rule stays here and in the machine.
  *
  * Every string comes from en.json through `t`, which defaults to the app's
- * i18next instance (shared/display `appTranslate`). The step links to nothing
- * and promises nowhere that one funding covers both the submission and the
- * execution.
+ * i18next instance. The step links to nothing and promises nowhere that one
+ * funding covers both the submission and the execution.
  */
+import { etherUnits } from 'viem'
+
+import i18n from '@common/config/localization'
 import type { KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import {
-  appTranslate,
   renderChip,
   renderFullAddress,
   renderTokenAmount,
@@ -19,13 +20,7 @@ import {
 } from '@web/modules/social-recovery/shared/display'
 
 import { AttemptEnd, leavesAttemptReady, RevertCause } from './classify'
-import {
-  DepositRouteKind,
-  DepositStep,
-  NATIVE_DECIMALS,
-  roundDownForDisplay,
-  roundUpForDisplay
-} from './gas'
+import { DepositRouteKind, DepositStep, roundDownForDisplay, roundUpForDisplay } from './gas'
 import { isOwnerWrite, OwnerWrite, WriteKind } from './kinds'
 import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
 
@@ -145,11 +140,11 @@ export const cancelGoneRoadKey = (road: Exclude<AttemptEnd, 'executed'>): string
 
 /** An amount the holder sends, rounded up to the step's precision, with the native symbol. */
 export const renderGasAmount = (wei: bigint, symbol: string): string =>
-  `${renderTokenAmount(roundUpForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+  `${renderTokenAmount(roundUpForDisplay(wei), etherUnits.wei)} ${symbol}`
 
 /** A balance the key holds, rounded down to the step's precision, with the native symbol. */
 export const renderGasBalance = (wei: bigint, symbol: string): string =>
-  `${renderTokenAmount(roundDownForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+  `${renderTokenAmount(roundDownForDisplay(wei), etherUnits.wei)} ${symbol}`
 
 // ---------------------------------------------------------------------------
 // The shared states
@@ -173,7 +168,7 @@ export interface RenderedWriteState {
 }
 
 /** The sentence naming the cause of a revert, for the `{{cause}}` of the reverted reading. */
-export const renderRevertCause = (cause: RevertCause, t: Translate = appTranslate): string =>
+export const renderRevertCause = (cause: RevertCause, t: Translate = i18n.t): string =>
   cause.kind === 'named' ? t(causeKey(cause.name)) : t(UNNAMED_CAUSE_KEY)
 
 const renderAttemptGone = (
@@ -204,10 +199,7 @@ const renderAttemptGone = (
  * retry renders only where a retry can fix the state (`canRetry`). The other
  * states carry no copy here.
  */
-export const renderWriteState = (
-  state: WriteState,
-  t: Translate = appTranslate
-): RenderedWriteState => {
+export const renderWriteState = (state: WriteState, t: Translate = i18n.t): RenderedWriteState => {
   const base = { status: state.status, offersMoveFunds: offersMoveFunds(state) }
   const retry = canRetry(state) ? { retry: t(WRITES_KEYS.tryAgain) } : {}
   switch (state.status) {
@@ -319,7 +311,7 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
 export const renderDepositStep = (
   step: DepositStep,
   options: { balance?: bigint } = {},
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedDepositStep => {
   const { symbol } = step.network
   const amount = renderGasAmount(step.shortfall, symbol)

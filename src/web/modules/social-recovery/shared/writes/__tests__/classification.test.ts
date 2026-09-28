@@ -6,8 +6,8 @@
  * read that the attempt is already gone, with the account's controller as it
  * now stands. Strings through the real en.json.
  */
+import i18n from '@common/config/localization'
 import { providerReadFailure, revertedCall } from '@web/modules/social-recovery/shared/client'
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import {
   ATTEMPT_STILL_RUNNING,
@@ -190,7 +190,7 @@ describe('a call that reached the chain and reverted, the second reading', () =>
       // A marker answers the cause slot, so the test sees which cause sentence
       // the module chose, whatever en.json holds.
       const marked = (key: string, options?: Record<string, unknown>) =>
-        /\.causes\./.test(key) ? `<${key}>` : appTranslate(key, options)
+        /\.causes\./.test(key) ? `<${key}>` : i18n.t(key, options)
 
       it('the reverted reading carries a sentence chosen by the cause the wallet decoded', () => {
         const active = text(copyOfState(failWithReceipt(write, ATTEMPT_ACTIVE), marked))
@@ -268,7 +268,7 @@ describe('the reverted cancel', () => {
     it('a decoded cause other than NoActiveAttempt or NoSetup reads the plain revert with that cause', () => {
       const state = failWithReceipt('cancel', kitError('WrongAttemptId'))
       plain(state)
-      expect(rendered(state)).toContain(appTranslate(causeKey('WrongAttemptId')))
+      expect(rendered(state)).toContain(i18n.t(causeKey('WrongAttemptId')))
     })
 
     it('the attempt read that says it executed turns the plain revert into the gone attempt', () => {
@@ -287,7 +287,7 @@ describe('the reverted cancel', () => {
   it('NoSetup decoded on a cancel reads the gone attempt, naming the setup write as the road', () => {
     const state = failWithReceipt('cancel', kitError('NoSetup'))
     expect(rendered(state)).toMatch(ALREADY_GONE)
-    expect(copyOfState(state)).toContain(appTranslate(cancelGoneRoadKey('setupWrite')))
+    expect(copyOfState(state)).toContain(i18n.t(cancelGoneRoadKey('setupWrite')))
     expect(canRetry(state)).toBe(false)
     expect(offersMoveFunds(state)).toBe(false)
   })

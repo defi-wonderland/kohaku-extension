@@ -22,6 +22,7 @@
  * out test-network funds.
  */
 import { Interface } from 'ethers'
+import { etherUnits } from 'viem'
 
 import { AMBIRE_ACCOUNT_FACTORY } from '@ambire-common/consts/deploy'
 import type {
@@ -40,9 +41,6 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 
 import { assertWriteDoor, isRecoveryCall, Payer, payerOf, WriteKind } from './kinds'
-
-/** The decimals of a network's native asset; every EVM chain uses 18. */
-export const NATIVE_DECIMALS = 18
 
 /**
  * The headroom the check adds to the fee it estimates, in percent. The step
@@ -189,7 +187,7 @@ const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
 /** The digits after the point the step renders an amount with. */
 export const GAS_DISPLAY_DECIMALS = 6
 
-const DISPLAY_UNIT = 10n ** BigInt(NATIVE_DECIMALS - GAS_DISPLAY_DECIMALS)
+const DISPLAY_UNIT = 10n ** BigInt(etherUnits.wei - GAS_DISPLAY_DECIMALS)
 
 /** An amount to send, rounded up to the step's precision, so what the step shows covers it. */
 export const roundUpForDisplay = (wei: bigint): bigint => ceilDiv(wei, DISPLAY_UNIT) * DISPLAY_UNIT

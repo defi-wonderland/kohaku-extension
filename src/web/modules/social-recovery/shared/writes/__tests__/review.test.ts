@@ -11,9 +11,9 @@
  *   to the account the key operates or the account factory.
  * - A transaction another one replaced before it was mined never ran.
  */
+import i18n from '@common/config/localization'
 import { KIT_ERROR_NAMES, type KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client'
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import {
   ACCOUNT,
@@ -69,7 +69,7 @@ describe('a retry is offered only where a retry can fix the cause', () => {
   it('a submission rejected because an attempt already runs offers no retry', () => {
     const state = failWithReceipt('submission', kitError('AttemptAlreadyActive'))
     expect(retry(state)).toEqual({ offered: false, shown: false, takes: false })
-    expect(text(copyOfState(state))).toContain(appTranslate(causeKey('AttemptAlreadyActive')))
+    expect(text(copyOfState(state))).toContain(i18n.t(causeKey('AttemptAlreadyActive')))
   })
 
   it('an execution the chain calls not consumable offers no retry and renders revertedExecuteGone', () => {
@@ -77,8 +77,8 @@ describe('a retry is offered only where a retry can fix the cause', () => {
     expect(retry(state)).toEqual({ offered: false, shown: false, takes: false })
     const lines = copyOfState(state)
     expect(lines).toContain(
-      appTranslate(WRITES_KEYS.revertedExecuteGone, {
-        cause: appTranslate(causeKey('NotConsumable'))
+      i18n.t(WRITES_KEYS.revertedExecuteGone, {
+        cause: i18n.t(causeKey('NotConsumable'))
       })
     )
     expect(text(lines)).not.toMatch(STILL_READY)
@@ -195,8 +195,8 @@ describe('a gas read that could not run renders gasCheckFailed with the retry', 
     expect(isProviderReadFailure(thrown)).toBe(true)
     expect(state.status).toBe('gasReadError')
     const rendered = renderWriteState(state)
-    expect(rendered.lines).toEqual([appTranslate(WRITES_KEYS.gasCheckFailed)])
-    expect(rendered.retry).toBe(appTranslate(WRITES_KEYS.tryAgain))
+    expect(rendered.lines).toEqual([i18n.t(WRITES_KEYS.gasCheckFailed)])
+    expect(rendered.retry).toBe(i18n.t(WRITES_KEYS.tryAgain))
     expect(writeReducer(state, { type: 'start' }).status).toBe('checkingGas')
   })
 

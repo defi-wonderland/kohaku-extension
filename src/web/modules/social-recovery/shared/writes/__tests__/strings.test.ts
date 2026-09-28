@@ -15,9 +15,10 @@
  *   execution's own amount.
  * - `edit`, the management editor's save, is an owner write.
  */
+import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
 import { KIT_ERROR_NAMES, type KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
-import { appTranslate, renderFullAddress } from '@web/modules/social-recovery/shared/display'
+import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 import {
   ACCOUNT_REF,
@@ -79,9 +80,9 @@ describe('the cause of a revert', () => {
   })
 
   it('the cause sentences are distinct: each kit error is named in its own words', () => {
-    const sentences = KIT_ERROR_NAMES.map((name) => appTranslate(causeKey(name)))
+    const sentences = KIT_ERROR_NAMES.map((name) => i18n.t(causeKey(name)))
     expect(new Set(sentences).size).toBe(KIT_ERROR_NAMES.length)
-    expect(sentences).not.toContain(appTranslate(UNNAMED_CAUSE_KEY))
+    expect(sentences).not.toContain(i18n.t(UNNAMED_CAUSE_KEY))
   })
 
   WRITE_KINDS.filter((w) => w !== 'cancel').forEach((write) =>
@@ -103,7 +104,7 @@ describe('the cause of a revert', () => {
 
   it('a cause the wallet decoded as unknown reads the unnamed sentence', () => {
     expect(renderRevertCause({ kind: 'unnamed', data: '0xdeadbeef' })).toBe(
-      appTranslate(UNNAMED_CAUSE_KEY)
+      i18n.t(UNNAMED_CAUSE_KEY)
     )
   })
 })
@@ -128,8 +129,8 @@ describe('each write reads its own reverted sentence', () => {
 
   OWN.forEach(([write, key, name]) =>
     it(`${write} with ${name} renders socialRecovery.writes.${key} with the cause in its slot`, () => {
-      const expected = appTranslate(`socialRecovery.writes.${key}`, {
-        cause: appTranslate(causeKey(name))
+      const expected = i18n.t(`socialRecovery.writes.${key}`, {
+        cause: i18n.t(causeKey(name))
       })
       expect(copyOfState(failWithReceipt(write, kitError(name)))).toContain(expected)
     })
@@ -145,7 +146,7 @@ describe('each write reads its own reverted sentence', () => {
   it('a cancel whose decoded cause names another kit error reads the generic sentence with that cause', () => {
     const state = failWithReceipt('cancel', kitError('WrongSetupNonce'))
     expect(copyOfState(state)).toContain(
-      appTranslate(WRITES_KEYS.reverted, { cause: appTranslate(causeKey('WrongSetupNonce')) })
+      i18n.t(WRITES_KEYS.reverted, { cause: i18n.t(causeKey('WrongSetupNonce')) })
     )
   })
 })
@@ -167,9 +168,9 @@ describe('the reverted cancel names the road that ended the attempt', () => {
         controller: CONTROLLER
       })
       const rendered = copyOfState(state)
-      expect(rendered).toContain(appTranslate(WRITES_KEYS.cancelRevertedTitle))
-      expect(rendered).toContain(appTranslate(WRITES_KEYS.cancelReverted))
-      expect(rendered).toContain(appTranslate(cancelGoneRoadKey(road)))
+      expect(rendered).toContain(i18n.t(WRITES_KEYS.cancelRevertedTitle))
+      expect(rendered).toContain(i18n.t(WRITES_KEYS.cancelReverted))
+      expect(rendered).toContain(i18n.t(cancelGoneRoadKey(road)))
       expect(text(rendered).toLowerCase()).not.toContain(CONTROLLER.toLowerCase())
       expect(offersMoveFunds(state)).toBe(false)
     })
@@ -181,10 +182,10 @@ describe('the reverted cancel names the road that ended the attempt', () => {
       controller: CONTROLLER
     })
     const rendered = copyOfState(state)
-    expect(rendered).toContain(appTranslate(WRITES_KEYS.cancelReverted))
-    expect(rendered).toContain(appTranslate(WRITES_KEYS.nowControlledBy))
+    expect(rendered).toContain(i18n.t(WRITES_KEYS.cancelReverted))
+    expect(rendered).toContain(i18n.t(WRITES_KEYS.nowControlledBy))
     expect(rendered).toContain(renderFullAddress(CONTROLLER))
-    ROADS.forEach((road) => expect(rendered).not.toContain(appTranslate(cancelGoneRoadKey(road))))
+    ROADS.forEach((road) => expect(rendered).not.toContain(i18n.t(cancelGoneRoadKey(road))))
     expect(offersMoveFunds(state)).toBe(true)
   })
 })
@@ -200,12 +201,12 @@ describe('the deposit step reads its registered lines', () => {
     describe(`${write} on the logged-in route`, () => {
       it('names the key of the chosen account (keyOf)', async () => {
         const step = renderDepositStep(await depositStepFor(write, false))
-        expect(step.keyLabel).toBe(appTranslate(GAS_KEYS.keyOf, { account: ACCOUNT_REF.name }))
+        expect(step.keyLabel).toBe(i18n.t(GAS_KEYS.keyOf, { account: ACCOUNT_REF.name }))
       })
 
       it('says the account holds the funds and its key sends (accountHoldsFunds)', async () => {
         expect(copyOfStep(await depositStepFor(write, false))).toContain(
-          appTranslate(GAS_KEYS.accountHoldsFunds)
+          i18n.t(GAS_KEYS.accountHoldsFunds)
         )
       })
     })
@@ -213,7 +214,7 @@ describe('the deposit step reads its registered lines', () => {
   ;(['save', 'edit', 'ownerWrite', 'cancel'] as const).forEach((write) =>
     it(`${write}: names the network of this account (networkOwner)`, async () => {
       expect(copyOfStep(await depositStepFor(write, false))).toContain(
-        appTranslate(GAS_KEYS.networkOwner, { network: NETWORK.name })
+        i18n.t(GAS_KEYS.networkOwner, { network: NETWORK.name })
       )
     })
   )
@@ -225,8 +226,8 @@ describe('the deposit step reads its registered lines', () => {
       )
     )
     steps.forEach((step) => {
-      expect(step.lead).toEqual([appTranslate(GAS_KEYS.sendingKeyPays)])
-      expect(step.keyLabel).toBe(appTranslate(GAS_KEYS.sendingKey))
+      expect(step.lead).toEqual([i18n.t(GAS_KEYS.sendingKeyPays)])
+      expect(step.keyLabel).toBe(i18n.t(GAS_KEYS.sendingKey))
     })
   })
 
@@ -234,21 +235,21 @@ describe('the deposit step reads its registered lines', () => {
     const step = await depositStepFor('execution', true)
     const amount = renderGasAmount(step.shortfall, NETWORK.nativeAssetSymbol)
     const lines = copyOfStep(step)
-    expect(lines).toContain(appTranslate(GAS_KEYS.executionAmount, { amount }))
-    expect(lines).not.toContain(appTranslate(GAS_KEYS.submissionAmount, { amount }))
+    expect(lines).toContain(i18n.t(GAS_KEYS.executionAmount, { amount }))
+    expect(lines).not.toContain(i18n.t(GAS_KEYS.submissionAmount, { amount }))
   })
 
   it('the fast track before submission asks for the submission amount', async () => {
     const step = await depositStepFor('submission', true)
     const amount = renderGasAmount(step.shortfall, NETWORK.nativeAssetSymbol)
-    expect(copyOfStep(step)).toContain(appTranslate(GAS_KEYS.submissionAmount, { amount }))
+    expect(copyOfStep(step)).toContain(i18n.t(GAS_KEYS.submissionAmount, { amount }))
   })
 
   it("the execution's blocker reads its own line (shortfallExecute), the submission's its own", async () => {
     const execution = renderDepositStep(await depositStepFor('execution', false))
     const submission = renderDepositStep(await depositStepFor('submission', false))
-    expect(execution.blocker.line).toBe(appTranslate(GAS_KEYS.shortfallExecute))
-    expect(submission.blocker.line).toBe(appTranslate(GAS_KEYS.shortfallSubmit))
+    expect(execution.blocker.line).toBe(i18n.t(GAS_KEYS.shortfallExecute))
+    expect(submission.blocker.line).toBe(i18n.t(GAS_KEYS.shortfallSubmit))
   })
 })
 
@@ -270,8 +271,8 @@ describe("edit, the management editor's save, is an owner write", () => {
     expect(step.payer).toBe('accountKey')
     expect(step.routes.map((route) => route.kind).sort()).toEqual(['outside', 'transfer'])
     const rendered = renderDepositStep(step)
-    expect(rendered.title).toBe(appTranslate(GAS_KEYS.notEnoughGasAccountKey))
-    expect(rendered.notes).toContain(appTranslate(GAS_KEYS.transferIsAnOperation))
-    expect(rendered.notes).not.toContain(appTranslate(GAS_KEYS.secondFunding))
+    expect(rendered.title).toBe(i18n.t(GAS_KEYS.notEnoughGasAccountKey))
+    expect(rendered.notes).toContain(i18n.t(GAS_KEYS.transferIsAnOperation))
+    expect(rendered.notes).not.toContain(i18n.t(GAS_KEYS.secondFunding))
   })
 })
