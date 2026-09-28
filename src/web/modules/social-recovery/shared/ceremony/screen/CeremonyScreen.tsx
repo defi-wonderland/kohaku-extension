@@ -30,15 +30,23 @@ import type { DeviceBinding } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderChip, renderHash } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
-import { ReportStore, sendCeremonyReport, sweepCeremonyReports } from '../channel'
-import type { CeremonyStep } from '../device'
-import type { ClaimValue, EnrollValue, TestAccessValue } from '../hosts'
+import { sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import { lossLineKeyOf, renderKindLine } from '../kindLine'
-import { CeremonyParams, parseCeremonySearch } from '../request'
-import { ceremonyMayRun, ResolvedCeremony, runCeremony } from '../run'
+import { parseCeremonySearch } from '../request'
+import { ceremonyMayRun, runCeremony } from '../run'
+import type {
+  CeremonyOutcome,
+  CeremonyParams,
+  CeremonyStep,
+  ClaimValue,
+  EnrollValue,
+  ReportStore,
+  ResolvedCeremony,
+  TestAccessValue,
+  VisibilityGate
+} from '../types'
 import {
   browserErrorNameOf,
-  CeremonyOutcome,
   chipOfOutcome,
   dismissed,
   lineKeyOfOutcome,
@@ -46,7 +54,7 @@ import {
   noteKeyOfOutcome,
   unavailable
 } from '../verdicts'
-import { createVisibilityGate, VisibilityGate, whenVisible } from '../visibility'
+import { createVisibilityGate, whenVisible } from '../visibility'
 import {
   browserPasskeyDevice,
   browserReportKeys,
@@ -55,8 +63,7 @@ import {
   pagePlatform
 } from './browserDefaults'
 import { useCeremonySource } from './CeremonySource'
-
-type Phase = 'resolving' | 'running' | 'reporting' | 'undelivered' | 'done' | 'nothing'
+import type { Phase } from './types'
 
 const hashOfValue = (value: unknown): string | null => {
   const v = value as Partial<TestAccessValue & ClaimValue>

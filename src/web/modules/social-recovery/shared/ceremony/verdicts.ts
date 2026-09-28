@@ -21,22 +21,34 @@ import type {
   DeviceBinding,
   EnrollFailure,
   Hex,
-  MethodFailureCause,
   ReplyFailure,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type { CollectionChip, MethodChip } from '@web/modules/social-recovery/shared/display'
+import type { MethodChip } from '@web/modules/social-recovery/shared/display'
+
+import type {
+  CeremonyCall,
+  CeremonyCause,
+  CeremonyOutcome,
+  CeremonyStop,
+  CeremonyVerdict,
+  DismissalNote,
+  DismissedOutcome,
+  FailedOutcome,
+  NotSupportedOutcome,
+  PassedOutcome,
+  RowChip,
+  UnavailableOutcome
+} from './types'
 
 /** The four calls of a method's lifecycle. */
 export const CEREMONY_CALLS = ['enroll', 'testAccess', 'createClaim', 'healthCheck'] as const
-export type CeremonyCall = typeof CEREMONY_CALLS[number]
 
 export const isCeremonyCall = (value: unknown): value is CeremonyCall =>
   typeof value === 'string' && (CEREMONY_CALLS as readonly string[]).includes(value)
 
 /** The four verdicts, a closed set. */
 export const CEREMONY_VERDICTS = ['passed', 'failed', 'unavailable', 'notSupported'] as const
-export type CeremonyVerdict = typeof CEREMONY_VERDICTS[number]
 
 export const isCeremonyVerdict = (value: unknown): value is CeremonyVerdict =>
   typeof value === 'string' && (CEREMONY_VERDICTS as readonly string[]).includes(value)
@@ -46,7 +58,6 @@ export const isCeremonyVerdict = (value: unknown): value is CeremonyVerdict =>
  * runs, or the holder's Cancel at any step.
  */
 export const DISMISSAL_NOTES = ['cancelled', 'refused'] as const
-export type DismissalNote = typeof DISMISSAL_NOTES[number]
 
 /**
  * The causes a verdict other than passed names: the method's own five and the
@@ -76,42 +87,6 @@ export const HOST_CAUSES = [
   'no-implementation',
   'browser-error'
 ] as const
-export type HostCause = typeof HOST_CAUSES[number]
-export type CeremonyCause = MethodFailureCause | HostCause
-
-export type PassedOutcome<T> = { kind: 'verdict'; verdict: 'passed'; retry: false; value: T }
-export type FailedOutcome = {
-  kind: 'verdict'
-  verdict: 'failed'
-  retry: true
-  cause: CeremonyCause
-  detail?: string
-}
-export type UnavailableOutcome = {
-  kind: 'verdict'
-  verdict: 'unavailable'
-  retry: true
-  cause: CeremonyCause
-  detail?: string
-}
-export type NotSupportedOutcome = {
-  kind: 'verdict'
-  verdict: 'notSupported'
-  retry: false
-  cause: CeremonyCause
-}
-export type DismissedOutcome = { kind: 'dismissed'; note: DismissalNote; detail?: string }
-
-/** What every host returns: exactly one of the four verdicts, or the dismissal. */
-export type CeremonyOutcome<T = unknown> =
-  | PassedOutcome<T>
-  | FailedOutcome
-  | UnavailableOutcome
-  | NotSupportedOutcome
-  | DismissedOutcome
-
-/** Every outcome but passed, the shape a host returns before it has a value. */
-export type CeremonyStop = Exclude<CeremonyOutcome<never>, PassedOutcome<never>>
 
 export const passed = <T>(value: T): PassedOutcome<T> => ({
   kind: 'verdict',
@@ -164,11 +139,6 @@ export const VERDICT_CHIP: { readonly [V in CeremonyVerdict]: MethodChip } = {
   unavailable: 'testUnavailable',
   notSupported: 'notSupported'
 }
-
-/** A chip a row shows: a method chip in setup, a collection chip on the checklist. */
-export type RowChip =
-  | { set: 'method'; chip: MethodChip }
-  | { set: 'collection'; chip: CollectionChip }
 
 /**
  * The chip an outcome of `call` selects, or null where the row keeps its chip.

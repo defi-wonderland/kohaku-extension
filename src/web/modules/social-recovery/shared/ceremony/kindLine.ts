@@ -15,16 +15,13 @@
  * Pure: the platform is a parameter, read from `navigator` by the screen.
  */
 import type { Translate } from '../display'
-import type { PasskeyFacts } from './webauthn'
+import type { KindLine, PasskeyDevice, PasskeyFacts, PasskeyProvider, Platform } from './types'
 
 export const PASSKEY_PROVIDERS = ['apple', 'google', 'passwordManager'] as const
-export type PasskeyProvider = typeof PASSKEY_PROVIDERS[number]
 
 export const PASSKEY_DEVICES = ['thisDevice', 'thisMac', 'thisPhone'] as const
-export type PasskeyDevice = typeof PASSKEY_DEVICES[number]
 
 export const PLATFORMS = ['mac', 'phone', 'other'] as const
-export type Platform = typeof PLATFORMS[number]
 
 /**
  * The AAGUIDs that name a platform provider, from the community list of
@@ -72,11 +69,6 @@ export const deviceOf = (facts: Pick<PasskeyFacts, 'place'>, platform: Platform)
   if (platform === 'phone') return 'thisPhone'
   return 'thisDevice'
 }
-
-/** One kind line: its key, and the key of the name it interpolates. */
-export type KindLine =
-  | { key: 'socialRecovery.ceremony.syncedKind'; param: 'provider'; nameKey: string }
-  | { key: 'socialRecovery.ceremony.deviceBoundKind'; param: 'device'; nameKey: string }
 
 /** The kind line of a passkey's facts on `platform`. */
 export const kindLineOf = (

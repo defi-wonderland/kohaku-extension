@@ -13,15 +13,8 @@
  */
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 
-import { CeremonyCall, isCeremonyCall } from './verdicts'
-
-export interface CeremonyParams {
-  call: CeremonyCall
-  method: string
-  id: string
-  handOff: boolean
-  returnTo?: string
-}
+import type { CeremonyParams, ParsedCeremony } from './types'
+import { isCeremonyCall } from './verdicts'
 
 export const CEREMONY_SEARCH_KEYS = {
   call: 'call',
@@ -45,10 +38,6 @@ export const isInternalPath = (path: string): boolean =>
   !path.includes('\\') &&
   !/^\/*[a-z][a-z0-9+.-]*:/i.test(path.slice(1)) &&
   path.length <= 512
-
-export type ParsedCeremony =
-  | { ok: true; params: CeremonyParams }
-  | { ok: false; reason: 'call' | 'method' | 'id' | 'returnTo' }
 
 /** Reads the ceremony of a search string or of `URLSearchParams`. */
 export const parseCeremonySearch = (search: string | URLSearchParams): ParsedCeremony => {

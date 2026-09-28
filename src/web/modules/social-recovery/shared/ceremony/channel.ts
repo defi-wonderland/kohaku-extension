@@ -28,11 +28,15 @@
  * Both hand over values already parsed: the store's `get` reads its own
  * richJson text, and the subscription parses a change before it calls back.
  */
-import type { Storage } from '@ambire-common/interfaces/storage'
-
-import type { CeremonyParams } from './request'
-import { CeremonyCall, CeremonyOutcome, isCeremonyCall, isCeremonyVerdict } from './verdicts'
-import type { VisibilityGate } from './visibility'
+import type {
+  CeremonyOutcome,
+  CeremonyReport,
+  ReportIdentity,
+  ReportStore,
+  ReportSubscribe,
+  VisibilityGate
+} from './types'
+import { isCeremonyCall, isCeremonyVerdict } from './verdicts'
 
 export const CEREMONY_RESULT_KEY_PREFIX = 'socialRecoveryCeremonyResult:'
 
@@ -43,31 +47,6 @@ export const CEREMONY_REPORT_TTL_MS = 10 * 60 * 1000
 export const CEREMONY_REPORT_CLOCK_SKEW_MS = 60 * 1000
 
 export const ceremonyResultKey = (id: string): string => `${CEREMONY_RESULT_KEY_PREFIX}${id}`
-
-/** One ceremony's outcome as the caller reads it. */
-export interface CeremonyReport<T = unknown> {
-  id: string
-  call: CeremonyCall
-  method: string
-  outcome: CeremonyOutcome<T>
-  reportedAt: number
-  /** `reportedAt` plus `CEREMONY_REPORT_TTL_MS`: no reader delivers the report after it. */
-  expiresAt: number
-}
-
-/** What a caller expects a report to be for. */
-export type ReportIdentity = Pick<CeremonyParams, 'id' | 'call' | 'method'>
-
-/**
- * The extension's storage as the channel uses it: its own `set` and `remove`,
- * and a `get` that reads one key, never the whole store.
- */
-export type ReportStore = Pick<Storage, 'set' | 'remove'> & {
-  get(key: string, defaultValue?: unknown): Promise<unknown>
-}
-
-/** Subscribes to changes of one storage key, parsed; returns the unsubscribe. */
-export type ReportSubscribe = (key: string, onValue: (value: unknown) => void) => () => void
 
 /** Whether `value` is a well-formed report: one of the four verdicts or a dismissal. */
 export const isCeremonyReport = (value: unknown): value is CeremonyReport => {

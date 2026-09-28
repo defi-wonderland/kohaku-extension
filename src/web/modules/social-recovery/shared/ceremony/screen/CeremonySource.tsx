@@ -11,20 +11,7 @@
  */
 import React, { createContext, ReactNode, useContext, useMemo } from 'react'
 
-import type { ReportStore, ReportSubscribe } from '../channel'
-import type { CeremonyResolver } from '../run'
-import type { VisibilitySource } from '../visibility'
-
-export interface CeremonySource {
-  /** Finds the ceremony a request id names. */
-  resolve?: CeremonyResolver
-  /** Where the tab writes its report; the extension's local storage by default. */
-  store?: ReportStore
-  /** How a caller listens for a report; storage change events by default. */
-  subscribe?: ReportSubscribe
-  /** The document the visibility gate reads; `document` by default. */
-  visibility?: VisibilitySource
-}
+import type { CeremonySource } from './types'
 
 const CeremonySourceContext = createContext<CeremonySource>({})
 

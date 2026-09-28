@@ -22,21 +22,22 @@
  * again after every call it awaits: an abort that arrives while the method
  * packages or checks ends in the cancelled note, and its answer is dropped.
  */
-import type {
-  Address,
-  ApproverReply,
-  ApproverRequest,
-  DeviceBinding,
-  Hex,
-  IMethodsOrchestrator,
-  IRecoveryMethod
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { CeremonyDevice, CeremonyStep, DeviceCallContext } from './device'
-import type { PasskeyCeremonyDevice } from './passkeyDevice'
-import {
+import type {
   CeremonyCall,
+  CeremonyDevice,
   CeremonyOutcome,
+  ClaimValue,
+  DeviceCallContext,
+  DeviceChoice,
+  EnrollValue,
+  HostContext,
+  PasskeyCeremonyDevice,
+  SignedReply,
+  TestAccessValue
+} from './types'
+import {
   dismissed,
   isMethodFailure,
   notSupported,
@@ -45,55 +46,6 @@ import {
   outcomeOfThrown,
   passed
 } from './verdicts'
-import type { PasskeyFacts } from './webauthn'
-
-export interface HostContext {
-  orchestrator: IMethodsOrchestrator
-  /** The implementation, read for its `deviceBinding`. */
-  method: IRecoveryMethod
-  /**
-   * The device a caller's record supplies, for a method whose material the
-   * caller already holds (a guardian's address or signature, a zkPassport
-   * result, an Aadhaar QR). Never used for the `browser-authenticator` binding.
-   */
-  device?: CeremonyDevice
-  /**
-   * The page's own devices by binding. A `browser-authenticator` method always
-   * runs the page's own passkey device from here, so the rp id hash check and
-   * the high-s normalization always run; where it is absent the host reports
-   * not supported.
-   */
-  devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
-  /** The holder chose the browser's phone hand-off. */
-  handOff?: boolean
-  signal?: AbortSignal
-  onStep?: (step: CeremonyStep) => void
-}
-
-/**
- * What a passed enrollment carries: the config bytes, the ceremony's own facts
- * (the synced or device-bound kind) and the credential id a later test or
- * claim names in `allowCredentials`.
- */
-export interface EnrollValue {
-  config: Hex
-  facts?: PasskeyFacts
-  credentialId?: string
-}
-
-/** What a passed access test carries: the proof the local check satisfied. */
-export interface TestAccessValue {
-  proof: Hex
-  facts?: PasskeyFacts
-}
-
-/** What a passed claim carries: the reply for one place. */
-export interface ClaimValue {
-  reply: ApproverReply
-  facts?: PasskeyFacts
-}
-
-type DeviceChoice = { device: CeremonyDevice; params: unknown }
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== 'object' || value === null) return false
@@ -203,10 +155,6 @@ export const enrollHost = async (
     return cancelledByAbort(context) ?? outcomeOfThrown(error)
   }
 }
-
-type SignedReply =
-  | { ok: true; reply: ApproverReply; facts?: PasskeyFacts }
-  | { ok: false; outcome: CeremonyOutcome<never> }
 
 /** The signing half test access and create claim share: options, ceremony, reply. */
 const signForRequest = async (

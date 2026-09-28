@@ -6,31 +6,11 @@
  * The gate takes the document as a parameter, so it runs under Jest's node
  * environment with a fabricated source and in the tab with `document`.
  */
-
-/** The part of `document` the gate reads. */
-export interface VisibilitySource {
-  readonly visibilityState: string
-  addEventListener(type: 'visibilitychange', listener: () => void): void
-  removeEventListener(type: 'visibilitychange', listener: () => void): void
-}
+import type { Held, VisibilityGate, VisibilitySource } from './types'
 
 /** Whether the source is shown: only `visible` counts, `hidden` and `prerender` hold. */
 export const isVisible = (source: Pick<VisibilitySource, 'visibilityState'>): boolean =>
   source.visibilityState === 'visible'
-
-export interface VisibilityGate {
-  /**
-   * Runs `dispatch` now where the source is visible, or holds it until the
-   * source turns visible. Held dispatches run in the order they arrived.
-   */
-  dispatch<T>(dispatch: () => T | Promise<T>): Promise<T>
-  /** How many dispatches wait for the tab to be shown. */
-  pending(): number
-  /** Drops the listener. Held dispatches never run and their promises reject. */
-  dispose(): void
-}
-
-type Held = { run: () => void; drop: (reason: Error) => void }
 
 /** A gate over `source`. */
 export const createVisibilityGate = (source: VisibilitySource): VisibilityGate => {

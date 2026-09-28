@@ -15,10 +15,22 @@
  * are parameters, so a test runs the device with a mocked
  * `navigator.credentials` and a fabricated authenticator data.
  */
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { hexToBytes, isHex } from 'viem'
 
-import type { CeremonyDevice, DeviceCallContext, DeviceResult } from './device'
+import type {
+  AssertionResponseLike,
+  AttestationResponseLike,
+  DeviceCallContext,
+  DeviceResult,
+  NormalizedAssertion,
+  PasskeyCeremonyDevice,
+  PasskeyDeviceOptions,
+  PasskeyEnrollInput,
+  PasskeySigningInput,
+  PublicKeyCredentialLike,
+  RelyingParty,
+  WebAuthnCall
+} from './types'
 import { dismissed, failed } from './verdicts'
 import {
   authDataFromAttestationObject,
@@ -27,76 +39,12 @@ import {
   normalizeDerSignature,
   passkeyFactsOf,
   readAuthenticatorData,
-  RelyingParty,
   stopOfCeremonyError,
-  toBytes,
-  WebAuthnCall
+  toBytes
 } from './webauthn'
 
 /** The relying party's display name the authenticator may show beside the rp id. */
 export const RELYING_PARTY_NAME = 'Kohaku'
-
-/**
- * The page's own passkey device: a device that carries the relying party it
- * was built over, so a host hands the method that relying party's origin
- * string and never one a caller chose.
- */
-export interface PasskeyCeremonyDevice extends CeremonyDevice {
-  readonly relyingParty: RelyingParty
-}
-
-/** The part of `navigator.credentials` the device calls. */
-export interface CredentialsLike {
-  create(options: CredentialCreationOptions): Promise<Credential | null>
-  get(options: CredentialRequestOptions): Promise<Credential | null>
-}
-
-export interface PasskeyDeviceOptions {
-  credentials: CredentialsLike
-  relyingParty: RelyingParty
-  timeoutMs?: number
-  now?: () => number
-  randomBytes?: (length: number) => Uint8Array
-}
-
-/** The creation options a passkey method's `enrollInput` returns. */
-export interface PasskeyEnrollInput {
-  rp?: { id?: string; name?: string }
-  user?: { id?: string; name?: string; displayName?: string }
-  pubKeyCredParams?: { type: 'public-key'; alg: number }[]
-  authenticatorSelection?: AuthenticatorSelectionCriteria
-  attestation?: AttestationConveyancePreference
-  excludeCredentials?: { type?: 'public-key'; id: string }[]
-  challenge?: string
-}
-
-/** The request options a passkey method's `signingInput` returns. */
-export interface PasskeySigningInput {
-  challenge: Hex | string
-  rpId?: string
-  userVerification?: UserVerificationRequirement
-  allowCredentials?: { type?: 'public-key'; id: string }[]
-}
-
-/**
- * The assertion the method receives: the browser's `PublicKeyCredential` copied
- * field by field, with `response.signature` in the low-s form.
- */
-export interface NormalizedAssertion {
-  id: string
-  rawId: ArrayBuffer
-  type: string
-  authenticatorAttachment: string | null
-  response: {
-    authenticatorData: ArrayBuffer
-    clientDataJSON: ArrayBuffer
-    signature: ArrayBuffer
-    userHandle: ArrayBuffer | null
-  }
-  /** Whether the device lowered a high `s`. */
-  signatureNormalized: boolean
-  getClientExtensionResults(): AuthenticationExtensionsClientOutputs
-}
 
 const ES256 = -7
 
@@ -194,28 +142,6 @@ export const requestOptionsFrom = (
     ...(settings.handOff ? { hints: ['hybrid'] } : {})
   }
   return options
-}
-
-type AttestationResponseLike = {
-  attestationObject?: ArrayBuffer
-  getAuthenticatorData?: () => ArrayBuffer
-  getTransports?: () => string[]
-}
-
-type AssertionResponseLike = {
-  authenticatorData: ArrayBuffer
-  clientDataJSON: ArrayBuffer
-  signature: ArrayBuffer
-  userHandle?: ArrayBuffer | null
-}
-
-type PublicKeyCredentialLike = {
-  id: string
-  rawId: ArrayBuffer
-  type: string
-  authenticatorAttachment?: string | null
-  response: unknown
-  getClientExtensionResults?: () => AuthenticationExtensionsClientOutputs
 }
 
 const enrollmentAuthData = (response: AttestationResponseLike): Uint8Array | null => {

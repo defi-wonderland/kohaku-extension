@@ -6,7 +6,7 @@
 import CeremonyScreen from './CeremonyScreen'
 
 export { CeremonySourceProvider, useCeremonySource } from './CeremonySource'
-export type { CeremonySource } from './CeremonySource'
+export type { CeremonySource } from './types'
 export {
   browserPasskeyDevice,
   browserReportKeys,

@@ -3,49 +3,9 @@
  * resolves to, and the two gates the tab keeps before it runs anything.
  * Pure: no React, no `navigator`, no storage.
  */
-import type {
-  Address,
-  ApproverRequest,
-  DeviceBinding,
-  IMethodsOrchestrator,
-  IRecoveryMethod
-} from '@web/modules/social-recovery/sdk-interfaces'
-
-import type { CeremonyDevice, CeremonyStep } from './device'
 import { createClaimHost, enrollHost, healthCheckHost, testAccessHost } from './hosts'
-import type { CeremonyParams } from './request'
-import { CeremonyOutcome, failed } from './verdicts'
-
-/**
- * What the caller's record resolves to: the injected orchestrator and method
- * implementation (typed by `sdk-interfaces`, never the doubles), and the
- * inputs of the call. Enroll needs `methodAddress` and `params`; test access
- * and create claim need `request`. A method whose material the caller already
- * holds (a guardian's address or signature, a zkPassport result, an Aadhaar
- * QR) passes its own `device`.
- *
- * A `browser-authenticator` method ignores `device` and runs the page's own
- * passkey device from `RunDeps.devices`, and its `params.relyingPartyId` is
- * replaced with the page's full origin string: the host owns the relying
- * party id.
- */
-export interface ResolvedCeremony {
-  orchestrator: IMethodsOrchestrator
-  method: IRecoveryMethod
-  methodAddress?: Address
-  params?: unknown
-  request?: ApproverRequest
-  device?: CeremonyDevice
-}
-
-/** Finds the ceremony a request id names; null where nothing waits under it. */
-export type CeremonyResolver = (params: CeremonyParams) => Promise<ResolvedCeremony | null>
-
-export interface RunDeps {
-  devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
-  signal?: AbortSignal
-  onStep?: (step: CeremonyStep) => void
-}
+import type { CeremonyOutcome, CeremonyParams, ResolvedCeremony, RunDeps } from './types'
+import { failed } from './verdicts'
 
 /** Runs the host of `params.call` and returns its one outcome. */
 export const runCeremony = async (

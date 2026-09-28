@@ -10,36 +10,22 @@
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { bytesToHex, numberToBytes, sha256, stringToBytes } from 'viem'
 
-import {
+import type {
+  AuthenticatorData,
+  AuthenticatorFlags,
+  AuthenticatorPlace,
   CeremonyCall,
   CeremonyStop,
-  dismissed,
-  failed,
-  isBrowserErrorName,
-  messageOf,
-  unavailable
-} from './verdicts'
+  PasskeyFacts,
+  PasskeyKind,
+  RelyingParty,
+  WebAuthnCall
+} from './types'
+import { dismissed, failed, isBrowserErrorName, messageOf, unavailable } from './verdicts'
 
 // ---------------------------------------------------------------------------
 // The relying party
 // ---------------------------------------------------------------------------
-
-/**
- * The extension's relying party, three values from one origin.
- *
- * - `rpId`: the origin's host, the extension id. The value `rp.id` and `rpId`
- *   take in the `navigator.credentials` calls.
- * - `relyingPartyId`: the full origin string `chrome-extension://<id>`. The
- *   value the wallet hands the SDK as the relying party id.
- * - `rpIdHash`: `sha256(relyingPartyId)`, the hash the passkey config commits
- *   and the hash Chromium writes into the authenticator data of an extension
- *   origin. Never the hash of the bare id.
- */
-export interface RelyingParty {
-  rpId: string
-  relyingPartyId: string
-  rpIdHash: Hex
-}
 
 /** The hash the config commits: sha256 of the full origin string, never of the bare id. */
 export const rpIdHashOf = (origin: string): Hex => sha256(stringToBytes(origin))
@@ -72,25 +58,6 @@ export const AUTHENTICATOR_FLAGS = {
   attestedCredentialData: 0x40,
   extensionData: 0x80
 } as const
-
-export interface AuthenticatorFlags {
-  userPresent: boolean
-  userVerified: boolean
-  /** BE: the credential may be backed up, a multi-device (synced) credential. */
-  backupEligible: boolean
-  /** BS: the credential is backed up now. */
-  backedUp: boolean
-  attestedCredentialData: boolean
-  extensionData: boolean
-}
-
-export interface AuthenticatorData {
-  rpIdHash: Hex
-  flags: AuthenticatorFlags
-  signCount: number
-  /** The authenticator's AAGUID where the data carries attested credential data. */
-  aaguid?: string
-}
 
 const toBytes = (data: ArrayBuffer | ArrayBufferView): Uint8Array =>
   data instanceof Uint8Array
@@ -179,25 +146,9 @@ export const authDataFromAttestationObject = (
 
 /** The two kinds a passkey row names, read from the ceremony's own flags. */
 export const PASSKEY_KINDS = ['synced', 'device-bound'] as const
-export type PasskeyKind = typeof PASSKEY_KINDS[number]
 
 /** Where the authenticator sat, read from the attachment and the transports. */
 export const AUTHENTICATOR_PLACES = ['this-device', 'phone', 'security-key', 'unknown'] as const
-export type AuthenticatorPlace = typeof AUTHENTICATOR_PLACES[number]
-
-/**
- * What the ceremony itself reports about the credential. The kind comes from
- * the backup flags alone and never from the operating system.
- * The place names where the authenticator sat, for the row's `{{device}}`.
- */
-export interface PasskeyFacts {
-  kind: PasskeyKind
-  backedUp: boolean
-  place: AuthenticatorPlace
-  attachment: 'platform' | 'cross-platform' | null
-  transports: string[]
-  aaguid?: string
-}
 
 /**
  * The kind of a credential from its flags: backup eligible (BE) is a
@@ -344,9 +295,6 @@ const errorName = (error: unknown): string | undefined =>
   typeof (error as { name?: unknown }).name === 'string'
     ? (error as { name: string }).name
     : undefined
-
-/** The two WebAuthn calls: `create` at enrollment, `get` at a test or a claim. */
-export type WebAuthnCall = 'create' | 'get'
 
 /**
  * Reads an error the `navigator.credentials` call threw, before the method

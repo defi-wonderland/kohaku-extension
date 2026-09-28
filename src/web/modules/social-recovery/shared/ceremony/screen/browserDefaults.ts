@@ -7,10 +7,10 @@ import { parse } from '@ambire-common/libs/richJson/richJson'
 import { browser, isExtension } from '@web/constants/browserapi'
 import { storage } from '@web/extension-services/background/webapi/storage'
 
-import type { ReportStore, ReportSubscribe } from '../channel'
-import { Platform, platformOf } from '../kindLine'
-import { createPasskeyDevice, PasskeyCeremonyDevice } from '../passkeyDevice'
+import { platformOf } from '../kindLine'
+import { createPasskeyDevice } from '../passkeyDevice'
 import { passkeysServed } from '../run'
+import type { PasskeyCeremonyDevice, Platform, ReportStore, ReportSubscribe } from '../types'
 import { relyingPartyOf } from '../webauthn'
 
 /** The extension's local storage, the web build's localStorage outside an extension. */
