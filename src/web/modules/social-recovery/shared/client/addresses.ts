@@ -11,24 +11,7 @@
  */
 import { isAddress, isAddressEqual } from 'viem'
 
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-
-import type { RecoveryChain } from './chains'
-
-/** The addresses one deployment is reached at. */
-export interface AddressBook {
-  /** The policy manager every setup and attempt call targets. */
-  manager: Address
-  /** The four shipped method modules. */
-  methods: {
-    ecdsa: Address
-    passkey: Address
-    aadhaar: Address
-    zkpassport: Address
-  }
-  /** The recovery action for Kohaku's Ambire-derived account. */
-  action: Address
-}
+import type { AddressBook, RecoveryChain } from './types'
 
 /** The placeholder addresses of both deployments, by chain, to replace once deployed. */
 export const PLACEHOLDER_ADDRESSES = {

@@ -15,7 +15,6 @@
  */
 import { hexToBigInt, isHex } from 'viem'
 
-import type { RPCProvider } from '@ambire-common/interfaces/provider'
 import type {
   Address,
   BlockHeader,
@@ -27,8 +26,13 @@ import type {
   RawLog
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-/** The members of the extension's provider the adapter reads through. */
-export type AdapterProvider = Pick<RPCProvider, 'call' | 'getLogs' | 'getBlock' | 'send'>
+import type {
+  AdapterProvider,
+  ProviderLog,
+  ProviderRead,
+  ProviderReadFailure,
+  RevertedCall
+} from './types'
 
 /** Every read this folder makes through the extension's provider. */
 export const PROVIDER_READS = [
@@ -40,21 +44,6 @@ export const PROVIDER_READS = [
   'estimateGas',
   'gasPrice'
 ] as const
-export type ProviderRead = typeof PROVIDER_READS[number]
-
-/** A contract answered with a revert: the error carries the raw revert data, `0x` where it gave none. */
-export interface RevertedCall extends Error {
-  name: 'RevertedCall'
-  data: Hex
-  read: 'call' | 'estimateGas'
-}
-
-/** A read the provider could not make. It is a failure, never an empty answer. */
-export interface ProviderReadFailure extends Error {
-  name: 'ProviderReadFailure'
-  read: ProviderRead
-  cause: unknown
-}
 
 export const revertedCall = (read: RevertedCall['read'], data: Hex): RevertedCall => {
   const error = new Error('execution reverted') as RevertedCall
@@ -163,8 +152,6 @@ export const attemptRead = async <T>(read: ProviderRead, run: () => Promise<T>):
 // ---------------------------------------------------------------------------
 // The four reads
 // ---------------------------------------------------------------------------
-
-type ProviderLog = Awaited<ReturnType<AdapterProvider['getLogs']>>[number]
 
 const rawLogOf = (log: ProviderLog): RawLog => ({
   address: hexOf('logs', log.address) as Address,

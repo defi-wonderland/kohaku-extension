@@ -6,35 +6,10 @@
  * estimates each transaction's gas itself, on the same provider the adapter
  * wraps. The gas step reads these; the SDK never sees them.
  */
-import type { RPCProvider } from '@ambire-common/interfaces/provider'
-import type {
-  Address,
-  BlockTag,
-  Hex,
-  PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, BlockTag, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { attemptRead, callFailureOf, quantityOf } from './provider-adapter'
-
-/** The members of the extension's provider the balance and gas reads use. */
-export type ChainReadsProvider = Pick<RPCProvider, 'getBalance' | 'estimateGas' | 'send'>
-
-/** One transaction a key the wallet holds would send, for its gas estimate. */
-export interface GasEstimateCall {
-  from: Address
-  to: Address
-  data: Hex
-  value?: bigint
-}
-
-export interface ChainReads {
-  /** The native balance of an address at a block tag (`latest` by default), in wei. */
-  nativeBalance(address: Address, block?: BlockTag): Promise<bigint>
-  /** The gas one transaction would use. A call that would revert rejects with its revert data. */
-  estimateGas(call: GasEstimateCall): Promise<bigint>
-  /** The node's gas price, in wei per gas. */
-  gasPrice(): Promise<bigint>
-}
+import type { ChainReads, ChainReadsProvider, GasEstimateCall } from './types'
 
 /**
  * The balance and gas reads over the extension's provider: `getBalance`,

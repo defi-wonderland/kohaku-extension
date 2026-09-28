@@ -12,22 +12,13 @@
  */
 import type { PreparedBatch, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { KeyHandle } from './signer'
+import type { KeyHandle, RecoveryCall, SendingKeys } from './types'
 
 /** The sponsor rail this build configured: none in the first release. */
 export const SPONSOR_RAIL = 'none' as const
 
 /** The two recovery calls the recoverer's own key sends. */
 export const RECOVERY_CALLS = ['submission', 'execution'] as const
-export type RecoveryCall = typeof RECOVERY_CALLS[number]
-
-/** The keys the signer holds that can send, by role. */
-export interface SendingKeys {
-  /** The account's controlling key, which signs the account's own operations. */
-  accountKey?: KeyHandle
-  /** The recoverer's own key, which sends the submission and the execution. */
-  recovererKey?: KeyHandle
-}
 
 /**
  * The key that sends a prepared call or batch.
@@ -52,7 +43,7 @@ export const sendingKeyOf = (
     )
   }
   const sender = prepared.kind === 'batch' ? 'account' : prepared.sender
-  if (sender === 'anyone' && (!recoveryCall || !RECOVERY_CALLS.includes(recoveryCall))) {
+  if (sender === 'anyone' && !recoveryCall) {
     throw new Error(
       'Only the submission and the execution are sent from the key of the recoverer in this release.'
     )

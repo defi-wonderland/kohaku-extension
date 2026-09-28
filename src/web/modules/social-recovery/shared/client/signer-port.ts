@@ -12,7 +12,7 @@ import type {
   SignMessageState,
   SignRequestAction,
   SignRequestPort
-} from './signer'
+} from './types'
 
 export const signRequestPort = (
   dispatch: (action: SignRequestAction) => void,

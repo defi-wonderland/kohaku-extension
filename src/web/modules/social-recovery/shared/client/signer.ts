@@ -42,107 +42,31 @@ import {
 } from 'viem'
 
 import { Session } from '@ambire-common/classes/session'
-import type { SignedMessage } from '@ambire-common/controllers/activity/types'
-import type { Account } from '@ambire-common/interfaces/account'
-import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
   PlainTextMessage,
   SignUserRequest,
   TypedMessage
 } from '@ambire-common/interfaces/userRequest'
-import type { Action } from '@web/extension-services/background/actions'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from './addresses'
-
-/** The keystore's own handle of a key: its address and its type. */
-export interface KeyHandle {
-  addr: Address
-  type: Key['type']
-}
-
-/** EIP-712 typed data. `types.EIP712Domain` is derived from the domain where the caller leaves it out. */
-export interface TypedDataToSign {
-  domain: TypedMessage['domain']
-  types: TypedMessage['types']
-  primaryType: string
-  message: Record<string, unknown>
-}
-
-/** The facade. Its two members are its whole surface. */
-export interface SignerFacade {
-  /** An EIP-712 signature over the typed data by the key, after the holder confirms it. */
-  signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex>
-  /** An EIP-191 personal-message signature over the bytes by the key, after the holder confirms it. */
-  signBytes(key: KeyHandle, bytes: Hex): Promise<Hex>
-}
+import type {
+  KeyHandle,
+  ListedAccount,
+  SignerFacade,
+  SignerFacadeOptions,
+  SignerMember,
+  SignerNotWired,
+  SignFlowFailure,
+  SignFlowFailureReason,
+  SignRequestPort,
+  TypedDataToSign
+} from './types'
 
 export const SIGNER_MEMBERS = ['signTypedData', 'signBytes'] as const
-export type SignerMember = typeof SIGNER_MEMBERS[number]
-
-/** The two request-queue actions the facade dispatches: add its request, and withdraw it on a timeout. */
-export type SignRequestAction = Extract<
-  Action,
-  { type: 'REQUESTS_CONTROLLER_ADD_USER_REQUEST' | 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST' }
->
-
-/** The part of the `signMessage` controller state the facade reads. */
-export interface SignMessageState {
-  signedMessage?: Pick<SignedMessage, 'fromActionId' | 'signature'> | null
-}
-
-/** The part of the `requests` controller state the facade reads. */
-export interface RequestsState {
-  userRequests?: { id: string | number }[]
-  userRequestsWaitingAccountSwitch?: { id: string | number }[]
-}
-
-/** One controller state the background pushed, by controller. */
-export type SignRequestUpdate =
-  | { controller: 'signMessage'; state: SignMessageState }
-  | { controller: 'requests'; state: RequestsState }
-
-/** The account records the facade checks a key against. */
-export type ListedAccount = Pick<Account, 'addr' | 'associatedKeys' | 'creation'>
-
-/**
- * How the facade reaches the background: the dispatch of `useBackgroundService`,
- * the `signMessage` and `requests` controller states the background pushes,
- * the accounts the wallet lists and the window the request opens beside.
- * `signRequestPort` (signer-port.ts) wires the UI's own.
- */
-export interface SignRequestPort {
-  dispatch(action: SignRequestAction): void
-  /** Calls the listener with each pushed `signMessage` and `requests` state; returns the unsubscribe. */
-  subscribe(listener: (update: SignRequestUpdate) => void): () => void
-  accounts(): readonly ListedAccount[]
-  windowId(): number | undefined
-}
 
 /** The background action a `SignerNotWired` key needs. It does not exist yet. */
 export const MISSING_BACKGROUND_ACTION = 'KEYSTORE_CONTROLLER_SIGN_WITH_KEY' as const
-
-/**
- * The facade was asked for a key the request queue cannot sign for: any key
- * that is not itself a basic account the wallet lists.
- *
- * Signing for such a key, or a bare digest, needs the background action
- * `MISSING_BACKGROUND_ACTION`, which does not exist yet. Its shape: params
- * `{ requestId, keyAddr, keyType, content }`, where `content` is a
- * `PlainTextMessage` or a `TypedMessage`. The handler takes
- * `KeystoreController.getSigner(keyAddr, keyType)`, runs `signer.init` with the
- * external signer controller of that type, and answers
- * `signMessage(content.message)` or `signTypedData(content)` with no account
- * lookup and no Ambire envelope. It sends the signature or the error back to
- * the UI under the request id, as `PROVIDER_RPC_REQUEST` does, and it too
- * goes through the action window for the holder's confirmation.
- */
-export interface SignerNotWired extends Error {
-  name: 'SignerNotWired'
-  member: SignerMember
-  key: KeyHandle
-  missingAction: typeof MISSING_BACKGROUND_ACTION
-}
 
 export const signerNotWired = (member: SignerMember, key: KeyHandle): SignerNotWired => {
   const error = new Error(
@@ -171,13 +95,6 @@ export const SIGN_FLOW_FAILURE_REASONS = [
   'malformed-signature',
   'signer-mismatch'
 ] as const
-export type SignFlowFailureReason = typeof SIGN_FLOW_FAILURE_REASONS[number]
-
-export interface SignFlowFailure extends Error {
-  name: 'SignFlowFailure'
-  member: SignerMember
-  reason: SignFlowFailureReason
-}
 
 export const signFlowFailure = (
   member: SignerMember,
@@ -214,12 +131,6 @@ export const DEFAULT_SIGN_TIMEOUT_MS = 10 * 60 * 1000
 /** How long the request must stay out of the queue, with no signature, before it counts as refused. */
 export const ABSENCE_GRACE_MS = 3000
 
-export interface SignerFacadeOptions {
-  /** The chain the request signs on, the recovery chain's id. */
-  chainId: number | bigint
-  timeoutMs?: number
-}
-
 const DOMAIN_MEMBERS = [
   { name: 'name', type: 'string' },
   { name: 'version', type: 'string' },
@@ -230,7 +141,7 @@ const DOMAIN_MEMBERS = [
 
 /** The typed message the queue takes, with `EIP712Domain` derived from the domain where absent. */
 export const typedMessageOf = (typedData: TypedDataToSign): TypedMessage => {
-  const domain = typedData.domain as Record<string, unknown>
+  const { domain } = typedData
   const types = typedData.types.EIP712Domain
     ? { ...typedData.types }
     : {
@@ -356,22 +267,24 @@ export const createSignerFacade = (
       let timer: ReturnType<typeof setTimeout> | undefined
       let absence: ReturnType<typeof setTimeout> | undefined
 
-      const finish = (outcome: { signature: Hex } | { error: Error }, withdraw = false) => {
-        if (done) return
+      const end = (withdraw: boolean): boolean => {
+        if (done) return false
         done = true
         if (timer !== undefined) clearTimeout(timer)
         if (absence !== undefined) clearTimeout(absence)
         unsubscribe()
         if (withdraw)
           port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
-        if ('signature' in outcome) resolve(outcome.signature)
-        else reject(outcome.error)
+        return true
+      }
+      const succeed = (signature: Hex) => {
+        if (end(false)) resolve(signature)
+      }
+      const fail = (reason: SignFlowFailureReason, withdraw = false) => {
+        if (end(withdraw)) reject(signFlowFailure(member, reason))
       }
 
-      timer = setTimeout(
-        () => finish({ error: signFlowFailure(member, 'timeout') }, true),
-        timeoutMs
-      )
+      timer = setTimeout(() => fail('timeout', true), timeoutMs)
 
       unsubscribe = port.subscribe((update) => {
         // The first signature under the request's id is its answer; nothing
@@ -381,7 +294,7 @@ export const createSignerFacade = (
           const signed = update.state.signedMessage
           if (!signed || !sameId(signed.fromActionId, id)) return
           const { signature } = signed
-          const malformed = () => finish({ error: signFlowFailure(member, 'malformed-signature') })
+          const malformed = () => fail('malformed-signature')
           if (!isHex(signature)) {
             malformed()
             return
@@ -395,9 +308,9 @@ export const createSignerFacade = (
             if (recovered === undefined) {
               malformed()
             } else if (!sameAddress(recovered, key.addr)) {
-              finish({ error: signFlowFailure(member, 'signer-mismatch') })
+              fail('signer-mismatch')
             } else {
-              finish({ signature })
+              succeed(signature)
             }
           }, malformed)
           return
@@ -414,10 +327,7 @@ export const createSignerFacade = (
           // The queue moves a request between its two lists after an account
           // switch and may push a state between the two moves, so an absence
           // counts only once it lasts.
-          absence = setTimeout(
-            () => finish({ error: signFlowFailure(member, 'refused') }),
-            ABSENCE_GRACE_MS
-          )
+          absence = setTimeout(() => fail('refused'), ABSENCE_GRACE_MS)
         }
       })
 
@@ -433,6 +343,12 @@ export const createSignerFacade = (
 
   return Object.freeze({
     signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex> {
+      // A domain alone carries no message for the holder to read.
+      if (typedData.primaryType === 'EIP712Domain') {
+        return Promise.reject(
+          new Error('signTypedData signs a message, never the EIP712Domain alone.')
+        )
+      }
       const content = typedMessageOf(typedData)
       // Typed data the signature check could not encode is refused before the
       // holder is asked to sign it.

@@ -24,67 +24,22 @@ import {
   shippedMethodDoubles,
   WalletReadsDouble
 } from '@web/modules/social-recovery/sdk-doubles'
-import type {
-  Address,
-  DeploymentDescriptor,
-  Domain,
-  IMethodModuleReads,
-  IMethodsOrchestrator,
-  IRecoveryActionInteractor,
-  IRecoveryClient,
-  ISetupClient
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { DeploymentDescriptor, Domain } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from './addresses'
-import type { RecoveryChain } from './chains'
-import { clientConfigurationOf, RecoveryClientConfiguration } from './configuration'
+import { clientConfigurationOf } from './configuration'
 import { descriptorOf } from './descriptors'
 import { sdkStandIn } from './stand-in'
-import type { WalletReads } from './wallet-reads'
+import type {
+  DigestVersionRefusal,
+  DomainVersion,
+  RecoveryClientConfiguration,
+  RecoveryKitClient,
+  WalletReads
+} from './types'
 
 /** The name every kit manager's domain carries. */
 export const MANAGER_DOMAIN_NAME = 'PolicyManager'
-
-/**
- * What the extension holds for one account: the two entry clients, the two
- * narrow seams the builder hands out, the approving side, and the wallet's
- * own reads. The builder constructed every part once, so all of them read the
- * same manager, action and events.
- */
-export interface RecoveryKitClient {
-  chain: RecoveryChain
-  account: Address
-  descriptor: DeploymentDescriptor
-  setup: ISetupClient
-  recovery: IRecoveryClient
-  /** `IRecoveryActionInteractor` alone; the arming seam stays inside the setup client. */
-  action: IRecoveryActionInteractor
-  /** `IMethodModuleReads` alone; the manager part is never handed out whole. */
-  moduleReads: IMethodModuleReads
-  /** The approving side, over the builder's method registry; it reads no chain. */
-  approving: IMethodsOrchestrator
-  /** The wallet's own reads the SDK does not offer (wallet-reads.ts). */
-  walletReads: WalletReads
-}
-
-/** The domain name and version a build carries or a manager publishes. */
-export interface DomainVersion {
-  name: string
-  version: string
-}
-
-/**
- * The refusal of a client built against another deployment's digest version.
- * `state` is the account step's state for it, drawn by a screen from en.json.
- */
-export interface DigestVersionRefusal extends Error {
-  name: 'DigestVersionRefusal'
-  state: 'update-the-wallet'
-  /** What this build derives under. */
-  carried: DomainVersion
-  /** What the manager publishes, where the wallet read it. */
-  published?: DomainVersion
-}
 
 export const digestVersionRefusal = (
   carried: DomainVersion,

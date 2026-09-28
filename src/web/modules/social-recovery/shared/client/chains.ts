@@ -7,8 +7,9 @@
  */
 import { mainnet, sepolia } from 'viem/chains'
 
+import type { RecoveryChain } from './types'
+
 export const RECOVERY_CHAINS = ['sepolia', 'mainnet'] as const
-export type RecoveryChain = typeof RECOVERY_CHAINS[number]
 
 /** The chain id of each recovery chain. */
 export const CHAIN_IDS = {

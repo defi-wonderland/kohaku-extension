@@ -13,28 +13,14 @@ import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { addressBookOf } from './addresses'
-import {
-  buildRecoveryClient,
-  DigestVersionRefusal,
-  isDigestVersionRefusal,
-  RecoveryKitClient
-} from './build-client'
-import { ChainReads, createChainReads } from './chain-reads'
+import { buildRecoveryClient, isDigestVersionRefusal } from './build-client'
+import { createChainReads } from './chain-reads'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
-import type { AccountFacts } from './configuration'
-import {
-  ExtensionProvider,
-  extensionProviderFor,
-  networkOf,
-  providerKeyOf
-} from './extension-provider'
+import { extensionProviderFor, networkOf, providerKeyOf } from './extension-provider'
 import { createProviderAdapter } from './provider-adapter'
+import type { AccountFacts, ExtensionProvider, RecoveryClientState } from './types'
 
-export type RecoveryClientState =
-  | { status: 'loading' }
-  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads }
-  | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
-  | { status: 'failed'; error: unknown }
+export type { RecoveryClientState }
 
 const LOADING: RecoveryClientState = { status: 'loading' }
 
@@ -57,6 +43,8 @@ export const useRecoveryClient = (
   // A change to any field the provider is built from rebuilds the provider
   // and the client; the effect's cleanup destroys the previous provider first.
   const networkKey = network ? providerKeyOf(network) : networks ? 'missing' : 'loading'
+  const factsRef = useRef(facts)
+  factsRef.current = facts
   const factsKey = JSON.stringify(facts)
   const [attempt, setAttempt] = useState(0)
   const buildKey = buildKeyOf(account, networkKey, factsKey, attempt)
@@ -94,7 +82,7 @@ export const useRecoveryClient = (
     let live = true
     setState(LOADING)
     buildRecoveryClient({
-      ...(JSON.parse(factsKey) as AccountFacts),
+      ...factsRef.current,
       chain: WALLET_RECOVERY_CHAIN,
       account,
       addressBook: addressBookOf(WALLET_RECOVERY_CHAIN),
