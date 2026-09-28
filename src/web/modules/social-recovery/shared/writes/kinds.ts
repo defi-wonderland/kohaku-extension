@@ -44,9 +44,6 @@ export const RECOVERY_CALLS = ['submission', 'execution'] as const
  */
 export const PAYERS = ['accountKey', 'sendingKey'] as const
 
-export const isWriteKind = (value: unknown): value is WriteKind =>
-  typeof value === 'string' && (WRITE_KINDS as readonly string[]).includes(value)
-
 export const isOwnerWrite = (write: WriteKind): write is OwnerWrite =>
   (OWNER_WRITES as readonly string[]).includes(write)
 

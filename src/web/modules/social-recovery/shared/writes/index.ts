@@ -10,7 +10,6 @@ export {
   OWNER_WRITES,
   RECOVERY_CALLS,
   PAYERS,
-  isWriteKind,
   isOwnerWrite,
   isRecoveryCall,
   payerOf,
