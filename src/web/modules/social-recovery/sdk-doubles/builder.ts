@@ -31,9 +31,9 @@ import type {
 
 import { ActionCodecDouble } from './action-codec'
 import type { ScriptedChain } from './chain'
-import { ClientContext, defaultClientConfiguration } from './context'
+import { defaultClientConfiguration } from './context'
 import { MANAGER_DOMAIN_FIELDS, sameAddress } from './encoding'
-import { codedError, type CodedError } from './scripts'
+import { codedError } from './scripts'
 import { EventManagerDouble } from './event-manager'
 import { MethodsOrchestratorDouble } from './orchestrator'
 import { narrowModuleReads, PolicyManagerDouble } from './policy-manager'
@@ -41,6 +41,7 @@ import { ProviderDouble } from './provider'
 import { narrowActionInteractor, RecoveryActionDouble } from './recovery-action'
 import { RecoveryClientDouble } from './recovery-client'
 import { SetupClientDouble } from './setup-client'
+import type { ActionBinding, ActionPart, ClientContext, ConstructionRefusal } from './types'
 
 const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
   'chainId',
@@ -58,26 +59,13 @@ const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
   'auditedActions'
 ]
 
-/**
- * The thrown value of a construction check: an ordinary error carrying the code
- * `construction.<check>` and the check's name in `check` (`descriptor`,
- * `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
- * `digest-version`, `unserved`). `unserved` is the doubles' own: a descriptor
- * or an action this scripted chain does not serve. The interfaces declare no
- * construction-refusal shape, so this one is the doubles' own.
- */
-export interface ConstructionRefusal extends CodedError {
-  check: string
-}
-
+/** The thrown value of one construction check: the code `construction.<check>`, the check in `check`. */
 export const constructionRefusal = (check: string, message: string): ConstructionRefusal => {
   const error = codedError(`construction.${check}`, { check }, message) as ConstructionRefusal
   error.name = 'ConstructionRefusal'
   error.check = check
   return error
 }
-
-type ActionPart = IRecoveryActionInteractor & IRecoveryActionArming
 
 export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
   private frozen = false
@@ -88,7 +76,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
 
   private accountAddress?: Address
 
-  private actionBinding?: { address: Address; implementation: ActionPart }
+  private actionBinding?: ActionBinding
 
   private configuration?: ClientConfiguration
 

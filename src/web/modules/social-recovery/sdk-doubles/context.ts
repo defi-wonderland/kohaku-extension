@@ -7,45 +7,23 @@
 import type {
   Address,
   BlockHeader,
-  BlockTag,
   ClientConfiguration,
   Configuration,
   ConfigurationSource,
-  IActionCodec,
-  IEventManager,
-  IPolicyManagerInteractor,
-  IProvider,
-  IRecoveryActionInteractor
+  IActionCodec
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { zeroHash } from 'viem'
 
-import type { ScriptedChain } from './chain'
 import { readBackup, sameAddress, setupBodyOf, setupCommitmentOf } from './encoding'
 import { DEFAULT_LOG_CHUNK_WIDTH } from './event-manager'
 import { restoreRefusal } from './scripts'
-
-/**
- * The parts both clients share. The action part travels as
- * `IRecoveryActionInteractor` alone: the arming seam goes to the setup client's
- * constructor beside this context and to nothing else.
- */
-export interface ClientContext {
-  chain: ScriptedChain
-  provider: IProvider
-  manager: IPolicyManagerInteractor
-  action: IRecoveryActionInteractor
-  /** The action address the client is bound to (the builder's `.action(address, …)`). */
-  actionAddress: Address
-  events: IEventManager
-  config: ClientConfiguration
-  codecs: IActionCodec<unknown>[]
-}
+import type { ClientContext } from './types'
 
 /**
  * The block tags a client defaults to when its configuration names none:
  * `latest` for reading and `finalized` for watching.
  */
-export const DEFAULT_BLOCK_TAGS: { read: BlockTag; watch: BlockTag } = {
+export const DEFAULT_BLOCK_TAGS: NonNullable<ClientConfiguration['blockTags']> = {
   read: 'latest',
   watch: 'finalized'
 }
