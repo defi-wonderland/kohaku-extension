@@ -10,7 +10,16 @@
  * `digestOf`) and the handover payload (the action codec double),
  * `abi.encode(address newAuthority, address removedAuthority)`.
  */
-import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex, zeroAddress } from 'viem'
+import {
+  concat,
+  hashTypedData,
+  hexToString,
+  keccak256,
+  pad,
+  size,
+  stringToHex,
+  zeroAddress
+} from 'viem'
 
 import type {
   Address,
@@ -294,8 +303,6 @@ export const readPublicNote = (publicMetadata: Hex): PublicNoteReading => {
  */
 export const BACKUP_PADDING_SIZE = 16 * (96 + 32 + 20)
 
-const hexBytes = (hex: Hex): number => Math.max(0, (hex.length - 2) / 2)
-
 /**
  * The backup plaintext's size as the real serialization would count it: the wait
  * (6 bytes), the pause choice (1), a threshold byte per clause, and per
@@ -309,7 +316,7 @@ export const backupPlaintextSize = (configuration: Configuration): number =>
       sum +
       1 +
       clause.credentials.reduce(
-        (inner, c) => inner + 20 + hexBytes(c.config) + (c.salt ? hexBytes(c.salt) : 0),
+        (inner, c) => inner + 20 + size(c.config) + (c.salt ? size(c.salt) : 0),
         0
       ),
     0
