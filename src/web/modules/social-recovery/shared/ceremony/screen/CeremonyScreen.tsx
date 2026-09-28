@@ -88,7 +88,6 @@ const CeremonyScreen = () => {
   const visibility = source.visibility ?? (typeof document !== 'undefined' ? document : undefined)
 
   useEffect(() => {
-    mounted.current = true
     if (visibility) gate.current = createVisibilityGate(visibility)
     // Reports nobody took within their expiry leave storage. A removal is a
     // storage write, so it waits for the tab to be shown.
@@ -97,12 +96,22 @@ const CeremonyScreen = () => {
     const sweeping = gate.current ? gate.current.dispatch(sweep) : sweep()
     sweeping.catch(() => undefined)
     return () => {
-      mounted.current = false
-      abort.current?.abort()
       gate.current?.dispose()
       gate.current = null
     }
   }, [visibility, source.store])
+
+  // Only an unmount aborts the running ceremony: a new store or document above
+  // replaces the gate and leaves the holder's attempt running. The start flag
+  // resets too, so the remount of React's StrictMode starts the one run.
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      started.current = false
+      abort.current?.abort()
+    }
+  }, [])
 
   /**
    * Writes the report of `result` and returns to `returnTo`. A write that
@@ -146,6 +155,9 @@ const CeremonyScreen = () => {
     const { params } = parsed
     const controller = new AbortController()
     abort.current = controller
+    // A run ends where the tab unmounted or a newer run took its place, as the
+    // remount of StrictMode does before the first run dispatched anything.
+    const live = () => mounted.current && abort.current === controller
     setOutcome(null)
     setStep('preparing')
     setPhase('resolving')
@@ -153,7 +165,7 @@ const CeremonyScreen = () => {
     // A hidden tab dispatches nothing: not the resolve, not the prompt, which
     // the browser refuses without focus anyway.
     if (visibility) await whenVisible(visibility)
-    if (!mounted.current) return
+    if (!live()) return
 
     // No resolver wired: this build holds no implementation to run.
     let result: CeremonyOutcome<unknown> = notSupported('no-implementation')
@@ -169,25 +181,25 @@ const CeremonyScreen = () => {
           : unavailable('service-unanswered')
       }
       if (resolved === null) {
-        if (mounted.current) setPhase('nothing')
+        if (live()) setPhase('nothing')
         return
       }
       if (resolved) {
-        if (!mounted.current) return
+        if (!live()) return
         setBinding(resolved.method.deviceBinding)
         if (visibility) await whenVisible(visibility)
-        if (!mounted.current) return
+        if (!live()) return
         setPhase('running')
         result = await runCeremony(params, resolved, {
           devices: { 'browser-authenticator': browserPasskeyDevice() },
           signal: controller.signal,
           onStep: (next) => {
-            if (mounted.current) setStep(next)
+            if (live()) setStep(next)
           }
         })
       }
     }
-    if (!mounted.current || !gate.current) return
+    if (!live() || !gate.current) return
     setOutcome(result)
     await deliver(params, result)
   }, [parsed, mayRun, source, visibility, deliver])
