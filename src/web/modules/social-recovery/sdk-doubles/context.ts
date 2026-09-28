@@ -50,11 +50,14 @@ export const DEFAULT_BLOCK_TAGS: { read: BlockTag; watch: BlockTag } = {
   watch: 'finalized'
 }
 
+/** Whether a prepare simulates when neither its options nor the configuration say. */
+export const DEFAULT_SIMULATE = true
+
 /** The SDK's shipped timing and cost numbers (seconds, gas), for a configuration that names none. */
 export const DEFAULT_WAIT = 48 * 3600
 export const DEFAULT_SHORT_WAIT_BELOW = 48 * 3600
 export const DEFAULT_MAXIMUM_WAIT = 30 * 24 * 3600
-export const DEFAULT_REQUEST_WINDOW: { default: number; floor: number; ceiling: number } = {
+export const DEFAULT_REQUEST_WINDOW: NonNullable<ClientConfiguration['requestWindow']> = {
   default: 24 * 3600,
   floor: 3600,
   ceiling: 72 * 3600
@@ -70,7 +73,7 @@ export const defaultClientConfiguration = (
   candidateKeys: [],
   blockTags: { ...DEFAULT_BLOCK_TAGS },
   logChunkWidth: DEFAULT_LOG_CHUNK_WIDTH,
-  simulate: true,
+  simulate: DEFAULT_SIMULATE,
   defaultWait: DEFAULT_WAIT,
   shortWaitBelow: DEFAULT_SHORT_WAIT_BELOW,
   maximumWait: DEFAULT_MAXIMUM_WAIT,
