@@ -234,24 +234,17 @@ export interface PaymentToken {
   decimals: number
 }
 
-// A token amount renders below this limit and with at most this many decimals.
-// A shift, since the build compiles `**` to Math.pow, which throws on a bigint.
-// eslint-disable-next-line no-bitwise
-const TOKEN_AMOUNT_LIMIT = 1n << 511n
-const TOKEN_DECIMALS_MAX = 80
-
 /**
  * A token amount in human units, with at least two decimals and no trailing
  * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
- * on a negative amount or one of 2^511 or more, which no token transfer
- * carries. Throws a TypeError on decimals that are negative, not an integer or
- * above 80, which no token metadata carries.
+ * on a negative amount, which no token transfer carries. Throws a TypeError on
+ * decimals that are negative or not an integer, which no token metadata carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
-  if (amount < 0n || amount >= TOKEN_AMOUNT_LIMIT) {
+  if (amount < 0n) {
     throw new TypeError(`Not a token amount: ${amount}`)
   }
-  if (!Number.isInteger(decimals) || decimals < 0 || decimals > TOKEN_DECIMALS_MAX) {
+  if (!Number.isInteger(decimals) || decimals < 0) {
     throw new TypeError(`Not token decimals: ${decimals}`)
   }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
