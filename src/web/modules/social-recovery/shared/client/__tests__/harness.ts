@@ -470,7 +470,7 @@ export const track = <T>(promise: Promise<T>) => {
 
 /** Lets the pending promise callbacks run. */
 export const flush = async (): Promise<void> => {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 20; i++) {
     // eslint-disable-next-line no-await-in-loop
     await Promise.resolve()
   }
