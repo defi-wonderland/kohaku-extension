@@ -13,7 +13,8 @@
 import fs from 'fs'
 import path from 'path'
 
-import { appTranslate, renderChip } from '@web/modules/social-recovery/shared/display'
+import i18n from '@common/config/localization'
+import { renderChip } from '@web/modules/social-recovery/shared/display'
 
 import {
   ACCOUNT_REF,
@@ -40,7 +41,7 @@ import {
   WRITES_KEYS
 } from './harness'
 
-const t = appTranslate
+const t = i18n.t
 const LINK = /\bhttps?:\/\/|\bwww\.|faucet/i
 const VIEWS = path.resolve(__dirname, '..', 'components')
 

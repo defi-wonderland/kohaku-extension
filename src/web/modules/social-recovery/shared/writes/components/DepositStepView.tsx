@@ -19,7 +19,6 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { setStringAsync } from '@common/utils/clipboard'
-import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 import { renderDepositStep } from '../copy'
 import type { DepositStep } from '../gas'
@@ -60,8 +59,7 @@ const DepositStepView = ({
   children,
   testID
 }: DepositStepViewProps) => {
-  const { t: i18nT } = useTranslation()
-  const t: Translate = (key, options) => String(i18nT(key, options))
+  const { t } = useTranslation()
   const rendered = renderDepositStep(step, balance === undefined ? {} : { balance }, t)
 
   // The result of the last copy to the clipboard, with the address it was

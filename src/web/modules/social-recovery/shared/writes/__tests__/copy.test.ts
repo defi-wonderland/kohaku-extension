@@ -10,7 +10,7 @@
  * `renderDepositStep` answer them and `WriteStateView` and `DepositStepView`
  * lay out every field (views.test.ts checks those fields one by one).
  */
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
+import i18n from '@common/config/localization'
 
 import {
   ACCOUNT_REF,
@@ -155,7 +155,7 @@ describe('the deposit step, rendered through en.json', () => {
     describe(`${name}: the step is the second funding itself`, () => {
       it('does not say again that the execution is a second funding', async () => {
         const lines = copyOfStep(await depositStepFor(write, fastTrack))
-        expect(lines).not.toContain(appTranslate(GAS_KEYS.secondFunding))
+        expect(lines).not.toContain(i18n.t(GAS_KEYS.secondFunding))
         expect(text(lines)).not.toMatch(SECOND_FUNDING)
       })
     })

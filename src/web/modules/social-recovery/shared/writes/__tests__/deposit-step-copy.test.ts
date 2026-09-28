@@ -31,9 +31,9 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 const harness = jest.requireActual<typeof import('./harness')>('./harness')
 const { depositStepFor, GAS_KEYS, mockReads, OTHER_KEY, renderDepositStep, runGasCheck, stepOf } =
   harness
-const { appTranslate: t } = jest.requireActual<
-  typeof import('@web/modules/social-recovery/shared/display')
->('@web/modules/social-recovery/shared/display')
+const { t } = jest.requireActual<typeof import('@common/config/localization')>(
+  '@common/config/localization'
+).default
 
 const VIEWS = path.resolve(__dirname, '..', 'components')
 

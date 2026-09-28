@@ -34,6 +34,7 @@ import {
   type GasEstimateCall,
   type KeyHandle
 } from '@web/modules/social-recovery/shared/client'
+import type { Translate } from '@web/modules/social-recovery/shared/display'
 import * as writes from '@web/modules/social-recovery/shared/writes'
 import {
   AttemptAfterCancel,
@@ -341,8 +342,6 @@ export const readingOf = (state: WriteState): 'notSent' | 'reverted' | 'landed' 
     : state.status === 'failedReverted'
     ? 'reverted'
     : state.status
-
-type Translate = (key: string, options?: Record<string, unknown>) => string
 
 /** Every string `WriteStateView` shows for a state: the chip, the title, the lines, the controller and the retry. */
 export const copyOfState = (state: WriteState, t?: Translate): string[] => {
