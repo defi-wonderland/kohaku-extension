@@ -11,12 +11,13 @@
  *   network, and none imports the SDK doubles.
  * - Where a test needs the real wrapping of a failed read (a
  *   `ProviderReadFailure`, or a `RevertedCall` for an estimate that would
- *   revert), `rpcReads` runs the client's own `createChainReads` over a mocked
- *   JSON-RPC `send`, the one member of the extension's provider the module
- *   calls (`ExtensionRpc`).
+ *   revert), `rpcReads` runs the client's own `createChainReads` over a double
+ *   of the provider members it calls (`ChainReadsProvider`).
  * - Nothing else is mocked. The strings come from the real en.json through
  *   the app's own i18next instance (the renderers' default `t`).
  */
+import { numberToHex } from 'viem'
+
 import en from '@common/config/localization/translations/en.json'
 import type {
   Address,
@@ -29,8 +30,8 @@ import type {
 import {
   createChainReads,
   providerReadFailure,
-  toQuantity,
   type ChainReads,
+  type ChainReadsProvider,
   type GasEstimateCall,
   type KeyHandle
 } from '@web/modules/social-recovery/shared/client'
@@ -215,25 +216,29 @@ export const runGasCheck = (args: {
 }
 
 /**
- * The client's own chain reads over a mocked JSON-RPC `send`. Each answer is a
- * quantity, or an Error the node throws; `send` records every request.
+ * The client's own chain reads over a double of the provider: `getBalance` and
+ * `estimateGas` answer a bigint or throw the Error given, and `send` answers
+ * `eth_gasPrice` as a quantity.
  */
 export const rpcReads = (answers: {
   balance: bigint | Error
   gas: bigint | Error
   price?: bigint
 }): { reads: ChainReads; send: jest.Mock } => {
-  const answer = (value: bigint | Error) => {
+  const answer = async (value: bigint | Error): Promise<bigint> => {
     if (value instanceof Error) throw value
-    return toQuantity(value)
+    return value
   }
   const send = jest.fn(async (method: string) => {
-    if (method === 'eth_getBalance') return answer(answers.balance)
-    if (method === 'eth_estimateGas') return answer(answers.gas)
-    if (method === 'eth_gasPrice') return answer(answers.price ?? 2n * GWEI)
+    if (method === 'eth_gasPrice') return numberToHex(answers.price ?? 2n * GWEI)
     throw new Error(`unexpected request ${method}`)
   })
-  return { reads: createChainReads({ send }), send }
+  const provider: ChainReadsProvider = {
+    getBalance: jest.fn(() => answer(answers.balance)),
+    estimateGas: jest.fn(() => answer(answers.gas)),
+    send
+  }
+  return { reads: createChainReads(provider), send }
 }
 
 /** A node's answer to an estimate of a call that would revert: code 3 with the revert data. */

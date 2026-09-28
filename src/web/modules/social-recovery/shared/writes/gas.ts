@@ -3,12 +3,11 @@
  *
  * The check runs before every call a key the wallet holds sends. It estimates
  * that transaction's own gas and reads the gas price and the sending key's
- * balance through the extension's provider (shared/client `createChainReads`),
- * since the SDK estimates nothing and its provider answers no balance. A key
- * that holds enough skips the step. A key that holds too little gets the
- * deposit step rather than a failed transaction: the key's address, the
- * estimated amount, the network the key must be funded on and the routes that
- * fill it.
+ * balance through the extension's provider, since the SDK estimates nothing
+ * and its provider answers no balance. A key that holds enough skips the step.
+ * A key that holds too little gets the deposit step rather than a failed
+ * transaction: the key's address, the estimated amount, the network the key
+ * must be funded on and the routes that fill it.
  *
  * The routes: a transfer from another account this wallet holds, the account
  * the key operates, and a deposit from outside into the address the step
@@ -146,9 +145,9 @@ export interface GasCheckInput {
   write: WriteKind
   /** The prepared write, as the SDK returned it. */
   prepared: PreparedCall | PreparedBatch
-  /** The key that sends it: `sendingKeyOf(prepared, keys)` of shared/client. */
+  /** The key that sends the write and pays its gas. */
   key: KeyHandle
-  /** The balance and gas reads over the extension's provider: `createChainReads(rpc)`. */
+  /** The balance and gas reads over the extension's provider. */
   reads: ChainReads
   network: GasNetwork
   /**
