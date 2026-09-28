@@ -100,11 +100,8 @@ export interface NormalizedAssertion {
 
 const ES256 = -7
 
-const defaultRandomBytes = (length: number): Uint8Array => {
-  const bytes = new Uint8Array(length)
-  globalThis.crypto.getRandomValues(bytes)
-  return bytes
-}
+const defaultRandomBytes = (length: number): Uint8Array =>
+  globalThis.crypto.getRandomValues(new Uint8Array(length))
 
 /** A copy of `bytes` as its own ArrayBuffer, the buffer type WebAuthn's options take. */
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
