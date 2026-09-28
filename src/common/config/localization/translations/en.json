@@ -126,15 +126,15 @@
       "eitherOneAlone": "Either one alone can recover this account. Either one alone can also take it.",
       "anyOneOfM": "Any one of these {{m}} alone can recover this account. Any one alone can also take it.",
       "togetherWithRequired": "Together with your required methods, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
-      "togetherWithRequiredAndGroups": "Together with your required methods and one member of each other group, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
+      "togetherWithRequiredAndGroups": "Together with your required methods and enough members of each other group to meet its threshold, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
       "everyMemberMustAnswer": "Every member must answer.",
       "oneFailureDomain": "One failure domain. These members fail together if their kind does.",
       "differentPlaces": "Keep the methods of your path in different places.",
       "sizingRule": "A group of any one of two is the shape this wallet prefers at two methods.",
-      "togetherWithGroups": "Together with one member of each other group, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
+      "togetherWithGroups": "Together with enough members of each other group to meet its threshold, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
       "togetherWithRequiredEveryMember": "Together with your required methods, every member of this group must answer.",
-      "togetherWithGroupsEveryMember": "Together with one member of each other group, every member of this group must answer.",
-      "togetherWithRequiredAndGroupsEveryMember": "Together with your required methods and one member of each other group, every member of this group must answer."
+      "togetherWithGroupsEveryMember": "Together with enough members of each other group to meet its threshold, every member of this group must answer.",
+      "togetherWithRequiredAndGroupsEveryMember": "Together with your required methods and enough members of each other group to meet its threshold, every member of this group must answer."
     },
     "writes": {
       "submitting": "Submitting",
