@@ -11,6 +11,8 @@ import {
   fillAll,
   isAddress,
   isHex,
+  momentOf,
+  NO_PAYMENT,
   openRecovery
 } from './harness'
 
@@ -43,6 +45,36 @@ describe('policy manager double', () => {
     expect(await opened.world.manager.hashCancel(asCancel, first!.place)).toMatch(
       /^0x[0-9a-fA-F]{64}$/
     )
+  })
+
+  it('hashes a cancel request as a cancellation, extra fields and all', async () => {
+    const world = createWorld()
+    const committed = world.script.setupCommitted('private')
+    world.script.attempt('pending')
+    const recovery = await world.recoveryClient()
+    const gathering = await recovery.initCancelGathering(committed.configuration, {
+      window: 3600
+    })
+    const requests = recovery.getApproverRequests(gathering)
+    const filled = await fillAll({
+      world,
+      recovery,
+      orchestrator: world.orchestrator(),
+      gathering,
+      requests
+    })
+    const cancel = recovery.complete(filled, undefined, momentOf(gathering)) as CancelRequest
+    expect(cancel).not.toHaveProperty('payload')
+    expect(cancel).not.toHaveProperty('order')
+    const [first] = cancel.proofs
+    const reply = filled.replies.find((r) => BigInt(r.place) === first!.place)!
+    const hash = await world.manager.hashCancel(cancel, first!.place)
+    expect(hash).toBe(reply.digest)
+
+    const carrying = { ...cancel, payload: '0x1234' as const, order: NO_PAYMENT }
+    expect(await world.manager.hashCancel(carrying, first!.place)).toBe(hash)
+    const asApproval: AttemptRequest = carrying
+    expect(await world.manager.hashApproval(asApproval, first!.place)).not.toBe(hash)
   })
 
   it('hashes an approval for a place the request carries no proof for, without throwing', async () => {

@@ -6,6 +6,8 @@ import {
   type ReplyFailure
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { getAddress, isAddress } from 'viem'
+
 import { createWorld, expectThrown, isHex, openRecovery } from './harness'
 
 const firstRequest = async () => {
@@ -127,6 +129,27 @@ describe('methods orchestrator double', () => {
     world.script.enrollFailure('material-rejected')
     const failed = await world.orchestrator().configFrom(method, input, world.keys.held)
     expect(failed).toEqual({ kind: 'enroll-failure', cause: 'material-rejected' })
+  })
+
+  it('answers a wallet address with a wrong checksum as material-rejected, never a thrown error', async () => {
+    const world = createWorld()
+    const orchestrator = world.orchestrator()
+    const method = world.descriptor.methodEcdsa
+    const checksummed = getAddress(world.keys.fresh)
+    const at = checksummed.search(/[A-F]/)
+    expect(at).toBeGreaterThan(-1)
+    const wrong = `${checksummed.slice(0, at)}${checksummed[at]!.toLowerCase()}${checksummed.slice(
+      at + 1
+    )}`
+    expect(isAddress(wrong, { strict: false })).toBe(true)
+    expect(isAddress(wrong, { strict: true })).toBe(false)
+    const input = orchestrator.enrollInput(method, { address: wrong })
+    await expect(orchestrator.configFrom(method, input, wrong)).resolves.toEqual({
+      kind: 'enroll-failure',
+      cause: 'material-rejected'
+    })
+    const good = orchestrator.enrollInput(method, { address: checksummed })
+    expect(isHex(await orchestrator.configFrom(method, good, checksummed))).toBe(true)
   })
 
   it('throws enrollInput when scripted to refuse', async () => {
