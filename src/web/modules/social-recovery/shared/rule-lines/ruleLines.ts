@@ -5,6 +5,8 @@
  */
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
+import type { RuleLine, RuleLineKey, RuleLineParams, RuleLinesInput, Translate } from './types'
+
 const PREFIX = 'socialRecovery.ruleLines'
 
 /**
@@ -33,27 +35,6 @@ export const RULE_LINE_KEYS = {
   differentPlaces: `${PREFIX}.differentPlaces`,
   sizingRule: `${PREFIX}.sizingRule`
 } as const
-
-export type RuleLineKey = typeof RULE_LINE_KEYS[keyof typeof RULE_LINE_KEYS]
-
-/** The placeholders of the `ruleLines` strings: `spare` is M minus N. */
-export interface RuleLineParams {
-  n?: number
-  m?: number
-  spare?: number
-}
-
-/** One rule line: an `en.json` key and the values its placeholders take. */
-export interface RuleLine {
-  key: RuleLineKey
-  params: RuleLineParams
-}
-
-/** The translate function `renderRuleLines` takes, `i18n.t` or `useTranslation().t`. */
-export type Translate = (key: string, params?: RuleLineParams) => string
-
-/** The path the lines read: the setup draft record, or its clauses alone. */
-export type RuleLinesInput = Pick<SetupDraft, 'clauses'> | readonly Clause[]
 
 const line = (key: RuleLineKey, params: RuleLineParams = {}): RuleLine => ({ key, params })
 
