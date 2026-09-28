@@ -8,7 +8,7 @@
  */
 /* eslint-disable no-bitwise -- byte handling of the authenticator data and of DER */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { bytesToHex, sha256, stringToBytes } from 'viem'
+import { bytesToHex, numberToBytes, sha256, stringToBytes } from 'viem'
 
 import {
   CeremonyCall,
@@ -301,9 +301,7 @@ export const parseDerSignature = (der: ArrayBuffer | ArrayBufferView): { r: bigi
 
 const derInteger = (value: bigint): number[] => {
   if (value < BigInt(0)) throw new Error('A DER integer of a signature is never negative.')
-  let hex = value.toString(16)
-  if (hex.length % 2) hex = `0${hex}`
-  const body = hex.match(/../g)?.map((h) => parseInt(h, 16)) ?? [0]
+  const body = Array.from(numberToBytes(value))
   // A leading byte with its top bit set would read negative: prefix a zero.
   if (body[0] >= 0x80) body.unshift(0)
   return [0x02, body.length, ...body]
