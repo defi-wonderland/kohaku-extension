@@ -674,6 +674,27 @@ describe('a report the store fails to write', () => {
     expect(map.size).toBe(0)
     stop()
   })
+
+  it('retries into the store the tab holds now, after a store swap', async () => {
+    const creds = answeringBrowser()
+    setVisibility('visible', false)
+    const { store } = source()
+    store.set.mockRejectedValueOnce(refusal())
+    const page = await render(CLAIM)
+    expect(page.textContent).toContain(DELIVERY_FAILED)
+
+    const next = fakeStore()
+    await swapSource({ ...mockSource.current, store: next })
+    await press(page, 'Try again')
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(next.set).toHaveBeenCalledTimes(1)
+    expect((next.set.mock.calls[0][1] as { outcome: unknown }).outcome).toMatchObject({
+      kind: 'verdict',
+      verdict: 'passed'
+    })
+    expect(creds.get).toHaveBeenCalledTimes(1)
+    expect(page.textContent).not.toContain(DELIVERY_FAILED)
+  })
 })
 
 describe('a gate replaced while the report waits', () => {
