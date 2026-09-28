@@ -80,6 +80,12 @@ describe('takeCeremonyReport', () => {
     expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 2)).toBeNull()
   })
 
+  it('hands back the very object the store returns', async () => {
+    const stored = reportAt(T0)
+    const store = mapStore([[key(), stored]])
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toBe(stored)
+  })
+
   it('reads no report from unparsed text, since the store parses what it returns', async () => {
     const store = mapStore([[key(), JSON.stringify(reportAt(T0))]])
     expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toBeNull()
@@ -135,6 +141,18 @@ describe('readCeremonyReport', () => {
   it('reads the expected report and removes nothing', async () => {
     const store = mapStore([[key(), reportAt(T0)]])
     expect(await ceremony().readCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
+    expect(store.remove).not.toHaveBeenCalled()
+  })
+
+  it('hands back the very object the store returns', async () => {
+    const stored = reportAt(T0)
+    const store = mapStore([[key(), stored]])
+    expect(await ceremony().readCeremonyReport(EXPECTED, store, T0 + 1)).toBe(stored)
+  })
+
+  it('reads null for a report the store returns as unparsed text', async () => {
+    const store = mapStore([[key(), JSON.stringify(reportAt(T0))]])
+    expect(await ceremony().readCeremonyReport(EXPECTED, store, T0 + 1)).toBeNull()
     expect(store.remove).not.toHaveBeenCalled()
   })
 
@@ -228,5 +246,11 @@ describe('sweepCeremonyReports', () => {
     const removed = await ceremony().sweepCeremonyReports(store, [...store.map.keys()], T0 + 1)
     expect(removed).toBe(2)
     expect([...store.map.keys()].sort()).toEqual([key('fresh'), 'someOtherKey'].sort())
+  })
+
+  it('removes a fresh report the store returns as unparsed text, as no report', async () => {
+    const store = mapStore([[key(), JSON.stringify(reportAt(T0))]])
+    expect(await ceremony().sweepCeremonyReports(store, [key()], T0 + 1)).toBe(1)
+    expect(store.map.has(key())).toBe(false)
   })
 })

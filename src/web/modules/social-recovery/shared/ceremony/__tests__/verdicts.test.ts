@@ -11,6 +11,8 @@
  * access alone, a passed enrollment reads not tested until its test runs, and
  * a claim reads the checklist's chips.
  */
+import type { ApproverReply, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+
 import {
   enrollFailure,
   fakeAssertion,
@@ -283,6 +285,27 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
     )
   })
 )
+
+// A typed failure record reads through its own cases above; a null answer is no
+// failure record, so the host reads it as the method's answer.
+describe('a method that answers null', () => {
+  it('enroll: a null config reads passed', async () => {
+    const method = fakeMethod()
+    method.configFrom.mockResolvedValue(null as unknown as Hex)
+    const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    expect(outcome.raw).toMatchObject({ value: { config: null } })
+  })
+
+  it('createClaim: a null reply reads passed', async () => {
+    const method = fakeMethod()
+    const orchestrator = fakeOrchestrator(method)
+    orchestrator.replyFrom.mockResolvedValue(null as unknown as ApproverReply)
+    const outcome = await hosts.createClaim({ method, orchestrator })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    expect(outcome.raw).toMatchObject({ value: { reply: null } })
+  })
+})
 
 describe('the health-check host', () => {
   it('returns not supported with no retry', async () => {
