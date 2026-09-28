@@ -343,6 +343,12 @@ export const createSignerFacade = (
 
   return Object.freeze({
     signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex> {
+      // A domain alone carries no message for the holder to read.
+      if (typedData.primaryType === 'EIP712Domain') {
+        return Promise.reject(
+          new Error('signTypedData signs a message, never the EIP712Domain alone.')
+        )
+      }
       const content = typedMessageOf(typedData)
       // Typed data the signature check could not encode is refused before the
       // holder is asked to sign it.
