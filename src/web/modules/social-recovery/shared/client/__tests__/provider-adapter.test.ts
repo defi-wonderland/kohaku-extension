@@ -264,7 +264,7 @@ describe('the balance and gas reads beside the adapter', () => {
     const methods = underlyingCalls(w.ethers).map(([member, args]) =>
       member === 'send' ? args[0] : member
     )
-    expect(methods).toEqual(['eth_getBalance', 'eth_estimateGas'])
+    expect(methods).toEqual(['getBalance', 'estimateGas'])
   })
 
   it('surfaces a balance read the provider could not make as a thrown value', async () => {
@@ -284,10 +284,9 @@ describe('the balance and gas reads beside the adapter', () => {
     const w = world()
     await createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA, value: 5n })
     const [member, args] = onlyCall(w.ethers)
-    expect(member).toBe('send')
-    expect(args[0]).toBe('eth_estimateGas')
-    expect((args[1] as unknown[])[0]).toMatchObject({ from: FROM, to: TO, data: DATA })
-    expect(sameNumber(((args[1] as unknown[])[0] as { value: unknown }).value, 5)).toBe(true)
+    expect(member).toBe('estimateGas')
+    expect(args[0]).toMatchObject({ from: FROM, to: TO, data: DATA })
+    expect(sameNumber((args[0] as { value: unknown }).value, 5)).toBe(true)
   })
 
   it('rejects the estimate of a call that would revert with its raw revert data', async () => {

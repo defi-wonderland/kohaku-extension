@@ -6,6 +6,7 @@
  * estimates each transaction's gas itself, on the same provider the adapter
  * wraps. The gas step reads these; the SDK never sees them.
  */
+import type { RPCProvider } from '@ambire-common/interfaces/provider'
 import type {
   Address,
   BlockTag,
@@ -13,14 +14,10 @@ import type {
   PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import {
-  blockParam,
-  callFailureOf,
-  ExtensionRpc,
-  providerReadFailure,
-  sendRead,
-  toQuantity
-} from './provider-adapter'
+import { attemptRead, callFailureOf, quantityOf } from './provider-adapter'
+
+/** The members of the extension's provider the balance and gas reads use. */
+export type ChainReadsProvider = Pick<RPCProvider, 'getBalance' | 'estimateGas' | 'send'>
 
 /** One transaction a key the wallet holds would send, for its gas estimate. */
 export interface GasEstimateCall {
@@ -39,45 +36,33 @@ export interface ChainReads {
   gasPrice(): Promise<bigint>
 }
 
-const amount = (read: 'nativeBalance' | 'estimateGas' | 'gasPrice', value: unknown): bigint => {
-  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]*$/.test(value)) {
-    throw providerReadFailure(read, new Error(`not a quantity: ${JSON.stringify(value)}`))
-  }
-  return BigInt(value === '0x' ? '0x0' : value)
-}
-
 /**
- * The balance and gas reads over the extension's provider. Each makes one
- * request: `eth_getBalance`, `eth_estimateGas` and `eth_gasPrice`. A read the
- * provider could not make rejects with a `ProviderReadFailure`; an estimate of
- * a call that would revert rejects with a `RevertedCall`.
+ * The balance and gas reads over the extension's provider: `getBalance`,
+ * `estimateGas` and one `eth_gasPrice` request. A read the provider could not
+ * make rejects with a `ProviderReadFailure`; an estimate of a call that would
+ * revert rejects with a `RevertedCall`.
  */
-export const createChainReads = (rpc: ExtensionRpc): ChainReads => ({
-  async nativeBalance(address: Address, block: BlockTag = 'latest'): Promise<bigint> {
-    return amount(
-      'nativeBalance',
-      await sendRead(rpc, 'nativeBalance', 'eth_getBalance', [address, blockParam(block)])
-    )
+export const createChainReads = (provider: ChainReadsProvider): ChainReads => ({
+  nativeBalance(address: Address, block: BlockTag = 'latest'): Promise<bigint> {
+    return attemptRead('nativeBalance', () => provider.getBalance(address, block))
   },
 
   async estimateGas(call: GasEstimateCall): Promise<bigint> {
-    const transaction = {
-      from: call.from,
-      to: call.to,
-      data: call.data,
-      ...(call.value ? { value: toQuantity(call.value) } : {})
-    }
-    let answer: unknown
     try {
-      answer = await rpc.send('eth_estimateGas', [transaction])
+      return await provider.estimateGas({
+        from: call.from,
+        to: call.to,
+        data: call.data,
+        value: call.value
+      })
     } catch (thrown) {
       throw callFailureOf('estimateGas', thrown)
     }
-    return amount('estimateGas', answer)
   },
 
-  async gasPrice(): Promise<bigint> {
-    return amount('gasPrice', await sendRead(rpc, 'gasPrice', 'eth_gasPrice', []))
+  gasPrice(): Promise<bigint> {
+    // One raw request: ethers' getFeeData makes three.
+    return attemptRead('gasPrice', async () => quantityOf(await provider.send('eth_gasPrice', [])))
   }
 })
 

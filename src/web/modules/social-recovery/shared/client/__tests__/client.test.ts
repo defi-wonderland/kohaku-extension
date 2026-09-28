@@ -132,10 +132,9 @@ describe('buildRecoveryClient', () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
     world.chain.openAttempt()
-    world.ethers.send.mockClear()
+    world.ethers.getBlock.mockClear()
     await client.recovery.prepareCancelByOwner()
-    const sent = world.ethers.send.mock.calls.map((c) => c[0])
-    expect(sent).toContain('eth_getBlockByNumber')
+    expect(world.ethers.getBlock).toHaveBeenCalled()
   })
 
   it('hands the client a provider of the four reads and no send, balance or estimate', async () => {

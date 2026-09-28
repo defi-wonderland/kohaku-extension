@@ -8,15 +8,15 @@
  * the chain reads both run on it.
  */
 import type { Network } from '@ambire-common/interfaces/network'
+import type { RPCProvider } from '@ambire-common/interfaces/provider'
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 
+import type { ChainReadsProvider } from './chain-reads'
 import { CHAIN_IDS, RecoveryChain } from './chains'
-import type { ExtensionRpc } from './provider-adapter'
+import type { AdapterProvider } from './provider-adapter'
 
-/** The extension's provider as this folder holds it: the JSON-RPC request and its teardown. */
-export interface ExtensionProvider extends ExtensionRpc {
-  destroy(): void
-}
+/** The extension's provider as this folder holds it: the reads it makes and its teardown. */
+export type ExtensionProvider = AdapterProvider & ChainReadsProvider & Pick<RPCProvider, 'destroy'>
 
 /** The network record of a recovery chain among the networks the extension holds. */
 export const networkOf = (
