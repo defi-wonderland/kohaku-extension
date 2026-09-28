@@ -6,14 +6,8 @@
  * The React hook lives in its own file, `useRecoveryClient`, imported by path,
  * so this module loads in a Node test without the UI's contexts.
  */
-export {
-  RECOVERY_CHAINS,
-  CHAIN_IDS,
-  WALLET_RECOVERY_CHAIN,
-  recoveryChainOf,
-  type RecoveryChain
-} from './chains'
-export { PLACEHOLDER_ADDRESSES, addressBookOf, sameAddress, type AddressBook } from './addresses'
+export { RECOVERY_CHAINS, CHAIN_IDS, WALLET_RECOVERY_CHAIN, recoveryChainOf } from './chains'
+export { PLACEHOLDER_ADDRESSES, addressBookOf, sameAddress } from './addresses'
 export {
   PUBLISHERS,
   AUDITED_ACTIONS,
@@ -21,19 +15,10 @@ export {
   auditedActionsOn,
   auditedActionOf,
   isAuditedAction,
-  publisherKeyOf,
-  type Publisher,
-  type PublisherKey,
-  type AuditedAction,
-  type UnknownAction
+  publisherKeyOf
 } from './audited-actions'
 export { DEPLOYMENT_FACTS, deploymentDescriptor, descriptorOf } from './descriptors'
-export {
-  REQUEST_WINDOW_SECONDS,
-  clientConfigurationOf,
-  type AccountFacts,
-  type RecoveryClientConfiguration
-} from './configuration'
+export { REQUEST_WINDOW_SECONDS, clientConfigurationOf } from './configuration'
 export {
   PROVIDER_READS,
   createProviderAdapter,
@@ -41,38 +26,19 @@ export {
   providerReadFailure,
   isRevertedCall,
   isProviderReadFailure,
-  revertDataOf,
-  type AdapterProvider,
-  type ProviderRead,
-  type RevertedCall,
-  type ProviderReadFailure
+  revertDataOf
 } from './provider-adapter'
-export {
-  createChainReads,
-  gasCallOf,
-  type ChainReads,
-  type ChainReadsProvider,
-  type GasEstimateCall
-} from './chain-reads'
-export { networkOf, extensionProviderFor, type ExtensionProvider } from './extension-provider'
+export { createChainReads, gasCallOf } from './chain-reads'
+export { networkOf, extensionProviderFor } from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
   buildRecoveryClient,
   checkDigestVersion,
   carriedDomainVersion,
   digestVersionRefusal,
-  isDigestVersionRefusal,
-  type RecoveryKitClient,
-  type DomainVersion,
-  type DigestVersionRefusal
+  isDigestVersionRefusal
 } from './build-client'
-export {
-  REMOVED_KEY_UNAVAILABLE_CAUSES,
-  type WalletReads,
-  type FitCheckReading,
-  type RemovedKeyReading,
-  type RemovedKeyUnavailableCause
-} from './wallet-reads'
+export { REMOVED_KEY_UNAVAILABLE_CAUSES } from './wallet-reads'
 export {
   SIGNER_MEMBERS,
   MISSING_BACKGROUND_ACTION,
@@ -88,29 +54,50 @@ export {
   signerNotWired,
   isSignerNotWired,
   signFlowFailure,
-  isSignFlowFailure,
-  type KeyHandle,
-  type TypedDataToSign,
-  type SignerFacade,
-  type SignerMember,
-  type SignerFacadeOptions,
-  type SignRequestAction,
-  type SignRequestPort,
-  type SignRequestUpdate,
-  type SignMessageState,
-  type RequestsState,
-  type ListedAccount,
-  type SignerNotWired,
-  type SignFlowFailure,
-  type SignFlowFailureReason
+  isSignFlowFailure
 } from './signer'
 export { signRequestPort } from './signer-port'
-export {
-  SPONSOR_RAIL,
-  RECOVERY_CALLS,
-  sendingKeyOf,
-  type RecoveryCall,
-  type SendingKeys
-} from './sending'
+export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
+export type {
+  RecoveryChain,
+  AddressBook,
+  Publisher,
+  PublisherKey,
+  AuditedAction,
+  UnknownAction,
+  AccountFacts,
+  RecoveryClientConfiguration,
+  AdapterProvider,
+  ProviderRead,
+  RevertedCall,
+  ProviderReadFailure,
+  ChainReads,
+  ChainReadsProvider,
+  GasEstimateCall,
+  ExtensionProvider,
+  RecoveryKitClient,
+  DomainVersion,
+  DigestVersionRefusal,
+  WalletReads,
+  FitCheckReading,
+  RemovedKeyReading,
+  RemovedKeyUnavailableCause,
+  KeyHandle,
+  TypedDataToSign,
+  SignerFacade,
+  SignerMember,
+  SignerFacadeOptions,
+  SignRequestAction,
+  SignRequestPort,
+  SignRequestUpdate,
+  SignMessageState,
+  RequestsState,
+  ListedAccount,
+  SignerNotWired,
+  SignFlowFailure,
+  SignFlowFailureReason,
+  RecoveryCall,
+  SendingKeys
+} from './types'
 // `sdkStandIn` stays out of this module: tests and development code import
 // `shared/client/stand-in` by path, so no screen reaches the scripted chain.

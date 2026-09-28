@@ -14,9 +14,10 @@
  */
 import type { DeploymentDescriptor } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { AddressBook, PLACEHOLDER_ADDRESSES } from './addresses'
+import { PLACEHOLDER_ADDRESSES } from './addresses'
 import { auditedActionsOn } from './audited-actions'
-import { CHAIN_IDS, RecoveryChain } from './chains'
+import { CHAIN_IDS } from './chains'
+import type { AddressBook, RecoveryChain } from './types'
 
 /** The fields of a shipped descriptor that are not addresses, all placeholders until deployment. */
 export const DEPLOYMENT_FACTS = {

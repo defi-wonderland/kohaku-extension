@@ -8,10 +8,8 @@
  *
  * The action addresses are placeholders to replace once deployed (addresses.ts).
  */
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-
 import { PLACEHOLDER_ADDRESSES, sameAddress } from './addresses'
-import type { RecoveryChain } from './chains'
+import type { AuditedAction, Publisher, PublisherKey, RecoveryChain, UnknownAction } from './types'
 
 /**
  * The publishers of the audited actions, as slugs. A slug is data, never
@@ -19,18 +17,6 @@ import type { RecoveryChain } from './chains'
  * `publisherKeyOf`, and this folder ships no string.
  */
 export const PUBLISHERS = ['ethereumFoundation'] as const
-export type Publisher = typeof PUBLISHERS[number]
-
-/** The en.json key of a publisher's name, `socialRecovery.display.publishers.<slug>`. */
-export type PublisherKey = `socialRecovery.display.publishers.${Publisher}`
-
-/** One audited action on one chain, with its publisher. */
-export interface AuditedAction {
-  kind: 'audited'
-  chain: RecoveryChain
-  action: Address
-  publisher: Publisher
-}
 
 /** The table: one row per audited action per chain. */
 export const AUDITED_ACTIONS = [
@@ -55,7 +41,6 @@ export const AUDITED_ACTIONS = [
  * names no publisher for it and offers it nowhere.
  */
 export const UNKNOWN_ACTION = Object.freeze({ kind: 'unknown-action' } as const)
-export type UnknownAction = typeof UNKNOWN_ACTION
 
 const rows = (): readonly AuditedAction[] => AUDITED_ACTIONS
 
