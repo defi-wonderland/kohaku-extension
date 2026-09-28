@@ -51,7 +51,12 @@ const chainPart = (chainId: ChainId | string): string => {
   return text
 }
 
-const accountPart = (account: Address): string => account.toLowerCase()
+const accountPart = (account: Address): string => {
+  if (!isAddress(account, { strict: false })) {
+    throw new Error(`Invalid account address: ${String(account)}`)
+  }
+  return account.toLowerCase()
+}
 
 /** The key prefix every recovery session on one chain shares. */
 const recoverySessionPrefix = (chainId: ChainId): string =>
@@ -98,10 +103,10 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
 /**
  * Deep equality of two values as the storage keeps them: both pass through the
  * rich JSON the storage writes, so a key whose value is `undefined` counts as
- * absent on both sides.
+ * absent on both sides. A missing value on either side is never equal.
  */
 const sameStoredValue = (a: unknown, b: unknown): boolean =>
-  isEqual(parse(stringify(a)), parse(stringify(b)))
+  a !== undefined && b !== undefined && isEqual(parse(stringify(a)), parse(stringify(b)))
 
 const newRevision = (): SessionRevision =>
   bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
