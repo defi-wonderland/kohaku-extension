@@ -418,6 +418,17 @@ describe('the ceremony tab screen', () => {
     expect(text).toContain('The check could not run. The verifier could not be reached.')
     expect(text).not.toContain('Could not run · the service did not answer')
   })
+  ;[
+    ['a passed test access', TEST],
+    ['a passed claim', CLAIM]
+  ].forEach(([what, search]) =>
+    it(`names the proof the method returned in the note of ${what}`, async () => {
+      setVisibility('visible', false)
+      source({ replyFrom: `0x${'ab'.repeat(6)}${'00'.repeat(40)}${'cd'.repeat(3)}` })
+      const page = await render(search)
+      expect(page.textContent).toContain('check 0xabababababab…cdcdcd · passed just now')
+    })
+  )
 })
 
 describe('the mount sweep of expired reports', () => {

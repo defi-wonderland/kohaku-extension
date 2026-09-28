@@ -14,6 +14,7 @@
 import type { ApproverReply, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
+  browserDefaults,
   enrollFailure,
   fakeAssertion,
   fakeAttestation,
@@ -26,6 +27,7 @@ import {
   installCredentials,
   lineKeyOf,
   MethodScript,
+  methodRunCount,
   Outcome,
   P256Point,
   noteKeyOf,
@@ -287,22 +289,46 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
 )
 
 describe('a method that answers null', () => {
-  it('enroll: a null config reads passed', async () => {
-    const method = fakeMethod()
-    method.configFrom.mockResolvedValue(null as unknown as Hex)
-    const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
-    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
-    expect(outcome.raw).toMatchObject({ value: { config: null } })
-  })
-
-  it('createClaim: a null reply reads passed', async () => {
-    const method = fakeMethod()
-    const orchestrator = fakeOrchestrator(method)
+  it('reads failed with the thrown cause at enrollment and at a claim', async () => {
+    const enrolling = fakeMethod()
+    enrolling.configFrom.mockResolvedValue(null as unknown as Hex)
+    const enrolled = await hosts.enroll({
+      method: enrolling,
+      orchestrator: fakeOrchestrator(enrolling)
+    })
+    const claiming = fakeMethod()
+    const orchestrator = fakeOrchestrator(claiming)
     orchestrator.replyFrom.mockResolvedValue(null as unknown as ApproverReply)
-    const outcome = await hosts.createClaim({ method, orchestrator })
-    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
-    expect(outcome.raw).toMatchObject({ value: { reply: null } })
+    const claimed = await hosts.createClaim({ method: claiming, orchestrator })
+    ;[enrolled, claimed].forEach((outcome) =>
+      expect(outcome.raw).toMatchObject({ kind: 'verdict', verdict: 'failed', cause: 'thrown' })
+    )
   })
+})
+
+describe('a page that serves no passkey device', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'credentials', {
+      value: undefined,
+      configurable: true,
+      writable: true
+    })
+  })
+  ;(['enroll', 'testAccess', 'createClaim'] as const).forEach((host) =>
+    it(`reads ${host} as not supported, with no implementation, before the method runs`, async () => {
+      expect(browserDefaults().browserPasskeyDevice()).toBeUndefined()
+      const method = fakeMethod()
+      const orchestrator = fakeOrchestrator(method)
+      const outcome = await hosts[host]({ method, orchestrator })
+      expect(outcome).toMatchObject({
+        type: 'verdict',
+        verdict: 'not-supported',
+        cause: 'no-implementation',
+        retry: false
+      })
+      expect(methodRunCount(method, orchestrator)).toBe(0)
+    })
+  )
 })
 
 describe('the health-check host', () => {
