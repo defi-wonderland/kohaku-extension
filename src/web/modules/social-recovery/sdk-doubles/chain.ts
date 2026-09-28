@@ -59,6 +59,7 @@ import {
   blockHashOf,
   clearBackup,
   clearNote,
+  distinctAddresses,
   hashOf,
   keccak256,
   levelOfMetadata,
@@ -1194,9 +1195,7 @@ export class ScriptedChain {
             payload: request.payload,
             order: request.order,
             usedPlaces: request.proofs.map((p) => p.place),
-            usedMethods: request.proofs
-              .map((p) => p.method)
-              .filter((m, i, all) => all.findIndex((x) => sameAddress(x, m)) === i),
+            usedMethods: distinctAddresses(request.proofs.map((p) => p.method)),
             wait: body ? Number(body.wait) : undefined,
             ignoresPause: body?.ignoresPause
           })

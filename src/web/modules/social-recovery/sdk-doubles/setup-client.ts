@@ -33,6 +33,7 @@ import {
   BACKUP_PADDING_SIZE,
   backupPlaintextSize,
   clearBackup,
+  distinctAddresses,
   levelOfFields,
   placesOf,
   sameAddress,
@@ -62,10 +63,8 @@ export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
 export const levelOfDraft = (draft: SetupDraft): PrivacyLevel =>
   levelOfFields(draft.privacy.publicMetadata, draft.privacy.backup === 'clear')
 
-const distinctMethods = (draft: SetupDraft): Address[] => {
-  const all = draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method))
-  return all.filter((m, i) => all.findIndex((x) => sameAddress(x, m)) === i)
-}
+const distinctMethods = (draft: SetupDraft): Address[] =>
+  distinctAddresses(draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method)))
 
 interface MethodReads {
   method: Address
@@ -157,7 +156,7 @@ export class SetupClientDouble implements ISetupClient {
         warnings.push(
           finding('clause.secondary-only', 'clause', {
             clause: index,
-            methods: methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i),
+            methods: distinctAddresses(methods),
             threshold: clause.threshold,
             forgeableCount: count
           })
@@ -425,7 +424,7 @@ export class SetupClientDouble implements ISetupClient {
       wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? 48 * 3600) },
       failureDomains: draft.clauses.map((c, clause) => {
         const methods = c.credentials.map((cr) => cr.method)
-        const distinct = methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i)
+        const distinct = distinctAddresses(methods)
         return {
           clause,
           methods: distinct.map((method) => ({

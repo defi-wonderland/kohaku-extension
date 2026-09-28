@@ -64,6 +64,10 @@ export const topicOf = (address: Address): Hex => pad(address.toLowerCase() as H
 export const sameAddress = (a: string | undefined, b: string | undefined): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase()
 
+/** The list without repeats, compared case-insensitively, each kept where it first appears. */
+export const distinctAddresses = (list: readonly Address[]): Address[] =>
+  list.filter((a, i) => list.findIndex((b) => sameAddress(a, b)) === i)
+
 /** The default salt, keccak256(account, place), in the doubles' hashing. */
 export const defaultSalt = (account: Address, place: number): Hex =>
   hashOf({ salt: account.toLowerCase(), place })
