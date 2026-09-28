@@ -5,14 +5,15 @@
  * mainnet. The wallet reads one of them, named by its configuration, and shows
  * it as a fixed label with no switch.
  */
+import { mainnet, sepolia } from 'viem/chains'
 
 export const RECOVERY_CHAINS = ['sepolia', 'mainnet'] as const
 export type RecoveryChain = typeof RECOVERY_CHAINS[number]
 
 /** The chain id of each recovery chain. */
 export const CHAIN_IDS = {
-  sepolia: 11155111,
-  mainnet: 1
+  sepolia: sepolia.id,
+  mainnet: mainnet.id
 } as const
 
 /**
