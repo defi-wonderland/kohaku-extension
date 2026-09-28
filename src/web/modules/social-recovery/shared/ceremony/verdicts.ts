@@ -17,8 +17,10 @@
  * Every function here is pure and runs under Jest's node environment.
  */
 import type {
+  ApproverReply,
   DeviceBinding,
   EnrollFailure,
+  Hex,
   MethodFailureCause,
   ReplyFailure,
   Verdict
@@ -274,7 +276,7 @@ export const lineKeyOfOutcome = (
 }
 
 /** A DOMException name such as `NotAllowedError`: the one cause text a screen shows raw. */
-export const isBrowserErrorName = (value: unknown): value is string =>
+export const isBrowserErrorName = (value: string | undefined): value is string =>
   typeof value === 'string' && /^[A-Z][A-Za-z]*Error$/.test(value)
 
 /**
@@ -294,11 +296,12 @@ export const browserErrorNameOf = (outcome: CeremonyOutcome<unknown>): string | 
 // A method's answer as an outcome
 // ---------------------------------------------------------------------------
 
-export const isMethodFailure = (value: unknown): value is EnrollFailure | ReplyFailure =>
+export const isMethodFailure = (
+  value: Hex | ApproverReply | EnrollFailure | ReplyFailure
+): value is EnrollFailure | ReplyFailure =>
   typeof value === 'object' &&
   value !== null &&
-  ((value as { kind?: unknown }).kind === 'enroll-failure' ||
-    (value as { kind?: unknown }).kind === 'reply-failure')
+  (value.kind === 'enroll-failure' || value.kind === 'reply-failure')
 
 /**
  * One typed failure of the method as an outcome.
@@ -349,7 +352,8 @@ export const isUnansweredError = (error: unknown): boolean => {
   return e.name === 'TypeError' && typeof e.message === 'string' && /fetch/i.test(e.message)
 }
 
-const messageOf = (error: unknown): string | undefined => {
+/** The message a thrown value carries, or undefined where it carries none. */
+export const messageOf = (error: unknown): string | undefined => {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === 'object' && error !== null) {
     const message = (error as { message?: unknown }).message

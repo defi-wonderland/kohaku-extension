@@ -16,6 +16,7 @@ import {
   dismissed,
   failed,
   isBrowserErrorName,
+  messageOf,
   unavailable
 } from './verdicts'
 
@@ -346,13 +347,6 @@ const errorName = (error: unknown): string | undefined =>
     ? (error as { name: string }).name
     : undefined
 
-const errorMessage = (error: unknown): string =>
-  typeof error === 'object' &&
-  error !== null &&
-  typeof (error as { message?: unknown }).message === 'string'
-    ? (error as { message: string }).message
-    : ''
-
 /** The two WebAuthn calls: `create` at enrollment, `get` at a test or a claim. */
 export type WebAuthnCall = 'create' | 'get'
 
@@ -391,7 +385,7 @@ export const stopOfCeremonyError = (
   } = {}
 ): CeremonyStop => {
   const name = errorName(error)
-  const message = errorMessage(error)
+  const message = messageOf(error) ?? ''
   switch (name) {
     case 'NotAllowedError': {
       const timeoutMs = context.timeoutMs ?? CEREMONY_TIMEOUT_MS

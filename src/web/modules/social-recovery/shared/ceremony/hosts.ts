@@ -95,10 +95,11 @@ export interface ClaimValue {
 
 type DeviceChoice = { device: CeremonyDevice; params: unknown }
 
-const asRecord = (value: unknown): Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
 
 /**
  * The device a call runs and the params the method receives.
@@ -117,7 +118,10 @@ const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | und
     if (!own?.relyingParty) return undefined
     return {
       device: own as CeremonyDevice,
-      params: { ...asRecord(params), relyingPartyId: own.relyingParty.relyingPartyId }
+      params: {
+        ...(isPlainRecord(params) ? params : {}),
+        relyingPartyId: own.relyingParty.relyingPartyId
+      }
     }
   }
   const device = context.device ?? context.devices?.[context.method.deviceBinding]
@@ -126,12 +130,6 @@ const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | und
 
 const cancelledByAbort = (context: HostContext) =>
   context.signal?.aborted ? dismissed('cancelled', 'AbortError') : null
-
-const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== 'object' || value === null) return false
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
 
 /**
  * The material the method's packaging receives. An in-page prover's material
