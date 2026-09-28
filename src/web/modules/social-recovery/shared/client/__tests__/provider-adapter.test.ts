@@ -41,6 +41,7 @@ import {
   isRevertedCall,
   NODE_ANSWERS,
   nodeRevert,
+  ProviderRead,
   SEPOLIA,
   thrownBy,
   underlyingCalls
@@ -635,6 +636,39 @@ describe('through the ethers provider the extension builds for a network', () =>
     return { provider, requests: (): [string, unknown][] => send.mock.calls }
   }
 
+  const CHECKSUMMED = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address
+  /** The same address with the case of its first three letters changed, so its checksum is wrong. */
+  const BAD_CHECKSUM = '0x5AaEb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address
+
+  /** One log as a node answers it. */
+  const NODE_LOG = {
+    address: CHECKSUMMED.toLowerCase(),
+    topics: [TOPIC],
+    data: '0x01',
+    blockNumber: '0x3b6',
+    blockHash: `0x${'cd'.repeat(32)}`,
+    logIndex: '0x3',
+    transactionHash: `0x${'ef'.repeat(32)}`,
+    transactionIndex: '0x0',
+    removed: false
+  }
+
+  /** Block 950 as a node answers it without transactions. */
+  const NODE_BLOCK = {
+    hash: `0x${'12'.repeat(32)}`,
+    parentHash: `0x${'34'.repeat(32)}`,
+    number: '0x3b6',
+    timestamp: '0x6553f100',
+    nonce: '0x0000000000000000',
+    difficulty: '0x0',
+    gasLimit: '0x1c9c380',
+    gasUsed: '0x0',
+    miner: `0x${'00'.repeat(20)}`,
+    extraData: '0x',
+    baseFeePerGas: '0x7',
+    transactions: []
+  }
+
   /** The requests the node received, their parameters in lower case, as JSON-RPC compares them. */
   const lowerCased = (requests: [string, unknown][]): [string, unknown][] =>
     requests.map(([method, params]) => [
@@ -686,66 +720,143 @@ describe('through the ethers provider the extension builds for a network', () =>
   })
 
   it('sends one eth_getLogs over the range as quantities and answers the log with its checksummed address', async () => {
-    const checksummed = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address
-    const nodeLog = {
-      address: checksummed.toLowerCase(),
-      topics: [TOPIC],
-      data: '0x01',
-      blockNumber: '0x3b6',
-      blockHash: `0x${'cd'.repeat(32)}`,
-      logIndex: '0x3',
-      transactionHash: `0x${'ef'.repeat(32)}`,
-      transactionIndex: '0x0',
-      removed: false
-    }
-    const node = nodeAnswering({ eth_getLogs: [nodeLog] })
+    const node = nodeAnswering({ eth_getLogs: [NODE_LOG] })
     const logs = await createProviderAdapter(node.provider).logs(
-      { addresses: [checksummed], topics: [TOPIC, null] },
+      { addresses: [CHECKSUMMED], topics: [TOPIC, null] },
       { from: 900, to: 1900 }
     )
     expect(logs).toEqual([
       {
-        address: checksummed,
+        address: CHECKSUMMED,
         topics: [TOPIC],
         data: '0x01',
         blockNumber: 950,
-        blockHash: nodeLog.blockHash,
+        blockHash: NODE_LOG.blockHash,
         logIndex: 3,
-        transactionHash: nodeLog.transactionHash,
+        transactionHash: NODE_LOG.transactionHash,
         removed: false
       }
     ])
     expect(node.requests()).toHaveLength(1)
     const [method, [spec]] = node.requests()[0] as [string, Record<string, unknown>[]]
     expect(method).toBe('eth_getLogs')
-    expect(([] as unknown[]).concat(spec.address).map(lower)).toEqual([checksummed.toLowerCase()])
+    expect(([] as unknown[]).concat(spec.address).map(lower)).toEqual([CHECKSUMMED.toLowerCase()])
     expect(spec).toMatchObject({ topics: [TOPIC, null], fromBlock: '0x384', toBlock: '0x76c' })
   })
 
   it('sends one eth_getBlockByNumber at the tag without transactions', async () => {
-    const hash = `0x${'12'.repeat(32)}`
-    const node = nodeAnswering({
-      eth_getBlockByNumber: {
-        hash,
-        parentHash: `0x${'34'.repeat(32)}`,
-        number: '0x3b6',
-        timestamp: '0x6553f100',
-        nonce: '0x0000000000000000',
-        difficulty: '0x0',
-        gasLimit: '0x1c9c380',
-        gasUsed: '0x0',
-        miner: `0x${'00'.repeat(20)}`,
-        extraData: '0x',
-        baseFeePerGas: '0x7',
-        transactions: []
-      }
-    })
+    const node = nodeAnswering({ eth_getBlockByNumber: NODE_BLOCK })
     await expect(createProviderAdapter(node.provider).block(950)).resolves.toEqual({
       number: 950,
       timestamp: 0x6553f100,
-      hash
+      hash: NODE_BLOCK.hash
     })
     expect(node.requests()).toEqual([['eth_getBlockByNumber', ['0x3b6', false]]])
+  })
+
+  const WITH_A_BAD_CHECKSUM: [
+    string,
+    ProviderRead,
+    (provider: ExtensionProvider) => Promise<unknown>
+  ][] = [
+    [
+      'the target of a call',
+      'call',
+      (provider) => createProviderAdapter(provider).call(BAD_CHECKSUM, DATA, FROM, 'latest')
+    ],
+    [
+      'the sender of a call',
+      'call',
+      (provider) => createProviderAdapter(provider).call(TO, DATA, BAD_CHECKSUM, 'latest')
+    ],
+    [
+      'the address of a balance',
+      'nativeBalance',
+      (provider) => createChainReads(provider).nativeBalance(BAD_CHECKSUM)
+    ],
+    [
+      'the sender of an estimate',
+      'estimateGas',
+      (provider) =>
+        createChainReads(provider).estimateGas({ from: BAD_CHECKSUM, to: TO, data: DATA })
+    ],
+    [
+      'the target of an estimate',
+      'estimateGas',
+      (provider) =>
+        createChainReads(provider).estimateGas({ from: FROM, to: BAD_CHECKSUM, data: DATA })
+    ],
+    [
+      'an address of the logs filter',
+      'logs',
+      (provider) =>
+        createProviderAdapter(provider).logs(
+          { addresses: [TO, BAD_CHECKSUM], topics: [TOPIC] },
+          { from: 900, to: 1900 }
+        )
+    ]
+  ]
+  WITH_A_BAD_CHECKSUM.forEach(([title, read, run]) =>
+    it(`refuses a mixed-case address with a wrong checksum as ${title}: a failed ${read} read, nothing sent`, async () => {
+      const node = nodeAnswering({
+        eth_call: '0x',
+        eth_getBalance: '0x1',
+        eth_estimateGas: '0x5208',
+        eth_getLogs: []
+      })
+      const caught = await thrownBy(run(node.provider))
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe(read)
+      expect(node.requests()).toEqual([])
+    })
+  )
+
+  it("refuses a '0x' balance and a '0x' estimate as failed reads, never as zero", async () => {
+    const node = nodeAnswering({ eth_getBalance: '0x', eth_estimateGas: '0x' })
+    const balance = await thrownBy(createChainReads(node.provider).nativeBalance(FROM))
+    const estimate = await thrownBy(
+      createChainReads(node.provider).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isProviderReadFailure(balance)).toBe(true)
+    expect(readOf(balance)).toBe('nativeBalance')
+    expect(isProviderReadFailure(estimate)).toBe(true)
+    expect(isRevertedCall(estimate)).toBe(false)
+    expect(readOf(estimate)).toBe('estimateGas')
+  })
+
+  it('reads a balance the node answers as a decimal string', async () => {
+    const node = nodeAnswering({ eth_getBalance: '1000' })
+    await expect(createChainReads(node.provider).nativeBalance(FROM)).resolves.toBe(1000n)
+  })
+
+  const withoutTransactionIndex = Object.fromEntries(
+    Object.entries(NODE_LOG).filter(([field]) => field !== 'transactionIndex')
+  )
+  const BROKEN_LOGS: [string, Record<string, unknown>][] = [
+    ['without a transaction index', withoutTransactionIndex],
+    ["with the log index '0x'", { ...NODE_LOG, logIndex: '0x' }],
+    ['with data of odd length', { ...NODE_LOG, data: '0xabc' }]
+  ]
+  BROKEN_LOGS.forEach(([title, log]) =>
+    it(`refuses a log ${title} as a failed logs read, never a partial list`, async () => {
+      const node = nodeAnswering({ eth_getLogs: [NODE_LOG, log] })
+      const caught = await thrownBy(
+        createProviderAdapter(node.provider).logs(
+          { addresses: [CHECKSUMMED], topics: [TOPIC] },
+          { from: 900, to: 1900 }
+        )
+      )
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe('logs')
+    })
+  )
+
+  it('refuses a block answer without the header fields ethers requires as a failed block read', async () => {
+    const { number, timestamp, hash } = NODE_BLOCK
+    const node = nodeAnswering({ eth_getBlockByNumber: { number, timestamp, hash } })
+    const caught = await thrownBy(createProviderAdapter(node.provider).block(950))
+    expect(isProviderReadFailure(caught)).toBe(true)
+    expect(readOf(caught)).toBe('block')
   })
 
   it('rejects a revert Colibri throws from its send with the raw revert data, for a call and an estimate', async () => {

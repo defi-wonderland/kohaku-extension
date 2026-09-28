@@ -24,12 +24,20 @@ jest.mock('@web/hooks/useNetworksControllerState', () => ({
   __esModule: true,
   default: jest.fn()
 }))
-// viem builds a TextEncoder and a TextDecoder when it loads, which jsdom lacks: Node's own are installed first.
+// viem builds a TextEncoder and a TextDecoder when either entry the client
+// imports loads, which jsdom lacks: Node's own are installed first, whichever
+// entry loads first.
 jest.mock('viem', () => {
   // eslint-disable-next-line global-require
   const { TextDecoder, TextEncoder } = require('util')
   Object.assign(globalThis, { TextDecoder, TextEncoder })
   return jest.requireActual('viem')
+})
+jest.mock('viem/chains', () => {
+  // eslint-disable-next-line global-require
+  const { TextDecoder, TextEncoder } = require('util')
+  Object.assign(globalThis, { TextDecoder, TextEncoder })
+  return jest.requireActual('viem/chains')
 })
 
 const buildProvider = getRpcProvider as jest.Mock

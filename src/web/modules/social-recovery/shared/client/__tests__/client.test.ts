@@ -10,10 +10,11 @@ import {
   DEFAULT_REQUEST_WINDOW,
   MANAGER_DOMAIN_FIELDS,
   PolicyManagerDouble,
-  ProviderDouble
+  ProviderDouble,
+  WalletMethodDouble
 } from '@web/modules/social-recovery/sdk-doubles'
 import type {
-  ClientConfiguration,
+  Configuration,
   DeploymentDescriptor,
   Hex,
   IProvider,
@@ -37,7 +38,6 @@ import {
   namesSignerOrStorage,
   providerDoubleReads,
   RECOVERY_CALLS,
-  REQUEST_WINDOW_SECONDS,
   sendingKeyOf,
   spyOnBuilder,
   thrownBy,
@@ -170,7 +170,6 @@ describe('buildRecoveryClient', () => {
 describe("the manager domain's members", () => {
   it('builds the client over the members the doubles serve, written in either case', async () => {
     const world = createWorld()
-    expect(world.chain.manager.domain.fields).toBe(MANAGER_DOMAIN_FIELDS)
     await expect(buildRecoveryClient(world.config)).resolves.toBeDefined()
 
     const upper = createWorld()
@@ -196,17 +195,40 @@ describe("the manager domain's members", () => {
   )
 })
 
-describe('the request window the client configuration carries', () => {
-  it("keeps the doubles' default floor and ceiling around the wallet's own width", async () => {
-    const spies = spyOnBuilder()
+describe('the request window the built client judges', () => {
+  it("takes a request window at the SDK's default floor and flags one a second below it", async () => {
     const world = createWorld()
-    await buildRecoveryClient(world.config)
-    const { requestWindow } = lastArg(spies.config) as ClientConfiguration
-    expect(requestWindow).toEqual({
-      default: REQUEST_WINDOW_SECONDS,
-      floor: DEFAULT_REQUEST_WINDOW.floor,
-      ceiling: DEFAULT_REQUEST_WINDOW.ceiling
-    })
+    const client = await buildRecoveryClient(world.config)
+    const configuration: Configuration = {
+      clauses: [
+        {
+          threshold: 1,
+          credentials: [
+            {
+              method: world.descriptor.methodEcdsa,
+              config: new WalletMethodDouble().codec.encodeConfig({
+                address: addressOf('approver')
+              })
+            }
+          ]
+        }
+      ],
+      wait: 432_000n,
+      ignoresPause: false
+    }
+    world.chain.commitSetup({ level: 'public', configuration })
+    world.chain.openAttempt()
+    const shortWindowFindings = async (window: number) => {
+      const gathering = await client.recovery.initCancelGathering(configuration, { window })
+      const now = Number(gathering.request.block.timestamp)
+      return client.recovery
+        .assess(gathering, now)
+        .findings.filter((finding) => finding.code === 'request.window-short')
+        .map((finding) => finding.values)
+    }
+    const { floor } = DEFAULT_REQUEST_WINDOW
+    await expect(shortWindowFindings(floor)).resolves.toEqual([])
+    await expect(shortWindowFindings(floor - 1)).resolves.toEqual([{ window: floor - 1, floor }])
   })
 })
 
