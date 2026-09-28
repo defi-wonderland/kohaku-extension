@@ -43,7 +43,7 @@ export const sendingKeyOf = (
     )
   }
   const sender = prepared.kind === 'batch' ? 'account' : prepared.sender
-  if (sender === 'anyone' && (!recoveryCall || !RECOVERY_CALLS.includes(recoveryCall))) {
+  if (sender === 'anyone' && !recoveryCall) {
     throw new Error(
       'Only the submission and the execution are sent from the key of the recoverer in this release.'
     )

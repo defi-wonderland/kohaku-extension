@@ -141,7 +141,7 @@ const DOMAIN_MEMBERS = [
 
 /** The typed message the queue takes, with `EIP712Domain` derived from the domain where absent. */
 export const typedMessageOf = (typedData: TypedDataToSign): TypedMessage => {
-  const domain = typedData.domain as Record<string, unknown>
+  const { domain } = typedData
   const types = typedData.types.EIP712Domain
     ? { ...typedData.types }
     : {
@@ -267,22 +267,24 @@ export const createSignerFacade = (
       let timer: ReturnType<typeof setTimeout> | undefined
       let absence: ReturnType<typeof setTimeout> | undefined
 
-      const finish = (outcome: { signature: Hex } | { error: Error }, withdraw = false) => {
-        if (done) return
+      const end = (withdraw: boolean): boolean => {
+        if (done) return false
         done = true
         if (timer !== undefined) clearTimeout(timer)
         if (absence !== undefined) clearTimeout(absence)
         unsubscribe()
         if (withdraw)
           port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
-        if ('signature' in outcome) resolve(outcome.signature)
-        else reject(outcome.error)
+        return true
+      }
+      const succeed = (signature: Hex) => {
+        if (end(false)) resolve(signature)
+      }
+      const fail = (reason: SignFlowFailureReason, withdraw = false) => {
+        if (end(withdraw)) reject(signFlowFailure(member, reason))
       }
 
-      timer = setTimeout(
-        () => finish({ error: signFlowFailure(member, 'timeout') }, true),
-        timeoutMs
-      )
+      timer = setTimeout(() => fail('timeout', true), timeoutMs)
 
       unsubscribe = port.subscribe((update) => {
         // The first signature under the request's id is its answer; nothing
@@ -292,7 +294,7 @@ export const createSignerFacade = (
           const signed = update.state.signedMessage
           if (!signed || !sameId(signed.fromActionId, id)) return
           const { signature } = signed
-          const malformed = () => finish({ error: signFlowFailure(member, 'malformed-signature') })
+          const malformed = () => fail('malformed-signature')
           if (!isHex(signature)) {
             malformed()
             return
@@ -306,9 +308,9 @@ export const createSignerFacade = (
             if (recovered === undefined) {
               malformed()
             } else if (!sameAddress(recovered, key.addr)) {
-              finish({ error: signFlowFailure(member, 'signer-mismatch') })
+              fail('signer-mismatch')
             } else {
-              finish({ signature })
+              succeed(signature)
             }
           }, malformed)
           return
@@ -325,10 +327,7 @@ export const createSignerFacade = (
           // The queue moves a request between its two lists after an account
           // switch and may push a state between the two moves, so an absence
           // counts only once it lasts.
-          absence = setTimeout(
-            () => finish({ error: signFlowFailure(member, 'refused') }),
-            ABSENCE_GRACE_MS
-          )
+          absence = setTimeout(() => fail('refused'), ABSENCE_GRACE_MS)
         }
       })
 

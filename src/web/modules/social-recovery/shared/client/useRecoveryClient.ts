@@ -43,6 +43,8 @@ export const useRecoveryClient = (
   // A change to any field the provider is built from rebuilds the provider
   // and the client; the effect's cleanup destroys the previous provider first.
   const networkKey = network ? providerKeyOf(network) : networks ? 'missing' : 'loading'
+  const factsRef = useRef(facts)
+  factsRef.current = facts
   const factsKey = JSON.stringify(facts)
   const [attempt, setAttempt] = useState(0)
   const buildKey = buildKeyOf(account, networkKey, factsKey, attempt)
@@ -80,7 +82,7 @@ export const useRecoveryClient = (
     let live = true
     setState(LOADING)
     buildRecoveryClient({
-      ...(JSON.parse(factsKey) as AccountFacts),
+      ...factsRef.current,
       chain: WALLET_RECOVERY_CHAIN,
       account,
       addressBook: addressBookOf(WALLET_RECOVERY_CHAIN),
