@@ -15,6 +15,7 @@ import type {
   Hex,
   KitError
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroAddress } from 'viem'
 
 import { ActionCodecDouble } from './action-codec'
 import type { ScriptedChain } from './chain'
@@ -25,8 +26,7 @@ import {
   keccak256,
   readSetupBody,
   sameAddress,
-  setupCommitmentOf,
-  ZERO_ADDRESS
+  setupCommitmentOf
 } from './encoding'
 import { kitError } from './scripts'
 
@@ -90,8 +90,8 @@ export const decodeHandover = (chain: ScriptedChain, payload: Hex): Handover | u
 
 /** Whether a handover names a zero key or one address on both sides (`MalformedHandover`). */
 export const malformedHandover = (h: Handover): boolean =>
-  sameAddress(h.newAuthority, ZERO_ADDRESS) ||
-  sameAddress(h.removedAuthority, ZERO_ADDRESS) ||
+  sameAddress(h.newAuthority, zeroAddress) ||
+  sameAddress(h.removedAuthority, zeroAddress) ||
   sameAddress(h.newAuthority, h.removedAuthority)
 
 /**

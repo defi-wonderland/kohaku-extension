@@ -24,6 +24,7 @@ import type {
   RequestDescription,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { isHex } from 'viem'
 
 import type { ScriptedChain } from './chain'
 import { deserializeOrder, digestOf, membersOfRequest, typedDataOf } from './encoding'
@@ -33,7 +34,6 @@ import { codedError } from './scripts'
 export const RECORD_VERSION = 1
 
 const isText = (value: unknown): value is string => typeof value === 'string'
-const isHexText = (value: unknown): boolean => isText(value) && /^0x[0-9a-fA-F]*$/.test(value)
 const isDecimal = (value: unknown): boolean => isText(value) && /^[0-9]+$/.test(value)
 
 /**
@@ -51,25 +51,25 @@ export const requestReadable = (request: ApproverRequest): boolean => {
     r.version === RECORD_VERSION &&
     (approval || r.purpose === 'cancellation') &&
     isDecimal(r.chainId) &&
-    isHexText(r.manager) &&
+    isHex(r.manager) &&
     isText(r.digestVersion) &&
-    isHexText(r.account) &&
-    isHexText(r.action) &&
+    isHex(r.account) &&
+    isHex(r.action) &&
     isDecimal(r.attemptId) &&
     isDecimal(r.setupNonce) &&
-    isHexText(r.setupBodyHash) &&
+    isHex(r.setupBodyHash) &&
     isDecimal(r.validUntil) &&
     typeof r.place === 'number' &&
     Number.isInteger(r.place) &&
-    isHexText(r.method) &&
-    isHexText(r.config) &&
-    isHexText(r.salt) &&
+    isHex(r.method) &&
+    isHex(r.config) &&
+    isHex(r.salt) &&
     (!approval ||
-      (isHexText(r.payload) &&
+      (isHex(r.payload) &&
         !!order &&
-        isHexText(order.token) &&
+        isHex(order.token) &&
         isDecimal(order.amount) &&
-        isHexText(order.payee)))
+        isHex(order.payee)))
   )
 }
 
@@ -88,18 +88,18 @@ export const replyReadable = (reply: unknown): reply is ApproverReply => {
     r.kind === 'recovery-proof-reply' &&
     r.version === RECORD_VERSION &&
     isText(r.chainId) &&
-    isHexText(r.manager) &&
-    isHexText(r.account) &&
-    isHexText(r.action) &&
+    isHex(r.manager) &&
+    isHex(r.account) &&
+    isHex(r.action) &&
     isText(r.attemptId) &&
     (r.purpose === 'approval' || r.purpose === 'cancellation') &&
     typeof r.place === 'number' &&
     Number.isInteger(r.place) &&
-    isHexText(r.method) &&
-    isHexText(r.config) &&
-    isHexText(r.salt) &&
-    isHexText(r.digest) &&
-    isHexText(r.proof)
+    isHex(r.method) &&
+    isHex(r.config) &&
+    isHex(r.salt) &&
+    isHex(r.digest) &&
+    isHex(r.proof)
   )
 }
 
