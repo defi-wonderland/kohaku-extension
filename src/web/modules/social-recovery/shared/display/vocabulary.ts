@@ -10,7 +10,16 @@
  */
 import i18n from '@common/config/localization'
 
-import type { Translate } from './translate'
+import type {
+  ApprovalValue,
+  Chip,
+  ChipSetName,
+  Noun,
+  PasswordName,
+  Translate,
+  ValueLabel,
+  WalletWord
+} from './types'
 
 // ---------------------------------------------------------------------------
 // Status chips
@@ -33,7 +42,6 @@ export const METHOD_CHIPS = [
   'saved',
   'live'
 ] as const
-export type MethodChip = typeof METHOD_CHIPS[number]
 
 /**
  * A row in collection. `didNotAnswer` and `stopped` belong to a later release:
@@ -50,7 +58,6 @@ export const COLLECTION_CHIPS = [
   'didNotAnswer',
   'stopped'
 ] as const
-export type CollectionChip = typeof COLLECTION_CHIPS[number]
 
 /**
  * A running attempt and its terminal. `stopped` belongs to a later release. A
@@ -63,11 +70,9 @@ export const ATTEMPT_CHIPS = [
   'stopped',
   'cancelled'
 ] as const
-export type AttemptChip = typeof ATTEMPT_CHIPS[number]
 
 /** The two recovery states on the overview. */
 export const RECOVERY_STATES = ['setUp', 'notSetUp'] as const
-export type RecoveryState = typeof RECOVERY_STATES[number]
 
 /**
  * The three chips that render beside the recovery status: path locked
@@ -76,23 +81,18 @@ export type RecoveryState = typeof RECOVERY_STATES[number]
  * refuses to recover the account.
  */
 export const RECOVERY_ASIDE_CHIPS = ['pathLocked', 'notActive', 'cannotRecover'] as const
-export type RecoveryAsideChip = typeof RECOVERY_ASIDE_CHIPS[number]
 
 /** The recovery status set whole: the two states and the three chips beside them. */
 export const RECOVERY_STATUS_CHIPS = [...RECOVERY_STATES, ...RECOVERY_ASIDE_CHIPS] as const
-export type RecoveryStatusChip = typeof RECOVERY_STATUS_CHIPS[number]
 
 /** A session before submission. Recovery in progress never renders for it. */
 export const SESSION_CHIPS = ['notSubmitted'] as const
-export type SessionChip = typeof SESSION_CHIPS[number]
 
 /** The three chips that end a whole request and drop every row to not asked. */
 export const REQUEST_CHIPS = ['expired', 'void', 'setupChanged'] as const
-export type RequestChip = typeof REQUEST_CHIPS[number]
 
 /** The editor's chip on a member the path cannot lose. */
 export const EDITOR_CHIPS = ['stillNeeded'] as const
-export type EditorChip = typeof EDITOR_CHIPS[number]
 
 /** Every chip set by name. */
 export const CHIP_SETS = {
@@ -104,8 +104,6 @@ export const CHIP_SETS = {
   request: REQUEST_CHIPS,
   editor: EDITOR_CHIPS
 } as const
-export type ChipSetName = keyof typeof CHIP_SETS
-export type Chip<S extends ChipSetName> = typeof CHIP_SETS[S][number]
 
 // The en.json block under `socialRecovery.status` each set reads. A session's
 // one chip sits in the attempt block of en.json.
@@ -118,10 +116,6 @@ const CHIP_SET_BLOCK: { readonly [S in ChipSetName]: string } = {
   request: 'request',
   editor: 'editor'
 }
-
-/** Tells whether `value` is a chip of `set`. */
-export const isChip = <S extends ChipSetName>(set: S, value: string): value is Chip<S> =>
-  (CHIP_SETS[set] as readonly string[]).includes(value)
 
 /** The i18n key of one chip, `socialRecovery.status.<block>.<chip>`. */
 export const chipKey = <S extends ChipSetName>(set: S, chip: Chip<S>): string =>
@@ -152,17 +146,12 @@ export const KIT_NOUNS = [
   'setupNumber',
   'attemptNumber'
 ] as const
-export type KitNoun = typeof KIT_NOUNS[number]
 
 /** The feature's three concept names and `guardian`, the role's name in prose and help. */
 export const CONCEPT_NOUNS = ['recoveryPath', 'method', 'waitingPeriod', 'guardian'] as const
-export type ConceptNoun = typeof CONCEPT_NOUNS[number]
 
 /** A method's key admin and a method's pause holder under their screen words. */
 export const PARTY_NOUNS = ['methodAdmin', 'stopHolder'] as const
-export type PartyNoun = typeof PARTY_NOUNS[number]
-
-export type Noun = KitNoun | ConceptNoun | PartyNoun
 
 /** The i18n key of one noun, `socialRecovery.display.nouns.<noun>`. */
 export const nounKey = (noun: Noun): string => `socialRecovery.display.nouns.${noun}`
@@ -176,7 +165,6 @@ export const renderNoun = (noun: Noun, t: Translate = i18n.t): string => t(nounK
  * setup at the two hidden privacy levels. No screen takes both in one field.
  */
 export const PASSWORD_NAMES = ['extensionPassword', 'recoveryPassword'] as const
-export type PasswordName = typeof PASSWORD_NAMES[number]
 
 /** The i18n key of one password name, `socialRecovery.display.passwords.<name>`. */
 export const passwordKey = (name: PasswordName): string =>
@@ -196,7 +184,6 @@ export const renderPasswordName = (name: PasswordName, t: Translate = i18n.t): s
  * through `renderPaymentOrder`.
  */
 export const APPROVAL_VALUES = ['newKey', 'keyBeingRemoved', 'payment', 'deadline'] as const
-export type ApprovalValue = typeof APPROVAL_VALUES[number]
 
 /**
  * The done screen's one exception to one name per value: the recovery
@@ -219,7 +206,6 @@ export const VALUE_LABELS = [
   'controlledBy',
   'removed'
 ] as const
-export type ValueLabel = typeof VALUE_LABELS[number]
 
 /** The i18n key of one value label, `socialRecovery.display.values.<label>`. */
 export const valueLabelKey = (label: ValueLabel): string => `socialRecovery.display.values.${label}`
@@ -248,7 +234,6 @@ export const renderApprovalValueName = (
  * reads none this wallet can see, a returned value as this wallet read it.
  */
 export const WALLET_WORDS = ['noneThisWalletCanSee', 'asThisWalletRead'] as const
-export type WalletWord = typeof WALLET_WORDS[number]
 
 /** The i18n key of one wallet word, `socialRecovery.display.<word>`. */
 export const walletWordKey = (word: WalletWord): string => `socialRecovery.display.${word}`
