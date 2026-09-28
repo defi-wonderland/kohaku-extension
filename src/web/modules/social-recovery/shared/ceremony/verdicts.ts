@@ -269,9 +269,7 @@ export const browserErrorNameOf = (outcome: CeremonyOutcome<unknown>): string | 
 export const isMethodFailure = (
   value: Hex | ApproverReply | EnrollFailure | ReplyFailure
 ): value is EnrollFailure | ReplyFailure =>
-  typeof value === 'object' &&
-  value !== null &&
-  (value.kind === 'enroll-failure' || value.kind === 'reply-failure')
+  typeof value === 'object' && (value.kind === 'enroll-failure' || value.kind === 'reply-failure')
 
 /**
  * One typed failure of the method as an outcome.
