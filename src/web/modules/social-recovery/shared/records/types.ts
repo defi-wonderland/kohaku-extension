@@ -5,6 +5,7 @@
  * default for either: every stored record is a `StoredRecord`, an object
  * carrying its value and `savedAt`.
  */
+import type { Storage } from '@ambire-common/interfaces/storage'
 import type {
   Address,
   Configuration,
@@ -21,10 +22,7 @@ import type {
  * `getAll` returns every stored entry by key, what the helper's `get()` with no
  * key returns; the list functions need it and refuse a storage without it.
  */
-export interface RecordStorage {
-  get(key: string, defaultValue?: unknown): Promise<unknown>
-  set(key: string, value: unknown): Promise<unknown>
-  remove(key: string): Promise<unknown>
+export interface RecordStorage extends Storage {
   getAll?(): Promise<Record<string, unknown>>
 }
 

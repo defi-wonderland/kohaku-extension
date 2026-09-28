@@ -68,7 +68,7 @@ jest.mock('@web/constants/browserapi', () => {
 })
 
 type StorageDouble = {
-  get: (key: string, defaultValue?: unknown) => Promise<unknown>
+  get: RecordStorage['get']
   set: (key: string, value: unknown) => Promise<null>
   remove: (key: string) => Promise<null>
   /** The helper's `get()` with no key: every entry, each value parsed. */
@@ -96,7 +96,7 @@ const makeStorage = (): StorageDouble => {
     calls,
     // The helper's rule: `if (!res[key]) return defaultValue`, then `formatValue`.
     get: async (key, defaultValue) => {
-      const stored = raw.get(key)
+      const stored = key && raw.get(key)
       if (!stored) return defaultValue
       return formatValue(stored)
     },
