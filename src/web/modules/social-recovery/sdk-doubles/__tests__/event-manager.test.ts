@@ -60,6 +60,22 @@ describe('event manager double', () => {
     ])
   })
 
+  it('fetches a module’s logs where it was registered in another letter case than its logs carry', async () => {
+    const world = createWorld()
+    const module = addressOf('third-party-method')
+    const keys: Hex[] = [`0x${'22'.repeat(32)}`]
+    world.script.keysUpdated(module, keys)
+    const events = new EventManagerDouble(world.chain, world.provider, [upperCased(module)])
+    const at = await world.provider.block('latest')
+    const notes = await events.fetch(events.methodFilter(), {
+      from: world.descriptor.deployedAt,
+      to: at.number
+    })
+    const updated = notes.filter((n) => n.kind === 'method-keys-updated')
+    expect(updated).toHaveLength(1)
+    expect(updated[0]).toMatchObject({ method: module, current: keys })
+  })
+
   it('serves SetupCommitted for a committed setup, in log order with a position', async () => {
     const world = createWorld()
     world.script.setupCommitted('private')

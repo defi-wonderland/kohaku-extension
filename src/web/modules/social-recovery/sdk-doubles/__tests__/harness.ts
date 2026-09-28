@@ -54,7 +54,7 @@ import type {
   SetupDraft,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { keccak256, stringToHex } from 'viem'
+import { keccak256, stringToHex, zeroAddress } from 'viem'
 
 /** The attempt statuses a test can script. */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
@@ -262,7 +262,7 @@ export const createWorld = (seed: ChainSeed = {}): World => {
   }
 }
 
-export const ZERO: Address = '0x0000000000000000000000000000000000000000'
+export const ZERO: Address = zeroAddress
 export const NO_PAYMENT: PaymentOrder = { token: ZERO, amount: 0n, payee: ZERO }
 export const WINDOW = 24 * 3600
 
