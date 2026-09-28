@@ -206,9 +206,21 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
         context
       )
       if (failure.status !== 'submitting' || !failure.transactionHash) return { ...failure, run }
-      // A hash the error names is the call's too, so its receipt settles the write.
+      // A hash the run already tracks leaves the current hash active: an error
+      // from waiting on a hash a replacement superseded must not make it the
+      // active one again. A new hash the error names is the call's too: it
+      // joins the list and becomes the active one, so its receipt settles the
+      // write.
+      const named = failure.transactionHash
       const earlier = state.status === 'submitting' ? sentHashesOf(state) : []
-      return { ...failure, sentHashes: withSentHash(earlier, failure.transactionHash), run }
+      const current = state.status === 'submitting' ? state.transactionHash : undefined
+      const tracked = earlier.some((hash) => sameHash(hash, named))
+      return {
+        ...failure,
+        transactionHash: tracked && current ? current : named,
+        sentHashes: withSentHash(earlier, named),
+        run
+      }
     }
 
     case 'attemptRead':

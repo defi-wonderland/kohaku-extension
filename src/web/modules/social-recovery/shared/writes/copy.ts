@@ -87,6 +87,8 @@ export const GAS_KEYS = {
   outsideRouteAlone: `${GAS}.outsideRouteAlone`,
   transferIsAnOperation: `${GAS}.transferIsAnOperation`,
   copy: `${GAS}.copy`,
+  /** The copy of the key's address failed: the holder selects it by hand. */
+  copyFailed: `${GAS}.copyFailed`,
   /** The logged-in route's sending key, the key of the chosen account. */
   keyOf: `${GAS}.keyOf`,
   /** The logged-in route: the funds stay in the account and its key sends. */
@@ -267,6 +269,8 @@ export interface RenderedDepositStep {
   /** The address of the key to fund, in full and checksummed. */
   keyAddress: string
   copyLabel: string
+  /** The line the view shows where copying the key's address failed. */
+  copyFailed: string
   routes: RenderedRoute[]
   notes: string[]
   /** The lines of a step that waits for the funds to arrive. */
@@ -322,6 +326,7 @@ export const renderDepositStep = (
   const network = step.network.name
   const keyAddress = renderFullAddress(step.key)
   const copyLabel = t(GAS_KEYS.copy)
+  const copyFailed = t(GAS_KEYS.copyFailed)
   const transfer = step.routes.find((route) => route.kind === 'transfer')
 
   const routes: RenderedRoute[] = step.routes.map((route) => {
@@ -356,6 +361,7 @@ export const renderDepositStep = (
       lead: [shortfall],
       keyAddress,
       copyLabel,
+      copyFailed,
       routes,
       notes: [...transferSentence, t(GAS_KEYS.networkOwner, { network })],
       waiting: [],
@@ -373,6 +379,7 @@ export const renderDepositStep = (
         : t(GAS_KEYS.keyOf, { account: step.operates.name }),
     keyAddress,
     copyLabel,
+    copyFailed,
     routes,
     notes: [
       ...transferSentence,

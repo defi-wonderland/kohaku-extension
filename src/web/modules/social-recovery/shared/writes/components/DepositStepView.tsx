@@ -10,7 +10,7 @@
  * own actions (continue, back, fund the key) go in as children. The step links
  * to nothing.
  */
-import React, { ReactNode, useCallback } from 'react'
+import React, { ReactNode, useCallback, useState } from 'react'
 import { View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -64,9 +64,19 @@ const DepositStepView = ({
   const t: Translate = (key, options) => String(i18nT(key, options))
   const rendered = renderDepositStep(step, balance === undefined ? {} : { balance }, t)
 
+  // The result of the last copy to the clipboard. A failed copy shows a line,
+  // so the holder selects the address by hand rather than pasting an older
+  // one. A copy through `onCopy` reports no result here.
+  const [copyResult, setCopyResult] = useState<'idle' | 'copied' | 'notCopied'>('idle')
+
   const copy = useCallback(() => {
     if (onCopy) onCopy(rendered.keyAddress)
-    else setStringAsync(rendered.keyAddress).catch(() => {})
+    else {
+      // On web the clipboard answers false, or rejects, where it could not copy.
+      setStringAsync(rendered.keyAddress)
+        .then((copied) => setCopyResult(copied ? 'copied' : 'notCopied'))
+        .catch(() => setCopyResult('notCopied'))
+    }
   }, [onCopy, rendered.keyAddress])
 
   const keyBlock = (
@@ -88,6 +98,11 @@ const DepositStepView = ({
           hasBottomSpacing={false}
         />
       </View>
+      {copyResult === 'notCopied' && (
+        <Text fontSize={12} appearance="errorText" style={spacings.mtMi}>
+          {rendered.copyFailed}
+        </Text>
+      )}
     </View>
   )
 
