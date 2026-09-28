@@ -26,7 +26,7 @@ import type {
   TrustedParties,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { decodeAbiParameters } from 'viem'
+import { decodeAbiParameters, zeroHash } from 'viem'
 
 import { ClientContext, pinBlock, restoreConfiguration } from './context'
 import {
@@ -38,8 +38,7 @@ import {
   sameAddress,
   sealBackup,
   setupBodyOf,
-  setupCommitmentOf,
-  ZERO_HASH
+  setupCommitmentOf
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
 import { codedError, finding, ScriptedReadFailure, validationRefusal } from './scripts'
@@ -523,7 +522,7 @@ export class SetupClientDouble implements ISetupClient {
     chain.guardRefusal('setup.prepareClearSetup')
     const block = await pinBlock(this.ctx)
     const [state, authorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
-    const hasSetup = state.setupCommitment !== ZERO_HASH
+    const hasSetup = state.setupCommitment !== zeroHash
     const simulate = shouldSimulate(options, config.simulate)
     const failure = chain.simulationFailure('setup.prepareClearSetup')
     const from = simulationFrom(chain, 'account', options)
@@ -589,7 +588,7 @@ export class SetupClientDouble implements ISetupClient {
     const [state, isAuthorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
     return {
       isAuthorized,
-      hasSetup: state.setupCommitment !== ZERO_HASH,
+      hasSetup: state.setupCommitment !== zeroHash,
       setupCommitment: state.setupCommitment,
       setupNonce: state.setupNonce,
       setupCommittedAtBlock: state.setupCommittedAtBlock,

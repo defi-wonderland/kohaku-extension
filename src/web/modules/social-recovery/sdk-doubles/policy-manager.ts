@@ -20,9 +20,10 @@ import type {
   ReadResult,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroAddress } from 'viem'
 
 import type { ScriptedChain } from './chain'
-import { digestOfSubmission, ZERO_ADDRESS } from './encoding'
+import { digestOfSubmission } from './encoding'
 import { composeCall } from './prepared'
 
 export class PolicyManagerDouble implements IPolicyManagerInteractor {
@@ -61,11 +62,11 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
       return {
         answered: true,
         value: {
-          admin: ZERO_ADDRESS,
-          pendingAdmin: ZERO_ADDRESS,
+          admin: zeroAddress,
+          pendingAdmin: zeroAddress,
           trustedKeys: [],
-          pauseHolder: ZERO_ADDRESS,
-          pendingPauseHolder: ZERO_ADDRESS
+          pauseHolder: zeroAddress,
+          pendingPauseHolder: zeroAddress
         }
       }
     }

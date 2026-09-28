@@ -28,8 +28,6 @@ export {
   setupBodyOf,
   setupCommitmentOf,
   typedDataOf,
-  ZERO_ADDRESS,
-  ZERO_HASH,
   type BackupReading,
   type PlaceTypedData,
   type PublicNoteReading,

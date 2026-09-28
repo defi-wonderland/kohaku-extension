@@ -42,6 +42,7 @@ import type {
   RequestErrorCode,
   RequestWarningCode
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroAddress } from 'viem'
 
 import { ClientContext, codecFor, pinBlock, restoreConfiguration } from './context'
 import {
@@ -53,8 +54,7 @@ import {
   sameAddress,
   serializeOrder,
   setupBodyOf,
-  setupCommitmentOf,
-  ZERO_ADDRESS
+  setupCommitmentOf
 } from './encoding'
 import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
@@ -174,7 +174,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
           config: credential.config,
           salt,
           standing: paused.value ? 'stopped' : 'not-stopped',
-          stoppable: !sameAddress(parties.value.pauseHolder, ZERO_ADDRESS)
+          stoppable: !sameAddress(parties.value.pauseHolder, zeroAddress)
         }
         if (credential.label) entry.label = credential.label
         return entry
@@ -200,7 +200,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
   private async handoverRows(handover: Handover): Promise<RequestRow[]> {
     const { action } = this.ctx
     const { newAuthority, removedAuthority } = handover
-    if (sameAddress(newAuthority, ZERO_ADDRESS) || sameAddress(removedAuthority, ZERO_ADDRESS)) {
+    if (sameAddress(newAuthority, zeroAddress) || sameAddress(removedAuthority, zeroAddress)) {
       return [['handover.malformed', { newAuthority, removedAuthority, cause: 'zero-key' }]]
     }
     if (sameAddress(newAuthority, removedAuthority)) {
@@ -518,7 +518,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       payload: r.payload ?? '0x',
       order: r.order
         ? deserializeOrder(r.order)
-        : { token: ZERO_ADDRESS, amount: 0n, payee: ZERO_ADDRESS }
+        : { token: zeroAddress, amount: 0n, payee: zeroAddress }
     }
   }
 
@@ -769,7 +769,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
     if (attempt.order.amount > 0n) {
       // An open payee pays whoever executes. `PreparedCall` has no field for a
       // warning, so the `payment.open-payee` warning is not carried.
-      const payee = sameAddress(attempt.order.payee, ZERO_ADDRESS)
+      const payee = sameAddress(attempt.order.payee, zeroAddress)
         ? simulationFrom(chain, 'anyone', options)
         : attempt.order.payee
       describes.push(describe('transfer', [payee, attempt.order.amount], attempt.order.token))

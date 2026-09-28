@@ -17,9 +17,10 @@ import type {
   IProvider,
   IRecoveryActionInteractor
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroHash } from 'viem'
 
 import type { ScriptedChain } from './chain'
-import { readBackup, sameAddress, setupBodyOf, setupCommitmentOf, ZERO_HASH } from './encoding'
+import { readBackup, sameAddress, setupBodyOf, setupCommitmentOf } from './encoding'
 import { restoreRefusal } from './scripts'
 
 /**
@@ -86,7 +87,7 @@ export const restoreConfiguration = async (
 ): Promise<Configuration> => {
   const block = pinned ?? (await pinBlock(ctx))
   const state = await ctx.manager.stateOf()
-  if (state.setupCommitment === ZERO_HASH) {
+  if (state.setupCommitment === zeroHash) {
     throw restoreRefusal('restore.no-backup', { setup: 'none' })
   }
   let configuration: Configuration

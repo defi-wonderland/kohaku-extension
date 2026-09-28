@@ -10,7 +10,7 @@
  * `digestOf`) and the handover payload (the action codec double),
  * `abi.encode(address newAuthority, address removedAuthority)`.
  */
-import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex } from 'viem'
+import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex, zeroAddress } from 'viem'
 
 import type {
   Address,
@@ -24,9 +24,6 @@ import type {
   PrivacyLevel,
   SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
-
-export const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000'
-export const ZERO_HASH: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000'
 
 /** JSON with bigints written as `{"$bigint":"..."}` so they come back as bigints. */
 export const toJson = (value: unknown): string =>
@@ -426,7 +423,7 @@ export const typedDataOf = (m: DigestMembers): PlaceTypedData => {
       message: { ...common, validUntil: BigInt(m.validUntil), place: BigInt(m.place) }
     }
   }
-  const order = m.order ?? { token: ZERO_ADDRESS, amount: '0', payee: ZERO_ADDRESS }
+  const order = m.order ?? { token: zeroAddress, amount: '0', payee: zeroAddress }
   return {
     domain,
     types: APPROVAL_TYPES,

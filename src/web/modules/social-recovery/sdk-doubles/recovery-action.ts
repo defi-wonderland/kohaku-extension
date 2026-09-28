@@ -11,9 +11,10 @@ import type {
   IRecoveryActionInteractor,
   PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroHash } from 'viem'
 
 import type { ScriptedChain } from './chain'
-import { hashOf, ZERO_HASH } from './encoding'
+import { hashOf } from './encoding'
 import { composeCall } from './prepared'
 
 export class RecoveryActionDouble implements IRecoveryActionInteractor, IRecoveryActionArming {
@@ -53,7 +54,7 @@ export class RecoveryActionDouble implements IRecoveryActionInteractor, IRecover
     this.chain.guardRefusal('action.disarmingCall')
     return composeCall(this.chain, {
       name: 'setAddrPrivilege',
-      args: [this.chain.kitSlot, ZERO_HASH],
+      args: [this.chain.kitSlot, zeroHash],
       target: this.chain.account,
       sender: 'account',
       block: this.chain.head,
