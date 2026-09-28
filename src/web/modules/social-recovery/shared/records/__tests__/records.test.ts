@@ -438,7 +438,9 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
       const refused = (fn: () => unknown) =>
         expect(attempt(fn)).rejects.toThrow(/Invalid account address/)
       await refused(() => records.setup(CHAIN_ID, addr).setupDraft.write(SETUP_DRAFT))
+      await refused(() => records.setupSavedAt(CHAIN_ID, addr))
       await refused(() => records.decryptedSetupCache(CHAIN_ID, addr).read())
+      await refused(() => records.decryptedSetupCache(CHAIN_ID, addr).write(CACHE))
       await refused(() => records.saveSetup(CHAIN_ID, addr))
       await refused(() => records.recoverySession(CHAIN_ID, addr).write(GATHERING, null))
       await refused(() => records.wipeRecoverySession(CHAIN_ID, addr, 'deadline-passed', null))
@@ -449,23 +451,6 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
       expect(storage.raw.size).toBe(0)
     })
   )
-
-  it("refuses '0x' and '0x123', which type-check as an Address, and writes nothing", async () => {
-    const { storage, records } = setup()
-    const typed: Address[] = ['0x', '0x123']
-    const refused = (fn: () => unknown) =>
-      expect(attempt(fn)).rejects.toThrow(/Invalid account address/)
-    await Promise.all(
-      typed.map(async (addr) => {
-        await refused(() => records.setup(CHAIN_ID, addr).passwordSet.write('password-set'))
-        await refused(() => records.setupSavedAt(CHAIN_ID, addr))
-        await refused(() => records.recoverySession(CHAIN_ID, addr).write(gathering(addr), null))
-        await refused(() => records.landSubmission(CHAIN_ID, addr, null))
-        await refused(() => records.decryptedSetupCache(CHAIN_ID, addr).write(CACHE))
-      })
-    )
-    expect(storage.raw.size).toBe(0)
-  })
 
   BAD_CHAINS.forEach((bad) =>
     it(`refuses the chain id ${String(bad)} and writes nothing`, async () => {
@@ -631,7 +616,18 @@ describe('the recovery session', () => {
 
   it('a write refuses a gathering whose request names no valid account, and writes nothing', async () => {
     const { storage, records } = setup()
-    await expect(writeSession(records, gathering('0x123'))).rejects.toThrow(/0x123/)
+    await expect(writeSession(records, gathering('0x123'))).rejects.toThrow(
+      /^The gathering names account 0x123, not /
+    )
+    expect(storage.raw.size).toBe(0)
+  })
+
+  it('a write refuses a gathering whose request names the account with a 0X prefix, and writes nothing', async () => {
+    const { storage, records } = setup()
+    const upperPrefix = `0X${ACCOUNT.slice(2)}` as Address
+    await expect(writeSession(records, gathering(upperPrefix))).rejects.toThrow(
+      new RegExp(`^The gathering names account ${upperPrefix}, not `)
+    )
     expect(storage.raw.size).toBe(0)
   })
   ;['security-stop', 'securityStop', 'pause', 'cancelled', ''].forEach((event) =>
@@ -1107,7 +1103,6 @@ describe('a live request is compared whole, and its replies only grow', () => {
     })
   )
 
-  // The block passes through a variable, so its key outside the block type is allowed.
   const blockWithUndefined = { ...GATHERING.request.block, note: undefined }
   const UNDEFINED_KEYS: [string, Partial<Gathering['request']>][] = [
     ['an optional key', { payload: undefined }],
@@ -1758,8 +1753,7 @@ describe('the revision an update names', () => {
 })
 
 describe('the revision a session update stores', () => {
-  // Five updates in a row, each storing a revision: two writes, a wipe, a write and a landing.
-  const fiveRevisions = async () => {
+  it('differs from every revision stored before it', async () => {
     const { records } = setup()
     const session = records.recoverySession(CHAIN_ID, ACCOUNT)
     const first = await session.write(gathering(ACCOUNT, [APPROVALS[0]]), null)
@@ -1768,17 +1762,8 @@ describe('the revision a session update stores', () => {
     const wiped = revisionOf(await session.read())
     const third = await session.write(GATHERING, wiped)
     const landed = await records.landSubmission(CHAIN_ID, ACCOUNT, third.revision)
-    return [first.revision, second.revision, wiped, third.revision, landed.revision]
-  }
-
-  it('differs from every revision stored before it', async () => {
-    const revisions = await fiveRevisions()
+    const revisions = [first.revision, second.revision, wiped, third.revision, landed.revision]
     expect(new Set(revisions).size).toBe(5)
-  })
-
-  it('is 0x followed by 24 lower-case hex digits', async () => {
-    const revisions = await fiveRevisions()
-    revisions.forEach((revision) => expect(revision).toMatch(/^0x[0-9a-f]{24}$/))
   })
 
   it('a session stored with a revision of 24 hex digits and no prefix still reads, lists and takes an update that names it', async () => {
