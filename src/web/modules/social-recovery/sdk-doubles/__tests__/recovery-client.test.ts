@@ -13,7 +13,7 @@ import {
   type IRecoveryClient,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { keccak256, stringToHex } from 'viem'
+import { keccak256, sha256, stringToHex } from 'viem'
 
 import {
   createWorld,
@@ -64,7 +64,7 @@ const passkeyAt = (world: World, key: Hex): Credential => ({
   method: world.descriptor.methodPasskey,
   config: world.methods.passkey.codec.encodeConfig({
     publicKey: key,
-    rpIdHash: keccak256(stringToHex('wallet.example'))
+    rpIdHash: sha256(stringToHex('wallet.example'))
   })
 })
 

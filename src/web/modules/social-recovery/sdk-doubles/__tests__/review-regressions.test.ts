@@ -17,11 +17,12 @@ import type {
   SetupDraft,
   ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { hashTypedData, keccak256, stringToHex } from 'viem'
+import { hashTypedData, keccak256, sha256, stringToHex } from 'viem'
 
 import {
   completedRequest,
   createWorld,
+  eachIt,
   expectThrown,
   momentOf,
   NO_PAYMENT,
@@ -134,17 +135,44 @@ describe('validateSetup computes its own findings', () => {
     expect(repeated!.values.places).toEqual([0, 1])
   })
 
-  it('raises action.unaudited for an action outside the audited list, and not for the listed one', async () => {
-    const world = createWorld()
-    const listed = await (await world.setupClient()).validateSetup(world.draft('private'))
+  it('raises action.unaudited for an action outside the audited list, and not for a listed one', async () => {
+    const audited = createWorld()
+    const listed = await (await audited.setupClient()).validateSetup(audited.draft('private'))
     expect(codes(listed.warnings)).not.toContain('action.unaudited')
-    const other = addressOf('unaudited-action')
-    const setup = await world.builder().action(other, world.actionPart).buildSetupClient()
-    const { warnings } = await setup.validateSetup(world.draft('private'))
+    const world = createWorld({ descriptor: { auditedActions: [] } })
+    const { warnings } = await (await world.setupClient()).validateSetup(world.draft('private'))
     const unaudited = warnings.filter((f) => f.code === 'action.unaudited')
     expect(unaudited).toHaveLength(1)
     expect(unaudited[0]!.subject).toBe('action')
-    expect(String(unaudited[0]!.values.action).toLowerCase()).toBe(other.toLowerCase())
+    expect(String(unaudited[0]!.values.action).toLowerCase()).toBe(
+      world.descriptor.action.toLowerCase()
+    )
+  })
+
+  eachIt([
+    ['a negative threshold', -1],
+    ['a fractional threshold', 1.5]
+  ] as const)('refuses %s with clause.threshold-too-wide', async ([, threshold]) => {
+    const world = createWorld()
+    const draft = draftOf(world, [
+      { threshold, credentials: [wallet(world, 'a'), wallet(world, 'b')] }
+    ])
+    const setup = await world.setupClient()
+    const { errors } = await setup.validateSetup(draft)
+    const wide = errors.filter((f) => f.code === 'clause.threshold-too-wide')
+    expect(wide.map((f) => f.values.clause)).toEqual([0])
+    const refusal = await refusalOf(() => setup.prepareCommitSetup(draft, PASSWORD))
+    expect(codes(refusal.findings.errors)).toContain('clause.threshold-too-wide')
+  })
+
+  it('refuses a negative wait with wait.field-width', async () => {
+    const world = createWorld()
+    const draft: SetupDraft = { ...world.draft('private'), wait: -1n }
+    const setup = await world.setupClient()
+    const { errors } = await setup.validateSetup(draft)
+    expect(codes(errors)).toContain('wait.field-width')
+    const refusal = await refusalOf(() => setup.prepareCommitSetup(draft, PASSWORD))
+    expect(codes(refusal.findings.errors)).toContain('wait.field-width')
   })
 
   it('raises manager.already-armed for another action whose setup still stands', async () => {
@@ -168,7 +196,7 @@ describe('validateSetup computes its own findings', () => {
 
   it('fills passkeyDomains in describeSetup, one row per passkey place', async () => {
     const world = createWorld()
-    const rpIdHash = keccak256(stringToHex('wallet.example'))
+    const rpIdHash = sha256(stringToHex('wallet.example'))
     const passkey: Credential = {
       method: world.descriptor.methodPasskey,
       config: world.methods.passkey.codec.encodeConfig({ publicKey: '0x04aa', rpIdHash })

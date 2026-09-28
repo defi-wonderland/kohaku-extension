@@ -16,6 +16,7 @@ import {
   WalletMethodDouble,
   WalletReadsDouble,
   type AnyMethodDouble,
+  type ChainSeed,
   type IWalletReadsDouble,
   type ModuleRead,
   type RecoveryKitBuilderDouble,
@@ -125,8 +126,9 @@ export interface World {
 const walletConfig = (label: string): Hex =>
   new WalletMethodDouble().codec.encodeConfig({ address: addressOf(label) })
 
-export const createWorld = (): World => {
-  const chain = new ScriptedChain()
+/** A world over a scripted chain, seeded where a test needs another deployment. */
+export const createWorld = (seed: ChainSeed = {}): World => {
+  const chain = new ScriptedChain(seed)
   const { descriptor } = chain
   const provider = new ProviderDouble(chain)
   const doubles = shippedMethodDoubles(chain)

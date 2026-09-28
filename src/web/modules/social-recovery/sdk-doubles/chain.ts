@@ -394,11 +394,17 @@ export class ScriptedChain {
     return this.head
   }
 
-  /** Moves chain time forward by `seconds` over `blocks` blocks. */
+  /**
+   * Moves chain time forward by `seconds` over `blocks` blocks (at least one).
+   * Time never moves back: negative seconds count as zero. With fewer seconds
+   * than blocks, blocks share a timestamp; the doubles allow that, while a real
+   * chain's timestamps strictly increase.
+   */
   advance(seconds: number, blocks = 1): BlockHeader {
-    const step = Math.max(1, Math.floor(seconds / Math.max(1, blocks)))
-    for (let i = 0; i < blocks - 1; i++) this.mine(step)
-    return this.mine(seconds - step * (blocks - 1))
+    const count = Math.max(1, blocks)
+    const step = Math.floor(Math.max(0, seconds) / count)
+    for (let i = 0; i < count - 1; i++) this.mine(step)
+    return this.mine(Math.max(0, seconds - step * (count - 1)))
   }
 
   /** The block a tag names; every named tag answers the head. */
@@ -1100,8 +1106,9 @@ export class ScriptedChain {
           ? undefined
           : kitError('NoSetup', { account, action })
       case 'start':
+        return acceptanceRevert(this, effect.request, 'approval')
       case 'cancel-by-proofs':
-        return acceptanceRevert(this, effect.request)
+        return acceptanceRevert(this, effect.request, 'cancellation')
       case 'cancel-by-owner':
         return this.attempt.status === 'waiting'
           ? undefined

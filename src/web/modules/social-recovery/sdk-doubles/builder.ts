@@ -7,8 +7,9 @@
  * and never the manager part. Both return fresh objects carrying only their
  * interface's members, so the narrowing holds at runtime too.
  *
- * The doubles serve the scripted chain's one account: a builder bound to
- * another account or another chain id refuses at its first build.
+ * The doubles serve the scripted chain's one deployment, account and action: a
+ * builder bound to another deployment, account or action refuses at its first
+ * build.
  */
 import type {
   Address,
@@ -61,8 +62,9 @@ const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
  * The thrown value of a construction check: an ordinary error carrying the code
  * `construction.<check>` and the check's name in `check` (`descriptor`,
  * `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
- * `digest-version`). The interfaces declare no construction-refusal shape, so
- * this one is the doubles' own.
+ * `digest-version`, `unserved`). `unserved` is the doubles' own: a descriptor
+ * or an action this scripted chain does not serve. The interfaces declare no
+ * construction-refusal shape, so this one is the doubles' own.
  */
 export interface ConstructionRefusal extends CodedError {
   check: string
@@ -193,22 +195,56 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     return d
   }
 
+  /**
+   * The doubles serve one scripted chain: its deployment, its account and its
+   * action. A builder bound to anything else refuses, on every build path, the
+   * orchestrator's among them: a foreign account as `account`, a descriptor or
+   * an action the chain does not serve as `unserved`. On the client paths this
+   * runs after the SDK's own checks, so a wrong network reads as `chain-id` or
+   * `domain` first. Returns the action address the build serves.
+   */
+  private servedAction(descriptor: DeploymentDescriptor): Address {
+    const served = this.chain.descriptor
+    if (
+      descriptor.chainId !== served.chainId ||
+      !sameAddress(descriptor.manager, served.manager) ||
+      !sameAddress(descriptor.action, served.action)
+    ) {
+      throw constructionRefusal(
+        'unserved',
+        'The doubles serve the scripted chain’s one deployment.'
+      )
+    }
+    const account = this.accountAddress ?? this.chain.account
+    if (!sameAddress(account, this.chain.account)) {
+      throw constructionRefusal('account', 'The doubles serve the scripted chain’s one account.')
+    }
+    const actionAddress = this.actionBinding?.address ?? descriptor.action
+    if (!sameAddress(actionAddress, this.chain.action)) {
+      throw constructionRefusal('unserved', 'The doubles serve the scripted chain’s one action.')
+    }
+    return actionAddress
+  }
+
+  /** The codecs, with the shipped codec for the served action where none covers it. */
+  private codecsFor(actionAddress: Address): IActionCodec<unknown>[] {
+    const codecs = [...this.codecList]
+    if (!codecs.some((c) => c.actions.some((a) => sameAddress(a, actionAddress)))) {
+      codecs.push(new ActionCodecDouble([actionAddress]))
+    }
+    return codecs
+  }
+
   /** Constructs each shared part once; the same instances back both clients. */
   private parts(): ClientContext {
     if (this.context) return this.context
     const descriptor = this.resolvedDescriptor()
     if (!this.providerPart) throw constructionRefusal('provider', 'The builder has no provider.')
-    const account = this.accountAddress ?? this.chain.account
-    if (!sameAddress(account, this.chain.account)) {
-      throw constructionRefusal('account', 'The doubles serve the scripted chain’s one account.')
-    }
-    const config = this.configuration ?? defaultClientConfiguration()
+    // `construct` checks this address with `servedAction` once the SDK's own checks pass.
     const actionAddress = this.actionBinding?.address ?? descriptor.action
+    const config = this.configuration ?? defaultClientConfiguration()
     const registry = this.registry(descriptor)
-    const codecs = [...this.codecList]
-    if (!codecs.some((c) => c.actions.some((a) => sameAddress(a, descriptor.action)))) {
-      codecs.push(new ActionCodecDouble([descriptor.action]))
-    }
+    const codecs = this.codecsFor(actionAddress)
     const actionPart = this.actionBinding?.implementation ?? new RecoveryActionDouble(this.chain)
     this.arming = actionPart
     this.context = {
@@ -251,7 +287,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
         }
         const domain = await ctx.manager.eip712Domain()
         if (
-          Number(domain.chainId) !== descriptor.chainId ||
+          domain.chainId !== BigInt(descriptor.chainId) ||
           !sameAddress(domain.verifyingContract, descriptor.manager)
         ) {
           throw constructionRefusal('domain', 'The manager’s domain disagrees with the descriptor.')
@@ -268,6 +304,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
             'The manager’s digest version is not the one this build carries.'
           )
         }
+        this.servedAction(descriptor)
       })()
     }
     return this.checks.then(() => this.parts())
@@ -294,13 +331,10 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     this.frozen = true
     if (!this.orchestrator) {
       const descriptor = this.resolvedDescriptor()
-      const codecs = [...this.codecList]
-      if (!codecs.some((c) => c.actions.some((a) => sameAddress(a, descriptor.action)))) {
-        codecs.push(new ActionCodecDouble([descriptor.action]))
-      }
+      const actionAddress = this.servedAction(descriptor)
       this.orchestrator = new MethodsOrchestratorDouble(
         this.registry(descriptor),
-        codecs,
+        this.codecsFor(actionAddress),
         this.chain
       )
     }

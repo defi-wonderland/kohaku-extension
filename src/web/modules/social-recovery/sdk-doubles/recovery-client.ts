@@ -534,10 +534,11 @@ export class RecoveryClientDouble implements IRecoveryClient {
    */
   private async validateRequest(
     request: AttemptRequest | CancelRequest,
+    purpose: 'approval' | 'cancellation',
     now: number
   ): Promise<Finding[]> {
     const { chain, manager } = this.ctx
-    const isApproval = 'payload' in request
+    const isApproval = purpose === 'approval'
     const state = await manager.stateOf()
     const rows: RequestRow[] = []
     if (now > request.validUntil)
@@ -661,7 +662,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
   ): Promise<PreparedCall> {
     this.ctx.chain.guardRefusal('recovery.prepareStartAttempt')
     const block = await pinBlock(this.ctx)
-    const errors = await this.validateRequest(request, now)
+    const errors = await this.validateRequest(request, 'approval', now)
     if (errors.length) throw validationRefusal({ errors, warnings: [] })
     const call = await this.ctx.manager.prepareStartAttempt(request)
     return this.finish(
@@ -669,7 +670,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       'recovery.prepareStartAttempt',
       block,
       options,
-      acceptanceRevert(this.ctx.chain, request)
+      acceptanceRevert(this.ctx.chain, request, 'approval')
     )
   }
 
@@ -680,7 +681,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
   ): Promise<PreparedCall> {
     this.ctx.chain.guardRefusal('recovery.prepareCancelByProofs')
     const block = await pinBlock(this.ctx)
-    const errors = await this.validateRequest(request, now)
+    const errors = await this.validateRequest(request, 'cancellation', now)
     if (errors.length) throw validationRefusal({ errors, warnings: [] })
     const call = await this.ctx.manager.prepareCancelByProofs(request)
     return this.finish(
@@ -688,7 +689,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       'recovery.prepareCancelByProofs',
       block,
       options,
-      acceptanceRevert(this.ctx.chain, request)
+      acceptanceRevert(this.ctx.chain, request, 'cancellation')
     )
   }
 

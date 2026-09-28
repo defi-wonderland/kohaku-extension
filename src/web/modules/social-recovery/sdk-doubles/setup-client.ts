@@ -121,7 +121,12 @@ export class SetupClientDouble implements ISetupClient {
           })
         )
       }
-      if (clause.threshold > THRESHOLD_FIELD) {
+      // The `uint8` field holds whole numbers from 0 to its width, nothing else.
+      if (
+        !Number.isInteger(clause.threshold) ||
+        clause.threshold < 0 ||
+        clause.threshold > THRESHOLD_FIELD
+      ) {
         errors.push(
           finding('clause.threshold-too-wide', 'clause', {
             clause: index,
@@ -258,7 +263,8 @@ export class SetupClientDouble implements ISetupClient {
         warnings.push(finding('rule.repeated-person', 'setup', { label, places }))
     })
 
-    if (BigInt(block.timestamp) + draft.wait >= MAX_WAIT_FIELD) {
+    // The unsigned `uint48` field holds no negative wait either.
+    if (draft.wait < 0n || BigInt(block.timestamp) + draft.wait >= MAX_WAIT_FIELD) {
       errors.push(
         finding('wait.field-width', 'setup', {
           wait: draft.wait,

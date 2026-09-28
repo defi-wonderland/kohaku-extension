@@ -97,13 +97,15 @@ export const malformedHandover = (h: Handover): boolean =>
 /**
  * The manager's acceptance of a submitted request at the head block, in the
  * contract's order: the window, the attempt, the setup, then each proof (order,
- * place, credential, stop, verdict), then the rule.
+ * place, credential, stop, verdict), then the rule. `purpose` names the path:
+ * `startAttempt` for an approval, `cancelByProofs` for a cancellation.
  */
 export const acceptanceRevert = (
   chain: ScriptedChain,
-  request: AttemptRequest | CancelRequest
+  request: AttemptRequest | CancelRequest,
+  purpose: 'approval' | 'cancellation'
 ): KitError | undefined => {
-  const isApproval = 'payload' in request
+  const isApproval = purpose === 'approval'
   const state = chain.stateOf()
   const { account, action } = request
   if (chain.head.timestamp > request.validUntil) {
@@ -176,7 +178,7 @@ export const acceptanceRevert = (
     if (!body.ignoresPause && chain.method(p.method)?.paused === true) {
       return kitError('MethodStopped', { place: p.place, method: p.method })
     }
-    const digest = digestOfSubmission(request, domain, p.place)
+    const digest = digestOfSubmission(request, purpose, domain, p.place)
     if (p.proof.toLowerCase() !== doubleProof(p.config, digest).toLowerCase()) {
       return kitError('ProofRejected', { place: p.place, method: p.method })
     }
