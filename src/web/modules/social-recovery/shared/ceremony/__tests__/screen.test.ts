@@ -844,6 +844,12 @@ describe('a store handed to the tab while the method runs', () => {
       verdict: 'passed'
     })
   })
+
+  it('writes the report through the new store, not the one it replaced', async () => {
+    const { store, next } = await claimAcrossAStoreSwap()
+    expect(store.set).not.toHaveBeenCalled()
+    expect(next.set).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the tab inside React StrictMode', () => {
