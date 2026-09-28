@@ -145,7 +145,7 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     ]
   },
   {
-    name: 'two groups: together with one member of each other group',
+    name: 'two groups: together with enough members of each other group to meet its threshold',
     clauses: [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])],
     expected: [
       { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
@@ -475,8 +475,8 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
         t
       )
     ).toEqual([
-      'Together with one member of each other group, any 1 of these 2 recover this account. Losing more than 1 locks you out.',
-      'Together with one member of each other group, any 2 of these 3 recover this account. Losing more than 1 locks you out.',
+      'Together with enough members of each other group to meet its threshold, any 1 of these 2 recover this account. Losing more than 1 locks you out.',
+      'Together with enough members of each other group to meet its threshold, any 2 of these 3 recover this account. Losing more than 1 locks you out.',
       'Keep the methods of your path in different places.'
     ])
     expect(renderRuleLines(linesOf([group(3, [PASSKEY, PASSPORT, GUARDIAN])]), t)).toEqual([
@@ -487,6 +487,26 @@ describe('renderRuleLines: the rendered English through the real en.json', () =>
       'Together with your required methods, every member of this group must answer.',
       'Keep the methods of your path in different places.'
     ])
+  })
+
+  it("a group beside a 2-of-3 group: its line names the other group's threshold, never one member of it", () => {
+    const twoOfThree = () => group(2, [GUARDIAN, AADHAAR, PASSKEY])
+    // A path with a group has no rows line, so its first line is the first group's.
+    const firstGroupLine = (clauses: Clause[]) => renderRuleLines(linesOf(clauses), t)[0]
+
+    const oneOfTwo = firstGroupLine([group(1, [PASSKEY, PASSPORT]), twoOfThree()])
+    expect(oneOfTwo).toMatch(/\bany 1 of these 2\b/)
+
+    const lines = [
+      oneOfTwo,
+      firstGroupLine([row(AADHAAR), group(1, [PASSKEY, PASSPORT]), twoOfThree()]),
+      firstGroupLine([group(2, [PASSKEY, PASSPORT]), twoOfThree()]),
+      firstGroupLine([row(AADHAAR), group(2, [PASSKEY, PASSPORT]), twoOfThree()])
+    ]
+    lines.forEach((s) => {
+      expect(s).not.toMatch(/\b(?:one|1|a single) member\b/i)
+      expect(s).toMatch(/\benough members of each other group to meet its threshold\b/)
+    })
   })
 })
 
