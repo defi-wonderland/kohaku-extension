@@ -8,6 +8,7 @@
  */
 import type {
   Address,
+  FilterSpec,
   Hex,
   Notification,
   NotificationKind,
@@ -115,10 +116,7 @@ export const notificationOf = (log: RawLog): Notification | undefined => {
 }
 
 /** Whether a log matches a filter's addresses and topics (a null topic matches anything). */
-export const matchesFilter = (
-  log: RawLog,
-  filter: { addresses: Address[]; topics: (Hex | Hex[] | null)[] }
-): boolean => {
+export const matchesFilter = (log: RawLog, filter: FilterSpec): boolean => {
   if (!filter.addresses.some((a) => sameAddress(a, log.address))) return false
   return filter.topics.every((wanted, i) => {
     if (wanted === null || wanted === undefined) return true

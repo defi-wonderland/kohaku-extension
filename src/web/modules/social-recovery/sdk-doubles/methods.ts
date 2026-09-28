@@ -42,10 +42,31 @@ import {
 import type { ScriptedChain } from './chain'
 import { digestOfRequest, doubleProof, hashOf } from './encoding'
 import { codedError } from './scripts'
+import type {
+  AadhaarConfigFields,
+  AadhaarInput,
+  AadhaarMaterial,
+  AadhaarParams,
+  AnyMethodDouble,
+  MethodKind,
+  PasskeyConfigFields,
+  PasskeyEnrollInput,
+  PasskeyEnrollMaterial,
+  PasskeyEnrollParams,
+  PasskeyReplyMaterial,
+  PasskeySigningParams,
+  ProofFields,
+  WalletConfigFields,
+  WalletEnrollParams,
+  WalletReplyMaterial,
+  ZkPassportConfigFields,
+  ZkPassportEnrollMaterial,
+  ZkPassportParams,
+  ZkPassportReplyMaterial
+} from './types'
 
 /** The four shipped method kinds. */
 export const METHOD_KINDS_SHIPPED = ['wallet', 'passkey', 'zkpassport', 'aadhaar'] as const
-export type MethodKind = typeof METHOD_KINDS_SHIPPED[number]
 
 const replyFailure = (cause: ReplyFailure['cause']): ReplyFailure => ({
   kind: 'reply-failure',
@@ -60,8 +81,8 @@ const nonEmptyHex = (value: unknown): value is Hex => isHex(value) && value !== 
 
 /** A pass-through proof codec: the doubles' proofs are opaque bytes. */
 const opaqueProof = {
-  encodeProof: (fields: unknown): Hex => (fields as { proof: Hex }).proof,
-  decodeProof: (proof: Hex): unknown => ({ proof })
+  encodeProof: ({ proof }: ProofFields): Hex => proof,
+  decodeProof: (proof: Hex): ProofFields => ({ proof })
 }
 
 abstract class MethodDouble implements IRecoveryMethod {
@@ -133,11 +154,11 @@ export class WalletMethodDouble extends MethodDouble {
 
   readonly vector = ['method-ecdsa-config.json', 'method-ecdsa-proof.json']
 
-  readonly codec: IMethodCodec<{ address: Address }, { proof: Hex }> = {
+  readonly codec: IMethodCodec<WalletConfigFields, ProofFields> = {
     encodeConfig: ({ address }) => encodeAbiParameters([{ type: 'address' }], [address]),
     decodeConfig: (config) => ({ address: decodeAbiParameters([{ type: 'address' }], config)[0] }),
     ...opaqueProof
-  } as IMethodCodec<{ address: Address }, { proof: Hex }>
+  }
 
   modules(descriptor: DeploymentDescriptor): Address[] {
     return [descriptor.methodEcdsa]
@@ -145,11 +166,11 @@ export class WalletMethodDouble extends MethodDouble {
 
   /** `params: { address }`; no ceremony runs, so the input is the address itself. */
   enrollInput(params: unknown): unknown {
-    return { address: (params as { address?: string } | undefined)?.address }
+    return { address: (params as WalletEnrollParams | undefined)?.address }
   }
 
   protected enrollConfig(input: unknown): Hex | EnrollFailure {
-    const address = (input as { address?: string } | undefined)?.address
+    const address = (input as WalletEnrollParams | undefined)?.address
     // The strict check refuses a mixed-case address with a wrong checksum, which
     // the encoder would otherwise throw on.
     if (!address || !isAddress(address, { strict: true })) return enrollFailure('material-rejected')
@@ -166,11 +187,11 @@ export class WalletMethodDouble extends MethodDouble {
   }
 
   protected proofFrom(ctx: MethodContext, input: unknown, material: unknown): Hex | ReplyFailure {
-    const signature = (material as { signature?: unknown } | undefined)?.signature
+    const signature = (material as WalletReplyMaterial | undefined)?.signature
     return nonEmptyHex(signature) ? signature : replyFailure('material-rejected')
   }
 
-  satisfyingMaterial(request: ApproverRequest): { signature: Hex } {
+  satisfyingMaterial(request: ApproverRequest) {
     return { signature: doubleProof(request.config, digestOfRequest(request)) }
   }
 
@@ -197,7 +218,7 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   readonly vector = ['method-passkey-config.json', 'method-passkey-proof.json']
 
-  readonly codec: IMethodCodec<{ publicKey: Hex; rpIdHash: Hex }, { proof: Hex }> = {
+  readonly codec: IMethodCodec<PasskeyConfigFields, ProofFields> = {
     encodeConfig: ({ publicKey, rpIdHash }) =>
       encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes32' }], [publicKey, rpIdHash]),
     decodeConfig: (config) => {
@@ -208,7 +229,7 @@ export class PasskeyMethodDouble extends MethodDouble {
       return { publicKey, rpIdHash }
     },
     ...opaqueProof
-  } as IMethodCodec<{ publicKey: Hex; rpIdHash: Hex }, { proof: Hex }>
+  }
 
   modules(descriptor: DeploymentDescriptor): Address[] {
     return [descriptor.methodPasskey]
@@ -216,7 +237,7 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   /** `params: { relyingPartyId, userName }`; returns the creation options. */
   enrollInput(params: unknown): unknown {
-    const p = params as { relyingPartyId?: string; userName?: string } | undefined
+    const p = params as PasskeyEnrollParams | undefined
     if (!p?.relyingPartyId)
       throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
     return {
@@ -230,9 +251,8 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   /** `material: { credential }`, the double's credential carrying its `publicKey` bytes. */
   protected enrollConfig(input: unknown, material: unknown): Hex | EnrollFailure {
-    const rpId = (input as { rp?: { id?: string } } | undefined)?.rp?.id
-    const publicKey = (material as { credential?: { publicKey?: unknown } } | undefined)?.credential
-      ?.publicKey
+    const rpId = (input as PasskeyEnrollInput | undefined)?.rp?.id
+    const publicKey = (material as PasskeyEnrollMaterial | undefined)?.credential?.publicKey
     if (!rpId || !nonEmptyHex(publicKey)) return enrollFailure('material-rejected')
     // WebAuthn's rpIdHash is the SHA-256 of the relying party id.
     return this.codec.encodeConfig({ publicKey, rpIdHash: sha256(stringToHex(rpId)) })
@@ -240,7 +260,7 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   /** `params: { relyingPartyId, credentialId? }`; the digest is the challenge. */
   signingInput(ctx: MethodContext, params?: unknown): unknown {
-    const p = params as { relyingPartyId?: string; credentialId?: string } | undefined
+    const p = params as PasskeySigningParams | undefined
     if (!p?.relyingPartyId)
       throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
     return {
@@ -253,11 +273,11 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   /** `material: { assertion }`, the double's assertion being the proof bytes. */
   protected proofFrom(ctx: MethodContext, input: unknown, material: unknown): Hex | ReplyFailure {
-    const assertion = (material as { assertion?: unknown } | undefined)?.assertion
+    const assertion = (material as PasskeyReplyMaterial | undefined)?.assertion
     return nonEmptyHex(assertion) ? assertion : replyFailure('material-rejected')
   }
 
-  satisfyingMaterial(request: ApproverRequest): { assertion: Hex } {
+  satisfyingMaterial(request: ApproverRequest) {
     return { assertion: doubleProof(request.config, digestOfRequest(request)) }
   }
 
@@ -284,27 +304,21 @@ export class ZkPassportMethodDouble extends MethodDouble {
 
   readonly vector = ['method-zkpassport-config.json', 'method-zkpassport-proof.json']
 
-  readonly codec: IMethodCodec<{ uniqueIdentifier: Hex }, { proof: Hex }> = {
+  readonly codec: IMethodCodec<ZkPassportConfigFields, ProofFields> = {
     encodeConfig: ({ uniqueIdentifier }) =>
       encodeAbiParameters([{ type: 'bytes32' }], [uniqueIdentifier]),
     decodeConfig: (config) => ({
       uniqueIdentifier: decodeAbiParameters([{ type: 'bytes32' }], config)[0]
     }),
     ...opaqueProof
-  } as IMethodCodec<{ uniqueIdentifier: Hex }, { proof: Hex }>
+  }
 
   modules(descriptor: DeploymentDescriptor): Address[] {
     return [descriptor.methodZkpassport]
   }
 
   private requestRecord(params: unknown, boundData: string): unknown {
-    const p = params as {
-      domain?: string
-      scope?: string
-      name?: string
-      logo?: string
-      purpose?: string
-    }
+    const p = params as ZkPassportParams
     if (!p?.domain || !p?.scope)
       throw codedError('params-missing', { method: 'zkpassport', missing: ['domain', 'scope'] })
     return {
@@ -325,8 +339,7 @@ export class ZkPassportMethodDouble extends MethodDouble {
 
   /** `material: { result }`, the double's result carrying the `uniqueIdentifier`. */
   protected enrollConfig(_input: unknown, material: unknown): Hex | EnrollFailure {
-    const id = (material as { result?: { uniqueIdentifier?: unknown } } | undefined)?.result
-      ?.uniqueIdentifier
+    const id = (material as ZkPassportEnrollMaterial | undefined)?.result?.uniqueIdentifier
     if (!nonEmptyHex(id) || id.length !== 66) return enrollFailure('material-rejected')
     return this.codec.encodeConfig({ uniqueIdentifier: id })
   }
@@ -337,11 +350,11 @@ export class ZkPassportMethodDouble extends MethodDouble {
 
   /** `material: { proofs }`, the double's proofs being the proof bytes. */
   protected proofFrom(ctx: MethodContext, input: unknown, material: unknown): Hex | ReplyFailure {
-    const proofs = (material as { proofs?: unknown } | undefined)?.proofs
+    const proofs = (material as ZkPassportReplyMaterial | undefined)?.proofs
     return nonEmptyHex(proofs) ? proofs : replyFailure('material-rejected')
   }
 
-  satisfyingMaterial(request: ApproverRequest): { proofs: Hex } {
+  satisfyingMaterial(request: ApproverRequest) {
     return { proofs: doubleProof(request.config, digestOfRequest(request)) }
   }
 
@@ -362,13 +375,13 @@ export class AadhaarMethodDouble extends MethodDouble {
 
   readonly vector = ['method-aadhaar-config.json', 'method-aadhaar-proof.json']
 
-  readonly codec: IMethodCodec<{ nullifier: Hex }, { proof: Hex }> = {
+  readonly codec: IMethodCodec<AadhaarConfigFields, ProofFields> = {
     encodeConfig: ({ nullifier }) => encodeAbiParameters([{ type: 'bytes32' }], [nullifier]),
     decodeConfig: (config) => ({
       nullifier: decodeAbiParameters([{ type: 'bytes32' }], config)[0]
     }),
     ...opaqueProof
-  } as IMethodCodec<{ nullifier: Hex }, { proof: Hex }>
+  }
 
   modules(descriptor: DeploymentDescriptor): Address[] {
     return [descriptor.methodAadhaar]
@@ -379,11 +392,8 @@ export class AadhaarMethodDouble extends MethodDouble {
     return hashOf({ nullifier: [nullifierSeed, qrData] })
   }
 
-  private args(
-    params: unknown,
-    signal: string
-  ): { nullifierSeed: string; issuerCertificate: string; signal: string } {
-    const p = params as { nullifierSeed?: string | number; issuerCertificate?: string } | undefined
+  private args(params: unknown, signal: string): AadhaarInput {
+    const p = params as AadhaarParams | undefined
     if (p?.nullifierSeed === undefined || !p?.issuerCertificate) {
       throw codedError('params-missing', {
         method: 'aadhaar',
@@ -404,8 +414,8 @@ export class AadhaarMethodDouble extends MethodDouble {
 
   /** `material: { qrData, onProgress?, signal? }`; the double proves at once. */
   protected enrollConfig(input: unknown, material: unknown): Hex | EnrollFailure {
-    const seed = (input as { nullifierSeed?: string } | undefined)?.nullifierSeed
-    const qrData = (material as { qrData?: unknown } | undefined)?.qrData
+    const seed = (input as Partial<AadhaarInput> | undefined)?.nullifierSeed
+    const qrData = (material as AadhaarMaterial | undefined)?.qrData
     if (seed === undefined || !nonEmptyHex(qrData)) return enrollFailure('material-rejected')
     return this.codec.encodeConfig({ nullifier: AadhaarMethodDouble.nullifierOf(seed, qrData) })
   }
@@ -415,8 +425,8 @@ export class AadhaarMethodDouble extends MethodDouble {
   }
 
   protected proofFrom(ctx: MethodContext, input: unknown, material: unknown): Hex | ReplyFailure {
-    const seed = (input as { nullifierSeed?: string } | undefined)?.nullifierSeed
-    const qrData = (material as { qrData?: unknown } | undefined)?.qrData
+    const seed = (input as Partial<AadhaarInput> | undefined)?.nullifierSeed
+    const qrData = (material as AadhaarMaterial | undefined)?.qrData
     if (seed === undefined || !nonEmptyHex(qrData)) return replyFailure('material-rejected')
     const config = this.codec.encodeConfig({
       nullifier: AadhaarMethodDouble.nullifierOf(seed, qrData)
@@ -430,7 +440,7 @@ export class AadhaarMethodDouble extends MethodDouble {
    * The QR data can't be derived back from a nullifier, so the Aadhaar double's
    * satisfying material is the one enrolled: pass the QR data used at enrollment.
    */
-  satisfyingMaterial(_request: ApproverRequest, qrData?: Hex): { qrData: Hex } {
+  satisfyingMaterial(_request: ApproverRequest, qrData?: Hex) {
     if (!qrData) throw codedError('material-missing', { method: 'aadhaar', missing: ['qrData'] })
     return { qrData }
   }
@@ -439,12 +449,6 @@ export class AadhaarMethodDouble extends MethodDouble {
     return { kind: this.deviceKind, qrStaysOnDevice: true, provingTakesTensOfSeconds: true }
   }
 }
-
-export type AnyMethodDouble =
-  | WalletMethodDouble
-  | PasskeyMethodDouble
-  | ZkPassportMethodDouble
-  | AadhaarMethodDouble
 
 /** The four shipped method doubles, each reading the chain's approving-side scripts. */
 export const shippedMethodDoubles = (chain?: ScriptedChain): AnyMethodDouble[] => [

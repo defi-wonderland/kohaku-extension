@@ -13,23 +13,19 @@ import type {
   IEventManager,
   IRecoveryActionArming,
   ISetupClient,
-  ModuleInfo,
   PreparedBatch,
   PreparedCall,
   PrepareOptions,
   PrivacyLevel,
-  ReadResult,
   SetupConfirmation,
   SetupDescription,
   SetupDraft,
   SetupState,
-  TrustedParties,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { decodeAbiParameters, zeroHash } from 'viem'
 
 import {
-  ClientContext,
   DEFAULT_MAXIMUM_WAIT,
   DEFAULT_RULE_COST_BOUND,
   DEFAULT_SHORT_WAIT_BELOW,
@@ -51,6 +47,7 @@ import {
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
 import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
+import type { ClientContext, LastSetupWrite, MethodReads } from './types'
 
 const MAX_WAIT_FIELD = 2n ** 48n
 
@@ -73,13 +70,6 @@ export const levelOfDraft = (draft: SetupDraft): PrivacyLevel =>
 
 const distinctMethods = (draft: SetupDraft): Address[] =>
   distinctAddresses(draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method)))
-
-interface MethodReads {
-  method: Address
-  moduleInfo: ReadResult<ModuleInfo>
-  parties: ReadResult<TrustedParties>
-  paused: ReadResult<boolean>
-}
 
 /** A module whose views reverted: answered with empty values (see policy-manager.ts). */
 const undeclared = (reads: MethodReads): boolean =>
@@ -214,7 +204,7 @@ export class SetupClientDouble implements ISetupClient {
       from: chain.descriptor.deployedAt,
       to: blockNumber
     })
-    const last = new Map<string, { action: Address; kind: string; nonce: bigint }>()
+    const last = new Map<string, LastSetupWrite>()
     history.forEach((n) => {
       if (
         (n.kind === 'setup-committed' || n.kind === 'setup-cleared') &&

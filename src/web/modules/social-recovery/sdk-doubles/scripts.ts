@@ -14,11 +14,22 @@ import type {
   FindingSubject,
   Hex,
   KitError,
+  KitErrorSource,
   RestoreCause,
   RestoreRefusal,
   ValidationRefusal,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
+
+import type {
+  CodedError,
+  LandingRevert,
+  ModuleRead,
+  ReadFailureValues,
+  ReadFailureWhere,
+  ScriptedRead,
+  ThrownRefusal
+} from './types'
 
 /**
  * Every read a double makes that a script can fail. The name is the part and
@@ -54,7 +65,6 @@ export const SCRIPTED_READS = [
   'walletReads.removedKey',
   'walletReads.fitCheck'
 ] as const
-export type ScriptedRead = typeof SCRIPTED_READS[number]
 
 /**
  * The three module reads answer `{ answered: false }` rather than throwing when
@@ -65,7 +75,6 @@ export const MODULE_READS = [
   'manager.paused',
   'manager.trustedParties'
 ] as const
-export type ModuleRead = typeof MODULE_READS[number]
 
 /**
  * Every member whose refusal is a thrown value, beside the manager part's and
@@ -95,7 +104,6 @@ export const SCRIPTED_REFUSALS = [
   'orchestrator.signingInput',
   'orchestrator.enrollInput'
 ] as const
-export type ScriptedRefusalMember = typeof SCRIPTED_REFUSALS[number]
 
 /**
  * The prepares whose simulation a script can fail. A failed simulation is not a
@@ -111,7 +119,6 @@ export const SCRIPTED_SIMULATIONS = [
   'recovery.prepareCancelByVeto',
   'recovery.prepareExecuteHandover'
 ] as const
-export type ScriptedSimulation = typeof SCRIPTED_SIMULATIONS[number]
 
 /**
  * The two validations a script can append findings to: setup validation, which
@@ -120,30 +127,6 @@ export type ScriptedSimulation = typeof SCRIPTED_SIMULATIONS[number]
  * the prepares.
  */
 export const SCRIPTED_FINDINGS = ['setup.validateSetup', 'recovery.validateRequest'] as const
-export type ScriptedFindings = typeof SCRIPTED_FINDINGS[number]
-
-/**
- * A scripted refusal: validation (thrown with findings), restore (thrown with
- * the cause, `getSetup` and the two inits only) or an ordinary error carrying a
- * code.
- */
-export type ThrownRefusal =
-  | { kind: 'validation'; findings: ValidationResult }
-  | { kind: 'restore'; cause: RestoreCause }
-  | { kind: 'error'; code?: string; message?: string }
-
-/**
- * An ordinary error carrying a code and its values, what every refusal of the
- * doubles that is not a validation or a restore refusal throws. The interfaces
- * declare no such shape, so it is the doubles' own. The code is a finding or
- * refusal slug, a kit error name, or a code of the doubles' own (such as
- * `action.no-codec`, `builder.frozen` or `scripted.refused`), which the real
- * SDK may not share. The message is for a developer and never for a screen.
- */
-export interface CodedError extends Error {
-  code: string
-  values: Record<string, unknown>
-}
 
 export const codedError = (
   code: string,
@@ -168,13 +151,9 @@ export class ScriptedReadFailure extends Error {
   readonly code = 'read.unanswered'
 
   /** The read, and the module and place it was made for where it was made per place. */
-  readonly values: { read: ScriptedRead; module?: Address; place?: number }
+  readonly values: ReadFailureValues
 
-  constructor(
-    readonly read: ScriptedRead,
-    readonly scripted?: unknown,
-    where: { module?: Address; place?: number } = {}
-  ) {
+  constructor(readonly read: ScriptedRead, where: ReadFailureWhere = {}) {
     super(`The read ${read} did not answer (scripted).`)
     this.name = 'ScriptedReadFailure'
     this.values = { read, ...where }
@@ -190,7 +169,7 @@ export const unansweredRead = (
   module: Address,
   place?: number
 ): ScriptedReadFailure =>
-  new ScriptedReadFailure(read, undefined, place === undefined ? { module } : { module, place })
+  new ScriptedReadFailure(read, place === undefined ? { module } : { module, place })
 
 export const finding = <C extends string = FindingCode>(
   code: C,
@@ -235,15 +214,6 @@ export const thrownValueOf = (member: string, refusal: ThrownRefusal): Error => 
   }
 }
 
-/**
- * What `ScriptedChain.land` throws when the chain would revert the call: the
- * kit error the revert decodes to, nothing applied (a batch lands whole or not
- * at all).
- */
-export interface LandingRevert extends CodedError {
-  error: KitError
-}
-
 export const landingRevert = (error: KitError): LandingRevert => {
   const name = error.kind === 'known' ? error.name : 'unknown'
   const thrown = codedError(name, { error }, `The chain reverts the call: ${name}`) as LandingRevert
@@ -256,7 +226,7 @@ export const landingRevert = (error: KitError): LandingRevert => {
 export const kitError = (
   name: string,
   args: Record<string, unknown> = {},
-  source: 'manager' | 'action' | 'account' | 'language' = 'manager'
+  source: KitErrorSource = 'manager'
 ): KitError => ({
   kind: 'known',
   source,

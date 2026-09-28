@@ -27,12 +27,23 @@ import type {
   AttemptRequest,
   CancelRequest,
   Configuration,
-  Credential,
+  GatheringPurpose,
   Hex,
   PaymentOrder,
   PrivacyLevel,
   SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
+
+import type {
+  BackupReading,
+  DigestMembers,
+  DoubleSetupBody,
+  PlacedCredential,
+  PlaceTypedData,
+  PublicNoteReading,
+  PublicShape,
+  SubmissionDomain
+} from './types'
 
 /** JSON with bigints written as `{"$bigint":"..."}` so they come back as bigints. */
 export const toJson = (value: unknown): string =>
@@ -75,14 +86,6 @@ export const defaultSalt = (account: Address, place: number): Hex =>
 export const credentialHash = (method: Address, config: Hex, salt: Hex): Hex =>
   hashOf({ credential: [method.toLowerCase(), config, salt] })
 
-/** One credential with its place and the salt that fills it. */
-export interface PlacedCredential {
-  place: number
-  clause: number
-  credential: Credential
-  salt: Hex
-}
-
 /** The flat place numbering: body order across every clause. */
 export const placesOf = (account: Address, configuration: Configuration): PlacedCredential[] => {
   const placed: PlacedCredential[] = []
@@ -98,13 +101,6 @@ export const placesOf = (account: Address, configuration: Configuration): Placed
     })
   })
   return placed
-}
-
-/** The doubles' setup body: what the real body carries, as JSON bytes. */
-export interface DoubleSetupBody {
-  wait: bigint
-  ignoresPause: boolean
-  clauses: { threshold: number; credentials: Hex[] }[]
 }
 
 export const setupBodyOf = (account: Address, configuration: Configuration): Hex => {
@@ -206,13 +202,6 @@ export const shapeNote = (configuration: Configuration): Hex =>
 export const clearNote = (configuration: Configuration): Hex =>
   stringToHex(`${CLEAR_MARK}${toJson(withoutLabels(configuration))}`)
 
-export type BackupReading =
-  | { form: 'empty' }
-  | { form: 'clear'; configuration: Configuration }
-  | { form: 'encrypted'; opened: true; configuration: Configuration }
-  | { form: 'encrypted'; opened: false }
-  | { form: 'unreadable' }
-
 const safeText = (hex: Hex): string | undefined => {
   try {
     return hexToString(hex)
@@ -260,19 +249,6 @@ export const levelOfFields = (publicMetadata: Hex, backupIsClear: boolean): Priv
 /** The level the chain's two metadata fields encode (see `levelOfFields`). */
 export const levelOfMetadata = (publicMetadata: Hex, privateMetadata: Hex): PrivacyLevel =>
   levelOfFields(publicMetadata, readBackup(privateMetadata).form === 'clear')
-
-/** The shape the shape-visible level publishes: thresholds and methods, no config values. */
-export interface PublicShape {
-  wait: bigint
-  ignoresPause: boolean
-  clauses: { threshold: number; methods: Address[] }[]
-}
-
-export type PublicNoteReading =
-  | { kind: 'none' }
-  | { kind: 'shape'; shape: PublicShape }
-  | { kind: 'clear'; configuration: Configuration }
-  | { kind: 'opaque'; bytes: Hex }
 
 /**
  * Reads a setup event's public note in the doubles' bytes: nothing public
@@ -330,28 +306,6 @@ export const backupPlaintextSize = (configuration: Configuration): number =>
 // Digests and proofs.
 // ---------------------------------------------------------------------------
 
-/**
- * The members a place's digest closes over, every number as a decimal string:
- * the domain, the purpose, and the members of the
- * `Approval` or `Cancellation` type. The credential (method, config, salt) is not
- * among them; the place binds it through the body's credential hash.
- */
-export interface DigestMembers {
-  chainId: string
-  manager: Address
-  digestVersion: string
-  purpose: 'approval' | 'cancellation'
-  account: Address
-  action: Address
-  attemptId: string
-  setupNonce: string
-  setupBodyHash: Hex
-  payload?: Hex
-  order?: SerializedPaymentOrder
-  validUntil: string
-  place: number
-}
-
 export const serializeOrder = (order: PaymentOrder): SerializedPaymentOrder => ({
   token: order.token,
   amount: order.amount.toString(),
@@ -403,14 +357,6 @@ export const CANCELLATION_TYPES = {
     { name: 'place', type: 'uint256' }
   ]
 } as const
-
-/** The typed data a wallet signs for one place: `{ domain, types, primaryType, message }`. */
-export interface PlaceTypedData {
-  domain: { name: 'PolicyManager'; version: string; chainId: number; verifyingContract: Address }
-  types: typeof APPROVAL_TYPES | typeof CANCELLATION_TYPES
-  primaryType: 'Approval' | 'Cancellation'
-  message: Record<string, unknown>
-}
 
 /**
  * The `Approval` or `Cancellation` typed data over one place's members. Its
@@ -488,8 +434,8 @@ export const digestOfRequest = (request: ApproverRequest): Hex =>
  */
 export const digestOfSubmission = (
   request: AttemptRequest | CancelRequest,
-  purpose: 'approval' | 'cancellation',
-  domain: { chainId: number | bigint; manager: Address; digestVersion: string },
+  purpose: GatheringPurpose,
+  domain: SubmissionDomain,
   place: bigint | number
 ): Hex => {
   const isApproval = purpose === 'approval'
