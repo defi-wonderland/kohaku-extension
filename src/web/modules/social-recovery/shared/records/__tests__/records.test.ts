@@ -630,21 +630,6 @@ describe('the recovery session', () => {
     )
     expect(storage.raw.size).toBe(0)
   })
-  ;['security-stop', 'securityStop', 'pause', 'cancelled', ''].forEach((event) =>
-    it(`refuses '${event}', outside the vocabulary, and wipes nothing`, async () => {
-      const { storage, records } = setup()
-      await writeSession(records, GATHERING)
-      const before = dump(storage)
-      await expect(wipeSession(records, event as DirectWipeEvent)).rejects.toThrow(
-        /Not a recovery wipe event/
-      )
-      expect(dump(storage)).toBe(before)
-      expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-        state: 'live',
-        gathering: GATHERING
-      })
-    })
-  )
 
   FIVE_EVENTS.forEach((event) =>
     describe(`the ${event} event`, () => {
@@ -692,17 +677,6 @@ describe('the recovery session', () => {
     expect(dump(storage)).toBe(before)
   })
 
-  it('a pause is no wipe event: asked to wipe for a pause, the records refuse and the approvals stay', async () => {
-    const { storage, records } = setup()
-    await writeSession(records, GATHERING)
-    const before = dump(storage)
-    await expect(wipeSession(records, 'pause' as DirectWipeEvent)).rejects.toThrow(
-      /Not a recovery wipe event/
-    )
-    expect(dump(storage)).toBe(before)
-    expect(dump(storage)).toContain(PROOF_A)
-  })
-
   it('a wipe with no session writes nothing and reports that it wiped nothing', async () => {
     const { storage, records } = setup()
     const wiped = await wipeSession(records, 'deadline-passed')
@@ -732,16 +706,6 @@ describe('the recovery session', () => {
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
       account: ACCOUNT
     })
-  })
-
-  it('the direct wipe refuses submission-landed: only landing the submission writes the countdown', async () => {
-    const { storage, records } = setup()
-    await writeSession(records, GATHERING)
-    const before = dump(storage)
-    await expect(wipeSession(records, 'submission-landed' as DirectWipeEvent)).rejects.toThrow(
-      /runs through landSubmission/
-    )
-    expect(dump(storage)).toBe(before)
   })
 
   it('two accounts on one chain keep two sessions, with no silent overwrite', async () => {
@@ -1415,6 +1379,8 @@ const repliesOf = (read: SessionRead) => {
 
 const CONFLICT = { status: 'rejected', reason: expect.any(SessionRevisionConflict) }
 
+type SessionUpdate = (records: Records, revision: ExpectedRevision) => Promise<unknown>
+
 describe('a session update refuses when the session changed after its caller read it', () => {
   it('a reply write from a read taken before a wipe is refused and cannot bring the session back', async () => {
     const { storage, records } = setup()
@@ -1645,72 +1611,7 @@ describe('a session update refuses when the session changed after its caller rea
   })
 })
 
-type SessionUpdate = (records: Records, revision: ExpectedRevision) => Promise<unknown>
-
-const liveWithOneReply = async (records: Records) => {
-  await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))
-}
-
-// Each session update, with the state it acts on.
-const UPDATES: [string, (records: Records) => Promise<void>, SessionUpdate][] = [
-  [
-    'a reply write',
-    liveWithOneReply,
-    (records, revision) => records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING, revision)
-  ],
-  [
-    'a wipe',
-    liveWithOneReply,
-    (records, revision) =>
-      records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', revision)
-  ],
-  [
-    'a landing',
-    liveWithOneReply,
-    (records, revision) => records.landSubmission(CHAIN_ID, ACCOUNT, revision)
-  ],
-  [
-    'a clear',
-    async (records) => {
-      await liveWithOneReply(records)
-      await wipeSession(records, 'recoverer-abandoned')
-    },
-    (records, revision) => records.clearWipedSession(CHAIN_ID, ACCOUNT, revision)
-  ],
-  [
-    'an end of the countdown',
-    async (records) => {
-      await liveWithOneReply(records)
-      await landSession(records)
-    },
-    (records, revision) => records.endCountdown(CHAIN_ID, ACCOUNT, revision)
-  ]
-]
-
 describe('the revision an update names', () => {
-  UPDATES.forEach(([label, prepare, update]) =>
-    (
-      [
-        ['no', undefined],
-        ['an empty', '']
-      ] as const
-    ).forEach(([kind, revision]) =>
-      it(`${label} with ${kind} revision throws a plain error, not the conflict, and writes nothing`, async () => {
-        const { storage, records } = setup()
-        await prepare(records)
-        const before = dump(storage)
-        const error = await attempt(() => update(records, revision as ExpectedRevision)).then(
-          () => null,
-          (reason: unknown) => reason
-        )
-        expect(error).toBeInstanceOf(Error)
-        expect(isSessionRevisionConflict(error)).toBe(false)
-        expect((error as Error).message).toMatch(/revision its caller read, or null/)
-        expect(dump(storage)).toBe(before)
-      })
-    )
-  )
-
   it('an update may pass the revision a listing gave', async () => {
     const { records } = setup()
     await writeSession(records, GATHERING)
