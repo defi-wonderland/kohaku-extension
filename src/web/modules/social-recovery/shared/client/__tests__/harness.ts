@@ -2,10 +2,8 @@
  * The client module's exports, the mocks and the helpers the client tests share.
  *
  * - The extension's own provider is mocked as an `ethers`-shaped object of
- *   `jest.fn` members whose JSON-RPC `send` answers from a `ScriptedChain`. The
- *   client reaches that provider through `send` alone (`ExtensionRpc`); the
- *   high-level members are there so a test proves the client did not use them.
- *   No test reaches a network.
+ *   `jest.fn` members, its typed reads and its JSON-RPC `send`, answering from
+ *   a `ScriptedChain`. No test reaches a network.
  * - The background is a fake request queue behind the `SignRequestPort`: a
  *   `jest.fn` dispatch, a window id, the accounts the wallet lists, and a
  *   `push` a test drives by hand with the `requests` and `signMessage`
@@ -472,7 +470,7 @@ export const track = <T>(promise: Promise<T>) => {
 
 /** Lets the pending promise callbacks run. */
 export const flush = async (): Promise<void> => {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 20; i++) {
     // eslint-disable-next-line no-await-in-loop
     await Promise.resolve()
   }

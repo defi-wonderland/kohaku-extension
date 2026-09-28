@@ -8,7 +8,10 @@
  * stores nothing and holds no signer, so the extension keeps both outside the
  * client, and the first release configures no rail.
  */
-import { defaultClientConfiguration } from '@web/modules/social-recovery/sdk-doubles'
+import {
+  DEFAULT_REQUEST_WINDOW,
+  defaultClientConfiguration
+} from '@web/modules/social-recovery/sdk-doubles'
 import type {
   Address,
   ClientConfiguration,
@@ -54,17 +57,11 @@ export const REQUEST_WINDOW_SECONDS = 24 * 3600
  * first release names no payment order) and the account facts where the wallet
  * has them.
  */
-export const clientConfigurationOf = (config: RecoveryClientConfiguration): ClientConfiguration => {
-  const shipped = defaultClientConfiguration()
-  return defaultClientConfiguration({
+export const clientConfigurationOf = (config: RecoveryClientConfiguration): ClientConfiguration =>
+  defaultClientConfiguration({
     tokens: [],
     candidateKeys: [...(config.candidateKeys ?? [])],
-    requestWindow: {
-      default: REQUEST_WINDOW_SECONDS,
-      floor: shipped.requestWindow?.floor ?? 3600,
-      ceiling: shipped.requestWindow?.ceiling ?? 72 * 3600
-    },
+    requestWindow: { ...DEFAULT_REQUEST_WINDOW, default: REQUEST_WINDOW_SECONDS },
     ...(config.creation ? { creation: { ...config.creation } } : {}),
     ...(config.accountImplementation ? { accountImplementation: config.accountImplementation } : {})
   })
-}

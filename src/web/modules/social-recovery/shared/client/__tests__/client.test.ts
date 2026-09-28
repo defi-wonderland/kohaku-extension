@@ -7,11 +7,16 @@
  */
 import {
   addressOf,
+  DEFAULT_REQUEST_WINDOW,
+  MANAGER_DOMAIN_FIELDS,
   PolicyManagerDouble,
-  ProviderDouble
+  ProviderDouble,
+  WalletMethodDouble
 } from '@web/modules/social-recovery/sdk-doubles'
 import type {
+  Configuration,
   DeploymentDescriptor,
+  Hex,
   IProvider,
   PreparedBatch,
   PreparedCall
@@ -132,10 +137,9 @@ describe('buildRecoveryClient', () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
     world.chain.openAttempt()
-    world.ethers.send.mockClear()
+    world.ethers.getBlock.mockClear()
     await client.recovery.prepareCancelByOwner()
-    const sent = world.ethers.send.mock.calls.map((c) => c[0])
-    expect(sent).toContain('eth_getBlockByNumber')
+    expect(world.ethers.getBlock).toHaveBeenCalled()
   })
 
   it('hands the client a provider of the four reads and no send, balance or estimate', async () => {
@@ -160,6 +164,71 @@ describe('buildRecoveryClient', () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
     expect(client.setup.events).toBe(client.recovery.events)
+  })
+})
+
+describe("the manager domain's members", () => {
+  it('builds the client over the members the doubles serve, written in either case', async () => {
+    const world = createWorld()
+    await expect(buildRecoveryClient(world.config)).resolves.toBeDefined()
+
+    const upper = createWorld()
+    upper.chain.manager.domain.fields = MANAGER_DOMAIN_FIELDS.replace(/[a-f]/g, (c) =>
+      c.toUpperCase()
+    ) as Hex
+    expect(upper.chain.manager.domain.fields).not.toBe(MANAGER_DOMAIN_FIELDS)
+    await expect(buildRecoveryClient(upper.config)).resolves.toBeDefined()
+  })
+
+  const OTHER_FIELDS: Hex[] = ['0x0e', '0x1f', '0x07', '0x00']
+  OTHER_FIELDS.forEach((fields) =>
+    it(`refuses a domain carrying the members ${fields} before any client is built`, async () => {
+      const builder = spyOnBuilder()
+      const world = createWorld()
+      world.chain.manager.domain.fields = fields
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect((caught as { check?: string }).check).toBe('domain-fields')
+      expect(builder.buildSetupClient).not.toHaveBeenCalled()
+      expect(builder.buildRecoveryClient).not.toHaveBeenCalled()
+    })
+  )
+})
+
+describe('the request window the built client judges', () => {
+  it("takes a request window at the SDK's default floor and flags one a second below it", async () => {
+    const world = createWorld()
+    const client = await buildRecoveryClient(world.config)
+    const configuration: Configuration = {
+      clauses: [
+        {
+          threshold: 1,
+          credentials: [
+            {
+              method: world.descriptor.methodEcdsa,
+              config: new WalletMethodDouble().codec.encodeConfig({
+                address: addressOf('approver')
+              })
+            }
+          ]
+        }
+      ],
+      wait: 432_000n,
+      ignoresPause: false
+    }
+    world.chain.commitSetup({ level: 'public', configuration })
+    world.chain.openAttempt()
+    const shortWindowFindings = async (window: number) => {
+      const gathering = await client.recovery.initCancelGathering(configuration, { window })
+      const now = Number(gathering.request.block.timestamp)
+      return client.recovery
+        .assess(gathering, now)
+        .findings.filter((finding) => finding.code === 'request.window-short')
+        .map((finding) => finding.values)
+    }
+    const { floor } = DEFAULT_REQUEST_WINDOW
+    await expect(shortWindowFindings(floor)).resolves.toEqual([])
+    await expect(shortWindowFindings(floor - 1)).resolves.toEqual([{ window: floor - 1, floor }])
   })
 })
 

@@ -7,16 +7,20 @@
  *
  * Every signature a test pushes is a real one, made with an ethers `Wallet`
  * the way the background's keystore signer makes it: EIP-191 over the bytes
- * (`signMessage(getBytes(hex))`) and EIP-712 v4 over the typed data. The
- * facade verifies each one against its own content and the handle's address.
+ * (`signMessage(getBytes(hex))`) and EIP-712 v4 over the typed data, or made by
+ * the keystore signer itself over the request the facade queued. The facade
+ * verifies each one against its own content and the handle's address.
  *
  * Known limit, not a defect: the queue signs only for a key that is itself a
  * basic account the wallet lists. For any other key the facade refuses with
  * `SignerNotWired`, naming the missing background action
  * `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`.
  */
-import { getBytes, Wallet } from 'ethers'
+import { getBytes, Signature, Wallet } from 'ethers'
 
+import type { Key } from '@ambire-common/interfaces/keystore'
+import type { TypedMessage } from '@ambire-common/interfaces/userRequest'
+import { KeystoreSigner } from '@ambire-common/libs/keystoreSigner/keystoreSigner'
 import { addressOf } from '@web/modules/social-recovery/sdk-doubles'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -35,6 +39,7 @@ import {
   MISSING_BACKGROUND_ACTION,
   queued,
   queueOver,
+  QueueWorld,
   SEPOLIA,
   SIGNER_MEMBERS,
   SignerNotWired,
@@ -63,6 +68,28 @@ const TYPED = {
 }
 const BYTES = `0x${'22'.repeat(32)}` as Hex
 const OTHER_BYTES = `0x${'33'.repeat(32)}` as Hex
+/** Bytes WALLET's signature over carries v = 27; over BYTES it carries v = 28. */
+const V27_BYTES = `0x${'55'.repeat(32)}` as Hex
+
+/** The order of the secp256k1 group. */
+const CURVE_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+
+const vOf = (signature: Hex): number => parseInt(signature.slice(130), 16)
+
+/** The signature with its last byte, v, set to `v`. */
+const withV = (signature: Hex, v: number): Hex =>
+  `${signature.slice(0, 130)}${v.toString(16).padStart(2, '0')}` as Hex
+
+/** The other signature of the same digest by the same key: s' = n - s and the other v. */
+const highS = (signature: Hex): Hex => {
+  const s = BigInt(`0x${signature.slice(66, 130)}`)
+  const flipped = (CURVE_ORDER - s).toString(16).padStart(64, '0')
+  return withV(`${signature.slice(0, 66)}${flipped}00` as Hex, vOf(signature) === 27 ? 28 : 27)
+}
+
+/** The background's own keystore signer for WALLET's key. */
+const keystoreSigner = () =>
+  new KeystoreSigner({ addr: KEY, type: 'internal' } as Key, WALLET.privateKey)
 
 /** The signatures the tests push, made before any fake timer runs. */
 const SIG = {} as {
@@ -76,6 +103,8 @@ const SIG = {} as {
   otherKeyTyped: Hex
   /** WALLET over OTHER_BYTES: the right key, another content. */
   otherContent: Hex
+  /** WALLET over V27_BYTES. */
+  v27Bytes: Hex
 }
 
 beforeAll(async () => {
@@ -88,6 +117,7 @@ beforeAll(async () => {
     TYPED.message
   )) as Hex
   SIG.otherContent = (await WALLET.signMessage(getBytes(OTHER_BYTES))) as Hex
+  SIG.v27Bytes = (await WALLET.signMessage(getBytes(V27_BYTES))) as Hex
 })
 
 const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
@@ -264,6 +294,98 @@ describe('the signer facade over the request queue', () => {
       })
     )
 
+    const FORMS: [string, 'bytes' | 'typed'][] = [
+      ['raw bytes', 'bytes'],
+      ['typed data', 'typed']
+    ]
+    FORMS.forEach(([title, kind]) =>
+      it(`takes the 65-byte signature over ${title} and refuses its 64-byte compact form as malformed`, async () => {
+        const full = kind === 'bytes' ? SIG.bytes : SIG.typed
+        const compact = Signature.from(full).compactSerialized as Hex
+        expect(full).toHaveLength(2 + 2 * 65)
+        expect(compact).toHaveLength(2 + 2 * 64)
+        const sign = (q: QueueWorld) =>
+          track(
+            kind === 'bytes'
+              ? q.signer.signBytes(HANDLE, BYTES)
+              : q.signer.signTypedData(HANDLE, TYPED)
+          )
+        const taking = queueOver([basicAccount(KEY)])
+        const taken = sign(taking)
+        taking.push(signedFor(addedRequest(taking.dispatch).userRequest.id, full))
+        const refusing = queueOver([basicAccount(KEY)])
+        const refused = sign(refusing)
+        refusing.push(signedFor(addedRequest(refusing.dispatch).userRequest.id, compact))
+        await flush()
+        expect(taken).toEqual({ status: 'resolved', value: full })
+        expect(refused.status).toBe('rejected')
+        expect(isSignFlowFailure(refused.value)).toBe(true)
+        expect((refused.value as SignFlowFailure).reason).toBe('malformed-signature')
+      })
+    )
+
+    const EIP155_V: [number, Hex, keyof typeof SIG][] = [
+      [37, V27_BYTES, 'v27Bytes'],
+      [38, BYTES, 'bytes']
+    ]
+    EIP155_V.forEach(([v, bytes, signature]) =>
+      it(`refuses the signature with v = ${v}, the chain-id form of v = ${
+        v - 10
+      }, as malformed`, async () => {
+        expect(vOf(SIG[signature])).toBe(v - 10)
+        const q = queueOver([basicAccount(KEY)])
+        const signing = track(q.signer.signBytes(HANDLE, bytes))
+        q.push(signedFor(addedRequest(q.dispatch).userRequest.id, withV(SIG[signature], v)))
+        await flush()
+        expect(signing.status).toBe('rejected')
+        expect((signing.value as SignFlowFailure).reason).toBe('malformed-signature')
+      })
+    )
+
+    FORMS.forEach(([title, kind]) =>
+      it(`takes the high-s form of a signature over ${title}, which recovers to the same key`, async () => {
+        const low = kind === 'bytes' ? SIG.bytes : SIG.typed
+        const high = highS(low)
+        expect(BigInt(`0x${high.slice(66, 130)}`)).toBeGreaterThan(CURVE_ORDER / 2n)
+        const q = queueOver([basicAccount(KEY)])
+        const signing = track(
+          kind === 'bytes'
+            ? q.signer.signBytes(HANDLE, BYTES)
+            : q.signer.signTypedData(HANDLE, TYPED)
+        )
+        q.push(signedFor(addedRequest(q.dispatch).userRequest.id, high))
+        await flush()
+        expect(signing).toEqual({ status: 'resolved', value: high })
+      })
+    )
+
+    it('takes the signature the keystore makes over a domain type given in its own member order', async () => {
+      const reordered = {
+        domain: { ...TYPED.domain, verifyingContract: addressOf('manager') },
+        types: {
+          EIP712Domain: [
+            { name: 'verifyingContract', type: 'address' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'version', type: 'string' },
+            { name: 'name', type: 'string' }
+          ],
+          ...TYPED.types
+        },
+        primaryType: TYPED.primaryType,
+        message: TYPED.message
+      }
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signTypedData(HANDLE, reordered))
+      const { userRequest } = addedRequest(q.dispatch)
+      expect(userRequest.action).toMatchObject({ types: reordered.types })
+      const signature = (await keystoreSigner().signTypedData(
+        userRequest.action as TypedMessage
+      )) as Hex
+      q.push(signedFor(userRequest.id, signature))
+      await flush()
+      expect(signing).toEqual({ status: 'resolved', value: signature })
+    })
+
     it('refuses a hex answer no address can be recovered from as malformed', async () => {
       const q = queueOver([basicAccount(KEY)])
       const signing = track(q.signer.signBytes(HANDLE, BYTES))
@@ -314,6 +436,108 @@ describe('the signer facade over the request queue', () => {
       expect(q.listeners()).toBe(0)
       q.push(signedFor(userRequest.id, SIG.otherKeyBytes))
       await expect(signing).resolves.toBe(SIG.bytes)
+    })
+  })
+
+  describe('typed data the signature check cannot encode', () => {
+    /** WALLET's address with every letter upper-cased: not checksummed, not lower case. */
+    const UPPER = `0x${KEY.slice(2).toUpperCase()}` as Address
+    const LOWER = KEY.toLowerCase() as Address
+
+    const carrying = (where: 'message' | 'domain', account: Address) =>
+      where === 'message'
+        ? {
+            ...TYPED,
+            types: {
+              Approval: [...TYPED.types.Approval, { name: 'account', type: 'address' }]
+            },
+            message: { ...TYPED.message, account }
+          }
+        : { ...TYPED, domain: { ...TYPED.domain, verifyingContract: account } }
+
+    const PLACES: [string, 'message' | 'domain'][] = [
+      ['an address in the message', 'message'],
+      ['the verifying contract', 'domain']
+    ]
+    PLACES.forEach(([title, where]) => {
+      it(`refuses at once ${title} in all upper case, before it queues anything`, async () => {
+        expect(UPPER).not.toBe(KEY)
+        const worlds = [queueOver([basicAccount(KEY)]), queueOver([])]
+        const signings = worlds.map((q) =>
+          track(q.signer.signTypedData(HANDLE, carrying(where, UPPER)))
+        )
+        worlds.forEach((q) => {
+          expect(q.dispatch).not.toHaveBeenCalled()
+          expect(q.listeners()).toBe(0)
+        })
+        await flush()
+        signings.forEach((signing) => {
+          expect(signing.status).toBe('rejected')
+          expect(signing.value).toBeInstanceOf(Error)
+          expect((signing.value as Error).message).toBe(
+            'signTypedData takes valid EIP-712 typed data.'
+          )
+          expect(isSignFlowFailure(signing.value)).toBe(false)
+          expect(isSignerNotWired(signing.value)).toBe(false)
+        })
+      })
+
+      it(`queues ${title} checksummed or in lower case`, () => {
+        ;[KEY, LOWER].forEach((account) => {
+          const q = queueOver([basicAccount(KEY)])
+          q.signer.signTypedData(HANDLE, carrying(where, account)).catch(() => undefined)
+          expect(addedRequest(q.dispatch).userRequest.action).toMatchObject({
+            kind: 'typedMessage'
+          })
+        })
+      })
+    })
+  })
+
+  describe('the first signature under its id', () => {
+    it('is the answer: an answer pushed after it, while it is still being checked, changes nothing', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(signedFor(id, SIG.bytes))
+      q.push(signedFor(id, 'not a signature'))
+      await flush()
+      expect(signing).toEqual({ status: 'resolved', value: SIG.bytes })
+    })
+
+    it('decides the request when it is wrong, though a correct signature follows it', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(signedFor(id, SIG.otherKeyBytes))
+      q.push(signedFor(id, SIG.bytes))
+      await flush()
+      expect(signing.status).toBe('rejected')
+      expect((signing.value as SignFlowFailure).reason).toBe('signer-mismatch')
+    })
+
+    it('stops the absence count of a request that left the queue before its signature came', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(queued(id))
+      q.push(queued())
+      await advance(ABSENCE_GRACE_MS - 1)
+      q.push(signedFor(id, SIG.bytes))
+      await advance(ABSENCE_GRACE_MS)
+      expect(signing).toEqual({ status: 'resolved', value: SIG.bytes })
+      expect(dispatched(q.dispatch).map((a) => a.type)).toEqual([ADD])
+    })
+
+    it('does not read the queue dropping its signed request as a refusal while the signature is checked', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signTypedData(HANDLE, TYPED))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(queued(id))
+      q.push(signedFor(id, SIG.typed))
+      q.push(queued())
+      await advance(ABSENCE_GRACE_MS)
+      expect(signing).toEqual({ status: 'resolved', value: SIG.typed })
     })
   })
 

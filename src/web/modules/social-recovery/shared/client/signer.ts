@@ -32,8 +32,14 @@
  * the facade refuses such a key with `SignerNotWired`. Raw bytes always carry
  * the EIP-191 prefix: the queue has no request that signs a bare digest.
  */
-import { getBytes, isHexString, TypedDataField, verifyMessage, verifyTypedData } from 'ethers'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  hashTypedData,
+  isHex,
+  recoverMessageAddress,
+  recoverTypedDataAddress,
+  type TypedDataDomain
+} from 'viem'
 
 import { Session } from '@ambire-common/classes/session'
 import type { SignedMessage } from '@ambire-common/controllers/activity/types'
@@ -273,32 +279,27 @@ const nextRequestId = (): string => `social-recovery-signer:${uuidv4()}`
 const sameId = (a: string | number | undefined, b: string | number): boolean =>
   a !== undefined && String(a) === String(b)
 
-/** Keeps the types the primary type reaches, without `EIP712Domain`, as ethers' encoder wants them. */
-const reachableTypes = (typed: TypedMessage): Record<string, TypedDataField[]> => {
-  const reached: Record<string, TypedDataField[]> = {}
-  const visit = (name: string) => {
-    const fields = typed.types[name]
-    if (!fields || reached[name] || name === 'EIP712Domain') return
-    reached[name] = fields.map((field) => ({ name: field.name, type: field.type }))
-    fields.forEach((field) => visit(field.type.replace(/(\[\d*\])+$/, '')))
-  }
-  visit(typed.primaryType)
-  return reached
-}
+/** The typed message as viem's EIP-712 encoder takes it. */
+const eip712Of = (typed: TypedMessage) => ({
+  domain: typed.domain as TypedDataDomain,
+  types: typed.types,
+  primaryType: typed.primaryType,
+  message: typed.message
+})
 
 /**
  * The address a signature recovers to over the facade's own content: EIP-712
  * over the typed message, EIP-191 over the bytes. Undefined where the
  * signature cannot be recovered at all.
  */
-export const recoveredSignerOf = (
+export const recoveredSignerOf = async (
   content: PlainTextMessage | TypedMessage,
   signature: Hex
-): string | undefined => {
+): Promise<Address | undefined> => {
   try {
     return content.kind === 'typedMessage'
-      ? verifyTypedData(content.domain, reachableTypes(content), content.message, signature)
-      : verifyMessage(getBytes(content.message), signature)
+      ? await recoverTypedDataAddress({ ...eip712Of(content), signature })
+      : await recoverMessageAddress({ message: { raw: content.message }, signature })
   } catch {
     return undefined
   }
@@ -349,6 +350,7 @@ export const createSignerFacade = (
     const id = nextRequestId()
     return new Promise<Hex>((resolve, reject) => {
       let done = false
+      let answered = false
       let queued = false
       let unsubscribe: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -372,25 +374,32 @@ export const createSignerFacade = (
       )
 
       unsubscribe = port.subscribe((update) => {
-        if (done) return
+        // The first signature under the request's id is its answer; nothing
+        // pushed after it counts.
+        if (done || answered) return
         if (update.controller === 'signMessage') {
           const signed = update.state.signedMessage
           if (!signed || !sameId(signed.fromActionId, id)) return
-          if (typeof signed.signature !== 'string' || !isHexString(signed.signature)) {
-            finish({ error: signFlowFailure(member, 'malformed-signature') })
+          const { signature } = signed
+          const malformed = () => finish({ error: signFlowFailure(member, 'malformed-signature') })
+          if (!isHex(signature)) {
+            malformed()
             return
           }
+          answered = true
+          if (absence !== undefined) clearTimeout(absence)
+          absence = undefined
           // Verified in this page: the signature must recover to the key over
           // the facade's own content, whatever the background reports.
-          const signature = signed.signature as Hex
-          const recovered = recoveredSignerOf(content, signature)
-          if (recovered === undefined) {
-            finish({ error: signFlowFailure(member, 'malformed-signature') })
-          } else if (!sameAddress(recovered, key.addr)) {
-            finish({ error: signFlowFailure(member, 'signer-mismatch') })
-          } else {
-            finish({ signature })
-          }
+          recoveredSignerOf(content, signature).then((recovered) => {
+            if (recovered === undefined) {
+              malformed()
+            } else if (!sameAddress(recovered, key.addr)) {
+              finish({ error: signFlowFailure(member, 'signer-mismatch') })
+            } else {
+              finish({ signature })
+            }
+          }, malformed)
           return
         }
         const present = [
@@ -424,10 +433,18 @@ export const createSignerFacade = (
 
   return Object.freeze({
     signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex> {
-      return run('signTypedData', key, typedMessageOf(typedData))
+      const content = typedMessageOf(typedData)
+      // Typed data the signature check could not encode is refused before the
+      // holder is asked to sign it.
+      try {
+        hashTypedData(eip712Of(content))
+      } catch {
+        return Promise.reject(new Error('signTypedData takes valid EIP-712 typed data.'))
+      }
+      return run('signTypedData', key, content)
     },
     signBytes(key: KeyHandle, bytes: Hex): Promise<Hex> {
-      if (!isHexString(bytes)) {
+      if (!isHex(bytes)) {
         return Promise.reject(new Error('signBytes takes 0x-prefixed hex bytes.'))
       }
       return run('signBytes', key, { kind: 'message', message: bytes })

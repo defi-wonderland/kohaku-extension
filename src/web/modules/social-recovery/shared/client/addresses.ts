@@ -9,6 +9,8 @@
  * the field, behind seventeen zero bytes, so nobody mistakes one for a
  * deployment.
  */
+import { isAddress, isAddressEqual } from 'viem'
+
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { RecoveryChain } from './chains'
@@ -79,6 +81,13 @@ export const addressBookOf = (chain: RecoveryChain): AddressBook => {
   }
 }
 
-/** Two addresses name the same account or contract, whatever their case. */
+/**
+ * Two addresses name the same account or contract, whatever their case. A
+ * value that is not an address matches nothing.
+ */
 export const sameAddress = (a: string | undefined, b: string | undefined): boolean =>
-  !!a && !!b && a.toLowerCase() === b.toLowerCase()
+  !!a &&
+  !!b &&
+  isAddress(a, { strict: false }) &&
+  isAddress(b, { strict: false }) &&
+  isAddressEqual(a, b)
