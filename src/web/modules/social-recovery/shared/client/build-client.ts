@@ -18,6 +18,7 @@
 import type { ConstructionRefusal } from '@web/modules/social-recovery/sdk-doubles'
 import {
   constructionRefusal,
+  MANAGER_DOMAIN_FIELDS,
   PolicyManagerDouble,
   RecoveryKitBuilderDouble,
   shippedMethodDoubles,
@@ -43,9 +44,6 @@ import type { WalletReads } from './wallet-reads'
 
 /** The name every kit manager's domain carries. */
 export const MANAGER_DOMAIN_NAME = 'PolicyManager'
-
-/** The `fields` bitmap of the four members the SDK derives under: name, version, chain id, verifying contract. */
-export const MANAGER_DOMAIN_FIELDS = '0x0f'
 
 /**
  * What the extension holds for one account: the two entry clients, the two

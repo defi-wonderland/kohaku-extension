@@ -53,7 +53,6 @@ export { createChainReads, gasCallOf, type ChainReads, type GasEstimateCall } fr
 export { networkOf, extensionProviderFor, type ExtensionProvider } from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
-  MANAGER_DOMAIN_FIELDS,
   buildRecoveryClient,
   checkDigestVersion,
   carriedDomainVersion,
