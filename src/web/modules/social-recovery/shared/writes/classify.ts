@@ -104,7 +104,10 @@ const isReplacedReason = (value: unknown): value is ReplacedReason =>
  * - a receipt it carries (ethers' `CALL_EXCEPTION` from `wait()` carries the
  *   reverted receipt);
  * - the hash of a transaction it names (`transactionHash`, `hash`,
- *   `transaction.hash`).
+ *   `transaction.hash`), or the hash a receipt it carries names where that
+ *   receipt is not in ethers' shape (a node's JSON receipt names it
+ *   `transactionHash`): the call reached the chain, so the write waits for
+ *   its receipt under that hash rather than reading that nothing was sent.
  *
  * A value that carries none of these is an error before any hash.
  */
@@ -130,7 +133,9 @@ export const writeFailureOf = (thrown: unknown): WriteFailure => {
       if (isTransactionHash(record.transactionHash)) transactionHash = record.transactionHash
       else if (isTransactionHash(record.hash)) transactionHash = record.hash
     }
-    ;['transaction', 'info', 'error', 'cause'].forEach((key) => visit(record[key], depth + 1))
+    ;['transaction', 'info', 'error', 'cause', 'receipt'].forEach((key) =>
+      visit(record[key], depth + 1)
+    )
   }
 
   visit(thrown, 0)
