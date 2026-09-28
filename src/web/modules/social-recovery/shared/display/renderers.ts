@@ -5,7 +5,7 @@
  * Every function here is pure: it reads no clock, no zone and no storage, and
  * takes `now` and the zone as parameters. Strings come from `t`.
  */
-import { formatUnits, getAddress } from 'ethers'
+import { formatUnits, getAddress, isAddress, isHex, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
 import type { Address, Hex, PaymentOrder } from '@web/modules/social-recovery/sdk-interfaces'
@@ -15,10 +15,6 @@ import { renderChip, renderValueLabel } from './vocabulary'
 
 /** The one ellipsis every truncation uses. */
 export const ELLIPSIS = '…'
-
-const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
-const HEX_PATTERN = /^0x[0-9a-fA-F]*$/
-const ZERO_ADDRESS = `0x${'0'.repeat(40)}`
 
 // ---------------------------------------------------------------------------
 // Addresses
@@ -32,14 +28,16 @@ const ZERO_ADDRESS = `0x${'0'.repeat(40)}`
  * fails its checksum.
  */
 export const checksumAddress = (address: string): Address => {
-  if (!ADDRESS_PATTERN.test(address)) {
+  if (!isAddress(address, { strict: false })) {
     throw new TypeError(`Not an address: ${address}`)
   }
-  try {
-    return getAddress(address) as Address
-  } catch {
+  const checksummed = getAddress(address)
+  const digits = address.slice(2)
+  const mixedCase = digits !== digits.toLowerCase() && digits !== digits.toUpperCase()
+  if (mixedCase && checksummed !== address) {
     throw new TypeError(`Bad address checksum: ${address}`)
   }
+  return checksummed
 }
 
 /**
@@ -67,7 +65,7 @@ export const renderFullAddress = (address: string): string => checksumAddress(ad
 // ---------------------------------------------------------------------------
 
 const truncateHex = (value: string, lead: number, tail: number): string => {
-  if (!HEX_PATTERN.test(value)) {
+  if (!isHex(value)) {
     throw new TypeError(`Not hex: ${value}`)
   }
   const digits = value.slice(2)
@@ -236,17 +234,24 @@ export interface PaymentToken {
   decimals: number
 }
 
+// A token amount renders below this limit and with at most this many decimals.
+// A shift, since the build compiles `**` to Math.pow, which throws on a bigint.
+// eslint-disable-next-line no-bitwise
+const TOKEN_AMOUNT_LIMIT = 1n << 511n
+const TOKEN_DECIMALS_MAX = 80
+
 /**
  * A token amount in human units, with at least two decimals and no trailing
  * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
- * on a negative amount, which no token transfer carries. Throws a TypeError on
- * decimals that are negative or not an integer, which no token metadata carries.
+ * on a negative amount or one of 2^511 or more, which no token transfer
+ * carries. Throws a TypeError on decimals that are negative, not an integer or
+ * above 80, which no token metadata carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
-  if (amount < 0n) {
+  if (amount < 0n || amount >= TOKEN_AMOUNT_LIMIT) {
     throw new TypeError(`Not a token amount: ${amount}`)
   }
-  if (!Number.isInteger(decimals) || decimals < 0) {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > TOKEN_DECIMALS_MAX) {
     throw new TypeError(`Not token decimals: ${decimals}`)
   }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
@@ -278,7 +283,7 @@ export const renderPaymentOrder = (
   }
   const amount = renderTokenAmount(order.amount, token.decimals)
   const payee = renderFullAddress(order.payee)
-  if (payee === ZERO_ADDRESS) {
+  if (payee === zeroAddress) {
     return t('socialRecovery.display.paymentOrderOpenPayee', { amount, symbol: token.symbol })
   }
   return t('socialRecovery.display.paymentOrder', { amount, symbol: token.symbol, payee })
