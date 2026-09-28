@@ -33,7 +33,13 @@
  * the EIP-191 prefix: the queue has no request that signs a bare digest.
  */
 import { v4 as uuidv4 } from 'uuid'
-import { isHex, recoverMessageAddress, recoverTypedDataAddress, type TypedDataDomain } from 'viem'
+import {
+  hashTypedData,
+  isHex,
+  recoverMessageAddress,
+  recoverTypedDataAddress,
+  type TypedDataDomain
+} from 'viem'
 
 import { Session } from '@ambire-common/classes/session'
 import type { SignedMessage } from '@ambire-common/controllers/activity/types'
@@ -273,6 +279,14 @@ const nextRequestId = (): string => `social-recovery-signer:${uuidv4()}`
 const sameId = (a: string | number | undefined, b: string | number): boolean =>
   a !== undefined && String(a) === String(b)
 
+/** The typed message as viem's EIP-712 encoder takes it. */
+const eip712Of = (typed: TypedMessage) => ({
+  domain: typed.domain as TypedDataDomain,
+  types: typed.types,
+  primaryType: typed.primaryType,
+  message: typed.message
+})
+
 /**
  * The address a signature recovers to over the facade's own content: EIP-712
  * over the typed message, EIP-191 over the bytes. Undefined where the
@@ -284,13 +298,7 @@ export const recoveredSignerOf = async (
 ): Promise<Address | undefined> => {
   try {
     return content.kind === 'typedMessage'
-      ? await recoverTypedDataAddress({
-          domain: content.domain as TypedDataDomain,
-          types: content.types,
-          primaryType: content.primaryType,
-          message: content.message,
-          signature
-        })
+      ? await recoverTypedDataAddress({ ...eip712Of(content), signature })
       : await recoverMessageAddress({ message: { raw: content.message }, signature })
   } catch {
     return undefined
@@ -380,6 +388,7 @@ export const createSignerFacade = (
           }
           answered = true
           if (absence !== undefined) clearTimeout(absence)
+          absence = undefined
           // Verified in this page: the signature must recover to the key over
           // the facade's own content, whatever the background reports.
           recoveredSignerOf(content, signature).then((recovered) => {
@@ -424,7 +433,15 @@ export const createSignerFacade = (
 
   return Object.freeze({
     signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex> {
-      return run('signTypedData', key, typedMessageOf(typedData))
+      const content = typedMessageOf(typedData)
+      // Typed data the signature check could not encode is refused before the
+      // holder is asked to sign it.
+      try {
+        hashTypedData(eip712Of(content))
+      } catch {
+        return Promise.reject(new Error('signTypedData takes valid EIP-712 typed data.'))
+      }
+      return run('signTypedData', key, content)
     },
     signBytes(key: KeyHandle, bytes: Hex): Promise<Hex> {
       if (!isHex(bytes)) {
