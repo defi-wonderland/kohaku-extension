@@ -73,7 +73,6 @@ export {
   type WriteMachineState
 } from './machine'
 export {
-  NATIVE_DECIMALS,
   FEE_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,
   ACCOUNT_FACTORY,

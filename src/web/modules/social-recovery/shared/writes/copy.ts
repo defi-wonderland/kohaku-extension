@@ -9,6 +9,8 @@
  * and promises nowhere that one funding covers both the submission and the
  * execution.
  */
+import { etherUnits } from 'viem'
+
 import type { KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   appTranslate,
@@ -19,13 +21,7 @@ import {
 } from '@web/modules/social-recovery/shared/display'
 
 import { AttemptEnd, leavesAttemptReady, RevertCause } from './classify'
-import {
-  DepositRouteKind,
-  DepositStep,
-  NATIVE_DECIMALS,
-  roundDownForDisplay,
-  roundUpForDisplay
-} from './gas'
+import { DepositRouteKind, DepositStep, roundDownForDisplay, roundUpForDisplay } from './gas'
 import { isOwnerWrite, OwnerWrite, WriteKind } from './kinds'
 import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
 
@@ -145,11 +141,11 @@ export const cancelGoneRoadKey = (road: Exclude<AttemptEnd, 'executed'>): string
 
 /** An amount the holder sends, rounded up to the step's precision, with the native symbol. */
 export const renderGasAmount = (wei: bigint, symbol: string): string =>
-  `${renderTokenAmount(roundUpForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+  `${renderTokenAmount(roundUpForDisplay(wei), etherUnits.wei)} ${symbol}`
 
 /** A balance the key holds, rounded down to the step's precision, with the native symbol. */
 export const renderGasBalance = (wei: bigint, symbol: string): string =>
-  `${renderTokenAmount(roundDownForDisplay(wei), NATIVE_DECIMALS)} ${symbol}`
+  `${renderTokenAmount(roundDownForDisplay(wei), etherUnits.wei)} ${symbol}`
 
 // ---------------------------------------------------------------------------
 // The shared states
