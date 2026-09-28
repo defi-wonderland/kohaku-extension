@@ -1,16 +1,21 @@
 import {
   addressOf,
+  defaultClientConfiguration,
   type CodedError,
   type RecoveryKitBuilderDouble
 } from '@web/modules/social-recovery/sdk-doubles'
 import type {
+  BlockRange,
+  ClientConfiguration,
   DeploymentDescriptor,
+  Hex,
   IMethodModuleReads,
   IProvider,
-  IRecoveryActionInteractor
+  IRecoveryActionInteractor,
+  SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, membersOf, NO_PAYMENT, WINDOW, World } from './harness'
+import { createWorld, eachIt, membersOf, momentOf, NO_PAYMENT, WINDOW, World } from './harness'
 
 /** Every way to build from a builder; each runs the construction checks. */
 const BUILD_PATHS = {
@@ -118,6 +123,34 @@ describe('builder double', () => {
     expect(await refusalCode(world.builder(), 'buildSetupClient')).toBe('construction.domain')
   })
 
+  describe('a manager domain whose fields bitmap is not the one the chain serves', () => {
+    const CHAIN_PATHS = PATHS.filter((path) => path !== 'buildMethodsOrchestrator')
+
+    eachIt([
+      ['a bitmap that adds the salt', '0x1f'],
+      ['a bitmap that drops the name', '0x0e']
+    ] as const)(
+      'refuses %s as domain-fields on every path that reads the chain',
+      async ([, fields]) => {
+        const world = createWorld()
+        world.chain.manager.domain = { ...world.chain.manager.domain, fields }
+        const codes = await Promise.all(
+          CHAIN_PATHS.map((path) => refusalCode(world.builder(), path))
+        )
+        expect(codes).toEqual(CHAIN_PATHS.map(() => 'construction.domain-fields'))
+      }
+    )
+
+    it('builds where the served bitmap differs in letter case alone', async () => {
+      const world = createWorld()
+      const { domain } = world.chain.manager
+      const fields = `0x${domain.fields.slice(2).toUpperCase()}` as Hex
+      expect(fields).not.toBe(domain.fields)
+      world.chain.manager.domain = { ...domain, fields }
+      expect(await refusalCode(world.builder(), 'buildSetupClient')).toBeUndefined()
+    })
+  })
+
   eachIt(PATHS)('refuses a foreign account on %s', async (path) => {
     const world = createWorld()
     const builder = world.builder()
@@ -214,5 +247,102 @@ describe('builder double', () => {
         blockTags: { read: 'latest', watch: 'finalized' }
       })
     ).toThrow()
+  })
+})
+
+describe('a client over a configuration that names no timing, cost or chunk numbers', () => {
+  const defaults = defaultClientConfiguration()
+  const BARE: ClientConfiguration = { tokens: [], candidateKeys: [] }
+  const bareSetup = (world: World) => world.builder().config(BARE).buildSetupClient()
+  const waiting = (world: World, wait: bigint): SetupDraft => ({ ...world.draft('private'), wait })
+  const valuesOf = (findings: { code: string; values: Record<string, unknown> }[], code: string) =>
+    findings.filter((f) => f.code === code).map((f) => f.values)
+
+  it('warns a wait below the default short-wait bound, and not a wait at it', async () => {
+    const world = createWorld()
+    const setup = await bareSetup(world)
+    const bound = BigInt(defaults.shortWaitBelow!)
+    const below = await setup.validateSetup(waiting(world, bound - 1n))
+    expect(valuesOf(below.warnings, 'setup.wait-short')).toEqual([
+      { wait: bound - 1n, minimum: bound }
+    ])
+    const at = await setup.validateSetup(waiting(world, bound))
+    expect(valuesOf(at.warnings, 'setup.wait-short')).toEqual([])
+  })
+
+  it('refuses a wait above the default maximum, and not a wait at it', async () => {
+    const world = createWorld()
+    const setup = await bareSetup(world)
+    const maximum = BigInt(defaults.maximumWait!)
+    const above = await setup.validateSetup(waiting(world, maximum + 1n))
+    expect(valuesOf(above.errors, 'wait.above-maximum')).toEqual([{ wait: maximum + 1n, maximum }])
+    const at = await setup.validateSetup(waiting(world, maximum))
+    expect(valuesOf(at.errors, 'wait.above-maximum')).toEqual([])
+  })
+
+  it('refuses a rule whose costliest set passes the default cost bound, and not one at it', async () => {
+    const world = createWorld()
+    const setup = await bareSetup(world)
+    const bound = defaults.ruleCostBound!
+    const single = world.configuration.clauses[1]!
+    const draft: SetupDraft = { ...world.draft('private'), clauses: [single] }
+    const ecdsa = world.descriptor.methodEcdsa.toLowerCase()
+    world.chain.verifyCosts.set(ecdsa, bound)
+    expect(valuesOf((await setup.validateSetup(draft)).errors, 'rule.too-wide')).toEqual([])
+    world.chain.verifyCosts.set(ecdsa, bound + 1n)
+    const wide = valuesOf((await setup.validateSetup(draft)).errors, 'rule.too-wide')
+    expect(wide.map((v) => [v.cost, v.bound])).toEqual([[bound + 1n, bound]])
+  })
+
+  it('describes the default wait', async () => {
+    const world = createWorld()
+    const described = await (await bareSetup(world)).describeSetup(world.draft('private'))
+    expect(described.wait.defaultSeconds).toBe(BigInt(defaults.defaultWait!))
+  })
+
+  it('judges a request window against the default floor', async () => {
+    const world = createWorld()
+    const committed = world.script.setupCommitted('private')
+    world.script.authorized(true)
+    const recovery = await world.builder().config(BARE).buildRecoveryClient()
+    const floor = defaults.requestWindow!.floor
+    const open = (window: number) =>
+      recovery.initRecoveryGathering(
+        committed.configuration,
+        { newAuthority: world.keys.fresh, removedAuthority: world.keys.held },
+        NO_PAYMENT,
+        { window }
+      )
+    const short = await open(floor - 1)
+    expect(
+      valuesOf(recovery.assess(short, momentOf(short)).findings, 'request.window-short')
+    ).toEqual([{ window: floor - 1, floor }])
+    const enough = await open(floor)
+    expect(
+      valuesOf(recovery.assess(enough, momentOf(enough)).findings, 'request.window-short')
+    ).toEqual([])
+  })
+
+  it('reads logs in chunks of the default width', async () => {
+    const world = createWorld()
+    const ranges: BlockRange[] = []
+    const recording: IProvider = {
+      chainId: () => world.provider.chainId(),
+      call: (to, data, from, tag) => world.provider.call(to, data, from, tag),
+      logs: (filter, range) => {
+        ranges.push(range)
+        return world.provider.logs(filter, range)
+      },
+      block: (tag) => world.provider.block(tag)
+    }
+    const setup = await world.builder().provider(recording).config(BARE).buildSetupClient()
+    const width = defaults.logChunkWidth!
+    ranges.length = 0
+    await setup.events.fetch(setup.events.accountFilter(), { from: 0, to: 2 * width })
+    expect(ranges).toEqual([
+      { from: 0, to: width - 1 },
+      { from: width, to: 2 * width - 1 },
+      { from: 2 * width, to: 2 * width }
+    ])
   })
 })

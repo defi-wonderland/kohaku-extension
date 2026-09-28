@@ -18,7 +18,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { ScriptedChain } from './chain'
-import { sameAddress, topicOf } from './encoding'
+import { distinctAddresses, sameAddress, topicOf } from './encoding'
 import { MANAGER_KINDS, METHOD_KINDS, notificationOf, topicOfKind } from './logs'
 
 /** The chunk width `fetch` reads in where the configuration names none. */
@@ -34,14 +34,13 @@ export class EventManagerDouble implements IEventManager {
 
   private methodAddresses(): Address[] {
     const d = this.chain.descriptor
-    const all = [
+    return distinctAddresses([
       d.methodEcdsa,
       d.methodPasskey,
       d.methodAadhaar,
       d.methodZkpassport,
       ...this.registeredModules
-    ]
-    return all.filter((a, i) => all.findIndex((b) => sameAddress(a, b)) === i)
+    ])
   }
 
   accountFilter(options: AccountFilterOptions = {}): FilterSpec {

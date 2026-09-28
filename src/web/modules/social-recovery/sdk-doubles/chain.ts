@@ -50,6 +50,8 @@ import type {
   ValidationResult,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { zeroAddress, zeroHash } from 'viem'
+import { sepolia } from 'viem/chains'
 
 import { ActionCodecDouble } from './action-codec'
 import {
@@ -57,17 +59,17 @@ import {
   blockHashOf,
   clearBackup,
   clearNote,
+  distinctAddresses,
   hashOf,
   keccak256,
   levelOfMetadata,
+  MANAGER_DOMAIN_FIELDS,
   readSetupBody,
   sameAddress,
   sealBackup,
   setupBodyOf,
   setupCommitmentOf,
-  shapeNote,
-  ZERO_ADDRESS,
-  ZERO_HASH
+  shapeNote
 } from './encoding'
 import {
   codedError,
@@ -200,7 +202,7 @@ export const doubleDescriptor = (
   overrides: Partial<DeploymentDescriptor> = {}
 ): DeploymentDescriptor => {
   const base: DeploymentDescriptor = {
-    chainId: 11155111,
+    chainId: sepolia.id,
     manager: addressOf('manager'),
     methodEcdsa: addressOf('method-ecdsa'),
     methodPasskey: addressOf('method-passkey'),
@@ -340,12 +342,12 @@ export class ScriptedChain {
       version: this.descriptor.managerVersion,
       supportsInterface: true,
       domain: {
-        fields: '0x0f',
+        fields: MANAGER_DOMAIN_FIELDS,
         name: 'PolicyManager',
         version: this.descriptor.digestVersion,
         chainId: BigInt(this.descriptor.chainId),
         verifyingContract: this.descriptor.manager,
-        salt: ZERO_HASH,
+        salt: zeroHash,
         extensions: []
       }
     }
@@ -459,7 +461,7 @@ export class ScriptedChain {
       kind: 'privilege-changed',
       account: this.account,
       addr: this.kitSlot,
-      priv: authorized ? hashOf({ binding: this.action.toLowerCase() }) : ZERO_HASH
+      priv: authorized ? hashOf({ binding: this.action.toLowerCase() }) : zeroHash
     })
   }
 
@@ -494,7 +496,7 @@ export class ScriptedChain {
         kind: 'privilege-changed',
         account: this.account,
         addr,
-        priv: ZERO_HASH
+        priv: zeroHash
       }))
     ]
   }
@@ -547,15 +549,15 @@ export class ScriptedChain {
   // -------------------------------------------------------------------------
 
   private defaultParties(
-    admin: Address = ZERO_ADDRESS,
-    pauseHolder: Address = ZERO_ADDRESS
+    admin: Address = zeroAddress,
+    pauseHolder: Address = zeroAddress
   ): TrustedParties {
     return {
       admin,
-      pendingAdmin: ZERO_ADDRESS,
+      pendingAdmin: zeroAddress,
       trustedKeys: [],
       pauseHolder,
-      pendingPauseHolder: ZERO_ADDRESS
+      pendingPauseHolder: zeroAddress
     }
   }
 
@@ -765,7 +767,7 @@ export class ScriptedChain {
           newAuthority: addressOf('new-key'),
           removedAuthority: this.authorities[0] ?? addressOf('lost-key')
         }),
-      order: options.order ?? { token: ZERO_ADDRESS, amount: 0n, payee: ZERO_ADDRESS },
+      order: options.order ?? { token: zeroAddress, amount: 0n, payee: zeroAddress },
       usedPlaces: options.usedPlaces ?? [0n],
       usedMethods: options.usedMethods ?? [firstMethod],
       ignoresPause: options.ignoresPause ?? body?.ignoresPause ?? true,
@@ -804,8 +806,8 @@ export class ScriptedChain {
       throw codedError('NoActiveAttempt', { account: this.account, action: this.action })
     }
     const { record } = this.attempt
-    let cancellerAddress: Address = ZERO_ADDRESS
-    let vetoingMethod: Address = ZERO_ADDRESS
+    let cancellerAddress: Address = zeroAddress
+    let vetoingMethod: Address = zeroAddress
     let usedPlaces: bigint[] = []
     let cancelledBy: CancelledBy = 'setupWrite'
     if (canceller === 'account') {
@@ -878,7 +880,7 @@ export class ScriptedChain {
         kind: 'privilege-changed',
         account: this.account,
         addr: performed.removedAuthority,
-        priv: ZERO_HASH
+        priv: zeroHash
       }
     ]
     this.authorities = after
@@ -902,7 +904,7 @@ export class ScriptedChain {
   stateOf(): ActionState {
     const committed = this.setup.status === 'committed'
     return {
-      setupCommitment: committed ? (this.setup as CommittedSetup).setupCommitment : ZERO_HASH,
+      setupCommitment: committed ? (this.setup as CommittedSetup).setupCommitment : zeroHash,
       setupNonce: this.setup.setupNonce,
       nextAttemptId: this.nextAttemptId,
       setupCommittedAtBlock: this.setup.setupCommittedAtBlock,
@@ -918,8 +920,8 @@ export class ScriptedChain {
         attemptId: 0n,
         setupNonce: 0n,
         consumableAfter: 0,
-        payloadHash: ZERO_HASH,
-        order: { token: ZERO_ADDRESS, amount: 0n, payee: ZERO_ADDRESS },
+        payloadHash: zeroHash,
+        order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
         usedMethods: [],
         ignoresPause: false
       }
@@ -1091,7 +1093,7 @@ export class ScriptedChain {
     const { account, action } = this
     switch (effect.kind) {
       case 'commit':
-        if (effect.setupCommitment === ZERO_HASH) {
+        if (effect.setupCommitment === zeroHash) {
           return kitError('InvalidCommitment', { supplied: effect.setupCommitment })
         }
         if (effect.nonce !== this.setup.setupNonce + 1n) {
@@ -1194,9 +1196,7 @@ export class ScriptedChain {
             payload: request.payload,
             order: request.order,
             usedPlaces: request.proofs.map((p) => p.place),
-            usedMethods: request.proofs
-              .map((p) => p.method)
-              .filter((m, i, all) => all.findIndex((x) => sameAddress(x, m)) === i),
+            usedMethods: distinctAddresses(request.proofs.map((p) => p.method)),
             wait: body ? Number(body.wait) : undefined,
             ignoresPause: body?.ignoresPause
           })

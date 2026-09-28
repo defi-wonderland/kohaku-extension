@@ -10,7 +10,16 @@
  * `digestOf`) and the handover payload (the action codec double),
  * `abi.encode(address newAuthority, address removedAuthority)`.
  */
-import { concat, hashTypedData, hexToString, keccak256, pad, stringToHex } from 'viem'
+import {
+  concat,
+  hashTypedData,
+  hexToString,
+  keccak256,
+  pad,
+  size,
+  stringToHex,
+  zeroAddress
+} from 'viem'
 
 import type {
   Address,
@@ -24,9 +33,6 @@ import type {
   PrivacyLevel,
   SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
-
-export const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000'
-export const ZERO_HASH: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000'
 
 /** JSON with bigints written as `{"$bigint":"..."}` so they come back as bigints. */
 export const toJson = (value: unknown): string =>
@@ -57,6 +63,10 @@ export const topicOf = (address: Address): Hex => pad(address.toLowerCase() as H
 
 export const sameAddress = (a: string | undefined, b: string | undefined): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase()
+
+/** The list without repeats, compared case-insensitively, each kept where it first appears. */
+export const distinctAddresses = (list: readonly Address[]): Address[] =>
+  list.filter((a, i) => list.findIndex((b) => sameAddress(a, b)) === i)
 
 /** The default salt, keccak256(account, place), in the doubles' hashing. */
 export const defaultSalt = (account: Address, place: number): Hex =>
@@ -297,8 +307,6 @@ export const readPublicNote = (publicMetadata: Hex): PublicNoteReading => {
  */
 export const BACKUP_PADDING_SIZE = 16 * (96 + 32 + 20)
 
-const hexBytes = (hex: Hex): number => Math.max(0, (hex.length - 2) / 2)
-
 /**
  * The backup plaintext's size as the real serialization would count it: the wait
  * (6 bytes), the pause choice (1), a threshold byte per clause, and per
@@ -312,7 +320,7 @@ export const backupPlaintextSize = (configuration: Configuration): number =>
       sum +
       1 +
       clause.credentials.reduce(
-        (inner, c) => inner + 20 + hexBytes(c.config) + (c.salt ? hexBytes(c.salt) : 0),
+        (inner, c) => inner + 20 + size(c.config) + (c.salt ? size(c.salt) : 0),
         0
       ),
     0
@@ -357,6 +365,12 @@ export const deserializeOrder = (order: SerializedPaymentOrder): PaymentOrder =>
 })
 
 const lower = (address: Address): Address => address.toLowerCase() as Address
+
+/**
+ * The EIP-5267 `fields` bitmap of the manager's domain: name, version, chain id
+ * and verifying contract, the four members the digests derive under.
+ */
+export const MANAGER_DOMAIN_FIELDS: Hex = '0x0f'
 
 /** The EIP-712 types: two message types over one nested `PaymentOrder`. */
 export const APPROVAL_TYPES = {
@@ -426,7 +440,7 @@ export const typedDataOf = (m: DigestMembers): PlaceTypedData => {
       message: { ...common, validUntil: BigInt(m.validUntil), place: BigInt(m.place) }
     }
   }
-  const order = m.order ?? { token: ZERO_ADDRESS, amount: '0', payee: ZERO_ADDRESS }
+  const order = m.order ?? { token: zeroAddress, amount: '0', payee: zeroAddress }
   return {
     domain,
     types: APPROVAL_TYPES,

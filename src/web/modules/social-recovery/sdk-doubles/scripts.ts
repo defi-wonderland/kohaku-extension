@@ -181,6 +181,17 @@ export class ScriptedReadFailure extends Error {
   }
 }
 
+/**
+ * The refusal for a module read a client needs that did not answer, naming the
+ * module, and the place where the read was made for one place.
+ */
+export const unansweredRead = (
+  read: ModuleRead,
+  module: Address,
+  place?: number
+): ScriptedReadFailure =>
+  new ScriptedReadFailure(read, undefined, place === undefined ? { module } : { module, place })
+
 export const finding = <C extends string = FindingCode>(
   code: C,
   subject: FindingSubject,

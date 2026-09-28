@@ -32,7 +32,7 @@ import type {
 import { ActionCodecDouble } from './action-codec'
 import type { ScriptedChain } from './chain'
 import { ClientContext, defaultClientConfiguration } from './context'
-import { sameAddress } from './encoding'
+import { MANAGER_DOMAIN_FIELDS, sameAddress } from './encoding'
 import { codedError, type CodedError } from './scripts'
 import { EventManagerDouble } from './event-manager'
 import { MethodsOrchestratorDouble } from './orchestrator'
@@ -292,7 +292,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
         ) {
           throw constructionRefusal('domain', 'The manager’s domain disagrees with the descriptor.')
         }
-        if (domain.fields.toLowerCase() !== '0x0f') {
+        if (domain.fields.toLowerCase() !== MANAGER_DOMAIN_FIELDS) {
           throw constructionRefusal(
             'domain-fields',
             'The manager’s domain carries members this build does not derive under.'

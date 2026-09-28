@@ -26,23 +26,31 @@ import type {
   TrustedParties,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { decodeAbiParameters } from 'viem'
+import { decodeAbiParameters, zeroHash } from 'viem'
 
-import { ClientContext, pinBlock, restoreConfiguration } from './context'
+import {
+  ClientContext,
+  DEFAULT_MAXIMUM_WAIT,
+  DEFAULT_RULE_COST_BOUND,
+  DEFAULT_SHORT_WAIT_BELOW,
+  DEFAULT_WAIT,
+  pinBlock,
+  restoreConfiguration
+} from './context'
 import {
   BACKUP_PADDING_SIZE,
   backupPlaintextSize,
   clearBackup,
+  distinctAddresses,
   levelOfFields,
   placesOf,
   sameAddress,
   sealBackup,
   setupBodyOf,
-  setupCommitmentOf,
-  ZERO_HASH
+  setupCommitmentOf
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { codedError, finding, validationRefusal } from './scripts'
+import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
 
 const MAX_WAIT_FIELD = 2n ** 48n
 
@@ -63,10 +71,8 @@ export const configurationOfDraft = (draft: SetupDraft): Configuration => ({
 export const levelOfDraft = (draft: SetupDraft): PrivacyLevel =>
   levelOfFields(draft.privacy.publicMetadata, draft.privacy.backup === 'clear')
 
-const distinctMethods = (draft: SetupDraft): Address[] => {
-  const all = draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method))
-  return all.filter((m, i) => all.findIndex((x) => sameAddress(x, m)) === i)
-}
+const distinctMethods = (draft: SetupDraft): Address[] =>
+  distinctAddresses(draft.clauses.flatMap((c) => c.credentials.map((cr) => cr.method)))
 
 interface MethodReads {
   method: Address
@@ -158,7 +164,7 @@ export class SetupClientDouble implements ISetupClient {
         warnings.push(
           finding('clause.secondary-only', 'clause', {
             clause: index,
-            methods: methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i),
+            methods: distinctAddresses(methods),
             threshold: clause.threshold,
             forgeableCount: count
           })
@@ -174,7 +180,7 @@ export class SetupClientDouble implements ISetupClient {
    */
   private widthRow(draft: SetupDraft): Finding | undefined {
     const { chain, config } = this.ctx
-    const bound = config.ruleCostBound ?? 10_000_000n
+    const bound = config.ruleCostBound ?? DEFAULT_RULE_COST_BOUND
     const placed = placesOf(chain.account, configurationOfDraft(draft))
     const chosen = draft.clauses.flatMap((clause, index) =>
       placed
@@ -272,18 +278,18 @@ export class SetupClientDouble implements ISetupClient {
         })
       )
     }
-    const maximumWait = BigInt(config.maximumWait ?? 30 * 24 * 3600)
+    const maximumWait = BigInt(config.maximumWait ?? DEFAULT_MAXIMUM_WAIT)
     if (draft.wait > maximumWait) {
       errors.push(
         finding('wait.above-maximum', 'setup', { wait: draft.wait, maximum: maximumWait })
       )
     }
     if (draft.wait === 0n) warnings.push(finding('setup.wait-zero', 'setup'))
-    else if (draft.wait < BigInt(config.shortWaitBelow ?? 48 * 3600)) {
+    else if (draft.wait < BigInt(config.shortWaitBelow ?? DEFAULT_SHORT_WAIT_BELOW)) {
       warnings.push(
         finding('setup.wait-short', 'setup', {
           wait: draft.wait,
-          minimum: BigInt(config.shortWaitBelow ?? 48 * 3600)
+          minimum: BigInt(config.shortWaitBelow ?? DEFAULT_SHORT_WAIT_BELOW)
         })
       )
     }
@@ -304,19 +310,23 @@ export class SetupClientDouble implements ISetupClient {
     // The methods a draft names: shipped, declared, stopped.
     const reads = await this.methodReads(draft)
     reads.forEach((r) => {
+      // An unanswered read says nothing about the method's stop or its declaration,
+      // so validation refuses rather than pass a draft over values nobody read.
+      if (!r.paused.answered) throw unansweredRead('manager.paused', r.method)
+      if (!r.moduleInfo.answered) throw unansweredRead('manager.moduleInfo', r.method)
       const { method } = r
       if (!chain.descriptor.shippedMethods.some((m) => sameAddress(m, method))) {
         warnings.push(
           finding('method.unshipped', 'credential', {
             method,
-            probe: r.moduleInfo.answered ? r.moduleInfo.value.supportsInterface : undefined,
+            probe: r.moduleInfo.value.supportsInterface,
             list: chain.descriptor.shippedMethods,
             listFrom: 'descriptor'
           })
         )
       }
       if (undeclared(r)) warnings.push(finding('method.no-declaration', 'credential', { method }))
-      if (r.paused.answered && r.paused.value) {
+      if (r.paused.value) {
         warnings.push(
           finding('method.stopped', 'credential', { method, ignoresPause: draft.ignoresPause })
         )
@@ -415,10 +425,10 @@ export class SetupClientDouble implements ISetupClient {
         threshold: c.threshold,
         credentials: c.credentials.map((cr) => ({ method: cr.method, label: cr.label }))
       })),
-      wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? 48 * 3600) },
+      wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? DEFAULT_WAIT) },
       failureDomains: draft.clauses.map((c, clause) => {
         const methods = c.credentials.map((cr) => cr.method)
-        const distinct = methods.filter((m, i) => methods.findIndex((x) => sameAddress(x, m)) === i)
+        const distinct = distinctAddresses(methods)
         return {
           clause,
           methods: distinct.map((method) => ({
@@ -515,7 +525,7 @@ export class SetupClientDouble implements ISetupClient {
     chain.guardRefusal('setup.prepareClearSetup')
     const block = await pinBlock(this.ctx)
     const [state, authorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
-    const hasSetup = state.setupCommitment !== ZERO_HASH
+    const hasSetup = state.setupCommitment !== zeroHash
     const simulate = shouldSimulate(options, config.simulate)
     const failure = chain.simulationFailure('setup.prepareClearSetup')
     const from = simulationFrom(chain, 'account', options)
@@ -581,7 +591,7 @@ export class SetupClientDouble implements ISetupClient {
     const [state, isAuthorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
     return {
       isAuthorized,
-      hasSetup: state.setupCommitment !== ZERO_HASH,
+      hasSetup: state.setupCommitment !== zeroHash,
       setupCommitment: state.setupCommitment,
       setupNonce: state.setupNonce,
       setupCommittedAtBlock: state.setupCommittedAtBlock,
