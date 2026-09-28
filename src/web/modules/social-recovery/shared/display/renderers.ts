@@ -316,6 +316,16 @@ const toMs = (value: Date | number): number => {
   return ms
 }
 
+// A time left in milliseconds. NaN or an infinity throws a TypeError here, so a
+// countdown never reads NaN or falls to execution due on a bad value. A time
+// left is a span, not a date, so the Date bound does not apply to it.
+const checkRemainingMs = (remainingMs: number): number => {
+  if (!Number.isFinite(remainingMs)) {
+    throw new TypeError(`Not a time: ${String(remainingMs)}`)
+  }
+  return remainingMs
+}
+
 /** The date and time of `at` in `timeZone`, the zone named, and the zone alone. */
 export const renderDateTimeInZone = (
   at: Date | number,
@@ -338,10 +348,11 @@ export const renderDateTimeInZone = (
 
 /**
  * The time left before a deadline in whole hours, or in whole minutes under one
- * hour, `23 hours`. Both round down; under one minute
- * it reads one minute.
+ * hour, `23 hours`. Both round down; under one minute it reads one minute. A
+ * time left that is not finite throws a TypeError.
  */
 export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
+  checkRemainingMs(remainingMs)
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
     return t('socialRecovery.display.remainingHours', { count })
@@ -376,9 +387,12 @@ export const renderDeadline = (
   }
 }
 
-/** The time left of a waiting period as hours, minutes and seconds, `47:12:06`. */
+/**
+ * The time left of a waiting period as hours, minutes and seconds, `47:12:06`.
+ * A time left that is not finite throws a TypeError.
+ */
 export const renderCountdownTime = (remainingMs: number): string => {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const totalSeconds = Math.max(0, Math.floor(checkRemainingMs(remainingMs) / 1000))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
@@ -394,10 +408,10 @@ export type CountdownState = typeof COUNTDOWN_STATES[number]
  * The countdown state the time left gives: waiting while a whole second is
  * left, execution due once the waiting period has ended. It counts
  * whole seconds, like `renderCountdownTime`, so 500 ms left never renders
- * `00:00:00 · waiting`.
+ * `00:00:00 · waiting`. A time left that is not finite throws a TypeError.
  */
 export const countdownStateOf = (remainingMs: number): CountdownState =>
-  Math.floor(remainingMs / 1000) > 0 ? 'waiting' : 'executionDue'
+  Math.floor(checkRemainingMs(remainingMs) / 1000) > 0 ? 'waiting' : 'executionDue'
 
 /**
  * A running attempt's countdown: `47:12:06 · waiting` while the waiting period
