@@ -1,9 +1,9 @@
 /**
- * The native amounts the deposit step shows are ether, 18 decimals after the
- * wei: a known amount in wei renders as the screen shows it. The step keeps
- * six digits after the point: an amount to send rounds up, so what the step
- * shows covers it, and a balance rounds down, so the step never shows more
- * than the key holds. The strings come from en.json through the app's
+ * The native amounts the deposit step shows are ether, where one ether is
+ * 10^18 wei: a known amount in wei renders as the screen shows it. The step
+ * keeps six digits after the point: an amount to send rounds up, so what the
+ * step shows covers it, and a balance rounds down, so the step never shows
+ * more than the key holds. The strings come from en.json through the app's
  * i18next.
  */
 import i18n from '@common/config/localization'
