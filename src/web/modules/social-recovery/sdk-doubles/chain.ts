@@ -51,6 +51,7 @@ import type {
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { zeroAddress, zeroHash } from 'viem'
+import { sepolia } from 'viem/chains'
 
 import { ActionCodecDouble } from './action-codec'
 import {
@@ -199,7 +200,7 @@ export const doubleDescriptor = (
   overrides: Partial<DeploymentDescriptor> = {}
 ): DeploymentDescriptor => {
   const base: DeploymentDescriptor = {
-    chainId: 11155111,
+    chainId: sepolia.id,
     manager: addressOf('manager'),
     methodEcdsa: addressOf('method-ecdsa'),
     methodPasskey: addressOf('method-passkey'),
