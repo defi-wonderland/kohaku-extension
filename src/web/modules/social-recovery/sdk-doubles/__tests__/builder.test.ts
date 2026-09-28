@@ -6,10 +6,11 @@ import {
 import type {
   DeploymentDescriptor,
   IMethodModuleReads,
+  IProvider,
   IRecoveryActionInteractor
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, membersOf, NO_PAYMENT, WINDOW } from './harness'
+import { createWorld, eachIt, membersOf, NO_PAYMENT, WINDOW, World } from './harness'
 
 /** Every way to build from a builder; each runs the construction checks. */
 const BUILD_PATHS = {
@@ -125,17 +126,21 @@ describe('builder double', () => {
   })
 
   describe('a descriptor the scripted chain does not serve', () => {
-    const mismatches: [string, (d: DeploymentDescriptor) => DeploymentDescriptor][] = [
-      ['chain id', (d) => ({ ...d, chainId: d.chainId + 1 })],
-      ['manager', (d) => ({ ...d, manager: addressOf('another-manager') })],
-      ['action', (d) => ({ ...d, action: addressOf('another-action') })]
+    // The client paths run the provider and domain checks first, so a wrong
+    // network reads as chain-id or domain there; the orchestrator reads no
+    // chain, so it refuses the descriptor as unserved.
+    const mismatches: [string, (d: DeploymentDescriptor) => DeploymentDescriptor, string][] = [
+      ['chain id', (d) => ({ ...d, chainId: d.chainId + 1 }), 'construction.chain-id'],
+      ['manager', (d) => ({ ...d, manager: addressOf('another-manager') }), 'construction.domain'],
+      ['action', (d) => ({ ...d, action: addressOf('another-action') }), 'construction.unserved']
     ]
-    mismatches.forEach(([field, mismatch]) =>
+    mismatches.forEach(([field, mismatch, clientCode]) =>
       eachIt(PATHS)(`is refused on %s for its ${field}`, async (path) => {
         const world = createWorld()
         const builder = world.builder()
         builder.descriptor(mismatch(world.descriptor))
-        expect(await refusalCode(builder, path)).toBe('construction.descriptor')
+        const expected = path === 'buildMethodsOrchestrator' ? 'construction.unserved' : clientCode
+        expect(await refusalCode(builder, path)).toBe(expected)
       })
     )
   })
@@ -146,9 +151,35 @@ describe('builder double', () => {
       const world = createWorld()
       const builder = world.builder()
       builder.action(addressOf('another-action'), world.actionPart)
-      expect(await refusalCode(builder, path)).toBe('construction.action')
+      expect(await refusalCode(builder, path)).toBe('construction.unserved')
     }
   )
+
+  describe('a provider on another network', () => {
+    const answering = (world: World, chainId: number): IProvider => ({
+      chainId: async () => chainId,
+      call: (to, data, from, tag) => world.provider.call(to, data, from, tag),
+      logs: (filter, range) => world.provider.logs(filter, range),
+      block: (tag) => world.provider.block(tag)
+    })
+
+    it('is refused as chain-id when it answers another chain than the descriptor', async () => {
+      const world = createWorld()
+      const builder = world.builder()
+      builder.provider(answering(world, world.descriptor.chainId + 1))
+      expect(await refusalCode(builder, 'buildSetupClient')).toBe('construction.chain-id')
+      expect(await refusalCode(world.builder(), 'buildSetupClient')).toBeUndefined()
+    })
+
+    it('is refused as domain when it and the descriptor agree on a chain the manager is not on', async () => {
+      const world = createWorld()
+      const foreign = world.descriptor.chainId + 1
+      const builder = world.builder()
+      builder.provider(answering(world, foreign))
+      builder.descriptor({ ...world.descriptor, chainId: foreign })
+      expect(await refusalCode(builder, 'buildRecoveryClient')).toBe('construction.domain')
+    })
+  })
 
   it('builds on every path for the chain’s own deployment, account and action', async () => {
     const world = createWorld()
