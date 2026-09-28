@@ -12,6 +12,10 @@
  * shape, returns `ABSENT`. The helper stores rich JSON, so a `bigint` value
  * survives.
  */
+import isEqual from 'react-fast-compare'
+import { bytesToHex, isAddress, isAddressEqual } from 'viem'
+
+import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
@@ -41,22 +45,13 @@ import {
 /** The prefix of every storage key the records use. */
 export const RECORDS_KEY_PREFIX = 'socialRecovery'
 
-const ACCOUNT_PATTERN = /^0x[0-9a-fA-F]{40}$/
-
 const chainPart = (chainId: ChainId | string): string => {
   const text = typeof chainId === 'bigint' ? chainId.toString(10) : String(chainId)
   if (!/^[0-9]+$/.test(text)) throw new Error(`Invalid chain id: ${text}`)
   return text
 }
 
-const accountPart = (account: Address): string => {
-  if (typeof account !== 'string' || !ACCOUNT_PATTERN.test(account)) {
-    throw new Error(`Invalid account address: ${String(account)}`)
-  }
-  return account.toLowerCase()
-}
-
-const sameAddress = (a: Address, b: Address): boolean => a.toLowerCase() === b.toLowerCase()
+const accountPart = (account: Address): string => account.toLowerCase()
 
 /** The key prefix every recovery session on one chain shares. */
 const recoverySessionPrefix = (chainId: ChainId): string =>
@@ -101,31 +96,15 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
 }
 
 /**
- * Deep equality over the JSON-like values a gathering holds. A key whose value
- * is `undefined` counts as absent, as it does once stored.
+ * Deep equality of two values as the storage keeps them: both pass through the
+ * rich JSON the storage writes, so a key whose value is `undefined` counts as
+ * absent on both sides.
  */
-const sameValue = (a: unknown, b: unknown): boolean => {
-  if (a === b) return true
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-    return a.every((item, i) => sameValue(item, b[i]))
-  }
-  const left = a as Record<string, unknown>
-  const right = b as Record<string, unknown>
-  const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined)
-  const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined)
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every((key) => right[key] !== undefined && sameValue(left[key], right[key]))
-  )
-}
+const sameStoredValue = (a: unknown, b: unknown): boolean =>
+  isEqual(parse(stringify(a)), parse(stringify(b)))
 
-const newRevision = (): SessionRevision => {
-  const bytes = new Uint8Array(12)
-  globalThis.crypto.getRandomValues(bytes)
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
+const newRevision = (): SessionRevision =>
+  bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
 
 // The fallback queue, one per key: used only where the Web Locks API is missing,
 // and it spans this JS context alone.
@@ -386,7 +365,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
             `A recovery session holds an approval gathering, not ${gathering.purpose}`
           )
         }
-        if (!sameAddress(request.account, account)) {
+        if (!isAddressEqual(request.account, account)) {
           throw new Error(`The gathering names account ${request.account}, not ${account}`)
         }
         if (chainPart(request.chainId) !== chainPart(chainId)) {
@@ -401,7 +380,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
           if (current.status === 'present' && current.value.state === 'live') {
             const stored = current.value.gathering
             // A new request would replace the gathering: that takes a wipe first.
-            if (!sameValue(stored.request, request)) {
+            if (!sameStoredValue(stored.request, request)) {
               throw new Error(
                 'A live session holds another request: wipe it with one of the five events first'
               )
@@ -431,7 +410,9 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     }
     const prefix = recoverySessionPrefix(chainId)
     const entries = Object.entries(await storage.getAll())
-      .filter(([key]) => key.startsWith(prefix) && ACCOUNT_PATTERN.test(key.slice(prefix.length)))
+      .filter(
+        ([key]) => key.startsWith(prefix) && isAddress(key.slice(prefix.length), { strict: false })
+      )
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     return entries.flatMap(([, stored]) =>
       isStoredSession(stored)
