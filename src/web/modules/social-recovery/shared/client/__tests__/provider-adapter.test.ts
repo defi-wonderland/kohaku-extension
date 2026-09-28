@@ -6,9 +6,15 @@
  * gas reads run on the same provider beside the adapter, since the SDK's
  * provider answers four reads and no balance.
  *
- * The SDK fixes the arguments, not the ethers member, so each check accepts the
- * high-level ethers member or the raw JSON-RPC `send`.
+ * The SDK fixes the arguments, not the ethers member, so the first checks of
+ * each read accept the high-level ethers member or the raw JSON-RPC `send`. The
+ * checks after them pin the member each read takes on the ethers provider, and
+ * what the ethers provider the extension builds then sends the node.
  */
+import { AbiCoder, makeError } from 'ethers'
+
+import type { Network } from '@ambire-common/interfaces/network'
+
 import { ScriptedChain } from '@web/modules/social-recovery/sdk-doubles'
 import type {
   Address,
@@ -23,8 +29,11 @@ import {
   adapterOver,
   callException,
   createChainReads,
+  createProviderAdapter,
   ethersOver,
   EthersMock,
+  ExtensionProvider,
+  extensionProviderFor,
   failEverything,
   functionMembersOf,
   gasCallOf,
@@ -32,6 +41,7 @@ import {
   isRevertedCall,
   NODE_ANSWERS,
   nodeRevert,
+  SEPOLIA,
   thrownBy,
   underlyingCalls
 } from './harness'
@@ -73,6 +83,16 @@ const onlyCall = (ethers: EthersMock): [string, unknown[]] => {
   expect(calls).toHaveLength(1)
   return calls[0]
 }
+
+/** The CALL_EXCEPTION ethers' JSON-RPC provider builds from a node's revert. */
+const ethersRevert = (action: 'call' | 'estimateGas', data: Hex) =>
+  AbiCoder.getBuiltinCallException(action, { to: TO, data: DATA }, data)
+
+/** The error Colibri's EIP-1193 `request` throws: an `Error` carrying the node's code and data. */
+const colibriError = (code: number, message: string, data?: Hex) =>
+  Object.assign(new Error(message), { name: 'ProviderRpcError', code, data })
+
+const readOf = (caught: unknown) => (caught as { read?: unknown }).read
 
 describe('the provider adapter, IProvider over the extension provider', () => {
   it('answers the four reads and nothing else', () => {
@@ -308,6 +328,458 @@ describe('the balance and gas reads beside the adapter', () => {
     )
     expect(isProviderReadFailure(caught)).toBe(true)
     expect(isRevertedCall(caught)).toBe(false)
+  })
+})
+
+describe('the four reads on the typed members of the ethers provider', () => {
+  describe('chainId()', () => {
+    it("asks the node with one eth_chainId request, never the provider's network record", async () => {
+      const w = world()
+      await w.adapter.chainId()
+      expect(underlyingCalls(w.ethers)).toEqual([['send', ['eth_chainId', []]]])
+    })
+
+    const ANSWERS: [string, number][] = [
+      ['0x1', 1],
+      ['0xaa36a7', SEPOLIA]
+    ]
+    ANSWERS.forEach(([answer, chainId]) =>
+      it(`reads the node's quantity ${answer} as chain ${chainId}`, async () => {
+        const w = world()
+        w.ethers.send.mockResolvedValue(answer)
+        await expect(w.adapter.chainId()).resolves.toBe(chainId)
+      })
+    )
+
+    const NOT_CHAIN_IDS: [string, unknown][] = [
+      ['the empty quantity 0x', '0x'],
+      ['a name', 'sepolia'],
+      ['a number, not a quantity', SEPOLIA],
+      ['a chain id beyond 2^53', `0x${(2n ** 53n).toString(16)}`]
+    ]
+    NOT_CHAIN_IDS.forEach(([title, answer]) =>
+      it(`surfaces ${title} as a failed chainId read, never a chain id`, async () => {
+        const w = world()
+        w.ethers.send.mockResolvedValue(answer)
+        const caught = await thrownBy(w.adapter.chainId())
+        expect(isProviderReadFailure(caught)).toBe(true)
+        expect(readOf(caught)).toBe('chainId')
+      })
+    )
+  })
+
+  describe('call(to, data, from, block)', () => {
+    it('makes one call carrying the target, the calldata, the sender and the block tag', async () => {
+      const w = world()
+      w.ethers.call.mockResolvedValue('0xcafe')
+      await expect(w.adapter.call(TO, DATA, FROM, 1234)).resolves.toBe('0xcafe')
+      expect(underlyingCalls(w.ethers)).toEqual([
+        ['call', [{ to: TO, data: DATA, from: FROM, blockTag: 1234 }]]
+      ])
+    })
+
+    it('names no sender where none is given', async () => {
+      const w = world()
+      w.ethers.call.mockResolvedValue('0x')
+      await w.adapter.call(TO, DATA, undefined, 'finalized')
+      const [[, [request]]] = underlyingCalls(w.ethers)
+      expect(request).toEqual({ to: TO, data: DATA, blockTag: 'finalized' })
+    })
+
+    it('rejects a CALL_EXCEPTION ethers throws from call with the raw revert data', async () => {
+      const w = world()
+      w.ethers.call.mockRejectedValue(ethersRevert('call', REVERT))
+      const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+      expect(isRevertedCall(caught)).toBe(true)
+      expect(caught).toMatchObject({ read: 'call', data: REVERT })
+    })
+
+    it('rejects a revert that carried no data with the empty data', async () => {
+      const w = world()
+      w.ethers.call.mockRejectedValue(ethersRevert('call', '0x'))
+      const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+      expect(isRevertedCall(caught)).toBe(true)
+      expect(caught).toMatchObject({ read: 'call', data: '0x' })
+    })
+
+    it("rejects the node's own revert error, as Colibri throws it through call, with the raw revert data", async () => {
+      const w = world()
+      w.ethers.call.mockRejectedValue(colibriError(3, 'execution reverted', REVERT))
+      const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+      expect(isRevertedCall(caught)).toBe(true)
+      expect(caught).toMatchObject({ read: 'call', data: REVERT })
+    })
+
+    it('surfaces any other error Colibri throws as a failed call read, not a revert', async () => {
+      const w = world()
+      w.ethers.call.mockRejectedValue(colibriError(-32603, 'Internal error'))
+      const caught = await thrownBy(w.adapter.call(TO, DATA, FROM, 'latest'))
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe('call')
+    })
+  })
+
+  describe('logs(filterSpec, range)', () => {
+    const filter: FilterSpec = { addresses: [TO], topics: [TOPIC, null] }
+    const ethersLog = {
+      address: TO,
+      topics: Object.freeze([TOPIC]),
+      data: '0x01',
+      blockNumber: 950,
+      blockHash: `0x${'cd'.repeat(32)}`,
+      index: 3,
+      transactionHash: `0x${'ef'.repeat(32)}`,
+      transactionIndex: 0,
+      removed: true
+    }
+
+    it('makes one getLogs over the addresses, the topics and the two block numbers', async () => {
+      const w = world()
+      await w.adapter.logs(filter, { from: 900, to: 1900 })
+      expect(underlyingCalls(w.ethers)).toEqual([
+        ['getLogs', [{ address: [TO], topics: [TOPIC, null], fromBlock: 900, toBlock: 1900 }]]
+      ])
+    })
+
+    it('answers each ethers log in the SDK log shape, its index as the log index', async () => {
+      const w = world()
+      w.ethers.getLogs.mockResolvedValue([ethersLog])
+      await expect(w.adapter.logs(filter, { from: 900, to: 1900 })).resolves.toEqual([
+        {
+          address: TO,
+          topics: [TOPIC],
+          data: '0x01',
+          blockNumber: 950,
+          blockHash: ethersLog.blockHash,
+          logIndex: 3,
+          transactionHash: ethersLog.transactionHash,
+          removed: true
+        }
+      ])
+    })
+
+    it('surfaces a log whose data is not hex as a failed logs read, never a partial list', async () => {
+      const w = world()
+      w.ethers.getLogs.mockResolvedValue([ethersLog, { ...ethersLog, data: 'not hex' }])
+      const caught = await thrownBy(w.adapter.logs(filter, { from: 900, to: 1900 }))
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe('logs')
+    })
+  })
+
+  describe('block(tag)', () => {
+    const ethersBlock = {
+      number: 950,
+      timestamp: 1_700_000_000,
+      hash: `0x${'12'.repeat(32)}`,
+      parentHash: `0x${'34'.repeat(32)}`,
+      gasLimit: 30_000_000n,
+      transactions: []
+    }
+
+    const TAGS: BlockTag[] = ['finalized', 950]
+    TAGS.forEach((tag) =>
+      it(`makes one getBlock at ${tag} and answers the number, the timestamp and the hash alone`, async () => {
+        const w = world()
+        w.ethers.getBlock.mockResolvedValue(ethersBlock)
+        await expect(w.adapter.block(tag)).resolves.toEqual({
+          number: 950,
+          timestamp: 1_700_000_000,
+          hash: ethersBlock.hash
+        })
+        expect(underlyingCalls(w.ethers)).toEqual([['getBlock', [tag]]])
+      })
+    )
+
+    const NO_HEADER: [string, unknown][] = [
+      ['no block at the tag', null],
+      ['a block without a hash, as a pending block is', { ...ethersBlock, hash: null }]
+    ]
+    NO_HEADER.forEach(([title, answer]) =>
+      it(`surfaces ${title} as a failed block read, never an empty header`, async () => {
+        const w = world()
+        w.ethers.getBlock.mockResolvedValue(answer)
+        const caught = await thrownBy(w.adapter.block('latest'))
+        expect(isProviderReadFailure(caught)).toBe(true)
+        expect(readOf(caught)).toBe('block')
+      })
+    )
+  })
+})
+
+describe('the balance and gas reads on the typed members of the ethers provider', () => {
+  const TAGS: [string, BlockTag | undefined, BlockTag][] = [
+    ['no block, at latest', undefined, 'latest'],
+    ['the finalized block', 'finalized', 'finalized'],
+    ['a block number', 1234, 1234]
+  ]
+  TAGS.forEach(([title, given, sent]) =>
+    it(`reads a native balance with one getBalance of the address at ${title}`, async () => {
+      const w = world()
+      w.ethers.getBalance.mockResolvedValue(42n)
+      await expect(createChainReads(w.ethers).nativeBalance(FROM, given)).resolves.toBe(42n)
+      expect(underlyingCalls(w.ethers)).toEqual([['getBalance', [FROM, sent]]])
+    })
+  )
+
+  it('estimates with one estimateGas of the sender, the target, the calldata and a zero value as given', async () => {
+    const w = world()
+    await expect(
+      createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA, value: 0n })
+    ).resolves.toBe(NODE_ANSWERS.gas)
+    expect(underlyingCalls(w.ethers)).toEqual([
+      ['estimateGas', [{ from: FROM, to: TO, data: DATA, value: 0n }]]
+    ])
+  })
+
+  it('rejects an estimate ethers refuses with a CALL_EXCEPTION as a reverted call carrying the raw data', async () => {
+    const w = world()
+    w.ethers.estimateGas.mockRejectedValue(ethersRevert('estimateGas', REVERT))
+    const caught = await thrownBy(
+      createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isRevertedCall(caught)).toBe(true)
+    expect(caught).toMatchObject({ read: 'estimateGas', data: REVERT })
+  })
+
+  const OTHER_FAILURES: [string, unknown][] = [
+    [
+      "ethers' INSUFFICIENT_FUNDS",
+      makeError('insufficient funds', 'INSUFFICIENT_FUNDS', {
+        transaction: { from: FROM, to: TO, data: DATA }
+      })
+    ],
+    ['a transport error', new Error('socket hang up')]
+  ]
+  OTHER_FAILURES.forEach(([title, thrown]) =>
+    it(`surfaces ${title} from estimateGas as a failed estimateGas read, not a revert`, async () => {
+      const w = world()
+      w.ethers.estimateGas.mockRejectedValue(thrown)
+      const caught = await thrownBy(
+        createChainReads(w.ethers).estimateGas({ from: FROM, to: TO, data: DATA })
+      )
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(isRevertedCall(caught)).toBe(false)
+      expect(readOf(caught)).toBe('estimateGas')
+    })
+  )
+
+  it('surfaces a balance ethers could not read as a failed nativeBalance read', async () => {
+    const w = world()
+    w.ethers.getBalance.mockRejectedValue(new Error('the node did not answer'))
+    const caught = await thrownBy(createChainReads(w.ethers).nativeBalance(FROM))
+    expect(isProviderReadFailure(caught)).toBe(true)
+    expect(readOf(caught)).toBe('nativeBalance')
+  })
+
+  it('reads a gas price the node answers without a leading zero, as nodes answer quantities', async () => {
+    const w = world()
+    w.ethers.send.mockResolvedValue(`0x${NODE_ANSWERS.gasPrice.toString(16)}`)
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
+  })
+
+  const NOT_PRICES: [string, unknown][] = [
+    ['the empty quantity 0x', '0x'],
+    ['a text', 'seven gwei'],
+    ['a number, not a quantity', 7],
+    ['no answer', null]
+  ]
+  NOT_PRICES.forEach(([title, answer]) =>
+    it(`surfaces ${title} as a failed gasPrice read, never a price`, async () => {
+      const w = world()
+      w.ethers.send.mockResolvedValue(answer)
+      const caught = await thrownBy(createChainReads(w.ethers).gasPrice())
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe('gasPrice')
+    })
+  )
+})
+
+/** A network record the extension reads over plain JSON-RPC; no request leaves the test. */
+const PLAIN_RPC_NETWORK = {
+  chainId: BigInt(SEPOLIA),
+  name: 'Sepolia',
+  rpcUrls: ['http://127.0.0.1:1'],
+  selectedRpcUrl: 'http://127.0.0.1:1',
+  rpcProvider: 'rpc'
+} as Network
+
+/** The batch transport under an ethers JSON-RPC provider's `send`. */
+interface JsonRpcTransport {
+  _send(payload: unknown): Promise<unknown[]>
+}
+
+describe('through the ethers provider the extension builds for a network', () => {
+  const built: ExtensionProvider[] = []
+  afterEach(() => built.splice(0).forEach((provider) => provider.destroy()))
+
+  const providerOf = (network: Network): ExtensionProvider => {
+    const provider = extensionProviderFor(network)
+    built.push(provider)
+    return provider
+  }
+
+  /**
+   * The provider with its `send`, the member `ColibriRpcProvider` overrides,
+   * answering as the node: ethers' typed reads build each JSON-RPC request, and
+   * the node's answer or thrown error comes back through ethers.
+   */
+  const nodeAnswering = (answers: Record<string, unknown>) => {
+    const provider = providerOf(PLAIN_RPC_NETWORK)
+    const send = jest.spyOn(provider, 'send').mockImplementation(async (method: string) => {
+      if (!(method in answers)) throw new Error(`The node does not answer ${method}.`)
+      const answer = answers[method]
+      if (answer instanceof Error) throw answer
+      return answer
+    })
+    return { provider, requests: (): [string, unknown][] => send.mock.calls }
+  }
+
+  /** The requests the node received, their parameters in lower case, as JSON-RPC compares them. */
+  const lowerCased = (requests: [string, unknown][]): [string, unknown][] =>
+    requests.map(([method, params]) => [
+      method,
+      JSON.parse(JSON.stringify(params), (_key, v) => (typeof v === 'string' ? v.toLowerCase() : v))
+    ])
+
+  it("reads the node's own chain id, not the provider's network record", async () => {
+    const node = nodeAnswering({ eth_chainId: '0x1' })
+    await expect(createProviderAdapter(node.provider).chainId()).resolves.toBe(1)
+    expect(node.requests()).toEqual([['eth_chainId', []]])
+  })
+
+  it('sends one eth_getBalance of the address at the block number as a quantity', async () => {
+    const node = nodeAnswering({ eth_getBalance: '0xde0b6b3a7640000' })
+    await expect(createChainReads(node.provider).nativeBalance(FROM, 1234)).resolves.toBe(
+      10n ** 18n
+    )
+    expect(lowerCased(node.requests())).toEqual([['eth_getBalance', [FROM, '0x4d2']]])
+  })
+
+  it('sends one eth_estimateGas carrying a zero value as the quantity 0x0', async () => {
+    const node = nodeAnswering({ eth_estimateGas: '0x5208' })
+    await expect(
+      createChainReads(node.provider).estimateGas({ from: FROM, to: TO, data: DATA, value: 0n })
+    ).resolves.toBe(21_000n)
+    expect(lowerCased(node.requests())).toEqual([
+      ['eth_estimateGas', [{ from: FROM, to: TO, data: DATA, value: '0x0' }]]
+    ])
+  })
+
+  it('sends one eth_call carrying the sender, at the block tag', async () => {
+    const node = nodeAnswering({ eth_call: '0xcafe' })
+    await expect(
+      createProviderAdapter(node.provider).call(TO, DATA, FROM, 'finalized')
+    ).resolves.toBe('0xcafe')
+    expect(lowerCased(node.requests())).toEqual([
+      ['eth_call', [{ from: FROM, to: TO, data: DATA }, 'finalized']]
+    ])
+  })
+
+  it('refuses a call answer of odd length as a failed call read, since ethers reads no such bytes', async () => {
+    const node = nodeAnswering({ eth_call: '0xabc' })
+    const caught = await thrownBy(
+      createProviderAdapter(node.provider).call(TO, DATA, FROM, 'latest')
+    )
+    expect(isProviderReadFailure(caught)).toBe(true)
+    expect(readOf(caught)).toBe('call')
+  })
+
+  it('sends one eth_getLogs over the range as quantities and answers the log with its checksummed address', async () => {
+    const checksummed = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address
+    const nodeLog = {
+      address: checksummed.toLowerCase(),
+      topics: [TOPIC],
+      data: '0x01',
+      blockNumber: '0x3b6',
+      blockHash: `0x${'cd'.repeat(32)}`,
+      logIndex: '0x3',
+      transactionHash: `0x${'ef'.repeat(32)}`,
+      transactionIndex: '0x0',
+      removed: false
+    }
+    const node = nodeAnswering({ eth_getLogs: [nodeLog] })
+    const logs = await createProviderAdapter(node.provider).logs(
+      { addresses: [checksummed], topics: [TOPIC, null] },
+      { from: 900, to: 1900 }
+    )
+    expect(logs).toEqual([
+      {
+        address: checksummed,
+        topics: [TOPIC],
+        data: '0x01',
+        blockNumber: 950,
+        blockHash: nodeLog.blockHash,
+        logIndex: 3,
+        transactionHash: nodeLog.transactionHash,
+        removed: false
+      }
+    ])
+    expect(node.requests()).toHaveLength(1)
+    const [method, [spec]] = node.requests()[0] as [string, Record<string, unknown>[]]
+    expect(method).toBe('eth_getLogs')
+    expect(([] as unknown[]).concat(spec.address).map(lower)).toEqual([checksummed.toLowerCase()])
+    expect(spec).toMatchObject({ topics: [TOPIC, null], fromBlock: '0x384', toBlock: '0x76c' })
+  })
+
+  it('sends one eth_getBlockByNumber at the tag without transactions', async () => {
+    const hash = `0x${'12'.repeat(32)}`
+    const node = nodeAnswering({
+      eth_getBlockByNumber: {
+        hash,
+        parentHash: `0x${'34'.repeat(32)}`,
+        number: '0x3b6',
+        timestamp: '0x6553f100',
+        nonce: '0x0000000000000000',
+        difficulty: '0x0',
+        gasLimit: '0x1c9c380',
+        gasUsed: '0x0',
+        miner: `0x${'00'.repeat(20)}`,
+        extraData: '0x',
+        baseFeePerGas: '0x7',
+        transactions: []
+      }
+    })
+    await expect(createProviderAdapter(node.provider).block(950)).resolves.toEqual({
+      number: 950,
+      timestamp: 0x6553f100,
+      hash
+    })
+    expect(node.requests()).toEqual([['eth_getBlockByNumber', ['0x3b6', false]]])
+  })
+
+  it('rejects a revert Colibri throws from its send with the raw revert data, for a call and an estimate', async () => {
+    const revert = colibriError(3, 'execution reverted', REVERT)
+    const node = nodeAnswering({ eth_call: revert, eth_estimateGas: revert })
+    const call = await thrownBy(createProviderAdapter(node.provider).call(TO, DATA, FROM, 'latest'))
+    const estimate = await thrownBy(
+      createChainReads(node.provider).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isRevertedCall(call)).toBe(true)
+    expect(call).toMatchObject({ read: 'call', data: REVERT })
+    expect(isRevertedCall(estimate)).toBe(true)
+    expect(estimate).toMatchObject({ read: 'estimateGas', data: REVERT })
+  })
+
+  it("rejects a node's JSON-RPC revert, mapped by ethers' own transport, with the raw revert data", async () => {
+    const provider = providerOf(PLAIN_RPC_NETWORK)
+    jest
+      .spyOn(provider as unknown as JsonRpcTransport, '_send')
+      .mockImplementation(async (payload) =>
+        ([] as { id: number }[]).concat(payload as { id: number }).map(({ id }) => ({
+          id,
+          jsonrpc: '2.0',
+          error: { code: 3, message: 'execution reverted', data: REVERT }
+        }))
+      )
+    const call = await thrownBy(createProviderAdapter(provider).call(TO, DATA, FROM, 'latest'))
+    const estimate = await thrownBy(
+      createChainReads(provider).estimateGas({ from: FROM, to: TO, data: DATA })
+    )
+    expect(isRevertedCall(call)).toBe(true)
+    expect(call).toMatchObject({ read: 'call', data: REVERT })
+    expect(isRevertedCall(estimate)).toBe(true)
+    expect(estimate).toMatchObject({ read: 'estimateGas', data: REVERT })
   })
 })
 
