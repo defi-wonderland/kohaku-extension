@@ -238,18 +238,18 @@ export interface PaymentToken {
  * A token amount in human units, with at least two decimals and no trailing
  * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
  * on a negative amount, which no token transfer carries. Throws a TypeError on
- * decimals that are negative or not an integer, which no token metadata carries.
+ * decimals that are negative, not an integer or above 255, which no token
+ * metadata carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
   if (amount < 0n) {
     throw new TypeError(`Not a token amount: ${amount}`)
   }
-  if (!Number.isInteger(decimals) || decimals < 0) {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
     throw new TypeError(`Not token decimals: ${decimals}`)
   }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
-  const trimmed = fraction.replace(/0+$/, '')
-  return `${whole}.${trimmed.padEnd(2, '0')}`
+  return `${whole}.${fraction.padEnd(2, '0')}`
 }
 
 /**
