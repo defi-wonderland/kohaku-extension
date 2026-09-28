@@ -15,7 +15,6 @@ import type {
   Address,
   ClientConfiguration,
   DeploymentDescriptor,
-  Hex,
   IActionCodec,
   IEventManager,
   IMethodModuleReads,
@@ -33,7 +32,7 @@ import type {
 import { ActionCodecDouble } from './action-codec'
 import type { ScriptedChain } from './chain'
 import { ClientContext, defaultClientConfiguration } from './context'
-import { sameAddress } from './encoding'
+import { MANAGER_DOMAIN_FIELDS, sameAddress } from './encoding'
 import { codedError, type CodedError } from './scripts'
 import { EventManagerDouble } from './event-manager'
 import { MethodsOrchestratorDouble } from './orchestrator'
@@ -42,12 +41,6 @@ import { ProviderDouble } from './provider'
 import { narrowActionInteractor, RecoveryActionDouble } from './recovery-action'
 import { RecoveryClientDouble } from './recovery-client'
 import { SetupClientDouble } from './setup-client'
-
-/**
- * The EIP-5267 `fields` bitmap of the manager's domain: name, version, chain id
- * and verifying contract, the four members the digests derive under.
- */
-export const MANAGER_DOMAIN_FIELDS: Hex = '0x0f'
 
 const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
   'chainId',
