@@ -14,6 +14,7 @@
  *
  * Pure: the platform is a parameter, read from `navigator` by the screen.
  */
+import type { Translate } from '../display'
 import type { PasskeyFacts } from './webauthn'
 
 export const PASSKEY_PROVIDERS = ['apple', 'google', 'passwordManager'] as const
@@ -104,7 +105,7 @@ export const lossLineKeyOf = (facts: Pick<PasskeyFacts, 'kind'>): string =>
 export const renderKindLine = (
   facts: Pick<PasskeyFacts, 'kind' | 'aaguid' | 'place'>,
   platform: Platform,
-  t: (key: string, options?: Record<string, unknown>) => string
+  t: Translate
 ): string => {
   const line = kindLineOf(facts, platform)
   return t(line.key, { [line.param]: t(line.nameKey) })

@@ -9,8 +9,8 @@
 import fs from 'fs'
 import path from 'path'
 
+import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
 
 import { ceremony } from './harness'
 
@@ -40,7 +40,7 @@ const lookup = (key: string): unknown =>
 
 const expectResolves = (key: string) => {
   expect({ key, value: typeof lookup(key) }).toEqual({ key, value: 'string' })
-  expect({ key, rendered: appTranslate(key) === key }).toEqual({ key, rendered: false })
+  expect({ key, rendered: i18n.t(key) === key }).toEqual({ key, rendered: false })
 }
 
 describe('the ceremony tab strings', () => {

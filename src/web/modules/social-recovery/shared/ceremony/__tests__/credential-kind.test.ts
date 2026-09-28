@@ -8,7 +8,7 @@
  * that it is backed up. A credential with neither is device bound.
  */
 /* eslint-disable no-bitwise -- the flags are bits */
-import { appTranslate } from '@web/modules/social-recovery/shared/display'
+import i18n from '@common/config/localization'
 
 import {
   APPLE_AAGUID,
@@ -135,7 +135,7 @@ describe('the kind line of an enrollment', () => {
       }
     ).value.facts
     // The line the screen renders: the page's own platform and the app's own strings.
-    return ceremony().renderKindLine(facts, browserDefaults().pagePlatform(), appTranslate)
+    return ceremony().renderKindLine(facts, browserDefaults().pagePlatform(), i18n.t)
   }
 
   it("names Google for a synced passkey with Google Password Manager's AAGUID", async () => {

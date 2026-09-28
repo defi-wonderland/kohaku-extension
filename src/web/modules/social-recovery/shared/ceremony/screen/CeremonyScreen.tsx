@@ -239,7 +239,7 @@ const CeremonyScreen = () => {
       ) : (
         <>
           <Spinner style={spacings.mbSm} />
-          <Text>{renderChip('method', 'inProgress')}</Text>
+          <Text>{renderChip('method', 'inProgress', t)}</Text>
         </>
       )}
       <Button
@@ -271,8 +271,8 @@ const CeremonyScreen = () => {
         {chip && (
           <Text weight="semiBold" style={spacings.mbSm}>
             {chip.set === 'method'
-              ? renderChip('method', chip.chip)
-              : renderChip('collection', chip.chip)}
+              ? renderChip('method', chip.chip, t)
+              : renderChip('collection', chip.chip, t)}
           </Text>
         )}
         {chromeOnly ? (
