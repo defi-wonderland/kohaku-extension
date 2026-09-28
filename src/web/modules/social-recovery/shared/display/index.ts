@@ -4,6 +4,6 @@
  * screen imports them and never truncates a value or spells a chip, a noun or a
  * password name on its own.
  */
-export * from './translate'
+export * from './types'
 export * from './vocabulary'
 export * from './renderers'

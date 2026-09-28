@@ -10,7 +10,16 @@ import { formatUnits, getAddress, isAddress, isHex, zeroAddress } from 'viem'
 import i18n from '@common/config/localization'
 import type { Address, Hex, PaymentOrder } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { Translate } from './translate'
+import type {
+  CountdownState,
+  NameUse,
+  PaymentToken,
+  RenderedDeadline,
+  RenderedHiddenValue,
+  RenderedMemberList,
+  RenderedName,
+  Translate
+} from './types'
 import { renderChip, renderValueLabel } from './vocabulary'
 
 /** The one ellipsis every truncation uses. */
@@ -135,14 +144,6 @@ export const ellipsizeName = (name: string): string => {
  * - `informationOnly`: where the screen asks the reader to check nothing.
  */
 export const NAME_USES = ['besideAddressToCheck', 'aloneForAction', 'informationOnly'] as const
-export type NameUse = typeof NAME_USES[number]
-
-export interface RenderedName {
-  /** The name, ellipsized past 24 characters. */
-  name: string
-  /** The caveat, or null where the screen asks the reader to check nothing. */
-  caveat: string | null
-}
 
 /** Tells whether a resolved name in this use carries the caveat. */
 export const nameNeedsCaveat = (use: NameUse): boolean => use !== 'informationOnly'
@@ -172,13 +173,6 @@ export const renderResolvedName = (
 // Hidden value
 // ---------------------------------------------------------------------------
 
-export interface RenderedHiddenValue {
-  /** Sixteen dots. */
-  dots: string
-  /** The hidden chip that renders beside them. */
-  chip: string
-}
-
 /**
  * A hidden value as sixteen dots beside a hidden chip, so a masked value never
  * looks like a load failure.
@@ -194,15 +188,6 @@ export const renderHiddenValue = (t: Translate = i18n.t): RenderedHiddenValue =>
 
 /** How many members a list shows before the count of the rest. */
 export const MEMBER_LIST_VISIBLE = 3
-
-export interface RenderedMemberList<T> {
-  /** The members the list shows, in the order given. */
-  shown: readonly T[]
-  /** How many members the list does not show. */
-  restCount: number
-  /** The count line, `2 more members`, or null where nothing is left out. */
-  more: string | null
-}
 
 /**
  * A member list as three members then a count of the rest. The recovery
@@ -227,12 +212,6 @@ export const renderMemberList = <T>(
 // ---------------------------------------------------------------------------
 // Payment order
 // ---------------------------------------------------------------------------
-
-/** What the wallet knows of the token a payment order names. */
-export interface PaymentToken {
-  symbol: string
-  decimals: number
-}
 
 /**
  * A token amount in human units, with at least two decimals and no trailing
@@ -291,19 +270,6 @@ const HOUR_MS = 60 * MINUTE_MS
 
 /** The locale the deadline's date and time render in, `13 Aug, 18:04 CEST`. */
 export const DEADLINE_LOCALE = 'en-GB'
-
-export interface RenderedDeadline {
-  /** The date and time in the reader's zone with the zone named, `13 Aug, 18:04 CEST`. */
-  date: string
-  /** The zone's name as the date shows it, `CEST`. */
-  zone: string
-  /** The time left, `23 hours`, or null once the deadline has passed. */
-  remaining: string | null
-  /** True once `now` reaches the deadline. */
-  passed: boolean
-  /** The deadline line, `Valid until 13 Aug, 18:04 CEST · 23 hours left`, or null once passed. */
-  line: string | null
-}
 
 // The largest distance from the epoch, in milliseconds, that a Date can hold.
 const MAX_TIME_MS = 8.64e15
@@ -405,7 +371,6 @@ export const renderCountdownTime = (remainingMs: number): string => {
 
 /** The two states of a running attempt's countdown. */
 export const COUNTDOWN_STATES = ['waiting', 'executionDue'] as const
-export type CountdownState = typeof COUNTDOWN_STATES[number]
 
 /**
  * The countdown state the time left gives: waiting while a whole second is
