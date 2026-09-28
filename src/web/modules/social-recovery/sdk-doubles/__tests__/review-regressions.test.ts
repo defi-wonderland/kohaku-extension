@@ -17,7 +17,7 @@ import type {
   SetupDraft,
   ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { hashTypedData, keccak256, stringToHex } from 'viem'
+import { hashTypedData, keccak256, sha256, stringToHex } from 'viem'
 
 import {
   completedRequest,
@@ -196,7 +196,7 @@ describe('validateSetup computes its own findings', () => {
 
   it('fills passkeyDomains in describeSetup, one row per passkey place', async () => {
     const world = createWorld()
-    const rpIdHash = keccak256(stringToHex('wallet.example'))
+    const rpIdHash = sha256(stringToHex('wallet.example'))
     const passkey: Credential = {
       method: world.descriptor.methodPasskey,
       config: world.methods.passkey.codec.encodeConfig({ publicKey: '0x04aa', rpIdHash })

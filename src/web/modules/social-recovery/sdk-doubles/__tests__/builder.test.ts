@@ -83,7 +83,7 @@ describe('builder double', () => {
     expect((action as unknown as Record<string, unknown>).armingCall).toBeUndefined()
   })
 
-  it('prepares recovery calls for the served action with no codec registered', async () => {
+  it('supplies the shipped codec for the chain’s own action when none is registered', async () => {
     const world = createWorld()
     const committed = world.script.setupCommitted('private')
     world.script.authorized(true)
