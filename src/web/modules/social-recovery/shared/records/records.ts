@@ -18,7 +18,7 @@ import { bytesToHex, isAddress, isAddressEqual } from 'viem'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { ABSENT, RECOVERY_WIPE_EVENTS, SETUP_RECORD_NAMES } from './types'
+import { ABSENT, SETUP_RECORD_NAMES } from './types'
 import type {
   ChainId,
   CountdownAccessor,
@@ -33,7 +33,6 @@ import type {
   RecordRead,
   RecoverySessionAccessor,
   RecoverySessionRecord,
-  RecoveryWipeEvent,
   SessionRead,
   SessionRevision,
   SetupRecordName,
@@ -175,19 +174,9 @@ export const isSessionRevisionConflict = (error: unknown): error is SessionRevis
 export const revisionOf = (read: SessionRead | CountdownRead): ExpectedRevision =>
   read.status === 'present' ? read.revision : null
 
-const assertExpectedRevision = (expected: unknown): void => {
-  if (expected === null || (typeof expected === 'string' && expected !== '')) return
-  throw new Error(
-    'An update of the recovery session takes the revision its caller read, or null for no session'
-  )
-}
-
 /** The age of a read record in milliseconds at `at`, or `null` for an absent record. */
 export const recordAge = <T>(read: RecordRead<T>, at: number): number | null =>
   read.status === 'present' ? at - read.savedAt : null
-
-export const isRecoveryWipeEvent = (event: unknown): event is RecoveryWipeEvent =>
-  typeof event === 'string' && (RECOVERY_WIPE_EVENTS as readonly string[]).includes(event)
 
 /** The account a session record names, in any state. */
 export const sessionAccount = (session: RecoverySessionRecord): Address =>
@@ -296,7 +285,6 @@ export const createWalletRecords = ({
     apply: (current: SessionRead, key: string) => Promise<R>
   ): Promise<R> => {
     const key = recordKeys.recoverySession(chainId, account)
-    assertExpectedRevision(expectedRevision)
     return inQueue(key, async () => apply(await readSessionAt(key), key))
   }
 
@@ -409,24 +397,17 @@ export const createWalletRecords = ({
    * gathering, with its replies and its attempt id, is deleted, and the session
    * keeps the reason, the account and, for `deadline-passed`, the deadline.
    * Returns whether it wiped anything: an absent, wiped or landed session is
-   * left unchanged. `submission-landed` runs through `landSubmission`; it and
-   * any value outside the vocabulary, a security stop or a pause among them,
-   * throw and wipe nothing. Throws `SessionRevisionConflict` when the session
-   * changed after the caller read `expectedRevision`.
+   * left unchanged. `submission-landed` runs through `landSubmission`, and a
+   * security stop or a pause is no wipe event. Throws `SessionRevisionConflict`
+   * when the session changed after the caller read `expectedRevision`.
    */
-  const wipeRecoverySession = async (
+  const wipeRecoverySession = (
     chainId: ChainId,
     account: Address,
     event: DirectWipeEvent,
     expectedRevision: ExpectedRevision
-  ): Promise<boolean> => {
-    if (!isRecoveryWipeEvent(event)) {
-      throw new Error(`Not a recovery wipe event: ${String(event)}`)
-    }
-    if ((event as RecoveryWipeEvent) === 'submission-landed') {
-      throw new Error('The submission landing runs through landSubmission')
-    }
-    return updateSession(chainId, account, expectedRevision, async (current, key) => {
+  ): Promise<boolean> =>
+    updateSession(chainId, account, expectedRevision, async (current, key) => {
       if (current.status !== 'present' || current.value.state !== 'live') return false
       const { request } = current.value.gathering
       await writeSessionAt(key, {
@@ -437,7 +418,6 @@ export const createWalletRecords = ({
       })
       return true
     })
-  }
 
   /**
    * The submission landed: the live session survives as the countdown's record,
