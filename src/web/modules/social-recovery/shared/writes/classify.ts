@@ -30,6 +30,7 @@ import type {
   FailedState,
   FailureContext,
   LandedState,
+  ProviderReceipt,
   ReplacedReason,
   RevertCause,
   SubmittingState,
@@ -53,48 +54,41 @@ export const REPLACED_REASONS = ['cancelled', 'replaced'] as const
 /** A transaction hash: `0x` and exactly 64 hex digits. */
 const isTransactionHash = (value: unknown): value is Hex => isHex(value) && value.length === 66
 
-const statusOf = (value: unknown): 0 | 1 | undefined => {
-  if (value === 0 || value === 0n || value === '0x0' || value === '0x00' || value === false)
-    return 0
-  if (value === 1 || value === 1n || value === '0x1' || value === '0x01' || value === true) return 1
-  return undefined
-}
-
-const bigintOf = (value: unknown): bigint | undefined => {
-  if (typeof value === 'bigint') return value
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return BigInt(value)
-  if (typeof value === 'string' && ((isHex(value) && value.length > 2) || /^[0-9]+$/.test(value)))
-    return BigInt(value)
-  return undefined
+/**
+ * Reads a write's receipt from ethers' `TransactionReceipt`. Answers undefined
+ * for a receipt whose hash is not a transaction hash or whose status is
+ * neither one nor zero, so a pre-Byzantium receipt with no status is never
+ * read as either reading.
+ */
+export const receiptOf = (receipt: ProviderReceipt): WriteReceipt | undefined => {
+  const { hash, status, blockNumber, gasUsed, gasPrice } = receipt
+  if (!isTransactionHash(hash) || (status !== 0 && status !== 1)) return undefined
+  return {
+    transactionHash: hash,
+    status,
+    ...(blockNumber !== undefined ? { blockNumber } : {}),
+    ...(gasUsed !== undefined ? { gasUsed } : {}),
+    ...(gasPrice !== undefined ? { effectiveGasPrice: gasPrice } : {})
+  }
 }
 
 /**
- * Reads a receipt from what a provider answered: ethers' `TransactionReceipt`
- * (`hash`, a numeric `status`) or a node's JSON receipt (`transactionHash`, a
- * quantity `status`). Answers undefined for a value that is not a receipt with
- * a known status, so a pre-Byzantium receipt with no status is never read as
- * either reading.
+ * The receipt a thrown value carries: ethers' `CALL_EXCEPTION` and
+ * `TRANSACTION_REPLACED` carry its `TransactionReceipt`. A member is read
+ * where it has the type ethers gives it; a block number or a gas factor of
+ * another type is left out.
  */
-export const receiptOf = (value: unknown): WriteReceipt | undefined => {
+const carriedReceiptOf = (value: unknown): WriteReceipt | undefined => {
   if (!value || typeof value !== 'object') return undefined
-  const record = value as Record<string, unknown>
-  const transactionHash = isTransactionHash(record.transactionHash)
-    ? record.transactionHash
-    : isTransactionHash(record.hash)
-    ? record.hash
-    : undefined
-  const status = statusOf(record.status)
-  if (!transactionHash || status === undefined) return undefined
-  const blockNumber = bigintOf(record.blockNumber)
-  const gasUsed = bigintOf(record.gasUsed)
-  const effectiveGasPrice = bigintOf(record.effectiveGasPrice ?? record.gasPrice)
-  return {
-    transactionHash,
+  const { hash, status, blockNumber, gasUsed, gasPrice } = value as Record<string, unknown>
+  if (typeof hash !== 'string' || typeof status !== 'number') return undefined
+  return receiptOf({
+    hash,
     status,
-    ...(blockNumber !== undefined ? { blockNumber: Number(blockNumber) } : {}),
-    ...(gasUsed !== undefined ? { gasUsed } : {}),
-    ...(effectiveGasPrice !== undefined ? { effectiveGasPrice } : {})
-  }
+    ...(typeof blockNumber === 'number' ? { blockNumber } : {}),
+    ...(typeof gasUsed === 'bigint' ? { gasUsed } : {}),
+    ...(typeof gasPrice === 'bigint' ? { gasPrice } : {})
+  })
 }
 
 const isReplacedReason = (value: unknown): value is ReplacedReason =>
@@ -129,9 +123,9 @@ export const writeFailureOf = (thrown: unknown): WriteFailure => {
         replaced = record.reason
         return
       }
-      if (record.reason === 'repriced') receipt = receiptOf(record.receipt)
+      if (record.reason === 'repriced') receipt = carriedReceiptOf(record.receipt)
     }
-    if (!receipt) receipt = receiptOf(record.receipt)
+    if (!receipt) receipt = carriedReceiptOf(record.receipt)
     if (!transactionHash) {
       if (isTransactionHash(record.transactionHash)) transactionHash = record.transactionHash
       else if (isTransactionHash(record.hash)) transactionHash = record.hash

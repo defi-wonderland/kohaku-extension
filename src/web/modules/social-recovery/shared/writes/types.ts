@@ -1,3 +1,5 @@
+import type { TransactionReceipt } from 'ethers'
+
 import type {
   Address,
   Hex,
@@ -9,7 +11,8 @@ import type {
 import type {
   ChainReads,
   GasEstimateCall,
-  KeyHandle
+  KeyHandle,
+  ProviderReadFailure
 } from '@web/modules/social-recovery/shared/client'
 
 import type { ATTEMPT_ENDS, ATTEMPT_STILL_RUNNING, REPLACED_REASONS } from './classify'
@@ -52,14 +55,14 @@ export interface CheckingGasState {
 
 /**
  * A read of the gas check could not run: the balance, the estimate or the gas
- * price (a `ProviderReadFailure`). It is part of the gas check, not a reading
- * of the failed state: the write was never about to be sent, so it offers the
- * check again rather than reading that the transaction was rejected.
+ * price. It is part of the gas check, not a reading of the failed state: the
+ * write was never about to be sent, so it offers the check again rather than
+ * reading that the transaction was rejected.
  */
 export interface GasReadErrorState {
   status: 'gasReadError'
   write: WriteKind
-  error: unknown
+  error: ProviderReadFailure
 }
 
 /** The sending key holds too little: the deposit step, rather than a failed transaction. */
@@ -135,6 +138,13 @@ export type WriteState =
 // ---------------------------------------------------------------------------
 // Receipts, failures and the causes of a revert
 // ---------------------------------------------------------------------------
+
+/**
+ * The members of ethers' `TransactionReceipt` a write's receipt reads. A
+ * receipt a thrown value carries may lack the block number or a gas factor.
+ */
+export type ProviderReceipt = Pick<TransactionReceipt, 'hash' | 'status'> &
+  Partial<Pick<TransactionReceipt, 'blockNumber' | 'gasUsed' | 'gasPrice'>>
 
 /** The part of a transaction receipt the classification reads. */
 export interface WriteReceipt {
