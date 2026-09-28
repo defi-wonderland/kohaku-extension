@@ -173,6 +173,17 @@ describe('token amount', () => {
   it('renders a zero amount as 0.00', () => {
     expect(renderTokenAmount(0n, 6)).toBe('0.00')
   })
+
+  it('refuses decimals that are negative, fractional or not a number', () => {
+    expectRefusal(() => renderTokenAmount(12n, -2), 'Not token decimals: -2')
+    expectRefusal(() => renderTokenAmount(12n, 1.5), 'Not token decimals: 1.5')
+    expectRefusal(() => renderTokenAmount(12n, NaN), 'Not token decimals: NaN')
+  })
+
+  it('still renders with zero decimals and with six', () => {
+    expect(renderTokenAmount(12n, 0)).toBe('12.00')
+    expect(renderTokenAmount(12_500_000n, 6)).toBe('12.50')
+  })
 })
 
 describe('payment order: amount, symbol and payee, or no payment, in one form', () => {
