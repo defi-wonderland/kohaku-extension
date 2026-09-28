@@ -159,7 +159,7 @@ export const buildRecoveryClient = async (
   // handed; the SDK's own construction check reads it through the provider.
   const domain = await manager.eip712Domain()
   if (
-    Number(domain.chainId) !== descriptor.chainId ||
+    domain.chainId !== BigInt(descriptor.chainId) ||
     !sameAddress(domain.verifyingContract, descriptor.manager)
   ) {
     throw constructionRefusal('domain', 'The manager domain disagrees with the descriptor.')
