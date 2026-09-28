@@ -4,7 +4,9 @@
  * The deposit step's copy action on the mounted view. A copy the clipboard
  * refuses, or answers false for, shows the line that tells the holder to
  * select the address by hand; a copy that succeeds shows nothing; a screen's
- * own copy action gets the address and leaves the clipboard alone.
+ * own copy action gets the address and leaves the clipboard alone. The line
+ * belongs to the address it was about: it leaves when the step names another
+ * key, and a copy of the old address that fails late shows nothing.
  *
  * The repository's Jest runs ts-jest under `jsx: react-native`, which leaves
  * JSX untransformed, so the test compiles the view's source with its JSX as
@@ -21,12 +23,14 @@ import ts from 'typescript'
 import { TextDecoder, TextEncoder } from 'util'
 import vm from 'vm'
 
+import type { DepositStep } from '@web/modules/social-recovery/shared/writes'
 import type { DepositStepViewProps } from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
 const harness = jest.requireActual<typeof import('./harness')>('./harness')
-const { depositStepFor, GAS_KEYS, renderDepositStep } = harness
+const { depositStepFor, GAS_KEYS, mockReads, OTHER_KEY, renderDepositStep, runGasCheck, stepOf } =
+  harness
 const { appTranslate: t } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/display')
 >('@web/modules/social-recovery/shared/display')
@@ -98,13 +102,36 @@ afterEach(() => {
   container.remove()
 })
 
-const mount = async (props: Omit<DepositStepViewProps, 'step'> = {}) => {
-  const step = await depositStepFor('submission', false)
-  root = createRoot(container)
+/** Renders the view with `step`, mounting it on the first call. */
+const show = async (step: DepositStep, props: Omit<DepositStepViewProps, 'step'> = {}) => {
+  if (!root) root = createRoot(container)
   await act(async () => {
     root?.render(React.createElement(DepositStepView, { step, ...props }))
   })
   return renderDepositStep(step)
+}
+
+const mount = async (props: Omit<DepositStepViewProps, 'step'> = {}) =>
+  show(await depositStepFor('submission', false), props)
+
+/** The same step for another sending key. */
+const stepForOtherKey = async (): Promise<DepositStep> =>
+  stepOf(
+    await runGasCheck({
+      write: 'submission',
+      key: OTHER_KEY,
+      reads: mockReads({ balance: 0n, gas: 240_000n })
+    })
+  )
+
+/** Settles a pending promise inside `act`, and lets its callbacks run. */
+const settle = async (settleIt: () => void) => {
+  await act(async () => {
+    settleIt()
+    await new Promise((done) => {
+      setTimeout(done, 0)
+    })
+  })
 }
 
 const pressCopy = async () => {
@@ -112,12 +139,7 @@ const pressCopy = async () => {
     (candidate) => candidate.textContent === t(GAS_KEYS.copy)
   )
   if (!button) throw new Error('The copy button is not on the step')
-  await act(async () => {
-    button.click()
-    await new Promise((settle) => {
-      setTimeout(settle, 0)
-    })
-  })
+  await settle(() => button.click())
 }
 
 describe('DepositStepView: copying the key address', () => {
@@ -161,5 +183,40 @@ describe('DepositStepView: copying the key address', () => {
     expect(onCopy).toHaveBeenCalledWith(rendered.keyAddress)
     expect(setStringAsync).not.toHaveBeenCalled()
     expect(container.textContent).not.toContain(COPY_FAILED)
+  })
+
+  it('the line leaves when the step names another key', async () => {
+    setStringAsync.mockRejectedValue(new Error('The document is not focused'))
+    await mount()
+    await pressCopy()
+    expect(container.textContent).toContain(COPY_FAILED)
+
+    const other = await show(await stepForOtherKey())
+    expect(container.textContent).toContain(other.keyAddress)
+    expect(container.textContent).not.toContain(COPY_FAILED)
+  })
+
+  it('a copy that fails after the key changed shows no line under the new address', async () => {
+    let refuse: ((error: Error) => void) | undefined
+    setStringAsync.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((_, reject) => {
+          refuse = reject
+        })
+    )
+    const first = await mount()
+    await pressCopy()
+    expect(setStringAsync).toHaveBeenCalledWith(first.keyAddress)
+
+    const other = await show(await stepForOtherKey())
+    expect(refuse).toBeDefined()
+    await settle(() => refuse?.(new Error('The document is not focused')))
+    expect(container.textContent).toContain(other.keyAddress)
+    expect(container.textContent).not.toContain(COPY_FAILED)
+
+    setStringAsync.mockRejectedValueOnce(new Error('The document is not focused'))
+    await pressCopy()
+    expect(setStringAsync).toHaveBeenLastCalledWith(other.keyAddress)
+    expect(container.textContent).toContain(COPY_FAILED)
   })
 })
