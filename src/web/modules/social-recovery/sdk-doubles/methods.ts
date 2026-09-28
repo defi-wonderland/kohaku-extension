@@ -56,8 +56,7 @@ const enrollFailure = (cause: EnrollFailure['cause']): EnrollFailure => ({
   cause
 })
 
-const nonEmptyHex = (value: unknown): value is Hex =>
-  typeof value === 'string' && isHex(value) && value !== '0x'
+const nonEmptyHex = (value: unknown): value is Hex => isHex(value) && value !== '0x'
 
 /** A pass-through proof codec: the doubles' proofs are opaque bytes. */
 const opaqueProof = {

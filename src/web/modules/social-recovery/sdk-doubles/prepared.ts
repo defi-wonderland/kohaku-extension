@@ -17,6 +17,7 @@ import type {
 import { concat, keccak256, stringToHex } from 'viem'
 
 import type { ChainEffect, ScriptedChain } from './chain'
+import { DEFAULT_SIMULATE } from './context'
 import { addressOf, toJson } from './encoding'
 
 let serial = 0
@@ -61,7 +62,7 @@ export const composeCall = (chain: ScriptedChain, input: ComposeInput): Prepared
 export const shouldSimulate = (
   options: PrepareOptions | undefined,
   fallback: boolean | undefined
-) => options?.simulate ?? fallback ?? true
+) => options?.simulate ?? fallback ?? DEFAULT_SIMULATE
 
 /**
  * The address a simulation runs from: the account for a call the account sends,

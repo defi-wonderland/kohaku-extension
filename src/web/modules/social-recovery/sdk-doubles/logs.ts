@@ -15,7 +15,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { keccak256, stringToHex } from 'viem'
 
-import { hexJson, jsonHex, topicOf } from './encoding'
+import { hexJson, jsonHex, sameAddress, topicOf } from './encoding'
 
 /** The Solidity event behind each notification kind. */
 export const EVENT_NAMES: Record<NotificationKind, string> = {
@@ -119,7 +119,7 @@ export const matchesFilter = (
   log: RawLog,
   filter: { addresses: Address[]; topics: (Hex | Hex[] | null)[] }
 ): boolean => {
-  if (!filter.addresses.some((a) => a.toLowerCase() === log.address.toLowerCase())) return false
+  if (!filter.addresses.some((a) => sameAddress(a, log.address))) return false
   return filter.topics.every((wanted, i) => {
     if (wanted === null || wanted === undefined) return true
     const actual = log.topics[i]?.toLowerCase()

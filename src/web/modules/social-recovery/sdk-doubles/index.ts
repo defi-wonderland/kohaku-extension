@@ -23,13 +23,12 @@ export {
   doubleProof,
   levelOfFields,
   levelOfMetadata,
+  MANAGER_DOMAIN_FIELDS,
   readBackup,
   readPublicNote,
   setupBodyOf,
   setupCommitmentOf,
   typedDataOf,
-  ZERO_ADDRESS,
-  ZERO_HASH,
   type BackupReading,
   type PlaceTypedData,
   type PublicNoteReading,
@@ -59,7 +58,18 @@ export {
   replyReadable,
   requestReadable
 } from './orchestrator'
-export { defaultClientConfiguration, restoreConfiguration, type ClientContext } from './context'
+export {
+  DEFAULT_CANCEL_WINDOW,
+  DEFAULT_MAXIMUM_WAIT,
+  DEFAULT_REQUEST_WINDOW,
+  DEFAULT_RULE_COST_BOUND,
+  DEFAULT_SHORT_WAIT_BELOW,
+  DEFAULT_SIMULATE,
+  DEFAULT_WAIT,
+  defaultClientConfiguration,
+  restoreConfiguration,
+  type ClientContext
+} from './context'
 export { SetupClientDouble, configurationOfDraft, levelOfDraft } from './setup-client'
 export { RecoveryClientDouble, MOMENT_SKEW_SPAN } from './recovery-client'
 export {

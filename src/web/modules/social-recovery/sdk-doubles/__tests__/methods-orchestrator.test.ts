@@ -1,14 +1,16 @@
+import { replyReadable, requestReadable } from '@web/modules/social-recovery/sdk-doubles'
 import {
   METHOD_FAILURE_CAUSES,
   VERDICTS,
   type ApproverReply,
   type ApproverRequest,
+  type Hex,
   type ReplyFailure
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { getAddress, isAddress } from 'viem'
 
-import { createWorld, expectThrown, isHex, openRecovery } from './harness'
+import { createWorld, eachIt, expectThrown, isHex, openRecovery, replyFor } from './harness'
 
 const firstRequest = async () => {
   const { world, requests } = await openRecovery()
@@ -159,5 +161,90 @@ describe('methods orchestrator double', () => {
     await expectThrown(async () =>
       orchestrator.enrollInput(world.descriptor.methodEcdsa, { address: world.keys.held })
     )
+  })
+})
+
+describe('a record whose hex member is not plain 0x hex', () => {
+  /** The hex members of each record, a nested one by its dotted path. */
+  const REQUEST_HEX = [
+    'manager',
+    'account',
+    'action',
+    'setupBodyHash',
+    'method',
+    'config',
+    'salt',
+    'payload',
+    'order.token',
+    'order.payee'
+  ]
+  const REPLY_HEX = ['manager', 'account', 'action', 'method', 'config', 'salt', 'digest', 'proof']
+
+  const valueAt = (record: object, path: string): Hex =>
+    path
+      .split('.')
+      .reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], record) as Hex
+
+  const withValue = <T extends object>(record: T, path: string, value: string): T => {
+    const [head, ...rest] = path.split('.') as [string, ...string[]]
+    const inner = (record as Record<string, unknown>)[head] as object
+    return { ...record, [head]: rest.length ? withValue(inner, rest.join('.'), value) : value }
+  }
+
+  const opened = async () => {
+    const o = await openRecovery()
+    const request = o.requests[0]!
+    return { ...o, request, reply: await replyFor(o.world, request) }
+  }
+
+  eachIt([
+    ['an upper-case 0X prefix', (v: Hex) => `0X${v.slice(2)}`],
+    ['a space among its digits', (v: Hex) => `${v.slice(0, 4)} ${v.slice(4)}`],
+    ['a digit outside hex', (v: Hex) => `${v}g`]
+  ] as const)('is not read where the member has %s', async ([, malform]) => {
+    const { world, recovery, gathering, request, reply } = await opened()
+    const reads = world.walletReads()
+    expect(requestReadable(request)).toBe(true)
+    expect(replyReadable(reply)).toBe(true)
+    const requestVerdicts = await Promise.all(
+      REQUEST_HEX.map(async (path) => {
+        const bad = withValue(request, path, malform(valueAt(request, path)))
+        return [path, requestReadable(bad), await reads.verifyReply(bad, reply)]
+      })
+    )
+    expect(requestVerdicts).toEqual(REQUEST_HEX.map((path) => [path, false, 'rejected']))
+    const replyVerdicts = await Promise.all(
+      REPLY_HEX.map(async (path) => {
+        const bad = withValue(reply, path, malform(valueAt(reply, path)))
+        return [
+          path,
+          replyReadable(bad),
+          await reads.verifyReply(request, bad),
+          recovery.addApproverReply(gathering, bad).reason?.cause
+        ]
+      })
+    )
+    expect(replyVerdicts).toEqual(
+      REPLY_HEX.map((path) => [path, false, 'rejected', 'version-unread'])
+    )
+  })
+
+  it('is read where its hex digits are upper-case', async () => {
+    const { world, recovery, gathering, request, reply } = await opened()
+    const loud = (v: Hex) => `0x${v.slice(2).toUpperCase()}`
+    const loudRequest = REQUEST_HEX.reduce(
+      (r, path) => withValue(r, path, loud(valueAt(r, path))),
+      request
+    )
+    const loudReply = REPLY_HEX.reduce(
+      (r, path) => withValue(r, path, loud(valueAt(r, path))),
+      reply
+    )
+    expect(loudRequest.config).not.toBe(request.config)
+    expect(loudReply.proof).not.toBe(reply.proof)
+    expect(requestReadable(loudRequest)).toBe(true)
+    expect(replyReadable(loudReply)).toBe(true)
+    expect(await world.walletReads().verifyReply(request, loudReply)).toBe('satisfied')
+    expect(recovery.addApproverReply(gathering, loudReply).reason).toBeUndefined()
   })
 })

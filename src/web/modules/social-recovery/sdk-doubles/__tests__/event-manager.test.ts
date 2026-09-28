@@ -1,6 +1,7 @@
+import { addressOf, EventManagerDouble } from '@web/modules/social-recovery/sdk-doubles'
 import { NOTIFICATION_KINDS, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isAddress, isHex, World } from './harness'
+import { createWorld, expectThrown, isAddress, isHex, upperCased, World } from './harness'
 
 const everything = async (world: World, filter = world.events.accountFilter()) => {
   const at = await world.provider.block('latest')
@@ -39,6 +40,40 @@ describe('event manager double', () => {
     expect(wide.topics).toContain(null)
     expect(accountFilter.topics).not.toContain(null)
     expect(wide.topics.length).toBe(accountFilter.topics.length)
+  })
+
+  it('names each method module once in the method filter, under the spelling first given', () => {
+    const world = createWorld()
+    const d = world.descriptor
+    const extra = addressOf('third-party-method')
+    const events = new EventManagerDouble(world.chain, world.provider, [
+      upperCased(d.methodPasskey),
+      extra,
+      upperCased(extra)
+    ])
+    expect(events.methodFilter().addresses).toEqual([
+      d.methodEcdsa,
+      d.methodPasskey,
+      d.methodAadhaar,
+      d.methodZkpassport,
+      extra
+    ])
+  })
+
+  it('fetches a module’s logs where it was registered in another letter case than its logs carry', async () => {
+    const world = createWorld()
+    const module = addressOf('third-party-method')
+    const keys: Hex[] = [`0x${'22'.repeat(32)}`]
+    world.script.keysUpdated(module, keys)
+    const events = new EventManagerDouble(world.chain, world.provider, [upperCased(module)])
+    const at = await world.provider.block('latest')
+    const notes = await events.fetch(events.methodFilter(), {
+      from: world.descriptor.deployedAt,
+      to: at.number
+    })
+    const updated = notes.filter((n) => n.kind === 'method-keys-updated')
+    expect(updated).toHaveLength(1)
+    expect(updated[0]).toMatchObject({ method: module, current: keys })
   })
 
   it('serves SetupCommitted for a committed setup, in log order with a position', async () => {
