@@ -236,7 +236,7 @@ export interface WalletRecordsOptions {
 
 export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOptions) => {
   const readKey = async <T>(key: string): Promise<RecordRead<T>> => {
-    const stored = await storage.get(key, undefined)
+    const stored: unknown = await storage.get(key, undefined)
     if (!isStoredRecord(stored)) return ABSENT
     return { status: 'present', value: stored.value as T, savedAt: stored.savedAt }
   }
@@ -300,7 +300,7 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
   // --- the recovery session ------------------------------------------------
 
   const readSessionAt = async (key: string): Promise<SessionRead> => {
-    const stored = await storage.get(key, undefined)
+    const stored: unknown = await storage.get(key, undefined)
     if (!isStoredSession(stored)) return ABSENT
     return {
       status: 'present',
@@ -370,7 +370,10 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
             `A recovery session holds an approval gathering, not ${gathering.purpose}`
           )
         }
-        if (!isAddressEqual(request.account, account)) {
+        if (
+          !isAddress(request.account, { strict: false }) ||
+          !isAddressEqual(request.account, account)
+        ) {
           throw new Error(`The gathering names account ${request.account}, not ${account}`)
         }
         if (chainPart(request.chainId) !== chainPart(chainId)) {
