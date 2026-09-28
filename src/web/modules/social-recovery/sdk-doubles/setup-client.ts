@@ -42,7 +42,7 @@ import {
   ZERO_HASH
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { codedError, finding, validationRefusal } from './scripts'
+import { codedError, finding, ScriptedReadFailure, validationRefusal } from './scripts'
 
 const MAX_WAIT_FIELD = 2n ** 48n
 
@@ -304,19 +304,27 @@ export class SetupClientDouble implements ISetupClient {
     // The methods a draft names: shipped, declared, stopped.
     const reads = await this.methodReads(draft)
     reads.forEach((r) => {
+      // An unanswered read says nothing about the method's stop or its declaration,
+      // so validation refuses rather than pass a draft over values nobody read.
+      if (!r.paused.answered) {
+        throw new ScriptedReadFailure('manager.paused', undefined, { module: r.method })
+      }
+      if (!r.moduleInfo.answered) {
+        throw new ScriptedReadFailure('manager.moduleInfo', undefined, { module: r.method })
+      }
       const { method } = r
       if (!chain.descriptor.shippedMethods.some((m) => sameAddress(m, method))) {
         warnings.push(
           finding('method.unshipped', 'credential', {
             method,
-            probe: r.moduleInfo.answered ? r.moduleInfo.value.supportsInterface : undefined,
+            probe: r.moduleInfo.value.supportsInterface,
             list: chain.descriptor.shippedMethods,
             listFrom: 'descriptor'
           })
         )
       }
       if (undeclared(r)) warnings.push(finding('method.no-declaration', 'credential', { method }))
-      if (r.paused.answered && r.paused.value) {
+      if (r.paused.value) {
         warnings.push(
           finding('method.stopped', 'credential', { method, ignoresPause: draft.ignoresPause })
         )
