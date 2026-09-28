@@ -7,8 +7,9 @@
  * and never the manager part. Both return fresh objects carrying only their
  * interface's members, so the narrowing holds at runtime too.
  *
- * The doubles serve the scripted chain's one account: a builder bound to
- * another account or another chain id refuses at its first build.
+ * The doubles serve the scripted chain's one deployment, account and action: a
+ * builder bound to another deployment, account or action refuses at its first
+ * build.
  */
 import type {
   Address,
@@ -60,9 +61,10 @@ const DESCRIPTOR_FIELDS: (keyof DeploymentDescriptor)[] = [
 /**
  * The thrown value of a construction check: an ordinary error carrying the code
  * `construction.<check>` and the check's name in `check` (`descriptor`,
- * `provider`, `account`, `action`, `chain-id`, `domain`, `domain-fields`,
- * `digest-version`). The interfaces declare no construction-refusal shape, so
- * this one is the doubles' own.
+ * `provider`, `account`, `chain-id`, `domain`, `domain-fields`,
+ * `digest-version`, `unserved`). `unserved` is the doubles' own: a descriptor
+ * or an action this scripted chain does not serve. The interfaces declare no
+ * construction-refusal shape, so this one is the doubles' own.
  */
 export interface ConstructionRefusal extends CodedError {
   check: string
@@ -196,7 +198,10 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
   /**
    * The doubles serve one scripted chain: its deployment, its account and its
    * action. A builder bound to anything else refuses, on every build path, the
-   * orchestrator's among them. Returns the action address the build serves.
+   * orchestrator's among them: a foreign account as `account`, a descriptor or
+   * an action the chain does not serve as `unserved`. On the client paths this
+   * runs after the SDK's own checks, so a wrong network reads as `chain-id` or
+   * `domain` first. Returns the action address the build serves.
    */
   private servedAction(descriptor: DeploymentDescriptor): Address {
     const served = this.chain.descriptor
@@ -206,7 +211,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
       !sameAddress(descriptor.action, served.action)
     ) {
       throw constructionRefusal(
-        'descriptor',
+        'unserved',
         'The doubles serve the scripted chain’s one deployment.'
       )
     }
@@ -216,7 +221,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     }
     const actionAddress = this.actionBinding?.address ?? descriptor.action
     if (!sameAddress(actionAddress, this.chain.action)) {
-      throw constructionRefusal('action', 'The doubles serve the scripted chain’s one action.')
+      throw constructionRefusal('unserved', 'The doubles serve the scripted chain’s one action.')
     }
     return actionAddress
   }
@@ -235,7 +240,8 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
     if (this.context) return this.context
     const descriptor = this.resolvedDescriptor()
     if (!this.providerPart) throw constructionRefusal('provider', 'The builder has no provider.')
-    const actionAddress = this.servedAction(descriptor)
+    // `construct` checks this address with `servedAction` once the SDK's own checks pass.
+    const actionAddress = this.actionBinding?.address ?? descriptor.action
     const config = this.configuration ?? defaultClientConfiguration()
     const registry = this.registry(descriptor)
     const codecs = this.codecsFor(actionAddress)
@@ -298,6 +304,7 @@ export class RecoveryKitBuilderDouble implements RecoveryKitBuilder {
             'The manager’s digest version is not the one this build carries.'
           )
         }
+        this.servedAction(descriptor)
       })()
     }
     return this.checks.then(() => this.parts())
