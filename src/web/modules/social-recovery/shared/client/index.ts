@@ -56,6 +56,7 @@ export {
   signFlowFailure,
   isSignFlowFailure
 } from './signer'
+export { accountFor } from './signer-account'
 export { signRequestPort } from './signer-port'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
 export type {
