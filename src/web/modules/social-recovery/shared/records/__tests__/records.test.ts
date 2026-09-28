@@ -1612,6 +1612,77 @@ describe('a session update refuses when the session changed after its caller rea
 })
 
 describe('the revision an update names', () => {
+  it('an update that names the empty revision meets the conflict, or returns false for a clear or an end on another state, and writes nothing', async () => {
+    const states: [string, (records: Records) => Promise<unknown>][] = [
+      ['none', async () => undefined],
+      ['live', (records) => writeSession(records, GATHERING)],
+      [
+        'wiped',
+        async (records) => {
+          await writeSession(records, GATHERING)
+          await wipeSession(records, 'setup-changed')
+        }
+      ],
+      [
+        'landed',
+        async (records) => {
+          await writeSession(records, GATHERING)
+          await landSession(records)
+        }
+      ]
+    ]
+    const updates: [string, SessionUpdate][] = [
+      [
+        'a reply write',
+        (records, revision) => records.recoverySession(CHAIN_ID, ACCOUNT).write(GATHERING, revision)
+      ],
+      [
+        'a wipe',
+        (records, revision) =>
+          records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', revision)
+      ],
+      ['a landing', (records, revision) => records.landSubmission(CHAIN_ID, ACCOUNT, revision)],
+      ['a clear', (records, revision) => records.clearWipedSession(CHAIN_ID, ACCOUNT, revision)],
+      [
+        'an end of the countdown',
+        (records, revision) => records.endCountdown(CHAIN_ID, ACCOUNT, revision)
+      ]
+    ]
+    const outcomes = await Promise.all(
+      updates.map(async ([label, update]) => [
+        label,
+        Object.fromEntries(
+          await Promise.all(
+            states.map(async ([state, prepare]) => {
+              const { storage, records } = setup()
+              await prepare(records)
+              const before = dump(storage)
+              const outcome = await update(records, '').then(
+                (value) => (value === false ? false : 'done'),
+                (error: unknown) => (isSessionRevisionConflict(error) ? 'conflict' : String(error))
+              )
+              expect(dump(storage)).toBe(before)
+              return [state, outcome]
+            })
+          )
+        )
+      ])
+    )
+    const conflictInEveryState = {
+      none: 'conflict',
+      live: 'conflict',
+      wiped: 'conflict',
+      landed: 'conflict'
+    }
+    expect(Object.fromEntries(outcomes)).toEqual({
+      'a reply write': conflictInEveryState,
+      'a wipe': conflictInEveryState,
+      'a landing': conflictInEveryState,
+      'a clear': { none: false, live: false, wiped: 'conflict', landed: false },
+      'an end of the countdown': { none: false, live: false, wiped: false, landed: 'conflict' }
+    })
+  })
+
   it('an update may pass the revision a listing gave', async () => {
     const { records } = setup()
     await writeSession(records, GATHERING)
