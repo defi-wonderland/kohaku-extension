@@ -100,6 +100,12 @@ describe('NotAllowedError at enrollment (create)', () => {
     expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
     expect(methodRunCount(method, orchestrator)).toBe(0)
   })
+
+  it('reads refused from the message of a refusal thrown as a plain object', async () => {
+    browserRejects(() => ({ name: 'NotAllowedError', message: 'The document is not focused.' }))
+    const { outcome } = await run('enroll')
+    expect(outcome).toMatchObject({ type: 'note', note: 'refused' })
+  })
 })
 describe('NotAllowedError at testAccess (get)', () => {
   beforeEach(() => browserRejects(notAllowedError))

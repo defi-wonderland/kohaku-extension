@@ -7,9 +7,6 @@
  * parses a changed value the same way before the channel reads it: a bigint
  * comes back as a bigint, a value that is not text passes as it came, and
  * text that is not JSON reaches no caller.
- *
- * The report's own fields carry no bigint; the value of a passed outcome is
- * the method's, so a bigint inside it travels through the same codec.
  */
 import { browserDefaults, ceremony } from './harness'
 
@@ -30,18 +27,22 @@ const reportTextWithBigint = () =>
 
 const AMOUNT = BigInt('12345678901234567890')
 
+const isBigint = (value: unknown, expected: bigint): boolean =>
+  typeof value === 'bigint' && value === expected
+
+/** What the subscription hands on for the change `fire` plays. */
+const heard = (fire: () => void) => {
+  const onValue = jest.fn()
+  const unsubscribe = browserDefaults().browserReportSubscribe(key(), onValue)
+  fire()
+  unsubscribe()
+  return onValue
+}
+
 describe('outside an extension, on storage events', () => {
   /** The `storage` event another page's write fires in this one. */
   const written = (storageKey: string, newValue: string | null) =>
     window.dispatchEvent(new StorageEvent('storage', { key: storageKey, newValue }))
-
-  const heard = (fire: () => void) => {
-    const onValue = jest.fn()
-    const unsubscribe = browserDefaults().browserReportSubscribe(key(), onValue)
-    fire()
-    unsubscribe()
-    return onValue
-  }
 
   afterEach(() => localStorage.clear())
 
@@ -54,7 +55,10 @@ describe('outside an extension, on storage events', () => {
 
   it('revives a { $bigint } field as a bigint', () => {
     const onValue = heard(() => written(key(), '{"amount":{"$bigint":"7"}}'))
-    expect(onValue).toHaveBeenCalledWith({ amount: BigInt(7) })
+    expect(onValue).toHaveBeenCalledTimes(1)
+    const delivered = onValue.mock.calls[0][0] as Record<string, unknown>
+    expect(Object.keys(delivered)).toEqual(['amount'])
+    expect(isBigint(delivered.amount, BigInt(7))).toBe(true)
   })
 
   it('delivers nothing for text that is not JSON', () => {
@@ -76,7 +80,7 @@ describe('outside an extension, on storage events', () => {
     written(key(), localStorage.getItem(key()))
     unsubscribe()
     expect(onReport).toHaveBeenCalledTimes(1)
-    expect(onReport.mock.calls[0][0].outcome.value.amount).toBe(AMOUNT)
+    expect(isBigint(onReport.mock.calls[0][0].outcome.value.amount, AMOUNT)).toBe(true)
     expect(localStorage.getItem(key())).toBeNull()
   })
 })
@@ -107,14 +111,6 @@ describe('in the extension, on storage.onChanged', () => {
   /** A change the extension's local storage reports for one key. */
   const changed = (storageKey: string, newValue: unknown) =>
     changeListeners.forEach((listener) => listener({ [storageKey]: { newValue } }, 'local'))
-
-  const heard = (fire: () => void) => {
-    const onValue = jest.fn()
-    const unsubscribe = browserDefaults().browserReportSubscribe(key(), onValue)
-    fire()
-    unsubscribe()
-    return onValue
-  }
 
   beforeAll(() => {
     jest.resetModules()
@@ -148,7 +144,10 @@ describe('in the extension, on storage.onChanged', () => {
 
   it('revives a { $bigint } field as a bigint', () => {
     const onValue = heard(() => changed(key(), '{"amount":{"$bigint":"7"}}'))
-    expect(onValue).toHaveBeenCalledWith({ amount: BigInt(7) })
+    expect(onValue).toHaveBeenCalledTimes(1)
+    const delivered = onValue.mock.calls[0][0] as Record<string, unknown>
+    expect(Object.keys(delivered)).toEqual(['amount'])
+    expect(isBigint(delivered.amount, BigInt(7))).toBe(true)
   })
 
   it('delivers nothing for text that is not JSON', () => {
@@ -160,8 +159,9 @@ describe('in the extension, on storage.onChanged', () => {
     local.set(key(), reportTextWithBigint())
     const { browserReportStore } = browserDefaults()
     const report = await ceremony().takeCeremonyReport(EXPECTED, browserReportStore, T0 + 1)
-    expect(report).toMatchObject(EXPECTED)
-    expect((report?.outcome as { value?: { amount?: unknown } }).value?.amount).toBe(AMOUNT)
+    expect({ id: report?.id, call: report?.call, method: report?.method }).toEqual(EXPECTED)
+    const outcome = report?.outcome as { value?: { amount?: unknown } } | undefined
+    expect(isBigint(outcome?.value?.amount, AMOUNT)).toBe(true)
     expect(local.has(key())).toBe(false)
   })
 })

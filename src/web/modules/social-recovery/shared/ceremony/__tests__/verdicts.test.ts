@@ -286,8 +286,6 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
   })
 )
 
-// A typed failure record reads through its own cases above; a null answer is no
-// failure record, so the host reads it as the method's answer.
 describe('a method that answers null', () => {
   it('enroll: a null config reads passed', async () => {
     const method = fakeMethod()

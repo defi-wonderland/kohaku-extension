@@ -123,10 +123,28 @@ describe('the origin string the method names', () => {
         orchestrator,
         params: { relyingPartyId: passed, userName: 'holder' }
       })
-      const handed = method.enrollInput.mock.calls.map((c) => c[0] as { relyingPartyId?: string })
-      expect(handed.map((p) => p.relyingPartyId)).toEqual([EXTENSION_ORIGIN])
+      expect(method.enrollInput.mock.calls.map((c) => c[0])).toStrictEqual([
+        { userName: 'holder', relyingPartyId: EXTENSION_ORIGIN }
+      ])
       expect(stringsIn(method.enrollInput.mock.calls)).not.toContain(passed || 'never-empty')
       expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    })
+  )
+
+  class CallerParams {
+    userName = 'holder'
+  }
+  const NOT_PLAIN: [string, unknown][] = [
+    ['an array', ['holder']],
+    ['a class instance', new CallerParams()]
+  ]
+  NOT_PLAIN.forEach(([title, params]) =>
+    it(`hands the method the origin string alone where the caller passed ${title}`, async () => {
+      const method = fakeMethod()
+      await hosts.enroll({ method, orchestrator: fakeOrchestrator(method), params })
+      expect(method.enrollInput.mock.calls.map((c) => c[0])).toStrictEqual([
+        { relyingPartyId: EXTENSION_ORIGIN }
+      ])
     })
   )
 

@@ -46,6 +46,16 @@ describe('enrollment', () => {
     expect(creds.create.mock.calls[0][0]).toHaveProperty('publicKey')
   })
 
+  it('asks with its own 32-byte challenge and 16-byte user id where the method names none', async () => {
+    const attestation = fakeAttestation({ flags: SYNCED_FLAGS, point })
+    creds = installCredentials({ create: async () => attestation.credential })
+    const method = fakeMethod()
+    await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    const publicKey = creds.create.mock.calls[0][0]?.publicKey
+    expect(publicKey?.challenge.byteLength).toBe(32)
+    expect(publicKey?.user.id.byteLength).toBe(16)
+  })
+
   it('hands the created credential to the method, after the ceremony', async () => {
     const attestation = fakeAttestation({ flags: SYNCED_FLAGS, point })
     creds = installCredentials({ create: async () => attestation.credential })
