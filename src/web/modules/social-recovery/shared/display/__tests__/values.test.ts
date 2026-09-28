@@ -60,6 +60,13 @@ describe('address checksum: one case is checksummed, a mixed case must hold', ()
     const nonHex = `${LOWER.slice(0, -1)}g`
     expectRefusal(() => checksumAddress(nonHex), `Not an address: ${nonHex}`)
   })
+
+  it('refuses an address with a space before it or a newline after it', () => {
+    const leadingSpace = ` ${LOWER}`
+    const trailingNewline = `${LOWER}\n`
+    expectRefusal(() => checksumAddress(leadingSpace), `Not an address: ${leadingSpace}`)
+    expectRefusal(() => checksumAddress(trailingNewline), `Not an address: ${trailingNewline}`)
+  })
 })
 
 describe('short address: four and four hex digits after the prefix', () => {
@@ -146,7 +153,14 @@ describe('approval blob: twelve and eight', () => {
 })
 
 describe('hash and approval: only 0x and hex digits render', () => {
-  const NOT_HEX = ['', 'hash', '0123456789abcdef', '0X0123456789abcdef', '0x0123456789abcdeg']
+  const NOT_HEX = [
+    '',
+    'hash',
+    ' 0xab',
+    '0123456789abcdef',
+    '0X0123456789abcdef',
+    '0x0123456789abcdeg'
+  ]
   const SHORT_HEX = ['0x', '0xabc', '0xABCdef']
 
   it('refuses a value that is not 0x and hex digits, naming the value', () => {
@@ -260,6 +274,10 @@ describe('token amount', () => {
 
   it('renders the largest uint256 at 255 decimals, the most a token declares', () => {
     expect(renderTokenAmount(maxUint256, 255)).toBe(`0.${'0'.repeat(177)}${maxUint256}`)
+  })
+
+  it('refuses 256 decimals, one past what a token declares', () => {
+    expectRefusal(() => renderTokenAmount(1n, 256), 'Not token decimals: 256')
   })
 
   it('renders an amount of 2^511 or more whole', () => {
