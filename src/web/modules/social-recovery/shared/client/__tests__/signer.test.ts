@@ -15,7 +15,7 @@
  * `SignerNotWired`, naming the missing background action
  * `KEYSTORE_CONTROLLER_SIGN_WITH_KEY`.
  */
-import { getBytes, Wallet } from 'ethers'
+import { getBytes, Signature, Wallet } from 'ethers'
 
 import { addressOf } from '@web/modules/social-recovery/sdk-doubles'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
@@ -35,6 +35,7 @@ import {
   MISSING_BACKGROUND_ACTION,
   queued,
   queueOver,
+  QueueWorld,
   SEPOLIA,
   SIGNER_MEMBERS,
   SignerNotWired,
@@ -264,6 +265,36 @@ describe('the signer facade over the request queue', () => {
       })
     )
 
+    const FORMS: [string, 'bytes' | 'typed'][] = [
+      ['raw bytes', 'bytes'],
+      ['typed data', 'typed']
+    ]
+    FORMS.forEach(([title, kind]) =>
+      it(`takes the 65-byte signature over ${title} and refuses its 64-byte compact form as malformed`, async () => {
+        const full = kind === 'bytes' ? SIG.bytes : SIG.typed
+        const compact = Signature.from(full).compactSerialized as Hex
+        expect(full).toHaveLength(2 + 2 * 65)
+        expect(compact).toHaveLength(2 + 2 * 64)
+        const sign = (q: QueueWorld) =>
+          track(
+            kind === 'bytes'
+              ? q.signer.signBytes(HANDLE, BYTES)
+              : q.signer.signTypedData(HANDLE, TYPED)
+          )
+        const taking = queueOver([basicAccount(KEY)])
+        const taken = sign(taking)
+        taking.push(signedFor(addedRequest(taking.dispatch).userRequest.id, full))
+        const refusing = queueOver([basicAccount(KEY)])
+        const refused = sign(refusing)
+        refusing.push(signedFor(addedRequest(refusing.dispatch).userRequest.id, compact))
+        await flush()
+        expect(taken).toEqual({ status: 'resolved', value: full })
+        expect(refused.status).toBe('rejected')
+        expect(isSignFlowFailure(refused.value)).toBe(true)
+        expect((refused.value as SignFlowFailure).reason).toBe('malformed-signature')
+      })
+    )
+
     it('refuses a hex answer no address can be recovered from as malformed', async () => {
       const q = queueOver([basicAccount(KEY)])
       const signing = track(q.signer.signBytes(HANDLE, BYTES))
@@ -314,6 +345,53 @@ describe('the signer facade over the request queue', () => {
       expect(q.listeners()).toBe(0)
       q.push(signedFor(userRequest.id, SIG.otherKeyBytes))
       await expect(signing).resolves.toBe(SIG.bytes)
+    })
+  })
+
+  describe('the first signature under its id', () => {
+    it('is the answer: an answer pushed after it, while it is still being checked, changes nothing', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(signedFor(id, SIG.bytes))
+      q.push(signedFor(id, 'not a signature'))
+      await flush()
+      expect(signing).toEqual({ status: 'resolved', value: SIG.bytes })
+    })
+
+    it('decides the request when it is wrong, though a correct signature follows it', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(signedFor(id, SIG.otherKeyBytes))
+      q.push(signedFor(id, SIG.bytes))
+      await flush()
+      expect(signing.status).toBe('rejected')
+      expect((signing.value as SignFlowFailure).reason).toBe('signer-mismatch')
+    })
+
+    it('stops the absence count of a request that left the queue before its signature came', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signBytes(HANDLE, BYTES))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(queued(id))
+      q.push(queued())
+      await advance(ABSENCE_GRACE_MS - 1)
+      q.push(signedFor(id, SIG.bytes))
+      await advance(ABSENCE_GRACE_MS)
+      expect(signing).toEqual({ status: 'resolved', value: SIG.bytes })
+      expect(dispatched(q.dispatch).map((a) => a.type)).toEqual([ADD])
+    })
+
+    it('does not read the queue dropping its signed request as a refusal while the signature is checked', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const signing = track(q.signer.signTypedData(HANDLE, TYPED))
+      const { id } = addedRequest(q.dispatch).userRequest
+      q.push(queued(id))
+      q.push(signedFor(id, SIG.typed))
+      q.push(queued())
+      await advance(ABSENCE_GRACE_MS)
+      expect(signing).toEqual({ status: 'resolved', value: SIG.typed })
     })
   })
 

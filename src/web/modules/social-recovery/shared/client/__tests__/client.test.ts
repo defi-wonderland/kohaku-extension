@@ -7,11 +7,15 @@
  */
 import {
   addressOf,
+  DEFAULT_REQUEST_WINDOW,
+  MANAGER_DOMAIN_FIELDS,
   PolicyManagerDouble,
   ProviderDouble
 } from '@web/modules/social-recovery/sdk-doubles'
 import type {
+  ClientConfiguration,
   DeploymentDescriptor,
+  Hex,
   IProvider,
   PreparedBatch,
   PreparedCall
@@ -33,6 +37,7 @@ import {
   namesSignerOrStorage,
   providerDoubleReads,
   RECOVERY_CALLS,
+  REQUEST_WINDOW_SECONDS,
   sendingKeyOf,
   spyOnBuilder,
   thrownBy,
@@ -159,6 +164,49 @@ describe('buildRecoveryClient', () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
     expect(client.setup.events).toBe(client.recovery.events)
+  })
+})
+
+describe("the manager domain's members", () => {
+  it('builds the client over the members the doubles serve, written in either case', async () => {
+    const world = createWorld()
+    expect(world.chain.manager.domain.fields).toBe(MANAGER_DOMAIN_FIELDS)
+    await expect(buildRecoveryClient(world.config)).resolves.toBeDefined()
+
+    const upper = createWorld()
+    upper.chain.manager.domain.fields = MANAGER_DOMAIN_FIELDS.replace(/[a-f]/g, (c) =>
+      c.toUpperCase()
+    ) as Hex
+    expect(upper.chain.manager.domain.fields).not.toBe(MANAGER_DOMAIN_FIELDS)
+    await expect(buildRecoveryClient(upper.config)).resolves.toBeDefined()
+  })
+
+  const OTHER_FIELDS: Hex[] = ['0x0e', '0x1f', '0x07', '0x00']
+  OTHER_FIELDS.forEach((fields) =>
+    it(`refuses a domain carrying the members ${fields} before any client is built`, async () => {
+      const builder = spyOnBuilder()
+      const world = createWorld()
+      world.chain.manager.domain.fields = fields
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect((caught as { check?: string }).check).toBe('domain-fields')
+      expect(builder.buildSetupClient).not.toHaveBeenCalled()
+      expect(builder.buildRecoveryClient).not.toHaveBeenCalled()
+    })
+  )
+})
+
+describe('the request window the client configuration carries', () => {
+  it("keeps the doubles' default floor and ceiling around the wallet's own width", async () => {
+    const spies = spyOnBuilder()
+    const world = createWorld()
+    await buildRecoveryClient(world.config)
+    const { requestWindow } = lastArg(spies.config) as ClientConfiguration
+    expect(requestWindow).toEqual({
+      default: REQUEST_WINDOW_SECONDS,
+      floor: DEFAULT_REQUEST_WINDOW.floor,
+      ceiling: DEFAULT_REQUEST_WINDOW.ceiling
+    })
   })
 })
 
