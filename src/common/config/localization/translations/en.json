@@ -174,7 +174,8 @@
         "executionAmount": "Send at most {{amount}} to this key for the execution. The exact amount follows the fee of that day.",
         "shortfallExecute": "Not enough gas on the sending key. Fund it, then execute.",
         "networkOwner": "Send on {{network}}, the network of this account.",
-        "outsideRouteAlone": "Send {{amount}} to this key from outside this wallet."
+        "outsideRouteAlone": "Send {{amount}} to this key from outside this wallet.",
+        "copyFailed": "Could not copy. Select the address by hand."
       },
       "revertedSave": "The transaction reached the chain and reverted. {{cause}} Nothing was saved, your recovery path is not active yet, and the gas it spent is gone. Everything you enrolled is still here.",
       "revertedSubmit": "The transaction reached the chain and reverted. {{cause}} No waiting period has started and the gas it spent is gone. Everything you collected is still here.",
