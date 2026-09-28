@@ -18,13 +18,18 @@ import type {
   Address,
   ApproverReply,
   ApproverRequest,
-  ClientConfiguration,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { ScriptedChain } from './chain'
 import { digestOfRequest, doubleProof, sameAddress } from './encoding'
 import { replyReadable, requestReadable } from './orchestrator'
+import type {
+  FitCheckReading,
+  IWalletReadsDouble,
+  RemovedKeyReading,
+  WalletReadsConfiguration
+} from './types'
 
 /** Why the removed key cannot be named. */
 export const REMOVED_KEY_UNAVAILABLE_CAUSES = [
@@ -32,40 +37,10 @@ export const REMOVED_KEY_UNAVAILABLE_CAUSES = [
   'no-key-entry',
   'several-key-entries'
 ] as const
-export type RemovedKeyUnavailableCause = typeof REMOVED_KEY_UNAVAILABLE_CAUSES[number]
-
-export type RemovedKeyReading =
-  | { kind: 'named'; key: Address }
-  | { kind: 'unavailable'; cause: RemovedKeyUnavailableCause }
-
-/**
- * What the fit check read: against the code the account holds, against the
- * implementation it will deploy, or neither (no code and no implementation named).
- */
-export type FitCheckReading =
-  | { basis: 'deployed-code'; fits: boolean }
-  | { basis: 'code-to-be'; implementation: Address; fits: boolean }
-  | { basis: 'no-code'; fits: false }
-
-/**
- * The extension-owned seam over the three reads no SDK member makes. The
- * `Double` suffix marks that the shape lives with the doubles; the real
- * implementation behind `shared/client` answers the same shape until the SDK
- * adopts or renames these reads.
- */
-export interface IWalletReadsDouble {
-  /** The module's own verdict over one pasted reply against the request it answers. */
-  verifyReply(request: ApproverRequest, reply: ApproverReply): Promise<Verdict>
-  /** The key a recovery of this account would remove, or why it cannot be named. */
-  removedKey(): Promise<RemovedKeyReading>
-  /** Whether the action fits the account, judged against the code it will carry. */
-  fitCheck(accountImplementation?: Address): Promise<FitCheckReading>
-}
-
 export class WalletReadsDouble implements IWalletReadsDouble {
   constructor(
     private readonly chain: ScriptedChain,
-    private readonly config: Pick<ClientConfiguration, 'creation' | 'accountImplementation'> = {}
+    private readonly config: WalletReadsConfiguration = {}
   ) {}
 
   /**

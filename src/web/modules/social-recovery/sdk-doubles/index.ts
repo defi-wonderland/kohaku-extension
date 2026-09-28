@@ -6,9 +6,44 @@
  * `shared/client`, which ESLint enforces.
  *
  * The doubles implement the interface types and add nothing to them. The one
- * interface declared here is `IWalletReadsDouble` (wallet-reads.ts), three reads
- * the wallet needs that no SDK member makes.
+ * interface declared here is `IWalletReadsDouble` (types.ts), three reads the
+ * wallet needs that no SDK member makes.
  */
+export type {
+  AnyMethodDouble,
+  AttemptRecord,
+  AttemptScript,
+  AttemptStatus,
+  BackupReading,
+  Canceller,
+  ChainEffect,
+  ChainSeed,
+  ClientContext,
+  CodedError,
+  CommittedSetup,
+  ConstructionRefusal,
+  FitCheckReading,
+  IWalletReadsDouble,
+  LandingRevert,
+  MethodDeclaration,
+  MethodKind,
+  ModuleRead,
+  NoSetup,
+  PlaceTypedData,
+  PublicNoteReading,
+  PublicShape,
+  ReadScript,
+  RemovedKeyReading,
+  RemovedKeyUnavailableCause,
+  RevertedCall,
+  RuleEvaluation,
+  ScriptedFindings,
+  ScriptedRead,
+  ScriptedRefusalMember,
+  ScriptedSimulation,
+  SetupScript,
+  ThrownRefusal
+} from './types'
 export * from './chain'
 export * from './scripts'
 export {
@@ -28,21 +63,16 @@ export {
   readPublicNote,
   setupBodyOf,
   setupCommitmentOf,
-  typedDataOf,
-  type BackupReading,
-  type PlaceTypedData,
-  type PublicNoteReading,
-  type PublicShape
+  typedDataOf
 } from './encoding'
 export {
   ACCOUNT_NOT_ARMED,
   ACCOUNT_UNFIT,
   acceptanceRevert,
   evaluateRule,
-  executeRevert,
-  type RuleEvaluation
+  executeRevert
 } from './verification'
-export { ProviderDouble, revertedCall, type RevertedCall } from './provider'
+export { ProviderDouble, revertedCall } from './provider'
 export { EventManagerDouble, DEFAULT_LOG_CHUNK_WIDTH } from './event-manager'
 export { PolicyManagerDouble, narrowModuleReads, MODULE_READ_MEMBERS } from './policy-manager'
 export {
@@ -67,15 +97,9 @@ export {
   DEFAULT_SIMULATE,
   DEFAULT_WAIT,
   defaultClientConfiguration,
-  restoreConfiguration,
-  type ClientContext
+  restoreConfiguration
 } from './context'
 export { SetupClientDouble, configurationOfDraft, levelOfDraft } from './setup-client'
 export { RecoveryClientDouble, MOMENT_SKEW_SPAN } from './recovery-client'
-export {
-  RecoveryKitBuilderDouble,
-  constructionRefusal,
-  type ConstructionRefusal,
-  kitFor
-} from './builder'
+export { RecoveryKitBuilderDouble, constructionRefusal, kitFor } from './builder'
 export * from './wallet-reads'

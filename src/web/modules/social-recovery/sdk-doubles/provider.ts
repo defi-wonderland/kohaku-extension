@@ -17,11 +17,7 @@ import type {
 
 import type { ScriptedChain } from './chain'
 import { matchesFilter, rawLogOf } from './logs'
-
-/** The value a scripted revert rejects with: an error carrying the raw revert data. */
-export interface RevertedCall extends Error {
-  data: Hex
-}
+import type { RevertedCall } from './types'
 
 export const revertedCall = (data: Hex): RevertedCall => {
   const error = new Error('execution reverted') as RevertedCall

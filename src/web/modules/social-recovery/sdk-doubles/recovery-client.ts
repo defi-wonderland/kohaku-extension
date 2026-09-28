@@ -12,6 +12,7 @@
  * or an account the action does not fit, unless a script fails it outright.
  */
 import type {
+  AddRefusalReason,
   AddResult,
   Address,
   ApproverReply,
@@ -27,6 +28,7 @@ import type {
   Finding,
   Gathering,
   GatheringPlace,
+  GatheringPurpose,
   GatheringWindow,
   Handover,
   HandoverInput,
@@ -38,19 +40,11 @@ import type {
   PreparedCall,
   PrepareOptions,
   ProofPlace,
-  RecoveryState,
-  RequestErrorCode,
-  RequestWarningCode
+  RecoveryState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { zeroAddress } from 'viem'
 
-import {
-  ClientContext,
-  codecFor,
-  DEFAULT_REQUEST_WINDOW,
-  pinBlock,
-  restoreConfiguration
-} from './context'
+import { codecFor, DEFAULT_REQUEST_WINDOW, pinBlock, restoreConfiguration } from './context'
 import {
   deserializeOrder,
   digestOf,
@@ -66,6 +60,7 @@ import {
 import { RECORD_VERSION, replyReadable } from './orchestrator'
 import { composeCall, shouldSimulate, simulationFrom, withSimulation } from './prepared'
 import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
+import type { ClientContext, RequestFinding, RequestRow, SetRank, SimulatedMember } from './types'
 import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
 
 /**
@@ -74,9 +69,6 @@ import { acceptanceRevert, evaluateRule, executeRevert } from './verification'
  * span is the doubles' own.
  */
 export const MOMENT_SKEW_SPAN = 15 * 60
-
-type RequestFinding = Finding<RequestErrorCode | RequestWarningCode>
-type RequestRow = [RequestErrorCode, Record<string, unknown>?]
 
 /** Every request row carries the subject `request`. */
 const rowsToFindings = (rows: RequestRow[]): Finding[] =>
@@ -114,29 +106,12 @@ const picksOf = (places: number[], size: number): number[][] => {
   return [...picksOf(rest, size - 1).map((pick) => [first, ...pick]), ...picksOf(rest, size)]
 }
 
-/** How `complete` ranks one satisfying set: lower sorts first, field by field. */
-interface SetRank {
-  /** 1 where any place of the set is on a stopped method. */
-  stopped: number
-  /** The distinct methods of the set that carry a stop. */
-  stoppable: number
-  /** The filing positions of the set's replies, ascending. */
-  filed: number[]
-}
-
 const compareRanks = (a: SetRank, b: SetRank): number => {
   if (a.stopped !== b.stopped) return a.stopped - b.stopped
   if (a.stoppable !== b.stoppable) return a.stoppable - b.stoppable
   const i = a.filed.findIndex((position, j) => position !== b.filed[j])
   return i < 0 ? 0 : a.filed[i] - b.filed[i]
 }
-
-type SimulatedMember =
-  | 'recovery.prepareStartAttempt'
-  | 'recovery.prepareCancelByProofs'
-  | 'recovery.prepareCancelByOwner'
-  | 'recovery.prepareCancelByVeto'
-  | 'recovery.prepareExecuteHandover'
 
 export class RecoveryClientDouble implements IRecoveryClient {
   readonly events: IEventManager
@@ -347,7 +322,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
   }
 
   addApproverReply(gathering: Gathering, reply: ApproverReply): AddResult {
-    const refuse = (cause: NonNullable<AddResult['reason']>['cause']): AddResult => ({
+    const refuse = (cause: AddRefusalReason): AddResult => ({
       gathering,
       reason: { kind: 'add-refusal', cause }
     })
@@ -531,7 +506,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
    */
   private async validateRequest(
     request: AttemptRequest | CancelRequest,
-    purpose: 'approval' | 'cancellation',
+    purpose: GatheringPurpose,
     now: number
   ): Promise<Finding[]> {
     const { chain, manager } = this.ctx

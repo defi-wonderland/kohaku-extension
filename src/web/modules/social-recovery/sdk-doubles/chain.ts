@@ -27,25 +27,18 @@ import type {
   ActionState,
   Address,
   Attempt,
-  AttemptRequest,
   BlockHeader,
   BlockTag,
   CancelledBy,
-  CancelRequest,
-  Configuration,
   DeploymentDescriptor,
   DeviceBinding,
-  Domain,
   Handover,
   Hex,
   KitError,
   MethodFailureCause,
-  ModuleInfo,
   Notification,
-  PaymentOrder,
   PreparedBatch,
   PreparedCall,
-  PrivacyLevel,
   TrustedParties,
   ValidationResult,
   Verdict
@@ -71,24 +64,39 @@ import {
   setupCommitmentOf,
   shapeNote
 } from './encoding'
-import {
-  codedError,
-  kitError,
-  landingRevert,
+import { codedError, kitError, landingRevert, ScriptedReadFailure, thrownValueOf } from './scripts'
+import type {
+  AttemptRecord,
+  AttemptScript,
+  AttemptStatus,
+  CancelAttemptOptions,
+  Canceller,
+  ChainEffect,
+  ChainSeed,
+  CommitFields,
+  CommitSetupOptions,
+  CommittedSetup,
+  DoubleSetupBody,
+  FailReadOptions,
+  ManagerViews,
+  MethodDeclaration,
   ModuleRead,
+  NotificationFields,
+  OpenAttemptOptions,
+  ReadScript,
+  RemovedKeyReading,
+  ScriptedCallAnswer,
   ScriptedFindings,
   ScriptedRead,
-  ScriptedReadFailure,
   ScriptedRefusalMember,
   ScriptedSimulation,
-  thrownValueOf,
+  SetupScript,
   ThrownRefusal
-} from './scripts'
+} from './types'
 import { acceptanceRevert, decodeHandover, executeRevert } from './verification'
 
 /** The five attempt statuses the wallet computes (see `attemptStatus`). */
 export const ATTEMPT_STATUSES = ['none', 'pending', 'ready', 'cancelled', 'executed'] as const
-export type AttemptStatus = typeof ATTEMPT_STATUSES[number]
 
 /**
  * Who cancelled: the account (`cancelByOwner`), a caller with proofs
@@ -97,105 +105,6 @@ export type AttemptStatus = typeof ATTEMPT_STATUSES[number]
  * write (the log's zero canceller).
  */
 export const CANCELLERS = ['account', 'proofs', 'nobody'] as const
-export type Canceller = typeof CANCELLERS[number]
-
-/** One method module's declaration: what its three module views answer. */
-export interface MethodDeclaration {
-  moduleInfo: ModuleInfo
-  paused: boolean
-  trustedParties: TrustedParties
-}
-
-export interface NoSetup {
-  status: 'none'
-  /** The manager's setup nonce; it counts clears as well as commits. */
-  setupNonce: bigint
-  /** The block of the last setup write, a clear among them; 0 where none ever ran. */
-  setupCommittedAtBlock: number
-}
-
-export interface CommittedSetup {
-  status: 'committed'
-  /** The privacy level the two metadata fields encode, read back from them. */
-  level: PrivacyLevel
-  setupNonce: bigint
-  setupCommitment: Hex
-  setupCommittedAtBlock: number
-  setupBody: Hex
-  publicMetadata: Hex
-  privateMetadata: Hex
-  /** The configuration the script committed, for tests; absent after a raw commit. */
-  configuration?: Configuration
-}
-
-export type SetupScript = NoSetup | CommittedSetup
-
-/** What the manager keeps of an attempt, beside the event fields it published. */
-export interface AttemptRecord {
-  attemptId: bigint
-  setupNonce: bigint
-  setupBody: Hex
-  consumableAfter: number
-  payload: Hex
-  order: PaymentOrder
-  usedPlaces: bigint[]
-  usedMethods: Address[]
-  ignoresPause: boolean
-  startedAtBlock: number
-}
-
-export type AttemptScript =
-  | { status: 'none' }
-  | { status: 'waiting'; record: AttemptRecord }
-  | {
-      status: 'cancelled'
-      record: AttemptRecord
-      canceller: Canceller
-      cancellerAddress: Address
-      vetoingMethod: Address
-      cancelledBy: CancelledBy
-      endedAtBlock: number
-    }
-  | { status: 'executed'; record: AttemptRecord; endedAtBlock: number }
-
-/** What landing a prepared call does to the record (see `land`). */
-export type ChainEffect =
-  | { kind: 'arm' }
-  | { kind: 'disarm' }
-  | {
-      kind: 'commit'
-      setupCommitment: Hex
-      nonce: bigint
-      publicMetadata: Hex
-      privateMetadata: Hex
-      setupBody?: Hex
-      configuration?: Configuration
-    }
-  | { kind: 'clear' }
-  | { kind: 'start'; request: AttemptRequest }
-  | { kind: 'cancel-by-owner' }
-  | { kind: 'cancel-by-proofs'; request: CancelRequest }
-  | { kind: 'cancel-by-veto'; attemptId: bigint; method: Address }
-  | { kind: 'execute'; attemptId: bigint; payload: Hex }
-
-export interface ReadScript {
-  mode: 'throw' | 'unanswered'
-  module?: Address
-  /** The value to throw in place of a `ScriptedReadFailure`. */
-  error?: Error
-}
-
-/** What a new chain starts from; every field has a default. */
-export interface ChainSeed {
-  descriptor?: Partial<DeploymentDescriptor>
-  account?: Address
-  head?: { number: number; timestamp: number }
-  authorities?: Address[]
-  otherPrivileged?: Address[]
-  authorized?: boolean
-  hasCode?: boolean
-  supportsAccount?: boolean
-}
 
 /** The placeholder deployment the doubles default to: every address a fixed label's hash. */
 export const doubleDescriptor = (
@@ -283,7 +192,7 @@ export class ScriptedChain {
    */
   readonly verifyCosts = new Map<string, bigint>()
 
-  manager: { name: string; version: string; supportsInterface: boolean; domain: Domain }
+  manager: ManagerViews
 
   actionInfo: ActionInfo
 
@@ -291,7 +200,7 @@ export class ScriptedChain {
   readonly notifications: Notification[] = []
 
   /** Answers of `IProvider.call` by `${to}:${data}`, a revert where scripted. */
-  readonly calls = new Map<string, { result: Hex } | { revert: Hex }>()
+  readonly calls = new Map<string, ScriptedCallAnswer>()
 
   // ---- scripts ----
   private readonly readScripts = new Map<ScriptedRead, ReadScript[]>()
@@ -421,26 +330,25 @@ export class ScriptedChain {
     }
   }
 
-  private emit(notification: Record<string, unknown>): Notification {
+  private emit(notification: NotificationFields): Notification {
     return this.emitAll([notification])[0]
   }
 
   /** Emits the logs of one transaction: one new block, one hash, log indices in order. */
-  private emitAll(notifications: Record<string, unknown>[]): Notification[] {
+  private emitAll(notifications: NotificationFields[]): Notification[] {
     const block = this.mine()
     const transactionHash = hashOf({ tx: block.number, kinds: notifications.map((n) => n.kind) })
     const emitted = notifications.map(
-      (notification, logIndex) =>
-        ({
-          ...notification,
-          at: {
-            blockNumber: block.number,
-            blockHash: block.hash,
-            logIndex,
-            transactionHash,
-            removed: false
-          }
-        } as Notification)
+      (notification, logIndex): Notification => ({
+        ...notification,
+        at: {
+          blockNumber: block.number,
+          blockHash: block.hash,
+          logIndex,
+          transactionHash,
+          removed: false
+        }
+      })
     )
     this.notifications.push(...emitted)
     return emitted
@@ -478,22 +386,18 @@ export class ScriptedChain {
    * one `LogPrivilegeChanged` per entry that changed, so the account's privilege
    * stream and its key list always agree.
    */
-  private privilegeWrites(
-    before: Address[],
-    after: Address[],
-    value: Hex
-  ): Record<string, unknown>[] {
+  private privilegeWrites(before: Address[], after: Address[], value: Hex): NotificationFields[] {
     const removed = before.filter((a) => !after.some((b) => sameAddress(a, b)))
     const added = after.filter((a) => !before.some((b) => sameAddress(a, b)))
     return [
       ...added.map((addr) => ({
-        kind: 'privilege-changed',
+        kind: 'privilege-changed' as const,
         account: this.account,
         addr,
         priv: value
       })),
       ...removed.map((addr) => ({
-        kind: 'privilege-changed',
+        kind: 'privilege-changed' as const,
         account: this.account,
         addr,
         priv: zeroHash
@@ -532,12 +436,7 @@ export class ScriptedChain {
    * record, the one entry still holding a key value; otherwise the reason it
    * cannot name one.
    */
-  removedKeyReading(hasCreationRecord: boolean):
-    | { kind: 'named'; key: Address }
-    | {
-        kind: 'unavailable'
-        cause: 'no-creation-record' | 'no-key-entry' | 'several-key-entries'
-      } {
+  removedKeyReading(hasCreationRecord: boolean): RemovedKeyReading {
     if (!hasCreationRecord) return { kind: 'unavailable', cause: 'no-creation-record' }
     if (this.authorities.length === 0) return { kind: 'unavailable', cause: 'no-key-entry' }
     if (this.authorities.length > 1) return { kind: 'unavailable', cause: 'several-key-entries' }
@@ -613,11 +512,7 @@ export class ScriptedChain {
    * or public (everything clear, no password). A waiting attempt is cancelled
    * by the write, as the manager does.
    */
-  commitSetup(options: {
-    level: PrivacyLevel
-    configuration: Configuration
-    password?: string
-  }): CommittedSetup {
+  commitSetup(options: CommitSetupOptions): CommittedSetup {
     const { level, configuration, password } = options
     if (level !== 'public' && !password) {
       throw codedError('setup.password-missing', { level })
@@ -644,14 +539,7 @@ export class ScriptedChain {
   }
 
   /** Commits the raw fields a `commitSetup` call carries; what `land` runs. */
-  commitRaw(fields: {
-    setupCommitment: Hex
-    nonce: bigint
-    publicMetadata: Hex
-    privateMetadata: Hex
-    setupBody?: Hex
-    configuration?: Configuration
-  }): CommittedSetup {
+  commitRaw(fields: CommitFields): CommittedSetup {
     if (this.attempt.status === 'waiting') this.cancelAttempt('nobody')
     const n = this.emit({
       kind: 'setup-committed',
@@ -724,25 +612,12 @@ export class ScriptedChain {
    * puts `consumableAfter` at or before the new head (the wait is over); the
    * default leaves it `wait` seconds ahead (pending).
    */
-  openAttempt(
-    options: {
-      ready?: boolean
-      wait?: number
-      attemptId?: bigint
-      setupNonce?: bigint
-      setupBody?: Hex
-      payload?: Hex
-      order?: PaymentOrder
-      usedPlaces?: bigint[]
-      usedMethods?: Address[]
-      ignoresPause?: boolean
-    } = {}
-  ): AttemptRecord {
+  openAttempt(options: OpenAttemptOptions = {}): AttemptRecord {
     if (this.attempt.status === 'waiting') {
       throw codedError('AttemptAlreadyActive', { attemptId: this.attempt.record.attemptId })
     }
     const committed = this.setup.status === 'committed' ? this.setup : undefined
-    let body: { wait: bigint; ignoresPause: boolean } | undefined
+    let body: DoubleSetupBody | undefined
     try {
       body =
         committed?.setupBody && committed.setupBody !== '0x'
@@ -798,10 +673,7 @@ export class ScriptedChain {
    * Cancels the waiting attempt, emitting `AttemptCancelled`. `nobody` with a
    * `vetoingMethod` is a security stop's veto; without one it is a setup write.
    */
-  cancelAttempt(
-    canceller: Canceller,
-    options: { vetoingMethod?: Address; caller?: Address; usedPlaces?: bigint[] } = {}
-  ): void {
+  cancelAttempt(canceller: Canceller, options: CancelAttemptOptions = {}): void {
     if (this.attempt.status !== 'waiting') {
       throw codedError('NoActiveAttempt', { account: this.account, action: this.action })
     }
@@ -863,7 +735,7 @@ export class ScriptedChain {
       ...this.authorities.filter((a) => !sameAddress(a, performed.removedAuthority)),
       performed.newAuthority
     ]
-    const logs = [
+    const logs: NotificationFields[] = [
       {
         kind: 'attempt-consumed',
         account: this.account,
@@ -953,7 +825,7 @@ export class ScriptedChain {
    * Makes a read throw a `ScriptedReadFailure` (or `error` where given) until
    * cleared. `module` limits a module read to one module address.
    */
-  failRead(read: ScriptedRead, options: { module?: Address; error?: Error } = {}): this {
+  failRead(read: ScriptedRead, options: FailReadOptions = {}): this {
     this.pushRead(read, { mode: 'throw', ...options })
     return this
   }
@@ -1183,7 +1055,7 @@ export class ScriptedChain {
           break
         case 'start': {
           const { request } = effect
-          let body: { wait: bigint; ignoresPause: boolean } | undefined
+          let body: DoubleSetupBody | undefined
           try {
             body = readSetupBody(request.setupBody)
           } catch {
