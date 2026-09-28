@@ -1,4 +1,9 @@
-import { renderDeadline, renderRemaining, Translate } from '..'
+import { renderDateTimeInZone, renderDeadline, renderRemaining, Translate } from '..'
+
+const expectRefusal = (fn: () => unknown, message: string) => {
+  expect(fn).toThrow(TypeError)
+  expect(fn).toThrow(new TypeError(message))
+}
 
 // 13 Aug 18:04 in Berlin (CEST, UTC+2) is 16:04 UTC.
 const DEADLINE = new Date('2026-08-13T16:04:00Z')
@@ -92,5 +97,51 @@ describe('deadline', () => {
       passed: true,
       line: null
     })
+  })
+})
+
+describe('a value that is not a valid time', () => {
+  const BAD_TIMES: [Date | number, string][] = [
+    [NaN, 'Not a time: NaN'],
+    [new Date(NaN), 'Not a time: Invalid Date'],
+    [Infinity, 'Not a time: Infinity'],
+    [1e16, 'Not a time: 10000000000000000']
+  ]
+
+  it('the date and zone renderer refuses NaN, an invalid Date, Infinity and a time past the Date range', () => {
+    BAD_TIMES.forEach(([at, message]) =>
+      expectRefusal(() => renderDateTimeInZone(at, 'Europe/Berlin'), message)
+    )
+  })
+
+  it('the deadline refuses the same values as its deadline or as its now', () => {
+    BAD_TIMES.forEach(([value, message]) => {
+      expectRefusal(
+        () =>
+          renderDeadline({ deadline: value, now: before(23 * HOUR), timeZone: 'Europe/Berlin' }),
+        message
+      )
+      expectRefusal(
+        () => renderDeadline({ deadline: DEADLINE, now: value, timeZone: 'Europe/Berlin' }),
+        message
+      )
+    })
+  })
+
+  it('the date and zone renderer still renders a valid Date or epoch milliseconds', () => {
+    const berlin = { date: '13 Aug, 18:04 CEST', zone: 'CEST' }
+    expect(renderDateTimeInZone(DEADLINE, 'Europe/Berlin')).toEqual(berlin)
+    expect(renderDateTimeInZone(DEADLINE.getTime(), 'Europe/Berlin')).toEqual(berlin)
+  })
+
+  it('accepts the last time a Date can hold and refuses one millisecond past it', () => {
+    expect(() => renderDateTimeInZone(8.64e15, 'UTC')).not.toThrow()
+    expectRefusal(() => renderDateTimeInZone(8.64e15 + 1, 'UTC'), 'Not a time: 8640000000000001')
+  })
+
+  it('the time left refuses NaN, Infinity and -Infinity', () => {
+    expectRefusal(() => renderRemaining(NaN), 'Not a time: NaN')
+    expectRefusal(() => renderRemaining(Infinity), 'Not a time: Infinity')
+    expectRefusal(() => renderRemaining(-Infinity), 'Not a time: -Infinity')
   })
 })
