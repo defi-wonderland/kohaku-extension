@@ -146,6 +146,29 @@ describe('scripted chain', () => {
     })
   })
 
+  it('never moves time back when it spreads fewer seconds than blocks', async () => {
+    const world = createWorld()
+    world.script.setupCommitted('private')
+    world.chain.openAttempt({ wait: 8 })
+    const start = world.chain.head
+    const head = world.chain.advance(5, 10)
+    expect(head.number).toBe(start.number + 10)
+    expect(head.timestamp).toBe(start.timestamp + 5)
+    const stamps = await Promise.all(
+      Array.from({ length: 11 }, (_, i) => world.provider.block(start.number + i))
+    ).then((blocks) => blocks.map((b) => b.timestamp))
+    stamps.forEach((t, i) => i > 0 && expect(t).toBeGreaterThanOrEqual(stamps[i - 1]!))
+
+    const recovery = await world.recoveryClient()
+    const pending = await recovery.recoveryState()
+    expect(pending.attempt.consumableAfter).toBeGreaterThan(pending.block.timestamp)
+    expect(world.chain.attemptStatus()).toBe('pending')
+    world.chain.advance(5, 10)
+    const ready = await recovery.recoveryState()
+    expect(ready.attempt.consumableAfter).toBeLessThanOrEqual(ready.block.timestamp)
+    expect(world.chain.attemptStatus()).toBe('ready')
+  })
+
   eachIt([true, false])('reads authorization %s through both sides', async (held) => {
     const world = createWorld()
     world.script.setupCommitted('private')

@@ -1,4 +1,5 @@
-import { DEVICE_KINDS, type Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { DEVICE_KINDS, type Address, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { sha256, stringToHex } from 'viem'
 
 import { METHOD_KINDS, MethodKind, createWorld, eachDescribe, isHex } from './harness'
 
@@ -27,6 +28,21 @@ eachDescribe(METHOD_KINDS)('the %s method double', (kind) => {
     expect(DEVICE_KINDS).toContain(facts.kind)
     const proof = await world.methods[kind].replyFrom(ctx, {}, `0x${'ab'.repeat(65)}`)
     expect(isHex(proof) || (proof as { kind: string }).kind === 'reply-failure').toBe(true)
+  })
+})
+
+it('enrolls a passkey whose rpIdHash is the SHA-256 of the relying party id', async () => {
+  const world = createWorld()
+  const orchestrator = world.orchestrator()
+  const method = world.descriptor.methodPasskey
+  const input = orchestrator.enrollInput(method, { relyingPartyId: 'wallet.example' })
+  const config = await orchestrator.configFrom(method, input, {
+    credential: { publicKey: '0x04aa' }
+  })
+  expect(isHex(config)).toBe(true)
+  expect(world.methods.passkey.codec.decodeConfig(config as Hex)).toEqual({
+    publicKey: '0x04aa',
+    rpIdHash: sha256(stringToHex('wallet.example'))
   })
 })
 

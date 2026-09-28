@@ -35,7 +35,7 @@ import {
   encodeAbiParameters,
   isAddress,
   isHex,
-  keccak256,
+  sha256,
   stringToHex
 } from 'viem'
 
@@ -151,8 +151,9 @@ export class WalletMethodDouble extends MethodDouble {
 
   protected enrollConfig(input: unknown): Hex | EnrollFailure {
     const address = (input as { address?: string } | undefined)?.address
-    if (!address || !isAddress(address, { strict: false }))
-      return enrollFailure('material-rejected')
+    // The strict check refuses a mixed-case address with a wrong checksum, which
+    // the encoder would otherwise throw on.
+    if (!address || !isAddress(address, { strict: true })) return enrollFailure('material-rejected')
     return this.codec.encodeConfig({ address: address as Address })
   }
 
@@ -234,7 +235,8 @@ export class PasskeyMethodDouble extends MethodDouble {
     const publicKey = (material as { credential?: { publicKey?: unknown } } | undefined)?.credential
       ?.publicKey
     if (!rpId || !nonEmptyHex(publicKey)) return enrollFailure('material-rejected')
-    return this.codec.encodeConfig({ publicKey, rpIdHash: keccak256(stringToHex(rpId)) })
+    // WebAuthn's rpIdHash is the SHA-256 of the relying party id.
+    return this.codec.encodeConfig({ publicKey, rpIdHash: sha256(stringToHex(rpId)) })
   }
 
   /** `params: { relyingPartyId, credentialId? }`; the digest is the challenge. */
