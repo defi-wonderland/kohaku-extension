@@ -185,8 +185,10 @@ const rawLogOf = (log: ProviderLog): RawLog => ({
  *   connection's own and not the provider's network record.
  * - `call(to, data, from, block)`: `call` over `{ to, data }`, with `from`
  *   where one is given, at the block tag.
- * - `logs(filterSpec, range)`: `getLogs` over `{ address, topics, fromBlock,
- *   toBlock }`, the filter's addresses and topics as they are.
+ * - `logs(filterSpec, range)`: `getLogs` over the filter's addresses and
+ *   topics and the range's two blocks. ethers lowercases the topics, sorts
+ *   and dedupes each topic list and sorts the addresses, which matches the
+ *   same logs.
  * - `block(tag)`: `getBlock` at the tag without transactions; a block the node
  *   does not have is a failure, not an empty header.
  */
