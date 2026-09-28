@@ -5,19 +5,16 @@
  * Every function here is pure: it reads no clock, no zone and no storage, and
  * takes `now` and the zone as parameters. Strings come from `t`.
  */
-import { formatUnits, getAddress } from 'ethers'
+import { formatUnits, getAddress, isAddress, isHex, zeroAddress } from 'viem'
 
+import i18n from '@common/config/localization'
 import type { Address, Hex, PaymentOrder } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { appTranslate, Translate } from './translate'
+import type { Translate } from './translate'
 import { renderChip, renderValueLabel } from './vocabulary'
 
 /** The one ellipsis every truncation uses. */
 export const ELLIPSIS = '…'
-
-const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
-const HEX_PATTERN = /^0x[0-9a-fA-F]*$/
-const ZERO_ADDRESS = `0x${'0'.repeat(40)}`
 
 // ---------------------------------------------------------------------------
 // Addresses
@@ -31,14 +28,16 @@ const ZERO_ADDRESS = `0x${'0'.repeat(40)}`
  * fails its checksum.
  */
 export const checksumAddress = (address: string): Address => {
-  if (!ADDRESS_PATTERN.test(address)) {
+  if (!isAddress(address, { strict: false })) {
     throw new TypeError(`Not an address: ${address}`)
   }
-  try {
-    return getAddress(address) as Address
-  } catch {
+  const checksummed = getAddress(address)
+  const digits = address.slice(2)
+  const mixedCase = digits !== digits.toLowerCase() && digits !== digits.toUpperCase()
+  if (mixedCase && checksummed !== address) {
     throw new TypeError(`Bad address checksum: ${address}`)
   }
+  return checksummed
 }
 
 /**
@@ -66,7 +65,7 @@ export const renderFullAddress = (address: string): string => checksumAddress(ad
 // ---------------------------------------------------------------------------
 
 const truncateHex = (value: string, lead: number, tail: number): string => {
-  if (!HEX_PATTERN.test(value)) {
+  if (!isHex(value)) {
     throw new TypeError(`Not hex: ${value}`)
   }
   const digits = value.slice(2)
@@ -160,7 +159,7 @@ export const nameNeedsCaveat = (use: NameUse): boolean => use !== 'informationOn
 export const renderResolvedName = (
   name: string,
   use: NameUse,
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedName | null => {
   if (name.trim() === '') return null
   return {
@@ -184,7 +183,7 @@ export interface RenderedHiddenValue {
  * A hidden value as sixteen dots beside a hidden chip, so a masked value never
  * looks like a load failure.
  */
-export const renderHiddenValue = (t: Translate = appTranslate): RenderedHiddenValue => ({
+export const renderHiddenValue = (t: Translate = i18n.t): RenderedHiddenValue => ({
   dots: t('socialRecovery.display.hiddenValue'),
   chip: t('socialRecovery.display.hiddenChip')
 })
@@ -212,7 +211,7 @@ export interface RenderedMemberList<T> {
 export const renderMemberList = <T>(
   members: readonly T[],
   options: { showAll?: boolean } = {},
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedMemberList<T> => {
   if (options.showAll || members.length <= MEMBER_LIST_VISIBLE) {
     return { shown: members, restCount: 0, more: null }
@@ -239,18 +238,18 @@ export interface PaymentToken {
  * A token amount in human units, with at least two decimals and no trailing
  * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
  * on a negative amount, which no token transfer carries. Throws a TypeError on
- * decimals that are negative or not an integer, which no token metadata carries.
+ * decimals that are negative, not an integer or above 255, which no token
+ * metadata carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
   if (amount < 0n) {
     throw new TypeError(`Not a token amount: ${amount}`)
   }
-  if (!Number.isInteger(decimals) || decimals < 0) {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
     throw new TypeError(`Not token decimals: ${decimals}`)
   }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
-  const trimmed = fraction.replace(/0+$/, '')
-  return `${whole}.${trimmed.padEnd(2, '0')}`
+  return `${whole}.${fraction.padEnd(2, '0')}`
 }
 
 /**
@@ -267,7 +266,7 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
 export const renderPaymentOrder = (
   order: PaymentOrder | null | undefined,
   token: PaymentToken | null | undefined,
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => {
   if (!order || order.amount === 0n) {
     return renderValueLabel('noPayment', t)
@@ -277,7 +276,7 @@ export const renderPaymentOrder = (
   }
   const amount = renderTokenAmount(order.amount, token.decimals)
   const payee = renderFullAddress(order.payee)
-  if (payee === ZERO_ADDRESS) {
+  if (payee === zeroAddress) {
     return t('socialRecovery.display.paymentOrderOpenPayee', { amount, symbol: token.symbol })
   }
   return t('socialRecovery.display.paymentOrder', { amount, symbol: token.symbol, payee })
@@ -355,7 +354,7 @@ export const renderDateTimeInZone = (
  * hour, `23 hours`. Both round down; under one minute it reads one minute. A
  * time left that is not finite throws a TypeError.
  */
-export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
+export const renderRemaining = (remainingMs: number, t: Translate = i18n.t): string => {
   checkRemainingMs(remainingMs)
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
@@ -374,7 +373,7 @@ export const renderRemaining = (remainingMs: number, t: Translate = appTranslate
  */
 export const renderDeadline = (
   input: { deadline: Date | number; now: Date | number; timeZone: string; locale?: string },
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): RenderedDeadline => {
   const { date, zone } = renderDateTimeInZone(input.deadline, input.timeZone, input.locale)
   const remainingMs = toMs(input.deadline) - toMs(input.now)
@@ -430,7 +429,7 @@ export const countdownStateOf = (remainingMs: number): CountdownState =>
  */
 export const renderCountdown = (
   input: { remainingMs: number; stopped?: boolean },
-  t: Translate = appTranslate
+  t: Translate = i18n.t
 ): string => {
   if (countdownStateOf(input.remainingMs) === 'executionDue') {
     return input.stopped
