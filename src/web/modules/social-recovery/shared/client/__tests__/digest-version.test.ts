@@ -4,6 +4,7 @@
  * prepared, as the "update the wallet" state of the account step.
  */
 import { PolicyManagerDouble, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
+import * as descriptors from '@web/modules/social-recovery/shared/client/descriptors'
 
 import {
   buildRecoveryClient,
@@ -11,6 +12,8 @@ import {
   DigestVersionRefusal,
   isDigestVersionRefusal,
   MANAGER_DOMAIN_NAME,
+  RecoveryClientConfiguration,
+  sdkStandIn,
   spyOnBuilder,
   spyOnPrepares,
   thrownBy
@@ -134,5 +137,38 @@ describe('the digest-version check', () => {
     expect(caught).toBeInstanceOf(Error)
     expect(isDigestVersionRefusal(caught)).toBe(false)
     expect((caught as { check?: string }).check).toBe('domain-fields')
+  })
+})
+
+describe('a chain id beyond 2^53, where a number can no longer tell two ids apart', () => {
+  const LARGE = 2 ** 53
+
+  /** A configuration whose descriptor names chain 2^53, over a manager whose domain names `domainChainId`. */
+  const onLargeChain = (domainChainId: bigint): RecoveryClientConfiguration => {
+    const world = createWorld()
+    const { descriptorOf } = descriptors
+    jest
+      .spyOn(descriptors, 'descriptorOf')
+      .mockImplementation((chain, book) => ({ ...descriptorOf(chain, book), chainId: LARGE }))
+    const descriptor = descriptors.descriptorOf(world.config.chain, world.config.addressBook)
+    const chain = sdkStandIn.chainFor(descriptor, world.account)
+    chain.manager.domain.chainId = domainChainId
+    return { ...world.config, provider: sdkStandIn.providerFor(chain) }
+  }
+
+  it("refuses a domain chain id one above the descriptor's with the client's own check, before any build", async () => {
+    const config = onLargeChain(2n ** 53n + 1n)
+    const builder = spyOnBuilder()
+    const caught = await thrownBy(buildRecoveryClient(config))
+    expect(isDigestVersionRefusal(caught)).toBe(false)
+    expect((caught as { check?: string }).check).toBe('domain')
+    expect(builder.buildSetupClient).not.toHaveBeenCalled()
+    expect(builder.buildRecoveryClient).not.toHaveBeenCalled()
+  })
+
+  it('builds the client when the domain carries the exact chain id', async () => {
+    const config = onLargeChain(2n ** 53n)
+    const client = await buildRecoveryClient(config)
+    expect(client.descriptor.chainId).toBe(LARGE)
   })
 })
