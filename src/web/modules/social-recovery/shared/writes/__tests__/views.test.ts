@@ -2,12 +2,13 @@
  * What the two views show: `WriteStateView` and `DepositStepView` lay out what
  * `renderWriteState` and `renderDepositStep` answer, since the rules live in
  * the functions. This file checks that answer, the rendered output, state by
- * state and variant by variant, through the real en.json.
+ * state and variant by variant, through the real en.json. It also checks that
+ * no view source opens a link (the step renders no faucet link), since a link
+ * a view added would bypass the renderers.
  *
- * The views are not mounted: the repository's Jest runs ts-jest under
- * `jsx: react-native`, which leaves JSX untransformed. The one check on the
- * view sources themselves is that neither opens a link (the step renders no
- * faucet link), since a link a view added would bypass the renderers.
+ * The views are not mounted here. The deposit step keeps one state of its own,
+ * the result of copying the key's address, which deposit-step-copy.test.ts
+ * checks on the mounted view.
  */
 import fs from 'fs'
 import path from 'path'
@@ -41,6 +42,7 @@ import {
 
 const t = appTranslate
 const LINK = /\bhttps?:\/\/|\bwww\.|faucet/i
+const VIEWS = path.resolve(__dirname, '..', 'components')
 
 describe('WriteStateView: what renderWriteState answers', () => {
   WRITE_KINDS.forEach((write) =>
@@ -218,6 +220,7 @@ describe('DepositStepView: what renderDepositStep answers', () => {
         r.keyLabel,
         r.keyAddress,
         r.copyLabel,
+        r.copyFailed,
         ...r.routes.flatMap((route) => [route.line, route.note]),
         ...r.notes,
         ...r.waiting,
@@ -230,7 +233,6 @@ describe('DepositStepView: what renderDepositStep answers', () => {
 })
 
 describe('no view opens a link', () => {
-  const VIEWS = path.resolve(__dirname, '..', 'components')
   const viewFiles = fs.readdirSync(VIEWS).filter((file) => /\.tsx$/.test(file))
 
   it('scans every view in the folder, the write state view and the deposit step view among them', () => {

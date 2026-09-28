@@ -30,6 +30,7 @@ import {
 
 const HASH_A = TX_HASH
 const HASH_B: Hex = `0x${'b'.repeat(64)}`
+const HASH_C: Hex = `0x${'c'.repeat(64)}`
 /** The hash of another transaction from the same key, such as the transfer route's. */
 const OTHER_HASH: Hex = `0x${'d'.repeat(64)}`
 
@@ -279,6 +280,76 @@ describe('an answer of the current run', () => {
       receipt: { transactionHash: TX_HASH, status: 0 }
     })
     expect(settled).toMatchObject({ status: 'failedReverted', transactionHash: TX_HASH })
+  })
+
+  it('an error naming an earlier hash of the run keeps the latest hash active, with both tracked', () => {
+    const sent = sentFor('cancel', HASH_A)
+    const resent = writeReducer(sent, { type: 'sent', run: sent.run, transactionHash: HASH_B })
+    const timedOut = writeReducer(resent, {
+      type: 'error',
+      run: sent.run,
+      error: waitTimedOut(HASH_A)
+    })
+    expect(timedOut).toMatchObject({
+      status: 'submitting',
+      transactionHash: HASH_B,
+      sentHashes: [HASH_A, HASH_B],
+      run: sent.run
+    })
+    ;[HASH_A, HASH_B].forEach((transactionHash) =>
+      expect(
+        writeReducer(timedOut, {
+          type: 'receipt',
+          run: sent.run,
+          receipt: { transactionHash, status: 1 }
+        })
+      ).toMatchObject({ status: 'landed', transactionHash })
+    )
+  })
+
+  it('an error naming a new hash makes that hash active and tracked', () => {
+    const sent = sentFor('cancel', HASH_A)
+    const resent = writeReducer(sent, { type: 'sent', run: sent.run, transactionHash: HASH_B })
+    const timedOut = writeReducer(resent, {
+      type: 'error',
+      run: sent.run,
+      error: waitTimedOut(HASH_C)
+    })
+    expect(timedOut).toMatchObject({
+      status: 'submitting',
+      transactionHash: HASH_C,
+      sentHashes: [HASH_A, HASH_B, HASH_C],
+      run: sent.run
+    })
+    expect(
+      writeReducer(timedOut, {
+        type: 'receipt',
+        run: sent.run,
+        receipt: { transactionHash: HASH_C, status: 0 }
+      })
+    ).toMatchObject({ status: 'failedReverted', transactionHash: HASH_C })
+  })
+
+  it('an error naming a hash during the gas check makes that hash active and tracked', () => {
+    const checking = writeReducer(initialWriteState('cancel'), { type: 'start' })
+    const timedOut = writeReducer(checking, {
+      type: 'error',
+      run: checking.run,
+      error: waitTimedOut(HASH_A)
+    })
+    expect(timedOut).toMatchObject({
+      status: 'submitting',
+      transactionHash: HASH_A,
+      sentHashes: [HASH_A],
+      run: checking.run
+    })
+    expect(
+      writeReducer(timedOut, {
+        type: 'receipt',
+        run: checking.run,
+        receipt: { transactionHash: HASH_A, status: 1 }
+      })
+    ).toMatchObject({ status: 'landed', transactionHash: HASH_A })
   })
 
   it('an announced hash settles whatever the case of its letters', () => {

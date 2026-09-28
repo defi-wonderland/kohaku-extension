@@ -362,6 +362,7 @@ export const copyOfStep = (step: DepositStep, t?: Translate): string[] => {
     r.keyLabel,
     r.keyAddress,
     r.copyLabel,
+    r.copyFailed,
     ...r.routes.flatMap((route) => [route.line, route.note]),
     ...r.notes,
     ...r.waiting,
@@ -372,9 +373,14 @@ export const copyOfStep = (step: DepositStep, t?: Translate): string[] => {
 /** Every string `DepositStepView` shows for the blocker that leads to the step. */
 export const copyOfBlocker = (step: DepositStep): string[] => {
   const r = renderDepositStep(step)
-  return [r.blocker.title, r.blocker.line, r.keyLabel, r.keyAddress, r.copyLabel].filter(
-    (s): s is string => typeof s === 'string'
-  )
+  return [
+    r.blocker.title,
+    r.blocker.line,
+    r.keyLabel,
+    r.keyAddress,
+    r.copyLabel,
+    r.copyFailed
+  ].filter((s): s is string => typeof s === 'string')
 }
 
 export const text = (strings: string[]): string => strings.join('\n')
