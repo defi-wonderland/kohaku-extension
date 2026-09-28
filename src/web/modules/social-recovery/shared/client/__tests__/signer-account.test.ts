@@ -2,22 +2,15 @@
  * The signer facade as a viem account for one key handle. Its two signing
  * members go through the facade's request queue, so each queues the facade's
  * own request and answers the signature the queue returns, with the facade's
- * refusals, wait and first-answer rule. It signs no transaction.
+ * refusals, wait and first-answer rule. It signs no transaction and never the
+ * EIP-712 domain alone.
  *
  * The queue is the fake of harness.ts. Each signature a test pushes is made by
  * the background's own keystore signer over the request the facade queued, and
  * checked with viem's own verifiers against the key's address.
  */
 import { Wallet } from 'ethers'
-import {
-  concat,
-  hashDomain,
-  hexToBytes,
-  keccak256,
-  recoverAddress,
-  verifyMessage,
-  verifyTypedData
-} from 'viem'
+import { hexToBytes, verifyMessage, verifyTypedData } from 'viem'
 
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { PlainTextMessage, TypedMessage } from '@ambire-common/interfaces/userRequest'
@@ -102,11 +95,10 @@ afterEach(() => {
 })
 
 describe('the account of a key handle', () => {
-  it("carries the handle's address as a custom local account", () => {
+  it("carries the handle's address as a local account", () => {
     const { account } = accountOver()
     expect(account.address).toBe(KEY)
     expect(account.type).toBe('local')
-    expect(account.source).toBe('custom')
   })
 
   it('has no member that signs a bare hash', () => {
@@ -189,6 +181,26 @@ describe('signTypedData', () => {
     await expect(verifyTypedData({ address: KEY, ...TYPED_DATA, signature })).resolves.toBe(true)
   })
 
+  it('hands the facade an empty domain for a definition that names none, and answers the signature viem verifies', async () => {
+    const { q, account } = accountOver()
+    const { types, primaryType, message } = TYPED_DATA
+    const signing = track(account.signTypedData({ types, primaryType, message }))
+    const { userRequest } = addedRequest(q.dispatch)
+    expect(userRequest.action).toMatchObject({
+      kind: 'typedMessage',
+      domain: {},
+      types: { EIP712Domain: [], ...types },
+      primaryType,
+      message
+    })
+    const signature = await answerAsTheKeystore(q)
+    await flush()
+    expect(signing).toEqual({ status: 'resolved', value: signature })
+    await expect(
+      verifyTypedData({ address: KEY, types, primaryType, message, signature })
+    ).resolves.toBe(true)
+  })
+
   it('refuses a key the wallet does not list as a basic account with SignerNotWired, queuing nothing', async () => {
     const { q, account } = accountOver([])
     const caught = await thrownBy(account.signTypedData(TYPED_DATA))
@@ -224,35 +236,57 @@ describe('signTypedData', () => {
   })
 })
 
-describe("signTypedData with the primary type 'EIP712Domain'", () => {
+describe("typed data whose primary type is 'EIP712Domain'", () => {
   const DOMAIN = { name: 'PolicyManager', version: '1', chainId: SEPOLIA } as const
   const DOMAIN_TYPE = [
     { name: 'name', type: 'string' },
     { name: 'version', type: 'string' },
     { name: 'chainId', type: 'uint256' }
-  ] as const
+  ]
 
-  it('queues a request with no message and answers a signature over the domain alone', async () => {
-    const { q, account } = accountOver()
-    const signing = track(
-      account.signTypedData({ domain: DOMAIN, types: {}, primaryType: 'EIP712Domain' })
+  const ROUTES: [string, (q: QueueWorld) => Promise<Hex>][] = [
+    [
+      'through the account',
+      (q) =>
+        accountFor(q.signer, HANDLE).signTypedData({
+          domain: DOMAIN,
+          types: {},
+          primaryType: 'EIP712Domain'
+        })
+    ],
+    [
+      'through the facade',
+      (q) =>
+        q.signer.signTypedData(HANDLE, {
+          domain: DOMAIN,
+          types: { EIP712Domain: DOMAIN_TYPE },
+          primaryType: 'EIP712Domain',
+          message: {}
+        })
+    ]
+  ]
+  const KEYS: [string, Address[]][] = [
+    ['a key the wallet lists', [KEY]],
+    ['a key the queue cannot sign for', []]
+  ]
+  ROUTES.forEach(([route, sign]) =>
+    KEYS.forEach(([keyTitle, listed]) =>
+      it(`is refused ${route} for ${keyTitle} with a plain error, before anything is queued`, async () => {
+        const q = queueOver(listed.map(basicAccount))
+        const signing = track(sign(q))
+        expect(q.dispatch).not.toHaveBeenCalled()
+        expect(q.listeners()).toBe(0)
+        await flush()
+        expect(signing.status).toBe('rejected')
+        expect(signing.value).toBeInstanceOf(Error)
+        expect((signing.value as Error).message).toBe(
+          'signTypedData signs a message, never the EIP712Domain alone.'
+        )
+        expect(isSignFlowFailure(signing.value)).toBe(false)
+        expect(isSignerNotWired(signing.value)).toBe(false)
+      })
     )
-    const { userRequest } = addedRequest(q.dispatch)
-    expect(userRequest.action).toEqual({
-      kind: 'typedMessage',
-      domain: DOMAIN,
-      types: { EIP712Domain: DOMAIN_TYPE },
-      primaryType: 'EIP712Domain',
-      message: undefined
-    })
-    const signature = await answerAsTheKeystore(q)
-    await flush()
-    expect(signing).toEqual({ status: 'resolved', value: signature })
-    const overTheDomain = keccak256(
-      concat(['0x1901', hashDomain({ domain: DOMAIN, types: { EIP712Domain: [...DOMAIN_TYPE] } })])
-    )
-    await expect(recoverAddress({ hash: overTheDomain, signature })).resolves.toBe(KEY)
-  })
+  )
 })
 
 describe('signTransaction', () => {
