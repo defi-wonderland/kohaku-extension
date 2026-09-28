@@ -11,6 +11,7 @@ import type {
   Address,
   AttemptRequest,
   CancelRequest,
+  GatheringPurpose,
   Handover,
   Hex,
   KitError
@@ -29,6 +30,7 @@ import {
   setupCommitmentOf
 } from './encoding'
 import { kitError } from './scripts'
+import type { RuleEvaluation } from './types'
 
 /**
  * The doubles' stand-in names for the account's own reverts at the execute: the
@@ -39,13 +41,6 @@ import { kitError } from './scripts'
  */
 export const ACCOUNT_NOT_ARMED = 'AccountNotArmed'
 export const ACCOUNT_UNFIT = 'AccountUnfit'
-
-export interface RuleEvaluation {
-  satisfied: boolean
-  clauses: { clause: number; threshold: number; filled: number; places: number[] }[]
-  /** The first clause whose filled places miss its threshold, where one does. */
-  failingClause?: number
-}
 
 /**
  * The local rule evaluation over a body and a set of filled places: every
@@ -103,7 +98,7 @@ export const malformedHandover = (h: Handover): boolean =>
 export const acceptanceRevert = (
   chain: ScriptedChain,
   request: AttemptRequest | CancelRequest,
-  purpose: 'approval' | 'cancellation'
+  purpose: GatheringPurpose
 ): KitError | undefined => {
   const isApproval = purpose === 'approval'
   const state = chain.stateOf()

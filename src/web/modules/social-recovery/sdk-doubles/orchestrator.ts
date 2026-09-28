@@ -15,6 +15,7 @@ import type {
   ApproverReply,
   ApproverRequest,
   EnrollFailure,
+  Handover,
   Hex,
   IActionCodec,
   IMethodsOrchestrator,
@@ -158,10 +159,7 @@ export class MethodsOrchestratorDouble implements IMethodsOrchestrator {
           codec && request.payload
             ? {
                 decoded: true,
-                value: codec.decode(request.payload) as {
-                  newAuthority: Address
-                  removedAuthority: Address
-                }
+                value: codec.decode(request.payload) as Handover
               }
             : { decoded: false }
       } catch {

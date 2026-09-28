@@ -6,7 +6,6 @@
 import type {
   Address,
   BlockHeader,
-  DescribedCall,
   Hex,
   KitError,
   PreparedBatch,
@@ -16,9 +15,10 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { concat, keccak256, stringToHex } from 'viem'
 
-import type { ChainEffect, ScriptedChain } from './chain'
+import type { ScriptedChain } from './chain'
 import { DEFAULT_SIMULATE } from './context'
 import { addressOf, toJson } from './encoding'
+import type { ComposeInput } from './types'
 
 let serial = 0
 
@@ -31,16 +31,6 @@ export const calldataOf = (name: string, args: unknown): Hex =>
 
 /** The address a permissionless call's simulation runs from where no `from` was given. */
 export const ARBITRARY_SENDER: Address = addressOf('arbitrary-simulation-sender')
-
-export interface ComposeInput {
-  name: string
-  args: unknown
-  target: Address
-  sender: Sender
-  block: BlockHeader
-  effect?: ChainEffect
-  describes?: DescribedCall[]
-}
 
 /** A prepared call with no simulation, as the manager part's own prepares return it. */
 export const composeCall = (chain: ScriptedChain, input: ComposeInput): PreparedCall => {
