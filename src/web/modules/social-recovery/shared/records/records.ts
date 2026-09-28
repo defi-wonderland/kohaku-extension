@@ -18,9 +18,10 @@ import { bytesToHex, isAddress, isAddressEqual } from 'viem'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
-import {
-  ABSENT,
+import { ABSENT, RECOVERY_WIPE_EVENTS, SETUP_RECORD_NAMES } from './types'
+import type {
   ChainId,
+  CountdownAccessor,
   CountdownRead,
   CountdownRecord,
   DecryptedSetupCacheRecord,
@@ -28,18 +29,19 @@ import {
   ExpectedRevision,
   ListedRecord,
   LiveRecoverySession,
-  RECOVERY_WIPE_EVENTS,
+  RecordAccessor,
   RecordRead,
-  RecordStorage,
+  RecoverySessionAccessor,
   RecoverySessionRecord,
   RecoveryWipeEvent,
   SessionRead,
   SessionRevision,
-  SETUP_RECORD_NAMES,
   SetupRecordName,
-  SetupRecordValues,
+  SetupRecords,
   StoredRecord,
-  StoredSession
+  StoredSession,
+  WalletRecords,
+  WalletRecordsOptions
 } from './types'
 
 /** The prefix of every storage key the records use. */
@@ -193,48 +195,10 @@ export const sessionAccount = (session: RecoverySessionRecord): Address =>
 export const predictedAttemptId = (session: LiveRecoverySession): bigint =>
   BigInt(session.gathering.request.attemptId)
 
-/** One record's typed read, write, wipe and age. */
-export interface RecordAccessor<T> {
-  read(): Promise<RecordRead<T>>
-  write(value: T): Promise<StoredRecord<T>>
-  wipe(): Promise<void>
-  /** Milliseconds since the record was written, or `null` when it is absent. */
-  age(at?: number): Promise<number | null>
-}
-
-export type SetupRecords = {
-  [N in SetupRecordName]: RecordAccessor<SetupRecordValues[N]>
-}
-
-export interface RecoverySessionAccessor {
-  read(): Promise<SessionRead>
-  /**
-   * Writes the live session from the SDK's gathering. `expectedRevision` is the
-   * revision of the caller's read, or `null` when it read no session; when the
-   * stored revision differs, the write throws `SessionRevisionConflict` and
-   * writes nothing. Refuses a cancellation gathering, a gathering whose request
-   * names another account or chain, a landed session, and over a live session a
-   * gathering whose request differs in any field or that leaves a filled place
-   * without a reply. Over a wiped session it starts the new gathering.
-   */
-  write(gathering: Gathering, expectedRevision: ExpectedRevision): Promise<StoredSession>
-  age(at?: number): Promise<number | null>
-}
-
-/** The countdown's record, read from the session in its landed state. */
-export interface CountdownAccessor {
-  read(): Promise<CountdownRead>
-  age(at?: number): Promise<number | null>
-}
-
-export interface WalletRecordsOptions {
-  /** The extension's storage helper, or an in-memory double in a test. */
-  storage: RecordStorage
-  /** The clock `savedAt` and the default `age` read from, in ms since epoch. */
-  now?: () => number
-}
-
-export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOptions) => {
+export const createWalletRecords = ({
+  storage,
+  now = Date.now
+}: WalletRecordsOptions): WalletRecords => {
   const readKey = async <T>(key: string): Promise<RecordRead<T>> => {
     const stored: unknown = await storage.get(key, undefined)
     if (!isStoredRecord(stored)) return ABSENT
@@ -606,5 +570,3 @@ export const createWalletRecords = ({ storage, now = Date.now }: WalletRecordsOp
     decryptedSetupCache
   }
 }
-
-export type WalletRecords = ReturnType<typeof createWalletRecords>

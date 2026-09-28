@@ -257,6 +257,85 @@ export interface ListedRecord<T> {
   record: StoredRecord<T> & { revision: SessionRevision }
 }
 
+// ---------------------------------------------------------------------------
+// What `createWalletRecords` returns
+// ---------------------------------------------------------------------------
+
+/** One record's typed read, write, wipe and age. */
+export interface RecordAccessor<T> {
+  read(): Promise<RecordRead<T>>
+  write(value: T): Promise<StoredRecord<T>>
+  wipe(): Promise<void>
+  /** Milliseconds since the record was written, or `null` when it is absent. */
+  age(at?: number): Promise<number | null>
+}
+
+export type SetupRecords = {
+  [N in SetupRecordName]: RecordAccessor<SetupRecordValues[N]>
+}
+
+export interface RecoverySessionAccessor {
+  read(): Promise<SessionRead>
+  /**
+   * Writes the live session from the SDK's gathering. `expectedRevision` is the
+   * revision of the caller's read, or `null` when it read no session; when the
+   * stored revision differs, the write throws `SessionRevisionConflict` and
+   * writes nothing. Refuses a cancellation gathering, a gathering whose request
+   * names another account or chain, a landed session, and over a live session a
+   * gathering whose request differs in any field or that leaves a filled place
+   * without a reply. Over a wiped session it starts the new gathering.
+   */
+  write(gathering: Gathering, expectedRevision: ExpectedRevision): Promise<StoredSession>
+  age(at?: number): Promise<number | null>
+}
+
+/** The countdown's record, read from the session in its landed state. */
+export interface CountdownAccessor {
+  read(): Promise<CountdownRead>
+  age(at?: number): Promise<number | null>
+}
+
+export interface WalletRecordsOptions {
+  /** The extension's storage helper, or an in-memory double in a test. */
+  storage: RecordStorage
+  /** The clock `savedAt` and the default `age` read from, in ms since epoch. */
+  now?: () => number
+}
+
+/** The records on one storage, by chain and account. */
+export interface WalletRecords {
+  setup(chainId: ChainId, account: Address): SetupRecords
+  setupSavedAt(chainId: ChainId, account: Address): Promise<number | null>
+  saveSetup(chainId: ChainId, account: Address): Promise<void>
+  startOverSetup(chainId: ChainId, account: Address): Promise<void>
+  recoverySession(chainId: ChainId, account: Address): RecoverySessionAccessor
+  listRecoverySessions(chainId: ChainId): Promise<ListedRecord<RecoverySessionRecord>[]>
+  wipeRecoverySession(
+    chainId: ChainId,
+    account: Address,
+    event: DirectWipeEvent,
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean>
+  landSubmission(
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<StoredRecord<CountdownRecord> & { revision: SessionRevision }>
+  clearWipedSession(
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean>
+  endCountdown(
+    chainId: ChainId,
+    account: Address,
+    expectedRevision: ExpectedRevision
+  ): Promise<boolean>
+  countdown(chainId: ChainId, account: Address): CountdownAccessor
+  listCountdowns(chainId: ChainId): Promise<ListedRecord<CountdownRecord>[]>
+  decryptedSetupCache(chainId: ChainId, account: Address): RecordAccessor<DecryptedSetupCacheRecord>
+}
+
 /**
  * The strings a death state renders from its reason code, keys under
  * `socialRecovery.records` in en.json. The submission landing renders the
