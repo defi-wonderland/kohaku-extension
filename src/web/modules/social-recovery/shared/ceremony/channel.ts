@@ -25,7 +25,11 @@
  * copy of the report.
  *
  * Storage and the listener are parameters, so the channel runs under node.
+ * Both hand over values already parsed: the store's `get` reads its own
+ * richJson text, and the subscription parses a change before it calls back.
  */
+import type { Storage } from '@ambire-common/interfaces/storage'
+
 import type { CeremonyParams } from './request'
 import { CeremonyCall, CeremonyOutcome, isCeremonyCall, isCeremonyVerdict } from './verdicts'
 import type { VisibilityGate } from './visibility'
@@ -54,24 +58,16 @@ export interface CeremonyReport<T = unknown> {
 /** What a caller expects a report to be for. */
 export type ReportIdentity = Pick<CeremonyParams, 'id' | 'call' | 'method'>
 
-/** The part of the extension's storage the channel uses. */
-export interface ReportStore {
+/**
+ * The extension's storage as the channel uses it: its own `set` and `remove`,
+ * and a `get` that reads one key, never the whole store.
+ */
+export type ReportStore = Pick<Storage, 'set' | 'remove'> & {
   get(key: string, defaultValue?: unknown): Promise<unknown>
-  set(key: string, value: unknown): Promise<unknown>
-  remove(key: string): Promise<unknown>
 }
 
-/** Subscribes to changes of one storage key; returns the unsubscribe. */
+/** Subscribes to changes of one storage key, parsed; returns the unsubscribe. */
 export type ReportSubscribe = (key: string, onValue: (value: unknown) => void) => () => void
-
-const parseMaybeJson = (value: unknown): unknown => {
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
-  }
-}
 
 /** Whether `value` is a well-formed report: one of the four verdicts or a dismissal. */
 export const isCeremonyReport = (value: unknown): value is CeremonyReport => {
@@ -142,8 +138,8 @@ export const sendCeremonyReport = <T>(
     )
   )
 
-const storedReport = async (id: string, store: ReportStore): Promise<unknown> =>
-  parseMaybeJson(await store.get(ceremonyResultKey(id), null))
+const storedReport = (id: string, store: ReportStore): Promise<unknown> =>
+  store.get(ceremonyResultKey(id), null)
 
 /**
  * The report stored for `expected`, or null: a malformed report, one for
@@ -194,9 +190,8 @@ export const listenForCeremonyReport = (
   now: () => number = () => Date.now()
 ): (() => void) =>
   subscribe(ceremonyResultKey(expected.id), (value) => {
-    const parsed = parseMaybeJson(value)
-    if (!isCeremonyReport(parsed) || !isReportFor(parsed, expected, now())) return
-    onReport(parsed)
+    if (!isCeremonyReport(value) || !isReportFor(value, expected, now())) return
+    onReport(value)
     store.remove(ceremonyResultKey(expected.id)).catch(() => undefined)
   })
 
@@ -215,7 +210,7 @@ export const sweepCeremonyReports = async (
   for (const key of keys) {
     if (key.startsWith(CEREMONY_RESULT_KEY_PREFIX)) {
       // eslint-disable-next-line no-await-in-loop
-      const value = parseMaybeJson(await store.get(key, null))
+      const value: unknown = await store.get(key, null)
       if (!isCeremonyReport(value) || !isWithinExpiry(value.reportedAt, now)) {
         // eslint-disable-next-line no-await-in-loop
         await store.remove(key)

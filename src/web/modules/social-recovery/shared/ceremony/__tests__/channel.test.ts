@@ -80,9 +80,9 @@ describe('takeCeremonyReport', () => {
     expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 2)).toBeNull()
   })
 
-  it('reads a report stored as a JSON string', async () => {
+  it('reads no report from unparsed text, since the store parses what it returns', async () => {
     const store = mapStore([[key(), JSON.stringify(reportAt(T0))]])
-    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toMatchObject(EXPECTED)
+    expect(await ceremony().takeCeremonyReport(EXPECTED, store, T0 + 1)).toBeNull()
   })
 
   it('reads null at its expiry and removes it', async () => {
@@ -191,13 +191,13 @@ describe('listenForCeremonyReport', () => {
     })
   )
 
-  it('reads a report written as a JSON string', async () => {
+  it('delivers nothing for unparsed text, since the subscription parses what it hands over', async () => {
     const store = mapStore()
     const { subscribe, emit } = subscriptions()
     const onReport = jest.fn()
     ceremony().listenForCeremonyReport(EXPECTED, subscribe, store, onReport, () => T0 + 1)
     emit(key(), JSON.stringify(reportAt(T0)))
-    expect(onReport).toHaveBeenCalledTimes(1)
+    expect(onReport).not.toHaveBeenCalled()
   })
 
   it('stops listening once unsubscribed', () => {

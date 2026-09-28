@@ -3,6 +3,7 @@
  * storage for the report, its change events for a caller that listens, and the
  * passkey device over `navigator.credentials` at this page's own origin.
  */
+import { parse } from '@ambire-common/libs/richJson/richJson'
 import { browser, isExtension } from '@web/constants/browserapi'
 import { storage } from '@web/extension-services/background/webapi/storage'
 
@@ -29,19 +30,38 @@ export const browserReportKeys = async (): Promise<string[]> => {
   )
 }
 
+/**
+ * Hands `onValue` a changed value as the store's own `get` reads it: stored
+ * text parsed with richJson. Text that is not JSON is no report and reaches
+ * no caller.
+ */
+const deliverParsed = (raw: unknown, onValue: (value: unknown) => void) => {
+  if (typeof raw !== 'string') {
+    onValue(raw)
+    return
+  }
+  let value: unknown
+  try {
+    value = parse(raw)
+  } catch {
+    return
+  }
+  onValue(value)
+}
+
 /** Storage change events for one key: `storage.onChanged` in the extension, `storage` events outside. */
 export const browserReportSubscribe: ReportSubscribe = (key, onValue) => {
   if (isExtension && browser?.storage?.onChanged) {
     const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
       if (area === 'local' && changes[key] && changes[key].newValue !== undefined) {
-        onValue(changes[key].newValue)
+        deliverParsed(changes[key].newValue, onValue)
       }
     }
     browser.storage.onChanged.addListener(listener)
     return () => browser.storage.onChanged.removeListener(listener)
   }
   const listener = (event: StorageEvent) => {
-    if (event.key === key && event.newValue !== null) onValue(event.newValue)
+    if (event.key === key && event.newValue !== null) deliverParsed(event.newValue, onValue)
   }
   window.addEventListener('storage', listener)
   return () => window.removeEventListener('storage', listener)

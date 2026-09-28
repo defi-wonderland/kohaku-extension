@@ -175,8 +175,8 @@ afterEach(async () => {
 
 const fakeStore = () => ({
   get: jest.fn<Promise<unknown>, [string, unknown?]>(async () => null),
-  set: jest.fn<Promise<unknown>, [string, unknown]>(async () => null),
-  remove: jest.fn<Promise<unknown>, [string]>(async () => null)
+  set: jest.fn<Promise<null>, [string, unknown]>(async () => null),
+  remove: jest.fn<Promise<null>, [string]>(async () => null)
 })
 
 /**
