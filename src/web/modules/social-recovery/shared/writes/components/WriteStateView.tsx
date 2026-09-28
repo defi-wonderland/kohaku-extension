@@ -13,7 +13,7 @@
  * such as back or the cancel's move-funds action where `offersMoveFunds`
  * answers true, go in as children.
  */
-import React, { ReactNode } from 'react'
+import React from 'react'
 import { View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -23,20 +23,7 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 
 import { renderWriteState } from '../copy'
-import type { WriteState } from '../states'
-
-export interface WriteStateViewProps {
-  state: WriteState
-  /** The write's own title over the state, from its own keys. */
-  title?: string
-  /** The write's own sentence after the reading, from its own keys. */
-  note?: string
-  /** Runs the write again; the view shows the retry only where the state offers it. */
-  onRetry?: () => void
-  /** The write's own actions, under the state. */
-  children?: ReactNode
-  testID?: string
-}
+import type { WriteStateViewProps } from './types'
 
 const WriteStateView = ({ state, title, note, onRetry, children, testID }: WriteStateViewProps) => {
   const { t } = useTranslation()

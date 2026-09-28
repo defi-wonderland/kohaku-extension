@@ -19,10 +19,22 @@ import {
   Translate
 } from '@web/modules/social-recovery/shared/display'
 
-import { AttemptEnd, leavesAttemptReady, RevertCause } from './classify'
-import { DepositRouteKind, DepositStep, roundDownForDisplay, roundUpForDisplay } from './gas'
-import { isOwnerWrite, OwnerWrite, WriteKind } from './kinds'
-import { canRetry, offersMoveFunds, WriteState, WriteStatus } from './states'
+import { leavesAttemptReady } from './classify'
+import { roundDownForDisplay, roundUpForDisplay } from './gas'
+import { isOwnerWrite } from './kinds'
+import { canRetry, offersMoveFunds } from './states'
+import type {
+  AttemptEnd,
+  DepositStep,
+  DepositStepRenderOptions,
+  OwnerWrite,
+  RenderedDepositStep,
+  RenderedRoute,
+  RenderedWriteState,
+  RevertCause,
+  WriteKind,
+  WriteState
+} from './types'
 
 // ---------------------------------------------------------------------------
 // Keys
@@ -150,23 +162,6 @@ export const renderGasBalance = (wei: bigint, symbol: string): string =>
 // The shared states
 // ---------------------------------------------------------------------------
 
-/** A state as the screen reads it. */
-export interface RenderedWriteState {
-  status: WriteStatus
-  /** The in-progress chip of the submitting state. */
-  chip?: string
-  /** The state's own title, where it has one. A write's screen may set its own over it. */
-  title?: string
-  /** The state's sentences, in order. */
-  lines: string[]
-  /** The account's controller as it now stands, after a cancel whose attempt executed. */
-  controller?: { label: string; address: string }
-  /** The retry action's label, where the state offers the retry. */
-  retry?: string
-  /** Whether the state offers the cancel's move-funds action. */
-  offersMoveFunds: boolean
-}
-
 /** The sentence naming the cause of a revert, for the `{{cause}}` of the reverted reading. */
 export const renderRevertCause = (cause: RevertCause, t: Translate = i18n.t): string =>
   cause.kind === 'named' ? t(causeKey(cause.name)) : t(UNNAMED_CAUSE_KEY)
@@ -243,39 +238,6 @@ export const renderWriteState = (state: WriteState, t: Translate = i18n.t): Rend
 // The deposit step
 // ---------------------------------------------------------------------------
 
-/** One route as the step reads it. */
-export interface RenderedRoute {
-  kind: DepositRouteKind
-  line: string
-  note?: string
-}
-
-/** The deposit step as the screen reads it, in order. */
-export interface RenderedDepositStep {
-  /** The small line over the title, where the variant has one. */
-  eyebrow?: string
-  title: string
-  lead: string[]
-  /** The name of the key over its address, where the variant names it apart from the title. */
-  keyLabel?: string
-  /** The address of the key to fund, in full and checksummed. */
-  keyAddress: string
-  copyLabel: string
-  /** The line the view shows where copying the key's address failed. */
-  copyFailed: string
-  routes: RenderedRoute[]
-  notes: string[]
-  /** The lines of a step that waits for the funds to arrive. */
-  waiting: string[]
-  /** The line under the write's own continue action, where the step waits for the funds. */
-  actionHint?: string
-  /**
-   * The short panel a write's own screen shows when the check at sending comes
-   * up short: its title and its sentence. It leads to the step.
-   */
-  blocker: { title: string; line: string }
-}
-
 /** The shortfall sentence of each owner write: the save's, the cancel's, and any other's. */
 export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
   save: GAS_KEYS.shortfallSave,
@@ -310,7 +272,7 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
  */
 export const renderDepositStep = (
   step: DepositStep,
-  options: { balance?: bigint } = {},
+  options: DepositStepRenderOptions = {},
   t: Translate = i18n.t
 ): RenderedDepositStep => {
   const { symbol } = step.network

@@ -20,36 +20,27 @@
  */
 import { isHex } from 'viem'
 
-import type {
-  Address,
-  Hex,
-  KitError,
-  KitErrorName
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex, KitError, KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
 import { CANCELLED_BY, KIT_ERROR_NAMES } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { WriteKind } from './kinds'
 import type {
+  AttemptAfterCancel,
   FailedNotSentState,
   FailedRevertedState,
   FailedState,
+  FailureContext,
   LandedState,
-  SubmittingState
-} from './states'
+  ReplacedReason,
+  RevertCause,
+  SubmittingState,
+  WriteFailure,
+  WriteKind,
+  WriteReceipt
+} from './types'
 
 // ---------------------------------------------------------------------------
 // Receipts and failures
 // ---------------------------------------------------------------------------
-
-/** The part of a transaction receipt the classification reads. */
-export interface WriteReceipt {
-  transactionHash: Hex
-  /** 1 for a call that ran, 0 for a call that reverted. */
-  status: 0 | 1
-  blockNumber?: number
-  gasUsed?: bigint
-  effectiveGasPrice?: bigint
-}
 
 /**
  * How a sent transaction was replaced before it was mined, where it was not
@@ -58,23 +49,6 @@ export interface WriteReceipt {
  * write's own call never ran.
  */
 export const REPLACED_REASONS = ['cancelled', 'replaced'] as const
-export type ReplacedReason = typeof REPLACED_REASONS[number]
-
-/**
- * What the wallet knows of a write that did not land. `error` is what the send
- * threw; `transactionHash` is present once the wallet broadcast the call;
- * `receipt` is present once one came back; `cause` is the revert the wallet
- * decoded for that receipt (the SDK's error decoding over the call), where it
- * read one; `replaced` is present where another transaction took the call's
- * place before it was mined.
- */
-export interface WriteFailure {
-  error?: unknown
-  transactionHash?: Hex
-  receipt?: WriteReceipt
-  cause?: KitError
-  replaced?: ReplacedReason
-}
 
 /** A transaction hash: `0x` and exactly 64 hex digits. */
 const isTransactionHash = (value: unknown): value is Hex => isHex(value) && value.length === 66
@@ -184,39 +158,9 @@ export const writeFailureOf = (thrown: unknown): WriteFailure => {
  * roads the manager's cancel event names (events.ts `CANCELLED_BY`).
  */
 export const ATTEMPT_ENDS = ['executed', ...CANCELLED_BY] as const
-export type AttemptEnd = typeof ATTEMPT_ENDS[number]
 
 /** The attempt read's answer where the attempt a cancel meant to end still runs. */
 export const ATTEMPT_STILL_RUNNING = 'stillRunning' as const
-
-/**
- * The attempt read after a reverted cancel: how the attempt had ended and the
- * account's controller as it now stands, or that it still runs.
- * The controller is the key the consume event handed the account after an
- * execution, and the account's own key where another road ended the attempt.
- * An attempt that still runs reads the plain reverted reading, with the retry
- * and the move-funds action, since the attack goes on.
- */
-export type AttemptAfterCancel =
-  | { ended: AttemptEnd; controller?: Address }
-  | { ended: typeof ATTEMPT_STILL_RUNNING }
-
-/**
- * The cause a reverted state names.
- *
- * - `named`: a kit error the wallet decoded (`KIT_ERROR_NAMES`), which it names
- *   in its own words.
- * - `unnamed`: a revert that carries no cause the wallet can name, with its raw
- *   data where it read any.
- * - `attemptGone`: the owner's cancel reverted because the attempt was already
- *   gone. `ended` names the road, and `controller` the account's controller
- *   after an execution, once the attempt read returned; before it, the state
- *   names no controller rather than one it guessed.
- */
-export type RevertCause =
-  | { kind: 'named'; name: KitErrorName; error: KitError }
-  | { kind: 'unnamed'; data?: Hex }
-  | { kind: 'attemptGone'; ended?: AttemptEnd; controller?: Address }
 
 export const REVERT_CAUSE_KINDS = ['named', 'unnamed', 'attemptGone'] as const
 
@@ -364,13 +308,6 @@ export const leavesAttemptReady = (cause: RevertCause): boolean =>
 // ---------------------------------------------------------------------------
 // The classification
 // ---------------------------------------------------------------------------
-
-/** What classifying a write's end needs beside the end itself. */
-export interface FailureContext {
-  write: WriteKind
-  /** For a cancel: the attempt read after the revert, where it returned. */
-  attemptAfter?: AttemptAfterCancel
-}
 
 const revertedState = (
   receipt: WriteReceipt,

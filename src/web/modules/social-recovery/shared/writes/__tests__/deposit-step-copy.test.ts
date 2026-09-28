@@ -24,7 +24,7 @@ import { TextDecoder, TextEncoder } from 'util'
 import vm from 'vm'
 
 import type { DepositStep } from '@web/modules/social-recovery/shared/writes'
-import type { DepositStepViewProps } from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
+import type { DepositStepViewProps } from '@web/modules/social-recovery/shared/writes/components'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 

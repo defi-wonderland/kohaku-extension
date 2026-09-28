@@ -10,6 +10,8 @@
  */
 import type { PreparedBatch, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 
+import type { OwnerWrite, Payer, RecoveryCall, WriteKind } from './types'
+
 /**
  * The writes, by the copy they need:
  *
@@ -29,22 +31,18 @@ export const WRITE_KINDS = [
   'submission',
   'execution'
 ] as const
-export type WriteKind = typeof WRITE_KINDS[number]
 
 /** The writes the account's controlling key sends and pays for. */
 export const OWNER_WRITES = ['save', 'edit', 'ownerWrite', 'cancel'] as const
-export type OwnerWrite = typeof OWNER_WRITES[number]
 
 /** The two recovery calls the recoverer's own key sends and pays for in the first release. */
 export const RECOVERY_CALLS = ['submission', 'execution'] as const
-export type RecoveryCall = typeof RECOVERY_CALLS[number]
 
 /**
  * Who pays the gas of a write: the account's controlling key, or the sending
  * key of a recovery (the recoverer's own key).
  */
 export const PAYERS = ['accountKey', 'sendingKey'] as const
-export type Payer = typeof PAYERS[number]
 
 export const isWriteKind = (value: unknown): value is WriteKind =>
   typeof value === 'string' && (WRITE_KINDS as readonly string[]).includes(value)

@@ -24,22 +24,19 @@ import { Interface } from 'ethers'
 import { etherUnits } from 'viem'
 
 import { AMBIRE_ACCOUNT_FACTORY } from '@ambire-common/consts/deploy'
-import type {
-  Address,
-  Hex,
-  PreparedBatch,
-  PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
-import {
-  ChainReads,
-  gasCallOf,
-  GasEstimateCall,
-  isRevertedCall,
-  KeyHandle,
-  sameAddress
-} from '@web/modules/social-recovery/shared/client'
+import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { GasEstimateCall } from '@web/modules/social-recovery/shared/client'
+import { gasCallOf, isRevertedCall, sameAddress } from '@web/modules/social-recovery/shared/client'
 
-import { assertWriteDoor, isRecoveryCall, Payer, payerOf, WriteKind } from './kinds'
+import { assertWriteDoor, isRecoveryCall, payerOf } from './kinds'
+import type {
+  DepositRoute,
+  DepositStep,
+  DepositStepInput,
+  GasCheck,
+  GasCheckInput,
+  GasEstimate
+} from './types'
 
 /**
  * The headroom the check adds to the fee it estimates, in percent. The step
@@ -64,122 +61,8 @@ export const ACCOUNT_FACTORY = AMBIRE_ACCOUNT_FACTORY as Address
  */
 export const VALUE_TRANSFER_GAS = 9000n + 25000n
 
-/** The network the key must be funded on. An extension `Network` record satisfies it. */
-export interface GasNetwork {
-  name: string
-  nativeAssetSymbol: string
-}
-
-/**
- * An account this wallet holds, by its address and the name the wallet gives
- * it. `deployed` is false where the account has no code yet (the wallet's own
- * account state knows), so its transfer must deploy it through the account
- * factory first.
- */
-export interface WalletAccountRef {
-  address: Address
-  name: string
-  deployed?: boolean
-}
-
-/** The estimate of one transaction: its gas, the gas price, their product and the amount asked for. */
-export interface GasEstimate {
-  /** The gas the transaction would use, as the provider estimated it. */
-  gas: bigint
-  /** The node's gas price, in wei per gas. */
-  gasPrice: bigint
-  /** `gas * gasPrice`, in wei. */
-  cost: bigint
-  /** The cost with the fee headroom, in wei: what the key must hold. */
-  required: bigint
-}
-
 /** The two routes that fill a key. */
 export const DEPOSIT_ROUTES = ['transfer', 'outside'] as const
-export type DepositRouteKind = typeof DEPOSIT_ROUTES[number]
-
-/**
- * One route that fills the key. `amount` is rounded up to the precision the
- * step renders, so a holder who sends what the step shows covers it.
- *
- * - `transfer`: from an account this wallet holds, the account the key
- *   operates, to the key. It is itself an operation that key must send and pay
- *   for, so a key at zero cannot take it alone, and its amount is the
- *   shortfall plus the transfer's own fee (`fee`) with the headroom.
- * - `outside`: a deposit from outside this wallet into the key's address, the
- *   shortfall.
- */
-export type DepositRoute =
-  | { kind: 'transfer'; from: WalletAccountRef; to: Address; amount: bigint; fee: GasEstimate }
-  | { kind: 'outside'; to: Address; amount: bigint }
-
-/** The deposit step's data. The copy lives in `renderDepositStep`. */
-export interface DepositStep {
-  write: WriteKind
-  /** The account's controlling key for an owner write, the sending key for a recovery call. */
-  payer: Payer
-  /** The fast track's step: a recovery call from the fresh key of a fresh install. */
-  fastTrack: boolean
-  /** The address of the key that sends the write and pays its gas. */
-  key: Address
-  /** The network the key must be funded on. */
-  network: { name: string; symbol: string }
-  estimate: GasEstimate
-  /** The key's native balance when the check ran, in wei. */
-  balance: bigint
-  /** `estimate.required - balance`, in wei, above zero. */
-  shortfall: bigint
-  /** The routes that fill the key, the transfer first where the step offers it. */
-  routes: DepositRoute[]
-  /** The account this wallet holds that the key operates, off the fast track. */
-  operates?: WalletAccountRef
-}
-
-/** What the gas check answers: enough, so the step is skipped, or the deposit step. */
-export type GasCheck =
-  | { kind: 'enough'; write: WriteKind; key: Address; estimate: GasEstimate; balance: bigint }
-  | { kind: 'deposit'; step: DepositStep }
-
-/** What the gas check takes. */
-export interface GasCheckInput {
-  write: WriteKind
-  /** The prepared write, as the SDK returned it. */
-  prepared: PreparedCall | PreparedBatch
-  /** The key that sends the write and pays its gas. */
-  key: KeyHandle
-  /** The balance and gas reads over the extension's provider. */
-  reads: ChainReads
-  network: GasNetwork
-  /**
-   * The transaction the key sends where the write rides the account's own
-   * execute: a call whose sender is the account, or a batch. The account
-   * library builds it from the prepared write, to the account the key operates
-   * (`operates`), or to `ACCOUNT_FACTORY` where it deploys an account with no
-   * code yet; `gasCallOf` refuses those calls. A call anyone may send
-   * is estimated as it stands, so this is ignored for one.
-   */
-  transaction?: GasEstimateCall
-  /**
-   * The account this wallet holds that the key operates, the source of the
-   * transfer route. Every step but the fast track's needs it.
-   */
-  operates?: WalletAccountRef
-  /**
-   * The transaction the key sends for the transfer route, built through the
-   * account library, carrying its one call to the key with no value (the check
-   * adds what the value costs). By default the account's own `executeBySender`
-   * (`transferTransactionOf`), which holds only for an account with code. For
-   * an account with no code yet (`operates.deployed` false, or a write whose
-   * own transaction deploys it through `ACCOUNT_FACTORY`), the check takes no
-   * default: pass the factory's deploy-and-transfer transaction, or the step
-   * offers the deposit from outside alone.
-   */
-  transferTransaction?: GasEstimateCall
-  /** The fast track's step. Only a recovery call takes it. */
-  fastTrack?: boolean
-  /** The fee headroom in percent, `FEE_HEADROOM_PERCENT` by default. */
-  feeHeadroomPercent?: number
-}
 
 const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
 
@@ -332,16 +215,7 @@ export const holdsEnough = (estimate: GasEstimate, balance: bigint): boolean =>
  * TypeError where the balance covers the estimate, since such a key skips the
  * step, and where a step off the fast track has no account the key operates.
  */
-export const depositStepOf = (args: {
-  write: WriteKind
-  key: Address
-  network: GasNetwork
-  estimate: GasEstimate
-  balance: bigint
-  operates?: WalletAccountRef
-  transferFee?: GasEstimate
-  fastTrack?: boolean
-}): DepositStep => {
+export const depositStepOf = (args: DepositStepInput): DepositStep => {
   const { write, key, network, estimate, balance, operates, transferFee } = args
   if (holdsEnough(estimate, balance)) {
     throw new TypeError('The key holds enough: the deposit step is skipped.')

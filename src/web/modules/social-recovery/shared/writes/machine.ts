@@ -25,36 +25,20 @@
  *
  * An event a state does not take leaves the state as it was (the same object).
  */
-import type { Hex, KitError } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client'
 
-import {
-  AttemptAfterCancel,
-  classifyFailure,
-  revertCauseOf,
-  settleReceipt,
-  WriteReceipt,
-  writeFailureOf
-} from './classify'
-import type { GasCheck } from './gas'
-import type { WriteKind } from './kinds'
-import { canRetry, IdleState, SubmittingState, WriteState } from './states'
-
-/** The run a state belongs to: 0 before the first `start`, one more at each accepted `start`. */
-export interface WriteRun {
-  run: number
-}
-
-/**
- * A write's state in the machine: one of the shared states, with its run. The
- * submitting state also keeps `sentHashes`, every hash the run's call went out
- * under: the first one and each replacement after it.
- */
-export type WriteMachineState =
-  | (Exclude<WriteState, SubmittingState> & WriteRun)
-  | (SubmittingState & WriteRun & { sentHashes?: readonly Hex[] })
-
-type SubmittingInRun = Extract<WriteMachineState, { status: 'submitting' }>
+import { classifyFailure, revertCauseOf, settleReceipt, writeFailureOf } from './classify'
+import { canRetry } from './states'
+import type {
+  IdleState,
+  SubmittingInRun,
+  WriteAnswer,
+  WriteEvent,
+  WriteKind,
+  WriteMachineState,
+  WriteRun
+} from './types'
 
 const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
@@ -64,46 +48,6 @@ const sentHashesOf = (state: SubmittingInRun): readonly Hex[] =>
 
 const withSentHash = (hashes: readonly Hex[], hash: Hex): readonly Hex[] =>
   hashes.some((known) => sameHash(known, hash)) ? hashes : [...hashes, hash]
-
-/**
- * What moves a write. The consumer drives the send: it reports each hash with
- * `sent`, supplies the decoded cause of a revert on `receipt` or `error`, and
- * sends `attemptRead` after a cancel's revert.
- */
-export type WriteEvent =
-  /** Runs the gas check and opens a new run: from `idle`, or from a state that offers the retry. */
-  | { type: 'start' }
-  /** The gas check answered: `enough` sends, `deposit` shows the step. */
-  | { type: 'gasChecked'; run: number; check: GasCheck }
-  /** From the deposit step: run the check again in the same run, since the funds may have arrived. */
-  | { type: 'recheck' }
-  /** The wallet broadcast the call. */
-  | { type: 'sent'; run: number; transactionHash: Hex }
-  /**
-   * A receipt came back for a hash announced with `sent` (or named by an
-   * `error`) before it, with the revert's decoded cause where the wallet read
-   * one. A receipt for any other hash leaves the state as it was.
-   */
-  | {
-      type: 'receipt'
-      run: number
-      receipt: WriteReceipt
-      cause?: KitError
-      attemptAfter?: AttemptAfterCancel
-    }
-  /** The gas check or the send threw; the hash is the one the wallet holds, where it holds one. */
-  | {
-      type: 'error'
-      run: number
-      error: unknown
-      transactionHash?: Hex
-      cause?: KitError
-      attemptAfter?: AttemptAfterCancel
-    }
-  /** The attempt read after a cancel's revert returned. */
-  | { type: 'attemptRead'; run: number; attemptAfter: AttemptAfterCancel }
-  /** Back to `idle`, keeping the run count. */
-  | { type: 'reset' }
 
 export const WRITE_EVENT_TYPES = [
   'start',
@@ -118,8 +62,6 @@ export const WRITE_EVENT_TYPES = [
 
 /** The events that answer the work of a run, and so carry the run they belong to. */
 export const WRITE_ANSWER_TYPES = ['gasChecked', 'sent', 'receipt', 'error', 'attemptRead'] as const
-
-type WriteAnswer = Extract<WriteEvent, { type: typeof WRITE_ANSWER_TYPES[number] }>
 
 const isAnswer = (event: WriteEvent): event is WriteAnswer =>
   (WRITE_ANSWER_TYPES as readonly string[]).includes(event.type)

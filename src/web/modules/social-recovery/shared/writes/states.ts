@@ -7,11 +7,8 @@
  * edit, any other setup write, the owner's cancel, the submission and the
  * execution.
  */
-import type { Hex, KitError } from '@web/modules/social-recovery/sdk-interfaces'
-
-import { ReplacedReason, retryCanFix, RevertCause, WriteReceipt } from './classify'
-import type { DepositStep } from './gas'
-import type { WriteKind } from './kinds'
+import { retryCanFix } from './classify'
+import type { FailedState, WriteState } from './types'
 
 /** Every status of a write, in the order a write passes them. */
 export const WRITE_STATUSES = [
@@ -24,105 +21,9 @@ export const WRITE_STATUSES = [
   'failedNotSent',
   'failedReverted'
 ] as const
-export type WriteStatus = typeof WRITE_STATUSES[number]
 
 /** The two readings of the one failed state, each its own status. */
 export const FAILED_STATUSES = ['failedNotSent', 'failedReverted'] as const
-export type FailedStatus = typeof FAILED_STATUSES[number]
-
-/** Nothing asked yet. */
-export interface IdleState {
-  status: 'idle'
-  write: WriteKind
-}
-
-/** The gas check runs: the estimate, the gas price and the sending key's balance. */
-export interface CheckingGasState {
-  status: 'checkingGas'
-  write: WriteKind
-}
-
-/**
- * A read of the gas check could not run: the balance, the estimate or the gas
- * price (a `ProviderReadFailure`). It is part of the gas check, not a reading
- * of the failed state: the write was never about to be sent, so it offers the
- * check again rather than reading that the transaction was rejected.
- */
-export interface GasReadErrorState {
-  status: 'gasReadError'
-  write: WriteKind
-  error: unknown
-}
-
-/** The sending key holds too little: the deposit step, rather than a failed transaction. */
-export interface NeedsDepositState {
-  status: 'needsDeposit'
-  write: WriteKind
-  step: DepositStep
-}
-
-/**
- * The one submitting state. `transactionHash` is present once the wallet
- * broadcast the call; the state holds until its receipt comes back.
- */
-export interface SubmittingState {
-  status: 'submitting'
-  write: WriteKind
-  transactionHash?: Hex
-}
-
-/** The call ran: a receipt with status one. */
-export interface LandedState {
-  status: 'landed'
-  write: WriteKind
-  transactionHash: Hex
-  receipt: WriteReceipt
-}
-
-/**
- * The first reading of the failed state: the wallet never sent the call, so
- * nothing reached the chain and the account stands as it did. `error` is what
- * the wallet met before any transaction hash: a refused signature, a gas
- * estimate that would revert, or a broadcast that failed. `replaced` is
- * present where another transaction took the call's place before it was mined
- * (`cancelled` or `replaced`), so the call itself never ran.
- */
-export interface FailedNotSentState {
-  status: 'failedNotSent'
-  write: WriteKind
-  error: unknown
-  replaced?: ReplacedReason
-}
-
-/**
- * The second reading of the failed state: the call reached the chain and
- * reverted. It names the cause the receipt carries, and the gas it spent is
- * gone (`gasSpent` where the receipt carries both factors). `decoded` keeps
- * the kit error the wallet decoded, so the attempt read of a cancel can judge
- * the cause again once it returns.
- */
-export interface FailedRevertedState {
-  status: 'failedReverted'
-  write: WriteKind
-  transactionHash: Hex
-  receipt: WriteReceipt
-  cause: RevertCause
-  decoded?: KitError
-  gasSpent?: bigint
-}
-
-/** The one failed state, with its two readings. */
-export type FailedState = FailedNotSentState | FailedRevertedState
-
-/** Every state of a write. */
-export type WriteState =
-  | IdleState
-  | CheckingGasState
-  | GasReadErrorState
-  | NeedsDepositState
-  | SubmittingState
-  | LandedState
-  | FailedState
 
 export const isFailedState = (state: WriteState): state is FailedState =>
   (FAILED_STATUSES as readonly string[]).includes(state.status)

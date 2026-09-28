@@ -10,7 +10,7 @@
  * own actions (continue, back, fund the key) go in as children. The step links
  * to nothing.
  */
-import React, { ReactNode, useCallback, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -21,22 +21,9 @@ import flexbox from '@common/styles/utils/flexbox'
 import { setStringAsync } from '@common/utils/clipboard'
 
 import { renderDepositStep } from '../copy'
-import type { DepositStep } from '../gas'
+import type { CopyResult, DepositStepViewProps, LinesProps } from './types'
 
-export interface DepositStepViewProps {
-  step: DepositStep
-  /** The key's latest balance while the step waits for the funds; the step's own by default. */
-  balance?: bigint
-  /** `step` renders the whole step; `blocker` the short panel that leads to it. */
-  variant?: 'step' | 'blocker'
-  /** Copies the key's address; the clipboard by default. */
-  onCopy?: (address: string) => void
-  /** The write's own actions. */
-  children?: ReactNode
-  testID?: string
-}
-
-const Lines = ({ lines, secondary }: { lines: string[]; secondary?: boolean }) => (
+const Lines = ({ lines, secondary }: LinesProps) => (
   <>
     {lines.map((line) => (
       <Text
@@ -68,7 +55,7 @@ const DepositStepView = ({
   // step still shows that address: a result for another key's address, or one
   // that came back after the address changed, shows nothing. A copy through
   // `onCopy` reports no result here.
-  const [copyResult, setCopyResult] = useState<{ address: string; copied: boolean } | null>(null)
+  const [copyResult, setCopyResult] = useState<CopyResult | null>(null)
 
   const copy = useCallback(() => {
     const address = rendered.keyAddress
