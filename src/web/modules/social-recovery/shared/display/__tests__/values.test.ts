@@ -9,8 +9,14 @@ import {
   renderMemberList,
   renderPaymentOrder,
   renderShortAddress,
+  renderTokenAmount,
   Translate
 } from '..'
+
+const expectRefusal = (fn: () => unknown, message: string) => {
+  expect(fn).toThrow(TypeError)
+  expect(fn).toThrow(new TypeError(message))
+}
 
 const CHECKSUMMED = '0x2b0F5E98Ee98ADC9865745e98802F333f72F6ef5'
 const LOWER = '0x2b0f5e98ee98adc9865745e98802f333f72f6ef5'
@@ -159,6 +165,16 @@ describe('member list: three members then a count of the rest', () => {
   })
 })
 
+describe('token amount', () => {
+  it('refuses a negative amount', () => {
+    expectRefusal(() => renderTokenAmount(-12_500_000n, 6), 'Not a token amount: -12500000')
+  })
+
+  it('renders a zero amount as 0.00', () => {
+    expect(renderTokenAmount(0n, 6)).toBe('0.00')
+  })
+})
+
 describe('payment order: amount, symbol and payee, or no payment, in one form', () => {
   const USDC: Address = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
   const PAYEE: Address = LOWER
@@ -183,6 +199,24 @@ describe('payment order: amount, symbol and payee, or no payment, in one form', 
   it('renders an open payee as "to whoever executes"', () => {
     expect(renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: ZERO }, token)).toBe(
       '12.50 USDC to whoever executes'
+    )
+  })
+
+  it('refuses a zero payee with an uppercase 0X prefix instead of reading it as open', () => {
+    const malformedZero = `0X${'0'.repeat(40)}` as Address
+    expectRefusal(
+      () => renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: malformedZero }, token),
+      `Not an address: ${malformedZero}`
+    )
+    expect(renderPaymentOrder({ token: USDC, amount: 12_500_000n, payee: ZERO }, token)).toBe(
+      '12.50 USDC to whoever executes'
+    )
+  })
+
+  it('refuses a negative amount', () => {
+    expectRefusal(
+      () => renderPaymentOrder({ token: USDC, amount: -12_500_000n, payee: PAYEE }, token),
+      'Not a token amount: -12500000'
     )
   })
 

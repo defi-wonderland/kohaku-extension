@@ -237,9 +237,13 @@ export interface PaymentToken {
 
 /**
  * A token amount in human units, with at least two decimals and no trailing
- * zero past them: `12500000` at six decimals reads `12.50`.
+ * zero past them: `12500000` at six decimals reads `12.50`. Throws a TypeError
+ * on a negative amount, which no token transfer carries.
  */
 export const renderTokenAmount = (amount: bigint, decimals: number): string => {
+  if (amount < 0n) {
+    throw new TypeError(`Not a token amount: ${amount}`)
+  }
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.')
   const trimmed = fraction.replace(/0+$/, '')
   return `${whole}.${trimmed.padEnd(2, '0')}`
@@ -250,7 +254,8 @@ export const renderTokenAmount = (amount: bigint, decimals: number): string => {
  * it, one form on every screen: `12.50 USDC to 0x…`, or `12.50 USDC to whoever
  * executes` where the payee is the zero address, which leaves it open. A missing
  * order or a zero amount renders the words no payment. The payee always renders
- * in the full form.
+ * in the full form. The payee passes the address check before the zero test, so
+ * a malformed zero address throws a TypeError instead of reading as open.
  *
  * The payment order belongs to a later release; a request of the first release
  * names no payment and renders no payment.
@@ -267,10 +272,10 @@ export const renderPaymentOrder = (
     throw new TypeError('A payment order renders only with its token symbol and decimals')
   }
   const amount = renderTokenAmount(order.amount, token.decimals)
-  if (order.payee.toLowerCase() === ZERO_ADDRESS) {
+  const payee = renderFullAddress(order.payee)
+  if (payee === ZERO_ADDRESS) {
     return t('socialRecovery.display.paymentOrderOpenPayee', { amount, symbol: token.symbol })
   }
-  const payee = renderFullAddress(order.payee)
   return t('socialRecovery.display.paymentOrder', { amount, symbol: token.symbol, payee })
 }
 
@@ -297,7 +302,29 @@ export interface RenderedDeadline {
   line: string | null
 }
 
-const toMs = (value: Date | number): number => (typeof value === 'number' ? value : value.getTime())
+// The largest distance from the epoch, in milliseconds, that a Date can hold.
+const MAX_TIME_MS = 8.64e15
+
+// A time as epoch milliseconds. NaN, an infinity, an invalid Date or a time past
+// what a Date can hold throws a TypeError here, so the date format never throws
+// a RangeError on it and the time left never reads NaN.
+const toMs = (value: Date | number): number => {
+  const ms = typeof value === 'number' ? value : value.getTime()
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_TIME_MS) {
+    throw new TypeError(`Not a time: ${String(value)}`)
+  }
+  return ms
+}
+
+// A time left in milliseconds. NaN or an infinity throws a TypeError here, so a
+// countdown never reads NaN or falls to execution due on a bad value. A time
+// left is a span, not a date, so the Date bound does not apply to it.
+const checkRemainingMs = (remainingMs: number): number => {
+  if (!Number.isFinite(remainingMs)) {
+    throw new TypeError(`Not a time: ${String(remainingMs)}`)
+  }
+  return remainingMs
+}
 
 /** The date and time of `at` in `timeZone`, the zone named, and the zone alone. */
 export const renderDateTimeInZone = (
@@ -321,10 +348,11 @@ export const renderDateTimeInZone = (
 
 /**
  * The time left before a deadline in whole hours, or in whole minutes under one
- * hour, `23 hours`. Both round down; under one minute
- * it reads one minute.
+ * hour, `23 hours`. Both round down; under one minute it reads one minute. A
+ * time left that is not finite throws a TypeError.
  */
 export const renderRemaining = (remainingMs: number, t: Translate = appTranslate): string => {
+  checkRemainingMs(remainingMs)
   if (remainingMs >= HOUR_MS) {
     const count = Math.floor(remainingMs / HOUR_MS)
     return t('socialRecovery.display.remainingHours', { count })
@@ -337,7 +365,8 @@ export const renderRemaining = (remainingMs: number, t: Translate = appTranslate
  * The deadline as a date and time in the reader's zone, the zone named, with
  * the time left beside it: `Valid until 13 Aug, 18:04 CEST ·
  * 23 hours left`. `now` and the reader's zone are parameters, so the output
- * depends on nothing else.
+ * depends on nothing else. A deadline or a `now` that is not a valid time throws
+ * a TypeError.
  */
 export const renderDeadline = (
   input: { deadline: Date | number; now: Date | number; timeZone: string; locale?: string },
@@ -358,9 +387,12 @@ export const renderDeadline = (
   }
 }
 
-/** The time left of a waiting period as hours, minutes and seconds, `47:12:06`. */
+/**
+ * The time left of a waiting period as hours, minutes and seconds, `47:12:06`.
+ * A time left that is not finite throws a TypeError.
+ */
 export const renderCountdownTime = (remainingMs: number): string => {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000))
+  const totalSeconds = Math.max(0, Math.floor(checkRemainingMs(remainingMs) / 1000))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
@@ -376,10 +408,10 @@ export type CountdownState = typeof COUNTDOWN_STATES[number]
  * The countdown state the time left gives: waiting while a whole second is
  * left, execution due once the waiting period has ended. It counts
  * whole seconds, like `renderCountdownTime`, so 500 ms left never renders
- * `00:00:00 · waiting`.
+ * `00:00:00 · waiting`. A time left that is not finite throws a TypeError.
  */
 export const countdownStateOf = (remainingMs: number): CountdownState =>
-  Math.floor(remainingMs / 1000) > 0 ? 'waiting' : 'executionDue'
+  Math.floor(checkRemainingMs(remainingMs) / 1000) > 0 ? 'waiting' : 'executionDue'
 
 /**
  * A running attempt's countdown: `47:12:06 · waiting` while the waiting period
