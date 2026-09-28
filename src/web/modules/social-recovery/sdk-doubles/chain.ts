@@ -396,7 +396,9 @@ export class ScriptedChain {
 
   /**
    * Moves chain time forward by `seconds` over `blocks` blocks (at least one).
-   * Time never moves back: no block steps a negative number of seconds.
+   * Time never moves back: negative seconds count as zero. With fewer seconds
+   * than blocks, blocks share a timestamp; the doubles allow that, while a real
+   * chain's timestamps strictly increase.
    */
   advance(seconds: number, blocks = 1): BlockHeader {
     const count = Math.max(1, blocks)
