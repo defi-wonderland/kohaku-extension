@@ -290,6 +290,15 @@ export type PublicKeyCredentialLike = {
 // The hosts
 // ---------------------------------------------------------------------------
 
+/**
+ * The page's own devices by binding. The `browser-authenticator` slot holds
+ * the page's own passkey device, which carries the relying party it was built
+ * over.
+ */
+export type PageDevices = Partial<
+  Record<Exclude<DeviceBinding, 'browser-authenticator'>, CeremonyDevice>
+> & { 'browser-authenticator'?: PasskeyCeremonyDevice }
+
 export interface HostContext {
   orchestrator: IMethodsOrchestrator
   /** The implementation, read for its `deviceBinding`. */
@@ -306,7 +315,7 @@ export interface HostContext {
    * the high-s normalization always run; where it is absent the host reports
    * not supported.
    */
-  devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
+  devices?: PageDevices
   /** The holder chose the browser's phone hand-off. */
   handOff?: boolean
   signal?: AbortSignal
@@ -335,6 +344,9 @@ export interface ClaimValue {
   reply: ApproverReply
   facts?: PasskeyFacts
 }
+
+/** What a passed call carries: an enrollment's config, a test's proof or a claim's reply. */
+export type CeremonyValue = EnrollValue | TestAccessValue | ClaimValue
 
 /** The device a call runs and the params the method receives. */
 export type DeviceChoice = { device: CeremonyDevice; params: unknown }
@@ -419,7 +431,7 @@ export interface ResolvedCeremony {
 export type CeremonyResolver = (params: CeremonyParams) => Promise<ResolvedCeremony | null>
 
 export interface RunDeps {
-  devices?: Partial<Record<DeviceBinding, CeremonyDevice>>
+  devices?: PageDevices
   signal?: AbortSignal
   onStep?: (step: CeremonyStep) => void
 }

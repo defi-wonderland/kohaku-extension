@@ -26,14 +26,12 @@ import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-
 
 import type {
   CeremonyCall,
-  CeremonyDevice,
   CeremonyOutcome,
   ClaimValue,
   DeviceCallContext,
   DeviceChoice,
   EnrollValue,
   HostContext,
-  PasskeyCeremonyDevice,
   SignedReply,
   TestAccessValue
 } from './types'
@@ -64,12 +62,10 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
  */
 const chooseDevice = (context: HostContext, params: unknown): DeviceChoice | undefined => {
   if (context.method.deviceBinding === 'browser-authenticator') {
-    const own = context.devices?.['browser-authenticator'] as
-      | Partial<PasskeyCeremonyDevice>
-      | undefined
-    if (!own?.relyingParty) return undefined
+    const own = context.devices?.['browser-authenticator']
+    if (!own) return undefined
     return {
-      device: own as CeremonyDevice,
+      device: own,
       params: {
         ...(isPlainRecord(params) ? params : {}),
         relyingPartyId: own.relyingParty.relyingPartyId

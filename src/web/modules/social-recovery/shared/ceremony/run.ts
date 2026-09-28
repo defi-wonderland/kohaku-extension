@@ -4,7 +4,13 @@
  * Pure: no React, no `navigator`, no storage.
  */
 import { createClaimHost, enrollHost, healthCheckHost, testAccessHost } from './hosts'
-import type { CeremonyOutcome, CeremonyParams, ResolvedCeremony, RunDeps } from './types'
+import type {
+  CeremonyOutcome,
+  CeremonyParams,
+  CeremonyValue,
+  ResolvedCeremony,
+  RunDeps
+} from './types'
 import { failed } from './verdicts'
 
 /** Runs the host of `params.call` and returns its one outcome. */
@@ -12,7 +18,7 @@ export const runCeremony = async (
   params: CeremonyParams,
   resolved: ResolvedCeremony,
   deps: RunDeps = {}
-): Promise<CeremonyOutcome<unknown>> => {
+): Promise<CeremonyOutcome<CeremonyValue>> => {
   const context = {
     orchestrator: resolved.orchestrator,
     method: resolved.method,

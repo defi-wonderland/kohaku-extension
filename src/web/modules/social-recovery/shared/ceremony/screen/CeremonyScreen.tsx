@@ -38,11 +38,9 @@ import type {
   CeremonyOutcome,
   CeremonyParams,
   CeremonyStep,
-  ClaimValue,
-  EnrollValue,
+  CeremonyValue,
   ReportStore,
   ResolvedCeremony,
-  TestAccessValue,
   VisibilityGate
 } from '../types'
 import {
@@ -65,10 +63,9 @@ import {
 import { useCeremonySource } from './CeremonySource'
 import type { Phase } from './types'
 
-const hashOfValue = (value: unknown): string | null => {
-  const v = value as Partial<TestAccessValue & ClaimValue>
-  if (v?.proof) return renderHash(v.proof)
-  if (v?.reply?.proof) return renderHash(v.reply.proof)
+const hashOfValue = (value: CeremonyValue): string | null => {
+  if ('proof' in value) return renderHash(value.proof)
+  if ('reply' in value) return renderHash(value.reply.proof)
   return null
 }
 
@@ -85,7 +82,7 @@ const CeremonyScreen = () => {
   const [phase, setPhase] = useState<Phase>('resolving')
   const [step, setStep] = useState<CeremonyStep>('preparing')
   const [binding, setBinding] = useState<DeviceBinding | null>(null)
-  const [outcome, setOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
+  const [outcome, setOutcome] = useState<CeremonyOutcome<CeremonyValue> | null>(null)
   const [reportHeld, setReportHeld] = useState(false)
 
   const mounted = useRef(true)
@@ -131,7 +128,7 @@ const CeremonyScreen = () => {
    * result and runs no second ceremony.
    */
   const deliver = useCallback(
-    async (params: CeremonyParams, result: CeremonyOutcome<unknown>) => {
+    async (params: CeremonyParams, result: CeremonyOutcome<CeremonyValue>) => {
       const held = gate.current
       if (!mounted.current || !held) return
       setPhase('reporting')
@@ -179,7 +176,7 @@ const CeremonyScreen = () => {
     if (!live()) return
 
     // No resolver wired: this build holds no implementation to run.
-    let result: CeremonyOutcome<unknown> = notSupported('no-implementation')
+    let result: CeremonyOutcome<CeremonyValue> = notSupported('no-implementation')
     if (source.resolve) {
       let resolved: ResolvedCeremony | null | undefined
       try {
@@ -258,7 +255,7 @@ const CeremonyScreen = () => {
     </View>
   )
 
-  const renderOutcome = (shown: CeremonyOutcome<unknown>) => {
+  const renderOutcome = (shown: CeremonyOutcome<CeremonyValue>) => {
     if (!parsed.ok) return null
     const { params } = parsed
     const { call, returnTo } = params
@@ -266,7 +263,7 @@ const CeremonyScreen = () => {
     const noteKey = noteKeyOfOutcome(shown, call)
     const lineKey = lineKeyOfOutcome(shown, call)
     const passedEnroll = shown.kind === 'verdict' && shown.verdict === 'passed' && call === 'enroll'
-    const facts = passedEnroll ? (shown.value as EnrollValue).facts : undefined
+    const facts = passedEnroll ? shown.value.facts : undefined
     const hash =
       shown.kind === 'verdict' && shown.verdict === 'passed' ? hashOfValue(shown.value) : null
     // The one raw cause text a screen shows: the browser's own error name.
