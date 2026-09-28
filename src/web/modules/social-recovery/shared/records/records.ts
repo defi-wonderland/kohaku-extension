@@ -48,7 +48,7 @@ import type {
 export const RECORDS_KEY_PREFIX = 'socialRecovery'
 
 const chainPart = (chainId: ChainId | string): string => {
-  const text = typeof chainId === 'bigint' ? chainId.toString(10) : String(chainId)
+  const text = String(chainId)
   if (!/^[0-9]+$/.test(text)) throw new Error(`Invalid chain id: ${text}`)
   return text
 }
@@ -103,12 +103,14 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
 }
 
 /**
- * Deep equality of two values as the storage keeps them: both pass through the
- * rich JSON the storage writes, so a key whose value is `undefined` counts as
- * absent on both sides. A missing value on either side is never equal.
+ * Deep equality of a stored request and the request a write names, as the
+ * storage keeps them: both pass through the rich JSON the storage writes, so a
+ * key whose value is `undefined` counts as absent on both sides. The storage
+ * read checks the session's state and not its gathering, so a stored request
+ * may be missing, and a missing one is never equal.
  */
-const sameStoredValue = (a: unknown, b: unknown): boolean =>
-  a !== undefined && b !== undefined && isEqual(parse(stringify(a)), parse(stringify(b)))
+const sameStoredValue = (stored: Gathering['request'], named: Gathering['request']): boolean =>
+  stored !== undefined && isEqual(parse(stringify(stored)), parse(stringify(named)))
 
 const newRevision = (): SessionRevision =>
   bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
