@@ -1,6 +1,11 @@
-import { countdownStateOf, renderCountdown } from '..'
+import { countdownStateOf, renderCountdown, renderCountdownTime } from '..'
 
 const REMAINING = (47 * 3600 + 12 * 60 + 6) * 1000 // 47:12:06
+
+const expectRefusal = (fn: () => unknown, message: string) => {
+  expect(fn).toThrow(TypeError)
+  expect(fn).toThrow(new TypeError(message))
+}
 
 describe('attempt countdown', () => {
   it('renders the waiting form while time is left', () => {
@@ -49,5 +54,33 @@ describe('attempt countdown', () => {
     expect(countdownStateOf(1)).toBe('executionDue')
     expect(countdownStateOf(0)).toBe('executionDue')
     expect(countdownStateOf(-1)).toBe('executionDue')
+  })
+
+  it('renders the time left as hours, minutes and seconds, and a negative span as 00:00:00', () => {
+    expect(renderCountdownTime(REMAINING)).toBe('47:12:06')
+    expect(renderCountdownTime(-5000)).toBe('00:00:00')
+  })
+})
+
+describe('a time left that is not finite', () => {
+  const BAD_SPANS: [number, string][] = [
+    [NaN, 'Not a time: NaN'],
+    [Infinity, 'Not a time: Infinity'],
+    [-Infinity, 'Not a time: -Infinity']
+  ]
+
+  it('the countdown time refuses NaN, Infinity and -Infinity', () => {
+    BAD_SPANS.forEach(([ms, message]) => expectRefusal(() => renderCountdownTime(ms), message))
+  })
+
+  it('the countdown state refuses NaN, Infinity and -Infinity instead of falling to execution due', () => {
+    BAD_SPANS.forEach(([ms, message]) => expectRefusal(() => countdownStateOf(ms), message))
+  })
+
+  it('the countdown refuses NaN, Infinity and -Infinity, stopped or not', () => {
+    BAD_SPANS.forEach(([ms, message]) => {
+      expectRefusal(() => renderCountdown({ remainingMs: ms }), message)
+      expectRefusal(() => renderCountdown({ remainingMs: ms, stopped: true }), message)
+    })
   })
 })
