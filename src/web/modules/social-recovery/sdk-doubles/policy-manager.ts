@@ -91,12 +91,12 @@ export class PolicyManagerDouble implements IPolicyManagerInteractor {
   /** The place's digest over the request's members; no proof at that place is needed. */
   async hashApproval(request: AttemptRequest, place: bigint): Promise<Hex> {
     this.chain.guard('manager.hashApproval')
-    return digestOfSubmission(request, this.domainFacts(), place)
+    return digestOfSubmission(request, 'approval', this.domainFacts(), place)
   }
 
   async hashCancel(request: CancelRequest, place: bigint): Promise<Hex> {
     this.chain.guard('manager.hashCancel')
-    return digestOfSubmission(request, this.domainFacts(), place)
+    return digestOfSubmission(request, 'cancellation', this.domainFacts(), place)
   }
 
   async eip712Domain(): Promise<Domain> {
