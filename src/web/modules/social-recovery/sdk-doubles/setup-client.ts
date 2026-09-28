@@ -28,7 +28,15 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { decodeAbiParameters, zeroHash } from 'viem'
 
-import { ClientContext, pinBlock, restoreConfiguration } from './context'
+import {
+  ClientContext,
+  DEFAULT_MAXIMUM_WAIT,
+  DEFAULT_RULE_COST_BOUND,
+  DEFAULT_SHORT_WAIT_BELOW,
+  DEFAULT_WAIT,
+  pinBlock,
+  restoreConfiguration
+} from './context'
 import {
   BACKUP_PADDING_SIZE,
   backupPlaintextSize,
@@ -172,7 +180,7 @@ export class SetupClientDouble implements ISetupClient {
    */
   private widthRow(draft: SetupDraft): Finding | undefined {
     const { chain, config } = this.ctx
-    const bound = config.ruleCostBound ?? 10_000_000n
+    const bound = config.ruleCostBound ?? DEFAULT_RULE_COST_BOUND
     const placed = placesOf(chain.account, configurationOfDraft(draft))
     const chosen = draft.clauses.flatMap((clause, index) =>
       placed
@@ -270,18 +278,18 @@ export class SetupClientDouble implements ISetupClient {
         })
       )
     }
-    const maximumWait = BigInt(config.maximumWait ?? 30 * 24 * 3600)
+    const maximumWait = BigInt(config.maximumWait ?? DEFAULT_MAXIMUM_WAIT)
     if (draft.wait > maximumWait) {
       errors.push(
         finding('wait.above-maximum', 'setup', { wait: draft.wait, maximum: maximumWait })
       )
     }
     if (draft.wait === 0n) warnings.push(finding('setup.wait-zero', 'setup'))
-    else if (draft.wait < BigInt(config.shortWaitBelow ?? 48 * 3600)) {
+    else if (draft.wait < BigInt(config.shortWaitBelow ?? DEFAULT_SHORT_WAIT_BELOW)) {
       warnings.push(
         finding('setup.wait-short', 'setup', {
           wait: draft.wait,
-          minimum: BigInt(config.shortWaitBelow ?? 48 * 3600)
+          minimum: BigInt(config.shortWaitBelow ?? DEFAULT_SHORT_WAIT_BELOW)
         })
       )
     }
@@ -421,7 +429,7 @@ export class SetupClientDouble implements ISetupClient {
         threshold: c.threshold,
         credentials: c.credentials.map((cr) => ({ method: cr.method, label: cr.label }))
       })),
-      wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? 48 * 3600) },
+      wait: { seconds: draft.wait, defaultSeconds: BigInt(config.defaultWait ?? DEFAULT_WAIT) },
       failureDomains: draft.clauses.map((c, clause) => {
         const methods = c.credentials.map((cr) => cr.method)
         const distinct = distinctAddresses(methods)

@@ -21,6 +21,7 @@ import { zeroHash } from 'viem'
 
 import type { ScriptedChain } from './chain'
 import { readBackup, sameAddress, setupBodyOf, setupCommitmentOf } from './encoding'
+import { DEFAULT_LOG_CHUNK_WIDTH } from './event-manager'
 import { restoreRefusal } from './scripts'
 
 /**
@@ -49,6 +50,18 @@ export const DEFAULT_BLOCK_TAGS: { read: BlockTag; watch: BlockTag } = {
   watch: 'finalized'
 }
 
+/** The SDK's shipped timing and cost numbers (seconds, gas), for a configuration that names none. */
+export const DEFAULT_WAIT = 48 * 3600
+export const DEFAULT_SHORT_WAIT_BELOW = 48 * 3600
+export const DEFAULT_MAXIMUM_WAIT = 30 * 24 * 3600
+export const DEFAULT_REQUEST_WINDOW: { default: number; floor: number; ceiling: number } = {
+  default: 24 * 3600,
+  floor: 3600,
+  ceiling: 72 * 3600
+}
+export const DEFAULT_CANCEL_WINDOW = 12 * 3600
+export const DEFAULT_RULE_COST_BOUND = 10_000_000n
+
 /** The client configuration the doubles default to, with the SDK's shipped default numbers. */
 export const defaultClientConfiguration = (
   overrides: Partial<ClientConfiguration> = {}
@@ -56,14 +69,14 @@ export const defaultClientConfiguration = (
   tokens: [],
   candidateKeys: [],
   blockTags: { ...DEFAULT_BLOCK_TAGS },
-  logChunkWidth: 10_000,
+  logChunkWidth: DEFAULT_LOG_CHUNK_WIDTH,
   simulate: true,
-  defaultWait: 48 * 3600,
-  shortWaitBelow: 48 * 3600,
-  maximumWait: 30 * 24 * 3600,
-  requestWindow: { default: 24 * 3600, floor: 3600, ceiling: 72 * 3600 },
-  cancelWindow: 12 * 3600,
-  ruleCostBound: 10_000_000n,
+  defaultWait: DEFAULT_WAIT,
+  shortWaitBelow: DEFAULT_SHORT_WAIT_BELOW,
+  maximumWait: DEFAULT_MAXIMUM_WAIT,
+  requestWindow: { ...DEFAULT_REQUEST_WINDOW },
+  cancelWindow: DEFAULT_CANCEL_WINDOW,
+  ruleCostBound: DEFAULT_RULE_COST_BOUND,
   ...overrides
 })
 

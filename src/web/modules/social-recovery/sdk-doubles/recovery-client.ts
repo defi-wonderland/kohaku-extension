@@ -44,7 +44,13 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { zeroAddress } from 'viem'
 
-import { ClientContext, codecFor, pinBlock, restoreConfiguration } from './context'
+import {
+  ClientContext,
+  codecFor,
+  DEFAULT_REQUEST_WINDOW,
+  pinBlock,
+  restoreConfiguration
+} from './context'
 import {
   deserializeOrder,
   digestOf,
@@ -406,7 +412,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
     const validUntil = Number(r.validUntil)
     const pinned = Number(r.block.timestamp)
     if (now > validUntil) findings.push(finding('request.expired', 'request', { validUntil, now }))
-    const floor = this.ctx.config.requestWindow?.floor ?? 3600
+    const floor = this.ctx.config.requestWindow?.floor ?? DEFAULT_REQUEST_WINDOW.floor
     if (validUntil - pinned < floor) {
       findings.push(
         finding('request.window-short', 'request', { window: validUntil - pinned, floor })
