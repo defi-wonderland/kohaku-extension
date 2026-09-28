@@ -50,7 +50,7 @@ import {
   setupCommitmentOf
 } from './encoding'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
-import { codedError, finding, ScriptedReadFailure, validationRefusal } from './scripts'
+import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
 
 const MAX_WAIT_FIELD = 2n ** 48n
 
@@ -312,12 +312,8 @@ export class SetupClientDouble implements ISetupClient {
     reads.forEach((r) => {
       // An unanswered read says nothing about the method's stop or its declaration,
       // so validation refuses rather than pass a draft over values nobody read.
-      if (!r.paused.answered) {
-        throw new ScriptedReadFailure('manager.paused', undefined, { module: r.method })
-      }
-      if (!r.moduleInfo.answered) {
-        throw new ScriptedReadFailure('manager.moduleInfo', undefined, { module: r.method })
-      }
+      if (!r.paused.answered) throw unansweredRead('manager.paused', r.method)
+      if (!r.moduleInfo.answered) throw unansweredRead('manager.moduleInfo', r.method)
       const { method } = r
       if (!chain.descriptor.shippedMethods.some((m) => sameAddress(m, method))) {
         warnings.push(
