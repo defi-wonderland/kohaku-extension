@@ -186,6 +186,31 @@ describe('land, then read', () => {
       expect(note!.usedPlaces).toEqual(cancel.proofs.map((p) => p.place))
     })
 
+    it('lands cancelByProofs through the cancel checks for a cancel request carrying extra fields', async () => {
+      const world = createWorld()
+      const { recovery, request } = await startLanded(world)
+      const gathering = await recovery.initCancelGathering(world.configuration, { window: 3600 })
+      const requests = recovery.getApproverRequests(gathering)
+      const filled = await fillAll({
+        world,
+        recovery,
+        orchestrator: world.orchestrator(),
+        gathering,
+        requests
+      })
+      const now = momentOf(gathering)
+      const cancel = recovery.complete(filled, undefined, now) as CancelRequest
+      const carrying = { ...cancel, payload: request.payload, order: request.order }
+      const prepared = await recovery.prepareCancelByProofs(carrying, now)
+      expect(prepared.simulation?.ok).toBe(true)
+      world.chain.land(prepared)
+      expect((await recovery.recoveryState()).attempt.state).toBe('Cancelled')
+      const [note] = ofKind(await stream(world), 'attempt-cancelled')
+      expect(note!.attemptId).toBe(request.attemptId)
+      expect(note!.cancelledBy).toBe('cancelByProofs')
+      expect(note!.usedPlaces).toEqual(cancel.proofs.map((p) => p.place))
+    })
+
     it('lands cancelByVeto: Cancelled, naming the stopped method the attempt used', async () => {
       const world = createWorld()
       const { recovery, request } = await startLanded(world)

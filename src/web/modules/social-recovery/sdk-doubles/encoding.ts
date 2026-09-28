@@ -468,19 +468,22 @@ export const digestOfRequest = (request: ApproverRequest): Hex =>
 
 /**
  * The digest of a submitted request at one place, what the manager's
- * `hashApproval` and `hashCancel` answer: it needs no proof at that place.
+ * `hashApproval` and `hashCancel` answer: it needs no proof at that place. The
+ * caller names the purpose, since a cancel request value may carry extra
+ * fields, a payload among them.
  */
 export const digestOfSubmission = (
   request: AttemptRequest | CancelRequest,
+  purpose: 'approval' | 'cancellation',
   domain: { chainId: number | bigint; manager: Address; digestVersion: string },
   place: bigint | number
 ): Hex => {
-  const isApproval = 'payload' in request
+  const isApproval = purpose === 'approval'
   return digestOf({
     chainId: domain.chainId.toString(),
     manager: domain.manager,
     digestVersion: domain.digestVersion,
-    purpose: isApproval ? 'approval' : 'cancellation',
+    purpose,
     account: request.account,
     action: request.action,
     attemptId: request.attemptId.toString(),
