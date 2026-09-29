@@ -135,6 +135,14 @@ const READING: FeeReading = {
 
 const INSUFFICIENT = { title: 'Insufficient funds to cover the fee.', code: 'INSUFFICIENT_FUNDS' }
 
+/** The error the estimation itself failed with, and the entry the sign screen shows for it. */
+const REVERTS = 'The transaction will fail because it reverted onchain.'
+const REVERTS_SHOWN = { title: REVERTS, code: 'ESTIMATION_REVERTED' }
+
+/** The settled, failed estimation of the request, carrying its own error. */
+const failedWith = (error: unknown): SignAccountOpState['estimation'] =>
+  ({ status: EstimationStatus.Error, availableFeeOptions: [], error } as never)
+
 beforeEach(() => {
   jest.useFakeTimers()
 })
@@ -214,6 +222,40 @@ describe("a listed smart account's batch", () => {
       expect(q.listeners()).toBe(0)
     })
   )
+
+  it('refuses a listed basic account as not-smart-account, and dispatches nothing and follows nothing', async () => {
+    const q = sendQueueOver(LISTED())
+    const heard = jest.fn()
+    const caught = (await thrownBy(q.sender.sendAccountBatch(PAYER, BATCH, heard))) as SendRefusal
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught.name).toBe('SendRefusal')
+    expect(caught.reason).toBe('not-smart-account')
+    expect(caught.account).toBe(PAYER)
+    expect(caught.message).toContain(PAYER)
+    expect(caught.missingAction).toBeUndefined()
+    expect(q.dispatch).not.toHaveBeenCalled()
+    expect(q.listeners()).toBe(0)
+    expect(heard).not.toHaveBeenCalled()
+  })
+
+  it('sends for a listed smart account listed after a basic account', () => {
+    const q = sendQueueOver([basicAccount(PAYER), smartAccount(SMART_ACCOUNT, CONTROLLING_KEY)])
+    q.sender.sendAccountBatch(SMART_ACCOUNT, BATCH).catch(() => undefined)
+    expect(addedRequest(q.dispatch).userRequest.meta.accountAddr).toBe(SMART_ACCOUNT)
+    expect(q.listeners()).toBe(1)
+  })
+
+  it('reads the listing before the kind: an unlisted account is not-listed, a listed basic one not-smart-account', async () => {
+    const q = sendQueueOver([basicAccount(PAYER)])
+    const unlisted = (await thrownBy(
+      q.sender.sendAccountBatch(CONTROLLING_KEY, BATCH)
+    )) as SendRefusal
+    expect(unlisted.reason).toBe('not-listed')
+    const basic = (await thrownBy(q.sender.sendAccountBatch(PAYER, BATCH))) as SendRefusal
+    expect(basic.reason).toBe('not-smart-account')
+    expect(q.dispatch).not.toHaveBeenCalled()
+    expect(q.listeners()).toBe(0)
+  })
 })
 
 describe("the reading of the sign screen's estimation", () => {
@@ -234,6 +276,52 @@ describe("the reading of the sign screen's estimation", () => {
       error: { title: 'The estimation failed.' }
     })
   })
+
+  it("prefers the estimation's own error, with the code of the entry the sign screen shows under its title", () => {
+    const heard = jest.fn()
+    const { q, id } = sendingBatch(heard)
+    q.push(
+      signAccountOpPush(
+        signScreen(id, {
+          estimation: failedWith(new Error(REVERTS)),
+          errors: [INSUFFICIENT, REVERTS_SHOWN]
+        })
+      )
+    )
+    expect(heard.mock.calls).toEqual([[{ options: [], error: REVERTS_SHOWN }]])
+  })
+
+  it("hands the estimation's own error as its title alone where the sign screen shows no entry under that title", () => {
+    const heard = jest.fn()
+    const { q, id } = sendingBatch(heard)
+    q.push(
+      signAccountOpPush(
+        signScreen(id, { estimation: failedWith(new Error(REVERTS)), errors: [INSUFFICIENT] })
+      )
+    )
+    q.push(signAccountOpPush(signScreen(id, { estimation: failedWith(new Error(REVERTS)) })))
+    expect(heard.mock.calls).toEqual([[{ options: [], error: { title: REVERTS } }]])
+    expect(heard.mock.calls[0][0].error).not.toHaveProperty('code')
+  })
+
+  const NO_MESSAGE: [string, unknown][] = [
+    ['an empty message', new Error('')],
+    ['a message that is not text', { message: 42 }],
+    ['no message', {}],
+    ['a null error', null]
+  ]
+  NO_MESSAGE.forEach(([title, error]) =>
+    it(`hands the sign screen's first error for an estimation error with ${title}`, () => {
+      const heard = jest.fn()
+      const { q, id } = sendingBatch(heard)
+      q.push(
+        signAccountOpPush(
+          signScreen(id, { estimation: failedWith(error), errors: [INSUFFICIENT, REVERTS_SHOWN] })
+        )
+      )
+      expect(heard.mock.calls).toEqual([[{ options: [], error: INSUFFICIENT }]])
+    })
+  )
 
   it('hands the error of an estimation that failed, with no option', () => {
     const heard = jest.fn()
@@ -318,7 +406,38 @@ describe("the reading of the sign screen's estimation", () => {
     expect(heard.mock.calls[2][0].error).toEqual(INSUFFICIENT)
   })
 
-  it('reads a closed sign screen as no reading, and still answers the hash', async () => {
+  const RESET: [string, (id: string) => SignAccountOpState][] = [
+    [
+      'still holding the operation',
+      (id) =>
+        signScreen(id, {
+          estimation: { status: EstimationStatus.Initial, availableFeeOptions: [], error: null },
+          errors: []
+        })
+    ],
+    [
+      'with no operation',
+      () => ({
+        estimation: { status: EstimationStatus.Initial, availableFeeOptions: [], error: null }
+      })
+    ]
+  ]
+  RESET.forEach(([title, reset]) =>
+    it(`hands no new reading when the sign screen closes and its state resets, ${title}, and still answers the hash`, async () => {
+      const heard = jest.fn()
+      const { q, send, id } = sendingBatch(heard)
+      q.push(signAccountOpPush(signScreen(id, { errors: [INSUFFICIENT] })))
+      expect(heard).toHaveBeenCalledTimes(1)
+      q.push(signAccountOpPush(reset(id)))
+      expect(heard).toHaveBeenCalledTimes(1)
+      q.push(activityListing(id, operationFor(id, { hash: HASH })))
+      await flush()
+      expect(send).toEqual({ status: 'resolved', value: HASH })
+      expect(heard).toHaveBeenCalledTimes(1)
+    })
+  )
+
+  it('reads an empty sign screen state as no reading, and still answers the hash', async () => {
     const heard = jest.fn()
     const { q, send, id } = sendingBatch(heard)
     expect(() => q.push(signAccountOpPush({}))).not.toThrow()
@@ -347,7 +466,7 @@ describe("the reading of the sign screen's estimation", () => {
 })
 
 describe("the UI's own port over the event bus", () => {
-  it('reads the sign screen the background pushes, reads its null push as closed, and leaves no listener behind', async () => {
+  it('reads the sign screen the background pushes, takes a null or missing push as an empty state with no reading, and leaves no listener behind', async () => {
     const before = eventBus.events.signAccountOp?.length ?? 0
     const dispatch = jest.fn()
     const sender = createSendPort(sendRequestPort(dispatch, LISTED, WINDOW_ID), {
