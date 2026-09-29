@@ -73,7 +73,10 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
     }
   }, [setup, chainId, account])
 
-  const exposure = useMemo(() => exposureLinesOf(clauses, book, t), [clauses, book, t])
+  const exposure = useMemo(
+    () => exposureLinesOf(clauses, level, book, t),
+    [clauses, level, book, t]
+  )
 
   const mismatch = level === 'private' && confirmation !== '' && password !== confirmation
   const ready = level === 'public' || (password !== '' && password === confirmation)

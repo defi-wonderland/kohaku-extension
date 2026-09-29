@@ -158,6 +158,30 @@ describe('the privacy step', () => {
       expect(h.byTestId('exposure-publication')?.textContent).toBe(PUBLICATION)
     })
 
+    it('a guardian path carries both halves at Private and the publication half alone at Public', async () => {
+      await h.mount(await withDraft({ clauses: ENROLLED_GUARDIAN_BESIDE_PASSKEY_AND_PASSPORT }))
+      expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
+      expect(h.byTestId('exposure-publication')?.textContent).toBe(PUBLICATION)
+      await h.press('level-public')
+      expect(h.byTestId('exposure-guardians')).toBeNull()
+      expect(h.byTestId('exposure-unguessable')).toBeNull()
+      expect(h.byTestId('exposure-publication')?.textContent).toBe(PUBLICATION)
+      await h.press('level-private')
+      expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(UNGUESSABLE)
+    })
+
+    it('a guardian path stored in the clear opens with the publication half alone', async () => {
+      await h.mount(
+        await withDraft({
+          clauses: GUARDIAN_SLOTS_BESIDE_PASSKEY_AND_PASSPORT,
+          privacy: { backup: 'clear', publicMetadata: '0x' }
+        })
+      )
+      expect(h.byTestId('exposure-guardians')).toBeNull()
+      expect(h.byTestId('exposure-publication')?.textContent).toBe(PUBLICATION)
+    })
+
     it('carries the publication half with no draft and at Public', async () => {
       await h.mount(recordsOn())
       expect(h.byTestId('exposure-publication')?.textContent).toBe(PUBLICATION)

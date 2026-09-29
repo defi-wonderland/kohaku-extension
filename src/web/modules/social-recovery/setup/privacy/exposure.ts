@@ -5,7 +5,7 @@ import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
-import type { ExposureLines, MethodKind } from './types'
+import type { ExposureLines, MethodKind, OfferedLevel } from './types'
 
 const EXPOSURE = 'socialRecovery.privacy.level.exposure'
 const ITEMS = 'socialRecovery.disclosures.items'
@@ -47,12 +47,14 @@ const joinItems = (items: string[], t: Translate): string =>
     )
 
 /**
- * The exposure line of a path. The guessability half renders only where the
- * path holds an address row, since an address is the only row a stranger can
- * guess; the publication half renders for every path.
+ * The exposure line of a path at a level. The guessability half renders only
+ * where the path holds an address row, since an address is the only row a
+ * stranger can guess, and never at Public, where every address is on chain in
+ * the clear; the publication half renders for every path at every level.
  */
 export const exposureLinesOf = (
   clauses: Clause[],
+  level: OfferedLevel,
   book: AddressBook,
   t: Translate
 ): ExposureLines => {
@@ -61,7 +63,7 @@ export const exposureLinesOf = (
     .map((credential) => methodKindOf(credential, book))
     .filter((kind): kind is MethodKind => kind !== undefined)
   const publication = t(`${EXPOSURE}.publication`)
-  if (!kinds.includes('ecdsa')) return { publication }
+  if (level === 'public' || !kinds.includes('ecdsa')) return { publication }
   const items = unguessableItemsOf(kinds)
   return {
     guardians: t(`${EXPOSURE}.guardians`),
