@@ -1,0 +1,54 @@
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { AddressBook } from '@web/modules/social-recovery/shared/client'
+import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
+
+/** The method kind a slot waits for: one of the address book's method slugs. */
+export type SlotKind = keyof AddressBook['methods']
+
+/** One clause of a preset's shape: its threshold and the kind of each member slot. */
+export interface ShapeClause {
+  threshold: number
+  slots: readonly SlotKind[]
+}
+
+export const PRESET_IDS = [
+  'deviceAndGuardians',
+  'deviceAndId',
+  'eitherOne',
+  'guardiansOnly'
+] as const
+export type PresetId = typeof PRESET_IDS[number]
+
+/** A preset: a whole path the holder adopts and may edit, with the card's own strings. */
+export interface Preset {
+  id: PresetId
+  nameKey: string
+  taglineKey?: string
+  shape: readonly ShapeClause[]
+}
+
+/** What a holder may pick on the grid: a preset, or the empty start. */
+export type PresetChoice = PresetId | 'fromScratch'
+
+/** One row of a card's shape: a required method, or a group's count and its members. */
+export type ShapeRow =
+  | { kind: 'required'; text: string }
+  | { kind: 'group'; count: string; members: string[] }
+
+/** One row of the resume block: an enrolled method, its chip and its note. */
+export interface ResumeRow {
+  id: string
+  name: string
+  chip: string
+  note?: string
+}
+
+export interface PresetsViewProps {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  /** Opens the editor, once the draft is written. */
+  onOpenEditor: () => void
+  /** Opens the recovery of another account. */
+  onRecover: () => void
+}
