@@ -55,6 +55,19 @@ export const ABSENT: AbsentRecord = Object.freeze({ status: 'absent' as const })
 export type SetupDraftRecord = SetupDraft
 
 /**
+ * The draft every setup starts from until its later steps overwrite it: a wait
+ * of 48 hours in seconds, no clause yet, the pause opted out of, and the
+ * private default with an encrypted backup. Shared by every caller, so a
+ * caller copies it before it changes a member.
+ */
+export const DEFAULT_SETUP_DRAFT: SetupDraftRecord = {
+  wait: BigInt(48 * 60 * 60),
+  clauses: [],
+  ignoresPause: true,
+  privacy: { publicMetadata: '0x', backup: 'encrypted' }
+}
+
+/**
  * 2. The inventory, the answer to "What do you have": another device,
  * guardians with wallets, a passport, an Aadhaar identity, and keys the holder
  * keeps on paper or hardware. The guided setup wizard fills it at its "What do
