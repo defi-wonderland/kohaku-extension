@@ -440,7 +440,8 @@
         "waitCeiling": "This wallet cannot save a waiting period past the longest this picker offers.",
         "tooLarge": "This wallet cannot check a path this large in one block. Remove members or groups.",
         "emptyRequired": "This wallet cannot save a required method that is not enrolled yet. Enroll it or remove the row.",
-        "backupTooWide": "This wallet cannot save a path whose hidden details are too large for the setup's backup. Remove members or groups."
+        "backupTooWide": "This wallet cannot save a path whose hidden details are too large for the setup's backup. Remove members or groups.",
+        "actionUnsupported": "This release cannot recover this account yet, so this wallet cannot save a setup for it."
       },
       "startingFrom": "Starting from: {{preset}}"
     },
