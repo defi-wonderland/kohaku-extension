@@ -54,7 +54,13 @@ export const placeEnrollment = async (
 
   const others = enrollments.filter((e) => !sameCredential(e.credential, enrollment.credential))
   await setup.enrollments.write([...others, enrollment])
-  await setup.writeDraftAndPath(withSlotFilled(draft.value, search.at, enrollment.credential))
+  try {
+    await setup.writeDraftAndPath(withSlotFilled(draft.value, search.at, enrollment.credential))
+  } catch (error: unknown) {
+    // The slot never took the credential, so the list goes back to what it held.
+    await setup.enrollments.write(enrollments).catch(() => undefined)
+    throw error
+  }
   if (slot.status === 'enrolled') {
     const replaced = slot.enrollment.credential
     await setup.enrollments.write(
