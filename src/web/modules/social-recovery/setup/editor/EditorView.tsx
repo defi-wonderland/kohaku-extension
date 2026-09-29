@@ -366,21 +366,20 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       </View>
 
       <View style={spacings.mbLg} testID="editor-groups">
+        <Text fontSize={16} weight="semiBold" style={spacings.mbSm} testID="editor-groups-header">
+          {t(
+            groups.length === 1
+              ? 'socialRecovery.editor.groupHeader'
+              : 'socialRecovery.editor.groupsHeader'
+          )}
+        </Text>
         {groups.length === 0 && (
-          <>
-            <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-              {t('socialRecovery.editor.groupsHeader')}
-            </Text>
-            <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-              {t('socialRecovery.editor.noGroup')}
-            </Text>
-          </>
+          <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
+            {t('socialRecovery.editor.noGroup')}
+          </Text>
         )}
         {groups.map(({ clause, index }, ordinal) => (
           <View key={index} style={spacings.mbMd} testID={`editor-group-${index}`}>
-            <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-              {t('socialRecovery.editor.groupHeader')}
-            </Text>
             <Text fontSize={14} weight="semiBold" style={spacings.mbTy}>
               {t('socialRecovery.shape.group', { n: ordinal + 1 })}
             </Text>

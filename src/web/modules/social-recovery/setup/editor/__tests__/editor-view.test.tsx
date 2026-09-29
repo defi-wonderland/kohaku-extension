@@ -860,11 +860,39 @@ describe('a client that cannot check the path', () => {
 })
 
 describe('the words on screen', () => {
+  const groupHeaders = () =>
+    Array.from(container.querySelectorAll<HTMLElement>('[data-testid="editor-groups"] *'))
+      .filter((node) => node.childElementCount === 0)
+      .map((node) => node.textContent)
+      .filter(
+        (text) =>
+          text === en.socialRecovery.editor.groupHeader ||
+          text === en.socialRecovery.editor.groupsHeader
+      )
+
   it('heads the groups section "Groups" when the path has no group', async () => {
     await mount({ clauses: [{ threshold: 1, credentials: [PASSKEY] }] })
+    expect(byTestId('editor-groups-header')?.textContent).toBe(
+      en.socialRecovery.editor.groupsHeader
+    )
     expect(byTestId('editor-groups')?.textContent).toMatch(
       new RegExp(`^${en.socialRecovery.editor.groupsHeader}${en.socialRecovery.editor.noGroup}`)
     )
+    expect(groupHeaders()).toEqual([en.socialRecovery.editor.groupsHeader])
+  })
+
+  it('heads the groups section "Group" once over one group, with no header over its card', async () => {
+    await mount({ clauses: presetPath() })
+    expect(byTestId('editor-groups-header')?.textContent).toBe(en.socialRecovery.editor.groupHeader)
+    expect(groupHeaders()).toEqual([en.socialRecovery.editor.groupHeader])
+  })
+
+  it('heads the groups section "Groups" once over two groups, with no header over either card', async () => {
+    await mount({ clauses: twoGroupPath() })
+    expect(byTestId('editor-groups-header')?.textContent).toBe(
+      en.socialRecovery.editor.groupsHeader
+    )
+    expect(groupHeaders()).toEqual([en.socialRecovery.editor.groupsHeader])
   })
 
   it('closes the picker with "Cancel"', async () => {
