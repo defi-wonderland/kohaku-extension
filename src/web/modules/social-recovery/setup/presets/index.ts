@@ -13,7 +13,7 @@ export {
 export { emptySlot, isEmptySlot, slotKindOf, clausesOfShape } from './slots'
 export { startDraft } from './draft'
 export { cardRuleLines, shapeRowsOf } from './lines'
-export { resumeRowsOf, draftAgeLine } from './resume'
+export { resumeRowsOf, notStartedRowsOf, draftAgeLine } from './resume'
 export { PRESET_IDS } from './types'
 export type {
   Preset,

@@ -20,7 +20,7 @@ import { renderChip } from '@web/modules/social-recovery/shared/display'
 import { startDraft } from './draft'
 import { cardRuleLines, shapeRowsOf } from './lines'
 import { PRESETS } from './presets'
-import { draftAgeLine, resumeRowsOf } from './resume'
+import { draftAgeLine, notStartedRowsOf, resumeRowsOf } from './resume'
 import type { Preset, PresetChoice, PresetsViewProps, ResumeRow } from './types'
 
 const COST_KEYS = [
@@ -43,15 +43,18 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
   const setup = useMemo(() => records.setup(chainId, account), [records, chainId, account])
 
   const load = useCallback(async () => {
-    const [at, enrollments] = await Promise.all([
+    const [at, enrollments, draft] = await Promise.all([
       records.setupSavedAt(chainId, account),
-      setup.enrollments.read()
+      setup.enrollments.read(),
+      setup.setupDraft.read()
     ])
-    setResumeRows(
-      enrollments.status === 'present'
-        ? resumeRowsOf(enrollments.value, addressBookOf(WALLET_RECOVERY_CHAIN), t)
-        : []
-    )
+    const book = addressBookOf(WALLET_RECOVERY_CHAIN)
+    const enrolled = enrollments.status === 'present' ? enrollments.value : []
+    const clauses = draft.status === 'present' ? draft.value.clauses : []
+    setResumeRows([
+      ...resumeRowsOf(enrolled, book, t),
+      ...notStartedRowsOf(clauses, enrolled, book, t)
+    ])
     setSavedAt(at)
   }, [records, setup, chainId, account, t])
 

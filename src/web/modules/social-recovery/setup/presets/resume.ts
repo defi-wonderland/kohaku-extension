@@ -1,3 +1,4 @@
+import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import { renderChip, renderDateTimeInZone } from '@web/modules/social-recovery/shared/display'
@@ -70,6 +71,38 @@ export const resumeRowsOf = (
     })
   }
   return rows
+}
+
+const NOT_STARTED_NAME_KEYS: Record<SlotKind, string> = {
+  passkey: 'socialRecovery.methodNames.passkeyOnThisDevice',
+  zkpassport: 'socialRecovery.methodNames.passport',
+  ecdsa: 'socialRecovery.methodNames.guardians',
+  aadhaar: 'socialRecovery.methodNames.aadhaar'
+}
+
+/**
+ * The draft's unfilled slots as rows, one per kind, the guardians as one row.
+ * A kind the holder already enrolled a method of has no row here.
+ */
+export const notStartedRowsOf = (
+  clauses: readonly Clause[],
+  enrollments: readonly Enrollment[],
+  book: AddressBook,
+  t: Translate
+): ResumeRow[] => {
+  const enrolled = new Set(enrollments.map((enrollment) => kindOf(enrollment, book)))
+  const kinds = new Set<SlotKind>()
+  clauses.forEach(({ credentials }) =>
+    credentials.forEach((credential) => {
+      const kind = slotKindOf(credential)
+      if (kind && !enrolled.has(kind)) kinds.add(kind)
+    })
+  )
+  return [...kinds].map((kind) => ({
+    id: `not-started-${kind}`,
+    name: t(NOT_STARTED_NAME_KEYS[kind]),
+    chip: renderChip('method', 'notStarted', t)
+  }))
 }
 
 /** The line that dates the unfinished draft, in the holder's own time zone. */
