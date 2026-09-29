@@ -1,0 +1,89 @@
+/**
+ * Asks the extension password before a new download of the card. The keystore
+ * checks it with the same unlock the wallet runs; a wrong password shows the
+ * keystore's own error and the card stays where it is.
+ */
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { View } from 'react-native'
+
+import Button from '@common/components/Button'
+import InputPassword from '@common/components/InputPassword'
+import Text from '@common/components/Text'
+import { useTranslation } from '@common/config/localization'
+import spacings from '@common/styles/spacings'
+import flexbox from '@common/styles/utils/flexbox'
+import useBackgroundService from '@web/hooks/useBackgroundService'
+import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
+import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
+
+import type { PasswordAskAnswer } from './types'
+
+const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
+  const { t } = useTranslation()
+  const { dispatch } = useBackgroundService()
+  const { statuses, errorMessage } = useKeystoreControllerState()
+  const [password, setPassword] = useState('')
+  // Only an unlock this ask sent confirms it.
+  const sent = useRef(false)
+
+  useEffect(() => {
+    if (!sent.current) return
+    if (errorMessage) sent.current = false
+    else if (statuses.unlockWithSecret === 'SUCCESS') {
+      sent.current = false
+      onConfirmed()
+    }
+  }, [errorMessage, statuses.unlockWithSecret, onConfirmed])
+
+  const submit = useCallback(() => {
+    if (!password) return
+    sent.current = true
+    dispatch({
+      type: 'KEYSTORE_CONTROLLER_UNLOCK_WITH_SECRET',
+      params: { secretId: 'password', secret: password }
+    })
+  }, [dispatch, password])
+
+  const change = useCallback(
+    (value: string) => {
+      setPassword(value)
+      if (errorMessage) dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+    },
+    [dispatch, errorMessage]
+  )
+
+  const busy = statuses.unlockWithSecret !== 'INITIAL'
+
+  return (
+    <View>
+      <Text fontSize={14} style={spacings.mbSm}>
+        {t('socialRecovery.card.reDownload')}
+      </Text>
+      <InputPassword
+        testID="card-extension-password"
+        label={renderPasswordName('extensionPassword', t)}
+        value={password}
+        onChangeText={change}
+        onSubmitEditing={submit}
+        error={errorMessage || undefined}
+      />
+      <View style={flexbox.directionRow}>
+        <Button
+          testID="card-password-cancel"
+          type="secondary"
+          text={t('socialRecovery.ceremony.backAction')}
+          onPress={onCancel}
+          style={spacings.mrSm}
+        />
+        <Button
+          testID="card-password-confirm"
+          text={t('socialRecovery.actions.continue')}
+          disabled={!password || busy}
+          onPress={submit}
+        />
+      </View>
+    </View>
+  )
+}
+
+export default React.memo(ExtensionPasswordAsk)
