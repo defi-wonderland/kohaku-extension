@@ -220,50 +220,55 @@ const GuardianRow = ({
     [address, deps.chain, applyTest]
   )
 
-  const runTest = useCallback(async () => {
-    if (client.status !== 'ready' || !enrollment || !address) return
-    const request = testRequestOf({
-      descriptor: client.client.descriptor,
-      chainId,
-      account,
-      method: book.methods.ecdsa,
-      config: enrollment.credential.config,
-      now: deps.now(),
-      randomBytes: deps.randomBytes
-    })
-    let typedData: unknown
-    try {
-      typedData = client.client.approving.signingInput(request)
-    } catch (error: unknown) {
-      setTestOutcome(outcomeOfThrown(error))
-      return
-    }
-    if (!isTypedDataToSign(typedData)) {
-      setTestOutcome(notSupported('no-implementation'))
-      return
-    }
-    const next: GuardianChallenge = { request, typedData }
-    setChallenge(next)
-    setTestOutcome(null)
-    const held = heldKeyOf(deps.keys, address)
-    if (!held) {
-      setOffline(true)
-      return
-    }
-    setBusy(true)
-    let signature: Hex
-    try {
-      signature = await deps.signTypedData({ addr: held.addr, type: held.type }, typedData)
-    } catch (error: unknown) {
+  // The offline block serves any key; a key the wallet holds signs on this
+  // device unless the holder asks for the offline block.
+  const runTest = useCallback(
+    async (offlineOnly: boolean) => {
+      if (client.status !== 'ready' || !enrollment || !address) return
+      const request = testRequestOf({
+        descriptor: client.client.descriptor,
+        chainId,
+        account,
+        method: book.methods.ecdsa,
+        config: enrollment.credential.config,
+        now: deps.now(),
+        randomBytes: deps.randomBytes
+      })
+      let typedData: unknown
+      try {
+        typedData = client.client.approving.signingInput(request)
+      } catch (error: unknown) {
+        setTestOutcome(outcomeOfThrown(error))
+        return
+      }
+      if (!isTypedDataToSign(typedData)) {
+        setTestOutcome(notSupported('no-implementation'))
+        return
+      }
+      const next: GuardianChallenge = { request, typedData }
+      setChallenge(next)
+      setTestOutcome(null)
+      const held = heldKeyOf(deps.keys, address)
+      if (!held || offlineOnly) {
+        setOffline(true)
+        return
+      }
+      setBusy(true)
+      let signature: Hex
+      try {
+        signature = await deps.signTypedData({ addr: held.addr, type: held.type }, typedData)
+      } catch (error: unknown) {
+        setBusy(false)
+        // A key the request queue cannot sign for is carried to the offline block.
+        if (isSignerNotWired(error)) setOffline(true)
+        else await applyTest(outcomeOfSignError(error))
+        return
+      }
       setBusy(false)
-      // A key the request queue cannot sign for is carried to the offline block.
-      if (isSignerNotWired(error)) setOffline(true)
-      else await applyTest(outcomeOfSignError(error))
-      return
-    }
-    setBusy(false)
-    await check(next, signature)
-  }, [client, enrollment, address, chainId, account, book, deps, applyTest, check])
+      await check(next, signature)
+    },
+    [client, enrollment, address, chainId, account, book, deps, applyTest, check]
+  )
 
   const paste = useCallback(() => {
     deps
@@ -280,6 +285,7 @@ const GuardianRow = ({
   const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
   const testError = testOutcome ? browserErrorNameOf(testOutcome) : null
   const resolved = resolvedName ? renderResolvedName(resolvedName, 'besideAddressToCheck', t) : null
+  const heldKey = address ? heldKeyOf(deps.keys, address) : undefined
   const fieldResolved =
     !enrollment && nameCheck?.status === 'resolved'
       ? renderResolvedName(nameCheck.name, 'besideAddressToCheck', t)
@@ -301,7 +307,6 @@ const GuardianRow = ({
         <View testID="guardian-field">
           <Input
             testID="guardian-address"
-            placeholder={t('socialRecovery.enroll.guardian.pasteHint')}
             value={value}
             onChangeText={setValue}
             button={deps.readClipboard ? t('socialRecovery.actions.paste') : null}
@@ -354,6 +359,20 @@ const GuardianRow = ({
         </View>
       )}
 
+      {!!address && (
+        <View testID="guardian-lines" style={spacings.mbSm}>
+          <Text testID="guardian-smart-account" fontSize={14} style={spacings.mbTy}>
+            {t('socialRecovery.disclosures.smartAccount')}
+          </Text>
+          <Text testID="guardian-call-back" fontSize={14} style={spacings.mbTy}>
+            {t('socialRecovery.enroll.guardian.callBack')}
+          </Text>
+          <Text testID="guardian-owner-answer" fontSize={14}>
+            {t('socialRecovery.enroll.guardian.ownerAnswer')}
+          </Text>
+        </View>
+      )}
+
       {checkLines.length > 0 && (
         <View testID="guardian-checks" style={spacings.mbSm}>
           <Text fontSize={12} weight="medium" appearance="secondaryText" style={spacings.mbTy}>
@@ -389,16 +408,7 @@ const GuardianRow = ({
       )}
 
       {!!enrollment && (
-        <View testID="guardian-lines" style={spacings.mbSm}>
-          <Text testID="guardian-smart-account" fontSize={14} style={spacings.mbTy}>
-            {t('socialRecovery.disclosures.smartAccount')}
-          </Text>
-          <Text testID="guardian-call-back" fontSize={14} style={spacings.mbTy}>
-            {t('socialRecovery.enroll.guardian.callBack')}
-          </Text>
-          <Text testID="guardian-owner-answer" fontSize={14} style={spacings.mbTy}>
-            {t('socialRecovery.enroll.guardian.ownerAnswer')}
-          </Text>
+        <View testID="guardian-test-block" style={spacings.mbSm}>
           <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
             {t('socialRecovery.enroll.guardian.howMany')}
           </Text>
@@ -427,24 +437,38 @@ const GuardianRow = ({
             </Text>
           )}
           {enrollment.test !== 'not-supported' && (
-            <Button
-              testID="guardian-test"
-              type="outline"
-              text={
-                enrollment.test === 'failed' || enrollment.test === 'unavailable'
-                  ? t('socialRecovery.writes.tryAgain')
-                  : t('socialRecovery.enroll.guardian.testThisKey')
-              }
-              disabled={client.status !== 'ready' || busy}
-              onPress={runTest}
-              hasBottomSpacing={false}
-            />
+            <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+              <Button
+                testID="guardian-test"
+                type="outline"
+                text={
+                  enrollment.test === 'failed' || enrollment.test === 'unavailable'
+                    ? t('socialRecovery.writes.tryAgain')
+                    : t('socialRecovery.enroll.guardian.testThisKey')
+                }
+                disabled={client.status !== 'ready' || busy}
+                onPress={() => runTest(false)}
+                hasBottomSpacing={false}
+                style={spacings.mrSm}
+              />
+              {!!heldKey && (
+                <Button
+                  testID="guardian-test-offline"
+                  type="ghost"
+                  text={t('socialRecovery.enroll.offline.title')}
+                  disabled={client.status !== 'ready' || busy}
+                  onPress={() => runTest(true)}
+                  hasBottomSpacing={false}
+                />
+              )}
+            </View>
           )}
         </View>
       )}
 
       {!!enrollment && offline && !!challenge && (
         <OfflineBlock
+          key={challenge.request.salt}
           challenge={challenge}
           busy={busy}
           onCheck={(signature) => check(challenge, signature)}

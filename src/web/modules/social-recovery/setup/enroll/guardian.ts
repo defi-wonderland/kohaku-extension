@@ -122,11 +122,17 @@ export const isTypedDataToSign = (value: unknown): value is TypedDataToSign => {
   )
 }
 
-/** The typed data as JSON, each bigint as a decimal string, as `eth_signTypedData_v4` takes it. */
-export const challengeTextOf = (typedData: TypedDataToSign): string =>
-  JSON.stringify(typedData, (_key, value: unknown) =>
+/**
+ * The typed data as JSON, as `eth_signTypedData_v4` takes it: the domain type
+ * spelled out, the same types the local check hashes, so a signer that adds
+ * its own domain type signs the same digest. Each bigint is a decimal string.
+ */
+export const challengeTextOf = (typedData: TypedDataToSign): string => {
+  const { domain, types, primaryType, message } = typedMessageOf(typedData)
+  return JSON.stringify({ domain, types, primaryType, message }, (_key, value: unknown) =>
     typeof value === 'bigint' ? value.toString() : value
   )
+}
 
 /** The challenge as the file the offline block saves. */
 export const challengeFileOf = (typedData: TypedDataToSign): ChallengeFile => ({
@@ -149,9 +155,10 @@ export const digestOfTypedData = (typedData: TypedDataToSign): Hex =>
 
 /**
  * The local check of a guardian's signature over the challenge: a signature
- * that recovers to the address passes. Where it does not and the address holds
- * code, the contract's own EIP-1271 answer decides. A read the chain did not
- * answer makes the test unavailable; anything else fails as no match.
+ * that recovers to the address passes. Where it does not, the address's own
+ * EIP-1271 answer decides; an address with no code answers nothing, which
+ * fails as no match. Without a provider, or with a read the chain did not
+ * answer, the test is unavailable.
  */
 export const checkGuardianSignature = async (input: {
   typedData: TypedDataToSign
@@ -161,10 +168,8 @@ export const checkGuardianSignature = async (input: {
 }): Promise<GuardianTestOutcome> => {
   const recovered = await recoveredSignerOf(typedMessageOf(input.typedData), input.signature)
   if (sameAddress(recovered, input.address)) return passed({ signature: input.signature })
-  if (!input.chain) return failed('check-rejected')
+  if (!input.chain) return unavailable('service-unanswered')
   try {
-    const code = await input.chain.readCode(input.address)
-    if (codeCheckOf(code) === 'none') return failed('check-rejected')
     const valid = await input.chain.isValidSignature(
       input.address,
       digestOfTypedData(input.typedData),
