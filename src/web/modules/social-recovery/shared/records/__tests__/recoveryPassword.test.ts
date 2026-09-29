@@ -1,7 +1,7 @@
 /**
  * The recovery password holder: the password the privacy step collects, kept
- * in memory by chain and account, never written to storage, and wiped when the
- * setup it was typed for is saved or started over.
+ * in memory by chain and account, never written to storage, wiped when the
+ * setup it was typed for is started over and kept when it is saved.
  *
  * The records run against an in-memory storage double that counts its `set`
  * and `remove` calls, so a test sees every storage write a holder call makes.
@@ -154,34 +154,42 @@ describe('the recovery password holder', () => {
   })
 })
 
-const SETUP_WIPES = ['saveSetup', 'startOverSetup'] as const
+describe('the setup records and the recovery password', () => {
+  it('startOverSetup clears the password of that chain and account only', async () => {
+    const storage = makeStorage()
+    const records = createWalletRecords({ storage })
+    await records.setup(CHAIN_ID, ACCOUNT).passwordSet.write('password-set')
+    setRecoveryPassword(CHAIN_ID, ACCOUNT, PASSWORD)
+    setRecoveryPassword(CHAIN_ID, OTHER_ACCOUNT, OTHER_PASSWORD)
+    setRecoveryPassword(OTHER_CHAIN_ID, ACCOUNT, OTHER_PASSWORD)
 
-describe('the setup wipes the recovery password', () => {
-  SETUP_WIPES.forEach((wipe) => {
-    it(`${wipe} clears the password of that chain and account only`, async () => {
-      const storage = makeStorage()
-      const records = createWalletRecords({ storage })
-      await records.setup(CHAIN_ID, ACCOUNT).passwordSet.write('password-set')
-      setRecoveryPassword(CHAIN_ID, ACCOUNT, PASSWORD)
-      setRecoveryPassword(CHAIN_ID, OTHER_ACCOUNT, OTHER_PASSWORD)
-      setRecoveryPassword(OTHER_CHAIN_ID, ACCOUNT, OTHER_PASSWORD)
+    await records.startOverSetup(CHAIN_ID, ACCOUNT_CHECKSUMMED)
 
-      await records[wipe](CHAIN_ID, ACCOUNT_CHECKSUMMED)
+    expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
+    expect(readRecoveryPassword(CHAIN_ID, OTHER_ACCOUNT)).toBe(OTHER_PASSWORD)
+    expect(readRecoveryPassword(OTHER_CHAIN_ID, ACCOUNT)).toBe(OTHER_PASSWORD)
+    expect(storage.raw.has(recordKeys.setup('passwordSet', CHAIN_ID, ACCOUNT))).toBe(false)
+  })
 
-      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
-      expect(readRecoveryPassword(CHAIN_ID, OTHER_ACCOUNT)).toBe(OTHER_PASSWORD)
-      expect(readRecoveryPassword(OTHER_CHAIN_ID, ACCOUNT)).toBe(OTHER_PASSWORD)
-      expect(storage.raw.has(recordKeys.setup('passwordSet', CHAIN_ID, ACCOUNT))).toBe(false)
-    })
+  it('startOverSetup keeps the password when the storage fails to wipe the setup records', async () => {
+    const storage = makeStorage({ failRemove: true })
+    const records = createWalletRecords({ storage })
+    setRecoveryPassword(CHAIN_ID, ACCOUNT, PASSWORD)
 
-    it(`${wipe} keeps the password when the storage fails to wipe the setup records`, async () => {
-      const storage = makeStorage({ failRemove: true })
-      const records = createWalletRecords({ storage })
-      setRecoveryPassword(CHAIN_ID, ACCOUNT, PASSWORD)
+    await expect(records.startOverSetup(CHAIN_ID, ACCOUNT)).rejects.toThrow('storage remove failed')
 
-      await expect(records[wipe](CHAIN_ID, ACCOUNT)).rejects.toThrow('storage remove failed')
+    expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe(PASSWORD)
+  })
 
-      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe(PASSWORD)
-    })
+  it('saveSetup wipes the setup records and keeps the password for the Recovery Card', async () => {
+    const storage = makeStorage()
+    const records = createWalletRecords({ storage })
+    await records.setup(CHAIN_ID, ACCOUNT).passwordSet.write('password-set')
+    setRecoveryPassword(CHAIN_ID, ACCOUNT, PASSWORD)
+
+    await records.saveSetup(CHAIN_ID, ACCOUNT_CHECKSUMMED)
+
+    expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe(PASSWORD)
+    expect(storage.raw.has(recordKeys.setup('passwordSet', CHAIN_ID, ACCOUNT))).toBe(false)
   })
 })
