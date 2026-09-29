@@ -75,6 +75,8 @@ export interface TrustHeading {
   kind: MethodKind | undefined
   /** A guardian's address, decoded from its config. */
   guardian?: Address
+  /** A passkey's backup kind, where the records hold one. */
+  backup?: Enrollment['backup']
   /** Whether its access test passed. */
   tested: boolean
 }
@@ -90,7 +92,7 @@ export type TrustContract =
       admin?: Address
       /** The address one acceptance away from the admin role, where there is one. */
       pendingAdmin?: Address
-      /** The method alone satisfies the whole rule at a threshold of one, so its admin could recover alone. */
+      /** The method alone satisfies the whole rule, so its admin could recover alone. */
       recoverAlone: boolean
       /** The passport method, whose credential a renewed document ends. */
       passportRenewal: boolean

@@ -47,20 +47,19 @@ const PUBLICATION = 'socialRecovery.review.publication'
 const ITEMS = 'socialRecovery.disclosures.items'
 const ITEMS_LEAD = 'socialRecovery.disclosures.itemsLead'
 
+/** The address book's kind of a method module; a module it does not hold has none. */
+const methodKindOf = (method: Address, addressBook: AddressBook): MethodKind | undefined =>
+  (Object.keys(addressBook.methods) as MethodKind[]).find((kind) =>
+    sameAddress(addressBook.methods[kind], method)
+  )
+
 /**
  * The kind of method a credential holds: the kind an empty slot waits for, or
  * the address book's kind of an enrolled credential's method. A method the
  * address book does not hold has no kind.
  */
-export const kindOf = (
-  credential: Credential,
-  addressBook: AddressBook
-): MethodKind | undefined => {
-  if (isEmptySlot(credential)) return slotKindOf(credential)
-  return (Object.keys(addressBook.methods) as MethodKind[]).find((kind) =>
-    sameAddress(addressBook.methods[kind], credential.method)
-  )
-}
+export const kindOf = (credential: Credential, addressBook: AddressBook): MethodKind | undefined =>
+  isEmptySlot(credential) ? slotKindOf(credential) : methodKindOf(credential.method, addressBook)
 
 /** The kind's name, the word a row and a contract row name a method by. */
 export const kindNameOf = (kind: MethodKind, t: Translate): string => t(KIND_NAME_KEYS[kind])
@@ -119,12 +118,8 @@ const verdictLinesOf = (enrollment: Enrollment, t: Translate): string[] => {
   }
 }
 
-/** The lines a kind carries on every enrolled row of it. */
-const kindLinesOf = (
-  kind: MethodKind | undefined,
-  enrollment: Enrollment | undefined,
-  t: Translate
-) => {
+/** The lines an identity kind carries on every enrolled row of it. */
+const kindLinesOf = (kind: MethodKind | undefined, t: Translate) => {
   if (kind === 'zkpassport') {
     return [
       t('socialRecovery.disclosures.identity'),
@@ -132,16 +127,21 @@ const kindLinesOf = (
     ]
   }
   if (kind === 'aadhaar') return [t('socialRecovery.disclosures.identity')]
-  if (kind === 'passkey') {
-    const loss =
-      enrollment?.backup === 'synced'
-        ? t(`${CEREMONY}.syncedLoss`)
-        : enrollment?.backup === 'device-bound'
-        ? t(`${CEREMONY}.deviceBoundLoss`)
-        : null
-    return [...(loss ? [loss] : []), t(`${CEREMONY}.passkeyOrigin`)]
-  }
   return []
+}
+
+/**
+ * The lines a passkey carries: what losing it means for its backup kind, where
+ * the records hold one, then the origin it works from.
+ */
+export const passkeyLinesOf = (backup: Enrollment['backup'], t: Translate): string[] => {
+  const loss =
+    backup === 'synced'
+      ? t(`${CEREMONY}.syncedLoss`)
+      : backup === 'device-bound'
+      ? t(`${CEREMONY}.deviceBoundLoss`)
+      : null
+  return [...(loss ? [loss] : []), t(`${CEREMONY}.passkeyOrigin`)]
 }
 
 /**
@@ -183,10 +183,7 @@ export const pathRowOf = (
     name,
     aside,
     chip: enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null,
-    lines: [
-      ...(enrollment ? verdictLinesOf(enrollment, t) : []),
-      ...kindLinesOf(kind, enrollment, t)
-    ]
+    lines: [...(enrollment ? verdictLinesOf(enrollment, t) : []), ...kindLinesOf(kind, t)]
   }
 }
 
@@ -210,10 +207,7 @@ export const ruleLinesOf = (
   addressBook: AddressBook,
   t: Translate
 ): string[] => {
-  const kindOfMethod = (method: Address): MethodKind | undefined =>
-    (Object.keys(addressBook.methods) as MethodKind[]).find((kind) =>
-      sameAddress(addressBook.methods[kind], method)
-    )
+  const kindOfMethod = (method: Address) => methodKindOf(method, addressBook)
   return renderRuleLines(getRuleLines(draft, { kindOfMethod }), (key, params) =>
     t(key, { ...params })
   )

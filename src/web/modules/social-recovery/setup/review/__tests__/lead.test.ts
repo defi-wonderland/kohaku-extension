@@ -254,24 +254,20 @@ describe('a row of the path', () => {
     expect(rowOf(enrolled(AADHAAR)).lines).toEqual([t('socialRecovery.disclosures.identity')])
   })
 
-  it('names a synced passkey by its label with the synced word, its loss line and its origin line', () => {
+  it('names a synced passkey by its label with the synced word', () => {
     const row = rowOf(enrolled(PASSKEY, 'passed', { backup: 'synced' }))
     expect(row).toEqual({
       name: PASSKEY.label,
       aside: t('socialRecovery.review.passkeySynced'),
       chip: chip('tested'),
-      lines: [t(`${CEREMONY}.syncedLoss`), t(`${CEREMONY}.passkeyOrigin`)]
+      lines: []
     })
   })
 
-  it('names a device-bound passkey with the device-bound word, its loss line and its origin line', () => {
+  it('names a device-bound passkey with the device-bound word', () => {
     const row = rowOf(enrolled(PASSKEY, 'not-tested', { backup: 'device-bound' }))
     expect(row.aside).toBe(t('socialRecovery.review.passkeyDeviceBound'))
-    expect(row.lines).toEqual([
-      t(`${CEREMONY}.notTestedLine`),
-      t(`${CEREMONY}.deviceBoundLoss`),
-      t(`${CEREMONY}.passkeyOrigin`)
-    ])
+    expect(row.lines).toEqual([t(`${CEREMONY}.notTestedLine`)])
   })
 
   it('reads an empty slot by its kind as not yet active, with no line', () => {

@@ -237,7 +237,7 @@ describe('whether one method alone satisfies the rule', () => {
     expect(
       aloneSatisfiesRule([required(PASSKEY), group(1, ALICE, BOB)], BOOK.methods.ecdsa, BOOK)
     ).toBe(false)
-    expect(aloneSatisfiesRule([group(2, ALICE, BOB)], BOOK.methods.ecdsa, BOOK)).toBe(false)
+    expect(aloneSatisfiesRule([group(2, ALICE, PASSKEY)], BOOK.methods.ecdsa, BOOK)).toBe(false)
   })
 })
 

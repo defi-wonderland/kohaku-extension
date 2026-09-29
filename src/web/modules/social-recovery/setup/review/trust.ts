@@ -47,9 +47,8 @@ export const methodsOf = (clauses: readonly Clause[], addressBook: AddressBook):
 export const readKeyOf = (method: Address): string => method.toLowerCase()
 
 /**
- * Whether one method alone satisfies the whole rule: the path is one clause at
- * a threshold of one, a single required row or one group of any one with no
- * required row beside it, and that clause holds a credential of the method.
+ * Whether one method alone satisfies the whole rule: every clause that holds a
+ * credential holds at least its threshold of credentials of that method.
  */
 export const aloneSatisfiesRule = (
   clauses: readonly Clause[],
@@ -58,10 +57,12 @@ export const aloneSatisfiesRule = (
 ): boolean => {
   const held = clauses.filter((clause) => clause.credentials.length > 0)
   return (
-    held.length === 1 &&
-    held[0].threshold === 1 &&
-    held[0].credentials.some((credential) =>
-      sameAddress(methodOfCredential(credential, addressBook), method)
+    held.length > 0 &&
+    held.every(
+      (clause) =>
+        clause.credentials.filter((credential) =>
+          sameAddress(methodOfCredential(credential, addressBook), method)
+        ).length >= clause.threshold
     )
   )
 }
@@ -115,11 +116,13 @@ export const trustRowsOf = (input: TrustRowsInput): TrustRow[] => {
         const kind = kindOf(credential, input.addressBook)
         const guardian =
           kind === 'ecdsa' && !isEmptySlot(credential) ? guardianAddressOf(credential) : undefined
+        const enrollment = enrollmentOf(credential, input.enrollments)
         return {
           credential,
           kind,
           ...(guardian ? { guardian } : {}),
-          tested: enrollmentOf(credential, input.enrollments)?.test === 'passed'
+          ...(enrollment?.backup ? { backup: enrollment.backup } : {}),
+          tested: enrollment?.test === 'passed'
         }
       })
     const kind = headings[0]?.kind

@@ -47,7 +47,7 @@ const { parse, stringify } = jest.requireActual<
 const { getRuleLines, renderRuleLines } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/rule-lines')
 >('@web/modules/social-recovery/shared/rule-lines')
-const { renderFullAddress, renderShortAddress } = jest.requireActual<
+const { renderFullAddress } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/display')
 >('@web/modules/social-recovery/shared/display')
 const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress } = jest.requireActual<
@@ -368,7 +368,7 @@ describe('the path rows', () => {
     ])
   })
 
-  it('name a synced passkey with the synced word, the synced loss line and the origin line', async () => {
+  it('name a synced passkey with the synced word', async () => {
     await mount({
       clauses: [required(PASSKEY)],
       enrollments: [enrolled(PASSKEY, 'passed', { backup: 'synced' })]
@@ -376,23 +376,17 @@ describe('the path rows', () => {
 
     expect(textOf('review-row-0-0-name')).toBe(PASSKEY.label)
     expect(textOf('review-row-0-0-aside')).toBe(t('socialRecovery.review.passkeySynced'))
-    expect(textsStartingWith('review-row-0-0-line-')).toEqual([
-      t(`${CEREMONY}.syncedLoss`),
-      t(`${CEREMONY}.passkeyOrigin`)
-    ])
+    expect(textsStartingWith('review-row-0-0-line-')).toEqual([])
   })
 
-  it('name a device-bound passkey with the device-bound word, its loss line and the origin line', async () => {
+  it('name a device-bound passkey with the device-bound word', async () => {
     await mount({
       clauses: [required(PASSKEY)],
       enrollments: [enrolled(PASSKEY, 'passed', { backup: 'device-bound' })]
     })
 
     expect(textOf('review-row-0-0-aside')).toBe(t('socialRecovery.review.passkeyDeviceBound'))
-    expect(textsStartingWith('review-row-0-0-line-')).toEqual([
-      t(`${CEREMONY}.deviceBoundLoss`),
-      t(`${CEREMONY}.passkeyOrigin`)
-    ])
+    expect(textsStartingWith('review-row-0-0-line-')).toEqual([])
   })
 
   it('show a guardian by its full address', async () => {
@@ -498,14 +492,14 @@ describe('the trust list', () => {
       t('socialRecovery.review.trust.guardianHeadingTested', {
         address: renderFullAddress(guardianAddress('a1'))
       }),
-      t('socialRecovery.disclosures.smartAccount'),
       t('socialRecovery.review.trust.guardianHeading', {
         address: renderFullAddress(guardianAddress('b2'))
       }),
-      t('socialRecovery.disclosures.smartAccount'),
       t('socialRecovery.review.trust.guardianHeading', {
         address: renderFullAddress(guardianAddress('c3'))
       }),
+      t('socialRecovery.disclosures.smartAccount'),
+      t('socialRecovery.disclosures.smartAccount'),
       t('socialRecovery.disclosures.smartAccount')
     ])
   })
@@ -532,7 +526,7 @@ describe('the trust list', () => {
     expect(textOf('review-trust-0-method')).toBe(
       t('socialRecovery.review.trust.methodRowAdmin', {
         method: t('socialRecovery.methodNames.passport'),
-        party: renderShortAddress(ADMIN)
+        party: renderFullAddress(ADMIN)
       })
     )
     expect(textOf('review-trust-0-admin')).toBe(t('socialRecovery.review.trust.adminLine'))

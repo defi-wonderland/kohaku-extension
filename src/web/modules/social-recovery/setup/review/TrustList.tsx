@@ -7,13 +7,10 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { auditedActionOf, publisherKeyOf } from '@web/modules/social-recovery/shared/client'
-import {
-  renderFullAddress,
-  renderNoun,
-  renderShortAddress
-} from '@web/modules/social-recovery/shared/display'
+import { renderFullAddress, renderNoun } from '@web/modules/social-recovery/shared/display'
+import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
-import { kindNameOf } from './lead'
+import { kindNameOf, passkeyLinesOf } from './lead'
 import { nodeKindOf } from './trust'
 import type { TrustHeading, TrustListProps, TrustRow } from './types'
 
@@ -21,8 +18,8 @@ const TRUST = 'socialRecovery.review.trust'
 
 /**
  * The trust list: one contract row per method under the headings of the path
- * rows that use it, the recovery module with its publisher, and the node the
- * wallet reads through.
+ * rows that use it, each heading's own lines after the row, the recovery
+ * module with its publisher, and the node the wallet reads through.
  */
 const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
   const { t } = useTranslation()
@@ -44,6 +41,16 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
     if (heading.kind === 'passkey') return heading.credential.label || kindNameOf('passkey', t)
     if (heading.kind) return kindNameOf(heading.kind, t)
     return renderFullAddress(row.method)
+  }
+
+  const headingLinesOf = (heading: TrustHeading): string[] => {
+    if (heading.kind === 'ecdsa') return [t('socialRecovery.disclosures.smartAccount')]
+    if (isEmptySlot(heading.credential)) return []
+    if (heading.kind === 'passkey') return passkeyLinesOf(heading.backup, t)
+    if (heading.kind === 'zkpassport' || heading.kind === 'aadhaar') {
+      return [t('socialRecovery.disclosures.identity')]
+    }
+    return []
   }
 
   const renderContract = (row: TrustRow, testID: string) => {
@@ -80,18 +87,17 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
         </>
       )
     }
-    const method = row.kind ? kindNameOf(row.kind, t) : renderShortAddress(row.method)
+    const method = row.kind ? kindNameOf(row.kind, t) : renderFullAddress(row.method)
     return (
       <>
         {contract.admin
           ? line(
-              t(`${TRUST}.methodRowAdmin`, { method, party: renderShortAddress(contract.admin) }),
+              t(`${TRUST}.methodRowAdmin`, { method, party: renderFullAddress(contract.admin) }),
               `${testID}-method`
             )
           : line(t(`${TRUST}.methodRow`, { method }), `${testID}-method`)}
         {!!contract.admin && line(t(`${TRUST}.adminLine`), `${testID}-admin`)}
-        {!!contract.admin &&
-          !!contract.pendingAdmin &&
+        {!!contract.pendingAdmin &&
           line(
             t(`${TRUST}.oneAcceptanceAway`, { address: renderFullAddress(contract.pendingAdmin) }),
             `${testID}-pending-admin`
@@ -121,20 +127,27 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
                 `${testID}-guardians`
               )}
             {row.headings.map((heading, member) => (
-              // A heading is one row of the path; the path fixes their order.
-              // eslint-disable-next-line react/no-array-index-key
-              <View key={member}>
-                <Text fontSize={14} weight="medium" testID={`${testID}-heading-${member}`}>
-                  {headingText(heading, row)}
-                </Text>
-                {heading.kind === 'ecdsa' &&
-                  line(
-                    t('socialRecovery.disclosures.smartAccount'),
-                    `${testID}-heading-${member}-smart-account`
-                  )}
-              </View>
+              <Text
+                // A heading is one row of the path; the path fixes their order.
+                // eslint-disable-next-line react/no-array-index-key
+                key={member}
+                fontSize={14}
+                weight="medium"
+                testID={`${testID}-heading-${member}`}
+              >
+                {headingText(heading, row)}
+              </Text>
             ))}
             {renderContract(row, testID)}
+            {row.headings.map((heading, member) =>
+              headingLinesOf(heading).map((text, place) => (
+                // The lines of one heading are fixed in number and order.
+                // eslint-disable-next-line react/no-array-index-key
+                <React.Fragment key={`${member}-${place}`}>
+                  {line(text, `${testID}-heading-${member}-line-${place}`)}
+                </React.Fragment>
+              ))
+            )}
           </View>
         )
       })}
