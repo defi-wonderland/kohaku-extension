@@ -82,7 +82,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         setWriteFailed(false)
         onOpenEditor()
       } catch {
-        // Part of the write may have landed: show what storage now holds.
+        // A refused write changes nothing: reload and show what storage holds.
         setWriteFailed(true)
         await reload()
       } finally {
