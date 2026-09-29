@@ -20,6 +20,12 @@ module.exports = {
     path.join('<rootDir>', 'recorder/'), // E2E tests video recorder files
     path.join('<rootDir>', 'vendor/') // Ruby
   ],
+  // tsconfig.json keeps JSX as written (react-native), so a .tsx file compiles
+  // with the automatic JSX runtime here, which lets a test mount a view
+  transform: {
+    ...baseConfig.transform,
+    '^.+\\.tsx$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }]
+  },
   setupFiles: [],
   // The path aliases of tsconfig.json, so a unit test imports like the code it tests
   moduleNameMapper: {
