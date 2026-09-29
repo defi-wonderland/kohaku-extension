@@ -24,7 +24,7 @@ import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import en from '@common/config/localization/translations/en.json'
 import { browser } from '@web/constants/browserapi'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
-import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, DeviceBinding } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CeremonyCall } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonySource } from '@web/modules/social-recovery/shared/ceremony/screen'
 import { buildRecoveryClient } from '@web/modules/social-recovery/shared/client/build-client'
@@ -50,6 +50,7 @@ import {
   loadWithReactJsx,
   methodRunCount,
   P256Point,
+  PASSKEY_METHOD,
   PROOF_HEX,
   resetVisibility,
   setVisibility,
@@ -73,7 +74,7 @@ jest.mock('@web/constants/browserapi', () => {
     browser: {
       storage: {
         local: {
-          get: async () => Object.fromEntries(entries),
+          get: jest.fn(async () => Object.fromEntries(entries)),
           set: async (items: Record<string, unknown>) => {
             Object.entries(items).forEach(([key, value]) => entries.set(key, value))
           },
@@ -150,6 +151,7 @@ jest.mock('@web/components/TabLayoutWrapper/TabLayoutWrapper', () => {
 })
 
 const buildProvider = getRpcProvider as jest.Mock
+const storageGet = browser.storage.local.get as jest.Mock
 const buildClient = buildRecoveryClient as jest.Mock
 const networksState = useNetworksControllerState as jest.Mock
 
@@ -165,10 +167,13 @@ const TAB = path.resolve(__dirname, '../screen/index.ts')
 const SCREEN = path.resolve(__dirname, '../screen/CeremonyScreen.tsx')
 
 const ID = 'req-1'
-const ENROLL = `?call=enroll&method=passkey&id=${ID}`
+const ENROLL_ROUTE = '?call=enroll&method=passkey'
+const ENROLL = `${ENROLL_ROUTE}&id=${ID}`
 const NOTHING_TO_RUN = en.socialRecovery.ceremony.nothingToRun
 const TRY_AGAIN = en.socialRecovery.ceremony.tryAgainAction
+const CONTINUE_ON_PHONE = en.socialRecovery.ceremony.continueOnPhone
 const SEPOLIA_ID = 11155111
+const MAINNET_ID = 1
 
 const network = (overrides: Partial<Network> = {}): Network =>
   ({
@@ -180,16 +185,13 @@ const network = (overrides: Partial<Network> = {}): Network =>
     ...overrides
   } as Network)
 
-/** A method address other than the fakes' own, so a test sees the stored one reach the host. */
-const STORED_METHOD: Address = '0x000000000000000000000000000000000000cafe'
-
 const recorded = {
-  enroll: (): CeremonyRequestRecord => ({
+  enroll: () => ({
     account: ACCOUNT,
-    chainId: BigInt(SEPOLIA_ID),
+    chainId: SEPOLIA_ID,
     method: 'passkey',
-    call: 'enroll',
-    methodAddress: STORED_METHOD,
+    call: 'enroll' as const,
+    methodAddress: PASSKEY_METHOD,
     params: callerParams()
   }),
   withRequest: (
@@ -197,7 +199,7 @@ const recorded = {
     request: ApproverRequest
   ): CeremonyRequestRecord => ({
     account: ACCOUNT,
-    chainId: BigInt(SEPOLIA_ID),
+    chainId: SEPOLIA_ID,
     method: 'passkey',
     call,
     request,
@@ -215,9 +217,9 @@ const callerRecords = () => {
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
 /** What the caller takes from the channel under the id, as a row does. */
-const takeReport = (call: CeremonyCall) =>
+const takeReport = (call: CeremonyCall, method = 'passkey') =>
   ceremony().takeCeremonyReport(
-    { id: ID, call, method: 'passkey' },
+    { id: ID, call, method },
     browserDefaults().browserReportStore,
     Date.now()
   )
@@ -238,6 +240,13 @@ let creds: ReturnType<typeof installCredentials>
 let method: FakeMethod
 let orchestrator: FakeOrchestrator
 let providers: { destroy: jest.Mock }[]
+let clock: jest.SpyInstance | null = null
+
+/** Moves the wall clock `ms` ahead of now, as a reload or a second tab opened later reads it. */
+const later = (ms: number) => {
+  const at = Date.now() + ms
+  clock = jest.spyOn(Date, 'now').mockReturnValue(at)
+}
 
 beforeAll(async () => {
   point = await generatePoint()
@@ -258,14 +267,18 @@ beforeEach(() => {
     providers.push(provider)
     return provider
   })
-  // The client of the request's account: the fakes' approving side, serving the passkey method.
+  // The client of the request's account: the fakes' approving side, serving the
+  // passkey method, whose module is `PASSKEY_METHOD` whatever the descriptor.
   buildClient.mockImplementation(async () => ({
     approving: orchestrator,
-    methodFor: (slug: string) => (slug === 'passkey' ? method : undefined)
+    methodFor: (slug: string) => (slug === 'passkey' ? method : undefined),
+    descriptor: {}
   }))
 })
 
 afterEach(async () => {
+  clock?.mockRestore()
+  clock = null
   await act(async () => root?.unmount())
   root = null
   container?.remove()
@@ -345,7 +358,7 @@ describe('the ceremony tab with no provider above it', () => {
     expect(providers[0].destroy).toHaveBeenCalledTimes(1)
     expect(creds.create).toHaveBeenCalledTimes(1)
     expect(orchestrator.enrollInput).toHaveBeenCalledTimes(1)
-    expect(orchestrator.enrollInput.mock.calls[0][0]).toBe(STORED_METHOD)
+    expect(orchestrator.enrollInput.mock.calls[0][0]).toBe(PASSKEY_METHOD)
     expect(orchestrator.enrollInput.mock.calls[0][1]).toMatchObject({
       relyingPartyId: EXTENSION_ORIGIN,
       userName: 'holder'
@@ -389,33 +402,169 @@ describe('the ceremony tab with no provider above it', () => {
   })
   ;(
     [
+      ['another call', ENROLL_ROUTE, recorded.withRequest('testAccess', fixtureRequest())],
+      ['another method', '?call=enroll&method=zkpassport', recorded.enroll()],
       [
-        'another call',
-        '?call=enroll&method=passkey',
-        recorded.withRequest('testAccess', fixtureRequest())
-      ],
-      ['another method', '?call=enroll&method=zkpassport', recorded.enroll()]
+        'mainnet, the other recovery chain',
+        ENROLL_ROUTE,
+        { ...recorded.enroll(), chainId: MAINNET_ID }
+      ]
     ] as const
   ).forEach(([what, route, record]) =>
-    it(`reaches the nothing-to-run phase for a request recorded for ${what}`, async () => {
+    it(`reaches the nothing-to-run phase for a request recorded for ${what}, and builds nothing`, async () => {
+      mockNetworks.current = [network(), network({ chainId: BigInt(MAINNET_ID), name: 'Ethereum' })]
       await callerRecords().ceremonyRequest(ID).write(record)
       const page = await render(`${route}&id=${ID}`)
       expect(page.textContent).toContain(NOTHING_TO_RUN)
+      expect(buildProvider).not.toHaveBeenCalled()
       expect(buildClient).not.toHaveBeenCalled()
       expect(methodRunCount(method, orchestrator)).toBe(0)
       expect(await storedReports()).toEqual([])
     })
   )
 
-  it('reaches the nothing-to-run phase where the client holds no implementation of the recorded method', async () => {
+  it('reaches the nothing-to-run phase for a request naming a module the method does not serve', async () => {
+    await callerRecords()
+      .ceremonyRequest(ID)
+      .write({ ...recorded.enroll(), methodAddress: ACCOUNT })
+    const page = await render(ENROLL)
+    expect(page.textContent).toContain(NOTHING_TO_RUN)
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+    expect(await storedReports()).toEqual([])
+  })
+
+  it('reports not supported with no retry where the client holds no implementation of the recorded method', async () => {
     await callerRecords()
       .ceremonyRequest(ID)
       .write({ ...recorded.enroll(), method: 'aadhaar' })
     const page = await render(`?call=enroll&method=aadhaar&id=${ID}`)
     expect(buildClient).toHaveBeenCalledTimes(1)
-    expect(page.textContent).toContain(NOTHING_TO_RUN)
     expect(methodRunCount(method, orchestrator)).toBe(0)
+    expect(creds.create).not.toHaveBeenCalled()
+    const report = await takeReport('enroll', 'aadhaar')
+    expect(report?.outcome).toEqual({
+      kind: 'verdict',
+      verdict: 'notSupported',
+      cause: 'no-implementation',
+      retry: false
+    })
+    expect(page.textContent).not.toContain(NOTHING_TO_RUN)
+    expect(page.textContent).not.toContain(TRY_AGAIN)
+  })
+
+  const OTHER_BINDINGS: [string, DeviceBinding][] = [
+    ['ecdsa', 'none'],
+    ['zkpassport', 'external-app'],
+    ['aadhaar', 'in-browser-prover']
+  ]
+  OTHER_BINDINGS.forEach(([slug, binding]) =>
+    it(`ends the ${slug} request as not supported with no retry, since the page serves only the browser authenticator`, async () => {
+      const other = fakeMethod({}, binding)
+      const otherOrchestrator = fakeOrchestrator(other)
+      buildClient.mockImplementation(async () => ({
+        approving: otherOrchestrator,
+        methodFor: (asked: string) => (asked === slug ? other : undefined),
+        descriptor: {}
+      }))
+      await callerRecords()
+        .ceremonyRequest(ID)
+        .write({ ...recorded.enroll(), method: slug })
+      const page = await render(`?call=enroll&method=${slug}&id=${ID}`)
+      expect(methodRunCount(other, otherOrchestrator)).toBe(0)
+      expect(creds.create).not.toHaveBeenCalled()
+      const report = await takeReport('enroll', slug)
+      expect(report?.outcome).toEqual({
+        kind: 'verdict',
+        verdict: 'notSupported',
+        cause: 'no-implementation',
+        retry: false
+      })
+      expect(page.textContent).not.toContain(TRY_AGAIN)
+    })
+  )
+
+  it('runs no second ceremony once the request is older than a report may live, as after a reload or in a second tab', async () => {
+    await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
+    await render(ENROLL)
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    await takeReport('enroll')
+    await act(async () => root?.unmount())
+
+    later(ceremony().CEREMONY_REPORT_TTL_MS)
+    const page = await render(ENROLL)
+    expect(page.textContent).toContain(NOTHING_TO_RUN)
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    expect(buildProvider).toHaveBeenCalledTimes(1)
+    expect(buildClient).toHaveBeenCalledTimes(1)
     expect(await storedReports()).toEqual([])
+  })
+
+  it('reads no record and builds no provider while the tab is hidden, and runs once it is shown', async () => {
+    await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
+    storageGet.mockClear()
+    setVisibility('hidden', false)
+    await render(ENROLL)
+    expect(storageGet).not.toHaveBeenCalled()
+    expect(networksState).toHaveBeenCalled()
+    expect(buildProvider).not.toHaveBeenCalled()
+    expect(buildClient).not.toHaveBeenCalled()
+    expect(creds.create).not.toHaveBeenCalled()
+
+    await act(async () => {
+      setVisibility('visible')
+      await flush(20)
+    })
+    expect(storageGet).toHaveBeenCalled()
+    expect(buildClient).toHaveBeenCalledTimes(1)
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    const report = await takeReport('enroll')
+    expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
+  })
+
+  it("runs a phone hand-off through the wallet's own source and reports on return", async () => {
+    let answer: (credential: Credential | null) => void = () => undefined
+    creds.get.mockImplementation(
+      () =>
+        new Promise<Credential | null>((settle) => {
+          answer = settle
+        })
+    )
+    await callerRecords()
+      .ceremonyRequest(ID)
+      .write(recorded.withRequest('testAccess', fixtureRequest()))
+    const page = await render(`?call=testAccess&method=passkey&id=${ID}&handOff=phone`)
+    expect(page.textContent).toContain(CONTINUE_ON_PHONE)
+    const asked = creds.get.mock.calls[0][0] as { publicKey?: { hints?: string[] } }
+    expect(asked.publicKey?.hints).toEqual(['hybrid'])
+    expect(await storedReports()).toEqual([])
+
+    await act(async () => {
+      answer(fakeAssertion({ r: BigInt(5), s: BigInt(6) }).credential)
+      await flush(20)
+    })
+    const report = await takeReport('testAccess')
+    expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
+  })
+
+  it('reads a provider build that throws as unavailable, and its Try again builds again and runs', async () => {
+    buildProvider.mockImplementationOnce(() => {
+      throw new Error('The RPC list is empty.')
+    })
+    await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
+    const page = await render(ENROLL)
+    expect(buildClient).not.toHaveBeenCalled()
+    expect(await storedReports()).toEqual([
+      expect.objectContaining({
+        outcome: expect.objectContaining({ verdict: 'unavailable', retry: true })
+      })
+    ])
+    expect(page.textContent).not.toContain('The RPC list is empty.')
+
+    await press(page, TRY_AGAIN)
+    expect(buildProvider).toHaveBeenCalledTimes(2)
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    const report = await takeReport('enroll')
+    expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
   })
 
   it('reads a client it cannot build as unavailable, and its Try again builds the client and runs', async () => {
@@ -485,12 +634,27 @@ describe('the ceremony tab with no provider above it', () => {
     [
       ['no request is recorded', async () => undefined],
       [
-        'the recorded method has no implementation',
+        'the request is older than a report may live',
+        async () => {
+          await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
+          later(ceremony().CEREMONY_REPORT_TTL_MS + 1)
+        }
+      ],
+      [
+        'the request is on mainnet',
         async () => {
           await callerRecords()
             .ceremonyRequest(ID)
-            .write({ ...recorded.enroll(), method: 'aadhaar' })
-          return '?call=enroll&method=aadhaar'
+            .write({ ...recorded.enroll(), chainId: MAINNET_ID })
+        }
+      ],
+      [
+        'building the provider throws',
+        async () => {
+          buildProvider.mockImplementationOnce(() => {
+            throw new Error('The RPC list is empty.')
+          })
+          await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
         }
       ],
       [
@@ -510,8 +674,8 @@ describe('the ceremony tab with no provider above it', () => {
     ] as const
   ).forEach(([where, arrange]) =>
     it(`never reports that it holds no implementation where ${where}`, async () => {
-      const route = (await arrange()) ?? '?call=enroll&method=passkey'
-      const page = await render(`${route}&id=${ID}`)
+      await arrange()
+      const page = await render(ENROLL)
       expect(carries(await storedReports(), { strings: ['no-implementation'] })).toBe(false)
       expect(await storedReports()).not.toContainEqual(
         expect.objectContaining({ outcome: expect.objectContaining({ verdict: 'notSupported' }) })
@@ -566,6 +730,37 @@ describe('the ceremony tab under a provider', () => {
     expect(page.textContent).toContain(NOTHING_TO_RUN)
     expect(creds.create).not.toHaveBeenCalled()
     expect(store.set).not.toHaveBeenCalled()
+  })
+
+  it('reports not supported with no retry where the source refuses the method, and prompts nothing', async () => {
+    const store = fakeStore()
+    const resolve = jest.fn(async () => ({ refused: 'no-implementation' as const }))
+    const page = await render(ENROLL, { provide: { resolve, store } })
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect((store.set.mock.calls[0][1] as { outcome: unknown }).outcome).toEqual({
+      kind: 'verdict',
+      verdict: 'notSupported',
+      cause: 'no-implementation',
+      retry: false
+    })
+    expect(creds.create).not.toHaveBeenCalled()
+    expect(methodRunCount(method, orchestrator)).toBe(0)
+    expect(page.textContent).not.toContain(NOTHING_TO_RUN)
+    expect(page.textContent).not.toContain(TRY_AGAIN)
+  })
+
+  it('reads a source whose resolve throws as unavailable with a retry', async () => {
+    const store = fakeStore()
+    const resolve = jest.fn(async () => {
+      throw new Error('the records did not answer')
+    })
+    const page = await render(ENROLL, { provide: { resolve, store } })
+    expect((store.set.mock.calls[0][1] as { outcome: unknown }).outcome).toMatchObject({
+      kind: 'verdict',
+      verdict: 'unavailable',
+      retry: true
+    })
+    expect(page.textContent).toContain(TRY_AGAIN)
   })
 
   it('reports not supported with no retry where the source has no resolver, and builds no client of its own', async () => {

@@ -940,9 +940,14 @@ export const enrolledKind = (outcome: Outcome): unknown =>
  * entry and every `.tsx` file it reaches through a relative import are
  * transpiled here with the TypeScript compiler's React JSX. Each file runs once
  * per load, so the files of one load share one module, and one React context.
- * Every other import resolves through Jest's aliases and the test's mocks.
+ * Every other import resolves through Jest's aliases and the test's mocks, and
+ * so does a `.tsx` file the test mocks, named in `mocked` by its path without
+ * the extension.
  */
-export const loadWithReactJsx = (entry: string): Record<string, unknown> => {
+export const loadWithReactJsx = (
+  entry: string,
+  { mocked = [] }: { mocked?: string[] } = {}
+): Record<string, unknown> => {
   const fs = require('fs') as typeof import('fs')
   const path = require('path') as typeof import('path')
   const ts = require('typescript') as typeof import('typescript')
@@ -964,7 +969,8 @@ export const loadWithReactJsx = (entry: string): Record<string, unknown> => {
     const fileRequire = (id: string): unknown => {
       if (!id.startsWith('.')) return require(id)
       const resolved = path.resolve(path.dirname(file), id)
-      return fs.existsSync(`${resolved}.tsx`) ? load(`${resolved}.tsx`) : require(resolved)
+      const transpiled = !mocked.includes(resolved) && fs.existsSync(`${resolved}.tsx`)
+      return transpiled ? load(`${resolved}.tsx`) : require(resolved)
     }
     // The transpiled file is this repository's own source.
     // eslint-disable-next-line no-new-func, @typescript-eslint/no-implied-eval
