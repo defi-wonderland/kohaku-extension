@@ -8,7 +8,7 @@
  * whose method is the zero address, whose config is empty and whose label is
  * its kind; it stands for a method the holder has yet to enroll.
  */
-import { decodeAbiParameters, isAddressEqual, zeroAddress } from 'viem'
+import { decodeAbiParameters, isAddressEqual } from 'viem'
 
 import type {
   Address,
@@ -19,6 +19,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
 import { METHOD_KINDS } from './types'
 import type {
@@ -39,43 +40,21 @@ export const SECOND_METHOD_KINDS: readonly MethodKind[] = ['passkey', 'ecdsa']
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2
 
-/**
- * The draft the editor starts from when the account has none stored: a wait of
- * 48 hours, the pause opted out of, and no clause yet.
- */
-export const EMPTY_DRAFT: SetupDraft = {
-  wait: BigInt(48 * 60 * 60),
-  clauses: [],
-  ignoresPause: true,
-  privacy: { publicMetadata: '0x', backup: 'encrypted' }
-}
-
 const DUPLICATE: EditResult = { status: 'refused', reason: 'duplicate' }
 
-export const emptySlotOf = (kind: MethodKind): Credential => ({
-  method: zeroAddress,
-  config: '0x',
-  label: kind
-})
+export { emptySlot as emptySlotOf, isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
-export const isEmptySlot = (credential: Credential): boolean =>
-  isAddressEqual(credential.method, zeroAddress)
-
-const isMethodKind = (label: string | undefined): label is MethodKind =>
-  METHOD_KINDS.some((kind) => kind === label)
+/** The kind of method a method module address serves; a module the address book does not hold has none. */
+export const methodKindOf = (method: Address, addressBook: AddressBook): MethodKind | undefined =>
+  METHOD_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], method))
 
 /**
- * The kind of a credential: an empty slot's label, or the address book's
- * method an enrolled credential's method is. A method the address book does
- * not hold has no kind.
+ * The kind of a credential: the kind an empty slot waits for, or the address
+ * book's method an enrolled credential's method is. A method the address book
+ * does not hold has no kind.
  */
-export const kindOf = (
-  credential: Credential,
-  addressBook: AddressBook
-): MethodKind | undefined => {
-  if (isEmptySlot(credential)) return isMethodKind(credential.label) ? credential.label : undefined
-  return METHOD_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], credential.method))
-}
+export const kindOf = (credential: Credential, addressBook: AddressBook): MethodKind | undefined =>
+  isEmptySlot(credential) ? slotKindOf(credential) : methodKindOf(credential.method, addressBook)
 
 /** The address a guardian's config holds, ABI-encoded in one word. */
 export const guardianAddressOf = (credential: Credential): Address | undefined => {

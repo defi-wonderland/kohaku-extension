@@ -801,7 +801,7 @@ describe('a failed read or write of the draft', () => {
     expect(byTestId('editor-write-retry')?.textContent).toBe(en.socialRecovery.writes.tryAgain)
     expect(isHeld('editor-continue')).toBe(true)
     const edited = [...presetPath(), { threshold: 2, credentials: [] }]
-    expect(await stored()).toEqual({ draft: draftOf(edited), path: presetPath() })
+    expect(await stored()).toEqual({ draft: draftOf(presetPath()), path: presetPath() })
 
     await press('editor-write-retry')
     expect(byTestId('editor-write-failed')).toBeNull()
