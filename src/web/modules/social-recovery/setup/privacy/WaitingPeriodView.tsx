@@ -45,10 +45,17 @@ const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPerio
 
   useEffect(() => {
     let current = true
-    setup.waitingPeriod
-      .read()
-      .then((stored) => {
-        if (current && stored.status === 'present') setChoice(choiceOfSeconds(stored.value))
+    // The draft's wait is the one the setup saves; the record stands in only
+    // while no draft exists.
+    const load = async () => {
+      const draft = await setup.setupDraft.read()
+      if (draft.status === 'present') return draft.value.wait
+      const stored = await setup.waitingPeriod.read()
+      return stored.status === 'present' ? stored.value : undefined
+    }
+    load()
+      .then((wait) => {
+        if (current && wait !== undefined) setChoice(choiceOfSeconds(wait))
       })
       .catch(() => {
         if (current) setLoadFailed(true)

@@ -57,12 +57,16 @@ export interface StorageFaults {
   get?: boolean
   remove?: boolean
   set?: number
+  records?: string[]
 }
 
 // Switches a test flips to make the storage refuse: `get` and `remove` while
-// on, `set` for the next number of writes.
+// on, `set` for the next number of writes, and every write and removal of the
+// records named in `records` while they are listed.
 export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
   const raw = new Map<string, string>()
+  const refuses = (key: string) =>
+    (faults.records ?? []).some((name) => key.includes(`:${name}:`))
   return {
     get: async (key, defaultValue) => {
       if (faults.get) throw new Error('storage unavailable')
@@ -77,11 +81,12 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
         faults.set -= 1
         throw new Error('storage full')
       }
+      if (refuses(key)) throw new Error('storage full')
       raw.set(key, typeof value === 'string' ? value : stringify(value))
       return null
     },
     remove: async (key) => {
-      if (faults.remove) throw new Error('storage unavailable')
+      if (faults.remove || refuses(key)) throw new Error('storage unavailable')
       raw.delete(key)
       return null
     }

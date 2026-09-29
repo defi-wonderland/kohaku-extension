@@ -9,16 +9,27 @@ import type { ChainId, SetupRecords } from '@web/modules/social-recovery/shared/
 import type { OfferedLevel, PrivacyChoice } from './types'
 
 /**
- * Stores the waiting period: the draft's wait first, then the record. A holder
- * with no draft yet keeps the record alone; the draft takes it when it starts.
+ * Stores the waiting period in the draft's wait, then in the record. With no
+ * draft the record alone is written, and a draft started later carries its own
+ * wait. Where the record refuses after the draft took the new wait, the draft
+ * gets its earlier wait back so the two agree, and the refusal is thrown.
  */
 export const writeWaitingPeriod = async (
   setup: SetupRecords,
   wait: SetupDraft['wait']
 ): Promise<void> => {
   const draft = await setup.setupDraft.read()
-  if (draft.status === 'present') await setup.setupDraft.write({ ...draft.value, wait })
-  await setup.waitingPeriod.write(wait)
+  if (draft.status !== 'present') {
+    await setup.waitingPeriod.write(wait)
+    return
+  }
+  await setup.setupDraft.write({ ...draft.value, wait })
+  try {
+    await setup.waitingPeriod.write(wait)
+  } catch (error: unknown) {
+    await setup.setupDraft.write(draft.value).catch(() => undefined)
+    throw error
+  }
 }
 
 /** The backup form a level stores in the draft: encrypted at Private, in the clear at Public. */

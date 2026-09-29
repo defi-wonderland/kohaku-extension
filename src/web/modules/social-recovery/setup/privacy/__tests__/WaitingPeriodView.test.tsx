@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import type { Harness } from './harness'
+import type { Harness, StorageFaults } from './harness'
 import { ACCOUNT, CHAIN_ID, draftOf, harnessOf, recordsOn } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
@@ -160,14 +160,24 @@ describe('the waiting period step', () => {
   })
 
   describe('the default and a stored length', () => {
-    it('with no record stores 48 hours on continue, in the record and the draft alike', async () => {
+    it("with a draft and no record pre-selects the draft's wait and stores it in both", async () => {
       const records = recordsOn()
       await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(draftOf({ wait: 86400n }))
       await h.mount(records)
-      expect(h.byTestId('wait-refusal')).toBeNull()
       await h.press('continue')
-      expect(await storedRecord(records)).toBe(172800n)
-      expect(await storedDraftWait(records)).toBe(172800n)
+      expect(await storedRecord(records)).toBe(86400n)
+      expect(await storedDraftWait(records)).toBe(86400n)
+    })
+
+    it("pre-selects the draft's wait over a record that disagrees", async () => {
+      const records = recordsOn()
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      await setup.waitingPeriod.write(604800n)
+      await setup.setupDraft.write(draftOf({ wait: 259200n }))
+      await h.mount(records)
+      await h.press('continue')
+      expect(await storedRecord(records)).toBe(259200n)
+      expect(await storedDraftWait(records)).toBe(259200n)
     })
 
     it('keeps the rest of the draft as it was', async () => {
@@ -277,6 +287,40 @@ describe('the waiting period step', () => {
       expect(h.byTestId('write-failed')).toBeNull()
       expect(await storedRecord(records)).toBe(172800n)
       expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupPrivacy)
+    })
+
+    const withDraftAndRecord = async (faults: StorageFaults) => {
+      const records = recordsOn(faults)
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      await setup.setupDraft.write(draftOf({ wait: 259200n }))
+      await setup.waitingPeriod.write(259200n)
+      return records
+    }
+
+    it('a refused record after the draft took the new wait puts the earlier wait back in the draft', async () => {
+      const faults: StorageFaults = {}
+      const records = await withDraftAndRecord(faults)
+      await h.mount(records)
+      await h.press('wait-chip-hours24')
+      faults.records = ['waitingPeriod']
+      await h.press('continue')
+      expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect(await storedDraftWait(records)).toBe(259200n)
+      expect(await storedRecord(records)).toBe(259200n)
+    })
+
+    it('a refused draft leaves the record at the earlier wait', async () => {
+      const faults: StorageFaults = {}
+      const records = await withDraftAndRecord(faults)
+      await h.mount(records)
+      await h.press('wait-chip-hours24')
+      faults.records = ['setupDraft']
+      await h.press('continue')
+      expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect(await storedDraftWait(records)).toBe(259200n)
+      expect(await storedRecord(records)).toBe(259200n)
     })
 
     it('a failed read shows its line', async () => {
