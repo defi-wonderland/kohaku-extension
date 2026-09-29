@@ -55,6 +55,7 @@ const {
   BOOK,
   CAROL,
   enrolled,
+  guardianAddress,
   makeRecords,
   PASSKEY,
   PASSPORT,
@@ -927,7 +928,9 @@ describe('the words on screen', () => {
   it('shows an enrolled guardian by its short address beside "Guardian"', async () => {
     await mount({ clauses: [{ threshold: 1, credentials: [ALICE] }] })
     expect(byTestId('editor-slot-0-0')?.textContent).toMatch(
-      new RegExp(`^${renderShortAddress(ALICE.config)}${en.socialRecovery.display.nouns.guardian}`)
+      new RegExp(
+        `^${renderShortAddress(guardianAddress('a1'))}${en.socialRecovery.display.nouns.guardian}`
+      )
     )
   })
 

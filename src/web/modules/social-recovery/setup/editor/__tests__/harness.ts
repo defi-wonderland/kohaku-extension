@@ -1,3 +1,5 @@
+import { encodeAbiParameters } from 'viem'
+
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { addressBookOf } from '@web/modules/social-recovery/shared/client'
@@ -15,7 +17,11 @@ export const BOOK = addressBookOf('sepolia')
 export const CHAIN_ID = 11155111
 export const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 
-const guardianConfig = (byte: string): Hex => `0x${byte.repeat(20)}`
+/** A guardian's address, the one its config holds ABI-encoded in one word. */
+export const guardianAddress = (byte: string): Address => `0x${byte.repeat(20)}`
+
+const guardianConfig = (byte: string): Hex =>
+  encodeAbiParameters([{ type: 'address' }], [guardianAddress(byte)])
 
 export const ALICE: Credential = {
   method: BOOK.methods.ecdsa,
