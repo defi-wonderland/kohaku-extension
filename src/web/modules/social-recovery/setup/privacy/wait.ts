@@ -1,6 +1,6 @@
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { PICKER_CEILING_HOURS, WAIT_CHIPS, WAIT_FLOOR_HOURS } from './types'
+import { WAIT_CHIPS, WAIT_FLOOR_HOURS } from './types'
 import type { CustomWait, WaitChoice } from './types'
 
 const SECONDS_PER_HOUR = 3600n
@@ -14,19 +14,19 @@ export const secondsOfHours = (hours: number): SetupDraft['wait'] =>
  * unit never turns into another length. The ceiling is checked before the
  * floor.
  */
-export const readCustomWait = (text: string): CustomWait => {
+export const readCustomWait = (text: string, ceilingHours: number): CustomWait => {
   if (text === '') return { status: 'empty' }
   if (!/^[0-9]+$/.test(text)) return { status: 'belowMinimum' }
   const hours = Number(text)
-  if (hours > PICKER_CEILING_HOURS) return { status: 'pastCeiling' }
+  if (hours > ceilingHours) return { status: 'pastCeiling' }
   if (hours < WAIT_FLOOR_HOURS) return { status: 'belowMinimum' }
   return { status: 'accepted', hours }
 }
 
 /** The length the picker holds in hours, or undefined while the custom entry is empty or refused. */
-export const hoursOfChoice = (choice: WaitChoice): number | undefined => {
+export const hoursOfChoice = (choice: WaitChoice, ceilingHours: number): number | undefined => {
   if (choice.kind === 'chip') return WAIT_CHIPS.find(({ id }) => id === choice.id)?.hours
-  const custom = readCustomWait(choice.text)
+  const custom = readCustomWait(choice.text, ceilingHours)
   return custom.status === 'accepted' ? custom.hours : undefined
 }
 

@@ -8,10 +8,11 @@ import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared
 export const WAIT_FLOOR_HOURS = 24
 
 /**
- * The longest waiting period the picker accepts, 90 days in hours. A
- * placeholder until the SDK fixes the value.
+ * The longest waiting period the picker accepts where the client names no
+ * maximum wait: 30 days in hours, the SDK's shipped maximum. A placeholder
+ * until the SDK fixes the value.
  */
-export const PICKER_CEILING_HOURS = 90 * 24
+export const PICKER_CEILING_HOURS = 30 * 24
 
 /** The fixed chips of the picker with their lengths in hours, in the order they show. */
 export const WAIT_CHIPS = [
@@ -59,7 +60,10 @@ export interface StepViewProps {
   navigate: (to: string) => void
 }
 
-export type WaitingPeriodViewProps = StepViewProps
+export interface WaitingPeriodViewProps extends StepViewProps {
+  /** The longest wait the picker accepts, in hours, where the client names one. */
+  ceilingHours?: number
+}
 
 export type PrivacyViewProps = StepViewProps
 

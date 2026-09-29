@@ -1,10 +1,13 @@
 /**
  * @jest-environment jsdom
  */
+import type { StepViewProps } from '@web/modules/social-recovery/setup/privacy'
+
 import type { Harness, StorageFaults } from './harness'
 import { ACCOUNT, CHAIN_ID, draftOf, harnessOf, recordsOn } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const React: typeof import('react') = require('react')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
   WEB_ROUTES
@@ -97,23 +100,23 @@ describe('the waiting period step', () => {
       expect(h.navigate).not.toHaveBeenCalled()
     })
 
-    it('accepts the ceiling of 2160 hours', async () => {
+    it('accepts the ceiling of 720 hours', async () => {
       const records = recordsOn()
       await h.mount(records)
       await h.press('wait-chip-custom')
-      await h.type('wait-custom-hours', '2160')
+      await h.type('wait-custom-hours', '720')
       expect(h.byTestId('wait-refusal')).toBeNull()
       await h.press('continue')
-      expect(await storedRecord(records)).toBe(2160n * 3600n)
+      expect(await storedRecord(records)).toBe(720n * 3600n)
     })
 
-    it('refuses 2161 hours with the ceiling line that names 2160, and stores nothing', async () => {
+    it('refuses 721 hours with the ceiling line that names 720, and stores nothing', async () => {
       const records = recordsOn()
       await h.mount(records)
       await h.press('wait-chip-custom')
-      await h.type('wait-custom-hours', '2161')
+      await h.type('wait-custom-hours', '721')
       expect(h.byTestId('wait-refusal')?.textContent).toBe(
-        'This wallet cannot save a waiting period this long. The longest it accepts is 2160 hours.'
+        'This wallet cannot save a waiting period this long. The longest it accepts is 720 hours.'
       )
       expect(h.isDisabled('continue')).toBe(true)
       await h.press('continue')
@@ -125,10 +128,29 @@ describe('the waiting period step', () => {
       await h.mount(records)
       await h.press('wait-chip-custom')
       await h.type('wait-custom-hours', '9'.repeat(80))
-      expect(h.byTestId('wait-refusal')?.textContent).toContain('2160 hours')
+      expect(h.byTestId('wait-refusal')?.textContent).toContain('720 hours')
       await h.press('continue')
       expect(await storedRecord(records)).toBeUndefined()
       expect(h.navigate).not.toHaveBeenCalled()
+    })
+
+    it('refuses past a ceiling the screen hands it, naming that ceiling', async () => {
+      h.unmount()
+      h = harnessOf((props: StepViewProps) =>
+        React.createElement(WaitingPeriodView, { ...props, ceilingHours: 100 })
+      )
+      const records = recordsOn()
+      await h.mount(records)
+      await h.press('wait-chip-custom')
+      await h.type('wait-custom-hours', '101')
+      expect(h.byTestId('wait-refusal')?.textContent).toBe(
+        'This wallet cannot save a waiting period this long. The longest it accepts is 100 hours.'
+      )
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.type('wait-custom-hours', '100')
+      expect(h.byTestId('wait-refusal')).toBeNull()
+      await h.press('continue')
+      expect(await storedRecord(records)).toBe(100n * 3600n)
     })
 
     it('keeps an entry typed with a unit as typed and refuses it with the floor', async () => {
@@ -242,9 +264,9 @@ describe('the waiting period step', () => {
       ['under the floor', 3600n, '1', W.belowMinimum],
       [
         'past the ceiling',
-        2161n * 3600n,
-        '2161',
-        'This wallet cannot save a waiting period this long. The longest it accepts is 2160 hours.'
+        721n * 3600n,
+        '721',
+        'This wallet cannot save a waiting period this long. The longest it accepts is 720 hours.'
       ],
       ['not a whole number of hours', 48n * 3600n + 1800n, '48.5', W.belowMinimum]
     ]

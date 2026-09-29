@@ -31,7 +31,13 @@ import { writeWaitingPeriod } from './writes'
 
 const WAIT = 'socialRecovery.privacy.waitingPeriod'
 
-const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPeriodViewProps) => {
+const WaitingPeriodView = ({
+  records,
+  chainId,
+  account,
+  navigate,
+  ceilingHours = PICKER_CEILING_HOURS
+}: WaitingPeriodViewProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
 
@@ -66,8 +72,8 @@ const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPerio
 
   // A failed load holds continue, so a storage that comes back is never
   // overwritten with a length the holder did not pick.
-  const hours = loadFailed ? undefined : hoursOfChoice(choice)
-  const custom = choice.kind === 'custom' ? readCustomWait(choice.text) : undefined
+  const hours = loadFailed ? undefined : hoursOfChoice(choice, ceilingHours)
+  const custom = choice.kind === 'custom' ? readCustomWait(choice.text, ceilingHours) : undefined
 
   const onContinue = useCallback(async () => {
     if (hours === undefined) return
@@ -156,7 +162,7 @@ const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPerio
       )}
       {custom?.status === 'pastCeiling' && (
         <Text testID="wait-refusal" fontSize={14} appearance="errorText" style={spacings.mbTy}>
-          {t(`${WAIT}.pastCeiling`, { hours: PICKER_CEILING_HOURS })}
+          {t(`${WAIT}.pastCeiling`, { hours: ceilingHours })}
         </Text>
       )}
       <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg}>
