@@ -501,8 +501,6 @@
         },
         "custom": "Custom",
         "customUnit": "hours",
-        "days": "{{count}} day",
-        "days_plural": "{{count}} days",
         "minimumDefault": "This wallet needs a waiting period of 24 hours or more. The default is 48 hours.",
         "belowMinimum": "This wallet needs 24 hours or more.",
         "pastCeiling": "This wallet cannot save a waiting period this long. The longest it accepts is {{hours}} hours.",
