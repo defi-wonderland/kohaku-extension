@@ -73,6 +73,13 @@ export type InventoryRecord = InventoryItem[]
 /** 3. The path: the clauses the setup draft holds, the record the rule lines read. */
 export type PathRecord = SetupDraft['clauses']
 
+/**
+ * The kinds of method an empty slot of the path waits for, one per method
+ * module the address book names.
+ */
+export const SLOT_KINDS = ['ecdsa', 'passkey', 'zkpassport', 'aadhaar'] as const
+export type SlotKind = typeof SLOT_KINDS[number]
+
 /** The access test verdicts an enrollment carries: passed, or one of the four verdict states. */
 export const ENROLLMENT_TEST_VERDICTS = [
   'passed',
