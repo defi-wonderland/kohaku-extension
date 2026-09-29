@@ -6,6 +6,7 @@
  */
 import type { Address, SetupDescription } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
+import type { RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
 
 import type { AccountRead, CodeEntriesReading, Doors } from './types'
 
@@ -19,21 +20,31 @@ export const codeEntriesOf = (): CodeEntriesReading => ({ status: 'unavailable' 
 export const authoritiesOf = (description: SetupDescription): Address[] =>
   description.candidateKeys.filter(({ isAuthority }) => isAuthority).map(({ address }) => address)
 
-/** The keys that hold authority beside the one a recovery removes. */
-export const keysBesideOf = (description: SetupDescription): number => {
-  const { removedKey } = description
-  return authoritiesOf(description).filter(
-    (address) => removedKey === 'no-creation-triple' || !sameAddress(address, removedKey)
-  ).length
-}
+/** The keys that hold authority beside the one a recovery removes, where one is named. */
+export const keysBesideOf = (description: SetupDescription, removed: Address | undefined): number =>
+  authoritiesOf(description).filter((address) => !removed || !sameAddress(address, removed)).length
 
+/**
+ * The doors from the setup description, less the key the account block names
+ * as the one a recovery removes. Where neither the description nor that read
+ * names the removed key, the doors cannot be counted.
+ */
 export const doorsOf = (
   description: AccountRead<SetupDescription>,
-  codeEntries: CodeEntriesReading
+  codeEntries: CodeEntriesReading,
+  removedKey: AccountRead<RemovedKeyReading>
 ): Doors => {
   if (description.status === 'pending') return { kind: 'pending' }
   if (description.status === 'failed') return { kind: 'unreadable' }
-  const keys = keysBesideOf(description.value)
+  if (removedKey.status === 'pending') return { kind: 'pending' }
+  const removed =
+    removedKey.status === 'answered' && removedKey.value.kind === 'named'
+      ? removedKey.value.key
+      : undefined
+  if (!removed && description.value.removedKey === 'no-creation-triple') {
+    return { kind: 'unreadable' }
+  }
+  const keys = keysBesideOf(description.value, removed)
   if (codeEntries.status === 'unavailable') {
     return keys === 0 ? { kind: 'none' } : { kind: 'keys', keys }
   }

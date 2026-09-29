@@ -110,8 +110,8 @@ const ReviewView = ({
   const stopRows = useMemo(() => stopRowsOf(rows), [rows])
   const accountReads = useAccountReads(ready, load?.draft ?? null)
   const doors = useMemo(
-    () => doorsOf(accountReads.description, codeEntriesOf()),
-    [accountReads.description]
+    () => doorsOf(accountReads.description, codeEntriesOf(), accountReads.removedKey),
+    [accountReads.description, accountReads.removedKey]
   )
 
   const header = (text: string) => (

@@ -75,11 +75,11 @@ const SaveBlocker = ({ blocked, onRetry, onOpen }: SaveBlockerProps) => {
       <>
         {chip(renderChip('recovery', 'cannotRecover', t))}
         {title(t(`${BLOCKED}.cannotRecover.title`))}
-        {body(
-          blocked.reason === 'key-count'
-            ? t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: blocked.count })
-            : t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
-        )}
+        {blocked.reason === 'not-supported' &&
+          body(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))}
+        {blocked.reason === 'key-count' &&
+          blocked.count !== undefined &&
+          body(t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: blocked.count }))}
       </>
     )
   } else {

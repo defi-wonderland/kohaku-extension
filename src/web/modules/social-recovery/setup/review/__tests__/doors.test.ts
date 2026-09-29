@@ -1,6 +1,17 @@
-import { codeEntriesOf, doorsOf } from '../doors'
-import type { AccountRead } from '../types'
+import { codeEntriesOf, doorsOf as doorsWith } from '../doors'
+import type { AccountRead, AccountReads } from '../types'
 import { descriptionOf, OTHER_KEY, REMOVED_KEY, THIRD_KEY } from './fixtures'
+
+const NAMED: AccountReads['removedKey'] = {
+  status: 'answered',
+  value: { kind: 'named', key: REMOVED_KEY }
+}
+
+const doorsOf = (
+  description: Parameters<typeof doorsWith>[0],
+  codeEntries: Parameters<typeof doorsWith>[1],
+  removedKey: AccountReads['removedKey'] = NAMED
+) => doorsWith(description, codeEntries, removedKey)
 
 const answeredWith = (
   ...args: Parameters<typeof descriptionOf>

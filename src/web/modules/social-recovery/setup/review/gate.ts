@@ -3,7 +3,8 @@
  * every trust list read answered, the key a recovery removes is named, the
  * action fits the account and no setup exists. The block shown is the first
  * that applies: a read that did not answer, the removed key unreadable, an
- * account this release cannot recover, a setup that already exists. An
+ * account this release cannot recover (the action does not fit it, or it
+ * holds more than one key), a setup that already exists. An
  * untested method warns beside Save and never disables it.
  */
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
@@ -28,10 +29,18 @@ export const untestedInPath = (
         !isEmptySlot(credential) && enrollmentOf(credential, enrollments)?.test !== 'passed'
     )
 
-/** Whether the key a recovery would remove could not be named. */
-const removedKeyUnreadable = ({ removedKey }: AccountReads): boolean =>
-  removedKey.status === 'failed' ||
-  (removedKey.status === 'answered' && removedKey.value.kind === 'unavailable')
+/** Whether the account holds several keys, so no single key is the one a recovery removes. */
+const holdsSeveralKeys = ({ removedKey }: AccountReads): boolean =>
+  removedKey.status === 'answered' &&
+  removedKey.value.kind === 'unavailable' &&
+  removedKey.value.cause === 'several-key-entries'
+
+/** Whether the key a recovery would remove could not be named, other than for holding several keys. */
+const removedKeyUnreadable = (reads: AccountReads): boolean =>
+  reads.removedKey.status === 'failed' ||
+  (reads.removedKey.status === 'answered' &&
+    reads.removedKey.value.kind === 'unavailable' &&
+    !holdsSeveralKeys(reads))
 
 /**
  * The account's reads a retry runs again: every read that threw, and the
@@ -43,8 +52,18 @@ export const accountReadsToRetry = (reads: AccountReads): AccountReadName[] =>
       reads[name].status === 'failed' || (name === 'removedKey' && removedKeyUnreadable(reads))
   )
 
+/**
+ * The block on screen, once every read it depends on settled: until then no
+ * block shows, so one does not flash and give way to another.
+ */
 const blockOf = (input: SaveGateInput): SaveBlock | null => {
-  const { trustRows, fitCheck, setupState, description } = input
+  const { trustRows, removedKey, fitCheck, setupState, description } = input
+  if (
+    trustRows.some(({ contract }) => contract.status === 'pending') ||
+    [removedKey, fitCheck, setupState, description].some(({ status }) => status === 'pending')
+  ) {
+    return null
+  }
   if (
     trustRows.some(({ contract }) => contract.status === 'unavailable') ||
     fitCheck.status === 'failed' ||
@@ -56,10 +75,12 @@ const blockOf = (input: SaveGateInput): SaveBlock | null => {
   if (fitCheck.status === 'answered' && !fitCheck.value.fits) {
     return { kind: 'cannot-recover', reason: 'not-supported' }
   }
-  if (description.status === 'answered') {
-    const count = authoritiesOf(description.value).length
-    if (count > 1) return { kind: 'cannot-recover', reason: 'key-count', count }
+  const count =
+    description.status === 'answered' ? authoritiesOf(description.value).length : undefined
+  if (count !== undefined && count > 1) {
+    return { kind: 'cannot-recover', reason: 'key-count', count }
   }
+  if (holdsSeveralKeys(input)) return { kind: 'cannot-recover', reason: 'key-count' }
   if (setupState.status === 'answered' && setupState.value.hasSetup) {
     return { kind: 'already-set-up' }
   }
