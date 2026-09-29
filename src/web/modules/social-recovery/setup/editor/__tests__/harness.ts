@@ -74,24 +74,40 @@ export const enrolled = (credential: Credential): Enrollment => ({
 /**
  * The extension's storage helper in memory: a non-string value is stored as
  * its rich JSON string, so a draft's `bigint` wait survives, and every `set`
- * is counted.
+ * is counted. `rejectOnce` makes the next read or write of one setup record
+ * reject, the way a full or unreachable storage does.
  */
 export interface StorageDouble extends RecordStorage {
   raw: Map<string, string>
   sets: string[]
+  rejectOnce: (operation: 'get' | 'set', record: string) => void
 }
 
 export const makeStorage = (): StorageDouble => {
   const raw = new Map<string, string>()
   const sets: string[] = []
+  const pending: { operation: 'get' | 'set'; record: string }[] = []
+  const takeRejection = (operation: 'get' | 'set', key: string) => {
+    const index = pending.findIndex(
+      (entry) => entry.operation === operation && key.includes(`:${entry.record}:`)
+    )
+    if (index < 0) return false
+    pending.splice(index, 1)
+    return true
+  }
   return {
     raw,
     sets,
+    rejectOnce: (operation, record) => {
+      pending.push({ operation, record })
+    },
     get: async (key, defaultValue) => {
+      if (key && takeRejection('get', key)) throw new Error('storage unavailable')
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
     set: async (key, value) => {
+      if (takeRejection('set', key)) throw new Error('storage full')
       sets.push(key)
       raw.set(key, typeof value === 'string' ? value : stringify(value))
       return null
@@ -131,6 +147,18 @@ if (expect.getState().testPath === __filename) {
       await records.setupDraft.write(draft)
       const read = await records.setupDraft.read()
       expect(read.status === 'present' && read.value).toEqual(draft)
+      expect(storage.sets).toHaveLength(1)
+    })
+
+    it('rejects the next read or write of the named record once, then serves it again', async () => {
+      const { storage, records } = makeRecords()
+      storage.rejectOnce('set', 'path')
+      await expect(records.path.write(presetPath())).rejects.toThrow()
+      await records.path.write(presetPath())
+      storage.rejectOnce('get', 'path')
+      await expect(records.path.read()).rejects.toThrow()
+      const read = await records.path.read()
+      expect(read.status === 'present' && read.value).toEqual(presetPath())
       expect(storage.sets).toHaveLength(1)
     })
   })

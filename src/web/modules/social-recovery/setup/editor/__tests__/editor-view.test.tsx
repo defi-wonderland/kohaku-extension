@@ -20,6 +20,8 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
+import type { StorageDouble } from './harness'
+
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
 // React only runs effects and state updates inside act() when this flag is set.
@@ -40,10 +42,14 @@ const { WEB_ROUTES } = jest.requireActual<typeof import('@common/modules/router/
 const { getRuleLines, renderRuleLines } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/rule-lines')
 >('@web/modules/social-recovery/shared/rule-lines')
+const { renderShortAddress } = jest.requireActual<
+  typeof import('@web/modules/social-recovery/shared/display')
+>('@web/modules/social-recovery/shared/display')
 const EditorView = jest.requireActual<typeof import('../EditorView')>('../EditorView').default
 const { emptySlotOf } = jest.requireActual<typeof import('../operations')>('../operations')
 const harness = jest.requireActual<typeof import('./harness')>('./harness')
 const {
+  AADHAAR,
   ALICE,
   BOB,
   BOOK,
@@ -102,6 +108,25 @@ const allByTestId = (id: string) =>
     (node) => node.textContent
   )
 
+const typeThreshold = async (id: string, value: string) => {
+  const input = byTestId(id) as HTMLInputElement
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+  act(() => {
+    setValue?.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await settle()
+}
+
+/** A control the holder cannot use: a button marked disabled, or a field made read-only. */
+const isHeld = (id: string) => {
+  const node = byTestId(id)
+  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  return node instanceof HTMLInputElement
+    ? node.readOnly
+    : node.getAttribute('aria-disabled') === 'true'
+}
+
 const press = async (id: string) => {
   const node = byTestId(id)
   if (!node) throw new Error(`nothing on screen with the test id ${id}`)
@@ -113,8 +138,9 @@ interface MountOptions {
   clauses?: Clause[]
   enrollments?: Enrollment[]
   validate?: Validate
-  client?: 'loading' | 'refused'
+  client?: 'loading' | 'refused' | 'update-the-wallet'
   retry?: () => void
+  beforeRender?: (storage: StorageDouble) => void
 }
 
 const mount = async ({
@@ -122,7 +148,8 @@ const mount = async ({
   enrollments = [],
   validate = async () => NO_FINDING,
   client,
-  retry = () => {}
+  retry = () => {},
+  beforeRender
 }: MountOptions = {}) => {
   const { storage, records } = makeRecords()
   if (clauses) {
@@ -130,6 +157,7 @@ const mount = async ({
     await records.path.write(clauses)
   }
   if (enrollments.length > 0) await records.enrollments.write(enrollments)
+  beforeRender?.(storage)
   const validateSetup = jest.fn(validate)
   const navigate = jest.fn()
   const editorClient =
@@ -137,13 +165,29 @@ const mount = async ({
       ? ({ status: 'loading' } as const)
       : client === 'refused'
       ? ({ status: 'failed', retry } as const)
+      : client === 'update-the-wallet'
+      ? ({ status: 'update-the-wallet', retry } as const)
       : ({ status: 'ready', setup: { validateSetup } } as const)
-  await act(async () => {
-    root.render(
-      <EditorView records={records} client={editorClient} addressBook={BOOK} navigate={navigate} />
-    )
-  })
-  await settle()
+  const render = async () => {
+    await act(async () => {
+      root.render(
+        <EditorView
+          records={records}
+          client={editorClient}
+          addressBook={BOOK}
+          navigate={navigate}
+        />
+      )
+    })
+    await settle()
+  }
+  await render()
+  /** Leaves the editor and opens it again over what the storage holds. */
+  const reopen = async () => {
+    act(() => root.unmount())
+    root = createRoot(container)
+    await render()
+  }
   const writesBefore = storage.sets.length
   const stored = async () => {
     const [draft, path] = await Promise.all([records.setupDraft.read(), records.path.read()])
@@ -152,7 +196,7 @@ const mount = async ({
       path: path.status === 'present' ? path.value : null
     }
   }
-  return { storage, records, validateSetup, navigate, stored, writesBefore }
+  return { storage, records, validateSetup, navigate, stored, writesBefore, reopen }
 }
 
 const expectPathMatchesDraft = async (
@@ -506,5 +550,350 @@ describe('continue', () => {
     expect(byTestId('editor-continue')).toBeNull()
     await press('editor-client-retry')
     expect(retry).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the first edit over no stored draft', () => {
+  it('stores a 48-hour wait, the pause opted out and the encrypted private default', async () => {
+    const { storage, stored } = await mount()
+    expect(storage.sets).toEqual([])
+    await press('editor-add-group')
+    const { draft, path } = await stored()
+    expect(draft).toEqual({
+      wait: BigInt(48 * 60 * 60),
+      clauses: [{ threshold: 2, credentials: [] }],
+      ignoresPause: true,
+      privacy: { publicMetadata: '0x', backup: 'encrypted' }
+    })
+    expect(path).toEqual(draft?.clauses)
+  })
+})
+
+describe('"Add a second method" on a one-method path', () => {
+  const oneMethod = () => [{ threshold: 1, credentials: [PASSKEY] }]
+
+  it('offers the passkey and guardian kinds only', async () => {
+    await mount({ clauses: oneMethod(), enrollments: [ALICE, PASSPORT, AADHAAR].map(enrolled) })
+    await press('editor-add-second-method')
+    expect(byTestId('editor-picker-passkey')).not.toBeNull()
+    expect(byTestId('editor-picker-ecdsa')).not.toBeNull()
+    expect(byTestId('editor-picker-zkpassport')).toBeNull()
+    expect(byTestId('editor-picker-aadhaar')).toBeNull()
+  })
+
+  it('turns the lone row and the picked credential into one group of any one of two, in one write', async () => {
+    const { storage, stored, writesBefore } = await mount({
+      clauses: oneMethod(),
+      enrollments: [ALICE].map(enrolled)
+    })
+    await press('editor-add-second-method')
+    await press('editor-picker-ecdsa-0')
+    await expectPathMatchesDraft(stored, [{ threshold: 1, credentials: [PASSKEY, ALICE] }])
+    const written = storage.sets.slice(writesBefore)
+    expect(written).toHaveLength(2)
+    expect(written[0]).toContain(':setupDraft:')
+    expect(written[1]).toContain(':path:')
+    expect(byTestId('editor-picker')).toBeNull()
+    expect(byTestId('editor-group-0')).not.toBeNull()
+    expect(byTestId('editor-row-0')).toBeNull()
+  })
+
+  it('adds an empty slot into that group for "Enroll something new" and opens the enroll screen at member 1', async () => {
+    const { navigate, stored } = await mount({ clauses: oneMethod() })
+    await press('editor-add-second-method')
+    await press('editor-picker-passkey-new')
+    await expectPathMatchesDraft(stored, [
+      { threshold: 1, credentials: [PASSKEY, emptySlotOf('passkey')] }
+    ])
+    expect(navigate).toHaveBeenCalledTimes(1)
+    const [to] = navigate.mock.calls[0]
+    const [route, search] = to.split('?')
+    expect(route).toBe(WEB_ROUTES.socialRecoverySetupEnroll)
+    expect(Object.fromEntries(new URLSearchParams(search))).toEqual({
+      kind: 'passkey',
+      clause: '0',
+      member: '1'
+    })
+  })
+
+  it('refuses the credential the path already holds and writes nothing', async () => {
+    const { storage, stored, writesBefore } = await mount({
+      clauses: oneMethod(),
+      enrollments: [PASSKEY].map(enrolled)
+    })
+    await press('editor-add-second-method')
+    await press('editor-picker-passkey-0')
+    expect(byTestId('editor-refusal')?.textContent).toBe(en.socialRecovery.editor.duplicate)
+    expect(storage.sets.length).toBe(writesBefore)
+    expect(await stored()).toEqual({ draft: draftOf(oneMethod()), path: oneMethod() })
+    expect(byTestId('editor-picker')).not.toBeNull()
+  })
+})
+
+describe('a group while the holder edits it', () => {
+  const expectGroupCard = (index: number) => {
+    expect(byTestId(`editor-group-${index}`)).not.toBeNull()
+    expect(byTestId(`editor-group-${index}-threshold`)).not.toBeNull()
+    expect(byTestId(`editor-group-${index}-add`)?.textContent).toBe(
+      en.socialRecovery.editor.addMember
+    )
+    expect(byTestId(`editor-group-${index}-remove`)?.textContent).toBe(
+      en.socialRecovery.editor.removeGroup
+    )
+    expect(byTestId(`editor-row-${index}`)).toBeNull()
+  }
+
+  it('stays a group when "Either one works" loses one of its two members', async () => {
+    const { stored } = await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY, PASSPORT] }]
+    })
+    await press('editor-member-0-1-remove')
+    await expectPathMatchesDraft(stored, [{ threshold: 1, credentials: [PASSKEY] }])
+    expectGroupCard(0)
+  })
+
+  it('stays a group when a new group takes one member and a threshold of one', async () => {
+    const { stored } = await mount({ enrollments: [ALICE].map(enrolled) })
+    await press('editor-add-group')
+    await press('editor-group-0-add')
+    await press('editor-picker-ecdsa-0')
+    await typeThreshold('editor-group-0-threshold', '1')
+    await expectPathMatchesDraft(stored, [{ threshold: 1, credentials: [ALICE] }])
+    expectGroupCard(0)
+  })
+
+  it('reads a stored group of one member at a threshold of one as a required row once the editor opens again', async () => {
+    const { reopen } = await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY, PASSPORT] }]
+    })
+    await press('editor-member-0-1-remove')
+    expectGroupCard(0)
+    await reopen()
+    expect(byTestId('editor-row-0')).not.toBeNull()
+    expect(byTestId('editor-group-0')).toBeNull()
+  })
+})
+
+describe('edits while the path check runs', () => {
+  const pendingCheck = () => {
+    let answer: (result: ValidationResult) => void = () => {}
+    const validate: Validate = () =>
+      new Promise((resolve) => {
+        answer = resolve
+      })
+    return { validate, answer: (result: ValidationResult) => answer(result) }
+  }
+
+  const clauses = () => [...presetPath(), { threshold: 1, credentials: [emptySlotOf('aadhaar')] }]
+
+  const controls = [
+    'editor-row-0-move',
+    'editor-row-0-remove',
+    'editor-slot-2-0',
+    'editor-add-required',
+    'editor-group-1-threshold',
+    'editor-member-1-0-required',
+    'editor-member-1-0-remove',
+    'editor-group-1-add',
+    'editor-group-1-remove',
+    'editor-add-group',
+    'editor-picker-ecdsa-0',
+    'editor-picker-ecdsa-new'
+  ]
+  const buttons = controls.filter((id) => id !== 'editor-group-1-threshold')
+
+  it('are held, and a press changes nothing, until the check answers on the draft the holder continued with', async () => {
+    const check = pendingCheck()
+    const { storage, stored, writesBefore, validateSetup, navigate } = await mount({
+      clauses: clauses(),
+      enrollments: [CAROL].map(enrolled),
+      validate: check.validate
+    })
+    await press('editor-group-1-add')
+    await press('editor-continue')
+    expect(validateSetup).toHaveBeenCalledTimes(1)
+    expect(byTestId('editor-spinner')).not.toBeNull()
+
+    expect(controls.filter((id) => !isHeld(id))).toEqual([])
+    await buttons.reduce((previous, id) => previous.then(() => press(id)), Promise.resolve())
+    await typeThreshold('editor-group-1-threshold', '3')
+    expect(storage.sets.length).toBe(writesBefore)
+    expect(await stored()).toEqual({ draft: draftOf(clauses()), path: clauses() })
+    expect(navigate).not.toHaveBeenCalled()
+    // A slot pressed during the check leaves the open picker on its own target.
+    expect(byTestId('editor-picker-ecdsa')).not.toBeNull()
+
+    await act(async () => check.answer({ errors: [finding('clause.empty')], warnings: [] }))
+    await settle()
+    expect(validateSetup).toHaveBeenCalledTimes(1)
+    expect(validateSetup).toHaveBeenCalledWith(draftOf(clauses()))
+    expect(controls.filter((id) => isHeld(id))).toEqual([])
+    await press('editor-picker-ecdsa-0')
+    await expectPathMatchesDraft(stored, [
+      { threshold: 1, credentials: [PASSKEY] },
+      { threshold: 2, credentials: [ALICE, BOB, PASSPORT, CAROL] },
+      { threshold: 1, credentials: [emptySlotOf('aadhaar')] }
+    ])
+  })
+})
+
+describe('a failed read or write of the draft', () => {
+  it('renders the write failure when the draft write fails, holds continue, and a later write clears both', async () => {
+    const { storage, stored } = await mount({ clauses: presetPath() })
+    storage.rejectOnce('set', 'setupDraft')
+    await press('editor-add-group')
+    expect(byTestId('editor-write-failed')?.textContent).toBe(en.socialRecovery.records.writeFailed)
+    expect(isHeld('editor-continue')).toBe(true)
+    expect(await stored()).toEqual({ draft: draftOf(presetPath()), path: presetPath() })
+
+    await press('editor-add-group')
+    expect(byTestId('editor-write-failed')).toBeNull()
+    expect(isHeld('editor-continue')).toBe(false)
+    await expectPathMatchesDraft(stored, [
+      ...presetPath(),
+      { threshold: 2, credentials: [] },
+      { threshold: 2, credentials: [] }
+    ])
+  })
+
+  it('renders the write failure when the path write fails, holds continue, and a later write clears both', async () => {
+    const { storage, stored, validateSetup } = await mount({ clauses: presetPath() })
+    storage.rejectOnce('set', 'path')
+    await press('editor-add-group')
+    expect(byTestId('editor-write-failed')?.textContent).toBe(en.socialRecovery.records.writeFailed)
+    expect(isHeld('editor-continue')).toBe(true)
+    await press('editor-continue')
+    expect(validateSetup).not.toHaveBeenCalled()
+
+    await press('editor-member-1-2-remove')
+    expect(byTestId('editor-write-failed')).toBeNull()
+    expect(isHeld('editor-continue')).toBe(false)
+    await expectPathMatchesDraft(stored, [
+      { threshold: 1, credentials: [PASSKEY] },
+      { threshold: 2, credentials: [ALICE, BOB] },
+      { threshold: 2, credentials: [] }
+    ])
+  })
+
+  it('does not open the enroll screen when the new slot could not be written', async () => {
+    const { storage, navigate } = await mount({ clauses: presetPath() })
+    storage.rejectOnce('set', 'setupDraft')
+    await press('editor-add-required')
+    await press('editor-picker-passkey-new')
+    expect(byTestId('editor-write-failed')).not.toBeNull()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('renders the read failure with a retry that reads the draft again', async () => {
+    await mount({
+      clauses: presetPath(),
+      beforeRender: (storage) => storage.rejectOnce('get', 'setupDraft')
+    })
+    expect(byTestId('editor-load-failed')?.textContent).toBe(en.socialRecovery.records.loadFailed)
+    expect(byTestId('editor-title')).toBeNull()
+    await press('editor-load-retry')
+    expect(byTestId('editor-load-failed')).toBeNull()
+    expect(byTestId('editor-title')?.textContent).toBe(en.socialRecovery.editor.adjust.title)
+    expect(byTestId('editor-row-0')).not.toBeNull()
+  })
+})
+
+describe('a client that cannot check the path', () => {
+  const refusalText = () => byTestId('editor-client-refusal')?.textContent
+  const unavailable = () =>
+    en.socialRecovery.client.unavailableTitle + en.socialRecovery.client.unavailableBody
+
+  it('asks for a wallet update when this version cannot read the setup, with a retry', async () => {
+    const retry = jest.fn()
+    await mount({ clauses: presetPath(), client: 'update-the-wallet', retry })
+    expect(refusalText()).toBe(
+      en.socialRecovery.client.updateTheWalletTitle + en.socialRecovery.client.updateTheWalletBody
+    )
+    expect(byTestId('editor-continue')).toBeNull()
+    expect(byTestId('editor-client-retry')?.textContent).toBe(en.socialRecovery.writes.tryAgain)
+    await press('editor-client-retry')
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the kit is unreachable when the client failed', async () => {
+    await mount({ clauses: presetPath(), client: 'refused' })
+    expect(refusalText()).toBe(unavailable())
+  })
+
+  it('says the kit is unreachable when the check throws, retries the check, and an edit clears it', async () => {
+    const { validateSetup, navigate } = await mount({
+      clauses: presetPath(),
+      validate: async () => {
+        throw new Error('unreachable')
+      }
+    })
+    await press('editor-continue')
+    expect(refusalText()).toBe(unavailable())
+    expect(byTestId('editor-continue')).toBeNull()
+    await press('editor-check-retry')
+    expect(validateSetup).toHaveBeenCalledTimes(2)
+    expect(refusalText()).toBe(unavailable())
+    expect(navigate).not.toHaveBeenCalled()
+
+    await press('editor-add-group')
+    expect(byTestId('editor-client-refusal')).toBeNull()
+    expect(byTestId('editor-check-retry')).toBeNull()
+    expect(byTestId('editor-continue')).not.toBeNull()
+  })
+})
+
+describe('the words on screen', () => {
+  it('heads the groups section "Groups" when the path has no group', async () => {
+    await mount({ clauses: [{ threshold: 1, credentials: [PASSKEY] }] })
+    expect(byTestId('editor-groups')?.textContent).toMatch(
+      new RegExp(`^${en.socialRecovery.editor.groupsHeader}${en.socialRecovery.editor.noGroup}`)
+    )
+  })
+
+  it('closes the picker with "Cancel"', async () => {
+    await mount({ clauses: presetPath() })
+    await press('editor-add-required')
+    expect(byTestId('editor-picker-close')?.textContent).toBe(
+      en.socialRecovery.ceremony.cancelAction
+    )
+    await press('editor-picker-close')
+    expect(byTestId('editor-picker')).toBeNull()
+  })
+
+  it('shows an enrolled guardian by its short address beside "Guardian"', async () => {
+    await mount({ clauses: [{ threshold: 1, credentials: [ALICE] }] })
+    expect(byTestId('editor-slot-0-0')?.textContent).toMatch(
+      new RegExp(`^${renderShortAddress(ALICE.config)}${en.socialRecovery.display.nouns.guardian}`)
+    )
+  })
+
+  it('names a device-bound passkey "Passkey on this device" and a synced one "Passkey"', async () => {
+    const clauses = [{ threshold: 1, credentials: [PASSKEY] }]
+    await mount({ clauses, enrollments: [{ ...enrolled(PASSKEY), backup: 'device-bound' }] })
+    expect(byTestId('editor-slot-0-0')?.textContent).toMatch(
+      new RegExp(`^${en.socialRecovery.methodNames.passkeyOnThisDevice}${PASSKEY.label}`)
+    )
+    act(() => root.unmount())
+    root = createRoot(container)
+    await mount({ clauses, enrollments: [{ ...enrolled(PASSKEY), backup: 'synced' }] })
+    expect(byTestId('editor-slot-0-0')?.textContent).toMatch(
+      new RegExp(`^${en.socialRecovery.methodNames.passkey}${PASSKEY.label}`)
+    )
+  })
+})
+
+describe('the duplicate sentence and the picker', () => {
+  it('clears when the picker closes', async () => {
+    const { storage, writesBefore } = await mount({
+      clauses: presetPath(),
+      enrollments: [ALICE].map(enrolled)
+    })
+    await press('editor-group-1-add')
+    await press('editor-picker-ecdsa-0')
+    expect(byTestId('editor-refusal')).not.toBeNull()
+    await press('editor-picker-close')
+    expect(byTestId('editor-refusal')).toBeNull()
+    expect(byTestId('editor-picker')).toBeNull()
+    expect(storage.sets.length).toBe(writesBefore)
   })
 })
