@@ -439,7 +439,8 @@
         "waitFieldWidth": "This wallet cannot save a waiting period past the width the kit's field holds.",
         "waitCeiling": "This wallet cannot save a waiting period past the longest this picker offers.",
         "tooLarge": "This wallet cannot check a path this large in one block. Remove members or groups.",
-        "emptyRequired": "This wallet cannot save a required method that is not enrolled yet. Enroll it or remove the row."
+        "emptyRequired": "This wallet cannot save a required method that is not enrolled yet. Enroll it or remove the row.",
+        "backupTooWide": "This wallet cannot save a path whose hidden details are too large for the setup's backup. Remove members or groups."
       },
       "startingFrom": "Starting from: {{preset}}"
     },
