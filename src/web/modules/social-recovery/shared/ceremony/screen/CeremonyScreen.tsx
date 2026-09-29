@@ -175,7 +175,7 @@ const CeremonyScreen = () => {
     if (visibility) await whenVisible(visibility)
     if (!live()) return
 
-    // No resolver wired: this build holds no implementation to run.
+    // A source with no resolver holds no implementation to run.
     let result: CeremonyOutcome<CeremonyValue> = notSupported('no-implementation')
     if (source.resolve) {
       let resolved: ResolvedCeremony | null | undefined
