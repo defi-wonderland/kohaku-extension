@@ -10,10 +10,21 @@
  *   controller states the real background would push, so a test can put a
  *   foreign message between the facade's request and its result. No keystore,
  *   no action window and no background runs.
+ * - The send port's background is the same kind of fake behind the
+ *   `SendRequestPort`: a test pushes the `requests` state, with the action
+ *   window open or closed, and the `activity` state listing the operation the
+ *   wallet broadcast, as the real background would push them.
+ * - The receipt wait runs on the extension's own provider for a plain
+ *   JSON-RPC network, whose `send` answers the transactions, receipts, blocks
+ *   and nonces a test scripts, as a node's JSON (`scriptedNode`), so ethers'
+ *   own wait decides the receipt, the revert and the replacement.
  * - The stand-in's scripted chain (`sdkStandIn.chainFor`) is reset before each
  *   world, so one test's domain script never leaks into the next.
  */
-import { AbiCoder, id, toBeHex } from 'ethers'
+import { AbiCoder, id, toBeHex, toQuantity } from 'ethers'
+
+import type { Network } from '@ambire-common/interfaces/network'
+import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 
 import {
   addressOf,
@@ -36,17 +47,25 @@ import type {
 import {
   addressBookOf,
   createProviderAdapter,
+  createSendPort,
   createSignerFacade,
   descriptorOf,
+  extensionProviderFor,
   WALLET_RECOVERY_CHAIN,
+  type ExtensionProvider,
   type KeyHandle,
   type ListedAccount,
   type RecoveryClientConfiguration,
+  type SendPort,
+  type SendPortOptions,
+  type SendRequestPort,
+  type SendRequestUpdate,
   type SignerFacade,
   type SignerFacadeOptions,
   type SignRequestAction,
   type SignRequestPort,
-  type SignRequestUpdate
+  type SignRequestUpdate,
+  type SubmittedOperation
 } from '@web/modules/social-recovery/shared/client'
 // The stand-in is not part of the barrel a screen imports; tests reach it by path.
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
@@ -423,8 +442,9 @@ export const queueOver = (
 }
 
 /** Every action the dispatch received, in order. */
-export const dispatched = (dispatch: jest.Mock): SignRequestAction[] =>
-  dispatch.mock.calls.map((c) => c[0] as SignRequestAction)
+export const dispatched = <A extends { type: string } = SignRequestAction>(
+  dispatch: jest.Mock
+): A[] => dispatch.mock.calls.map((c) => c[0] as A)
 
 /** The user request the facade added to the queue, the one `ADD_USER_REQUEST` carried. */
 export const addedRequest = (dispatch: jest.Mock) => {
@@ -480,6 +500,285 @@ export const flush = async (): Promise<void> => {
 export const advance = async (ms: number): Promise<void> => {
   jest.advanceTimersByTime(ms)
   await flush()
+}
+
+export interface SendWorld {
+  sender: SendPort
+  dispatch: jest.Mock
+  /** The accounts the wallet lists; a test may push more. */
+  accounts: ListedAccount[]
+  /** Pushes one controller state to every subscribed listener, as the background does. */
+  push: (update: SendRequestUpdate) => void
+  /** How many listeners are subscribed now. */
+  listeners: () => number
+}
+
+/**
+ * The send port over a fake request queue and activity. Nothing answers on its
+ * own: a test reads the request the port added (`addedRequest`) and pushes the
+ * `requests` and `activity` states the background would push.
+ */
+export const sendQueueOver = (
+  accounts: ListedAccount[] = [],
+  options: Partial<SendPortOptions> = {}
+): SendWorld => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  const world = { accounts } as SendWorld
+  world.dispatch = jest.fn()
+  world.push = (update) => [...listeners].forEach((l) => l(update))
+  world.listeners = () => listeners.size
+  const port: SendRequestPort = {
+    dispatch: world.dispatch,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    accounts: () => world.accounts,
+    windowId: () => WINDOW_ID
+  }
+  world.sender = createSendPort(port, { chainId: SEPOLIA, ...options })
+  return world
+}
+
+/** The id of the action window the queue opened, as its window props carry it. */
+export const ACTION_WINDOW_ID = 42
+
+/**
+ * The `requests` state with the given request ids queued, and the action
+ * window open, closed, or never opened (`none`).
+ */
+export const queuedWith = (
+  window: 'open' | 'closed' | 'none',
+  ...requestIds: (string | number)[]
+): SendRequestUpdate => ({
+  controller: 'requests',
+  state: {
+    userRequests: requestIds.map((requestId) => ({ id: requestId })),
+    userRequestsWaitingAccountSwitch: [],
+    ...(window === 'none'
+      ? {}
+      : {
+          actions: {
+            actionWindow: { windowProps: window === 'open' ? { id: ACTION_WINDOW_ID } : null }
+          }
+        })
+  }
+})
+
+/** The `activity` state of one session, listing the operations given, newest first. */
+export const activityListing = (
+  sessionId: string | number,
+  ...items: SubmittedOperation[]
+): SendRequestUpdate => ({
+  controller: 'activity',
+  state: { accountsOps: { [String(sessionId)]: { result: { items } } } }
+})
+
+/**
+ * One operation the wallet submitted for a request: its one call names the
+ * request. `callHash` is the call's own transaction hash and `hash` the
+ * operation's; either may be missing while the wallet does not know it yet.
+ */
+export const operationFor = (
+  requestId: string | number,
+  {
+    hash,
+    callHash,
+    status = AccountOpStatus.BroadcastedButNotConfirmed
+  }: { hash?: string; callHash?: Hex; status?: AccountOpStatus } = {}
+): SubmittedOperation => ({
+  status,
+  ...(hash !== undefined ? { txnId: hash } : {}),
+  calls: [
+    { fromUserRequestId: String(requestId), ...(callHash !== undefined ? { txnId: callHash } : {}) }
+  ]
+})
+
+/** One transaction the scripted node knows: pending while it carries no block. */
+export interface NodeTransaction {
+  hash: Hex
+  from: Address
+  to: Address
+  nonce: number
+  data: Hex
+  value: bigint
+  blockNumber?: number
+}
+
+/** One receipt the scripted node answers. */
+export interface NodeReceipt {
+  hash: Hex
+  from: Address
+  to: Address
+  blockNumber: number
+  status: 0 | 1
+  gasUsed: bigint
+  gasPrice: bigint
+}
+
+/** What the scripted node holds; a test changes it between calls. */
+export interface NodeScript {
+  blockNumber: number
+  /** The transactions the node answers by hash; a mined one also fills its block. */
+  transactions: NodeTransaction[]
+  /** Transactions the node no longer answers by hash, though a block may still hold them. */
+  forgotten: Hex[]
+  receipts: NodeReceipt[]
+  /** The transaction count of each sender, by lower-case address. */
+  nonces: Record<string, number>
+}
+
+const blockHashOf = (blockNumber: number): Hex => toBeHex(blockNumber + 0xb10c, 32) as Hex
+
+const transactionJson = (tx: NodeTransaction) => ({
+  hash: tx.hash,
+  type: '0x2',
+  from: tx.from,
+  to: tx.to,
+  nonce: toQuantity(tx.nonce),
+  input: tx.data,
+  value: toQuantity(tx.value),
+  gas: toQuantity(90_000),
+  maxFeePerGas: toQuantity(3n * 10n ** 9n),
+  maxPriorityFeePerGas: toQuantity(10n ** 9n),
+  chainId: toQuantity(SEPOLIA),
+  accessList: [],
+  blockHash: tx.blockNumber === undefined ? null : blockHashOf(tx.blockNumber),
+  blockNumber: tx.blockNumber === undefined ? null : toQuantity(tx.blockNumber),
+  transactionIndex: tx.blockNumber === undefined ? null : '0x0',
+  v: '0x0',
+  yParity: '0x0',
+  r: `0x${'11'.repeat(32)}`,
+  s: `0x${'22'.repeat(32)}`
+})
+
+const receiptJson = (receipt: NodeReceipt) => ({
+  transactionHash: receipt.hash,
+  transactionIndex: '0x0',
+  blockHash: blockHashOf(receipt.blockNumber),
+  blockNumber: toQuantity(receipt.blockNumber),
+  from: receipt.from,
+  to: receipt.to,
+  cumulativeGasUsed: toQuantity(receipt.gasUsed),
+  gasUsed: toQuantity(receipt.gasUsed),
+  effectiveGasPrice: toQuantity(receipt.gasPrice),
+  contractAddress: null,
+  logs: [],
+  logsBloom: `0x${'00'.repeat(256)}`,
+  status: toQuantity(receipt.status),
+  type: '0x2'
+})
+
+/** What the scripted node answers a JSON-RPC request, as a node's JSON. */
+const nodeAnswer = (script: NodeScript, method: string, params: readonly unknown[]): unknown => {
+  const byHash = <T extends { hash: Hex }>(items: T[]) =>
+    items.find((item) => item.hash.toLowerCase() === String(params[0]).toLowerCase())
+  switch (method) {
+    case 'eth_chainId':
+      return toQuantity(SEPOLIA)
+    case 'eth_blockNumber':
+      return toQuantity(script.blockNumber)
+    case 'eth_getTransactionByHash': {
+      const tx = byHash(script.transactions)
+      return tx && !script.forgotten.includes(tx.hash) ? transactionJson(tx) : null
+    }
+    case 'eth_getTransactionReceipt': {
+      const receipt = byHash(script.receipts)
+      return receipt ? receiptJson(receipt) : null
+    }
+    case 'eth_getTransactionCount':
+      return toQuantity(script.nonces[String(params[0]).toLowerCase()] ?? 0)
+    case 'eth_getBlockByNumber': {
+      const blockNumber = Number(params[0])
+      if (blockNumber > script.blockNumber) return null
+      return {
+        hash: blockHashOf(blockNumber),
+        parentHash: blockHashOf(blockNumber - 1),
+        number: toQuantity(blockNumber),
+        timestamp: toQuantity(1_790_000_000 + blockNumber * 12),
+        nonce: '0x0000000000000000',
+        difficulty: '0x0',
+        gasLimit: toQuantity(30_000_000),
+        gasUsed: '0x0',
+        miner: `0x${'00'.repeat(20)}`,
+        extraData: '0x',
+        baseFeePerGas: '0x7',
+        transactions: script.transactions
+          .filter((tx) => tx.blockNumber === blockNumber)
+          .map(transactionJson)
+      }
+    }
+    default:
+      throw new Error(`The scripted node does not answer ${method}.`)
+  }
+}
+
+/** A network record the extension reads over plain JSON-RPC; no request leaves the test. */
+export const PLAIN_RPC_NETWORK = {
+  chainId: BigInt(SEPOLIA),
+  name: 'Sepolia',
+  rpcUrls: ['http://127.0.0.1:1'],
+  selectedRpcUrl: 'http://127.0.0.1:1',
+  rpcProvider: 'rpc'
+} as Network
+
+export interface ScriptedNode {
+  /** The extension's own provider for the network, built as the hook builds it. */
+  provider: ExtensionProvider
+  /** What the node holds; a test may change it between calls. */
+  script: NodeScript
+}
+
+/**
+ * The extension's own provider for a plain JSON-RPC network, with its `send`
+ * answering from a script as a node would: ethers' typed reads and its own
+ * wait build each request and read each answer. Destroy the provider after
+ * the test.
+ */
+export const scriptedNode = (script: Partial<NodeScript> = {}): ScriptedNode => {
+  const node: ScriptedNode = {
+    provider: extensionProviderFor(PLAIN_RPC_NETWORK),
+    script: { blockNumber: 0, transactions: [], forgotten: [], receipts: [], nonces: {}, ...script }
+  }
+  jest
+    .spyOn(node.provider, 'send')
+    .mockImplementation(async (method: string, params: unknown[]) =>
+      nodeAnswer(node.script, method, params)
+    )
+  return node
+}
+
+/** The member of ethers' transaction response a test watches. */
+export interface EthersWait {
+  wait(confirms?: number, timeout?: number): Promise<unknown>
+}
+
+/**
+ * Every promise ethers' own `wait()` returned on the node's transactions from
+ * now on, to compare with what the receipt wait answered. The extension's
+ * provider runs on ambire-common's own copy of ethers, so the class watched is
+ * the one of a response that provider builds for `hash`.
+ */
+export const watchEthersWaits = async (
+  node: ScriptedNode,
+  hash: Hex
+): Promise<Promise<unknown>[]> => {
+  const response = await node.provider.getTransaction(hash)
+  if (!response) throw new Error(`The scripted node does not answer ${hash}.`)
+  const proto = Object.getPrototypeOf(response) as EthersWait
+  const { wait } = proto
+  const settled: Promise<unknown>[] = []
+  jest
+    .spyOn(proto, 'wait')
+    .mockImplementation(function watched(
+      this: EthersWait,
+      ...args: Parameters<EthersWait['wait']>
+    ) {
+      const run = wait.apply(this, args)
+      settled.push(run)
+      return run
+    })
+  return settled
 }
 
 export type { KeyHandle }

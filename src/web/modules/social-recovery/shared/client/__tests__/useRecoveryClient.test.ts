@@ -69,6 +69,9 @@ const sepolia = (overrides: Partial<Network> = {}): Network =>
 
 interface ProviderMock {
   send: jest.Mock
+  getTransaction: jest.Mock
+  getBlockNumber: jest.Mock
+  waitForTransaction: jest.Mock
   destroy: jest.Mock
 }
 
@@ -78,6 +81,10 @@ const providerMock = (): ProviderMock => ({
     if (method === 'eth_gasPrice') return `0x${GAS_PRICE.toString(16)}`
     throw new Error(`The provider mock does not answer ${method}.`)
   }),
+  // A node that does not know the hash yet, so the receipt wait takes the provider's own wait.
+  getTransaction: jest.fn(async () => null),
+  getBlockNumber: jest.fn(async () => 1),
+  waitForTransaction: jest.fn(async (hash: string) => ({ hash, status: 1 })),
   destroy: jest.fn()
 })
 
@@ -104,6 +111,11 @@ const clientOf = (state: HookState | undefined): unknown =>
 const readsOf = (state: HookState | undefined) => {
   if (state?.status !== 'ready') throw new Error(`The hook is ${state?.status}, not ready.`)
   return state.reads
+}
+
+const waitOf = (state: HookState | undefined) => {
+  if (state?.status !== 'ready') throw new Error(`The hook is ${state?.status}, not ready.`)
+  return state.wait
 }
 
 const Probe = ({ account }: { account: Address }) => {
@@ -191,6 +203,20 @@ describe('useRecoveryClient over the network record', () => {
     await expect(readsOf(latest).gasPrice()).resolves.toBe(GAS_PRICE)
     expect(second.send).toHaveBeenCalledWith('eth_gasPrice', [])
     expect(first.send).not.toHaveBeenCalled()
+  })
+
+  it('hands out the receipt wait over the new provider alone', async () => {
+    await render()
+    const [first] = built
+    await pushNetwork(sepolia({ proverRpcUrl: 'https://prover.example/two' }))
+    const second = built[1]
+    const hash = `0x${'ab'.repeat(32)}` as const
+
+    await expect(waitOf(latest)(hash)).resolves.toEqual({ hash, status: 1 })
+    expect(second.getTransaction).toHaveBeenCalledWith(hash)
+    expect(second.waitForTransaction).toHaveBeenCalledWith(hash)
+    expect(first.getTransaction).not.toHaveBeenCalled()
+    expect(first.waitForTransaction).not.toHaveBeenCalled()
   })
 
   it('reports loading on the render right after a key change, never the old client', async () => {
