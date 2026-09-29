@@ -30,6 +30,9 @@ const { act } = jest.requireActual<typeof import('react-dom/test-utils')>('react
 const en = jest.requireActual<typeof import('@common/config/localization/translations/en.json')>(
   '@common/config/localization/translations/en.json'
 )
+const i18n = jest.requireActual<typeof import('@common/config/localization')>(
+  '@common/config/localization'
+).default
 const { WEB_ROUTES } = jest.requireActual<typeof import('@common/modules/router/constants/common')>(
   '@common/modules/router/constants/common'
 )
@@ -46,6 +49,7 @@ type Root = ReturnType<typeof createRoot>
 type Validate = (draft: SetupDraft) => Promise<ValidationResult>
 
 const { refusals, rules } = en.socialRecovery.editor
+const groupLabel = (n: number) => i18n.t('socialRecovery.shape.group', { n })
 
 /** Two to the 48 seconds, the first wait a 48-bit field cannot hold. */
 const TWO_TO_THE_48 = 281474976710656n
@@ -82,6 +86,14 @@ const settle = () =>
   })
 
 const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+const refusalItems = () =>
+  Array.from(
+    container.querySelectorAll<HTMLElement>('[data-testid="editor-wallet-refusal-item"]'),
+    (item) => [
+      item.querySelector('[data-testid="editor-wallet-refusal-place"]')?.textContent ?? null,
+      item.querySelector('[data-testid="editor-wallet-refusal"]')?.textContent
+    ]
+  )
 const allByTestId = (id: string) =>
   Array.from(
     container.querySelectorAll<HTMLElement>(`[data-testid="${id}"]`),
@@ -231,17 +243,25 @@ describe('continue with a shape this wallet refuses', () => {
       ]
     })
     await press('editor-continue')
-    const items = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-testid="editor-wallet-refusal-item"]'),
-      (item) => [
-        item.querySelector('[data-testid="editor-wallet-refusal-place"]')?.textContent ?? null,
-        item.querySelector('[data-testid="editor-wallet-refusal"]')?.textContent
-      ]
-    )
-    expect(items).toEqual([
+    expect(refusalItems()).toEqual([
       [en.socialRecovery.editor.requiredHeader, refusals.emptyRequired],
-      ['Group 1', refusals.emptyGroup],
-      ['Group 2', refusals.emptyGroup]
+      [groupLabel(1), refusals.emptyGroup],
+      [groupLabel(2), refusals.emptyGroup]
+    ])
+  })
+
+  it('heads a refused required row and a refused second group with their own labels, past a sound first group', async () => {
+    await mount({
+      clauses: [
+        { threshold: 1, credentials: [emptySlotOf('passkey')] },
+        { threshold: 2, credentials: [ALICE, AADHAAR] },
+        { threshold: 2, credentials: [] }
+      ]
+    })
+    await press('editor-continue')
+    expect(refusalItems()).toEqual([
+      [en.socialRecovery.editor.requiredHeader, refusals.emptyRequired],
+      [groupLabel(2), refusals.emptyGroup]
     ])
   })
 
@@ -281,6 +301,32 @@ describe('continue with a shape this wallet can save', () => {
     await press('editor-continue')
     expect(allByTestId('editor-finding')).toEqual([refusals.tooLarge])
     expect(byTestId('editor-wallet-refusals')).toBeNull()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('leaves a wait finding to the waiting period and continues to it when it is the only error', async () => {
+    const { validateSetup, navigate } = await mount({
+      clauses: presetPath(),
+      validate: async () => ({ errors: [finding('wait.field-width')], warnings: [] })
+    })
+    await press('editor-continue')
+    expect(validateSetup).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
+    expect(byTestId('editor-findings')).toBeNull()
+  })
+
+  it('stays on a clause finding beside a wait finding and renders the clause finding alone', async () => {
+    const { navigate } = await mount({
+      clauses: presetPath(),
+      validate: async () => ({
+        errors: [finding('wait.field-width'), finding('clause.empty')],
+        warnings: []
+      })
+    })
+    await press('editor-continue')
+    expect(allByTestId('editor-finding')).toEqual([refusals.emptyGroup])
+    expect(container.textContent).not.toContain(refusals.waitFieldWidth)
+    expect(container.textContent).not.toContain(refusals.waitCeiling)
     expect(navigate).not.toHaveBeenCalled()
   })
 
