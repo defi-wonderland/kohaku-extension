@@ -5,7 +5,6 @@
  */
 export {
   secondsOfHours,
-  customTextOf,
   readCustomWait,
   hoursOfChoice,
   choiceOfSeconds,

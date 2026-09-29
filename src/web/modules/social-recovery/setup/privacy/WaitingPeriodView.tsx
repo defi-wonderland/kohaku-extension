@@ -22,7 +22,6 @@ import { PICKER_CEILING_HOURS, WAIT_CHIPS } from './types'
 import type { WaitChoice, WaitingPeriodViewProps } from './types'
 import {
   choiceOfSeconds,
-  customTextOf,
   DEFAULT_CHOICE,
   hoursOfChoice,
   readCustomWait,
@@ -142,7 +141,7 @@ const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPerio
             testID="wait-custom-hours"
             value={choice.text}
             keyboardType="number-pad"
-            onChangeText={(typed) => setChoice({ kind: 'custom', text: customTextOf(typed) })}
+            onChangeText={(typed) => setChoice({ kind: 'custom', text: typed })}
             containerStyle={{ ...spacings.mb0, ...spacings.mrSm }}
           />
           <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>

@@ -8,12 +8,15 @@ const SECONDS_PER_HOUR = 3600n
 export const secondsOfHours = (hours: number): SetupDraft['wait'] =>
   BigInt(hours) * SECONDS_PER_HOUR
 
-/** The custom entry keeps digits alone, since it counts whole hours. */
-export const customTextOf = (typed: string): string => typed.replace(/[^0-9]/g, '')
-
-/** Reads the custom entry. The ceiling is checked before the floor. */
+/**
+ * Reads the custom entry, which counts whole hours. An entry with anything but
+ * digits is refused with the floor until it is whole hours, so a decimal or a
+ * unit never turns into another length. The ceiling is checked before the
+ * floor.
+ */
 export const readCustomWait = (text: string): CustomWait => {
   if (text === '') return { status: 'empty' }
+  if (!/^[0-9]+$/.test(text)) return { status: 'belowMinimum' }
   const hours = Number(text)
   if (hours > PICKER_CEILING_HOURS) return { status: 'pastCeiling' }
   if (hours < WAIT_FLOOR_HOURS) return { status: 'belowMinimum' }

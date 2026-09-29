@@ -131,12 +131,29 @@ describe('the waiting period step', () => {
       expect(h.navigate).not.toHaveBeenCalled()
     })
 
-    it('keeps the digits of what is typed and refuses a shorter wait typed with a unit', async () => {
+    it('keeps an entry typed with a unit as typed and refuses it with the floor', async () => {
       await h.mount(recordsOn())
       await h.press('wait-chip-custom')
-      await h.type('wait-custom-hours', '6h')
-      expect(h.inputOf('wait-custom-hours')?.value).toBe('6')
+      await h.type('wait-custom-hours', '48h')
+      expect(h.inputOf('wait-custom-hours')?.value).toBe('48h')
       expect(h.byTestId('wait-refusal')?.textContent).toBe(W.belowMinimum)
+      expect(h.isDisabled('continue')).toBe(true)
+    })
+
+    it('refuses 48.5 with the floor, keeps it as typed and stores nothing until it is whole hours', async () => {
+      const records = recordsOn()
+      await h.mount(records)
+      await h.press('wait-chip-custom')
+      await h.type('wait-custom-hours', '48.5')
+      expect(h.inputOf('wait-custom-hours')?.value).toBe('48.5')
+      expect(h.byTestId('wait-refusal')?.textContent).toBe(W.belowMinimum)
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.press('continue')
+      expect(await storedRecord(records)).toBeUndefined()
+      await h.type('wait-custom-hours', '48')
+      expect(h.byTestId('wait-refusal')).toBeNull()
+      await h.press('continue')
+      expect(await storedRecord(records)).toBe(172800n)
     })
 
     it('holds continue while the custom entry is empty', async () => {
