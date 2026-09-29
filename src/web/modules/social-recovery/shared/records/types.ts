@@ -61,15 +61,15 @@ export type SetupDraftRecord = SetupDraft
 /**
  * The draft every setup starts from until its later steps overwrite it: a wait
  * of 48 hours in seconds, no clause yet, the pause opted out of, and the
- * private default with an encrypted backup. Shared by every caller, so a
- * caller copies it before it changes a member.
+ * private default with an encrypted backup. Each call returns a fresh draft
+ * with a fresh `clauses` list, so a caller may change what it gets.
  */
-export const DEFAULT_SETUP_DRAFT: SetupDraftRecord = {
+export const defaultSetupDraft = (): SetupDraftRecord => ({
   wait: BigInt(48 * 60 * 60),
   clauses: [],
   ignoresPause: true,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }
-}
+})
 
 /**
  * 2. The inventory, the answer to "What do you have": another device,

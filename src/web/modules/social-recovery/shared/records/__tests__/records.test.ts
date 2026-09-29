@@ -27,7 +27,7 @@ import {
   ChainId,
   createWalletRecords,
   DecryptedSetupCacheRecord,
-  DEFAULT_SETUP_DRAFT,
+  defaultSetupDraft,
   DirectWipeEvent,
   emptySlot,
   Enrollment,
@@ -511,41 +511,49 @@ describe('the empty slots of a path', () => {
 
 describe('the default setup draft', () => {
   it('waits 48 hours, holds no clause, opts out of the pause and keeps an encrypted private backup', () => {
-    expect(DEFAULT_SETUP_DRAFT.wait).toBe(BigInt(48 * 60 * 60))
-    expect(DEFAULT_SETUP_DRAFT.clauses).toEqual([])
-    expect(DEFAULT_SETUP_DRAFT.ignoresPause).toBe(true)
-    expect(DEFAULT_SETUP_DRAFT.privacy).toEqual({ publicMetadata: '0x', backup: 'encrypted' })
+    const draft = defaultSetupDraft()
+    expect(draft.wait).toBe(BigInt(48 * 60 * 60))
+    expect(draft.clauses).toEqual([])
+    expect(draft.ignoresPause).toBe(true)
+    expect(draft.privacy).toEqual({ publicMetadata: '0x', backup: 'encrypted' })
   })
 
   it('round-trips through storage with its wait still a bigint', async () => {
     const { records } = setup()
-    await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(DEFAULT_SETUP_DRAFT)
+    await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(defaultSetupDraft())
     const { value } = present(await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read())
-    expect(value).toEqual(DEFAULT_SETUP_DRAFT)
+    expect(value).toEqual(defaultSetupDraft())
     expect(typeof value.wait).toBe('bigint')
   })
 
-  it('a caller that copies the default and changes the copy leaves the default as it was', async () => {
-    const before = structuredClone(DEFAULT_SETUP_DRAFT)
-    const copy: SetupDraft = {
-      ...DEFAULT_SETUP_DRAFT,
-      wait: 86400n,
-      clauses: [
-        ...DEFAULT_SETUP_DRAFT.clauses,
-        { threshold: 1, credentials: [emptySlot('passkey')] }
-      ],
-      privacy: { ...DEFAULT_SETUP_DRAFT.privacy, backup: 'clear' }
-    }
-    copy.ignoresPause = false
+  it('each call returns a fresh draft with a fresh clause list', () => {
+    const first = defaultSetupDraft()
+    const second = defaultSetupDraft()
+    expect(second).toEqual(first)
+    expect(second).not.toBe(first)
+    expect(second.clauses).not.toBe(first.clauses)
+    expect(second.privacy).not.toBe(first.privacy)
+  })
+
+  it('a caller that changes the draft it got, clauses and privacy included, leaves the next call as it was', async () => {
+    const draft = defaultSetupDraft()
+    draft.clauses.push({ threshold: 1, credentials: [emptySlot('passkey')] })
+    draft.privacy.backup = 'clear'
+    draft.wait = 86400n
+    draft.ignoresPause = false
     const { records } = setup()
-    await records.setup(CHAIN_ID, ACCOUNT).writeDraftAndPath(copy)
-    expect(DEFAULT_SETUP_DRAFT).toEqual(before)
+    await records.setup(CHAIN_ID, ACCOUNT).writeDraftAndPath(draft)
+    const next = defaultSetupDraft()
+    expect(next.clauses).toEqual([])
+    expect(next.privacy.backup).toBe('encrypted')
+    expect(next.wait).toBe(BigInt(48 * 60 * 60))
+    expect(next.ignoresPause).toBe(true)
   })
 })
 
 describe('the setup draft and its path are written together', () => {
   const DRAFT: SetupDraft = {
-    ...DEFAULT_SETUP_DRAFT,
+    ...defaultSetupDraft(),
     clauses: [
       { threshold: 1, credentials: [emptySlot('passkey')] },
       { threshold: 2, credentials: [emptySlot('ecdsa'), emptySlot('ecdsa'), emptySlot('ecdsa')] }
