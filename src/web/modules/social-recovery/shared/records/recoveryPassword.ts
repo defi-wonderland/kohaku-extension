@@ -1,11 +1,14 @@
 /**
- * The recovery password the privacy step collects, held in memory until the
- * setup it was typed for is saved or started over. It is never written to
- * storage: the storage keeps the password-set flag alone.
+ * The recovery password the privacy step collects, kept in memory by chain and
+ * account and never written to storage: the storage keeps the password-set
+ * flag alone. Starting the setup over wipes it; saving the setup keeps it, so
+ * the Recovery Card can show it.
  *
- * The holder lives in this tab's JavaScript context, so a reload or a new tab
- * starts empty. A screen that finds no password while the level hides the
- * setup sends the user back to the privacy step to type it again.
+ * The password lives in this tab's JavaScript context, so a reload or a new tab
+ * starts empty. A setup screen that finds no password while the level hides the
+ * setup sends the user back to the privacy step to type it again. After a
+ * save, a Recovery Card that finds no password shows the hidden value with no
+ * reveal.
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 

@@ -304,17 +304,16 @@ export const createWalletRecords = ({
   }
 
   /**
-   * The setup landed on chain: wipes the six setup records, then the recovery
-   * password held in memory. Platform credentials are untouched.
+   * The setup landed on chain: wipes the six setup records. The recovery
+   * password held in memory stays for the tab's life, so the Recovery Card can
+   * show it. Platform credentials are untouched.
    */
-  const saveSetup = async (chainId: ChainId, account: Address): Promise<void> => {
-    await wipeSetupRecords(chainId, account)
-    wipeRecoveryPassword(chainId, account)
-  }
+  const saveSetup = (chainId: ChainId, account: Address) => wipeSetupRecords(chainId, account)
 
   /**
    * The holder starts over: wipes the six setup records, then the recovery
-   * password held in memory. Platform credentials are untouched.
+   * password held in memory, which no screen shows again. Platform credentials
+   * are untouched.
    */
   const startOverSetup = async (chainId: ChainId, account: Address): Promise<void> => {
     await wipeSetupRecords(chainId, account)
