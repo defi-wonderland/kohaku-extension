@@ -27,8 +27,19 @@ const mockNetworks = [
   { chainId: 1n, name: 'Ethereum', selectedRpcUrl: 'http://rpc.invalid/1' },
   { chainId: 10n, name: 'Optimism', selectedRpcUrl: 'http://rpc.invalid/10' }
 ]
-// The on-chain state every network answers, per account address.
-const mockChain: { states: Record<string, Partial<AccountOnchainState>> } = { states: {} }
+// The on-chain state every answering network gives, per account address; the
+// networks whose read throws; and every provider the reads open, in order.
+const mockChain: {
+  states: Record<string, Partial<AccountOnchainState>>
+  failingChainIds: bigint[]
+  providers: {
+    chainId: bigint
+    accountAddrs: string[]
+    readSettled: boolean
+    destroyCalls: number
+    destroyedAfterRead: boolean
+  }[]
+} = { states: {}, failingChainIds: [], providers: [] }
 
 jest.mock('@web/hooks/useBackgroundService', () => ({
   __esModule: true,
@@ -51,16 +62,42 @@ jest.mock('@common/hooks/useToast', () => ({
   default: () => ({ addToast: () => {} })
 }))
 jest.mock('@web/services/provider', () => ({
-  getRpcProviderForUI: () => ({})
+  getRpcProviderForUI: (network: { chainId: bigint }) => {
+    const record = {
+      chainId: network.chainId,
+      accountAddrs: [] as string[],
+      readSettled: false,
+      destroyCalls: 0,
+      destroyedAfterRead: false
+    }
+    mockChain.providers.push(record)
+    return {
+      record,
+      destroy: () => {
+        record.destroyCalls += 1
+        record.destroyedAfterRead = record.readSettled
+      }
+    }
+  }
 }))
 jest.mock('@ambire-common/libs/accountState/accountState', () => ({
-  getAccountState: async (_provider: unknown, _network: unknown, accounts: Account[]) =>
-    accounts.map((account) => ({
+  getAccountState: async (
+    provider: { record: { accountAddrs: string[]; readSettled: boolean } },
+    network: { chainId: bigint },
+    accounts: Account[]
+  ) => {
+    await Promise.resolve()
+    const { record } = provider
+    record.accountAddrs.push(...accounts.map((account) => account.addr))
+    record.readSettled = true
+    if (mockChain.failingChainIds.includes(network.chainId)) throw new Error('read failed')
+    return accounts.map((account) => ({
       accountAddr: account.addr,
       isDeployed: false,
       associatedKeys: {},
       ...mockChain.states[account.addr]
     }))
+  }
 }))
 // Jest's config transforms neither images nor these packages' ES modules; the
 // row's avatar, badge and copy button and the list's scroll wrapper load them.
@@ -132,6 +169,8 @@ const SMART: Address = '0x2222222222222222222222222222222222222222'
 const DERIVED_KEY: Address = '0x3333333333333333333333333333333333333333'
 // Another key, which holds the privilege on the account.
 const HOLDER: Address = '0x4444444444444444444444444444444444444444'
+// A second smart account on the same page.
+const OTHER_SMART: Address = '0x6666666666666666666666666666666666666666'
 const PRIVILEGE_NONE = `0x${'0'.repeat(64)}`
 const PRIVILEGE_SIGNER = `0x${'0'.repeat(63)}2`
 
@@ -233,6 +272,8 @@ describe('the account picker page list', () => {
     root = createRoot(container)
     mockDispatch.mockClear()
     mockChain.states = {}
+    mockChain.failingChainIds = []
+    mockChain.providers = []
     jest.spyOn(console, 'log').mockImplementation(() => {})
   })
 
@@ -351,6 +392,70 @@ describe('the account picker page list', () => {
 
       expect(row(SMART)).not.toBeNull()
       expect(badge(SMART)).toBeNull()
+    })
+
+    it('shows no badge on a deployed smart account when no network answers, whatever its creation names', async () => {
+      // The chain has revoked the derived key, but no read reaches it.
+      mockChain.states[SMART] = {
+        isDeployed: true,
+        associatedKeys: {
+          [ERC_4337_ENTRYPOINT]: PRIVILEGE_SIGNER,
+          [DERIVED_KEY]: PRIVILEGE_NONE
+        }
+      }
+      mockChain.failingChainIds = mockNetworks.map(({ chainId }) => chainId)
+      await mount(createFlow(smartAccount([[DERIVED_KEY, PRIVILEGE_SIGNER]])))
+
+      expect(row(SMART)).not.toBeNull()
+      expect(badge(SMART)).toBeNull()
+      expect(container.textContent).not.toContain(renderShortAddress(DERIVED_KEY))
+    })
+
+    it('badges a counterfactual smart account from its creation when one network answers and another fails', async () => {
+      mockChain.failingChainIds = [mockNetworks[0].chainId]
+      await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
+
+      expect(badge(SMART)?.textContent).toBe(controlledBy(HOLDER))
+    })
+
+    it('shows no badge on a counterfactual smart account when no network answers', async () => {
+      mockChain.failingChainIds = mockNetworks.map(({ chainId }) => chainId)
+      await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
+
+      expect(row(SMART)).not.toBeNull()
+      expect(badge(SMART)).toBeNull()
+    })
+
+    it('releases every provider the privilege read opens, once each and after its read', async () => {
+      const otherSmart = { ...smartAccount([[HOLDER, PRIVILEGE_SIGNER]]), addr: OTHER_SMART }
+      mockChain.failingChainIds = [mockNetworks[1].chainId]
+      await mount(
+        pickerState({
+          accountsOnPage: [
+            onPage(basicAccount),
+            onPage(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])),
+            { ...onPage(otherSmart), index: 1 }
+          ],
+          shouldSelectSmartAccountAutomatically: true
+        })
+      )
+
+      const opened = mockChain.providers.map(({ chainId, accountAddrs }) => ({
+        chainId,
+        accountAddrs
+      }))
+      expect(opened).toHaveLength(mockNetworks.length * 2)
+      expect(opened).toEqual(
+        expect.arrayContaining(
+          [SMART, OTHER_SMART].flatMap((addr) =>
+            mockNetworks.map(({ chainId }) => ({ chainId, accountAddrs: [addr] }))
+          )
+        )
+      )
+      mockChain.providers.forEach((provider) => {
+        expect(provider.destroyCalls).toBe(1)
+        expect(provider.destroyedAfterRead).toBe(true)
+      })
     })
 
     it('shows the smart account as selected when the picker selects it with the basic account', async () => {
