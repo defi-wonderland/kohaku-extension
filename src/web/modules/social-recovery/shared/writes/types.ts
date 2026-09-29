@@ -77,11 +77,14 @@ export interface NeedsDepositState {
 /**
  * The one submitting state. `transactionHash` is present once the wallet
  * broadcast the call; the state holds until its receipt comes back.
+ * `startBlock` is the block read before the send, from which a wait for the
+ * receipt scans for a replacement.
  */
 export interface SubmittingState {
   status: 'submitting'
   write: WriteKind
   transactionHash?: Hex
+  startBlock?: number
 }
 
 /** The call ran: a receipt with status one. */
@@ -246,8 +249,8 @@ export type WriteEvent =
   | { type: 'gasChecked'; run: number; check: GasCheck }
   /** From the deposit step: run the check again in the same run, since the funds may have arrived. */
   | { type: 'recheck' }
-  /** The wallet broadcast the call. */
-  | { type: 'sent'; run: number; transactionHash: Hex }
+  /** The wallet broadcast the call; `startBlock` is the block read before the send. */
+  | { type: 'sent'; run: number; transactionHash: Hex; startBlock?: number }
   /**
    * A receipt came back for a hash announced with `sent` (or named by an
    * `error`) before it, with the revert's decoded cause where the wallet read
@@ -285,7 +288,7 @@ export interface SendDrive {
   /** The send port the client hands out (`createSendPort`). */
   port: SendPort
   /** The receipt wait over the extension's provider (`createReceiptWait`). */
-  wait: ReceiptWait
+  receipts: ReceiptWait
   /** The key that sends the transaction and pays its gas. */
   key: KeyHandle
   /** The transaction the gas check estimated, from that key (`gasTransactionOf`). */

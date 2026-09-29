@@ -1,10 +1,14 @@
 import type { SignedMessage } from '@ambire-common/controllers/activity/types'
+import type { MainController } from '@ambire-common/controllers/main/main'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { RPCProvider } from '@ambire-common/interfaces/provider'
 import type { TypedMessage } from '@ambire-common/interfaces/userRequest'
 import type { WindowProps } from '@ambire-common/interfaces/window'
-import type { SubmittedAccountOp } from '@ambire-common/libs/accountOp/submittedAccountOp'
+import type {
+  AccountOpIdentifiedBy,
+  SubmittedAccountOp
+} from '@ambire-common/libs/accountOp/submittedAccountOp'
 import type { Call } from '@ambire-common/libs/accountOp/types'
 import type { Action } from '@web/extension-services/background/actions'
 import type {
@@ -146,23 +150,33 @@ export interface ChainReads {
 }
 
 /** The members of the extension's provider the receipt wait uses. */
-export type ReceiptProvider = Pick<
-  RPCProvider,
-  'getTransaction' | 'waitForTransaction' | 'getBlockNumber'
+export type ReceiptProvider = Pick<RPCProvider, 'getTransaction' | 'getBlockNumber' | 'once'>
+
+/** A transaction as the extension's provider answers it. */
+export type ProviderTransaction = NonNullable<
+  Awaited<ReturnType<ReceiptProvider['getTransaction']>>
 >
 
 /** A transaction receipt as the extension's provider answers it. */
 export type ProviderTransactionReceipt = NonNullable<
-  Awaited<ReturnType<ReceiptProvider['waitForTransaction']>>
+  Awaited<ReturnType<RPCProvider['getTransactionReceipt']>>
 >
 
 /**
- * Waits for the receipt of a transaction the wallet broadcast. It answers
- * ethers' receipt, and rejects with ethers' own `CALL_EXCEPTION` for a receipt
- * with status zero and `TRANSACTION_REPLACED` for a transaction another one
- * took the place of, both as ethers threw them.
+ * The receipt of a transaction the wallet broadcast, over the extension's
+ * provider. `blockNumber` is read before the send, and `wait` scans for a
+ * replacement from that block.
  */
-export type ReceiptWait = (transactionHash: Hex) => Promise<ProviderTransactionReceipt>
+export interface ReceiptWait {
+  /** The chain's latest block number. */
+  blockNumber(): Promise<number>
+  /**
+   * Answers ethers' receipt, and rejects with ethers' own `CALL_EXCEPTION`
+   * for a receipt with status zero and `TRANSACTION_REPLACED` for a
+   * transaction another one took the place of, both as ethers threw them.
+   */
+  wait(transactionHash: Hex, startBlock: number): Promise<ProviderTransactionReceipt>
+}
 
 /** The extension's provider as this folder holds it: the reads it makes, the receipt wait and its teardown. */
 export type ExtensionProvider = AdapterProvider &
@@ -221,7 +235,7 @@ export interface DigestVersionRefusal extends Error {
 
 export type RecoveryClientState =
   | { status: 'loading' }
-  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; wait: ReceiptWait }
+  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; receipts: ReceiptWait }
   | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
   | { status: 'failed'; error: unknown }
 
@@ -360,6 +374,7 @@ export interface SendQueueState extends RequestsState {
 
 /** One operation the activity lists, with the members the send port reads. */
 export type SubmittedOperation = Pick<SubmittedAccountOp, 'txnId' | 'status'> & {
+  identifiedBy?: Pick<AccountOpIdentifiedBy, 'type'>
   calls?: Pick<Call, 'fromUserRequestId' | 'txnId'>[]
 }
 
@@ -370,20 +385,27 @@ export interface ActivityState {
   }
 }
 
+/** The part of the `main` controller state the send port reads: whether the wallet signs or broadcasts. */
+export interface MainStatusState {
+  statuses?: Partial<Pick<MainController['statuses'], 'signAndBroadcastAccountOp'>>
+}
+
 /** One controller state the background pushed, by controller. */
 export type SendRequestUpdate =
   | { controller: 'requests'; state: SendQueueState }
   | { controller: 'activity'; state: ActivityState }
+  | { controller: 'main'; state: MainStatusState }
 
 /**
  * How the send port reaches the background: the dispatch of
- * `useBackgroundService`, the `requests` and `activity` controller states the
- * background pushes, the accounts the wallet lists and the window the request
- * opens beside. `sendRequestPort` (sender-port.ts) wires the UI's own.
+ * `useBackgroundService`, the `requests`, `activity` and `main` controller
+ * states the background pushes, the accounts the wallet lists and the window
+ * the request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's
+ * own.
  */
 export interface SendRequestPort {
   dispatch(action: SendRequestAction): void
-  /** Calls the listener with each pushed `requests` and `activity` state; returns the unsubscribe. */
+  /** Calls the listener with each pushed `requests`, `activity` and `main` state; returns the unsubscribe. */
   subscribe(listener: (update: SendRequestUpdate) => void): () => void
   accounts(): readonly ListedAccount[]
   windowId(): number | undefined
@@ -392,8 +414,8 @@ export interface SendRequestPort {
 /**
  * Sends one transaction from a key the wallet holds: the transaction the gas
  * check estimated, from that key. It answers the transaction hash once the
- * wallet broadcast it, and rejects with a `SendRefusal` where the wallet sent
- * nothing under the request.
+ * wallet broadcast it, and rejects with a `SendRefusal` where the wallet has
+ * no transaction of the key under the request.
  */
 export interface SendPort {
   send(key: KeyHandle, transaction: GasEstimateCall): Promise<Hex>
@@ -408,8 +430,10 @@ export interface SendPortOptions {
 export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
 
 /**
- * The send port returned no transaction hash, and the wallet sent nothing
- * under its request.
+ * The send port returned no transaction hash of the key. For every reason but
+ * `not-a-transaction` the wallet broadcast nothing under the request; for
+ * `not-a-transaction` it submitted the request as an operation another party
+ * sends, which may still reach the chain (`SEND_REFUSAL_REASONS`).
  *
  * `not-wired` is a key the request queue cannot send from: any key that is
  * not itself a basic account the wallet lists. Sending from such a key needs

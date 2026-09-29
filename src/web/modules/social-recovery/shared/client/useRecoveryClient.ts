@@ -96,7 +96,7 @@ export const useRecoveryClient = (
             status: 'ready',
             client,
             reads: createChainReads(provider),
-            wait: createReceiptWait(provider)
+            receipts: createReceiptWait(provider)
           })
         }
       })
