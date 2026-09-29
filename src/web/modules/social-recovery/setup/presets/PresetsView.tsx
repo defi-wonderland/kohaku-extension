@@ -60,7 +60,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
   }, [records, setup, chainId, account, t])
 
   // A failed read shows its own state, never the cards: the holder may have a
-  // draft this device could not read.
+  // draft this device could not read, and may retry or start over.
   const reload = useCallback(() => {
     setLoadFailed(false)
     return load().catch(() => {
@@ -271,8 +271,20 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         testID="load-retry"
         type="secondary"
         text={t('socialRecovery.writes.tryAgain')}
+        disabled={busy}
         onPress={reload}
+        style={spacings.mbSm}
       />
+      <Button
+        testID="start-over"
+        type="secondary"
+        text={t('socialRecovery.presets.resume.startOver')}
+        disabled={busy}
+        onPress={startOver}
+      />
+      <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
+        {t('socialRecovery.records.startOverNote')}
+      </Text>
     </View>
   )
 

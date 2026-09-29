@@ -452,6 +452,21 @@ describe('the presets view', () => {
       expect(byTestId('presets-grid')).toBeNull()
     })
 
+    it('start over from a record that cannot be read wipes the six records and shows the cards', async () => {
+      await storeOn({}, [], [{ test: 'passed' } as unknown as Enrollment])
+      await setup().inventory.write(['passport'])
+      await setup().path.write([])
+      await setup().waitingPeriod.write(86400n)
+      await setup().passwordSet.write('password-set')
+      await mount()
+      expect(byTestId('presets-load-failed')?.textContent).toContain(S.records.startOverNote)
+      await press('start-over')
+      expect(await storedStatuses()).toEqual(SETUP_RECORD_NAMES.map(() => 'absent'))
+      expect(byTestId('presets-load-failed')).toBeNull()
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(onOpenEditor).not.toHaveBeenCalled()
+    })
+
     it('names a stored method that is not an address by the method noun, and reads on', async () => {
       await storeOn(
         {},
