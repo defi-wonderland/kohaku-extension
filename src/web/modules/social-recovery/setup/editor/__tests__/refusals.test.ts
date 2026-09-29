@@ -223,6 +223,30 @@ describe('a threshold below one', () => {
     ).toEqual([{ key: 'thresholdBelowOneOwnRule', clause: 0 }])
   })
 
+  it('refuses zero in each of two groups both at zero with the sentence the chain shares', () => {
+    expect(
+      refusalsOf(
+        draftOf([
+          { threshold: 0, credentials: [ALICE, BOB] },
+          { threshold: 0, credentials: [CAROL, PASSPORT] }
+        ])
+      )
+    ).toEqual([
+      { key: 'thresholdBelowOne', clause: 0 },
+      { key: 'thresholdBelowOne', clause: 1 }
+    ])
+  })
+
+  it("refuses zero beside a group at zero and a required row with the wallet's own-rule sentence", () => {
+    expect(
+      keysOf([
+        { threshold: 0, credentials: [ALICE, BOB] },
+        { threshold: 0, credentials: [CAROL, PASSPORT] },
+        { threshold: 1, credentials: [PASSKEY] }
+      ])
+    ).toEqual(['thresholdBelowOneOwnRule', 'thresholdBelowOneOwnRule'])
+  })
+
   it('refuses a negative threshold the same way', () => {
     expect(keysOf([{ threshold: -1, credentials: [ALICE, BOB] }])).toEqual(['thresholdBelowOne'])
   })

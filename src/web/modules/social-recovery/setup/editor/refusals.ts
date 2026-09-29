@@ -25,15 +25,15 @@ export const WAIT_FIELD_LIMIT = 1n << 48n
 export const PICKER_CEILING_SECONDS = BigInt(PICKER_CEILING_HOURS * 60 * 60)
 
 /**
- * A threshold below one: on a path of one clause the chain refuses it too,
- * and beside a second clause the refusal is this wallet's alone, since the
- * chain refuses only a rule whose every clause is zero.
+ * A threshold below one: the chain refuses only a rule whose every clause is
+ * zero, so while another clause requires at least one the refusal is this
+ * wallet's alone, and otherwise the chain refuses it too.
  */
 const clauseRefusals = (
   clause: Clause,
   index: number,
   role: ClauseRole,
-  clauseCount: number
+  anotherRequiresOne: boolean
 ): Refusal[] => {
   const refusals: Refusal[] = []
   const members = clause.credentials.filter((credential) => !isEmptySlot(credential)).length
@@ -44,7 +44,7 @@ const clauseRefusals = (
   }
   if (clause.threshold < 1) {
     refusals.push({
-      key: clauseCount > 1 ? 'thresholdBelowOneOwnRule' : 'thresholdBelowOne',
+      key: anotherRequiresOne ? 'thresholdBelowOneOwnRule' : 'thresholdBelowOne',
       clause: index
     })
   }
@@ -83,7 +83,12 @@ export const shapeRefusalsOf = (
   return [
     ...pathRefusals,
     ...draft.clauses.flatMap((clause, index) =>
-      clauseRefusals(clause, index, roles[index] ?? roleOf(clause), draft.clauses.length)
+      clauseRefusals(
+        clause,
+        index,
+        roles[index] ?? roleOf(clause),
+        draft.clauses.some((other, i) => i !== index && other.threshold > 0)
+      )
     )
   ]
 }
