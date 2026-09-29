@@ -13,6 +13,40 @@ export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as con
 /** A method kind, a key of the address book's `methods`. */
 export type MethodKind = typeof METHOD_KINDS[number]
 
+/** The longest waiting period the setup's picker offers, in hours: ninety days. */
+export const PICKER_CEILING_HOURS = 90 * 24
+
+/** A shape this wallet refuses to save, named by its sentence. */
+export type RefusalKey =
+  | 'emptyGroup'
+  | 'thresholdAboveMembers'
+  | 'thresholdBelowOne'
+  | 'thresholdBelowOneOwnRule'
+  | 'thresholdAboveField'
+  | 'memberCeiling'
+  | 'noMethod'
+  | 'waitFieldWidth'
+  | 'waitCeiling'
+  | 'tooLarge'
+
+/** One refusal of the draft: its sentence, and the clause it is about when it is about one. */
+export interface Refusal {
+  key: RefusalKey
+  clause?: number
+}
+
+/** One line of the rules panel. */
+export type RulesPanelLine =
+  | 'requiredAnswers'
+  | 'enoughMembers'
+  | 'thresholdAtLeastOne'
+  | 'thresholdCeiling'
+  | 'memberCeiling'
+  | 'oneRowPerMethod'
+  | 'atLeastOneMethod'
+  | 'smallEnough'
+  | 'zeroThresholdOwnRule'
+
 /** Where one credential sits in the path: its clause and its place among the clause's members. */
 export interface SlotPosition {
   clause: number
