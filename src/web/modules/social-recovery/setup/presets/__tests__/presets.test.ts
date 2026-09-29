@@ -13,9 +13,11 @@ import en from '@common/config/localization/translations/en.json'
 import type { Address, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   cardRuleLines,
+  clausesOfShape,
   draftAgeLine,
   draftOf,
   emptySlot,
+  notStartedRowsOf,
   presetOf,
   resumeRowsOf,
   shapeRowsOf,
@@ -24,6 +26,7 @@ import {
 } from '@web/modules/social-recovery/setup/presets'
 import type { PresetChoice, PresetId, SlotKind } from '@web/modules/social-recovery/setup/presets'
 import { addressBookOf, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
+import { DEADLINE_LOCALE } from '@web/modules/social-recovery/shared/display'
 import {
   createWalletRecords,
   ENROLLMENT_TEST_VERDICTS,
@@ -261,6 +264,17 @@ describe('the resume rows', () => {
     expect(rows.map(({ name }) => name)).toEqual(['Passport'])
   })
 
+  it('names an enrolled Aadhaar identity "Aadhaar identity"', () => {
+    const rows = resumeRowsOf(
+      [{ credential: { method: BOOK.methods.aadhaar, config: '0x03' }, test: 'passed' }],
+      BOOK,
+      t
+    )
+    expect(rows.map(({ name, chip }) => ({ name, chip }))).toEqual([
+      { name: 'Aadhaar identity', chip: 'Tested' }
+    ])
+  })
+
   it('names a method the address book does not know by the method noun', () => {
     const rows = resumeRowsOf(
       [{ credential: { method: UNKNOWN_METHOD, config: '0x02' }, test: 'passed' }],
@@ -308,5 +322,101 @@ describe('the draft age line', () => {
     const line = draftAgeLine(savedAt, t)
     expect(line.startsWith('Your setup is unfinished. Draft from 12 Aug')).toBe(true)
     expect(line.endsWith('Nothing is saved on chain until you confirm.')).toBe(true)
+  })
+})
+
+describe('the not-started rows', () => {
+  const enrolled = (kind: SlotKind): Enrollment => ({
+    credential: { method: BOOK.methods[kind], config: '0x01' },
+    test: 'passed',
+    backup: kind === 'passkey' ? 'device-bound' : undefined
+  })
+
+  const EVERY_KIND = clausesOfShape([
+    { threshold: 1, slots: ['passkey'] },
+    { threshold: 2, slots: ['ecdsa', 'ecdsa', 'ecdsa'] },
+    { threshold: 1, slots: ['zkpassport', 'aadhaar'] }
+  ])
+
+  it('gives each kind of empty slot one row, not started, with its name', () => {
+    const rows = notStartedRowsOf(EVERY_KIND, [], BOOK, t)
+    expect(rows.map(({ name, chip }) => ({ name, chip }))).toEqual([
+      { name: 'Passkey on this device', chip: 'Not started' },
+      { name: 'Guardians', chip: 'Not started' },
+      { name: 'Passport', chip: 'Not started' },
+      { name: 'Aadhaar identity', chip: 'Not started' }
+    ])
+    expect(new Set(rows.map(({ id }) => id)).size).toBe(rows.length)
+  })
+
+  it('orders the rows by the first slot of each kind', () => {
+    const clauses = clausesOfShape([
+      { threshold: 1, slots: ['aadhaar', 'ecdsa'] },
+      { threshold: 1, slots: ['zkpassport'] },
+      { threshold: 1, slots: ['ecdsa', 'passkey', 'aadhaar'] }
+    ])
+    expect(notStartedRowsOf(clauses, [], BOOK, t).map(({ name }) => name)).toEqual([
+      'Aadhaar identity',
+      'Guardians',
+      'Passport',
+      'Passkey on this device'
+    ])
+  })
+
+  it('shows no row for a kind the holder already enrolled a method of', () => {
+    const rows = notStartedRowsOf(EVERY_KIND, [enrolled('passkey'), enrolled('ecdsa')], BOOK, t)
+    expect(rows.map(({ name }) => name)).toEqual(['Passport', 'Aadhaar identity'])
+    expect(
+      notStartedRowsOf(
+        EVERY_KIND,
+        (['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as SlotKind[]).map(enrolled),
+        BOOK,
+        t
+      )
+    ).toEqual([])
+  })
+
+  it('shows no row for a filled slot, a slot of no known kind, or a draft with no clause', () => {
+    const clauses = [
+      {
+        threshold: 1,
+        credentials: [
+          { method: BOOK.methods.zkpassport, config: '0x02', label: 'passkey' } as Credential,
+          { ...emptySlot('passkey'), label: 'fingerprint' }
+        ]
+      }
+    ]
+    expect(notStartedRowsOf(clauses, [], BOOK, t)).toEqual([])
+    expect(notStartedRowsOf([], [], BOOK, t)).toEqual([])
+  })
+
+  it('reads the kinds of a draft after a storage round trip', async () => {
+    const { setup } = setupOn()
+    await startDraft(setup, 'deviceAndId')
+    const rows = notStartedRowsOf((await readDraft(setup)).clauses, [], BOOK, t)
+    expect(rows.map(({ name }) => name)).toEqual(['Passkey on this device', 'Passport'])
+  })
+})
+
+describe('the draft age line, in any time zone', () => {
+  // Noon of the reader's own day, so the day and month are the same in every zone.
+  const SAVED_AT = new Date(2026, 7, 12, 12, 0).getTime()
+  const DAY_AND_MONTH = new Intl.DateTimeFormat(DEADLINE_LOCALE, {
+    day: 'numeric',
+    month: 'short',
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  }).format(new Date(SAVED_AT))
+
+  it('reads exactly the draft string with the day and month the reader lived', () => {
+    expect(DAY_AND_MONTH).toBe('12 Aug')
+    expect(draftAgeLine(SAVED_AT, t)).toBe(
+      `Your setup is unfinished. Draft from ${DAY_AND_MONTH}. Nothing is saved on chain until you confirm.`
+    )
+  })
+
+  it('carries no time of day, no year and no zone', () => {
+    const line = draftAgeLine(SAVED_AT, t)
+    expect(line).not.toMatch(/[0-9]{1,2}:[0-9]{2}|\b(AM|PM|UTC|GMT)\b|[+-][0-9]{2}:?[0-9]{2}|2026/)
+    expect(line).not.toContain(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 })
