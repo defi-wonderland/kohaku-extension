@@ -709,7 +709,8 @@
       "updateTheWalletTitle": "This wallet version cannot read the recovery setup.",
       "updateTheWalletBody": "This account has a recovery setup.",
       "unavailableTitle": "This wallet could not reach the recovery kit",
-      "unavailableBody": "Nothing changed. Try again."
+      "unavailableBody": "Nothing changed. Try again.",
+      "updateTheWalletAction": "Update the wallet"
     }
   }
 }
