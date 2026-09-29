@@ -11,7 +11,7 @@ import type {
 import { emptySlot } from '@web/modules/social-recovery/shared/records'
 
 import { getRuleLines, renderRuleLines } from '..'
-import type { Translate } from '..'
+import type { RuleLinesOptions, Translate } from '..'
 
 // One method address per family: the failure-domain line keys on the method
 // address.
@@ -453,8 +453,9 @@ const SLOT_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] =
   }
 ]
 
-// A clause with no member yet is a group the holder is still filling: the lines
-// skip it and read the rest of the path as if it were not there.
+// A clause with no member yet is a group the holder is still filling: a caller
+// that asks to skip such clauses reads the rest of the path as if it were not
+// there. Without that ask, each of these paths is silent.
 const MEMBERLESS_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
   {
     name: 'a group with no member beside a required row: the row alone earns the single-method warning',
@@ -515,6 +516,10 @@ const SILENT_SLOT_SHAPES: { name: string; clauses: Clause[] }[] = [
     clauses: [noMember(1), group(3, [PASSKEY, PASSPORT])]
   },
   {
+    name: 'a group with no member at threshold 0 beside a group at a threshold above its size: still refused',
+    clauses: [noMember(0), group(3, [PASSKEY, PASSPORT])]
+  },
+  {
     name: 'a group of slots at threshold 0 beside a row: still refused',
     clauses: [row(PASSKEY), slotGroup(0, [GUARDIAN_SLOT(), GUARDIAN_SLOT()])]
   }
@@ -550,7 +555,9 @@ const englishOf = (e: Expected): string =>
     return String(value)
   })
 
-const linesOf = (clauses: Clause[]) => getRuleLines(draft(clauses))
+const linesOf = (clauses: Clause[], options?: RuleLinesOptions) =>
+  getRuleLines(draft(clauses), options)
+const SKIP_MEMBERLESS: RuleLinesOptions = { skipMemberlessClauses: true }
 const keysOf = (clauses: Clause[]) => linesOf(clauses).map((l) => shortKey(l.key))
 const renderedAll = () => EVERY_SHAPE.flatMap((clauses) => renderRuleLines(linesOf(clauses), t))
 
@@ -604,7 +611,7 @@ describe('getRuleLines: the lines each path shape earns', () => {
 })
 
 describe('getRuleLines: a path whose members wait in empty slots', () => {
-  ;[...SLOT_SHAPES, ...MEMBERLESS_SHAPES].forEach(({ name, clauses, expected }) =>
+  SLOT_SHAPES.forEach(({ name, clauses, expected }) =>
     it(name, () => {
       const lines = linesOf(clauses)
       expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
@@ -620,6 +627,7 @@ describe('getRuleLines: a path whose members wait in empty slots', () => {
     it(`${name}: no lines`, () => {
       expect(linesOf(clauses)).toEqual([])
       expect(getRuleLines(clauses)).toEqual([])
+      expect(linesOf(clauses, SKIP_MEMBERLESS)).toEqual([])
     })
   )
 
@@ -631,17 +639,76 @@ describe('getRuleLines: a path whose members wait in empty slots', () => {
     ]
     expect(linesOf(slots)).toEqual(linesOf(enrolled))
   })
+})
 
-  it('a group with no member changes no line of the rest of the path', () => {
-    const paths = [
-      [row(PASSKEY)],
-      [row(PASSKEY), row(PASSPORT)],
-      [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])],
-      [slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])]
-    ]
-    paths.forEach((clauses) => {
-      expect(linesOf([noMember(1), ...clauses])).toEqual(linesOf(clauses))
-      expect(linesOf([...clauses, noMember(2)])).toEqual(linesOf(clauses))
+describe('getRuleLines: a clause with no member', () => {
+  const REST_OF_PATH = [
+    [row(PASSKEY)],
+    [row(PASSKEY), row(PASSPORT)],
+    [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])],
+    [slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])]
+  ]
+
+  describe('asked to skip it, the lines read the rest of the path', () => {
+    MEMBERLESS_SHAPES.forEach(({ name, clauses, expected }) =>
+      it(name, () => {
+        const lines = linesOf(clauses, SKIP_MEMBERLESS)
+        expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
+        lines.forEach((line, i) => {
+          const params = expected[i].params
+          if (params) expect(line.params).toMatchObject(params)
+        })
+        expect(renderRuleLines(lines, t)).toEqual(expected.map(englishOf))
+        expect(getRuleLines(clauses, SKIP_MEMBERLESS)).toEqual(lines)
+      })
+    )
+
+    it('a group with no member at any threshold changes no line of the rest of the path', () => {
+      REST_OF_PATH.forEach((clauses) => {
+        ;[0, 1, 2, 3].forEach((threshold) => {
+          expect(linesOf([noMember(threshold), ...clauses], SKIP_MEMBERLESS)).toEqual(
+            linesOf(clauses)
+          )
+          expect(linesOf([...clauses, noMember(threshold)], SKIP_MEMBERLESS)).toEqual(
+            linesOf(clauses)
+          )
+        })
+      })
+    })
+  })
+
+  describe('by default, a clause with no member at threshold one or more silences the path', () => {
+    MEMBERLESS_SHAPES.forEach(({ name, clauses }) =>
+      it(`${name}: no lines unless asked to skip`, () => {
+        expect(linesOf(clauses)).toEqual([])
+        expect(getRuleLines(clauses)).toEqual([])
+        expect(linesOf(clauses, { skipMemberlessClauses: false })).toEqual([])
+      })
+    )
+
+    it('a group with no member at threshold 1, 2 or 3 silences every path around it', () => {
+      REST_OF_PATH.forEach((clauses) => {
+        expect(linesOf(clauses).length).toBeGreaterThan(0)
+        ;[1, 2, 3].forEach((threshold) => {
+          expect(linesOf([noMember(threshold), ...clauses])).toEqual([])
+          expect(linesOf([...clauses, noMember(threshold)])).toEqual([])
+        })
+      })
+    })
+  })
+
+  describe('by default, a clause with no member at threshold 0 is skipped', () => {
+    it('a group with no member at threshold 0 beside a required row: the row alone earns the single-method warning', () => {
+      const lines = linesOf([row(PASSKEY), noMember(0)])
+      expect(lines.map((l) => shortKey(l.key))).toEqual(SINGLE_METHOD.map((e) => e.key))
+      expect(renderRuleLines(lines, t)).toEqual(SINGLE_METHOD.map(englishOf))
+    })
+
+    it('a group with no member at threshold 0 changes no line of the rest of the path', () => {
+      REST_OF_PATH.forEach((clauses) => {
+        expect(linesOf([noMember(0), ...clauses])).toEqual(linesOf(clauses))
+        expect(linesOf([...clauses, noMember(0)])).toEqual(linesOf(clauses))
+      })
     })
   })
 })

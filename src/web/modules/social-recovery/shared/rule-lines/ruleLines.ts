@@ -6,7 +6,14 @@
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
-import type { RuleLine, RuleLineKey, RuleLineParams, RuleLinesInput, Translate } from './types'
+import type {
+  RuleLine,
+  RuleLineKey,
+  RuleLineParams,
+  RuleLinesInput,
+  RuleLinesOptions,
+  Translate
+} from './types'
 
 const PREFIX = 'socialRecovery.ruleLines'
 
@@ -132,12 +139,23 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
  * followed by its failure domain line, the different places line, and the
  * sizing rule line for a path of two rows and no group.
  */
-export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
-  // A clause with no member yet is a group the holder is still filling, so the
-  // lines read the rest of the path without it.
-  const clauses = clausesOf(path).filter((clause) => clause.credentials.length > 0)
+export const getRuleLines = (
+  path: RuleLinesInput,
+  options: RuleLinesOptions = {}
+): RuleLine[] => {
+  // A clause with no member at threshold zero asks nothing and needs nothing,
+  // so the lines read the path without it. A clause with no member at any
+  // other threshold is read as refused unless the caller holds a group the
+  // holder is still filling and asks to skip it.
+  const clauses = clausesOf(path).filter(
+    (clause) =>
+      clause.credentials.length > 0 ||
+      !(options.skipMemberlessClauses || clause.threshold === 0)
+  )
   // One refused clause or one method held twice silences the whole path, since
-  // a line about the rest of the path would read a lockout as a rescue.
+  // a line about the rest of the path would read a lockout as a rescue. A path
+  // read from the chain or from another client keeps a memberless clause, so a
+  // lockout never reads as a rescue there either.
   if (clauses.some(isRefused) || holdsDuplicate(clauses)) return []
 
   // A clause with one credential is a required row at any threshold, so a group

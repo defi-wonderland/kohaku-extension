@@ -22,3 +22,13 @@ export type Translate = (key: string, params?: RuleLineParams) => string
 
 /** The path the lines read: the setup draft record, or its clauses alone. */
 export type RuleLinesInput = Pick<SetupDraft, 'clauses'> | readonly Clause[]
+
+/** How `getRuleLines` reads a path. */
+export interface RuleLinesOptions {
+  /**
+   * Skip every clause with no member, a group the holder is still filling, and
+   * read the rest of the path. Without it, a clause with no member at a
+   * threshold of one or more is refused and silences the path.
+   */
+  skipMemberlessClauses?: boolean
+}
