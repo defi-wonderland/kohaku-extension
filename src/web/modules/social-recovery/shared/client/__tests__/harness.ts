@@ -43,6 +43,7 @@ import {
   CHAIN_IDS,
   createProviderAdapter,
   createSignerFacade,
+  deploymentDescriptor,
   descriptorOf,
   WALLET_RECOVERY_CHAIN,
   type ApprovingClient,
@@ -505,8 +506,11 @@ export const networkRecord = (chain: RecoveryChain, overrides: Partial<Network> 
     ...overrides
   } as Network)
 
-/** The wallet's records over one in-memory storage: what a caller writes, the tab reads. */
-export const recordsInMemory = () => {
+/**
+ * The wallet's records over one in-memory storage: what a caller writes, the
+ * tab reads. The records stamp each write with `clock.t`.
+ */
+export const recordsInMemory = (clock: { t: number } = { t: Date.now() }) => {
   const entries = new Map<string, unknown>()
   const storage: RecordStorage = {
     get: async (key, defaultValue) => (key && entries.has(key) ? entries.get(key) : defaultValue),
@@ -519,21 +523,27 @@ export const recordsInMemory = () => {
       return null
     }
   }
-  return { entries, storage, records: createWalletRecords({ storage }) }
+  return { entries, storage, clock, records: createWalletRecords({ storage, now: () => clock.t }) }
 }
 
 export interface FakeApprovingClient extends ApprovingClient {
   methodFor: jest.Mock<IRecoveryMethod | undefined, [string]>
 }
 
-/** The approving side of a client that serves the methods of `served` by slug, and no other. */
+/**
+ * The approving side of a client that serves the methods of `served` by slug,
+ * and no other, with the descriptor of the chain this build reads unless one
+ * is given.
+ */
 export const fakeApprovingClient = (
-  served: Record<string, IRecoveryMethod> = {}
+  served: Record<string, IRecoveryMethod> = {},
+  descriptor: DeploymentDescriptor = deploymentDescriptor(WALLET_RECOVERY_CHAIN)
 ): FakeApprovingClient => {
   const methods = new Map(Object.entries(served))
   return {
     approving: new MethodsOrchestratorDouble(new Map(), []),
-    methodFor: jest.fn((slug: string) => methods.get(slug))
+    methodFor: jest.fn((slug: string) => methods.get(slug)),
+    descriptor
   }
 }
 

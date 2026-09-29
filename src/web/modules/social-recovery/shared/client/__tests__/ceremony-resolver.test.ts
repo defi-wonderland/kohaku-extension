@@ -7,7 +7,17 @@
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import { addressOf, PasskeyMethodDouble } from '@web/modules/social-recovery/sdk-doubles'
 import type { ApproverRequest, IRecoveryMethod } from '@web/modules/social-recovery/sdk-interfaces'
-import type { CeremonyCall, CeremonyParams } from '@web/modules/social-recovery/shared/ceremony'
+import {
+  CEREMONY_REPORT_CLOCK_SKEW_MS,
+  CEREMONY_REPORT_TTL_MS,
+  createPasskeyDevice,
+  isWithinExpiry,
+  relyingPartyOf,
+  runCeremony,
+  type CeremonyCall,
+  type CeremonyParams,
+  type CeremonyResolver
+} from '@web/modules/social-recovery/shared/ceremony'
 import {
   ABSENT,
   CeremonyRequestRecord,
@@ -15,15 +25,18 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 
 import {
+  addressBookOf,
   buildRecoveryClient,
   CHAIN_IDS,
   createCeremonyResolver,
   createWorld,
+  deploymentDescriptor,
   extensionClientFor,
   fakeApprovingClient,
   networkRecord,
   recordsInMemory,
   sameAddress,
+  spyOnBuilder,
   thrownBy
 } from './harness'
 
@@ -64,6 +77,28 @@ describe("the client's method implementation by slug", () => {
     SLUGS.forEach((slug, i) => expect(client.methodFor(slug)).toBe(methods[i]))
   })
 
+  it('hands out, for two slugs on one module, the method registered last, the one the approving side runs', async () => {
+    const { addressBook } = createWorld().config
+    const shared = addressBook.methods.passkey
+    const world = createWorld({
+      addressBook: { ...addressBook, methods: { ...addressBook.methods, aadhaar: shared } }
+    })
+    const spies = spyOnBuilder()
+    const client = await buildRecoveryClient(world.config)
+    const serving = spies.method.mock.calls
+      .map(([registered]) => registered as IRecoveryMethod)
+      .filter((registered) =>
+        registered.modules(world.descriptor).some((served) => sameAddress(served, shared))
+      )
+    expect(serving).toHaveLength(2)
+    const last = serving[serving.length - 1]
+    expect(client.methodFor('passkey')).toBe(last)
+    expect(client.methodFor('aadhaar')).toBe(last)
+    const input = { enrolling: 'shared' }
+    jest.spyOn(last, 'enrollInput').mockReturnValue(input)
+    expect(client.approving.enrollInput(shared, {})).toBe(input)
+  })
+
   const UNKNOWN = [
     'guardian',
     'webauthn',
@@ -84,7 +119,9 @@ describe("the client's method implementation by slug", () => {
 const ID = 'req-1'
 const ACCOUNT = addressOf('holder')
 const CHAIN_ID = BigInt(CHAIN_IDS.sepolia)
-const METHOD_ADDRESS = addressOf('passkey-module')
+const T0 = 1_700_000_000_000
+/** The module the passkey method serves on the chain this build reads. */
+const METHOD_ADDRESS = addressBookOf('sepolia').methods.passkey
 const PARAMS = { relyingPartyId: 'chrome-extension://abc', userName: 'holder' }
 const REQUEST: ApproverRequest = {
   kind: 'recovery-proof-request',
@@ -119,14 +156,26 @@ const routeOf = (call: CeremonyCall, method = 'passkey', id = ID): CeremonyParam
   handOff: false
 })
 
-/** The resolver over in-memory records and a client builder that serves the passkey method. */
-const resolverWorld = (served: Record<string, IRecoveryMethod> = {}) => {
+/**
+ * The resolver over in-memory records and a client builder that serves the
+ * passkey method, both on one clock that starts at `T0`.
+ */
+const resolverWorld = (
+  served: Record<string, IRecoveryMethod> = {},
+  descriptor = deploymentDescriptor('sepolia')
+) => {
   const passkey = new PasskeyMethodDouble()
-  const { records, storage } = recordsInMemory()
-  const client = fakeApprovingClient({ passkey, ...served })
+  const { records, storage, clock } = recordsInMemory({ t: T0 })
+  const client = fakeApprovingClient({ passkey, ...served }, descriptor)
   const clientFor = jest.fn(async () => client)
-  const resolve = createCeremonyResolver({ records, clientFor })
-  return { passkey, records, storage, client, clientFor, resolve }
+  const resolve = createCeremonyResolver({ records, clientFor, now: () => clock.t })
+  return { passkey, records, storage, clock, client, clientFor, resolve }
+}
+
+/** The ceremony a resolver answered; throws where it answered null or a refusal. */
+const ceremonyOf = (answer: Awaited<ReturnType<CeremonyResolver>>) => {
+  if (!answer || 'refused' in answer) throw new Error(`no ceremony: ${JSON.stringify(answer)}`)
+  return answer
 }
 
 describe('the ceremony resolver', () => {
@@ -162,26 +211,125 @@ describe('the ceremony resolver', () => {
     expect(clientFor).not.toHaveBeenCalled()
   })
 
-  it('answers null where the client holds no implementation of the method, after building it', async () => {
+  it('refuses a request whose method the client holds no implementation of, after building the client', async () => {
     const { records, resolve, clientFor, client } = resolverWorld()
     await records.ceremonyRequest(ID).write({ ...ENROLL, method: 'unknown-method' })
-    await expect(resolve(routeOf('enroll', 'unknown-method'))).resolves.toBeNull()
+    await expect(resolve(routeOf('enroll', 'unknown-method'))).resolves.toEqual({
+      refused: 'no-implementation'
+    })
     expect(clientFor).toHaveBeenCalledWith(ACCOUNT, CHAIN_ID)
     expect(client.methodFor).toHaveBeenCalledWith('unknown-method')
+  })
+
+  it('answers null for a request older than a report of it may live, and builds no client', async () => {
+    const { records, resolve, clientFor, clock } = resolverWorld()
+    await records.ceremonyRequest(ID).write(ENROLL)
+    clock.t = T0 + CEREMONY_REPORT_TTL_MS
+    await expect(resolve(routeOf('enroll'))).resolves.toBeNull()
+    clock.t = T0 + 24 * 60 * 60 * 1000
+    await expect(resolve(routeOf('enroll'))).resolves.toBeNull()
+    expect(clientFor).not.toHaveBeenCalled()
+    expect((await records.ceremonyRequest(ID).read()).status).toBe('present')
+  })
+
+  const AGES = [
+    -CEREMONY_REPORT_CLOCK_SKEW_MS - 1,
+    -CEREMONY_REPORT_CLOCK_SKEW_MS,
+    0,
+    CEREMONY_REPORT_TTL_MS - 1,
+    CEREMONY_REPORT_TTL_MS,
+    CEREMONY_REPORT_TTL_MS + 1
+  ]
+  AGES.forEach((age) =>
+    it(`reads a request of age ${age} ms by the expiry rule of a ceremony report`, async () => {
+      const { records, resolve, clock } = resolverWorld()
+      await records.ceremonyRequest(ID).write(ENROLL)
+      clock.t = T0 + age
+      const answer = await resolve(routeOf('enroll'))
+      expect(answer !== null).toBe(isWithinExpiry(T0, T0 + age))
+    })
+  )
+
+  it('reads the age of a request against the wall clock by default', async () => {
+    const { records, clock } = recordsInMemory()
+    const resolve = createCeremonyResolver({
+      records,
+      clientFor: async () => fakeApprovingClient({ passkey: new PasskeyMethodDouble() })
+    })
+    await records.ceremonyRequest('fresh').write(ENROLL)
+    clock.t = Date.now() - CEREMONY_REPORT_TTL_MS - 1000
+    await records.ceremonyRequest('stale').write(ENROLL)
+    await expect(resolve(routeOf('enroll', 'passkey', 'fresh'))).resolves.not.toBeNull()
+    await expect(resolve(routeOf('enroll', 'passkey', 'stale'))).resolves.toBeNull()
+  })
+
+  const OTHER_CHAINS: [string, number | bigint][] = [
+    ['mainnet, the other recovery chain', 1],
+    ['mainnet as a bigint', 1n],
+    ['chain 10', 10],
+    ['chain 137', 137n]
+  ]
+  OTHER_CHAINS.forEach(([label, chainId]) =>
+    it(`answers null for a request on ${label}, not the chain this build reads, and builds no client`, async () => {
+      const { records, resolve, clientFor } = resolverWorld()
+      await records.ceremonyRequest(ID).write({ ...ENROLL, chainId })
+      await expect(resolve(routeOf('enroll'))).resolves.toBeNull()
+      expect(clientFor).not.toHaveBeenCalled()
+    })
+  )
+
+  it('answers null for an enrollment whose method address is not a module the method serves', async () => {
+    const { records, resolve, clientFor } = resolverWorld()
+    const ecdsaModule = addressBookOf('sepolia').methods.ecdsa
+    await records
+      .ceremonyRequest('elsewhere')
+      .write({ ...ENROLL, methodAddress: addressOf('elsewhere') })
+    await records.ceremonyRequest('ecdsa').write({ ...ENROLL, methodAddress: ecdsaModule })
+    await expect(resolve(routeOf('enroll', 'passkey', 'elsewhere'))).resolves.toBeNull()
+    await expect(resolve(routeOf('enroll', 'passkey', 'ecdsa'))).resolves.toBeNull()
+    expect(clientFor).toHaveBeenCalledTimes(2)
+  })
+  ;(['testAccess', 'createClaim'] as const).forEach((call) =>
+    it(`answers null for a ${call} whose request names a module the method does not serve`, async () => {
+      const { records, resolve } = resolverWorld()
+      const request = { ...REQUEST, method: addressBookOf('sepolia').methods.zkpassport }
+      await records.ceremonyRequest(ID).write({ ...target, call, request })
+      await expect(resolve(routeOf(call))).resolves.toBeNull()
+    })
+  )
+
+  it("reads the method's modules from the descriptor of the client it built", async () => {
+    const moved = addressOf('moved-passkey-module')
+    const { records, resolve } = resolverWorld(
+      {},
+      { ...deploymentDescriptor('sepolia'), methodPasskey: moved }
+    )
+    await records.ceremonyRequest('moved').write({ ...ENROLL, methodAddress: moved })
+    await records.ceremonyRequest('shipped').write(ENROLL)
+    const resolved = ceremonyOf(await resolve(routeOf('enroll', 'passkey', 'moved')))
+    expect(resolved.methodAddress).toBe(moved)
+    await expect(resolve(routeOf('enroll', 'passkey', 'shipped'))).resolves.toBeNull()
+  })
+
+  it('takes a module address written in another letter case', async () => {
+    const { records, resolve } = resolverWorld()
+    const upper = `0x${METHOD_ADDRESS.slice(2).toUpperCase()}` as const
+    await records.ceremonyRequest(ID).write({ ...ENROLL, methodAddress: upper })
+    expect(ceremonyOf(await resolve(routeOf('enroll'))).methodAddress).toBe(upper)
   })
 
   it('resolves an enrollment to the approving side, the method, and the stored method address and params', async () => {
     const { records, resolve, clientFor, client, passkey } = resolverWorld()
     await records.ceremonyRequest(ID).write(ENROLL)
-    const resolved = await resolve(routeOf('enroll'))
+    const resolved = ceremonyOf(await resolve(routeOf('enroll')))
     expect(resolved).toEqual({
       orchestrator: client.approving,
       method: passkey,
       methodAddress: METHOD_ADDRESS,
       params: PARAMS
     })
-    expect(resolved?.orchestrator).toBe(client.approving)
-    expect(resolved?.method).toBe(passkey)
+    expect(resolved.orchestrator).toBe(client.approving)
+    expect(resolved.method).toBe(passkey)
     expect(clientFor).toHaveBeenCalledTimes(1)
     expect(clientFor).toHaveBeenCalledWith(ACCOUNT, CHAIN_ID)
   })
@@ -189,15 +337,15 @@ describe('the ceremony resolver', () => {
     it(`resolves a ${call} to the approving side, the method, and the stored request and params`, async () => {
       const { records, resolve, client, passkey } = resolverWorld()
       await records.ceremonyRequest(ID).write({ ...target, call, request: REQUEST, params: PARAMS })
-      const resolved = await resolve(routeOf(call))
+      const resolved = ceremonyOf(await resolve(routeOf(call)))
       expect(resolved).toEqual({
         orchestrator: client.approving,
         method: passkey,
         request: REQUEST,
         params: PARAMS
       })
-      expect(resolved?.orchestrator).toBe(client.approving)
-      expect(resolved?.method).toBe(passkey)
+      expect(resolved.orchestrator).toBe(client.approving)
+      expect(resolved.method).toBe(passkey)
     })
   )
 
@@ -224,18 +372,17 @@ describe('the ceremony resolver', () => {
         return resolve(routeOf(request.call, 'passkey', `req-${i}`))
       })
     )
-    resolved.forEach((answer) => {
-      expect(answer).not.toBeNull()
-      expect(answer).not.toHaveProperty('device')
-    })
+    resolved.forEach((answer) => expect(ceremonyOf(answer)).not.toHaveProperty('device'))
   })
 
   it('builds the client for the account and chain the stored request names', async () => {
     const { records, resolve, clientFor } = resolverWorld()
     const other = addressOf('another-holder')
-    await records.ceremonyRequest(ID).write({ ...ENROLL, account: other, chainId: 1 })
+    await records
+      .ceremonyRequest(ID)
+      .write({ ...ENROLL, account: other, chainId: CHAIN_IDS.sepolia })
     await resolve(routeOf('enroll'))
-    expect(clientFor).toHaveBeenCalledWith(other, 1)
+    expect(clientFor).toHaveBeenCalledWith(other, CHAIN_IDS.sepolia)
   })
 
   it('resolves the request stored under the id the route names, never another', async () => {
@@ -247,16 +394,16 @@ describe('the ceremony resolver', () => {
     await records
       .ceremonyRequest('req-b')
       .write({ ...target, call: 'testAccess', request: otherRequest })
-    const resolved = await resolve(routeOf('testAccess', 'passkey', 'req-b'))
-    expect(resolved?.request).toEqual(otherRequest)
+    const resolved = ceremonyOf(await resolve(routeOf('testAccess', 'passkey', 'req-b')))
+    expect(resolved.request).toEqual(otherRequest)
   })
 
   it('keeps the request in the records, so a retry resolves it again', async () => {
     const { records, resolve, passkey } = resolverWorld()
     await records.ceremonyRequest(ID).write(ENROLL)
-    const first = await resolve(routeOf('enroll'))
+    const first = ceremonyOf(await resolve(routeOf('enroll')))
     const second = await resolve(routeOf('enroll'))
-    expect(first?.method).toBe(passkey)
+    expect(first.method).toBe(passkey)
     expect(second).toEqual(first)
     expect((await records.ceremonyRequest(ID).read()).status).toBe('present')
   })
@@ -343,4 +490,54 @@ describe('the client builder the ceremony tab uses', () => {
     await expect(clientFor(world.account, CHAIN_ID)).resolves.toBeDefined()
     expect(buildProvider.mock.calls[0][0]).toBe(SEPOLIA)
   })
+})
+
+describe('a request for a method the page serves no device for, on the client the extension builds', () => {
+  const OTHER_SLUGS = ['ecdsa', 'zkpassport', 'aadhaar'] as const
+  OTHER_SLUGS.forEach((slug) =>
+    (['enroll', 'testAccess'] as const).forEach((call) =>
+      it(`ends the ${call} of ${slug} as not supported with no retry, since the page serves only the browser authenticator`, async () => {
+        const world = createWorld()
+        buildProvider.mockReturnValue(world.ethers)
+        const { records } = recordsInMemory()
+        const resolve = createCeremonyResolver({
+          records,
+          clientFor: extensionClientFor(() => [networkRecord('sepolia')])
+        })
+        const module = world.config.addressBook.methods[slug]
+        const base = { account: world.account, chainId: CHAIN_ID, method: slug }
+        await records
+          .ceremonyRequest(ID)
+          .write(
+            call === 'enroll'
+              ? { ...base, call, methodAddress: module, params: {} }
+              : { ...base, call, request: { ...REQUEST, account: world.account, method: module } }
+          )
+        const route = routeOf(call, slug)
+        const resolved = ceremonyOf(await resolve(route))
+        expect(resolved.method.deviceBinding).not.toBe('browser-authenticator')
+        const configFrom = jest.spyOn(resolved.method, 'configFrom')
+        const replyFrom = jest.spyOn(resolved.method, 'replyFrom')
+
+        const credentials = { create: jest.fn(), get: jest.fn() }
+        const page = createPasskeyDevice({
+          credentials,
+          relyingParty: relyingPartyOf({ protocol: 'chrome-extension:', host: 'abc' })
+        })
+        const outcome = await runCeremony(route, resolved, {
+          devices: { 'browser-authenticator': page }
+        })
+        expect(outcome).toEqual({
+          kind: 'verdict',
+          verdict: 'notSupported',
+          cause: 'no-implementation',
+          retry: false
+        })
+        expect(credentials.create).not.toHaveBeenCalled()
+        expect(credentials.get).not.toHaveBeenCalled()
+        expect(configFrom).not.toHaveBeenCalled()
+        expect(replyFrom).not.toHaveBeenCalled()
+      })
+    )
+  )
 })
