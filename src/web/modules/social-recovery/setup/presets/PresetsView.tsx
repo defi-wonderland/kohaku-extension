@@ -82,12 +82,14 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         setWriteFailed(false)
         onOpenEditor()
       } catch {
+        // Part of the write may have landed: show what storage now holds.
         setWriteFailed(true)
+        await reload()
       } finally {
         setBusy(false)
       }
     },
-    [setup, onOpenEditor]
+    [setup, onOpenEditor, reload]
   )
 
   const startOver = useCallback(async () => {
@@ -99,6 +101,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       await reload()
     } catch {
       setWriteFailed(true)
+      await reload()
     } finally {
       setBusy(false)
     }

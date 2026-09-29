@@ -510,6 +510,31 @@ describe('the presets view', () => {
       expect(onOpenEditor).toHaveBeenCalledTimes(1)
     })
 
+    it('a pick whose draft lands but whose path is refused shows the line and resumes the draft', async () => {
+      const storage = makeStorage()
+      let writes = 0
+      records = createWalletRecords({
+        storage: {
+          ...storage,
+          set: async (key, value) => {
+            writes += 1
+            if (writes === 2) throw new Error('storage full')
+            return storage.set(key, value)
+          }
+        }
+      })
+      await mount()
+      await press('preset-deviceAndId')
+      await press('continue')
+      expect(byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect((await storedDraft()).clauses.map(({ threshold }) => threshold)).toEqual([1, 1])
+      expect((await setup().path.read()).status).toBe('absent')
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(byTestId('presets-resume')).not.toBeNull()
+      expect(byTestId('start-over')?.textContent).toBe(S.presets.resume.startOver)
+      expect(onOpenEditor).not.toHaveBeenCalled()
+    })
+
     it('a refused customize shows the line, and customize again stores the empty draft', async () => {
       records = createWalletRecords({ storage: makeStorage({ set: 1 }) })
       await mount()
