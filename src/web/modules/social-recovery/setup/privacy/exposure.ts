@@ -26,8 +26,8 @@ export const methodKindOf = (credential: Credential, book: AddressBook): MethodK
 
 /**
  * The items of the unguessable line, each an item slug under the disclosures:
- * the passkeys and the passport of the path. An address row is guessable and
- * is never among them.
+ * the passkeys, the passport and the Aadhaar identity of the path. An address
+ * row is guessable and is never among them.
  */
 const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
   const passkeys = kinds.filter((kind) => kind === 'passkey').length
@@ -35,16 +35,18 @@ const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
   if (passkeys === 1) items.push('passkey')
   if (passkeys > 1) items.push('passkeys')
   if (kinds.includes('zkpassport')) items.push('passport')
+  if (kinds.includes('aadhaar')) items.push('aadhaar')
   return items
 }
 
-const joinItems = (items: string[], t: Translate): string =>
-  items
-    .slice(1)
-    .reduce(
-      (joined, item) => t(`${ITEMS}.pair`, { first: joined, second: t(`${ITEMS}.${item}`) }),
-      t(`${ITEMS_LEAD}.${items[0]}`)
-    )
+/** The items as one phrase: the first in its leading form, two as a pair, three as a triple. */
+const joinItems = ([lead, ...rest]: string[], t: Translate): string => {
+  const first = t(`${ITEMS_LEAD}.${lead}`)
+  const [second, third] = rest.map((item) => t(`${ITEMS}.${item}`))
+  if (third !== undefined) return t(`${ITEMS}.triple`, { first, second, third })
+  if (second !== undefined) return t(`${ITEMS}.pair`, { first, second })
+  return first
+}
 
 /**
  * The exposure line of a path at a level. The guessability half renders only

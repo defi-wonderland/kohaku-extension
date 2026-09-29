@@ -37,6 +37,7 @@ const slot = (kind: string): Credential => ({ method: ZERO, config: '0x', label:
 const guardian: Credential = { method: BOOK.methods.ecdsa, config: '0x0a' }
 const passkey: Credential = { method: BOOK.methods.passkey, config: '0x01' }
 const passport: Credential = { method: BOOK.methods.zkpassport, config: '0x02' }
+const aadhaar: Credential = { method: BOOK.methods.aadhaar, config: '0x03' }
 
 const PASSKEY_AND_PASSPORT: Clause[] = [{ threshold: 1, credentials: [passkey, passport] }]
 const GUARDIAN_SLOTS_BESIDE_PASSKEY_AND_PASSPORT: Clause[] = [
@@ -141,6 +142,28 @@ describe('the privacy step', () => {
       await h.mount(await withDraft({ clauses: ENROLLED_GUARDIAN_BESIDE_PASSKEY_AND_PASSPORT }))
       expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(UNGUESSABLE)
+    })
+
+    it('a guardian beside an Aadhaar identity names the Aadhaar identity alone', async () => {
+      await h.mount(await withDraft({ clauses: [{ threshold: 2, credentials: [guardian, aadhaar] }] }))
+      expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
+        'Your Aadhaar identity cannot be guessed at all and lose nothing before a recovery.'
+      )
+    })
+
+    it('a passkey, a passport and an Aadhaar slot beside a guardian are named as three', async () => {
+      await h.mount(
+        await withDraft({
+          clauses: [
+            { threshold: 1, credentials: [passkey] },
+            { threshold: 2, credentials: [slot('ecdsa'), passport, slot('aadhaar')] }
+          ]
+        })
+      )
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
+        'Your passkey, your passport and your Aadhaar identity cannot be guessed at all and lose nothing before a recovery.'
+      )
     })
 
     it('a guardians-only path carries the guardian half and no unguessable line', async () => {
