@@ -12,7 +12,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import type { PresetChoice, PresetId } from '@web/modules/social-recovery/setup/presets'
 import type {
   Enrollment,
@@ -43,6 +43,12 @@ const {
   createWalletRecords,
   SETUP_RECORD_NAMES
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  clausesOfShape
+}: typeof import('@web/modules/social-recovery/setup/presets') = require('@web/modules/social-recovery/setup/presets')
+const {
+  DEADLINE_LOCALE
+}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const PresetsView: typeof import('../PresetsView').default = require('../PresetsView').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
@@ -65,20 +71,31 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
-const makeStorage = (): RecordStorage => {
+// Switches a test flips to make the storage refuse: `get` and `remove` while
+// on, `set` for the next number of writes.
+const makeStorage = (
+  faults: { get?: boolean; remove?: boolean; set?: number } = {}
+): RecordStorage => {
   const raw = new Map<string, string>()
   return {
     get: async (key, defaultValue) => {
+      if (faults.get) throw new Error('storage unavailable')
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
     getAll: async () =>
       Object.fromEntries([...raw.entries()].map(([key, stored]) => [key, parse(stored)])),
     set: async (key, value) => {
+      if (faults.set) {
+        // eslint-disable-next-line no-param-reassign
+        faults.set -= 1
+        throw new Error('storage full')
+      }
       raw.set(key, typeof value === 'string' ? value : stringify(value))
       return null
     },
     remove: async (key) => {
+      if (faults.remove) throw new Error('storage unavailable')
       raw.delete(key)
       return null
     }
@@ -361,6 +378,231 @@ describe('the presets view', () => {
       expect(byTestId('presets-resume')).toBeNull()
       expect(byTestId('presets-grid')).not.toBeNull()
       expect(onOpenEditor).not.toHaveBeenCalled()
+    })
+  })
+
+  const isDisabled = (id: string) => byTestId(id)?.getAttribute('aria-disabled') === 'true'
+
+  // Noon of the reader's own day, so the day and month are the same in every zone.
+  const DRAFTED_AT = new Date(2026, 7, 12, 12, 0).getTime()
+
+  const storeOn = async (
+    faults: { get?: boolean; remove?: boolean; set?: number },
+    clauses: Clause[],
+    enrollments: Enrollment[]
+  ) => {
+    records = createWalletRecords({ storage: makeStorage(faults), now: () => DRAFTED_AT })
+    await setup().setupDraft.write({
+      wait: 172800n,
+      clauses,
+      ignoresPause: true,
+      privacy: { backup: 'encrypted', publicMetadata: '0x' }
+    })
+    await setup().enrollments.write(enrollments)
+  }
+
+  const DEVICE_PASSKEY: Enrollment = {
+    credential: { method: BOOK.methods.passkey, config: '0x01' },
+    test: 'passed',
+    backup: 'device-bound'
+  }
+
+  describe('a failed read', () => {
+    it('shows the failed read with a retry, and neither the cards nor the resume block', async () => {
+      records = createWalletRecords({ storage: makeStorage({ get: true }) })
+      await mount()
+      expect(byTestId('presets-load-failed')?.textContent).toContain(S.records.loadFailed)
+      expect(byTestId('load-retry')?.textContent).toBe(S.writes.tryAgain)
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(byTestId('presets-resume')).toBeNull()
+      expect(container.querySelector('[data-testid^="preset-"]')).toBeNull()
+      expect(byTestId('customize')).toBeNull()
+    })
+
+    it('retry reads again and shows the cards once the storage answers', async () => {
+      const faults = { get: true }
+      records = createWalletRecords({ storage: makeStorage(faults) })
+      await mount()
+      await press('load-retry')
+      expect(byTestId('presets-load-failed')).not.toBeNull()
+      faults.get = false
+      await press('load-retry')
+      expect(byTestId('presets-load-failed')).toBeNull()
+      expect(byTestId('presets-grid')).not.toBeNull()
+    })
+
+    it('retry brings back the resume block of a stored draft', async () => {
+      const faults = { get: false }
+      await storeOn(faults, [], [DEVICE_PASSKEY])
+      faults.get = true
+      await mount()
+      expect(byTestId('presets-load-failed')).not.toBeNull()
+      faults.get = false
+      await press('load-retry')
+      expect(byTestId('presets-load-failed')).toBeNull()
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(allByTestId('resume-row')).toEqual(['Passkey on this deviceTested'])
+    })
+
+    it('fails the read of a stored enrollment with no credential', async () => {
+      await storeOn({}, [], [{ test: 'passed' } as unknown as Enrollment])
+      await mount()
+      expect(byTestId('presets-load-failed')?.textContent).toContain(S.records.loadFailed)
+      expect(byTestId('presets-resume')).toBeNull()
+      expect(byTestId('presets-grid')).toBeNull()
+    })
+
+    it('names a stored method that is not an address by the method noun, and reads on', async () => {
+      await storeOn(
+        {},
+        [],
+        [
+          {
+            credential: { method: 'passkey', config: '0x01' },
+            test: 'passed'
+          } as unknown as Enrollment
+        ]
+      )
+      await mount()
+      expect(byTestId('presets-load-failed')).toBeNull()
+      expect(allByTestId('resume-row')).toEqual([`${S.display.nouns.method}Tested`])
+    })
+  })
+
+  describe('a refused write', () => {
+    it('a refused pick shows the line, re-enables the buttons and stores nothing', async () => {
+      records = createWalletRecords({ storage: makeStorage({ set: 1 }) })
+      await mount()
+      expect(isDisabled('continue')).toBe(true)
+      await press('preset-deviceAndId')
+      await press('continue')
+      expect(byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect(isDisabled('continue')).toBe(false)
+      expect(isDisabled('customize')).toBe(false)
+      expect(await storedStatuses()).toEqual(SETUP_RECORD_NAMES.map(() => 'absent'))
+      expect(onOpenEditor).not.toHaveBeenCalled()
+      expect(byTestId('presets-grid')).not.toBeNull()
+    })
+
+    it('the next pick that stores clears the line and opens the editor', async () => {
+      records = createWalletRecords({ storage: makeStorage({ set: 1 }) })
+      await mount()
+      await press('preset-deviceAndId')
+      await press('continue')
+      await press('continue')
+      expect(byTestId('write-failed')).toBeNull()
+      expect((await storedDraft()).clauses.map(({ threshold }) => threshold)).toEqual([1, 1])
+      expect(onOpenEditor).toHaveBeenCalledTimes(1)
+    })
+
+    it('a refused customize shows the line, and customize again stores the empty draft', async () => {
+      records = createWalletRecords({ storage: makeStorage({ set: 1 }) })
+      await mount()
+      await press('customize')
+      expect(byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect((await setup().setupDraft.read()).status).toBe('absent')
+      expect(onOpenEditor).not.toHaveBeenCalled()
+      await press('customize')
+      expect(byTestId('write-failed')).toBeNull()
+      expect((await storedDraft()).clauses).toEqual([])
+      expect(onOpenEditor).toHaveBeenCalledTimes(1)
+    })
+
+    it('a refused start over shows the line, keeps the draft and its actions', async () => {
+      const faults = { remove: false }
+      await storeOn(faults, [], [DEVICE_PASSKEY])
+      faults.remove = true
+      await mount()
+      await press('start-over')
+      expect(byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect((await setup().setupDraft.read()).status).toBe('present')
+      expect((await setup().enrollments.read()).status).toBe('present')
+      expect(byTestId('presets-resume')).not.toBeNull()
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(isDisabled('start-over')).toBe(false)
+      expect(isDisabled('resume')).toBe(false)
+      expect(onOpenEditor).not.toHaveBeenCalled()
+    })
+
+    it('a start over that lands after a refusal clears the line and returns to the cards', async () => {
+      const faults = { remove: false }
+      await storeOn(faults, [], [DEVICE_PASSKEY])
+      faults.remove = true
+      await mount()
+      await press('start-over')
+      faults.remove = false
+      await press('start-over')
+      expect(byTestId('write-failed')).toBeNull()
+      expect(await storedStatuses()).toEqual(SETUP_RECORD_NAMES.map(() => 'absent'))
+      expect(byTestId('presets-resume')).toBeNull()
+      expect(byTestId('presets-grid')).not.toBeNull()
+    })
+  })
+
+  describe('the resume block', () => {
+    it('lists the unfilled kinds after the enrolled rows, one row each, not started', async () => {
+      await storeOn(
+        {},
+        clausesOfShape([
+          { threshold: 1, slots: ['passkey'] },
+          { threshold: 2, slots: ['ecdsa', 'ecdsa', 'ecdsa'] },
+          { threshold: 1, slots: ['zkpassport', 'aadhaar'] }
+        ]),
+        [DEVICE_PASSKEY]
+      )
+      await mount()
+      expect(allByTestId('resume-row')).toEqual([
+        'Passkey on this deviceTested',
+        'GuardiansNot started',
+        'PassportNot started',
+        'Aadhaar identityNot started'
+      ])
+    })
+
+    it('gives no not-started row to a kind with an enrolled credential', async () => {
+      await storeOn(
+        {},
+        clausesOfShape([
+          { threshold: 1, slots: ['passkey'] },
+          { threshold: 2, slots: ['ecdsa', 'ecdsa', 'ecdsa'] }
+        ]),
+        [
+          DEVICE_PASSKEY,
+          { credential: { method: BOOK.methods.ecdsa, config: '0x0a' }, test: 'not-tested' }
+        ]
+      )
+      await mount()
+      const rows = allByTestId('resume-row')
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toBe('Passkey on this deviceTested')
+      expect(rows[1]).toMatch(/^Guardians.*Not yet active$/)
+      expect(allByTestId('resume-chip')).not.toContain(S.status.method.notStarted)
+    })
+
+    it('names an enrolled Aadhaar identity "Aadhaar identity"', async () => {
+      await storeOn(
+        {},
+        [],
+        [{ credential: { method: BOOK.methods.aadhaar, config: '0x03' }, test: 'passed' }]
+      )
+      await mount()
+      expect(allByTestId('resume-row')).toEqual(['Aadhaar identityTested'])
+    })
+
+    it('dates the draft exactly by its day and month, with no time and no zone', async () => {
+      await storeOn({}, [], [])
+      await mount()
+      const dayAndMonth = new Intl.DateTimeFormat(DEADLINE_LOCALE, {
+        day: 'numeric',
+        month: 'short',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      }).format(new Date(DRAFTED_AT))
+      expect(dayAndMonth).toBe('12 Aug')
+      const line = byTestId('draft-age')?.textContent ?? ''
+      expect(line).toBe(
+        `Your setup is unfinished. Draft from ${dayAndMonth}. Nothing is saved on chain until you confirm.`
+      )
+      expect(line).not.toMatch(/[0-9]{1,2}:[0-9]{2}|\b(AM|PM|UTC|GMT)\b|2026/)
     })
   })
 })
