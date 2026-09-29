@@ -4,10 +4,11 @@
  * it supplies the wallet's own source, a resolver over the wallet's records
  * and the client, wherever no provider sits above it; a test or a manual run
  * mounts its own provider instead. `resolve` returns null where nothing waits
- * under the request id; one that throws reads unavailable with retry, or
- * cancelled where the holder cancelled first. A source with no `resolve` runs
- * nothing and reports not supported, since it holds no implementation for any
- * method.
+ * under the request id, and a refusal where the request's method has no
+ * implementation, which reads not supported; one that throws reads
+ * unavailable with retry, or cancelled where the holder cancelled first. A
+ * source with no `resolve` runs nothing and reports not supported, since it
+ * holds no implementation for any method.
  */
 import React, { createContext, ReactNode, useContext, useMemo } from 'react'
 
