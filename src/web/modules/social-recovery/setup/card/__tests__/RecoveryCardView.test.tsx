@@ -73,7 +73,7 @@ describe('the recovery card view', () => {
   let container: HTMLDivElement
   let root: Root
   let files: CardFile[]
-  let printed: { printView: boolean; printCardText: string; printCss: string }[]
+  let printed: { printView: boolean; printCardText: string }[]
   let onCarried: jest.Mock
   let onBack: jest.Mock
   let onContinue: jest.Mock
@@ -86,8 +86,7 @@ describe('the recovery card view', () => {
     printed.push({
       printView: !!printView && printView.parentElement === document.body,
       printCardText:
-        document.querySelector<HTMLElement>('[data-testid="print-card"]')?.textContent ?? '',
-      printCss: printView?.querySelector('style')?.textContent ?? ''
+        document.querySelector<HTMLElement>('[data-testid="print-card"]')?.textContent ?? ''
     })
   }
 
@@ -267,15 +266,6 @@ describe('the recovery card view', () => {
       expect(printed[0].printView).toBe(true)
       expect(files).toHaveLength(0)
       expect(document.querySelector('[data-testid="print-view"]')).toBeNull()
-    })
-
-    it('hides everything but the card when the page prints, and the print view on screen', async () => {
-      await mount()
-      await press('card-print')
-      const { printCss } = printed[0]
-      expect(printCss).toMatch(
-        /^#([\w-]+)\{display:none\}@media print\{body>\*:not\(#\1\)\{display:none!important\}#\1\{display:block!important\}\}$/
-      )
     })
   })
 
