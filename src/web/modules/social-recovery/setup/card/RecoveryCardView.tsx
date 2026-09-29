@@ -141,34 +141,36 @@ const RecoveryCardView = ({
           {renderPasswordAsk(answer)}
         </View>
       ) : (
-        <View style={[flexbox.directionRow, flexbox.wrap, spacings.mbTy]}>
-          <Button
-            testID="card-download"
-            text={t('socialRecovery.card.downloadPdf')}
-            disabled={passwordMissing}
-            onPress={() => press('download')}
-            style={spacings.mrSm}
-          />
-          <Button
-            testID="card-print"
-            type="secondary"
-            text={t('socialRecovery.card.print')}
-            disabled={passwordMissing}
-            onPress={() => press('print')}
-            style={spacings.mrSm}
-          />
-          <Button
-            testID="card-send"
-            type="secondary"
-            text={t('socialRecovery.card.sendToDevice')}
-            disabled={passwordMissing}
-            onPress={() => press('sendToDevice')}
-          />
-        </View>
+        <>
+          <View style={[flexbox.directionRow, flexbox.wrap, spacings.mbTy]}>
+            <Button
+              testID="card-download"
+              text={t('socialRecovery.card.downloadPdf')}
+              disabled={passwordMissing}
+              onPress={() => press('download')}
+              style={spacings.mrSm}
+            />
+            <Button
+              testID="card-print"
+              type="secondary"
+              text={t('socialRecovery.card.print')}
+              disabled={passwordMissing}
+              onPress={() => press('print')}
+              style={spacings.mrSm}
+            />
+            <Button
+              testID="card-send"
+              type="secondary"
+              text={t('socialRecovery.card.sendToDevice')}
+              disabled={passwordMissing}
+              onPress={() => press('sendToDevice')}
+            />
+          </View>
+          <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg}>
+            {t('socialRecovery.card.reDownload')}
+          </Text>
+        </>
       )}
-      <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg}>
-        {t('socialRecovery.card.reDownload')}
-      </Text>
       <Pressable
         testID="card-why"
         accessibilityRole="button"

@@ -91,9 +91,10 @@ describe('the recovery card view', () => {
     })
   }
 
-  // The ask the screen fills with the keystore's unlock, reduced to its two answers.
+  // The ask the screen fills with the keystore's unlock, reduced to its lead and its two answers.
   const renderPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => (
     <div>
+      <p>{S.card.reDownload}</p>
       <button type="button" data-testid="ask-confirm" onClick={onConfirmed}>
         confirm
       </button>
@@ -419,9 +420,17 @@ describe('the recovery card view', () => {
       expect(container.querySelector('input')).toBeNull()
     })
 
-    it('says a new download asks the extension password', async () => {
+    it('says a new download asks the extension password once, under the carriers or as the ask', async () => {
+      const count = () => (container.textContent ?? '').split(S.card.reDownload).length - 1
       await mount()
-      expect(container.textContent).toContain(S.card.reDownload)
+      expect(count()).toBe(1)
+      await press('card-download')
+      await press('card-download')
+      expect(byTestId('card-password-ask')).not.toBeNull()
+      expect(count()).toBe(1)
+      expect(byTestId('card-password-ask')?.textContent).toContain(S.card.reDownload)
+      await press('ask-cancel')
+      expect(count()).toBe(1)
     })
 
     it('goes back and continues through its handlers', async () => {
