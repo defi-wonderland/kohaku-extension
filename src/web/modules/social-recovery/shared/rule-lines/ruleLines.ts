@@ -54,12 +54,11 @@ const familyOf = (credential: Credential): string | undefined => {
 const MAX_THRESHOLD = 255
 
 /**
- * A refused clause: no credential, a threshold that is not a whole number, a
- * threshold below one, which asks nothing of its members, a threshold above
- * its members, or a threshold above the 255 its field counts.
+ * A refused clause: a threshold that is not a whole number, a threshold below
+ * one, which asks nothing of its members, a threshold above its members, or a
+ * threshold above the 255 its field counts.
  */
 const isRefused = (clause: Clause): boolean =>
-  clause.credentials.length === 0 ||
   !Number.isInteger(clause.threshold) ||
   clause.threshold < 1 ||
   clause.threshold > clause.credentials.length ||
@@ -134,7 +133,9 @@ const clausesOf = (path: RuleLinesInput): readonly Clause[] =>
  * sizing rule line for a path of two rows and no group.
  */
 export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
-  const clauses = clausesOf(path)
+  // A clause with no member yet is a group the holder is still filling, so the
+  // lines read the rest of the path without it.
+  const clauses = clausesOf(path).filter((clause) => clause.credentials.length > 0)
   // One refused clause or one method held twice silences the whole path, since
   // a line about the rest of the path would read a lockout as a rescue.
   if (clauses.some(isRefused) || holdsDuplicate(clauses)) return []
