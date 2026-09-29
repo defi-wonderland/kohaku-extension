@@ -419,9 +419,20 @@ describe('the privacy step', () => {
       expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
     })
 
-    it('a failed read shows its line', async () => {
-      await h.mount(recordsOn({ get: true }))
+    it('a failed read shows its line, holds continue and stores nothing once storage is back', async () => {
+      const faults: StorageFaults = { get: true }
+      const records = recordsOn(faults)
+      await h.mount(records)
       expect(h.byTestId('load-failed')?.textContent).toBe(S.records.loadFailed)
+      await typePasswords('typed now', 'typed now')
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.press('level-public')
+      expect(h.isDisabled('continue')).toBe(true)
+      faults.get = false
+      await h.press('continue')
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect(await flagOf(records)).toBeUndefined()
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
     })
   })
 })

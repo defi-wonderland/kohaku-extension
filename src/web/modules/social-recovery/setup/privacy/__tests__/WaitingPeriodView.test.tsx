@@ -364,9 +364,17 @@ describe('the waiting period step', () => {
       expect(await storedRecord(records)).toBe(259200n)
     })
 
-    it('a failed read shows its line', async () => {
-      await h.mount(recordsOn({ get: true }))
+    it('a failed read shows its line, holds continue and stores nothing once storage is back', async () => {
+      const faults: StorageFaults = { get: true }
+      const records = recordsOn(faults)
+      await h.mount(records)
       expect(h.byTestId('load-failed')?.textContent).toBe(S.records.loadFailed)
+      expect(h.isDisabled('continue')).toBe(true)
+      faults.get = false
+      await h.press('continue')
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect(await storedRecord(records)).toBeUndefined()
+      expect(await storedDraftWait(records)).toBeUndefined()
     })
   })
 })

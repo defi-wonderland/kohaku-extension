@@ -64,7 +64,9 @@ const WaitingPeriodView = ({ records, chainId, account, navigate }: WaitingPerio
     }
   }, [setup])
 
-  const hours = hoursOfChoice(choice)
+  // A failed load holds continue, so a storage that comes back is never
+  // overwritten with a length the holder did not pick.
+  const hours = loadFailed ? undefined : hoursOfChoice(choice)
   const custom = choice.kind === 'custom' ? readCustomWait(choice.text) : undefined
 
   const onContinue = useCallback(async () => {

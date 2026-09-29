@@ -79,7 +79,10 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   )
 
   const mismatch = level === 'private' && confirmation !== '' && password !== confirmation
-  const ready = level === 'public' || (password !== '' && password === confirmation)
+  // A failed load holds continue, so a storage that comes back is never
+  // overwritten with a level the holder did not pick.
+  const ready =
+    !loadFailed && (level === 'public' || (password !== '' && password === confirmation))
 
   const onContinue = useCallback(async () => {
     if (!ready) return
