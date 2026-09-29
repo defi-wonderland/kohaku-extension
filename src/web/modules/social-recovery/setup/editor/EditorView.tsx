@@ -38,9 +38,11 @@ import {
   moveToGroup,
   pickerEntriesOf,
   placeAt,
+  placedRoles,
   removeClause,
   removeMember,
   rolesOf,
+  SECOND_METHOD_KINDS,
   setThreshold,
   withClauses,
   withoutRole
@@ -53,7 +55,8 @@ import type {
   EditorViewProps,
   EditResult,
   MethodKind,
-  PickerTarget
+  PickerTarget,
+  SlotPosition
 } from './types'
 
 const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps) => {
@@ -114,12 +117,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   )
 
   const apply = useCallback(
-    (result: EditResult, roles: ClauseRole[]) => {
+    (result: EditResult, rolesAt: (at: SlotPosition) => ClauseRole[]) => {
       if (result.status === 'refused') {
         setRefused(true)
         return null
       }
-      commit(result.clauses, roles)
+      commit(result.clauses, rolesAt(result.at))
       return result.at
     },
     [commit]
@@ -127,8 +130,6 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const current = () => loadRef.current?.draft.clauses ?? []
   const currentRoles = () => loadRef.current?.roles ?? []
-  const placedRoles = (target: PickerTarget): ClauseRole[] =>
-    target.place === 'required' ? [...currentRoles(), 'required'] : currentRoles()
 
   const closePicker = () => {
     setPicker(null)
@@ -137,7 +138,11 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onPick = (credential: Credential) => {
     if (!picker) return
-    if (apply(placeAt(current(), picker, credential), placedRoles(picker))) closePicker()
+    const target = picker
+    const placed = apply(placeAt(current(), target, credential), (at) =>
+      placedRoles(currentRoles(), target, at)
+    )
+    if (placed) closePicker()
   }
 
   const onEnrollNew = (kind: MethodKind) => {
@@ -145,7 +150,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     const at =
       picker.place === 'slot'
         ? { clause: picker.clause, member: picker.member }
-        : apply(placeAt(current(), picker, emptySlotOf(kind)), placedRoles(picker))
+        : apply(placeAt(current(), picker, emptySlotOf(kind)), (placed) =>
+            placedRoles(currentRoles(), picker, placed)
+          )
     if (!at) return
     closePicker()
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
@@ -159,7 +166,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const onMove = (row: number, group: number) =>
-    apply(moveToGroup(current(), row, group), withoutRole(currentRoles(), row))
+    apply(moveToGroup(current(), row, group), () => withoutRole(currentRoles(), row))
 
   const onContinue = async () => {
     if (client.status !== 'ready' || !loadRef.current) return
@@ -195,8 +202,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const methodCount = methodCountOf(clauses)
   const heading = load.mode === 'adjust' ? 'adjust' : 'build'
 
-  const pickerKinds = (target: PickerTarget): readonly MethodKind[] =>
-    target.place === 'slot' && target.kind ? [target.kind] : METHOD_KINDS
+  const pickerKinds = (target: PickerTarget): readonly MethodKind[] => {
+    if (target.place === 'second') return SECOND_METHOD_KINDS
+    return target.place === 'slot' && target.kind ? [target.kind] : METHOD_KINDS
+  }
 
   const openSlot = (clause: number, member: number) => {
     const credential = clauses[clause].credentials[member]
@@ -332,7 +341,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   size="small"
                   text={t('socialRecovery.editor.makeRequired')}
                   onPress={() =>
-                    apply(makeRequired(current(), index, member), [...currentRoles(), 'required'])
+                    apply(makeRequired(current(), index, member), () => [
+                      ...currentRoles(),
+                      'required'
+                    ])
                   }
                   hasBottomSpacing={false}
                 />
@@ -423,7 +435,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     type="outline"
                     size="small"
                     text={t('socialRecovery.editor.addSecondMethod')}
-                    onPress={() => setPicker({ place: 'required' })}
+                    onPress={() => setPicker({ place: 'second' })}
                     hasBottomSpacing={false}
                   />
                 )}

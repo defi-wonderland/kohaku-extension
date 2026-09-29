@@ -27,9 +27,13 @@ export type EditResult =
 /** What a clause is on screen: a required row, or a group with its threshold. */
 export type ClauseRole = 'required' | 'group'
 
-/** Where the member picker places what the holder picks. */
+/**
+ * Where the member picker places what the holder picks; `second` joins the
+ * path's one method in a group any one of the two recovers.
+ */
 export type PickerTarget =
   | { place: 'required' }
+  | { place: 'second' }
   | { place: 'member'; clause: number }
   | ({ place: 'slot'; kind?: MethodKind } & SlotPosition)
 

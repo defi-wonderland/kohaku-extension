@@ -29,6 +29,12 @@ import type {
   SlotPosition
 } from './types'
 
+/**
+ * The kinds a second method can be: a passkey from another device, or a key the
+ * holder keeps, a hardware key among them, entered as a guardian address.
+ */
+export const SECOND_METHOD_KINDS: readonly MethodKind[] = ['passkey', 'ecdsa']
+
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2
 
@@ -245,6 +251,23 @@ export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] =>
   })
 }
 
+/**
+ * A second method joins the path's one method as a group any one of whose two
+ * members recovers, in one edit. The group takes the one method's place; a
+ * path with no method yet takes the credential as a required row.
+ */
+export const addSecondMethod = (clauses: readonly Clause[], credential: Credential): EditResult => {
+  if (pathHolds(clauses, credential)) return DUPLICATE
+  const index = clauses.findIndex((clause) => clause.credentials.length > 0)
+  if (index < 0) return addRequired(clauses, credential)
+  const { credentials } = clauses[index]
+  return {
+    status: 'applied',
+    clauses: replaceAt(clauses, index, { threshold: 1, credentials: [...credentials, credential] }),
+    at: { clause: index, member: credentials.length }
+  }
+}
+
 /** Places a picked credential where the picker was opened for. */
 export const placeAt = (
   clauses: readonly Clause[],
@@ -252,8 +275,24 @@ export const placeAt = (
   credential: Credential
 ): EditResult => {
   if (target.place === 'required') return addRequired(clauses, credential)
+  if (target.place === 'second') return addSecondMethod(clauses, credential)
   if (target.place === 'member') return addMember(clauses, target.clause, credential)
   return fillSlot(clauses, { clause: target.clause, member: target.member }, credential)
+}
+
+/**
+ * The roles once a credential was placed at a position: a new clause the
+ * picker added is a required row, the second method's clause a group, and a
+ * clause that took a member keeps its role.
+ */
+export const placedRoles = (
+  roles: readonly ClauseRole[],
+  target: PickerTarget,
+  at: SlotPosition
+): ClauseRole[] => {
+  if (at.clause >= roles.length) return [...roles, 'required']
+  if (target.place === 'second') return roles.map((role, i) => (i === at.clause ? 'group' : role))
+  return [...roles]
 }
 
 /** The draft with new clauses, every other field kept. */
