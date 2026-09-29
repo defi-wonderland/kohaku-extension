@@ -429,6 +429,12 @@ export interface SendPortOptions {
 
 export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
 
+/** A refusal the send port holds open for its settle period, and whether it withdrew the request. */
+export interface SettlingRefusal {
+  reason: SendRefusalReason
+  withdrawn: boolean
+}
+
 /**
  * The send port returned no transaction hash of the key. For every reason but
  * `not-a-transaction` the wallet broadcast nothing under the request; for
