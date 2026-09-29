@@ -7,8 +7,8 @@ import type { Translate } from '@web/modules/social-recovery/shared/display'
 import { cardRowsOf } from './card'
 import type { CardFile, CardRow, RecoveryCard } from './types'
 
-export const CARD_FILE_NAME = 'kohaku-recovery-card.html'
-export const CARD_FILE_TYPE = 'text/html'
+const CARD_FILE_NAME = 'kohaku-recovery-card.html'
+const CARD_FILE_TYPE = 'text/html'
 
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',

@@ -41,7 +41,7 @@ export interface CardCarriers {
   print: () => void
 }
 
-export const CARRIER_ACTIONS = ['download', 'print', 'sendToDevice'] as const
+const CARRIER_ACTIONS = ['download', 'print', 'sendToDevice'] as const
 export type CarrierAction = typeof CARRIER_ACTIONS[number]
 
 /** The two ends of the extension password ask. */
