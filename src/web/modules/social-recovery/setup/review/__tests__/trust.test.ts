@@ -158,6 +158,18 @@ describe('the trust rows', () => {
       expect(recoverAlone([required(PASSPORT), required(PASSKEY)])).toBe(false)
     })
 
+    it('shows where every clause holds its threshold of passports', () => {
+      expect(recoverAlone([group(1, PASSPORT, ALICE)])).toBe(true)
+      expect(recoverAlone([required(PASSPORT), required(SECOND_PASSPORT)])).toBe(true)
+      expect(recoverAlone([group(1, PASSPORT, ALICE), group(1, SECOND_PASSPORT, PASSKEY)])).toBe(
+        true
+      )
+    })
+
+    it('does not show where a clause needs more passports than it holds', () => {
+      expect(recoverAlone([group(2, PASSPORT, PASSKEY)])).toBe(false)
+    })
+
     it('does not show where the method names no outside party', () => {
       const [row] = rowsOf([required(PASSKEY)], EVERY_METHOD_ANSWERED)
       expect(row.contract.status === 'declared' && row.contract.recoverAlone).toBe(false)
@@ -238,6 +250,58 @@ describe('whether one method alone satisfies the rule', () => {
       aloneSatisfiesRule([required(PASSKEY), group(1, ALICE, BOB)], BOOK.methods.ecdsa, BOOK)
     ).toBe(false)
     expect(aloneSatisfiesRule([group(2, ALICE, PASSKEY)], BOOK.methods.ecdsa, BOOK)).toBe(false)
+  })
+})
+
+describe('whether one method alone satisfies a rule of several clauses', () => {
+  const PASSPORT_METHOD = BOOK.methods.zkpassport
+
+  it('holds for a group of any one that holds a passport beside a guardian', () => {
+    expect(aloneSatisfiesRule([group(1, PASSPORT, ALICE)], PASSPORT_METHOD, BOOK)).toBe(true)
+  })
+
+  it('holds for two required passport rows', () => {
+    expect(
+      aloneSatisfiesRule([required(PASSPORT), required(SECOND_PASSPORT)], PASSPORT_METHOD, BOOK)
+    ).toBe(true)
+  })
+
+  it('holds for two groups of any one that each hold a passport', () => {
+    expect(
+      aloneSatisfiesRule(
+        [group(1, PASSPORT, ALICE), group(1, SECOND_PASSPORT, PASSKEY)],
+        PASSPORT_METHOD,
+        BOOK
+      )
+    ).toBe(true)
+  })
+
+  it('does not hold for a group of two of three that holds one passport', () => {
+    expect(aloneSatisfiesRule([group(2, PASSPORT, ALICE, BOB)], PASSPORT_METHOD, BOOK)).toBe(false)
+  })
+
+  it('does not hold for a group of two that holds a passport and a passkey', () => {
+    expect(aloneSatisfiesRule([group(2, PASSPORT, PASSKEY)], PASSPORT_METHOD, BOOK)).toBe(false)
+  })
+
+  it('does not hold where one clause holds no passport', () => {
+    expect(
+      aloneSatisfiesRule([group(1, PASSPORT, ALICE), group(1, BOB, PASSKEY)], PASSPORT_METHOD, BOOK)
+    ).toBe(false)
+  })
+
+  it('does not hold for an empty path', () => {
+    expect(aloneSatisfiesRule([], PASSPORT_METHOD, BOOK)).toBe(false)
+    expect(aloneSatisfiesRule([group(1)], PASSPORT_METHOD, BOOK)).toBe(false)
+  })
+
+  it('counts an empty slot as the method of the kind it waits for', () => {
+    expect(
+      aloneSatisfiesRule([group(1, emptySlot('zkpassport'), ALICE)], PASSPORT_METHOD, BOOK)
+    ).toBe(true)
+    expect(aloneSatisfiesRule([group(1, emptySlot('passkey'), ALICE)], PASSPORT_METHOD, BOOK)).toBe(
+      false
+    )
   })
 })
 

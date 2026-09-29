@@ -56,6 +56,7 @@ const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress } = j
 const { createWalletRecords } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records')
 >('@web/modules/social-recovery/shared/records')
+const { zeroAddress } = jest.requireActual<typeof import('viem')>('viem')
 const ReviewView = jest.requireActual<typeof import('../ReviewView')>('../ReviewView').default
 const fixtures = jest.requireActual<typeof import('./fixtures')>('./fixtures')
 const {
@@ -76,6 +77,7 @@ const {
   PASSPORT,
   PENDING_ADMIN,
   required,
+  SECOND_PASSPORT,
   THIRD_PARTY,
   UNANSWERED
 } = fixtures
@@ -376,7 +378,10 @@ describe('the path rows', () => {
 
     expect(textOf('review-row-0-0-name')).toBe(PASSKEY.label)
     expect(textOf('review-row-0-0-aside')).toBe(t('socialRecovery.review.passkeySynced'))
+    expect(textOf('review-row-0-0-chip')).toBe(t('socialRecovery.status.method.tested'))
     expect(textsStartingWith('review-row-0-0-line-')).toEqual([])
+    expect(textOf('review-path')).not.toContain(t(`${CEREMONY}.syncedLoss`))
+    expect(textOf('review-path')).not.toContain(t(`${CEREMONY}.passkeyOrigin`))
   })
 
   it('name a device-bound passkey with the device-bound word', async () => {
@@ -386,7 +391,10 @@ describe('the path rows', () => {
     })
 
     expect(textOf('review-row-0-0-aside')).toBe(t('socialRecovery.review.passkeyDeviceBound'))
+    expect(textOf('review-row-0-0-chip')).toBe(t('socialRecovery.status.method.tested'))
     expect(textsStartingWith('review-row-0-0-line-')).toEqual([])
+    expect(textOf('review-path')).not.toContain(t(`${CEREMONY}.deviceBoundLoss`))
+    expect(textOf('review-path')).not.toContain(t(`${CEREMONY}.passkeyOrigin`))
   })
 
   it('show a guardian by its full address', async () => {
@@ -539,6 +547,143 @@ describe('the trust list', () => {
       t('socialRecovery.review.trust.recoverAlone')
     )
     expect(textOf('review-trust-0-renewal')).toBe(t('socialRecovery.review.trust.passportRenewal'))
+  })
+
+  it('names the admin by its full address on the method row', async () => {
+    await mount({
+      clauses: [group(2, PASSPORT, PASSKEY)],
+      trustedParties: async (module) =>
+        sameAddress(module, BOOK.methods.zkpassport) ? declaration(ADMIN) : declaration()
+    })
+    await press('review-verify-details')
+
+    const method = textOf('review-trust-0-method')
+    expect(method).toBe(
+      t('socialRecovery.review.trust.methodRowAdmin', {
+        method: t('socialRecovery.methodNames.passport'),
+        party: renderFullAddress(ADMIN)
+      })
+    )
+    expect(method).toContain(renderFullAddress(ADMIN))
+    expect(byTestId('review-trust-0-recover-alone')).toBeNull()
+  })
+
+  it('names no outside party and the address one acceptance away where only a pending admin is set', async () => {
+    await mount({
+      clauses: [required(PASSKEY)],
+      trustedParties: async () => declaration(zeroAddress, PENDING_ADMIN)
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-method')).toBe(
+      t('socialRecovery.review.trust.methodRow', {
+        method: t('socialRecovery.methodNames.passkey')
+      })
+    )
+    expect(textOf('review-trust-0-pending-admin')).toBe(
+      t('socialRecovery.review.trust.oneAcceptanceAway', {
+        address: renderFullAddress(PENDING_ADMIN)
+      })
+    )
+    expect(byTestId('review-trust-0-admin')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.review.trust.adminLine'))
+  })
+
+  it('shows the recover-alone line where each group of any one holds a passport', async () => {
+    await mount({
+      clauses: [group(1, PASSPORT, ALICE), group(1, SECOND_PASSPORT, BOB)],
+      trustedParties: async (module) =>
+        sameAddress(module, BOOK.methods.zkpassport) ? declaration(ADMIN) : declaration()
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-recover-alone')).toBe(
+      t('socialRecovery.review.trust.recoverAlone')
+    )
+  })
+
+  it('does not show the recover-alone line for a two-of-three group that holds one passport', async () => {
+    await mount({
+      clauses: [group(2, PASSPORT, ALICE, BOB)],
+      trustedParties: async (module) =>
+        sameAddress(module, BOOK.methods.zkpassport) ? declaration(ADMIN) : declaration()
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-admin')).toBe(t('socialRecovery.review.trust.adminLine'))
+    expect(byTestId('review-trust-0-recover-alone')).toBeNull()
+  })
+
+  it('puts the count line, then both guardian headings, then the method row once, then each smart account sentence', async () => {
+    await mount({
+      clauses: [group(1, ALICE, BOB)],
+      enrollments: [enrolled(ALICE), enrolled(BOB)]
+    })
+    await press('review-verify-details')
+
+    const rowIds = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-testid^="review-trust-0-"]'),
+      (node) => node.getAttribute('data-testid')
+    )
+    expect(rowIds).toEqual([
+      'review-trust-0-guardians',
+      'review-trust-0-heading-0',
+      'review-trust-0-heading-1',
+      'review-trust-0-method',
+      'review-trust-0-heading-0-line-0',
+      'review-trust-0-heading-1-line-0'
+    ])
+    expect(textOf('review-trust-0-guardians')).toBe(
+      t('socialRecovery.review.trust.guardiansAllTested', { count: 2 })
+    )
+    expect(textOf('review-trust-0-method')).toBe(
+      t('socialRecovery.review.trust.methodRow', {
+        method: t('socialRecovery.display.nouns.guardian')
+      })
+    )
+    expect(textOf('review-trust-0-heading-0-line-0')).toBe(
+      t('socialRecovery.disclosures.smartAccount')
+    )
+    expect(textOf('review-trust-0-heading-1-line-0')).toBe(
+      t('socialRecovery.disclosures.smartAccount')
+    )
+  })
+
+  it('carries the synced loss line then the origin line under a synced passkey heading', async () => {
+    await mount({
+      clauses: [required(PASSKEY)],
+      enrollments: [enrolled(PASSKEY, 'passed', { backup: 'synced' })]
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-heading-0')).toBe(PASSKEY.label)
+    expect(textsStartingWith('review-trust-0-heading-0-line-')).toEqual([
+      t('socialRecovery.ceremony.syncedLoss'),
+      t('socialRecovery.ceremony.passkeyOrigin')
+    ])
+  })
+
+  it('carries the device-bound loss line then the origin line under a device-bound passkey heading', async () => {
+    await mount({
+      clauses: [required(PASSKEY)],
+      enrollments: [enrolled(PASSKEY, 'not-tested', { backup: 'device-bound' })]
+    })
+    await press('review-verify-details')
+
+    expect(textsStartingWith('review-trust-0-heading-0-line-')).toEqual([
+      t('socialRecovery.ceremony.deviceBoundLoss'),
+      t('socialRecovery.ceremony.passkeyOrigin')
+    ])
+  })
+
+  it('carries the identity line under a passport heading', async () => {
+    await mount({ clauses: [required(PASSPORT)], enrollments: [enrolled(PASSPORT)] })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-heading-0')).toBe(t('socialRecovery.methodNames.passport'))
+    expect(textsStartingWith('review-trust-0-heading-0-line-')).toEqual([
+      t('socialRecovery.disclosures.identity')
+    ])
   })
 
   it('names a module the deployment does not ship as a third-party method', async () => {

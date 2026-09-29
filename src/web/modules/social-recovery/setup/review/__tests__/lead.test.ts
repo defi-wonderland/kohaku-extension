@@ -6,6 +6,7 @@ import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import {
   needsHostileMinorityLine,
+  passkeyLinesOf,
   pathRowOf,
   privacyLinesOf,
   publicationItemsOf,
@@ -282,6 +283,28 @@ describe('a row of the path', () => {
 
   it('shows no chip for a credential the records hold no verdict for', () => {
     expect(pathRowOf(ALICE, [], BOOK, t).chip).toBeNull()
+  })
+})
+
+describe('the lines under a passkey heading', () => {
+  const CEREMONY = 'socialRecovery.ceremony'
+
+  it('read the synced loss line, then the origin line', () => {
+    expect(passkeyLinesOf('synced', t)).toEqual([
+      t(`${CEREMONY}.syncedLoss`),
+      t(`${CEREMONY}.passkeyOrigin`)
+    ])
+  })
+
+  it('read the device-bound loss line, then the origin line', () => {
+    expect(passkeyLinesOf('device-bound', t)).toEqual([
+      t(`${CEREMONY}.deviceBoundLoss`),
+      t(`${CEREMONY}.passkeyOrigin`)
+    ])
+  })
+
+  it('read the origin line alone where the records hold no backup kind', () => {
+    expect(passkeyLinesOf(undefined, t)).toEqual([t(`${CEREMONY}.passkeyOrigin`)])
   })
 })
 
