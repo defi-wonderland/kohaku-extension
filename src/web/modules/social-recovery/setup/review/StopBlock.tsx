@@ -7,7 +7,6 @@ import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import {
   renderFullAddress,
-  renderChip,
   renderNoun,
   renderShortAddress
 } from '@web/modules/social-recovery/shared/display'
@@ -35,30 +34,34 @@ const StopBlock = ({ rows }: StopBlockProps) => {
 
   const renderRow = ({ method, kind, stop }: StopRow, testID: string) => {
     const name = kind ? kindNameOf(kind, t) : renderFullAddress(method)
-    if (stop.status === 'pending') return <ActivityIndicator testID={`${testID}-pending`} />
-    if (stop.status === 'unavailable') {
+    if (stop.status === 'pending' || stop.status === 'unavailable') {
       return (
-        <Text fontSize={12} weight="medium" appearance="errorText" testID={`${testID}-unavailable`}>
-          {t('socialRecovery.review.blocked.unavailable.chip')}
-        </Text>
+        <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+          <Text fontSize={14} weight="medium" style={spacings.mrSm} testID={`${testID}-method`}>
+            {name}
+          </Text>
+          {stop.status === 'pending' ? (
+            <ActivityIndicator testID={`${testID}-pending`} />
+          ) : (
+            <Text
+              fontSize={12}
+              weight="medium"
+              appearance="errorText"
+              testID={`${testID}-unavailable`}
+            >
+              {t('socialRecovery.review.blocked.unavailable.chip')}
+            </Text>
+          )}
+        </View>
       )
     }
     return (
       <>
-        {stop.paused ? (
-          <View style={[flexbox.directionRow, flexbox.alignCenter]}>
-            <Text fontSize={14} weight="medium" style={spacings.mrSm} testID={`${testID}-method`}>
-              {name}
-            </Text>
-            <Text fontSize={12} weight="medium" appearance="errorText" testID={`${testID}-stopped`}>
-              {renderChip('collection', 'stopped', t)}
-            </Text>
-          </View>
-        ) : (
-          <Text fontSize={14} weight="medium" testID={`${testID}-method`}>
-            {t(`${STOP}.methodNotStopped`, { method: name })}
-          </Text>
-        )}
+        <Text fontSize={14} weight="medium" testID={`${testID}-method`}>
+          {stop.paused
+            ? t(`${STOP}.methodStopped`, { method: name })
+            : t(`${STOP}.methodNotStopped`, { method: name })}
+        </Text>
         {stop.pauseHolder
           ? line(
               t(`${STOP}.party`, { party: renderShortAddress(stop.pauseHolder) }),

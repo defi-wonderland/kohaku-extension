@@ -17,6 +17,7 @@ export {
 export type {
   AccountRead,
   AccountReadName,
+  AdminDeclaration,
   AccountReads,
   CodeEntriesReading,
   Doors,

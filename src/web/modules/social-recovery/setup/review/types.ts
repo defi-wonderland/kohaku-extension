@@ -101,6 +101,18 @@ export interface StopDeclaration {
   pendingPauseHolder?: Address
 }
 
+/** What a method's own declaration says about its admin. */
+export interface AdminDeclaration {
+  /** The method's admin, absent where the declaration names no outside party. */
+  admin?: Address
+  /** The address one acceptance away from the admin role, where there is one. */
+  pendingAdmin?: Address
+  /** The method alone satisfies the whole rule, so its admin could recover alone. */
+  recoverAlone: boolean
+  /** Its admin could recover alone, and every clause it satisfies is at threshold one. */
+  aloneAtThresholdOne: boolean
+}
+
 /** What the trust list says about one method contract. */
 export type TrustContract =
   | { status: 'pending' }
@@ -108,19 +120,14 @@ export type TrustContract =
   | {
       status: 'third-party'
       /** The module's own declaration, where it answers to the method interface. */
-      declaration?: StopDeclaration & { admin?: Address }
+      declaration?: AdminDeclaration & StopDeclaration
     }
   | ({
       status: 'declared'
-      /** The method's admin, absent where the declaration names no outside party. */
-      admin?: Address
-      /** The address one acceptance away from the admin role, where there is one. */
-      pendingAdmin?: Address
-      /** The method alone satisfies the whole rule, so its admin could recover alone. */
-      recoverAlone: boolean
       /** The passport method, whose credential a renewed document ends. */
       passportRenewal: boolean
-    } & StopDeclaration)
+    } & AdminDeclaration &
+      StopDeclaration)
 
 /** One contract row of the trust list: one per method, however many path rows use it. */
 export interface TrustRow {
@@ -206,7 +213,8 @@ export type SaveBlock =
   | { kind: 'unavailable' }
   | { kind: 'removed-key-unreadable' }
   | { kind: 'cannot-recover'; reason: 'not-supported' }
-  | { kind: 'cannot-recover'; reason: 'key-count'; count: number }
+  /** The count is absent where no description of the account counted its keys. */
+  | { kind: 'cannot-recover'; reason: 'key-count'; count?: number }
   | { kind: 'already-set-up' }
 
 export interface SaveGateInput extends AccountReads {

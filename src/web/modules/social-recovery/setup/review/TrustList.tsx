@@ -14,7 +14,7 @@ import { kindNameOf, passkeyLinesOf } from './lead'
 import OtherDoors from './OtherDoors'
 import StopBlock from './StopBlock'
 import { nodeKindOf } from './trust'
-import type { TrustHeading, TrustListProps, TrustRow } from './types'
+import type { AdminDeclaration, TrustHeading, TrustListProps, TrustRow } from './types'
 
 const TRUST = 'socialRecovery.review.trust'
 
@@ -56,6 +56,24 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
     return []
   }
 
+  const adminLines = (declaration: AdminDeclaration, testID: string) => (
+    <>
+      {!!declaration.admin && line(t(`${TRUST}.adminLine`), `${testID}-admin`)}
+      {!!declaration.pendingAdmin &&
+        line(
+          t(`${TRUST}.oneAcceptanceAway`, { address: renderFullAddress(declaration.pendingAdmin) }),
+          `${testID}-pending-admin`
+        )}
+      {declaration.recoverAlone &&
+        line(
+          declaration.aloneAtThresholdOne
+            ? t(`${TRUST}.recoverAlone`)
+            : t(`${TRUST}.recoverAloneAny`),
+          `${testID}-recover-alone`
+        )}
+    </>
+  )
+
   const renderContract = (row: TrustRow, testID: string) => {
     const { contract } = row
     if (contract.status === 'pending') return <ActivityIndicator testID={`${testID}-pending`} />
@@ -83,10 +101,22 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
       )
     }
     if (contract.status === 'third-party') {
+      const declaration = contract.declaration
+      if (!declaration?.admin) {
+        return (
+          <>
+            {line(t(`${TRUST}.thirdPartyRow`), `${testID}-third-party`)}
+            {line(t(`${TRUST}.thirdPartyLine`))}
+          </>
+        )
+      }
       return (
         <>
-          {line(t(`${TRUST}.thirdPartyRow`), `${testID}-third-party`)}
-          {line(t(`${TRUST}.thirdPartyLine`))}
+          {line(
+            t(`${TRUST}.thirdPartyDeclaredRow`, { party: renderFullAddress(declaration.admin) }),
+            `${testID}-third-party`
+          )}
+          {adminLines(declaration, testID)}
         </>
       )
     }
@@ -99,13 +129,7 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
               `${testID}-method`
             )
           : line(t(`${TRUST}.methodRow`, { method }), `${testID}-method`)}
-        {!!contract.admin && line(t(`${TRUST}.adminLine`), `${testID}-admin`)}
-        {!!contract.pendingAdmin &&
-          line(
-            t(`${TRUST}.oneAcceptanceAway`, { address: renderFullAddress(contract.pendingAdmin) }),
-            `${testID}-pending-admin`
-          )}
-        {contract.recoverAlone && line(t(`${TRUST}.recoverAlone`), `${testID}-recover-alone`)}
+        {adminLines(contract, testID)}
         {contract.passportRenewal && line(t(`${TRUST}.passportRenewal`), `${testID}-renewal`)}
       </>
     )

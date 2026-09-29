@@ -873,8 +873,9 @@ describe('the security stop block', () => {
     })
     await press('review-verify-details')
 
-    expect(textOf('review-stop-0-method')).toBe(t('socialRecovery.methodNames.passport'))
-    expect(textOf('review-stop-0-stopped')).toBe(t('socialRecovery.status.collection.stopped'))
+    expect(textOf('review-stop-0-method')).toBe(
+      t(`${STOP}.methodStopped`, { method: t('socialRecovery.methodNames.passport') })
+    )
     expect(pageText()).not.toContain(
       t(`${STOP}.methodNotStopped`, { method: t('socialRecovery.methodNames.passport') })
     )

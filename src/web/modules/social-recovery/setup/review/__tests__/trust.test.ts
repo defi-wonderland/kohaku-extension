@@ -92,6 +92,7 @@ describe('the trust rows', () => {
     expect(row.contract).toEqual({
       status: 'declared',
       recoverAlone: false,
+      aloneAtThresholdOne: false,
       passportRenewal: false,
       paused: false
     })
@@ -186,7 +187,7 @@ describe('the trust rows', () => {
 
     expect(rowOf(rows, THIRD_PARTY_MODULE).contract).toEqual({
       status: 'third-party',
-      declaration: { admin: ADMIN, paused: false }
+      declaration: { admin: ADMIN, recoverAlone: false, aloneAtThresholdOne: false, paused: false }
     })
     expect(rowOf(rows, BOOK.methods.passkey).contract.status).toBe('declared')
   })
