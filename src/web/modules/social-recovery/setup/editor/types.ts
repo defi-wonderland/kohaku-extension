@@ -13,8 +13,12 @@ export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as con
 /** A method kind, a key of the address book's `methods`. */
 export type MethodKind = typeof METHOD_KINDS[number]
 
-/** The longest waiting period the setup's picker offers, in hours: ninety days. */
-export const PICKER_CEILING_HOURS = 90 * 24
+/**
+ * The longest waiting period the setup's picker offers, in hours: thirty days,
+ * the SDK's shipped maximum wait, so the picker never offers a wait the SDK's
+ * save refuses.
+ */
+export const PICKER_CEILING_HOURS = 30 * 24
 
 /** A shape this wallet refuses to save, named by its sentence. */
 export type RefusalKey =

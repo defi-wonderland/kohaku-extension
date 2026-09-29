@@ -15,16 +15,25 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/sdk-interfaces'
 import {
+  clientConfigurationOf,
+  WALLET_RECOVERY_CHAIN
+} from '@web/modules/social-recovery/shared/client'
+import {
   renderFinding,
   renderRefusal,
   renderRulesPanel
 } from '@web/modules/social-recovery/setup/editor/copy'
 import { emptySlotOf } from '@web/modules/social-recovery/setup/editor/operations'
-import { refusalsOf, shapeRefusalsOf } from '@web/modules/social-recovery/setup/editor/refusals'
+import {
+  PICKER_CEILING_SECONDS,
+  refusalsOf,
+  shapeRefusalsOf
+} from '@web/modules/social-recovery/setup/editor/refusals'
 import type { RefusalKey } from '@web/modules/social-recovery/setup/editor/types'
 
 import {
   AADHAAR,
+  ACCOUNT,
   ALICE,
   BOB,
   BOOK,
@@ -270,13 +279,23 @@ describe('a path with no method', () => {
 describe('the waiting period', () => {
   const clauses = presetPath()
 
-  it('passes 24 hours and the longest the picker offers, 90 days', () => {
+  it('passes 24 hours and the longest the picker offers, 30 days', () => {
     expect(keysOf(clauses, DAY)).toEqual([])
-    expect(keysOf(clauses, 90n * DAY)).toEqual([])
+    expect(keysOf(clauses, 30n * DAY)).toEqual([])
+  })
+
+  it("offers exactly the longest wait the client's configuration lets the SDK save", () => {
+    const { maximumWait } = clientConfigurationOf({
+      chain: WALLET_RECOVERY_CHAIN,
+      account: ACCOUNT,
+      addressBook: BOOK,
+      provider: {} as never
+    })
+    expect(PICKER_CEILING_SECONDS).toBe(BigInt(maximumWait ?? -1))
   })
 
   it('refuses the picker ceiling plus one hour with the picker sentence', () => {
-    expect(refusalsOf(draftOf(clauses, 90n * DAY + HOUR))).toEqual([{ key: 'waitCeiling' }])
+    expect(refusalsOf(draftOf(clauses, 30n * DAY + HOUR))).toEqual([{ key: 'waitCeiling' }])
   })
 
   it('refuses the largest wait the field holds with the picker sentence alone', () => {
@@ -303,7 +322,7 @@ describe("the shape's refusals alone", () => {
       { key: 'thresholdBelowOneOwnRule', clause: 0 },
       { key: 'thresholdAboveMembers', clause: 1 }
     ])
-    expect(shapeRefusalsOf(draftOf(presetPath(), 90n * DAY + HOUR))).toEqual([])
+    expect(shapeRefusalsOf(draftOf(presetPath(), 30n * DAY + HOUR))).toEqual([])
     expect(shapeRefusalsOf(draftOf([], -1n))).toEqual([{ key: 'noMethod' }])
   })
 })
