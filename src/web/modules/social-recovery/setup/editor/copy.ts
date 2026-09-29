@@ -7,7 +7,11 @@
 import type { Credential, Finding, FindingCode } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/display'
-import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
+import type {
+  Enrollment,
+  EnrollmentTestVerdict,
+  PasskeyBackupKind
+} from '@web/modules/social-recovery/shared/records'
 
 import { enrollmentOf, isEmptySlot } from './operations'
 import type { ClientRefusal, MethodKind } from './types'
@@ -57,8 +61,21 @@ const CLIENT_REFUSAL_KEYS: Record<ClientRefusal, { title: string; body: string }
   }
 }
 
-export const renderKindName = (kind: MethodKind | undefined, t: Translate): string | null =>
-  kind ? t(KIND_NAME_KEYS[kind]) : null
+/**
+ * A kind's name; a passkey its enrollment reports as device-bound reads as a
+ * passkey on this device.
+ */
+export const renderKindName = (
+  kind: MethodKind | undefined,
+  t: Translate,
+  backup?: PasskeyBackupKind
+): string | null => {
+  if (!kind) return null
+  if (kind === 'passkey' && backup === 'device-bound') {
+    return t('socialRecovery.methodNames.passkeyOnThisDevice')
+  }
+  return t(KIND_NAME_KEYS[kind])
+}
 
 export const renderKindHeader = (kind: MethodKind, t: Translate): string =>
   t(KIND_HEADER_KEYS[kind])

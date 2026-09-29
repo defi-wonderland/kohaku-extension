@@ -8,9 +8,10 @@
  * whose method is the zero address, whose config is empty and whose label is
  * its kind; it stands for a method the holder has yet to enroll.
  */
-import { isAddressEqual, zeroAddress } from 'viem'
+import { isAddress, isAddressEqual, size, slice, zeroAddress } from 'viem'
 
 import type {
+  Address,
   Clause,
   Credential,
   SetupDraft,
@@ -74,6 +75,18 @@ export const kindOf = (
 ): MethodKind | undefined => {
   if (isEmptySlot(credential)) return isMethodKind(credential.label) ? credential.label : undefined
   return METHOD_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], credential.method))
+}
+
+/**
+ * The address a guardian's config holds: the address itself, or the address
+ * ABI-encoded in one word. A config of any other shape holds none.
+ */
+export const guardianAddressOf = (credential: Credential): Address | undefined => {
+  const { config } = credential
+  const bytes = size(config)
+  if (bytes !== 20 && bytes !== 32) return undefined
+  const address = slice(config, bytes - 20)
+  return isAddress(address, { strict: false }) ? address : undefined
 }
 
 /**

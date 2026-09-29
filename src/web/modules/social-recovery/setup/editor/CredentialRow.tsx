@@ -5,15 +5,16 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
+import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
 import { renderKindName, renderRowChip } from './copy'
-import { isEmptySlot, kindOf } from './operations'
+import { enrollmentOf, guardianAddressOf, isEmptySlot, kindOf } from './operations'
 import type { CredentialRowProps } from './types'
 
 /**
- * One method of the path: its kind, the holder's own label where an enrolled
- * credential carries one, and its chip. An empty slot shows no address and
- * opens the picker when pressed.
+ * One method of the path: a guardian's short address, its kind, the holder's
+ * own label where an enrolled credential carries one, and its chip. An empty
+ * slot shows no address and opens the picker when pressed.
  */
 const CredentialRow = ({
   credential,
@@ -28,11 +29,18 @@ const CredentialRow = ({
   const empty = isEmptySlot(credential)
   const chip = renderRowChip(credential, enrollments, t)
   const label = !empty && credential.label ? credential.label : null
+  const address = !empty && kind === 'ecdsa' ? guardianAddressOf(credential) : undefined
+  const backup = empty ? undefined : enrollmentOf(credential, enrollments)?.backup
 
   const content = (
     <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
+      {!!address && (
+        <Text fontSize={14} weight="medium" style={spacings.mrTy}>
+          {renderShortAddress(address)}
+        </Text>
+      )}
       <Text fontSize={14} weight="medium" style={spacings.mrTy}>
-        {renderKindName(kind, t)}
+        {renderKindName(kind, t, backup)}
       </Text>
       {!!label && (
         <Text fontSize={14} style={spacings.mrTy}>

@@ -89,7 +89,7 @@ const MemberPicker = ({
         testID="editor-picker-close"
         type="outline"
         size="small"
-        text={t('socialRecovery.ceremony.backAction')}
+        text={t('socialRecovery.ceremony.cancelAction')}
         onPress={onClose}
         hasBottomSpacing={false}
       />
