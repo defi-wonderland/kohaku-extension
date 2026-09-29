@@ -330,13 +330,16 @@
         "passkeys": "your passkeys",
         "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
-        "pair": "{{first}} and {{second}}"
+        "pair": "{{first}} and {{second}}",
+        "aadhaar": "your Aadhaar identity",
+        "triple": "{{first}}, {{second}} and {{third}}"
       },
       "itemsLead": {
         "passkey": "Your passkey",
         "passkeys": "Your passkeys",
         "passport": "Your passport",
-        "passportIdentifier": "The identifier your passport produces"
+        "passportIdentifier": "The identifier your passport produces",
+        "aadhaar": "Your Aadhaar identity"
       }
     },
     "costLines": {
@@ -438,7 +441,10 @@
         "noMethod": "This wallet cannot save a path with no method. Add at least one.",
         "waitFieldWidth": "This wallet cannot save a waiting period past the width the kit's field holds.",
         "waitCeiling": "This wallet cannot save a waiting period past the longest this picker offers.",
-        "tooLarge": "This wallet cannot check a path this large in one block. Remove members or groups."
+        "tooLarge": "This wallet cannot check a path this large in one block. Remove members or groups.",
+        "emptyRequired": "This wallet cannot save a required method that is not enrolled yet. Enroll it or remove the row.",
+        "backupTooWide": "This wallet cannot save a path whose hidden details are too large for the setup's backup. Remove members or groups.",
+        "actionUnsupported": "This release cannot recover this account yet, so this wallet cannot save a setup for it."
       },
       "startingFrom": "Starting from: {{preset}}"
     },
@@ -512,6 +518,7 @@
         "minimumDefault": "This wallet needs a waiting period of 24 hours or more. The default is 48 hours.",
         "belowMinimum": "This wallet needs 24 hours or more.",
         "pastCeiling": "This wallet cannot save a waiting period this long. The longest it accepts is {{hours}} hours.",
+        "wholeHours": "This wallet counts the waiting period in whole hours.",
         "whatForHeader": "What the wait is for",
         "noticeWindow": "The waiting period is your whole notice window. Open the wallet during the wait to see the banner for a recovery you did not start.",
         "nothingElseWatches": "Until you install Kohaku on another device, nothing else watches this account.",
@@ -573,6 +580,7 @@
         "adminLine": "This party can change the key this method trusts, so it could approve for this method.",
         "oneAcceptanceAway": "{{address}} is one acceptance away from that role.",
         "recoverAlone": "At a threshold of one, this party could recover the account alone.",
+        "recoverAloneAny": "This party could recover the account alone.",
         "passportRenewal": "Renewing the passport ends this method.",
         "guardianHeading": "Guardian {{address}}",
         "guardianHeadingTested": "Guardian {{address}} · tested",
@@ -582,6 +590,7 @@
         "moduleAuthority": "Once authorized, this module can act with the account's authority at any time.",
         "auditedOnly": "This wallet offers the kit's audited recovery modules and nothing else.",
         "thirdPartyRow": "Third-party method · Unknown outside parties",
+        "thirdPartyDeclaredRow": "Third-party method · Not audited · the method's admin {{party}}",
         "thirdPartyLine": "This method publishes no declaration of who it trusts.",
         "secondModuleRow": "Second recovery module · published by {{publisher}}",
         "perAccountTrust": "The trust a module carries is per account, not per module. Authorizing a second module trusts it with the whole account.",
@@ -592,6 +601,7 @@
       },
       "stop": {
         "methodNotStopped": "{{method}} method · not stopped",
+        "methodStopped": "{{method}} method · stopped",
         "nobody": "Nobody can stop this method.",
         "party": "{{party}} can stop this method and lift the stop.",
         "bothRoles": "{{party}} holds both roles on this method: it can change the key this method trusts and it can stop this method. The same party decides both, so this stop is no answer to the risk the admin row names.",
@@ -691,7 +701,8 @@
       "whyNotOnCard": "Why isn't my setup on the card?",
       "whyNotOnCardBody": "The card carries no method, no guardian address, no threshold and no waiting period, so a photograph of the card alone names nothing to phish.",
       "warnsHeader": "What warns you",
-      "banner": "Your warning for a recovery you did not start is a banner the next time you open the wallet."
+      "banner": "Your warning for a recovery you did not start is a banner the next time you open the wallet.",
+      "wrongPassword": "That is not your extension password. Try again."
     },
     "create": {
       "controlledBy": "Controlled by {{address}}",
@@ -702,7 +713,8 @@
       "updateTheWalletTitle": "This wallet version cannot read the recovery setup.",
       "updateTheWalletBody": "This account has a recovery setup.",
       "unavailableTitle": "This wallet could not reach the recovery kit",
-      "unavailableBody": "Nothing changed. Try again."
+      "unavailableBody": "Nothing changed. Try again.",
+      "updateTheWalletAction": "Update the wallet"
     }
   }
 }
