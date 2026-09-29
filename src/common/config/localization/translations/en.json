@@ -142,10 +142,7 @@
       "togetherWithGroups": "Together with enough members of each other group to meet its threshold, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
       "togetherWithRequiredEveryMember": "Together with your required methods, every member of this group must answer.",
       "togetherWithGroupsEveryMember": "Together with enough members of each other group to meet its threshold, every member of this group must answer.",
-      "togetherWithRequiredAndGroupsEveryMember": "Together with your required methods and enough members of each other group to meet its threshold, every member of this group must answer.",
-      "header": "What this shape means",
-      "makeItAGroup": "Make it a group",
-      "addSecondMethod": "Add a second method"
+      "togetherWithRequiredAndGroupsEveryMember": "Together with your required methods and enough members of each other group to meet its threshold, every member of this group must answer."
     },
     "writes": {
       "submitting": "Submitting",
@@ -271,7 +268,11 @@
         "thisPhone": "this phone"
       },
       "unavailableNote": "Could not run · the service did not answer · Try again",
-      "undeliveredNote": "Not delivered · the result did not reach the row · Try again"
+      "undeliveredNote": "Not delivered · the result did not reach the row · Try again",
+      "backToMethod": "Back to the method",
+      "orCopyLink": "Or copy the link",
+      "passkeyTunnel": "Passkey: your phone creates the passkey. Your browser's vendor runs the tunnel that carries this between the two devices.",
+      "passportTunnel": "Passport: your phone reads the chip in your passport. zkPassport runs the flow that carries this between the two devices."
     },
     "records": {
       "expiredTitle": "This request expired",
@@ -304,7 +305,8 @@
       "passkeyOnThisDevice": "Passkey on this device",
       "passkeyOnYourPhone": "Passkey on your phone",
       "passport": "Passport",
-      "guardians": "Guardians"
+      "guardians": "Guardians",
+      "aadhaar": "Aadhaar identity"
     },
     "shape": {
       "any": "Any",
@@ -312,7 +314,8 @@
       "and": "AND",
       "require": "Require",
       "group": "Group {{n}}",
-      "guardians": "guardians"
+      "guardians": "guardians",
+      "header": "What this shape means"
     },
     "disclosures": {
       "guardianPublication": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used. If a recovery uses this guardian, their address goes on chain in the clear. Even unused, anyone who can guess it can find it. Ask them first.",
@@ -325,6 +328,12 @@
         "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
         "pair": "{{first}} and {{second}}"
+      },
+      "itemsLead": {
+        "passkey": "Your passkey",
+        "passkeys": "Your passkeys",
+        "passport": "Your passport",
+        "passportIdentifier": "The identifier your passport produces"
       }
     },
     "costLines": {
@@ -388,6 +397,8 @@
       "addMember": "Add member",
       "removeGroup": "Remove group",
       "addGroup": "Add a group",
+      "makeItAGroup": "Make it a group",
+      "addSecondMethod": "Add a second method",
       "nothingRequired": "Nothing required yet",
       "noGroup": "No group yet. A group is any N of its members.",
       "duplicate": "This method is already in your path. This wallet allows each method once.",
@@ -396,6 +407,7 @@
         "requiredAnswers": "A required method must always answer.",
         "enoughMembers": "A group needs at least as many members as its threshold.",
         "thresholdAtLeastOne": "A group's threshold must be at least one.",
+        "thresholdCeiling": "A group's threshold cannot be above 255.",
         "memberCeiling": "A group cannot hold more than 255 members.",
         "oneRowPerMethod": "One enrolled method sits in one row.",
         "atLeastOneMethod": "A path needs at least one method.",
@@ -494,8 +506,6 @@
         },
         "custom": "Custom",
         "customUnit": "hours",
-        "days": "{{count}} day",
-        "days_plural": "{{count}} days",
         "minimumDefault": "This wallet needs a waiting period of 24 hours or more. The default is 48 hours.",
         "belowMinimum": "This wallet needs 24 hours or more.",
         "pastCeiling": "This wallet cannot save a waiting period this long. The longest it accepts is {{hours}} hours.",
@@ -618,7 +628,7 @@
         "cannotRecover": {
           "title": "This release cannot recover this account yet.",
           "reasonNotSupported": "The recovery module does not support this account.",
-          "reasonKeyCount": "This account has {{count}} keys in control, and this release recovers one."
+          "reasonKeyCount": "This account has {{count}} keys in control, and this wallet recovers one key in this release."
         },
         "notTested": {
           "title": "An untested method is in your path",
@@ -636,7 +646,9 @@
         "failedTitle": "Your setup could not be saved",
         "notSent": "The transaction was rejected before it reached the chain. Nothing was saved and your recovery path is not active yet. Everything you enrolled is still here on this device."
       },
-      "showAllMembers": "Show all members"
+      "showAllMembers": "Show all members",
+      "passkeySynced": "synced",
+      "passkeyDeviceBound": "device-bound"
     },
     "arm": {
       "title": "Setup saved",
@@ -681,7 +693,7 @@
     "create": {
       "controlledBy": "Controlled by {{address}}",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
-      "oneOrdinaryKey": "This release recovers one ordinary key."
+      "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
     }
   }
 }
