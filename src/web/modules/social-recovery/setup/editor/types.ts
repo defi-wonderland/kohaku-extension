@@ -77,6 +77,8 @@ export interface MemberPickerProps {
   onPick: (credential: Credential) => void
   onEnrollNew: (kind: MethodKind) => void
   onClose: () => void
+  /** Holds every pick while the path check runs. */
+  disabled?: boolean
 }
 
 export interface CredentialRowProps {
@@ -85,6 +87,7 @@ export interface CredentialRowProps {
   enrollments: readonly Enrollment[]
   /** Opens the picker for an empty slot. */
   onPress?: () => void
+  disabled?: boolean
   testID?: string
 }
 
@@ -92,5 +95,6 @@ export interface ThresholdFieldProps {
   threshold: number
   members: number
   onChange: (threshold: number) => void
+  disabled?: boolean
   testID?: string
 }

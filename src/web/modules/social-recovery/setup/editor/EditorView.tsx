@@ -67,6 +67,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const [movingRow, setMovingRow] = useState<number | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
   const [checking, setChecking] = useState(false)
+  const checkingRef = useRef(false)
   const mounted = useRef(true)
   const loadRef = useRef<EditorLoad | null>(null)
   const writes = useRef<Promise<void>>(Promise.resolve())
@@ -98,7 +99,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const commit = useCallback(
     (next: Clause[], roles: ClauseRole[]) => {
       const current = loadRef.current
-      if (!current) return
+      if (!current || checkingRef.current) return
       const draft = withClauses(current.draft, next)
       const updated = { ...current, draft, roles }
       loadRef.current = updated
@@ -118,6 +119,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const apply = useCallback(
     (result: EditResult, rolesAt: (at: SlotPosition) => ClauseRole[]) => {
+      if (checkingRef.current) return null
       if (result.status === 'refused') {
         setRefused(true)
         return null
@@ -146,7 +148,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const onEnrollNew = (kind: MethodKind) => {
-    if (!picker) return
+    if (!picker || checkingRef.current) return
     const at =
       picker.place === 'slot'
         ? { clause: picker.clause, member: picker.member }
@@ -168,8 +170,16 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const onMove = (row: number, group: number) =>
     apply(moveToGroup(current(), row, group), () => withoutRole(currentRoles(), row))
 
+  // Every edit holds while the check runs, so the check runs on the draft
+  // the holder goes on with.
+  const endCheck = () => {
+    checkingRef.current = false
+    if (mounted.current) setChecking(false)
+  }
+
   const onContinue = async () => {
-    if (client.status !== 'ready' || !loadRef.current) return
+    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
+    checkingRef.current = true
     setChecking(true)
     setFindings([])
     try {
@@ -179,12 +189,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       if (!mounted.current) return
       if (blocksContinue(result)) {
         setFindings(result.errors)
-        setChecking(false)
+        endCheck()
         return
       }
       navigate(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
     } catch {
-      if (mounted.current) setChecking(false)
+      endCheck()
     }
   }
 
@@ -244,6 +254,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 addressBook={addressBook}
                 enrollments={load.enrollments}
                 onPress={() => openSlot(index, 0)}
+                disabled={checking}
                 testID={`editor-slot-${index}-0`}
               />
               {groups.length > 0 && (
@@ -255,6 +266,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   onPress={() =>
                     groups.length === 1 ? onMove(index, groups[0].index) : setMovingRow(index)
                   }
+                  disabled={checking}
                   hasBottomSpacing={false}
                 />
               )}
@@ -266,6 +278,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 onPress={() =>
                   commit(removeClause(current(), index), withoutRole(currentRoles(), index))
                 }
+                disabled={checking}
                 hasBottomSpacing={false}
               />
             </View>
@@ -279,6 +292,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     size="small"
                     text={t('socialRecovery.shape.group', { n: ordinal + 1 })}
                     onPress={() => onMove(index, group.index)}
+                    disabled={checking}
                     hasBottomSpacing={false}
                     style={spacings.mrTy}
                   />
@@ -293,6 +307,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           size="small"
           text={t('socialRecovery.editor.addRequired')}
           onPress={() => setPicker({ place: 'required' })}
+          disabled={checking}
           hasBottomSpacing={false}
         />
       </View>
@@ -317,6 +332,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
               testID={`editor-group-${index}-threshold`}
               threshold={clause.threshold}
               members={clause.credentials.length}
+              disabled={checking}
               onChange={(threshold) =>
                 commit(setThreshold(current(), index, threshold), currentRoles())
               }
@@ -333,6 +349,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   addressBook={addressBook}
                   enrollments={load.enrollments}
                   onPress={() => openSlot(index, member)}
+                  disabled={checking}
                   testID={`editor-slot-${index}-${member}`}
                 />
                 <Button
@@ -346,6 +363,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                       'required'
                     ])
                   }
+                  disabled={checking}
                   hasBottomSpacing={false}
                 />
                 <Button
@@ -354,6 +372,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   size="small"
                   text={t('socialRecovery.actions.remove')}
                   onPress={() => commit(removeMember(current(), index, member), currentRoles())}
+                  disabled={checking}
                   hasBottomSpacing={false}
                 />
               </View>
@@ -365,6 +384,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 size="small"
                 text={t('socialRecovery.editor.addMember')}
                 onPress={() => setPicker({ place: 'member', clause: index })}
+                disabled={checking}
                 hasBottomSpacing={false}
                 style={spacings.mrTy}
               />
@@ -376,6 +396,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 onPress={() =>
                   commit(removeClause(current(), index), withoutRole(currentRoles(), index))
                 }
+                disabled={checking}
                 hasBottomSpacing={false}
               />
             </View>
@@ -387,6 +408,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           size="small"
           text={t('socialRecovery.editor.addGroup')}
           onPress={() => commit(addGroup(current()), [...currentRoles(), 'group'])}
+          disabled={checking}
           hasBottomSpacing={false}
         />
       </View>
@@ -399,6 +421,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           onPick={onPick}
           onEnrollNew={onEnrollNew}
           onClose={closePicker}
+          disabled={checking}
         />
       )}
 
@@ -426,6 +449,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                         makeItAGroupRoles(currentRoles())
                       )
                     }
+                    disabled={checking}
                     hasBottomSpacing={false}
                   />
                 )}
@@ -436,6 +460,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     size="small"
                     text={t('socialRecovery.editor.addSecondMethod')}
                     onPress={() => setPicker({ place: 'second' })}
+                    disabled={checking}
                     hasBottomSpacing={false}
                   />
                 )}

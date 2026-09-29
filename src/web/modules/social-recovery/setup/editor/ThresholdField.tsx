@@ -13,7 +13,13 @@ import type { ThresholdFieldProps } from './types'
  * "Require N of M", with N typed by the holder. Any whole number goes through
  * to the path; the text stays as typed until it reads as one.
  */
-const ThresholdField = ({ threshold, members, onChange, testID }: ThresholdFieldProps) => {
+const ThresholdField = ({
+  threshold,
+  members,
+  onChange,
+  disabled,
+  testID
+}: ThresholdFieldProps) => {
   const { t } = useTranslation()
   const [text, setText] = useState(String(threshold))
 
@@ -37,6 +43,7 @@ const ThresholdField = ({ threshold, members, onChange, testID }: ThresholdField
         value={text}
         onChangeText={onChangeText}
         keyboardType="numeric"
+        disabled={disabled}
         containerStyle={{ ...spacings.mb0, width: 64 }}
       />
       <Text fontSize={14} style={spacings.mlTy}>

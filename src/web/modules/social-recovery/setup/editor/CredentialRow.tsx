@@ -20,6 +20,7 @@ const CredentialRow = ({
   addressBook,
   enrollments,
   onPress,
+  disabled,
   testID
 }: CredentialRowProps) => {
   const { t } = useTranslation()
@@ -48,7 +49,7 @@ const CredentialRow = ({
 
   if (empty && onPress) {
     return (
-      <Pressable testID={testID} onPress={onPress} style={flexbox.flex1}>
+      <Pressable testID={testID} onPress={onPress} disabled={disabled} style={flexbox.flex1}>
         {content}
       </Pressable>
     )

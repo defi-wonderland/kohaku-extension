@@ -22,7 +22,8 @@ const MemberPicker = ({
   addressBook,
   onPick,
   onEnrollNew,
-  onClose
+  onClose,
+  disabled
 }: MemberPickerProps) => {
   const { t } = useTranslation()
   const enrollments = kinds.flatMap((kind) => entries[kind].map((entry) => entry.enrollment))
@@ -61,6 +62,7 @@ const MemberPicker = ({
                 size="small"
                 text={t('socialRecovery.actions.add')}
                 onPress={() => onPick(enrollment.credential)}
+                disabled={disabled}
                 hasBottomSpacing={false}
               />
             </View>
@@ -75,6 +77,7 @@ const MemberPicker = ({
                 : t('socialRecovery.editor.picker.enrollNew')
             }
             onPress={() => onEnrollNew(kind)}
+            disabled={disabled}
             hasBottomSpacing={false}
           />
         </View>
