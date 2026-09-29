@@ -222,6 +222,29 @@ describe('continue with a shape this wallet refuses', () => {
     expect(validateSetup).not.toHaveBeenCalled()
   })
 
+  it('heads each clause refusal with its clause, so two groups refused alike are told apart', async () => {
+    await mount({
+      clauses: [
+        { threshold: 1, credentials: [emptySlotOf('passkey')] },
+        { threshold: 2, credentials: [] },
+        { threshold: 2, credentials: [] }
+      ]
+    })
+    await press('editor-continue')
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-testid="editor-wallet-refusal-item"]'),
+      (item) => [
+        item.querySelector('[data-testid="editor-wallet-refusal-place"]')?.textContent ?? null,
+        item.querySelector('[data-testid="editor-wallet-refusal"]')?.textContent
+      ]
+    )
+    expect(items).toEqual([
+      [en.socialRecovery.editor.requiredHeader, refusals.emptyRequired],
+      ['Group 1', refusals.emptyGroup],
+      ['Group 2', refusals.emptyGroup]
+    ])
+  })
+
   it('clears the refusal on the next edit, and then runs the path check', async () => {
     const { validateSetup, navigate } = await mount({
       clauses: [

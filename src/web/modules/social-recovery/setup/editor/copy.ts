@@ -19,7 +19,14 @@ import type {
 } from '@web/modules/social-recovery/shared/records'
 
 import { enrollmentOf, isEmptySlot } from './operations'
-import type { ClientRefusal, MethodKind, Refusal, RefusalKey, RulesPanelLine } from './types'
+import type {
+  ClauseRole,
+  ClientRefusal,
+  MethodKind,
+  Refusal,
+  RefusalKey,
+  RulesPanelLine
+} from './types'
 
 const KIND_NAME_KEYS: Record<MethodKind, string> = {
   passkey: 'socialRecovery.methodNames.passkey',
@@ -148,6 +155,23 @@ export const renderFinding = (finding: Finding, t: Translate): string => {
 
 export const renderRefusal = (refusal: Refusal, t: Translate): string =>
   t(REFUSAL_KEYS[refusal.key])
+
+/**
+ * The label of the clause a refusal points at, as the editor heads it: the
+ * required section's for a required row, "Group n" for a group, counting the
+ * groups alone. A refusal of the whole path or of its wait has none.
+ */
+export const renderRefusalPlace = (
+  refusal: Refusal,
+  roles: readonly ClauseRole[],
+  t: Translate
+): string | null => {
+  const { clause } = refusal
+  if (clause === undefined || !roles[clause]) return null
+  if (roles[clause] === 'required') return t('socialRecovery.editor.requiredHeader')
+  const n = roles.slice(0, clause).filter((role) => role === 'group').length + 1
+  return t('socialRecovery.shape.group', { n })
+}
 
 export const renderRulesPanel = (t: Translate): { header: string; lines: string[] } => ({
   header: t('socialRecovery.editor.rules.header'),

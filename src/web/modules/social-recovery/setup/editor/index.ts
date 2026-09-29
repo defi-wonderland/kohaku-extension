@@ -12,6 +12,7 @@ export {
   renderKindHeader,
   renderKindName,
   renderRefusal,
+  renderRefusalPlace,
   renderRowChip,
   renderRulesPanel
 } from './copy'

@@ -29,7 +29,13 @@ import {
   RULE_LINE_KEYS
 } from '@web/modules/social-recovery/shared/rule-lines'
 
-import { renderClientRefusal, renderFinding, renderRefusal, renderRulesPanel } from './copy'
+import {
+  renderClientRefusal,
+  renderFinding,
+  renderRefusal,
+  renderRefusalPlace,
+  renderRulesPanel
+} from './copy'
 import CredentialRow from './CredentialRow'
 import MemberPicker from './MemberPicker'
 import {
@@ -598,19 +604,32 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
       {walletRefusals.length > 0 && (
         <View style={spacings.mbMd} testID="editor-wallet-refusals">
-          {walletRefusals.map((refusal, index) => (
-            <Text
-              // Two clauses can be refused with one sentence.
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              fontSize={14}
-              appearance="errorText"
-              style={spacings.mbTy}
-              testID="editor-wallet-refusal"
-            >
-              {renderRefusal(refusal, t)}
-            </Text>
-          ))}
+          {walletRefusals.map((refusal, index) => {
+            const place = renderRefusalPlace(refusal, load.roles, t)
+            return (
+              <View
+                // Two clauses can be refused with one sentence.
+                // eslint-disable-next-line react/no-array-index-key
+                key={index}
+                style={spacings.mbTy}
+                testID="editor-wallet-refusal-item"
+              >
+                {!!place && (
+                  <Text
+                    fontSize={12}
+                    weight="semiBold"
+                    appearance="errorText"
+                    testID="editor-wallet-refusal-place"
+                  >
+                    {place}
+                  </Text>
+                )}
+                <Text fontSize={14} appearance="errorText" testID="editor-wallet-refusal">
+                  {renderRefusal(refusal, t)}
+                </Text>
+              </View>
+            )
+          })}
         </View>
       )}
 

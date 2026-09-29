@@ -21,6 +21,7 @@ import {
 import {
   renderFinding,
   renderRefusal,
+  renderRefusalPlace,
   renderRulesPanel
 } from '@web/modules/social-recovery/setup/editor/copy'
 import { emptySlotOf } from '@web/modules/social-recovery/setup/editor/operations'
@@ -405,6 +406,23 @@ describe('the refusal sentences', () => {
     expect('The chain refuses a threshold of zero.').toMatch(CREDITS_ANOTHER_PARTY)
     expect('This is refused by the contract.').toMatch(CREDITS_ANOTHER_PARTY)
     expect("That is the most the kit's field can count.").not.toMatch(CREDITS_ANOTHER_PARTY)
+  })
+})
+
+describe('the place a refusal points at', () => {
+  const roles = ['group', 'required', 'group'] as const
+
+  it("reads a group's ordinal among the groups alone and a required row as the required section", () => {
+    expect(renderRefusalPlace({ key: 'emptyGroup', clause: 0 }, roles, t)).toBe('Group 1')
+    expect(renderRefusalPlace({ key: 'emptyRequired', clause: 1 }, roles, t)).toBe(
+      en.socialRecovery.editor.requiredHeader
+    )
+    expect(renderRefusalPlace({ key: 'emptyGroup', clause: 2 }, roles, t)).toBe('Group 2')
+  })
+
+  it('reads no place for a refusal of the whole path or of its wait', () => {
+    expect(renderRefusalPlace({ key: 'noMethod' }, roles, t)).toBeNull()
+    expect(renderRefusalPlace({ key: 'waitCeiling' }, roles, t)).toBeNull()
   })
 })
 
