@@ -18,7 +18,6 @@ import useWindowSize from '@common/hooks/useWindowSize'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import common from '@common/styles/utils/common'
-import flexbox from '@common/styles/utils/flexbox'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import Sidebar from '@web/modules/settings/components/Sidebar'
 import getStyles from '@web/modules/settings/contexts/SettingsRoutesContext/styles'
@@ -61,17 +60,9 @@ const PresetsScreen = () => {
             ]}
           >
             <ScrollView contentContainerStyle={getPanelPaddings(maxWidthSize, 'large')}>
-              <View style={[flexbox.directionRow, spacings.mbSm]}>
-                <Text fontSize={12} appearance="secondaryText">
-                  {t('socialRecovery.chrome.settings')}
-                </Text>
-                <Text fontSize={12} appearance="secondaryText" style={spacings.mhTy}>
-                  ›
-                </Text>
-                <Text fontSize={12} appearance="secondaryText">
-                  {t('socialRecovery.routes.root')}
-                </Text>
-              </View>
+              <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
+                {t('socialRecovery.chrome.breadcrumb')}
+              </Text>
               {!!address && (
                 <PresetsView
                   records={records}
