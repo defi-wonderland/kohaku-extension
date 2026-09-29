@@ -28,7 +28,7 @@ import type {
   Enrollment
 } from '@web/modules/social-recovery/shared/records'
 
-import type { PasskeyCeremonyRequest } from './types'
+import type { PasskeyCeremonyRequest, PasskeyMemory } from './types'
 
 /** The slug the ceremony tab's route and the ceremony request carry for a passkey. */
 export const PASSKEY_SLUG = 'passkey'
@@ -59,28 +59,38 @@ export const enrollRequestOf = (input: {
   chainId: ChainId
   methodAddress: Address
   userName: string
+  handOff: boolean
 }): CeremonyRequestRecord => ({
   call: 'enroll',
   method: PASSKEY_SLUG,
   account: input.account,
   chainId: input.chainId,
   methodAddress: input.methodAddress,
-  params: { userName: input.userName }
+  params: { userName: input.userName, handOff: input.handOff }
 })
 
-/** The access test's ceremony request, naming the credential where the row knows its id. */
+/**
+ * The access test's ceremony request, naming the credential where the row
+ * knows its id, with the creation's facts and route for the row to read back.
+ */
 export const testRequestRecordOf = (input: {
   account: Address
   chainId: ChainId
   request: ApproverRequest
   credentialId?: string
+  facts?: PasskeyFacts
+  handOff: boolean
 }): CeremonyRequestRecord => ({
   call: 'testAccess',
   method: PASSKEY_SLUG,
   account: input.account,
   chainId: input.chainId,
   request: input.request,
-  params: input.credentialId ? { credentialId: input.credentialId } : {}
+  params: {
+    ...(input.credentialId ? { credentialId: input.credentialId } : {}),
+    ...(input.facts ? { facts: input.facts } : {}),
+    handOff: input.handOff
+  }
 })
 
 const stringOf = (params: unknown, key: string): string | undefined => {
@@ -89,23 +99,8 @@ const stringOf = (params: unknown, key: string): string | undefined => {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-/** What a stored passkey ceremony request asked for, or null for any other request. */
-export const passkeyRequestOf = (record: CeremonyRequestRecord): PasskeyCeremonyRequest | null => {
-  if (record.method !== PASSKEY_SLUG) return null
-  if (record.call === 'enroll') {
-    const userName = stringOf(record.params, 'userName')
-    return { call: 'enroll', ...(userName ? { userName: clipName(userName) } : {}) }
-  }
-  if (record.call === 'testAccess') {
-    const credentialId = stringOf(record.params, 'credentialId')
-    return {
-      call: 'testAccess',
-      request: record.request,
-      ...(credentialId ? { credentialId } : {})
-    }
-  }
-  return null
-}
+const handOffOf = (params: unknown): { handOff?: boolean } =>
+  isRecord(params) && typeof params.handOff === 'boolean' ? { handOff: params.handOff } : {}
 
 /** The ceremony's facts as a report carries them, or undefined where they are malformed. */
 export const factsOf = (value: unknown): PasskeyFacts | undefined => {
@@ -150,4 +145,43 @@ export const passkeyEnrollmentOf = (
   credential: { method, config: value.config, label: clipName(label) },
   test: 'not-tested',
   ...(value.facts ? { backup: value.facts.kind } : {})
+})
+
+/** What a stored passkey ceremony request asked for, or null for any other request. */
+export const passkeyRequestOf = (record: CeremonyRequestRecord): PasskeyCeremonyRequest | null => {
+  if (record.method !== PASSKEY_SLUG) return null
+  if (record.call === 'enroll') {
+    const userName = stringOf(record.params, 'userName')
+    return {
+      call: 'enroll',
+      ...(userName ? { userName: clipName(userName) } : {}),
+      ...handOffOf(record.params)
+    }
+  }
+  if (record.call === 'testAccess') {
+    const credentialId = stringOf(record.params, 'credentialId')
+    const facts = isRecord(record.params) ? factsOf(record.params.facts) : undefined
+    return {
+      call: 'testAccess',
+      request: record.request,
+      ...(credentialId ? { credentialId } : {}),
+      ...(facts ? { facts } : {}),
+      ...handOffOf(record.params)
+    }
+  }
+  return null
+}
+
+/**
+ * The row's memory once a stored request is read back: the route the holder
+ * chose, and for a test the credential and the creation's facts.
+ */
+export const recalledMemory = (
+  held: PasskeyMemory,
+  asked: PasskeyCeremonyRequest
+): PasskeyMemory => ({
+  ...held,
+  ...(asked.handOff !== undefined ? { handOff: asked.handOff } : {}),
+  ...(asked.call === 'testAccess' && asked.facts ? { facts: asked.facts } : {}),
+  ...(asked.call === 'testAccess' && asked.credentialId ? { credentialId: asked.credentialId } : {})
 })

@@ -1,6 +1,7 @@
 import type { Address, ApproverRequest, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyOutcome,
+  EnrollValue,
   PasskeyFacts,
   Platform,
   ReportStore,
@@ -194,17 +195,37 @@ export interface RowProps {
   onEnrollment: (enrollment: Enrollment) => void
 }
 
-/** What a returned passkey ceremony's request carried, read back when its report arrives. */
+/**
+ * What a returned passkey ceremony's request carried, read back when its
+ * report arrives: the name and the route of a creation, and for a test the
+ * credential, the creation's facts and its route, which the row forgets when
+ * it leaves the page for the ceremony tab.
+ */
 export type PasskeyCeremonyRequest =
-  | { call: 'enroll'; userName?: string }
-  | { call: 'testAccess'; request: ApproverRequest; credentialId?: string }
+  | { call: 'enroll'; userName?: string; handOff?: boolean }
+  | {
+      call: 'testAccess'
+      request: ApproverRequest
+      credentialId?: string
+      facts?: PasskeyFacts
+      handOff?: boolean
+    }
 
 /** The passkey row's facts storage does not keep. */
 export interface PasskeyMemory {
   facts?: PasskeyFacts
   credentialId?: string
+  /** Whether the holder chose the phone hand-off to create the passkey. */
+  handOff?: boolean
   /** The salt of the last passed test's challenge. */
   salt?: Hex
+}
+
+/** A passed creation whose enrollment the records have not stored yet. */
+export interface PendingPlacement {
+  value: EnrollValue
+  userName: string
+  handOff: boolean
 }
 
 /** The offline block's challenge: the request it was built from and its typed data. */

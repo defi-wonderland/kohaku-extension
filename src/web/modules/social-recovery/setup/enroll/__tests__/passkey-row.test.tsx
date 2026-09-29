@@ -198,7 +198,7 @@ describe('the passkey row', () => {
           account: ACCOUNT,
           chainId: CHAIN_ID,
           methodAddress: BOOK.methods.passkey,
-          params: { userName: 'Work laptop' }
+          params: { userName: 'Work laptop', handOff }
         })
 
         const target = lastNavigation()
@@ -221,7 +221,10 @@ describe('the passkey row', () => {
       await view!.type('passkey-name', '   ')
       await view!.press('passkey-create-here')
       const asked = await storedRequest(deps.requestIds[0])
-      expect(asked?.call === 'enroll' && asked.params).toEqual({ userName: DEFAULT_NAME })
+      expect(asked?.call === 'enroll' && asked.params).toEqual({
+        userName: DEFAULT_NAME,
+        handOff: false
+      })
     })
 
     it('renders the write failure and opens no tab where the request cannot be stored', async () => {
@@ -360,7 +363,10 @@ describe('the passkey row', () => {
 
       await view!.press('passkey-try-again')
       const retried = await storedRequest(deps.requestIds[1])
-      expect(retried?.call === 'enroll' && retried.params).toEqual({ userName: 'Work laptop' })
+      expect(retried?.call === 'enroll' && retried.params).toEqual({
+        userName: 'Work laptop',
+        handOff: false
+      })
     })
 
     it('tries a phone that never connected again over the phone', async () => {

@@ -45,13 +45,14 @@ import {
   passkeyEnrollmentOf,
   passkeyRequestOf,
   PASSKEY_SLUG,
+  recalledMemory,
   testRequestRecordOf,
   testValueOf
 } from './passkey'
 import { enrollPathOf } from './search'
 import { testRequestOf } from './testRequest'
 import { TEST_CHIPS } from './types'
-import type { PasskeyCeremonyRequest, PasskeyMemory, RowProps } from './types'
+import type { PasskeyCeremonyRequest, PasskeyMemory, PendingPlacement, RowProps } from './types'
 import { placeEnrollment, recordTest } from './writes'
 
 const PASSKEY = 'socialRecovery.enroll.passkey'
@@ -78,6 +79,8 @@ const PasskeyRow = ({
   const [testOutcome, setTestOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
   const [skipped, setSkipped] = useState(false)
   const [undelivered, setUndelivered] = useState(false)
+  const [stale, setStale] = useState<PasskeyCeremonyRequest | null>(null)
+  const [pending, setPending] = useState<PendingPlacement | null>(null)
   const [writeFailed, setWriteFailed] = useState(false)
   const [duplicate, setDuplicate] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -85,8 +88,45 @@ const PasskeyRow = ({
   const enrollmentRef = useRef(enrollment)
   enrollmentRef.current = enrollment
 
+  // A passkey the authenticator already holds is kept until the records store
+  // its enrollment, so a failed write retries without a second ceremony.
+  const place = useCallback(
+    async (placing: PendingPlacement) => {
+      const created = passkeyEnrollmentOf(placing.value, book.methods.passkey, placing.userName)
+      setBusy(true)
+      try {
+        const placed = await placeEnrollment(setup, search, book, created)
+        if (placed.status !== 'placed') {
+          setPending(null)
+          setDuplicate(placed.status === 'duplicate')
+          setWriteFailed(placed.status === 'slot-taken')
+          return
+        }
+      } catch {
+        setPending(placing)
+        setWriteFailed(true)
+        return
+      } finally {
+        setBusy(false)
+      }
+      setPending(null)
+      setWriteFailed(false)
+      setDuplicate(false)
+      setEnrollOutcome(null)
+      setTestOutcome(null)
+      setSkipped(false)
+      setMemory({
+        ...(placing.value.facts ? { facts: placing.value.facts } : {}),
+        ...(placing.value.credentialId ? { credentialId: placing.value.credentialId } : {}),
+        handOff: placing.handOff
+      })
+      onEnrollment(created)
+    },
+    [book, setup, search, onEnrollment]
+  )
+
   const applyEnroll = useCallback(
-    async (outcome: CeremonyOutcome<unknown>, userName: string) => {
+    async (outcome: CeremonyOutcome<unknown>, userName: string, handOff: boolean) => {
       setName(userName)
       if (outcome.kind !== 'verdict' || outcome.verdict !== 'passed') {
         setEnrollOutcome(outcome)
@@ -97,37 +137,15 @@ const PasskeyRow = ({
         setEnrollOutcome(failed('material-rejected'))
         return
       }
-      const created = passkeyEnrollmentOf(value, book.methods.passkey, userName)
-      try {
-        const placed = await placeEnrollment(setup, search, book, created)
-        if (placed.status !== 'placed') {
-          setDuplicate(placed.status === 'duplicate')
-          setWriteFailed(placed.status === 'slot-taken')
-          return
-        }
-      } catch {
-        setWriteFailed(true)
-        return
-      }
-      setWriteFailed(false)
-      setDuplicate(false)
-      setEnrollOutcome(null)
-      setTestOutcome(null)
-      setSkipped(false)
-      setMemory({
-        ...(value.facts ? { facts: value.facts } : {}),
-        ...(value.credentialId ? { credentialId: value.credentialId } : {})
-      })
-      onEnrollment(created)
+      await place({ value, userName, handOff })
     },
-    [book, setup, search, onEnrollment]
+    [place]
   )
 
   const applyTest = useCallback(
     async (outcome: CeremonyOutcome<unknown>, asked: PasskeyCeremonyRequest) => {
       if (asked.call !== 'testAccess') return
       const current = enrollmentRef.current
-      setMemory((held) => ({ ...held, credentialId: asked.credentialId ?? held.credentialId }))
       setTestOutcome(outcome)
       const verdict = testVerdictOf(outcome)
       if (!current || !verdict) return
@@ -156,7 +174,7 @@ const PasskeyRow = ({
   const applyReport = useCallback(
     (report: CeremonyReport, asked: PasskeyCeremonyRequest) =>
       asked.call === 'enroll'
-        ? applyEnroll(report.outcome, asked.userName ?? defaultName)
+        ? applyEnroll(report.outcome, asked.userName ?? defaultName, asked.handOff ?? false)
         : applyTest(report.outcome, asked),
     [applyEnroll, applyTest, defaultName]
   )
@@ -166,19 +184,21 @@ const PasskeyRow = ({
   // The report of the ceremony this tab returned from is taken once, then its
   // request is wiped and the search loses the id, so a reload waits for
   // nothing. A report that lands after the mount arrives through the listener.
+  // The stored request gives back what the row forgot when it left the page.
   const taking = useRef<string | null>(null)
+  const stopListening = useRef<(() => void) | undefined>()
   const ceremonyId = search.ceremony
   useEffect(() => {
     if (!ceremonyId || taking.current === ceremonyId) return undefined
     taking.current = ceremonyId
     let live = true
-    let unsubscribe: (() => void) | undefined
     const done = (report: CeremonyReport, asked: PasskeyCeremonyRequest) => {
       records
         .ceremonyRequest(ceremonyId)
         .wipe()
         .catch(() => undefined)
       setUndelivered(false)
+      setStale(null)
       applyRef.current(report, asked).catch(() => setWriteFailed(true))
       navigate(enrollPathOf(search), { replace: true })
     }
@@ -189,6 +209,8 @@ const PasskeyRow = ({
         navigate(enrollPathOf(search), { replace: true })
         return
       }
+      setMemory((held) => recalledMemory(held, asked))
+      if (asked.call === 'enroll' && asked.userName) setName(asked.userName)
       const identity: ReportIdentity = { id: ceremonyId, call: asked.call, method: PASSKEY_SLUG }
       const report = await takeCeremonyReport(identity, deps.reportStore, deps.now())
       if (report) {
@@ -196,8 +218,9 @@ const PasskeyRow = ({
         return
       }
       setUndelivered(true)
+      setStale(asked)
       if (!live) return
-      unsubscribe = listenForCeremonyReport(
+      stopListening.current = listenForCeremonyReport(
         identity,
         deps.reportSubscribe,
         deps.reportStore,
@@ -208,23 +231,28 @@ const PasskeyRow = ({
     take().catch(() => setUndelivered(true))
     return () => {
       live = false
-      unsubscribe?.()
+      stopListening.current?.()
+      stopListening.current = undefined
     }
     // The search's slot is fixed for this row; only a new ceremony id runs this again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ceremonyId])
 
   const create = useCallback(
-    async (handOff: boolean) => {
-      const userName = clipName(name.trim()) || defaultName
+    async (handOff: boolean, asName?: string) => {
+      const userName = asName ?? (clipName(name.trim()) || defaultName)
       const id = deps.newRequestId()
       setBusy(true)
       try {
-        await records
-          .ceremonyRequest(id)
-          .write(
-            enrollRequestOf({ account, chainId, methodAddress: book.methods.passkey, userName })
-          )
+        await records.ceremonyRequest(id).write(
+          enrollRequestOf({
+            account,
+            chainId,
+            methodAddress: book.methods.passkey,
+            userName,
+            handOff
+          })
+        )
       } catch {
         setWriteFailed(true)
         setBusy(false)
@@ -257,11 +285,16 @@ const PasskeyRow = ({
     const id = deps.newRequestId()
     setBusy(true)
     try {
-      await records
-        .ceremonyRequest(id)
-        .write(
-          testRequestRecordOf({ account, chainId, request, credentialId: memory.credentialId })
-        )
+      await records.ceremonyRequest(id).write(
+        testRequestRecordOf({
+          account,
+          chainId,
+          request,
+          credentialId: memory.credentialId,
+          facts: memory.facts,
+          handOff: memory.handOff ?? false
+        })
+      )
     } catch {
       setWriteFailed(true)
       setBusy(false)
@@ -278,18 +311,39 @@ const PasskeyRow = ({
     )
   }, [client, enrollment, chainId, account, book, deps, records, memory, navigate, search])
 
+  // A report that never came back: the stale request goes, the search drops
+  // its id, and the same ceremony runs again under a new one.
+  const retryUndelivered = useCallback(async () => {
+    if (!stale || !ceremonyId) return
+    stopListening.current?.()
+    stopListening.current = undefined
+    await records
+      .ceremonyRequest(ceremonyId)
+      .wipe()
+      .catch(() => undefined)
+    setUndelivered(false)
+    setStale(null)
+    navigate(enrollPathOf(search), { replace: true })
+    if (stale.call === 'enroll') await create(stale.handOff ?? false, stale.userName ?? defaultName)
+    else await runTest()
+  }, [stale, ceremonyId, records, navigate, search, create, defaultName, runTest])
+
   const enrollNote = enrollOutcome ? noteKeyOfOutcome(enrollOutcome, 'enroll') : null
   const enrollError = enrollOutcome ? browserErrorNameOf(enrollOutcome) : null
-  // A phone that never connected is the one outcome that says the holder chose the hand-off.
+  // A phone that never connected says the holder chose the hand-off where the
+  // stored request did not.
   const handOffTried =
     enrollOutcome?.kind === 'verdict' &&
     enrollOutcome.verdict === 'unavailable' &&
     enrollOutcome.cause === 'unreachable'
+  const phone = memory.handOff ?? handOffTried
   const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
   const lineKey = enrollment ? testLineKeyOf(enrollment, skipped, `${PASSKEY}.testPassed`) : null
   const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
   const testError = testOutcome ? browserErrorNameOf(testOutcome) : null
   const canTest = deps.passkeysServed && client.status === 'ready' && !busy
+  const canRetryUndelivered =
+    !!stale && !busy && (stale.call === 'enroll' ? deps.passkeysServed : canTest && !!enrollment)
 
   return (
     <View testID="enroll-passkey">
@@ -297,8 +351,23 @@ const PasskeyRow = ({
         {t('socialRecovery.enroll.passkey.title')}
       </Text>
       <Text testID="passkey-kind-name" fontSize={16} weight="medium" style={spacings.mbTy}>
-        {t(kindNameKeyOf(memory.facts ?? (handOffTried ? { place: 'phone' } : undefined)))}
+        {t(kindNameKeyOf(memory.facts ?? (phone ? { place: 'phone' } : undefined)))}
       </Text>
+      <Text fontSize={14} appearance="secondaryText" style={spacings.mbTy}>
+        {t('socialRecovery.enroll.passkey.authenticators')}
+      </Text>
+      <Button
+        testID="passkey-learn-more"
+        type="ghost"
+        text={t('socialRecovery.actions.learnMore')}
+        onPress={() => setExplainer((open) => !open)}
+        hasBottomSpacing={false}
+      />
+      {explainer && (
+        <Text testID="passkey-explainer" fontSize={14} style={spacings.mbSm}>
+          {t('socialRecovery.enroll.passkey.explainer')}
+        </Text>
+      )}
       {!deps.passkeysServed && (
         <Text
           testID="passkey-chrome-only"
@@ -312,21 +381,6 @@ const PasskeyRow = ({
 
       {!enrollment && (
         <View testID="passkey-create">
-          <Text fontSize={14} appearance="secondaryText" style={spacings.mbTy}>
-            {t('socialRecovery.enroll.passkey.authenticators')}
-          </Text>
-          <Button
-            testID="passkey-learn-more"
-            type="ghost"
-            text={t('socialRecovery.actions.learnMore')}
-            onPress={() => setExplainer((open) => !open)}
-            hasBottomSpacing={false}
-          />
-          {explainer && (
-            <Text testID="passkey-explainer" fontSize={14} style={spacings.mbSm}>
-              {t('socialRecovery.enroll.passkey.explainer')}
-            </Text>
-          )}
           <Input
             testID="passkey-name"
             label={t('socialRecovery.enroll.passkey.nameLabel')}
@@ -353,7 +407,7 @@ const PasskeyRow = ({
               type="outline"
               text={t('socialRecovery.ceremony.tryAgainAction')}
               disabled={busy}
-              onPress={() => create(handOffTried)}
+              onPress={() => create(phone)}
               hasBottomSpacing={false}
             />
           )}
@@ -520,9 +574,26 @@ const PasskeyRow = ({
       )}
 
       {undelivered && (
-        <Text testID="passkey-undelivered" fontSize={14} appearance="errorText">
-          {t('socialRecovery.ceremony.undeliveredNote')}
-        </Text>
+        <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+          <Text
+            testID="passkey-undelivered"
+            fontSize={14}
+            appearance="errorText"
+            style={spacings.mrSm}
+          >
+            {t('socialRecovery.ceremony.undeliveredNote')}
+          </Text>
+          {!!stale && (
+            <Button
+              testID="passkey-undelivered-retry"
+              type="outline"
+              text={t('socialRecovery.ceremony.tryAgainAction')}
+              disabled={!canRetryUndelivered}
+              onPress={retryUndelivered}
+              hasBottomSpacing={false}
+            />
+          )}
+        </View>
       )}
       {duplicate && (
         <Text testID="passkey-duplicate" fontSize={14} appearance="errorText">
@@ -530,9 +601,26 @@ const PasskeyRow = ({
         </Text>
       )}
       {writeFailed && (
-        <Text testID="enroll-write-failed" fontSize={14} appearance="errorText">
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+          <Text
+            testID="enroll-write-failed"
+            fontSize={14}
+            appearance="errorText"
+            style={spacings.mrSm}
+          >
+            {t('socialRecovery.records.writeFailed')}
+          </Text>
+          {!!pending && (
+            <Button
+              testID="passkey-place-retry"
+              type="outline"
+              text={t('socialRecovery.writes.tryAgain')}
+              disabled={busy}
+              onPress={() => place(pending)}
+              hasBottomSpacing={false}
+            />
+          )}
+        </View>
       )}
     </View>
   )
