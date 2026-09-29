@@ -55,6 +55,7 @@ import {
   type ExtensionProvider,
   type KeyHandle,
   type ListedAccount,
+  type MainStatusState,
   type RecoveryClientConfiguration,
   type SendPort,
   type SendPortOptions,
@@ -565,33 +566,84 @@ export const queuedWith = (
   }
 })
 
+/** The `activity` state of several sessions, each listing its operations, newest first. */
+export const activityOf = (sessions: Record<string, SubmittedOperation[]>): SendRequestUpdate => ({
+  controller: 'activity',
+  state: {
+    accountsOps: Object.fromEntries(
+      Object.entries(sessions).map(([sessionId, items]) => [sessionId, { result: { items } }])
+    )
+  }
+})
+
 /** The `activity` state of one session, listing the operations given, newest first. */
 export const activityListing = (
   sessionId: string | number,
   ...items: SubmittedOperation[]
-): SendRequestUpdate => ({
-  controller: 'activity',
-  state: { accountsOps: { [String(sessionId)]: { result: { items } } } }
+): SendRequestUpdate => activityOf({ [String(sessionId)]: items })
+
+/** How the wallet identifies an operation it submitted: its own transaction, or another party's. */
+export type OperationKind = NonNullable<SubmittedOperation['identifiedBy']>['type']
+
+export interface OperationFacts {
+  /** The operation's transaction hash, where the wallet knows it. */
+  hash?: string
+  status?: AccountOpStatus
+  kind?: OperationKind
+}
+
+/**
+ * One operation the wallet submitted, whose calls name the requests given:
+ * each with its own transaction hash (`callHash`) where the wallet sent it as
+ * a transaction of its own and knows it.
+ */
+export const operationOf = (
+  calls: { requestId: string | number; callHash?: Hex }[],
+  {
+    hash,
+    status = AccountOpStatus.BroadcastedButNotConfirmed,
+    kind = 'Transaction'
+  }: OperationFacts = {}
+): SubmittedOperation => ({
+  status,
+  identifiedBy: { type: kind },
+  ...(hash !== undefined ? { txnId: hash } : {}),
+  calls: calls.map(({ requestId, callHash }) => ({
+    fromUserRequestId: String(requestId),
+    ...(callHash !== undefined ? { txnId: callHash } : {})
+  }))
 })
 
 /**
  * One operation the wallet submitted for a request: its one call names the
  * request. `callHash` is the call's own transaction hash and `hash` the
  * operation's; either may be missing while the wallet does not know it yet.
+ * The wallet sent it as a transaction of the key's own unless `kind` says
+ * otherwise.
  */
 export const operationFor = (
   requestId: string | number,
-  {
-    hash,
-    callHash,
-    status = AccountOpStatus.BroadcastedButNotConfirmed
-  }: { hash?: string; callHash?: Hex; status?: AccountOpStatus } = {}
-): SubmittedOperation => ({
-  status,
-  ...(hash !== undefined ? { txnId: hash } : {}),
-  calls: [
-    { fromUserRequestId: String(requestId), ...(callHash !== undefined ? { txnId: callHash } : {}) }
-  ]
+  { callHash, ...facts }: OperationFacts & { callHash?: Hex } = {}
+): SubmittedOperation => operationOf([{ requestId, callHash }], facts)
+
+/** The wallet's sign-and-broadcast status, as the `main` controller state carries it. */
+export type BroadcastStatus = NonNullable<
+  NonNullable<MainStatusState['statuses']>['signAndBroadcastAccountOp']
+>
+
+/** The `main` state with the wallet's sign-and-broadcast status. */
+export const mainStatus = (status: BroadcastStatus): SendRequestUpdate => ({
+  controller: 'main',
+  state: { statuses: { signAndBroadcastAccountOp: status } }
+})
+
+/** The `requests` state with the given request ids waiting for an account switch, none queued. */
+export const waitingForSwitch = (...requestIds: (string | number)[]): SendRequestUpdate => ({
+  controller: 'requests',
+  state: {
+    userRequests: [],
+    userRequestsWaitingAccountSwitch: requestIds.map((requestId) => ({ id: requestId }))
+  }
 })
 
 /** One transaction the scripted node knows: pending while it carries no block. */
@@ -727,25 +779,53 @@ export interface ScriptedNode {
   provider: ExtensionProvider
   /** What the node holds; a test may change it between calls. */
   script: NodeScript
+  /** How many times the node was asked `method`. */
+  asked: (method: string) => number
 }
 
 /**
  * The extension's own provider for a plain JSON-RPC network, with its `send`
  * answering from a script as a node would: ethers' typed reads and its own
- * wait build each request and read each answer. Destroy the provider after
- * the test.
+ * wait build each request and read each answer. The provider polls for new
+ * blocks on its own interval, so a test on fake timers moves the node's block
+ * number and the clock together. Destroy the provider after the test.
  */
 export const scriptedNode = (script: Partial<NodeScript> = {}): ScriptedNode => {
-  const node: ScriptedNode = {
-    provider: extensionProviderFor(PLAIN_RPC_NETWORK),
+  const provider = extensionProviderFor(PLAIN_RPC_NETWORK)
+  const node = {
+    provider,
     script: { blockNumber: 0, transactions: [], forgotten: [], receipts: [], nonces: {}, ...script }
-  }
-  jest
-    .spyOn(node.provider, 'send')
+  } as ScriptedNode
+  const send = jest
+    .spyOn(provider, 'send')
     .mockImplementation(async (method: string, params: unknown[]) =>
       nodeAnswer(node.script, method, params)
     )
+  node.asked = (method) => send.mock.calls.filter(([asked]) => asked === method).length
   return node
+}
+
+/** The interval at which the extension's provider polls for a new block. */
+export const BLOCK_POLL_MS = 4000
+
+/**
+ * Jest's own `advanceTimersByTimeAsync`: it moves the fake clock and lets the
+ * promises each timer released run before the next timer fires. The
+ * repository's Jest typings predate it, so it is reached through its shape.
+ */
+export const advanceTimersAsync = (ms: number): Promise<void> =>
+  (
+    jest as unknown as { advanceTimersByTimeAsync(ms: number): Promise<void> }
+  ).advanceTimersByTimeAsync(ms)
+
+/**
+ * Moves the node on by `blocks` new blocks and the fake clock by `ms`, letting
+ * the provider's poll and every promise it released run.
+ */
+export const mineAndWait = async (node: ScriptedNode, blocks: number, ms = BLOCK_POLL_MS) => {
+  const { script } = node
+  script.blockNumber += blocks
+  await advanceTimersAsync(ms)
 }
 
 /** The member of ethers' transaction response a test watches. */

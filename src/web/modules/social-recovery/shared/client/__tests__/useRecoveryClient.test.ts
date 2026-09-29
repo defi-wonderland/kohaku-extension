@@ -71,22 +71,30 @@ interface ProviderMock {
   send: jest.Mock
   getTransaction: jest.Mock
   getBlockNumber: jest.Mock
-  waitForTransaction: jest.Mock
+  /** The replacement-aware response each transaction answers, by the start block given. */
+  replaceable: jest.Mock
   destroy: jest.Mock
 }
 
-const providerMock = (): ProviderMock => ({
-  send: jest.fn(async (method: string) => {
-    if (method === 'eth_chainId') return `0x${SEPOLIA.toString(16)}`
-    if (method === 'eth_gasPrice') return `0x${GAS_PRICE.toString(16)}`
-    throw new Error(`The provider mock does not answer ${method}.`)
-  }),
-  // A node that does not know the hash yet, so the receipt wait takes the provider's own wait.
-  getTransaction: jest.fn(async () => null),
-  getBlockNumber: jest.fn(async () => 1),
-  waitForTransaction: jest.fn(async (hash: string) => ({ hash, status: 1 })),
-  destroy: jest.fn()
-})
+/** The block number each provider built answers: one more for each provider built before it. */
+const blockOf = (index: number) => 7_000_000 + index
+
+const providerMock = (index: number): ProviderMock => {
+  const replaceable = jest.fn(() => ({
+    wait: jest.fn(async () => ({ hash: `0x${'ab'.repeat(32)}`, status: 1, provider: index }))
+  }))
+  return {
+    send: jest.fn(async (method: string) => {
+      if (method === 'eth_chainId') return `0x${SEPOLIA.toString(16)}`
+      if (method === 'eth_gasPrice') return `0x${GAS_PRICE.toString(16)}`
+      throw new Error(`The provider mock does not answer ${method}.`)
+    }),
+    getTransaction: jest.fn(async () => ({ replaceableTransaction: replaceable })),
+    getBlockNumber: jest.fn(async () => blockOf(index)),
+    replaceable,
+    destroy: jest.fn()
+  }
+}
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void
@@ -113,9 +121,9 @@ const readsOf = (state: HookState | undefined) => {
   return state.reads
 }
 
-const waitOf = (state: HookState | undefined) => {
+const receiptsOf = (state: HookState | undefined) => {
   if (state?.status !== 'ready') throw new Error(`The hook is ${state?.status}, not ready.`)
-  return state.wait
+  return state.receipts
 }
 
 const Probe = ({ account }: { account: Address }) => {
@@ -139,7 +147,7 @@ const pushNetwork = async (next: Network) => {
 beforeEach(() => {
   built = []
   buildProvider.mockImplementation(() => {
-    const provider = providerMock()
+    const provider = providerMock(built.length)
     built.push(provider)
     return provider
   })
@@ -211,12 +219,14 @@ describe('useRecoveryClient over the network record', () => {
     await pushNetwork(sepolia({ proverRpcUrl: 'https://prover.example/two' }))
     const second = built[1]
     const hash = `0x${'ab'.repeat(32)}` as const
+    const receipts = receiptsOf(latest)
 
-    await expect(waitOf(latest)(hash)).resolves.toEqual({ hash, status: 1 })
+    await expect(receipts.blockNumber()).resolves.toBe(blockOf(1))
+    await expect(receipts.wait(hash, blockOf(1))).resolves.toEqual({ hash, status: 1, provider: 1 })
     expect(second.getTransaction).toHaveBeenCalledWith(hash)
-    expect(second.waitForTransaction).toHaveBeenCalledWith(hash)
+    expect(second.replaceable).toHaveBeenCalledWith(blockOf(1))
+    expect(first.getBlockNumber).not.toHaveBeenCalled()
     expect(first.getTransaction).not.toHaveBeenCalled()
-    expect(first.waitForTransaction).not.toHaveBeenCalled()
   })
 
   it('reports loading on the render right after a key change, never the old client', async () => {
