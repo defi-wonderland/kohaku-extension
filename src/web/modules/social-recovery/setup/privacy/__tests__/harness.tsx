@@ -62,10 +62,24 @@ export interface StorageFaults {
 
 // Switches a test flips to make the storage refuse: `get` and `remove` while
 // on, `set` for the next number of writes, and every write and removal of the
-// records named in `records` while they are listed.
+// records named in `records` while they are listed. A write or removal of
+// several keys counts as one and lands whole or not at all.
 export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
   const raw = new Map<string, string>()
   const refuses = (key: string) => (faults.records ?? []).some((name) => key.includes(`:${name}:`))
+  const refuseWrite = (keys: string[]) => {
+    if (faults.set) {
+      // eslint-disable-next-line no-param-reassign
+      faults.set -= 1
+      throw new Error('storage full')
+    }
+    if (keys.some(refuses)) throw new Error('storage full')
+  }
+  const refuseRemoval = (keys: string[]) => {
+    if (faults.remove || keys.some(refuses)) throw new Error('storage unavailable')
+  }
+  const store = (key: string, value: unknown) =>
+    raw.set(key, typeof value === 'string' ? value : stringify(value))
   return {
     get: async (key, defaultValue) => {
       if (faults.get) throw new Error('storage unavailable')
@@ -75,19 +89,22 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
     getAll: async () =>
       Object.fromEntries([...raw.entries()].map(([key, stored]) => [key, parse(stored)])),
     set: async (key, value) => {
-      if (faults.set) {
-        // eslint-disable-next-line no-param-reassign
-        faults.set -= 1
-        throw new Error('storage full')
-      }
-      if (refuses(key)) throw new Error('storage full')
-      raw.set(key, typeof value === 'string' ? value : stringify(value))
+      refuseWrite([key])
+      store(key, value)
       return null
     },
     remove: async (key) => {
-      if (faults.remove || refuses(key)) throw new Error('storage unavailable')
+      refuseRemoval([key])
       raw.delete(key)
       return null
+    },
+    setEntries: async (entries) => {
+      refuseWrite(Object.keys(entries))
+      Object.entries(entries).forEach(([key, value]) => store(key, value))
+    },
+    removeKeys: async (keys) => {
+      refuseRemoval(keys)
+      keys.forEach((key) => raw.delete(key))
     }
   }
 }
