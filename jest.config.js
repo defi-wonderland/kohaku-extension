@@ -22,11 +22,10 @@ module.exports = {
     // Stub modules the mapper below points at, not tests
     path.join('<rootDir>', 'src/web/modules/social-recovery/__tests__/stubs/')
   ],
-  // tsconfig.json keeps JSX as written (react-native), so a .tsx file compiles
-  // with the automatic JSX runtime here, which lets a test mount a view
+  // One ts-jest rule for .ts and .tsx compiles JSX with the React runtime, so a test can mount a view
   transform: {
     ...baseConfig.transform,
-    '^.+\\.tsx$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }]
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }]
   },
   setupFiles: [],
   moduleNameMapper: {
