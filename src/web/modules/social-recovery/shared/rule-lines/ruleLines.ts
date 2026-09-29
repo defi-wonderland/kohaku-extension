@@ -140,8 +140,9 @@ export const getRuleLines = (path: RuleLinesInput): RuleLine[] => {
   // a line about the rest of the path would read a lockout as a rescue.
   if (clauses.some(isRefused) || holdsDuplicate(clauses)) return []
 
-  // A clause with one credential is a required row, so a group of one member
-  // reads as a row.
+  // A clause with one credential is a required row at any threshold, so a group
+  // of one member reads as a row. A screen that must keep such a group drawn as
+  // a group while the holder edits it tracks that role itself.
   const rows = clauses.filter((clause) => clause.credentials.length === 1)
   const groups = clauses.filter((clause) => clause.credentials.length > 1)
   const methodCount = clauses.reduce((sum, clause) => sum + clause.credentials.length, 0)
