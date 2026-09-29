@@ -599,6 +599,12 @@ describe('the presets view', () => {
       ])
     })
 
+    it('names an unfilled passkey slot "Passkey", its backup not yet known', async () => {
+      await storeOn({}, clausesOfShape([{ threshold: 1, slots: ['passkey', 'zkpassport'] }]), [])
+      await mount()
+      expect(allByTestId('resume-row')).toEqual(['PasskeyNot started', 'PassportNot started'])
+    })
+
     it('gives no not-started row to a kind with an enrolled credential', async () => {
       await storeOn(
         {},

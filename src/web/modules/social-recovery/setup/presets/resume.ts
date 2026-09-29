@@ -70,7 +70,7 @@ export const resumeRowsOf = (
 }
 
 const NOT_STARTED_NAME_KEYS: Record<SlotKind, string> = {
-  passkey: 'socialRecovery.methodNames.passkeyOnThisDevice',
+  passkey: 'socialRecovery.methodNames.passkey',
   zkpassport: 'socialRecovery.methodNames.passport',
   ecdsa: 'socialRecovery.methodNames.guardians',
   aadhaar: 'socialRecovery.methodNames.aadhaar'

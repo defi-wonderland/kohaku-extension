@@ -341,7 +341,7 @@ describe('the not-started rows', () => {
   it('gives each kind of empty slot one row, not started, with its name', () => {
     const rows = notStartedRowsOf(EVERY_KIND, [], BOOK, t)
     expect(rows.map(({ name, chip }) => ({ name, chip }))).toEqual([
-      { name: 'Passkey on this device', chip: 'Not started' },
+      { name: 'Passkey', chip: 'Not started' },
       { name: 'Guardians', chip: 'Not started' },
       { name: 'Passport', chip: 'Not started' },
       { name: 'Aadhaar identity', chip: 'Not started' }
@@ -359,7 +359,7 @@ describe('the not-started rows', () => {
       'Aadhaar identity',
       'Guardians',
       'Passport',
-      'Passkey on this device'
+      'Passkey'
     ])
   })
 
@@ -394,7 +394,7 @@ describe('the not-started rows', () => {
     const { setup } = setupOn()
     await startDraft(setup, 'deviceAndId')
     const rows = notStartedRowsOf((await readDraft(setup)).clauses, [], BOOK, t)
-    expect(rows.map(({ name }) => name)).toEqual(['Passkey on this device', 'Passport'])
+    expect(rows.map(({ name }) => name)).toEqual(['Passkey', 'Passport'])
   })
 })
 
