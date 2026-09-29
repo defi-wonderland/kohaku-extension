@@ -424,6 +424,23 @@ describe('the rule lines on screen', () => {
     expect(shown()).toEqual(expected(next))
     expect(shown()).not.toEqual(expected(presetPath()))
   })
+
+  it('show a line the lane repeats on a two-group path every time, with no React key warning', async () => {
+    const clauses = [...presetPath(), { threshold: 1, credentials: [CAROL, AADHAAR] }]
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      await mount({ clauses })
+      const keys = getRuleLines(clauses).map((line) => line.key)
+      expect(new Set(keys).size).toBeLessThan(keys.length)
+      expect(shown()).toEqual(expected(clauses))
+      const keyWarnings = error.mock.calls.filter((call) =>
+        call.some((part) => String(part).includes('same key'))
+      )
+      expect(keyWarnings).toEqual([])
+    } finally {
+      error.mockRestore()
+    }
+  })
 })
 
 describe('enrolling something new from the picker', () => {

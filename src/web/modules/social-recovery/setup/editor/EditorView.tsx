@@ -524,10 +524,15 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
             {t('socialRecovery.shape.header')}
           </Text>
-          {ruleLines.map((line) => {
+          {ruleLines.map((line, index) => {
             const [text] = renderRuleLines([line], t)
             return (
-              <View key={line.key} style={spacings.mbSm}>
+              <View
+                // A path of two groups can carry one line twice.
+                // eslint-disable-next-line react/no-array-index-key
+                key={`${line.key}-${index}`}
+                style={spacings.mbSm}
+              >
                 <Text fontSize={14} testID="editor-rule-line">
                   {text}
                 </Text>
