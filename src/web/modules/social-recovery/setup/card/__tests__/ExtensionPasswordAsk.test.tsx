@@ -177,6 +177,20 @@ describe('the extension password ask', () => {
     expect(unlocks()).toHaveLength(0)
   })
 
+  it('sends again when the unlock it sent ends with neither a success nor an error', async () => {
+    await render()
+    await type('hunter22')
+    await enter()
+    await keystoreSays('LOADING')
+    await keystoreSays('INITIAL')
+    expect(onConfirmed).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain(S.card.wrongPassword)
+    await enter()
+    expect(unlocks()).toHaveLength(2)
+    await keystoreSays('SUCCESS')
+    expect(onConfirmed).toHaveBeenCalledTimes(1)
+  })
+
   it('confirms when the unlock it sent succeeds', async () => {
     await render()
     await type('hunter22')

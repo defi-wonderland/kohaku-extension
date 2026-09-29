@@ -26,6 +26,8 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   const [failed, setFailed] = useState(false)
   // Only an unlock this ask sent confirms it or fails it.
   const sent = useRef(false)
+  // Whether the unlock this ask sent has left the initial state yet.
+  const started = useRef(false)
 
   // The ask opens clean, whatever an earlier unlock left behind.
   useEffect(() => {
@@ -40,6 +42,11 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
     } else if (statuses.unlockWithSecret === 'SUCCESS') {
       sent.current = false
       onConfirmed()
+    } else if (statuses.unlockWithSecret !== 'INITIAL') {
+      started.current = true
+    } else if (started.current) {
+      // The unlock ended with neither a success nor an error: a later submit may send again.
+      sent.current = false
     }
   }, [errorMessage, statuses.unlockWithSecret, onConfirmed])
 
@@ -48,6 +55,7 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   const submit = useCallback(() => {
     if (!password || busy || sent.current) return
     sent.current = true
+    started.current = false
     dispatch({
       type: 'KEYSTORE_CONTROLLER_UNLOCK_WITH_SECRET',
       params: { secretId: 'password', secret: password }
