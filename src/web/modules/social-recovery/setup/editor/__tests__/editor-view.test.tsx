@@ -824,7 +824,7 @@ describe('a failed read or write of the draft', () => {
       { threshold: 1, credentials: [PASSKEY] },
       { threshold: 2, credentials: [ALICE, BOB] }
     ]
-    expect(await stored()).toEqual({ draft: draftOf(edited), path: presetPath() })
+    expect(await stored()).toEqual({ draft: draftOf(presetPath()), path: presetPath() })
 
     await press('editor-write-retry')
     expect(byTestId('editor-write-failed')).toBeNull()

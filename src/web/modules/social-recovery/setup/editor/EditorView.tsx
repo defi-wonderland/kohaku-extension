@@ -23,6 +23,7 @@ import type {
   Finding,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
 import {
   getRuleLines,
   renderRuleLines,
@@ -42,7 +43,6 @@ import {
   addGroup,
   blocksContinue,
   editorErrorsOf,
-  EMPTY_DRAFT,
   emptySlotOf,
   enrollSearchOf,
   kindOf,
@@ -50,6 +50,7 @@ import {
   makeItAGroupRoles,
   makeRequired,
   methodCountOf,
+  methodKindOf,
   moveToGroup,
   pickerEntriesOf,
   placeAt,
@@ -100,7 +101,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     mounted.current = true
     Promise.all([records.setupDraft.read(), records.enrollments.read()])
       .then(([draft, enrollments]) => {
-        const stored = draft.status === 'present' ? draft.value : EMPTY_DRAFT
+        const stored = draft.status === 'present' ? draft.value : defaultSetupDraft()
         const next: EditorLoad = {
           draft: stored,
           enrollments: enrollments.status === 'present' ? enrollments.value : [],
@@ -125,14 +126,13 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const clauses = useMemo(() => load?.draft.clauses ?? [], [load])
 
-  // The draft goes first and the path after it, each write after the one
-  // before; a failed write holds continue until a later write lands.
+  // The draft and the path land together, each write after the one before; a
+  // failed write holds continue until a later write lands.
   const persist = useCallback(
     (draft: SetupDraft) => {
       writes.current = writes.current.then(async () => {
         try {
-          await records.setupDraft.write(draft)
-          await records.path.write(draft.clauses)
+          await records.writeDraftAndPath(draft)
           writeFailedRef.current = false
         } catch {
           writeFailedRef.current = true
@@ -263,7 +263,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     }
   }
 
-  const ruleLines = useMemo(() => getRuleLines(clauses), [clauses])
+  const ruleLines = useMemo(
+    () =>
+      getRuleLines(clauses, {
+        skipMemberlessClauses: true,
+        kindOfMethod: (method) => methodKindOf(method, addressBook)
+      }),
+    [clauses, addressBook]
+  )
   const rulesPanel = useMemo(() => renderRulesPanel(t), [t])
   const entries = useMemo(
     () => pickerEntriesOf(load?.enrollments ?? [], clauses, addressBook),

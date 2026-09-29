@@ -79,9 +79,10 @@ export const enrolled = (credential: Credential): Enrollment => ({
 
 /**
  * The extension's storage helper in memory: a non-string value is stored as
- * its rich JSON string, so a draft's `bigint` wait survives, and every `set`
- * is counted. `rejectOnce` makes the next read or write of one setup record
- * reject, the way a full or unreachable storage does.
+ * its rich JSON string, so a draft's `bigint` wait survives, and every key a
+ * `set` or a `setEntries` writes is counted. `rejectOnce` makes the next read
+ * or write of one setup record reject, the way a full or unreachable storage
+ * does; a `setEntries` that holds a rejected key writes none of its keys.
  */
 export interface StorageDouble extends RecordStorage {
   raw: Map<string, string>
@@ -121,6 +122,18 @@ export const makeStorage = (): StorageDouble => {
     remove: async (key) => {
       raw.delete(key)
       return null
+    },
+    setEntries: async (entries) => {
+      const keys = Object.keys(entries)
+      if (keys.some((key) => takeRejection('set', key))) throw new Error('storage full')
+      keys.forEach((key) => {
+        const value = entries[key]
+        sets.push(key)
+        raw.set(key, typeof value === 'string' ? value : stringify(value))
+      })
+    },
+    removeKeys: async (keys) => {
+      keys.forEach((key) => raw.delete(key))
     }
   }
 }
