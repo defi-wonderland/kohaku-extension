@@ -21,7 +21,7 @@ import {
   RULE_LINE_KEYS
 } from '@web/modules/social-recovery/shared/rule-lines'
 
-import { renderFinding } from './copy'
+import { renderClientRefusal, renderFinding } from './copy'
 import CredentialRow from './CredentialRow'
 import MemberPicker from './MemberPicker'
 import {
@@ -51,6 +51,7 @@ import ThresholdField from './ThresholdField'
 import { METHOD_KINDS } from './types'
 import type {
   ClauseRole,
+  ClientRefusal,
   EditorLoad,
   EditorViewProps,
   EditResult,
@@ -67,6 +68,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const [movingRow, setMovingRow] = useState<number | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
   const [checking, setChecking] = useState(false)
+  const [checkFailed, setCheckFailed] = useState(false)
   const checkingRef = useRef(false)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadAttempt, setLoadAttempt] = useState(0)
@@ -117,6 +119,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       setLoad(updated)
       setRefused(false)
       setFindings([])
+      setCheckFailed(false)
       setMovingRow(null)
       // The draft goes first and the path after it; a failed write holds
       // continue until a later write lands.
@@ -198,6 +201,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
     checkingRef.current = true
     setChecking(true)
+    setCheckFailed(false)
     setFindings([])
     try {
       await writes.current
@@ -215,6 +219,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }
       navigate(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
     } catch {
+      if (mounted.current) setCheckFailed(true)
       endCheck()
     }
   }
@@ -253,6 +258,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const groups = indexed.filter(({ index }) => load.roles[index] === 'group')
   const methodCount = methodCountOf(clauses)
   const heading = load.mode === 'adjust' ? 'adjust' : 'build'
+  let clientRefusal: ClientRefusal | null = null
+  if (client.status === 'update-the-wallet') clientRefusal = 'update-the-wallet'
+  else if (client.status === 'failed' || (client.status === 'ready' && checkFailed)) {
+    clientRefusal = 'unavailable'
+  }
+  const refusalLines = clientRefusal ? renderClientRefusal(clientRefusal, t) : null
 
   const pickerKinds = (target: PickerTarget): readonly MethodKind[] => {
     if (target.place === 'second') return SECOND_METHOD_KINDS
@@ -541,6 +552,17 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         </View>
       )}
 
+      {!!refusalLines && (
+        <View style={spacings.mbMd} testID="editor-client-refusal">
+          <Text fontSize={14} weight="semiBold" appearance="errorText" style={spacings.mbTy}>
+            {refusalLines.title}
+          </Text>
+          <Text fontSize={14} appearance="secondaryText">
+            {refusalLines.body}
+          </Text>
+        </View>
+      )}
+
       {methodCount === 0 && (
         <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
           {t('socialRecovery.editor.continueUnlock')}
@@ -555,7 +577,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           hasBottomSpacing={false}
         />
         {client.status === 'loading' && <ActivityIndicator testID="editor-spinner" />}
-        {client.status === 'refused' && (
+        {(client.status === 'update-the-wallet' || client.status === 'failed') && (
           <Button
             testID="editor-client-retry"
             type="outline"
@@ -567,6 +589,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         {client.status === 'ready' &&
           (checking ? (
             <ActivityIndicator testID="editor-spinner" />
+          ) : checkFailed ? (
+            <Button
+              testID="editor-check-retry"
+              type="outline"
+              text={t('socialRecovery.writes.tryAgain')}
+              onPress={onContinue}
+              hasBottomSpacing={false}
+            />
           ) : (
             <Button
               testID="editor-continue"

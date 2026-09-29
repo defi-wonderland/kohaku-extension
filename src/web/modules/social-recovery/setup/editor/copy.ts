@@ -10,7 +10,7 @@ import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
 import { enrollmentOf, isEmptySlot } from './operations'
-import type { MethodKind } from './types'
+import type { ClientRefusal, MethodKind } from './types'
 
 const KIND_NAME_KEYS: Record<MethodKind, string> = {
   passkey: 'socialRecovery.methodNames.passkey',
@@ -46,6 +46,17 @@ const FINDING_KEYS: Partial<Record<FindingCode, string>> = {
   'wait.above-maximum': 'socialRecovery.editor.refusals.waitCeiling'
 }
 
+const CLIENT_REFUSAL_KEYS: Record<ClientRefusal, { title: string; body: string }> = {
+  'update-the-wallet': {
+    title: 'socialRecovery.client.updateTheWalletTitle',
+    body: 'socialRecovery.client.updateTheWalletBody'
+  },
+  unavailable: {
+    title: 'socialRecovery.client.unavailableTitle',
+    body: 'socialRecovery.client.unavailableBody'
+  }
+}
+
 export const renderKindName = (kind: MethodKind | undefined, t: Translate): string | null =>
   kind ? t(KIND_NAME_KEYS[kind]) : null
 
@@ -65,6 +76,14 @@ export const renderRowChip = (
   const enrollment = enrollmentOf(credential, enrollments)
   return enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null
 }
+
+export const renderClientRefusal = (
+  refusal: ClientRefusal,
+  t: Translate
+): { title: string; body: string } => ({
+  title: t(CLIENT_REFUSAL_KEYS[refusal].title),
+  body: t(CLIENT_REFUSAL_KEYS[refusal].body)
+})
 
 export const renderFinding = (finding: Finding, t: Translate): string => {
   const key = FINDING_KEYS[finding.code]

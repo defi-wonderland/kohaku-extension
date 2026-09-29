@@ -136,7 +136,7 @@ const mount = async ({
     client === 'loading'
       ? ({ status: 'loading' } as const)
       : client === 'refused'
-      ? ({ status: 'refused', retry } as const)
+      ? ({ status: 'failed', retry } as const)
       : ({ status: 'ready', setup: { validateSetup } } as const)
   await act(async () => {
     root.render(

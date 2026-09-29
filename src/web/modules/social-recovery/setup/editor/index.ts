@@ -5,10 +5,17 @@
  * route and `setup/editor/EditorView` for the editor over given records.
  */
 export * from './operations'
-export { renderFinding, renderKindHeader, renderKindName, renderRowChip } from './copy'
+export {
+  renderClientRefusal,
+  renderFinding,
+  renderKindHeader,
+  renderKindName,
+  renderRowChip
+} from './copy'
 export { METHOD_KINDS } from './types'
 export type {
   ClauseRole,
+  ClientRefusal,
   EditorClient,
   EditorLoad,
   EditorViewProps,

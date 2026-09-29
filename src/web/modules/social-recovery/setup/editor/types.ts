@@ -54,11 +54,19 @@ export interface EditorLoad {
   roles: ClauseRole[]
 }
 
-/** The client as the editor reads it: loading, ready with the path check, or refused. */
+/**
+ * The client as the editor reads it: loading, ready with the path check, or
+ * refused, because this wallet version cannot read the account's setup or
+ * because the client could not be built.
+ */
 export type EditorClient =
   | { status: 'loading' }
   | { status: 'ready'; setup: Pick<ISetupClient, 'validateSetup'> }
-  | { status: 'refused'; retry: () => void }
+  | { status: 'update-the-wallet'; retry: () => void }
+  | { status: 'failed'; retry: () => void }
+
+/** Why the editor cannot run the path check: an older wallet, or a kit it could not reach. */
+export type ClientRefusal = 'update-the-wallet' | 'unavailable'
 
 export interface EditorViewProps {
   /** The account's setup records: the draft, the path and the enrollments. */

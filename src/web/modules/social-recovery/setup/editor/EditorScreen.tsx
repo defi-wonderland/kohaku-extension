@@ -51,7 +51,8 @@ const EditorScreen = () => {
   const client = useMemo<EditorClient>(() => {
     if (setup) return { status: 'ready', setup }
     if (status === 'loading') return { status: 'loading' }
-    return { status: 'refused', retry }
+    if (status === 'update-the-wallet') return { status: 'update-the-wallet', retry }
+    return { status: 'failed', retry }
   }, [setup, status, retry])
 
   return (
