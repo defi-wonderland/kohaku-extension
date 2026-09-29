@@ -61,6 +61,7 @@ const keysOf = (clauses: Clause[], wait?: bigint) =>
 
 const ALL_REFUSAL_KEYS: RefusalKey[] = [
   'emptyGroup',
+  'emptyRequired',
   'thresholdAboveMembers',
   'thresholdBelowOne',
   'thresholdBelowOneOwnRule',
@@ -115,16 +116,41 @@ describe('a group with no member', () => {
       )
     ).toEqual([{ key: 'emptyGroup', clause: 1 }])
   })
+})
 
-  it('refuses a required row whose one slot is unfilled with the empty-group sentence', () => {
+describe('a required row with an unfilled slot', () => {
+  const clauses: Clause[] = [
+    { threshold: 1, credentials: [emptySlotOf('passkey')] },
+    { threshold: 2, credentials: [ALICE, BOB, PASSPORT] }
+  ]
+
+  it('refuses it with its own sentence when the role is read from the stored shape', () => {
+    expect(refusalsOf(draftOf(clauses))).toEqual([{ key: 'emptyRequired', clause: 0 }])
+    expect(shapeRefusalsOf(draftOf(clauses))).toEqual([{ key: 'emptyRequired', clause: 0 }])
+  })
+
+  it('refuses it with its own sentence when the editor shows it as a required row', () => {
+    expect(refusalsOf(draftOf(clauses), ['required', 'group'])).toEqual([
+      { key: 'emptyRequired', clause: 0 }
+    ])
+  })
+
+  it('refuses the same one-slot clause as an empty group when the editor shows it as a group', () => {
+    expect(shapeRefusalsOf(draftOf(clauses), ['group', 'group'])).toEqual([
+      { key: 'emptyGroup', clause: 0 }
+    ])
+  })
+
+  it('refuses a memberless group as empty even beside a required role elsewhere', () => {
     expect(
-      refusalsOf(
+      shapeRefusalsOf(
         draftOf([
-          { threshold: 1, credentials: [emptySlotOf('passkey')] },
-          { threshold: 2, credentials: [ALICE, BOB, PASSPORT] }
-        ])
+          { threshold: 1, credentials: [PASSKEY] },
+          { threshold: 2, credentials: [] }
+        ]),
+        ['required', 'group']
       )
-    ).toEqual([{ key: 'emptyGroup', clause: 0 }])
+    ).toEqual([{ key: 'emptyGroup', clause: 1 }])
   })
 })
 
@@ -231,10 +257,13 @@ describe('a path with no method', () => {
     ])
   })
 
-  it('counts an unfilled slot as a method, so a path of slots is refused for its empty groups alone', () => {
+  it('counts an unfilled slot as a method, so a path of slots is refused for its unfilled places alone', () => {
     expect(keysOf([{ threshold: 1, credentials: [emptySlotOf('aadhaar')] }])).toEqual([
-      'emptyGroup'
+      'emptyRequired'
     ])
+    expect(
+      keysOf([{ threshold: 1, credentials: [emptySlotOf('ecdsa'), emptySlotOf('ecdsa')] }])
+    ).toEqual(['emptyGroup'])
   })
 })
 

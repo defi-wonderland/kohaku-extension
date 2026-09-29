@@ -197,6 +197,31 @@ describe('continue with a shape this wallet refuses', () => {
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
   })
 
+  it('refuses a required row whose slot is unfilled with the required sentence', async () => {
+    const { validateSetup } = await mount({
+      clauses: [
+        { threshold: 1, credentials: [emptySlotOf('passkey')] },
+        { threshold: 2, credentials: [ALICE, AADHAAR] }
+      ]
+    })
+    await press('editor-continue')
+    expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.emptyRequired])
+    expect(validateSetup).not.toHaveBeenCalled()
+  })
+
+  it('refuses a group left with one unfilled slot as an empty group, the role the editor shows', async () => {
+    const { validateSetup } = await mount({
+      clauses: [
+        { threshold: 1, credentials: [PASSKEY] },
+        { threshold: 1, credentials: [ALICE, emptySlotOf('ecdsa')] }
+      ]
+    })
+    await press('editor-member-1-0-remove')
+    await press('editor-continue')
+    expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.emptyGroup])
+    expect(validateSetup).not.toHaveBeenCalled()
+  })
+
   it('clears the refusal on the next edit, and then runs the path check', async () => {
     const { validateSetup, navigate } = await mount({
       clauses: [

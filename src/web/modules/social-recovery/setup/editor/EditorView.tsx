@@ -224,7 +224,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onContinue = async () => {
     if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
-    const refusals = shapeRefusalsOf(loadRef.current.draft)
+    const refusals = shapeRefusalsOf(loadRef.current.draft, loadRef.current.roles)
     setWalletRefusals(refusals)
     if (refusals.length > 0) {
       setFindings([])

@@ -19,6 +19,7 @@ export const PICKER_CEILING_HOURS = 90 * 24
 /** A shape this wallet refuses to save, named by its sentence. */
 export type RefusalKey =
   | 'emptyGroup'
+  | 'emptyRequired'
   | 'thresholdAboveMembers'
   | 'thresholdBelowOne'
   | 'thresholdBelowOneOwnRule'

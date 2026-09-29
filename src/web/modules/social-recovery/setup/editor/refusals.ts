@@ -2,13 +2,14 @@
  * The shapes this wallet refuses to save, judged on the draft as it stands
  * before the SDK's path check runs. An empty slot is not a member: it stands
  * for a method the holder has yet to enroll, so a clause counts only its
- * enrolled credentials against its threshold.
+ * enrolled credentials against its threshold, and a required row whose one
+ * slot is unfilled is refused as a method still to enroll.
  */
 import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { isEmptySlot, methodCountOf } from './operations'
+import { isEmptySlot, methodCountOf, roleOf, rolesOf } from './operations'
 import { PICKER_CEILING_HOURS } from './types'
-import type { Refusal } from './types'
+import type { ClauseRole, Refusal } from './types'
 
 /** The most a clause's threshold field counts. */
 export const THRESHOLD_FIELD_MAX = 255
@@ -28,11 +29,17 @@ export const PICKER_CEILING_SECONDS = BigInt(PICKER_CEILING_HOURS * 60 * 60)
  * and beside a second clause the refusal is this wallet's alone, since the
  * chain refuses only a rule whose every clause is zero.
  */
-const clauseRefusals = (clause: Clause, index: number, clauseCount: number): Refusal[] => {
+const clauseRefusals = (
+  clause: Clause,
+  index: number,
+  role: ClauseRole,
+  clauseCount: number
+): Refusal[] => {
   const refusals: Refusal[] = []
   const members = clause.credentials.filter((credential) => !isEmptySlot(credential)).length
-  if (members === 0) refusals.push({ key: 'emptyGroup', clause: index })
-  else if (clause.threshold > members) {
+  if (members === 0) {
+    refusals.push({ key: role === 'required' ? 'emptyRequired' : 'emptyGroup', clause: index })
+  } else if (clause.threshold > members) {
     refusals.push({ key: 'thresholdAboveMembers', clause: index })
   }
   if (clause.threshold < 1) {
@@ -62,15 +69,22 @@ const waitRefusals = (wait: bigint): Refusal[] => {
 
 /**
  * The refusals of the path's shape alone: the path's own first, then each
- * clause in order. The editor's continue applies these; the waiting period is
- * judged on its own screen. How wide a rule a block can check is the SDK's to
- * judge, so no refusal here stands for it.
+ * clause in order, each clause judged in the role the editor shows it in
+ * (read from its stored shape where no role is given). The editor's continue
+ * applies these; the waiting period is judged on its own screen. How wide a
+ * rule a block can check is the SDK's to judge, so no refusal here stands for
+ * it.
  */
-export const shapeRefusalsOf = (draft: SetupDraft): Refusal[] => {
+export const shapeRefusalsOf = (
+  draft: SetupDraft,
+  roles: readonly ClauseRole[] = rolesOf(draft.clauses)
+): Refusal[] => {
   const pathRefusals: Refusal[] = methodCountOf(draft.clauses) === 0 ? [{ key: 'noMethod' }] : []
   return [
     ...pathRefusals,
-    ...draft.clauses.flatMap((clause, index) => clauseRefusals(clause, index, draft.clauses.length))
+    ...draft.clauses.flatMap((clause, index) =>
+      clauseRefusals(clause, index, roles[index] ?? roleOf(clause), draft.clauses.length)
+    )
   ]
 }
 
@@ -78,7 +92,7 @@ export const shapeRefusalsOf = (draft: SetupDraft): Refusal[] => {
  * Every refusal of the draft: the shape's, then the waiting period's. A path
  * this wallet can save answers an empty list.
  */
-export const refusalsOf = (draft: SetupDraft): Refusal[] => [
-  ...shapeRefusalsOf(draft),
-  ...waitRefusals(draft.wait)
-]
+export const refusalsOf = (
+  draft: SetupDraft,
+  roles: readonly ClauseRole[] = rolesOf(draft.clauses)
+): Refusal[] => [...shapeRefusalsOf(draft, roles), ...waitRefusals(draft.wait)]
