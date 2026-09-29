@@ -93,8 +93,18 @@ export const pathHolds = (
     )
   )
 
+/**
+ * The role a stored clause reads as: a threshold of one over one credential is
+ * a required row, anything else a group.
+ */
 export const roleOf = (clause: Clause): ClauseRole =>
   clause.threshold === 1 && clause.credentials.length === 1 ? 'required' : 'group'
+
+export const rolesOf = (clauses: readonly Clause[]): ClauseRole[] => clauses.map(roleOf)
+
+/** The roles once one clause is removed. */
+export const withoutRole = (roles: readonly ClauseRole[], index: number): ClauseRole[] =>
+  roles.filter((_, i) => i !== index)
 
 /** How many methods the path holds, empty slots counted. */
 export const methodCountOf = (clauses: readonly Clause[]): number =>
@@ -207,16 +217,31 @@ export const makeRequired = (
 /**
  * The required rows become one group any one of whose members recovers, the
  * shape this wallet prefers at two methods. The group takes the first row's
- * place.
+ * place. The roles say which clauses are rows; without them a clause reads as
+ * its stored shape.
  */
-export const makeItAGroup = (clauses: readonly Clause[]): Clause[] => {
-  const rows = clauses.filter((clause) => roleOf(clause) === 'required')
-  if (rows.length === 0) return [...clauses]
-  const group: Clause = { threshold: 1, credentials: rows.flatMap((row) => row.credentials) }
-  const first = clauses.indexOf(rows[0])
+export const makeItAGroup = (
+  clauses: readonly Clause[],
+  roles: readonly ClauseRole[] = rolesOf(clauses)
+): Clause[] => {
+  const first = roles.indexOf('required')
+  if (first < 0) return [...clauses]
+  const group: Clause = {
+    threshold: 1,
+    credentials: clauses.flatMap((clause, i) => (roles[i] === 'required' ? clause.credentials : []))
+  }
   return clauses.flatMap((clause, i) => {
     if (i === first) return [group]
-    return roleOf(clause) === 'required' ? [] : [clause]
+    return roles[i] === 'required' ? [] : [clause]
+  })
+}
+
+/** The roles once the required rows became one group in the first row's place. */
+export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] => {
+  const first = roles.indexOf('required')
+  return roles.flatMap<ClauseRole>((role, i) => {
+    if (i === first) return ['group']
+    return role === 'required' ? [] : [role]
   })
 }
 

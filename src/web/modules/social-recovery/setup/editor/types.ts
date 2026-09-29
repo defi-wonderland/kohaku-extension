@@ -39,11 +39,15 @@ export interface PickerEntry {
   inPath: boolean
 }
 
-/** The records the editor opened with; an absent draft opens the blank editor. */
+/**
+ * The records the editor opened with, an absent draft opening the blank
+ * editor, and the role each clause holds on screen while the holder edits.
+ */
 export interface EditorLoad {
   draft: SetupDraft
   enrollments: Enrollment[]
   mode: 'adjust' | 'build'
+  roles: ClauseRole[]
 }
 
 /** The client as the editor reads it: loading, ready with the path check, or refused. */

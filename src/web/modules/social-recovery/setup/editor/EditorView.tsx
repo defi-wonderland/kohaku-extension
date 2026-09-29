@@ -32,6 +32,7 @@ import {
   enrollSearchOf,
   kindOf,
   makeItAGroup,
+  makeItAGroupRoles,
   makeRequired,
   methodCountOf,
   moveToGroup,
@@ -39,13 +40,21 @@ import {
   placeAt,
   removeClause,
   removeMember,
-  roleOf,
+  rolesOf,
   setThreshold,
-  withClauses
+  withClauses,
+  withoutRole
 } from './operations'
 import ThresholdField from './ThresholdField'
 import { METHOD_KINDS } from './types'
-import type { EditorLoad, EditorViewProps, EditResult, MethodKind, PickerTarget } from './types'
+import type {
+  ClauseRole,
+  EditorLoad,
+  EditorViewProps,
+  EditResult,
+  MethodKind,
+  PickerTarget
+} from './types'
 
 const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps) => {
   const { t } = useTranslation()
@@ -63,10 +72,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     mounted.current = true
     Promise.all([records.setupDraft.read(), records.enrollments.read()])
       .then(([draft, enrollments]) => {
+        const stored = draft.status === 'present' ? draft.value : EMPTY_DRAFT
         const next: EditorLoad = {
-          draft: draft.status === 'present' ? draft.value : EMPTY_DRAFT,
+          draft: stored,
           enrollments: enrollments.status === 'present' ? enrollments.value : [],
-          mode: draft.status === 'present' && draft.value.clauses.length > 0 ? 'adjust' : 'build'
+          mode: stored.clauses.length > 0 ? 'adjust' : 'build',
+          roles: rolesOf(stored.clauses)
         }
         loadRef.current = next
         if (mounted.current) setLoad(next)
@@ -79,12 +90,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const clauses = useMemo(() => load?.draft.clauses ?? [], [load])
 
+  // A clause keeps the role the edit that made it gave it, so a group that
+  // loses members down to one stays a group while the holder edits.
   const commit = useCallback(
-    (next: Clause[]) => {
+    (next: Clause[], roles: ClauseRole[]) => {
       const current = loadRef.current
       if (!current) return
       const draft = withClauses(current.draft, next)
-      const updated = { ...current, draft }
+      const updated = { ...current, draft, roles }
       loadRef.current = updated
       setLoad(updated)
       setRefused(false)
@@ -101,18 +114,21 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   )
 
   const apply = useCallback(
-    (result: EditResult) => {
+    (result: EditResult, roles: ClauseRole[]) => {
       if (result.status === 'refused') {
         setRefused(true)
         return null
       }
-      commit(result.clauses)
+      commit(result.clauses, roles)
       return result.at
     },
     [commit]
   )
 
   const current = () => loadRef.current?.draft.clauses ?? []
+  const currentRoles = () => loadRef.current?.roles ?? []
+  const placedRoles = (target: PickerTarget): ClauseRole[] =>
+    target.place === 'required' ? [...currentRoles(), 'required'] : currentRoles()
 
   const closePicker = () => {
     setPicker(null)
@@ -121,7 +137,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onPick = (credential: Credential) => {
     if (!picker) return
-    if (apply(placeAt(current(), picker, credential))) closePicker()
+    if (apply(placeAt(current(), picker, credential), placedRoles(picker))) closePicker()
   }
 
   const onEnrollNew = (kind: MethodKind) => {
@@ -129,7 +145,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     const at =
       picker.place === 'slot'
         ? { clause: picker.clause, member: picker.member }
-        : apply(placeAt(current(), picker, emptySlotOf(kind)))
+        : apply(placeAt(current(), picker, emptySlotOf(kind)), placedRoles(picker))
     if (!at) return
     closePicker()
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
@@ -142,7 +158,8 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       .catch(() => undefined)
   }
 
-  const onMove = (row: number, group: number) => apply(moveToGroup(current(), row, group))
+  const onMove = (row: number, group: number) =>
+    apply(moveToGroup(current(), row, group), withoutRole(currentRoles(), row))
 
   const onContinue = async () => {
     if (client.status !== 'ready' || !loadRef.current) return
@@ -173,8 +190,8 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   if (!load) return <ActivityIndicator testID="editor-spinner" />
 
   const indexed = clauses.map((clause, index) => ({ clause, index }))
-  const rows = indexed.filter(({ clause }) => roleOf(clause) === 'required')
-  const groups = indexed.filter(({ clause }) => roleOf(clause) === 'group')
+  const rows = indexed.filter(({ index }) => load.roles[index] === 'required')
+  const groups = indexed.filter(({ index }) => load.roles[index] === 'group')
   const methodCount = methodCountOf(clauses)
   const heading = load.mode === 'adjust' ? 'adjust' : 'build'
 
@@ -237,7 +254,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 type="outline"
                 size="small"
                 text={t('socialRecovery.actions.remove')}
-                onPress={() => commit(removeClause(current(), index))}
+                onPress={() =>
+                  commit(removeClause(current(), index), withoutRole(currentRoles(), index))
+                }
                 hasBottomSpacing={false}
               />
             </View>
@@ -289,7 +308,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
               testID={`editor-group-${index}-threshold`}
               threshold={clause.threshold}
               members={clause.credentials.length}
-              onChange={(threshold) => commit(setThreshold(current(), index, threshold))}
+              onChange={(threshold) =>
+                commit(setThreshold(current(), index, threshold), currentRoles())
+              }
             />
             {clause.credentials.map((credential, member) => (
               <View
@@ -310,7 +331,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   type="outline"
                   size="small"
                   text={t('socialRecovery.editor.makeRequired')}
-                  onPress={() => apply(makeRequired(current(), index, member))}
+                  onPress={() =>
+                    apply(makeRequired(current(), index, member), [...currentRoles(), 'required'])
+                  }
                   hasBottomSpacing={false}
                 />
                 <Button
@@ -318,7 +341,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                   type="outline"
                   size="small"
                   text={t('socialRecovery.actions.remove')}
-                  onPress={() => commit(removeMember(current(), index, member))}
+                  onPress={() => commit(removeMember(current(), index, member), currentRoles())}
                   hasBottomSpacing={false}
                 />
               </View>
@@ -338,7 +361,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                 type="outline"
                 size="small"
                 text={t('socialRecovery.editor.removeGroup')}
-                onPress={() => commit(removeClause(current(), index))}
+                onPress={() =>
+                  commit(removeClause(current(), index), withoutRole(currentRoles(), index))
+                }
                 hasBottomSpacing={false}
               />
             </View>
@@ -349,7 +374,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           type="outline"
           size="small"
           text={t('socialRecovery.editor.addGroup')}
-          onPress={() => commit(addGroup(current()))}
+          onPress={() => commit(addGroup(current()), [...currentRoles(), 'group'])}
           hasBottomSpacing={false}
         />
       </View>
@@ -383,7 +408,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     type="outline"
                     size="small"
                     text={t('socialRecovery.editor.makeItAGroup')}
-                    onPress={() => commit(makeItAGroup(current()))}
+                    onPress={() =>
+                      commit(
+                        makeItAGroup(current(), currentRoles()),
+                        makeItAGroupRoles(currentRoles())
+                      )
+                    }
                     hasBottomSpacing={false}
                   />
                 )}
