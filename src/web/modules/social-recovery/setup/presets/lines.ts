@@ -1,6 +1,3 @@
-import { numberToHex } from 'viem'
-
-import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   getRuleLines,
   renderRuleLines,
@@ -8,8 +5,8 @@ import {
 } from '@web/modules/social-recovery/shared/rule-lines'
 import type { RuleLineKey, Translate } from '@web/modules/social-recovery/shared/rule-lines'
 
-import { clausesOfShape } from './slots'
-import type { Preset, ShapeClause, ShapeRow, SlotKind } from './types'
+import { clausesOfShape } from './presets'
+import type { Preset, ShapeRow, SlotKind } from './types'
 
 /** A card states the shape's threshold line alone; the editor shows the rest. */
 const OFF_CARD: readonly RuleLineKey[] = [
@@ -18,26 +15,12 @@ const OFF_CARD: readonly RuleLineKey[] = [
   RULE_LINE_KEYS.sizingRule
 ]
 
-/**
- * Every empty slot carries the same method and config, which the rule lines
- * read as one method held twice and answer with no line. For the line alone,
- * each slot takes config bytes of its own, so each counts as one member.
- */
-const lineInputOf = (shape: readonly ShapeClause[]): Clause[] => {
-  let slot = 0
-  return clausesOfShape(shape).map((clause) => ({
-    ...clause,
-    credentials: clause.credentials.map((credential) => {
-      slot += 1
-      return { ...credential, config: numberToHex(slot) }
-    })
-  }))
-}
-
 /** The rule line a preset's card shows, read from its shape. */
 export const cardRuleLines = (preset: Preset, t: Translate): string[] =>
   renderRuleLines(
-    getRuleLines(lineInputOf(preset.shape)).filter(({ key }) => !OFF_CARD.includes(key)),
+    getRuleLines(clausesOfShape(preset.shape), { skipMemberlessClauses: true }).filter(
+      ({ key }) => !OFF_CARD.includes(key)
+    ),
     t
   )
 

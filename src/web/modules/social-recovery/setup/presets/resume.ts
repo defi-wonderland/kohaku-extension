@@ -3,9 +3,9 @@ import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import { DEADLINE_LOCALE, renderChip } from '@web/modules/social-recovery/shared/display'
 import type { Chip, Translate } from '@web/modules/social-recovery/shared/display'
+import { SLOT_KINDS, slotKindOf } from '@web/modules/social-recovery/shared/records'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
-import { slotKindOf } from './slots'
 import type { ResumeRow, SlotKind } from './types'
 
 const VERDICT_CHIPS: Record<EnrollmentTestVerdict, Chip<'method'>> = {
@@ -22,10 +22,8 @@ const METHOD_NAME_KEYS: Partial<Record<SlotKind, string>> = {
   aadhaar: 'socialRecovery.methodNames.aadhaar'
 }
 
-const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined => {
-  const kinds = Object.keys(book.methods) as SlotKind[]
-  return kinds.find((kind) => sameAddress(book.methods[kind], enrollment.credential.method))
-}
+const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined =>
+  SLOT_KINDS.find((kind) => sameAddress(book.methods[kind], enrollment.credential.method))
 
 const nameOf = (enrollment: Enrollment, kind: SlotKind | undefined, t: Translate): string => {
   if (kind === 'passkey' && enrollment.backup === 'device-bound') {

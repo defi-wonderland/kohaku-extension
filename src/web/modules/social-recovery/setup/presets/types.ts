@@ -1,9 +1,7 @@
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
+import type { ChainId, SlotKind, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
-/** The method kind a slot waits for: one of the address book's method slugs. */
-export type SlotKind = keyof AddressBook['methods']
+export type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
 /** One clause of a preset's shape: its threshold and the kind of each member slot. */
 export interface ShapeClause {

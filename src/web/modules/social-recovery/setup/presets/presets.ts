@@ -1,7 +1,7 @@
 import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { defaultSetupDraft, emptySlot } from '@web/modules/social-recovery/shared/records'
 
-import { clausesOfShape } from './slots'
-import type { Preset, PresetChoice, PresetId } from './types'
+import type { Preset, PresetChoice, PresetId, ShapeClause } from './types'
 
 const CARDS = 'socialRecovery.presets.cards'
 
@@ -38,14 +38,9 @@ export const PRESETS: readonly Preset[] = [
   }
 ]
 
-/**
- * The draft's other members until the later setup steps overwrite them: the
- * default waiting period of 48 hours in seconds, the pause opt-out the first
- * release commits, and the private default.
- */
-export const PRESET_WAIT: SetupDraft['wait'] = BigInt(48 * 60 * 60)
-export const PRESET_IGNORES_PAUSE: SetupDraft['ignoresPause'] = true
-export const PRESET_PRIVACY: SetupDraft['privacy'] = { backup: 'encrypted', publicMetadata: '0x' }
+/** The clauses of a shape, every member slot empty. */
+export const clausesOfShape = (shape: readonly ShapeClause[]): Clause[] =>
+  shape.map(({ threshold, slots }) => ({ threshold, credentials: slots.map(emptySlot) }))
 
 export const presetOf = (id: PresetId): Preset => {
   const preset = PRESETS.find((candidate) => candidate.id === id)
@@ -54,12 +49,7 @@ export const presetOf = (id: PresetId): Preset => {
 }
 
 /** The draft a choice starts: a preset's whole shape with every slot empty, or no clause at all. */
-export const draftOf = (choice: PresetChoice): SetupDraft => {
-  const clauses: Clause[] = choice === 'fromScratch' ? [] : clausesOfShape(presetOf(choice).shape)
-  return {
-    wait: PRESET_WAIT,
-    clauses,
-    ignoresPause: PRESET_IGNORES_PAUSE,
-    privacy: { ...PRESET_PRIVACY }
-  }
-}
+export const draftOf = (choice: PresetChoice): SetupDraft => ({
+  ...defaultSetupDraft(),
+  clauses: choice === 'fromScratch' ? [] : clausesOfShape(presetOf(choice).shape)
+})
