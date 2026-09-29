@@ -1,0 +1,87 @@
+import type {
+  Clause,
+  Credential,
+  ISetupClient,
+  SetupDraft
+} from '@web/modules/social-recovery/sdk-interfaces'
+import type { AddressBook } from '@web/modules/social-recovery/shared/client'
+import type { Enrollment, SetupRecords } from '@web/modules/social-recovery/shared/records'
+
+import type { METHOD_KINDS } from './operations'
+
+/** A method kind, a key of the address book's `methods`. */
+export type MethodKind = typeof METHOD_KINDS[number]
+
+/** Where one credential sits in the path: its clause and its place among the clause's members. */
+export interface SlotPosition {
+  clause: number
+  member: number
+}
+
+/** The outcome of an operation that places a credential in the path. */
+export type EditResult =
+  | { status: 'applied'; clauses: Clause[]; at: SlotPosition }
+  | { status: 'refused'; reason: 'duplicate' }
+
+/** What a clause is on screen: a required row, or a group with its threshold. */
+export type ClauseRole = 'required' | 'group'
+
+/** Where the member picker places what the holder picks. */
+export type PickerTarget =
+  | { place: 'required' }
+  | { place: 'member'; clause: number }
+  | ({ place: 'slot'; kind?: MethodKind } & SlotPosition)
+
+/** One enrolled credential the picker lists, with whether the path already holds it. */
+export interface PickerEntry {
+  enrollment: Enrollment
+  inPath: boolean
+}
+
+/** The records the editor opened with; an absent draft opens the blank editor. */
+export interface EditorLoad {
+  draft: SetupDraft
+  enrollments: Enrollment[]
+  mode: 'adjust' | 'build'
+}
+
+/** The client as the editor reads it: loading, ready with the path check, or refused. */
+export type EditorClient =
+  | { status: 'loading' }
+  | { status: 'ready'; setup: Pick<ISetupClient, 'validateSetup'> }
+  | { status: 'refused'; retry: () => void }
+
+export interface EditorViewProps {
+  /** The account's setup records: the draft, the path and the enrollments. */
+  records: SetupRecords
+  client: EditorClient
+  addressBook: AddressBook
+  /** Opens a route, with its search string where it carries one. */
+  navigate: (to: string) => void
+}
+
+export interface MemberPickerProps {
+  entries: Record<MethodKind, PickerEntry[]>
+  /** The kinds the picker offers: every kind, or an empty slot's own. */
+  kinds: readonly MethodKind[]
+  addressBook: AddressBook
+  onPick: (credential: Credential) => void
+  onEnrollNew: (kind: MethodKind) => void
+  onClose: () => void
+}
+
+export interface CredentialRowProps {
+  credential: Credential
+  addressBook: AddressBook
+  enrollments: readonly Enrollment[]
+  /** Opens the picker for an empty slot. */
+  onPress?: () => void
+  testID?: string
+}
+
+export interface ThresholdFieldProps {
+  threshold: number
+  members: number
+  onChange: (threshold: number) => void
+  testID?: string
+}
