@@ -3,6 +3,9 @@ import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { RPCProvider } from '@ambire-common/interfaces/provider'
 import type { TypedMessage } from '@ambire-common/interfaces/userRequest'
+import type { WindowProps } from '@ambire-common/interfaces/window'
+import type { SubmittedAccountOp } from '@ambire-common/libs/accountOp/submittedAccountOp'
+import type { Call } from '@ambire-common/libs/accountOp/types'
 import type { Action } from '@web/extension-services/background/actions'
 import type {
   FitCheckReading,
@@ -27,6 +30,7 @@ import type {
 import type { PUBLISHERS, UNKNOWN_ACTION } from './audited-actions'
 import type { RECOVERY_CHAINS } from './chains'
 import type { PROVIDER_READS } from './provider-adapter'
+import type { MISSING_SEND_ACTION, SEND_REFUSAL_REASONS } from './sender'
 import type { RECOVERY_CALLS } from './sending'
 import type { MISSING_BACKGROUND_ACTION, SIGN_FLOW_FAILURE_REASONS, SIGNER_MEMBERS } from './signer'
 
@@ -141,8 +145,30 @@ export interface ChainReads {
   gasPrice(): Promise<bigint>
 }
 
-/** The extension's provider as this folder holds it: the reads it makes and its teardown. */
-export type ExtensionProvider = AdapterProvider & ChainReadsProvider & Pick<RPCProvider, 'destroy'>
+/** The members of the extension's provider the receipt wait uses. */
+export type ReceiptProvider = Pick<
+  RPCProvider,
+  'getTransaction' | 'waitForTransaction' | 'getBlockNumber'
+>
+
+/** A transaction receipt as the extension's provider answers it. */
+export type ProviderTransactionReceipt = NonNullable<
+  Awaited<ReturnType<ReceiptProvider['waitForTransaction']>>
+>
+
+/**
+ * Waits for the receipt of a transaction the wallet broadcast. It answers
+ * ethers' receipt, and rejects with ethers' own `CALL_EXCEPTION` for a receipt
+ * with status zero and `TRANSACTION_REPLACED` for a transaction another one
+ * took the place of, both as ethers threw them.
+ */
+export type ReceiptWait = (transactionHash: Hex) => Promise<ProviderTransactionReceipt>
+
+/** The extension's provider as this folder holds it: the reads it makes, the receipt wait and its teardown. */
+export type ExtensionProvider = AdapterProvider &
+  ChainReadsProvider &
+  ReceiptProvider &
+  Pick<RPCProvider, 'destroy'>
 
 // ---------------------------------------------------------------------------
 // The client
@@ -195,7 +221,7 @@ export interface DigestVersionRefusal extends Error {
 
 export type RecoveryClientState =
   | { status: 'loading' }
-  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads }
+  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; wait: ReceiptWait }
   | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
   | { status: 'failed'; error: unknown }
 
@@ -300,6 +326,108 @@ export interface SignerFacadeOptions {
   /** The chain the request signs on, the recovery chain's id. */
   chainId: number | bigint
   timeoutMs?: number
+}
+
+// ---------------------------------------------------------------------------
+// The send port
+// ---------------------------------------------------------------------------
+
+/**
+ * The four background actions the send port dispatches: add its request and
+ * withdraw it, and open and close the activity session it reads the broadcast
+ * operation from.
+ */
+export type SendRequestAction = Extract<
+  Action,
+  {
+    type:
+      | 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
+      | 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
+      | 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS'
+      | 'MAIN_CONTROLLER_ACTIVITY_RESET_ACC_OPS_FILTERS'
+  }
+>
+
+/** The part of the action window's state the send port reads: whether the window is open. */
+export interface ActionWindowState {
+  actionWindow?: { windowProps?: Pick<NonNullable<WindowProps>, 'id'> | null }
+}
+
+/** The part of the `requests` controller state the send port reads: its request and the action window. */
+export interface SendQueueState extends RequestsState {
+  actions?: ActionWindowState
+}
+
+/** One operation the activity lists, with the members the send port reads. */
+export type SubmittedOperation = Pick<SubmittedAccountOp, 'txnId' | 'status'> & {
+  calls?: Pick<Call, 'fromUserRequestId' | 'txnId'>[]
+}
+
+/** The part of the `activity` controller state the send port reads: the operations of each session. */
+export interface ActivityState {
+  accountsOps?: {
+    [sessionId: string]: { result?: { items?: SubmittedOperation[] } } | undefined
+  }
+}
+
+/** One controller state the background pushed, by controller. */
+export type SendRequestUpdate =
+  | { controller: 'requests'; state: SendQueueState }
+  | { controller: 'activity'; state: ActivityState }
+
+/**
+ * How the send port reaches the background: the dispatch of
+ * `useBackgroundService`, the `requests` and `activity` controller states the
+ * background pushes, the accounts the wallet lists and the window the request
+ * opens beside. `sendRequestPort` (sender-port.ts) wires the UI's own.
+ */
+export interface SendRequestPort {
+  dispatch(action: SendRequestAction): void
+  /** Calls the listener with each pushed `requests` and `activity` state; returns the unsubscribe. */
+  subscribe(listener: (update: SendRequestUpdate) => void): () => void
+  accounts(): readonly ListedAccount[]
+  windowId(): number | undefined
+}
+
+/**
+ * Sends one transaction from a key the wallet holds: the transaction the gas
+ * check estimated, from that key. It answers the transaction hash once the
+ * wallet broadcast it, and rejects with a `SendRefusal` where the wallet sent
+ * nothing under the request.
+ */
+export interface SendPort {
+  send(key: KeyHandle, transaction: GasEstimateCall): Promise<Hex>
+}
+
+export interface SendPortOptions {
+  /** The chain the transaction is sent on, the recovery chain's id. */
+  chainId: number | bigint
+  timeoutMs?: number
+}
+
+export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
+
+/**
+ * The send port returned no transaction hash, and the wallet sent nothing
+ * under its request.
+ *
+ * `not-wired` is a key the request queue cannot send from: any key that is
+ * not itself a basic account the wallet lists. Sending from such a key needs
+ * the background action `MISSING_SEND_ACTION`, which does not exist yet. Its
+ * shape: params `{ requestId, keyAddr, keyType, chainId, transaction }`, where
+ * `transaction` is `{ to, data, value }`. The handler takes
+ * `KeystoreController.getSigner(keyAddr, keyType)`, builds the raw transaction
+ * with that key's nonce and the network's fee, signs it with
+ * `signRawTransaction`, broadcasts it through the network's provider and adds
+ * it to the activity under the request id, as the request queue does for an
+ * account's own transaction. It too goes through the action window for the
+ * holder's confirmation.
+ */
+export interface SendRefusal extends Error {
+  name: 'SendRefusal'
+  reason: SendRefusalReason
+  key: KeyHandle
+  missingAction?: typeof MISSING_SEND_ACTION
 }
 
 // ---------------------------------------------------------------------------

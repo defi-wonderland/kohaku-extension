@@ -1,7 +1,8 @@
 /**
  * The hook that hands a screen the recovery kit client for one account, built
  * over the extension's own provider for the one chain this build reads, with
- * the balance and gas reads on the same provider beside it.
+ * the balance and gas reads and the receipt wait on the same provider beside
+ * it.
  *
  * A refused digest version comes back as the `update-the-wallet` state the
  * account step draws; any other failure as `failed`, with `retry`, never as an
@@ -18,6 +19,7 @@ import { createChainReads } from './chain-reads'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
 import { extensionProviderFor, networkOf, providerKeyOf } from './extension-provider'
 import { createProviderAdapter } from './provider-adapter'
+import { createReceiptWait } from './receipts'
 import type { AccountFacts, ExtensionProvider, RecoveryClientState } from './types'
 
 export type { RecoveryClientState }
@@ -89,7 +91,14 @@ export const useRecoveryClient = (
       provider: createProviderAdapter(provider)
     })
       .then((client) => {
-        if (live) setState({ status: 'ready', client, reads: createChainReads(provider) })
+        if (live) {
+          setState({
+            status: 'ready',
+            client,
+            reads: createChainReads(provider),
+            wait: createReceiptWait(provider)
+          })
+        }
       })
       .catch((error: unknown) => {
         if (!live) return

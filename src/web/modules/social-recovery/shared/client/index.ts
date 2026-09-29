@@ -58,6 +58,16 @@ export {
 } from './signer'
 export { accountFor } from './signer-account'
 export { signRequestPort } from './signer-port'
+export {
+  MISSING_SEND_ACTION,
+  SEND_REFUSAL_REASONS,
+  DEFAULT_SEND_TIMEOUT_MS,
+  createSendPort,
+  sendRequestOf,
+  sendRefusal
+} from './sender'
+export { sendRequestPort } from './sender-port'
+export { createReceiptWait } from './receipts'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
 export type {
   RecoveryChain,
@@ -97,6 +107,20 @@ export type {
   SignerNotWired,
   SignFlowFailure,
   SignFlowFailureReason,
+  ReceiptProvider,
+  ProviderTransactionReceipt,
+  ReceiptWait,
+  SendRequestAction,
+  ActionWindowState,
+  SendQueueState,
+  SubmittedOperation,
+  ActivityState,
+  SendRequestUpdate,
+  SendRequestPort,
+  SendPort,
+  SendPortOptions,
+  SendRefusal,
+  SendRefusalReason,
   RecoveryCall,
   SendingKeys
 } from './types'
