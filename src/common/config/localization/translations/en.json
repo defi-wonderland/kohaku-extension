@@ -268,7 +268,11 @@
         "thisPhone": "this phone"
       },
       "unavailableNote": "Could not run · the service did not answer · Try again",
-      "undeliveredNote": "Not delivered · the result did not reach the row · Try again"
+      "undeliveredNote": "Not delivered · the result did not reach the row · Try again",
+      "backToMethod": "Back to the method",
+      "orCopyLink": "Or copy the link",
+      "passkeyTunnel": "Passkey: your phone creates the passkey. Your browser's vendor runs the tunnel that carries this between the two devices.",
+      "passportTunnel": "Passport: your phone reads the chip in your passport. zkPassport runs the flow that carries this between the two devices."
     },
     "records": {
       "expiredTitle": "This request expired",
