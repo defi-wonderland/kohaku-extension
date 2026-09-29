@@ -325,6 +325,12 @@
         "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
         "pair": "{{first}} and {{second}}"
+      },
+      "itemsLead": {
+        "passkey": "Your passkey",
+        "passkeys": "Your passkeys",
+        "passport": "Your passport",
+        "passportIdentifier": "The identifier your passport produces"
       }
     },
     "costLines": {
