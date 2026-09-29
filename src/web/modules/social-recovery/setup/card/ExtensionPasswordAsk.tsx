@@ -1,7 +1,7 @@
 /**
  * Asks the extension password before a new download of the card. The keystore
- * checks it with the same unlock the wallet runs; a wrong password shows the
- * keystore's own error and the card stays where it is.
+ * checks it with the same unlock the wallet runs; a wrong password says so and
+ * the card stays where it is.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
@@ -23,36 +23,51 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   const { dispatch } = useBackgroundService()
   const { statuses, errorMessage } = useKeystoreControllerState()
   const [password, setPassword] = useState('')
-  // Only an unlock this ask sent confirms it.
+  const [failed, setFailed] = useState(false)
+  // Only an unlock this ask sent confirms it or fails it.
   const sent = useRef(false)
+
+  // The ask opens clean, whatever an earlier unlock left behind.
+  useEffect(() => {
+    dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+  }, [dispatch])
 
   useEffect(() => {
     if (!sent.current) return
-    if (errorMessage) sent.current = false
-    else if (statuses.unlockWithSecret === 'SUCCESS') {
+    if (errorMessage) {
+      sent.current = false
+      setFailed(true)
+    } else if (statuses.unlockWithSecret === 'SUCCESS') {
       sent.current = false
       onConfirmed()
     }
   }, [errorMessage, statuses.unlockWithSecret, onConfirmed])
 
+  const busy = statuses.unlockWithSecret !== 'INITIAL'
+
   const submit = useCallback(() => {
-    if (!password) return
+    if (!password || busy || sent.current) return
     sent.current = true
     dispatch({
       type: 'KEYSTORE_CONTROLLER_UNLOCK_WITH_SECRET',
       params: { secretId: 'password', secret: password }
     })
-  }, [dispatch, password])
+  }, [dispatch, password, busy])
 
   const change = useCallback(
     (value: string) => {
       setPassword(value)
+      setFailed(false)
       if (errorMessage) dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
     },
     [dispatch, errorMessage]
   )
 
-  const busy = statuses.unlockWithSecret !== 'INITIAL'
+  const cancel = useCallback(() => {
+    sent.current = false
+    dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+    onCancel()
+  }, [dispatch, onCancel])
 
   return (
     <View>
@@ -65,14 +80,14 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
         value={password}
         onChangeText={change}
         onSubmitEditing={submit}
-        error={errorMessage || undefined}
+        error={failed ? t('socialRecovery.card.wrongPassword') : undefined}
       />
       <View style={flexbox.directionRow}>
         <Button
           testID="card-password-cancel"
           type="secondary"
           text={t('socialRecovery.ceremony.backAction')}
-          onPress={onCancel}
+          onPress={cancel}
           style={spacings.mrSm}
         />
         <Button
