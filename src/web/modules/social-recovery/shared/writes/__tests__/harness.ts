@@ -14,7 +14,8 @@
  *   revert), `rpcReads` runs the client's own `createChainReads` over a double
  *   of the provider members it calls (`ChainReadsProvider`).
  * - A send drive runs against a fake send port and a fake receipt wait,
- *   `jest.fn` members answering what a test gives them, into the real
+ *   `jest.fn` members answering what a test gives them, or the client's own
+ *   receipt wait over a node that never learns the hash, into the real
  *   machine (`drivenMachine`), so the machine and the classification decide
  *   each reading.
  * - Nothing else is mocked. The strings come from the real en.json through
@@ -33,12 +34,14 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   createChainReads,
+  createReceiptWait,
   providerReadFailure,
   type ChainReads,
   type ChainReadsProvider,
   type GasEstimateCall,
   type KeyHandle,
   type ProviderTransactionReceipt,
+  type ReceiptProvider,
   type ReceiptWait,
   type SendPort
 } from '@web/modules/social-recovery/shared/client'
@@ -516,10 +519,52 @@ export const fakeSendPort = (answer: FakeAnswer<Hex>): SendPort & { send: jest.M
   send: jest.fn(() => answered(answer))
 })
 
-/** A receipt wait that answers as given, recording each hash it was asked for. */
+/** The block the fake receipt wait reads as the chain's latest, unless a test gives another. */
+export const START_BLOCK = 7_000_000
+
+/** How often the provider behind `receiptWaitNeverKnowing` sees a new block. */
+export const BLOCK_EVERY_MS = 12_000
+
+/**
+ * The client's own receipt wait over a provider whose node never learns any
+ * transaction, while a new block comes every `BLOCK_EVERY_MS`: the wait asks
+ * again at each block until it gives up. Run it on fake timers.
+ */
+export const receiptWaitNeverKnowing = (): ReceiptWait => {
+  const provider = {
+    getBlockNumber: async () => START_BLOCK,
+    getTransaction: async () => null,
+    once(event: string, listener: (blockNumber: number) => void) {
+      setTimeout(() => listener(START_BLOCK), BLOCK_EVERY_MS)
+      return Promise.resolve(provider)
+    }
+  }
+  return createReceiptWait(provider as unknown as ReceiptProvider)
+}
+
+/**
+ * Jest's own `advanceTimersByTimeAsync`: it moves the fake clock and lets the
+ * promises each timer released run before the next timer fires. The
+ * repository's Jest typings predate it, so it is reached through its shape.
+ */
+export const advanceTimersAsync = (ms: number): Promise<void> =>
+  (
+    jest as unknown as { advanceTimersByTimeAsync(ms: number): Promise<void> }
+  ).advanceTimersByTimeAsync(ms)
+
+export type FakeReceiptWait = ReceiptWait & { blockNumber: jest.Mock; wait: jest.Mock }
+
+/**
+ * A receipt wait whose `wait` answers as given and whose `blockNumber` reads
+ * `START_BLOCK`, or answers as given; each records what it was asked.
+ */
 export const fakeReceiptWait = (
-  answer: FakeAnswer<ProviderTransactionReceipt>
-): ReceiptWait & jest.Mock => jest.fn(() => answered(answer)) as ReceiptWait & jest.Mock
+  answer: FakeAnswer<ProviderTransactionReceipt>,
+  block: FakeAnswer<number> = { value: START_BLOCK }
+): FakeReceiptWait => ({
+  blockNumber: jest.fn(() => answered(block)),
+  wait: jest.fn(() => answered(answer))
+})
 
 /** Every string reachable from a value, depth first. */
 export const collectStrings = (
