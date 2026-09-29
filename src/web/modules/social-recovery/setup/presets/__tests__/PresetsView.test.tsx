@@ -98,6 +98,20 @@ const makeStorage = (
       if (faults.remove) throw new Error('storage unavailable')
       raw.delete(key)
       return null
+    },
+    setEntries: async (entries) => {
+      if (faults.set) {
+        // eslint-disable-next-line no-param-reassign
+        faults.set -= 1
+        throw new Error('storage full')
+      }
+      Object.entries(entries).forEach(([key, value]) =>
+        raw.set(key, typeof value === 'string' ? value : stringify(value))
+      )
+    },
+    removeKeys: async (keys) => {
+      if (faults.remove) throw new Error('storage unavailable')
+      keys.forEach((key) => raw.delete(key))
     }
   }
 }

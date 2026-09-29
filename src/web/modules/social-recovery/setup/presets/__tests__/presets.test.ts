@@ -62,6 +62,14 @@ const makeStorage = (): RecordStorage => {
     remove: async (key) => {
       raw.delete(key)
       return null
+    },
+    setEntries: async (entries) => {
+      Object.entries(entries).forEach(([key, value]) =>
+        raw.set(key, typeof value === 'string' ? value : stringify(value))
+      )
+    },
+    removeKeys: async (keys) => {
+      keys.forEach((key) => raw.delete(key))
     }
   }
 }
