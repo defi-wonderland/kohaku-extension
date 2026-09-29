@@ -1,9 +1,8 @@
-import { zeroAddress } from 'viem'
-
 import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
+import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
 import type { ExposureLines, MethodKind, OfferedLevel } from './types'
 
@@ -12,15 +11,12 @@ const ITEMS = 'socialRecovery.disclosures.items'
 const ITEMS_LEAD = 'socialRecovery.disclosures.itemsLead'
 
 /**
- * The kind a row of the path holds. An enrolled credential names its method by
- * address; an empty slot has the zero method and names the kind it waits for
- * in its label. The label comes back from storage.
+ * The kind a row of the path holds: the kind an empty slot waits for, or the
+ * kind whose method address an enrolled credential names.
  */
-export const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | undefined => {
+const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | undefined => {
+  if (isEmptySlot(credential)) return slotKindOf(credential)
   const kinds = Object.keys(book.methods) as MethodKind[]
-  if (sameAddress(credential.method, zeroAddress) && credential.config === '0x') {
-    return kinds.find((kind) => kind === credential.label)
-  }
   return kinds.find((kind) => sameAddress(credential.method, book.methods[kind]))
 }
 
