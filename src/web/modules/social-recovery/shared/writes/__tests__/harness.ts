@@ -13,6 +13,10 @@
  *   `ProviderReadFailure`, or a `RevertedCall` for an estimate that would
  *   revert), `rpcReads` runs the client's own `createChainReads` over a double
  *   of the provider members it calls (`ChainReadsProvider`).
+ * - A send drive runs against a fake send port and a fake receipt wait,
+ *   `jest.fn` members answering what a test gives them, into the real
+ *   machine (`drivenMachine`), so the machine and the classification decide
+ *   each reading.
  * - Nothing else is mocked. The strings come from the real en.json through
  *   the app's own i18next instance (the renderers' default `t`).
  */
@@ -33,7 +37,10 @@ import {
   type ChainReads,
   type ChainReadsProvider,
   type GasEstimateCall,
-  type KeyHandle
+  type KeyHandle,
+  type ProviderTransactionReceipt,
+  type ReceiptWait,
+  type SendPort
 } from '@web/modules/social-recovery/shared/client'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import * as writes from '@web/modules/social-recovery/shared/writes'
@@ -51,6 +58,7 @@ import {
   WalletAccountRef,
   WriteKind,
   writeFailureOf,
+  WriteEvent,
   WriteMachineState,
   writeReducer,
   WriteState
@@ -449,6 +457,69 @@ export const gasReadErrorFor = (write: WriteKind): WriteMachineState => {
     error: providerReadFailure('nativeBalance', new Error('node down'))
   })
 }
+
+/** A promise a test settles by hand. */
+export interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
+export const deferred = <T>(): Deferred<T> => {
+  const settle = {} as Deferred<T>
+  settle.promise = new Promise<T>((resolve, reject) => {
+    settle.resolve = resolve
+    settle.reject = reject
+  })
+  return settle
+}
+
+/** The real machine behind a dispatch: every event it took, and the state it holds now. */
+export interface DrivenMachine {
+  dispatch: (event: WriteEvent) => void
+  events: WriteEvent[]
+  state: () => WriteMachineState
+}
+
+export const drivenMachine = (from: WriteMachineState): DrivenMachine => {
+  let state = from
+  const events: WriteEvent[] = []
+  return {
+    dispatch: (event) => {
+      events.push(event)
+      state = writeReducer(state, event)
+    },
+    events,
+    state: () => state
+  }
+}
+
+/** A receipt as ethers' provider answers it, with the members the writes read. */
+export const providerReceipt = (
+  hash: Hex,
+  status: 0 | 1 | null,
+  gas: { gasUsed?: bigint; gasPrice?: bigint } = {}
+): ProviderTransactionReceipt =>
+  ({ hash, status, blockNumber: 7_000_001, ...gas } as unknown as ProviderTransactionReceipt)
+
+/** What a fake answers: a value, a thrown error, or a promise a test settles. */
+export type FakeAnswer<T> = { value: T } | { error: unknown } | { pending: Promise<T> }
+
+const answered = async <T>(answer: FakeAnswer<T>): Promise<T> => {
+  if ('pending' in answer) return answer.pending
+  if ('error' in answer) throw answer.error
+  return answer.value
+}
+
+/** A send port whose `send` answers as given, recording each call. */
+export const fakeSendPort = (answer: FakeAnswer<Hex>): SendPort & { send: jest.Mock } => ({
+  send: jest.fn(() => answered(answer))
+})
+
+/** A receipt wait that answers as given, recording each hash it was asked for. */
+export const fakeReceiptWait = (
+  answer: FakeAnswer<ProviderTransactionReceipt>
+): ReceiptWait & jest.Mock => jest.fn(() => answered(answer)) as ReceiptWait & jest.Mock
 
 /** Every string reachable from a value, depth first. */
 export const collectStrings = (
