@@ -12,7 +12,7 @@ export const EXPO_SDK = 'N/A'
 export const isiOS = false
 export const isAndroid = false
 export const isWeb = true
-export const isRelayerless = false
+export const isRelayerless = !process.env.RELAYER_URL
 
 export default {
   APP_ENV: 'development',
