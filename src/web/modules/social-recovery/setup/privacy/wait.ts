@@ -10,13 +10,12 @@ export const secondsOfHours = (hours: number): SetupDraft['wait'] =>
 
 /**
  * Reads the custom entry, which counts whole hours. An entry with anything but
- * digits is refused with the floor until it is whole hours, so a decimal or a
- * unit never turns into another length. The ceiling is checked before the
- * floor.
+ * digits is refused as not whole hours until it is, so a decimal or a unit
+ * never turns into another length. The ceiling is checked before the floor.
  */
 export const readCustomWait = (text: string, ceilingHours: number): CustomWait => {
   if (text === '') return { status: 'empty' }
-  if (!/^[0-9]+$/.test(text)) return { status: 'belowMinimum' }
+  if (!/^[0-9]+$/.test(text)) return { status: 'notWholeHours' }
   const hours = Number(text)
   if (hours > ceilingHours) return { status: 'pastCeiling' }
   if (hours < WAIT_FLOOR_HOURS) return { status: 'belowMinimum' }

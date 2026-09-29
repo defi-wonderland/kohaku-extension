@@ -153,22 +153,22 @@ describe('the waiting period step', () => {
       expect(await storedRecord(records)).toBe(100n * 3600n)
     })
 
-    it('keeps an entry typed with a unit as typed and refuses it with the floor', async () => {
+    it('keeps an entry typed with a unit as typed and refuses it as not whole hours', async () => {
       await h.mount(recordsOn())
       await h.press('wait-chip-custom')
       await h.type('wait-custom-hours', '48h')
       expect(h.inputOf('wait-custom-hours')?.value).toBe('48h')
-      expect(h.byTestId('wait-refusal')?.textContent).toBe(W.belowMinimum)
+      expect(h.byTestId('wait-refusal')?.textContent).toBe(W.wholeHours)
       expect(h.isDisabled('continue')).toBe(true)
     })
 
-    it('refuses 48.5 with the floor, keeps it as typed and stores nothing until it is whole hours', async () => {
+    it('refuses 48.5 as not whole hours, keeps it as typed and stores nothing until it is whole hours', async () => {
       const records = recordsOn()
       await h.mount(records)
       await h.press('wait-chip-custom')
       await h.type('wait-custom-hours', '48.5')
       expect(h.inputOf('wait-custom-hours')?.value).toBe('48.5')
-      expect(h.byTestId('wait-refusal')?.textContent).toBe(W.belowMinimum)
+      expect(h.byTestId('wait-refusal')?.textContent).toBe(W.wholeHours)
       expect(h.isDisabled('continue')).toBe(true)
       await h.press('continue')
       expect(await storedRecord(records)).toBeUndefined()
@@ -268,7 +268,7 @@ describe('the waiting period step', () => {
         '721',
         'This wallet cannot save a waiting period this long. The longest it accepts is 720 hours.'
       ],
-      ['not a whole number of hours', 48n * 3600n + 1800n, '48.5', W.belowMinimum]
+      ['not a whole number of hours', 48n * 3600n + 1800n, '48.5', W.wholeHours]
     ]
 
     REFUSED_STORED.forEach(([name, seconds, text, refusal]) =>

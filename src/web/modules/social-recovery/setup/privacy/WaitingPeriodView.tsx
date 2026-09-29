@@ -155,6 +155,11 @@ const WaitingPeriodView = ({
           <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>
         </View>
       )}
+      {custom?.status === 'notWholeHours' && (
+        <Text testID="wait-refusal" fontSize={14} appearance="errorText" style={spacings.mbTy}>
+          {t(`${WAIT}.wholeHours`)}
+        </Text>
+      )}
       {custom?.status === 'belowMinimum' && (
         <Text testID="wait-refusal" fontSize={14} appearance="errorText" style={spacings.mbTy}>
           {t(`${WAIT}.belowMinimum`)}

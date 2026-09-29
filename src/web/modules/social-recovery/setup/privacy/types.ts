@@ -29,6 +29,7 @@ export type WaitChoice = { kind: 'chip'; id: WaitChipId } | { kind: 'custom'; te
 /** The custom entry read: empty, refused with its reason, or a length in hours. */
 export type CustomWait =
   | { status: 'empty' }
+  | { status: 'notWholeHours' }
   | { status: 'belowMinimum' }
   | { status: 'pastCeiling' }
   | { status: 'accepted'; hours: number }
