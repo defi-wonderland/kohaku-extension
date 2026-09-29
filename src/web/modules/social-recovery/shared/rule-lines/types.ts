@@ -1,4 +1,5 @@
-import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SlotKind } from '@web/modules/social-recovery/shared/records/types'
 
 import type { RULE_LINE_KEYS } from './ruleLines'
 
@@ -31,4 +32,11 @@ export interface RuleLinesOptions {
    * threshold of one or more is refused and silences the path.
    */
   skipMemberlessClauses?: boolean
+  /**
+   * The kind of method a method module address serves, or `undefined` for a
+   * module it does not know. With it, an enrolled method of a known kind and an
+   * empty slot of that kind share one failure domain. Without it, an enrolled
+   * method's family is its module address alone.
+   */
+  kindOfMethod?: (method: Address) => SlotKind | undefined
 }

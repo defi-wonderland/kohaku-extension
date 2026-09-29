@@ -1,4 +1,5 @@
 import i18next from 'i18next'
+import { isAddressEqual } from 'viem'
 
 import en from '@common/config/localization/translations/en.json'
 import type {
@@ -8,7 +9,9 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { emptySlot } from '@web/modules/social-recovery/shared/records'
+import { addressBookOf } from '@web/modules/social-recovery/shared/client/addresses'
+import { emptySlot, SLOT_KINDS } from '@web/modules/social-recovery/shared/records'
+import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
 import { getRuleLines, renderRuleLines } from '..'
 import type { RuleLinesOptions, Translate } from '..'
@@ -559,6 +562,8 @@ const linesOf = (clauses: Clause[], options?: RuleLinesOptions) =>
   getRuleLines(draft(clauses), options)
 const SKIP_MEMBERLESS: RuleLinesOptions = { skipMemberlessClauses: true }
 const keysOf = (clauses: Clause[]) => linesOf(clauses).map((l) => shortKey(l.key))
+const keysOfWith = (clauses: Clause[], options: RuleLinesOptions) =>
+  linesOf(clauses, options).map((l) => shortKey(l.key))
 const renderedAll = () => EVERY_SHAPE.flatMap((clauses) => renderRuleLines(linesOf(clauses), t))
 
 describe('getRuleLines: the lines each path shape earns', () => {
@@ -710,6 +715,55 @@ describe('getRuleLines: a clause with no member', () => {
         expect(linesOf([...clauses, noMember(0)])).toEqual(linesOf(clauses))
       })
     })
+  })
+})
+
+describe('getRuleLines: an enrolled method and a slot of one kind', () => {
+  // The kind each shipped method module serves, read from the address book.
+  const book = addressBookOf('sepolia')
+  const kindOfMethod: RuleLinesOptions['kindOfMethod'] = (method) =>
+    SLOT_KINDS.find((kind) => isAddressEqual(book.methods[kind], method))
+  const WITH_KINDS: RuleLinesOptions = { kindOfMethod }
+  const enrolled = (kind: SlotKind): Credential => cred(book.methods[kind])
+
+  it('an enrolled passkey and a passkey slot at 1 of 2: either one alone, and one failure domain', () => {
+    const clauses = [slotGroup(1, [enrolled('passkey'), PASSKEY_SLOT()])]
+    expect(linesOf(clauses, WITH_KINDS).map((l) => shortKey(l.key))).toEqual([
+      'eitherOneAlone',
+      'oneFailureDomain',
+      'differentPlaces'
+    ])
+  })
+
+  it('an enrolled passport and a passkey slot at 1 of 2: two failure domains', () => {
+    const clauses = [slotGroup(1, [enrolled('zkpassport'), PASSKEY_SLOT()])]
+    expect(linesOf(clauses, WITH_KINDS).map((l) => shortKey(l.key))).toEqual([
+      'eitherOneAlone',
+      'differentPlaces'
+    ])
+  })
+
+  it('an enrolled guardian among guardian slots of a 2-of-3 group: one failure domain', () => {
+    const clauses = [slotGroup(2, [GUARDIAN_SLOT(), enrolled('ecdsa'), GUARDIAN_SLOT()])]
+    expect(linesOf(clauses, WITH_KINDS).map((l) => shortKey(l.key))).toContain('oneFailureDomain')
+  })
+
+  it('an enrolled method of a module the resolver does not know keys on its module address', () => {
+    expect(keysOfWith([group(1, [HARDWARE_KEY_LOWER, HARDWARE_KEY_MIXED])], WITH_KINDS)).toContain(
+      'oneFailureDomain'
+    )
+    expect(keysOfWith([slotGroup(1, [cred(PASSKEY), PASSKEY_SLOT()])], WITH_KINDS)).not.toContain(
+      'oneFailureDomain'
+    )
+  })
+
+  it('without a resolver, an enrolled passkey and a passkey slot are two failure domains', () => {
+    const clauses = [slotGroup(1, [enrolled('passkey'), PASSKEY_SLOT()])]
+    expect(keysOf(clauses)).toEqual(['eitherOneAlone', 'differentPlaces'])
+  })
+
+  it('a resolver changes no line of a path with no slot whose modules it does not know', () => {
+    SHAPES.forEach(({ clauses }) => expect(linesOf(clauses, WITH_KINDS)).toEqual(linesOf(clauses)))
   })
 })
 
