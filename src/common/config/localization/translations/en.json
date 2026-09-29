@@ -618,7 +618,7 @@
         "cannotRecover": {
           "title": "This release cannot recover this account yet.",
           "reasonNotSupported": "The recovery module does not support this account.",
-          "reasonKeyCount": "This account has {{count}} keys in control, and this release recovers one."
+          "reasonKeyCount": "This account has {{count}} keys in control, and this wallet recovers one key in this release."
         },
         "notTested": {
           "title": "An untested method is in your path",
