@@ -17,7 +17,8 @@ const VERDICT_CHIPS: Record<EnrollmentTestVerdict, Chip<'method'>> = {
 
 const METHOD_NAME_KEYS: Partial<Record<SlotKind, string>> = {
   passkey: 'socialRecovery.methodNames.passkey',
-  zkpassport: 'socialRecovery.methodNames.passport'
+  zkpassport: 'socialRecovery.methodNames.passport',
+  aadhaar: 'socialRecovery.methodNames.aadhaar'
 }
 
 const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined => {

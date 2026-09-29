@@ -48,7 +48,8 @@ const REQUIRED_ROW_KEYS: Partial<Record<SlotKind, string>> = {
 
 const MEMBER_NAME_KEYS: Partial<Record<SlotKind, string>> = {
   passkey: 'socialRecovery.methodNames.passkey',
-  zkpassport: 'socialRecovery.methodNames.passport'
+  zkpassport: 'socialRecovery.methodNames.passport',
+  aadhaar: 'socialRecovery.methodNames.aadhaar'
 }
 
 const nameOf = (keys: Partial<Record<SlotKind, string>>, kind: SlotKind, t: Translate): string =>
