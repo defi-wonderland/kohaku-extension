@@ -12,7 +12,9 @@ import type {
   ChainReads,
   GasEstimateCall,
   KeyHandle,
-  ProviderReadFailure
+  ProviderReadFailure,
+  ReceiptWait,
+  SendPort
 } from '@web/modules/social-recovery/shared/client'
 
 import type { ATTEMPT_ENDS, ATTEMPT_STILL_RUNNING, REPLACED_REASONS } from './classify'
@@ -273,6 +275,22 @@ export type WriteEvent =
   | { type: 'reset' }
 
 export type WriteAnswer = Extract<WriteEvent, { type: typeof WRITE_ANSWER_TYPES[number] }>
+
+/** What `driveSend` takes: the machine's dispatch and run, the two client parts and what the key sends. */
+export interface SendDrive {
+  /** The machine's dispatch. */
+  dispatch: (event: WriteEvent) => void
+  /** The run of the submitting state the send answers. */
+  run: number
+  /** The send port the client hands out (`createSendPort`). */
+  port: SendPort
+  /** The receipt wait over the extension's provider (`createReceiptWait`). */
+  wait: ReceiptWait
+  /** The key that sends the transaction and pays its gas. */
+  key: KeyHandle
+  /** The transaction the gas check estimated, from that key (`gasTransactionOf`). */
+  transaction: GasEstimateCall
+}
 
 // ---------------------------------------------------------------------------
 // The gas check and its deposit step
