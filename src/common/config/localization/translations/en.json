@@ -331,7 +331,8 @@
         "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
         "pair": "{{first}} and {{second}}",
-        "aadhaar": "your Aadhaar identity"
+        "aadhaar": "your Aadhaar identity",
+        "triple": "{{first}}, {{second}} and {{third}}"
       },
       "itemsLead": {
         "passkey": "Your passkey",
