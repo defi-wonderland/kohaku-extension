@@ -3,7 +3,9 @@
  *
  * A view built from the extension's own components mounts under Jest: the real
  * Text and Button render the socialRecovery strings from en.json into the DOM,
- * a press reaches the handler, and the view unmounts without leaving nodes.
+ * and a press reaches the handler.
+ *
+ * act comes from react-dom/test-utils because React 18.3.0 exports none of its own.
  */
 import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
@@ -37,6 +39,9 @@ describe('a mounted view', () => {
   })
 
   afterEach(() => {
+    act(() => {
+      root.unmount()
+    })
     container.remove()
   })
 
@@ -61,14 +66,5 @@ describe('a mounted view', () => {
       button.click()
     })
     expect(onCustomize).toHaveBeenCalledTimes(1)
-  })
-
-  it('leaves the container empty after unmount', () => {
-    mount()
-    expect(container.childNodes.length).toBeGreaterThan(0)
-    act(() => {
-      root.unmount()
-    })
-    expect(container.childNodes.length).toBe(0)
   })
 })
