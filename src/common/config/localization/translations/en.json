@@ -396,6 +396,7 @@
         "requiredAnswers": "A required method must always answer.",
         "enoughMembers": "A group needs at least as many members as its threshold.",
         "thresholdAtLeastOne": "A group's threshold must be at least one.",
+        "thresholdCeiling": "A group's threshold cannot be above 255.",
         "memberCeiling": "A group cannot hold more than 255 members.",
         "oneRowPerMethod": "One enrolled method sits in one row.",
         "atLeastOneMethod": "A path needs at least one method.",
