@@ -1,6 +1,6 @@
 # Social recovery board
 
-Observed 2026-09-25 after the owner's and Astra's review of the stack. Not committed unless the owner says so.
+Observed 2026-09-25 after the owner's and Astra's review of the stack; kept up to date by the coordinator through the milestone and committed by PR (#13 for M-6, the M-7 setup PR for the follow-ups and M-7). The newest section is last.
 
 Integration branch: `dev/wonderland` at `603d819d7` on `defi-wonderland/kohaku-extension`. Fork `main` equals upstream `main` at `72922ab25`. Nothing merged yet; every PR was marked ready for review on 2026-09-25 by the owner's instruction, with review fixes pending.
 
@@ -116,3 +116,26 @@ Next owner action: mark ethereum/kohaku-extension#250 and defi-wonderland/kohaku
 - Squash history (owner, 2026-09-28): the owner wants one commit per task on `dev/wonderland`. The coordinator rebuilt the branch as eight squash commits from the same trees (4ef6e1a11 #4, 406a5c232 #7, aa2c4b196 #8, 5c6ba5daa #6, c8e51a6bb #5, 1b8ada28c #9, ac56fc01a #10, fb002e9be #11; final tree c0907b236, equal to the merge-commit history's). The owner force-pushed it on 2026-09-28 (the coordinator's session refuses force-pushes); `dev/wonderland` is at fb002e9be, nine commits ahead of ethereum main; the merge-commit history stays local as `backup/dev-wonderland-merge-train`. From now on every PR merges with `gh pr merge --squash`.
 - The board rides PR #13 and stays on `dev/wonderland` until the milestone goes upstream, then it is removed (owner, 2026-09-28).
 - The working rules and the coordinator command after M-6: draft PR https://github.com/defi-wonderland/kohaku-extension/pull/14 (branch chore/working-rules-after-m6). CLAUDE.md gains the squash rule, the upstream branch, the guard rules and the viem and ethers ruling; the command gains the merge train, the gate, the agent model per round, the board's PR and the persona rule.
+
+## Follow-ups after M-6 (2026-09-29)
+
+The two items M-6 left were built as tasks of their own, each with a fresh implementer, a tester and a reviewer with a verification pass, and squash-merged on the owner's word.
+
+| PR | Task | Merge | What it adds |
+| --- | --- | --- | --- |
+| #15 | the ceremony tab resolves a recorded request through the client | 6b1ed663a | a ceremony request record keyed by id in `shared/records`, a client member that hands out a recovery method by slug and a resolver factory in `shared/client`, and a screen that mounts its own source when none sits above it |
+| #16 | a send path for the writes through the request queue | 2f91323db | a send port through the request queue into the action window, a receipt wait released through an abort signal before the provider is destroyed, and the writes' machine sending through it |
+
+Decisions still open from #16, for the owner: the user-operation path (a listed account that reads zero native balance goes through the bundler, which the port refuses as not a transaction and reads as not sent while the operation may land); the controlling key at index plus one hundred thousand, refused as not wired until a background action signs with a key that is not a listed basic account; the sign screen re-estimating the fee against the deposit. Until the owner rules, the arming save (PT-051) builds what the ux chapter says and records the assumption.
+
+`dev/wonderland` is at 2f91323db: M-6, the rules (#14), the board (#13) and both follow-ups. ethereum/kohaku-extension#250 stays a draft until the owner marks it ready.
+
+## M-7 (started 2026-09-29)
+
+The setup flow's screens, PT-042 to PT-051, on the M-6 foundations. Order from the task headers and their deltas: the M-7 setup PR first (strings, routes, the settings entry, a Jest transform for `.tsx`, this board, the coordinator command); then PT-043 and PT-044 (free); then PT-048 and PT-045; then PT-049, PT-050 and PT-046; PT-042 and PT-051 last, after the proof-of-concept note. The proof of concept D-316 schedules runs in a parallel session on a throwaway branch; its note is data for PT-042 and PT-051, and the owner rules in the coordinator's chat.
+
+Rules for the milestone (owner, 2026-09-29): where the SDK owner has not answered (default deployment descriptors, the privacy level count, the `ClientConfiguration` names, the verdict slugs, the error shapes, the cut-q-22 owner) a lane builds a typed placeholder or a stand-in name, two privacy levels, and the PR description records each as an open question; where an owner ruling is open (empty preset slots in the input type, the 2-of-2 sizing line, the #10 kind lines, the #11 headroom and lines, the user-operation path and the controlling key for the send) a lane builds what the ux chapter says and records the assumption; the owner is asked only where the chapter does not decide.
+
+| Ready | Running | Awaiting review | Blocked | Merged |
+| --- | --- | --- | --- | --- |
+| PT-043 The presets and the blank start, PT-044 The path editor's operations: once the setup PR's gate is green they pin its revision | M-7 setup (`chore/social-recovery-m7-setup`) | | PT-048, PT-045 wait for the setup PR; PT-049, PT-050, PT-046 wait for their dependencies; PT-042, PT-051 wait for the proof-of-concept note (the owner says when it exists) and PT-051 for PT-050 | |
