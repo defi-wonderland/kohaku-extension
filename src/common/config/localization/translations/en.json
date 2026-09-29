@@ -283,7 +283,9 @@
       "setupChangedBody": "Every approval you collected was given under the old setup.",
       "wipedNote": "Nothing was submitted and nothing left the account. Every approval was wiped from this device. Only this reason is kept.",
       "draftAge": "Your setup is unfinished. Draft from {{date}}. Nothing is saved on chain until you confirm.",
-      "startOverNote": "Start over discards the draft. Your created passkey is not deleted."
+      "startOverNote": "Start over discards the draft. Your created passkey is not deleted.",
+      "writeFailed": "This device could not save your draft. Nothing changed. Try again.",
+      "loadFailed": "This device could not read your draft."
     },
     "actions": {
       "continue": "Continue",
@@ -298,7 +300,8 @@
       "saveAnyway": "Save anyway"
     },
     "chrome": {
-      "settings": "Settings"
+      "settings": "Settings",
+      "breadcrumb": "Settings › Account recovery"
     },
     "methodNames": {
       "passkey": "Passkey",
@@ -694,6 +697,12 @@
       "controlledBy": "Controlled by {{address}}",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
       "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
+    },
+    "client": {
+      "updateTheWalletTitle": "This wallet version cannot read the recovery setup.",
+      "updateTheWalletBody": "This account has a recovery setup.",
+      "unavailableTitle": "This wallet could not reach the recovery kit",
+      "unavailableBody": "Nothing changed. Try again."
     }
   }
 }
