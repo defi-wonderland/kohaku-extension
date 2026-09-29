@@ -114,9 +114,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const current = () => loadRef.current?.draft.clauses ?? []
 
+  const closePicker = () => {
+    setPicker(null)
+    setRefused(false)
+  }
+
   const onPick = (credential: Credential) => {
     if (!picker) return
-    if (apply(placeAt(current(), picker, credential))) setPicker(null)
+    if (apply(placeAt(current(), picker, credential))) closePicker()
   }
 
   const onEnrollNew = (kind: MethodKind) => {
@@ -126,7 +131,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         ? { clause: picker.clause, member: picker.member }
         : apply(placeAt(current(), picker, emptySlotOf(kind)))
     if (!at) return
-    setPicker(null)
+    closePicker()
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
     writes.current
       .then(() => {
@@ -356,7 +361,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           addressBook={addressBook}
           onPick={onPick}
           onEnrollNew={onEnrollNew}
-          onClose={() => setPicker(null)}
+          onClose={closePicker}
         />
       )}
 
