@@ -57,6 +57,14 @@ const REMOVED_KEY_UNNAMED: AccountReads['removedKey'] = {
   status: 'answered',
   value: { kind: 'unavailable', cause: 'no-key-entry' }
 }
+const SEVERAL_KEYS: AccountReads['removedKey'] = {
+  status: 'answered',
+  value: { kind: 'unavailable', cause: 'several-key-entries' }
+}
+const NO_CREATION_RECORD: AccountReads['removedKey'] = {
+  status: 'answered',
+  value: { kind: 'unavailable', cause: 'no-creation-record' }
+}
 const DOES_NOT_FIT: AccountReads['fitCheck'] = {
   status: 'answered',
   value: { basis: 'deployed-code', fits: false }
@@ -215,6 +223,97 @@ describe('the save gate', () => {
     })
   })
 
+  describe("the wallet's reading of several keys", () => {
+    it('reads cannot recover with the count the description gives', () => {
+      expect(gateOf({ removedKey: SEVERAL_KEYS, description: KEY_COUNT })).toMatchObject({
+        canSave: false,
+        blocked: { kind: 'cannot-recover', reason: 'key-count', count: 2 }
+      })
+    })
+
+    it('reads cannot recover with no count where the description threw', () => {
+      const gate = gateOf({ removedKey: SEVERAL_KEYS, description: { status: 'failed' } })
+
+      expect(gate.canSave).toBe(false)
+      expect(gate.blocked).toEqual({ kind: 'cannot-recover', reason: 'key-count' })
+    })
+
+    it('reads cannot recover with no count where the description counts a single authority', () => {
+      expect(gateOf({ removedKey: SEVERAL_KEYS }).blocked).toEqual({
+        kind: 'cannot-recover',
+        reason: 'key-count'
+      })
+    })
+
+    it('never reads the removed key unreadable', () => {
+      expect(gateOf({ removedKey: SEVERAL_KEYS }).blocked).not.toEqual({
+        kind: 'removed-key-unreadable'
+      })
+    })
+
+    it('shows the unsupported account before the key count', () => {
+      expect(
+        gateOf({ removedKey: SEVERAL_KEYS, fitCheck: DOES_NOT_FIT, description: KEY_COUNT }).blocked
+      ).toEqual({ kind: 'cannot-recover', reason: 'not-supported' })
+    })
+
+    it('shows the key count before already set up', () => {
+      expect(gateOf({ removedKey: SEVERAL_KEYS, setupState: HAS_SETUP }).blocked).toEqual({
+        kind: 'cannot-recover',
+        reason: 'key-count'
+      })
+    })
+
+    it('shows unavailable before the key count', () => {
+      expect(
+        gateOf({ removedKey: SEVERAL_KEYS, setupState: { status: 'failed' } }).blocked
+      ).toEqual({ kind: 'unavailable' })
+    })
+  })
+
+  it('reads the removed key unreadable where the account has no creation record', () => {
+    expect(gateOf({ removedKey: NO_CREATION_RECORD, description: KEY_COUNT })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'removed-key-unreadable' }
+    })
+  })
+
+  describe('while a read it depends on is still running', () => {
+    it('shows no block while the removed key is pending, even where the setup read found a setup', () => {
+      expect(gateOf({ removedKey: { status: 'pending' }, setupState: HAS_SETUP })).toEqual({
+        canSave: false,
+        blocked: null,
+        notTested: false
+      })
+    })
+
+    it('shows no block while the description is pending, even where the fit check refuses', () => {
+      expect(
+        gateOf({ description: { status: 'pending' }, fitCheck: DOES_NOT_FIT }).blocked
+      ).toBeNull()
+    })
+
+    it('shows no block while a trust read is pending, even where an account read threw', () => {
+      expect(
+        gateOf({ trustRows: PENDING_ROWS, setupState: { status: 'failed' } }).blocked
+      ).toBeNull()
+    })
+
+    it('shows no block while the fit check is pending, even where the removed key has no name', () => {
+      expect(
+        gateOf({ fitCheck: { status: 'pending' }, removedKey: REMOVED_KEY_UNNAMED }).blocked
+      ).toBeNull()
+    })
+
+    it('still warns of an untested method', () => {
+      expect(gateOf({ removedKey: { status: 'pending' }, untested: true })).toEqual({
+        canSave: false,
+        blocked: null,
+        notTested: true
+      })
+    })
+  })
+
   it('warns of an untested method beside an enabled Save', () => {
     expect(gateOf({ untested: true })).toEqual({ canSave: true, blocked: null, notTested: true })
   })
@@ -283,6 +382,16 @@ describe('the account reads a retry runs again', () => {
 
   it('names the removed key where it could not be named', () => {
     expect(accountReadsToRetry({ ...READS, removedKey: REMOVED_KEY_UNNAMED })).toEqual([
+      'removedKey'
+    ])
+  })
+
+  it('does not name the removed key where the account holds several keys', () => {
+    expect(accountReadsToRetry({ ...READS, removedKey: SEVERAL_KEYS })).toEqual([])
+  })
+
+  it('names the removed key where the account has no creation record', () => {
+    expect(accountReadsToRetry({ ...READS, removedKey: NO_CREATION_RECORD })).toEqual([
       'removedKey'
     ])
   })

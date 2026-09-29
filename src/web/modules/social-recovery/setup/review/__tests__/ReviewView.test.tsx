@@ -728,6 +728,101 @@ describe('the trust list', () => {
     expect(isDisabled('review-save')).toBe(false)
   })
 
+  it('names a declaring third-party module by its admin in full, with the lines of a shipped method', async () => {
+    await mount({
+      clauses: [required(THIRD_PARTY)],
+      trustedParties: async () => declaration(ADMIN, PENDING_ADMIN)
+    })
+    await press('review-verify-details')
+
+    const row = textOf('review-trust-0-third-party')
+    expect(row).toBe(
+      t('socialRecovery.review.trust.thirdPartyDeclaredRow', { party: renderFullAddress(ADMIN) })
+    )
+    expect(row).toContain(renderFullAddress(ADMIN))
+    expect(textOf('review-trust-0-admin')).toBe(t('socialRecovery.review.trust.adminLine'))
+    expect(textOf('review-trust-0-pending-admin')).toBe(
+      t('socialRecovery.review.trust.oneAcceptanceAway', {
+        address: renderFullAddress(PENDING_ADMIN)
+      })
+    )
+    expect(textOf('review-trust-0-recover-alone')).toBe(
+      t('socialRecovery.review.trust.recoverAlone')
+    )
+    expect(pageText()).not.toContain(t('socialRecovery.review.trust.thirdPartyRow'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.trust.thirdPartyLine'))
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('names a third-party module that does not answer to the method interface as unknown, whatever it declares', async () => {
+    await mount({
+      clauses: [group(2, PASSKEY, THIRD_PARTY)],
+      trustedParties: async () => declaration(ADMIN, PENDING_ADMIN),
+      moduleInfo: async (module) => info(!sameAddress(module, THIRD_PARTY.method))
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-1-third-party')).toBe(
+      t('socialRecovery.review.trust.thirdPartyRow')
+    )
+    expect(textOf('review-trust-1')).toContain(t('socialRecovery.review.trust.thirdPartyLine'))
+    expect(byTestId('review-trust-1-admin')).toBeNull()
+    expect(byTestId('review-trust-1-pending-admin')).toBeNull()
+    expect(byTestId('review-trust-1-recover-alone')).toBeNull()
+    expect(pageText()).not.toContain(
+      t('socialRecovery.review.trust.thirdPartyDeclaredRow', { party: renderFullAddress(ADMIN) })
+    )
+  })
+
+  it('names a third-party module whose declaration names no admin as unknown', async () => {
+    await mount({ clauses: [required(THIRD_PARTY)], trustedParties: async () => declaration() })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0-third-party')).toBe(
+      t('socialRecovery.review.trust.thirdPartyRow')
+    )
+    expect(textOf('review-trust-0')).toContain(t('socialRecovery.review.trust.thirdPartyLine'))
+    expect(byTestId('review-trust-0-admin')).toBeNull()
+    expect(byTestId('review-trust-0-recover-alone')).toBeNull()
+  })
+
+  describe('the recover-alone line', () => {
+    const passportAdmin = async (module: Address) =>
+      sameAddress(module, BOOK.methods.zkpassport) ? declaration(ADMIN) : declaration()
+
+    const AT_ONE: [string, Clause[]][] = [
+      ['a lone required row', [required(PASSPORT)]],
+      ['a group of one of two', [group(1, PASSPORT, ALICE)]],
+      ['two groups of any one', [group(1, PASSPORT, ALICE), group(1, SECOND_PASSPORT, BOB)]]
+    ]
+    AT_ONE.forEach(([name, clauses]) => {
+      it(`names the threshold of one for ${name}`, async () => {
+        await mount({ clauses, trustedParties: passportAdmin })
+        await press('review-verify-details')
+
+        expect(textOf('review-trust-0-recover-alone')).toBe(
+          t('socialRecovery.review.trust.recoverAlone')
+        )
+      })
+    })
+
+    const OTHERWISE: [string, Clause[]][] = [
+      ['two required passport rows', [required(PASSPORT), required(SECOND_PASSPORT)]],
+      ['a required row beside a group', [required(PASSPORT), group(1, SECOND_PASSPORT, ALICE)]]
+    ]
+    OTHERWISE.forEach(([name, clauses]) => {
+      it(`names no threshold for ${name}`, async () => {
+        await mount({ clauses, trustedParties: passportAdmin })
+        await press('review-verify-details')
+
+        expect(textOf('review-trust-0-recover-alone')).toBe(
+          t('socialRecovery.review.trust.recoverAloneAny')
+        )
+        expect(pageText()).not.toContain(t('socialRecovery.review.trust.recoverAlone'))
+      })
+    })
+  })
+
   it('names the recovery module with its publisher from the wallet table, and a light client node', async () => {
     await mount({ providerKind: 'helios' })
     await press('review-verify-details')
@@ -882,6 +977,79 @@ describe('the security stop block', () => {
     expect(isDisabled('review-save')).toBe(false)
   })
 
+  it('shows a stopped method by its name and the stopped line alone, with no chip', async () => {
+    await mount({
+      clauses: [required(PASSPORT)],
+      trustedParties: async () => stopDeclaration({ pauseHolder: PAUSE_HOLDER }),
+      paused: async () => PAUSED
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-stop-0-method')).toContain(t('socialRecovery.methodNames.passport'))
+    expect(byTestId('review-stop-0-stopped')).toBeNull()
+    expect(textOf('review-stop-0')).not.toContain(t('socialRecovery.status.collection.stopped'))
+  })
+
+  it('names the method of a row whose stop read has not come back', async () => {
+    await mount({
+      clauses: [group(2, PASSKEY, PASSPORT)],
+      paused: (module) =>
+        sameAddress(module, BOOK.methods.zkpassport)
+          ? new Promise(() => {})
+          : Promise.resolve(NOT_PAUSED)
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-stop-1-method')).toBe(t('socialRecovery.methodNames.passport'))
+    expect(byTestId('review-stop-1-pending')).not.toBeNull()
+    expect(byTestId('review-stop-1-unavailable')).toBeNull()
+    expect(textOf('review-stop-0-method')).toBe(
+      t(`${STOP}.methodNotStopped`, { method: t('socialRecovery.methodNames.passkey') })
+    )
+  })
+
+  it('names the method of a row whose stop read did not answer, beside its chip', async () => {
+    await mount({
+      clauses: [group(2, PASSKEY, PASSPORT)],
+      paused: async (module) =>
+        sameAddress(module, BOOK.methods.zkpassport) ? UNANSWERED : NOT_PAUSED
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-stop-1-method')).toBe(t('socialRecovery.methodNames.passport'))
+    expect(textOf('review-stop-1-unavailable')).toBe(
+      t('socialRecovery.review.blocked.unavailable.chip')
+    )
+    expect(byTestId('review-stop-1-pending')).toBeNull()
+  })
+
+  it("names a declaring third-party module's row by its address, with the admin row beside its both-roles line", async () => {
+    await mount({
+      clauses: [group(2, PASSKEY, THIRD_PARTY)],
+      trustedParties: async (module) =>
+        sameAddress(module, THIRD_PARTY.method)
+          ? stopDeclaration({ admin: PAUSE_HOLDER, pauseHolder: PAUSE_HOLDER })
+          : stopDeclaration({})
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-stop-1-method')).toBe(
+      t(`${STOP}.methodNotStopped`, { method: renderFullAddress(THIRD_PARTY.method) })
+    )
+    expect(textOf('review-stop-1-party')).toBe(
+      t(`${STOP}.party`, { party: renderShortAddress(PAUSE_HOLDER) })
+    )
+    expect(textOf('review-stop-1-both-roles')).toBe(
+      t(`${STOP}.bothRoles`, { party: renderShortAddress(PAUSE_HOLDER) })
+    )
+    expect(textOf('review-trust-1-third-party')).toBe(
+      t('socialRecovery.review.trust.thirdPartyDeclaredRow', {
+        party: renderFullAddress(PAUSE_HOLDER)
+      })
+    )
+    expect(textOf('review-trust-1-admin')).toBe(t('socialRecovery.review.trust.adminLine'))
+  })
+
   it('gives no row to a module with no declaration', async () => {
     await mount({
       clauses: [group(2, PASSKEY, THIRD_PARTY)],
@@ -1031,6 +1199,108 @@ describe('an account this release cannot recover', () => {
     expect(textOf('review-blocked-body')).toBe(
       t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: 2 })
     )
+    expect(isDisabled('review-save')).toBe(true)
+  })
+})
+
+describe("the wallet's reading of the account's keys", () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+  const DOORS = 'socialRecovery.review.doors'
+  const TWO_AUTHORITIES = [
+    { address: REMOVED_KEY, isAuthority: true },
+    { address: OTHER_KEY, isAuthority: true }
+  ]
+  const blockers = () => container.querySelectorAll('[data-testid^="review-blocked"]')
+
+  it('lets Save run with no block where the wallet names a key and one key holds authority', async () => {
+    await mount({
+      removedKey: async () => ({ kind: 'named', key: REMOVED_KEY }),
+      describeSetup: async () => descriptionOf([{ address: REMOVED_KEY, isAuthority: true }])
+    })
+
+    expect(blockers()).toHaveLength(0)
+    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('reads several keys as an account this release cannot recover, with the count, and offers no retry', async () => {
+    const { account } = await mount({
+      removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
+      describeSetup: async () => descriptionOf(TWO_AUTHORITIES)
+    })
+
+    expect(textOf('review-blocked-chip')).toBe(t('socialRecovery.status.recovery.cannotRecover'))
+    expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.cannotRecover.title`))
+    expect(textOf('review-blocked-body')).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: 2 })
+    )
+    expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
+    expect(byTestId('review-blocked-retry')).toBeNull()
+    expect(byTestId('review-removed-key')).toBeNull()
+    expect(isDisabled('review-save')).toBe(true)
+    expect(account.removedKey).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts every authority in the doors where the wallet reads several keys', async () => {
+    await mount({
+      removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
+      describeSetup: async () => descriptionOf(TWO_AUTHORITIES)
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-doors')).toBe(
+      t(`${DOORS}.line`, { doors: t(`${DOORS}.keysBeside`, { count: 2 }) })
+    )
+  })
+
+  it('reads several keys as cannot recover with no count line where the description throws', async () => {
+    await mount({
+      removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
+      describeSetup: async () => {
+        throw new Error('node unreachable')
+      }
+    })
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.cannotRecover.title`))
+    expect(byTestId('review-blocked-body')).toBeNull()
+    expect(pageText()).not.toContain(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))
+    expect(byTestId('review-blocked-retry')).toBeNull()
+    expect(isDisabled('review-save')).toBe(true)
+  })
+
+  it('reads an account with no creation record as a removed key it could not read, with its retry', async () => {
+    const { account } = await mount({
+      removedKey: async () => ({ kind: 'unavailable', cause: 'no-creation-record' })
+    })
+
+    expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.removedKeyUnreadable.title`))
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.removedKeyUnreadable.body`))
+    expect(isDisabled('review-save')).toBe(true)
+
+    await press('review-blocked-retry')
+
+    expect(account.removedKey).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows no block while the removed key is still being read, then the block once it answers', async () => {
+    let answer: (reading: RemovedKeyReading) => void = () => {}
+    await mount({
+      removedKey: () =>
+        new Promise<RemovedKeyReading>((resolve) => {
+          answer = resolve
+        }),
+      setupState: async () => setupStateOf(true)
+    })
+
+    expect(byTestId('review-removed-key-pending')).not.toBeNull()
+    expect(blockers()).toHaveLength(0)
+    expect(isDisabled('review-save')).toBe(true)
+
+    await act(async () => answer({ kind: 'named', key: REMOVED_KEY }))
+    await settle()
+
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
     expect(isDisabled('review-save')).toBe(true)
   })
 })

@@ -179,6 +179,63 @@ describe('the trust rows', () => {
     })
   })
 
+  describe('the threshold of one beside the recover-alone line', () => {
+    const passportContract = (clauses: Clause[]) =>
+      rowOf(rowsOf(clauses, EVERY_METHOD_ANSWERED), BOOK.methods.zkpassport).contract
+
+    const ALONE_AT_ONE: [string, Clause[]][] = [
+      ['a lone required row', [required(PASSPORT)]],
+      ['a group of one of two', [group(1, PASSPORT, ALICE)]],
+      ['two groups of any one', [group(1, PASSPORT, ALICE), group(1, SECOND_PASSPORT, PASSKEY)]]
+    ]
+    ALONE_AT_ONE.forEach(([name, clauses]) => {
+      it(`holds for ${name}`, () => {
+        expect(passportContract(clauses)).toMatchObject({
+          recoverAlone: true,
+          aloneAtThresholdOne: true
+        })
+      })
+    })
+
+    const ALONE_OTHERWISE: [string, Clause[]][] = [
+      ['two required passport rows', [required(PASSPORT), required(SECOND_PASSPORT)]],
+      ['a required row beside a group', [required(PASSPORT), group(1, SECOND_PASSPORT, ALICE)]]
+    ]
+    ALONE_OTHERWISE.forEach(([name, clauses]) => {
+      it(`does not hold for ${name}, though the admin could still recover alone`, () => {
+        expect(passportContract(clauses)).toMatchObject({
+          recoverAlone: true,
+          aloneAtThresholdOne: false
+        })
+      })
+    })
+
+    it('does not hold where the admin could not recover alone', () => {
+      expect(passportContract([group(2, PASSPORT, PASSKEY)])).toMatchObject({
+        recoverAlone: false,
+        aloneAtThresholdOne: false
+      })
+    })
+  })
+
+  it("read a declaring third-party module's admin by the same rule as a shipped method", () => {
+    const rows = rowsOf(
+      [required(THIRD_PARTY)],
+      readsOf([[THIRD_PARTY_MODULE, answered(declaration(ADMIN, PENDING_ADMIN))]])
+    )
+
+    expect(rows[0].contract).toEqual({
+      status: 'third-party',
+      declaration: {
+        admin: ADMIN,
+        pendingAdmin: PENDING_ADMIN,
+        recoverAlone: true,
+        aloneAtThresholdOne: true,
+        paused: false
+      }
+    })
+  })
+
   it('read a module the deployment does not ship as a third-party module', () => {
     const rows = rowsOf([group(2, PASSKEY, THIRD_PARTY)], {
       ...EVERY_METHOD_ANSWERED,
