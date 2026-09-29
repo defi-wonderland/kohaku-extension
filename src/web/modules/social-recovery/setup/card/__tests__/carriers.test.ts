@@ -40,16 +40,16 @@ describe('the file carrier', () => {
     URL.revokeObjectURL = jest.fn((url: string) => {
       revoked.push(url)
     })
-    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function click(
-      this: HTMLAnchorElement
-    ) {
-      clicks.push({
-        href: this.href,
-        download: this.download,
-        inPage: this.parentElement === document.body,
-        live: !revoked.includes(this.href)
+    jest
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function click(this: HTMLAnchorElement) {
+        clicks.push({
+          href: this.href,
+          download: this.download,
+          inPage: this.parentElement === document.body,
+          live: !revoked.includes(this.href)
+        })
       })
-    })
   })
 
   afterEach(() => {

@@ -116,7 +116,9 @@ describe('the extension password ask', () => {
     })
   }
   const unlocks = () =>
-    mockDispatch.mock.calls.filter(([action]) => action.type === 'KEYSTORE_CONTROLLER_UNLOCK_WITH_SECRET')
+    mockDispatch.mock.calls.filter(
+      ([action]) => action.type === 'KEYSTORE_CONTROLLER_UNLOCK_WITH_SECRET'
+    )
 
   beforeEach(() => {
     container = document.createElement('div')
