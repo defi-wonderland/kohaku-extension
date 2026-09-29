@@ -353,7 +353,7 @@ describe('the rule lines on screen', () => {
     const { stored } = await mount({ clauses })
     expect(shown()).toEqual(expected(clauses))
     expect(byTestId('editor-make-it-a-group')?.textContent).toBe(
-      en.socialRecovery.ruleLines.makeItAGroup
+      en.socialRecovery.editor.makeItAGroup
     )
     await press('editor-make-it-a-group')
     const grouped = [{ threshold: 1, credentials: [PASSKEY, ALICE] }]

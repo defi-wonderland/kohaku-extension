@@ -363,7 +363,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       {ruleLines.length > 0 && (
         <View style={spacings.mbLg} testID="editor-rule-lines">
           <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-            {t('socialRecovery.ruleLines.header')}
+            {t('socialRecovery.shape.header')}
           </Text>
           {ruleLines.map((line) => {
             const [text] = renderRuleLines([line], t)
@@ -377,7 +377,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     testID="editor-make-it-a-group"
                     type="outline"
                     size="small"
-                    text={t('socialRecovery.ruleLines.makeItAGroup')}
+                    text={t('socialRecovery.editor.makeItAGroup')}
                     onPress={() => commit(makeItAGroup(current()))}
                     hasBottomSpacing={false}
                   />
@@ -387,7 +387,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     testID="editor-add-second-method"
                     type="outline"
                     size="small"
-                    text={t('socialRecovery.ruleLines.addSecondMethod')}
+                    text={t('socialRecovery.editor.addSecondMethod')}
                     onPress={() => setPicker({ place: 'required' })}
                     hasBottomSpacing={false}
                   />
