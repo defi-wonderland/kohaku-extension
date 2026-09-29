@@ -14,7 +14,12 @@ import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import type { Clause, Credential, Finding } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Clause,
+  Credential,
+  Finding,
+  SetupDraft
+} from '@web/modules/social-recovery/sdk-interfaces'
 import {
   getRuleLines,
   renderRuleLines,
@@ -107,6 +112,30 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const clauses = useMemo(() => load?.draft.clauses ?? [], [load])
 
+  // The draft goes first and the path after it, each write after the one
+  // before; a failed write holds continue until a later write lands.
+  const persist = useCallback(
+    (draft: SetupDraft) => {
+      writes.current = writes.current.then(async () => {
+        try {
+          await records.setupDraft.write(draft)
+          await records.path.write(draft.clauses)
+          writeFailedRef.current = false
+        } catch {
+          writeFailedRef.current = true
+        }
+        if (mounted.current) setWriteFailed(writeFailedRef.current)
+      })
+    },
+    [records]
+  )
+
+  const retryWrite = () => {
+    const current = loadRef.current
+    if (!current || checkingRef.current) return
+    persist(current.draft)
+  }
+
   // A clause keeps the role the edit that made it gave it, so a group that
   // loses members down to one stays a group while the holder edits.
   const commit = useCallback(
@@ -121,20 +150,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       setFindings([])
       setCheckFailed(false)
       setMovingRow(null)
-      // The draft goes first and the path after it; a failed write holds
-      // continue until a later write lands.
-      writes.current = writes.current.then(async () => {
-        try {
-          await records.setupDraft.write(draft)
-          await records.path.write(next)
-          writeFailedRef.current = false
-        } catch {
-          writeFailedRef.current = true
-        }
-        if (mounted.current) setWriteFailed(writeFailedRef.current)
-      })
+      persist(draft)
     },
-    [records]
+    [persist]
   )
 
   const apply = useCallback(
@@ -525,14 +543,25 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       )}
 
       {writeFailed && (
-        <Text
-          fontSize={14}
-          appearance="errorText"
-          style={spacings.mbMd}
-          testID="editor-write-failed"
-        >
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <View style={spacings.mbMd}>
+          <Text
+            fontSize={14}
+            appearance="errorText"
+            style={spacings.mbTy}
+            testID="editor-write-failed"
+          >
+            {t('socialRecovery.records.writeFailed')}
+          </Text>
+          <Button
+            testID="editor-write-retry"
+            type="outline"
+            size="small"
+            text={t('socialRecovery.writes.tryAgain')}
+            onPress={retryWrite}
+            disabled={checking}
+            hasBottomSpacing={false}
+          />
+        </View>
       )}
 
       {findings.length > 0 && (

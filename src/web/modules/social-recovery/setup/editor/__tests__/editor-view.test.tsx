@@ -792,6 +792,25 @@ describe('a failed read or write of the draft', () => {
     ])
   })
 
+  it('writes the draft and its path again on "Try again", clearing the failure and freeing continue', async () => {
+    const { storage, stored, navigate } = await mount({ clauses: presetPath() })
+    storage.rejectOnce('set', 'path')
+    await press('editor-add-group')
+    expect(byTestId('editor-write-failed')).not.toBeNull()
+    expect(byTestId('editor-write-retry')?.textContent).toBe(en.socialRecovery.writes.tryAgain)
+    expect(isHeld('editor-continue')).toBe(true)
+    const edited = [...presetPath(), { threshold: 2, credentials: [] }]
+    expect(await stored()).toEqual({ draft: draftOf(edited), path: presetPath() })
+
+    await press('editor-write-retry')
+    expect(byTestId('editor-write-failed')).toBeNull()
+    expect(byTestId('editor-write-retry')).toBeNull()
+    expect(isHeld('editor-continue')).toBe(false)
+    await expectPathMatchesDraft(stored, edited)
+    await press('editor-continue')
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
+  })
+
   it('does not open the enroll screen when the new slot could not be written', async () => {
     const { storage, navigate } = await mount({ clauses: presetPath() })
     storage.rejectOnce('set', 'setupDraft')
