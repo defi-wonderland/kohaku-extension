@@ -68,6 +68,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const [findings, setFindings] = useState<Finding[]>([])
   const [checking, setChecking] = useState(false)
   const checkingRef = useRef(false)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const [writeFailed, setWriteFailed] = useState(false)
+  const writeFailedRef = useRef(false)
   const mounted = useRef(true)
   const loadRef = useRef<EditorLoad | null>(null)
   const writes = useRef<Promise<void>>(Promise.resolve())
@@ -86,11 +90,18 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         loadRef.current = next
         if (mounted.current) setLoad(next)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (mounted.current) setLoadFailed(true)
+      })
     return () => {
       mounted.current = false
     }
-  }, [records])
+  }, [records, loadAttempt])
+
+  const retryLoad = () => {
+    setLoadFailed(false)
+    setLoadAttempt((attempt) => attempt + 1)
+  }
 
   const clauses = useMemo(() => load?.draft.clauses ?? [], [load])
 
@@ -107,12 +118,18 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       setRefused(false)
       setFindings([])
       setMovingRow(null)
-      writes.current = writes.current
-        .then(() => Promise.all([records.setupDraft.write(draft), records.path.write(next)]))
-        .then(
-          () => undefined,
-          () => undefined
-        )
+      // The draft goes first and the path after it; a failed write holds
+      // continue until a later write lands.
+      writes.current = writes.current.then(async () => {
+        try {
+          await records.setupDraft.write(draft)
+          await records.path.write(next)
+          writeFailedRef.current = false
+        } catch {
+          writeFailedRef.current = true
+        }
+        if (mounted.current) setWriteFailed(writeFailedRef.current)
+      })
     },
     [records]
   )
@@ -160,7 +177,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
     writes.current
       .then(() => {
-        if (mounted.current) {
+        if (mounted.current && !writeFailedRef.current) {
           navigate(`${WEB_ROUTES.socialRecoverySetupEnroll}${enrollSearchOf(kind, at)}`)
         }
       })
@@ -184,6 +201,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     setFindings([])
     try {
       await writes.current
+      if (writeFailedRef.current) {
+        endCheck()
+        return
+      }
       const draft = loadRef.current.draft
       const result = await client.setup.validateSetup(draft)
       if (!mounted.current) return
@@ -204,7 +225,28 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     [load, clauses, addressBook]
   )
 
-  if (!load) return <ActivityIndicator testID="editor-spinner" />
+  if (!load) {
+    if (!loadFailed) return <ActivityIndicator testID="editor-spinner" />
+    return (
+      <View testID="editor">
+        <Text
+          fontSize={14}
+          appearance="errorText"
+          style={spacings.mbMd}
+          testID="editor-load-failed"
+        >
+          {t('socialRecovery.records.loadFailed')}
+        </Text>
+        <Button
+          testID="editor-load-retry"
+          type="outline"
+          text={t('socialRecovery.writes.tryAgain')}
+          onPress={retryLoad}
+          hasBottomSpacing={false}
+        />
+      </View>
+    )
+  }
 
   const indexed = clauses.map((clause, index) => ({ clause, index }))
   const rows = indexed.filter(({ index }) => load.roles[index] === 'required')
@@ -470,6 +512,17 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         </View>
       )}
 
+      {writeFailed && (
+        <Text
+          fontSize={14}
+          appearance="errorText"
+          style={spacings.mbMd}
+          testID="editor-write-failed"
+        >
+          {t('socialRecovery.records.writeFailed')}
+        </Text>
+      )}
+
       {findings.length > 0 && (
         <View style={spacings.mbMd} testID="editor-findings">
           {findings.map((finding, index) => (
@@ -519,7 +572,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
               testID="editor-continue"
               type="primary"
               text={t('socialRecovery.actions.continue')}
-              disabled={methodCount === 0}
+              disabled={methodCount === 0 || writeFailed}
               onPress={onContinue}
               hasBottomSpacing={false}
             />
