@@ -305,7 +305,8 @@
       "passkeyOnThisDevice": "Passkey on this device",
       "passkeyOnYourPhone": "Passkey on your phone",
       "passport": "Passport",
-      "guardians": "Guardians"
+      "guardians": "Guardians",
+      "aadhaar": "Aadhaar identity"
     },
     "shape": {
       "any": "Any",
