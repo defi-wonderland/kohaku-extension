@@ -524,28 +524,30 @@ describe('the presets view', () => {
       expect(onOpenEditor).toHaveBeenCalledTimes(1)
     })
 
-    it('a pick whose draft lands but whose path is refused shows the line and resumes the draft', async () => {
+    it('a pick writes its draft and path in one storage call, so a refused call stores neither', async () => {
       const storage = makeStorage()
-      let writes = 0
+      let calls = 0
       records = createWalletRecords({
         storage: {
           ...storage,
-          set: async (key, value) => {
-            writes += 1
-            if (writes === 2) throw new Error('storage full')
-            return storage.set(key, value)
+          set: async () => {
+            throw new Error('a single write is not expected')
+          },
+          setEntries: async () => {
+            calls += 1
+            throw new Error('storage full')
           }
         }
       })
       await mount()
       await press('preset-deviceAndId')
       await press('continue')
+      expect(calls).toBe(1)
       expect(byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
-      expect((await storedDraft()).clauses.map(({ threshold }) => threshold)).toEqual([1, 1])
+      expect((await setup().setupDraft.read()).status).toBe('absent')
       expect((await setup().path.read()).status).toBe('absent')
-      expect(byTestId('presets-grid')).toBeNull()
-      expect(byTestId('presets-resume')).not.toBeNull()
-      expect(byTestId('start-over')?.textContent).toBe(S.presets.resume.startOver)
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(byTestId('presets-resume')).toBeNull()
       expect(onOpenEditor).not.toHaveBeenCalled()
     })
 
