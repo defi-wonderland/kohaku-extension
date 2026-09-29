@@ -15,8 +15,12 @@ export const PRINT_VIEW_CSS =
   `#${PRINT_VIEW_ID}{display:block!important}` +
   '}'
 
-// An object URL, revoked right after the click, so the browser's download
-// history never keeps the card's text in the file's source address.
+// The browser takes the blob only after the click's task ends, so the object
+// URL lives a little longer than the click. It is then revoked, so the
+// browser's download history never keeps the card's text in the file's source
+// address.
+export const REVOKE_DELAY_MS = 40000
+
 const downloadFile = (file: CardFile): void => {
   const url = URL.createObjectURL(new Blob([file.text], { type: file.type }))
   const link = document.createElement('a')
@@ -28,7 +32,7 @@ const downloadFile = (file: CardFile): void => {
     link.click()
   } finally {
     link.remove()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS)
   }
 }
 

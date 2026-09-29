@@ -5,7 +5,7 @@
  * link the carrier clicks.
  */
 import type { CardFile } from '..'
-import { BROWSER_CARRIERS } from '../carriers'
+import { BROWSER_CARRIERS, REVOKE_DELAY_MS } from '../carriers'
 
 const FILE: CardFile = {
   name: 'card.html',
@@ -30,6 +30,7 @@ describe('the file carrier', () => {
   const originalRevoke = URL.revokeObjectURL
 
   beforeEach(() => {
+    jest.useFakeTimers()
     blobs = []
     revoked = []
     clicks = []
@@ -53,6 +54,7 @@ describe('the file carrier', () => {
   })
 
   afterEach(() => {
+    jest.useRealTimers()
     URL.createObjectURL = originalCreate
     URL.revokeObjectURL = originalRevoke
     jest.restoreAllMocks()
@@ -66,10 +68,14 @@ describe('the file carrier', () => {
     expect(clicks).toEqual([{ href: OBJECT_URL, download: FILE.name, inPage: true, live: true }])
   })
 
-  it('revokes the object URL after the click and leaves no link in the page', () => {
+  it('leaves no link in the page and keeps the object URL until the browser has the file', () => {
     BROWSER_CARRIERS.download(FILE)
-    expect(revoked).toEqual([OBJECT_URL])
     expect(document.querySelector('a')).toBeNull()
+    expect(revoked).toEqual([])
+    jest.advanceTimersByTime(REVOKE_DELAY_MS - 1)
+    expect(revoked).toEqual([])
+    jest.advanceTimersByTime(1)
+    expect(revoked).toEqual([OBJECT_URL])
   })
 
   it('never puts the text in a data URL', () => {
