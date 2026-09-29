@@ -35,7 +35,7 @@ import { markCardCarried, wasCardCarried } from './carried'
 import { BROWSER_CARRIERS } from './carriers'
 import ExtensionPasswordAsk from './ExtensionPasswordAsk'
 import RecoveryCardView from './RecoveryCardView'
-import type { CardLevel, PasswordAskAnswer } from './types'
+import type { DraftLevel, PasswordAskAnswer } from './types'
 
 const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
@@ -56,34 +56,39 @@ const RecoveryCardScreen = () => {
   // The selected account arrives from the background's state push.
   const address = account && isAddress(account.addr) ? account.addr : null
   const searchLevel = useMemo(() => levelFromSearch(location.search), [location.search])
-  const [draftLevel, setDraftLevel] = useState<CardLevel | null>(null)
-  const [carriedBefore, setCarriedBefore] = useState(false)
+  // The draft's level belongs to the account it was read for, so another
+  // account never shows it while its own draft loads.
+  const [draftLevel, setDraftLevel] = useState<DraftLevel | null>(null)
 
   useEffect(() => {
-    if (!address) return
-    setCarriedBefore(wasCardCarried(chainId, address))
-    if (searchLevel) return
+    if (!address || searchLevel) return
     let live = true
     records
       .setup(chainId, address)
       .setupDraft.read()
       .then((draft) => {
         if (!live) return
-        setDraftLevel(
-          draft.status === 'present' ? levelOfBackup(draft.value.privacy.backup) : 'hidden'
-        )
+        setDraftLevel({
+          address,
+          level: draft.status === 'present' ? levelOfBackup(draft.value.privacy.backup) : 'hidden'
+        })
       })
       .catch(() => {
-        if (live) setDraftLevel('hidden')
+        if (live) setDraftLevel({ address, level: 'hidden' })
       })
     return () => {
       live = false
     }
   }, [records, address, searchLevel])
 
-  const level = searchLevel ?? draftLevel
+  const level =
+    searchLevel ?? (draftLevel && draftLevel.address === address ? draftLevel.level : null)
   const password = useMemo(
     () => (address ? readRecoveryPassword(chainId, address) : undefined),
+    [address]
+  )
+  const carriedBefore = useMemo(
+    () => (address ? wasCardCarried(chainId, address) : false),
     [address]
   )
 
@@ -113,6 +118,7 @@ const RecoveryCardScreen = () => {
               </Text>
               {!!address && !!level && (
                 <RecoveryCardView
+                  key={address}
                   account={address}
                   level={level}
                   password={password}

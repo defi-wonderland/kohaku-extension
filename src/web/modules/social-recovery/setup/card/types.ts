@@ -16,6 +16,12 @@ export interface RecoveryCard {
   password?: string
 }
 
+/** The level a stored draft names, with the account it was read for. */
+export interface DraftLevel {
+  address: Address
+  level: CardLevel
+}
+
 /** One row of the card as the file writes it: a label with its value, or a line alone. */
 export type CardRow =
   | { kind: 'value'; label: string; value: string }
