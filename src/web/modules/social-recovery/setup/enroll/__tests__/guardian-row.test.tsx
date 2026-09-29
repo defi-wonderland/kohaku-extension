@@ -95,6 +95,28 @@ const contractChain = (valid: boolean): GuardianChain => ({
 const signBy = (key: typeof GUARDIAN_KEY, typedData: TypedDataToSign): Promise<Hex> =>
   key.signTypedData(typedData as unknown as Parameters<typeof key.signTypedData>[0])
 
+/** The carried text read back as a signer reads it: each integer member a bigint again. */
+const typedDataFromText = (text: string): TypedDataToSign => {
+  const carried = JSON.parse(text) as {
+    domain: Record<string, unknown>
+    types: Record<string, { name: string; type: string }[]>
+    primaryType: string
+    message: Record<string, unknown>
+  }
+  const revive = (fields: { name: string; type: string }[], value: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(value).map(([name, member]) => {
+        const type = fields.find((field) => field.name === name)?.type ?? ''
+        return [name, /^u?int[0-9]*$/.test(type) ? BigInt(member as string) : member]
+      })
+    )
+  return {
+    ...carried,
+    domain: revive(carried.types.EIP712Domain ?? [], carried.domain),
+    message: revive(carried.types[carried.primaryType] ?? [], carried.message)
+  } as unknown as TypedDataToSign
+}
+
 describe('the guardian row', () => {
   let view: Mounted | undefined
   let records: WalletRecords
@@ -502,13 +524,14 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
     })
 
-    it('reads tested for a signature the guardian made offline over the challenge', async () => {
+    it('reads tested for a signature the guardian made offline over the carried challenge', async () => {
       await addGuardian()
       await view!.press('guardian-test')
       expect(view!.isDisabled('guardian-offline-check')).toBe(true)
+      const carried = view!.byTestId('guardian-offline-challenge')?.textContent ?? ''
       await view!.type(
         'guardian-offline-signature',
-        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
+        await signBy(GUARDIAN_KEY, typedDataFromText(carried))
       )
       await view!.press('guardian-offline-check')
 
@@ -653,6 +676,154 @@ describe('the guardian row', () => {
         t('socialRecovery.records.writeFailed')
       )
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
+    })
+  })
+
+  describe('the offline challenge', () => {
+    const carriedText = () => view!.byTestId('guardian-offline-challenge')?.textContent ?? ''
+
+    it('carries the domain type in the text', async () => {
+      await addGuardian()
+      await view!.press('guardian-test')
+      const carried = JSON.parse(carriedText())
+      expect(carried.types.EIP712Domain).toEqual(
+        expect.arrayContaining([
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' }
+        ])
+      )
+      expect(carried.primaryType).toBe('Approval')
+      expect(carried.message.salt).toBe(lastRequest().salt)
+    })
+
+    it('drops a signature pasted for an earlier challenge when a new test starts', async () => {
+      await addGuardian()
+      await view!.press('guardian-test')
+      const first = carriedText()
+      await view!.type(
+        'guardian-offline-signature',
+        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
+      )
+      expect(view!.isDisabled('guardian-offline-check')).toBe(false)
+
+      await view!.press('guardian-test')
+      expect(carriedText()).not.toBe(first)
+      expect(view!.inputOf('guardian-offline-signature')?.value).toBe('')
+      expect(view!.isDisabled('guardian-offline-check')).toBe(true)
+    })
+
+    it('opens the offline block for a key the wallet holds, with no signing request', async () => {
+      const signTypedData = jest.fn(async (): Promise<Hex> => '0x')
+      deps = depsOf({ keys: [{ addr: HELD, type: 'internal' }], signTypedData })
+      await addGuardian()
+      expect(view!.byTestId('guardian-test-offline')?.textContent).toBe(
+        t('socialRecovery.enroll.offline.title')
+      )
+      await view!.press('guardian-test-offline')
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+      expect(signTypedData).not.toHaveBeenCalled()
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
+
+      await view!.type(
+        'guardian-offline-signature',
+        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
+      )
+      await view!.press('guardian-offline-check')
+      expect(signTypedData).not.toHaveBeenCalled()
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+    })
+
+    it('offers no second offline action where the wallet holds no key at the address', async () => {
+      await addGuardian()
+      expect(view!.byTestId('guardian-test')).not.toBeNull()
+      expect(view!.byTestId('guardian-test-offline')).toBeNull()
+    })
+  })
+
+  describe('the check of a signature by another key', () => {
+    const pasteOtherSignature = async () => {
+      await view!.press('guardian-test')
+      await view!.type(
+        'guardian-offline-signature',
+        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
+      )
+    }
+
+    it('reads test unavailable where the extension holds no provider', async () => {
+      deps = depsOf({ chain: null })
+      await addGuardian()
+      await pasteOtherSignature()
+      await view!.press('guardian-offline-check')
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testUnavailable'))
+      expect(view!.byTestId('guardian-test')?.textContent).toBe(t('socialRecovery.writes.tryAgain'))
+      expect((await storedEnrollments(records))[0]).toMatchObject({
+        test: 'unavailable',
+        cause: 'service-unanswered'
+      })
+    })
+
+    it('asks the address for its answer without reading its code first', async () => {
+      const reads: string[] = []
+      const send = jest.fn(async (method: string) => {
+        reads.push(method)
+        return '0x'
+      })
+      const call = jest.fn(async (transaction: { to: string }) => {
+        reads.push(`call ${transaction.to}`)
+        return '0x'
+      })
+      deps = depsOf({ chain: guardianChainOf({ send, call }) })
+      await addGuardian()
+      await pasteOtherSignature()
+      reads.length = 0
+      await view!.press('guardian-offline-check')
+      expect(reads).toEqual([`call ${HELD}`])
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testFailed'))
+      expect(view!.byTestId('guardian-test-line')?.textContent).toBe(
+        t(`${CEREMONY}.testFailedNoMatch`)
+      )
+    })
+  })
+
+  describe('the lines of a guardian row', () => {
+    it('renders the three lines as soon as the field holds an address, before Add', async () => {
+      await open()
+      expect(view!.byTestId('guardian-lines')).toBeNull()
+      await enter(HELD)
+      expect(view!.byTestId('guardian-enrolled')).toBeNull()
+      expect(view!.byTestId('guardian-smart-account')?.textContent).toBe(
+        t('socialRecovery.disclosures.smartAccount')
+      )
+      expect(view!.byTestId('guardian-call-back')?.textContent).toBe(t(`${GUARDIAN}.callBack`))
+      expect(view!.byTestId('guardian-owner-answer')?.textContent).toBe(
+        t(`${GUARDIAN}.ownerAnswer`)
+      )
+      await view!.press('guardian-add')
+      expect(view!.byTestId('guardian-enrolled')).not.toBeNull()
+      expect(view!.allText('guardian-smart-account')).toHaveLength(1)
+    })
+
+    it('renders the paste hint once', async () => {
+      deps = depsOf({ readClipboard: async () => HELD })
+      await open()
+      expect(view!.text().split(t(`${GUARDIAN}.pasteHint`))).toHaveLength(2)
+    })
+
+    it('reads that saving works without the test, under Save, once the guardian is added', async () => {
+      await open()
+      await enter(HELD)
+      expect(view!.byTestId('enroll-save-without-test')).toBeNull()
+      await view!.press('guardian-add')
+      const note = view!.byTestId('enroll-save-without-test')
+      const save = view!.byTestId('enroll-save')
+      expect(note?.textContent).toBe(t('socialRecovery.enroll.saveWithoutTest'))
+      if (!note || !save) throw new Error('no save line drawn')
+      // eslint-disable-next-line no-bitwise
+      expect(save.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
     })
   })
 })

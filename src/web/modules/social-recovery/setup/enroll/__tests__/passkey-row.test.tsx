@@ -580,4 +580,206 @@ describe('the passkey row', () => {
       expect(view!.isDisabled('enroll-save')).toBe(false)
     })
   })
+
+  describe('across the trips to the ceremony tab', () => {
+    const PHONE_BOUND: PasskeyFacts = {
+      kind: 'device-bound',
+      backedUp: false,
+      place: 'phone',
+      attachment: 'cross-platform',
+      transports: ['hybrid']
+    }
+    const PHONE_KIND_LINE = t(`${CEREMONY}.deviceBoundKind`, {
+      device: t(`${CEREMONY}.devices.thisPhone`)
+    })
+
+    each([
+      ['a failed test', failed('browser-error', 'NotAllowedError')],
+      ['an unavailable test', unavailable('service-unanswered')],
+      ['a dismissed test', dismissed('cancelled')]
+    ] as const)('keeps the kind line and the phone kind name after %s', async ([, outcome]) => {
+      await open()
+      await view!.press('passkey-create-on-phone')
+      await returnFrom(deps.requestIds[0], 'enroll', createdWith(PHONE_BOUND))
+      expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(PHONE_KIND_LINE)
+
+      await view!.press('passkey-run-test')
+      await returnFrom(deps.requestIds[1], 'testAccess', outcome)
+      expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(PHONE_KIND_LINE)
+      expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+        t('socialRecovery.methodNames.passkeyOnYourPhone')
+      )
+      expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(
+        t(`${CEREMONY}.deviceBoundLoss`)
+      )
+    })
+
+    each([
+      ['a cancelled', dismissed('cancelled', 'NotAllowedError')],
+      ['a refused', dismissed('refused', 'InvalidStateError')]
+    ] as const)('tries %s phone route again over the phone', async ([, outcome]) => {
+      await open()
+      await view!.type('passkey-name', 'Work laptop')
+      await view!.press('passkey-create-on-phone')
+      await returnFrom(deps.requestIds[0], 'enroll', outcome)
+      expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+        t('socialRecovery.methodNames.passkeyOnYourPhone')
+      )
+
+      await view!.press('passkey-try-again')
+      const retried = await storedRequest(deps.requestIds[1])
+      expect(retried?.call === 'enroll' && retried.params).toEqual({
+        userName: 'Work laptop',
+        handOff: true
+      })
+      const parsed = parseCeremonySearch(lastNavigation().slice(lastNavigation().indexOf('?')))
+      expect(parsed.ok && parsed.params).toMatchObject({
+        call: 'enroll',
+        id: deps.requestIds[1],
+        handOff: true
+      })
+    })
+
+    it('keeps the kind name, Learn more and the explainer after creation', async () => {
+      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      expect(view!.byTestId('passkey-enrolled')).not.toBeNull()
+      expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+        t('socialRecovery.methodNames.passkeyOnThisDevice')
+      )
+      expect(view!.byTestId('passkey-learn-more')?.textContent).toBe(
+        t('socialRecovery.actions.learnMore')
+      )
+      await view!.press('passkey-learn-more')
+      expect(view!.byTestId('passkey-explainer')?.textContent).toBe(t(`${PASSKEY}.explainer`))
+    })
+  })
+
+  describe('a write that fails after a passed creation', () => {
+    it('keeps the created passkey and stores it on a retry without a second ceremony', async () => {
+      faults.refuse = [':enrollments:']
+      const id = await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      expect(view!.byTestId('enroll-write-failed')?.textContent).toBe(
+        t('socialRecovery.records.writeFailed')
+      )
+      expect(view!.byTestId('passkey-place-retry')?.textContent).toBe(
+        t('socialRecovery.writes.tryAgain')
+      )
+      const navigations = view!.navigate.mock.calls.length
+
+      faults.refuse = []
+      await view!.press('passkey-place-retry')
+      const credential = { method: BOOK.methods.passkey, config: CONFIG, label: DEFAULT_NAME }
+      expect(await storedClauses(records)).toEqual(pathWith(emptySlot('passkey'), credential))
+      expect(await storedEnrollments(records)).toEqual([
+        { credential, test: 'not-tested', backup: 'synced' }
+      ])
+      expect(deps.requestIds).toEqual([id])
+      expect(view!.navigate.mock.calls).toHaveLength(navigations)
+      expect(view!.byTestId('enroll-write-failed')).toBeNull()
+      expect(view!.byTestId('passkey-place-retry')).toBeNull()
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
+      expect(view!.isDisabled('enroll-save')).toBe(false)
+    })
+
+    it('leaves the enrollments list as it was where the draft cannot be stored', async () => {
+      const earlier: Credential = { method: BOOK.methods.passkey, config: '0xaa', label: 'Old' }
+      const earlierList = [
+        { credential: earlier, test: 'passed' as const, backup: 'synced' as const }
+      ]
+      ;({ records, faults } = await recordsWith(
+        pathWith(earlier, emptySlot('passkey')),
+        earlierList
+      ))
+      faults.refuse = [':setupDraft:']
+      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      expect(view!.byTestId('enroll-write-failed')).not.toBeNull()
+      expect(await storedEnrollments(records)).toEqual(earlierList)
+      expect(await storedClauses(records)).toEqual(pathWith(earlier, emptySlot('passkey')))
+
+      faults.refuse = []
+      await view!.press('passkey-place-retry')
+      const credential = { method: BOOK.methods.passkey, config: CONFIG, label: DEFAULT_NAME }
+      expect(await storedEnrollments(records)).toEqual([
+        ...earlierList,
+        { credential, test: 'not-tested', backup: 'synced' }
+      ])
+    })
+  })
+
+  describe('a report that never came back', () => {
+    it('offers to try again beside the undelivered note, and runs the creation again', async () => {
+      await open()
+      await view!.type('passkey-name', 'Work laptop')
+      await view!.press('passkey-create-on-phone')
+      const [stale] = deps.requestIds
+      await open({ ...SEARCH, ceremony: stale })
+      expect(view!.byTestId('passkey-undelivered')?.textContent).toBe(
+        t(`${CEREMONY}.undeliveredNote`)
+      )
+      expect(view!.byTestId('passkey-undelivered-retry')?.textContent).toBe(
+        t(`${CEREMONY}.tryAgainAction`)
+      )
+
+      await view!.press('passkey-undelivered-retry')
+      expect(await storedRequest(stale)).toBeUndefined()
+      expect(deps.channel.listeners()).toBe(0)
+      expect(view!.navigate).toHaveBeenCalledWith(
+        `/${WEB_ROUTES.socialRecoverySetupEnroll}?kind=passkey&clause=0&member=1`,
+        { replace: true }
+      )
+      const fresh = deps.requestIds[1]
+      expect(fresh).toBeDefined()
+      const retried = await storedRequest(fresh)
+      expect(retried?.call === 'enroll' && retried.params).toEqual({
+        userName: 'Work laptop',
+        handOff: true
+      })
+      const parsed = parseCeremonySearch(lastNavigation().slice(lastNavigation().indexOf('?')))
+      expect(parsed.ok && parsed.params).toMatchObject({ call: 'enroll', id: fresh, handOff: true })
+
+      // A reload that still carries the old id waits for nothing.
+      await open({ ...SEARCH, ceremony: stale })
+      expect(view!.byTestId('passkey-undelivered')).toBeNull()
+    })
+
+    it('runs the test again by the stored request', async () => {
+      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      await view!.press('passkey-run-test')
+      const stale = deps.requestIds[deps.requestIds.length - 1]
+      const asked = await storedRequest(stale)
+      await open({ ...SEARCH, ceremony: stale })
+      expect(view!.byTestId('passkey-undelivered')).not.toBeNull()
+
+      await view!.press('passkey-undelivered-retry')
+      expect(await storedRequest(stale)).toBeUndefined()
+      const fresh = deps.requestIds[deps.requestIds.length - 1]
+      expect(fresh).not.toBe(stale)
+      const retried = await storedRequest(fresh)
+      if (retried?.call !== 'testAccess' || asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
+      expect(retried.params).toMatchObject({ credentialId: 'credential-a' })
+      expect(retried.request.config).toBe(CONFIG)
+      expect(retried.request.salt).not.toBe(asked.request.salt)
+      const parsed = parseCeremonySearch(lastNavigation().slice(lastNavigation().indexOf('?')))
+      expect(parsed.ok && parsed.params).toMatchObject({ call: 'testAccess', id: fresh })
+    })
+  })
+
+  describe('Save and continue', () => {
+    it('reads that saving works without the test, under Save, once the passkey exists', async () => {
+      await open()
+      expect(view!.byTestId('enroll-save-without-test')).toBeNull()
+      await view!.press('passkey-create-here')
+      await returnFrom(deps.requestIds[0], 'enroll', createdWith(SYNCED_ON_GOOGLE))
+      const note = view!.byTestId('enroll-save-without-test')
+      const save = view!.byTestId('enroll-save')
+      expect(note?.textContent).toBe(t('socialRecovery.enroll.saveWithoutTest'))
+      if (!note || !save) throw new Error('no save line drawn')
+      // eslint-disable-next-line no-bitwise
+      expect(save.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    })
+  })
 })
