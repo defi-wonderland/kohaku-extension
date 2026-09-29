@@ -11,6 +11,8 @@ import { renderFullAddress, renderNoun } from '@web/modules/social-recovery/shar
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
 import { kindNameOf, passkeyLinesOf } from './lead'
+import OtherDoors from './OtherDoors'
+import StopBlock from './StopBlock'
 import { nodeKindOf } from './trust'
 import type { TrustHeading, TrustListProps, TrustRow } from './types'
 
@@ -19,9 +21,10 @@ const TRUST = 'socialRecovery.review.trust'
 /**
  * The trust list: one contract row per method under the headings of the path
  * rows that use it, each heading's own lines after the row, the recovery
- * module with its publisher, and the node the wallet reads through.
+ * module with its publisher, the security stop block, the account's other
+ * doors, and the node the wallet reads through.
  */
-const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
+const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: TrustListProps) => {
   const { t } = useTranslation()
 
   const line = (text: string, testID?: string) => (
@@ -160,6 +163,8 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
         {line(t(`${TRUST}.moduleAuthority`))}
         {line(t(`${TRUST}.auditedOnly`))}
       </View>
+      <StopBlock rows={stopRows} />
+      <OtherDoors doors={doors} />
       {line(
         nodeKindOf(providerKind) === 'light-client'
           ? t(`${TRUST}.nodeLightClient`)

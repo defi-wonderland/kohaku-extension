@@ -18,6 +18,7 @@ import {
   guardianAddress,
   group,
   info,
+  NOT_PAUSED,
   PASSKEY,
   PASSPORT,
   PENDING_ADMIN,
@@ -91,7 +92,8 @@ describe('the trust rows', () => {
     expect(row.contract).toEqual({
       status: 'declared',
       recoverAlone: false,
-      passportRenewal: false
+      passportRenewal: false,
+      paused: false
     })
   })
 
@@ -182,7 +184,10 @@ describe('the trust rows', () => {
       ...readsOf([[THIRD_PARTY_MODULE, answered(declaration(ADMIN))]])
     })
 
-    expect(rowOf(rows, THIRD_PARTY_MODULE).contract).toEqual({ status: 'third-party' })
+    expect(rowOf(rows, THIRD_PARTY_MODULE).contract).toEqual({
+      status: 'third-party',
+      declaration: { admin: ADMIN, paused: false }
+    })
     expect(rowOf(rows, BOOK.methods.passkey).contract.status).toBe('declared')
   })
 
@@ -200,7 +205,10 @@ describe('the trust rows', () => {
       [group(2, PASSKEY, PASSPORT)],
       readsOf([
         [BOOK.methods.passkey, answered()],
-        [BOOK.methods.zkpassport, { trustedParties: UNANSWERED, moduleInfo: info() }]
+        [
+          BOOK.methods.zkpassport,
+          { trustedParties: UNANSWERED, moduleInfo: info(), paused: NOT_PAUSED }
+        ]
       ])
     )
 

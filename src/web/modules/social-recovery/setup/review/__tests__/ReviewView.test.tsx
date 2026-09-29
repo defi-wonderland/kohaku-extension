@@ -56,7 +56,7 @@ const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress } = j
 const { createWalletRecords } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records')
 >('@web/modules/social-recovery/shared/records')
-const { zeroAddress } = jest.requireActual<typeof import('viem')>('viem')
+const { zeroAddress, zeroHash } = jest.requireActual<typeof import('viem')>('viem')
 const ReviewView = jest.requireActual<typeof import('../ReviewView')>('../ReviewView').default
 const fixtures = jest.requireActual<typeof import('./fixtures')>('./fixtures')
 const {
@@ -212,7 +212,38 @@ const mount = async ({
   const kit: ReviewKitClient = {
     chain: 'sepolia',
     descriptor: deploymentDescriptor('sepolia'),
-    moduleReads: reads
+    moduleReads: reads,
+    setup: {
+      setupState: async () => ({
+        isAuthorized: false,
+        hasSetup: false,
+        setupCommitment: zeroHash,
+        setupNonce: 0n,
+        setupCommittedAtBlock: 0,
+        attemptActive: false,
+        block: { number: 1, timestamp: 1, hash: zeroHash }
+      }),
+      describeSetup: async () => ({
+        rule: null,
+        wait: { seconds: wait, defaultSeconds: wait },
+        failureDomains: null,
+        parties: null,
+        methodStanding: null,
+        passkeyDomains: null,
+        candidateKeys: [],
+        removedKey: guardianAddress('e5'),
+        privacy: null,
+        backup: null,
+        reveals: null,
+        cancel: null,
+        upgrade: null,
+        pause: null
+      })
+    },
+    walletReads: {
+      removedKey: async () => ({ kind: 'named', key: guardianAddress('e5') }),
+      fitCheck: async () => ({ basis: 'deployed-code', fits: true })
+    }
   }
   const retry = jest.fn()
   let reviewClient: ReviewClient = { status: 'ready', client: kit }

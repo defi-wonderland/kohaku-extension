@@ -3,12 +3,21 @@ import type {
   Address,
   Clause,
   Credential,
+  ISetupClient,
   ModuleInfo,
   ReadResult,
+  SetupDescription,
   SetupDraft,
+  SetupState,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type { AddressBook, RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
+import type {
+  AddressBook,
+  FitCheckReading,
+  RecoveryKitClient,
+  RemovedKeyReading,
+  WalletReads
+} from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
   Enrollment,
@@ -56,14 +65,15 @@ export interface PathRow {
 // The trust list
 // ---------------------------------------------------------------------------
 
-/** The two declarations the trust list reads for every method of the path. */
-export const TRUST_READ_NAMES = ['trustedParties', 'moduleInfo'] as const
+/** The three reads the trust list and its stop block make for every method of the path. */
+export const TRUST_READ_NAMES = ['trustedParties', 'moduleInfo', 'paused'] as const
 export type TrustReadName = typeof TRUST_READ_NAMES[number]
 
 /** The reads of one method; a member not yet present is a read still running. */
 export interface MethodReads {
   trustedParties?: ReadResult<TrustedParties>
   moduleInfo?: ReadResult<ModuleInfo>
+  paused?: ReadResult<boolean>
 }
 
 /** The reads of every method of the path, keyed by the method's lowercased address. */
@@ -81,12 +91,26 @@ export interface TrustHeading {
   tested: boolean
 }
 
+/** What a method's own declaration and its `paused` read say about stopping it. */
+export interface StopDeclaration {
+  /** Whether the method reads as stopped now. */
+  paused: boolean
+  /** The party that can stop the method, absent where the declaration names none. */
+  pauseHolder?: Address
+  /** The address one acceptance away from the stop role, where there is one. */
+  pendingPauseHolder?: Address
+}
+
 /** What the trust list says about one method contract. */
 export type TrustContract =
   | { status: 'pending' }
   | { status: 'unavailable'; unanswered: TrustReadName[] }
-  | { status: 'third-party' }
   | {
+      status: 'third-party'
+      /** The module's own declaration, where it answers to the method interface. */
+      declaration?: StopDeclaration & { admin?: Address }
+    }
+  | ({
       status: 'declared'
       /** The method's admin, absent where the declaration names no outside party. */
       admin?: Address
@@ -96,7 +120,7 @@ export type TrustContract =
       recoverAlone: boolean
       /** The passport method, whose credential a renewed document ends. */
       passportRenewal: boolean
-    }
+    } & StopDeclaration)
 
 /** One contract row of the trust list: one per method, however many path rows use it. */
 export interface TrustRow {
@@ -118,11 +142,97 @@ export interface TrustRowsInput {
 }
 
 // ---------------------------------------------------------------------------
+// The security stop block
+// ---------------------------------------------------------------------------
+
+/** One row of the security stop block: one per method of the path, in the trust list's order. */
+export interface StopRow {
+  method: Address
+  kind: MethodKind | undefined
+  stop:
+    | { status: 'pending' }
+    | { status: 'unavailable' }
+    | ({
+        status: 'declared'
+        /** The party holding both the admin role and the stop role, where one does. */
+        bothRoles?: Address
+      } & StopDeclaration)
+}
+
+// ---------------------------------------------------------------------------
+// The account's reads: the key a recovery removes, the fit check, the setup
+// read and the setup description the other doors come from
+// ---------------------------------------------------------------------------
+
+/** One read of the account: still running, answered, or thrown. */
+export type AccountRead<T> =
+  | { status: 'pending' }
+  | { status: 'answered'; value: T }
+  | { status: 'failed' }
+
+export const ACCOUNT_READ_NAMES = ['removedKey', 'fitCheck', 'setupState', 'description'] as const
+export type AccountReadName = typeof ACCOUNT_READ_NAMES[number]
+
+export interface AccountReads {
+  removedKey: AccountRead<RemovedKeyReading>
+  fitCheck: AccountRead<FitCheckReading>
+  setupState: AccountRead<SetupState>
+  /** The setup description of the draft: the candidate keys and the key a recovery removes. */
+  description: AccountRead<SetupDescription>
+}
+
+export interface AccountReadsState extends AccountReads {
+  /** Runs again the named reads that are not still running. */
+  retry: (names: readonly AccountReadName[]) => void
+}
+
+/** The account's code entries; no read names them yet, so they read as unavailable. */
+export type CodeEntriesReading = { status: 'unavailable' } | { status: 'read'; count: number }
+
+/** The account's other doors as the block renders them. */
+export type Doors =
+  | { kind: 'pending' }
+  | { kind: 'unreadable' }
+  | { kind: 'none' }
+  | { kind: 'keys'; keys: number }
+  | { kind: 'pair'; codeEntries: number; keys: number }
+
+// ---------------------------------------------------------------------------
+// The save gate
+// ---------------------------------------------------------------------------
+
+/** Why Save cannot run, the first that applies in this order. */
+export type SaveBlock =
+  | { kind: 'unavailable' }
+  | { kind: 'removed-key-unreadable' }
+  | { kind: 'cannot-recover'; reason: 'not-supported' }
+  | { kind: 'cannot-recover'; reason: 'key-count'; count: number }
+  | { kind: 'already-set-up' }
+
+export interface SaveGateInput extends AccountReads {
+  recordsLoaded: boolean
+  clientReady: boolean
+  trustRows: readonly TrustRow[]
+  /** Whether a method of the path has no passed access test. */
+  untested: boolean
+}
+
+export interface SaveGate {
+  canSave: boolean
+  blocked: SaveBlock | null
+  /** The not-tested warning beside Save, which never disables it. */
+  notTested: boolean
+}
+
+// ---------------------------------------------------------------------------
 // The screen and the view
 // ---------------------------------------------------------------------------
 
 /** The part of the recovery client the review reads. */
-export type ReviewKitClient = Pick<RecoveryKitClient, 'chain' | 'descriptor' | 'moduleReads'>
+export type ReviewKitClient = Pick<RecoveryKitClient, 'chain' | 'descriptor' | 'moduleReads'> & {
+  setup: Pick<ISetupClient, 'describeSetup' | 'setupState'>
+  walletReads: Pick<WalletReads, 'removedKey' | 'fitCheck'>
+}
 
 /** The recovery client as the view takes it. */
 export type ReviewClient =
@@ -158,9 +268,25 @@ export interface PathBlockProps {
 
 export interface TrustListProps {
   rows: readonly TrustRow[]
+  stopRows: readonly StopRow[]
+  doors: Doors
   client: ReviewKitClient
   providerKind?: ProviderKind
   onRetry: (method: Address) => void
+}
+
+export interface StopBlockProps {
+  rows: readonly StopRow[]
+}
+
+export interface OtherDoorsProps {
+  doors: Doors
+}
+
+export interface SaveBlockerProps {
+  blocked: SaveBlock
+  onRetry: () => void
+  onOpen: () => void
 }
 
 export interface TrustReadsState {

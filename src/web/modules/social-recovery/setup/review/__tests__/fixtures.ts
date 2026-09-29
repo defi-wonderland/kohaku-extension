@@ -92,11 +92,14 @@ export const info = (supportsInterface = true): ReadResult<ModuleInfo> => ({
 
 export const UNANSWERED = { answered: false } as const
 
-/** Both reads of a method answered: the declaration given, and a module that answers to the method interface. */
+export const NOT_PAUSED: ReadResult<boolean> = { answered: true, value: false }
+
+/** Every read of a method answered: the declaration given, a module that answers to the method interface, and not stopped. */
 export const answered = (
   trustedParties: ReadResult<TrustedParties> = declaration(),
-  moduleInfo: ReadResult<ModuleInfo> = info()
-): MethodReads => ({ trustedParties, moduleInfo })
+  moduleInfo: ReadResult<ModuleInfo> = info(),
+  paused: ReadResult<boolean> = NOT_PAUSED
+): MethodReads => ({ trustedParties, moduleInfo, paused })
 
 /** The reads keyed as the trust list holds them, by the method's lowercased address. */
 export const readsOf = (entries: [Address, MethodReads][]): TrustReads =>

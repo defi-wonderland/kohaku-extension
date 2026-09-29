@@ -1,7 +1,9 @@
 /**
  * The review over the setup records: the lead that decides the holder's risk,
- * the trust list under its expander, the account the save writes to, and
- * Save once the records loaded and every trust list read answered.
+ * the trust list with its security stop block and the account's other doors
+ * under its expander, the account the save writes to with the key a recovery
+ * would remove, and Save behind its gate with the reason it cannot run on
+ * screen.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, View } from 'react-native'
@@ -19,8 +21,10 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import {
   renderFullAddress,
+  renderChip,
   renderNoun,
-  renderResolvedName
+  renderResolvedName,
+  renderValueLabel
 } from '@web/modules/social-recovery/shared/display'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records/types'
 
@@ -32,9 +36,13 @@ import {
   ruleLinesOf
 } from './lead'
 import PathBlock from './PathBlock'
-import { methodsOf, trustReadsComplete, trustRowsOf } from './trust'
+import { codeEntriesOf, doorsOf } from './doors'
+import { accountReadsToRetry, saveGateOf, untestedInPath } from './gate'
+import SaveBlocker from './SaveBlocker'
+import { methodsOf, stopRowsOf, trustRowsOf } from './trust'
 import TrustList from './TrustList'
 import type { ReviewLoad, ReviewViewProps } from './types'
+import { useAccountReads } from './useAccountReads'
 import { useTrustReads } from './useTrustReads'
 
 const REVIEW = 'socialRecovery.review'
@@ -98,6 +106,12 @@ const ReviewView = ({
         addressBook
       }),
     [clauses, load, reads, ready, addressBook]
+  )
+  const stopRows = useMemo(() => stopRowsOf(rows), [rows])
+  const accountReads = useAccountReads(ready, load?.draft ?? null)
+  const doors = useMemo(
+    () => doorsOf(accountReads.description, codeEntriesOf()),
+    [accountReads.description]
   )
 
   const header = (text: string) => (
@@ -168,7 +182,26 @@ const ReviewView = ({
   const ruleLines = ruleLinesOf(draft, addressBook, t)
   const publication = publicationSentenceOf(clauses, addressBook, t)
   const name = accountLabel ? renderResolvedName(accountLabel, 'besideAddressToCheck', t) : null
-  const canSave = !!ready && trustReadsComplete(rows)
+  const gate = saveGateOf({
+    recordsLoaded: true,
+    clientReady: !!ready,
+    trustRows: rows,
+    removedKey: accountReads.removedKey,
+    fitCheck: accountReads.fitCheck,
+    setupState: accountReads.setupState,
+    description: accountReads.description,
+    untested: untestedInPath(clauses, load.enrollments)
+  })
+  const { removedKey } = accountReads
+
+  // Runs again every read that did not answer: the trust list's reads of each
+  // method and the account's reads that threw.
+  const retryUnanswered = () => {
+    rows
+      .filter(({ contract }) => contract.status === 'unavailable')
+      .forEach(({ method }) => retry(method))
+    accountReads.retry(accountReadsToRetry(accountReads))
+  }
 
   let clientRefusal: { title: string; body: string } | null = null
   if (client.status === 'update-the-wallet') {
@@ -251,7 +284,14 @@ const ReviewView = ({
         {expanded && (
           <View style={spacings.mtSm}>
             {ready ? (
-              <TrustList rows={rows} client={ready} providerKind={providerKind} onRetry={retry} />
+              <TrustList
+                rows={rows}
+                stopRows={stopRows}
+                doors={doors}
+                client={ready}
+                providerKind={providerKind}
+                onRetry={retry}
+              />
             ) : (
               client.status === 'loading' && <ActivityIndicator testID="review-trust-spinner" />
             )}
@@ -265,6 +305,16 @@ const ReviewView = ({
         {line(renderFullAddress(account), 'review-account-address')}
         {line(t(`${REVIEW}.account.check`), 'review-account-check')}
         {!!name?.caveat && line(name.caveat, 'review-account-caveat')}
+        {removedKey.status === 'answered' && removedKey.value.kind === 'named' && (
+          <View style={spacings.mtSm} testID="review-removed-key">
+            {header(renderValueLabel('keyBeingRemoved', t))}
+            {line(renderFullAddress(removedKey.value.key), 'review-removed-key-address')}
+            {line(t(`${REVIEW}.keyRemovedLine`), 'review-removed-key-line')}
+          </View>
+        )}
+        {!!ready && removedKey.status === 'pending' && (
+          <ActivityIndicator testID="review-removed-key-pending" />
+        )}
       </View>
 
       {!!clientRefusal && (
@@ -274,6 +324,28 @@ const ReviewView = ({
           </Text>
           <Text fontSize={14} appearance="secondaryText">
             {clientRefusal.body}
+          </Text>
+        </View>
+      )}
+
+      {!!gate.blocked && (
+        <SaveBlocker
+          blocked={gate.blocked}
+          onRetry={retryUnanswered}
+          onOpen={() => navigate(WEB_ROUTES.socialRecoveryManage)}
+        />
+      )}
+
+      {gate.notTested && (
+        <View style={spacings.mbSm} testID="review-not-tested">
+          <Text fontSize={12} weight="medium" appearance="warningText">
+            {renderChip('method', 'notTested', t)}
+          </Text>
+          <Text fontSize={14} weight="medium">
+            {t(`${REVIEW}.blocked.notTested.title`)}
+          </Text>
+          <Text fontSize={14} appearance="secondaryText">
+            {t(`${REVIEW}.blocked.notTested.body`)}
           </Text>
         </View>
       )}
@@ -296,7 +368,7 @@ const ReviewView = ({
           testID="review-save"
           type="primary"
           text={t(`${REVIEW}.save`)}
-          disabled={!canSave}
+          disabled={!gate.canSave}
           onPress={() => navigate(WEB_ROUTES.socialRecoverySetupSave)}
           hasBottomSpacing={false}
         />
