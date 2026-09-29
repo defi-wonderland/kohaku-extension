@@ -4,7 +4,7 @@
  * Pure: the same input yields equal output and the input is never mutated.
  */
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
-import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
 import type { RuleLine, RuleLineKey, RuleLineParams, RuleLinesInput, Translate } from './types'
 
@@ -40,10 +40,15 @@ export const RULE_LINE_KEYS = {
 const line = (key: RuleLineKey, params: RuleLineParams = {}): RuleLine => ({ key, params })
 
 /**
- * A credential's method family is its method module address. The members of
- * one family share one failure domain.
+ * A credential's method family is its method module address, and an empty
+ * slot's family is the kind of method it waits for. The members of one family
+ * share one failure domain. A slot of no known kind belongs to no family.
  */
-const familyOf = (credential: Credential): string => credential.method.toLowerCase()
+const familyOf = (credential: Credential): string | undefined => {
+  if (!isEmptySlot(credential)) return credential.method.toLowerCase()
+  const kind = slotKindOf(credential)
+  return kind && `slot:${kind}`
+}
 
 /** The clause threshold is a one-byte field, so it counts up to 255. */
 const MAX_THRESHOLD = 255
@@ -82,7 +87,7 @@ const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
 
 const sharesOneFamily = (credentials: readonly Credential[]): boolean => {
   const first = familyOf(credentials[0])
-  return credentials.every((credential) => familyOf(credential) === first)
+  return first !== undefined && credentials.every((credential) => familyOf(credential) === first)
 }
 
 const groupLine = (clause: Clause, rowCount: number, groupCount: number): RuleLine => {
