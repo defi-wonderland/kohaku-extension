@@ -34,11 +34,14 @@ export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as con
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2
 
-/** The draft the editor starts from when the account has none stored. */
+/**
+ * The draft the editor starts from when the account has none stored: a wait of
+ * 48 hours, the pause opted out of, and no clause yet.
+ */
 export const EMPTY_DRAFT: SetupDraft = {
-  wait: 0n,
+  wait: BigInt(48 * 60 * 60),
   clauses: [],
-  ignoresPause: false,
+  ignoresPause: true,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }
 }
 
