@@ -1,7 +1,7 @@
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import { renderChip, renderDateTimeInZone } from '@web/modules/social-recovery/shared/display'
+import { DEADLINE_LOCALE, renderChip } from '@web/modules/social-recovery/shared/display'
 import type { Chip, Translate } from '@web/modules/social-recovery/shared/display'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
@@ -105,10 +105,16 @@ export const notStartedRowsOf = (
   }))
 }
 
-/** The line that dates the unfinished draft, in the holder's own time zone. */
+/**
+ * The line that dates the unfinished draft by its day and month alone, in the
+ * holder's own time zone.
+ */
 export const draftAgeLine = (savedAt: number, t: Translate): string => {
   const { timeZone } = Intl.DateTimeFormat().resolvedOptions()
-  return t('socialRecovery.records.draftAge', {
-    date: renderDateTimeInZone(savedAt, timeZone).date
-  })
+  const date = new Intl.DateTimeFormat(DEADLINE_LOCALE, {
+    day: 'numeric',
+    month: 'short',
+    timeZone
+  }).format(new Date(savedAt))
+  return t('socialRecovery.records.draftAge', { date })
 }
