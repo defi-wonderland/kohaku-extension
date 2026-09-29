@@ -238,13 +238,37 @@ describe('the waiting period step', () => {
       expect(await storedRecord(records)).toBe(30n * 3600n)
     })
 
-    it('falls back to 48 hours for a stored length the picker refuses', async () => {
+    const REFUSED_STORED: [string, bigint, string, string][] = [
+      ['under the floor', 3600n, '1', W.belowMinimum],
+      [
+        'past the ceiling',
+        2161n * 3600n,
+        '2161',
+        'This wallet cannot save a waiting period this long. The longest it accepts is 2160 hours.'
+      ],
+      ['not a whole number of hours', 48n * 3600n + 1800n, '48.5', W.belowMinimum]
+    ]
+
+    REFUSED_STORED.forEach(([name, seconds, text, refusal]) =>
+      it(`puts a stored length ${name} into the custom entry with its refusal and holds continue`, async () => {
+        const records = recordsOn()
+        await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(draftOf({ wait: seconds }))
+        await h.mount(records)
+        expect(h.inputOf('wait-custom-hours')?.value).toBe(text)
+        expect(h.byTestId('wait-refusal')?.textContent).toBe(refusal)
+        expect(h.isDisabled('continue')).toBe(true)
+        await h.press('continue')
+        expect(await storedDraftWait(records)).toBe(seconds)
+        expect(await storedRecord(records)).toBeUndefined()
+      })
+    )
+
+    it('puts a refused stored record into the custom entry when no draft exists', async () => {
       const records = recordsOn()
       await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(3600n)
       await h.mount(records)
-      expect(h.inputOf('wait-custom-hours')).toBeNull()
-      await h.press('continue')
-      expect(await storedRecord(records)).toBe(172800n)
+      expect(h.inputOf('wait-custom-hours')?.value).toBe('1')
+      expect(h.isDisabled('continue')).toBe(true)
     })
   })
 

@@ -35,14 +35,15 @@ export const DEFAULT_CHOICE: WaitChoice = { kind: 'chip', id: 'hours48' }
 
 /**
  * The picker's state for a stored waiting period: its chip, or the custom
- * entry in whole hours. A length that is no whole number of hours, or that the
- * picker would refuse, falls back to the default.
+ * entry in hours. A length the picker refuses, under the floor, past the
+ * ceiling or not a whole number of hours, goes into the custom entry as well,
+ * so its refusal shows and continue stays held.
  */
 export const choiceOfSeconds = (seconds: SetupDraft['wait']): WaitChoice => {
-  if (seconds % SECONDS_PER_HOUR !== 0n) return DEFAULT_CHOICE
-  const hours = Number(seconds / SECONDS_PER_HOUR)
-  const chip = WAIT_CHIPS.find((candidate) => candidate.hours === hours)
-  if (chip) return { kind: 'chip', id: chip.id }
-  const text = String(hours)
-  return readCustomWait(text).status === 'accepted' ? { kind: 'custom', text } : DEFAULT_CHOICE
+  if (seconds % SECONDS_PER_HOUR !== 0n) {
+    return { kind: 'custom', text: String(Number(seconds) / Number(SECONDS_PER_HOUR)) }
+  }
+  const hours = seconds / SECONDS_PER_HOUR
+  const chip = WAIT_CHIPS.find((candidate) => BigInt(candidate.hours) === hours)
+  return chip ? { kind: 'chip', id: chip.id } : { kind: 'custom', text: String(hours) }
 }
