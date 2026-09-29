@@ -524,7 +524,7 @@ describe('continue', () => {
     expect(navigate).not.toHaveBeenCalled()
     expect(allByTestId('editor-finding')).toEqual([
       en.socialRecovery.editor.refusals.emptyGroup,
-      'action.unsupported'
+      en.socialRecovery.review.blocked.cannotRecover.reasonNotSupported
     ])
     expect(byTestId('editor-continue')).not.toBeNull()
   })
@@ -702,7 +702,10 @@ describe('edits while the path check runs', () => {
     return { validate, answer: (result: ValidationResult) => answer(result) }
   }
 
-  const clauses = () => [...presetPath(), { threshold: 1, credentials: [emptySlotOf('aadhaar')] }]
+  const clauses = () => [
+    ...presetPath(),
+    { threshold: 1, credentials: [emptySlotOf('aadhaar'), AADHAAR] }
+  ]
 
   const controls = [
     'editor-row-0-move',
@@ -750,7 +753,7 @@ describe('edits while the path check runs', () => {
     await expectPathMatchesDraft(stored, [
       { threshold: 1, credentials: [PASSKEY] },
       { threshold: 2, credentials: [ALICE, BOB, PASSPORT, CAROL] },
-      { threshold: 1, credentials: [emptySlotOf('aadhaar')] }
+      { threshold: 1, credentials: [emptySlotOf('aadhaar'), AADHAAR] }
     ])
   })
 })
@@ -796,11 +799,14 @@ describe('a failed read or write of the draft', () => {
   it('writes the draft and its path again on "Try again", clearing the failure and freeing continue', async () => {
     const { storage, stored, navigate } = await mount({ clauses: presetPath() })
     storage.rejectOnce('set', 'path')
-    await press('editor-add-group')
+    await press('editor-member-1-2-remove')
     expect(byTestId('editor-write-failed')).not.toBeNull()
     expect(byTestId('editor-write-retry')?.textContent).toBe(en.socialRecovery.writes.tryAgain)
     expect(isHeld('editor-continue')).toBe(true)
-    const edited = [...presetPath(), { threshold: 2, credentials: [] }]
+    const edited = [
+      { threshold: 1, credentials: [PASSKEY] },
+      { threshold: 2, credentials: [ALICE, BOB] }
+    ]
     expect(await stored()).toEqual({ draft: draftOf(edited), path: presetPath() })
 
     await press('editor-write-retry')

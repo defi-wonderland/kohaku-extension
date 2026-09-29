@@ -447,6 +447,6 @@ describe('the path check at continue', () => {
     expect(renderFinding(finding('clause.threshold-above-count'), t)).toBe(
       en.socialRecovery.editor.refusals.thresholdAboveMembers
     )
-    expect(renderFinding(finding('action.unsupported'), t)).toBe('action.unsupported')
+    expect(renderFinding(finding('clause.single-point'), t)).toBe('clause.single-point')
   })
 })

@@ -2,8 +2,11 @@
  * The setup editor over the draft record. Every edit runs one of the pure
  * operations, writes the draft and the path together, and keeps the path equal
  * to the draft's clauses. A credential the path already holds is refused
- * before the record changes. Continue runs the SDK's path check on the draft
- * and opens the waiting period only when the check finds no error.
+ * before the record changes. Continue first judges the draft against this
+ * wallet's own rules and, with a refusal, stays and names it without running
+ * the SDK's path check; otherwise it runs the check and opens the waiting
+ * period only when the check finds no error. The rules panel lists every rule
+ * the editor applies, always.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -26,7 +29,7 @@ import {
   RULE_LINE_KEYS
 } from '@web/modules/social-recovery/shared/rule-lines'
 
-import { renderClientRefusal, renderFinding } from './copy'
+import { renderClientRefusal, renderFinding, renderRefusal, renderRulesPanel } from './copy'
 import CredentialRow from './CredentialRow'
 import MemberPicker from './MemberPicker'
 import {
@@ -52,6 +55,7 @@ import {
   withClauses,
   withoutRole
 } from './operations'
+import { refusalsOf } from './refusals'
 import ThresholdField from './ThresholdField'
 import { METHOD_KINDS } from './types'
 import type {
@@ -62,6 +66,7 @@ import type {
   EditResult,
   MethodKind,
   PickerTarget,
+  Refusal,
   SlotPosition
 } from './types'
 
@@ -72,6 +77,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const [picker, setPicker] = useState<PickerTarget | null>(null)
   const [movingRow, setMovingRow] = useState<number | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
+  const [walletRefusals, setWalletRefusals] = useState<Refusal[]>([])
   const [checking, setChecking] = useState(false)
   const [checkFailed, setCheckFailed] = useState(false)
   const checkingRef = useRef(false)
@@ -148,6 +154,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       setLoad(updated)
       setRefused(false)
       setFindings([])
+      setWalletRefusals([])
       setCheckFailed(false)
       setMovingRow(null)
       persist(draft)
@@ -217,6 +224,13 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onContinue = async () => {
     if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
+    const refusals = refusalsOf(loadRef.current.draft)
+    setWalletRefusals(refusals)
+    if (refusals.length > 0) {
+      setFindings([])
+      setCheckFailed(false)
+      return
+    }
     checkingRef.current = true
     setChecking(true)
     setCheckFailed(false)
@@ -243,6 +257,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const ruleLines = useMemo(() => getRuleLines(clauses), [clauses])
+  const rulesPanel = useMemo(() => renderRulesPanel(t), [t])
   const entries = useMemo(
     () => pickerEntriesOf(load?.enrollments ?? [], clauses, addressBook),
     [load, clauses, addressBook]
@@ -542,6 +557,23 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         </View>
       )}
 
+      <View style={spacings.mbLg} testID="editor-rules">
+        <Text fontSize={16} weight="semiBold" style={spacings.mbSm} testID="editor-rules-header">
+          {rulesPanel.header}
+        </Text>
+        {rulesPanel.lines.map((line) => (
+          <Text
+            key={line}
+            fontSize={14}
+            appearance="secondaryText"
+            style={spacings.mbTy}
+            testID="editor-rules-line"
+          >
+            {line}
+          </Text>
+        ))}
+      </View>
+
       {writeFailed && (
         <View style={spacings.mbMd}>
           <Text
@@ -561,6 +593,24 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
             disabled={checking}
             hasBottomSpacing={false}
           />
+        </View>
+      )}
+
+      {walletRefusals.length > 0 && (
+        <View style={spacings.mbMd} testID="editor-wallet-refusals">
+          {walletRefusals.map((refusal, index) => (
+            <Text
+              // Two clauses can be refused with one sentence.
+              // eslint-disable-next-line react/no-array-index-key
+              key={index}
+              fontSize={14}
+              appearance="errorText"
+              style={spacings.mbTy}
+              testID="editor-wallet-refusal"
+            >
+              {renderRefusal(refusal, t)}
+            </Text>
+          ))}
         </View>
       )}
 
