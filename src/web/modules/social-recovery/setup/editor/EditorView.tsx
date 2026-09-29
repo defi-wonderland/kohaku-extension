@@ -2,11 +2,11 @@
  * The setup editor over the draft record. Every edit runs one of the pure
  * operations, writes the draft and the path together, and keeps the path equal
  * to the draft's clauses. A credential the path already holds is refused
- * before the record changes. Continue first judges the draft against this
- * wallet's own rules and, with a refusal, stays and names it without running
- * the SDK's path check; otherwise it runs the check and opens the waiting
- * period only when the check finds no error. The rules panel lists every rule
- * the editor applies, always.
+ * before the record changes. Continue first judges the path's shape against
+ * this wallet's own rules and, with a refusal, stays and names it without
+ * running the SDK's path check; otherwise it runs the check and opens the
+ * waiting period only when the check finds no error. The rules panel lists
+ * every rule the editor applies, always.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -55,7 +55,7 @@ import {
   withClauses,
   withoutRole
 } from './operations'
-import { refusalsOf } from './refusals'
+import { shapeRefusalsOf } from './refusals'
 import ThresholdField from './ThresholdField'
 import { METHOD_KINDS } from './types'
 import type {
@@ -224,7 +224,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onContinue = async () => {
     if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
-    const refusals = refusalsOf(loadRef.current.draft)
+    const refusals = shapeRefusalsOf(loadRef.current.draft)
     setWalletRefusals(refusals)
     if (refusals.length > 0) {
       setFindings([])

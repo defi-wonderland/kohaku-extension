@@ -20,7 +20,7 @@ import {
   renderRulesPanel
 } from '@web/modules/social-recovery/setup/editor/copy'
 import { emptySlotOf } from '@web/modules/social-recovery/setup/editor/operations'
-import { refusalsOf } from '@web/modules/social-recovery/setup/editor/refusals'
+import { refusalsOf, shapeRefusalsOf } from '@web/modules/social-recovery/setup/editor/refusals'
 import type { RefusalKey } from '@web/modules/social-recovery/setup/editor/types'
 
 import {
@@ -260,6 +260,22 @@ describe('the waiting period', () => {
 
   it('refuses a negative wait with the field-width sentence', () => {
     expect(keysOf(clauses, -1n)).toEqual(['waitFieldWidth'])
+  })
+})
+
+describe("the shape's refusals alone", () => {
+  it('leave the waiting period out and keep every refusal of the shape, in order', () => {
+    const clauses: Clause[] = [
+      { threshold: 0, credentials: [] },
+      { threshold: 4, credentials: [ALICE, AADHAAR] }
+    ]
+    expect(shapeRefusalsOf(draftOf(clauses, TWO_TO_THE_48))).toEqual([
+      { key: 'emptyGroup', clause: 0 },
+      { key: 'thresholdBelowOneOwnRule', clause: 0 },
+      { key: 'thresholdAboveMembers', clause: 1 }
+    ])
+    expect(shapeRefusalsOf(draftOf(presetPath(), 90n * DAY + HOUR))).toEqual([])
+    expect(shapeRefusalsOf(draftOf([], -1n))).toEqual([{ key: 'noMethod' }])
   })
 })
 

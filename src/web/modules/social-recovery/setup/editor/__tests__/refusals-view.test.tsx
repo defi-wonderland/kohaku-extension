@@ -189,11 +189,12 @@ describe('continue with a shape this wallet refuses', () => {
     expect(validateSetup).not.toHaveBeenCalled()
   })
 
-  it('refuses a stored wait past the field width with the width sentence alone', async () => {
-    const { validateSetup } = await mount({ clauses: presetPath(), wait: TWO_TO_THE_48 })
+  it('leaves a stored wait past the field width to the waiting period and continues to it', async () => {
+    const { validateSetup, navigate } = await mount({ clauses: presetPath(), wait: TWO_TO_THE_48 })
     await press('editor-continue')
-    expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.waitFieldWidth])
-    expect(validateSetup).not.toHaveBeenCalled()
+    expect(byTestId('editor-wallet-refusals')).toBeNull()
+    expect(validateSetup).toHaveBeenCalledWith(draftOf(presetPath(), TWO_TO_THE_48))
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
   })
 
   it('clears the refusal on the next edit, and then runs the path check', async () => {

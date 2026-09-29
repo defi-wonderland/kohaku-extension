@@ -61,18 +61,24 @@ const waitRefusals = (wait: bigint): Refusal[] => {
 }
 
 /**
- * Every refusal of the draft: the path's own first, then each clause in
- * order, then the waiting period. A path this wallet can save answers an
- * empty list. How wide a rule a block can check is the SDK's to judge, so no
- * refusal here stands for it.
+ * The refusals of the path's shape alone: the path's own first, then each
+ * clause in order. The editor's continue applies these; the waiting period is
+ * judged on its own screen. How wide a rule a block can check is the SDK's to
+ * judge, so no refusal here stands for it.
  */
-export const refusalsOf = (draft: SetupDraft): Refusal[] => {
+export const shapeRefusalsOf = (draft: SetupDraft): Refusal[] => {
   const pathRefusals: Refusal[] = methodCountOf(draft.clauses) === 0 ? [{ key: 'noMethod' }] : []
   return [
     ...pathRefusals,
-    ...draft.clauses.flatMap((clause, index) =>
-      clauseRefusals(clause, index, draft.clauses.length)
-    ),
-    ...waitRefusals(draft.wait)
+    ...draft.clauses.flatMap((clause, index) => clauseRefusals(clause, index, draft.clauses.length))
   ]
 }
+
+/**
+ * Every refusal of the draft: the shape's, then the waiting period's. A path
+ * this wallet can save answers an empty list.
+ */
+export const refusalsOf = (draft: SetupDraft): Refusal[] => [
+  ...shapeRefusalsOf(draft),
+  ...waitRefusals(draft.wait)
+]
