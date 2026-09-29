@@ -20,6 +20,7 @@ import type {
   Hex,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { parseCeremonySearch } from '@web/modules/social-recovery/shared/ceremony'
 import {
   ABSENT,
   CeremonyRequestRecord,
@@ -31,6 +32,7 @@ import {
   ExpectedRevision,
   extensionRecordStorage,
   isSessionRevisionConflict,
+  newCeremonyRequestId,
   predictedAttemptId,
   recordAge,
   recordKeys,
@@ -2036,4 +2038,61 @@ describe('the ceremony request under its request id', () => {
       expect(storage.calls).toEqual({ set: [], remove: [] })
     })
   )
+
+  /** Whether the ceremony tab's route reads `id` from its search. */
+  const routeTakes = (id: string): boolean => {
+    const parsed = parseCeremonySearch(
+      new URLSearchParams({ call: 'enroll', method: 'passkey', id })
+    )
+    return parsed.ok && parsed.params.id === id
+  }
+
+  /** Whether the records key a request under `id`. */
+  const recordsTake = (id: string): boolean => {
+    const { records } = setup()
+    try {
+      records.ceremonyRequest(id)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  it('keys a request under exactly the ids the ceremony route reads', () => {
+    const printable = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i))
+    const ids = [
+      ...printable,
+      ...printable.map((c) => `a${c}b`),
+      '',
+      'req-1',
+      'A_b-9',
+      'é',
+      'a\nb',
+      'a\u0000b',
+      '%20',
+      'x'.repeat(127),
+      'x'.repeat(128),
+      'x'.repeat(129),
+      '-'.repeat(128),
+      newCeremonyRequestId()
+    ]
+    const disagreements = ids.filter((id) => routeTakes(id) !== recordsTake(id))
+    expect(disagreements).toEqual([])
+    expect(ids.filter(routeTakes).length).toBeGreaterThan(60)
+    expect(ids.filter((id) => !routeTakes(id)).length).toBeGreaterThan(60)
+  })
+
+  it('hands a caller a fresh request id of 32 hex digits, which the route reads and the records key', async () => {
+    const { records } = setup()
+    const id = newCeremonyRequestId()
+    expect(id).toMatch(/^[0-9a-f]{32}$/)
+    expect(routeTakes(id)).toBe(true)
+    await records.ceremonyRequest(id).write(ENROLL)
+    expect(present(await records.ceremonyRequest(id).read()).value).toEqual(ENROLL)
+  })
+
+  it('hands out another request id on each call', () => {
+    const ids = Array.from({ length: 200 }, () => newCeremonyRequestId())
+    expect(new Set(ids).size).toBe(ids.length)
+  })
 })
