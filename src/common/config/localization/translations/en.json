@@ -330,13 +330,15 @@
         "passkeys": "your passkeys",
         "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
-        "pair": "{{first}} and {{second}}"
+        "pair": "{{first}} and {{second}}",
+        "aadhaar": "your Aadhaar identity"
       },
       "itemsLead": {
         "passkey": "Your passkey",
         "passkeys": "Your passkeys",
         "passport": "Your passport",
-        "passportIdentifier": "The identifier your passport produces"
+        "passportIdentifier": "The identifier your passport produces",
+        "aadhaar": "Your Aadhaar identity"
       }
     },
     "costLines": {
