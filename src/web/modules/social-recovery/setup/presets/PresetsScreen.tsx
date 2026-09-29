@@ -36,6 +36,7 @@ const PresetsScreen = () => {
   const { navigate } = useNavigation()
   const { account } = useSelectedAccountControllerState()
 
+  const isScreenXxl = maxWidthSize('xxl')
   const isScreenXl = maxWidthSize('xl')
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const openEditor = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupEditor), [navigate])
@@ -75,6 +76,11 @@ const PresetsScreen = () => {
             </ScrollView>
           </Panel>
         </View>
+        {isScreenXxl ? (
+          <View style={styles.sideContainer}>
+            <Sidebar activeLink="account-recovery" />
+          </View>
+        ) : null}
       </View>
     </View>
   )
