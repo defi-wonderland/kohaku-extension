@@ -182,8 +182,11 @@ export interface RecoveryKitClient {
   walletReads: WalletReads
 }
 
-/** The part of a client a ceremony runs on: the approving side and its methods, no chain read. */
-export type ApprovingClient = Pick<RecoveryKitClient, 'approving' | 'methodFor'>
+/**
+ * The part of a client a ceremony runs on: the approving side, its methods and
+ * the descriptor their modules are read from. No part reads a chain.
+ */
+export type ApprovingClient = Pick<RecoveryKitClient, 'approving' | 'methodFor' | 'descriptor'>
 
 /** Builds the client for an account on a chain; rejects where it cannot. */
 export type CeremonyClientFor = (account: Address, chainId: ChainId) => Promise<ApprovingClient>
@@ -192,6 +195,8 @@ export interface CeremonyResolverOptions {
   /** The wallet's records, read for the ceremony request under a request id. */
   records: Pick<WalletRecords, 'ceremonyRequest'>
   clientFor: CeremonyClientFor
+  /** The clock a request's age is read against, in ms since epoch. */
+  now?: () => number
 }
 
 /** The domain name and version a build carries or a manager publishes. */
