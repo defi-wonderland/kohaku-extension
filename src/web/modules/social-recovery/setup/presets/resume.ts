@@ -1,5 +1,4 @@
-import { isAddressEqual } from 'viem'
-
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import { renderChip, renderDateTimeInZone } from '@web/modules/social-recovery/shared/display'
 import type { Chip, Translate } from '@web/modules/social-recovery/shared/display'
@@ -25,7 +24,7 @@ const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined
   const { credential } = enrollment
   const kinds = Object.keys(book.methods) as SlotKind[]
   return (
-    kinds.find((kind) => isAddressEqual(book.methods[kind], credential.method)) ??
+    kinds.find((kind) => sameAddress(book.methods[kind], credential.method)) ??
     slotKindOf(credential)
   )
 }

@@ -35,6 +35,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
 
   // `undefined` until the stored draft is read, `null` when there is none.
   const [savedAt, setSavedAt] = useState<number | null | undefined>(undefined)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [resumeRows, setResumeRows] = useState<ResumeRow[]>([])
   const [picked, setPicked] = useState<PresetChoice | null>(null)
   const [busy, setBusy] = useState(false)
@@ -54,9 +55,20 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     setSavedAt(at)
   }, [records, setup, chainId, account, t])
 
-  useEffect(() => {
-    load().catch(() => setSavedAt(null))
+  // A failed read shows its own state, never the cards: the holder may have a
+  // draft this device could not read.
+  const reload = useCallback(() => {
+    setLoadFailed(false)
+    return load().catch(() => {
+      setSavedAt(undefined)
+      setLoadFailed(true)
+    })
   }, [load])
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    reload()
+  }, [reload])
 
   const open = useCallback(
     async (choice: PresetChoice) => {
@@ -76,11 +88,11 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     try {
       await records.startOverSetup(chainId, account)
       setPicked(null)
-      await load()
+      await reload()
     } finally {
       setBusy(false)
     }
-  }, [records, chainId, account, load])
+  }, [records, chainId, account, reload])
 
   const cardStyle = (choice: PresetChoice) => [
     spacings.ph,
@@ -240,6 +252,20 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     </View>
   )
 
+  const renderLoadFailed = () => (
+    <View testID="presets-load-failed">
+      <Text fontSize={14} appearance="errorText" style={spacings.mbSm}>
+        {t('socialRecovery.records.loadFailed')}
+      </Text>
+      <Button
+        testID="load-retry"
+        type="secondary"
+        text={t('socialRecovery.writes.tryAgain')}
+        onPress={reload}
+      />
+    </View>
+  )
+
   return (
     <View testID="presets-screen">
       <Text fontSize={20} weight="medium" style={spacings.mbSm}>
@@ -266,8 +292,9 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       <Text testID="honesty-note" fontSize={14} weight="medium" style={spacings.mbLg}>
         {t('socialRecovery.honestyNote')}
       </Text>
-      {savedAt === null && renderGrid()}
-      {typeof savedAt === 'number' && renderResume(savedAt)}
+      {loadFailed && renderLoadFailed()}
+      {!loadFailed && savedAt === null && renderGrid()}
+      {!loadFailed && typeof savedAt === 'number' && renderResume(savedAt)}
       <View style={spacings.mtLg}>
         <Button
           testID="recover"

@@ -4,9 +4,10 @@
  * bytes, and as its label the slug of the method kind it waits for. The editor
  * fills a slot by replacing that credential with an enrolled one.
  */
-import { isAddressEqual, zeroAddress } from 'viem'
+import { zeroAddress } from 'viem'
 
 import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
 
 import type { ShapeClause, SlotKind } from './types'
 
@@ -21,7 +22,7 @@ export const emptySlot = (kind: SlotKind): Credential => ({
 
 /** Whether a credential is an empty slot rather than an enrolled method. */
 export const isEmptySlot = (credential: Credential): boolean =>
-  isAddressEqual(credential.method, zeroAddress) && credential.config === '0x'
+  sameAddress(credential.method, zeroAddress) && credential.config === '0x'
 
 /**
  * The kind an empty slot waits for, or undefined for an enrolled credential or
