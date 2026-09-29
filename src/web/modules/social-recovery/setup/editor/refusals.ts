@@ -17,7 +17,9 @@ export const THRESHOLD_FIELD_MAX = 255
 export const MEMBER_CEILING = 255
 
 /** The waiting period's field is 48 bits wide, so a wait of 2^48 seconds no longer fits. */
-export const WAIT_FIELD_LIMIT = 2n ** 48n
+// A shift, since the build compiles `**` to `Math.pow`, which throws on a bigint.
+// eslint-disable-next-line no-bitwise
+export const WAIT_FIELD_LIMIT = 1n << 48n
 
 export const PICKER_CEILING_SECONDS = BigInt(PICKER_CEILING_HOURS * 60 * 60)
 
