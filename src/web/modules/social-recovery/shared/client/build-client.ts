@@ -140,12 +140,19 @@ export const buildRecoveryClient = async (
   // The builder's method registry: the four shipped methods.
   const methods: IRecoveryMethod[] = shippedMethodDoubles(chain)
   methods.forEach((method) => builder.method(method))
-  // Each slug of the address book to the registered method serving its module.
+  // The registered methods by module, keyed as the orchestrator's registry keys
+  // them: where two claim one module, the later registration serves it, so a
+  // slug hands out the method the orchestrator runs.
+  const methodsByModule = new Map<string, IRecoveryMethod>()
+  methods.forEach((method) =>
+    method
+      .modules(descriptor)
+      .forEach((address) => methodsByModule.set(address.toLowerCase(), method))
+  )
+  // Each slug of the address book to the method serving its module.
   const methodsBySlug = new Map(
     Object.entries(config.addressBook.methods).flatMap(([slug, module]) => {
-      const served = methods.find((method) =>
-        method.modules(descriptor).some((address) => sameAddress(address, module))
-      )
+      const served = methodsByModule.get(module.toLowerCase())
       return served ? [[slug, served] as const] : []
     })
   )
