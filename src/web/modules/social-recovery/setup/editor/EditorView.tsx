@@ -41,6 +41,7 @@ import MemberPicker from './MemberPicker'
 import {
   addGroup,
   blocksContinue,
+  editorErrorsOf,
   EMPTY_DRAFT,
   emptySlotOf,
   enrollSearchOf,
@@ -251,7 +252,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       const result = await client.setup.validateSetup(draft)
       if (!mounted.current) return
       if (blocksContinue(result)) {
-        setFindings(result.errors)
+        setFindings(editorErrorsOf(result))
         endCheck()
         return
       }
