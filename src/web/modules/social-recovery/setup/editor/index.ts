@@ -6,6 +6,7 @@
  */
 export * from './operations'
 export { renderFinding, renderKindHeader, renderKindName, renderRowChip } from './copy'
+export { METHOD_KINDS } from './types'
 export type {
   ClauseRole,
   EditorClient,

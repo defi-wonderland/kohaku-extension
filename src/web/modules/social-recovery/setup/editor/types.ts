@@ -7,7 +7,8 @@ import type {
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Enrollment, SetupRecords } from '@web/modules/social-recovery/shared/records'
 
-import type { METHOD_KINDS } from './operations'
+/** The method kinds in the order the picker lists them. */
+export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as const
 
 /** A method kind, a key of the address book's `methods`. */
 export type MethodKind = typeof METHOD_KINDS[number]

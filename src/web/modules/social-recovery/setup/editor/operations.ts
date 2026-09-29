@@ -19,6 +19,7 @@ import type {
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
+import { METHOD_KINDS } from './types'
 import type {
   ClauseRole,
   EditResult,
@@ -27,9 +28,6 @@ import type {
   PickerTarget,
   SlotPosition
 } from './types'
-
-/** The method kinds in the order the picker lists them. */
-export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as const
 
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2

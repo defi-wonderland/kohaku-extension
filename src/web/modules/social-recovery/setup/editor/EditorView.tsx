@@ -34,7 +34,6 @@ import {
   makeItAGroup,
   makeRequired,
   methodCountOf,
-  METHOD_KINDS,
   moveToGroup,
   pickerEntriesOf,
   placeAt,
@@ -45,6 +44,7 @@ import {
   withClauses
 } from './operations'
 import ThresholdField from './ThresholdField'
+import { METHOD_KINDS } from './types'
 import type { EditorLoad, EditorViewProps, EditResult, MethodKind, PickerTarget } from './types'
 
 const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps) => {
