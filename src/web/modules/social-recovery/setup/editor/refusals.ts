@@ -6,8 +6,9 @@
  * slot is unfilled is refused as a method still to enroll.
  */
 import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
-import { isEmptySlot, methodCountOf, roleOf, rolesOf } from './operations'
+import { methodCountOf, roleOf, rolesOf } from './operations'
 import { PICKER_CEILING_HOURS } from './types'
 import type { ClauseRole, Refusal } from './types'
 
