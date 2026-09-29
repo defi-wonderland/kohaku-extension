@@ -3,8 +3,9 @@
  * `createSendPort`: the dispatch and the window id of `useBackgroundService`,
  * the `requests`, `activity`, `main` and `signAccountOp` controller states the
  * background pushes over the event bus, and the accounts the wallet lists
- * (`useAccountsControllerState().accounts`). The background pushes a null
- * `signAccountOp` state once the sign screen closes.
+ * (`useAccountsControllerState().accounts`). When the sign screen closes, the
+ * background pushes the reset `signAccountOp` state, its estimation back at
+ * initial; a null push is read as an empty state.
  */
 import eventBus from '@web/extension-services/event/eventBus'
 

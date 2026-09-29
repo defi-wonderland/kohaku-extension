@@ -437,8 +437,8 @@ export interface MainStatusState {
 /**
  * The part of the `signAccountOp` controller state the send port reads: the
  * operation the sign screen estimates, with the requests its calls came from,
- * the estimation's status and fee options, the fee speeds, the holder's pick
- * and the errors the sign screen shows, first one first.
+ * the estimation's status, fee options and own error, the fee speeds, the
+ * holder's pick and the errors the sign screen shows, first one first.
  */
 export type SignAccountOpState = Partial<
   Pick<
@@ -447,7 +447,7 @@ export type SignAccountOpState = Partial<
   >
 > & {
   accountOp?: Pick<AccountOp, 'accountAddr'> & { calls?: Pick<Call, 'fromUserRequestId'>[] }
-  estimation?: Partial<Pick<EstimationController, 'status' | 'availableFeeOptions'>>
+  estimation?: Partial<Pick<EstimationController, 'status' | 'availableFeeOptions' | 'error'>>
 }
 
 /** One controller state the background pushed, by controller. */
@@ -491,8 +491,9 @@ export interface FeeOption {
 
 /**
  * The sign screen's estimation for the port's own request, once it settled:
- * the fee options it offers and the first error it shows, with its title and
- * code as the wallet gives them.
+ * the fee options it offers and one error with its title and code as the
+ * wallet gives them. The error is the estimation's own where it has one, and
+ * otherwise the first one the sign screen shows.
  */
 export interface FeeReading {
   options: FeeOption[]
@@ -504,9 +505,9 @@ export type EstimationListener = (reading: FeeReading) => void
 
 /**
  * Sends through the request queue: one transaction from a key the wallet
- * holds, or one batch of calls an account the wallet lists runs. Each answers
- * the transaction hash once the wallet broadcast it, and rejects with a
- * `SendRefusal` where the wallet has no transaction under the request.
+ * holds, or one batch of calls a smart account the wallet lists runs. Each
+ * answers the transaction hash once the wallet broadcast it, and rejects with
+ * a `SendRefusal` where the wallet has no transaction under the request.
  */
 export interface SendPort {
   /** The transaction the gas check estimated, from that key. */

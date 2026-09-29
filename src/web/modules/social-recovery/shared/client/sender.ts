@@ -32,13 +32,15 @@
  * plus 100000, cannot send through it, and the port refuses such a key with a
  * `not-wired` refusal.
  *
- * A batch of calls an account runs on itself goes the same way, as one
+ * A batch of calls a smart account runs on itself goes the same way, as one
  * request for the account the wallet lists: the sign screen estimates it,
  * offers the fee options (the account's own native token, a listed basic
  * account's) and signs with the account's key. The port reads that
  * estimation from the `signAccountOp` controller state and hands each new
  * reading to the caller as data. An account the wallet does not list is
- * refused as `not-listed`.
+ * refused as `not-listed`. A listed basic account is refused as
+ * `not-smart-account`: the wallet sends its calls as separate transactions,
+ * not as one batch.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { isAddress, isHash } from 'viem'
@@ -46,7 +48,10 @@ import { isAddress, isHash } from 'viem'
 import { Session } from '@ambire-common/classes/session'
 import { EstimationStatus } from '@ambire-common/controllers/estimation/types'
 import { getFeeSpeedIdentifier } from '@ambire-common/controllers/signAccountOp/helper'
+import type { Account } from '@ambire-common/interfaces/account'
+import type { SignAccountOpError } from '@ambire-common/interfaces/signAccountOp'
 import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
+import { isSmartAccount } from '@ambire-common/libs/account/account'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import type { FeePaymentOption } from '@ambire-common/libs/estimate/interfaces'
 import { stringify } from '@ambire-common/libs/richJson/richJson'
@@ -81,6 +86,8 @@ export const MISSING_SEND_ACTION = 'KEYSTORE_CONTROLLER_SEND_WITH_KEY' as const
  * - `not-wired`: the key is not itself a basic account the wallet lists;
  * - `not-listed`: the wallet does not list the account whose batch it was
  *   asked to send;
+ * - `not-smart-account`: the account whose batch it was asked to send is a
+ *   basic account, whose calls the wallet sends as separate transactions;
  * - `refused`: the request left the queue with no operation broadcast, since
  *   the holder rejected it or declined the account switch it waited for;
  * - `window-closed`: the holder closed the action window with the request
@@ -97,6 +104,7 @@ export const MISSING_SEND_ACTION = 'KEYSTORE_CONTROLLER_SEND_WITH_KEY' as const
 export const SEND_REFUSAL_REASONS = [
   'not-wired',
   'not-listed',
+  'not-smart-account',
   'refused',
   'window-closed',
   'not-broadcast',
@@ -107,6 +115,8 @@ export const SEND_REFUSAL_REASONS = [
 const REFUSAL_MESSAGES: { readonly [R in SendRefusalReason]: string } = {
   'not-wired': `the request queue sends only from a key that is itself a basic account the wallet lists. Missing background action: ${MISSING_SEND_ACTION} { requestId, keyAddr, keyType, chainId, transaction }.`,
   'not-listed': 'the request queue sends only for an account the wallet lists.',
+  'not-smart-account':
+    'the account is a basic account, whose calls the wallet sends as separate transactions, not as one batch.',
   refused: 'the request left the queue and no transaction was broadcast.',
   'window-closed':
     'the action window closed with the request still queued, so the request was withdrawn and no transaction was broadcast.',
@@ -254,6 +264,18 @@ const feeOptionOf = (
 }
 
 /**
+ * The estimation's own error, where it has one. The wallet titles it with its
+ * message and gives its code only in the sign screen's errors, so the entry
+ * there under the same title carries the code; where the sign screen shows
+ * another error instead, the reading has the title alone.
+ */
+const estimationErrorOf = (state: SignAccountOpState): SignAccountOpError | undefined => {
+  const message = state.estimation?.error?.message
+  if (typeof message !== 'string' || !message) return undefined
+  return state.errors?.find((shown) => shown.title === message) ?? { title: message }
+}
+
+/**
  * The sign screen's estimation of the request, once it settled; undefined
  * while it runs or where the sign screen holds another request.
  */
@@ -264,7 +286,7 @@ const feeReadingOf = (state: SignAccountOpState, id: string): FeeReading | undef
   const options = (estimation?.availableFeeOptions ?? []).flatMap((option) =>
     feeOptionOf(state, accountOp.accountAddr, option)
   )
-  const error = state.errors?.[0]
+  const error = estimationErrorOf(state) ?? state.errors?.[0]
   if (!error) return { options }
   return { options, error: { title: error.title, ...(error.code ? { code: error.code } : {}) } }
 }
@@ -470,6 +492,11 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       const listed = port.accounts().find((candidate) => sameAddress(candidate.addr, account))
       if (!listed) {
         return Promise.reject(accountBatchRefusal('not-listed', account))
+      }
+      // The wallet reads an account's kind from the whole record, of which the
+      // port holds the members that kind depends on.
+      if (!isSmartAccount(listed as Account)) {
+        return Promise.reject(accountBatchRefusal('not-smart-account', account))
       }
       return follow({
         id: nextRequestId(),
