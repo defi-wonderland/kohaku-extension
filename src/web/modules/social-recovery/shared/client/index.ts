@@ -62,12 +62,12 @@ export {
   MISSING_SEND_ACTION,
   SEND_REFUSAL_REASONS,
   DEFAULT_SEND_TIMEOUT_MS,
+  SEND_SETTLE_MS,
   createSendPort,
-  sendRequestOf,
   sendRefusal
 } from './sender'
 export { sendRequestPort } from './sender-port'
-export { createReceiptWait } from './receipts'
+export { UNKNOWN_TRANSACTION_MS, createReceiptWait } from './receipts'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
 export type {
   RecoveryChain,
@@ -108,6 +108,7 @@ export type {
   SignFlowFailure,
   SignFlowFailureReason,
   ReceiptProvider,
+  ProviderTransaction,
   ProviderTransactionReceipt,
   ReceiptWait,
   SendRequestAction,
@@ -115,6 +116,7 @@ export type {
   SendQueueState,
   SubmittedOperation,
   ActivityState,
+  MainStatusState,
   SendRequestUpdate,
   SendRequestPort,
   SendPort,
