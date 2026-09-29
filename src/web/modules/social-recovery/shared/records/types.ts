@@ -364,9 +364,10 @@ export interface WalletRecords {
   listCountdowns(chainId: ChainId): Promise<ListedRecord<CountdownRecord>[]>
   decryptedSetupCache(chainId: ChainId, account: Address): RecordAccessor<DecryptedSetupCacheRecord>
   /**
-   * The ceremony request stored under one request id. The caller writes it
-   * before it opens the ceremony tab and wipes it once it has taken the
-   * tab's report; the tab only reads it, so its Try again finds it again.
+   * The ceremony request stored under one request id, one from
+   * `newCeremonyRequestId`. The caller writes it before it opens the ceremony
+   * tab and wipes it once it has taken the tab's report; the tab only reads
+   * it, so its Try again finds it again.
    */
   ceremonyRequest(id: string): RecordAccessor<CeremonyRequestRecord>
 }

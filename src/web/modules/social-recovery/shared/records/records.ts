@@ -66,6 +66,15 @@ const requestIdPart = (id: string): string => {
   return id
 }
 
+/**
+ * A fresh request id for a ceremony request: 32 hex digits from the platform's
+ * random source, an id the ceremony tab's route carries. Request ids are
+ * global, so a caller takes a new one for each ceremony it asks for; a retry
+ * of the same ceremony may write under the same id again.
+ */
+export const newCeremonyRequestId = (): string =>
+  bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(16))).slice(2)
+
 /** The key prefix every recovery session on one chain shares. */
 const recoverySessionPrefix = (chainId: ChainId): string =>
   `${RECORDS_KEY_PREFIX}:recoverySession:${chainPart(chainId)}:`

@@ -4,43 +4,56 @@
  * implementation of the client built for the request's account and chain.
  */
 import type { Network } from '@ambire-common/interfaces/network'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CeremonyResolver } from '@web/modules/social-recovery/shared/ceremony'
+import { isWithinExpiry } from '@web/modules/social-recovery/shared/ceremony'
 
-import { addressBookOf } from './addresses'
+import { addressBookOf, sameAddress } from './addresses'
 import { buildRecoveryClient } from './build-client'
-import { CHAIN_IDS, recoveryChainOf } from './chains'
+import { CHAIN_IDS, recoveryChainOf, WALLET_RECOVERY_CHAIN } from './chains'
 import { extensionProviderFor, networkOf } from './extension-provider'
 import { createProviderAdapter } from './provider-adapter'
 import type { CeremonyClientFor, CeremonyResolverOptions } from './types'
 
 /**
- * Resolves a ceremony from the request stored under its id. Null where no
- * request is stored, where the stored one is for another call or method than
- * the tab's route names, and where the client holds no implementation of its
- * method: nothing this tab can run waits under the id. A client that cannot be
- * built rejects, and the tab reads it as unavailable with retry.
+ * Resolves a ceremony from the request stored under its id.
+ *
+ * - Null, with nothing built, where no request is stored, where the request is
+ *   past the expiry a report of it would have, where it is for another call or
+ *   method than the tab's route names, or where it names a chain other than
+ *   the one this build reads. So a reload or a second tab opened on an expired
+ *   request runs no second prompt.
+ * - Null where the module the request names is not one the method serves.
+ * - The refusal where the client holds no implementation of the method.
+ * - A client that cannot be built rejects, and the tab reads it as unavailable
+ *   with retry.
  *
  * No device is resolved: the tab runs the page's own passkey device, and a
  * method whose material the caller already holds needs no ceremony tab.
  */
 export const createCeremonyResolver =
-  ({ records, clientFor }: CeremonyResolverOptions): CeremonyResolver =>
+  ({ records, clientFor, now = Date.now }: CeremonyResolverOptions): CeremonyResolver =>
   async (params) => {
     const read = await records.ceremonyRequest(params.id).read()
-    if (read.status === 'absent') return null
+    if (read.status === 'absent' || !isWithinExpiry(read.savedAt, now())) return null
     const stored = read.value
     if (stored.call !== params.call || stored.method !== params.method) return null
+    if (recoveryChainOf(stored.chainId) !== WALLET_RECOVERY_CHAIN) return null
 
     const client = await clientFor(stored.account, stored.chainId)
     const method = client.methodFor(stored.method)
-    if (!method) return null
+    if (!method) return { refused: 'no-implementation' }
     const orchestrator = client.approving
+    const serves = (module: Address) =>
+      method.modules(client.descriptor).some((address) => sameAddress(address, module))
 
     switch (stored.call) {
       case 'enroll':
+        if (!serves(stored.methodAddress)) return null
         return { orchestrator, method, methodAddress: stored.methodAddress, params: stored.params }
       case 'testAccess':
       case 'createClaim':
+        if (!serves(stored.request.method)) return null
         return { orchestrator, method, request: stored.request, params: stored.params }
       case 'healthCheck':
       default:
