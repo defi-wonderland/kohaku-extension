@@ -151,6 +151,11 @@ const EnrollView = ({
           hasBottomSpacing={false}
         />
       </View>
+      {!!enrollment && (
+        <Text testID="enroll-save-without-test" fontSize={12} appearance="secondaryText">
+          {t('socialRecovery.enroll.saveWithoutTest')}
+        </Text>
+      )}
     </View>
   )
 }
