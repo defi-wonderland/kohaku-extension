@@ -4,7 +4,7 @@
  * Pure: the same input yields equal output and the input is never mutated.
  */
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
-import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records/slots'
 
 import type {
   RuleLine,
