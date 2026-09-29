@@ -15,17 +15,21 @@ export const PRINT_VIEW_CSS =
   `#${PRINT_VIEW_ID}{display:block!important}` +
   '}'
 
-export const fileUrlOf = (file: CardFile): string =>
-  `data:${file.type};charset=utf-8,${encodeURIComponent(file.text)}`
-
+// An object URL, revoked right after the click, so the browser's download
+// history never keeps the card's text in the file's source address.
 const downloadFile = (file: CardFile): void => {
+  const url = URL.createObjectURL(new Blob([file.text], { type: file.type }))
   const link = document.createElement('a')
-  link.href = fileUrlOf(file)
+  link.href = url
   link.download = file.name
   link.rel = 'noopener'
   document.body.appendChild(link)
-  link.click()
-  link.remove()
+  try {
+    link.click()
+  } finally {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 }
 
 export const BROWSER_CARRIERS: CardCarriers = {
