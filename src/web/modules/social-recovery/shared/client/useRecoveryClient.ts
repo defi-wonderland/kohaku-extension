@@ -43,7 +43,8 @@ export const useRecoveryClient = (
   const networkRef = useRef(network)
   networkRef.current = network
   // A change to any field the provider is built from rebuilds the provider
-  // and the client; the effect's cleanup destroys the previous provider first.
+  // and the client; the effect's cleanup releases the previous provider's
+  // receipt waits and destroys that provider first.
   const networkKey = network ? providerKeyOf(network) : networks ? 'missing' : 'loading'
   const factsRef = useRef(facts)
   factsRef.current = facts
@@ -82,6 +83,7 @@ export const useRecoveryClient = (
       return undefined
     }
     let live = true
+    const release = new AbortController()
     setState(LOADING)
     buildRecoveryClient({
       ...factsRef.current,
@@ -96,7 +98,7 @@ export const useRecoveryClient = (
             status: 'ready',
             client,
             reads: createChainReads(provider),
-            receipts: createReceiptWait(provider)
+            receipts: createReceiptWait(provider, { signal: release.signal })
           })
         }
       })
@@ -110,6 +112,7 @@ export const useRecoveryClient = (
       })
     return () => {
       live = false
+      release.abort()
       provider.destroy()
     }
   }, [account, networkKey, factsKey, attempt])

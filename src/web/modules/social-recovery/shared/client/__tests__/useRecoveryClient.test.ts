@@ -73,6 +73,8 @@ interface ProviderMock {
   getBlockNumber: jest.Mock
   /** The replacement-aware response each transaction answers, by the start block given. */
   replaceable: jest.Mock
+  once: jest.Mock
+  off: jest.Mock
   destroy: jest.Mock
 }
 
@@ -92,6 +94,8 @@ const providerMock = (index: number): ProviderMock => {
     getTransaction: jest.fn(async () => ({ replaceableTransaction: replaceable })),
     getBlockNumber: jest.fn(async () => blockOf(index)),
     replaceable,
+    once: jest.fn(async () => undefined),
+    off: jest.fn(async () => undefined),
     destroy: jest.fn()
   }
 }
@@ -227,6 +231,26 @@ describe('useRecoveryClient over the network record', () => {
     expect(second.replaceable).toHaveBeenCalledWith(blockOf(1))
     expect(first.getBlockNumber).not.toHaveBeenCalled()
     expect(first.getTransaction).not.toHaveBeenCalled()
+  })
+
+  it('releases a receipt wait in flight when it destroys the provider', async () => {
+    await render()
+    const [first] = built
+    first.getTransaction.mockImplementation(() => new Promise(() => {}))
+    const hash = `0x${'cd'.repeat(32)}` as const
+    const outcome: { status: 'pending' | 'resolved' | 'rejected'; value?: unknown } = {
+      status: 'pending'
+    }
+    receiptsOf(latest)
+      .wait(hash, blockOf(0))
+      .then(
+        (value) => Object.assign(outcome, { status: 'resolved', value }),
+        (value: unknown) => Object.assign(outcome, { status: 'rejected', value })
+      )
+    await pushNetwork(sepolia({ proverRpcUrl: 'https://prover.example/two' }))
+    expect(first.destroy).toHaveBeenCalledTimes(1)
+    expect(outcome.status).toBe('rejected')
+    expect(outcome.value).toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: hash })
   })
 
   it('reports loading on the render right after a key change, never the old client', async () => {

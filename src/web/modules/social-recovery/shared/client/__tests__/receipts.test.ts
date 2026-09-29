@@ -279,3 +279,72 @@ describe('a hash the node does not know yet', () => {
     expect(waiting).toEqual({ status: 'rejected', value: failure })
   })
 })
+
+describe('once the caller releases the provider', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  const pendingAt = (script: Partial<NodeScript> = {}) =>
+    nodeWith({
+      blockNumber: START,
+      transactions: [sent()],
+      nonces: { [SENDER.toLowerCase()]: 5 },
+      ...script
+    })
+
+  it('rejects a wait for a transaction the node does not know yet, naming the hash, and asks no more', async () => {
+    const node = pendingAt({ forgotten: [HASH] })
+    const release = new AbortController()
+    const waiting = track(
+      createReceiptWait(node.provider, { signal: release.signal }).wait(HASH, START)
+    )
+    await mineAndWait(node, 1)
+    expect(waiting.status).toBe('pending')
+    const asked = node.asked('eth_getTransactionByHash')
+    release.abort()
+    await mineAndWait(node, 1)
+    expect(waiting.status).toBe('rejected')
+    expect(waiting.value).toBeInstanceOf(Error)
+    expect(waiting.value).toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: HASH })
+    expect(node.asked('eth_getTransactionByHash')).toBe(asked)
+  })
+
+  it('rejects a wait on a transaction the node knows but has not mined, naming the hash', async () => {
+    const node = pendingAt()
+    const release = new AbortController()
+    const waiting = track(
+      createReceiptWait(node.provider, { signal: release.signal }).wait(HASH, START)
+    )
+    await mineAndWait(node, 1)
+    expect(waiting.status).toBe('pending')
+    release.abort()
+    await mineAndWait(node, 0)
+    expect(waiting.status).toBe('rejected')
+    expect(waiting.value).toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: HASH })
+  })
+
+  it('rejects at once a wait that starts after the release, and asks the node nothing', async () => {
+    const node = minedWith(1)
+    const release = new AbortController()
+    release.abort()
+    await expect(
+      createReceiptWait(node.provider, { signal: release.signal }).wait(HASH, START)
+    ).rejects.toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: HASH })
+    expect(node.asked('eth_getTransactionByHash')).toBe(0)
+  })
+
+  it('answers the receipt as before for a wait that ends before the release', async () => {
+    const node = minedWith(1)
+    const release = new AbortController()
+    const waiting = track(
+      createReceiptWait(node.provider, { signal: release.signal }).wait(HASH, START)
+    )
+    await mineAndWait(node, 1)
+    expect(waiting.status).toBe('resolved')
+    expect(waiting.value).toMatchObject({ hash: HASH, status: 1 })
+    release.abort()
+    await mineAndWait(node, 0)
+    expect(waiting.status).toBe('resolved')
+  })
+})

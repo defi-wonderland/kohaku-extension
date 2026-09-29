@@ -150,7 +150,10 @@ export interface ChainReads {
 }
 
 /** The members of the extension's provider the receipt wait uses. */
-export type ReceiptProvider = Pick<RPCProvider, 'getTransaction' | 'getBlockNumber' | 'once'>
+export type ReceiptProvider = Pick<
+  RPCProvider,
+  'getTransaction' | 'getBlockNumber' | 'once' | 'off'
+>
 
 /** A transaction as the extension's provider answers it. */
 export type ProviderTransaction = NonNullable<
@@ -176,6 +179,21 @@ export interface ReceiptWait {
    * transaction another one took the place of, both as ethers threw them.
    */
   wait(transactionHash: Hex, startBlock: number): Promise<ProviderTransactionReceipt>
+}
+
+/** What a receipt wait takes: the signal the caller aborts when it releases the provider. */
+export interface ReceiptWaitOptions {
+  readonly signal?: AbortSignal
+}
+
+/**
+ * The rejection of a wait in flight once the caller released the provider,
+ * which ethers' own wait never settles by itself. It names the hash, so the
+ * write keeps it and a later wait can take it up again.
+ */
+export interface ReceiptWaitReleased extends Error {
+  name: 'ReceiptWaitReleased'
+  transactionHash: Hex
 }
 
 /** The extension's provider as this folder holds it: the reads it makes, the receipt wait and its teardown. */
