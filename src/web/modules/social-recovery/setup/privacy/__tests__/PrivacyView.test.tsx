@@ -145,7 +145,9 @@ describe('the privacy step', () => {
     })
 
     it('a guardian beside an Aadhaar identity names the Aadhaar identity alone', async () => {
-      await h.mount(await withDraft({ clauses: [{ threshold: 2, credentials: [guardian, aadhaar] }] }))
+      await h.mount(
+        await withDraft({ clauses: [{ threshold: 2, credentials: [guardian, aadhaar] }] })
+      )
       expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
         'Your Aadhaar identity cannot be guessed at all and lose nothing before a recovery.'

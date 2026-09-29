@@ -65,8 +65,7 @@ export interface StorageFaults {
 // records named in `records` while they are listed.
 export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
   const raw = new Map<string, string>()
-  const refuses = (key: string) =>
-    (faults.records ?? []).some((name) => key.includes(`:${name}:`))
+  const refuses = (key: string) => (faults.records ?? []).some((name) => key.includes(`:${name}:`))
   return {
     get: async (key, defaultValue) => {
       if (faults.get) throw new Error('storage unavailable')
