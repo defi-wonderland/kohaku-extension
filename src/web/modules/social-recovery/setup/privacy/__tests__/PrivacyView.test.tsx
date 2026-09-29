@@ -4,7 +4,7 @@
 import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import type { WalletRecords } from '@web/modules/social-recovery/shared/records'
 
-import type { Harness } from './harness'
+import type { Harness, StorageFaults } from './harness'
 import { ACCOUNT, CHAIN_ID, draftOf, harnessOf, recordsOn } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
@@ -348,6 +348,40 @@ describe('the privacy step', () => {
       expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
       expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('held before')
       expect(await flagOf(records)).toBe(PASSWORD_SET)
+    })
+
+    it('a refused flag at Private puts the draft back in the clear', async () => {
+      const faults: StorageFaults = {}
+      const records = recordsOn(faults)
+      await records
+        .setup(CHAIN_ID, ACCOUNT)
+        .setupDraft.write(draftOf({ privacy: { backup: 'clear', publicMetadata: '0x' } }))
+      await h.mount(records)
+      await h.press('level-private')
+      await typePasswords('typed now', 'typed now')
+      faults.records = ['passwordSet']
+      await h.press('continue')
+      expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect((await storedDraft(records)).privacy.backup).toBe('clear')
+      expect(await flagOf(records)).toBeUndefined()
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
+    })
+
+    it('a refused wipe at Public puts the draft back encrypted', async () => {
+      const faults: StorageFaults = {}
+      const records = recordsOn(faults)
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      await setup.setupDraft.write(draftOf())
+      await setup.passwordSet.write(PASSWORD_SET)
+      setRecoveryPassword(CHAIN_ID, ACCOUNT, 'held before')
+      await h.mount(records)
+      await h.press('level-public')
+      faults.records = ['passwordSet']
+      await h.press('continue')
+      expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect((await storedDraft(records)).privacy.backup).toBe('encrypted')
+      expect(await flagOf(records)).toBe(PASSWORD_SET)
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('held before')
     })
 
     it('the next continue that stores clears the line and moves on', async () => {

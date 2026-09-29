@@ -43,7 +43,9 @@ export const levelOfBackup = (backup: SetupDraft['privacy']['backup']): OfferedL
  * Stores the privacy level: the draft's backup form, leaving the public
  * metadata for the SDK to derive, then the password-set flag. The recovery
  * password goes to the in-memory holder alone and only once storage took the
- * rest; at Public the flag and the holder are both wiped.
+ * rest; at Public the flag and the holder are both wiped. Where the flag's
+ * write or wipe refuses after the draft took the new form, the draft gets its
+ * earlier form back so the two agree, and the refusal is thrown.
  */
 export const writePrivacy = async (
   setup: SetupRecords,
@@ -58,11 +60,15 @@ export const writePrivacy = async (
       privacy: { ...draft.value.privacy, backup: backupOfLevel(choice.level) }
     })
   }
-  if (choice.level === 'private') {
-    await setup.passwordSet.write(PASSWORD_SET)
-    setRecoveryPassword(chainId, account, choice.password)
-  } else {
-    await setup.passwordSet.wipe()
-    wipeRecoveryPassword(chainId, account)
+  try {
+    if (choice.level === 'private') await setup.passwordSet.write(PASSWORD_SET)
+    else await setup.passwordSet.wipe()
+  } catch (error: unknown) {
+    if (draft.status === 'present') {
+      await setup.setupDraft.write(draft.value).catch(() => undefined)
+    }
+    throw error
   }
+  if (choice.level === 'private') setRecoveryPassword(chainId, account, choice.password)
+  else wipeRecoveryPassword(chainId, account)
 }
