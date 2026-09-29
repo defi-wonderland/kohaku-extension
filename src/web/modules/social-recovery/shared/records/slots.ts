@@ -18,9 +18,13 @@ export const emptySlot = (kind: SlotKind): Credential => ({
   label: kind
 })
 
-/** A credential whose method is the zero address is a slot, not an enrolled method. */
+/**
+ * A credential with the zero address as its method and no config is a slot,
+ * not an enrolled method. A zero-address credential with any config is an
+ * ordinary credential.
+ */
 export const isEmptySlot = (credential: Credential): boolean =>
-  credential.method.toLowerCase() === zeroAddress
+  credential.method.toLowerCase() === zeroAddress && credential.config === '0x'
 
 /** The kind an empty slot waits for; `undefined` for an enrolled method or a slot of no known kind. */
 export const slotKindOf = (credential: Credential): SlotKind | undefined =>

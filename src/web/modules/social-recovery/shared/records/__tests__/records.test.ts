@@ -500,6 +500,12 @@ describe('the empty slots of a path', () => {
     expect(slotKindOf(unlabelled)).toBeUndefined()
   })
 
+  it('a zero-address credential with a config is an ordinary credential, whatever its label says', () => {
+    const configured = { ...emptySlot('passkey'), config: '0xabcd' as Hex }
+    expect(isEmptySlot(configured)).toBe(false)
+    expect(slotKindOf(configured)).toBeUndefined()
+  })
+
   it('a slot filled with the enrolled method it waited for is no longer a slot', () => {
     const slot = emptySlot('passkey')
     const filled = { ...slot, method: METHOD, config: '0xabcd' as Hex }

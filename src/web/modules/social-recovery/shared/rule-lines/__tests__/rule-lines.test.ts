@@ -370,6 +370,12 @@ const slotRow = (credential: Credential): Clause => ({ threshold: 1, credentials
 const UNKNOWN_SLOT = (): Credential => ({ ...emptySlot('ecdsa'), label: 'carrier-pigeon' })
 const UNLABELLED_SLOT = (): Credential => ({ method: emptySlot('passkey').method, config: '0x' })
 const noMember = (threshold: number): Clause => ({ threshold, credentials: [] })
+// A credential at the zero address that carries a config is an ordinary credential.
+const zeroMethodWith = (config: Hex, label?: string): Credential => ({
+  ...emptySlot('passkey'),
+  config,
+  label
+})
 
 // Paths whose members wait in empty slots read as the same shape of enrolled
 // methods would: slots never count as one method held twice, and slots of one
@@ -433,6 +439,18 @@ const SLOT_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] =
       { key: 'oneFailureDomain' },
       { key: 'differentPlaces' }
     ]
+  },
+  {
+    name: 'two zero-address credentials with configs and the labels of two kinds: one module, one failure domain',
+    clauses: [
+      slotGroup(1, [zeroMethodWith(DUP_CONFIG, 'passkey'), zeroMethodWith(OTHER_CONFIG, 'ecdsa')])
+    ],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'oneFailureDomain' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a zero-address credential with a config beside a passkey slot: two failure domains',
+    clauses: [slotGroup(1, [zeroMethodWith(DUP_CONFIG, 'passkey'), PASSKEY_SLOT()])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
   },
   {
     name: 'two slots of a kind the path does not know: they share no failure domain',
@@ -507,6 +525,12 @@ const SILENT_SLOT_SHAPES: { name: string; clauses: Clause[] }[] = [
     clauses: [
       { threshold: 1, credentials: [{ method: PASSKEY, config: DUP_CONFIG }] },
       slotGroup(2, [PASSPORT_SLOT(), { method: PASSKEY, config: DUP_CONFIG }, GUARDIAN_SLOT()])
+    ]
+  },
+  {
+    name: 'a zero-address credential with a config listed twice: one method held twice',
+    clauses: [
+      slotGroup(1, [zeroMethodWith(DUP_CONFIG, 'passkey'), zeroMethodWith(DUP_CONFIG, 'ecdsa')])
     ]
   },
   { name: 'a path of one group with no member', clauses: [noMember(1)] },
