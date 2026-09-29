@@ -4,7 +4,7 @@
  * credential object it moves, and one enrolled credential is refused at a
  * second place in the path while empty slots never count as one.
  */
-import { zeroAddress } from 'viem'
+import { getAddress, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
@@ -19,6 +19,7 @@ import {
   emptySlotOf,
   enrollSearchOf,
   fillSlot,
+  guardianAddressOf,
   isEmptySlot,
   kindOf,
   makeItAGroup,
@@ -41,6 +42,7 @@ import {
   CAROL,
   DAVE,
   enrolled,
+  guardianAddress,
   PASSKEY,
   PASSPORT,
   presetPath,
@@ -61,6 +63,13 @@ const applied = (result: ReturnType<typeof addRequired>) => {
   if (result.status !== 'applied') throw new Error(`expected applied, got ${result.status}`)
   return result
 }
+
+describe("a guardian's address", () => {
+  it('is decoded from its one-word config, and a config the codec did not write gives none', () => {
+    expect(guardianAddressOf(ALICE)).toBe(getAddress(guardianAddress('a1')))
+    expect(guardianAddressOf({ ...ALICE, config: '0x1234' })).toBeUndefined()
+  })
+})
 
 describe('the empty slot', () => {
   it('is the zero method with empty config, labelled with its kind', () => {

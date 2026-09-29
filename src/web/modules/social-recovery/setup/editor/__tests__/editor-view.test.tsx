@@ -934,6 +934,14 @@ describe('the words on screen', () => {
     )
   })
 
+  it('shows a guardian whose stored config the codec did not write by "Guardian" alone', async () => {
+    await mount({ clauses: [{ threshold: 1, credentials: [{ ...ALICE, config: '0x1234' }] }] })
+    expect(byTestId('editor-slot-0-0')?.textContent).toMatch(
+      new RegExp(`^${en.socialRecovery.display.nouns.guardian}`)
+    )
+    expect(byTestId('editor-title')).not.toBeNull()
+  })
+
   it('names a device-bound passkey "Passkey on this device" and a synced one "Passkey"', async () => {
     const clauses = [{ threshold: 1, credentials: [PASSKEY] }]
     await mount({ clauses, enrollments: [{ ...enrolled(PASSKEY), backup: 'device-bound' }] })

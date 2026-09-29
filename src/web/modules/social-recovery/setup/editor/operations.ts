@@ -78,8 +78,14 @@ export const kindOf = (
 }
 
 /** The address a guardian's config holds, ABI-encoded in one word. */
-export const guardianAddressOf = (credential: Credential): Address =>
-  decodeAbiParameters([{ type: 'address' }], credential.config)[0]
+export const guardianAddressOf = (credential: Credential): Address | undefined => {
+  // A stored config is read from storage, so one the codec did not write holds no address.
+  try {
+    return decodeAbiParameters([{ type: 'address' }], credential.config)[0]
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Two credentials are one enrolled method when their method addresses and
