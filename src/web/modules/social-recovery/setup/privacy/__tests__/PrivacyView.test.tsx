@@ -334,6 +334,20 @@ describe('the privacy step', () => {
         publicMetadata: '0xabcd'
       })
     })
+
+    it('continue with no draft starts one in the clear that carries the stored waiting period', async () => {
+      const records = recordsOn()
+      await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(259200n)
+      await h.mount(records)
+      await h.press('level-public')
+      await h.press('continue')
+      const draft = await storedDraft(records)
+      expect(draft.privacy.backup).toBe('clear')
+      expect(draft.wait).toBe(259200n)
+      expect(draft.clauses).toEqual([])
+      expect(await flagOf(records)).toBeUndefined()
+      expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
+    })
   })
 
   describe('navigation', () => {
@@ -431,6 +445,20 @@ describe('the privacy step', () => {
       expect((await storedDraft(records)).privacy.backup).toBe('encrypted')
       expect(await flagOf(records)).toBe(PASSWORD_SET)
       expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('held before')
+    })
+
+    it('a refused wipe at Public with no draft removes the draft and the path it started', async () => {
+      const faults: StorageFaults = {}
+      const records = recordsOn(faults)
+      await h.mount(records)
+      await h.press('level-public')
+      faults.records = ['passwordSet']
+      await h.press('continue')
+      expect(h.byTestId('write-failed')?.textContent).toBe(S.records.writeFailed)
+      expect(h.navigate).not.toHaveBeenCalled()
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      expect((await setup.setupDraft.read()).status).not.toBe('present')
+      expect((await setup.path.read()).status).not.toBe('present')
     })
 
     it('the next continue that stores clears the line and moves on', async () => {
