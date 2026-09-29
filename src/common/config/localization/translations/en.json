@@ -681,7 +681,7 @@
     "create": {
       "controlledBy": "Controlled by {{address}}",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
-      "oneOrdinaryKey": "This release recovers one ordinary key."
+      "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
     }
   }
 }
