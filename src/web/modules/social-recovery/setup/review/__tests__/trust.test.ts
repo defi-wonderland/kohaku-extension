@@ -340,7 +340,10 @@ describe('whether every trust read answered', () => {
       [group(2, PASSKEY, ALICE)],
       readsOf([
         [BOOK.methods.passkey, answered()],
-        [BOOK.methods.ecdsa, { trustedParties: declaration(), moduleInfo: UNANSWERED }]
+        [
+          BOOK.methods.ecdsa,
+          { trustedParties: declaration(), moduleInfo: info(), paused: UNANSWERED }
+        ]
       ])
     )
 
