@@ -75,6 +75,8 @@ type StorageDouble = {
   get: RecordStorage['get']
   set: (key: string, value: unknown) => Promise<null>
   remove: (key: string) => Promise<null>
+  setEntries: RecordStorage['setEntries']
+  removeKeys: RecordStorage['removeKeys']
   /** The helper's `get()` with no key: every entry, each value parsed. */
   getAll: () => Promise<Record<string, unknown>>
   /** What `browser.storage.local` would hold: one string per key. */
@@ -95,6 +97,19 @@ const formatValue = (stored: string): unknown => {
 const makeStorage = (): StorageDouble => {
   const raw = new Map<string, string>()
   const calls = { set: [] as string[], remove: [] as string[] }
+  // The helper's `set`: a string as is, anything else through richJson.
+  const set = async (key: string, value: unknown): Promise<null> => {
+    calls.set.push(key)
+    const serialized: string | undefined = typeof value === 'string' ? value : stringify(value)
+    // `browser.storage.local.set({ [key]: undefined })` stores nothing.
+    if (serialized !== undefined) raw.set(key, serialized)
+    return null
+  }
+  const remove = async (key: string): Promise<null> => {
+    calls.remove.push(key)
+    raw.delete(key)
+    return null
+  }
   return {
     raw,
     calls,
@@ -106,18 +121,13 @@ const makeStorage = (): StorageDouble => {
     },
     getAll: async () =>
       Object.fromEntries([...raw.entries()].map(([key, stored]) => [key, formatValue(stored)])),
-    // The helper's `set`: a string as is, anything else through richJson.
-    set: async (key, value) => {
-      calls.set.push(key)
-      const serialized: string | undefined = typeof value === 'string' ? value : stringify(value)
-      // `browser.storage.local.set({ [key]: undefined })` stores nothing.
-      if (serialized !== undefined) raw.set(key, serialized)
-      return null
+    set,
+    remove,
+    setEntries: async (entries) => {
+      await Promise.all(Object.entries(entries).map(([key, value]) => set(key, value)))
     },
-    remove: async (key) => {
-      calls.remove.push(key)
-      raw.delete(key)
-      return null
+    removeKeys: async (keys) => {
+      await Promise.all(keys.map(remove))
     }
   }
 }

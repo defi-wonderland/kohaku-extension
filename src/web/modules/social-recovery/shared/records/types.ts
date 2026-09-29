@@ -22,9 +22,13 @@ import type {
  * in-memory double. `get` may return the default for a falsy stored value.
  * `getAll` returns every stored entry by key, what the helper's `get()` with no
  * key returns; the list functions need it and refuse a storage without it.
+ * `setEntries` and `removeKeys` write or remove several keys in one storage
+ * call, so a change that spans records lands whole or not at all.
  */
 export interface RecordStorage extends Storage {
   getAll?(): Promise<Record<string, unknown>>
+  setEntries(entries: Record<string, unknown>): Promise<void>
+  removeKeys(keys: string[]): Promise<void>
 }
 
 /** The chain a record belongs to, as the network's chain id. */
@@ -319,8 +323,20 @@ export interface RecordAccessor<T> {
   age(at?: number): Promise<number | null>
 }
 
+/** The setup draft and the path one write stores together. */
+export interface DraftAndPath {
+  setupDraft: StoredRecord<SetupDraftRecord>
+  path: StoredRecord<PathRecord>
+}
+
 export type SetupRecords = {
   [N in SetupRecordName]: RecordAccessor<SetupRecordValues[N]>
+} & {
+  /**
+   * Writes the setup draft and its clauses as the path in one storage call, so
+   * a draft never lands without its path.
+   */
+  writeDraftAndPath(draft: SetupDraftRecord): Promise<DraftAndPath>
 }
 
 export interface RecoverySessionAccessor {
