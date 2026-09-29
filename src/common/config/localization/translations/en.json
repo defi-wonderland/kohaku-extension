@@ -298,7 +298,8 @@
       "saveAnyway": "Save anyway"
     },
     "chrome": {
-      "settings": "Settings"
+      "settings": "Settings",
+      "breadcrumb": "Settings › Account recovery"
     },
     "methodNames": {
       "passkey": "Passkey",
