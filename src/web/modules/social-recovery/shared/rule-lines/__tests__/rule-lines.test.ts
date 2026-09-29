@@ -8,6 +8,8 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { emptySlot } from '@web/modules/social-recovery/shared/records'
+
 import { getRuleLines, renderRuleLines } from '..'
 import type { Translate } from '..'
 
@@ -257,10 +259,10 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
 ]
 
 // Paths that earn no line: a refused path recovers nothing, so it yields no
-// lines, even beside a valid row or group. A path is refused when a clause is
-// empty, when a threshold is below one, above its clause's size, above 255 or
-// not a whole number, or when the path holds one credential twice, in one
-// clause or across two.
+// lines, even beside a valid row or group. A path is refused when a threshold
+// is below one, above its clause's size, above 255 or not a whole number, or
+// when the path holds one enrolled credential twice, in one clause or across
+// two.
 const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   { name: 'an empty path', clauses: [] },
   // A duplicate is the same (method, config) pair anywhere on the path.
@@ -321,11 +323,6 @@ const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
       }
     ]
   },
-  { name: 'an empty clause alone', clauses: [{ threshold: 1, credentials: [] }] },
-  {
-    name: 'an empty clause beside a required row: no single-method warning',
-    clauses: [row(PASSKEY), { threshold: 1, credentials: [] }]
-  },
   { name: 'a single clause at threshold zero', clauses: [group(0, [PASSKEY, PASSPORT])] },
   {
     name: 'a group at threshold zero beside a required row: no single-method warning',
@@ -356,9 +353,179 @@ const REFUSED_SHAPES: { name: string; clauses: Clause[] }[] = [
   }
 ]
 
+// A preset loads its shape with every member slot empty: the zero address as
+// the method, no config, and the kind of method the slot waits for as its label.
+const GUARDIAN_SLOT = () => emptySlot('ecdsa')
+const PASSKEY_SLOT = () => emptySlot('passkey')
+const PASSPORT_SLOT = () => emptySlot('zkpassport')
+const slotGroup = (threshold: number, credentials: Credential[]): Clause => ({
+  threshold,
+  credentials
+})
+const slotRow = (credential: Credential): Clause => ({ threshold: 1, credentials: [credential] })
+// A slot whose label names no kind of method the path knows, and one with no label.
+const UNKNOWN_SLOT = (): Credential => ({ ...emptySlot('ecdsa'), label: 'carrier-pigeon' })
+const UNLABELLED_SLOT = (): Credential => ({ method: emptySlot('passkey').method, config: '0x' })
+const noMember = (threshold: number): Clause => ({ threshold, credentials: [] })
+
+// Paths whose members wait in empty slots read as the same shape of enrolled
+// methods would: slots never count as one method held twice, and slots of one
+// kind share one failure domain.
+const SLOT_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
+  {
+    name: 'a 2-of-3 group of three guardian slots: any 2 of these 3, and one failure domain',
+    clauses: [slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])],
+    expected: [
+      { key: 'anyNOfM', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'a passkey slot and a passport slot at threshold one: either one alone, two failure domains',
+    clauses: [slotGroup(1, [PASSKEY_SLOT(), PASSPORT_SLOT()])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a required passkey slot beside a 2-of-3 group of guardian slots: together with your required methods',
+    clauses: [
+      slotRow(PASSKEY_SLOT()),
+      slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])
+    ],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'two required passkey slots: two rows, never one method held twice',
+    clauses: [slotRow(PASSKEY_SLOT()), slotRow(PASSKEY_SLOT())],
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+  },
+  {
+    name: 'an enrolled passkey row beside a 2-of-3 group of guardian slots: the row reads as a row',
+    clauses: [row(PASSKEY), slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'an enrolled passkey and a passport slot at threshold one: either one alone, two failure domains',
+    clauses: [slotGroup(1, [cred(PASSKEY), PASSPORT_SLOT()])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'two enrolled guardians beside a group of passkey slots: each group keeps its own failure domain',
+    clauses: [
+      group(1, [GUARDIAN, GUARDIAN]),
+      slotGroup(2, [PASSKEY_SLOT(), PASSKEY_SLOT(), PASSKEY_SLOT()])
+    ],
+    expected: [
+      { key: 'togetherWithGroups', params: { n: 1, m: 2, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'togetherWithGroups', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  },
+  {
+    name: 'two slots of a kind the path does not know: they share no failure domain',
+    clauses: [slotGroup(1, [UNKNOWN_SLOT(), UNKNOWN_SLOT()])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'two slots with no kind at all: they share no failure domain',
+    clauses: [slotGroup(1, [UNLABELLED_SLOT(), UNLABELLED_SLOT()])],
+    expected: [{ key: 'eitherOneAlone' }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a slot of an unknown kind among guardian slots: the group is no single failure domain',
+    clauses: [slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), UNKNOWN_SLOT()])],
+    expected: [{ key: 'anyNOfM', params: { n: 2, m: 3, spare: 1 } }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a slot of an unknown kind leading guardian slots: the group is no single failure domain',
+    clauses: [slotGroup(2, [UNKNOWN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])],
+    expected: [{ key: 'anyNOfM', params: { n: 2, m: 3, spare: 1 } }, { key: 'differentPlaces' }]
+  }
+]
+
+// A clause with no member yet is a group the holder is still filling: the lines
+// skip it and read the rest of the path as if it were not there.
+const MEMBERLESS_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
+  {
+    name: 'a group with no member beside a required row: the row alone earns the single-method warning',
+    clauses: [row(PASSKEY), noMember(1)],
+    expected: SINGLE_METHOD
+  },
+  {
+    name: 'a group with no member at threshold 2 beside a 2-of-3 group: the group reads alone',
+    clauses: [group(2, [PASSKEY, PASSPORT, GUARDIAN]), noMember(2)],
+    expected: [{ key: 'anyNOfM', params: { n: 2, m: 3, spare: 1 } }, { key: 'differentPlaces' }]
+  },
+  {
+    name: 'a group with no member between two rows: both must answer, and the sizing rule line',
+    clauses: [row(PASSKEY), noMember(1), row(PASSPORT)],
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+  },
+  {
+    name: 'a group with no member beside a passkey slot row and a group of guardian slots: together with, as without it',
+    clauses: [
+      slotRow(PASSKEY_SLOT()),
+      noMember(2),
+      slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])
+    ],
+    expected: [
+      { key: 'togetherWithRequired', params: { n: 2, m: 3, spare: 1 } },
+      { key: 'oneFailureDomain' },
+      { key: 'differentPlaces' }
+    ]
+  }
+]
+
+// Paths that earn no line although slots or groups with no member stand in them.
+const SILENT_SLOT_SHAPES: { name: string; clauses: Clause[] }[] = [
+  {
+    name: 'an enrolled credential listed twice among guardian slots: still one method held twice',
+    clauses: [
+      slotGroup(1, [
+        { method: PASSKEY, config: DUP_CONFIG },
+        GUARDIAN_SLOT(),
+        { method: PASSKEY, config: DUP_CONFIG }
+      ])
+    ]
+  },
+  {
+    name: 'an enrolled credential as a row and again inside a group of slots: still one method held twice',
+    clauses: [
+      { threshold: 1, credentials: [{ method: PASSKEY, config: DUP_CONFIG }] },
+      slotGroup(2, [PASSPORT_SLOT(), { method: PASSKEY, config: DUP_CONFIG }, GUARDIAN_SLOT()])
+    ]
+  },
+  { name: 'a path of one group with no member', clauses: [noMember(1)] },
+  {
+    name: 'a path of groups with no member only',
+    clauses: [noMember(1), noMember(2), noMember(0)]
+  },
+  {
+    name: 'a group with no member beside a group at a threshold above its size: the refusal still silences the path',
+    clauses: [noMember(1), group(3, [PASSKEY, PASSPORT])]
+  },
+  {
+    name: 'a group of slots at threshold 0 beside a row: still refused',
+    clauses: [row(PASSKEY), slotGroup(0, [GUARDIAN_SLOT(), GUARDIAN_SLOT()])]
+  }
+]
+
 const EVERY_SHAPE: Clause[][] = [
   ...SHAPES.map((s) => s.clauses),
-  ...REFUSED_SHAPES.map((s) => s.clauses)
+  ...REFUSED_SHAPES.map((s) => s.clauses),
+  ...SLOT_SHAPES.map((s) => s.clauses),
+  ...MEMBERLESS_SHAPES.map((s) => s.clauses),
+  ...SILENT_SLOT_SHAPES.map((s) => s.clauses)
 ]
 
 const i18n = i18next.createInstance()
@@ -433,6 +600,49 @@ describe('getRuleLines: the lines each path shape earns', () => {
   it('a group of passkeys alone is one failure domain; a passport beside a passkey is not', () => {
     expect(keysOf([group(1, [PASSKEY, PASSKEY])])).toContain('oneFailureDomain')
     expect(keysOf([group(1, [PASSKEY, PASSPORT])])).not.toContain('oneFailureDomain')
+  })
+})
+
+describe('getRuleLines: a path whose members wait in empty slots', () => {
+  ;[...SLOT_SHAPES, ...MEMBERLESS_SHAPES].forEach(({ name, clauses, expected }) =>
+    it(name, () => {
+      const lines = linesOf(clauses)
+      expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
+      lines.forEach((line, i) => {
+        const params = expected[i].params
+        if (params) expect(line.params).toMatchObject(params)
+      })
+      expect(renderRuleLines(lines, t)).toEqual(expected.map(englishOf))
+    })
+  )
+
+  SILENT_SLOT_SHAPES.forEach(({ name, clauses }) =>
+    it(`${name}: no lines`, () => {
+      expect(linesOf(clauses)).toEqual([])
+      expect(getRuleLines(clauses)).toEqual([])
+    })
+  )
+
+  it('a path of slots reads as the same path of enrolled methods, one method family per kind', () => {
+    const enrolled = [row(PASSKEY), group(2, [GUARDIAN, GUARDIAN, GUARDIAN])]
+    const slots = [
+      slotRow(PASSKEY_SLOT()),
+      slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])
+    ]
+    expect(linesOf(slots)).toEqual(linesOf(enrolled))
+  })
+
+  it('a group with no member changes no line of the rest of the path', () => {
+    const paths = [
+      [row(PASSKEY)],
+      [row(PASSKEY), row(PASSPORT)],
+      [group(1, [PASSKEY, PASSPORT]), group(2, [GUARDIAN, AADHAAR, PASSKEY])],
+      [slotGroup(2, [GUARDIAN_SLOT(), GUARDIAN_SLOT(), GUARDIAN_SLOT()])]
+    ]
+    paths.forEach((clauses) => {
+      expect(linesOf([noMember(1), ...clauses])).toEqual(linesOf(clauses))
+      expect(linesOf([...clauses, noMember(2)])).toEqual(linesOf(clauses))
+    })
   })
 })
 
