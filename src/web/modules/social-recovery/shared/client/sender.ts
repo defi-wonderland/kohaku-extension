@@ -51,6 +51,7 @@ import type {
   SendRefusal,
   SendRefusalReason,
   SendRequestPort,
+  SettlingRefusal,
   SubmittedOperation
 } from './types'
 
@@ -209,7 +210,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         let waiting = false
         let timedOut = false
         let busy = false
-        let settling: { reason: SendRefusalReason; withdrawn: boolean } | undefined
+        let settling: SettlingRefusal | undefined
         let unsubscribe: () => void = () => {}
         let timer: ReturnType<typeof setTimeout> | undefined
         let closed: ReturnType<typeof setTimeout> | undefined
