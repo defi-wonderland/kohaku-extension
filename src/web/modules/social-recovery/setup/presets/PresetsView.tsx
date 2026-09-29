@@ -36,6 +36,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
   // `undefined` until the stored draft is read, `null` when there is none.
   const [savedAt, setSavedAt] = useState<number | null | undefined>(undefined)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [writeFailed, setWriteFailed] = useState(false)
   const [resumeRows, setResumeRows] = useState<ResumeRow[]>([])
   const [picked, setPicked] = useState<PresetChoice | null>(null)
   const [busy, setBusy] = useState(false)
@@ -78,7 +79,10 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       setBusy(true)
       try {
         await startDraft(setup, choice)
+        setWriteFailed(false)
         onOpenEditor()
+      } catch {
+        setWriteFailed(true)
       } finally {
         setBusy(false)
       }
@@ -90,8 +94,11 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     setBusy(true)
     try {
       await records.startOverSetup(chainId, account)
+      setWriteFailed(false)
       setPicked(null)
       await reload()
+    } catch {
+      setWriteFailed(true)
     } finally {
       setBusy(false)
     }
@@ -295,6 +302,11 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       <Text testID="honesty-note" fontSize={14} weight="medium" style={spacings.mbLg}>
         {t('socialRecovery.honestyNote')}
       </Text>
+      {writeFailed && (
+        <Text testID="write-failed" fontSize={14} appearance="errorText" style={spacings.mbSm}>
+          {t('socialRecovery.records.writeFailed')}
+        </Text>
+      )}
       {loadFailed && renderLoadFailed()}
       {!loadFailed && savedAt === null && renderGrid()}
       {!loadFailed && typeof savedAt === 'number' && renderResume(savedAt)}
