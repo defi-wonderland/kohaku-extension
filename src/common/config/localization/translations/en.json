@@ -645,7 +645,9 @@
         "failedTitle": "Your setup could not be saved",
         "notSent": "The transaction was rejected before it reached the chain. Nothing was saved and your recovery path is not active yet. Everything you enrolled is still here on this device."
       },
-      "showAllMembers": "Show all members"
+      "showAllMembers": "Show all members",
+      "passkeySynced": "synced",
+      "passkeyDeviceBound": "device-bound"
     },
     "arm": {
       "title": "Setup saved",
