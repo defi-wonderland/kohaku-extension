@@ -499,11 +499,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
                     type="outline"
                     size="small"
                     text={t('socialRecovery.editor.makeItAGroup')}
+                    // The sizing line counts required rows by their stored shape, so
+                    // the press gathers every clause that shape reads as a row.
                     onPress={() =>
-                      commit(
-                        makeItAGroup(current(), currentRoles()),
-                        makeItAGroupRoles(currentRoles())
-                      )
+                      commit(makeItAGroup(current()), makeItAGroupRoles(rolesOf(current())))
                     }
                     disabled={checking}
                     hasBottomSpacing={false}

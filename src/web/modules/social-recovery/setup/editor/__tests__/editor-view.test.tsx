@@ -662,6 +662,23 @@ describe('a group while the holder edits it', () => {
     expectGroupCard(0)
   })
 
+  it('makes one group of any one of two from a group of one beside a required row, as the sizing line counts them', async () => {
+    const { stored } = await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY, PASSPORT] }],
+      enrollments: [ALICE].map(enrolled)
+    })
+    await press('editor-member-0-1-remove')
+    await press('editor-add-required')
+    await press('editor-picker-ecdsa-0')
+    expect(allByTestId('editor-rule-line')).toContain(en.socialRecovery.ruleLines.sizingRule)
+    await press('editor-make-it-a-group')
+    await expectPathMatchesDraft(stored, [{ threshold: 1, credentials: [PASSKEY, ALICE] }])
+    expect(byTestId('editor-make-it-a-group')).toBeNull()
+    expect(allByTestId('editor-rule-line')).not.toContain(en.socialRecovery.ruleLines.sizingRule)
+    expectGroupCard(0)
+    expect(byTestId('editor-group-1')).toBeNull()
+  })
+
   it('reads a stored group of one member at a threshold of one as a required row once the editor opens again', async () => {
     const { reopen } = await mount({
       clauses: [{ threshold: 1, credentials: [PASSKEY, PASSPORT] }]
