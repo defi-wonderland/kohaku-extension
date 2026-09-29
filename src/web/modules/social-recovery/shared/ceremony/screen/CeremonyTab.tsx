@@ -5,7 +5,7 @@
  * extension's local storage and builds the client for its account and chain
  * over the extension's own provider.
  */
-import React, { ReactNode, useMemo, useRef } from 'react'
+import React, { ReactNode, useLayoutEffect, useMemo, useRef } from 'react'
 
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import {
@@ -26,7 +26,9 @@ const WalletCeremonySource = ({ children }: { children: ReactNode }) => {
   // The resolver reads the networks when it runs, so an update of the networks
   // keeps the source, and the ceremony it runs, as they are.
   const networksRef = useRef(networks)
-  networksRef.current = networks
+  useLayoutEffect(() => {
+    networksRef.current = networks
+  }, [networks])
   const source = useMemo<CeremonySource>(
     () => ({
       resolve: createCeremonyResolver({
