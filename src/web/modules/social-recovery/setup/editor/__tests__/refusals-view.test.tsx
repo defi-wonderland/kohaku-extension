@@ -284,7 +284,7 @@ describe('continue with a shape this wallet can save', () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
-  it('renders a backup too wide and an unsupported action through the sentences mapped for them', async () => {
+  it('renders a backup too wide and an unsupported action each with its own sentence', async () => {
     await mount({
       clauses: presetPath(),
       validate: async () => ({
@@ -294,8 +294,8 @@ describe('continue with a shape this wallet can save', () => {
     })
     await press('editor-continue')
     expect(allByTestId('editor-finding')).toEqual([
-      refusals.tooLarge,
-      en.socialRecovery.review.blocked.cannotRecover.reasonNotSupported
+      refusals.backupTooWide,
+      refusals.actionUnsupported
     ])
   })
 })

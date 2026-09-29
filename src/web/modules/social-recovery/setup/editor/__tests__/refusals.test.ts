@@ -437,9 +437,9 @@ describe("the SDK's setup errors", () => {
     })
   })
 
-  it('name this wallet in every sentence but the unsupported action', () => {
-    SETUP_ERROR_CODES.filter((code) => code !== 'action.unsupported').forEach((code) =>
-      expect(renderFinding(finding(code), t)).toMatch(/This wallet/)
+  it('name this wallet in every sentence', () => {
+    SETUP_ERROR_CODES.forEach((code) =>
+      expect(renderFinding(finding(code), t)).toMatch(/\bthis wallet\b/i)
     )
   })
 
@@ -449,12 +449,22 @@ describe("the SDK's setup errors", () => {
     )
   })
 
-  it('render a backup too wide as "path too large" and an unsupported action as the module not supporting the account, the mapping chosen until those strings exist', () => {
+  it('render a backup too wide and an unsupported action each with its own sentence', () => {
     expect(renderFinding(finding('backup.too-wide'), t)).toBe(
-      en.socialRecovery.editor.refusals.tooLarge
+      en.socialRecovery.editor.refusals.backupTooWide
     )
     expect(renderFinding(finding('action.unsupported'), t)).toBe(
-      en.socialRecovery.review.blocked.cannotRecover.reasonNotSupported
+      en.socialRecovery.editor.refusals.actionUnsupported
+    )
+  })
+
+  it('render every setup error with a sentence of the editor itself', () => {
+    const editorSentences = new Set([
+      ...Object.values(en.socialRecovery.editor.refusals),
+      en.socialRecovery.editor.duplicate
+    ])
+    SETUP_ERROR_CODES.forEach((code) =>
+      expect(editorSentences.has(renderFinding(finding(code), t))).toBe(true)
     )
   })
 

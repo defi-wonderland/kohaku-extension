@@ -64,9 +64,9 @@ const REFUSAL_KEYS: Record<RefusalKey, string> = {
   tooLarge: 'socialRecovery.editor.refusals.tooLarge'
 }
 
-// A plaintext too wide for the backup's padding is cured the way a rule too
-// wide for a block is, by fewer members; an action that cannot serve the
-// account has no sentence of its own yet and reads as the module's refusal.
+// A backup too wide for its padding and an action that cannot serve the
+// account are the SDK's findings alone: this wallet never judges either shape
+// itself, so each has a sentence of its own outside the editor's refusals.
 const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
   'rule.empty': REFUSAL_KEYS.noMethod,
   'clause.empty': REFUSAL_KEYS.emptyGroup,
@@ -77,8 +77,8 @@ const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
   'credential.duplicate': 'socialRecovery.editor.duplicate',
   'wait.field-width': REFUSAL_KEYS.waitFieldWidth,
   'wait.above-maximum': REFUSAL_KEYS.waitCeiling,
-  'action.unsupported': 'socialRecovery.review.blocked.cannotRecover.reasonNotSupported',
-  'backup.too-wide': REFUSAL_KEYS.tooLarge
+  'action.unsupported': 'socialRecovery.editor.refusals.actionUnsupported',
+  'backup.too-wide': 'socialRecovery.editor.refusals.backupTooWide'
 }
 
 const FINDING_KEYS: Partial<Record<FindingCode, string>> = SETUP_ERROR_KEYS

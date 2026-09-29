@@ -524,7 +524,7 @@ describe('continue', () => {
     expect(navigate).not.toHaveBeenCalled()
     expect(allByTestId('editor-finding')).toEqual([
       en.socialRecovery.editor.refusals.emptyGroup,
-      en.socialRecovery.review.blocked.cannotRecover.reasonNotSupported
+      en.socialRecovery.editor.refusals.actionUnsupported
     ])
     expect(byTestId('editor-continue')).not.toBeNull()
   })
