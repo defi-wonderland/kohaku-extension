@@ -697,7 +697,8 @@
       "whyNotOnCard": "Why isn't my setup on the card?",
       "whyNotOnCardBody": "The card carries no method, no guardian address, no threshold and no waiting period, so a photograph of the card alone names nothing to phish.",
       "warnsHeader": "What warns you",
-      "banner": "Your warning for a recovery you did not start is a banner the next time you open the wallet."
+      "banner": "Your warning for a recovery you did not start is a banner the next time you open the wallet.",
+      "wrongPassword": "That is not your extension password. Try again."
     },
     "create": {
       "controlledBy": "Controlled by {{address}}",
