@@ -23,12 +23,8 @@ const METHOD_NAME_KEYS: Partial<Record<SlotKind, string>> = {
 }
 
 const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined => {
-  const { credential } = enrollment
   const kinds = Object.keys(book.methods) as SlotKind[]
-  return (
-    kinds.find((kind) => sameAddress(book.methods[kind], credential.method)) ??
-    slotKindOf(credential)
-  )
+  return kinds.find((kind) => sameAddress(book.methods[kind], enrollment.credential.method))
 }
 
 const nameOf = (enrollment: Enrollment, kind: SlotKind | undefined, t: Translate): string => {
