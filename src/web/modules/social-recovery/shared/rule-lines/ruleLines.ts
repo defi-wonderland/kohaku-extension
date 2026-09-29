@@ -4,6 +4,7 @@
  * Pure: the same input yields equal output and the input is never mutated.
  */
 import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
 import type { RuleLine, RuleLineKey, RuleLineParams, RuleLinesInput, Translate } from './types'
 
@@ -63,12 +64,14 @@ const isRefused = (clause: Clause): boolean =>
  * One enrolled method may appear only once across the path. Two credentials are
  * the same enrolled method when their method addresses and config bytes match;
  * both are hex, so they compare lowercased. The address holds no `|`, so the
- * joined key is unambiguous.
+ * joined key is unambiguous. An empty slot is no enrolled method, so any number
+ * of them may stand in the path.
  */
 const holdsDuplicate = (clauses: readonly Clause[]): boolean => {
   const seen = new Set<string>()
   return clauses.some((clause) =>
     clause.credentials.some((credential) => {
+      if (isEmptySlot(credential)) return false
       const id = `${credential.method.toLowerCase()}|${credential.config.toLowerCase()}`
       if (seen.has(id)) return true
       seen.add(id)
