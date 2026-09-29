@@ -66,20 +66,30 @@ const findPrivilegeHolder = (privileges: [string, string][]): Address | null => 
 }
 
 // A deployed smart account answers with the privileges it holds on chain; a
-// counterfactual one carries the privileges its deployment will write.
+// counterfactual one carries the privileges its deployment will write. When no
+// network answers, the key's standing is unknown and no holder is shown.
 const readPrivilegeHolder = async (
   account: AccountInterface,
   networks: Network[],
   dispatch: (action: any) => void
 ): Promise<Address | null> => {
   const states = await Promise.all(
-    networks.map((network) =>
-      getAccountState(getRpcProviderForUI(network, dispatch), network, [account])
-        .then(([accountState]) => accountState)
-        .catch(() => null)
-    )
+    networks.map(async (network) => {
+      const provider = getRpcProviderForUI(network, dispatch)
+      try {
+        const [accountState] = await getAccountState(provider, network, [account])
+        return accountState
+      } catch {
+        return null
+      } finally {
+        provider.destroy()
+      }
+    })
   )
-  const deployedState = states.find((accountState) => accountState?.isDeployed)
+  const answers = states.filter((accountState) => !!accountState)
+  if (!answers.length) return null
+
+  const deployedState = answers.find((accountState) => accountState.isDeployed)
 
   if (deployedState) return findPrivilegeHolder(Object.entries(deployedState.associatedKeys))
 
