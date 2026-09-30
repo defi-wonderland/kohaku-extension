@@ -12,7 +12,7 @@ import type {
 } from '@web/modules/social-recovery/shared/records'
 
 import { heldElsewhere, sameCredential, slotStateOf, withSlotFilled } from './slot'
-import type { EnrollSearch, PlaceResult, SlotState } from './types'
+import type { EnrollSearch, PassedTest, PlaceResult, SlotState } from './types'
 
 const enrollmentsOf = async (setup: SetupRecords): Promise<Enrollment[]> => {
   const read = await setup.enrollments.read()
@@ -80,25 +80,33 @@ export const placeEnrollment = async (
 
 /**
  * Stores a test's verdict on the credential's enrollment, with the cause a
- * test that did not pass reported. Returns the updated enrollment, or null
- * where the list no longer holds the credential.
+ * test that did not pass reported. A passed test may bring its challenge's
+ * salt and time, and the facts the ceremony read again; the enrollment keeps
+ * its credential id, its facts and its last passed test otherwise. Returns the
+ * updated enrollment, or null where the list no longer holds the credential.
  */
 export const recordTest = async (
   setup: SetupRecords,
   credential: Credential,
   test: EnrollmentTestVerdict,
-  cause?: string
+  cause?: string,
+  passedWith?: PassedTest
 ): Promise<Enrollment | null> => {
   const enrollments = await enrollmentsOf(setup)
   const found = enrollments.find((e) => sameCredential(e.credential, credential))
   if (!found) {
     return null
   }
+  const facts = passedWith?.facts ?? found.facts
+  const lastTest = passedWith?.lastTest ?? found.lastTest
   const updated: Enrollment = {
     credential: found.credential,
     test,
     ...(cause ? { cause } : {}),
-    ...(found.backup ? { backup: found.backup } : {})
+    ...(found.backup ? { backup: found.backup } : {}),
+    ...(found.credentialId ? { credentialId: found.credentialId } : {}),
+    ...(facts ? { facts } : {}),
+    ...(lastTest ? { lastTest } : {})
   }
   await setup.enrollments.write(enrollments.map((e) => (e === found ? updated : e)))
   return updated

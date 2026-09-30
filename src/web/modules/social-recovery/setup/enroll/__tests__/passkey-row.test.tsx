@@ -253,7 +253,9 @@ describe('the passkey row', () => {
 
       const credential = { method: BOOK.methods.passkey, config: CONFIG, label: 'Work laptop' }
       expect(await storedClauses(records)).toEqual(pathWith(emptySlot('passkey'), credential))
-      expect(await storedEnrollments(records)).toEqual([{ credential, test: 'not-tested', backup }])
+      expect(await storedEnrollments(records)).toEqual([
+        { credential, test: 'not-tested', backup, facts, credentialId: 'credential-a' }
+      ])
 
       const kindLine =
         facts.kind === 'synced'
@@ -569,7 +571,13 @@ describe('the passkey row', () => {
       }
       expect(await storedClauses(records)).toEqual(pathWith(emptySlot('passkey'), replaced))
       expect(await storedEnrollments(records)).toEqual([
-        { credential: replaced, test: 'not-tested', backup: 'device-bound' }
+        {
+          credential: replaced,
+          test: 'not-tested',
+          backup: 'device-bound',
+          facts: BOUND_TO_THIS_MAC,
+          credentialId: 'credential-b'
+        }
       ])
       expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
     })
@@ -679,7 +687,13 @@ describe('the passkey row', () => {
       const credential = { method: BOOK.methods.passkey, config: CONFIG, label: DEFAULT_NAME }
       expect(await storedClauses(records)).toEqual(pathWith(emptySlot('passkey'), credential))
       expect(await storedEnrollments(records)).toEqual([
-        { credential, test: 'not-tested', backup: 'synced' }
+        {
+          credential,
+          test: 'not-tested',
+          backup: 'synced',
+          facts: SYNCED_ON_GOOGLE,
+          credentialId: 'credential-a'
+        }
       ])
       expect(deps.requestIds).toEqual([id])
       expect(view!.navigate.mock.calls).toHaveLength(navigations)
@@ -709,7 +723,13 @@ describe('the passkey row', () => {
       const credential = { method: BOOK.methods.passkey, config: CONFIG, label: DEFAULT_NAME }
       expect(await storedEnrollments(records)).toEqual([
         ...earlierList,
-        { credential, test: 'not-tested', backup: 'synced' }
+        {
+          credential,
+          test: 'not-tested',
+          backup: 'synced',
+          facts: SYNCED_ON_GOOGLE,
+          credentialId: 'credential-a'
+        }
       ])
     })
   })

@@ -5,7 +5,7 @@
  *
  * Every check is advisory: none of them holds the enrollment or the save.
  */
-import { decodeAbiParameters, hashTypedData, isAddress, isHex } from 'viem'
+import { decodeAbiParameters, hashTypedData, isAddress, isHex, verifyTypedData } from 'viem'
 
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
@@ -19,12 +19,11 @@ import {
 import type { CeremonyDevice } from '@web/modules/social-recovery/shared/ceremony'
 import {
   isSignFlowFailure,
-  recoveredSignerOf,
   sameAddress,
   typedMessageOf
 } from '@web/modules/social-recovery/shared/client'
-import type { TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
+import { keyTestToSignOf } from './testRequest'
 import type {
   ChallengeFile,
   CheckLine,
@@ -32,7 +31,8 @@ import type {
   GuardianChecks,
   GuardianTarget,
   GuardianTestOutcome,
-  HeldKey
+  HeldKey,
+  KeyTestTypedData
 } from './types'
 
 const GUARDIAN = 'socialRecovery.enroll.guardian'
@@ -111,39 +111,22 @@ export const guardianAddressOf = (config: Hex): Address | undefined => {
   }
 }
 
-/** Whether the method's signing input is typed data a key can sign. */
-export const isTypedDataToSign = (value: unknown): value is TypedDataToSign => {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const { domain, types, primaryType, message } = value as Record<string, unknown>
-  return (
-    typeof domain === 'object' &&
-    domain !== null &&
-    typeof types === 'object' &&
-    types !== null &&
-    typeof primaryType === 'string' &&
-    typeof message === 'object' &&
-    message !== null
-  )
-}
-
 /**
- * The typed data as JSON, as `eth_signTypedData_v4` takes it: the domain type
+ * The key test as JSON, as `eth_signTypedData_v4` takes it: the domain type
  * spelled out, the same types the local check hashes, so a signer that adds
  * its own domain type signs the same digest. Each bigint is a decimal string.
  */
-export const challengeTextOf = (typedData: TypedDataToSign): string => {
-  const { domain, types, primaryType, message } = typedMessageOf(typedData)
+export const challengeTextOf = (keyTest: KeyTestTypedData): string => {
+  const { domain, types, primaryType, message } = typedMessageOf(keyTestToSignOf(keyTest))
   return JSON.stringify({ domain, types, primaryType, message }, (_key, value: unknown) =>
     typeof value === 'bigint' ? value.toString() : value
   )
 }
 
-/** The challenge as the file the offline block saves. */
-export const challengeFileOf = (typedData: TypedDataToSign): ChallengeFile => ({
+/** The key test as the file the offline block saves. */
+export const challengeFileOf = (keyTest: KeyTestTypedData): ChallengeFile => ({
   name: 'kohaku-test-challenge.json',
-  text: challengeTextOf(typedData),
+  text: challengeTextOf(keyTest),
   type: 'application/json'
 })
 
@@ -155,25 +138,26 @@ export const signatureOf = (text: string): Hex | null => {
     : null
 }
 
-/** The EIP-712 digest of the challenge, the hash a contract's EIP-1271 check reads. */
-export const digestOfTypedData = (typedData: TypedDataToSign): Hex =>
-  hashTypedData(typedData as unknown as Parameters<typeof hashTypedData>[0])
-
 /**
- * The local check of a guardian's signature over the challenge: a signature
- * that recovers to the address passes. Where it does not, the address's own
- * EIP-1271 answer decides; an address with no code answers nothing, which
- * fails as no match. Without a provider, or with a read the chain did not
- * answer, the test is unavailable.
+ * The local check of a guardian's signature over the key test: a signature by
+ * the address over the same typed data passes. Where it does not, the
+ * address's own EIP-1271 answer over the typed data's digest decides; an
+ * address with no code answers nothing, which fails as no match. Without a
+ * provider, or with a read the chain did not answer, the test is unavailable.
  */
 export const checkGuardianSignature = async (input: {
-  typedData: TypedDataToSign
+  keyTest: KeyTestTypedData
   signature: Hex
   address: Address
   chain: GuardianChain | null
 }): Promise<GuardianTestOutcome> => {
-  const recovered = await recoveredSignerOf(typedMessageOf(input.typedData), input.signature)
-  if (sameAddress(recovered, input.address)) {
+  // A signature that does not parse recovers to no address.
+  const signed = await verifyTypedData({
+    ...input.keyTest,
+    address: input.address,
+    signature: input.signature
+  }).catch(() => false)
+  if (signed) {
     return passed({ signature: input.signature })
   }
   if (!input.chain) {
@@ -182,7 +166,7 @@ export const checkGuardianSignature = async (input: {
   try {
     const valid = await input.chain.isValidSignature(
       input.address,
-      digestOfTypedData(input.typedData),
+      hashTypedData(input.keyTest),
       input.signature
     )
     return valid ? passed({ signature: input.signature }) : failed('check-rejected')

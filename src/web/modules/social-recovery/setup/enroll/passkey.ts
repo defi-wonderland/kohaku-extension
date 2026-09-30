@@ -154,7 +154,10 @@ export const testValueOf = (value: unknown): TestAccessValue | null => {
   return { proof: value.proof, ...(facts ? { facts } : {}) }
 }
 
-/** The enrollment a passed creation makes: not tested, with the backup kind the ceremony read. */
+/**
+ * The enrollment a passed creation makes: not tested, with the backup kind,
+ * the credential id and the facts the ceremony read.
+ */
 export const passkeyEnrollmentOf = (
   value: EnrollValue,
   method: Address,
@@ -162,7 +165,8 @@ export const passkeyEnrollmentOf = (
 ): Enrollment => ({
   credential: { method, config: value.config, label: clipName(label) },
   test: 'not-tested',
-  ...(value.facts ? { backup: value.facts.kind } : {})
+  ...(value.facts ? { backup: value.facts.kind, facts: value.facts } : {}),
+  ...(value.credentialId ? { credentialId: value.credentialId } : {})
 })
 
 /** What a stored passkey ceremony request asked for, or null for any other request. */
@@ -179,29 +183,16 @@ export const passkeyRequestOf = (record: CeremonyRequestRecord): PasskeyCeremony
     }
   }
   if (record.call === 'testAccess') {
-    const credentialId = stringOf(record.params, 'credentialId')
-    const facts = isRecord(record.params) ? factsOf(record.params.facts) : undefined
-    return {
-      call: 'testAccess',
-      request: record.request,
-      ...(credentialId ? { credentialId } : {}),
-      ...(facts ? { facts } : {}),
-      ...handOffOf(record.params)
-    }
+    return { call: 'testAccess', request: record.request, ...handOffOf(record.params) }
   }
   return null
 }
 
-/**
- * The row's memory once a stored request is read back: the route the holder
- * chose, and for a test the credential and the creation's facts.
- */
+/** The row's memory once a stored request is read back: the route the holder chose. */
 export const recalledMemory = (
   held: PasskeyMemory,
   asked: PasskeyCeremonyRequest
 ): PasskeyMemory => ({
   ...held,
-  ...(asked.handOff !== undefined ? { handOff: asked.handOff } : {}),
-  ...(asked.call === 'testAccess' && asked.facts ? { facts: asked.facts } : {}),
-  ...(asked.call === 'testAccess' && asked.credentialId ? { credentialId: asked.credentialId } : {})
+  ...(asked.handOff !== undefined ? { handOff: asked.handOff } : {})
 })

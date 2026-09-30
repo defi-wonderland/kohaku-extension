@@ -22,8 +22,7 @@ import {
   browserErrorNameOf,
   enrollHost,
   noteKeyOfOutcome,
-  notSupported,
-  outcomeOfThrown
+  notSupported
 } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import { isSignerNotWired, isSignFlowFailure } from '@web/modules/social-recovery/shared/client'
@@ -44,13 +43,12 @@ import {
   guardianDevice,
   guardianTargetOf,
   heldKeyOf,
-  isTypedDataToSign,
   outcomeOfSignError,
   seedCheckOf
 } from './guardian'
 import OfflineBlock from './OfflineBlock'
 import { causeOf, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
-import { testRequestOf } from './testRequest'
+import { keyTestOf, keyTestToSignOf } from './testRequest'
 import { TEST_CHIPS } from './types'
 import type { GuardianChallenge, GuardianChecks, NameCheck, RowProps } from './types'
 import { placeEnrollment, recordTest } from './writes'
@@ -241,7 +239,7 @@ const GuardianRow = ({
       try {
         await applyTest(
           await checkGuardianSignature({
-            typedData: signed.typedData,
+            keyTest: signed.keyTest,
             signature,
             address,
             chain: deps.chain
@@ -261,27 +259,14 @@ const GuardianRow = ({
       if (client.status !== 'ready' || !enrollment || !address) {
         return
       }
-      const request = testRequestOf({
-        descriptor: client.client.descriptor,
+      const keyTest = keyTestOf({
         chainId,
         account,
-        method: book.methods.ecdsa,
-        config: enrollment.credential.config,
+        key: address,
         now: deps.now(),
         randomBytes: deps.randomBytes
       })
-      let typedData: unknown
-      try {
-        typedData = client.client.approving.signingInput(request)
-      } catch (error: unknown) {
-        setTestOutcome(outcomeOfThrown(error))
-        return
-      }
-      if (!isTypedDataToSign(typedData)) {
-        setTestOutcome(notSupported('no-implementation'))
-        return
-      }
-      const next: GuardianChallenge = { request, typedData }
+      const next: GuardianChallenge = { keyTest }
       setChallenge(next)
       setTestOutcome(null)
       const held = heldKeyOf(deps.keys, address)
@@ -296,9 +281,11 @@ const GuardianRow = ({
       setWaiting(true)
       let signature: Hex
       try {
-        signature = await deps.signTypedData({ addr: held.addr, type: held.type }, typedData, {
-          signal: controller.signal
-        })
+        signature = await deps.signTypedData(
+          { addr: held.addr, type: held.type },
+          keyTestToSignOf(keyTest),
+          { signal: controller.signal }
+        )
       } catch (error: unknown) {
         if (controller.signal.aborted) {
           return
@@ -324,7 +311,7 @@ const GuardianRow = ({
       setBusy(false)
       await check(next, signature)
     },
-    [client, enrollment, address, chainId, account, book, deps, applyTest, check]
+    [client, enrollment, address, chainId, account, deps, applyTest, check]
   )
 
   const withdraw = useCallback(() => {
@@ -547,7 +534,7 @@ const GuardianRow = ({
 
       {!!enrollment && offline && !!challenge && (
         <OfflineBlock
-          key={challenge.request.salt}
+          key={challenge.keyTest.message.salt}
           challenge={challenge}
           busy={busy}
           onCheck={(signature) => check(challenge, signature)}

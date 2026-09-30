@@ -52,7 +52,13 @@ import {
 import { enrollPathOf } from './search'
 import { testRequestOf } from './testRequest'
 import { TEST_CHIPS } from './types'
-import type { PasskeyCeremonyRequest, PasskeyMemory, PendingPlacement, RowProps } from './types'
+import type {
+  PassedTest,
+  PasskeyCeremonyRequest,
+  PasskeyMemory,
+  PendingPlacement,
+  RowProps
+} from './types'
 import { placeEnrollment, recordTest } from './writes'
 
 const PASSKEY = 'socialRecovery.enroll.passkey'
@@ -115,11 +121,7 @@ const PasskeyRow = ({
       setEnrollOutcome(null)
       setTestOutcome(null)
       setSkipped(false)
-      setMemory({
-        ...(placing.value.facts ? { facts: placing.value.facts } : {}),
-        ...(placing.value.credentialId ? { credentialId: placing.value.credentialId } : {}),
-        handOff: placing.handOff
-      })
+      setMemory({ handOff: placing.handOff })
       onEnrollment(created)
     },
     [book, setup, search, onEnrollment]
@@ -153,19 +155,25 @@ const PasskeyRow = ({
       if (!current || !verdict) {
         return
       }
-      if (verdict === 'passed') {
-        const value =
-          outcome.kind === 'verdict' && outcome.verdict === 'passed'
-            ? testValueOf(outcome.value)
-            : null
-        setMemory((held) => ({
-          ...held,
-          salt: asked.request.salt,
-          ...(value?.facts ? { facts: value.facts } : {})
-        }))
-      }
+      const value =
+        outcome.kind === 'verdict' && outcome.verdict === 'passed'
+          ? testValueOf(outcome.value)
+          : null
+      const passedWith: PassedTest | undefined =
+        verdict === 'passed'
+          ? {
+              lastTest: { salt: asked.request.salt, at: deps.now() },
+              ...(value?.facts ? { facts: value.facts } : {})
+            }
+          : undefined
       try {
-        const updated = await recordTest(setup, current.credential, verdict, causeOf(outcome))
+        const updated = await recordTest(
+          setup,
+          current.credential,
+          verdict,
+          causeOf(outcome),
+          passedWith
+        )
         setWriteFailed(false)
         if (updated) {
           onEnrollment(updated)
@@ -174,7 +182,7 @@ const PasskeyRow = ({
         setWriteFailed(true)
       }
     },
-    [setup, onEnrollment]
+    [setup, onEnrollment, deps]
   )
 
   const applyReport = useCallback(
@@ -304,8 +312,8 @@ const PasskeyRow = ({
           account,
           chainId,
           request,
-          credentialId: memory.credentialId,
-          facts: memory.facts,
+          credentialId: enrollment.credentialId,
+          facts: enrollment.facts,
           handOff: memory.handOff ?? false
         })
       )
@@ -356,6 +364,7 @@ const PasskeyRow = ({
     enrollOutcome.verdict === 'unavailable' &&
     enrollOutcome.cause === 'unreachable'
   const phone = memory.handOff ?? handOffTried
+  const facts = enrollment?.facts
   const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
   const lineKey = enrollment ? testLineKeyOf(enrollment, skipped, `${PASSKEY}.testPassed`) : null
   const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
@@ -370,7 +379,7 @@ const PasskeyRow = ({
         {t('socialRecovery.enroll.passkey.title')}
       </Text>
       <Text testID="passkey-kind-name" fontSize={16} weight="medium" style={spacings.mbTy}>
-        {t(kindNameKeyOf(memory.facts ?? (phone ? { place: 'phone' } : undefined)))}
+        {t(kindNameKeyOf(facts ?? (phone ? { place: 'phone' } : undefined)))}
       </Text>
       <Text fontSize={14} appearance="secondaryText" style={spacings.mbTy}>
         {t('socialRecovery.enroll.passkey.authenticators')}
@@ -472,14 +481,14 @@ const PasskeyRow = ({
               {renderChip('method', TEST_CHIPS[enrollment.test], t)}
             </Text>
           </View>
-          {!!memory.facts && (
+          {!!facts && (
             <Text testID="passkey-kind-line" fontSize={14} weight="medium">
-              {renderKindLine(memory.facts, deps.platform, t)}
+              {renderKindLine(facts, deps.platform, t)}
             </Text>
           )}
-          {!!(memory.facts ?? enrollment.backup) && (
+          {!!(facts ?? enrollment.backup) && (
             <Text testID="passkey-loss-line" fontSize={14} style={spacings.mbTy}>
-              {t(lossLineKeyOf({ kind: memory.facts?.kind ?? enrollment.backup ?? 'synced' }))}
+              {t(lossLineKeyOf({ kind: facts?.kind ?? enrollment.backup ?? 'synced' }))}
             </Text>
           )}
           <Text
@@ -530,9 +539,11 @@ const PasskeyRow = ({
                 {t(lineKey)}
               </Text>
             )}
-            {enrollment.test === 'passed' && !!memory.salt && (
+            {enrollment.test === 'passed' && !!enrollment.lastTest && (
               <Text testID="passkey-signed-note" fontSize={12} appearance="secondaryText">
-                {t('socialRecovery.enroll.passkey.signedNote', { hash: renderHash(memory.salt) })}
+                {t('socialRecovery.enroll.passkey.signedNote', {
+                  hash: renderHash(enrollment.lastTest.salt)
+                })}
               </Text>
             )}
             {testNotes.map((note) => (

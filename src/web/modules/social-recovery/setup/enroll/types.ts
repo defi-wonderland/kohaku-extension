@@ -2,7 +2,6 @@ import type { Address, ApproverRequest, Hex } from '@web/modules/social-recovery
 import type {
   CeremonyOutcome,
   EnrollValue,
-  PasskeyFacts,
   Platform,
   ReportStore,
   ReportSubscribe
@@ -18,11 +17,15 @@ import type { MethodChip } from '@web/modules/social-recovery/shared/display'
 import type {
   ChainId,
   Enrollment,
+  EnrollmentFacts,
+  EnrollmentLastTest,
   EnrollmentTestVerdict,
   SetupRecords,
   SlotKind,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
+
+import type { KEY_TEST_TYPES } from './testRequest'
 
 /** The search keys the screen reads: the slot's kind and position, and a ceremony that returned. */
 export const ENROLL_SEARCH_KEYS = {
@@ -72,6 +75,12 @@ export type PlaceResult =
   | { status: 'duplicate' }
   | { status: 'slot-taken' }
 
+/** What a passed test adds to its enrollment: its challenge's salt and time, and the facts read again. */
+export interface PassedTest {
+  lastTest: EnrollmentLastTest
+  facts?: EnrollmentFacts
+}
+
 /** What the test request is built from. */
 export interface TestRequestInput {
   descriptor: Pick<RecoveryKitClient['descriptor'], 'manager' | 'action' | 'digestVersion'>
@@ -82,6 +91,39 @@ export interface TestRequestInput {
   /** Milliseconds since epoch. */
   now: number
   randomBytes: (length: number) => Uint8Array
+}
+
+/** What a guardian key's test challenge is built from. */
+export interface KeyTestInput {
+  chainId: ChainId
+  account: Address
+  /** The address under test. */
+  key: Address
+  /** Milliseconds since epoch. */
+  now: number
+  randomBytes: (length: number) => Uint8Array
+}
+
+/** The key test's domain: a name, a version and the chain, and no verifying contract. */
+export interface KeyTestDomain {
+  name: string
+  version: string
+  chainId: bigint
+}
+
+export type KeyTestMessage = {
+  account: Address
+  key: Address
+  salt: Hex
+  validUntil: bigint
+}
+
+/** A guardian key's test challenge as EIP-712 typed data. */
+export interface KeyTestTypedData {
+  domain: KeyTestDomain
+  types: typeof KEY_TEST_TYPES
+  primaryType: 'KeyTest'
+  message: KeyTestMessage
 }
 
 /** A value typed into the guardian field: empty, an address, or anything else read as a name. */
@@ -199,27 +241,17 @@ export interface RowProps {
 /**
  * What a returned passkey ceremony's request carried, read back when its
  * report arrives: the name and the route of a creation, and for a test the
- * credential, the creation's facts and its route, which the row forgets when
- * it leaves the page for the ceremony tab.
+ * request and the route, which the row forgets when it leaves the page for
+ * the ceremony tab.
  */
 export type PasskeyCeremonyRequest =
   | { call: 'enroll'; userName?: string; handOff?: boolean }
-  | {
-      call: 'testAccess'
-      request: ApproverRequest
-      credentialId?: string
-      facts?: PasskeyFacts
-      handOff?: boolean
-    }
+  | { call: 'testAccess'; request: ApproverRequest; handOff?: boolean }
 
-/** The passkey row's facts storage does not keep. */
+/** What the passkey row keeps that the enrollment record does not. */
 export interface PasskeyMemory {
-  facts?: PasskeyFacts
-  credentialId?: string
   /** Whether the holder chose the phone hand-off to create the passkey. */
   handOff?: boolean
-  /** The salt of the last passed test's challenge. */
-  salt?: Hex
 }
 
 /** A passed creation whose enrollment the records have not stored yet. */
@@ -229,10 +261,9 @@ export interface PendingPlacement {
   handOff: boolean
 }
 
-/** The offline block's challenge: the request it was built from and its typed data. */
+/** The offline block's challenge: the key test's typed data. */
 export interface GuardianChallenge {
-  request: ApproverRequest
-  typedData: TypedDataToSign
+  keyTest: KeyTestTypedData
 }
 
 export interface OfflineBlockProps {

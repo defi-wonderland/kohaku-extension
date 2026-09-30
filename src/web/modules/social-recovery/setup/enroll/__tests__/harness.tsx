@@ -368,11 +368,14 @@ export const readyClient = (): FakeClient => {
 export interface FakeDeps extends EnrollDeps {
   channel: ReportChannel
   requestIds: string[]
+  /** Every random value the view drew, as hex, in order. */
+  salts: Hex[]
 }
 
 export const depsOf = (overrides: Partial<EnrollDeps> = {}): FakeDeps => {
   const channel = reportChannel()
   const requestIds: string[] = []
+  const salts: Hex[] = []
   let next = 0
   return {
     passkeysServed: true,
@@ -386,7 +389,11 @@ export const depsOf = (overrides: Partial<EnrollDeps> = {}): FakeDeps => {
       return id
     },
     now: () => NOW,
-    randomBytes: (length: number) => new Uint8Array(nodeRandomBytes(length)),
+    randomBytes: (length: number) => {
+      const bytes = nodeRandomBytes(length)
+      salts.push(`0x${bytes.toString('hex')}`)
+      return new Uint8Array(bytes)
+    },
     resolveName: async () => '',
     chain: { readCode: async () => '0x', isValidSignature: async () => false },
     keys: [] as HeldKey[],
@@ -397,7 +404,8 @@ export const depsOf = (overrides: Partial<EnrollDeps> = {}): FakeDeps => {
     saveFile: () => {},
     ...overrides,
     channel,
-    requestIds
+    requestIds,
+    salts
   }
 }
 

@@ -23,7 +23,6 @@ import {
   ACCOUNT,
   BOOK,
   CHAIN_ID,
-  DESCRIPTOR,
   depsOf,
   each,
   emptySlot,
@@ -36,8 +35,7 @@ import {
   settle,
   storedClauses,
   storedEnrollments,
-  t,
-  typedDataOf
+  t
 } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
@@ -47,8 +45,8 @@ const {
 const {
   decodeAbiParameters,
   encodeAbiParameters,
-  isAddressEqual,
-  zeroHash
+  hexToBytes,
+  isAddressEqual
 }: typeof import('viem') = require('viem')
 const { privateKeyToAccount }: typeof import('viem/accounts') = require('viem/accounts')
 const {
@@ -62,6 +60,11 @@ const {
   renderShortAddress
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const { guardianChainOf }: typeof import('../chain') = require('../chain')
+const {
+  KEY_TEST_DOMAIN_NAME,
+  keyTestOf,
+  keyTestToSignOf
+}: typeof import('../testRequest') = require('../testRequest')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const GUARDIAN = 'socialRecovery.enroll.guardian'
@@ -161,7 +164,19 @@ describe('the guardian row', () => {
     await view!.press('guardian-add')
   }
 
-  const lastRequest = () => client.signingInputs[client.signingInputs.length - 1]
+  const lastSalt = () => deps.salts[deps.salts.length - 1]
+
+  /** The last challenge the row built, rebuilt from the salt it drew. */
+  const lastChallenge = (): TypedDataToSign =>
+    keyTestToSignOf(
+      keyTestOf({
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        key: HELD,
+        now: NOW,
+        randomBytes: () => hexToBytes(lastSalt())
+      })
+    )
 
   describe('before the enrollment', () => {
     it('renders the publication line before the field', async () => {
@@ -466,30 +481,26 @@ describe('the guardian row', () => {
       )
     }
 
-    it('builds a test request for the guardian with a fresh salt each time', async () => {
+    it('builds a key test for the guardian with a fresh salt each time', async () => {
       await addGuardian()
       await view!.press('guardian-test')
+      const first = JSON.parse(view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? '{}')
       await view!.press('guardian-test')
-      expect(client.signingInputs).toHaveLength(2)
-      const [first, second] = client.signingInputs
-      expect(first).toMatchObject({
-        kind: 'recovery-proof-request',
-        purpose: 'approval',
-        chainId: String(CHAIN_ID),
-        manager: DESCRIPTOR.manager,
-        action: DESCRIPTOR.action,
-        digestVersion: DESCRIPTOR.digestVersion,
+      const second = JSON.parse(view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? '{}')
+      expect(client.signingInputs).toHaveLength(0)
+      expect(first.domain).toEqual({
+        name: KEY_TEST_DOMAIN_NAME,
+        version: '1',
+        chainId: String(CHAIN_ID)
+      })
+      expect(first.primaryType).toBe('KeyTest')
+      expect(first.message).toMatchObject({
         account: ACCOUNT,
-        attemptId: '0',
-        setupNonce: '0',
-        setupBodyHash: zeroHash,
-        place: 0,
-        method: BOOK.methods.ecdsa,
-        config: guardianConfigOf(HELD),
+        key: HELD,
         validUntil: String(NOW / 1000 + REQUEST_WINDOW_SECONDS)
       })
-      expect(first.salt).toMatch(/^0x[0-9a-f]{64}$/)
-      expect(second.salt).not.toBe(first.salt)
+      expect(first.message.salt).toMatch(/^0x[0-9a-f]{64}$/)
+      expect(second.message.salt).not.toBe(first.message.salt)
     })
 
     it('signs through the request queue with a key the wallet holds, and reads tested', async () => {
@@ -502,7 +513,7 @@ describe('the guardian row', () => {
 
       expect(signTypedData).toHaveBeenCalledWith(
         { addr: HELD, type: 'internal' },
-        typedDataOf(lastRequest()),
+        lastChallenge(),
         { signal: expect.any(AbortSignal) }
       )
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
@@ -554,10 +565,7 @@ describe('the guardian row', () => {
     it('reads no match for a signature by another key, and offers a retry', async () => {
       await addGuardian()
       await view!.press('guardian-test')
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(OTHER_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
 
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testFailed'))
@@ -586,10 +594,7 @@ describe('the guardian row', () => {
       deps = depsOf({ chain: { readCode: async () => '0x6080', isValidSignature } })
       await addGuardian()
       await view!.press('guardian-test')
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(OTHER_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
       expect(isValidSignature).toHaveBeenCalledTimes(1)
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
@@ -601,10 +606,7 @@ describe('the guardian row', () => {
       deps = depsOf({ chain: guardianChainOf({ send: async () => '0x6080', call }) })
       await addGuardian()
       await view!.press('guardian-test')
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(OTHER_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
       expect(call).toHaveBeenCalledWith(expect.objectContaining({ to: HELD }))
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
@@ -623,10 +625,7 @@ describe('the guardian row', () => {
       })
       await addGuardian()
       await view!.press('guardian-test')
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(OTHER_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testUnavailable'))
       expect(view!.text().split(t(`${CEREMONY}.testUnavailableLine`))).toHaveLength(2)
@@ -651,10 +650,7 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-offline')).not.toBeNull()
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
 
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(GUARDIAN_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
     })
@@ -850,37 +846,31 @@ describe('the guardian row', () => {
       await addGuardian()
       await view!.press('guardian-test')
       const carried = carriedText()
-      expect(JSON.parse(carried).primaryType).toBe('Approval')
+      expect(JSON.parse(carried).primaryType).toBe('KeyTest')
       expect(view!.byTestId('guardian-offline-save')).not.toBeNull()
       expect(view!.byTestId('guardian-offline-challenge')).toBeNull()
       expect(view!.text()).not.toContain(carried)
-      expect(view!.text()).not.toContain(lastRequest().salt)
+      expect(view!.text()).not.toContain(lastSalt())
     })
 
     it('carries the domain type in the text', async () => {
       await addGuardian()
       await view!.press('guardian-test')
       const carried = JSON.parse(carriedText())
-      expect(carried.types.EIP712Domain).toEqual(
-        expect.arrayContaining([
-          { name: 'name', type: 'string' },
-          { name: 'version', type: 'string' },
-          { name: 'chainId', type: 'uint256' },
-          { name: 'verifyingContract', type: 'address' }
-        ])
-      )
-      expect(carried.primaryType).toBe('Approval')
-      expect(carried.message.salt).toBe(lastRequest().salt)
+      expect(carried.types.EIP712Domain).toEqual([
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' }
+      ])
+      expect(carried.primaryType).toBe('KeyTest')
+      expect(carried.message.salt).toBe(lastSalt())
     })
 
     it('drops a signature pasted for an earlier challenge when a new test starts', async () => {
       await addGuardian()
       await view!.press('guardian-test')
       const first = carriedText()
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(GUARDIAN_KEY, lastChallenge()))
       expect(view!.isDisabled('guardian-offline-check')).toBe(false)
 
       await view!.press('guardian-test')
@@ -901,10 +891,7 @@ describe('the guardian row', () => {
       expect(signTypedData).not.toHaveBeenCalled()
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
 
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(GUARDIAN_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(GUARDIAN_KEY, lastChallenge()))
       await view!.press('guardian-offline-check')
       expect(signTypedData).not.toHaveBeenCalled()
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
@@ -920,10 +907,7 @@ describe('the guardian row', () => {
   describe('the check of a signature by another key', () => {
     const pasteOtherSignature = async () => {
       await view!.press('guardian-test')
-      await view!.type(
-        'guardian-offline-signature',
-        await signBy(OTHER_KEY, typedDataOf(lastRequest()))
-      )
+      await view!.type('guardian-offline-signature', await signBy(OTHER_KEY, lastChallenge()))
     }
 
     it('reads test unavailable where the extension holds no provider', async () => {

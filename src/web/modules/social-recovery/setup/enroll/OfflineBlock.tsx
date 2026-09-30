@@ -19,7 +19,7 @@ import type { OfflineBlockProps } from './types'
 const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps) => {
   const { t } = useTranslation()
   const [pasted, setPasted] = useState('')
-  const text = useMemo(() => challengeTextOf(challenge.typedData), [challenge])
+  const text = useMemo(() => challengeTextOf(challenge.keyTest), [challenge])
   const signature = signatureOf(pasted)
 
   return (
@@ -40,7 +40,7 @@ const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps)
         testID="guardian-offline-save"
         type="outline"
         text={t('socialRecovery.enroll.offline.saveAsFile')}
-        onPress={() => saveFile(challengeFileOf(challenge.typedData))}
+        onPress={() => saveFile(challengeFileOf(challenge.keyTest))}
         hasBottomSpacing={false}
       />
       <Text fontSize={12} weight="medium" appearance="secondaryText" style={spacings.mtSm}>
