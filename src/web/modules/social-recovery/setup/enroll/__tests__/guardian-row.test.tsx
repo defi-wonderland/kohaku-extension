@@ -686,6 +686,38 @@ describe('the guardian row', () => {
     })
   })
 
+  describe('the access test while the client is not ready', () => {
+    const reopenEnrolled = async () => {
+      const credential = { method: BOOK.methods.ecdsa, config: guardianConfigOf(HELD), label: '' }
+      ;({ records } = await recordsWith(
+        [PATH[0], { threshold: 1, credentials: [emptySlot('ecdsa'), credential] }],
+        [{ credential, test: 'not-tested' }]
+      ))
+      view?.unmount()
+      view = await mountView({ records, search: SEARCH, client: { status: 'loading' }, deps })
+    }
+
+    it('signs with a key the wallet holds', async () => {
+      const signTypedData = jest.fn((_key: KeyHandle, typedData: TypedDataToSign) =>
+        signBy(GUARDIAN_KEY, typedData)
+      )
+      deps = depsOf({ keys: [{ addr: HELD, type: 'internal' }], signTypedData })
+      await reopenEnrolled()
+      await view!.press('guardian-test')
+
+      expect(signTypedData).toHaveBeenCalledTimes(1)
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+    })
+
+    it('opens the offline block', async () => {
+      deps = depsOf({ keys: [{ addr: HELD, type: 'internal' }] })
+      await reopenEnrolled()
+      await view!.press('guardian-test-offline')
+
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+    })
+  })
+
   describe('a signing request the holder withdraws', () => {
     /** A signer that holds every request open until the test answers it. */
     const waitingSigner = () => {

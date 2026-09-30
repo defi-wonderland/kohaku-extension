@@ -498,7 +498,7 @@ const GuardianRow = ({
                     ? t('socialRecovery.writes.tryAgain')
                     : t('socialRecovery.enroll.guardian.testThisKey')
                 }
-                disabled={client.status !== 'ready' || busy}
+                disabled={busy}
                 onPress={() => runTest(false)}
                 hasBottomSpacing={false}
                 style={spacings.mrSm}
@@ -508,7 +508,7 @@ const GuardianRow = ({
                   testID="guardian-test-offline"
                   type="ghost"
                   text={t('socialRecovery.enroll.offline.title')}
-                  disabled={client.status !== 'ready' || busy}
+                  disabled={busy}
                   onPress={() => runTest(true)}
                   hasBottomSpacing={false}
                 />
