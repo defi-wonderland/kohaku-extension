@@ -40,6 +40,8 @@ const mockChain: {
     destroyedAfterRead: boolean
   }[]
 } = { states: {}, failingChainIds: [], providers: [] }
+// The name the reverse lookup finds, per account address.
+const mockEnsNames: Record<string, string> = {}
 
 jest.mock('@web/hooks/useBackgroundService', () => ({
   __esModule: true,
@@ -55,7 +57,10 @@ jest.mock('@web/hooks/useAccountPickerControllerState', () => ({
 }))
 jest.mock('@common/hooks/useReverseLookup', () => ({
   __esModule: true,
-  default: () => ({ isLoading: false, ens: null })
+  default: ({ address }: { address: string }) => ({
+    isLoading: false,
+    ens: mockEnsNames[address] ?? null
+  })
 }))
 jest.mock('@common/hooks/useToast', () => ({
   __esModule: true,
@@ -131,6 +136,7 @@ jest.mock('viem', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { Dimensions }: typeof import('react-native') = require('react-native')
 const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
@@ -141,6 +147,8 @@ const {
 const {
   ERC_4337_ENTRYPOINT
 }: typeof import('@ambire-common/consts/deploy') = require('@ambire-common/consts/deploy')
+const shortenAddress: typeof import('@ambire-common/utils/shortenAddress').default =
+  require('@ambire-common/utils/shortenAddress').default
 const {
   renderFullAddress,
   renderShortAddress
@@ -265,6 +273,16 @@ describe('the account picker page list', () => {
     container.querySelector<HTMLElement>(`[data-testid="controlled-by-${address}"]`)
   const tooltip = (id: string) =>
     container.querySelector<HTMLElement>(`[data-tooltip-content-for="${id}"]`)
+  // jsdom lays nothing out, so the window reads as zero wide; a row on a wide
+  // window has room for a full address.
+  const widenWindow = () =>
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 1440, height: 900, scale: 1, fontScale: 1 })
+  const rowLines = (address: Address) =>
+    Array.from(row(address)?.querySelectorAll<HTMLElement>('[dir="auto"]') ?? []).map(
+      (node) => node.textContent
+    )
 
   beforeEach(() => {
     container = document.createElement('div')
@@ -274,6 +292,9 @@ describe('the account picker page list', () => {
     mockChain.states = {}
     mockChain.failingChainIds = []
     mockChain.providers = []
+    Object.keys(mockEnsNames).forEach((address) => {
+      delete mockEnsNames[address]
+    })
     jest.spyOn(console, 'log').mockImplementation(() => {})
   })
 
@@ -482,6 +503,39 @@ describe('the account picker page list', () => {
         type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_SELECT_ACCOUNT',
         params: { account: smart }
       })
+    })
+
+    it('shows an unnamed smart account by its short address, with the full address in a tooltip', async () => {
+      widenWindow()
+      await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
+
+      const short = shortenAddress(SMART, 16)
+      expect(short.length).toBeLessThan(SMART.length)
+      const address = row(SMART)?.querySelector<HTMLElement>(`[data-tooltip-id="${SMART}"]`)
+      expect(address?.textContent).toBe(short)
+      expect(rowLines(SMART)).not.toContain(SMART)
+      expect(tooltip(SMART)?.textContent).toBe(SMART)
+    })
+
+    it('shows a named smart account by its name beside its short address', async () => {
+      mockEnsNames[SMART] = 'savings.eth'
+      widenWindow()
+      await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
+
+      const lines = rowLines(SMART)
+      expect(lines).toContain('savings.eth')
+      expect(lines).toContain(`(${shortenAddress(SMART, 16)})`)
+      expect(lines).not.toContain(SMART)
+      expect(tooltip(SMART)?.textContent).toBe(SMART)
+    })
+
+    it('still shows an unnamed basic account by its full address', async () => {
+      widenWindow()
+      await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
+
+      expect(rowLines(BASIC)).toContain(BASIC)
+      expect(rowLines(BASIC)).not.toContain(shortenAddress(BASIC, 16))
+      expect(tooltip(BASIC)).toBeNull()
     })
 
     it('asks nothing about a seed', async () => {

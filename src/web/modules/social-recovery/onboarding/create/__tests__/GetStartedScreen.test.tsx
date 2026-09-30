@@ -116,11 +116,13 @@ describe('the get-started screen', () => {
     expect(oneKey).toBe(covers + 1)
   })
 
-  it('places the two sentences between the create door and the import door', async () => {
+  it('places the two sentences after the import door and above the version line', async () => {
     await mount()
 
     const create = byTestId('create-new-account-btn') as HTMLElement
     const importDoor = byTestId('create-existing-account-btn') as HTMLElement
+    const lines = Array.from(container.querySelectorAll<HTMLElement>('[dir="auto"]'))
+    const footer = lines[lines.length - 1]
     const sentences = Array.from(container.querySelectorAll<HTMLElement>('[dir="auto"]')).filter(
       (node) =>
         node.textContent === en.socialRecovery.create.coversSmartAccount ||
@@ -129,10 +131,12 @@ describe('the get-started screen', () => {
 
     // Document order: every element of the screen as it reads top to bottom.
     const order = Array.from(container.querySelectorAll('*'))
+    expect(order.indexOf(importDoor)).toBeGreaterThan(order.indexOf(create))
+    expect(footer.textContent).toMatch(/^v[0-9]/)
     expect(sentences).toHaveLength(2)
     sentences.forEach((sentence) => {
-      expect(order.indexOf(sentence)).toBeGreaterThan(order.indexOf(create))
-      expect(order.indexOf(sentence)).toBeLessThan(order.indexOf(importDoor))
+      expect(order.indexOf(sentence)).toBeGreaterThan(order.indexOf(importDoor))
+      expect(order.indexOf(sentence)).toBeLessThan(order.indexOf(footer))
     })
   })
 
