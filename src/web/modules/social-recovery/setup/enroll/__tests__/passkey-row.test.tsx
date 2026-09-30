@@ -10,6 +10,7 @@ import type { Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-i
 import type { CeremonyOutcome, PasskeyFacts } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   CeremonyRequestRecord,
+  Enrollment,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 
@@ -792,6 +793,129 @@ describe('the passkey row', () => {
       const parsed = parseCeremonySearch(lastNavigation().slice(lastNavigation().indexOf('?')))
       expect(parsed.ok && parsed.params).toMatchObject({ call: 'testAccess', id: fresh })
     })
+  })
+
+  describe('the facts kept in the record', () => {
+    const CREDENTIAL: Credential = {
+      method: BOOK.methods.passkey,
+      config: CONFIG,
+      label: 'Work laptop'
+    }
+    const SALT: Hex = `0x${'ab'.repeat(32)}`
+    const SYNCED_KIND_LINE = t(`${CEREMONY}.syncedKind`, {
+      provider: t(`${CEREMONY}.providers.google`)
+    })
+
+    const reopenWith = async (enrollment: Enrollment) => {
+      ;({ records, faults } = await recordsWith(pathWith(emptySlot('passkey'), CREDENTIAL), [
+        enrollment
+      ]))
+      await open()
+    }
+
+    it('stores the salt the test drew and the time it passed', async () => {
+      const asked = await testAndReturn(passed({ proof: '0x0102' }))
+      if (asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
+      const [enrollment] = await storedEnrollments(records)
+      expect(asked.request.salt).toBe(deps.salts[deps.salts.length - 1])
+      expect(enrollment).toMatchObject({
+        test: 'passed',
+        facts: SYNCED_ON_GOOGLE,
+        credentialId: 'credential-a',
+        lastTest: { salt: asked.request.salt, at: NOW }
+      })
+    })
+
+    it('renders the kind line, the loss line and the signed note from the record alone', async () => {
+      await reopenWith({
+        credential: CREDENTIAL,
+        test: 'passed',
+        backup: 'synced',
+        facts: SYNCED_ON_GOOGLE,
+        credentialId: 'credential-a',
+        lastTest: { salt: SALT, at: NOW }
+      })
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
+      expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(SYNCED_KIND_LINE)
+      expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(t(`${CEREMONY}.syncedLoss`))
+      expect(view!.byTestId('passkey-signed-note')?.textContent).toBe(
+        t(`${PASSKEY}.signedNote`, { hash: renderHash(SALT) })
+      )
+      expect(deps.requestIds).toEqual([])
+      expect(view!.navigate).not.toHaveBeenCalled()
+    })
+
+    it('names a phone passkey from the record alone', async () => {
+      await reopenWith({
+        credential: CREDENTIAL,
+        test: 'not-tested',
+        backup: 'device-bound',
+        facts: { ...BOUND_TO_THIS_MAC, place: 'phone', attachment: 'cross-platform' },
+        credentialId: 'credential-a'
+      })
+      expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+        t('socialRecovery.methodNames.passkeyOnYourPhone')
+      )
+      expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(
+        t(`${CEREMONY}.deviceBoundLoss`)
+      )
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+    })
+
+    it('renders a record with no facts, credential id or last test as before', async () => {
+      await reopenWith({ credential: CREDENTIAL, test: 'passed', backup: 'synced' })
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
+      expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+        t('socialRecovery.methodNames.passkeyOnThisDevice')
+      )
+      expect(view!.byTestId('passkey-kind-line')).toBeNull()
+      expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(t(`${CEREMONY}.syncedLoss`))
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+      expect(view!.byTestId('passkey-test-line')?.textContent).toBe(t(`${PASSKEY}.testPassed`))
+    })
+
+    it('runs the test for the credential id the record holds', async () => {
+      await reopenWith({
+        credential: CREDENTIAL,
+        test: 'not-tested',
+        backup: 'synced',
+        facts: SYNCED_ON_GOOGLE,
+        credentialId: 'credential-a'
+      })
+      await view!.press('passkey-run-test')
+      const asked = await storedRequest(deps.requestIds[deps.requestIds.length - 1])
+      expect(asked).toMatchObject({
+        call: 'testAccess',
+        params: { credentialId: 'credential-a' }
+      })
+    })
+
+    each([
+      ['a failed test', failed('browser-error', 'NotAllowedError'), 'failed'],
+      ['an unavailable test', unavailable('service-unanswered'), 'unavailable']
+    ] as const)(
+      'keeps the facts, the credential id and the last passed test after %s',
+      async ([, outcome, verdict]) => {
+        const first = await testAndReturn(passed({ proof: '0x0102' }))
+        if (first?.call !== 'testAccess') {
+          throw new Error('no test request stored')
+        }
+        await view!.press('passkey-run-test-again')
+        await returnFrom(deps.requestIds[deps.requestIds.length - 1], 'testAccess', outcome)
+
+        const [enrollment] = await storedEnrollments(records)
+        expect(enrollment).toMatchObject({
+          test: verdict,
+          facts: SYNCED_ON_GOOGLE,
+          credentialId: 'credential-a',
+          lastTest: { salt: first.request.salt, at: NOW }
+        })
+        expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(SYNCED_KIND_LINE)
+        expect(view!.byTestId('passkey-signed-note')).toBeNull()
+      }
+    )
   })
 
   describe('Save and continue', () => {

@@ -24,6 +24,7 @@ import {
   BOOK,
   CHAIN_ID,
   depsOf,
+  DESCRIPTOR,
   each,
   emptySlot,
   guardianConfigOf,
@@ -45,6 +46,7 @@ const {
 const {
   decodeAbiParameters,
   encodeAbiParameters,
+  hashTypedData,
   hexToBytes,
   isAddressEqual
 }: typeof import('viem') = require('viem')
@@ -943,6 +945,170 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-test-line')?.textContent).toBe(
         t(`${CEREMONY}.testFailedNoMatch`)
       )
+    })
+  })
+
+  describe('the key test typed data', () => {
+    /** The key test the row built last, as the local check reads it. */
+    const lastKeyTest = () =>
+      keyTestOf({
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        key: HELD,
+        now: NOW,
+        randomBytes: () => hexToBytes(lastSalt())
+      })
+
+    /** The manager's approval typed data for place zero, carrying the key test's salt. */
+    const approvalWithSalt = (salt: Hex): TypedDataToSign => ({
+      domain: {
+        name: 'PolicyManager',
+        version: DESCRIPTOR.digestVersion,
+        chainId: CHAIN_ID,
+        verifyingContract: DESCRIPTOR.manager
+      },
+      types: {
+        Approval: [
+          { name: 'account', type: 'address' },
+          { name: 'action', type: 'address' },
+          { name: 'attemptId', type: 'uint64' },
+          { name: 'setupNonce', type: 'uint64' },
+          { name: 'validUntil', type: 'uint48' },
+          { name: 'place', type: 'uint256' },
+          { name: 'salt', type: 'bytes32' }
+        ]
+      },
+      primaryType: 'Approval',
+      message: {
+        account: ACCOUNT,
+        action: DESCRIPTOR.action,
+        attemptId: 0n,
+        setupNonce: 0n,
+        validUntil: BigInt(NOW / 1000 + REQUEST_WINDOW_SECONDS),
+        place: 0n,
+        salt
+      }
+    })
+
+    const pasteAndCheck = async (signature: Hex) => {
+      await view!.type('guardian-offline-signature', signature)
+      await view!.press('guardian-offline-check')
+    }
+
+    it('asks the queue to sign under a domain of its own with no verifying contract', async () => {
+      const signTypedData = jest.fn((_key: KeyHandle, typedData: TypedDataToSign) =>
+        signBy(GUARDIAN_KEY, typedData)
+      )
+      deps = depsOf({ keys: [{ addr: HELD, type: 'internal' }], signTypedData })
+      await addGuardian()
+      await view!.press('guardian-test')
+
+      const [[, signed]] = signTypedData.mock.calls
+      expect(signed.domain).not.toHaveProperty('verifyingContract')
+      expect(signed.domain.name).not.toBe('PolicyManager')
+      expect(Object.values(signed.domain)).not.toContain(DESCRIPTOR.manager)
+      expect(signed.primaryType).toBe('KeyTest')
+      expect(Object.keys(signed.types)).toEqual(['KeyTest'])
+      expect(signed.message).toEqual({
+        account: ACCOUNT,
+        key: HELD,
+        salt: lastSalt(),
+        validUntil: BigInt(NOW / 1000 + REQUEST_WINDOW_SECONDS)
+      })
+      expect(client.signingInputs).toHaveLength(0)
+    })
+
+    it('reads tested for a signature by the key under test without asking the chain', async () => {
+      const isValidSignature = jest.fn(async () => false)
+      deps = depsOf({ chain: { readCode: async () => '0x', isValidSignature } })
+      await addGuardian()
+      await view!.press('guardian-test')
+      await pasteAndCheck(await GUARDIAN_KEY.signTypedData(lastKeyTest()))
+
+      expect(isValidSignature).not.toHaveBeenCalled()
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+      expect((await storedEnrollments(records))[0].test).toBe('passed')
+    })
+
+    it('reads failed, not unavailable, for a signature by another key the chain refuses', async () => {
+      const isValidSignature = jest.fn(async () => false)
+      deps = depsOf({ chain: { readCode: async () => '0x', isValidSignature } })
+      await addGuardian()
+      await view!.press('guardian-test')
+      const signature = await OTHER_KEY.signTypedData(lastKeyTest())
+      await pasteAndCheck(signature)
+
+      expect(isValidSignature).toHaveBeenCalledWith(HELD, hashTypedData(lastKeyTest()), signature)
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testFailed'))
+      expect(view!.byTestId('guardian-test-line')?.textContent).toBe(
+        t(`${CEREMONY}.testFailedNoMatch`)
+      )
+      expect((await storedEnrollments(records))[0]).toMatchObject({
+        test: 'failed',
+        cause: 'check-rejected'
+      })
+    })
+
+    it("reads failed for the key's signature over the manager's approval with the same salt", async () => {
+      const isValidSignature = jest.fn(async () => false)
+      deps = depsOf({ chain: { readCode: async () => '0x', isValidSignature } })
+      await addGuardian()
+      await view!.press('guardian-test')
+      await pasteAndCheck(await signBy(GUARDIAN_KEY, approvalWithSalt(lastSalt())))
+
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testFailed'))
+      expect((await storedEnrollments(records))[0]).toMatchObject({
+        test: 'failed',
+        cause: 'check-rejected'
+      })
+    })
+
+    it('carries the same typed data by QR and by file as the row asked the queue to sign', async () => {
+      const key: KeyHandle = { addr: HELD, type: 'internal' }
+      const saveFile = jest.fn()
+      const signTypedData = jest.fn<Promise<Hex>, [KeyHandle, TypedDataToSign]>(async () => {
+        throw signerNotWired('signTypedData', key)
+      })
+      deps = depsOf({ keys: [key], signTypedData, saveFile })
+      await addGuardian()
+      await view!.press('guardian-test')
+      await view!.press('guardian-offline-save')
+
+      const [[, signed]] = signTypedData.mock.calls
+      const text = view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+      expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({ text }))
+      const carried = typedDataFromText(text)
+      const { EIP712Domain, ...carriedTypes } = carried.types
+      expect(EIP712Domain).toBeDefined()
+      expect(carried.domain).toEqual(signed.domain)
+      expect(carriedTypes).toEqual(signed.types)
+      expect(carried.primaryType).toBe(signed.primaryType)
+      expect(carried.message).toEqual(signed.message)
+    })
+
+    it('checks a pasted signature over the carried typed data and no other', async () => {
+      await addGuardian()
+      await view!.press('guardian-test')
+      const carried = typedDataFromText(
+        view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+      )
+      const { EIP712Domain, ...types } = carried.types
+      const underManager: TypedDataToSign = {
+        ...carried,
+        domain: { ...carried.domain, verifyingContract: DESCRIPTOR.manager },
+        types
+      }
+      await pasteAndCheck(await signBy(GUARDIAN_KEY, underManager))
+      expect(EIP712Domain).toBeDefined()
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('testFailed'))
+
+      await view!.press('guardian-test')
+      const fresh = typedDataFromText(
+        view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+      )
+      await pasteAndCheck(await signBy(GUARDIAN_KEY, fresh))
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+      expect((await storedEnrollments(records))[0].test).toBe('passed')
     })
   })
 

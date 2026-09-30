@@ -31,7 +31,6 @@ import type {
   ReportStore,
   ReportSubscribe
 } from '@web/modules/social-recovery/shared/ceremony'
-import type { TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,
   RecordStorage,
@@ -289,35 +288,6 @@ export const BOUND_TO_THIS_MAC: PasskeyFacts = {
 // The client
 // ---------------------------------------------------------------------------
 
-/** The test challenge's typed data, the shape an approval's EIP-712 data takes. */
-export const typedDataOf = (request: ApproverRequest): TypedDataToSign => ({
-  domain: {
-    name: 'Recovery',
-    version: '1',
-    chainId: Number(request.chainId),
-    verifyingContract: request.manager
-  },
-  types: {
-    Approval: [
-      { name: 'account', type: 'address' },
-      { name: 'attemptId', type: 'uint256' },
-      { name: 'setupNonce', type: 'uint256' },
-      { name: 'method', type: 'address' },
-      { name: 'config', type: 'bytes' },
-      { name: 'salt', type: 'bytes32' }
-    ]
-  },
-  primaryType: 'Approval',
-  message: {
-    account: request.account,
-    attemptId: BigInt(request.attemptId),
-    setupNonce: BigInt(request.setupNonce),
-    method: request.method,
-    config: request.config,
-    salt: request.salt
-  }
-})
-
 export const guardianConfigOf = (address: Address): Hex =>
   encodeAbiParameters([{ type: 'address' }], [address])
 
@@ -329,7 +299,7 @@ export interface FakeClient {
 
 /**
  * A ready client whose orchestrator hands the guardian's address back as its
- * config, and answers a test request with its typed data.
+ * config, and records every request it is asked to build signing input for.
  */
 export const readyClient = (): FakeClient => {
   const signingInputs: ApproverRequest[] = []
@@ -343,7 +313,7 @@ export const readyClient = (): FakeClient => {
       guardianConfigOf((material as { address: Address }).address),
     signingInput: (request: ApproverRequest) => {
       signingInputs.push(request)
-      return typedDataOf(request)
+      return undefined
     }
   } as unknown as IMethodsOrchestrator
   const ecdsa = { deviceBinding: 'none' } as unknown as IRecoveryMethod
