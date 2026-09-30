@@ -795,6 +795,44 @@ describe('the guardian row', () => {
       expect(view!.allText('guardian-test-note')).toEqual([t(`${CEREMONY}.cancelledNote`)])
     })
 
+    it('disables both test actions while the request waits and enables them after a withdraw', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      expect(view!.isDisabled('guardian-test')).toBe(true)
+      expect(view!.isDisabled('guardian-test-offline')).toBe(true)
+
+      await view!.press('guardian-test-withdraw')
+      expect(view!.isDisabled('guardian-test')).toBe(false)
+      expect(view!.isDisabled('guardian-test-offline')).toBe(false)
+    })
+
+    it('starts a new request after a withdraw and ignores a late answer to the withdrawn one', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      await view!.press('guardian-test-withdraw')
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+
+      await view!.press('guardian-test')
+      expect(signer.signTypedData).toHaveBeenCalledTimes(2)
+      expect(signer.signals[1]).not.toBe(signer.signals[0])
+      expect(signer.signals[1].aborted).toBe(false)
+      expect(view!.byTestId('guardian-offline')).toBeNull()
+      expect(view!.byTestId('guardian-test-waiting')).not.toBeNull()
+
+      const late = await signBy(GUARDIAN_KEY, signer.received[0])
+      await outside(async () => signer.answers[0](late))
+      await settle()
+      expect(view!.byTestId('guardian-test-waiting')).not.toBeNull()
+      await expectNoOutcome()
+
+      const signature = await signBy(GUARDIAN_KEY, signer.received[1])
+      await outside(async () => signer.answers[1](signature))
+      await settle()
+      expect(view!.byTestId('guardian-test-waiting')).toBeNull()
+      expect(view!.byTestId('guardian-offline')).toBeNull()
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+    })
+
     it('withdraws a request still open when the row goes away', async () => {
       const signer = waitingSigner()
       await startHeldTest(signer)

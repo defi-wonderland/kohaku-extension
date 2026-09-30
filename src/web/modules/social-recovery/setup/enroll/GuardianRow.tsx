@@ -289,6 +289,7 @@ const GuardianRow = ({
         setOffline(true)
         return
       }
+      setOffline(false)
       const controller = new AbortController()
       pending.current = controller
       setBusy(true)
