@@ -2,13 +2,14 @@
  * The address book of the kit's two deployments: the manager, the four method
  * modules, the action and the account implementation the action serves.
  *
- * Every address below but the account implementation is a placeholder, and no
- * contract is deployed at any of them. Replace them in this one file with the
- * deployed addresses of the manager, the methods and the action once each
+ * `servedImplementation` is the one real address: it is the implementation
+ * the account library already deploys behind every account proxy, so no
+ * deployment of the kit changes it. Every other address is a placeholder, and
+ * no contract is deployed at any of them. Replace them in this one file with
+ * the deployed addresses of the manager, the methods and the action once each
  * deployment lands. Each reads as `c7`, one byte for the chain (`01` Sepolia,
  * `02` mainnet) and one byte for the field, behind seventeen zero bytes, so
- * nobody mistakes one for a deployment. The account implementation is the one
- * the account library deploys behind its proxy.
+ * nobody mistakes one for a deployment.
  */
 import { isAddress, isAddressEqual } from 'viem'
 
@@ -16,7 +17,7 @@ import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
 
 import type { AddressBook, RecoveryChain } from './types'
 
-/** The placeholder addresses of both deployments, by chain, to replace once deployed. */
+/** Both deployments' addresses by chain: placeholders to replace once deployed, and the real served implementation. */
 export const PLACEHOLDER_ADDRESSES = {
   sepolia: {
     // Placeholder: the Sepolia policy manager.

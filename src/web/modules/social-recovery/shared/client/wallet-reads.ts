@@ -11,8 +11,9 @@
  *
  * The SDK does not list who holds a privilege on an account either, so the
  * wallet reads that with its own account code: the account's `privileges`
- * view where the account has code, and the privileges its creation writes
- * where it has none.
+ * view where the account has code, the privileges its creation writes where
+ * it has a creation record and no code, and the account itself where it has
+ * neither, since a basic key controls itself.
  */
 import { Interface } from 'ethers'
 import { hexToBigInt, isAddress, isAddressEqual, isHex } from 'viem'
@@ -50,7 +51,8 @@ const distinctKeys = (values: readonly string[]): Address[] =>
  * has code, it asks the account's `privileges` view about each key the wallet
  * knows and each of the account's associated keys, and answers those with a
  * non-zero privilege. Where the account has no code, it answers the keys its
- * initial privileges name. A provider on another chain, or a read the provider
+ * initial privileges name, or the account itself when it has no creation
+ * record. A provider on another chain, or a read the provider
  * could not make, answers `unreadable` with its cause.
  */
 export const createPrivilegeReads = (
@@ -71,6 +73,9 @@ export const createPrivilegeReads = (
       }
       const code = await provider.getCode(account.addr)
       if (code === '0x') {
+        if (!account.creation) {
+          return { kind: 'holders', keys: distinctKeys([account.addr]) }
+        }
         return {
           kind: 'holders',
           keys: distinctKeys(

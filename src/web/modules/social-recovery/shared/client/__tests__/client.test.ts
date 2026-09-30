@@ -209,6 +209,48 @@ describe("the manager domain's members", () => {
   )
 })
 
+describe('the fit check the built client runs against the account implementation', () => {
+  const fitFindings = async (world: ReturnType<typeof createWorld>) => {
+    const client = await buildRecoveryClient(world.config)
+    world.chain.setHasCode(false)
+    const result = await client.setup.validateSetup({
+      wait: 432_000n,
+      clauses: [
+        {
+          threshold: 1,
+          credentials: [
+            {
+              method: world.descriptor.methodEcdsa,
+              config: new WalletMethodDouble().codec.encodeConfig({
+                address: addressOf('approver')
+              })
+            }
+          ]
+        }
+      ],
+      ignoresPause: false,
+      privacy: { publicMetadata: '0x', backup: 'encrypted' }
+    })
+    const codes = (findings: { code: string }[]) =>
+      findings
+        .map((finding) => finding.code)
+        .filter((code) => code === 'action.unsupported' || code === 'action.fit-unchecked')
+    return { errors: codes(result.errors), warnings: codes(result.warnings) }
+  }
+
+  it('finds the default configuration fits an account with no code yet', async () => {
+    await expect(fitFindings(createWorld())).resolves.toEqual({ errors: [], warnings: [] })
+  })
+
+  it('refuses an account implementation the action does not serve', async () => {
+    const world = createWorld({ accountImplementation: addressOf('other-implementation') })
+    await expect(fitFindings(world)).resolves.toEqual({
+      errors: ['action.unsupported'],
+      warnings: []
+    })
+  })
+})
+
 describe('the request window the built client judges', () => {
   it("takes a request window at the SDK's default floor and flags one a second below it", async () => {
     const world = createWorld()

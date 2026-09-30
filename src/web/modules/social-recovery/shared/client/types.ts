@@ -208,7 +208,10 @@ export type WalletReads = IWalletReadsDouble
 export type { FitCheckReading, RemovedKeyReading, RemovedKeyUnavailableCause }
 
 /** The account fields the privilege holders read takes. */
-export type PrivilegeAccount = Pick<Account, 'addr' | 'associatedKeys' | 'initialPrivileges'>
+export type PrivilegeAccount = Pick<
+  Account,
+  'addr' | 'associatedKeys' | 'initialPrivileges' | 'creation'
+>
 
 /** The members of the extension's provider the privilege holders read uses. */
 export type PrivilegeReadsProvider = Pick<RPCProvider, 'send' | 'getCode' | 'call'>
