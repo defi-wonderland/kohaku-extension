@@ -8,7 +8,11 @@
  * the signature checked locally.
  */
 import type { Address, Clause, Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
+import type {
+  KeyHandle,
+  SignOptions,
+  TypedDataToSign
+} from '@web/modules/social-recovery/shared/client'
 import type { RecordStorage, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
 import type { MethodChip } from '@web/modules/social-recovery/shared/display'
@@ -26,6 +30,7 @@ import {
   guardianConfigOf,
   mountView,
   NOW,
+  outside,
   readyClient,
   recordsWith,
   settle,
@@ -679,8 +684,136 @@ describe('the guardian row', () => {
     })
   })
 
+  describe('a signing request the holder withdraws', () => {
+    /** A signer that holds every request open until the test answers it. */
+    const waitingSigner = () => {
+      const signals: AbortSignal[] = []
+      const received: TypedDataToSign[] = []
+      const answers: ((signature: Hex) => void)[] = []
+      const failures: ((error: unknown) => void)[] = []
+      const signTypedData = jest.fn(
+        (_key: KeyHandle, typedData: TypedDataToSign, options?: SignOptions) =>
+          new Promise<Hex>((resolve, reject) => {
+            if (options?.signal) {
+              signals.push(options.signal)
+            }
+            received.push(typedData)
+            answers.push(resolve)
+            failures.push(reject)
+          })
+      )
+      return { signTypedData, signals, received, answers, failures }
+    }
+
+    const expectNoOutcome = async () => {
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('notTested'))
+      expect(view!.byTestId('guardian-test-line')).toBeNull()
+      expect(view!.allText('guardian-test-note')).toEqual([])
+      expect((await storedEnrollments(records))[0].test).toBe('not-tested')
+    }
+
+    const startHeldTest = async (signer: ReturnType<typeof waitingSigner>) => {
+      deps = depsOf({
+        keys: [{ addr: HELD, type: 'internal' }],
+        signTypedData: signer.signTypedData
+      })
+      await addGuardian()
+      await view!.press('guardian-test')
+    }
+
+    it('renders the wait line and the withdraw action while the sign screen is open', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      expect(signer.signTypedData).toHaveBeenCalledTimes(1)
+      expect(view!.byTestId('guardian-test-waiting')?.textContent).toContain(
+        t(`${GUARDIAN}.waitingForSignScreen`)
+      )
+      expect(view!.byTestId('guardian-test-withdraw')?.textContent).toBe(
+        t(`${GUARDIAN}.testOfflineInstead`)
+      )
+      expect(view!.byTestId('guardian-offline')).toBeNull()
+      expect(signer.signals[0].aborted).toBe(false)
+    })
+
+    it('withdraws the request and opens the offline block with the same challenge', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      await view!.press('guardian-test-withdraw')
+
+      expect(signer.signals[0].aborted).toBe(true)
+      expect(view!.byTestId('guardian-test-waiting')).toBeNull()
+      expect(view!.byTestId('guardian-test-withdraw')).toBeNull()
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+      const carried = view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+      expect(typedDataFromText(carried).message).toEqual(signer.received[0].message)
+      expect(signer.signTypedData).toHaveBeenCalledTimes(1)
+      await expectNoOutcome()
+
+      await view!.type('guardian-offline-signature', await signBy(GUARDIAN_KEY, signer.received[0]))
+      await view!.press('guardian-offline-check')
+      expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
+    })
+
+    it('drops a signature that arrives after the request was withdrawn', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      await view!.press('guardian-test-withdraw')
+      const signature = await signBy(GUARDIAN_KEY, signer.received[0])
+      await outside(async () => signer.answers[0](signature))
+      await settle()
+
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+      expect(view!.byTestId('guardian-test-waiting')).toBeNull()
+      await expectNoOutcome()
+    })
+
+    it('opens the offline block with no outcome where the signer reports the request withdrawn', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      await outside(async () => signer.failures[0](signFlowFailure('signTypedData', 'withdrawn')))
+      await settle()
+
+      expect(view!.byTestId('guardian-offline')).not.toBeNull()
+      expect(view!.byTestId('guardian-test-waiting')).toBeNull()
+      const carried = view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+      expect(typedDataFromText(carried).message).toEqual(signer.received[0].message)
+      await expectNoOutcome()
+    })
+
+    it('keeps the outcome and no offline block where the holder refuses', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      await outside(async () => signer.failures[0](signFlowFailure('signTypedData', 'refused')))
+      await settle()
+
+      expect(view!.byTestId('guardian-offline')).toBeNull()
+      expect(view!.byTestId('guardian-test-waiting')).toBeNull()
+      expect(view!.allText('guardian-test-note')).toEqual([t(`${CEREMONY}.cancelledNote`)])
+    })
+
+    it('withdraws a request still open when the row goes away', async () => {
+      const signer = waitingSigner()
+      await startHeldTest(signer)
+      expect(signer.signals[0].aborted).toBe(false)
+      view!.unmount()
+      view = undefined
+      expect(signer.signals[0].aborted).toBe(true)
+    })
+  })
+
   describe('the offline challenge', () => {
     const carriedText = () => view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
+
+    it('carries the challenge by QR and by file, with no text of it on screen', async () => {
+      await addGuardian()
+      await view!.press('guardian-test')
+      const carried = carriedText()
+      expect(JSON.parse(carried).primaryType).toBe('Approval')
+      expect(view!.byTestId('guardian-offline-save')).not.toBeNull()
+      expect(view!.byTestId('guardian-offline-challenge')).toBeNull()
+      expect(view!.text()).not.toContain(carried)
+      expect(view!.text()).not.toContain(lastRequest().salt)
+    })
 
     it('carries the domain type in the text', async () => {
       await addGuardian()
