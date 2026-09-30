@@ -284,7 +284,41 @@ describe('the privacy step', () => {
       )
       expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
-        'Your Aadhaar identity cannot be guessed at all and lose nothing before a recovery.'
+        fill(L.exposure.unguessableOne, { items: S.disclosures.itemsLead.aadhaar })
+      )
+    })
+
+    it('one passkey beside a guardian takes the singular line', async () => {
+      await h.mount(
+        await withDraft({ clauses: [{ threshold: 2, credentials: [guardian, passkey] }] })
+      )
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
+        fill(L.exposure.unguessableOne, { items: S.disclosures.itemsLead.passkey })
+      )
+    })
+
+    it('a passkey and a passport beside a guardian take the plural line and name both', async () => {
+      await h.mount(await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN }))
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
+        fill(L.exposure.unguessable, {
+          items: fill(S.disclosures.items.pair, {
+            first: S.disclosures.itemsLead.passkey,
+            second: S.disclosures.items.passport
+          })
+        })
+      )
+    })
+
+    it('several passkeys beside a guardian take the plural line and name the passkeys', async () => {
+      await h.mount(
+        await withDraft({
+          clauses: [
+            { threshold: 2, credentials: [passkey, { ...passkey, config: '0x04' }, guardian] }
+          ]
+        })
+      )
+      expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
+        fill(L.exposure.unguessable, { items: S.disclosures.itemsLead.passkeys })
       )
     })
 

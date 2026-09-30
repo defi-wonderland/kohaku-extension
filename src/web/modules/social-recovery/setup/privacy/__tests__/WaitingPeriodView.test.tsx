@@ -70,6 +70,36 @@ describe('the waiting period step', () => {
       })
     )
 
+    const checkedChips = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="waiting-period-screen"] [role="radio"]'
+        )
+      ).map((chip) => [chip.getAttribute('data-testid'), chip.getAttribute('aria-checked')])
+
+    it('marks the preselected 48-hour chip alone as checked', async () => {
+      await h.mount(recordsOn())
+      expect(checkedChips()).toEqual([
+        ['wait-chip-hours24', 'false'],
+        ['wait-chip-hours48', 'true'],
+        ['wait-chip-hours72', 'false'],
+        ['wait-chip-days7', 'false'],
+        ['wait-chip-custom', 'false']
+      ])
+    })
+
+    it('a press on custom moves the checked mark to the custom chip alone', async () => {
+      await h.mount(recordsOn())
+      await h.press('wait-chip-custom')
+      expect(checkedChips()).toEqual([
+        ['wait-chip-hours24', 'false'],
+        ['wait-chip-hours48', 'false'],
+        ['wait-chip-hours72', 'false'],
+        ['wait-chip-days7', 'false'],
+        ['wait-chip-custom', 'true']
+      ])
+    })
+
     it('shows no field for the custom entry until custom is picked', async () => {
       await h.mount(recordsOn())
       expect(h.inputOf('wait-custom-hours')).toBeNull()
