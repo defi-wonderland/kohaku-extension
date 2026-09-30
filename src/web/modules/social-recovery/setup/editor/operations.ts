@@ -19,24 +19,19 @@ import type {
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { Enrollment } from '@web/modules/social-recovery/shared/records'
-import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
+import type { Enrollment, SlotKind } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot, SLOT_KINDS, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
-import { METHOD_KINDS } from './types'
-import type {
-  ClauseRole,
-  EditResult,
-  MethodKind,
-  PickerEntry,
-  PickerTarget,
-  SlotPosition
-} from './types'
+import type { ClauseRole, EditResult, PickerEntry, PickerTarget, SlotPosition } from './types'
+
+/** The kinds in the order the picker lists them. */
+export const PICKER_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar']
 
 /**
  * The kinds a second method can be: a passkey from another device, or a key the
  * holder keeps, a hardware key among them, entered as a guardian address.
  */
-export const SECOND_METHOD_KINDS: readonly MethodKind[] = ['passkey', 'ecdsa']
+export const SECOND_METHOD_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa']
 
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2
@@ -46,15 +41,15 @@ const DUPLICATE: EditResult = { status: 'refused', reason: 'duplicate' }
 export { emptySlot as emptySlotOf, isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
 /** The kind of method a method module address serves; a module the address book does not hold has none. */
-export const methodKindOf = (method: Address, addressBook: AddressBook): MethodKind | undefined =>
-  METHOD_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], method))
+export const methodKindOf = (method: Address, addressBook: AddressBook): SlotKind | undefined =>
+  SLOT_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], method))
 
 /**
  * The kind of a credential: the kind an empty slot waits for, or the address
  * book's method an enrolled credential's method is. A method the address book
  * does not hold has no kind.
  */
-export const kindOf = (credential: Credential, addressBook: AddressBook): MethodKind | undefined =>
+export const kindOf = (credential: Credential, addressBook: AddressBook): SlotKind | undefined =>
   isEmptySlot(credential) ? slotKindOf(credential) : methodKindOf(credential.method, addressBook)
 
 /** The address a guardian's config holds, ABI-encoded in one word. */
@@ -115,7 +110,9 @@ const replaceAt = (clauses: readonly Clause[], index: number, clause: Clause): C
 
 /** Adds a required row over the credential: an empty slot or an enrolled credential. */
 export const addRequired = (clauses: readonly Clause[], credential: Credential): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   return {
     status: 'applied',
     clauses: [...clauses, { threshold: 1, credentials: [credential] }],
@@ -139,7 +136,9 @@ export const addMember = (
   group: number,
   credential: Credential
 ): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[group]
   return {
     status: 'applied',
@@ -174,7 +173,9 @@ export const fillSlot = (
   at: SlotPosition,
   credential: Credential
 ): EditResult => {
-  if (pathHolds(clauses, credential, at)) return DUPLICATE
+  if (pathHolds(clauses, credential, at)) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[at.clause]
   return {
     status: 'applied',
@@ -189,7 +190,9 @@ export const fillSlot = (
 /** A required row's credential joins a group, and the row goes. */
 export const moveToGroup = (clauses: readonly Clause[], row: number, group: number): EditResult => {
   const [credential] = clauses[row].credentials
-  if (pathHolds(clauses, credential, { clause: row, member: 0 })) return DUPLICATE
+  if (pathHolds(clauses, credential, { clause: row, member: 0 })) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[group]
   const joined = replaceAt(clauses, group, { threshold, credentials: [...credentials, credential] })
   return {
@@ -206,7 +209,9 @@ export const makeRequired = (
   member: number
 ): EditResult => {
   const credential = clauses[group].credentials[member]
-  if (pathHolds(clauses, credential, { clause: group, member })) return DUPLICATE
+  if (pathHolds(clauses, credential, { clause: group, member })) {
+    return DUPLICATE
+  }
   return {
     status: 'applied',
     clauses: [...removeMember(clauses, group, member), { threshold: 1, credentials: [credential] }],
@@ -225,13 +230,17 @@ export const makeItAGroup = (
   roles: readonly ClauseRole[] = rolesOf(clauses)
 ): Clause[] => {
   const first = roles.indexOf('required')
-  if (first < 0) return [...clauses]
+  if (first < 0) {
+    return [...clauses]
+  }
   const group: Clause = {
     threshold: 1,
     credentials: clauses.flatMap((clause, i) => (roles[i] === 'required' ? clause.credentials : []))
   }
   return clauses.flatMap((clause, i) => {
-    if (i === first) return [group]
+    if (i === first) {
+      return [group]
+    }
     return roles[i] === 'required' ? [] : [clause]
   })
 }
@@ -240,7 +249,9 @@ export const makeItAGroup = (
 export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] => {
   const first = roles.indexOf('required')
   return roles.flatMap<ClauseRole>((role, i) => {
-    if (i === first) return ['group']
+    if (i === first) {
+      return ['group']
+    }
     return role === 'required' ? [] : [role]
   })
 }
@@ -251,9 +262,13 @@ export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] =>
  * path with no method yet takes the credential as a required row.
  */
 export const addSecondMethod = (clauses: readonly Clause[], credential: Credential): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   const index = clauses.findIndex((clause) => clause.credentials.length > 0)
-  if (index < 0) return addRequired(clauses, credential)
+  if (index < 0) {
+    return addRequired(clauses, credential)
+  }
   const { credentials } = clauses[index]
   return {
     status: 'applied',
@@ -268,9 +283,15 @@ export const placeAt = (
   target: PickerTarget,
   credential: Credential
 ): EditResult => {
-  if (target.place === 'required') return addRequired(clauses, credential)
-  if (target.place === 'second') return addSecondMethod(clauses, credential)
-  if (target.place === 'member') return addMember(clauses, target.clause, credential)
+  if (target.place === 'required') {
+    return addRequired(clauses, credential)
+  }
+  if (target.place === 'second') {
+    return addSecondMethod(clauses, credential)
+  }
+  if (target.place === 'member') {
+    return addMember(clauses, target.clause, credential)
+  }
   return fillSlot(clauses, { clause: target.clause, member: target.member }, credential)
 }
 
@@ -284,8 +305,12 @@ export const placedRoles = (
   target: PickerTarget,
   at: SlotPosition
 ): ClauseRole[] => {
-  if (at.clause >= roles.length) return [...roles, 'required']
-  if (target.place === 'second') return roles.map((role, i) => (i === at.clause ? 'group' : role))
+  if (at.clause >= roles.length) {
+    return [...roles, 'required']
+  }
+  if (target.place === 'second') {
+    return roles.map((role, i) => (i === at.clause ? 'group' : role))
+  }
   return [...roles]
 }
 
@@ -300,8 +325,8 @@ export const pickerEntriesOf = (
   enrollments: readonly Enrollment[],
   clauses: readonly Clause[],
   addressBook: AddressBook
-): Record<MethodKind, PickerEntry[]> => {
-  const entries: Record<MethodKind, PickerEntry[]> = {
+): Record<SlotKind, PickerEntry[]> => {
+  const entries: Record<SlotKind, PickerEntry[]> = {
     passkey: [],
     ecdsa: [],
     zkpassport: [],
@@ -324,7 +349,7 @@ export const enrollmentOf = (
   enrollments.find((enrollment) => sameCredential(enrollment.credential, credential))
 
 /** The search string the enroll screen reads: the kind and the slot it fills. */
-export const enrollSearchOf = (kind: MethodKind, at: SlotPosition): string =>
+export const enrollSearchOf = (kind: SlotKind, at: SlotPosition): string =>
   `?${new URLSearchParams({
     kind,
     clause: String(at.clause),

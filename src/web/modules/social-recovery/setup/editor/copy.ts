@@ -15,27 +15,21 @@ import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/
 import type {
   Enrollment,
   EnrollmentTestVerdict,
-  PasskeyBackupKind
+  PasskeyBackupKind,
+  SlotKind
 } from '@web/modules/social-recovery/shared/records'
 
 import { enrollmentOf, isEmptySlot } from './operations'
-import type {
-  ClauseRole,
-  ClientRefusal,
-  MethodKind,
-  Refusal,
-  RefusalKey,
-  RulesPanelLine
-} from './types'
+import type { ClauseRole, ClientRefusal, Refusal, RefusalKey, RulesPanelLine } from './types'
 
-const KIND_NAME_KEYS: Record<MethodKind, string> = {
+const KIND_NAME_KEYS: Record<SlotKind, string> = {
   passkey: 'socialRecovery.methodNames.passkey',
   ecdsa: 'socialRecovery.display.nouns.guardian',
   zkpassport: 'socialRecovery.methodNames.passport',
   aadhaar: 'socialRecovery.methodNames.aadhaar'
 }
 
-const KIND_HEADER_KEYS: Record<MethodKind, string> = {
+const KIND_HEADER_KEYS: Record<SlotKind, string> = {
   passkey: 'socialRecovery.editor.picker.passkeysHeader',
   ecdsa: 'socialRecovery.methodNames.guardians',
   zkpassport: 'socialRecovery.methodNames.passport',
@@ -112,19 +106,20 @@ const CLIENT_REFUSAL_KEYS: Record<ClientRefusal, { title: string; body: string }
  * passkey on this device.
  */
 export const renderKindName = (
-  kind: MethodKind | undefined,
+  kind: SlotKind | undefined,
   t: Translate,
   backup?: PasskeyBackupKind
 ): string | null => {
-  if (!kind) return null
+  if (!kind) {
+    return null
+  }
   if (kind === 'passkey' && backup === 'device-bound') {
     return t('socialRecovery.methodNames.passkeyOnThisDevice')
   }
   return t(KIND_NAME_KEYS[kind])
 }
 
-export const renderKindHeader = (kind: MethodKind, t: Translate): string =>
-  t(KIND_HEADER_KEYS[kind])
+export const renderKindHeader = (kind: SlotKind, t: Translate): string => t(KIND_HEADER_KEYS[kind])
 
 /**
  * The chip of a row: "Not yet active" for an empty slot, the access test's
@@ -135,7 +130,9 @@ export const renderRowChip = (
   enrollments: readonly Enrollment[],
   t: Translate
 ): string | null => {
-  if (isEmptySlot(credential)) return renderChip('method', 'notYetActive', t)
+  if (isEmptySlot(credential)) {
+    return renderChip('method', 'notYetActive', t)
+  }
   const enrollment = enrollmentOf(credential, enrollments)
   return enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null
 }

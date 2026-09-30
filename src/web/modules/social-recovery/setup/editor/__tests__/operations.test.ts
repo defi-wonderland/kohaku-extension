@@ -62,7 +62,9 @@ const frozen = (clauses: Clause[]): Clause[] =>
   ) as unknown as Clause[]
 
 const applied = (result: ReturnType<typeof addRequired>) => {
-  if (result.status !== 'applied') throw new Error(`expected applied, got ${result.status}`)
+  if (result.status !== 'applied') {
+    throw new Error(`expected applied, got ${result.status}`)
+  }
   return result
 }
 

@@ -16,7 +16,6 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
 import type {
   Clause,
   Credential,
@@ -24,20 +23,12 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
-import {
-  getRuleLines,
-  renderRuleLines,
-  RULE_LINE_KEYS
-} from '@web/modules/social-recovery/shared/rule-lines'
+import type { SlotKind } from '@web/modules/social-recovery/shared/records'
+import { getRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
 
-import {
-  renderClientRefusal,
-  renderFinding,
-  renderRefusal,
-  renderRefusalPlace,
-  renderRulesPanel
-} from './copy'
-import CredentialRow from './CredentialRow'
+import EditorActions from './EditorActions'
+import EditorHeader from './EditorHeader'
+import GroupList from './GroupList'
 import MemberPicker from './MemberPicker'
 import {
   addGroup,
@@ -52,6 +43,7 @@ import {
   methodCountOf,
   methodKindOf,
   moveToGroup,
+  PICKER_KINDS,
   pickerEntriesOf,
   placeAt,
   placedRoles,
@@ -64,15 +56,15 @@ import {
   withoutRole
 } from './operations'
 import { shapeRefusalsOf } from './refusals'
-import ThresholdField from './ThresholdField'
-import { METHOD_KINDS } from './types'
+import RequiredRows from './RequiredRows'
+import RuleLines from './RuleLines'
+import RulesPanel from './RulesPanel'
 import type {
   ClauseRole,
   ClientRefusal,
   EditorLoad,
   EditorViewProps,
   EditResult,
-  MethodKind,
   PickerTarget,
   Refusal,
   SlotPosition
@@ -109,10 +101,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           roles: rolesOf(stored.clauses)
         }
         loadRef.current = next
-        if (mounted.current) setLoad(next)
+        if (mounted.current) {
+          setLoad(next)
+        }
       })
       .catch(() => {
-        if (mounted.current) setLoadFailed(true)
+        if (mounted.current) {
+          setLoadFailed(true)
+        }
       })
     return () => {
       mounted.current = false
@@ -137,7 +133,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         } catch {
           writeFailedRef.current = true
         }
-        if (mounted.current) setWriteFailed(writeFailedRef.current)
+        if (mounted.current) {
+          setWriteFailed(writeFailedRef.current)
+        }
       })
     },
     [records]
@@ -145,7 +143,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const retryWrite = () => {
     const current = loadRef.current
-    if (!current || checkingRef.current) return
+    if (!current || checkingRef.current) {
+      return
+    }
     persist(current.draft)
   }
 
@@ -154,7 +154,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const commit = useCallback(
     (next: Clause[], roles: ClauseRole[]) => {
       const current = loadRef.current
-      if (!current || checkingRef.current) return
+      if (!current || checkingRef.current) {
+        return
+      }
       const draft = withClauses(current.draft, next)
       const updated = { ...current, draft, roles }
       loadRef.current = updated
@@ -171,7 +173,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const apply = useCallback(
     (result: EditResult, rolesAt: (at: SlotPosition) => ClauseRole[]) => {
-      if (checkingRef.current) return null
+      if (checkingRef.current) {
+        return null
+      }
       if (result.status === 'refused') {
         setRefused(true)
         return null
@@ -191,23 +195,31 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const onPick = (credential: Credential) => {
-    if (!picker) return
+    if (!picker) {
+      return
+    }
     const target = picker
     const placed = apply(placeAt(current(), target, credential), (at) =>
       placedRoles(currentRoles(), target, at)
     )
-    if (placed) closePicker()
+    if (placed) {
+      closePicker()
+    }
   }
 
-  const onEnrollNew = (kind: MethodKind) => {
-    if (!picker || checkingRef.current) return
+  const onEnrollNew = (kind: SlotKind) => {
+    if (!picker || checkingRef.current) {
+      return
+    }
     const at =
       picker.place === 'slot'
         ? { clause: picker.clause, member: picker.member }
         : apply(placeAt(current(), picker, emptySlotOf(kind)), (placed) =>
             placedRoles(currentRoles(), picker, placed)
           )
-    if (!at) return
+    if (!at) {
+      return
+    }
     closePicker()
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
     writes.current
@@ -226,11 +238,15 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   // the holder goes on with.
   const endCheck = () => {
     checkingRef.current = false
-    if (mounted.current) setChecking(false)
+    if (mounted.current) {
+      setChecking(false)
+    }
   }
 
   const onContinue = async () => {
-    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
+    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) {
+      return
+    }
     const refusals = shapeRefusalsOf(loadRef.current.draft, loadRef.current.roles)
     setWalletRefusals(refusals)
     if (refusals.length > 0) {
@@ -250,7 +266,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }
       const draft = loadRef.current.draft
       const result = await client.setup.validateSetup(draft)
-      if (!mounted.current) return
+      if (!mounted.current) {
+        return
+      }
       if (blocksContinue(result)) {
         setFindings(editorErrorsOf(result))
         endCheck()
@@ -258,7 +276,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }
       navigate(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
     } catch {
-      if (mounted.current) setCheckFailed(true)
+      if (mounted.current) {
+        setCheckFailed(true)
+      }
       endCheck()
     }
   }
@@ -271,14 +291,15 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }),
     [clauses, addressBook]
   )
-  const rulesPanel = useMemo(() => renderRulesPanel(t), [t])
   const entries = useMemo(
     () => pickerEntriesOf(load?.enrollments ?? [], clauses, addressBook),
     [load, clauses, addressBook]
   )
 
   if (!load) {
-    if (!loadFailed) return <ActivityIndicator testID="editor-spinner" />
+    if (!loadFailed) {
+      return <ActivityIndicator testID="editor-spinner" />
+    }
     return (
       <View testID="editor">
         <Text
@@ -304,17 +325,18 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const rows = indexed.filter(({ index }) => load.roles[index] === 'required')
   const groups = indexed.filter(({ index }) => load.roles[index] === 'group')
   const methodCount = methodCountOf(clauses)
-  const heading = load.mode === 'adjust' ? 'adjust' : 'build'
   let clientRefusal: ClientRefusal | null = null
-  if (client.status === 'update-the-wallet') clientRefusal = 'update-the-wallet'
-  else if (client.status === 'failed' || (client.status === 'ready' && checkFailed)) {
+  if (client.status === 'update-the-wallet') {
+    clientRefusal = 'update-the-wallet'
+  } else if (client.status === 'failed' || (client.status === 'ready' && checkFailed)) {
     clientRefusal = 'unavailable'
   }
-  const refusalLines = clientRefusal ? renderClientRefusal(clientRefusal, t) : null
 
-  const pickerKinds = (target: PickerTarget): readonly MethodKind[] => {
-    if (target.place === 'second') return SECOND_METHOD_KINDS
-    return target.place === 'slot' && target.kind ? [target.kind] : METHOD_KINDS
+  const pickerKinds = (target: PickerTarget): readonly SlotKind[] => {
+    if (target.place === 'second') {
+      return SECOND_METHOD_KINDS
+    }
+    return target.place === 'slot' && target.kind ? [target.kind] : PICKER_KINDS
   }
 
   const openSlot = (clause: number, member: number) => {
@@ -324,196 +346,45 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   return (
     <View testID="editor">
-      <Text fontSize={20} weight="semiBold" style={spacings.mbTy} testID="editor-title">
-        {t(`socialRecovery.editor.${heading}.title`)}
-      </Text>
-      <Text fontSize={14} appearance="secondaryText" style={spacings.mbLg}>
-        {t(`socialRecovery.editor.${heading}.lead`)}
-      </Text>
+      <EditorHeader mode={load.mode} refused={refused} />
 
-      {refused && (
-        <Text fontSize={14} appearance="errorText" style={spacings.mbMd} testID="editor-refusal">
-          {t('socialRecovery.editor.duplicate')}
-        </Text>
-      )}
+      <RequiredRows
+        rows={rows}
+        groups={groups}
+        movingRow={movingRow}
+        addressBook={addressBook}
+        enrollments={load.enrollments}
+        checking={checking}
+        onOpenSlot={openSlot}
+        onMove={onMove}
+        onChooseGroup={setMovingRow}
+        onRemove={(index) =>
+          commit(removeClause(current(), index), withoutRole(currentRoles(), index))
+        }
+        onAdd={() => setPicker({ place: 'required' })}
+      />
 
-      <View style={spacings.mbLg} testID="editor-required">
-        <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-          {t('socialRecovery.editor.requiredHeader')}
-        </Text>
-        {rows.length === 0 && (
-          <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.editor.nothingRequired')}
-          </Text>
-        )}
-        {rows.map(({ clause, index }) => (
-          <View key={index} style={spacings.mbSm} testID={`editor-row-${index}`}>
-            <View style={[flexbox.directionRow, flexbox.alignCenter]}>
-              <CredentialRow
-                credential={clause.credentials[0]}
-                addressBook={addressBook}
-                enrollments={load.enrollments}
-                onPress={() => openSlot(index, 0)}
-                disabled={checking}
-                testID={`editor-slot-${index}-0`}
-              />
-              {groups.length > 0 && (
-                <Button
-                  testID={`editor-row-${index}-move`}
-                  type="outline"
-                  size="small"
-                  text={t('socialRecovery.editor.moveToGroup')}
-                  onPress={() =>
-                    groups.length === 1 ? onMove(index, groups[0].index) : setMovingRow(index)
-                  }
-                  disabled={checking}
-                  hasBottomSpacing={false}
-                />
-              )}
-              <Button
-                testID={`editor-row-${index}-remove`}
-                type="outline"
-                size="small"
-                text={t('socialRecovery.actions.remove')}
-                onPress={() =>
-                  commit(removeClause(current(), index), withoutRole(currentRoles(), index))
-                }
-                disabled={checking}
-                hasBottomSpacing={false}
-              />
-            </View>
-            {movingRow === index && (
-              <View style={[flexbox.directionRow, flexbox.wrap]}>
-                {groups.map((group, ordinal) => (
-                  <Button
-                    key={group.index}
-                    testID={`editor-row-${index}-move-${group.index}`}
-                    type="outline"
-                    size="small"
-                    text={t('socialRecovery.shape.group', { n: ordinal + 1 })}
-                    onPress={() => onMove(index, group.index)}
-                    disabled={checking}
-                    hasBottomSpacing={false}
-                    style={spacings.mrTy}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        ))}
-        <Button
-          testID="editor-add-required"
-          type="outline"
-          size="small"
-          text={t('socialRecovery.editor.addRequired')}
-          onPress={() => setPicker({ place: 'required' })}
-          disabled={checking}
-          hasBottomSpacing={false}
-        />
-      </View>
-
-      <View style={spacings.mbLg} testID="editor-groups">
-        <Text fontSize={16} weight="semiBold" style={spacings.mbSm} testID="editor-groups-header">
-          {t(
-            groups.length === 1
-              ? 'socialRecovery.editor.groupHeader'
-              : 'socialRecovery.editor.groupsHeader'
-          )}
-        </Text>
-        {groups.length === 0 && (
-          <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.editor.noGroup')}
-          </Text>
-        )}
-        {groups.map(({ clause, index }, ordinal) => (
-          <View key={index} style={spacings.mbMd} testID={`editor-group-${index}`}>
-            <Text fontSize={14} weight="semiBold" style={spacings.mbTy}>
-              {t('socialRecovery.shape.group', { n: ordinal + 1 })}
-            </Text>
-            <ThresholdField
-              testID={`editor-group-${index}-threshold`}
-              threshold={clause.threshold}
-              members={clause.credentials.length}
-              disabled={checking}
-              onChange={(threshold) =>
-                commit(setThreshold(current(), index, threshold), currentRoles())
-              }
-            />
-            {clause.credentials.map((credential, member) => (
-              <View
-                // A member's place in its group is its identity in the path.
-                // eslint-disable-next-line react/no-array-index-key
-                key={member}
-                style={[flexbox.directionRow, flexbox.alignCenter, spacings.mtTy]}
-              >
-                <CredentialRow
-                  credential={credential}
-                  addressBook={addressBook}
-                  enrollments={load.enrollments}
-                  onPress={() => openSlot(index, member)}
-                  disabled={checking}
-                  testID={`editor-slot-${index}-${member}`}
-                />
-                <Button
-                  testID={`editor-member-${index}-${member}-required`}
-                  type="outline"
-                  size="small"
-                  text={t('socialRecovery.editor.makeRequired')}
-                  onPress={() =>
-                    apply(makeRequired(current(), index, member), () => [
-                      ...currentRoles(),
-                      'required'
-                    ])
-                  }
-                  disabled={checking}
-                  hasBottomSpacing={false}
-                />
-                <Button
-                  testID={`editor-member-${index}-${member}-remove`}
-                  type="outline"
-                  size="small"
-                  text={t('socialRecovery.actions.remove')}
-                  onPress={() => commit(removeMember(current(), index, member), currentRoles())}
-                  disabled={checking}
-                  hasBottomSpacing={false}
-                />
-              </View>
-            ))}
-            <View style={[flexbox.directionRow, spacings.mtSm]}>
-              <Button
-                testID={`editor-group-${index}-add`}
-                type="outline"
-                size="small"
-                text={t('socialRecovery.editor.addMember')}
-                onPress={() => setPicker({ place: 'member', clause: index })}
-                disabled={checking}
-                hasBottomSpacing={false}
-                style={spacings.mrTy}
-              />
-              <Button
-                testID={`editor-group-${index}-remove`}
-                type="outline"
-                size="small"
-                text={t('socialRecovery.editor.removeGroup')}
-                onPress={() =>
-                  commit(removeClause(current(), index), withoutRole(currentRoles(), index))
-                }
-                disabled={checking}
-                hasBottomSpacing={false}
-              />
-            </View>
-          </View>
-        ))}
-        <Button
-          testID="editor-add-group"
-          type="outline"
-          size="small"
-          text={t('socialRecovery.editor.addGroup')}
-          onPress={() => commit(addGroup(current()), [...currentRoles(), 'group'])}
-          disabled={checking}
-          hasBottomSpacing={false}
-        />
-      </View>
+      <GroupList
+        groups={groups}
+        addressBook={addressBook}
+        enrollments={load.enrollments}
+        checking={checking}
+        onOpenSlot={openSlot}
+        onThreshold={(index, threshold) =>
+          commit(setThreshold(current(), index, threshold), currentRoles())
+        }
+        onMakeRequired={(index, member) =>
+          apply(makeRequired(current(), index, member), () => [...currentRoles(), 'required'])
+        }
+        onRemoveMember={(index, member) =>
+          commit(removeMember(current(), index, member), currentRoles())
+        }
+        onAddMember={(index) => setPicker({ place: 'member', clause: index })}
+        onRemoveGroup={(index) =>
+          commit(removeClause(current(), index), withoutRole(currentRoles(), index))
+        }
+        onAddGroup={() => commit(addGroup(current()), [...currentRoles(), 'group'])}
+      />
 
       {!!picker && (
         <MemberPicker
@@ -528,198 +399,34 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       )}
 
       {ruleLines.length > 0 && (
-        <View style={spacings.mbLg} testID="editor-rule-lines">
-          <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-            {t('socialRecovery.shape.header')}
-          </Text>
-          {ruleLines.map((line, index) => {
-            const [text] = renderRuleLines([line], t)
-            return (
-              <View
-                // A path of two groups can carry one line twice.
-                // eslint-disable-next-line react/no-array-index-key
-                key={`${line.key}-${index}`}
-                style={spacings.mbSm}
-              >
-                <Text fontSize={14} testID="editor-rule-line">
-                  {text}
-                </Text>
-                {line.key === RULE_LINE_KEYS.sizingRule && (
-                  <Button
-                    testID="editor-make-it-a-group"
-                    type="outline"
-                    size="small"
-                    text={t('socialRecovery.editor.makeItAGroup')}
-                    // The sizing line counts required rows by their stored shape, so
-                    // the press gathers every clause that shape reads as a row.
-                    onPress={() =>
-                      commit(makeItAGroup(current()), makeItAGroupRoles(rolesOf(current())))
-                    }
-                    disabled={checking}
-                    hasBottomSpacing={false}
-                  />
-                )}
-                {line.key === RULE_LINE_KEYS.secondMethodOffer && (
-                  <Button
-                    testID="editor-add-second-method"
-                    type="outline"
-                    size="small"
-                    text={t('socialRecovery.editor.addSecondMethod')}
-                    onPress={() => setPicker({ place: 'second' })}
-                    disabled={checking}
-                    hasBottomSpacing={false}
-                  />
-                )}
-              </View>
-            )
-          })}
-        </View>
-      )}
-
-      <View style={spacings.mbLg} testID="editor-rules">
-        <Text fontSize={16} weight="semiBold" style={spacings.mbSm} testID="editor-rules-header">
-          {rulesPanel.header}
-        </Text>
-        {rulesPanel.lines.map((line) => (
-          <Text
-            key={line}
-            fontSize={14}
-            appearance="secondaryText"
-            style={spacings.mbTy}
-            testID="editor-rules-line"
-          >
-            {line}
-          </Text>
-        ))}
-      </View>
-
-      {writeFailed && (
-        <View style={spacings.mbMd}>
-          <Text
-            fontSize={14}
-            appearance="errorText"
-            style={spacings.mbTy}
-            testID="editor-write-failed"
-          >
-            {t('socialRecovery.records.writeFailed')}
-          </Text>
-          <Button
-            testID="editor-write-retry"
-            type="outline"
-            size="small"
-            text={t('socialRecovery.writes.tryAgain')}
-            onPress={retryWrite}
-            disabled={checking}
-            hasBottomSpacing={false}
-          />
-        </View>
-      )}
-
-      {walletRefusals.length > 0 && (
-        <View style={spacings.mbMd} testID="editor-wallet-refusals">
-          {walletRefusals.map((refusal, index) => {
-            const place = renderRefusalPlace(refusal, load.roles, t)
-            return (
-              <View
-                // Two clauses can be refused with one sentence.
-                // eslint-disable-next-line react/no-array-index-key
-                key={index}
-                style={spacings.mbTy}
-                testID="editor-wallet-refusal-item"
-              >
-                {!!place && (
-                  <Text
-                    fontSize={12}
-                    weight="semiBold"
-                    appearance="errorText"
-                    testID="editor-wallet-refusal-place"
-                  >
-                    {place}
-                  </Text>
-                )}
-                <Text fontSize={14} appearance="errorText" testID="editor-wallet-refusal">
-                  {renderRefusal(refusal, t)}
-                </Text>
-              </View>
-            )
-          })}
-        </View>
-      )}
-
-      {findings.length > 0 && (
-        <View style={spacings.mbMd} testID="editor-findings">
-          {findings.map((finding, index) => (
-            <Text
-              // Two findings can share a code and differ only in their values.
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              fontSize={14}
-              appearance="errorText"
-              style={spacings.mbTy}
-              testID="editor-finding"
-            >
-              {renderFinding(finding, t)}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      {!!refusalLines && (
-        <View style={spacings.mbMd} testID="editor-client-refusal">
-          <Text fontSize={14} weight="semiBold" appearance="errorText" style={spacings.mbTy}>
-            {refusalLines.title}
-          </Text>
-          <Text fontSize={14} appearance="secondaryText">
-            {refusalLines.body}
-          </Text>
-        </View>
-      )}
-
-      {methodCount === 0 && (
-        <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
-          {t('socialRecovery.editor.continueUnlock')}
-        </Text>
-      )}
-      <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.justifySpaceBetween]}>
-        <Button
-          testID="editor-back"
-          type="outline"
-          text={t('socialRecovery.ceremony.backAction')}
-          onPress={() => navigate(WEB_ROUTES.socialRecoverySetup)}
-          hasBottomSpacing={false}
+        <RuleLines
+          ruleLines={ruleLines}
+          checking={checking}
+          // The sizing line counts required rows by their stored shape, so
+          // the press gathers every clause that shape reads as a row.
+          onMakeItAGroup={() =>
+            commit(makeItAGroup(current()), makeItAGroupRoles(rolesOf(current())))
+          }
+          onAddSecondMethod={() => setPicker({ place: 'second' })}
         />
-        {client.status === 'loading' && <ActivityIndicator testID="editor-spinner" />}
-        {(client.status === 'update-the-wallet' || client.status === 'failed') && (
-          <Button
-            testID="editor-client-retry"
-            type="outline"
-            text={t('socialRecovery.writes.tryAgain')}
-            onPress={client.retry}
-            hasBottomSpacing={false}
-          />
-        )}
-        {client.status === 'ready' &&
-          (checking ? (
-            <ActivityIndicator testID="editor-spinner" />
-          ) : checkFailed ? (
-            <Button
-              testID="editor-check-retry"
-              type="outline"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={onContinue}
-              hasBottomSpacing={false}
-            />
-          ) : (
-            <Button
-              testID="editor-continue"
-              type="primary"
-              text={t('socialRecovery.actions.continue')}
-              disabled={methodCount === 0 || writeFailed}
-              onPress={onContinue}
-              hasBottomSpacing={false}
-            />
-          ))}
-      </View>
+      )}
+
+      <RulesPanel />
+
+      <EditorActions
+        client={client}
+        clientRefusal={clientRefusal}
+        walletRefusals={walletRefusals}
+        roles={load.roles}
+        findings={findings}
+        methodCount={methodCount}
+        checking={checking}
+        checkFailed={checkFailed}
+        writeFailed={writeFailed}
+        onRetryWrite={retryWrite}
+        onContinue={onContinue}
+        onBack={() => navigate(WEB_ROUTES.socialRecoverySetup)}
+      />
     </View>
   )
 }

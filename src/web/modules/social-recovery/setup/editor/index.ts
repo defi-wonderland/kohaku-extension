@@ -16,7 +16,7 @@ export {
   renderRowChip,
   renderRulesPanel
 } from './copy'
-export { METHOD_KINDS, PICKER_CEILING_HOURS } from './types'
+export { PICKER_CEILING_HOURS } from './types'
 export type {
   ClauseRole,
   ClientRefusal,
@@ -24,7 +24,6 @@ export type {
   EditorLoad,
   EditorViewProps,
   EditResult,
-  MethodKind,
   PickerEntry,
   PickerTarget,
   Refusal,

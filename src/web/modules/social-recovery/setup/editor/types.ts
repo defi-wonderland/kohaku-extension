@@ -1,17 +1,17 @@
 import type {
   Clause,
   Credential,
+  Finding,
   ISetupClient,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { Enrollment, SetupRecords } from '@web/modules/social-recovery/shared/records'
-
-/** The method kinds in the order the picker lists them. */
-export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as const
-
-/** A method kind, a key of the address book's `methods`. */
-export type MethodKind = typeof METHOD_KINDS[number]
+import type {
+  Enrollment,
+  SetupRecords,
+  SlotKind
+} from '@web/modules/social-recovery/shared/records'
+import type { RuleLine } from '@web/modules/social-recovery/shared/rule-lines'
 
 /**
  * The longest waiting period the setup's picker offers, in hours: thirty days,
@@ -74,7 +74,7 @@ export type PickerTarget =
   | { place: 'required' }
   | { place: 'second' }
   | { place: 'member'; clause: number }
-  | ({ place: 'slot'; kind?: MethodKind } & SlotPosition)
+  | ({ place: 'slot'; kind?: SlotKind } & SlotPosition)
 
 /** One enrolled credential the picker lists, with whether the path already holds it. */
 export interface PickerEntry {
@@ -117,12 +117,12 @@ export interface EditorViewProps {
 }
 
 export interface MemberPickerProps {
-  entries: Record<MethodKind, PickerEntry[]>
+  entries: Record<SlotKind, PickerEntry[]>
   /** The kinds the picker offers: every kind, or an empty slot's own. */
-  kinds: readonly MethodKind[]
+  kinds: readonly SlotKind[]
   addressBook: AddressBook
   onPick: (credential: Credential) => void
-  onEnrollNew: (kind: MethodKind) => void
+  onEnrollNew: (kind: SlotKind) => void
   onClose: () => void
   /** Holds every pick while the path check runs. */
   disabled?: boolean
@@ -144,4 +144,74 @@ export interface ThresholdFieldProps {
   onChange: (threshold: number) => void
   disabled?: boolean
   testID?: string
+}
+
+/** A clause of the path with its index among the draft's clauses. */
+export interface IndexedClause {
+  clause: Clause
+  index: number
+}
+
+export interface EditorHeaderProps {
+  mode: EditorLoad['mode']
+  /** Whether the last pick was a credential the path already holds. */
+  refused: boolean
+}
+
+export interface RequiredRowsProps {
+  rows: IndexedClause[]
+  groups: IndexedClause[]
+  /** The row whose group choice is open, when more than one group can take it. */
+  movingRow: number | null
+  addressBook: AddressBook
+  enrollments: readonly Enrollment[]
+  checking: boolean
+  onOpenSlot: (clause: number, member: number) => void
+  onMove: (row: number, group: number) => void
+  onChooseGroup: (row: number) => void
+  onRemove: (row: number) => void
+  onAdd: () => void
+}
+
+export interface GroupListProps {
+  groups: IndexedClause[]
+  addressBook: AddressBook
+  enrollments: readonly Enrollment[]
+  checking: boolean
+  onOpenSlot: (clause: number, member: number) => void
+  onThreshold: (group: number, threshold: number) => void
+  onMakeRequired: (group: number, member: number) => void
+  onRemoveMember: (group: number, member: number) => void
+  onAddMember: (group: number) => void
+  onRemoveGroup: (group: number) => void
+  onAddGroup: () => void
+}
+
+export interface RuleLinesProps {
+  ruleLines: RuleLine[]
+  checking: boolean
+  onMakeItAGroup: () => void
+  onAddSecondMethod: () => void
+}
+
+export interface RefusalListProps {
+  refusals: Refusal[]
+  /** The role of each clause, which heads a refusal with its clause's label. */
+  roles: readonly ClauseRole[]
+}
+
+export interface EditorActionsProps {
+  client: EditorClient
+  clientRefusal: ClientRefusal | null
+  /** The wallet's own refusals of the path at the last continue. */
+  walletRefusals: Refusal[]
+  roles: readonly ClauseRole[]
+  findings: Finding[]
+  methodCount: number
+  checking: boolean
+  checkFailed: boolean
+  writeFailed: boolean
+  onRetryWrite: () => void
+  onContinue: () => void
+  onBack: () => void
 }
