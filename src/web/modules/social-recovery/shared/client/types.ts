@@ -207,6 +207,28 @@ export type ExtensionProvider = AdapterProvider &
 export type WalletReads = IWalletReadsDouble
 export type { FitCheckReading, RemovedKeyReading, RemovedKeyUnavailableCause }
 
+/** The account fields the privilege holders read takes. */
+export type PrivilegeAccount = Pick<
+  Account,
+  'addr' | 'associatedKeys' | 'initialPrivileges' | 'creation'
+>
+
+/** The members of the extension's provider the privilege holders read uses. */
+export type PrivilegeReadsProvider = Pick<RPCProvider, 'send' | 'getCode' | 'call'>
+
+/** The keys holding a privilege on an account, or why they could not be read. */
+export type PrivilegeHoldersReading =
+  | { kind: 'holders'; keys: Address[] }
+  | { kind: 'unreadable'; cause: string }
+
+/** The wallet's own read of who holds a privilege on an account. */
+export interface PrivilegeReads {
+  privilegeHoldersOf(
+    account: PrivilegeAccount,
+    chainId: number | bigint
+  ): Promise<PrivilegeHoldersReading>
+}
+
 /**
  * What the extension holds for one account: the two entry clients, the two
  * narrow seams the builder hands out, the approving side and its methods, and
