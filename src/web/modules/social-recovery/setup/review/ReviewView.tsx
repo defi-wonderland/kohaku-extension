@@ -72,7 +72,9 @@ const ReviewView = ({
     const setup = records.setup(chainId, account)
     Promise.all([setup.setupDraft.read(), setup.enrollments.read(), setup.passwordSet.read()])
       .then(([draft, enrollments, passwordSet]) => {
-        if (!live) return
+        if (!live) {
+          return
+        }
         setLoad({
           draft: draft.status === 'present' ? draft.value : defaultSetupDraft(),
           enrollments: enrollments.status === 'present' ? enrollments.value : [],
@@ -80,7 +82,9 @@ const ReviewView = ({
         })
       })
       .catch(() => {
-        if (live) setLoadFailed(true)
+        if (live) {
+          setLoadFailed(true)
+        }
       })
     return () => {
       live = false
@@ -190,7 +194,10 @@ const ReviewView = ({
     fitCheck: accountReads.fitCheck,
     setupState: accountReads.setupState,
     description: accountReads.description,
-    untested: untestedInPath(clauses, load.enrollments)
+    untested: untestedInPath(clauses, load.enrollments),
+    clauses,
+    backup: draft.privacy.backup,
+    passwordSet: load.passwordSet
   })
   const { removedKey } = accountReads
 
@@ -333,6 +340,8 @@ const ReviewView = ({
           blocked={gate.blocked}
           onRetry={retryUnanswered}
           onOpen={() => navigate(WEB_ROUTES.socialRecoveryManage)}
+          onEditor={() => navigate(WEB_ROUTES.socialRecoverySetupEditor)}
+          onPrivacy={() => navigate(WEB_ROUTES.socialRecoverySetupPrivacy)}
         />
       )}
 

@@ -1,11 +1,13 @@
 /**
- * The save gate: Save runs only once the records loaded, the client is ready,
- * every trust list read answered, the key a recovery removes is named, the
- * action fits the account and no setup exists. The block shown is the first
- * that applies: a read that did not answer, the removed key unreadable, an
- * account this release cannot recover (the action does not fit it, or it
- * holds more than one key), a setup that already exists. An
- * untested method warns beside Save and never disables it.
+ * The save gate: Save runs only once the records loaded, every slot of the
+ * path holds a method, an encrypted backup has its recovery password, the
+ * client is ready, every trust list read answered, the key a recovery removes
+ * is named, the action fits the account and no setup exists. The block shown
+ * is the first that applies: the records' blocks (an empty slot, then the
+ * missing password) before the reads' blocks (a read that did not answer, the
+ * removed key unreadable, an account this release cannot recover because the
+ * action does not fit it or it holds more than one key, a setup that already
+ * exists). An untested method warns beside Save and never disables it.
  */
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
@@ -28,6 +30,10 @@ export const untestedInPath = (
       (credential) =>
         !isEmptySlot(credential) && enrollmentOf(credential, enrollments)?.test !== 'passed'
     )
+
+/** Whether a member of any clause of the path is a slot no method fills. */
+const hasEmptySlot = (clauses: readonly Clause[]): boolean =>
+  clauses.some(({ credentials }) => credentials.some(isEmptySlot))
 
 /** Whether the account holds several keys, so no single key is the one a recovery removes. */
 const holdsSeveralKeys = ({ removedKey }: AccountReads): boolean =>
@@ -71,7 +77,9 @@ const blockOf = (input: SaveGateInput): SaveBlock | null => {
   ) {
     return { kind: 'unavailable' }
   }
-  if (removedKeyUnreadable(input)) return { kind: 'removed-key-unreadable' }
+  if (removedKeyUnreadable(input)) {
+    return { kind: 'removed-key-unreadable' }
+  }
   if (fitCheck.status === 'answered' && !fitCheck.value.fits) {
     return { kind: 'cannot-recover', reason: 'not-supported' }
   }
@@ -80,16 +88,31 @@ const blockOf = (input: SaveGateInput): SaveBlock | null => {
   if (count !== undefined && count > 1) {
     return { kind: 'cannot-recover', reason: 'key-count', count }
   }
-  if (holdsSeveralKeys(input)) return { kind: 'cannot-recover', reason: 'key-count' }
+  if (holdsSeveralKeys(input)) {
+    return { kind: 'cannot-recover', reason: 'key-count' }
+  }
   if (setupState.status === 'answered' && setupState.value.hasSetup) {
     return { kind: 'already-set-up' }
   }
   return null
 }
 
+/** The block the setup records alone decide, whatever the reads answer. */
+const recordsBlockOf = ({ clauses, backup, passwordSet }: SaveGateInput): SaveBlock | null => {
+  if (hasEmptySlot(clauses)) {
+    return { kind: 'empty-slot' }
+  }
+  if (backup === 'encrypted' && !passwordSet) {
+    return { kind: 'password-missing' }
+  }
+  return null
+}
+
 export const saveGateOf = (input: SaveGateInput): SaveGate => {
   const { recordsLoaded, clientReady, trustRows, removedKey, fitCheck, setupState } = input
-  const blocked = recordsLoaded && clientReady ? blockOf(input) : null
+  const recordsBlock = recordsLoaded ? recordsBlockOf(input) : null
+  const readsBlock = recordsLoaded && clientReady ? blockOf(input) : null
+  const blocked = recordsBlock ?? readsBlock
   const everyRead =
     trustReadsComplete(trustRows) &&
     removedKey.status === 'answered' &&

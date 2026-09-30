@@ -78,6 +78,9 @@ const gateOf = (input: Partial<SaveGateInput> = {}) =>
     clientReady: true,
     trustRows: ANSWERED_ROWS,
     untested: false,
+    clauses: [],
+    backup: 'encrypted',
+    passwordSet: true,
     ...READS,
     ...input
   })

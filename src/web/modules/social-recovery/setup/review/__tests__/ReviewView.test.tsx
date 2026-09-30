@@ -1298,7 +1298,7 @@ describe("the wallet's reading of the account's keys", () => {
     )
   })
 
-  it('reads several keys as cannot recover with no count line where the description throws', async () => {
+  it('reads several keys as cannot recover with the several-keys line where the description throws', async () => {
     await mount({
       removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
       describeSetup: async () => {
@@ -1308,7 +1308,7 @@ describe("the wallet's reading of the account's keys", () => {
 
     expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
     expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.cannotRecover.title`))
-    expect(byTestId('review-blocked-body')).toBeNull()
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.cannotRecover.reasonSeveralKeys`))
     expect(pageText()).not.toContain(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))
     expect(byTestId('review-blocked-retry')).toBeNull()
     expect(isDisabled('review-save')).toBe(true)

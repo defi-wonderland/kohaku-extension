@@ -12,7 +12,7 @@ import type { SaveBlockerProps } from './types'
 const BLOCKED = 'socialRecovery.review.blocked'
 
 /** Why Save cannot run, on screen beside it, with the action that clears it where one does. */
-const SaveBlocker = ({ blocked, onRetry, onOpen }: SaveBlockerProps) => {
+const SaveBlocker = ({ blocked, onRetry, onOpen, onEditor, onPrivacy }: SaveBlockerProps) => {
   const { t } = useTranslation()
 
   const chip = (text: string) => (
@@ -53,7 +53,21 @@ const SaveBlocker = ({ blocked, onRetry, onOpen }: SaveBlockerProps) => {
   )
 
   let content: React.ReactNode
-  if (blocked.kind === 'unavailable') {
+  if (blocked.kind === 'empty-slot') {
+    content = (
+      <>
+        {body(t(`${BLOCKED}.emptySlot`))}
+        {action(t(`${BLOCKED}.emptySlotAction`), onEditor, 'review-blocked-editor')}
+      </>
+    )
+  } else if (blocked.kind === 'password-missing') {
+    content = (
+      <>
+        {body(t(`${BLOCKED}.passwordMissing`))}
+        {action(t(`${BLOCKED}.passwordMissingAction`), onPrivacy, 'review-blocked-privacy')}
+      </>
+    )
+  } else if (blocked.kind === 'unavailable') {
     content = (
       <>
         {chip(t(`${BLOCKED}.unavailable.chip`))}
@@ -78,8 +92,11 @@ const SaveBlocker = ({ blocked, onRetry, onOpen }: SaveBlockerProps) => {
         {blocked.reason === 'not-supported' &&
           body(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))}
         {blocked.reason === 'key-count' &&
-          blocked.count !== undefined &&
-          body(t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: blocked.count }))}
+          body(
+            blocked.count === undefined
+              ? t(`${BLOCKED}.cannotRecover.reasonSeveralKeys`)
+              : t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: blocked.count })
+          )}
       </>
     )
   } else {

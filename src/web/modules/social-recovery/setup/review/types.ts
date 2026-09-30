@@ -1,6 +1,7 @@
 import type { RpcProviderKind } from '@ambire-common/interfaces/network'
 import type {
   Address,
+  BackupForm,
   Clause,
   Credential,
   ISetupClient,
@@ -210,6 +211,8 @@ export type Doors =
 
 /** Why Save cannot run, the first that applies in this order. */
 export type SaveBlock =
+  | { kind: 'empty-slot' }
+  | { kind: 'password-missing' }
   | { kind: 'unavailable' }
   | { kind: 'removed-key-unreadable' }
   | { kind: 'cannot-recover'; reason: 'not-supported' }
@@ -223,6 +226,11 @@ export interface SaveGateInput extends AccountReads {
   trustRows: readonly TrustRow[]
   /** Whether a method of the path has no passed access test. */
   untested: boolean
+  /** The path of the draft, whose every slot must hold a method. */
+  clauses: readonly Clause[]
+  /** The backup form of the draft; an encrypted one needs the recovery password set. */
+  backup: BackupForm
+  passwordSet: boolean
 }
 
 export interface SaveGate {
@@ -295,6 +303,8 @@ export interface SaveBlockerProps {
   blocked: SaveBlock
   onRetry: () => void
   onOpen: () => void
+  onEditor: () => void
+  onPrivacy: () => void
 }
 
 export interface TrustReadsState {
