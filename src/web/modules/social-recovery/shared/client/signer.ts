@@ -256,12 +256,12 @@ export const createSignerFacade = (
     content: PlainTextMessage | TypedMessage,
     signal: AbortSignal | undefined
   ): Promise<Hex> => {
-    if (signal?.aborted) {
-      return Promise.reject(signFlowFailure(member, 'withdrawn'))
-    }
     const listed = listedBasicAccountOf(port.accounts(), key)
     if (!listed) {
       return Promise.reject(signerNotWired(member, key))
+    }
+    if (signal?.aborted) {
+      return Promise.reject(signFlowFailure(member, 'withdrawn'))
     }
     // The queue and the sign-message controller compare addresses with exact
     // case, so the request carries the listed account's own (checksum-cased) address.
@@ -277,21 +277,32 @@ export const createSignerFacade = (
       let absence: ReturnType<typeof setTimeout> | undefined
 
       const end = (withdraw: boolean): boolean => {
-        if (done) return false
+        if (done) {
+          return false
+        }
         done = true
-        if (timer !== undefined) clearTimeout(timer)
-        if (absence !== undefined) clearTimeout(absence)
+        if (timer !== undefined) {
+          clearTimeout(timer)
+        }
+        if (absence !== undefined) {
+          clearTimeout(absence)
+        }
         unsubscribe()
         signal?.removeEventListener('abort', onAbort)
-        if (withdraw)
+        if (withdraw) {
           port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
+        }
         return true
       }
       const succeed = (signature: Hex) => {
-        if (end(false)) resolve(signature)
+        if (end(false)) {
+          resolve(signature)
+        }
       }
       const fail = (reason: SignFlowFailureReason, withdraw = false) => {
-        if (end(withdraw)) reject(signFlowFailure(member, reason))
+        if (end(withdraw)) {
+          reject(signFlowFailure(member, reason))
+        }
       }
 
       // Once the answer arrived, an abort no longer withdraws the request.
@@ -307,10 +318,14 @@ export const createSignerFacade = (
       unsubscribe = port.subscribe((update) => {
         // The first signature under the request's id is its answer; nothing
         // pushed after it counts.
-        if (done || answered) return
+        if (done || answered) {
+          return
+        }
         if (update.controller === 'signMessage') {
           const signed = update.state.signedMessage
-          if (!signed || !sameId(signed.fromActionId, id)) return
+          if (!signed || !sameId(signed.fromActionId, id)) {
+            return
+          }
           const { signature } = signed
           const malformed = () => fail('malformed-signature')
           if (!isHex(signature)) {
@@ -318,7 +333,9 @@ export const createSignerFacade = (
             return
           }
           answered = true
-          if (absence !== undefined) clearTimeout(absence)
+          if (absence !== undefined) {
+            clearTimeout(absence)
+          }
           absence = undefined
           // Verified in this page: the signature must recover to the key over
           // the facade's own content, whatever the background reports.
@@ -339,7 +356,9 @@ export const createSignerFacade = (
         ].some((request) => sameId(request.id, id))
         if (present) {
           queued = true
-          if (absence !== undefined) clearTimeout(absence)
+          if (absence !== undefined) {
+            clearTimeout(absence)
+          }
           absence = undefined
         } else if (queued && absence === undefined) {
           // The queue moves a request between its two lists after an account

@@ -753,6 +753,55 @@ describe('the signer facade over the request queue', () => {
       expect((signing.value as SignFlowFailure).reason).toBe('timeout')
       expect(dispatched(q.dispatch).filter((a) => a.type === REMOVE)).toHaveLength(1)
     })
+
+    it('lets one abort of a signal reused across two calls touch only the call still waiting', async () => {
+      const q = queueOver([basicAccount(KEY)])
+      const controller = new AbortController()
+      const first = sign(q, 'bytes', controller.signal)
+      const firstId = addedRequest(q.dispatch).userRequest.id
+      q.push(queued(firstId))
+      q.push(signedFor(firstId, SIG.bytes))
+      await flush()
+      expect(first).toEqual({ status: 'resolved', value: SIG.bytes })
+
+      const second = sign(q, 'typed', controller.signal)
+      const [, secondId] = dispatched(q.dispatch).flatMap((a) =>
+        a.type === ADD ? [a.params.userRequest.id] : []
+      )
+      q.push(queued(secondId))
+      await flush()
+      expect(second.status).toBe('pending')
+
+      controller.abort()
+      await flush()
+      expect(first).toEqual({ status: 'resolved', value: SIG.bytes })
+      expect(second.status).toBe('rejected')
+      expect((second.value as SignFlowFailure).reason).toBe('withdrawn')
+      expect(dispatched(q.dispatch).filter((a) => a.type === REMOVE)).toEqual([
+        { type: REMOVE, params: { id: secondId } }
+      ])
+    })
+
+    it('reports an input error or an unwired key before a signal already aborted at the call', async () => {
+      const controller = new AbortController()
+      controller.abort()
+      const { signal } = controller
+
+      const q = queueOver([basicAccount(KEY)])
+      const domainOnly = await thrownBy(
+        q.signer.signTypedData(HANDLE, { ...TYPED, primaryType: 'EIP712Domain' }, { signal })
+      )
+      expect(isSignFlowFailure(domainOnly)).toBe(false)
+      expect((domainOnly as Error).message).toContain('EIP712Domain alone')
+
+      const unlisted = queueOver([])
+      const unwired = await thrownBy(unlisted.signer.signBytes(HANDLE, BYTES, { signal }))
+      expect(isSignerNotWired(unwired)).toBe(true)
+      expect(isSignFlowFailure(unwired)).toBe(false)
+
+      expect(q.dispatch).not.toHaveBeenCalled()
+      expect(unlisted.dispatch).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects an answer that is not a hex signature', async () => {
