@@ -9,7 +9,6 @@ import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interf
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
 import { methodCountOf, roleOf, rolesOf } from './operations'
-import { PICKER_CEILING_HOURS } from './types'
 import type { ClauseRole, Refusal } from './types'
 
 /** The most a clause's threshold field counts. */
@@ -22,6 +21,13 @@ export const MEMBER_CEILING = 255
 // A shift, since the build compiles `**` to `Math.pow`, which throws on a bigint.
 // eslint-disable-next-line no-bitwise
 export const WAIT_FIELD_LIMIT = 1n << 48n
+
+/**
+ * The longest waiting period the setup's picker offers, in hours: thirty days,
+ * the SDK's shipped maximum wait, so the picker never offers a wait the SDK's
+ * save refuses.
+ */
+export const PICKER_CEILING_HOURS = 30 * 24
 
 export const PICKER_CEILING_SECONDS = BigInt(PICKER_CEILING_HOURS * 60 * 60)
 

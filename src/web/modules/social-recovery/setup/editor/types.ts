@@ -13,13 +13,6 @@ import type {
 } from '@web/modules/social-recovery/shared/records'
 import type { RuleLine } from '@web/modules/social-recovery/shared/rule-lines'
 
-/**
- * The longest waiting period the setup's picker offers, in hours: thirty days,
- * the SDK's shipped maximum wait, so the picker never offers a wait the SDK's
- * save refuses.
- */
-export const PICKER_CEILING_HOURS = 30 * 24
-
 /** A shape this wallet refuses to save, named by its sentence. */
 export type RefusalKey =
   | 'emptyGroup'

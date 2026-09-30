@@ -16,7 +16,6 @@ export {
   renderRowChip,
   renderRulesPanel
 } from './copy'
-export { PICKER_CEILING_HOURS } from './types'
 export type {
   ClauseRole,
   ClientRefusal,

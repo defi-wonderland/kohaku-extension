@@ -124,7 +124,7 @@ const mount = async ({
   wait,
   validate = async () => NO_FINDING
 }: { clauses?: Clause[]; wait?: bigint; validate?: Validate } = {}) => {
-  const { records } = makeRecords()
+  const { records, storage } = makeRecords()
   if (clauses) {
     await records.setupDraft.write(draftOf(clauses, wait))
     await records.path.write(clauses)
@@ -142,7 +142,7 @@ const mount = async ({
     )
   })
   await settle()
-  return { validateSetup, navigate }
+  return { validateSetup, navigate, storage }
 }
 
 const PANEL = [
@@ -369,5 +369,39 @@ describe('the rules panel', () => {
     expect(
       byTestId('editor-wallet-refusals')?.querySelector('[data-testid="editor-rules-line"]')
     ).toBeNull()
+  })
+})
+
+describe('the order of the sections on screen', () => {
+  it('reads the rule lines, the rules panel, the write failure, the refusals, then continue', async () => {
+    const { storage } = await mount({ clauses: presetPath() })
+    storage.rejectOnce('set', 'setupDraft')
+    const addGroup = byTestId('editor-add-group')
+    const next = byTestId('editor-continue')
+    act(() => {
+      addGroup?.click()
+      next?.click()
+    })
+    await settle()
+
+    const sections = [
+      'editor-rule-lines',
+      'editor-rules',
+      'editor-write-failed',
+      'editor-wallet-refusals',
+      'editor-continue'
+    ].map((id) => {
+      const node = byTestId(id)
+      if (!node) {
+        throw new Error(`nothing on screen with the test id ${id}`)
+      }
+      return node
+    })
+    sections.slice(1).forEach((node, index) => {
+      // eslint-disable-next-line no-bitwise
+      expect(sections[index].compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    })
   })
 })
