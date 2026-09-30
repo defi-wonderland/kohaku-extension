@@ -40,6 +40,14 @@ const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
   return items
 }
 
+/**
+ * The unguessable line's key agrees with its subject: the singular verb for one
+ * item that is itself one thing, the plural verb for several passkeys or for
+ * two or more items.
+ */
+const unguessableKeyOf = (items: string[]) =>
+  items.length === 1 && items[0] !== 'passkeys' ? 'unguessableOne' : 'unguessable'
+
 /** The items as one phrase: the first in its leading form, two as a pair, three as a triple. */
 const joinItems = ([lead, ...rest]: string[], t: Translate): string => {
   const first = t(`${ITEMS_LEAD}.${lead}`)
@@ -71,7 +79,7 @@ export const exposureLinesOf = (
   return {
     guardians: t(`${EXPOSURE}.guardians`),
     unguessable: items.length
-      ? t(`${EXPOSURE}.unguessable`, { items: joinItems(items, t) })
+      ? t(`${EXPOSURE}.${unguessableKeyOf(items)}`, { items: joinItems(items, t) })
       : undefined,
     publication
   }

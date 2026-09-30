@@ -126,6 +126,9 @@ const WaitingPeriodView = ({
               testID={`wait-chip-${id}`}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
+              // The web renderer reads the checked state of a radio from this prop
+              // alone; the React Native types do not declare it, so it goes in a spread.
+              {...{ accessibilityChecked: selected }}
               onPress={() => setChoice({ kind: 'chip', id })}
               style={chipStyle(selected)}
             >
@@ -137,6 +140,7 @@ const WaitingPeriodView = ({
           testID="wait-chip-custom"
           accessibilityRole="radio"
           accessibilityState={{ checked: choice.kind === 'custom' }}
+          {...{ accessibilityChecked: choice.kind === 'custom' }}
           onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
           style={chipStyle(choice.kind === 'custom')}
         >
