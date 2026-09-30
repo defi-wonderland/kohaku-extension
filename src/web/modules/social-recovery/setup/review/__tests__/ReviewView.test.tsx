@@ -256,14 +256,7 @@ const mount = async ({
     removedKey: jest.fn(removedKey),
     fitCheck: jest.fn(fitCheck),
     setupState: jest.fn(setupState),
-    describeSetup: jest.fn(describeSetup)
-  }
-  const kit: ReviewKitClient = {
-    chain: 'sepolia',
-    descriptor: deploymentDescriptor('sepolia'),
-    moduleReads: reads,
-    setup: { setupState: account.setupState, describeSetup: account.describeSetup },
-    walletReads: { removedKey: account.removedKey, fitCheck: account.fitCheck },
+    describeSetup: jest.fn(describeSetup),
     privilegeHolders: jest.fn(
       privilegeHolders ??
         (async (): Promise<PrivilegeHoldersReading> => {
@@ -281,6 +274,14 @@ const mount = async ({
         })
     )
   }
+  const kit: ReviewKitClient = {
+    chain: 'sepolia',
+    descriptor: deploymentDescriptor('sepolia'),
+    moduleReads: reads,
+    setup: { setupState: account.setupState, describeSetup: account.describeSetup },
+    walletReads: { removedKey: account.removedKey, fitCheck: account.fitCheck },
+    privilegeHolders: account.privilegeHolders
+  }
   const retry = jest.fn()
   let reviewClient: ReviewClient = { status: 'ready', client: kit }
   if (client === 'loading') {
@@ -294,23 +295,27 @@ const mount = async ({
   }
 
   const navigate = jest.fn()
-  await act(async () => {
-    root.render(
-      <ThemeContext.Provider value={THEME_CONTEXT}>
-        <ReviewView
-          records={shown}
-          chainId={CHAIN_ID}
-          account={ACCOUNT}
-          client={reviewClient}
-          providerKind={providerKind}
-          accountLabel={accountLabel}
-          navigate={navigate}
-        />
-      </ThemeContext.Provider>
-    )
-  })
-  await settle()
-  return { reads, account, navigate, retry }
+  // Renders the view again as a state push does: the same client, a new label.
+  const render = async (label: string | undefined) => {
+    await act(async () => {
+      root.render(
+        <ThemeContext.Provider value={THEME_CONTEXT}>
+          <ReviewView
+            records={shown}
+            chainId={CHAIN_ID}
+            account={ACCOUNT}
+            client={reviewClient}
+            providerKind={providerKind}
+            accountLabel={label}
+            navigate={navigate}
+          />
+        </ThemeContext.Provider>
+      )
+    })
+    await settle()
+  }
+  await render(accountLabel)
+  return { reads, account, navigate, retry, rerender: render }
 }
 
 const callsFor = (mock: jest.Mock, method: Address) =>
@@ -1562,5 +1567,178 @@ describe('the other doors', () => {
 
     expect(textOf('review-doors')).toBe(t(`${DOORS}.none`))
     expect(isDisabled('review-save')).toBe(false)
+  })
+
+  describe("from the wallet's privilege read", () => {
+    const holders =
+      (...keys: Address[]) =>
+      async (): Promise<PrivilegeHoldersReading> => ({ kind: 'holders', keys })
+    const UNREADABLE = async (): Promise<PrivilegeHoldersReading> => ({
+      kind: 'unreadable',
+      cause: 'node unreachable'
+    })
+    const keysLine = (count: number) =>
+      t(`${DOORS}.line`, { doors: t(`${DOORS}.keysBeside`, { count }) })
+
+    it('count the two keys that hold a privilege beside the removed one', async () => {
+      await mount({ privilegeHolders: holders(REMOVED_KEY, OTHER_KEY, THIRD_KEY) })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(keysLine(2))
+      expect(textOf('review-doors-untouched')).toBe(t(`${DOORS}.untouched`))
+      expect(isDisabled('review-save')).toBe(false)
+    })
+
+    it('read none where the removed key alone holds a privilege', async () => {
+      await mount({ privilegeHolders: holders(REMOVED_KEY) })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(t(`${DOORS}.none`))
+      expect(byTestId('review-doors-untouched')).toBeNull()
+    })
+
+    it('read that the wallet could not see every door where the read is unreadable, never its cause, and Save stays enabled', async () => {
+      await mount({ privilegeHolders: UNREADABLE })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(t(`${DOORS}.unreadable`))
+      expect(pageText()).not.toContain('node unreachable')
+      expect(byTestId('review-blocked-unavailable')).toBeNull()
+      expect(isDisabled('review-save')).toBe(false)
+    })
+
+    it('read that the wallet could not see every door where the read throws, and Save stays enabled', async () => {
+      await mount({
+        privilegeHolders: async () => {
+          throw new Error('node unreachable')
+        }
+      })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(t(`${DOORS}.unreadable`))
+      expect(pageText()).not.toContain('node unreachable')
+      expect(isDisabled('review-save')).toBe(false)
+    })
+
+    it("count the reading's keys, not the candidate keys the description names", async () => {
+      await mount({
+        describeSetup: async () =>
+          descriptionOf([
+            { address: REMOVED_KEY, isAuthority: true },
+            { address: OTHER_KEY, isAuthority: true },
+            { address: THIRD_KEY, isAuthority: true }
+          ]),
+        privilegeHolders: holders(REMOVED_KEY, OTHER_KEY)
+      })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(keysLine(1))
+    })
+
+    it('read the doors from the description no longer where it names no creation record', async () => {
+      await mount({
+        removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
+        describeSetup: async () =>
+          descriptionOf([{ address: OTHER_KEY, isAuthority: true }], 'no-creation-triple'),
+        privilegeHolders: holders(OTHER_KEY, THIRD_KEY)
+      })
+      await press('review-verify-details')
+
+      expect(textOf('review-doors')).toBe(keysLine(2))
+    })
+
+    it('run the read again on a retry where it was unreadable', async () => {
+      let answers = 0
+      const { account } = await mount({
+        fitCheck: async () => {
+          answers += 1
+          if (answers === 1) {
+            throw new Error('node unreachable')
+          }
+          return { basis: 'deployed-code', fits: true }
+        },
+        privilegeHolders: jest
+          .fn<Promise<PrivilegeHoldersReading>, []>()
+          .mockImplementationOnce(UNREADABLE)
+          .mockImplementation(holders(REMOVED_KEY, OTHER_KEY))
+      })
+      await press('review-verify-details')
+      expect(textOf('review-doors')).toBe(t(`${DOORS}.unreadable`))
+
+      await press('review-blocked-retry')
+
+      expect(account.privilegeHolders).toHaveBeenCalledTimes(2)
+      expect(textOf('review-doors')).toBe(keysLine(1))
+      expect(isDisabled('review-save')).toBe(false)
+    })
+
+    it('run the read again on a retry where it threw', async () => {
+      let answers = 0
+      let reads = 0
+      const { account } = await mount({
+        fitCheck: async () => {
+          answers += 1
+          if (answers === 1) {
+            throw new Error('node unreachable')
+          }
+          return { basis: 'deployed-code', fits: true }
+        },
+        privilegeHolders: async () => {
+          reads += 1
+          if (reads === 1) {
+            throw new Error('node unreachable')
+          }
+          return { kind: 'holders', keys: [REMOVED_KEY, OTHER_KEY] }
+        }
+      })
+
+      await press('review-blocked-retry')
+
+      expect(account.privilegeHolders).toHaveBeenCalledTimes(2)
+      await press('review-verify-details')
+      expect(textOf('review-doors')).toBe(keysLine(1))
+    })
+
+    it('do not run the read again on a retry where it read the holders', async () => {
+      let answers = 0
+      const { account } = await mount({
+        fitCheck: async () => {
+          answers += 1
+          if (answers === 1) {
+            throw new Error('node unreachable')
+          }
+          return { basis: 'deployed-code', fits: true }
+        },
+        privilegeHolders: holders(REMOVED_KEY, OTHER_KEY)
+      })
+
+      await press('review-blocked-retry')
+
+      expect(account.fitCheck).toHaveBeenCalledTimes(2)
+      expect(account.privilegeHolders).toHaveBeenCalledTimes(1)
+    })
+
+    it('leave Save to the other reads while the privilege read has not come back', async () => {
+      await mount({ privilegeHolders: () => new Promise(() => {}) })
+
+      expect(isDisabled('review-save')).toBe(false)
+      expect(byTestId('review-blocked-unavailable')).toBeNull()
+      await press('review-verify-details')
+      expect(byTestId('review-doors-pending')).not.toBeNull()
+    })
+
+    it('do not read again when the view renders again with the same client', async () => {
+      const { account, rerender } = await mount({
+        privilegeHolders: holders(REMOVED_KEY, OTHER_KEY)
+      })
+
+      await rerender('Renamed account')
+
+      expect(account.privilegeHolders).toHaveBeenCalledTimes(1)
+      expect(account.removedKey).toHaveBeenCalledTimes(1)
+      expect(account.fitCheck).toHaveBeenCalledTimes(1)
+      expect(account.setupState).toHaveBeenCalledTimes(1)
+      expect(account.describeSetup).toHaveBeenCalledTimes(1)
+    })
   })
 })
