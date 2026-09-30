@@ -110,6 +110,12 @@ const GetStartedScreen = () => {
                 text={t('Create new account')}
                 onPress={() => handleAuthButtonPress('create-new-account')}
               />
+              <Button
+                testID="create-existing-account-btn"
+                type="secondary"
+                text={t('Import existing account')}
+                onPress={() => handleAuthButtonPress('import-existing-account')}
+              />
               <View style={spacings.mb}>
                 <Text appearance="muted" fontSize={12} style={{ textAlign: 'center' }}>
                   {t('socialRecovery.create.coversSmartAccount')}
@@ -118,12 +124,6 @@ const GetStartedScreen = () => {
                   {t('socialRecovery.create.oneOrdinaryKey')}
                 </Text>
               </View>
-              <Button
-                testID="create-existing-account-btn"
-                type="secondary"
-                text={t('Import existing account')}
-                onPress={() => handleAuthButtonPress('import-existing-account')}
-              />
               {/* <Button
                 testID="view-only-address-btn"
                 type="ghost"
