@@ -14,8 +14,12 @@ const {
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const {
   addressBookOf,
+  shapeNoteOf,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  readPublicNote
+}: typeof import('@web/modules/social-recovery/sdk-doubles') = require('@web/modules/social-recovery/sdk-doubles')
 const {
   PASSWORD_SET,
   readRecoveryPassword,
@@ -27,6 +31,14 @@ const PrivacyView: typeof import('../PrivacyView').default = require('../Privacy
 
 const L = en.socialRecovery.privacy.level
 const S = en.socialRecovery
+const SENTENCE = en.socialRecovery.shape.sentence
+
+// Fills the `{{name}}` slots of a string from the table.
+const fill = (template: string, values: Record<string, string | number>) =>
+  Object.entries(values).reduce(
+    (text, [name, value]) => text.split(`{{${name}}}`).join(String(value)),
+    template
+  )
 const BOOK = addressBookOf(WALLET_RECOVERY_CHAIN)
 const ZERO = '0x0000000000000000000000000000000000000000'
 
@@ -47,6 +59,27 @@ const GUARDIAN_SLOTS_BESIDE_PASSKEY_AND_PASSPORT: Clause[] = [
 const ENROLLED_GUARDIAN_BESIDE_PASSKEY_AND_PASSPORT: Clause[] = [
   { threshold: 2, credentials: [passkey, guardian, passport] }
 ]
+const PASSKEY_PASSPORT_AND_GUARDIAN: Clause[] = [
+  { threshold: 2, credentials: [passkey, passport, guardian] }
+]
+
+// The shape of the path above as a stranger reads it at Shape visible.
+const PASSKEY_PASSPORT_AND_GUARDIAN_SHAPE = fill(SENTENCE.list, {
+  first: fill(SENTENCE.list, {
+    first: SENTENCE.kinds.passkey,
+    rest: fill(SENTENCE.pair, { first: SENTENCE.kinds.passport, second: SENTENCE.kinds.guardian })
+  }),
+  rest: fill(SENTENCE.anyOf, { threshold: 2, count: 3 })
+})
+
+// A draft stored at Shape visible: a sealed backup beside the note of its shape.
+const shapeVisibleDraft = (clauses: Clause[]) => {
+  const { wait, ignoresPause } = draftOf()
+  return draftOf({
+    clauses,
+    privacy: { backup: 'encrypted', publicMetadata: shapeNoteOf({ clauses, wait, ignoresPause }) }
+  })
+}
 
 describe('the privacy step', () => {
   let h: Harness
@@ -83,23 +116,77 @@ describe('the privacy step', () => {
     await h.type('password-confirmation', confirmation)
   }
 
+  // Continues at whatever level the step opened on, and reads back what it stored.
+  const continueAsOpened = async (records: WalletRecords) => {
+    if (h.inputOf('password')) await typePasswords('correct horse', 'correct horse')
+    await h.press('continue')
+    return (await storedDraft(records)).privacy
+  }
+
+  const exposureText = () =>
+    ['exposure-guardians', 'exposure-unguessable', 'exposure-publication'].map(
+      (id) => h.byTestId(id)?.textContent ?? null
+    )
+
   describe('the levels', () => {
-    it('offers two radios, Private then Public, each with its exact line', async () => {
-      await h.mount(recordsOn())
+    it('offers three radios, Private, Shape visible then Public, each with its label and exact line', async () => {
+      await h.mount(await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN }))
       const radios = Array.from(
         document.querySelectorAll<HTMLElement>('[data-testid="privacy-screen"] [role="radio"]')
       )
       expect(radios.map((radio) => radio.getAttribute('data-testid'))).toEqual([
         'level-private',
+        'level-shape-visible',
         'level-public'
       ])
-      expect(h.byTestId('level-line-private')?.textContent).toBe(
-        'A stranger sees that this account has a recovery setup and nothing of what it is until a recovery runs, which publishes the whole rule on chain in the clear.'
+      expect(h.byTestId('level-private')?.textContent).toContain(L.private.label)
+      expect(h.byTestId('level-shape-visible')?.textContent).toContain(L.shapeVisible.label)
+      expect(h.byTestId('level-public')?.textContent).toContain(L.public.label)
+      expect(h.byTestId('level-line-private')?.textContent).toBe(L.private.line)
+      expect(h.byTestId('level-line-shape-visible')?.textContent).toBe(
+        fill(L.shapeVisible.line, { shape: PASSKEY_PASSPORT_AND_GUARDIAN_SHAPE })
       )
-      expect(h.byTestId('level-line-public')?.textContent).toBe(
-        'Everything is readable by anyone. No password is set and the card carries only the address.'
-      )
+      expect(h.byTestId('level-line-public')?.textContent).toBe(L.public.line)
       expect(h.byTestId('level-private')?.textContent).toContain(L.private.badge)
+      expect(h.byTestId('level-shape-visible')?.textContent).not.toContain(L.private.badge)
+    })
+
+    it('the Shape visible line names the path by its kinds of method and how many must answer', async () => {
+      await h.mount(await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN }))
+      expect(h.byTestId('level-line-shape-visible')?.textContent).toBe(
+        'The shape of your setup is readable: a passkey, a passport and a guardian, any 2 of 3. Which ones stays hidden.'
+      )
+    })
+
+    it('a draft stored at Private opens on Private', async () => {
+      const privacy = { backup: 'encrypted', publicMetadata: '0x' } as const
+      const records = await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN, privacy })
+      await h.mount(records)
+      expect(h.inputOf('password')).not.toBeNull()
+      expect(await continueAsOpened(records)).toEqual(privacy)
+    })
+
+    it('a draft stored at Shape visible opens on Shape visible', async () => {
+      const draft = shapeVisibleDraft(PASSKEY_PASSPORT_AND_GUARDIAN)
+      const records = recordsOn()
+      await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(draft)
+      await h.mount(records)
+      expect(h.inputOf('password')).not.toBeNull()
+      expect(await continueAsOpened(records)).toEqual(draft.privacy)
+    })
+
+    it('a draft stored in the clear opens on Public', async () => {
+      const privacy = { backup: 'clear', publicMetadata: '0x' } as const
+      const records = await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN, privacy })
+      await h.mount(records)
+      expect(h.inputOf('password')).toBeNull()
+      expect(await continueAsOpened(records)).toEqual(privacy)
+    })
+
+    it('opens on Private with no draft', async () => {
+      const records = recordsOn()
+      await h.mount(records)
+      expect(await continueAsOpened(records)).toEqual({ backup: 'encrypted', publicMetadata: '0x' })
     })
 
     it('opens at Private, with the recovery password asked and no public line', async () => {
@@ -216,6 +303,22 @@ describe('the privacy step', () => {
   })
 
   describe('at Private', () => {
+    it('continue stores no public note beside the sealed backup', async () => {
+      const records = recordsOn()
+      await records
+        .setup(CHAIN_ID, ACCOUNT)
+        .setupDraft.write(shapeVisibleDraft(PASSKEY_PASSPORT_AND_GUARDIAN))
+      await h.mount(records)
+      await h.press('level-private')
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      expect((await storedDraft(records)).privacy).toEqual({
+        backup: 'encrypted',
+        publicMetadata: '0x'
+      })
+      expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
+    })
+
     it('asks the recovery password twice beside both halves of the trade', async () => {
       await h.mount(recordsOn())
       const field = h.byTestId('recovery-password')
@@ -260,9 +363,7 @@ describe('the privacy step', () => {
     })
 
     it('continue stores the flag, holds the password and keeps the draft encrypted', async () => {
-      const records = await withDraft({
-        privacy: { backup: 'encrypted', publicMetadata: '0xabcd' }
-      })
+      const records = await withDraft({ privacy: { backup: 'encrypted', publicMetadata: '0x' } })
       await h.mount(records)
       await typePasswords('correct horse', 'correct horse')
       await h.press('continue')
@@ -270,8 +371,13 @@ describe('the privacy step', () => {
       expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('correct horse')
       expect((await storedDraft(records)).privacy).toEqual({
         backup: 'encrypted',
-        publicMetadata: '0xabcd'
+        publicMetadata: '0x'
       })
+    })
+
+    it('shows the line that the password is required at Private and Shape visible', async () => {
+      await h.mount(recordsOn())
+      expect(h.byTestId('recovery-password')?.textContent).toContain(L.requiredAtPrivate)
     })
 
     it('never writes the password into storage', async () => {
@@ -305,11 +411,125 @@ describe('the privacy step', () => {
     })
   })
 
+  describe('at Shape visible', () => {
+    const atShapeVisible = async () => {
+      const records = await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN })
+      await h.mount(records)
+      await h.press('level-shape-visible')
+      return records
+    }
+
+    it('continue stores a sealed backup beside a public note of the path shape, sets the flag and holds the password', async () => {
+      const records = await atShapeVisible()
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      const draft = await storedDraft(records)
+      expect(draft.privacy.backup).toBe('encrypted')
+      expect(readPublicNote(draft.privacy.publicMetadata)).toEqual({
+        kind: 'shape',
+        shape: {
+          wait: draft.wait,
+          ignoresPause: draft.ignoresPause,
+          clauses: [{ threshold: 2, methods: [passkey.method, passport.method, guardian.method] }]
+        }
+      })
+      expect(await flagOf(records)).toBe(PASSWORD_SET)
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('correct horse')
+      expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
+    })
+
+    it('the public note carries no member config and never the password', async () => {
+      const records = await atShapeVisible()
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      const { publicMetadata } = (await storedDraft(records)).privacy
+      const note = JSON.stringify(readPublicNote(publicMetadata), (_, value) =>
+        typeof value === 'bigint' ? String(value) : value
+      )
+      expect(note).not.toContain('config')
+      expect(note).not.toContain('correct horse')
+    })
+
+    it('asks the recovery password twice with the line that it is required here too', async () => {
+      await atShapeVisible()
+      const field = h.byTestId('recovery-password')
+      expect(field?.querySelectorAll('input')).toHaveLength(2)
+      expect(field?.textContent).toContain(L.requiredAtPrivate)
+      expect(field?.textContent).toContain(S.display.passwords.recoveryPassword)
+      expect(h.byTestId('trade-card')?.textContent).toBe(L.tradeCard)
+      expect(h.byTestId('trade-loss')?.textContent).toBe(L.tradeLoss)
+      expect(h.byTestId('public-line')).toBeNull()
+    })
+
+    it('holds continue until the password is typed twice', async () => {
+      await atShapeVisible()
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.type('password', 'correct horse')
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.type('password-confirmation', 'correct horse')
+      expect(h.isDisabled('continue')).toBe(false)
+    })
+
+    it('a mismatch shows its line, holds continue and stores nothing', async () => {
+      const records = await atShapeVisible()
+      await typePasswords('correct horse', 'correct horsf')
+      expect(h.byTestId('mismatch')?.textContent).toBe(L.mismatch)
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.press('continue')
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect(await flagOf(records)).toBeUndefined()
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
+      expect((await storedDraft(records)).privacy.publicMetadata).toBe('0x')
+    })
+
+    it('carries the same exposure lines as Private', async () => {
+      await h.mount(await withDraft({ clauses: GUARDIAN_SLOTS_BESIDE_PASSKEY_AND_PASSPORT }))
+      const atPrivate = exposureText()
+      expect(atPrivate[0]).toBe(L.exposure.guardians)
+      await h.press('level-shape-visible')
+      expect(exposureText()).toEqual(atPrivate)
+    })
+
+    it('never claims the level hides that a setup exists', async () => {
+      await atShapeVisible()
+      expect(h.text()).not.toMatch(HIDES_EXISTENCE)
+    })
+
+    it('continue with no draft starts the default draft at Shape visible with its note', async () => {
+      const records = recordsOn()
+      await h.mount(records)
+      await h.press('level-shape-visible')
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      const draft = await storedDraft(records)
+      expect(draft.clauses).toEqual([])
+      expect(draft.privacy.backup).toBe('encrypted')
+      expect(readPublicNote(draft.privacy.publicMetadata)).toEqual({
+        kind: 'shape',
+        shape: { wait: draft.wait, ignoresPause: draft.ignoresPause, clauses: [] }
+      })
+      expect(await flagOf(records)).toBe(PASSWORD_SET)
+      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('correct horse')
+    })
+
+    it('continue with no draft carries the stored waiting period into the note', async () => {
+      const records = recordsOn()
+      await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(259200n)
+      await h.mount(records)
+      await h.press('level-shape-visible')
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      const note = readPublicNote((await storedDraft(records)).privacy.publicMetadata)
+      expect(note.kind === 'shape' && note.shape.wait).toBe(259200n)
+    })
+  })
+
   describe('at Public', () => {
     it('renders no password field and its own line', async () => {
       await h.mount(recordsOn())
       await h.press('level-public')
       expect(h.byTestId('recovery-password')).toBeNull()
+      expect(h.text()).not.toContain(L.requiredAtPrivate)
       expect(document.querySelector('[data-testid="privacy-screen"] input')).toBeNull()
       expect(h.byTestId('public-line')?.textContent).toBe(
         'No password is set. A fresh device rebuilds the setup from the chain alone, and the card carries only the address.'
@@ -318,10 +538,11 @@ describe('the privacy step', () => {
       expect(h.isDisabled('continue')).toBe(false)
     })
 
-    it('continue wipes the flag and the held password and stores the draft in the clear', async () => {
-      const records = await withDraft({
-        privacy: { backup: 'encrypted', publicMetadata: '0xabcd' }
-      })
+    it('continue wipes the flag and the held password and stores the draft in the clear with no note', async () => {
+      const records = recordsOn()
+      await records
+        .setup(CHAIN_ID, ACCOUNT)
+        .setupDraft.write(shapeVisibleDraft(PASSKEY_PASSPORT_AND_GUARDIAN))
       await records.setup(CHAIN_ID, ACCOUNT).passwordSet.write(PASSWORD_SET)
       setRecoveryPassword(CHAIN_ID, ACCOUNT, 'held before')
       await h.mount(records)
@@ -331,7 +552,7 @@ describe('the privacy step', () => {
       expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBeUndefined()
       expect((await storedDraft(records)).privacy).toEqual({
         backup: 'clear',
-        publicMetadata: '0xabcd'
+        publicMetadata: '0x'
       })
     })
 
