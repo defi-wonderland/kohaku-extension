@@ -23,7 +23,7 @@ const KIND_NAME_OF: { readonly [K in SlotKind]: string } = {
 }
 
 /** The name of a method whose kind the wallet does not know. */
-const UNKNOWN_KIND_NAME = 'socialRecovery.display.nouns.method'
+const UNKNOWN_KIND_NAME = `${SENTENCE}.kinds.method`
 
 const nameKeyOf = (
   credential: Credential,
@@ -61,25 +61,22 @@ const clausePart = (clause: Clause, options: RuleLinesOptions, t: Translate): st
     threshold: clause.threshold,
     count: clause.credentials.length
   })
-  return names === '' ? count : t(`${SENTENCE}.list`, { first: names, rest: count })
+  return t(`${SENTENCE}.list`, { first: names, rest: count })
 }
 
 /**
  * The path's shape in one sentence, `a passkey, a passport and a guardian, any
- * 2 of 3`, clauses joined by `and`. A clause with no member and a threshold of
- * zero asks nothing and is left out; with `skipMemberlessClauses`, every clause
- * with no member is left out. The sentence starts in lower case, since the line
- * that carries it leads into it.
+ * 2 of 3`, clauses joined by `and`. A clause with no member has no shape to
+ * name, so the sentence always leaves it out, whatever its threshold and with
+ * or without `skipMemberlessClauses`. The sentence starts in lower case, since
+ * the line that carries it leads into it.
  */
 export const renderShapeSentence = (
   clauses: readonly Clause[],
   options: RuleLinesOptions,
   t: Translate
 ): string => {
-  const read = clauses.filter(
-    (clause) =>
-      clause.credentials.length > 0 || !(options.skipMemberlessClauses || clause.threshold === 0)
-  )
+  const read = clauses.filter((clause) => clause.credentials.length > 0)
   const and = ` ${t('socialRecovery.shape.and').toLowerCase()} `
   return read.map((clause) => clausePart(clause, options, t)).join(and)
 }

@@ -17,14 +17,14 @@ import { renderShapeSentence } from '..'
 import type { RuleLinesOptions, Translate } from '..'
 
 type SentenceTable = {
-  kinds: { passkey: string; passport: string; guardian: string; aadhaar: string }
+  kinds: { passkey: string; passport: string; guardian: string; aadhaar: string; method: string }
   anyOf: string
   pair: string
   list: string
 }
 type ShapeTable = { and: string; sentence: SentenceTable }
 type Table = {
-  socialRecovery: { shape: ShapeTable; display: { nouns: { method: string } } }
+  socialRecovery: { shape: ShapeTable }
 }
 
 const EN = en as unknown as Table
@@ -73,7 +73,7 @@ const partsOf = (table: Table) => {
   const s = table.socialRecovery.shape.sentence
   return {
     kinds: s.kinds,
-    method: table.socialRecovery.display.nouns.method,
+    method: s.kinds.method,
     pair: (first: string, second: string) => fill(s.pair, { first, second }),
     list: (first: string, rest: string) => fill(s.list, { first, rest }),
     anyOf: (threshold: number, count: number) => fill(s.anyOf, { threshold, count }),
@@ -146,17 +146,17 @@ describe('renderShapeSentence: slots and unknown modules', () => {
     expect(renderShapeSentence(clauses, WITH_KINDS, t)).toBe(p.list(p.kinds.passkey, p.anyOf(1, 2)))
   })
 
-  it('names a method of a module the wallet does not know by the method noun', () => {
+  it('names a method of a module the wallet does not know as a method', () => {
     const unknown: Credential = { method: UNKNOWN_MODULE, config: `0x${'ab'.repeat(32)}` as Hex }
     expect(renderShapeSentence([row(unknown)], WITH_KINDS, t)).toBe(p.method)
   })
 
-  it('names an enrolled method by the method noun when no kind lookup is given', () => {
+  it('names an enrolled method as a method when no kind lookup is given', () => {
     const clauses = [group(1, [enrolled('passkey'), enrolled('ecdsa')])]
     expect(renderShapeSentence(clauses, {}, t)).toBe(p.list(p.method, p.anyOf(1, 2)))
   })
 
-  it('names a slot whose label is no known kind by the method noun', () => {
+  it('names a slot whose label is no known kind as a method', () => {
     const slot: Credential = { ...emptySlot('ecdsa'), label: 'carrier-pigeon' }
     expect(renderShapeSentence([row(slot)], {}, t)).toBe(p.method)
   })
@@ -171,10 +171,8 @@ describe('renderShapeSentence: clauses with no member', () => {
     )
   })
 
-  it('reads a memberless clause with a threshold when not asked to skip it', () => {
-    expect(renderShapeSentence(clauses, WITH_KINDS, t)).toBe(
-      `${p.kinds.passkey}${p.and}${p.anyOf(1, 0)}`
-    )
+  it('leaves out a memberless clause with a threshold when not asked to skip it', () => {
+    expect(renderShapeSentence(clauses, WITH_KINDS, t)).toBe(p.kinds.passkey)
   })
 
   it('leaves out a memberless clause at threshold zero either way', () => {
@@ -218,7 +216,7 @@ describe('renderShapeSentence: every word comes from the string table', () => {
   const s = EN.socialRecovery.shape.sentence
   const TABLE_WORDS = new Set([
     ...Object.values(s.kinds).flatMap(wordsOf),
-    ...[s.anyOf, s.pair, s.list, EN.socialRecovery.display.nouns.method].flatMap(wordsOf),
+    ...[s.anyOf, s.pair, s.list].flatMap(wordsOf),
     EN.socialRecovery.shape.and.toLowerCase()
   ])
 
@@ -240,14 +238,14 @@ describe('renderShapeSentence: every word comes from the string table', () => {
             passkey: 'ein Passkey',
             passport: 'ein Reisepass',
             guardian: 'ein Vormund',
-            aadhaar: 'eine Aadhaar-Identität'
+            aadhaar: 'eine Aadhaar-Identität',
+            method: 'eine Methode'
           },
           anyOf: 'beliebige {{threshold}} von {{count}}',
           pair: '{{first}} sowie {{second}}',
           list: '{{first}}; {{rest}}'
         }
-      },
-      display: { nouns: { method: 'Methode' } }
+      }
     }
   }
   const other = partsOf(OTHER)
