@@ -5,6 +5,7 @@
  * hands the client no signer and no storage. With no sponsor rail configured,
  * every prepared call is sent from a key the signer holds.
  */
+import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
 import {
   addressOf,
   DEFAULT_REQUEST_WINDOW,
@@ -78,7 +79,10 @@ describe('buildRecoveryClient', () => {
       descriptorOf(world.config.chain, world.config.addressBook)
     )
     expect(lastArg(spies.descriptor)).toEqual(deploymentDescriptor(world.config.chain))
-    expect(lastArg(spies.config)).toEqual(clientConfigurationOf(world.config))
+    expect(lastArg(spies.config)).toEqual({
+      ...clientConfigurationOf(world.config),
+      accountImplementation: PROXY_AMBIRE_ACCOUNT
+    })
     expect(lastArg(spies.account)).toBe(world.account)
 
     // The rest the builder receives is the stand-in SDK's own parts, never the extension's.
@@ -87,6 +91,16 @@ describe('buildRecoveryClient', () => {
     expect(spies.action).not.toHaveBeenCalled()
     expect(spies.eventManager).not.toHaveBeenCalled()
     expect(spies.codec).not.toHaveBeenCalled()
+  })
+
+  it('keeps an account implementation the configuration names', async () => {
+    const spies = spyOnBuilder()
+    const implementation = addressOf('other-implementation')
+    const world = createWorld({ accountImplementation: implementation })
+    await buildRecoveryClient(world.config)
+    const configuration = lastArg(spies.config) as { accountImplementation?: string }
+    expect(configuration.accountImplementation).toBe(implementation)
+    expect(configuration.accountImplementation).not.toBe(PROXY_AMBIRE_ACCOUNT)
   })
 
   it('hands the builder the wallet request window of 24 hours and no token allowlist', async () => {
