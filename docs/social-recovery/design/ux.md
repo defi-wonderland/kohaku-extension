@@ -316,7 +316,7 @@ For every guardian address the list carries the conditional sentence of the enro
 
 The list names the action with its author, shown as the recovery module and its publisher, read from the wallet's own table of the kit's audited actions.
 
-It names the account's other doors as the SDK returns them, the code entries contracts D-105 names and any key beside the one a recovery removes. It reads each code entry for what it is, the entry point's marker as code the account itself installed when it activated 4337 and every other entry as a validator somebody bound to the account, contracts D-110. A holder whose only code entry is the marker then reads why it is there rather than learning to skip the line and skipping a hostile validator with it. The doors carry the line that a recovery leaves them untouched and the account is only as safe as its weakest door, and where the SDK returns none, that the wallet cannot see every door.
+It names the account's other doors as the wallet's own account code lists them (the SDK lists no privilege holders; it answers whether one key is an authority and names the key a recovery removes, the sdk owner's ruling of 2026-09-30): the code entries contracts D-105 names and any key beside the one a recovery removes, read from the account's privileges on chain for a deployed account and from its creation code for one not yet deployed. It reads each code entry for what it is, the entry point's marker as code the account itself installed when it activated 4337 and every other entry as a validator somebody bound to the account, contracts D-110. A holder whose only code entry is the marker then reads why it is there rather than learning to skip the line and skipping a hostile validator with it. The doors carry the line that a recovery leaves them untouched and the account is only as safe as its weakest door, and where the SDK returns none, that the wallet cannot see every door.
 
 The list names the node the wallet reads through, named by kind, a light client with its prover or a plain node, which sees the request before the chain does. It carries the line that a method whose provider stops working is dead for good, since methods ship immutable and a keyless holder cannot reconfigure. It repeats the identity line per identity row.
 
@@ -892,7 +892,7 @@ Which disclosures does the wallet owe the holder and the guardian, and where do 
 - The identity demonstration limit lands on both identity rows at enrollment and again on the review. The wallet generates the line from the holder's own path, so the frames draw examples of it rather than one frame per shape.
 - What each privacy level reveals lands as one line per radio on the privacy step.
 - The backup trade lands on the password step, both halves.
-- The extra doors and the weakest door land on the review's trust list in the first release, as the other doors the SDK returns. They land again on the done screen.
+- The extra doors and the weakest door land on the review's trust list in the first release, as the other doors the wallet's own account code lists (the sdk owner's ruling of 2026-09-30). They land again on the done screen.
 - A live authorization with no setup behind it lands on the overview as the dormant warning's mirror. Its one action is remove the authorization, contracts D-110.
 - The wait default as the whole notice window lands on the waiting period step and the alerts opt-in, the integrator's obligation Q-13 names.
 - The self-attested nature of every declaration lands on the trust list in one sentence.
