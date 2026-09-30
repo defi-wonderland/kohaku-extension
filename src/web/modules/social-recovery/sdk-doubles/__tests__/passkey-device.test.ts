@@ -17,13 +17,26 @@ import {
   EXTENSION_ID,
   EXTENSION_ORIGIN,
   fakeAttestation,
+  FLAGS,
   ORIGIN_HASH,
   P256_N,
   SYNCED_FLAGS,
   toBuffer
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
-import { toBase64Url } from '@web/modules/social-recovery/shared/webauthn'
-import { bytesToBigInt, bytesToHex, hexToBytes, sha256, stringToBytes, stringToHex } from 'viem'
+import {
+  normalizeP256S,
+  parseDerSignature,
+  toBase64Url
+} from '@web/modules/social-recovery/shared/webauthn'
+import {
+  bytesToBigInt,
+  bytesToHex,
+  hexToBytes,
+  numberToHex,
+  sha256,
+  stringToBytes,
+  stringToHex
+} from 'viem'
 
 import { openRecovery } from './harness'
 
@@ -58,15 +71,19 @@ const signedAssertion = async (
     clientData = clientDataOf(challenge),
     signedClientData = clientData,
     highS = false,
-    withSignature = true
+    withSignature = true,
+    flags = SYNCED_FLAGS,
+    rpIdHash = ORIGIN_HASH
   }: {
     clientData?: Uint8Array
     signedClientData?: Uint8Array
     highS?: boolean
     withSignature?: boolean
+    flags?: number
+    rpIdHash?: Hex
   } = {}
 ) => {
-  const authData = authenticatorData({ flags: SYNCED_FLAGS })
+  const authData = authenticatorData({ flags, rpIdHash })
   const raw = new Uint8Array(
     await crypto.subtle.sign(
       ECDSA_SHA256,
@@ -93,6 +110,8 @@ const signedAssertion = async (
     getClientExtensionResults: () => ({})
   }
 }
+
+type Assertion = Awaited<ReturnType<typeof signedAssertion>>
 
 const challengeOf = (options?: CredentialRequestOptions): Uint8Array =>
   new Uint8Array(options?.publicKey?.challenge as ArrayBuffer)
@@ -140,6 +159,45 @@ const enrolledRequest = async (setup: Setup): Promise<ApproverRequest> => {
     config: outcome.value.config
   }
 }
+
+/** The request's challenge, as the method asks the device to sign it. */
+const challengeFor = (setup: Setup, request: ApproverRequest): Uint8Array => {
+  const input = setup.orchestrator.signingInput(request, { relyingPartyId: EXTENSION_ORIGIN }) as {
+    challenge: Hex
+  }
+  return hexToBytes(input.challenge)
+}
+
+/** The proof an assertion packages into, built without the method's own checks. */
+const packaged = (setup: Setup, assertion: Assertion): Hex => {
+  const { r, s } = parseDerSignature(new Uint8Array(assertion.response.signature as ArrayBuffer))
+  return setup.world.methods.passkey.codec.encodeProof({
+    authenticatorData: bytesToHex(new Uint8Array(assertion.response.authenticatorData)),
+    clientDataJSON: bytesToHex(new Uint8Array(assertion.response.clientDataJSON)),
+    r: numberToHex(r, { size: 32 }),
+    s: numberToHex(normalizeP256S(s), { size: 32 })
+  })
+}
+
+/** The method's own answer to an assertion, and the verdict on the same bytes packaged. */
+const judged = async (setup: Setup, request: ApproverRequest, assertion: Assertion) => {
+  const input = setup.orchestrator.signingInput(request, { relyingPartyId: EXTENSION_ORIGIN })
+  return {
+    reply: await setup.orchestrator.replyFrom(request, input, { assertion }),
+    verdict: await setup.orchestrator.verify(request, request.place, packaged(setup, assertion))
+  }
+}
+
+const REFUSED = {
+  reply: { kind: 'reply-failure', cause: 'material-rejected' },
+  verdict: 'rejected'
+} as const
+
+/** Authenticator flags that each lack one of the two an approval needs. */
+const FLAGS_SHORT_OF_APPROVAL = [
+  { lacking: 'the user verified', flags: FLAGS.UP },
+  { lacking: 'the user present', flags: FLAGS.UV }
+]
 
 const claim = async (setup: Setup, request: ApproverRequest): Promise<ApproverReply> => {
   const outcome = await createClaimHost({ ...setup.context, request })
@@ -219,6 +277,46 @@ describe('the passkey device into the passkey method double', () => {
     })
   })
 
+  it('refuses a credential minted under another relying party', async () => {
+    const { world } = await openRecovery()
+    const method = world.methods.passkey
+    const { credential } = fakeAttestation({
+      flags: SYNCED_FLAGS,
+      point: (await generateKey()).point,
+      rpIdHash: sha256(stringToHex('chrome-extension://another'))
+    })
+    const input = method.enrollInput({ relyingPartyId: EXTENSION_ORIGIN })
+    await expect(method.configFrom(input, { credential })).resolves.toEqual({
+      kind: 'enroll-failure',
+      cause: 'material-rejected'
+    })
+  })
+
+  it('refuses a credential whose key algorithm is not ES256', async () => {
+    const { world } = await openRecovery()
+    const method = world.methods.passkey
+    const { credential } = fakeAttestation({
+      flags: SYNCED_FLAGS,
+      point: (await generateKey()).point
+    })
+    const response = credential.response as AuthenticatorAttestationResponse
+    const input = method.enrollInput({ relyingPartyId: EXTENSION_ORIGIN })
+    const withAlgorithm = (algorithm: number) => ({
+      credential: {
+        response: {
+          getAuthenticatorData: () => response.getAuthenticatorData(),
+          getPublicKey: () => response.getPublicKey(),
+          getPublicKeyAlgorithm: () => algorithm
+        }
+      }
+    })
+    await expect(method.configFrom(input, withAlgorithm(-8))).resolves.toEqual({
+      kind: 'enroll-failure',
+      cause: 'material-rejected'
+    })
+    await expect(method.configFrom(input, withAlgorithm(-7))).resolves.toMatch(/^0x/)
+  })
+
   it('packages a reply the double verifies satisfied, and the access test passes', async () => {
     const key = await generateKey()
     const setup = await setUp({
@@ -249,7 +347,7 @@ describe('the passkey device into the passkey method double', () => {
     )
   })
 
-  it('rejects a reply whose client data was changed after signing', async () => {
+  it('refuses a reply whose client data was changed after signing', async () => {
     const key = await generateKey()
     const setup = await setUp({
       create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point: key.point }).credential,
@@ -262,17 +360,19 @@ describe('the passkey device into the passkey method double', () => {
       }
     })
     const request = await enrolledRequest(setup)
-    const reply = await claim(setup, request)
-    await expect(setup.orchestrator.verify(request, request.place, reply.proof)).resolves.toBe(
-      'rejected'
-    )
-    expect(await testAccessHost({ ...setup.context, request })).toMatchObject({
+    expect(await createClaimHost({ ...setup.context, request })).toMatchObject({
       verdict: 'failed',
-      cause: 'check-rejected'
+      cause: 'material-rejected'
     })
+    const challenge = challengeFor(setup, request)
+    const assertion = await signedAssertion(key, challenge, {
+      clientData: clientDataOf(challenge, 'chrome-extension://another'),
+      signedClientData: clientDataOf(challenge)
+    })
+    expect(await judged(setup, request, assertion)).toEqual(REFUSED)
   })
 
-  it('rejects a reply signed by a key other than the enrolled one', async () => {
+  it('refuses a reply signed by a key other than the enrolled one', async () => {
     const enrolled = await generateKey()
     const other = await generateKey()
     const setup = await setUp({
@@ -281,23 +381,78 @@ describe('the passkey device into the passkey method double', () => {
       get: async (options) => signedAssertion(other, challengeOf(options))
     })
     const request = await enrolledRequest(setup)
-    const reply = await claim(setup, request)
-    await expect(setup.orchestrator.verify(request, request.place, reply.proof)).resolves.toBe(
-      'rejected'
-    )
+    expect(await createClaimHost({ ...setup.context, request })).toMatchObject({
+      verdict: 'failed',
+      cause: 'material-rejected'
+    })
+    const assertion = await signedAssertion(other, challengeFor(setup, request))
+    expect(await judged(setup, request, assertion)).toEqual(REFUSED)
   })
 
-  it('rejects a reply signed over another challenge', async () => {
+  it('refuses a reply signed over another challenge', async () => {
     const key = await generateKey()
     const setup = await setUp({
       create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point: key.point }).credential,
       get: async () => signedAssertion(key, new Uint8Array(32).fill(0x5a))
     })
     const request = await enrolledRequest(setup)
-    const reply = await claim(setup, request)
-    await expect(setup.orchestrator.verify(request, request.place, reply.proof)).resolves.toBe(
-      'rejected'
-    )
+    expect(await createClaimHost({ ...setup.context, request })).toMatchObject({
+      verdict: 'failed',
+      cause: 'material-rejected'
+    })
+    const assertion = await signedAssertion(key, new Uint8Array(32).fill(0x5a))
+    expect(await judged(setup, request, assertion)).toEqual(REFUSED)
+  })
+
+  it('refuses a reply whose authenticator data holds another relying party hash', async () => {
+    const key = await generateKey()
+    const setup = await setUp({
+      create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point: key.point }).credential,
+      get: async () => null
+    })
+    const request = await enrolledRequest(setup)
+    const assertion = await signedAssertion(key, challengeFor(setup, request), {
+      rpIdHash: sha256(stringToHex('chrome-extension://another'))
+    })
+    expect(await judged(setup, request, assertion)).toEqual(REFUSED)
+  })
+
+  FLAGS_SHORT_OF_APPROVAL.forEach(({ lacking, flags }) => {
+    it(`refuses a reply whose authenticator data lacks ${lacking} flag`, async () => {
+      const key = await generateKey()
+      const setup = await setUp({
+        create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point: key.point }).credential,
+        get: async () => null
+      })
+      const request = await enrolledRequest(setup)
+      const assertion = await signedAssertion(key, challengeFor(setup, request), { flags })
+      expect(await judged(setup, request, assertion)).toEqual(REFUSED)
+    })
+  })
+
+  it('answers the device unavailable where the runtime cannot check the reply', async () => {
+    const key = await generateKey()
+    const setup = await setUp({
+      create: async () => fakeAttestation({ flags: SYNCED_FLAGS, point: key.point }).credential,
+      get: async () => null
+    })
+    const request = await enrolledRequest(setup)
+    const input = setup.orchestrator.signingInput(request, { relyingPartyId: EXTENSION_ORIGIN })
+    const assertion = await signedAssertion(key, challengeFor(setup, request))
+    const saved = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true })
+    try {
+      await expect(setup.orchestrator.replyFrom(request, input, { assertion })).resolves.toEqual({
+        kind: 'reply-failure',
+        cause: 'device-unavailable'
+      })
+    } finally {
+      if (saved) {
+        Object.defineProperty(globalThis, 'crypto', saved)
+      } else {
+        delete (globalThis as { crypto?: unknown }).crypto
+      }
+    }
   })
 
   it('ends material-rejected for an assertion without a signature', async () => {
@@ -386,7 +541,7 @@ describe("the passkey double's willing device", () => {
     const request: ApproverRequest = {
       ...requests[0]!,
       method: world.descriptor.methodPasskey,
-      config: double.satisfyingConfig(EXTENSION_ORIGIN)
+      config: await double.satisfyingConfig(EXTENSION_ORIGIN)
     }
     const orchestrator = world.orchestrator()
     const input = orchestrator.signingInput(request, { relyingPartyId: EXTENSION_ORIGIN })
@@ -398,7 +553,7 @@ describe("the passkey double's willing device", () => {
     await expect(orchestrator.verify(request, request.place, reply.proof)).resolves.toBe(
       'satisfied'
     )
-    const elsewhere = { ...request, config: double.satisfyingConfig('wallet.example') }
+    const elsewhere = { ...request, config: await double.satisfyingConfig('wallet.example') }
     await expect(orchestrator.verify(elsewhere, request.place, reply.proof)).resolves.toBe(
       'rejected'
     )

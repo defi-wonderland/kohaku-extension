@@ -1,7 +1,7 @@
 /* eslint-disable no-bitwise -- byte handling of DER */
 import { bytesToHex, numberToBytes } from 'viem'
 
-import { toBytes } from './bytes'
+import { bytesOf } from './bytes'
 import type { BytesLike, NormalizedDerSignature, SignatureParts } from './types'
 
 /** The order `n` of the P-256 curve. */
@@ -52,7 +52,7 @@ const readDerInteger = (bytes: Uint8Array, at: number): { value: bigint; next: n
 
 /** The `r` and `s` of an ECDSA signature in DER, the form an authenticator returns. */
 export const parseDerSignature = (der: BytesLike): SignatureParts => {
-  const bytes = toBytes(der)
+  const bytes = bytesOf(der)
   if (bytes[0] !== 0x30) {
     throw new Error('The signature is not a DER sequence.')
   }
@@ -93,7 +93,7 @@ export const encodeDerSignature = ({ r, s }: SignatureParts): Uint8Array => {
  * Manager can return a high `s`, and the verifier rejects one.
  */
 export const normalizeDerSignature = (der: BytesLike): NormalizedDerSignature => {
-  const bytes = toBytes(der)
+  const bytes = bytesOf(der)
   const { r, s } = parseDerSignature(bytes)
   if (!isHighS(s)) {
     return { signature: bytes, normalized: false }

@@ -1,7 +1,7 @@
 /* eslint-disable no-bitwise -- byte handling of the authenticator data */
 import { bytesToHex, concat, hexToBytes } from 'viem'
 
-import { hexToArrayBuffer, toBytes } from './bytes'
+import { hexToArrayBuffer, bytesOf } from './bytes'
 import { readCborItem } from './cbor'
 import type { BytesLike, P256Point } from './types'
 
@@ -19,7 +19,7 @@ const ATTESTED_CREDENTIAL_DATA = 0x40
 
 /** The point of a P-256 key in SubjectPublicKeyInfo DER, what `getPublicKey()` returns; null for any other key. */
 export const pointFromSpki = (data: BytesLike): P256Point | null => {
-  const bytes = toBytes(data)
+  const bytes = bytesOf(data)
   if (bytes.length !== P256_SPKI_HEAD.length + 65) {
     return null
   }
@@ -67,7 +67,7 @@ export const pointFromCoseKey = (data: BytesLike, at = 0): P256Point | null => {
  * then the COSE key. Null where the data carries no such key.
  */
 export const pointFromAuthenticatorData = (data: BytesLike): P256Point | null => {
-  const bytes = toBytes(data)
+  const bytes = bytesOf(data)
   if (bytes.length < 55 || (bytes[32]! & ATTESTED_CREDENTIAL_DATA) === 0) {
     return null
   }

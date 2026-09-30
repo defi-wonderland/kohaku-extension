@@ -34,6 +34,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   authDataFromAttestationObject,
+  bytesOf,
   encodeDerSignature,
   ES256,
   hexToArrayBuffer,
@@ -44,7 +45,6 @@ import {
   pointFromAuthenticatorData,
   pointFromSpki,
   toBase64Url,
-  toBytes,
   uncompressedPoint
 } from '@web/modules/social-recovery/shared/webauthn'
 import {
@@ -74,6 +74,7 @@ import type {
   AadhaarParams,
   AnyMethodDouble,
   MethodKind,
+  PasskeyApproverKey,
   PasskeyAttestationResponse,
   PasskeyClientData,
   PasskeyConfigFields,
@@ -136,17 +137,39 @@ const USER_PRESENT_AND_VERIFIED = 0x05
 const P256_ECDSA = { name: 'ECDSA', namedCurve: 'P-256' } as const
 const ECDSA_SHA256 = { name: 'ECDSA', hash: 'SHA-256' } as const
 
-/**
- * The one key the passkey double's willing device signs with. It is public, so
- * it stands in for an approver in a test and in the doubles alone.
- */
-const APPROVER_KEY = {
-  d: '0x42b98c8dec7af70ae19008985268500f188f8d7bfdd3d9e984ba1074c5fbf51d',
-  x: '0x178ed0b6e53cf606c32b7d199d2577b4f98e688350d2fa3cd6c428604430568f',
-  y: '0x6b8d320861cd778f99b3facffca6347ceae5fa0e49fb39485c35023af969a91b'
-} as const
-
 const APPROVER_ORIGIN = 'https://passkey.double'
+
+const webCrypto = (): SubtleCrypto => {
+  const subtle = globalThis.crypto?.subtle
+  if (!subtle) {
+    throw new Error('The runtime has no WebCrypto (crypto.subtle).')
+  }
+  return subtle
+}
+
+/** The key the passkey double's willing device signs with, made on first use and kept. */
+let approverKey: Promise<PasskeyApproverKey> | undefined
+
+const makeApproverKey = async (): Promise<PasskeyApproverKey> => {
+  const subtle = webCrypto()
+  const pair = (await subtle.generateKey(P256_ECDSA, true, ['sign', 'verify'])) as CryptoKeyPair
+  const raw = new Uint8Array(await subtle.exportKey('raw', pair.publicKey))
+  return {
+    privateKey: pair.privateKey,
+    x: bytesToHex(raw.slice(1, 33)),
+    y: bytesToHex(raw.slice(33, 65))
+  }
+}
+
+const theApproverKey = (): Promise<PasskeyApproverKey> => {
+  if (!approverKey) {
+    approverKey = makeApproverKey().catch((error: unknown) => {
+      approverKey = undefined
+      throw error
+    })
+  }
+  return approverKey
+}
 
 /** The authenticator data of an attestation response, from its getter or its attestation object. */
 const attestedAuthData = (response: PasskeyAttestationResponse): Uint8Array | null => {
@@ -155,7 +178,7 @@ const attestedAuthData = (response: PasskeyAttestationResponse): Uint8Array | nu
       ? response.getAuthenticatorData()
       : undefined
   if (isBytesLike(data)) {
-    return toBytes(data)
+    return bytesOf(data)
   }
   return isBytesLike(response.attestationObject)
     ? authDataFromAttestationObject(response.attestationObject)
@@ -417,8 +440,8 @@ export class PasskeyMethodDouble extends MethodDouble {
     ) {
       return replyFailure('material-rejected')
     }
-    const authData = toBytes(authenticatorData)
-    const clientData = toBytes(clientDataJSON)
+    const authData = bytesOf(authenticatorData)
+    const clientData = bytesOf(clientDataJSON)
     if (authData.length < AUTHENTICATOR_DATA_MIN || clientData.length === 0) {
       return replyFailure('material-rejected')
     }
@@ -436,16 +459,41 @@ export class PasskeyMethodDouble extends MethodDouble {
   }
 
   /**
+   * The proof leaves the device only when it passes the same check `verify`
+   * runs; a runtime without WebCrypto cannot check it, so the device counts as
+   * unavailable.
+   */
+  async replyFrom(
+    ctx: MethodContext,
+    input: unknown,
+    material: unknown
+  ): Promise<Hex | ReplyFailure> {
+    const proof = await super.replyFrom(ctx, input, material)
+    if (typeof proof !== 'string') {
+      return proof
+    }
+    const verdict = await this.judge(ctx.request.config, proof, ctx.digest)
+    if (verdict === 'satisfied') {
+      return proof
+    }
+    return replyFailure(verdict === 'not-judged' ? 'device-unavailable' : 'material-rejected')
+  }
+
+  async verify(ctx: MethodContext, proof: Hex): Promise<Verdict> {
+    if (this.chain?.verdict) {
+      return this.chain.verdict
+    }
+    return this.judge(ctx.request.config, proof, ctx.digest)
+  }
+
+  /**
    * Satisfied where the proof's P-256 signature over `authenticatorData ||
    * sha256(clientDataJSON)` verifies under the config's point, `s` is low, the
    * authenticator data carries the config's rpId hash with the user present
    * and verified, and the client data is a `webauthn.get` over the digest in
    * base64url. A runtime without WebCrypto judges nothing.
    */
-  async verify(ctx: MethodContext, proof: Hex): Promise<Verdict> {
-    if (this.chain?.verdict) {
-      return this.chain.verdict
-    }
+  private async judge(configBytes: Hex, proof: Hex, digest: Hex): Promise<Verdict> {
     const subtle = globalThis.crypto?.subtle
     if (!subtle) {
       return 'not-judged'
@@ -453,7 +501,7 @@ export class PasskeyMethodDouble extends MethodDouble {
     let config: PasskeyConfigFields
     let fields: PasskeyProofFields
     try {
-      config = this.codec.decodeConfig(ctx.request.config)
+      config = this.codec.decodeConfig(configBytes)
       fields = this.codec.decodeProof(proof)
     } catch {
       return 'rejected'
@@ -469,7 +517,7 @@ export class PasskeyMethodDouble extends MethodDouble {
     if ((authData[32]! & USER_PRESENT_AND_VERIFIED) !== USER_PRESENT_AND_VERIFIED) {
       return 'rejected'
     }
-    if (isHighS(hexToBigInt(fields.s)) || !assertsDigest(fields.clientDataJSON, ctx.digest)) {
+    if (isHighS(hexToBigInt(fields.s)) || !assertsDigest(fields.clientDataJSON, digest)) {
       return 'rejected'
     }
     try {
@@ -489,10 +537,11 @@ export class PasskeyMethodDouble extends MethodDouble {
   }
 
   /** The config of the credential the double's willing device holds, under `relyingPartyId`. */
-  satisfyingConfig(relyingPartyId: string): Hex {
+  async satisfyingConfig(relyingPartyId: string): Promise<Hex> {
+    const { x, y } = await theApproverKey()
     return this.codec.encodeConfig({
-      x: APPROVER_KEY.x,
-      y: APPROVER_KEY.y,
+      x,
+      y,
       rpIdHash: sha256(stringToHex(relyingPartyId))
     })
   }
@@ -514,24 +563,12 @@ export class PasskeyMethodDouble extends MethodDouble {
         origin: APPROVER_ORIGIN
       })
     )
-    const { subtle } = globalThis.crypto
-    const key = await subtle.importKey(
-      'jwk',
-      {
-        kty: 'EC',
-        crv: 'P-256',
-        d: toBase64Url(hexToBytes(APPROVER_KEY.d)),
-        x: toBase64Url(hexToBytes(APPROVER_KEY.x)),
-        y: toBase64Url(hexToBytes(APPROVER_KEY.y))
-      },
-      P256_ECDSA,
-      false,
-      ['sign']
-    )
+    const subtle = webCrypto()
+    const { privateKey } = await theApproverKey()
     const raw = new Uint8Array(
       await subtle.sign(
         ECDSA_SHA256,
-        key,
+        privateKey,
         hexToArrayBuffer(concat([bytesToHex(authenticatorData), sha256(clientDataJSON)]))
       )
     )

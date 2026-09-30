@@ -1,7 +1,7 @@
 /* eslint-disable no-bitwise -- byte handling of CBOR */
 import { bytesToString, stringToBytes } from 'viem'
 
-import { toBytes } from './bytes'
+import { bytesOf } from './bytes'
 import type { BytesLike, CborMap, CborRead } from './types'
 
 /**
@@ -11,7 +11,7 @@ import type { BytesLike, CborMap, CborRead } from './types'
  * produces, and returns null where it finds none.
  */
 export const authDataFromAttestationObject = (attestationObject: BytesLike): Uint8Array | null => {
-  const bytes = toBytes(attestationObject)
+  const bytes = bytesOf(attestationObject)
   // CBOR text string of length 8 (0x68) followed by "authData".
   const key = [0x68, ...Array.from(stringToBytes('authData'))]
   for (let i = 0; i + key.length < bytes.length; i++) {
@@ -70,7 +70,7 @@ const readArgument = (bytes: Uint8Array, at: number): { argument: number; next: 
  * those, the subset a COSE key uses. Any other item throws.
  */
 export const readCborItem = (data: BytesLike, at = 0): CborRead => {
-  const bytes = toBytes(data)
+  const bytes = bytesOf(data)
   const head = bytes[at]
   if (head === undefined) {
     throw new Error('The CBOR data ends early.')

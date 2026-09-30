@@ -3,7 +3,7 @@ import { hexToBytes } from 'viem'
 
 import type { BytesLike } from './types'
 
-export const toBytes = (data: BytesLike): Uint8Array =>
+export const bytesOf = (data: BytesLike): Uint8Array =>
   data instanceof Uint8Array
     ? data
     : ArrayBuffer.isView(data)
@@ -19,7 +19,7 @@ export const isBytesLike = (value: unknown): value is BytesLike =>
 
 /** base64url without padding, the form a credential id travels in. */
 export const toBase64Url = (data: BytesLike): string => {
-  const bytes = toBytes(data)
+  const bytes = bytesOf(data)
   let binary = ''
   bytes.forEach((b) => {
     binary += String.fromCharCode(b)

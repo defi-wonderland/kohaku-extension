@@ -50,9 +50,9 @@ const replyOf = async (world: World, request: ApproverRequest) => {
   return reply as ApproverReply
 }
 
-const passkeyAt = (world: World): Credential => ({
+const passkeyAt = async (world: World): Promise<Credential> => ({
   method: world.descriptor.methodPasskey,
-  config: new PasskeyMethodDouble().satisfyingConfig('wallet.example')
+  config: await new PasskeyMethodDouble().satisfyingConfig('wallet.example')
 })
 
 /** Gives a method a pause holder, so it carries a stop. */
@@ -360,7 +360,11 @@ describe('recovery client double', () => {
       const { gathering, chosen } = await completeInPlaceOrder(world, [
         {
           threshold: 2,
-          credentials: [passportAt(world, 'passport'), walletAt(world, 'ana'), passkeyAt(world)]
+          credentials: [
+            passportAt(world, 'passport'),
+            walletAt(world, 'ana'),
+            await passkeyAt(world)
+          ]
         }
       ])
       expect(gathering.places.map((p) => p.standing)).toEqual([
@@ -396,7 +400,7 @@ describe('recovery client double', () => {
       withStop(world, world.descriptor.methodPasskey)
       const { gathering, chosen } = await completeInPlaceOrder(world, [
         { threshold: 1, credentials: [passportAt(world, 'passport'), walletAt(world, 'ana')] },
-        { threshold: 1, credentials: [walletAt(world, 'ben'), passkeyAt(world)] }
+        { threshold: 1, credentials: [walletAt(world, 'ben'), await passkeyAt(world)] }
       ])
       expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true, true])
       // One pick per clause in filing order would be {0, 2}, naming two stoppable

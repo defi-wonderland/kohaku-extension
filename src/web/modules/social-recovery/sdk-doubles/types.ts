@@ -459,6 +459,13 @@ export interface PasskeyReplyMaterial {
   assertion?: { response?: PasskeyAssertionResponse }
 }
 
+/** The key pair the passkey double's willing device signs with, its public point in hex. */
+export interface PasskeyApproverKey {
+  privateKey: CryptoKey
+  x: Hex
+  y: Hex
+}
+
 /** The assertion the passkey double's willing device returns. */
 export interface PasskeySatisfyingMaterial {
   assertion: {

@@ -8,7 +8,7 @@
  */
 /* eslint-disable no-bitwise -- byte handling of the authenticator data and of DER */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { toBytes } from '@web/modules/social-recovery/shared/webauthn'
+import { bytesOf } from '@web/modules/social-recovery/shared/webauthn'
 import { bytesToHex, sha256, stringToBytes } from 'viem'
 
 import type {
@@ -70,7 +70,7 @@ const formatAaguid = (bytes: Uint8Array): string => {
 
 /** Reads the rp id hash, the flags, the counter and the AAGUID of an authenticator data. */
 export const readAuthenticatorData = (data: ArrayBuffer | ArrayBufferView): AuthenticatorData => {
-  const bytes = toBytes(data)
+  const bytes = bytesOf(data)
   if (bytes.length < 37) throw new Error('The authenticator data is shorter than 37 bytes.')
   const flagsByte = bytes[32]
   const flags: AuthenticatorFlags = {
@@ -243,5 +243,5 @@ export {
   P256_N,
   parseDerSignature,
   toBase64Url,
-  toBytes
+  bytesOf as toBytes
 } from '@web/modules/social-recovery/shared/webauthn'
