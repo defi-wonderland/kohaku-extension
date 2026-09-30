@@ -77,6 +77,7 @@ describe('the recovery card view', () => {
   let onCarried: jest.Mock
   let onBack: jest.Mock
   let onContinue: jest.Mock
+  let onSetPasswordAgain: jest.Mock
 
   const download = (file: CardFile) => {
     files.push(file)
@@ -93,7 +94,7 @@ describe('the recovery card view', () => {
   // The ask the screen fills with the keystore's unlock, reduced to its lead and its two answers.
   const renderPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => (
     <div>
-      <p>{S.card.reDownload}</p>
+      <p>{S.card.carrierAsks}</p>
       <button type="button" data-testid="ask-confirm" onClick={onConfirmed}>
         confirm
       </button>
@@ -112,6 +113,7 @@ describe('the recovery card view', () => {
     onCarried = jest.fn()
     onBack = jest.fn()
     onContinue = jest.fn()
+    onSetPasswordAgain = jest.fn()
   })
 
   afterEach(() => {
@@ -136,6 +138,7 @@ describe('the recovery card view', () => {
             onCarried={onCarried}
             carriers={{ download, print }}
             renderPasswordAsk={renderPasswordAsk}
+            onSetPasswordAgain={onSetPasswordAgain}
             onBack={onBack}
             onContinue={onContinue}
           />
@@ -297,12 +300,34 @@ describe('the recovery card view', () => {
   })
 
   describe('at the hidden level with no password held', () => {
-    it('keeps the password hidden with the reveal disabled', async () => {
+    it('says the password is gone in the password row, with no value and no reveal', async () => {
       await mount({ password: null })
-      expect(isDisabled('card-reveal')).toBe(true)
-      await press('card-reveal')
-      expect(byTestId('card-password-value')?.textContent).toBe(S.display.hiddenValue)
-      expect(byTestId('card-password-chip')?.textContent).toBe(S.display.hiddenChip)
+      expect(allByTestId('card-password')).toHaveLength(1)
+      expect(byTestId('card-password-gone')?.textContent).toBe(S.card.passwordGone)
+      expect(byTestId('card-password-gone-action')?.textContent).toBe(S.card.passwordGoneAction)
+      expect(byTestId('card-reveal')).toBeNull()
+      expect(byTestId('card-password-value')).toBeNull()
+      expect(byTestId('card-password-chip')).toBeNull()
+      expect(cardText()).toBe(
+        [
+          S.card.cardTitle,
+          S.display.values.account,
+          CHECKSUMMED,
+          S.display.passwords.recoveryPassword,
+          S.card.passwordGone,
+          S.card.passwordGoneAction,
+          ...LINES
+        ].join('')
+      )
+    })
+
+    it('leads to setting the password again through its handler', async () => {
+      await mount({ password: null })
+      await press('card-password-gone-action')
+      expect(onSetPasswordAgain).toHaveBeenCalledTimes(1)
+      expect(onBack).not.toHaveBeenCalled()
+      expect(onContinue).not.toHaveBeenCalled()
+      expect(onCarried).not.toHaveBeenCalled()
     })
 
     it('disables every carrier, so nothing carries a card without its password', async () => {
@@ -321,18 +346,18 @@ describe('the recovery card view', () => {
       expect(onCarried).not.toHaveBeenCalled()
     })
 
-    it('offers only back and continue, with no action of its own to the privacy step', async () => {
+    it('offers the way back to the password beside back and continue', async () => {
       await mount({ password: null })
       const actions = Array.from(container.querySelectorAll<HTMLElement>('[data-testid]'), (node) =>
         node.getAttribute('data-testid')
       )
-      expect(
-        actions.filter((id) => !id?.startsWith('card-password') && id !== 'card-line')
-      ).toEqual([
+      expect(actions.filter((id) => id !== 'card-line')).toEqual([
         'card-screen',
         'recovery-card',
         'card-account',
-        'card-reveal',
+        'card-password',
+        'card-password-gone',
+        'card-password-gone-action',
         'card-download',
         'card-print',
         'card-send',
@@ -341,6 +366,20 @@ describe('the recovery card view', () => {
         'card-back',
         'card-continue'
       ])
+    })
+
+    it('shows no gone line when a password is held or at the public level', async () => {
+      await mount()
+      expect(byTestId('card-password-gone')).toBeNull()
+      expect(byTestId('card-password-gone-action')).toBeNull()
+      expect(byTestId('card-reveal')).not.toBeNull()
+
+      await mount({ level: 'public', password: null })
+      expect(byTestId('card-password')).toBeNull()
+      expect(byTestId('card-password-gone')).toBeNull()
+      expect(isDisabled('card-download')).toBe(false)
+      await press('card-download')
+      expect(files).toHaveLength(1)
     })
   })
 
@@ -364,6 +403,32 @@ describe('the recovery card view', () => {
       expect(byTestId('card-password-ask')).toBeNull()
       expect(byTestId('card-download')).not.toBeNull()
       expect(onCarried).toHaveBeenCalledTimes(2)
+    })
+
+    it('takes back and continue away while the ask shows and brings them back on either answer', async () => {
+      await mount()
+      await press('card-download')
+      expect(byTestId('card-back')).not.toBeNull()
+      expect(byTestId('card-continue')).not.toBeNull()
+
+      await press('card-download')
+      expect(byTestId('card-password-ask')).not.toBeNull()
+      expect(byTestId('card-back')).toBeNull()
+      expect(byTestId('card-continue')).toBeNull()
+
+      await press('ask-cancel')
+      expect(byTestId('card-back')).not.toBeNull()
+      expect(byTestId('card-continue')).not.toBeNull()
+
+      await press('card-print')
+      expect(byTestId('card-back')).toBeNull()
+      expect(byTestId('card-continue')).toBeNull()
+      await press('ask-confirm')
+      expect(printed).toHaveLength(1)
+      expect(byTestId('card-back')).not.toBeNull()
+      expect(byTestId('card-continue')).not.toBeNull()
+      expect(onBack).not.toHaveBeenCalled()
+      expect(onContinue).not.toHaveBeenCalled()
     })
 
     it('runs nothing when the ask is cancelled and brings the carriers back', async () => {
@@ -410,15 +475,16 @@ describe('the recovery card view', () => {
       expect(container.querySelector('input')).toBeNull()
     })
 
-    it('says a new download asks the extension password once, under the carriers or as the ask', async () => {
-      const count = () => (container.textContent ?? '').split(S.card.reDownload).length - 1
+    it('says every later carrier asks the extension password once, under the carriers or as the ask', async () => {
+      const count = () => (container.textContent ?? '').split(S.card.carrierAsks).length - 1
       await mount()
       expect(count()).toBe(1)
+      expect(container.textContent).not.toContain(S.card.reDownload)
       await press('card-download')
       await press('card-download')
       expect(byTestId('card-password-ask')).not.toBeNull()
       expect(count()).toBe(1)
-      expect(byTestId('card-password-ask')?.textContent).toContain(S.card.reDownload)
+      expect(byTestId('card-password-ask')?.textContent).toContain(S.card.carrierAsks)
       await press('ask-cancel')
       expect(count()).toBe(1)
     })

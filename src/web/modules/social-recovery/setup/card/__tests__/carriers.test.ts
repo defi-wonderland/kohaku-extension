@@ -2,10 +2,11 @@
  * @jest-environment jsdom
  *
  * jsdom has no object URLs, so the test installs its own and watches the
- * link the carrier clicks.
+ * link the carrier clicks. It applies no print styles either, so the print
+ * view's rules are read from the parsed sheet and matched against a page by hand.
  */
 import type { CardFile } from '..'
-import { BROWSER_CARRIERS, REVOKE_DELAY_MS } from '../carriers'
+import { BROWSER_CARRIERS, PRINT_VIEW_CSS, PRINT_VIEW_ID, REVOKE_DELAY_MS } from '../carriers'
 
 const FILE: CardFile = {
   name: 'card.html',
@@ -85,5 +86,117 @@ describe('the file carrier', () => {
       expect(href.startsWith('data:')).toBe(false)
       expect(href).not.toContain('orchid')
     })
+  })
+})
+
+describe('the print view style', () => {
+  let style: HTMLStyleElement
+  let page: {
+    html: HTMLElement
+    body: HTMLElement
+    other: HTMLElement
+    view: HTMLElement
+    card: HTMLElement
+    line: HTMLElement
+  }
+
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = PRINT_VIEW_CSS
+    document.head.appendChild(style)
+
+    const other = document.createElement('div')
+    const view = document.createElement('div')
+    view.id = PRINT_VIEW_ID
+    const card = document.createElement('div')
+    card.setAttribute('data-testid', 'print-card')
+    const line = document.createElement('span')
+    card.appendChild(line)
+    view.appendChild(card)
+    document.body.append(other, view)
+    page = { html: document.documentElement, body: document.body, other, view, card, line }
+  })
+
+  afterEach(() => {
+    style.remove()
+    page.other.remove()
+    page.view.remove()
+  })
+
+  const topRules = () => Array.from(style.sheet?.cssRules ?? [])
+  const printRules = () =>
+    topRules()
+      .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule)
+      .filter((rule) => rule.media.mediaText === 'print')
+      .flatMap((rule) => Array.from(rule.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+  const screenRules = () =>
+    topRules().filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+
+  // The value a property takes on an element from the given rules, the last
+  // matching rule winning; every declaration under print here is important or alone.
+  const valueOn = (rules: CSSStyleRule[], element: Element, property: string) =>
+    rules
+      .filter((rule) => element.matches(rule.selectorText))
+      .map((rule) => rule.style.getPropertyValue(property))
+      .filter(Boolean)
+      .pop() ?? ''
+
+  const channels = (colour: string): number[] => {
+    const hex = colour.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1]
+    if (hex) {
+      const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex
+      return [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16))
+    }
+    if (colour === 'white') return [255, 255, 255]
+    const rgb = colour.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+    if (rgb) return rgb.slice(1, 4).map(Number)
+    throw new Error(`not a colour: ${colour}`)
+  }
+  const isWhite = (colour: string) => channels(colour).every((channel) => channel === 255)
+  const isDark = (colour: string) => channels(colour).every((channel) => channel < 0x40)
+  const background = (element: Element) =>
+    valueOn(printRules(), element, 'background-color') ||
+    valueOn(printRules(), element, 'background')
+
+  it('keeps the print view out of the screen', () => {
+    expect(valueOn(screenRules(), page.view, 'display')).toBe('none')
+  })
+
+  it('prints the print view alone', () => {
+    expect(valueOn(printRules(), page.view, 'display')).toBe('block')
+    expect(valueOn(printRules(), page.other, 'display')).toBe('none')
+  })
+
+  it('prints on white whatever the theme', () => {
+    expect(isWhite(background(page.html))).toBe(true)
+    expect(isWhite(background(page.body))).toBe(true)
+    expect(isWhite(background(page.view))).toBe(true)
+  })
+
+  it('prints every line of the card in a dark colour', () => {
+    expect(isDark(valueOn(printRules(), page.card, 'color'))).toBe(true)
+    expect(isDark(valueOn(printRules(), page.line, 'color'))).toBe(true)
+  })
+
+  // The border's width, style and colour, from the shorthand or its longhands.
+  const borderOf = (element: Element) => {
+    const rules = printRules()
+    const [width = '', lineStyle = '', colour = ''] = valueOn(rules, element, 'border')
+      .split(/\s+/)
+      .filter(Boolean)
+    return {
+      width: valueOn(rules, element, 'border-top-width') || width,
+      lineStyle: valueOn(rules, element, 'border-top-style') || lineStyle,
+      colour: valueOn(rules, element, 'border-top-color') || colour
+    }
+  }
+
+  it('draws a visible border round the printed card', () => {
+    const { width, lineStyle, colour } = borderOf(page.card)
+    expect(parseFloat(width)).toBeGreaterThan(0)
+    expect(lineStyle).toBe('solid')
+    expect(isWhite(colour)).toBe(false)
+    expect(borderOf(page.line).lineStyle).toBe('')
   })
 })

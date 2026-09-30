@@ -24,10 +24,15 @@ const mockSelected = {
   current: { account: null as { addr: string } | null },
   listeners: new Set<() => void>()
 }
-const mockKeystore = {
+// The keystore as an external store too, so a push re-renders the ask.
+const KEYSTORE_AT_REST = {
   hasPasswordSecret: true,
   statuses: { unlockWithSecret: 'INITIAL' },
   errorMessage: ''
+}
+const mockKeystore = {
+  current: KEYSTORE_AT_REST,
+  listeners: new Set<() => void>()
 }
 
 jest.mock('@web/hooks/useSelectedAccountControllerState', () => {
@@ -41,10 +46,17 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => {
     default: () => R.useSyncExternalStore(subscribe, () => mockSelected.current)
   }
 })
-jest.mock('@web/hooks/useKeystoreControllerState', () => ({
-  __esModule: true,
-  default: () => mockKeystore
-}))
+jest.mock('@web/hooks/useKeystoreControllerState', () => {
+  const R = jest.requireActual('react')
+  const subscribe = (listener: () => void) => {
+    mockKeystore.listeners.add(listener)
+    return () => mockKeystore.listeners.delete(listener)
+  }
+  return {
+    __esModule: true,
+    default: () => R.useSyncExternalStore(subscribe, () => mockKeystore.current)
+  }
+})
 // The extension's `browser.storage.local` the records write through: one
 // in-memory store, whose reads a test can hold back.
 const mockEntries = new Map<string, unknown>()
@@ -82,7 +94,10 @@ jest.mock('@common/hooks/useNavigation', () =>
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
-const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
+const { MemoryRouter, useLocation }: typeof import('react-router-dom') = require('react-router-dom')
+const {
+  WEB_ROUTES
+}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
   ThemeContext
@@ -124,6 +139,13 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   themeType: themeConfig.THEME_TYPES.LIGHT,
   selectedThemeType: themeConfig.THEME_TYPES.LIGHT,
   setThemeType: () => {}
+}
+
+// Where the router stands after each render.
+const location = { pathname: '' }
+const LocationProbe = () => {
+  location.pathname = useLocation().pathname
+  return null
 }
 
 // Each test takes its own account, since the holder and the carried card live
@@ -171,6 +193,7 @@ describe('the recovery card screen', () => {
           <ThemeContext.Provider value={THEME_CONTEXT}>
             <BackgroundServiceContext.Provider value={background}>
               <RecoveryCardScreen />
+              <LocationProbe />
             </BackgroundServiceContext.Provider>
           </ThemeContext.Provider>
         </MemoryRouter>
@@ -192,6 +215,24 @@ describe('the recovery card screen', () => {
       node.click()
     })
   }
+  const keystoreSays = async (unlockWithSecret: string) => {
+    await act(async () => {
+      mockKeystore.current = { ...KEYSTORE_AT_REST, statuses: { unlockWithSecret } }
+      mockKeystore.listeners.forEach((listener) => listener())
+    })
+  }
+  const typePassword = async (value: string) => {
+    const node = container.querySelector<HTMLInputElement>('input')
+    if (!node) throw new Error('no password field')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(node, value)
+      node.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+  }
+  const backAndContinue = () => [!!byTestId('card-back'), !!byTestId('card-continue')]
   const level = () => {
     if (!byTestId('recovery-card')) return null
     return byTestId('card-password') ? 'hidden' : 'public'
@@ -205,6 +246,7 @@ describe('the recovery card screen', () => {
     background = { dispatch, windowId: undefined }
     downloads = 0
     mockEntries.clear()
+    mockKeystore.current = KEYSTORE_AT_REST
     URL.createObjectURL = () => 'blob:card'
     URL.revokeObjectURL = () => {}
     window.print = () => {}
@@ -273,13 +315,24 @@ describe('the recovery card screen', () => {
       expect(byTestId('card-password-value')?.textContent).toBe(PASSWORD)
     })
 
-    it('keeps the reveal and the carriers off when the holder has none for the account', async () => {
+    it('says the password is gone and keeps the carriers off when the holder has none for the account', async () => {
       const account = newAccount()
       setRecoveryPassword(CHAIN_ID, newAccount(), PASSWORD)
       await mount(account)
-      expect(byTestId('card-reveal')?.getAttribute('aria-disabled')).toBe('true')
+      expect(byTestId('card-password-gone')?.textContent).toBe(S.card.passwordGone)
+      expect(byTestId('card-reveal')).toBeNull()
       expect(byTestId('card-download')?.getAttribute('aria-disabled')).toBe('true')
+      expect(byTestId('card-print')?.getAttribute('aria-disabled')).toBe('true')
+      expect(byTestId('card-send')?.getAttribute('aria-disabled')).toBe('true')
       expect(container.textContent).not.toContain(PASSWORD)
+    })
+
+    it('goes to the privacy step to set the password again', async () => {
+      const account = newAccount()
+      await mount(account)
+      expect(location.pathname).toBe('/social-recovery/setup/card')
+      await press('card-password-gone-action')
+      expect(location.pathname).toBe(`/${WEB_ROUTES.socialRecoverySetupPrivacy}`)
     })
   })
 
@@ -303,6 +356,36 @@ describe('the recovery card screen', () => {
       expect(downloads).toBe(0)
       expect(byTestId('card-password-ask')).not.toBeNull()
       expect(dispatch).toHaveBeenCalledWith({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+    })
+
+    it('hides back and continue while the ask shows and brings them back when the ask goes back', async () => {
+      const account = newAccount()
+      setRecoveryPassword(CHAIN_ID, account, PASSWORD)
+      markCardCarried(CHAIN_ID, account)
+      await mount(account)
+      expect(backAndContinue()).toEqual([true, true])
+      await press('card-download')
+      expect(byTestId('card-password-ask')).not.toBeNull()
+      expect(backAndContinue()).toEqual([false, false])
+      await press('card-password-cancel')
+      expect(byTestId('card-password-ask')).toBeNull()
+      expect(backAndContinue()).toEqual([true, true])
+      expect(downloads).toBe(0)
+    })
+
+    it('brings back and continue back once the right extension password carries the card', async () => {
+      const account = newAccount()
+      setRecoveryPassword(CHAIN_ID, account, PASSWORD)
+      markCardCarried(CHAIN_ID, account)
+      await mount(account)
+      await press('card-download')
+      await typePassword('hunter22')
+      expect(backAndContinue()).toEqual([false, false])
+      await keystoreSays('LOADING')
+      await keystoreSays('SUCCESS')
+      expect(downloads).toBe(1)
+      expect(byTestId('card-password-ask')).toBeNull()
+      expect(backAndContinue()).toEqual([true, true])
     })
   })
 
