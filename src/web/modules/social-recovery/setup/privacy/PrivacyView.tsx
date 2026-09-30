@@ -1,8 +1,9 @@
 /**
- * The privacy step: Private, the default, and Public, each with the line of
- * what a stranger can read, and the exposure line of the path. At Private the
- * recovery password is typed twice beside both halves of the trade; at Public
- * no password field renders. Continue stores the level and opens the review.
+ * The privacy step: Private, the default, Shape visible and Public, each with
+ * the line of what a stranger can read, and the exposure line of the path. At
+ * Private and Shape visible the recovery password is typed twice beside both
+ * halves of the trade; at Public no password field renders. Continue stores
+ * the level and opens the review.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, View } from 'react-native'
@@ -19,16 +20,18 @@ import flexbox from '@common/styles/utils/flexbox'
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   addressBookOf,
+  privacyLevelOf,
   recoveryChainOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
 import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import { readRecoveryPassword } from '@web/modules/social-recovery/shared/records'
+import { renderShapeSentence } from '@web/modules/social-recovery/shared/rule-lines'
 
-import { exposureLinesOf } from './exposure'
-import { OFFERED_LEVELS } from './types'
+import { exposureLinesOf, kindOfMethodIn } from './exposure'
+import { LEVEL_SLUGS, OFFERED_LEVELS } from './types'
 import type { OfferedLevel, PrivacyViewProps } from './types'
-import { levelOfBackup, writePrivacy } from './writes'
+import { writePrivacy } from './writes'
 
 const LEVEL = 'socialRecovery.privacy.level'
 
@@ -56,7 +59,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
       .read()
       .then((draft) => {
         if (!current || draft.status !== 'present') return
-        setLevel(levelOfBackup(draft.value.privacy.backup))
+        setLevel(privacyLevelOf(draft.value.privacy))
         setClauses(draft.value.clauses)
       })
       .catch(() => {
@@ -78,11 +81,21 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
     [clauses, level, book, t]
   )
 
-  const mismatch = level === 'private' && confirmation !== '' && password !== confirmation
+  const shape = useMemo(
+    () =>
+      renderShapeSentence(
+        clauses,
+        { skipMemberlessClauses: true, kindOfMethod: kindOfMethodIn(book) },
+        t
+      ),
+    [clauses, book, t]
+  )
+
+  const hidden = level !== 'public'
+  const mismatch = hidden && confirmation !== '' && password !== confirmation
   // A failed load holds continue, so a storage that comes back is never
   // overwritten with a level the holder did not pick.
-  const ready =
-    !loadFailed && (level === 'public' || (password !== '' && password === confirmation))
+  const ready = !loadFailed && (!hidden || (password !== '' && password === confirmation))
 
   const onContinue = useCallback(async () => {
     if (!ready) return
@@ -92,7 +105,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
         setup,
         chainId,
         account,
-        level === 'private' ? { level, password } : { level: 'public' }
+        level === 'public' ? { level } : { level, password }
       )
       setWriteFailed(false)
       navigate(WEB_ROUTES.socialRecoverySetupReview)
@@ -138,7 +151,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
         >
           <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
             <Text fontSize={16} weight="semiBold" style={spacings.mrSm}>
-              {t(`${LEVEL}.${offered}.label`)}
+              {t(`${LEVEL}.${LEVEL_SLUGS[offered]}.label`)}
             </Text>
             {offered === 'private' && (
               <Text fontSize={12} weight="medium" appearance="secondaryText">
@@ -147,7 +160,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
             )}
           </View>
           <Text testID={`level-line-${offered}`} fontSize={14}>
-            {t(`${LEVEL}.${offered}.line`)}
+            {t(`${LEVEL}.${LEVEL_SLUGS[offered]}.line`, { shape })}
           </Text>
         </Pressable>
       ))}
@@ -166,7 +179,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
           {exposure.publication}
         </Text>
       </View>
-      {level === 'private' ? (
+      {hidden ? (
         <View testID="recovery-password">
           <Text fontSize={12} weight="medium" appearance="secondaryText">
             {renderPasswordName('recoveryPassword', t)}

@@ -34,12 +34,25 @@ export type CustomWait =
   | { status: 'pastCeiling' }
   | { status: 'accepted'; hours: number }
 
-/** The levels this step offers, the default first. The level between them is not offered yet. */
-export const OFFERED_LEVELS = ['private', 'public'] as const
+/** The levels this step offers, from the most hidden to the most readable, the default first. */
+export const OFFERED_LEVELS = ['private', 'shape-visible', 'public'] as const
 export type OfferedLevel = Extract<PrivacyLevel, typeof OFFERED_LEVELS[number]>
 
-/** What the privacy step stores: Private with the recovery password, or Public with none. */
-export type PrivacyChoice = { level: 'private'; password: string } | { level: 'public' }
+/**
+ * What the privacy step stores: Private or Shape visible with the recovery
+ * password, or Public with none.
+ */
+export type PrivacyChoice =
+  | { level: 'private'; password: string }
+  | { level: 'shape-visible'; password: string }
+  | { level: 'public' }
+
+/** The slug each level's strings sit under. */
+export const LEVEL_SLUGS: { readonly [L in OfferedLevel]: string } = {
+  private: 'private',
+  'shape-visible': 'shapeVisible',
+  public: 'public'
+}
 
 /** The method kind a row of the path holds: one of the address book's method slugs. */
 export type MethodKind = keyof AddressBook['methods']

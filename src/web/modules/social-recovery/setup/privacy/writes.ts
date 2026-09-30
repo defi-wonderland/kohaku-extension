@@ -1,4 +1,5 @@
 import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
 import {
   defaultSetupDraft,
   PASSWORD_SET,
@@ -34,12 +35,17 @@ export const writeWaitingPeriod = async (
   }
 }
 
-/** The backup form a level stores in the draft: encrypted at Private, in the clear at Public. */
-export const backupOfLevel = (level: OfferedLevel): SetupDraft['privacy']['backup'] =>
-  level === 'private' ? 'encrypted' : 'clear'
-
-export const levelOfBackup = (backup: SetupDraft['privacy']['backup']): OfferedLevel =>
-  backup === 'clear' ? 'public' : 'private'
+/**
+ * The two privacy fields a level stores in the draft: at Private a sealed
+ * backup and no public note; at Shape visible a sealed backup beside a public
+ * note of the draft's shape and wait; at Public a clear backup and no note.
+ */
+export const privacyOfLevel = (draft: SetupDraft, level: OfferedLevel): SetupDraft['privacy'] => {
+  if (level === 'public') return { backup: 'clear', publicMetadata: '0x' }
+  if (level === 'private') return { backup: 'encrypted', publicMetadata: '0x' }
+  const { clauses, wait, ignoresPause } = draft
+  return { backup: 'encrypted', publicMetadata: shapeNoteOf({ clauses, wait, ignoresPause }) }
+}
 
 /**
  * The draft the privacy step starts where none is stored: the default draft,
@@ -52,13 +58,13 @@ const startedDraft = async (setup: SetupRecords): Promise<SetupDraft> => {
 }
 
 /**
- * Stores the privacy level: the draft's backup form, leaving the public
- * metadata for the SDK to derive, then the password-set flag. With no draft,
- * a draft is started to carry the level. The recovery password goes to the
- * in-memory holder alone and only once storage took the rest; at Public the
- * flag and the holder are both wiped. Where the flag's write or wipe refuses
- * after the draft took the new form, the draft gets its earlier form back, or
- * the started draft is removed, so the two agree, and the refusal is thrown.
+ * Stores the privacy level: the draft's two privacy fields, then the
+ * password-set flag. With no draft, a draft is started to carry the level. At
+ * Private and Shape visible the recovery password goes to the in-memory holder
+ * alone and only once storage took the rest; at Public the flag and the holder
+ * are both wiped. Where the flag's write or wipe refuses after the draft took
+ * the new fields, the draft gets its earlier fields back, or the started draft
+ * is removed, so the two agree, and the refusal is thrown.
  */
 export const writePrivacy = async (
   setup: SetupRecords,
@@ -70,10 +76,10 @@ export const writePrivacy = async (
   const earlier = draft.status === 'present' ? draft.value : await startedDraft(setup)
   await setup.writeDraftAndPath({
     ...earlier,
-    privacy: { ...earlier.privacy, backup: backupOfLevel(choice.level) }
+    privacy: privacyOfLevel(earlier, choice.level)
   })
   try {
-    if (choice.level === 'private') await setup.passwordSet.write(PASSWORD_SET)
+    if (choice.level !== 'public') await setup.passwordSet.write(PASSWORD_SET)
     else await setup.passwordSet.wipe()
   } catch (error: unknown) {
     const rollback =
@@ -83,6 +89,6 @@ export const writePrivacy = async (
     await rollback.catch(() => undefined)
     throw error
   }
-  if (choice.level === 'private') setRecoveryPassword(chainId, account, choice.password)
+  if (choice.level !== 'public') setRecoveryPassword(chainId, account, choice.password)
   else wipeRecoveryPassword(chainId, account)
 }

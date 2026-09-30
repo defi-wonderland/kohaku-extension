@@ -1,4 +1,4 @@
-import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
@@ -10,15 +10,20 @@ const EXPOSURE = 'socialRecovery.privacy.level.exposure'
 const ITEMS = 'socialRecovery.disclosures.items'
 const ITEMS_LEAD = 'socialRecovery.disclosures.itemsLead'
 
+/** The kind of method a method module address serves in the address book, if any. */
+export const kindOfMethodIn =
+  (book: AddressBook) =>
+  (method: Address): MethodKind | undefined => {
+    const kinds = Object.keys(book.methods) as MethodKind[]
+    return kinds.find((kind) => sameAddress(method, book.methods[kind]))
+  }
+
 /**
  * The kind a row of the path holds: the kind an empty slot waits for, or the
  * kind whose method address an enrolled credential names.
  */
-const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | undefined => {
-  if (isEmptySlot(credential)) return slotKindOf(credential)
-  const kinds = Object.keys(book.methods) as MethodKind[]
-  return kinds.find((kind) => sameAddress(credential.method, book.methods[kind]))
-}
+const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | undefined =>
+  isEmptySlot(credential) ? slotKindOf(credential) : kindOfMethodIn(book)(credential.method)
 
 /**
  * The items of the unguessable line, each an item slug under the disclosures:
