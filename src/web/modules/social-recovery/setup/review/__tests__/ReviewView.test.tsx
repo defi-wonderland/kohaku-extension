@@ -361,6 +361,22 @@ describe('save and the trust list reads', () => {
 
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupPrivacy)
   })
+
+  it('shows the one-confirmation line under the save action', async () => {
+    await mount()
+
+    const elements = Array.from(container.querySelectorAll<HTMLElement>('*'))
+    const confirmation = elements.findIndex(
+      (element) =>
+        element.children.length === 0 &&
+        element.textContent === t('socialRecovery.review.oneConfirmation')
+    )
+    const save = elements.findIndex((element) => element.dataset.testid === 'review-save')
+    const lastInSave = elements.findLastIndex((element) => elements[save]?.contains(element))
+
+    expect(save).toBeGreaterThanOrEqual(0)
+    expect(confirmation).toBeGreaterThan(lastInSave)
+  })
 })
 
 describe('the path rows', () => {

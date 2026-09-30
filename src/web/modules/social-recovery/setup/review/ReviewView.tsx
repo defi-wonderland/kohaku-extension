@@ -350,9 +350,6 @@ const ReviewView = ({
         </View>
       )}
 
-      <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
-        {t(`${REVIEW}.oneConfirmation`)}
-      </Text>
       <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.justifySpaceBetween]}>
         {back}
         {(client.status === 'update-the-wallet' || client.status === 'failed') && (
@@ -373,6 +370,9 @@ const ReviewView = ({
           hasBottomSpacing={false}
         />
       </View>
+      <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
+        {t(`${REVIEW}.oneConfirmation`)}
+      </Text>
     </View>
   )
 }
