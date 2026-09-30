@@ -310,19 +310,38 @@ describe('the lines under a passkey heading', () => {
 
 describe('the privacy lines', () => {
   it('read Private with the recovery password set', () => {
-    expect(privacyLinesOf('encrypted', true, t)).toEqual([t('socialRecovery.review.privateSet')])
+    expect(
+      privacyLinesOf(
+        { clauses: [], privacy: { backup: 'encrypted', publicMetadata: '0x' } },
+        BOOK,
+        true,
+        t
+      )
+    ).toEqual([t('socialRecovery.review.privateSet')])
   })
 
   it('read the Public level with its own line', () => {
-    expect(privacyLinesOf('clear', false, t)).toEqual([
+    expect(
+      privacyLinesOf(
+        { clauses: [], privacy: { backup: 'clear', publicMetadata: '0x' } },
+        BOOK,
+        false,
+        t
+      )
+    ).toEqual([
       t('socialRecovery.privacy.level.public.label'),
       t('socialRecovery.privacy.level.public.line')
     ])
   })
 
   it('read Private alone, never that a password is set, before the password is stored', () => {
-    expect(privacyLinesOf('encrypted', false, t)).toEqual([
-      t('socialRecovery.privacy.level.private.label')
-    ])
+    expect(
+      privacyLinesOf(
+        { clauses: [], privacy: { backup: 'encrypted', publicMetadata: '0x' } },
+        BOOK,
+        false,
+        t
+      )
+    ).toEqual([t('socialRecovery.privacy.level.private.label')])
   })
 })

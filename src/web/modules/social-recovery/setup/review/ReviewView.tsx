@@ -228,7 +228,7 @@ const ReviewView = ({
 
       <View style={spacings.mbLg} testID="review-privacy">
         {header(t(`${REVIEW}.privacyHeader`))}
-        {privacyLinesOf(draft.privacy.backup, load.passwordSet, t).map((privacyLine, index) => (
+        {privacyLinesOf(draft, addressBook, load.passwordSet, t).map((privacyLine, index) => (
           <Text
             // The privacy lines of one level are fixed in number and order.
             // eslint-disable-next-line react/no-array-index-key

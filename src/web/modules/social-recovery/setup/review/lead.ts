@@ -12,7 +12,7 @@ import type {
   Credential,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { sameAddress } from '@web/modules/social-recovery/shared/client'
+import { privacyLevelOf, sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import { renderChip, renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/display'
@@ -21,7 +21,11 @@ import type {
   Enrollment,
   EnrollmentTestVerdict
 } from '@web/modules/social-recovery/shared/records/types'
-import { getRuleLines, renderRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
+import {
+  getRuleLines,
+  renderRuleLines,
+  renderShapeSentence
+} from '@web/modules/social-recovery/shared/rule-lines'
 import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony/verdicts'
 
 import { REVIEW_WAIT_CHIPS } from './types'
@@ -281,21 +285,36 @@ export const publicationSentenceOf = (
 }
 
 /**
- * The privacy block's lines: Private with the recovery password set, the
- * Public level's own label and line, or the Private label alone where the
- * password step has not stored its record.
+ * The privacy block's lines, by the level the draft's privacy fields encode:
+ * Private with the recovery password set, the Private label alone where the
+ * password step has not stored its record, the Shape visible label with the
+ * path's shape as anyone reads it, or the Public level's own label and line.
  */
 export const privacyLinesOf = (
-  backup: SetupDraft['privacy']['backup'],
+  draft: Pick<SetupDraft, 'privacy' | 'clauses'>,
+  addressBook: AddressBook,
   passwordSet: boolean,
   t: Translate
 ): string[] => {
-  if (backup === 'clear') {
+  const level = privacyLevelOf(draft.privacy)
+  if (level === 'public') {
     return [
       t('socialRecovery.privacy.level.public.label'),
       t('socialRecovery.privacy.level.public.line')
     ]
   }
-  if (backup === 'encrypted' && passwordSet) return [t('socialRecovery.review.privateSet')]
+  if (level === 'shape-visible') {
+    const kindOfMethod = (method: Address) => methodKindOf(method, addressBook)
+    const shape = renderShapeSentence(
+      draft.clauses,
+      { skipMemberlessClauses: true, kindOfMethod },
+      (key, params) => t(key, { ...params })
+    )
+    return [
+      t('socialRecovery.privacy.level.shapeVisible.label'),
+      t('socialRecovery.privacy.level.shapeVisible.line', { shape })
+    ]
+  }
+  if (passwordSet) return [t('socialRecovery.review.privateSet')]
   return [t('socialRecovery.privacy.level.private.label')]
 }
