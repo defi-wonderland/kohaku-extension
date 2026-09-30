@@ -394,7 +394,7 @@ describe('the account picker page list', () => {
       expect(badge(SMART)).toBeNull()
     })
 
-    it('shows no badge on a deployed smart account when no network answers, whatever its creation names', async () => {
+    it('badges a deployed smart account from its creation when no network answers', async () => {
       // The chain has revoked the derived key, but no read reaches it.
       mockChain.states[SMART] = {
         isDeployed: true,
@@ -406,9 +406,7 @@ describe('the account picker page list', () => {
       mockChain.failingChainIds = mockNetworks.map(({ chainId }) => chainId)
       await mount(createFlow(smartAccount([[DERIVED_KEY, PRIVILEGE_SIGNER]])))
 
-      expect(row(SMART)).not.toBeNull()
-      expect(badge(SMART)).toBeNull()
-      expect(container.textContent).not.toContain(renderShortAddress(DERIVED_KEY))
+      expect(badge(SMART)?.textContent).toBe(controlledBy(DERIVED_KEY))
     })
 
     it('badges a counterfactual smart account from its creation when one network answers and another fails', async () => {
@@ -418,12 +416,11 @@ describe('the account picker page list', () => {
       expect(badge(SMART)?.textContent).toBe(controlledBy(HOLDER))
     })
 
-    it('shows no badge on a counterfactual smart account when no network answers', async () => {
+    it('badges a counterfactual smart account from its creation when no network answers', async () => {
       mockChain.failingChainIds = mockNetworks.map(({ chainId }) => chainId)
       await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
 
-      expect(row(SMART)).not.toBeNull()
-      expect(badge(SMART)).toBeNull()
+      expect(badge(SMART)?.textContent).toBe(controlledBy(HOLDER))
     })
 
     it('releases every provider the privilege read opens, once each and after its read', async () => {
