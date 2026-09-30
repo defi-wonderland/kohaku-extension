@@ -8,7 +8,6 @@ import React, { useMemo, useRef } from 'react'
 import { ScrollView, View } from 'react-native'
 import { isAddress, isAddressEqual } from 'viem'
 
-import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import AmbireLogoHorizontal from '@common/components/AmbireLogoHorizontal'
 import Panel from '@common/components/Panel'
 import { getPanelPaddings } from '@common/components/Panel/Panel'
@@ -26,6 +25,7 @@ import getStyles from '@web/modules/settings/contexts/SettingsRoutesContext/styl
 import {
   CHAIN_IDS,
   createPrivilegeReads,
+  extensionProviderFor,
   networkOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -79,12 +79,12 @@ const ReviewScreen = () => {
         ) {
           throw new Error(`The wallet holds no account ${kit.account} on the recovery chain.`)
         }
-        const provider = getRpcProvider(heldNetwork)
+        const provider = extensionProviderFor(heldNetwork)
         try {
-          return await createPrivilegeReads(
-            provider,
-            held.associatedKeys.filter((key) => isAddress(key))
-          ).privilegeHoldersOf(held, CHAIN_IDS[WALLET_RECOVERY_CHAIN])
+          return await createPrivilegeReads(provider).privilegeHoldersOf(
+            held,
+            CHAIN_IDS[WALLET_RECOVERY_CHAIN]
+          )
         } finally {
           provider.destroy()
         }
