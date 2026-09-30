@@ -52,7 +52,7 @@ import {
   withoutRole
 } from './operations'
 import RequiredRows from './RequiredRows'
-import SecondMethodOffer from './SecondMethodOffer'
+import RuleLines from './RuleLines'
 import type {
   ClauseRole,
   ClientRefusal,
@@ -383,7 +383,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       )}
 
       {ruleLines.length > 0 && (
-        <SecondMethodOffer
+        <RuleLines
           ruleLines={ruleLines}
           checking={checking}
           // The sizing line counts required rows by their stored shape, so

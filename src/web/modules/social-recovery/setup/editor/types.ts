@@ -148,7 +148,7 @@ export interface GroupListProps {
   onAddGroup: () => void
 }
 
-export interface SecondMethodOfferProps {
+export interface RuleLinesProps {
   ruleLines: RuleLine[]
   checking: boolean
   onMakeItAGroup: () => void

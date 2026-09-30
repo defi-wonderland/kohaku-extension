@@ -7,19 +7,14 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { renderRuleLines, RULE_LINE_KEYS } from '@web/modules/social-recovery/shared/rule-lines'
 
-import type { SecondMethodOfferProps } from './types'
+import type { RuleLinesProps } from './types'
 
 /**
- * The rule lines of the path as it stands, with the offer to add a second
- * method under its line and the offer to make the required rows one group
- * under the sizing line.
+ * The rule-lines block: the lines of the path as it stands, with the offer to
+ * add a second method under its line and the offer to make the required rows
+ * one group under the sizing line.
  */
-const SecondMethodOffer = ({
-  ruleLines,
-  checking,
-  onMakeItAGroup,
-  onAddSecondMethod
-}: SecondMethodOfferProps) => {
+const RuleLines = ({ ruleLines, checking, onMakeItAGroup, onAddSecondMethod }: RuleLinesProps) => {
   const { t } = useTranslation()
 
   return (
@@ -63,4 +58,4 @@ const SecondMethodOffer = ({
   )
 }
 
-export default React.memo(SecondMethodOffer)
+export default React.memo(RuleLines)

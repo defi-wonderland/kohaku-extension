@@ -122,7 +122,9 @@ const typeThreshold = async (id: string, value: string) => {
 /** A control the holder cannot use: a button marked disabled, or a field made read-only. */
 const isHeld = (id: string) => {
   const node = byTestId(id)
-  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  if (!node) {
+    throw new Error(`nothing on screen with the test id ${id}`)
+  }
   return node instanceof HTMLInputElement
     ? node.readOnly
     : node.getAttribute('aria-disabled') === 'true'
@@ -130,7 +132,9 @@ const isHeld = (id: string) => {
 
 const press = async (id: string) => {
   const node = byTestId(id)
-  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  if (!node) {
+    throw new Error(`nothing on screen with the test id ${id}`)
+  }
   act(() => node.click())
   await settle()
 }
@@ -157,7 +161,9 @@ const mount = async ({
     await records.setupDraft.write(draftOf(clauses))
     await records.path.write(clauses)
   }
-  if (enrollments.length > 0) await records.enrollments.write(enrollments)
+  if (enrollments.length > 0) {
+    await records.enrollments.write(enrollments)
+  }
   beforeRender?.(storage)
   const validateSetup = jest.fn(validate)
   const navigate = jest.fn()

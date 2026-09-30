@@ -98,7 +98,9 @@ export const makeStorage = (): StorageDouble => {
     const index = pending.findIndex(
       (entry) => entry.operation === operation && key.includes(`:${entry.record}:`)
     )
-    if (index < 0) return false
+    if (index < 0) {
+      return false
+    }
     pending.splice(index, 1)
     return true
   }
@@ -109,12 +111,16 @@ export const makeStorage = (): StorageDouble => {
       pending.push({ operation, record })
     },
     get: async (key, defaultValue) => {
-      if (key && takeRejection('get', key)) throw new Error('storage unavailable')
+      if (key && takeRejection('get', key)) {
+        throw new Error('storage unavailable')
+      }
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
     set: async (key, value) => {
-      if (takeRejection('set', key)) throw new Error('storage full')
+      if (takeRejection('set', key)) {
+        throw new Error('storage full')
+      }
       sets.push(key)
       raw.set(key, typeof value === 'string' ? value : stringify(value))
       return null
@@ -125,7 +131,9 @@ export const makeStorage = (): StorageDouble => {
     },
     setEntries: async (entries) => {
       const keys = Object.keys(entries)
-      if (keys.some((key) => takeRejection('set', key))) throw new Error('storage full')
+      if (keys.some((key) => takeRejection('set', key))) {
+        throw new Error('storage full')
+      }
       keys.forEach((key) => {
         const value = entries[key]
         sets.push(key)
