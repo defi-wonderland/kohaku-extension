@@ -556,6 +556,7 @@
         "exposure": {
           "guardians": "Every guardian of your path is hidden from a stranger who cannot guess their address.",
           "unguessable": "{{items}} cannot be guessed at all and lose nothing before a recovery.",
+          "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery.",
           "publication": "A recovery publishes the rule with its waiting period and every method in it, so every method of your path is exposed, the ones it used and the ones it did not."
         },
         "requiredAtPrivate": "Required at Private and Shape visible.",
