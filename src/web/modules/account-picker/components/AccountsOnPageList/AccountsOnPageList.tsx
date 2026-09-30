@@ -65,9 +65,9 @@ const findPrivilegeHolder = (privileges: [string, string][]): Address | null => 
   return holder && isAddress(holder, { strict: false }) ? holder : null
 }
 
-// A deployed smart account answers with the privileges it holds on chain; a
-// counterfactual one carries the privileges its deployment will write. When no
-// network answers, the key's standing is unknown and no holder is shown.
+// A network that answers with the account deployed wins: the holder comes from
+// the privileges the account holds on chain. With no deployed answer, or no
+// answer at all, the privileges the account's creation will write serve.
 const readPrivilegeHolder = async (
   account: AccountInterface,
   networks: Network[],
@@ -87,8 +87,6 @@ const readPrivilegeHolder = async (
     })
   )
   const answers = states.filter((accountState) => !!accountState)
-  if (!answers.length) return null
-
   const deployedState = answers.find((accountState) => accountState.isDeployed)
 
   if (deployedState) return findPrivilegeHolder(Object.entries(deployedState.associatedKeys))
