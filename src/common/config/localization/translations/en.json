@@ -318,7 +318,18 @@
       "require": "Require",
       "group": "Group {{n}}",
       "guardians": "guardians",
-      "header": "What this shape means"
+      "header": "What this shape means",
+      "sentence": {
+        "kinds": {
+          "passkey": "a passkey",
+          "passport": "a passport",
+          "guardian": "a guardian",
+          "aadhaar": "an Aadhaar identity"
+        },
+        "anyOf": "any {{threshold}} of {{count}}",
+        "pair": "{{first}} and {{second}}",
+        "list": "{{first}}, {{rest}}"
+      }
     },
     "disclosures": {
       "guardianPublication": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used. If a recovery uses this guardian, their address goes on chain in the clear. Even unused, anyone who can guess it can find it. Ask them first.",
