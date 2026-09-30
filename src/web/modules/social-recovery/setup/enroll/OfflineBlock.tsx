@@ -1,6 +1,7 @@
 /**
- * The offline block: the test challenge carried out as text, as a QR or as a
- * file to a device that never goes online, and the signature brought back.
+ * The offline block: the test challenge carried out as a QR or as a file to a
+ * device that never goes online, and the signature brought back. The
+ * challenge's text never shows on screen.
  */
 import React, { useMemo, useState } from 'react'
 import { View } from 'react-native'
@@ -31,9 +32,6 @@ const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps)
       </Text>
       <Text fontSize={12} weight="medium" appearance="secondaryText" style={spacings.mbTy}>
         {t('socialRecovery.enroll.offline.challengeHeader')}
-      </Text>
-      <Text testID="guardian-offline-challenge" fontSize={12} selectable style={spacings.mbTy}>
-        {text}
       </Text>
       <View style={spacings.mbTy}>
         <QRCode value={text} size={200} quietZone={10} />

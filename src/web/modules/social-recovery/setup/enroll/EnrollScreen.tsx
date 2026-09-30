@@ -171,7 +171,7 @@ const EnrollScreen = () => {
         ),
       chain,
       keys: heldKeys,
-      signTypedData: (key, typedData) => signer.signTypedData(key, typedData),
+      signTypedData: (key, typedData, options) => signer.signTypedData(key, typedData, options),
       readClipboard: browserClipboard(),
       saveFile: saveChallengeFile
     }),

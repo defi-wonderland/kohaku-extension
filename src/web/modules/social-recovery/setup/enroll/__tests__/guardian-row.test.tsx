@@ -493,7 +493,8 @@ describe('the guardian row', () => {
 
       expect(signTypedData).toHaveBeenCalledWith(
         { addr: HELD, type: 'internal' },
-        typedDataOf(lastRequest())
+        typedDataOf(lastRequest()),
+        { signal: expect.any(AbortSignal) }
       )
       expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip('tested'))
       expect(view!.byTestId('guardian-test-line')?.textContent).toBe(t(`${GUARDIAN}.testedLine`))
@@ -511,8 +512,7 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-offline')).toBeNull()
       await view!.press('guardian-test')
 
-      const text = view!.byTestId('guardian-offline-challenge')?.textContent ?? ''
-      expect(view!.byTestId('challenge-qr')?.getAttribute('data-value')).toBe(text)
+      const text = view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
       await view!.press('guardian-offline-save')
       expect(saveFile).toHaveBeenCalledWith(
         expect.objectContaining({ text, type: 'application/json' })
@@ -528,7 +528,7 @@ describe('the guardian row', () => {
       await addGuardian()
       await view!.press('guardian-test')
       expect(view!.isDisabled('guardian-offline-check')).toBe(true)
-      const carried = view!.byTestId('guardian-offline-challenge')?.textContent ?? ''
+      const carried = view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
       await view!.type(
         'guardian-offline-signature',
         await signBy(GUARDIAN_KEY, typedDataFromText(carried))
@@ -680,7 +680,7 @@ describe('the guardian row', () => {
   })
 
   describe('the offline challenge', () => {
-    const carriedText = () => view!.byTestId('guardian-offline-challenge')?.textContent ?? ''
+    const carriedText = () => view!.byTestId('challenge-qr')?.getAttribute('data-value') ?? ''
 
     it('carries the domain type in the text', async () => {
       await addGuardian()

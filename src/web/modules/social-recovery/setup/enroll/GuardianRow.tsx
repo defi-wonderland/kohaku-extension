@@ -6,7 +6,7 @@
  * wallet holds the key, or through the offline block, and the row reads not
  * tested until the challenge comes back signed.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { isAddress } from 'viem'
 
@@ -26,7 +26,7 @@ import {
   outcomeOfThrown
 } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import { isSignerNotWired } from '@web/modules/social-recovery/shared/client'
+import { isSignerNotWired, isSignFlowFailure } from '@web/modules/social-recovery/shared/client'
 import {
   renderChip,
   renderFullAddress,
@@ -79,11 +79,21 @@ const GuardianRow = ({
   const [challenge, setChallenge] = useState<GuardianChallenge | null>(null)
   const [offline, setOffline] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [waiting, setWaiting] = useState(false)
+  const pending = useRef<AbortController | null>(null)
   const [writeFailed, setWriteFailed] = useState(false)
   const [duplicate, setDuplicate] = useState(false)
 
   const target = useMemo(() => guardianTargetOf(value), [value])
   const { resolveName } = deps
+
+  // A request still queued when the row goes away is withdrawn.
+  useEffect(
+    () => () => {
+      pending.current?.abort()
+    },
+    []
+  )
 
   useEffect(() => {
     if (enrollment || target.kind !== 'name') {
@@ -253,22 +263,50 @@ const GuardianRow = ({
         setOffline(true)
         return
       }
+      const controller = new AbortController()
+      pending.current = controller
       setBusy(true)
+      setWaiting(true)
       let signature: Hex
       try {
-        signature = await deps.signTypedData({ addr: held.addr, type: held.type }, typedData)
+        signature = await deps.signTypedData({ addr: held.addr, type: held.type }, typedData, {
+          signal: controller.signal
+        })
       } catch (error: unknown) {
+        if (controller.signal.aborted) {
+          return
+        }
+        pending.current = null
+        setWaiting(false)
         setBusy(false)
-        // A key the request queue cannot sign for is carried to the offline block.
-        if (isSignerNotWired(error)) setOffline(true)
-        else await applyTest(outcomeOfSignError(error))
+        // A key the request queue cannot sign for, or a request withdrawn from
+        // the queue, is carried to the offline block.
+        if (isSignerNotWired(error) || (isSignFlowFailure(error) && error.reason === 'withdrawn')) {
+          setOffline(true)
+        } else {
+          await applyTest(outcomeOfSignError(error))
+        }
         return
       }
+      // A signature that arrives after the holder withdrew the request is dropped.
+      if (controller.signal.aborted) {
+        return
+      }
+      pending.current = null
+      setWaiting(false)
       setBusy(false)
       await check(next, signature)
     },
     [client, enrollment, address, chainId, account, book, deps, applyTest, check]
   )
+
+  const withdraw = useCallback(() => {
+    pending.current?.abort()
+    pending.current = null
+    setWaiting(false)
+    setBusy(false)
+    setOffline(true)
+  }, [])
 
   const paste = useCallback(() => {
     deps
@@ -461,6 +499,20 @@ const GuardianRow = ({
                   hasBottomSpacing={false}
                 />
               )}
+            </View>
+          )}
+          {waiting && (
+            <View testID="guardian-test-waiting" style={spacings.mtSm}>
+              <Text fontSize={14} style={spacings.mbTy}>
+                {t('socialRecovery.enroll.guardian.waitingForSignScreen')}
+              </Text>
+              <Button
+                testID="guardian-test-withdraw"
+                type="ghost"
+                text={t('socialRecovery.enroll.guardian.testOfflineInstead')}
+                onPress={withdraw}
+                hasBottomSpacing={false}
+              />
             </View>
           )}
         </View>

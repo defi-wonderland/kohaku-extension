@@ -11,6 +11,7 @@ import type {
   AddressBook,
   KeyHandle,
   RecoveryKitClient,
+  SignOptions,
   TypedDataToSign
 } from '@web/modules/social-recovery/shared/client'
 import type { MethodChip } from '@web/modules/social-recovery/shared/display'
@@ -153,7 +154,7 @@ export interface EnrollDeps {
   chain: GuardianChain | null
   keys: readonly HeldKey[]
   /** Signs typed data through the request queue with a key the wallet holds. */
-  signTypedData: (key: KeyHandle, typedData: TypedDataToSign) => Promise<Hex>
+  signTypedData: (key: KeyHandle, typedData: TypedDataToSign, options?: SignOptions) => Promise<Hex>
   /** Reads the clipboard, null where the page has no clipboard. */
   readClipboard: (() => Promise<string>) | null
   saveFile: (file: ChallengeFile) => void
