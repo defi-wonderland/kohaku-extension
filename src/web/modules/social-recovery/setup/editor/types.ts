@@ -1,6 +1,7 @@
 import type {
   Clause,
   Credential,
+  Finding,
   ISetupClient,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -10,6 +11,7 @@ import type {
   SetupRecords,
   SlotKind
 } from '@web/modules/social-recovery/shared/records'
+import type { RuleLine } from '@web/modules/social-recovery/shared/rule-lines'
 
 /** Where one credential sits in the path: its clause and its place among the clause's members. */
 export interface SlotPosition {
@@ -103,4 +105,65 @@ export interface ThresholdFieldProps {
   onChange: (threshold: number) => void
   disabled?: boolean
   testID?: string
+}
+
+/** A clause of the path with its index among the draft's clauses. */
+export interface IndexedClause {
+  clause: Clause
+  index: number
+}
+
+export interface EditorHeaderProps {
+  mode: EditorLoad['mode']
+  /** Whether the last pick was a credential the path already holds. */
+  refused: boolean
+  clientRefusal: ClientRefusal | null
+}
+
+export interface RequiredRowsProps {
+  rows: IndexedClause[]
+  groups: IndexedClause[]
+  /** The row whose group choice is open, when more than one group can take it. */
+  movingRow: number | null
+  addressBook: AddressBook
+  enrollments: readonly Enrollment[]
+  checking: boolean
+  onOpenSlot: (clause: number, member: number) => void
+  onMove: (row: number, group: number) => void
+  onChooseGroup: (row: number) => void
+  onRemove: (row: number) => void
+  onAdd: () => void
+}
+
+export interface GroupListProps {
+  groups: IndexedClause[]
+  addressBook: AddressBook
+  enrollments: readonly Enrollment[]
+  checking: boolean
+  onOpenSlot: (clause: number, member: number) => void
+  onThreshold: (group: number, threshold: number) => void
+  onMakeRequired: (group: number, member: number) => void
+  onRemoveMember: (group: number, member: number) => void
+  onAddMember: (group: number) => void
+  onRemoveGroup: (group: number) => void
+  onAddGroup: () => void
+}
+
+export interface SecondMethodOfferProps {
+  ruleLines: RuleLine[]
+  checking: boolean
+  onMakeItAGroup: () => void
+  onAddSecondMethod: () => void
+}
+
+export interface EditorActionsProps {
+  client: EditorClient
+  findings: Finding[]
+  methodCount: number
+  checking: boolean
+  checkFailed: boolean
+  writeFailed: boolean
+  onRetryWrite: () => void
+  onContinue: () => void
+  onBack: () => void
 }
