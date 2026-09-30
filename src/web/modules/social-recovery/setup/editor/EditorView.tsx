@@ -330,7 +330,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   return (
     <View testID="editor">
-      <EditorHeader mode={load.mode} refused={refused} clientRefusal={clientRefusal} />
+      <EditorHeader mode={load.mode} refused={refused} />
 
       <RequiredRows
         rows={rows}
@@ -397,6 +397,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
       <EditorActions
         client={client}
+        clientRefusal={clientRefusal}
         findings={findings}
         methodCount={methodCount}
         checking={checking}

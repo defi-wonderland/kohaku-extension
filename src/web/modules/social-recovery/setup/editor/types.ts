@@ -117,7 +117,6 @@ export interface EditorHeaderProps {
   mode: EditorLoad['mode']
   /** Whether the last pick was a credential the path already holds. */
   refused: boolean
-  clientRefusal: ClientRefusal | null
 }
 
 export interface RequiredRowsProps {
@@ -158,6 +157,7 @@ export interface SecondMethodOfferProps {
 
 export interface EditorActionsProps {
   client: EditorClient
+  clientRefusal: ClientRefusal | null
   findings: Finding[]
   methodCount: number
   checking: boolean

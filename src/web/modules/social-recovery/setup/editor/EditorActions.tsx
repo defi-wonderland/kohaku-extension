@@ -7,16 +7,18 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 
-import { renderFinding } from './copy'
+import { renderClientRefusal, renderFinding } from './copy'
 import type { EditorActionsProps } from './types'
 
 /**
- * A failed write with its retry, the path check's findings, and the actions:
+ * A failed write with its retry, the path check's findings, the lines of a
+ * client that cannot run the path check, and the actions:
  * Back, and Continue or what stands in its place while the client loads, is
  * refused, or the check runs or fails.
  */
 const EditorActions = ({
   client,
+  clientRefusal,
   findings,
   methodCount,
   checking,
@@ -27,6 +29,7 @@ const EditorActions = ({
   onBack
 }: EditorActionsProps) => {
   const { t } = useTranslation()
+  const refusalLines = clientRefusal ? renderClientRefusal(clientRefusal, t) : null
 
   return (
     <>
@@ -67,6 +70,17 @@ const EditorActions = ({
               {renderFinding(finding, t)}
             </Text>
           ))}
+        </View>
+      )}
+
+      {!!refusalLines && (
+        <View style={spacings.mbMd} testID="editor-client-refusal">
+          <Text fontSize={14} weight="semiBold" appearance="errorText" style={spacings.mbTy}>
+            {refusalLines.title}
+          </Text>
+          <Text fontSize={14} appearance="secondaryText">
+            {refusalLines.body}
+          </Text>
         </View>
       )}
 
