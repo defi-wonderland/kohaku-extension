@@ -60,6 +60,8 @@ export interface RecoveryCardViewProps {
   onCarried: () => void
   carriers: CardCarriers
   renderPasswordAsk: (answer: PasswordAskAnswer) => ReactNode
+  /** Leads to the privacy step, where the holder sets the recovery password again. */
+  onSetPasswordAgain: () => void
   onBack: () => void
   onContinue: () => void
 }

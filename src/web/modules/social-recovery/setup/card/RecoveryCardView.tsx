@@ -3,8 +3,10 @@
  * the three carriers, and what warns the holder of a recovery they did not
  * start. The first carrier runs at once; every later one asks the extension
  * password first. At the hidden level with no password in memory, after a
- * reload, the password stays hidden with no reveal and nothing carries the
- * card, since a card without its password cannot start a recovery.
+ * reload or in a new tab, the password row says so and leads back to the
+ * privacy step, and nothing carries the card, since a card without its
+ * password cannot start a recovery. While the ask shows, its own answers
+ * stand in for the screen's back and continue.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, View } from 'react-native'
@@ -29,6 +31,7 @@ const RecoveryCardView = ({
   onCarried,
   carriers,
   renderPasswordAsk,
+  onSetPasswordAgain,
   onBack,
   onContinue
 }: RecoveryCardViewProps) => {
@@ -85,8 +88,27 @@ const RecoveryCardView = ({
     [asking, run]
   )
 
-  const passwordRow =
-    level === 'hidden' ? (
+  const passwordGoneRow = (
+    <View testID="card-password" style={spacings.mbSm}>
+      <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy}>
+        {renderPasswordName('recoveryPassword', t)}
+      </Text>
+      <Text testID="card-password-gone" fontSize={14} style={spacings.mbSm}>
+        {t('socialRecovery.card.passwordGone')}
+      </Text>
+      <Button
+        testID="card-password-gone-action"
+        type="secondary"
+        size="small"
+        hasBottomSpacing={false}
+        text={t('socialRecovery.card.passwordGoneAction')}
+        onPress={onSetPasswordAgain}
+      />
+    </View>
+  )
+
+  const heldPasswordRow =
+    level === 'hidden' && password ? (
       <View testID="card-password" style={spacings.mbSm}>
         <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy}>
           {renderPasswordName('recoveryPassword', t)}
@@ -99,9 +121,9 @@ const RecoveryCardView = ({
             style={[flexbox.flex1, spacings.mrSm]}
             selectable={revealed}
           >
-            {revealed && password ? password : hidden.dots}
+            {revealed ? password : hidden.dots}
           </Text>
-          {!(revealed && password) && (
+          {!revealed && (
             <Text
               testID="card-password-chip"
               fontSize={12}
@@ -117,13 +139,14 @@ const RecoveryCardView = ({
             type="secondary"
             size="small"
             hasBottomSpacing={false}
-            disabled={passwordMissing}
             text={revealed ? t('socialRecovery.card.hide') : t('socialRecovery.card.reveal')}
             onPress={() => setRevealed((shown) => !shown)}
           />
         </View>
       </View>
     ) : null
+
+  const passwordRow = passwordMissing ? passwordGoneRow : heldPasswordRow
 
   return (
     <View testID="card-screen">
@@ -167,7 +190,7 @@ const RecoveryCardView = ({
             />
           </View>
           <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg}>
-            {t('socialRecovery.card.reDownload')}
+            {t('socialRecovery.card.carrierAsks')}
           </Text>
         </>
       )}
@@ -198,20 +221,22 @@ const RecoveryCardView = ({
         </Text>
         <Text fontSize={14}>{t('socialRecovery.card.banner')}</Text>
       </View>
-      <View style={[flexbox.directionRow, spacings.mtLg]}>
-        <Button
-          testID="card-back"
-          type="secondary"
-          text={t('socialRecovery.ceremony.backAction')}
-          onPress={onBack}
-          style={spacings.mrSm}
-        />
-        <Button
-          testID="card-continue"
-          text={t('socialRecovery.actions.continue')}
-          onPress={onContinue}
-        />
-      </View>
+      {!asking && (
+        <View style={[flexbox.directionRow, spacings.mtLg]}>
+          <Button
+            testID="card-back"
+            type="secondary"
+            text={t('socialRecovery.ceremony.backAction')}
+            onPress={onBack}
+            style={spacings.mrSm}
+          />
+          <Button
+            testID="card-continue"
+            text={t('socialRecovery.actions.continue')}
+            onPress={onContinue}
+          />
+        </View>
+      )}
       {printing && <PrintCardView card={card} />}
     </View>
   )

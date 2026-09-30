@@ -96,6 +96,7 @@ const RecoveryCardScreen = () => {
     if (address) markCardCarried(chainId, address)
   }, [address])
   const toManage = useCallback(() => navigate(WEB_ROUTES.socialRecoveryManage), [navigate])
+  const toPrivacy = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupPrivacy), [navigate])
 
   return (
     <View style={styles.background}>
@@ -126,6 +127,7 @@ const RecoveryCardScreen = () => {
                   onCarried={onCarried}
                   carriers={BROWSER_CARRIERS}
                   renderPasswordAsk={renderPasswordAsk}
+                  onSetPasswordAgain={toPrivacy}
                   onBack={goBack}
                   onContinue={toManage}
                 />

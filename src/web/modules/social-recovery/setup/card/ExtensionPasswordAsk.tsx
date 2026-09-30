@@ -1,5 +1,5 @@
 /**
- * Asks the extension password before a new download of the card. The keystore
+ * Asks the extension password before a new download, print or hand-off of the card. The keystore
  * checks it with the same unlock the wallet runs; a wrong password says so and
  * the card stays where it is.
  */
@@ -80,7 +80,7 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   return (
     <View>
       <Text fontSize={14} style={spacings.mbSm}>
-        {t('socialRecovery.card.reDownload')}
+        {t('socialRecovery.card.carrierAsks')}
       </Text>
       <InputPassword
         testID="card-extension-password"
