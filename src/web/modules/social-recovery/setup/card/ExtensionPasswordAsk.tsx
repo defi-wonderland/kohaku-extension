@@ -35,7 +35,9 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   }, [dispatch])
 
   useEffect(() => {
-    if (!sent.current) return
+    if (!sent.current) {
+      return
+    }
     if (errorMessage) {
       sent.current = false
       setFailed(true)
@@ -53,7 +55,9 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
   const busy = statuses.unlockWithSecret !== 'INITIAL'
 
   const submit = useCallback(() => {
-    if (!password || busy || sent.current) return
+    if (!password || busy || sent.current) {
+      return
+    }
     sent.current = true
     started.current = false
     dispatch({
@@ -66,7 +70,9 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
     (value: string) => {
       setPassword(value)
       setFailed(false)
-      if (errorMessage) dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+      if (errorMessage) {
+        dispatch({ type: 'KEYSTORE_CONTROLLER_RESET_ERROR_STATE' })
+      }
     },
     [dispatch, errorMessage]
   )

@@ -52,8 +52,11 @@ const RecoveryCardView = ({
 
   const run = useCallback(
     (action: CarrierAction) => {
-      if (action === 'download') carriers.download(cardFileOf(card, t))
-      else setPrinting(true)
+      if (action === 'download') {
+        carriers.download(cardFileOf(card, t))
+      } else {
+        setPrinting(true)
+      }
       setCarriedHere(true)
       onCarried()
     },
@@ -62,8 +65,11 @@ const RecoveryCardView = ({
 
   const press = useCallback(
     (action: CarrierAction) => {
-      if (carriedBefore || carriedHere) setAsking(action)
-      else run(action)
+      if (carriedBefore || carriedHere) {
+        setAsking(action)
+      } else {
+        run(action)
+      }
     },
     [carriedBefore, carriedHere, run]
   )
@@ -71,7 +77,9 @@ const RecoveryCardView = ({
   // The print view is mounted by now; the browser's print blocks until the
   // holder closes it, and the view goes with it.
   useEffect(() => {
-    if (!printing) return
+    if (!printing) {
+      return
+    }
     carriers.print()
     setPrinting(false)
   }, [printing, carriers])
@@ -81,7 +89,9 @@ const RecoveryCardView = ({
       onConfirmed: () => {
         const action = asking
         setAsking(null)
-        if (action) run(action)
+        if (action) {
+          run(action)
+        }
       },
       onCancel: () => setAsking(null)
     }),

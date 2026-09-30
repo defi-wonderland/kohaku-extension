@@ -148,9 +148,13 @@ describe('the print view style', () => {
       const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex
       return [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16))
     }
-    if (colour === 'white') return [255, 255, 255]
+    if (colour === 'white') {
+      return [255, 255, 255]
+    }
     const rgb = colour.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-    if (rgb) return rgb.slice(1, 4).map(Number)
+    if (rgb) {
+      return rgb.slice(1, 4).map(Number)
+    }
     throw new Error(`not a colour: ${colour}`)
   }
   const isWhite = (colour: string) => channels(colour).every((channel) => channel === 255)

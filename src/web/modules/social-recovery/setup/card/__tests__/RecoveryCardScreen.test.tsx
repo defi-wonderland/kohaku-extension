@@ -67,7 +67,9 @@ jest.mock('@web/constants/browserapi', () => ({
     storage: {
       local: {
         get: async () => {
-          if (mockStorageGate.current) await mockStorageGate.current
+          if (mockStorageGate.current) {
+            await mockStorageGate.current
+          }
           return Object.fromEntries(mockEntries)
         },
         set: async (items: Record<string, unknown>) => {
@@ -210,7 +212,9 @@ describe('the recovery card screen', () => {
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
   const press = async (id: string) => {
     const node = byTestId(id)
-    if (!node) throw new Error(`nothing to press: ${id}`)
+    if (!node) {
+      throw new Error(`nothing to press: ${id}`)
+    }
     await act(async () => {
       node.click()
     })
@@ -223,7 +227,9 @@ describe('the recovery card screen', () => {
   }
   const typePassword = async (value: string) => {
     const node = container.querySelector<HTMLInputElement>('input')
-    if (!node) throw new Error('no password field')
+    if (!node) {
+      throw new Error('no password field')
+    }
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(node, value)
       node.dispatchEvent(new Event('input', { bubbles: true }))
@@ -234,7 +240,9 @@ describe('the recovery card screen', () => {
   }
   const backAndContinue = () => [!!byTestId('card-back'), !!byTestId('card-continue')]
   const level = () => {
-    if (!byTestId('recovery-card')) return null
+    if (!byTestId('recovery-card')) {
+      return null
+    }
     return byTestId('card-password') ? 'hidden' : 'public'
   }
 

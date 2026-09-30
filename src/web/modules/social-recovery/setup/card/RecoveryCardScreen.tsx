@@ -61,20 +61,26 @@ const RecoveryCardScreen = () => {
   const [draftLevel, setDraftLevel] = useState<DraftLevel | null>(null)
 
   useEffect(() => {
-    if (!address || searchLevel) return
+    if (!address || searchLevel) {
+      return
+    }
     let live = true
     records
       .setup(chainId, address)
       .setupDraft.read()
       .then((draft) => {
-        if (!live) return
+        if (!live) {
+          return
+        }
         setDraftLevel({
           address,
           level: draft.status === 'present' ? levelOfBackup(draft.value.privacy.backup) : 'hidden'
         })
       })
       .catch(() => {
-        if (live) setDraftLevel({ address, level: 'hidden' })
+        if (live) {
+          setDraftLevel({ address, level: 'hidden' })
+        }
       })
     return () => {
       live = false
@@ -93,7 +99,9 @@ const RecoveryCardScreen = () => {
   )
 
   const onCarried = useCallback(() => {
-    if (address) markCardCarried(chainId, address)
+    if (address) {
+      markCardCarried(chainId, address)
+    }
   }, [address])
   const toManage = useCallback(() => navigate(WEB_ROUTES.socialRecoveryManage), [navigate])
   const toPrivacy = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupPrivacy), [navigate])

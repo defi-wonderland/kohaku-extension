@@ -93,7 +93,9 @@ describe('the extension password ask', () => {
 
   const input = () => {
     const node = container.querySelector<HTMLInputElement>('input')
-    if (!node) throw new Error('no password field')
+    if (!node) {
+      throw new Error('no password field')
+    }
     return node
   }
   const type = async (value: string) => {
@@ -110,7 +112,9 @@ describe('the extension password ask', () => {
   }
   const press = async (id: string) => {
     const node = container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
-    if (!node) throw new Error(`nothing to press: ${id}`)
+    if (!node) {
+      throw new Error(`nothing to press: ${id}`)
+    }
     await act(async () => {
       node.click()
     })

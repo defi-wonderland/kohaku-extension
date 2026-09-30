@@ -158,7 +158,9 @@ describe('the recovery card view', () => {
 
   const press = async (id: string) => {
     const node = byTestId(id)
-    if (!node) throw new Error(`nothing to press: ${id}`)
+    if (!node) {
+      throw new Error(`nothing to press: ${id}`)
+    }
     await act(async () => {
       node.click()
     })
