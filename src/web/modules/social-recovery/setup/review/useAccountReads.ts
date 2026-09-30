@@ -40,7 +40,9 @@ export const useAccountReads = (
 
   const run = useCallback(
     (names: readonly AccountReadName[], at: number) => {
-      if (!client || !draft) return
+      if (!client || !draft) {
+        return
+      }
       // A read that throws before it returns a promise reads as failed, like
       // one that rejects.
       const settle = <T>(read: () => Promise<T>, put: (value: AccountRead<T>) => void) => {
@@ -49,10 +51,14 @@ export const useAccountReads = (
           .then(read)
           .then(
             (value) => {
-              if (round.current === at) put({ status: 'answered', value })
+              if (round.current === at) {
+                put({ status: 'answered', value })
+              }
             },
             () => {
-              if (round.current === at) put(FAILED)
+              if (round.current === at) {
+                put(FAILED)
+              }
             }
           )
       }
@@ -99,7 +105,9 @@ export const useAccountReads = (
   const retry = useCallback(
     (names: readonly AccountReadName[]) => {
       const settled = names.filter((name) => readsRef.current[name].status !== 'pending')
-      if (settled.length > 0) run(settled, round.current)
+      if (settled.length > 0) {
+        run(settled, round.current)
+      }
     },
     [run]
   )

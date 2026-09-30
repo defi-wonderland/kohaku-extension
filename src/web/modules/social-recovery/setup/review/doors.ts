@@ -34,9 +34,15 @@ export const doorsOf = (
   codeEntries: CodeEntriesReading,
   removedKey: AccountRead<RemovedKeyReading>
 ): Doors => {
-  if (description.status === 'pending') return { kind: 'pending' }
-  if (description.status === 'failed') return { kind: 'unreadable' }
-  if (removedKey.status === 'pending') return { kind: 'pending' }
+  if (description.status === 'pending') {
+    return { kind: 'pending' }
+  }
+  if (description.status === 'failed') {
+    return { kind: 'unreadable' }
+  }
+  if (removedKey.status === 'pending') {
+    return { kind: 'pending' }
+  }
   const removed =
     removedKey.status === 'answered' && removedKey.value.kind === 'named'
       ? removedKey.value.key
@@ -48,6 +54,8 @@ export const doorsOf = (
   if (codeEntries.status === 'unavailable') {
     return keys === 0 ? { kind: 'none' } : { kind: 'keys', keys }
   }
-  if (keys === 0 && codeEntries.count === 0) return { kind: 'none' }
+  if (keys === 0 && codeEntries.count === 0) {
+    return { kind: 'none' }
+  }
   return { kind: 'pair', codeEntries: codeEntries.count, keys }
 }

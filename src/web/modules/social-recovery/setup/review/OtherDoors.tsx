@@ -24,9 +24,15 @@ const OtherDoors = ({ doors }: OtherDoorsProps) => {
     </Text>
   )
 
-  if (doors.kind === 'pending') return <ActivityIndicator testID="review-doors-pending" />
-  if (doors.kind === 'unreadable') return line(t(`${DOORS}.unreadable`), 'review-doors')
-  if (doors.kind === 'none') return line(t(`${DOORS}.none`), 'review-doors')
+  if (doors.kind === 'pending') {
+    return <ActivityIndicator testID="review-doors-pending" />
+  }
+  if (doors.kind === 'unreadable') {
+    return line(t(`${DOORS}.unreadable`), 'review-doors')
+  }
+  if (doors.kind === 'none') {
+    return line(t(`${DOORS}.none`), 'review-doors')
+  }
 
   const keys = t(`${DOORS}.keysBeside`, { count: doors.keys })
   return (

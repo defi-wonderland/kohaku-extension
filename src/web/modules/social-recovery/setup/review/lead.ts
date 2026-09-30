@@ -130,7 +130,9 @@ const kindLinesOf = (kind: MethodKind | undefined, t: Translate) => {
       t('socialRecovery.disclosures.passportPublication')
     ]
   }
-  if (kind === 'aadhaar') return [t('socialRecovery.disclosures.identity')]
+  if (kind === 'aadhaar') {
+    return [t('socialRecovery.disclosures.identity')]
+  }
   return []
 }
 
@@ -178,8 +180,12 @@ export const pathRowOf = (
     aside = kindNameOf(kind, t)
   } else if (kind === 'passkey') {
     name = credential.label || kindNameOf(kind, t)
-    if (enrollment?.backup === 'synced') aside = t('socialRecovery.review.passkeySynced')
-    if (enrollment?.backup === 'device-bound') aside = t('socialRecovery.review.passkeyDeviceBound')
+    if (enrollment?.backup === 'synced') {
+      aside = t('socialRecovery.review.passkeySynced')
+    }
+    if (enrollment?.backup === 'device-bound') {
+      aside = t('socialRecovery.review.passkeyDeviceBound')
+    }
   } else {
     name = kind ? kindNameOf(kind, t) : renderFullAddress(credential.method)
   }
@@ -228,7 +234,9 @@ export const renderWait = (wait: SetupDraft['wait'], t: Translate): string => {
     wait % SECONDS_PER_HOUR === 0n
       ? REVIEW_WAIT_CHIPS.find(({ hours }) => BigInt(hours) * SECONDS_PER_HOUR === wait)
       : undefined
-  if (chip) return t(`socialRecovery.privacy.waitingPeriod.chips.${chip.id}`)
+  if (chip) {
+    return t(`socialRecovery.privacy.waitingPeriod.chips.${chip.id}`)
+  }
   return t('socialRecovery.display.remainingHours', { count: Number(wait / SECONDS_PER_HOUR) })
 }
 
@@ -243,10 +251,18 @@ const kindsOf = (clauses: readonly Clause[], addressBook: AddressBook): MethodKi
 export const publicationItemsOf = (kinds: readonly MethodKind[]): PublicationItem[] => {
   const passkeys = kinds.filter((kind) => kind === 'passkey').length
   const items: PublicationItem[] = []
-  if (passkeys === 1) items.push('passkey')
-  if (passkeys > 1) items.push('passkeys')
-  if (kinds.includes('zkpassport')) items.push('passportIdentifier')
-  if (kinds.includes('aadhaar')) items.push('aadhaar')
+  if (passkeys === 1) {
+    items.push('passkey')
+  }
+  if (passkeys > 1) {
+    items.push('passkeys')
+  }
+  if (kinds.includes('zkpassport')) {
+    items.push('passportIdentifier')
+  }
+  if (kinds.includes('aadhaar')) {
+    items.push('aadhaar')
+  }
   return items
 }
 
@@ -254,8 +270,12 @@ export const publicationItemsOf = (kinds: readonly MethodKind[]): PublicationIte
 const joinItems = ([lead, ...rest]: PublicationItem[], t: Translate): string => {
   const first = t(`${ITEMS_LEAD}.${lead}`)
   const [second, third] = rest.map((item) => t(`${ITEMS}.${item}`))
-  if (third !== undefined) return t(`${ITEMS}.triple`, { first, second, third })
-  if (second !== undefined) return t(`${ITEMS}.pair`, { first, second })
+  if (third !== undefined) {
+    return t(`${ITEMS}.triple`, { first, second, third })
+  }
+  if (second !== undefined) {
+    return t(`${ITEMS}.pair`, { first, second })
+  }
   return first
 }
 
@@ -274,13 +294,19 @@ export const publicationSentenceOf = (
   const guardians = kinds.filter((kind) => kind === 'ecdsa').length
   const items = publicationItemsOf(kinds)
   if (items.length === 0) {
-    if (guardians === 0) return null
+    if (guardians === 0) {
+      return null
+    }
     return t(`${PUBLICATION}.${guardians === 1 ? 'guardian' : 'guardians'}`)
   }
   const plural = items.length > 1 || items[0] === 'passkeys'
   let key = 'methods'
-  if (guardians === 1) key = 'methodsAndGuardian'
-  if (guardians > 1) key = 'methodsAndGuardians'
+  if (guardians === 1) {
+    key = 'methodsAndGuardian'
+  }
+  if (guardians > 1) {
+    key = 'methodsAndGuardians'
+  }
   return t(`${PUBLICATION}.${key}`, { items: joinItems(items, t), count: plural ? 2 : 1 })
 }
 
@@ -315,6 +341,8 @@ export const privacyLinesOf = (
       t('socialRecovery.privacy.level.shapeVisible.line', { shape })
     ]
   }
-  if (passwordSet) return [t('socialRecovery.review.privateSet')]
+  if (passwordSet) {
+    return [t('socialRecovery.review.privateSet')]
+  }
   return [t('socialRecovery.privacy.level.private.label')]
 }

@@ -377,6 +377,16 @@ describe('the blocks the setup records decide', () => {
     })
   })
 
+  it('lets an empty backup with no recovery password set reach the reads blocks', () => {
+    expect(gateOf({ backup: 'empty', passwordSet: false })).toMatchObject({
+      canSave: true,
+      blocked: null
+    })
+    expect(gateOf({ backup: 'empty', passwordSet: false, setupState: HAS_SETUP }).blocked).toEqual({
+      kind: 'already-set-up'
+    })
+  })
+
   it('blocks a path with an empty slot in its first clause', () => {
     expect(gateOf({ clauses: [group(1, ALICE, EMPTY_PASSKEY), required(PASSKEY)] })).toMatchObject({
       canSave: false,

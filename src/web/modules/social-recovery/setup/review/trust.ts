@@ -39,7 +39,9 @@ export const methodOfCredential = (
   credential: Credential,
   addressBook: AddressBook
 ): Address | undefined => {
-  if (!isEmptySlot(credential)) return credential.method
+  if (!isEmptySlot(credential)) {
+    return credential.method
+  }
   const kind = kindOf(credential, addressBook)
   return kind ? addressBook.methods[kind] : undefined
 }
@@ -134,16 +136,22 @@ const contractOf = (
     return { status: 'pending' }
   }
   const unanswered = TRUST_READ_NAMES.filter((name) => reads[name]?.answered === false)
-  if (unanswered.length > 0) return { status: 'unavailable', unanswered }
+  if (unanswered.length > 0) {
+    return { status: 'unavailable', unanswered }
+  }
   const { trustedParties, moduleInfo, paused } = reads
   if (!trustedParties?.answered || !moduleInfo?.answered || !paused?.answered) {
     return { status: 'pending' }
   }
-  if (!moduleInfo.value.supportsInterface) return { status: 'third-party' }
+  if (!moduleInfo.value.supportsInterface) {
+    return { status: 'third-party' }
+  }
   const admin = adminDeclarationOf(method, trustedParties.value, input)
   const stop = stopDeclarationOf(trustedParties.value, paused.value)
   const shipped = input.shippedMethods.some((address) => sameAddress(address, method))
-  if (!shipped) return { status: 'third-party', declaration: { ...admin, ...stop } }
+  if (!shipped) {
+    return { status: 'third-party', declaration: { ...admin, ...stop } }
+  }
   return {
     status: 'declared',
     ...admin,
@@ -212,12 +220,16 @@ const sameParty = (one: Address | undefined, other: Address | undefined): one is
  */
 export const stopRowsOf = (rows: readonly TrustRow[]): StopRow[] =>
   rows.flatMap(({ method, kind, contract }): StopRow[] => {
-    if (contract.status === 'pending') return [{ method, kind, stop: { status: 'pending' } }]
+    if (contract.status === 'pending') {
+      return [{ method, kind, stop: { status: 'pending' } }]
+    }
     if (contract.status === 'unavailable') {
       return [{ method, kind, stop: { status: 'unavailable' } }]
     }
     const declared = contract.status === 'declared' ? contract : contract.declaration
-    if (!declared) return []
+    if (!declared) {
+      return []
+    }
     const { admin, paused, pauseHolder, pendingPauseHolder } = declared
     return [
       {

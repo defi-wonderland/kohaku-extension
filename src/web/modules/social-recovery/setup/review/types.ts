@@ -230,6 +230,7 @@ export interface SaveGateInput extends AccountReads {
   clauses: readonly Clause[]
   /** The backup form of the draft; an encrypted one needs the recovery password set. */
   backup: BackupForm
+  /** Whether the records hold a recovery password record. */
   passwordSet: boolean
 }
 

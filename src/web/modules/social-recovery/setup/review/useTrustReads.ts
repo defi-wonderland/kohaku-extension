@@ -38,11 +38,15 @@ export const useTrustReads = (
 
   const run = useCallback(
     (method: Address, names: readonly TrustReadName[], at: number) => {
-      if (!moduleReads) return
+      if (!moduleReads) {
+        return
+      }
       const key = readKeyOf(method)
       setReads((held) => ({ ...held, [key]: withoutReads(held[key], names) }))
       const land = (update: (held: MethodReads | undefined) => MethodReads) => {
-        if (round.current !== at) return
+        if (round.current !== at) {
+          return
+        }
         setReads((held) => ({ ...held, [key]: update(held[key]) }))
       }
       if (names.includes('trustedParties')) {
@@ -83,7 +87,9 @@ export const useTrustReads = (
     (method: Address) => {
       const held = readsRef.current[readKeyOf(method)]
       const names = TRUST_READ_NAMES.filter((name) => held?.[name]?.answered === false)
-      if (names.length > 0) run(method, names, round.current)
+      if (names.length > 0) {
+        run(method, names, round.current)
+      }
     },
     [run]
   )

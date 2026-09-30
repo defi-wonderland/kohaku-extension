@@ -141,7 +141,9 @@ const makeStorage = (refuses: boolean): RecordStorage => {
   const raw = new Map<string, string>()
   return {
     get: async (key, defaultValue) => {
-      if (refuses) throw new Error('storage unavailable')
+      if (refuses) {
+        throw new Error('storage unavailable')
+      }
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
@@ -196,7 +198,9 @@ const isDisabled = (id: string) => byTestId(id)?.getAttribute('aria-disabled') =
 
 const press = async (id: string) => {
   const node = byTestId(id)
-  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  if (!node) {
+    throw new Error(`nothing on screen with the test id ${id}`)
+  }
   act(() => node.click())
   await settle()
 }
@@ -229,8 +233,12 @@ const mount = async ({
     ignoresPause: true,
     privacy: { backup, publicMetadata }
   })
-  if (enrollments.length > 0) await setup.enrollments.write(enrollments)
-  if (passwordSet) await setup.passwordSet.write('password-set')
+  if (enrollments.length > 0) {
+    await setup.enrollments.write(enrollments)
+  }
+  if (passwordSet) {
+    await setup.passwordSet.write('password-set')
+  }
   const shown = storageRefuses ? createWalletRecords({ storage: makeStorage(true) }) : records
 
   const reads = {
@@ -253,9 +261,15 @@ const mount = async ({
   }
   const retry = jest.fn()
   let reviewClient: ReviewClient = { status: 'ready', client: kit }
-  if (client === 'loading') reviewClient = { status: 'loading' }
-  if (client === 'failed') reviewClient = { status: 'failed', retry }
-  if (client === 'update-the-wallet') reviewClient = { status: 'update-the-wallet', retry }
+  if (client === 'loading') {
+    reviewClient = { status: 'loading' }
+  }
+  if (client === 'failed') {
+    reviewClient = { status: 'failed', retry }
+  }
+  if (client === 'update-the-wallet') {
+    reviewClient = { status: 'update-the-wallet', retry }
+  }
 
   const navigate = jest.fn()
   await act(async () => {
@@ -308,7 +322,9 @@ describe('save and the trust list reads', () => {
     const { reads, navigate } = await mount({
       clauses: [group(2, ALICE, PASSPORT)],
       trustedParties: async (module) => {
-        if (!sameAddress(module, BOOK.methods.zkpassport)) return declaration()
+        if (!sameAddress(module, BOOK.methods.zkpassport)) {
+          return declaration()
+        }
         passportAnswers += 1
         return passportAnswers === 1 ? UNANSWERED : declaration(ADMIN)
       }
@@ -876,7 +892,9 @@ describe('the trust list', () => {
     await press('review-verify-details')
 
     const action = auditedActionOf(deploymentDescriptor('sepolia').action, 'sepolia')
-    if (action.kind !== 'audited') throw new Error('the shipped action is not in the wallet table')
+    if (action.kind !== 'audited') {
+      throw new Error('the shipped action is not in the wallet table')
+    }
     expect(textOf('review-trust-module')).toContain(
       t('socialRecovery.review.trust.moduleRow', { publisher: t(publisherKeyOf(action)) })
     )
@@ -1120,13 +1138,17 @@ describe('a read that did not answer', () => {
     const { reads, account } = await mount({
       clauses: [group(2, ALICE, PASSKEY)],
       paused: async (module) => {
-        if (!sameAddress(module, BOOK.methods.passkey)) return NOT_PAUSED
+        if (!sameAddress(module, BOOK.methods.passkey)) {
+          return NOT_PAUSED
+        }
         pausedAnswers += 1
         return pausedAnswers === 1 ? UNANSWERED : NOT_PAUSED
       },
       fitCheck: async () => {
         fitAnswers += 1
-        if (fitAnswers === 1) throw new Error('node unreachable')
+        if (fitAnswers === 1) {
+          throw new Error('node unreachable')
+        }
         return { basis: 'deployed-code', fits: true }
       }
     })

@@ -77,7 +77,9 @@ const PathBlock = ({ clauses, enrollments, addressBook }: PathBlockProps) => {
         isRequiredRow(clause) ? renderRow(clause.credentials[0], `review-row-${index}-0`) : null
       )}
       {clauses.map((clause, index) => {
-        if (isRequiredRow(clause)) return null
+        if (isRequiredRow(clause)) {
+          return null
+        }
         groupNumber += 1
         const list = renderMemberList(clause.credentials, { showAll: shownAll.includes(index) }, t)
         return (
