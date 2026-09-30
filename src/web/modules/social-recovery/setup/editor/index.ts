@@ -12,7 +12,6 @@ export {
   renderKindName,
   renderRowChip
 } from './copy'
-export { METHOD_KINDS } from './types'
 export type {
   ClauseRole,
   ClientRefusal,
@@ -20,7 +19,6 @@ export type {
   EditorLoad,
   EditorViewProps,
   EditResult,
-  MethodKind,
   PickerEntry,
   PickerTarget,
   SlotPosition

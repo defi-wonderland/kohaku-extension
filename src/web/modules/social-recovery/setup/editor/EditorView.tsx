@@ -21,6 +21,7 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
+import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 import {
   getRuleLines,
   renderRuleLines,
@@ -42,6 +43,7 @@ import {
   methodCountOf,
   methodKindOf,
   moveToGroup,
+  PICKER_KINDS,
   pickerEntriesOf,
   placeAt,
   placedRoles,
@@ -54,14 +56,12 @@ import {
   withoutRole
 } from './operations'
 import ThresholdField from './ThresholdField'
-import { METHOD_KINDS } from './types'
 import type {
   ClauseRole,
   ClientRefusal,
   EditorLoad,
   EditorViewProps,
   EditResult,
-  MethodKind,
   PickerTarget,
   SlotPosition
 } from './types'
@@ -185,7 +185,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     if (placed) closePicker()
   }
 
-  const onEnrollNew = (kind: MethodKind) => {
+  const onEnrollNew = (kind: SlotKind) => {
     if (!picker || checkingRef.current) return
     const at =
       picker.place === 'slot'
@@ -290,9 +290,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
   const refusalLines = clientRefusal ? renderClientRefusal(clientRefusal, t) : null
 
-  const pickerKinds = (target: PickerTarget): readonly MethodKind[] => {
+  const pickerKinds = (target: PickerTarget): readonly SlotKind[] => {
     if (target.place === 'second') return SECOND_METHOD_KINDS
-    return target.place === 'slot' && target.kind ? [target.kind] : METHOD_KINDS
+    return target.place === 'slot' && target.kind ? [target.kind] : PICKER_KINDS
   }
 
   const openSlot = (clause: number, member: number) => {

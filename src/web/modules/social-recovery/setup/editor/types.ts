@@ -5,13 +5,11 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { Enrollment, SetupRecords } from '@web/modules/social-recovery/shared/records'
-
-/** The method kinds in the order the picker lists them. */
-export const METHOD_KINDS = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar'] as const
-
-/** A method kind, a key of the address book's `methods`. */
-export type MethodKind = typeof METHOD_KINDS[number]
+import type {
+  Enrollment,
+  SetupRecords,
+  SlotKind
+} from '@web/modules/social-recovery/shared/records'
 
 /** Where one credential sits in the path: its clause and its place among the clause's members. */
 export interface SlotPosition {
@@ -35,7 +33,7 @@ export type PickerTarget =
   | { place: 'required' }
   | { place: 'second' }
   | { place: 'member'; clause: number }
-  | ({ place: 'slot'; kind?: MethodKind } & SlotPosition)
+  | ({ place: 'slot'; kind?: SlotKind } & SlotPosition)
 
 /** One enrolled credential the picker lists, with whether the path already holds it. */
 export interface PickerEntry {
@@ -78,12 +76,12 @@ export interface EditorViewProps {
 }
 
 export interface MemberPickerProps {
-  entries: Record<MethodKind, PickerEntry[]>
+  entries: Record<SlotKind, PickerEntry[]>
   /** The kinds the picker offers: every kind, or an empty slot's own. */
-  kinds: readonly MethodKind[]
+  kinds: readonly SlotKind[]
   addressBook: AddressBook
   onPick: (credential: Credential) => void
-  onEnrollNew: (kind: MethodKind) => void
+  onEnrollNew: (kind: SlotKind) => void
   onClose: () => void
   /** Holds every pick while the path check runs. */
   disabled?: boolean

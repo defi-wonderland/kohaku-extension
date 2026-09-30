@@ -18,24 +18,19 @@ import type {
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { Enrollment } from '@web/modules/social-recovery/shared/records'
-import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
+import type { Enrollment, SlotKind } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot, SLOT_KINDS, slotKindOf } from '@web/modules/social-recovery/shared/records'
 
-import { METHOD_KINDS } from './types'
-import type {
-  ClauseRole,
-  EditResult,
-  MethodKind,
-  PickerEntry,
-  PickerTarget,
-  SlotPosition
-} from './types'
+import type { ClauseRole, EditResult, PickerEntry, PickerTarget, SlotPosition } from './types'
+
+/** The kinds in the order the picker lists them. */
+export const PICKER_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar']
 
 /**
  * The kinds a second method can be: a passkey from another device, or a key the
  * holder keeps, a hardware key among them, entered as a guardian address.
  */
-export const SECOND_METHOD_KINDS: readonly MethodKind[] = ['passkey', 'ecdsa']
+export const SECOND_METHOD_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa']
 
 /** The threshold a new group starts with, two of its members. */
 export const NEW_GROUP_THRESHOLD = 2
@@ -45,15 +40,15 @@ const DUPLICATE: EditResult = { status: 'refused', reason: 'duplicate' }
 export { emptySlot as emptySlotOf, isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
 /** The kind of method a method module address serves; a module the address book does not hold has none. */
-export const methodKindOf = (method: Address, addressBook: AddressBook): MethodKind | undefined =>
-  METHOD_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], method))
+export const methodKindOf = (method: Address, addressBook: AddressBook): SlotKind | undefined =>
+  SLOT_KINDS.find((kind) => isAddressEqual(addressBook.methods[kind], method))
 
 /**
  * The kind of a credential: the kind an empty slot waits for, or the address
  * book's method an enrolled credential's method is. A method the address book
  * does not hold has no kind.
  */
-export const kindOf = (credential: Credential, addressBook: AddressBook): MethodKind | undefined =>
+export const kindOf = (credential: Credential, addressBook: AddressBook): SlotKind | undefined =>
   isEmptySlot(credential) ? slotKindOf(credential) : methodKindOf(credential.method, addressBook)
 
 /** The address a guardian's config holds, ABI-encoded in one word. */
@@ -296,8 +291,8 @@ export const pickerEntriesOf = (
   enrollments: readonly Enrollment[],
   clauses: readonly Clause[],
   addressBook: AddressBook
-): Record<MethodKind, PickerEntry[]> => {
-  const entries: Record<MethodKind, PickerEntry[]> = {
+): Record<SlotKind, PickerEntry[]> => {
+  const entries: Record<SlotKind, PickerEntry[]> = {
     passkey: [],
     ecdsa: [],
     zkpassport: [],
@@ -320,7 +315,7 @@ export const enrollmentOf = (
   enrollments.find((enrollment) => sameCredential(enrollment.credential, credential))
 
 /** The search string the enroll screen reads: the kind and the slot it fills. */
-export const enrollSearchOf = (kind: MethodKind, at: SlotPosition): string =>
+export const enrollSearchOf = (kind: SlotKind, at: SlotPosition): string =>
   `?${new URLSearchParams({
     kind,
     clause: String(at.clause),
