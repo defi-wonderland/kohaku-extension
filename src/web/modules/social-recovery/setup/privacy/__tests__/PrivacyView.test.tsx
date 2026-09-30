@@ -116,6 +116,18 @@ describe('the privacy step', () => {
     await h.type('password-confirmation', confirmation)
   }
 
+  const radioNodes = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="privacy-screen"] [role="radio"]')
+    )
+
+  const radioIds = () => radioNodes().map((radio) => radio.getAttribute('data-testid'))
+
+  const checkedRadios = () =>
+    radioNodes()
+      .filter((radio) => radio.getAttribute('aria-checked') === 'true')
+      .map((radio) => radio.getAttribute('data-testid'))
+
   // Continues at whatever level the step opened on, and reads back what it stored.
   const continueAsOpened = async (records: WalletRecords) => {
     if (h.inputOf('password')) await typePasswords('correct horse', 'correct horse')
@@ -181,6 +193,41 @@ describe('the privacy step', () => {
       await h.mount(records)
       expect(h.inputOf('password')).toBeNull()
       expect(await continueAsOpened(records)).toEqual(privacy)
+    })
+
+    it('a draft stored at Shape visible with no member opens on Private and continue stores Private', async () => {
+      const draft = shapeVisibleDraft([])
+      const records = recordsOn()
+      await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(draft)
+      await h.mount(records)
+      expect(radioIds()).toEqual(['level-private', 'level-public'])
+      expect(checkedRadios()).toEqual(['level-private'])
+      expect(await continueAsOpened(records)).toEqual({ backup: 'encrypted', publicMetadata: '0x' })
+    })
+
+    it('a path whose groups have no member offers no Shape visible', async () => {
+      await h.mount(await withDraft({ clauses: [{ threshold: 1, credentials: [] }] }))
+      expect(radioIds()).toEqual(['level-private', 'level-public'])
+    })
+
+    it('only the radio of a stored Public draft is checked', async () => {
+      await h.mount(
+        await withDraft({
+          clauses: PASSKEY_PASSPORT_AND_GUARDIAN,
+          privacy: { backup: 'clear', publicMetadata: '0x' }
+        })
+      )
+      expect(checkedRadios()).toEqual(['level-public'])
+      expect(
+        radioNodes().filter((radio) => radio.getAttribute('aria-checked') === 'false')
+      ).toHaveLength(2)
+    })
+
+    it('a press on Shape visible checks that radio alone', async () => {
+      await h.mount(await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN }))
+      expect(checkedRadios()).toEqual(['level-private'])
+      await h.press('level-shape-visible')
+      expect(checkedRadios()).toEqual(['level-shape-visible'])
     })
 
     it('opens on Private with no draft', async () => {
@@ -495,26 +542,20 @@ describe('the privacy step', () => {
       expect(h.text()).not.toMatch(HIDES_EXISTENCE)
     })
 
-    it('continue with no draft starts the default draft at Shape visible with its note', async () => {
-      const records = recordsOn()
-      await h.mount(records)
-      await h.press('level-shape-visible')
-      await typePasswords('correct horse', 'correct horse')
-      await h.press('continue')
-      const draft = await storedDraft(records)
-      expect(draft.clauses).toEqual([])
-      expect(draft.privacy.backup).toBe('encrypted')
-      expect(readPublicNote(draft.privacy.publicMetadata)).toEqual({
-        kind: 'shape',
-        shape: { wait: draft.wait, ignoresPause: draft.ignoresPause, clauses: [] }
-      })
-      expect(await flagOf(records)).toBe(PASSWORD_SET)
-      expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('correct horse')
+    it('is not offered with no draft, where only Private and Public render', async () => {
+      await h.mount(recordsOn())
+      expect(radioIds()).toEqual(['level-private', 'level-public'])
+      expect(h.byTestId('level-shape-visible')).toBeNull()
+      expect(h.byTestId('level-line-shape-visible')).toBeNull()
     })
 
-    it('continue with no draft carries the stored waiting period into the note', async () => {
+    it('continue carries the stored waiting period into the note', async () => {
       const records = recordsOn()
-      await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(259200n)
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      await setup.waitingPeriod.write(259200n)
+      await setup.setupDraft.write(
+        draftOf({ wait: 259200n, clauses: PASSKEY_PASSPORT_AND_GUARDIAN })
+      )
       await h.mount(records)
       await h.press('level-shape-visible')
       await typePasswords('correct horse', 'correct horse')
