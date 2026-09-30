@@ -7,8 +7,15 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { SLOT_KINDS } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
-import { ENROLL_SEARCH_KEYS } from './types'
 import type { EnrollSearch } from './types'
+
+/** The search keys the screen reads: the slot's kind and position, and a ceremony that returned. */
+export const ENROLL_SEARCH_KEYS = {
+  kind: 'kind',
+  clause: 'clause',
+  member: 'member',
+  ceremony: 'ceremony'
+} as const
 
 const POSITION = /^(0|[1-9][0-9]{0,3})$/
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,128}$/

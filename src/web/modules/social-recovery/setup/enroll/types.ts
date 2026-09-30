@@ -27,14 +27,6 @@ import type {
 
 import type { KEY_TEST_TYPES } from './testRequest'
 
-/** The search keys the screen reads: the slot's kind and position, and a ceremony that returned. */
-export const ENROLL_SEARCH_KEYS = {
-  kind: 'kind',
-  clause: 'clause',
-  member: 'member',
-  ceremony: 'ceremony'
-} as const
-
 /** Where the enrollment lands: a clause of the path and a member of that clause. */
 export interface SlotPosition {
   clause: number
@@ -49,13 +41,7 @@ export interface EnrollSearch {
 }
 
 /** The chip each stored test verdict reads as. */
-export const TEST_CHIPS: { readonly [V in EnrollmentTestVerdict]: MethodChip } = {
-  passed: 'tested',
-  'not-tested': 'notTested',
-  failed: 'testFailed',
-  unavailable: 'testUnavailable',
-  'not-supported': 'notSupported'
-}
+export type TestChips = { readonly [V in EnrollmentTestVerdict]: MethodChip }
 
 /**
  * What the named slot holds: empty and waiting for the kind, the credential

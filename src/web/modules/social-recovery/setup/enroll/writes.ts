@@ -81,8 +81,9 @@ export const placeEnrollment = async (
 /**
  * Stores a test's verdict on the credential's enrollment, with the cause a
  * test that did not pass reported. A passed test may bring its challenge's
- * salt and time, and the facts the ceremony read again; the enrollment keeps
- * its credential id, its facts and its last passed test otherwise. Returns the
+ * salt and time, and the facts the ceremony read again, whose kind becomes the
+ * backup kind; the enrollment keeps its credential id, its backup kind, its
+ * facts and its last passed test otherwise. Returns the
  * updated enrollment, or null where the list no longer holds the credential.
  */
 export const recordTest = async (
@@ -99,11 +100,12 @@ export const recordTest = async (
   }
   const facts = passedWith?.facts ?? found.facts
   const lastTest = passedWith?.lastTest ?? found.lastTest
+  const backup = passedWith?.facts?.kind ?? found.backup
   const updated: Enrollment = {
     credential: found.credential,
     test,
     ...(cause ? { cause } : {}),
-    ...(found.backup ? { backup: found.backup } : {}),
+    ...(backup ? { backup } : {}),
     ...(found.credentialId ? { credentialId: found.credentialId } : {}),
     ...(facts ? { facts } : {}),
     ...(lastTest ? { lastTest } : {})

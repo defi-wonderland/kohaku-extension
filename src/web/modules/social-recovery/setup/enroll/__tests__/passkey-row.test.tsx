@@ -828,6 +828,25 @@ describe('the passkey row', () => {
       })
     })
 
+    it('takes the backup kind from the facts a passed test read again', async () => {
+      await createAndReturn(createdWith(BOUND_TO_THIS_MAC))
+      await view!.press('passkey-run-test')
+      await returnFrom(
+        deps.requestIds[deps.requestIds.length - 1],
+        'testAccess',
+        passed({ proof: '0x0102', facts: SYNCED_ON_GOOGLE })
+      )
+
+      const [enrollment] = await storedEnrollments(records)
+      expect(enrollment).toMatchObject({
+        test: 'passed',
+        backup: 'synced',
+        facts: SYNCED_ON_GOOGLE
+      })
+      await open()
+      expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(t(`${CEREMONY}.syncedLoss`))
+    })
+
     it('renders the kind line, the loss line and the signed note from the record alone', async () => {
       await reopenWith({
         credential: CREDENTIAL,

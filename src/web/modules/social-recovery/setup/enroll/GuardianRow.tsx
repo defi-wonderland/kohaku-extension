@@ -47,9 +47,8 @@ import {
   seedCheckOf
 } from './guardian'
 import OfflineBlock from './OfflineBlock'
-import { causeOf, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
+import { causeOf, TEST_CHIPS, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
 import { keyTestOf, keyTestToSignOf } from './testRequest'
-import { TEST_CHIPS } from './types'
 import type { GuardianChallenge, GuardianChecks, NameCheck, RowProps } from './types'
 import { placeEnrollment, recordTest } from './writes'
 
@@ -242,21 +241,22 @@ const GuardianRow = ({
             keyTest: signed.keyTest,
             signature,
             address,
-            chain: deps.chain
+            chain: deps.chain,
+            now: deps.now()
           })
         )
       } finally {
         setBusy(false)
       }
     },
-    [address, deps.chain, applyTest]
+    [address, deps, applyTest]
   )
 
   // The offline block serves any key; a key the wallet holds signs on this
   // device unless the holder asks for the offline block.
   const runTest = useCallback(
     async (offlineOnly: boolean) => {
-      if (client.status !== 'ready' || !enrollment || !address) {
+      if (!enrollment || !address) {
         return
       }
       const keyTest = keyTestOf({
@@ -311,7 +311,7 @@ const GuardianRow = ({
       setBusy(false)
       await check(next, signature)
     },
-    [client, enrollment, address, chainId, account, deps, applyTest, check]
+    [enrollment, address, chainId, account, deps, applyTest, check]
   )
 
   const withdraw = useCallback(() => {

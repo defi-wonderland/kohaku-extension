@@ -35,7 +35,7 @@ import {
   renderHash
 } from '@web/modules/social-recovery/shared/display'
 
-import { causeOf, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
+import { causeOf, TEST_CHIPS, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
 import {
   clipName,
   defaultPasskeyName,
@@ -51,7 +51,6 @@ import {
 } from './passkey'
 import { enrollPathOf } from './search'
 import { testRequestOf } from './testRequest'
-import { TEST_CHIPS } from './types'
 import type {
   PassedTest,
   PasskeyCeremonyRequest,

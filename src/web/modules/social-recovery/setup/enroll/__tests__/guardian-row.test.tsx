@@ -1063,6 +1063,25 @@ describe('the guardian row', () => {
       })
     })
 
+    each([
+      ['after the window closed', REQUEST_WINDOW_SECONDS + 1, 'testFailed', 'failed'],
+      ['within the window', REQUEST_WINDOW_SECONDS, 'tested', 'passed']
+    ] as const)(
+      "reads the key's own signature pasted %s",
+      async ([, secondsLater, chipName, verdict]) => {
+        let clock = NOW
+        deps = depsOf({ now: () => clock })
+        await addGuardian()
+        await view!.press('guardian-test')
+        const signature = await GUARDIAN_KEY.signTypedData(lastKeyTest())
+        clock = NOW + secondsLater * 1000
+        await pasteAndCheck(signature)
+
+        expect(view!.byTestId('guardian-chip')?.textContent).toBe(chip(chipName))
+        expect((await storedEnrollments(records))[0].test).toBe(verdict)
+      }
+    )
+
     it('carries the same typed data by QR and by file as the row asked the queue to sign', async () => {
       const key: KeyHandle = { addr: HELD, type: 'internal' }
       const saveFile = jest.fn()

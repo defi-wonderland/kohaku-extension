@@ -7,7 +7,18 @@ import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
+import type { TestChips } from './types'
+
 const CEREMONY = 'socialRecovery.ceremony'
+
+/** The chip each stored test verdict reads as. */
+export const TEST_CHIPS: TestChips = {
+  passed: 'tested',
+  'not-tested': 'notTested',
+  failed: 'testFailed',
+  unavailable: 'testUnavailable',
+  'not-supported': 'notSupported'
+}
 
 /** The stored verdict a test outcome reads as, or null for a dismissal. */
 export const testVerdictOf = (outcome: CeremonyOutcome<unknown>): EnrollmentTestVerdict | null => {

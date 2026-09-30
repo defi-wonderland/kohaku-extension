@@ -144,13 +144,19 @@ export const signatureOf = (text: string): Hex | null => {
  * address's own EIP-1271 answer over the typed data's digest decides; an
  * address with no code answers nothing, which fails as no match. Without a
  * provider, or with a read the chain did not answer, the test is unavailable.
+ * A signature checked after the key test's deadline fails, whoever signed it.
  */
 export const checkGuardianSignature = async (input: {
   keyTest: KeyTestTypedData
   signature: Hex
   address: Address
   chain: GuardianChain | null
+  /** Milliseconds since epoch. */
+  now: number
 }): Promise<GuardianTestOutcome> => {
+  if (input.keyTest.message.validUntil < BigInt(Math.floor(input.now / 1000))) {
+    return failed('material-rejected', 'expired')
+  }
   // A signature that does not parse recovers to no address.
   const signed = await verifyTypedData({
     ...input.keyTest,
