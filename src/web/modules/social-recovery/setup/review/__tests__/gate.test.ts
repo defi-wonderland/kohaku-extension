@@ -353,6 +353,117 @@ describe('the save gate', () => {
   })
 })
 
+describe('the blocks the setup records decide', () => {
+  const EMPTY_PASSKEY = emptySlot('passkey')
+
+  it('blocks a hidden setup with no recovery password set', () => {
+    expect(gateOf({ backup: 'encrypted', passwordSet: false })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'password-missing' }
+    })
+  })
+
+  it('lets a hidden setup with its recovery password set save', () => {
+    expect(gateOf({ backup: 'encrypted', passwordSet: true })).toMatchObject({
+      canSave: true,
+      blocked: null
+    })
+  })
+
+  it('lets a public setup save with no recovery password set', () => {
+    expect(gateOf({ backup: 'clear', passwordSet: false })).toMatchObject({
+      canSave: true,
+      blocked: null
+    })
+  })
+
+  it('blocks a path with an empty slot in its first clause', () => {
+    expect(gateOf({ clauses: [group(1, ALICE, EMPTY_PASSKEY), required(PASSKEY)] })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'empty-slot' }
+    })
+  })
+
+  it('blocks a path with an empty slot in its second clause', () => {
+    expect(gateOf({ clauses: [required(PASSKEY), group(1, ALICE, EMPTY_PASSKEY)] })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'empty-slot' }
+    })
+  })
+
+  it('blocks a path whose required row is an empty slot', () => {
+    expect(gateOf({ clauses: [group(1, ALICE), required(EMPTY_PASSKEY)] })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'empty-slot' }
+    })
+  })
+
+  it('lets a path whose every slot holds a method save', () => {
+    expect(gateOf({ clauses: [group(1, ALICE, PASSKEY), required(PASSKEY)] })).toMatchObject({
+      canSave: true,
+      blocked: null
+    })
+  })
+
+  it('shows the empty slot before the missing password', () => {
+    expect(
+      gateOf({ clauses: [required(EMPTY_PASSKEY)], backup: 'encrypted', passwordSet: false })
+        .blocked
+    ).toEqual({ kind: 'empty-slot' })
+  })
+
+  it('shows the records blocks before every block from the reads', () => {
+    const reads = {
+      trustRows: UNAVAILABLE_ROWS,
+      removedKey: REMOVED_KEY_UNNAMED,
+      fitCheck: DOES_NOT_FIT,
+      setupState: HAS_SETUP
+    }
+
+    expect(gateOf({ ...reads, clauses: [required(EMPTY_PASSKEY)] }).blocked).toEqual({
+      kind: 'empty-slot'
+    })
+    expect(gateOf({ ...reads, passwordSet: false }).blocked).toEqual({
+      kind: 'password-missing'
+    })
+  })
+
+  it('shows the records blocks while a read is still running', () => {
+    expect(
+      gateOf({ removedKey: { status: 'pending' }, clauses: [required(EMPTY_PASSKEY)] })
+    ).toMatchObject({ canSave: false, blocked: { kind: 'empty-slot' } })
+    expect(gateOf({ trustRows: PENDING_ROWS, passwordSet: false })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'password-missing' }
+    })
+  })
+
+  it('shows the records blocks while the client is not ready', () => {
+    expect(gateOf({ clientReady: false, passwordSet: false })).toMatchObject({
+      canSave: false,
+      blocked: { kind: 'password-missing' }
+    })
+  })
+
+  it('shows no records block before the records loaded', () => {
+    expect(
+      gateOf({ recordsLoaded: false, clauses: [required(EMPTY_PASSKEY)], passwordSet: false })
+    ).toMatchObject({ canSave: false, blocked: null })
+  })
+
+  it('reaches the reads blocks on a full hidden path with its recovery password set', () => {
+    const clauses = [group(1, ALICE, PASSKEY), required(PASSKEY)]
+
+    expect(
+      gateOf({ clauses, backup: 'encrypted', passwordSet: true, setupState: HAS_SETUP }).blocked
+    ).toEqual({ kind: 'already-set-up' })
+    expect(
+      gateOf({ clauses, backup: 'encrypted', passwordSet: true, trustRows: UNAVAILABLE_ROWS })
+        .blocked
+    ).toEqual({ kind: 'unavailable' })
+  })
+})
+
 describe('whether a method of the path is untested', () => {
   it('holds where a credential has no passed test', () => {
     expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'not-tested')])).toBe(true)

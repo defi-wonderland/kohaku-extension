@@ -61,6 +61,9 @@ const { createWalletRecords } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records')
 >('@web/modules/social-recovery/shared/records')
 const { zeroAddress } = jest.requireActual<typeof import('viem')>('viem')
+const { emptySlot } = jest.requireActual<
+  typeof import('@web/modules/social-recovery/shared/records/slots')
+>('@web/modules/social-recovery/shared/records/slots')
 const ReviewView = jest.requireActual<typeof import('../ReviewView')>('../ReviewView').default
 const fixtures = jest.requireActual<typeof import('./fixtures')>('./fixtures')
 const {
@@ -1314,6 +1317,16 @@ describe("the wallet's reading of the account's keys", () => {
     expect(isDisabled('review-save')).toBe(true)
   })
 
+  it('reads several keys with the several-keys line where the description counts one authority', async () => {
+    await mount({
+      removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' })
+    })
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.cannotRecover.reasonSeveralKeys`))
+    expect(isDisabled('review-save')).toBe(true)
+  })
+
   it('reads an account with no creation record as a removed key it could not read, with its retry', async () => {
     const { account } = await mount({
       removedKey: async () => ({ kind: 'unavailable', cause: 'no-creation-record' })
@@ -1365,6 +1378,66 @@ describe('an account that already has a setup', () => {
     await press('review-blocked-open')
 
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryManage)
+  })
+})
+
+describe('a path with an empty slot', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+
+  it('blocks Save with its line and opens the editor', async () => {
+    const { navigate } = await mount({ clauses: [group(1, ALICE, emptySlot('passkey'))] })
+
+    expect(byTestId('review-blocked-empty-slot')).not.toBeNull()
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.emptySlot`))
+    expect(textOf('review-blocked-editor')).toBe(t(`${BLOCKED}.emptySlotAction`))
+    expect(isDisabled('review-save')).toBe(true)
+
+    await press('review-blocked-editor')
+
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupEditor)
+  })
+
+  it('shows before the missing password and before a read has come back', async () => {
+    await mount({
+      clauses: [required(ALICE), required(emptySlot('passkey'))],
+      passwordSet: false,
+      moduleInfo: () => new Promise(() => {})
+    })
+
+    expect(byTestId('review-blocked-empty-slot')).not.toBeNull()
+    expect(byTestId('review-blocked-password-missing')).toBeNull()
+    expect(isDisabled('review-save')).toBe(true)
+  })
+})
+
+describe('a hidden setup with no recovery password', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+
+  it('blocks Save with its line and opens the privacy step', async () => {
+    const { navigate } = await mount({ backup: 'encrypted', passwordSet: false })
+
+    expect(byTestId('review-blocked-password-missing')).not.toBeNull()
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.passwordMissing`))
+    expect(textOf('review-blocked-privacy')).toBe(t(`${BLOCKED}.passwordMissingAction`))
+    expect(isDisabled('review-save')).toBe(true)
+
+    await press('review-blocked-privacy')
+
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupPrivacy)
+  })
+
+  it('shows before a block from the reads', async () => {
+    await mount({ passwordSet: false, setupState: async () => setupStateOf(true) })
+
+    expect(byTestId('review-blocked-password-missing')).not.toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
+  })
+
+  it('does not block a public setup', async () => {
+    await mount({ backup: 'clear', passwordSet: false })
+
+    expect(byTestId('review-blocked-password-missing')).toBeNull()
+    expect(isDisabled('review-save')).toBe(false)
   })
 })
 
