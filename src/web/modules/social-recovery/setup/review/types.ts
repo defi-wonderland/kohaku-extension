@@ -15,6 +15,7 @@ import type {
 import type {
   AddressBook,
   FitCheckReading,
+  PrivilegeHoldersReading,
   RecoveryKitClient,
   RemovedKeyReading,
   WalletReads
@@ -169,7 +170,7 @@ export interface StopRow {
 
 // ---------------------------------------------------------------------------
 // The account's reads: the key a recovery removes, the fit check, the setup
-// read and the setup description the other doors come from
+// read, the setup description and the privilege read the other doors come from
 // ---------------------------------------------------------------------------
 
 /** One read of the account: still running, answered, or thrown. */
@@ -189,7 +190,12 @@ export interface AccountReads {
   description: AccountRead<SetupDescription>
 }
 
-export interface AccountReadsState extends AccountReads {
+/** The account's reads with the privilege read the other doors come from, which never gates Save. */
+export interface AccountReadsHeld extends AccountReads {
+  privilegeHolders: AccountRead<PrivilegeHoldersReading>
+}
+
+export interface AccountReadsState extends AccountReadsHeld {
   /** Runs again the named reads that are not still running. */
   retry: (names: readonly AccountReadName[]) => void
 }
@@ -249,6 +255,8 @@ export interface SaveGate {
 export type ReviewKitClient = Pick<RecoveryKitClient, 'chain' | 'descriptor' | 'moduleReads'> & {
   setup: Pick<ISetupClient, 'describeSetup' | 'setupState'>
   walletReads: Pick<WalletReads, 'removedKey' | 'fitCheck'>
+  /** The wallet's own read of the keys holding a privilege on the account. */
+  privilegeHolders: () => Promise<PrivilegeHoldersReading>
 }
 
 /** The recovery client as the view takes it. */

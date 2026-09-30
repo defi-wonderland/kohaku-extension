@@ -1,4 +1,6 @@
-import { codeEntriesOf, doorsOf as doorsWith } from '../doors'
+import type { PrivilegeHoldersReading } from '@web/modules/social-recovery/shared/client'
+
+import { authoritiesOf, codeEntriesOf, doorsOf as doorsWith } from '../doors'
 import type { AccountRead, AccountReads } from '../types'
 import { descriptionOf, OTHER_KEY, REMOVED_KEY, THIRD_KEY } from './fixtures'
 
@@ -15,9 +17,9 @@ const doorsOf = (
 
 const answeredWith = (
   ...args: Parameters<typeof descriptionOf>
-): AccountRead<ReturnType<typeof descriptionOf>> => ({
+): AccountRead<PrivilegeHoldersReading> => ({
   status: 'answered',
-  value: descriptionOf(...args)
+  value: { kind: 'holders', keys: authoritiesOf(descriptionOf(...args)) }
 })
 
 const UNAVAILABLE = { status: 'unavailable' } as const
@@ -161,19 +163,14 @@ describe('the other doors', () => {
       expect(doors).toEqual({ kind: 'keys', keys: 1 })
     })
 
-    it('read as unreadable where neither the wallet nor the description names the removed key', () => {
-      const description = answeredWith(
-        [
-          { address: OTHER_KEY, isAuthority: true },
-          { address: THIRD_KEY, isAuthority: true }
-        ],
-        'no-creation-triple'
-      )
+    it('read as unreadable where the wallet could not read the privilege holders', () => {
+      const unreadable: AccountRead<PrivilegeHoldersReading> = {
+        status: 'answered',
+        value: { kind: 'unreadable', cause: 'node unreachable' }
+      }
 
-      expect(doorsOf(description, UNAVAILABLE, SEVERAL_KEYS)).toEqual({ kind: 'unreadable' })
-      expect(doorsOf(description, UNAVAILABLE, { status: 'failed' })).toEqual({
-        kind: 'unreadable'
-      })
+      expect(doorsOf(unreadable, UNAVAILABLE, SEVERAL_KEYS)).toEqual({ kind: 'unreadable' })
+      expect(doorsOf(unreadable, UNAVAILABLE, NAMED)).toEqual({ kind: 'unreadable' })
     })
 
     it('count every authority where the wallet names no key but the description names one', () => {

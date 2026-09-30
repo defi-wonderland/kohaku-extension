@@ -20,7 +20,11 @@ import type {
   SetupState,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type { FitCheckReading, RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
+import type {
+  FitCheckReading,
+  PrivilegeHoldersReading,
+  RemovedKeyReading
+} from '@web/modules/social-recovery/shared/client'
 import type { Enrollment, RecordStorage } from '@web/modules/social-recovery/shared/records'
 
 import type { ProviderKind, ReviewClient, ReviewKitClient } from '../types'
@@ -117,6 +121,7 @@ interface MountOptions {
   fitCheck?: () => Promise<FitCheckReading>
   setupState?: () => Promise<SetupState>
   describeSetup?: () => Promise<SetupDescription>
+  privilegeHolders?: () => Promise<PrivilegeHoldersReading>
   providerKind?: ProviderKind
   accountLabel?: string
   storageRefuses?: boolean
@@ -220,6 +225,7 @@ const mount = async ({
   fitCheck = async () => ({ basis: 'deployed-code', fits: true }),
   setupState = async () => setupStateOf(false),
   describeSetup = async () => descriptionOf(),
+  privilegeHolders,
   providerKind,
   accountLabel,
   storageRefuses = false
@@ -257,7 +263,23 @@ const mount = async ({
     descriptor: deploymentDescriptor('sepolia'),
     moduleReads: reads,
     setup: { setupState: account.setupState, describeSetup: account.describeSetup },
-    walletReads: { removedKey: account.removedKey, fitCheck: account.fitCheck }
+    walletReads: { removedKey: account.removedKey, fitCheck: account.fitCheck },
+    privilegeHolders: jest.fn(
+      privilegeHolders ??
+        (async (): Promise<PrivilegeHoldersReading> => {
+          try {
+            const { candidateKeys } = await describeSetup()
+            return {
+              kind: 'holders',
+              keys: candidateKeys
+                .filter(({ isAuthority }) => isAuthority)
+                .map(({ address }) => address)
+            }
+          } catch (thrown) {
+            return { kind: 'unreadable', cause: String(thrown) }
+          }
+        })
+    )
   }
   const retry = jest.fn()
   let reviewClient: ReviewClient = { status: 'ready', client: kit }
