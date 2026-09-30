@@ -102,7 +102,9 @@ const allByTestId = (id: string) =>
 
 const press = async (id: string) => {
   const node = byTestId(id)
-  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  if (!node) {
+    throw new Error(`nothing on screen with the test id ${id}`)
+  }
   act(() => node.click())
   await settle()
 }

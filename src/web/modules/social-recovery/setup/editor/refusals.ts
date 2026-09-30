@@ -63,8 +63,12 @@ const clauseRefusals = (
  * picker's ceiling refuses every longer wait that still fits the field.
  */
 const waitRefusals = (wait: bigint): Refusal[] => {
-  if (wait < 0n || wait >= WAIT_FIELD_LIMIT) return [{ key: 'waitFieldWidth' }]
-  if (wait > PICKER_CEILING_SECONDS) return [{ key: 'waitCeiling' }]
+  if (wait < 0n || wait >= WAIT_FIELD_LIMIT) {
+    return [{ key: 'waitFieldWidth' }]
+  }
+  if (wait > PICKER_CEILING_SECONDS) {
+    return [{ key: 'waitCeiling' }]
+  }
   return []
 }
 

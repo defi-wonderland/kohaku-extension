@@ -164,8 +164,12 @@ export const renderRefusalPlace = (
   t: Translate
 ): string | null => {
   const { clause } = refusal
-  if (clause === undefined || !roles[clause]) return null
-  if (roles[clause] === 'required') return t('socialRecovery.editor.requiredHeader')
+  if (clause === undefined || !roles[clause]) {
+    return null
+  }
+  if (roles[clause] === 'required') {
+    return t('socialRecovery.editor.requiredHeader')
+  }
   const n = roles.slice(0, clause).filter((role) => role === 'group').length + 1
   return t('socialRecovery.shape.group', { n })
 }
