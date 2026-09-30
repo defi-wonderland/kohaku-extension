@@ -93,10 +93,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           roles: rolesOf(stored.clauses)
         }
         loadRef.current = next
-        if (mounted.current) setLoad(next)
+        if (mounted.current) {
+          setLoad(next)
+        }
       })
       .catch(() => {
-        if (mounted.current) setLoadFailed(true)
+        if (mounted.current) {
+          setLoadFailed(true)
+        }
       })
     return () => {
       mounted.current = false
@@ -121,7 +125,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         } catch {
           writeFailedRef.current = true
         }
-        if (mounted.current) setWriteFailed(writeFailedRef.current)
+        if (mounted.current) {
+          setWriteFailed(writeFailedRef.current)
+        }
       })
     },
     [records]
@@ -129,7 +135,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const retryWrite = () => {
     const current = loadRef.current
-    if (!current || checkingRef.current) return
+    if (!current || checkingRef.current) {
+      return
+    }
     persist(current.draft)
   }
 
@@ -138,7 +146,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const commit = useCallback(
     (next: Clause[], roles: ClauseRole[]) => {
       const current = loadRef.current
-      if (!current || checkingRef.current) return
+      if (!current || checkingRef.current) {
+        return
+      }
       const draft = withClauses(current.draft, next)
       const updated = { ...current, draft, roles }
       loadRef.current = updated
@@ -154,7 +164,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const apply = useCallback(
     (result: EditResult, rolesAt: (at: SlotPosition) => ClauseRole[]) => {
-      if (checkingRef.current) return null
+      if (checkingRef.current) {
+        return null
+      }
       if (result.status === 'refused') {
         setRefused(true)
         return null
@@ -174,23 +186,31 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const onPick = (credential: Credential) => {
-    if (!picker) return
+    if (!picker) {
+      return
+    }
     const target = picker
     const placed = apply(placeAt(current(), target, credential), (at) =>
       placedRoles(currentRoles(), target, at)
     )
-    if (placed) closePicker()
+    if (placed) {
+      closePicker()
+    }
   }
 
   const onEnrollNew = (kind: SlotKind) => {
-    if (!picker || checkingRef.current) return
+    if (!picker || checkingRef.current) {
+      return
+    }
     const at =
       picker.place === 'slot'
         ? { clause: picker.clause, member: picker.member }
         : apply(placeAt(current(), picker, emptySlotOf(kind)), (placed) =>
             placedRoles(currentRoles(), picker, placed)
           )
-    if (!at) return
+    if (!at) {
+      return
+    }
     closePicker()
     // The enroll screen reads the slot from the stored draft, so it opens once the write lands.
     writes.current
@@ -209,11 +229,15 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   // the holder goes on with.
   const endCheck = () => {
     checkingRef.current = false
-    if (mounted.current) setChecking(false)
+    if (mounted.current) {
+      setChecking(false)
+    }
   }
 
   const onContinue = async () => {
-    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) return
+    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) {
+      return
+    }
     checkingRef.current = true
     setChecking(true)
     setCheckFailed(false)
@@ -226,7 +250,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }
       const draft = loadRef.current.draft
       const result = await client.setup.validateSetup(draft)
-      if (!mounted.current) return
+      if (!mounted.current) {
+        return
+      }
       if (blocksContinue(result)) {
         setFindings(result.errors)
         endCheck()
@@ -234,7 +260,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       }
       navigate(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
     } catch {
-      if (mounted.current) setCheckFailed(true)
+      if (mounted.current) {
+        setCheckFailed(true)
+      }
       endCheck()
     }
   }
@@ -253,7 +281,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   )
 
   if (!load) {
-    if (!loadFailed) return <ActivityIndicator testID="editor-spinner" />
+    if (!loadFailed) {
+      return <ActivityIndicator testID="editor-spinner" />
+    }
     return (
       <View testID="editor">
         <Text
@@ -280,13 +310,16 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const groups = indexed.filter(({ index }) => load.roles[index] === 'group')
   const methodCount = methodCountOf(clauses)
   let clientRefusal: ClientRefusal | null = null
-  if (client.status === 'update-the-wallet') clientRefusal = 'update-the-wallet'
-  else if (client.status === 'failed' || (client.status === 'ready' && checkFailed)) {
+  if (client.status === 'update-the-wallet') {
+    clientRefusal = 'update-the-wallet'
+  } else if (client.status === 'failed' || (client.status === 'ready' && checkFailed)) {
     clientRefusal = 'unavailable'
   }
 
   const pickerKinds = (target: PickerTarget): readonly SlotKind[] => {
-    if (target.place === 'second') return SECOND_METHOD_KINDS
+    if (target.place === 'second') {
+      return SECOND_METHOD_KINDS
+    }
     return target.place === 'slot' && target.kind ? [target.kind] : PICKER_KINDS
   }
 

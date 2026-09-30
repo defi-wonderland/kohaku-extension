@@ -71,7 +71,9 @@ export const renderKindName = (
   t: Translate,
   backup?: PasskeyBackupKind
 ): string | null => {
-  if (!kind) return null
+  if (!kind) {
+    return null
+  }
   if (kind === 'passkey' && backup === 'device-bound') {
     return t('socialRecovery.methodNames.passkeyOnThisDevice')
   }
@@ -89,7 +91,9 @@ export const renderRowChip = (
   enrollments: readonly Enrollment[],
   t: Translate
 ): string | null => {
-  if (isEmptySlot(credential)) return renderChip('method', 'notYetActive', t)
+  if (isEmptySlot(credential)) {
+    return renderChip('method', 'notYetActive', t)
+  }
   const enrollment = enrollmentOf(credential, enrollments)
   return enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null
 }

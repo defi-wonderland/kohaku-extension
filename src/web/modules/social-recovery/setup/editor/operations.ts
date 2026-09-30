@@ -106,7 +106,9 @@ const replaceAt = (clauses: readonly Clause[], index: number, clause: Clause): C
 
 /** Adds a required row over the credential: an empty slot or an enrolled credential. */
 export const addRequired = (clauses: readonly Clause[], credential: Credential): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   return {
     status: 'applied',
     clauses: [...clauses, { threshold: 1, credentials: [credential] }],
@@ -130,7 +132,9 @@ export const addMember = (
   group: number,
   credential: Credential
 ): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[group]
   return {
     status: 'applied',
@@ -165,7 +169,9 @@ export const fillSlot = (
   at: SlotPosition,
   credential: Credential
 ): EditResult => {
-  if (pathHolds(clauses, credential, at)) return DUPLICATE
+  if (pathHolds(clauses, credential, at)) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[at.clause]
   return {
     status: 'applied',
@@ -180,7 +186,9 @@ export const fillSlot = (
 /** A required row's credential joins a group, and the row goes. */
 export const moveToGroup = (clauses: readonly Clause[], row: number, group: number): EditResult => {
   const [credential] = clauses[row].credentials
-  if (pathHolds(clauses, credential, { clause: row, member: 0 })) return DUPLICATE
+  if (pathHolds(clauses, credential, { clause: row, member: 0 })) {
+    return DUPLICATE
+  }
   const { threshold, credentials } = clauses[group]
   const joined = replaceAt(clauses, group, { threshold, credentials: [...credentials, credential] })
   return {
@@ -197,7 +205,9 @@ export const makeRequired = (
   member: number
 ): EditResult => {
   const credential = clauses[group].credentials[member]
-  if (pathHolds(clauses, credential, { clause: group, member })) return DUPLICATE
+  if (pathHolds(clauses, credential, { clause: group, member })) {
+    return DUPLICATE
+  }
   return {
     status: 'applied',
     clauses: [...removeMember(clauses, group, member), { threshold: 1, credentials: [credential] }],
@@ -216,13 +226,17 @@ export const makeItAGroup = (
   roles: readonly ClauseRole[] = rolesOf(clauses)
 ): Clause[] => {
   const first = roles.indexOf('required')
-  if (first < 0) return [...clauses]
+  if (first < 0) {
+    return [...clauses]
+  }
   const group: Clause = {
     threshold: 1,
     credentials: clauses.flatMap((clause, i) => (roles[i] === 'required' ? clause.credentials : []))
   }
   return clauses.flatMap((clause, i) => {
-    if (i === first) return [group]
+    if (i === first) {
+      return [group]
+    }
     return roles[i] === 'required' ? [] : [clause]
   })
 }
@@ -231,7 +245,9 @@ export const makeItAGroup = (
 export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] => {
   const first = roles.indexOf('required')
   return roles.flatMap<ClauseRole>((role, i) => {
-    if (i === first) return ['group']
+    if (i === first) {
+      return ['group']
+    }
     return role === 'required' ? [] : [role]
   })
 }
@@ -242,9 +258,13 @@ export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] =>
  * path with no method yet takes the credential as a required row.
  */
 export const addSecondMethod = (clauses: readonly Clause[], credential: Credential): EditResult => {
-  if (pathHolds(clauses, credential)) return DUPLICATE
+  if (pathHolds(clauses, credential)) {
+    return DUPLICATE
+  }
   const index = clauses.findIndex((clause) => clause.credentials.length > 0)
-  if (index < 0) return addRequired(clauses, credential)
+  if (index < 0) {
+    return addRequired(clauses, credential)
+  }
   const { credentials } = clauses[index]
   return {
     status: 'applied',
@@ -259,9 +279,15 @@ export const placeAt = (
   target: PickerTarget,
   credential: Credential
 ): EditResult => {
-  if (target.place === 'required') return addRequired(clauses, credential)
-  if (target.place === 'second') return addSecondMethod(clauses, credential)
-  if (target.place === 'member') return addMember(clauses, target.clause, credential)
+  if (target.place === 'required') {
+    return addRequired(clauses, credential)
+  }
+  if (target.place === 'second') {
+    return addSecondMethod(clauses, credential)
+  }
+  if (target.place === 'member') {
+    return addMember(clauses, target.clause, credential)
+  }
   return fillSlot(clauses, { clause: target.clause, member: target.member }, credential)
 }
 
@@ -275,8 +301,12 @@ export const placedRoles = (
   target: PickerTarget,
   at: SlotPosition
 ): ClauseRole[] => {
-  if (at.clause >= roles.length) return [...roles, 'required']
-  if (target.place === 'second') return roles.map((role, i) => (i === at.clause ? 'group' : role))
+  if (at.clause >= roles.length) {
+    return [...roles, 'required']
+  }
+  if (target.place === 'second') {
+    return roles.map((role, i) => (i === at.clause ? 'group' : role))
+  }
   return [...roles]
 }
 

@@ -30,7 +30,9 @@ const ThresholdField = ({
   const onChangeText = (next: string) => {
     setText(next)
     const value = Number(next)
-    if (next.trim() !== '' && Number.isInteger(value)) onChange(value)
+    if (next.trim() !== '' && Number.isInteger(value)) {
+      onChange(value)
+    }
   }
 
   return (
