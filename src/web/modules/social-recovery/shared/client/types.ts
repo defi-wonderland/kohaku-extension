@@ -197,7 +197,7 @@ export interface ReceiptWaitReleased extends Error {
 export type ExtensionProvider = AdapterProvider &
   ChainReadsProvider &
   ReceiptProvider &
-  Pick<RPCProvider, 'destroy'>
+  Pick<RPCProvider, 'getCode' | 'destroy'>
 
 // ---------------------------------------------------------------------------
 // The client
