@@ -22,7 +22,8 @@
  *    it recovers, in this page, to the key's address over the facade's own
  *    content. A request that leaves the queue with no such signature (the
  *    holder rejected it or closed the window) is refused. A request with no
- *    answer in time is withdrawn.
+ *    answer in time, or whose caller aborts it before the answer, is
+ *    withdrawn.
  *
  * The queue signs for an account the wallet lists with that account's keys.
  * A key that is itself a basic account (an EOA the wallet lists, its own only
@@ -59,6 +60,7 @@ import type {
   SignerNotWired,
   SignFlowFailure,
   SignFlowFailureReason,
+  SignOptions,
   SignRequestPort,
   TypedDataToSign
 } from './types'
@@ -85,13 +87,15 @@ export const isSignerNotWired = (value: unknown): value is SignerNotWired =>
 /**
  * Why a queued request returned no signature: it left the queue with none
  * (the holder rejected it or closed the action window), no answer came in
- * time (the facade then withdraws it), the answer was not a hex signature,
- * or the signature does not recover to the key's address over the facade's
- * own content.
+ * time (the facade then withdraws it), the caller aborted it before the
+ * answer came (the facade then withdraws it), the answer was not a hex
+ * signature, or the signature does not recover to the key's address over the
+ * facade's own content.
  */
 export const SIGN_FLOW_FAILURE_REASONS = [
   'refused',
   'timeout',
+  'withdrawn',
   'malformed-signature',
   'signer-mismatch'
 ] as const
@@ -249,8 +253,12 @@ export const createSignerFacade = (
   const run = (
     member: SignerMember,
     key: KeyHandle,
-    content: PlainTextMessage | TypedMessage
+    content: PlainTextMessage | TypedMessage,
+    signal: AbortSignal | undefined
   ): Promise<Hex> => {
+    if (signal?.aborted) {
+      return Promise.reject(signFlowFailure(member, 'withdrawn'))
+    }
     const listed = listedBasicAccountOf(port.accounts(), key)
     if (!listed) {
       return Promise.reject(signerNotWired(member, key))
@@ -264,6 +272,7 @@ export const createSignerFacade = (
       let answered = false
       let queued = false
       let unsubscribe: () => void = () => {}
+      let onAbort: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
       let absence: ReturnType<typeof setTimeout> | undefined
 
@@ -273,6 +282,7 @@ export const createSignerFacade = (
         if (timer !== undefined) clearTimeout(timer)
         if (absence !== undefined) clearTimeout(absence)
         unsubscribe()
+        signal?.removeEventListener('abort', onAbort)
         if (withdraw)
           port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
         return true
@@ -284,7 +294,15 @@ export const createSignerFacade = (
         if (end(withdraw)) reject(signFlowFailure(member, reason))
       }
 
+      // Once the answer arrived, an abort no longer withdraws the request.
+      onAbort = () => {
+        if (!answered) {
+          fail('withdrawn', true)
+        }
+      }
+
       timer = setTimeout(() => fail('timeout', true), timeoutMs)
+      signal?.addEventListener('abort', onAbort)
 
       unsubscribe = port.subscribe((update) => {
         // The first signature under the request's id is its answer; nothing
@@ -342,7 +360,11 @@ export const createSignerFacade = (
   }
 
   return Object.freeze({
-    signTypedData(key: KeyHandle, typedData: TypedDataToSign): Promise<Hex> {
+    signTypedData(
+      key: KeyHandle,
+      typedData: TypedDataToSign,
+      signOptions?: SignOptions
+    ): Promise<Hex> {
       // A domain alone carries no message for the holder to read.
       if (typedData.primaryType === 'EIP712Domain') {
         return Promise.reject(
@@ -357,13 +379,13 @@ export const createSignerFacade = (
       } catch {
         return Promise.reject(new Error('signTypedData takes valid EIP-712 typed data.'))
       }
-      return run('signTypedData', key, content)
+      return run('signTypedData', key, content, signOptions?.signal)
     },
-    signBytes(key: KeyHandle, bytes: Hex): Promise<Hex> {
+    signBytes(key: KeyHandle, bytes: Hex, signOptions?: SignOptions): Promise<Hex> {
       if (!isHex(bytes)) {
         return Promise.reject(new Error('signBytes takes 0x-prefixed hex bytes.'))
       }
-      return run('signBytes', key, { kind: 'message', message: bytes })
+      return run('signBytes', key, { kind: 'message', message: bytes }, signOptions?.signal)
     }
   })
 }
