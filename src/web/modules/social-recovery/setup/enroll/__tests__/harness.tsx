@@ -138,19 +138,25 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
   }
   return {
     get: async (key, defaultValue) => {
-      if (faults.get) throw new Error('storage unavailable')
+      if (faults.get) {
+        throw new Error('storage unavailable')
+      }
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
     getAll: async () =>
       Object.fromEntries([...raw.entries()].map(([key, stored]) => [key, parse(stored)])),
     set: async (key, value) => {
-      if (refuses(key)) throw new Error('storage full')
+      if (refuses(key)) {
+        throw new Error('storage full')
+      }
       put(key, value)
       return null
     },
     setEntries: async (entries) => {
-      if (Object.keys(entries).some(refuses)) throw new Error('storage full')
+      if (Object.keys(entries).some(refuses)) {
+        throw new Error('storage full')
+      }
       Object.entries(entries).forEach(([key, value]) => put(key, value))
     },
     remove: async (key) => {
@@ -184,13 +190,17 @@ export const recordsWith = async (
   const records = createWalletRecords({ storage })
   const setup = records.setup(CHAIN_ID, ACCOUNT)
   await setup.writeDraftAndPath(draftOf(clauses))
-  if (enrollments.length > 0) await setup.enrollments.write(enrollments)
+  if (enrollments.length > 0) {
+    await setup.enrollments.write(enrollments)
+  }
   return { records, faults, storage }
 }
 
 export const storedClauses = async (records: WalletRecords): Promise<Clause[]> => {
   const read = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
-  if (read.status !== 'present') throw new Error('no draft stored')
+  if (read.status !== 'present') {
+    throw new Error('no draft stored')
+  }
   return read.value.clauses
 }
 
@@ -226,7 +236,9 @@ export const reportChannel = (): ReportChannel => {
       return null
     },
     remove: async (key: string) => {
-      if (values.has(key)) takes(key)
+      if (values.has(key)) {
+        takes(key)
+      }
       values.delete(key)
       return null
     }
@@ -439,7 +451,9 @@ export const mountView = async (input: {
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
   const inputOf = (id: string) => {
     const node = byTestId(id)
-    if (!node) return null
+    if (!node) {
+      return null
+    }
     return node instanceof HTMLInputElement ? node : node.querySelector('input')
   }
 
@@ -476,7 +490,9 @@ export const mountView = async (input: {
     text: () => container.textContent ?? '',
     press: async (id) => {
       const node = byTestId(id)
-      if (!node) throw new Error(`nothing to press: ${id}`)
+      if (!node) {
+        throw new Error(`nothing to press: ${id}`)
+      }
       act(() => node.click())
       await settle()
     },
@@ -485,13 +501,17 @@ export const mountView = async (input: {
       const node = Array.from(container.querySelectorAll<HTMLElement>('*'))
         .filter((candidate) => candidate.textContent === label)
         .pop()
-      if (!node) throw new Error(`nothing to press: ${label}`)
+      if (!node) {
+        throw new Error(`nothing to press: ${label}`)
+      }
       act(() => node.click())
       await settle()
     },
     type: async (id, value) => {
       const field = inputOf(id)
-      if (!field) throw new Error(`nothing to type into: ${id}`)
+      if (!field) {
+        throw new Error(`nothing to type into: ${id}`)
+      }
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
       act(() => {
         setValue?.call(field, value)

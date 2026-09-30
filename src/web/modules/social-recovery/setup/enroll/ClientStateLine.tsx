@@ -15,8 +15,12 @@ import type { ClientStateProps } from './types'
 
 const ClientStateLine = ({ client }: ClientStateProps) => {
   const { t } = useTranslation()
-  if (client.status === 'ready') return null
-  if (client.status === 'loading') return <ActivityIndicator testID="enroll-client-loading" />
+  if (client.status === 'ready') {
+    return null
+  }
+  if (client.status === 'loading') {
+    return <ActivityIndicator testID="enroll-client-loading" />
+  }
   const refused = client.status === 'update-the-wallet'
   return (
     <View testID={`enroll-client-${client.status}`} style={spacings.mbSm}>

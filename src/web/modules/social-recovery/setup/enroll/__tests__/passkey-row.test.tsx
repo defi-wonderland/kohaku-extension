@@ -204,7 +204,9 @@ describe('the passkey row', () => {
         const target = lastNavigation()
         expect(target.startsWith(`/${WEB_ROUTES.socialRecoveryCeremony}?`)).toBe(true)
         const parsed = parseCeremonySearch(target.slice(target.indexOf('?')))
-        if (!parsed.ok) throw new Error('the row opened no ceremony')
+        if (!parsed.ok) {
+          throw new Error('the row opened no ceremony')
+        }
         expect(parsed.params).toMatchObject({ call: 'enroll', method: 'passkey', id, handOff })
         const returnTo = parsed.params.returnTo ?? ''
         expect(isInternalPath(returnTo)).toBe(true)
@@ -424,7 +426,9 @@ describe('the passkey row', () => {
       await view!.press('passkey-run-test')
       const id = deps.requestIds[deps.requestIds.length - 1]
       const asked = await storedRequest(id)
-      if (asked?.call !== 'testAccess') throw new Error('no test request stored')
+      if (asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
 
       expect(asked).toMatchObject({
         method: 'passkey',
@@ -452,7 +456,9 @@ describe('the passkey row', () => {
 
       const target = lastNavigation()
       const parsed = parseCeremonySearch(target.slice(target.indexOf('?')))
-      if (!parsed.ok) throw new Error('the row opened no ceremony')
+      if (!parsed.ok) {
+        throw new Error('the row opened no ceremony')
+      }
       expect(parsed.params).toMatchObject({ call: 'testAccess', method: 'passkey', id })
       const returnTo = parsed.params.returnTo ?? ''
       expect(parseEnrollSearch(returnTo.slice(returnTo.indexOf('?')))?.ceremony).toBe(id)
@@ -460,7 +466,9 @@ describe('the passkey row', () => {
 
     it('reads tested after a passed test, with the salt of the challenge it signed', async () => {
       const asked = await testAndReturn(passed({ proof: '0x0102' }))
-      if (asked?.call !== 'testAccess') throw new Error('no test request stored')
+      if (asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
 
       expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
       expect(view!.byTestId('passkey-test-line')?.textContent).toBe(t(`${PASSKEY}.testPassed`))
@@ -775,7 +783,9 @@ describe('the passkey row', () => {
       const note = view!.byTestId('enroll-save-without-test')
       const save = view!.byTestId('enroll-save')
       expect(note?.textContent).toBe(t('socialRecovery.enroll.saveWithoutTest'))
-      if (!note || !save) throw new Error('no save line drawn')
+      if (!note || !save) {
+        throw new Error('no save line drawn')
+      }
       // eslint-disable-next-line no-bitwise
       expect(save.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING

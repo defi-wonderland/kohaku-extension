@@ -24,10 +24,14 @@ const isSlotKind = (value: string | null): value is SlotKind =>
 export const parseEnrollSearch = (search: string): EnrollSearch | null => {
   const query = new URLSearchParams(search)
   const kind = query.get(ENROLL_SEARCH_KEYS.kind)
-  if (!isSlotKind(kind)) return null
+  if (!isSlotKind(kind)) {
+    return null
+  }
   const clause = query.get(ENROLL_SEARCH_KEYS.clause) ?? ''
   const member = query.get(ENROLL_SEARCH_KEYS.member) ?? ''
-  if (!POSITION.test(clause) || !POSITION.test(member)) return null
+  if (!POSITION.test(clause) || !POSITION.test(member)) {
+    return null
+  }
   const ceremony = query.get(ENROLL_SEARCH_KEYS.ceremony)
   return {
     kind,
@@ -42,6 +46,8 @@ export const enrollPathOf = (search: EnrollSearch, ceremony?: string): string =>
   query.set(ENROLL_SEARCH_KEYS.kind, search.kind)
   query.set(ENROLL_SEARCH_KEYS.clause, String(search.at.clause))
   query.set(ENROLL_SEARCH_KEYS.member, String(search.at.member))
-  if (ceremony) query.set(ENROLL_SEARCH_KEYS.ceremony, ceremony)
+  if (ceremony) {
+    query.set(ENROLL_SEARCH_KEYS.ceremony, ceremony)
+  }
   return `/${WEB_ROUTES.socialRecoverySetupEnroll}?${query.toString()}`
 }

@@ -26,7 +26,9 @@ export const readSlot = async (
   book: AddressBook
 ): Promise<SlotState> => {
   const [draft, enrollments] = await Promise.all([setup.setupDraft.read(), enrollmentsOf(setup)])
-  if (draft.status !== 'present') return { status: 'nothing' }
+  if (draft.status !== 'present') {
+    return { status: 'nothing' }
+  }
   return slotStateOf(draft.value.clauses, search.at, search.kind, book, enrollments)
 }
 
@@ -46,11 +48,17 @@ export const placeEnrollment = async (
   enrollment: Enrollment
 ): Promise<PlaceResult> => {
   const [draft, enrollments] = await Promise.all([setup.setupDraft.read(), enrollmentsOf(setup)])
-  if (draft.status !== 'present') return { status: 'slot-taken' }
+  if (draft.status !== 'present') {
+    return { status: 'slot-taken' }
+  }
   const { clauses } = draft.value
   const slot = slotStateOf(clauses, search.at, search.kind, book, enrollments)
-  if (slot.status === 'nothing') return { status: 'slot-taken' }
-  if (heldElsewhere(clauses, enrollment.credential, search.at)) return { status: 'duplicate' }
+  if (slot.status === 'nothing') {
+    return { status: 'slot-taken' }
+  }
+  if (heldElsewhere(clauses, enrollment.credential, search.at)) {
+    return { status: 'duplicate' }
+  }
 
   const others = enrollments.filter((e) => !sameCredential(e.credential, enrollment.credential))
   await setup.enrollments.write([...others, enrollment])
@@ -83,7 +91,9 @@ export const recordTest = async (
 ): Promise<Enrollment | null> => {
   const enrollments = await enrollmentsOf(setup)
   const found = enrollments.find((e) => sameCredential(e.credential, credential))
-  if (!found) return null
+  if (!found) {
+    return null
+  }
   const updated: Enrollment = {
     credential: found.credential,
     test,

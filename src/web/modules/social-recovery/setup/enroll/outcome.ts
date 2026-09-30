@@ -11,7 +11,9 @@ const CEREMONY = 'socialRecovery.ceremony'
 
 /** The stored verdict a test outcome reads as, or null for a dismissal. */
 export const testVerdictOf = (outcome: CeremonyOutcome<unknown>): EnrollmentTestVerdict | null => {
-  if (outcome.kind === 'dismissed') return null
+  if (outcome.kind === 'dismissed') {
+    return null
+  }
   switch (outcome.verdict) {
     case 'passed':
       return 'passed'
@@ -27,8 +29,12 @@ export const testVerdictOf = (outcome: CeremonyOutcome<unknown>): EnrollmentTest
 
 /** The cause a test that did not pass reported, with its detail where it carried one. */
 export const causeOf = (outcome: CeremonyOutcome<unknown>): string | undefined => {
-  if (outcome.kind === 'dismissed' || outcome.verdict === 'passed') return undefined
-  if (outcome.verdict === 'notSupported') return outcome.cause
+  if (outcome.kind === 'dismissed' || outcome.verdict === 'passed') {
+    return undefined
+  }
+  if (outcome.verdict === 'notSupported') {
+    return outcome.cause
+  }
   return outcome.detail ? `${outcome.cause}: ${outcome.detail}` : outcome.cause
 }
 
@@ -71,7 +77,11 @@ export const testNoteKeysOf = (
   lineKey: string | null
 ): string[] => {
   const note = noteKeyOfOutcome(outcome, 'testAccess')
-  if (!note || note === lineKey) return []
-  if (note === `${CEREMONY}.passedNote` || note === `${CEREMONY}.notSupportedNote`) return []
+  if (!note || note === lineKey) {
+    return []
+  }
+  if (note === `${CEREMONY}.passedNote` || note === `${CEREMONY}.notSupportedNote`) {
+    return []
+  }
   return [note]
 }

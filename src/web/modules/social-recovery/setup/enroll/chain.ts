@@ -19,7 +19,9 @@ const EIP1271 = new Interface([
 export const guardianChainOf = (provider: GuardianProvider): GuardianChain => ({
   async readCode(address: Address): Promise<Hex> {
     const code = await provider.send('eth_getCode', [address, 'latest'])
-    if (!isHex(code)) throw new Error('The node answered no code.')
+    if (!isHex(code)) {
+      throw new Error('The node answered no code.')
+    }
     return code
   },
   async isValidSignature(address: Address, digest: Hex, signature: Hex): Promise<boolean> {
@@ -29,7 +31,9 @@ export const guardianChainOf = (provider: GuardianProvider): GuardianChain => ({
       answer = await provider.call({ to: address, data })
     } catch (error: unknown) {
       // A contract that reverts refuses the signature; any other failure is the node's.
-      if ((error as { code?: unknown } | null)?.code === 'CALL_EXCEPTION') return false
+      if ((error as { code?: unknown } | null)?.code === 'CALL_EXCEPTION') {
+        return false
+      }
       throw error
     }
     try {

@@ -34,10 +34,15 @@ export const slotStateOf = (
   enrollments: readonly Enrollment[]
 ): SlotState => {
   const held = credentialAt(clauses, at)
-  if (!held) return { status: 'nothing' }
-  if (isEmptySlot(held))
+  if (!held) {
+    return { status: 'nothing' }
+  }
+  if (isEmptySlot(held)) {
     return slotKindOf(held) === kind ? { status: 'empty' } : { status: 'nothing' }
-  if (!sameAddress(held.method, book.methods[kind])) return { status: 'nothing' }
+  }
+  if (!sameAddress(held.method, book.methods[kind])) {
+    return { status: 'nothing' }
+  }
   const enrollment = enrollmentOf(enrollments, held)
   return enrollment ? { status: 'enrolled', enrollment } : { status: 'nothing' }
 }

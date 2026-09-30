@@ -45,15 +45,21 @@ const EnrollView = ({
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!search || !served) return undefined
+    if (!search || !served) {
+      return undefined
+    }
     let live = true
     setLoad({ status: 'loading' })
     readSlot(setup, search, book)
       .then((slot) => {
-        if (live) setLoad(slot)
+        if (live) {
+          setLoad(slot)
+        }
       })
       .catch(() => {
-        if (live) setLoad({ status: 'failed' })
+        if (live) {
+          setLoad({ status: 'failed' })
+        }
       })
     return () => {
       live = false
@@ -89,7 +95,9 @@ const EnrollView = ({
     )
   }
 
-  if (load.status === 'loading') return <ActivityIndicator testID="enroll-loading" />
+  if (load.status === 'loading') {
+    return <ActivityIndicator testID="enroll-loading" />
+  }
 
   if (load.status === 'failed') {
     return (

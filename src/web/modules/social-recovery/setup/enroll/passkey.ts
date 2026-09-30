@@ -94,7 +94,9 @@ export const testRequestRecordOf = (input: {
 })
 
 const stringOf = (params: unknown, key: string): string | undefined => {
-  if (!isRecord(params)) return undefined
+  if (!isRecord(params)) {
+    return undefined
+  }
   const value = params[key]
   return typeof value === 'string' && value !== '' ? value : undefined
 }
@@ -104,22 +106,36 @@ const handOffOf = (params: unknown): { handOff?: boolean } =>
 
 /** The ceremony's facts as a report carries them, or undefined where they are malformed. */
 export const factsOf = (value: unknown): PasskeyFacts | undefined => {
-  if (!isRecord(value)) return undefined
+  if (!isRecord(value)) {
+    return undefined
+  }
   const { kind, backedUp, place, attachment, transports, aaguid } = value
-  if (!PASSKEY_KINDS.some((k) => k === kind)) return undefined
-  if (!AUTHENTICATOR_PLACES.some((p) => p === place)) return undefined
-  if (typeof backedUp !== 'boolean') return undefined
-  if (attachment !== null && attachment !== 'platform' && attachment !== 'cross-platform')
+  if (!PASSKEY_KINDS.some((k) => k === kind)) {
     return undefined
-  if (!Array.isArray(transports) || !transports.every((t) => typeof t === 'string'))
+  }
+  if (!AUTHENTICATOR_PLACES.some((p) => p === place)) {
     return undefined
-  if (aaguid !== undefined && typeof aaguid !== 'string') return undefined
+  }
+  if (typeof backedUp !== 'boolean') {
+    return undefined
+  }
+  if (attachment !== null && attachment !== 'platform' && attachment !== 'cross-platform') {
+    return undefined
+  }
+  if (!Array.isArray(transports) || !transports.every((t) => typeof t === 'string')) {
+    return undefined
+  }
+  if (aaguid !== undefined && typeof aaguid !== 'string') {
+    return undefined
+  }
   return value as unknown as PasskeyFacts
 }
 
 /** A passed creation's value as a report carries it, or null where it names no config. */
 export const enrollValueOf = (value: unknown): EnrollValue | null => {
-  if (!isRecord(value) || !isHex(value.config) || value.config === '0x') return null
+  if (!isRecord(value) || !isHex(value.config) || value.config === '0x') {
+    return null
+  }
   const facts = factsOf(value.facts)
   const credentialId = typeof value.credentialId === 'string' ? value.credentialId : undefined
   return {
@@ -131,7 +147,9 @@ export const enrollValueOf = (value: unknown): EnrollValue | null => {
 
 /** A passed test's value as a report carries it, or null where it carries no proof. */
 export const testValueOf = (value: unknown): TestAccessValue | null => {
-  if (!isRecord(value) || !isHex(value.proof)) return null
+  if (!isRecord(value) || !isHex(value.proof)) {
+    return null
+  }
   const facts = factsOf(value.facts)
   return { proof: value.proof, ...(facts ? { facts } : {}) }
 }
@@ -149,7 +167,9 @@ export const passkeyEnrollmentOf = (
 
 /** What a stored passkey ceremony request asked for, or null for any other request. */
 export const passkeyRequestOf = (record: CeremonyRequestRecord): PasskeyCeremonyRequest | null => {
-  if (record.method !== PASSKEY_SLUG) return null
+  if (record.method !== PASSKEY_SLUG) {
+    return null
+  }
   if (record.call === 'enroll') {
     const userName = stringOf(record.params, 'userName')
     return {

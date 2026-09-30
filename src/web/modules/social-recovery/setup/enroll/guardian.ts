@@ -44,8 +44,12 @@ const GUARDIAN = 'socialRecovery.enroll.guardian'
  */
 export const guardianTargetOf = (value: string): GuardianTarget => {
   const trimmed = value.trim()
-  if (trimmed === '') return { kind: 'empty' }
-  if (!isAddress(trimmed, { strict: false })) return { kind: 'name', name: trimmed }
+  if (trimmed === '') {
+    return { kind: 'empty' }
+  }
+  if (!isAddress(trimmed, { strict: false })) {
+    return { kind: 'name', name: trimmed }
+  }
   const lowercase = trimmed.toLowerCase() as Address
   return isAddress(trimmed, { strict: true })
     ? { kind: 'address', address: trimmed, checksum: 'ok' }
@@ -109,7 +113,9 @@ export const guardianAddressOf = (config: Hex): Address | undefined => {
 
 /** Whether the method's signing input is typed data a key can sign. */
 export const isTypedDataToSign = (value: unknown): value is TypedDataToSign => {
-  if (typeof value !== 'object' || value === null) return false
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
   const { domain, types, primaryType, message } = value as Record<string, unknown>
   return (
     typeof domain === 'object' &&
@@ -167,8 +173,12 @@ export const checkGuardianSignature = async (input: {
   chain: GuardianChain | null
 }): Promise<GuardianTestOutcome> => {
   const recovered = await recoveredSignerOf(typedMessageOf(input.typedData), input.signature)
-  if (sameAddress(recovered, input.address)) return passed({ signature: input.signature })
-  if (!input.chain) return unavailable('service-unanswered')
+  if (sameAddress(recovered, input.address)) {
+    return passed({ signature: input.signature })
+  }
+  if (!input.chain) {
+    return unavailable('service-unanswered')
+  }
   try {
     const valid = await input.chain.isValidSignature(
       input.address,

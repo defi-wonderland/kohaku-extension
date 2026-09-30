@@ -105,7 +105,9 @@ const GuardianRow = ({
     const timer = setTimeout(() => {
       resolveName(target.name)
         .then((resolved) => {
-          if (!live) return
+          if (!live) {
+            return
+          }
           setNameCheck(
             isAddress(resolved, { strict: false })
               ? { status: 'resolved', name: target.name, address: resolved }
@@ -113,7 +115,9 @@ const GuardianRow = ({
           )
         })
         .catch(() => {
-          if (live) setNameCheck({ status: 'unresolved' })
+          if (live) {
+            setNameCheck({ status: 'unresolved' })
+          }
         })
     }, RESOLVE_DELAY_MS)
     return () => {
@@ -127,18 +131,26 @@ const GuardianRow = ({
     [enrollment]
   )
   let address: Address | undefined
-  if (enrollment) address = enrolledAddress
-  else if (target.kind === 'address') address = target.address
-  else if (nameCheck?.status === 'resolved') address = nameCheck.address
+  if (enrollment) {
+    address = enrolledAddress
+  } else if (target.kind === 'address') {
+    address = target.address
+  } else if (nameCheck?.status === 'resolved') {
+    address = nameCheck.address
+  }
 
   useEffect(() => {
     setCode(undefined)
-    if (!address || !deps.chain) return undefined
+    if (!address || !deps.chain) {
+      return undefined
+    }
     let live = true
     deps.chain
       .readCode(address)
       .then((read) => {
-        if (live) setCode(codeCheckOf(read))
+        if (live) {
+          setCode(codeCheckOf(read))
+        }
       })
       // A read the node did not answer renders neither code line.
       .catch(() => undefined)
@@ -156,7 +168,9 @@ const GuardianRow = ({
   const checkLines = checkLinesOf(checks)
 
   const add = useCallback(async () => {
-    if (client.status !== 'ready' || !address) return
+    if (client.status !== 'ready' || !address) {
+      return
+    }
     const method = client.client.methodFor('ecdsa')
     if (!method) {
       setAddOutcome(notSupported('no-implementation'))
@@ -182,7 +196,9 @@ const GuardianRow = ({
       const placed = await placeEnrollment(setup, search, book, created)
       setDuplicate(placed.status === 'duplicate')
       setWriteFailed(placed.status === 'slot-taken')
-      if (placed.status !== 'placed') return
+      if (placed.status !== 'placed') {
+        return
+      }
       setAddOutcome(null)
       setResolvedName(nameCheck?.status === 'resolved' ? nameCheck.name : undefined)
       onEnrollment(created)
@@ -197,12 +213,18 @@ const GuardianRow = ({
     async (outcome: CeremonyOutcome<unknown>) => {
       setTestOutcome(outcome)
       const verdict = testVerdictOf(outcome)
-      if (!enrollment || !verdict) return
-      if (verdict === 'passed') setOffline(false)
+      if (!enrollment || !verdict) {
+        return
+      }
+      if (verdict === 'passed') {
+        setOffline(false)
+      }
       try {
         const updated = await recordTest(setup, enrollment.credential, verdict, causeOf(outcome))
         setWriteFailed(false)
-        if (updated) onEnrollment(updated)
+        if (updated) {
+          onEnrollment(updated)
+        }
       } catch {
         setWriteFailed(true)
       }
@@ -212,7 +234,9 @@ const GuardianRow = ({
 
   const check = useCallback(
     async (signed: GuardianChallenge, signature: Hex) => {
-      if (!address) return
+      if (!address) {
+        return
+      }
       setBusy(true)
       try {
         await applyTest(
@@ -234,7 +258,9 @@ const GuardianRow = ({
   // device unless the holder asks for the offline block.
   const runTest = useCallback(
     async (offlineOnly: boolean) => {
-      if (client.status !== 'ready' || !enrollment || !address) return
+      if (client.status !== 'ready' || !enrollment || !address) {
+        return
+      }
       const request = testRequestOf({
         descriptor: client.client.descriptor,
         chainId,

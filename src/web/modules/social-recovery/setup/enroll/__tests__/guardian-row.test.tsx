@@ -169,7 +169,9 @@ describe('the guardian row', () => {
       const publication = view!.byTestId('guardian-publication')
       const field = view!.inputOf('guardian-address')
       expect(publication?.textContent).toBe(t('socialRecovery.disclosures.guardianPublication'))
-      if (!publication || !field) throw new Error('the row drew no field')
+      if (!publication || !field) {
+        throw new Error('the row drew no field')
+      }
       // eslint-disable-next-line no-bitwise
       expect(publication.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
@@ -407,7 +409,9 @@ describe('the guardian row', () => {
     })
 
     it('renders the failed note and leaves the slot empty where the method refuses', async () => {
-      if (client.state.status !== 'ready') throw new Error('client not ready')
+      if (client.state.status !== 'ready') {
+        throw new Error('client not ready')
+      }
       client.state.client.approving.enrollInput = () => {
         throw new Error('bad address')
       }
@@ -952,7 +956,9 @@ describe('the guardian row', () => {
       const note = view!.byTestId('enroll-save-without-test')
       const save = view!.byTestId('enroll-save')
       expect(note?.textContent).toBe(t('socialRecovery.enroll.saveWithoutTest'))
-      if (!note || !save) throw new Error('no save line drawn')
+      if (!note || !save) {
+        throw new Error('no save line drawn')
+      }
       // eslint-disable-next-line no-bitwise
       expect(save.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING

@@ -144,11 +144,15 @@ const PasskeyRow = ({
 
   const applyTest = useCallback(
     async (outcome: CeremonyOutcome<unknown>, asked: PasskeyCeremonyRequest) => {
-      if (asked.call !== 'testAccess') return
+      if (asked.call !== 'testAccess') {
+        return
+      }
       const current = enrollmentRef.current
       setTestOutcome(outcome)
       const verdict = testVerdictOf(outcome)
-      if (!current || !verdict) return
+      if (!current || !verdict) {
+        return
+      }
       if (verdict === 'passed') {
         const value =
           outcome.kind === 'verdict' && outcome.verdict === 'passed'
@@ -163,7 +167,9 @@ const PasskeyRow = ({
       try {
         const updated = await recordTest(setup, current.credential, verdict, causeOf(outcome))
         setWriteFailed(false)
-        if (updated) onEnrollment(updated)
+        if (updated) {
+          onEnrollment(updated)
+        }
       } catch {
         setWriteFailed(true)
       }
@@ -189,7 +195,9 @@ const PasskeyRow = ({
   const stopListening = useRef<(() => void) | undefined>()
   const ceremonyId = search.ceremony
   useEffect(() => {
-    if (!ceremonyId || taking.current === ceremonyId) return undefined
+    if (!ceremonyId || taking.current === ceremonyId) {
+      return undefined
+    }
     taking.current = ceremonyId
     let live = true
     const done = (report: CeremonyReport, asked: PasskeyCeremonyRequest) => {
@@ -210,7 +218,9 @@ const PasskeyRow = ({
         return
       }
       setMemory((held) => recalledMemory(held, asked))
-      if (asked.call === 'enroll' && asked.userName) setName(asked.userName)
+      if (asked.call === 'enroll' && asked.userName) {
+        setName(asked.userName)
+      }
       const identity: ReportIdentity = { id: ceremonyId, call: asked.call, method: PASSKEY_SLUG }
       const report = await takeCeremonyReport(identity, deps.reportStore, deps.now())
       if (report) {
@@ -219,7 +229,9 @@ const PasskeyRow = ({
       }
       setUndelivered(true)
       setStale(asked)
-      if (!live) return
+      if (!live) {
+        return
+      }
       stopListening.current = listenForCeremonyReport(
         identity,
         deps.reportSubscribe,
@@ -272,7 +284,9 @@ const PasskeyRow = ({
   )
 
   const runTest = useCallback(async () => {
-    if (client.status !== 'ready' || !enrollment) return
+    if (client.status !== 'ready' || !enrollment) {
+      return
+    }
     const request = testRequestOf({
       descriptor: client.client.descriptor,
       chainId,
@@ -314,7 +328,9 @@ const PasskeyRow = ({
   // A report that never came back: the stale request goes, the search drops
   // its id, and the same ceremony runs again under a new one.
   const retryUndelivered = useCallback(async () => {
-    if (!stale || !ceremonyId) return
+    if (!stale || !ceremonyId) {
+      return
+    }
     stopListening.current?.()
     stopListening.current = undefined
     await records
@@ -324,8 +340,11 @@ const PasskeyRow = ({
     setUndelivered(false)
     setStale(null)
     navigate(enrollPathOf(search), { replace: true })
-    if (stale.call === 'enroll') await create(stale.handOff ?? false, stale.userName ?? defaultName)
-    else await runTest()
+    if (stale.call === 'enroll') {
+      await create(stale.handOff ?? false, stale.userName ?? defaultName)
+    } else {
+      await runTest()
+    }
   }, [stale, ceremonyId, records, navigate, search, create, defaultName, runTest])
 
   const enrollNote = enrollOutcome ? noteKeyOfOutcome(enrollOutcome, 'enroll') : null
