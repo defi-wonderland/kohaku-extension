@@ -292,7 +292,7 @@ export const passportAt = (
 export const replyFor = async (world: World, request: ApproverRequest): Promise<ApproverReply> => {
   const orchestrator = world.orchestrator()
   const input = orchestrator.signingInput(request)
-  const reply = await orchestrator.replyFrom(request, input, world.material(request))
+  const reply = await orchestrator.replyFrom(request, input, await world.material(request))
   expect(reply.kind).toBe('recovery-proof-reply')
   return reply as ApproverReply
 }

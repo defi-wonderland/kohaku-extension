@@ -1,5 +1,5 @@
 import { DEVICE_KINDS, type Address, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { sha256, stringToHex } from 'viem'
+import { concat, hexToBytes, sha256, stringToHex } from 'viem'
 
 import { METHOD_KINDS, MethodKind, createWorld, eachDescribe, isHex } from './harness'
 
@@ -36,12 +36,18 @@ it('enrolls a passkey whose rpIdHash is the SHA-256 of the relying party id', as
   const orchestrator = world.orchestrator()
   const method = world.descriptor.methodPasskey
   const input = orchestrator.enrollInput(method, { relyingPartyId: 'wallet.example' })
+  const x: Hex = `0x${'11'.repeat(32)}`
+  const y: Hex = `0x${'22'.repeat(32)}`
+  const spki = hexToBytes(
+    concat(['0x3059301306072a8648ce3d020106082a8648ce3d030107034200', '0x04', x, y])
+  )
   const config = await orchestrator.configFrom(method, input, {
-    credential: { publicKey: '0x04aa' }
+    credential: { response: { getPublicKey: () => spki.buffer } }
   })
   expect(isHex(config)).toBe(true)
   expect(world.methods.passkey.codec.decodeConfig(config as Hex)).toEqual({
-    publicKey: '0x04aa',
+    x,
+    y,
     rpIdHash: sha256(stringToHex('wallet.example'))
   })
 })

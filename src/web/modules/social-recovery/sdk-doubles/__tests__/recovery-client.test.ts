@@ -1,4 +1,4 @@
-import { addressOf } from '@web/modules/social-recovery/sdk-doubles'
+import { addressOf, PasskeyMethodDouble } from '@web/modules/social-recovery/sdk-doubles'
 import {
   ADD_REFUSAL_REASONS,
   type AddRefusalReason,
@@ -9,11 +9,9 @@ import {
   type CancelRequest,
   type Configuration,
   type Credential,
-  type Hex,
   type IRecoveryClient,
   type ValidationRefusal
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { sha256, stringToHex } from 'viem'
 
 import {
   createWorld,
@@ -47,17 +45,14 @@ const replyOf = async (world: World, request: ApproverRequest) => {
     scope: 'recovery',
     relyingPartyId: 'wallet.example'
   })
-  const reply = await orchestrator.replyFrom(request, input, world.material(request))
+  const reply = await orchestrator.replyFrom(request, input, await world.material(request))
   expect(reply.kind).toBe('recovery-proof-reply')
   return reply as ApproverReply
 }
 
-const passkeyAt = (world: World, key: Hex): Credential => ({
+const passkeyAt = (world: World): Credential => ({
   method: world.descriptor.methodPasskey,
-  config: world.methods.passkey.codec.encodeConfig({
-    publicKey: key,
-    rpIdHash: sha256(stringToHex('wallet.example'))
-  })
+  config: new PasskeyMethodDouble().satisfyingConfig('wallet.example')
 })
 
 /** Gives a method a pause holder, so it carries a stop. */
@@ -365,11 +360,7 @@ describe('recovery client double', () => {
       const { gathering, chosen } = await completeInPlaceOrder(world, [
         {
           threshold: 2,
-          credentials: [
-            passportAt(world, 'passport'),
-            walletAt(world, 'ana'),
-            passkeyAt(world, '0x04aa')
-          ]
+          credentials: [passportAt(world, 'passport'), walletAt(world, 'ana'), passkeyAt(world)]
         }
       ])
       expect(gathering.places.map((p) => p.standing)).toEqual([
@@ -405,7 +396,7 @@ describe('recovery client double', () => {
       withStop(world, world.descriptor.methodPasskey)
       const { gathering, chosen } = await completeInPlaceOrder(world, [
         { threshold: 1, credentials: [passportAt(world, 'passport'), walletAt(world, 'ana')] },
-        { threshold: 1, credentials: [walletAt(world, 'ben'), passkeyAt(world, '0x04aa')] }
+        { threshold: 1, credentials: [walletAt(world, 'ben'), passkeyAt(world)] }
       ])
       expect(gathering.places.map((p) => p.stoppable)).toEqual([true, true, true, true])
       // One pick per clause in filing order would be {0, 2}, naming two stoppable

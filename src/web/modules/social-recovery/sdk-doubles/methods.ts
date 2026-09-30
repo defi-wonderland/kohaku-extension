@@ -6,11 +6,13 @@
  * prover or real cryptography.
  *
  * The doubles' proof convention: a proof satisfies a credential exactly when it
- * equals `doubleProof(config, digest)`. The wallet, passkey and zkPassport
- * doubles package whatever bytes the device handed back (the signature, the
- * assertion, the proofs) and judge them by that rule; the Aadhaar double proves
- * itself from the QR data, as the in-page prover does. `satisfyingMaterial`
- * builds the material a willing approver's device would return.
+ * equals `doubleProof(config, digest)`. The wallet and zkPassport doubles
+ * package whatever bytes the device handed back (the signature, the proofs) and
+ * judge them by that rule; the Aadhaar double proves itself from the QR data, as
+ * the in-page prover does. The passkey double alone reads the browser's own
+ * credential and assertion and checks the P-256 signature through WebCrypto.
+ * `satisfyingMaterial` builds the material a willing approver's device would
+ * return.
  *
  * The scripted chain's `replyFailure`, `enrollFailure` and `verdict` override
  * every double's answer while set.
@@ -31,11 +33,34 @@ import type {
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
+  authDataFromAttestationObject,
+  encodeDerSignature,
+  ES256,
+  hexToArrayBuffer,
+  isBytesLike,
+  isHighS,
+  normalizeP256S,
+  parseDerSignature,
+  pointFromAuthenticatorData,
+  pointFromSpki,
+  toBase64Url,
+  toBytes,
+  uncompressedPoint
+} from '@web/modules/social-recovery/shared/webauthn'
+import {
+  bytesToBigInt,
+  bytesToHex,
+  concat,
   decodeAbiParameters,
   encodeAbiParameters,
+  hexToBigInt,
+  hexToBytes,
+  hexToString,
   isAddress,
   isHex,
+  numberToHex,
   sha256,
+  stringToBytes,
   stringToHex
 } from 'viem'
 
@@ -49,11 +74,15 @@ import type {
   AadhaarParams,
   AnyMethodDouble,
   MethodKind,
+  PasskeyAttestationResponse,
+  PasskeyClientData,
   PasskeyConfigFields,
   PasskeyEnrollInput,
   PasskeyEnrollMaterial,
   PasskeyEnrollParams,
+  PasskeyProofFields,
   PasskeyReplyMaterial,
+  PasskeySatisfyingMaterial,
   PasskeySigningParams,
   ProofFields,
   WalletConfigFields,
@@ -83,6 +112,70 @@ const nonEmptyHex = (value: unknown): value is Hex => isHex(value) && value !== 
 const opaqueProof = {
   encodeProof: ({ proof }: ProofFields): Hex => proof,
   decodeProof: (proof: Hex): ProofFields => ({ proof })
+}
+
+/** The passkey config's ABI layout: the point's x and y, then the rpId hash. */
+export const PASSKEY_CONFIG = [
+  { type: 'bytes32' },
+  { type: 'bytes32' },
+  { type: 'bytes32' }
+] as const
+const PASSKEY_PROOF = [
+  { type: 'bytes' },
+  { type: 'bytes' },
+  { type: 'bytes32' },
+  { type: 'bytes32' }
+] as const
+
+/** The rpId hash, the flags byte and the four-byte counter. */
+const AUTHENTICATOR_DATA_MIN = 37
+
+/** The user-present and user-verified bits of the authenticator data's flags. */
+const USER_PRESENT_AND_VERIFIED = 0x05
+
+const P256_ECDSA = { name: 'ECDSA', namedCurve: 'P-256' } as const
+const ECDSA_SHA256 = { name: 'ECDSA', hash: 'SHA-256' } as const
+
+/**
+ * The one key the passkey double's willing device signs with. It is public, so
+ * it stands in for an approver in a test and in the doubles alone.
+ */
+const APPROVER_KEY = {
+  d: '0x42b98c8dec7af70ae19008985268500f188f8d7bfdd3d9e984ba1074c5fbf51d',
+  x: '0x178ed0b6e53cf606c32b7d199d2577b4f98e688350d2fa3cd6c428604430568f',
+  y: '0x6b8d320861cd778f99b3facffca6347ceae5fa0e49fb39485c35023af969a91b'
+} as const
+
+const APPROVER_ORIGIN = 'https://passkey.double'
+
+/** The authenticator data of an attestation response, from its getter or its attestation object. */
+const attestedAuthData = (response: PasskeyAttestationResponse): Uint8Array | null => {
+  const data =
+    typeof response.getAuthenticatorData === 'function'
+      ? response.getAuthenticatorData()
+      : undefined
+  if (isBytesLike(data)) {
+    return toBytes(data)
+  }
+  return isBytesLike(response.attestationObject)
+    ? authDataFromAttestationObject(response.attestationObject)
+    : null
+}
+
+/** Whether the client data is a `webauthn.get` whose challenge is `digest` in base64url. */
+const assertsDigest = (clientDataJSON: Hex, digest: Hex): boolean => {
+  let clientData: PasskeyClientData | null
+  try {
+    clientData = JSON.parse(hexToString(clientDataJSON))
+  } catch {
+    return false
+  }
+  return (
+    typeof clientData === 'object' &&
+    clientData !== null &&
+    clientData.type === 'webauthn.get' &&
+    clientData.challenge === toBase64Url(hexToBytes(digest))
+  )
 }
 
 abstract class MethodDouble implements IRecoveryMethod {
@@ -208,7 +301,7 @@ export class WalletMethodDouble extends MethodDouble {
 
 // ---------------------------------------------------------------------------
 
-/** `method-passkey`: a WebAuthn credential; config is the public key beside the rpId hash. */
+/** `method-passkey`: a WebAuthn credential; config is the P-256 point beside the rpId hash. */
 export class PasskeyMethodDouble extends MethodDouble {
   readonly kind = 'passkey' as const
 
@@ -218,17 +311,18 @@ export class PasskeyMethodDouble extends MethodDouble {
 
   readonly vector = ['method-passkey-config.json', 'method-passkey-proof.json']
 
-  readonly codec: IMethodCodec<PasskeyConfigFields, ProofFields> = {
-    encodeConfig: ({ publicKey, rpIdHash }) =>
-      encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes32' }], [publicKey, rpIdHash]),
+  readonly codec: IMethodCodec<PasskeyConfigFields, PasskeyProofFields> = {
+    encodeConfig: ({ x, y, rpIdHash }) => encodeAbiParameters(PASSKEY_CONFIG, [x, y, rpIdHash]),
     decodeConfig: (config) => {
-      const [publicKey, rpIdHash] = decodeAbiParameters(
-        [{ type: 'bytes' }, { type: 'bytes32' }],
-        config
-      )
-      return { publicKey, rpIdHash }
+      const [x, y, rpIdHash] = decodeAbiParameters(PASSKEY_CONFIG, config)
+      return { x, y, rpIdHash }
     },
-    ...opaqueProof
+    encodeProof: ({ authenticatorData, clientDataJSON, r, s }) =>
+      encodeAbiParameters(PASSKEY_PROOF, [authenticatorData, clientDataJSON, r, s]),
+    decodeProof: (proof) => {
+      const [authenticatorData, clientDataJSON, r, s] = decodeAbiParameters(PASSKEY_PROOF, proof)
+      return { authenticatorData, clientDataJSON, r, s }
+    }
   }
 
   modules(descriptor: DeploymentDescriptor): Address[] {
@@ -238,31 +332,66 @@ export class PasskeyMethodDouble extends MethodDouble {
   /** `params: { relyingPartyId, userName }`; returns the creation options. */
   enrollInput(params: unknown): unknown {
     const p = params as PasskeyEnrollParams | undefined
-    if (!p?.relyingPartyId)
+    if (!p?.relyingPartyId) {
       throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
+    }
     return {
       rp: { id: p.relyingPartyId },
       user: { name: p.userName ?? '' },
-      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+      pubKeyCredParams: [{ type: 'public-key', alg: ES256 }],
       authenticatorSelection: { userVerification: 'required', residentKey: 'required' },
       attestation: 'none'
     }
   }
 
-  /** `material: { credential }`, the double's credential carrying its `publicKey` bytes. */
+  /**
+   * `material: { credential }`, the browser's `PublicKeyCredential`. The point
+   * comes from `getPublicKey()` where the browser offers it, else from the COSE
+   * key in the authenticator data. A key that is not ES256 on P-256, a missing
+   * relying party id or authenticator data minted under another relying party
+   * is refused.
+   */
   protected enrollConfig(input: unknown, material: unknown): Hex | EnrollFailure {
     const rpId = (input as PasskeyEnrollInput | undefined)?.rp?.id
-    const publicKey = (material as PasskeyEnrollMaterial | undefined)?.credential?.publicKey
-    if (!rpId || !nonEmptyHex(publicKey)) return enrollFailure('material-rejected')
+    const response = (material as PasskeyEnrollMaterial | undefined)?.credential?.response
+    if (!rpId || typeof response !== 'object' || response === null) {
+      return enrollFailure('material-rejected')
+    }
     // WebAuthn's rpIdHash is the SHA-256 of the relying party id.
-    return this.codec.encodeConfig({ publicKey, rpIdHash: sha256(stringToHex(rpId)) })
+    const rpIdHash = sha256(stringToHex(rpId))
+    try {
+      const authData = attestedAuthData(response)
+      if (authData && bytesToHex(authData.slice(0, 32)) !== rpIdHash) {
+        return enrollFailure('material-rejected')
+      }
+      const algorithm =
+        typeof response.getPublicKeyAlgorithm === 'function'
+          ? response.getPublicKeyAlgorithm()
+          : undefined
+      if (algorithm !== undefined && algorithm !== ES256) {
+        return enrollFailure('material-rejected')
+      }
+      const spki = typeof response.getPublicKey === 'function' ? response.getPublicKey() : null
+      const point = isBytesLike(spki)
+        ? pointFromSpki(spki)
+        : authData
+        ? pointFromAuthenticatorData(authData)
+        : null
+      if (!point) {
+        return enrollFailure('material-rejected')
+      }
+      return this.codec.encodeConfig({ ...point, rpIdHash })
+    } catch {
+      return enrollFailure('material-rejected')
+    }
   }
 
   /** `params: { relyingPartyId, credentialId? }`; the digest is the challenge. */
   signingInput(ctx: MethodContext, params?: unknown): unknown {
     const p = params as PasskeySigningParams | undefined
-    if (!p?.relyingPartyId)
+    if (!p?.relyingPartyId) {
       throw codedError('params-missing', { method: 'passkey', missing: ['relyingPartyId'] })
+    }
     return {
       challenge: ctx.digest,
       rpId: p.relyingPartyId,
@@ -271,14 +400,146 @@ export class PasskeyMethodDouble extends MethodDouble {
     }
   }
 
-  /** `material: { assertion }`, the double's assertion being the proof bytes. */
+  /**
+   * `material: { assertion }`, the assertion the device returned: the
+   * authenticator data, the client data JSON and the DER signature, packaged
+   * with `s` lowered to the low half.
+   */
   protected proofFrom(ctx: MethodContext, input: unknown, material: unknown): Hex | ReplyFailure {
-    const assertion = (material as PasskeyReplyMaterial | undefined)?.assertion
-    return nonEmptyHex(assertion) ? assertion : replyFailure('material-rejected')
+    const response = (material as PasskeyReplyMaterial | undefined)?.assertion?.response
+    const authenticatorData = response?.authenticatorData
+    const clientDataJSON = response?.clientDataJSON
+    const signature = response?.signature
+    if (
+      !isBytesLike(authenticatorData) ||
+      !isBytesLike(clientDataJSON) ||
+      !isBytesLike(signature)
+    ) {
+      return replyFailure('material-rejected')
+    }
+    const authData = toBytes(authenticatorData)
+    const clientData = toBytes(clientDataJSON)
+    if (authData.length < AUTHENTICATOR_DATA_MIN || clientData.length === 0) {
+      return replyFailure('material-rejected')
+    }
+    try {
+      const { r, s } = parseDerSignature(signature)
+      return this.codec.encodeProof({
+        authenticatorData: bytesToHex(authData),
+        clientDataJSON: bytesToHex(clientData),
+        r: numberToHex(r, { size: 32 }),
+        s: numberToHex(normalizeP256S(s), { size: 32 })
+      })
+    } catch {
+      return replyFailure('material-rejected')
+    }
   }
 
-  satisfyingMaterial(request: ApproverRequest) {
-    return { assertion: doubleProof(request.config, digestOfRequest(request)) }
+  /**
+   * Satisfied where the proof's P-256 signature over `authenticatorData ||
+   * sha256(clientDataJSON)` verifies under the config's point, `s` is low, the
+   * authenticator data carries the config's rpId hash with the user present
+   * and verified, and the client data is a `webauthn.get` over the digest in
+   * base64url. A runtime without WebCrypto judges nothing.
+   */
+  async verify(ctx: MethodContext, proof: Hex): Promise<Verdict> {
+    if (this.chain?.verdict) {
+      return this.chain.verdict
+    }
+    const subtle = globalThis.crypto?.subtle
+    if (!subtle) {
+      return 'not-judged'
+    }
+    let config: PasskeyConfigFields
+    let fields: PasskeyProofFields
+    try {
+      config = this.codec.decodeConfig(ctx.request.config)
+      fields = this.codec.decodeProof(proof)
+    } catch {
+      return 'rejected'
+    }
+    const authData = hexToBytes(fields.authenticatorData)
+    if (authData.length < AUTHENTICATOR_DATA_MIN) {
+      return 'rejected'
+    }
+    if (bytesToHex(authData.slice(0, 32)) !== config.rpIdHash.toLowerCase()) {
+      return 'rejected'
+    }
+    // eslint-disable-next-line no-bitwise
+    if ((authData[32]! & USER_PRESENT_AND_VERIFIED) !== USER_PRESENT_AND_VERIFIED) {
+      return 'rejected'
+    }
+    if (isHighS(hexToBigInt(fields.s)) || !assertsDigest(fields.clientDataJSON, ctx.digest)) {
+      return 'rejected'
+    }
+    try {
+      const key = await subtle.importKey('raw', uncompressedPoint(config), P256_ECDSA, false, [
+        'verify'
+      ])
+      const verified = await subtle.verify(
+        ECDSA_SHA256,
+        key,
+        hexToArrayBuffer(concat([fields.r, fields.s])),
+        hexToArrayBuffer(concat([fields.authenticatorData, sha256(fields.clientDataJSON)]))
+      )
+      return verified ? 'satisfied' : 'rejected'
+    } catch {
+      return 'rejected'
+    }
+  }
+
+  /** The config of the credential the double's willing device holds, under `relyingPartyId`. */
+  satisfyingConfig(relyingPartyId: string): Hex {
+    return this.codec.encodeConfig({
+      x: APPROVER_KEY.x,
+      y: APPROVER_KEY.y,
+      rpIdHash: sha256(stringToHex(relyingPartyId))
+    })
+  }
+
+  /**
+   * The assertion the double's willing device returns: signed with the key
+   * `satisfyingConfig` commits, over the request's digest, with the signature
+   * in DER as the authenticator gives it.
+   */
+  async satisfyingMaterial(request: ApproverRequest): Promise<PasskeySatisfyingMaterial> {
+    const { rpIdHash } = this.codec.decodeConfig(request.config)
+    const authenticatorData = hexToBytes(
+      concat([rpIdHash, numberToHex(USER_PRESENT_AND_VERIFIED, { size: 1 }), '0x00000000'])
+    )
+    const clientDataJSON = stringToBytes(
+      JSON.stringify({
+        type: 'webauthn.get',
+        challenge: toBase64Url(hexToBytes(digestOfRequest(request))),
+        origin: APPROVER_ORIGIN
+      })
+    )
+    const { subtle } = globalThis.crypto
+    const key = await subtle.importKey(
+      'jwk',
+      {
+        kty: 'EC',
+        crv: 'P-256',
+        d: toBase64Url(hexToBytes(APPROVER_KEY.d)),
+        x: toBase64Url(hexToBytes(APPROVER_KEY.x)),
+        y: toBase64Url(hexToBytes(APPROVER_KEY.y))
+      },
+      P256_ECDSA,
+      false,
+      ['sign']
+    )
+    const raw = new Uint8Array(
+      await subtle.sign(
+        ECDSA_SHA256,
+        key,
+        hexToArrayBuffer(concat([bytesToHex(authenticatorData), sha256(clientDataJSON)]))
+      )
+    )
+    const signature = encodeDerSignature({
+      r: bytesToBigInt(raw.slice(0, 32)),
+      s: bytesToBigInt(raw.slice(32, 64))
+    })
+    return { assertion: { response: { authenticatorData, clientDataJSON, signature } } }
   }
 
   describe(ctx: MethodContext): DeviceFacts {
