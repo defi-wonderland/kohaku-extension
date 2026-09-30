@@ -39,7 +39,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   const { t } = useTranslation()
   const { theme } = useTheme()
 
-  const [level, setLevel] = useState<OfferedLevel>('private')
+  const [picked, setPicked] = useState<OfferedLevel>('private')
   const [clauses, setClauses] = useState<Clause[]>([])
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -59,7 +59,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
       .read()
       .then((draft) => {
         if (!current || draft.status !== 'present') return
-        setLevel(privacyLevelOf(draft.value.privacy))
+        setPicked(privacyLevelOf(draft.value.privacy))
         setClauses(draft.value.clauses)
       })
       .catch(() => {
@@ -76,11 +76,6 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
     }
   }, [setup, chainId, account])
 
-  const exposure = useMemo(
-    () => exposureLinesOf(clauses, level, book, t),
-    [clauses, level, book, t]
-  )
-
   const shape = useMemo(
     () =>
       renderShapeSentence(
@@ -89,6 +84,19 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
         t
       ),
     [clauses, book, t]
+  )
+
+  // A path with no member has no shape to publish, so Shape visible is not
+  // offered, and a level stored as Shape visible for such a path opens on Private.
+  const offeredLevels = useMemo(
+    () => OFFERED_LEVELS.filter((offered) => offered !== 'shape-visible' || shape !== ''),
+    [shape]
+  )
+  const level: OfferedLevel = offeredLevels.includes(picked) ? picked : 'private'
+
+  const exposure = useMemo(
+    () => exposureLinesOf(clauses, level, book, t),
+    [clauses, level, book, t]
   )
 
   const hidden = level !== 'public'
@@ -140,13 +148,16 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
       <Text fontSize={12} weight="medium" appearance="secondaryText" style={spacings.mbSm}>
         {t(`${LEVEL}.header`)}
       </Text>
-      {OFFERED_LEVELS.map((offered) => (
+      {offeredLevels.map((offered) => (
         <Pressable
           key={offered}
           testID={`level-${offered}`}
           accessibilityRole="radio"
           accessibilityState={{ checked: level === offered }}
-          onPress={() => setLevel(offered)}
+          // The web renderer reads the checked state of a radio from this prop
+          // alone; the React Native types do not declare it, so it goes in a spread.
+          {...{ accessibilityChecked: level === offered }}
+          onPress={() => setPicked(offered)}
           style={radioStyle(level === offered)}
         >
           <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
