@@ -12,12 +12,14 @@ import type { SlotKind } from '@web/modules/social-recovery/shared/records/types
 
 import type { RuleLinesOptions } from './types'
 
-/** The method name of each kind of method, a key under `socialRecovery.methodNames`. */
-const METHOD_NAME_OF_KIND: { readonly [K in SlotKind]: string } = {
-  ecdsa: 'socialRecovery.methodNames.guardians',
-  passkey: 'socialRecovery.methodNames.passkey',
-  zkpassport: 'socialRecovery.methodNames.passport',
-  aadhaar: 'socialRecovery.methodNames.aadhaar'
+const SENTENCE = 'socialRecovery.shape.sentence'
+
+/** How the sentence names each kind of method, with its article. */
+const KIND_NAME_OF: { readonly [K in SlotKind]: string } = {
+  ecdsa: `${SENTENCE}.kinds.guardian`,
+  passkey: `${SENTENCE}.kinds.passkey`,
+  zkpassport: `${SENTENCE}.kinds.passport`,
+  aadhaar: `${SENTENCE}.kinds.aadhaar`
 }
 
 /** The name of a method whose kind the wallet does not know. */
@@ -28,24 +30,20 @@ const nameKeyOf = (
   kindOfMethod: RuleLinesOptions['kindOfMethod']
 ): string => {
   const kind = isEmptySlot(credential) ? slotKindOf(credential) : kindOfMethod?.(credential.method)
-  return kind ? METHOD_NAME_OF_KIND[kind] : UNKNOWN_KIND_NAME
+  return kind ? KIND_NAME_OF[kind] : UNKNOWN_KIND_NAME
 }
 
 /**
- * The names in the order the list reads, joined with the list words: `A`,
- * `A and B`, `A, B and C`. Past three names the middle ones join the second
- * slot of the three-name form.
+ * The names in the order the list reads: `a`, `a and b`, `a, b and c`,
+ * `a, b, c and d`. Past two names, each name but the last two leads the list
+ * and the last two close it as a pair.
  */
 const joinNames = (names: readonly string[], t: Translate): string => {
   if (names.length <= 1) return names[0] ?? ''
   if (names.length === 2) {
-    return t('socialRecovery.disclosures.items.pair', { first: names[0], second: names[1] })
+    return t(`${SENTENCE}.pair`, { first: names[0], second: names[1] })
   }
-  return t('socialRecovery.disclosures.items.triple', {
-    first: names[0],
-    second: names.slice(1, -1).join(', '),
-    third: names[names.length - 1]
-  })
+  return t(`${SENTENCE}.list`, { first: names[0], rest: joinNames(names.slice(1), t) })
 }
 
 /**
@@ -59,17 +57,19 @@ const clausePart = (clause: Clause, options: RuleLinesOptions, t: Translate): st
     t
   )
   if (clause.credentials.length === 1) return names
-  const any = t('socialRecovery.shape.any').toLowerCase()
-  const of = t('socialRecovery.shape.of').toLowerCase()
-  const count = `${any} ${clause.threshold} ${of} ${clause.credentials.length}`
-  return names === '' ? count : `${names}, ${count}`
+  const count = t(`${SENTENCE}.anyOf`, {
+    threshold: clause.threshold,
+    count: clause.credentials.length
+  })
+  return names === '' ? count : t(`${SENTENCE}.list`, { first: names, rest: count })
 }
 
 /**
- * The path's shape in one sentence, `Passkey, Passport and Guardians, any 2 of
- * 3`, clauses joined by `and`. A clause with no member and a threshold of zero
- * asks nothing and is left out; with `skipMemberlessClauses`, every clause with
- * no member is left out. The sentence opens with a capital letter.
+ * The path's shape in one sentence, `a passkey, a passport and a guardian, any
+ * 2 of 3`, clauses joined by `and`. A clause with no member and a threshold of
+ * zero asks nothing and is left out; with `skipMemberlessClauses`, every clause
+ * with no member is left out. The sentence starts in lower case, since the line
+ * that carries it leads into it.
  */
 export const renderShapeSentence = (
   clauses: readonly Clause[],
@@ -81,6 +81,5 @@ export const renderShapeSentence = (
       clause.credentials.length > 0 || !(options.skipMemberlessClauses || clause.threshold === 0)
   )
   const and = ` ${t('socialRecovery.shape.and').toLowerCase()} `
-  const sentence = read.map((clause) => clausePart(clause, options, t)).join(and)
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`
+  return read.map((clause) => clausePart(clause, options, t)).join(and)
 }
