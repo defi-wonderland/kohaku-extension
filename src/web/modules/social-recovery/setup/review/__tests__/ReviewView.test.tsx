@@ -50,9 +50,10 @@ const { getRuleLines, renderRuleLines } = jest.requireActual<
 const { renderFullAddress } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/display')
 >('@web/modules/social-recovery/shared/display')
-const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress } = jest.requireActual<
-  typeof import('@web/modules/social-recovery/shared/client')
->('@web/modules/social-recovery/shared/client')
+const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress, shapeNoteOf } =
+  jest.requireActual<typeof import('@web/modules/social-recovery/shared/client')>(
+    '@web/modules/social-recovery/shared/client'
+  )
 const { createWalletRecords } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records')
 >('@web/modules/social-recovery/shared/records')
@@ -90,6 +91,7 @@ interface MountOptions {
   enrollments?: Enrollment[]
   wait?: bigint
   backup?: SetupDraft['privacy']['backup']
+  publicMetadata?: SetupDraft['privacy']['publicMetadata']
   passwordSet?: boolean
   client?: 'loading' | 'failed' | 'update-the-wallet'
   trustedParties?: Answer<TrustedParties>
@@ -183,6 +185,7 @@ const mount = async ({
   enrollments = [],
   wait = 172800n,
   backup = 'encrypted',
+  publicMetadata = '0x',
   passwordSet = true,
   client,
   trustedParties = async () => declaration(),
@@ -198,7 +201,7 @@ const mount = async ({
     wait,
     clauses,
     ignoresPause: true,
-    privacy: { backup, publicMetadata: '0x' }
+    privacy: { backup, publicMetadata }
   })
   if (enrollments.length > 0) await setup.enrollments.write(enrollments)
   if (passwordSet) await setup.passwordSet.write('password-set')
@@ -482,6 +485,32 @@ describe('the lead', () => {
     await mount({ backup: 'encrypted', passwordSet: true })
 
     expect(textsStartingWith('review-privacy-')).toEqual([t('socialRecovery.review.privateSet')])
+  })
+
+  it('reads the Shape visible label and the line carrying the shape of a stored shape-visible draft', async () => {
+    const clauses = [group(2, PASSKEY, PASSPORT, ALICE)]
+    const shape = 'socialRecovery.shape.sentence'
+    await mount({
+      clauses,
+      enrollments: [enrolled(PASSKEY)],
+      publicMetadata: shapeNoteOf({ clauses, wait: 172800n, ignoresPause: true })
+    })
+
+    expect(textsStartingWith('review-privacy-')).toEqual([
+      t('socialRecovery.privacy.level.shapeVisible.label'),
+      t('socialRecovery.privacy.level.shapeVisible.line', {
+        shape: t(`${shape}.list`, {
+          first: t(`${shape}.list`, {
+            first: t(`${shape}.kinds.passkey`),
+            rest: t(`${shape}.pair`, {
+              first: t(`${shape}.kinds.passport`),
+              second: t(`${shape}.kinds.guardian`)
+            })
+          }),
+          rest: t(`${shape}.anyOf`, { threshold: 2, count: 3 })
+        })
+      })
+    ])
   })
 })
 

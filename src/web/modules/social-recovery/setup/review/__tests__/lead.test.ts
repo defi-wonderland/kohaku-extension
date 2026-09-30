@@ -1,5 +1,6 @@
 import i18n from '@common/config/localization'
-import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
@@ -343,5 +344,68 @@ describe('the privacy lines', () => {
         t
       )
     ).toEqual([t('socialRecovery.privacy.level.private.label')])
+  })
+
+  describe('at Shape visible', () => {
+    const SHAPE = 'socialRecovery.shape.sentence'
+    const clauses = [group(2, PASSKEY, PASSPORT, ALICE)]
+    const shapeVisible: Pick<SetupDraft, 'privacy' | 'clauses'> = {
+      clauses,
+      privacy: {
+        backup: 'encrypted',
+        publicMetadata: shapeNoteOf({ clauses, wait: 172800n, ignoresPause: true })
+      }
+    }
+    const expected = [
+      t('socialRecovery.privacy.level.shapeVisible.label'),
+      t('socialRecovery.privacy.level.shapeVisible.line', {
+        shape: t(`${SHAPE}.list`, {
+          first: t(`${SHAPE}.list`, {
+            first: t(`${SHAPE}.kinds.passkey`),
+            rest: t(`${SHAPE}.pair`, {
+              first: t(`${SHAPE}.kinds.passport`),
+              second: t(`${SHAPE}.kinds.guardian`)
+            })
+          }),
+          rest: t(`${SHAPE}.anyOf`, { threshold: 2, count: 3 })
+        })
+      })
+    ]
+
+    it('read the label and the line naming the kinds of a passkey, a passport and a guardian, any 2 of 3', () => {
+      expect(privacyLinesOf(shapeVisible, BOOK, false, t)).toEqual(expected)
+      expect(expected[1]).toContain('a passkey, a passport and a guardian, any 2 of 3')
+    })
+
+    it('read the same two lines whether the recovery password is set or not', () => {
+      expect(privacyLinesOf(shapeVisible, BOOK, true, t)).toEqual(expected)
+    })
+
+    it('name no member of the path', () => {
+      const text = privacyLinesOf(shapeVisible, BOOK, true, t).join(' ')
+      expect(text).not.toContain(PASSKEY.label)
+      expect(text.toLowerCase()).not.toContain(guardianAddress('a1').toLowerCase())
+    })
+  })
+
+  it('read Public for a clear backup even beside a shape note', () => {
+    const clauses = [group(2, PASSKEY, PASSPORT, ALICE)]
+    expect(
+      privacyLinesOf(
+        {
+          clauses,
+          privacy: {
+            backup: 'clear',
+            publicMetadata: shapeNoteOf({ clauses, wait: 172800n, ignoresPause: true })
+          }
+        },
+        BOOK,
+        true,
+        t
+      )
+    ).toEqual([
+      t('socialRecovery.privacy.level.public.label'),
+      t('socialRecovery.privacy.level.public.line')
+    ])
   })
 })
