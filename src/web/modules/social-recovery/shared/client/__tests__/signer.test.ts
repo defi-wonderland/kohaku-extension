@@ -817,11 +817,11 @@ describe('the signer facade over the request queue', () => {
       return { q, signing, id: addedRequest(q.dispatch).userRequest.id }
     }
 
-    const LISTS: [string, (id: string | number) => ReturnType<typeof listedIn>][] = [
-      ['the queue', (id) => listedIn([id], [])],
-      ['the list waiting for an account switch', (id) => listedIn([], [id])]
+    const LISTS: [string, (id: string | number) => ReturnType<typeof listedIn>, number][] = [
+      ['the queue', (id) => listedIn([id], []), 0],
+      ['the list waiting for an account switch', (id) => listedIn([], [id]), 1]
     ]
-    LISTS.forEach(([where, listing]) => {
+    LISTS.forEach(([where, listing, listenersAfter]) => {
       it(`rejects at once when aborted while the add is in flight, and removes the request once ${where} lists it`, async () => {
         const controller = new AbortController()
         const { q, signing, id } = started(controller.signal)
@@ -838,6 +838,7 @@ describe('the signer facade over the request queue', () => {
         q.push(listing(id))
         await flush()
         expect(removes(q)).toEqual([removeOf(id)])
+        expect(q.listeners()).toBe(listenersAfter)
       })
     })
 

@@ -303,9 +303,9 @@ export const createSignerFacade = (
       // and a removal that arrives first finds nothing, so the removal waits
       // until a queue state lists the request. The queue removes only from
       // `userRequests`: a request waiting for an account switch is removed
-      // again once the accepted switch moves it there. The watch ends when the
-      // request is removed from `userRequests`, once it stays out of both
-      // lists, or when the wait passes again.
+      // again once the accepted switch moves it there. The watch ends once the
+      // removal is sent for a request listed in `userRequests`, once it stays
+      // out of both lists, or when the wait passes again.
       const followWithdrawal = () => {
         if (inUserRequests) {
           remove()
