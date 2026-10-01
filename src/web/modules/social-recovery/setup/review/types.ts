@@ -321,6 +321,20 @@ export interface SaveBlockerProps {
   onPrivacy: () => void
 }
 
+/** The callback of the blocker that clears a block. */
+export type SaveBlockerHandler = Exclude<keyof SaveBlockerProps, 'blocked'>
+
+/** The block of an account this release cannot recover. */
+export type CannotRecoverBlock = Extract<SaveBlock, { kind: 'cannot-recover' }>
+
+/** The string keys a block renders beside Save, and the action that clears it where one does. */
+export interface SaveBlockCopy {
+  chip?: string
+  title?: string
+  body?: string
+  action?: { label: string; handler: SaveBlockerHandler; testID: string }
+}
+
 export interface TrustReadsState {
   reads: TrustReads
   /** Runs again the reads of one method that did not answer. */
