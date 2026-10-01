@@ -32,7 +32,7 @@ const STYLE =
   '.card{max-width:560px;border:1px solid #999;border-radius:12px;padding:24px}' +
   'h1{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 16px}' +
   '.value{margin-bottom:16px}.label{font-size:12px;color:#555;margin-bottom:4px}' +
-  '.mono{font-family:ui-monospace,monospace;font-size:15px;word-break:break-all}' +
+  '.mono{font-family:ui-monospace,monospace;font-size:15px;white-space:pre-wrap;word-break:break-all}' +
   'p{font-size:14px;margin:8px 0}'
 
 export const cardFileOf = (card: RecoveryCard, t: Translate): CardFile => {
