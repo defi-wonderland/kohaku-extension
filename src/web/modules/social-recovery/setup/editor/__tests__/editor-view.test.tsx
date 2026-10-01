@@ -20,7 +20,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
-import type { StorageDouble } from './harness'
+import type { MountOptions, Root, Validate } from './harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
@@ -54,6 +54,7 @@ const {
   BOB,
   BOOK,
   CAROL,
+  DAVE,
   enrolled,
   guardianAddress,
   makeRecords,
@@ -62,9 +63,6 @@ const {
   presetPath,
   twoGroupPath
 } = harness
-
-type Root = ReturnType<typeof createRoot>
-type Validate = (draft: SetupDraft) => Promise<ValidationResult>
 
 const draftOf = (clauses: Clause[]): SetupDraft => ({
   wait: 259200n,
@@ -137,15 +135,6 @@ const press = async (id: string) => {
   }
   act(() => node.click())
   await settle()
-}
-
-interface MountOptions {
-  clauses?: Clause[]
-  enrollments?: Enrollment[]
-  validate?: Validate
-  client?: 'loading' | 'refused' | 'update-the-wallet'
-  retry?: () => void
-  beforeRender?: (storage: StorageDouble) => void
 }
 
 const mount = async ({
@@ -975,6 +964,157 @@ describe('the duplicate sentence and the picker', () => {
     await press('editor-picker-close')
     expect(byTestId('editor-refusal')).toBeNull()
     expect(byTestId('editor-picker')).toBeNull()
+    expect(storage.sets.length).toBe(writesBefore)
+  })
+})
+
+describe('the member picker after an edit that removes its target', () => {
+  it('closes when its empty slot is removed, and every other member stays where it was', async () => {
+    const clauses = [{ threshold: 2, credentials: [ALICE, emptySlotOf('ecdsa'), BOB] }]
+    const { stored } = await mount({ clauses, enrollments: [CAROL].map(enrolled) })
+    await press('editor-slot-0-1')
+    expect(byTestId('editor-picker-ecdsa')).not.toBeNull()
+
+    await press('editor-member-0-1-remove')
+    expect(byTestId('editor-picker')).toBeNull()
+    await expectPathMatchesDraft(stored, [{ threshold: 2, credentials: [ALICE, BOB] }])
+  })
+
+  it('closes when a member before its empty slot is removed, the slot and the member after it kept', async () => {
+    const clauses = [{ threshold: 2, credentials: [ALICE, emptySlotOf('ecdsa'), BOB] }]
+    const { stored } = await mount({ clauses, enrollments: [CAROL].map(enrolled) })
+    await press('editor-slot-0-1')
+    await press('editor-member-0-0-remove')
+    expect(byTestId('editor-picker')).toBeNull()
+    await expectPathMatchesDraft(stored, [
+      { threshold: 2, credentials: [emptySlotOf('ecdsa'), BOB] }
+    ])
+  })
+
+  it('closes without an error when the group it adds a member to is removed', async () => {
+    const { stored } = await mount({ clauses: twoGroupPath(), enrollments: [DAVE].map(enrolled) })
+    await press('editor-group-2-add')
+    expect(byTestId('editor-picker')).not.toBeNull()
+
+    await expect(press('editor-group-2-remove')).resolves.toBeUndefined()
+    expect(byTestId('editor-picker')).toBeNull()
+    await expectPathMatchesDraft(stored, twoGroupPath().slice(0, 2))
+  })
+})
+
+describe('a threshold that is not a whole number', () => {
+  const refusal = 'editor-group-1-threshold-refusal'
+  const thresholdText = () => (byTestId('editor-group-1-threshold') as HTMLInputElement).value
+
+  ;[
+    ['a cleared', ''],
+    ['a fractional', '1.5']
+  ].forEach(([name, text]) =>
+    it(`keeps ${name} field as typed with its error line, holds continue and leaves the path`, async () => {
+      const { stored, validateSetup, navigate } = await mount({ clauses: presetPath() })
+      await typeThreshold('editor-group-1-threshold', text)
+
+      expect(thresholdText()).toBe(text)
+      expect(byTestId(refusal)?.textContent).toBe(
+        t('socialRecovery.editor.refusals.thresholdWholeNumber')
+      )
+      expect(isHeld('editor-continue')).toBe(true)
+      await press('editor-continue')
+      expect(validateSetup).not.toHaveBeenCalled()
+      expect(navigate).not.toHaveBeenCalled()
+      await expectPathMatchesDraft(stored, presetPath())
+    })
+  )
+
+  it('frees continue and clears the line once a whole number in range is typed, and the check reads it', async () => {
+    const { stored, validateSetup, navigate } = await mount({ clauses: presetPath() })
+    await typeThreshold('editor-group-1-threshold', '1.5')
+    expect(isHeld('editor-continue')).toBe(true)
+
+    await typeThreshold('editor-group-1-threshold', '3')
+    expect(byTestId(refusal)).toBeNull()
+    expect(isHeld('editor-continue')).toBe(false)
+    const edited = [
+      { threshold: 1, credentials: [PASSKEY] },
+      { threshold: 3, credentials: [ALICE, BOB, PASSPORT] }
+    ]
+    await expectPathMatchesDraft(stored, edited)
+
+    await press('editor-continue')
+    expect(validateSetup).toHaveBeenCalledWith(draftOf(edited))
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
+  })
+
+  it("goes back to the path's threshold after another edit", async () => {
+    await mount({ clauses: presetPath(), enrollments: [CAROL].map(enrolled) })
+    await typeThreshold('editor-group-1-threshold', '')
+    await press('editor-member-1-2-remove')
+    expect(thresholdText()).toBe('2')
+    expect(byTestId(refusal)).toBeNull()
+    expect(isHeld('editor-continue')).toBe(false)
+  })
+})
+
+describe('a method whose access test failed', () => {
+  const failed = (cause?: string): Enrollment => ({ credential: PASSKEY, test: 'failed', cause })
+
+  it("shows the browser's error name and the may-never-work line under the row", async () => {
+    await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
+      enrollments: [failed('browser-error: NotAllowedError')]
+    })
+    expect(byTestId('editor-slot-0-0')?.textContent).toContain(
+      en.socialRecovery.status.method.testFailed
+    )
+    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
+      'NotAllowedError',
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('shows the no-match sentence for a check that did not match', async () => {
+    await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
+      enrollments: [failed('check-rejected')]
+    })
+    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
+      en.socialRecovery.ceremony.testFailedNoMatch,
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('shows no test line for a method whose test passed', async () => {
+    await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
+      enrollments: [enrolled(PASSKEY)]
+    })
+    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([])
+  })
+})
+
+describe('the group chooser of a required row', () => {
+  const choices = () =>
+    Array.from(
+      container.querySelectorAll<HTMLElement>('[data-testid^="editor-row-0-move-"]'),
+      (node) => node.getAttribute('data-testid')
+    )
+
+  it('offers one action per group and a cancel that closes it, writing nothing', async () => {
+    const { storage, writesBefore } = await mount({ clauses: twoGroupPath() })
+    expect(choices()).toEqual([])
+
+    await press('editor-row-0-move')
+    expect(choices()).toEqual([
+      'editor-row-0-move-1',
+      'editor-row-0-move-2',
+      'editor-row-0-move-cancel'
+    ])
+    expect(byTestId('editor-row-0-move-cancel')?.textContent).toBe(
+      en.socialRecovery.ceremony.cancelAction
+    )
+
+    await press('editor-row-0-move-cancel')
+    expect(choices()).toEqual([])
     expect(storage.sets.length).toBe(writesBefore)
   })
 })

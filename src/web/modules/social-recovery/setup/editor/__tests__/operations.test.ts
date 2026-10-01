@@ -10,7 +10,7 @@ import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
 import type { Clause, Finding, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { renderFinding } from '../copy'
+import { renderFailedTestLines, renderFinding } from '../copy'
 import {
   addGroup,
   addMember,
@@ -28,10 +28,12 @@ import {
   pathHolds,
   pickerEntriesOf,
   placeAt,
+  readThreshold,
   removeClause,
   removeMember,
   sameCredential,
   setThreshold,
+  targetHolds,
   withClauses
 } from '../operations'
 import {
@@ -301,6 +303,24 @@ describe('filling and placing', () => {
     ).toEqual([ALICE, BOB, PASSPORT, CAROL])
   })
 
+  it('holds an empty slot target only while that slot is still empty at its place', () => {
+    const target = { place: 'slot', clause: 0, member: 1 } as const
+    const clauses = [{ threshold: 2, credentials: [ALICE, emptySlotOf('ecdsa'), BOB] }]
+    expect(targetHolds(clauses, target)).toBe(true)
+    expect(targetHolds(removeMember(clauses, 0, 1), target)).toBe(false)
+    expect(targetHolds(removeMember(clauses, 0, 0), target)).toBe(false)
+    expect(targetHolds(removeClause(clauses, 0), target)).toBe(false)
+    expect(targetHolds(applied(fillSlot(clauses, target, CAROL)).clauses, target)).toBe(false)
+  })
+
+  it('holds a new member target only while its group is in the path, and a new row or second method always', () => {
+    const clauses = twoGroupPath()
+    expect(targetHolds(clauses, { place: 'member', clause: 2 })).toBe(true)
+    expect(targetHolds(removeClause(clauses, 2), { place: 'member', clause: 2 })).toBe(false)
+    expect(targetHolds([], { place: 'required' })).toBe(true)
+    expect(targetHolds([], { place: 'second' })).toBe(true)
+  })
+
   it('keeps every field of the draft but its clauses', () => {
     const draft: SetupDraft = {
       wait: 604800n,
@@ -450,5 +470,50 @@ describe('the path check at continue', () => {
       en.socialRecovery.editor.refusals.thresholdAboveMembers
     )
     expect(renderFinding(finding('action.unsupported'), t)).toBe('action.unsupported')
+  })
+})
+
+describe("a threshold field's text", () => {
+  it('reads as the whole number its digits write', () => {
+    expect(readThreshold('0')).toBe(0)
+    expect(readThreshold('3')).toBe(3)
+    expect(readThreshold('007')).toBe(7)
+  })
+
+  it('reads empty text, a fraction, a sign, an exponent, a space, a word or a number past the safe range as none', () => {
+    ;['', ' ', '1.5', '2.', '-1', '+2', '1e2', ' 2', 'two', '99999999999999999999'].forEach(
+      (text) => expect(readThreshold(text)).toBeUndefined()
+    )
+  })
+})
+
+describe('the lines of a failed access test', () => {
+  const failed = (cause?: string) => ({ credential: PASSKEY, test: 'failed' as const, cause })
+
+  it("give the browser's error name, then that the method may never work", () => {
+    expect(renderFailedTestLines(failed('browser-error: NotAllowedError'), t)).toEqual([
+      'NotAllowedError',
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('give the no-match sentence for a check that did not match', () => {
+    expect(renderFailedTestLines(failed('check-rejected'), t)).toEqual([
+      en.socialRecovery.ceremony.testFailedNoMatch,
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('give only the may-never-work line for no cause, an unknown cause or text that is not an error name', () => {
+    ;[undefined, 'timeout', 'browser-error: <b>hi</b>', 'browser-error'].forEach((cause) =>
+      expect(renderFailedTestLines(failed(cause), t)).toEqual([
+        en.socialRecovery.ceremony.testFailedLine
+      ])
+    )
+  })
+
+  it('give nothing for a test that passed or was not run', () => {
+    expect(renderFailedTestLines(enrolled(PASSKEY), t)).toEqual([])
+    expect(renderFailedTestLines({ credential: PASSKEY, test: 'not-tested' }, t)).toEqual([])
   })
 })
