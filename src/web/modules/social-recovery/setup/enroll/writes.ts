@@ -3,7 +3,7 @@
  * test: the enrollment joins the list, then the slot takes its credential in
  * one write of the draft and the path. A test updates its enrollment alone.
  */
-import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,
@@ -32,6 +32,9 @@ export const readSlot = async (
   return slotStateOf(draft.value.clauses, search.at, search.kind, book, enrollments)
 }
 
+const heldInPath = (clauses: readonly Clause[], credential: Credential): boolean =>
+  clauses.some((clause) => clause.credentials.some((held) => sameCredential(held, credential)))
+
 /**
  * Places a new enrollment in the slot: the slot must still be empty or hold
  * this screen's own credential, which the new one replaces with its
@@ -39,7 +42,7 @@ export const readSlot = async (
  *
  * The replaced enrollment leaves the list only once the draft holds the new
  * credential, so a failed draft write never leaves the old credential in the
- * slot without its enrollment.
+ * slot without its enrollment. Placing the same enrollment again is safe.
  */
 export const placeEnrollment = async (
   setup: SetupRecords,
@@ -62,18 +65,20 @@ export const placeEnrollment = async (
 
   const others = enrollments.filter((e) => !sameCredential(e.credential, enrollment.credential))
   await setup.enrollments.write([...others, enrollment])
+  const placed = withSlotFilled(draft.value, search.at, enrollment.credential)
   try {
-    await setup.writeDraftAndPath(withSlotFilled(draft.value, search.at, enrollment.credential))
+    await setup.writeDraftAndPath(placed)
   } catch (error: unknown) {
     // The slot never took the credential, so the list goes back to what it held.
     await setup.enrollments.write(enrollments).catch(() => undefined)
     throw error
   }
-  if (slot.status === 'enrolled') {
-    const replaced = slot.enrollment.credential
-    await setup.enrollments.write(
-      [...others, enrollment].filter((e) => !sameCredential(e.credential, replaced))
-    )
+  // The replaced credential's enrollment goes with any other the path no
+  // longer holds. A retry after this write failed finds the slot holding the
+  // new credential already: the new enrollment stays and the old one goes.
+  const kept = [...others, enrollment].filter((e) => heldInPath(placed.clauses, e.credential))
+  if (kept.length !== others.length + 1) {
+    await setup.enrollments.write(kept)
   }
   return { status: 'placed', enrollment }
 }
