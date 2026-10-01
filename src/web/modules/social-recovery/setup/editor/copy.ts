@@ -122,7 +122,7 @@ export const renderFailedTestLines = (enrollment: Enrollment, t: Translate): str
 
 /** The line under a threshold field whose text is not a whole number. */
 export const renderHeldThreshold = (t: Translate): string =>
-  t('socialRecovery.editor.refusals.thresholdBelowOne')
+  t('socialRecovery.editor.refusals.thresholdWholeNumber')
 
 export const renderClientRefusal = (
   refusal: ClientRefusal,
