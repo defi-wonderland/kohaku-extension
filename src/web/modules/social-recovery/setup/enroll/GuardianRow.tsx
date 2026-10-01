@@ -6,343 +6,29 @@
  * wallet holds the key, or through the offline block, and the row reads not
  * tested until the challenge comes back signed.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React from 'react'
 import { View } from 'react-native'
-import { isAddress } from 'viem'
 
-import Avatar from '@common/components/Avatar'
 import Button from '@common/components/Button'
-import Input from '@common/components/Input'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
-import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import {
-  browserErrorNameOf,
-  enrollHost,
-  noteKeyOfOutcome,
-  notSupported
-} from '@web/modules/social-recovery/shared/ceremony'
-import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import { isSignerNotWired, isSignFlowFailure } from '@web/modules/social-recovery/shared/client'
-import {
-  renderChip,
-  renderFullAddress,
-  renderNoun,
-  renderResolvedName,
-  renderShortAddress
-} from '@web/modules/social-recovery/shared/display'
-import type { Enrollment } from '@web/modules/social-recovery/shared/records'
+import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
 
-import {
-  checkGuardianSignature,
-  checkLinesOf,
-  codeCheckOf,
-  guardianAddressOf,
-  guardianDevice,
-  guardianTargetOf,
-  heldKeyOf,
-  outcomeOfSignError,
-  seedCheckOf
-} from './guardian'
+import GuardianAddressField from './GuardianAddressField'
+import GuardianChecksBlock from './GuardianChecksBlock'
+import GuardianEnrolledSummary from './GuardianEnrolledSummary'
+import GuardianTestBlock from './GuardianTestBlock'
 import OfflineBlock from './OfflineBlock'
-import { causeOf, TEST_CHIPS, testLineKeyOf, testNoteKeysOf, testVerdictOf } from './outcome'
-import { keyTestOf, keyTestToSignOf } from './testRequest'
-import type { GuardianChallenge, GuardianChecks, NameCheck, RowProps } from './types'
-import { placeEnrollment, recordTest } from './writes'
+import type { RowProps } from './types'
+import useGuardianRow from './useGuardianRow'
 
-/** How long the field rests before a name resolves. */
-const RESOLVE_DELAY_MS = 400
-
-const GuardianRow = ({
-  setup,
-  chainId,
-  account,
-  search,
-  book,
-  client,
-  deps,
-  enrollment,
-  onEnrollment
-}: RowProps) => {
+const GuardianRow = (props: RowProps) => {
+  const { client, deps, enrollment } = props
   const { t } = useTranslation()
-  const [value, setValue] = useState('')
-  const [nameCheck, setNameCheck] = useState<NameCheck | undefined>()
-  const [code, setCode] = useState<'none' | 'contract' | undefined>()
-  const [resolvedName, setResolvedName] = useState<string | undefined>()
-  const [addOutcome, setAddOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
-  const [testOutcome, setTestOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
-  const [challenge, setChallenge] = useState<GuardianChallenge | null>(null)
-  const [offline, setOffline] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [waiting, setWaiting] = useState(false)
-  const pending = useRef<AbortController | null>(null)
-  const [writeFailed, setWriteFailed] = useState(false)
-  const [duplicate, setDuplicate] = useState(false)
-
-  const target = useMemo(() => guardianTargetOf(value), [value])
-  const { resolveName } = deps
-
-  // A request still queued when the row goes away is withdrawn.
-  useEffect(
-    () => () => {
-      pending.current?.abort()
-    },
-    []
-  )
-
-  useEffect(() => {
-    if (enrollment || target.kind !== 'name') {
-      setNameCheck(undefined)
-      return undefined
-    }
-    let live = true
-    setNameCheck({ status: 'resolving' })
-    const timer = setTimeout(() => {
-      resolveName(target.name)
-        .then((resolved) => {
-          if (!live) {
-            return
-          }
-          setNameCheck(
-            isAddress(resolved, { strict: false })
-              ? { status: 'resolved', name: target.name, address: resolved }
-              : { status: 'unresolved' }
-          )
-        })
-        .catch(() => {
-          if (live) {
-            setNameCheck({ status: 'unresolved' })
-          }
-        })
-    }, RESOLVE_DELAY_MS)
-    return () => {
-      live = false
-      clearTimeout(timer)
-    }
-  }, [enrollment, target, resolveName])
-
-  const enrolledAddress = useMemo(
-    () => (enrollment ? guardianAddressOf(enrollment.credential.config) : undefined),
-    [enrollment]
-  )
-  let address: Address | undefined
-  if (enrollment) {
-    address = enrolledAddress
-  } else if (target.kind === 'address') {
-    address = target.address
-  } else if (nameCheck?.status === 'resolved') {
-    address = nameCheck.address
-  }
-
-  useEffect(() => {
-    setCode(undefined)
-    if (!address || !deps.chain) {
-      return undefined
-    }
-    let live = true
-    deps.chain
-      .readCode(address)
-      .then((read) => {
-        if (live) {
-          setCode(codeCheckOf(read))
-        }
-      })
-      // A read the node did not answer renders neither code line.
-      .catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [address, deps.chain])
-
-  const checks: GuardianChecks = {
-    ...(!enrollment && target.kind === 'address' ? { checksum: target.checksum } : {}),
-    ...(!enrollment && nameCheck ? { name: nameCheck } : {}),
-    ...(code ? { code } : {}),
-    ...(address ? { seed: seedCheckOf(deps.keys, address) } : {})
-  }
-  const checkLines = checkLinesOf(checks)
-
-  const add = useCallback(async () => {
-    if (client.status !== 'ready' || !address) {
-      return
-    }
-    const method = client.client.methodFor('ecdsa')
-    if (!method) {
-      setAddOutcome(notSupported('no-implementation'))
-      return
-    }
-    const replaced = enrollment?.credential
-    setBusy(true)
-    try {
-      const outcome = await enrollHost({
-        orchestrator: client.client.approving,
-        method,
-        methodAddress: book.methods.ecdsa,
-        params: { address },
-        device: guardianDevice
-      })
-      if (outcome.kind !== 'verdict' || outcome.verdict !== 'passed') {
-        setAddOutcome(outcome)
-        return
-      }
-      const created: Enrollment = {
-        credential: { method: book.methods.ecdsa, config: outcome.value.config, label: '' },
-        test: 'not-tested'
-      }
-      const placed = await placeEnrollment(setup, search, book, created, replaced)
-      setDuplicate(placed.status === 'duplicate')
-      setWriteFailed(placed.status === 'slot-taken')
-      if (placed.status !== 'placed') {
-        return
-      }
-      setAddOutcome(null)
-      setResolvedName(nameCheck?.status === 'resolved' ? nameCheck.name : undefined)
-      onEnrollment(created)
-    } catch {
-      setWriteFailed(true)
-    } finally {
-      setBusy(false)
-    }
-  }, [client, address, enrollment, book, setup, search, nameCheck, onEnrollment])
-
-  const applyTest = useCallback(
-    async (outcome: CeremonyOutcome<unknown>) => {
-      setTestOutcome(outcome)
-      const verdict = testVerdictOf(outcome)
-      if (!enrollment || !verdict) {
-        return
-      }
-      if (verdict === 'passed') {
-        setOffline(false)
-      }
-      try {
-        const updated = await recordTest(setup, enrollment.credential, verdict, causeOf(outcome))
-        setWriteFailed(false)
-        if (updated) {
-          onEnrollment(updated)
-        }
-      } catch {
-        setWriteFailed(true)
-      }
-    },
-    [enrollment, setup, onEnrollment]
-  )
-
-  const check = useCallback(
-    async (signed: GuardianChallenge, signature: Hex) => {
-      if (!address) {
-        return
-      }
-      setBusy(true)
-      try {
-        await applyTest(
-          await checkGuardianSignature({
-            keyTest: signed.keyTest,
-            signature,
-            address,
-            chain: deps.chain,
-            now: deps.now()
-          })
-        )
-      } finally {
-        setBusy(false)
-      }
-    },
-    [address, deps, applyTest]
-  )
-
-  // The offline block serves any key; a key the wallet holds signs on this
-  // device unless the holder asks for the offline block.
-  const runTest = useCallback(
-    async (offlineOnly: boolean) => {
-      if (!enrollment || !address) {
-        return
-      }
-      const keyTest = keyTestOf({
-        chainId,
-        account,
-        key: address,
-        now: deps.now(),
-        randomBytes: deps.randomBytes
-      })
-      const next: GuardianChallenge = { keyTest }
-      setChallenge(next)
-      setTestOutcome(null)
-      const held = heldKeyOf(deps.keys, address)
-      if (!held || offlineOnly) {
-        setOffline(true)
-        return
-      }
-      setOffline(false)
-      const controller = new AbortController()
-      pending.current = controller
-      setBusy(true)
-      setWaiting(true)
-      let signature: Hex
-      try {
-        signature = await deps.signTypedData(
-          { addr: held.addr, type: held.type },
-          keyTestToSignOf(keyTest),
-          { signal: controller.signal }
-        )
-      } catch (error: unknown) {
-        if (controller.signal.aborted) {
-          return
-        }
-        pending.current = null
-        setWaiting(false)
-        setBusy(false)
-        // A key the request queue cannot sign for, or a request withdrawn from
-        // the queue, is carried to the offline block.
-        if (isSignerNotWired(error) || (isSignFlowFailure(error) && error.reason === 'withdrawn')) {
-          setOffline(true)
-        } else {
-          await applyTest(outcomeOfSignError(error))
-        }
-        return
-      }
-      // A signature that arrives after the holder withdrew the request is dropped.
-      if (controller.signal.aborted) {
-        return
-      }
-      pending.current = null
-      setWaiting(false)
-      setBusy(false)
-      await check(next, signature)
-    },
-    [enrollment, address, chainId, account, deps, applyTest, check]
-  )
-
-  const withdraw = useCallback(() => {
-    pending.current?.abort()
-    pending.current = null
-    setWaiting(false)
-    setBusy(false)
-    setOffline(true)
-  }, [])
-
-  const paste = useCallback(() => {
-    deps
-      .readClipboard?.()
-      .then((text) => setValue(text.trim()))
-      // A refused clipboard leaves the field as it was.
-      .catch(() => undefined)
-  }, [deps])
-
-  const addNote = addOutcome ? noteKeyOfOutcome(addOutcome, 'enroll') : null
-  const lineKey = enrollment
-    ? testLineKeyOf(enrollment, false, 'socialRecovery.enroll.guardian.testedLine')
-    : null
-  const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
-  const testError = testOutcome ? browserErrorNameOf(testOutcome) : null
-  const resolved = resolvedName ? renderResolvedName(resolvedName, 'besideAddressToCheck', t) : null
-  const heldKey = address ? heldKeyOf(deps.keys, address) : undefined
-  const fieldResolved =
-    !enrollment && nameCheck?.status === 'resolved'
-      ? renderResolvedName(nameCheck.name, 'besideAddressToCheck', t)
-      : null
+  const row = useGuardianRow(props)
+  const { address, challenge } = row
+  const addNote = row.addOutcome ? noteKeyOfOutcome(row.addOutcome, 'enroll') : null
 
   return (
     <View testID="enroll-guardian">
@@ -357,59 +43,22 @@ const GuardianRow = ({
       </Text>
 
       {!enrollment && (
-        <View testID="guardian-field">
-          <Input
-            testID="guardian-address"
-            value={value}
-            onChangeText={setValue}
-            button={deps.readClipboard ? t('socialRecovery.actions.paste') : null}
-            onButtonPress={paste}
-          />
-          <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.enroll.guardian.pasteHint')}
-          </Text>
-          {!!fieldResolved && !!address && (
-            <View testID="guardian-resolved" style={spacings.mbSm}>
-              <Text fontSize={14} selectable>
-                {renderFullAddress(address)}
-              </Text>
-              {!!fieldResolved.caveat && (
-                <Text fontSize={12} appearance="secondaryText">
-                  {fieldResolved.caveat}
-                </Text>
-              )}
-            </View>
-          )}
-        </View>
+        <GuardianAddressField
+          value={row.value}
+          setValue={row.setValue}
+          paste={row.paste}
+          canPaste={!!deps.readClipboard}
+          nameCheck={row.nameCheck}
+          address={address}
+        />
       )}
 
       {!!enrollment && !!address && (
-        <View testID="guardian-enrolled" style={spacings.mbSm}>
-          <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
-            <Avatar pfp={address} isSmart={false} size={32} displayTypeBadge={false} />
-            <Text testID="guardian-name" fontSize={16} weight="medium" style={spacings.mrSm}>
-              {resolved ? resolved.name : renderShortAddress(address)}
-            </Text>
-            <Text fontSize={12} appearance="secondaryText" style={spacings.mrSm}>
-              {renderNoun('guardian', t)}
-            </Text>
-            <Text testID="guardian-chip" fontSize={12} weight="medium" appearance="secondaryText">
-              {renderChip('method', TEST_CHIPS[enrollment.test], t)}
-            </Text>
-          </View>
-          {!!resolved && (
-            <>
-              <Text testID="guardian-full-address" fontSize={14} selectable>
-                {renderFullAddress(address)}
-              </Text>
-              {!!resolved.caveat && (
-                <Text fontSize={12} appearance="secondaryText">
-                  {resolved.caveat}
-                </Text>
-              )}
-            </>
-          )}
-        </View>
+        <GuardianEnrolledSummary
+          enrollment={enrollment}
+          address={address}
+          resolvedName={row.resolvedName}
+        />
       )}
 
       {!!address && (
@@ -426,21 +75,7 @@ const GuardianRow = ({
         </View>
       )}
 
-      {checkLines.length > 0 && (
-        <View testID="guardian-checks" style={spacings.mbSm}>
-          <Text fontSize={12} weight="medium" appearance="secondaryText" style={spacings.mbTy}>
-            {t('socialRecovery.enroll.guardian.checksHeader')}
-          </Text>
-          {checkLines.map((line) => (
-            <Text key={line.key} testID="guardian-check" fontSize={14}>
-              {t(line.key, line.values)}
-            </Text>
-          ))}
-          <Text fontSize={12} appearance="secondaryText">
-            {t('socialRecovery.enroll.guardian.advisory')}
-          </Text>
-        </View>
-      )}
+      {row.checkLines.length > 0 && <GuardianChecksBlock lines={row.checkLines} />}
 
       {!enrollment && (
         <View style={spacings.mbSm}>
@@ -453,102 +88,41 @@ const GuardianRow = ({
             testID="guardian-add"
             type="primary"
             text={t('socialRecovery.actions.add')}
-            disabled={!address || client.status !== 'ready' || busy}
-            onPress={add}
+            disabled={!address || client.status !== 'ready' || row.busy}
+            onPress={row.add}
             hasBottomSpacing={false}
           />
         </View>
       )}
 
       {!!enrollment && (
-        <View testID="guardian-test-block" style={spacings.mbSm}>
-          <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.enroll.guardian.howMany')}
-          </Text>
-
-          <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
-            <Text fontSize={14} weight="semiBold" style={spacings.mrSm}>
-              {t('socialRecovery.enroll.accessTest')}
-            </Text>
-            <Text fontSize={12} appearance="secondaryText">
-              {t('socialRecovery.enroll.recommended')}
-            </Text>
-          </View>
-          {!!lineKey && (
-            <Text testID="guardian-test-line" fontSize={14}>
-              {t(lineKey)}
-            </Text>
-          )}
-          {testNotes.map((note) => (
-            <Text key={note} testID="guardian-test-note" fontSize={12} appearance="secondaryText">
-              {t(note)}
-            </Text>
-          ))}
-          {!!testError && (
-            <Text testID="guardian-test-error" fontSize={12} appearance="secondaryText">
-              {testError}
-            </Text>
-          )}
-          {enrollment.test !== 'not-supported' && (
-            <View style={[flexbox.directionRow, flexbox.alignCenter]}>
-              <Button
-                testID="guardian-test"
-                type="outline"
-                text={
-                  enrollment.test === 'failed' || enrollment.test === 'unavailable'
-                    ? t('socialRecovery.writes.tryAgain')
-                    : t('socialRecovery.enroll.guardian.testThisKey')
-                }
-                disabled={busy}
-                onPress={() => runTest(false)}
-                hasBottomSpacing={false}
-                style={spacings.mrSm}
-              />
-              {!!heldKey && (
-                <Button
-                  testID="guardian-test-offline"
-                  type="ghost"
-                  text={t('socialRecovery.enroll.offline.title')}
-                  disabled={busy}
-                  onPress={() => runTest(true)}
-                  hasBottomSpacing={false}
-                />
-              )}
-            </View>
-          )}
-          {waiting && (
-            <View testID="guardian-test-waiting" style={spacings.mtSm}>
-              <Text fontSize={14} style={spacings.mbTy}>
-                {t('socialRecovery.enroll.guardian.waitingForSignScreen')}
-              </Text>
-              <Button
-                testID="guardian-test-withdraw"
-                type="ghost"
-                text={t('socialRecovery.enroll.guardian.testOfflineInstead')}
-                onPress={withdraw}
-                hasBottomSpacing={false}
-              />
-            </View>
-          )}
-        </View>
+        <GuardianTestBlock
+          enrollment={enrollment}
+          testOutcome={row.testOutcome}
+          busy={row.busy}
+          waiting={row.waiting}
+          canTestOffline={!!row.heldKey}
+          runTest={row.runTest}
+          withdraw={row.withdraw}
+        />
       )}
 
-      {!!enrollment && offline && !!challenge && (
+      {!!enrollment && row.offline && !!challenge && (
         <OfflineBlock
           key={challenge.keyTest.message.salt}
           challenge={challenge}
-          busy={busy}
-          onCheck={(signature) => check(challenge, signature)}
+          busy={row.busy}
+          onCheck={(signature) => row.check(challenge, signature)}
           saveFile={deps.saveFile}
         />
       )}
 
-      {duplicate && (
+      {row.duplicate && (
         <Text testID="guardian-duplicate" fontSize={14} appearance="errorText">
           {t('socialRecovery.editor.duplicate')}
         </Text>
       )}
-      {writeFailed && (
+      {row.writeFailed && (
         <Text testID="enroll-write-failed" fontSize={14} appearance="errorText">
           {t('socialRecovery.records.writeFailed')}
         </Text>
