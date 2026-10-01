@@ -26,7 +26,6 @@ import {
   renderRuleLines,
   renderShapeSentence
 } from '@web/modules/social-recovery/shared/rule-lines'
-import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony/verdicts'
 
 import { REVIEW_WAIT_CHIPS } from './constants'
 import type { MethodKind, PathRow, PublicationItem } from './types'
@@ -95,44 +94,20 @@ export const guardianAddressOf = (credential: Credential): Address | undefined =
 }
 
 /**
- * The line a failed test's stored cause reads, or null where the wallet has no
- * words for it. The cause is stored as its slug, or as `<slug>: <detail>` where
- * the test carried a detail: a check that did not match reads its line, a
- * passkey made under another origin reads its line, and a browser error reads
- * the browser's own error name.
- */
-const failedCauseLineOf = (cause: string | undefined, t: Translate): string | null => {
-  if (!cause) {
-    return null
-  }
-  const split = cause.indexOf(': ')
-  const slug = split === -1 ? cause : cause.slice(0, split)
-  const detail = split === -1 ? undefined : cause.slice(split + 2)
-  if (slug === 'check-rejected') {
-    return t(`${CEREMONY}.testFailedNoMatch`)
-  }
-  if (slug === 'relying-party-mismatch') {
-    return t(`${CEREMONY}.relyingPartyMismatch`)
-  }
-  if (slug === 'browser-error' && isBrowserErrorName(detail)) {
-    return detail
-  }
-  return null
-}
-
-/**
- * The lines a test verdict carries under its chip. A failed test reads the
- * cause the test reported where the wallet has words for it, then that the
- * method may never work.
+ * The lines a test verdict carries under its chip. A failed test reads one
+ * line: that the check did not match where its stored cause says so, else that
+ * the method may never work.
  */
 const verdictLinesOf = (enrollment: Enrollment, t: Translate): string[] => {
   switch (enrollment.test) {
     case 'not-tested':
       return [t(`${CEREMONY}.notTestedLine`)]
-    case 'failed': {
-      const cause = failedCauseLineOf(enrollment.cause, t)
-      return [...(cause ? [cause] : []), t(`${CEREMONY}.testFailedLine`)]
-    }
+    case 'failed':
+      return [
+        enrollment.cause?.startsWith('check-rejected')
+          ? t(`${CEREMONY}.testFailedNoMatch`)
+          : t(`${CEREMONY}.testFailedLine`)
+      ]
     case 'unavailable':
       return [t(`${CEREMONY}.testUnavailableLine`)]
     case 'not-supported':

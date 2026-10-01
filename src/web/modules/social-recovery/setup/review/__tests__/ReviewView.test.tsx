@@ -348,13 +348,13 @@ describe('the path rows', () => {
     })
   })
 
-  it('follow the cause of a failed test with the line that the method may never work', async () => {
+  it('show a failed check that did not match by that line alone', async () => {
     await mount({
       clauses: [required(ALICE)],
       enrollments: [enrolled(ALICE, 'failed', { cause: 'check-rejected' })]
     })
 
-    expect(textOf('review-row-0-0-line-1')).toBe(t(`${CEREMONY}.testFailedLine`))
+    expect(textsStartingWith('review-row-0-0-line-')).toEqual([t(`${CEREMONY}.testFailedNoMatch`)])
   })
 
   /** The path and the query of the one place the review navigated to. */
@@ -406,16 +406,13 @@ describe('the path rows', () => {
     expect(container.querySelectorAll('[data-testid$="-retry-test"]')).toHaveLength(0)
   })
 
-  it('give a passkey made under another origin its cause before the line that it may never work', async () => {
+  it('show a passkey made under another origin as a method that may never work', async () => {
     await mount({
       clauses: [required(PASSKEY)],
       enrollments: [enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch: SecurityError' })]
     })
 
-    expect(textsStartingWith('review-row-0-0-line-').slice(0, 2)).toEqual([
-      t(`${CEREMONY}.relyingPartyMismatch`),
-      t(`${CEREMONY}.testFailedLine`)
-    ])
+    expect(textsStartingWith('review-row-0-0-line-')).toEqual([t(`${CEREMONY}.testFailedLine`)])
   })
 
   it('offer no test again on a test that ran', async () => {

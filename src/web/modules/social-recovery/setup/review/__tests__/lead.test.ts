@@ -200,26 +200,26 @@ describe('a row of the path', () => {
     expect([row.chip, row.lines]).toEqual([chip('notTested'), [t(`${CEREMONY}.notTestedLine`)]])
   })
 
-  it('reads a failed test with the cause the check reported, then that it may never work', () => {
+  it('reads a failed check that did not match by that line alone', () => {
     const row = rowOf(enrolled(ALICE, 'failed', { cause: 'check-rejected' }))
     expect([row.chip, row.lines]).toEqual([
       chip('testFailed'),
-      [t(`${CEREMONY}.testFailedNoMatch`), t(`${CEREMONY}.testFailedLine`)]
+      [t(`${CEREMONY}.testFailedNoMatch`)]
     ])
   })
 
   it('reads a check that did not match by its line where the check carried a reason', () => {
     const row = rowOf(enrolled(ALICE, 'failed', { cause: 'check-rejected: signer mismatch' }))
-    expect(row.lines).toEqual([t(`${CEREMONY}.testFailedNoMatch`), t(`${CEREMONY}.testFailedLine`)])
+    expect(row.lines).toEqual([t(`${CEREMONY}.testFailedNoMatch`)])
   })
 
-  it("reads a failed test with the browser's own error name as its cause", () => {
+  it('reads a failed test with a browser error as a method that may never work', () => {
     const row = rowOf(enrolled(PASSKEY, 'failed', { cause: 'browser-error: NotAllowedError' }))
-    expect(row.lines).toEqual(['NotAllowedError', t(`${CEREMONY}.testFailedLine`)])
+    expect(row.lines).toEqual([t(`${CEREMONY}.testFailedLine`)])
   })
 
-  it('reads a passkey made under another origin by its line, with or without the error name', () => {
-    const lines = [t(`${CEREMONY}.relyingPartyMismatch`), t(`${CEREMONY}.testFailedLine`)]
+  it('reads a passkey made under another origin as a method that may never work', () => {
+    const lines = [t(`${CEREMONY}.testFailedLine`)]
     const stored = rowOf(
       enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch: SecurityError' })
     )
