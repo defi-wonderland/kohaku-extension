@@ -1,10 +1,4 @@
-/**
- * The passkey row's state and actions. The ceremony tab creates the
- * credential on this device or over the browser's phone hand-off, in this
- * same full tab, and returns here with its report. The access test is offered
- * right after and never enforced; the row records the synced or device-bound
- * kind from the ceremony's own facts whatever the holder does with the test.
- */
+/** The passkey row's state, its record writes and the handlers its blocks call. */
 import { useCallback, useRef, useState } from 'react'
 
 import { useTranslation } from '@common/config/localization'
@@ -202,7 +196,7 @@ const usePasskeyRow = ({
     enrollment,
     name,
     defaultName,
-    handOff: memory.handOff ?? false,
+    createdOnPhone: memory.handOff ?? false,
     setBusy,
     setWriteFailed
   })

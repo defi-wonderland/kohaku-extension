@@ -331,7 +331,7 @@ export interface PasskeyLaunchInput
   name: string
   defaultName: string
   /** Whether the holder chose the phone hand-off to create the passkey. */
-  handOff: boolean
+  createdOnPhone: boolean
   setBusy: (busy: boolean) => void
   setWriteFailed: (failed: boolean) => void
 }

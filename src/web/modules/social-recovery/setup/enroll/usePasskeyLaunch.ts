@@ -24,7 +24,7 @@ const usePasskeyLaunch = ({
   enrollment,
   name,
   defaultName,
-  handOff: createdOnPhone,
+  createdOnPhone,
   setBusy,
   setWriteFailed
 }: PasskeyLaunchInput): PasskeyLaunch => {

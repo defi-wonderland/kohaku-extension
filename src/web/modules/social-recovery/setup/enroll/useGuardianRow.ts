@@ -1,9 +1,4 @@
-/**
- * The guardian row's state and actions. The wallet stores no name for a
- * guardian. The access test signs a challenge on this device through the
- * request queue where the wallet holds the key, or through the offline block,
- * and the row reads not tested until the challenge comes back signed.
- */
+/** The guardian row's state, its record writes and the handlers its blocks call. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
