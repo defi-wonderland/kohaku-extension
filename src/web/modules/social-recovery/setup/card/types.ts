@@ -6,8 +6,7 @@ import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
  * What the card carries besides its fixed lines: at the hidden level the
  * recovery password, at the public level the address alone.
  */
-export const CARD_LEVELS = ['hidden', 'public'] as const
-export type CardLevel = typeof CARD_LEVELS[number]
+export type CardLevel = 'hidden' | 'public'
 
 /** The card's values: the account, its level, and the password where the level carries one. */
 export interface RecoveryCard {
@@ -41,8 +40,7 @@ export interface CardCarriers {
   print: () => void
 }
 
-const CARRIER_ACTIONS = ['download', 'print', 'sendToDevice'] as const
-export type CarrierAction = typeof CARRIER_ACTIONS[number]
+export type CarrierAction = 'download' | 'print' | 'sendToDevice'
 
 /** The two ends of the extension password ask. */
 export interface PasswordAskAnswer {

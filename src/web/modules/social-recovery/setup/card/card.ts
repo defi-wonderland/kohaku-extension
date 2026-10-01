@@ -13,8 +13,9 @@ import {
 } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
-import { CARD_LEVELS } from './types'
 import type { CardLevel, CardRow, RecoveryCard } from './types'
+
+const CARD_LEVELS: readonly CardLevel[] = ['hidden', 'public']
 
 /** The card's fixed lines, in the order the card prints them. */
 export const CARD_LINE_KEYS = [
