@@ -44,7 +44,9 @@ export const clausesOfShape = (shape: readonly ShapeClause[]): Clause[] =>
 
 export const presetOf = (id: PresetId): Preset => {
   const preset = PRESETS.find((candidate) => candidate.id === id)
-  if (!preset) throw new Error(`Unknown preset: ${id}`)
+  if (!preset) {
+    throw new Error(`Unknown preset: ${id}`)
+  }
   return preset
 }
 

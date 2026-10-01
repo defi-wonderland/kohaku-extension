@@ -44,8 +44,9 @@ const nameOf = (keys: Partial<Record<SlotKind, string>>, kind: SlotKind, t: Tran
  */
 export const shapeRowsOf = (preset: Preset, t: Translate): ShapeRow[] =>
   preset.shape.map(({ threshold, slots }) => {
-    if (slots.length === 1)
+    if (slots.length === 1) {
       return { kind: 'required', text: nameOf(REQUIRED_ROW_KEYS, slots[0], t) }
+    }
     const count = [
       t('socialRecovery.shape.any'),
       String(threshold),
