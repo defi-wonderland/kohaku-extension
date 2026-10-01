@@ -1,3 +1,4 @@
+import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
 import { accountReadsToRetry, saveGateOf, untestedInPath } from '../gate'
@@ -475,9 +476,29 @@ describe('the blocks the setup records decide', () => {
 })
 
 describe('whether a method of the path is untested', () => {
-  it('holds where a credential has no passed test', () => {
+  it('holds where a credential skipped its test', () => {
     expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'not-tested')])).toBe(true)
+  })
+
+  it('holds where a credential has no enrollment', () => {
     expect(untestedInPath([required(ALICE)], [])).toBe(true)
+    expect(untestedInPath([group(1, ALICE, PASSKEY)], [enrolled(ALICE)])).toBe(true)
+  })
+
+  const RAN: Enrollment['test'][] = ['failed', 'unavailable', 'not-supported']
+  RAN.forEach((test) => {
+    it(`does not hold where a credential's test reads ${test}`, () => {
+      expect(untestedInPath([required(PASSKEY)], [enrolled(PASSKEY, test)])).toBe(false)
+    })
+  })
+
+  it('holds where one credential skipped its test beside one whose test failed', () => {
+    expect(
+      untestedInPath(
+        [group(1, ALICE, PASSKEY)],
+        [enrolled(ALICE, 'not-tested'), enrolled(PASSKEY, 'failed')]
+      )
+    ).toBe(true)
   })
 
   it('does not hold where every credential passed its test', () => {

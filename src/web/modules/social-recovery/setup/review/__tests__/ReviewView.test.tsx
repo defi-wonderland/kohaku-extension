@@ -1517,6 +1517,121 @@ describe('a hidden setup with no recovery password', () => {
   })
 })
 
+describe('the block beside Save', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+  const NODE_UNREACHABLE = async (): Promise<never> => {
+    throw new Error('node unreachable')
+  }
+
+  /** Every part the block renders, by its test id, in order, with its text. */
+  const partsOf = (kind: string) =>
+    Array.from(
+      byTestId(`review-blocked-${kind}`)?.querySelectorAll<HTMLElement>('[data-testid]') ?? [],
+      (node) => [node.dataset.testid, node.textContent]
+    )
+
+  const CASES: [string, string, MountOptions, [string, string][]][] = [
+    [
+      'a path with an empty slot',
+      'empty-slot',
+      { clauses: [group(1, ALICE, emptySlot('passkey'))] },
+      [
+        ['review-blocked-body', t(`${BLOCKED}.emptySlot`)],
+        ['review-blocked-editor', t(`${BLOCKED}.emptySlotAction`)]
+      ]
+    ],
+    [
+      'a hidden setup with no recovery password',
+      'password-missing',
+      { passwordSet: false },
+      [
+        ['review-blocked-body', t(`${BLOCKED}.passwordMissing`)],
+        ['review-blocked-privacy', t(`${BLOCKED}.passwordMissingAction`)]
+      ]
+    ],
+    [
+      'a read that threw',
+      'unavailable',
+      { setupState: NODE_UNREACHABLE },
+      [
+        ['review-blocked-chip', t(`${BLOCKED}.unavailable.chip`)],
+        ['review-blocked-title', t(`${BLOCKED}.unavailable.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.unavailable.body`)],
+        ['review-blocked-retry', t('socialRecovery.writes.tryAgain')]
+      ]
+    ],
+    [
+      'a removed key the wallet could not read',
+      'removed-key-unreadable',
+      { removedKey: NODE_UNREACHABLE },
+      [
+        ['review-blocked-title', t(`${BLOCKED}.removedKeyUnreadable.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.removedKeyUnreadable.body`)],
+        ['review-blocked-retry', t('socialRecovery.writes.tryAgain')]
+      ]
+    ],
+    [
+      'an account whose code the release does not support',
+      'cannot-recover',
+      { fitCheck: async () => ({ basis: 'deployed-code', fits: false }) },
+      [
+        ['review-blocked-chip', t('socialRecovery.status.recovery.cannotRecover')],
+        ['review-blocked-title', t(`${BLOCKED}.cannotRecover.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.cannotRecover.reasonNotSupported`)]
+      ]
+    ],
+    [
+      'an account with two keys holding authority',
+      'cannot-recover',
+      {
+        describeSetup: async () =>
+          descriptionOf([
+            { address: REMOVED_KEY, isAuthority: true },
+            { address: OTHER_KEY, isAuthority: true }
+          ])
+      },
+      [
+        ['review-blocked-chip', t('socialRecovery.status.recovery.cannotRecover')],
+        ['review-blocked-title', t(`${BLOCKED}.cannotRecover.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: 2 })]
+      ]
+    ],
+    [
+      'an account with several key entries it cannot count',
+      'cannot-recover',
+      {
+        removedKey: async () => ({ kind: 'unavailable', cause: 'several-key-entries' }),
+        describeSetup: NODE_UNREACHABLE
+      },
+      [
+        ['review-blocked-chip', t('socialRecovery.status.recovery.cannotRecover')],
+        ['review-blocked-title', t(`${BLOCKED}.cannotRecover.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.cannotRecover.reasonSeveralKeys`)]
+      ]
+    ],
+    [
+      'an account that already has a setup',
+      'already-set-up',
+      { setupState: async () => setupStateOf(true) },
+      [
+        ['review-blocked-chip', t(`${BLOCKED}.alreadySetUp.chip`)],
+        ['review-blocked-title', t(`${BLOCKED}.alreadySetUp.title`)],
+        ['review-blocked-body', t(`${BLOCKED}.alreadySetUp.body`)],
+        ['review-blocked-open', t(`${BLOCKED}.alreadySetUp.open`)]
+      ]
+    ]
+  ]
+  CASES.forEach(([name, kind, options, parts]) => {
+    it(`renders its chip, title, body and action, in that order, for ${name}`, async () => {
+      await mount(options)
+
+      expect(byTestId(`review-blocked-${kind}`)).not.toBeNull()
+      expect(partsOf(kind)).toEqual(parts)
+      expect(isDisabled('review-save')).toBe(true)
+    })
+  })
+})
+
 describe('an untested method', () => {
   it('warns beside an enabled Save', async () => {
     await mount({ clauses: [required(ALICE)], enrollments: [enrolled(ALICE, 'not-tested')] })
@@ -1534,10 +1649,56 @@ describe('an untested method', () => {
 
     expect(byTestId('review-not-tested')).toBeNull()
   })
+
+  it('does not warn where the one passkey failed its test, whose row reads the failed outcome', async () => {
+    await mount({
+      clauses: [required(PASSKEY)],
+      enrollments: [enrolled(PASSKEY, 'failed', { cause: 'check-rejected' })]
+    })
+
+    expect(textOf('review-row-0-0-chip')).toBe(t('socialRecovery.status.method.testFailed'))
+    expect(byTestId('review-not-tested')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.review.blocked.notTested.title'))
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  const RAN: Enrollment['test'][] = ['unavailable', 'not-supported']
+  RAN.forEach((test) => {
+    it(`does not warn where the one passkey's test reads ${test}`, async () => {
+      await mount({ clauses: [required(PASSKEY)], enrollments: [enrolled(PASSKEY, test)] })
+
+      expect(byTestId('review-not-tested')).toBeNull()
+      expect(isDisabled('review-save')).toBe(false)
+    })
+  })
+
+  it('warns where a method of the path has no enrollment', async () => {
+    await mount({ clauses: [group(1, ALICE, PASSKEY)], enrollments: [enrolled(ALICE)] })
+
+    expect(textOf('review-not-tested')).toContain(
+      t('socialRecovery.review.blocked.notTested.title')
+    )
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('warns where a skipped test stands beside a failed one', async () => {
+    await mount({
+      clauses: [group(1, ALICE, PASSKEY)],
+      enrollments: [
+        enrolled(ALICE, 'not-tested'),
+        enrolled(PASSKEY, 'failed', { cause: 'check-rejected' })
+      ]
+    })
+
+    expect(textOf('review-not-tested')).toContain(
+      t('socialRecovery.review.blocked.notTested.title')
+    )
+  })
 })
 
 describe('the other doors', () => {
   const DOORS = 'socialRecovery.review.doors'
+  const CANNOT_SEE_EVERY_DOOR = 'socialRecovery.review.otherDoors.cannotSeeEveryDoor'
 
   it('name the keys the SDK names beside the removed one, and Save stays enabled', async () => {
     await mount({
@@ -1552,6 +1713,7 @@ describe('the other doors', () => {
     expect(textOf('review-doors')).toBe(
       t(`${DOORS}.line`, { doors: t(`${DOORS}.keysBeside`, { count: 1 }) })
     )
+    expect(textOf('review-doors-cannot-see-every-door')).toBe(t(CANNOT_SEE_EVERY_DOOR))
     expect(textOf('review-doors-untouched')).toBe(t(`${DOORS}.untouched`))
     expect(byTestId('review-doors-marker')).toBeNull()
     expect(isDisabled('review-save')).toBe(false)
@@ -1584,6 +1746,7 @@ describe('the other doors', () => {
 
     expect(textOf('review-doors')).toBe(t(`${DOORS}.unreadable`))
     expect(byTestId('review-doors-untouched')).toBeNull()
+    expect(byTestId('review-doors-cannot-see-every-door')).toBeNull()
     expect(byTestId('review-blocked-unavailable')).toBeNull()
     expect(isDisabled('review-save')).toBe(false)
   })
@@ -1593,6 +1756,7 @@ describe('the other doors', () => {
     await press('review-verify-details')
 
     expect(textOf('review-doors')).toBe(t(`${DOORS}.none`))
+    expect(byTestId('review-doors-cannot-see-every-door')).toBeNull()
     expect(isDisabled('review-save')).toBe(false)
   })
 
@@ -1614,6 +1778,19 @@ describe('the other doors', () => {
       expect(textOf('review-doors')).toBe(keysLine(2))
       expect(textOf('review-doors-untouched')).toBe(t(`${DOORS}.untouched`))
       expect(isDisabled('review-save')).toBe(false)
+    })
+
+    it('say beside the known keys that the wallet cannot see every door, while the code entries cannot be read', async () => {
+      await mount({ privilegeHolders: holders(REMOVED_KEY, OTHER_KEY) })
+      await press('review-verify-details')
+
+      expect(textsStartingWith('review-doors')).toEqual([
+        keysLine(1),
+        t(CANNOT_SEE_EVERY_DOOR),
+        t(`${DOORS}.untouched`)
+      ])
+      expect(byTestId('review-doors-marker')).toBeNull()
+      expect(byTestId('review-doors-validator')).toBeNull()
     })
 
     it('read none where the removed key alone holds a privilege', async () => {
@@ -1767,5 +1944,93 @@ describe('the other doors', () => {
       expect(account.setupState).toHaveBeenCalledTimes(1)
       expect(account.describeSetup).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('the account reads', () => {
+  const DOORS = 'socialRecovery.review.doors'
+
+  it('place each answer as it arrives, so a slow privilege read holds back no other', async () => {
+    let answerHolders: (reading: PrivilegeHoldersReading) => void = () => {}
+    let answerFit: (reading: FitCheckReading) => void = () => {}
+    await mount({
+      fitCheck: () =>
+        new Promise<FitCheckReading>((resolve) => {
+          answerFit = resolve
+        }),
+      privilegeHolders: () =>
+        new Promise<PrivilegeHoldersReading>((resolve) => {
+          answerHolders = resolve
+        })
+    })
+    await press('review-verify-details')
+
+    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
+    expect(byTestId('review-doors-pending')).not.toBeNull()
+    expect(isDisabled('review-save')).toBe(true)
+
+    await act(async () => answerFit({ basis: 'deployed-code', fits: true }))
+    await settle()
+
+    expect(byTestId('review-doors-pending')).not.toBeNull()
+    expect(isDisabled('review-save')).toBe(false)
+
+    await act(async () => answerHolders({ kind: 'holders', keys: [REMOVED_KEY, OTHER_KEY] }))
+    await settle()
+
+    expect(textOf('review-doors')).toBe(
+      t(`${DOORS}.line`, { doors: t(`${DOORS}.keysBeside`, { count: 1 }) })
+    )
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('run again on a retry only the read that threw', async () => {
+    let answers = 0
+    const { account } = await mount({
+      setupState: async () => {
+        answers += 1
+        if (answers === 1) {
+          throw new Error('node unreachable')
+        }
+        return setupStateOf(false)
+      }
+    })
+    expect(byTestId('review-blocked-unavailable')).not.toBeNull()
+
+    await press('review-blocked-retry')
+
+    expect(account.setupState).toHaveBeenCalledTimes(2)
+    expect(account.removedKey).toHaveBeenCalledTimes(1)
+    expect(account.fitCheck).toHaveBeenCalledTimes(1)
+    expect(account.describeSetup).toHaveBeenCalledTimes(1)
+    expect(account.privilegeHolders).toHaveBeenCalledTimes(1)
+    expect(byTestId('review-blocked-unavailable')).toBeNull()
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('run again on a retry each read that threw, and none that answered', async () => {
+    const failOnce = <T,>(value: T) => {
+      let calls = 0
+      return async (): Promise<T> => {
+        calls += 1
+        if (calls === 1) {
+          throw new Error('node unreachable')
+        }
+        return value
+      }
+    }
+    const { account } = await mount({
+      fitCheck: failOnce<FitCheckReading>({ basis: 'deployed-code', fits: true }),
+      setupState: failOnce(setupStateOf(false))
+    })
+
+    await press('review-blocked-retry')
+
+    expect(account.fitCheck).toHaveBeenCalledTimes(2)
+    expect(account.setupState).toHaveBeenCalledTimes(2)
+    expect(account.removedKey).toHaveBeenCalledTimes(1)
+    expect(account.describeSetup).toHaveBeenCalledTimes(1)
+    expect(account.privilegeHolders).toHaveBeenCalledTimes(1)
+    expect(isDisabled('review-save')).toBe(false)
   })
 })
