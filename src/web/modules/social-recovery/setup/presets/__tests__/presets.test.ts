@@ -356,19 +356,23 @@ describe('the resume rows', () => {
       ])
     })
 
-    it('shows no cause it has no words for, and none that is not a browser error name', () => {
+    it('says the method may never work when the cause has no words or no browser error name', () => {
       const rows = resumeRowsOf(
         [
           failedPasskey(),
           failedPasskey('thrown'),
+          failedPasskey('service-unanswered'),
+          failedPasskey('not-judged'),
+          failedPasskey('no-implementation'),
           failedPasskey('browser-error: not an error name'),
           failedPasskey('browser-error')
         ],
         BOOK,
         t
       )
+      expect(rows).toHaveLength(7)
       expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual(
-        rows.map(() => ({ chip: S.status.method.testFailed, note: undefined }))
+        rows.map(() => ({ chip: S.status.method.testFailed, note: S.ceremony.testFailedLine }))
       )
     })
 

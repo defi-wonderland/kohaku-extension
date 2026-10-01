@@ -399,7 +399,7 @@ describe('the presets view', () => {
       ])
     })
 
-    it('reads a synced passkey as "Passkey" with its failed test', async () => {
+    it('reads a synced passkey as "Passkey" with its failed test and the line that it may never work', async () => {
       await storeDraft([
         {
           credential: { method: BOOK.methods.passkey, config: '0x01' },
@@ -408,7 +408,9 @@ describe('the presets view', () => {
         }
       ])
       await mount()
-      expect(allByTestId('resume-row')).toEqual(['PasskeyTest failed'])
+      expect(allByTestId('resume-row')).toEqual([
+        `${S.methodNames.passkey}${S.ceremony.testFailedLine}${S.status.method.testFailed}`
+      ])
     })
 
     it('resume opens the editor and keeps the draft', async () => {

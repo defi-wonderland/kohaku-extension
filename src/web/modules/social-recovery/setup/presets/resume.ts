@@ -61,9 +61,10 @@ const guardianAddressOf = (enrollment: Enrollment): string | undefined => {
  * stored cause is the cause's name, followed by `: ` and its detail when it
  * carried one; the browser's own error shows by its error name.
  */
-const causeTextOf = (cause: string | undefined, t: Translate): string | undefined => {
+const causeTextOf = (cause: string | undefined, t: Translate): string => {
+  const fallback = t(`${CEREMONY}.testFailedLine`)
   if (cause === undefined) {
-    return undefined
+    return fallback
   }
   const [name, detail] = cause.split(': ')
   switch (name) {
@@ -72,9 +73,9 @@ const causeTextOf = (cause: string | undefined, t: Translate): string | undefine
     case 'relying-party-mismatch':
       return t(`${CEREMONY}.relyingPartyMismatch`)
     case 'browser-error':
-      return isBrowserErrorName(detail) ? detail : undefined
+      return isBrowserErrorName(detail) ? detail : fallback
     default:
-      return undefined
+      return fallback
   }
 }
 
@@ -94,7 +95,8 @@ const rowOf = (
 /**
  * The resume block's rows: each enrolled method, then each guardian, every
  * row with the chip of its own access test and a failed test with the cause
- * it reported.
+ * it reported, or with the line that the method may never work when the cause
+ * has no words.
  */
 export const resumeRowsOf = (
   enrollments: readonly Enrollment[],
