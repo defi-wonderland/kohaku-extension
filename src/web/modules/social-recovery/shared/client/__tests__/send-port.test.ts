@@ -644,8 +644,12 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
           expectRefusal(send, reason)
           const { message } = send.value as SendRefusal
           expect(message).toContain(names)
-          if (/withdrawn/.test(message)) expect(withdrew(q, id)).toBe(true)
-          if (/no transaction was broadcast/.test(message)) expect(listed).toBe(false)
+          if (/withdrawn/.test(message)) {
+            expect(withdrew(q, id)).toBe(true)
+          }
+          if (/no transaction was broadcast/.test(message)) {
+            expect(listed).toBe(false)
+          }
           expect(/may still reach the chain/.test(message)).toBe(reason === 'not-a-transaction')
         })
       )

@@ -140,7 +140,9 @@ const refusalOf = (reason: SendRefusalReason, sender: string): SendRefusal => {
 export const sendRefusal = (reason: SendRefusalReason, key: KeyHandle): SendRefusal => {
   const error = refusalOf(reason, `key ${key.addr} (${key.type})`)
   error.key = { ...key }
-  if (reason === 'not-wired') error.missingAction = MISSING_SEND_ACTION
+  if (reason === 'not-wired') {
+    error.missingAction = MISSING_SEND_ACTION
+  }
   return error
 }
 
@@ -239,7 +241,9 @@ const feeOptionOf = (
   accountAddr: string,
   option: FeePaymentOption
 ): FeeOption[] => {
-  if (!isAddress(option.paidBy, { strict: false })) return []
+  if (!isAddress(option.paidBy, { strict: false })) {
+    return []
+  }
   const speeds =
     state.feeSpeeds?.[
       getFeeSpeedIdentifier(option, accountAddr, state.rbfAccountOps?.[option.paidBy] ?? null)
@@ -271,7 +275,9 @@ const feeOptionOf = (
  */
 const estimationErrorOf = (state: SignAccountOpState): SignAccountOpError | undefined => {
   const message = state.estimation?.error?.message
-  if (typeof message !== 'string' || !message) return undefined
+  if (typeof message !== 'string' || !message) {
+    return undefined
+  }
   return state.errors?.find((shown) => shown.title === message) ?? { title: message }
 }
 
@@ -281,13 +287,19 @@ const estimationErrorOf = (state: SignAccountOpState): SignAccountOpError | unde
  */
 const feeReadingOf = (state: SignAccountOpState, id: string): FeeReading | undefined => {
   const { accountOp, estimation } = state
-  if (!accountOp?.calls?.some((call) => call.fromUserRequestId === id)) return undefined
-  if (!SETTLED_ESTIMATIONS.includes(estimation?.status ?? '')) return undefined
+  if (!accountOp?.calls?.some((call) => call.fromUserRequestId === id)) {
+    return undefined
+  }
+  if (!SETTLED_ESTIMATIONS.includes(estimation?.status ?? '')) {
+    return undefined
+  }
   const options = (estimation?.availableFeeOptions ?? []).flatMap((option) =>
     feeOptionOf(state, accountOp.accountAddr, option)
   )
   const error = estimationErrorOf(state) ?? state.errors?.[0]
-  if (!error) return { options }
+  if (!error) {
+    return { options }
+  }
   return { options, error: { title: error.title, ...(error.code ? { code: error.code } : {}) } }
 }
 
@@ -315,15 +327,23 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let settleTimer: ReturnType<typeof setTimeout> | undefined
 
       const clearWaits = () => {
-        if (timer !== undefined) clearTimeout(timer)
-        if (closed !== undefined) clearTimeout(closed)
-        if (settleTimer !== undefined) clearTimeout(settleTimer)
+        if (timer !== undefined) {
+          clearTimeout(timer)
+        }
+        if (closed !== undefined) {
+          clearTimeout(closed)
+        }
+        if (settleTimer !== undefined) {
+          clearTimeout(settleTimer)
+        }
         timer = undefined
         closed = undefined
         settleTimer = undefined
       }
       const end = (): boolean => {
-        if (done) return false
+        if (done) {
+          return false
+        }
         done = true
         clearWaits()
         unsubscribe()
@@ -334,25 +354,39 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         return true
       }
       const succeed = (hash: Hex) => {
-        if (end()) resolve(hash)
+        if (end()) {
+          resolve(hash)
+        }
       }
       const fail = (reason: SendRefusalReason) => {
-        if (end()) reject(refusal(reason))
+        if (end()) {
+          reject(refusal(reason))
+        }
       }
       // A refusal waits while the wallet signs or broadcasts, and then for a
       // full settle period after it stopped.
       const armSettle = () => {
-        if (settleTimer !== undefined) clearTimeout(settleTimer)
+        if (settleTimer !== undefined) {
+          clearTimeout(settleTimer)
+        }
         settleTimer = undefined
-        if (settling === undefined || busy) return
+        if (settling === undefined || busy) {
+          return
+        }
         const { reason } = settling
         settleTimer = setTimeout(() => fail(reason), SEND_SETTLE_MS)
       }
       const settle = (reason: SendRefusalReason, withdraw: boolean) => {
-        if (done || settling !== undefined) return
+        if (done || settling !== undefined) {
+          return
+        }
         settling = { reason, withdrawn: withdraw }
-        if (timer !== undefined) clearTimeout(timer)
-        if (closed !== undefined) clearTimeout(closed)
+        if (timer !== undefined) {
+          clearTimeout(timer)
+        }
+        if (closed !== undefined) {
+          clearTimeout(closed)
+        }
         timer = undefined
         closed = undefined
         if (withdraw) {
@@ -367,17 +401,27 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       timer = setTimeout(() => {
         timer = undefined
         timedOut = true
-        if (!waiting) settle('timeout', true)
+        if (!waiting) {
+          settle('timeout', true)
+        }
       }, timeoutMs)
 
       unsubscribe = port.subscribe((update) => {
-        if (done) return
+        if (done) {
+          return
+        }
         if (update.controller === 'signAccountOp') {
-          if (!onEstimation) return
+          if (!onEstimation) {
+            return
+          }
           const reading = feeReadingOf(update.state, id)
-          if (!reading) return
+          if (!reading) {
+            return
+          }
           const serialized = stringify(reading)
-          if (serialized === lastReading) return
+          if (serialized === lastReading) {
+            return
+          }
           lastReading = serialized
           onEstimation(reading)
           return
@@ -394,7 +438,9 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           const operation = update.state.accountsOps?.[id]?.result?.items?.find((item) =>
             item.calls?.some((call) => call.fromUserRequestId === id)
           )
-          if (!operation) return
+          if (!operation) {
+            return
+          }
           // The wallet broadcast the request: its absence from the queue and
           // the window closing no longer mean that nothing was sent.
           broadcast = true
@@ -405,11 +451,16 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
             return
           }
           const hash = hashOf(operation, id)
-          if (hash) succeed(hash)
-          else if (operation.status === AccountOpStatus.Rejected) fail('not-broadcast')
+          if (hash) {
+            succeed(hash)
+          } else if (operation.status === AccountOpStatus.Rejected) {
+            fail('not-broadcast')
+          }
           return
         }
-        if (broadcast) return
+        if (broadcast) {
+          return
+        }
         const { userRequests = [], userRequestsWaitingAccountSwitch = [] } = update.state
         const inQueue = userRequests.some((queued) => queued.id === id)
         waiting = userRequestsWaitingAccountSwitch.some((queued) => queued.id === id)
@@ -417,23 +468,31 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           // The queue moves a request between its two lists after an account
           // switch and may push a state between the two moves: a request the
           // port did not withdraw that is back in either list is still open.
-          if (settling.withdrawn || (!inQueue && !waiting)) return
+          if (settling.withdrawn || (!inQueue && !waiting)) {
+            return
+          }
           settling = undefined
           armSettle()
         }
         if (!inQueue && !waiting) {
-          if (seen) settle(timedOut ? 'timeout' : 'refused', false)
+          if (seen) {
+            settle(timedOut ? 'timeout' : 'refused', false)
+          }
           return
         }
         seen = true
-        if (!inQueue) return
+        if (!inQueue) {
+          return
+        }
         if (timedOut) {
           settle('timeout', true)
           return
         }
         if (update.state.actions?.actionWindow?.windowProps) {
           windowSeen = true
-          if (closed !== undefined) clearTimeout(closed)
+          if (closed !== undefined) {
+            clearTimeout(closed)
+          }
           closed = undefined
         } else if (windowSeen && closed === undefined) {
           // The queue keeps a transaction request when its window closes, so
