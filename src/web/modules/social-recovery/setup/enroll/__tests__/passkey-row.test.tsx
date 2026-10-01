@@ -52,6 +52,7 @@ const {
   notSupported,
   parseCeremonySearch,
   passed,
+  passkeyFactsOf,
   unavailable
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
 const {
@@ -77,6 +78,18 @@ const createdWith = (facts: PasskeyFacts, config: Hex = CONFIG, credentialId = '
   passed({ config, facts, credentialId })
 
 const chip = (name: MethodChip) => renderChip('method', name, t)
+
+/**
+ * The facts a test reads from an assertion: its authenticator data carries the
+ * flags but no attested credential data, so no AAGUID, and the browser reports
+ * no transports for it.
+ */
+const assertedOn = (attachment: 'platform' | 'cross-platform', synced: boolean): PasskeyFacts => {
+  const authenticatorData = new Uint8Array(37)
+  // User present and verified, plus backup eligible and backed up for a synced passkey.
+  authenticatorData[32] = synced ? 0x1d : 0x05
+  return passkeyFactsOf({ authenticatorData, authenticatorAttachment: attachment })
+}
 
 describe('the passkey row', () => {
   let view: Mounted | undefined
@@ -835,7 +848,7 @@ describe('the passkey row', () => {
       await returnFrom(
         deps.requestIds[deps.requestIds.length - 1],
         'testAccess',
-        passed({ proof: '0x0102', facts: SYNCED_ON_GOOGLE })
+        passed({ proof: '0x0102', facts: assertedOn('platform', true) })
       )
 
       const [enrollment] = await storedEnrollments(records)
@@ -934,6 +947,135 @@ describe('the passkey row', () => {
         expect(view!.byTestId('passkey-signed-note')).toBeNull()
       }
     )
+  })
+
+  describe('a passed test, which reads the backup flags only', () => {
+    const ON_PHONE_WITH_GOOGLE: PasskeyFacts = {
+      ...SYNCED_ON_GOOGLE,
+      place: 'phone',
+      attachment: 'cross-platform',
+      transports: ['hybrid']
+    }
+    const IN_ICLOUD_ON_THIS_MAC: PasskeyFacts = {
+      ...SYNCED_ON_GOOGLE,
+      aaguid: 'fbfc3007-154e-4ecc-8c0b-6e020557d7bd'
+    }
+    const synced = (provider: string) =>
+      t(`${CEREMONY}.syncedKind`, { provider: t(`${CEREMONY}.providers.${provider}`) })
+
+    each([
+      [
+        'a phone passkey synced by Google',
+        ON_PHONE_WITH_GOOGLE,
+        assertedOn('cross-platform', true),
+        'passkeyOnYourPhone',
+        synced('google')
+      ],
+      [
+        'an iCloud passkey on this Mac',
+        IN_ICLOUD_ON_THIS_MAC,
+        assertedOn('platform', true),
+        'passkeyOnThisDevice',
+        synced('apple')
+      ]
+    ] as const)(
+      'keeps the kind name and the kind line of %s',
+      async ([, created, asserted, nameKey, kindLine]) => {
+        await createAndReturn(createdWith(created))
+        expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+          t(`socialRecovery.methodNames.${nameKey}`)
+        )
+        expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(kindLine)
+
+        await view!.press('passkey-run-test')
+        await returnFrom(
+          deps.requestIds[deps.requestIds.length - 1],
+          'testAccess',
+          passed({ proof: '0x0102', facts: asserted })
+        )
+        expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
+        expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+          t(`socialRecovery.methodNames.${nameKey}`)
+        )
+        expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(kindLine)
+
+        const [enrollment] = await storedEnrollments(records)
+        expect(enrollment).toMatchObject({ test: 'passed', backup: 'synced', facts: created })
+
+        await open()
+        expect(view!.byTestId('passkey-kind-name')?.textContent).toBe(
+          t(`socialRecovery.methodNames.${nameKey}`)
+        )
+        expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(kindLine)
+      }
+    )
+
+    it('keeps the device a device-bound phone passkey lives on', async () => {
+      const onPhone: PasskeyFacts = {
+        ...BOUND_TO_THIS_MAC,
+        place: 'phone',
+        attachment: 'cross-platform',
+        transports: ['hybrid']
+      }
+      await createAndReturn(createdWith(onPhone))
+      await view!.press('passkey-run-test')
+      await returnFrom(
+        deps.requestIds[deps.requestIds.length - 1],
+        'testAccess',
+        passed({ proof: '0x0102', facts: assertedOn('cross-platform', false) })
+      )
+
+      expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(
+        t(`${CEREMONY}.deviceBoundKind`, { device: t(`${CEREMONY}.devices.thisPhone`) })
+      )
+      const [enrollment] = await storedEnrollments(records)
+      expect(enrollment).toMatchObject({ backup: 'device-bound', facts: onPhone })
+    })
+
+    it('shows the signed note in the mount that applied the test, and not after a reopen', async () => {
+      const asked = await testAndReturn(
+        passed({ proof: '0x0102', facts: assertedOn('platform', true) })
+      )
+      if (asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
+      expect(view!.byTestId('passkey-signed-note')?.textContent).toBe(
+        t(`${PASSKEY}.signedNote`, { hash: renderHash(asked.request.salt as Hex) })
+      )
+
+      await open()
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
+      expect(view!.byTestId('passkey-test-line')?.textContent).toBe(t(`${PASSKEY}.testPassed`))
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+      const [enrollment] = await storedEnrollments(records)
+      expect(enrollment.lastTest).toEqual({ salt: asked.request.salt, at: NOW })
+    })
+
+    it('shows no signed note for a test stored a day before the row opens', async () => {
+      ;({ records, faults } = await recordsWith(
+        pathWith(emptySlot('passkey'), {
+          method: BOOK.methods.passkey,
+          config: CONFIG,
+          label: 'Work laptop'
+        }),
+        [
+          {
+            credential: { method: BOOK.methods.passkey, config: CONFIG, label: 'Work laptop' },
+            test: 'passed',
+            backup: 'synced',
+            facts: SYNCED_ON_GOOGLE,
+            credentialId: 'credential-a',
+            lastTest: { salt: `0x${'12'.repeat(32)}`, at: NOW }
+          }
+        ]
+      ))
+      deps = depsOf({ now: () => NOW + 86_400_000 })
+      await open()
+
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
+      expect(view!.byTestId('passkey-test-line')?.textContent).toBe(t(`${PASSKEY}.testPassed`))
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+    })
   })
 
   describe('a report that is not for the slot as it stands', () => {

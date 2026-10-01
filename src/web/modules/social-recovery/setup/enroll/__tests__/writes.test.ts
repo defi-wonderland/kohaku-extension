@@ -14,15 +14,17 @@ import type { EnrollSearch } from '../types'
 import {
   ACCOUNT,
   BOOK,
+  BOUND_TO_THIS_MAC,
   CHAIN_ID,
   emptySlot,
   guardianConfigOf,
   pathWith,
-  recordsWith
+  recordsWith,
+  SYNCED_ON_GOOGLE
 } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
-const { placeEnrollment }: typeof import('../writes') = require('../writes')
+const { placeEnrollment, recordTest }: typeof import('../writes') = require('../writes')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const SEARCH: EnrollSearch = { kind: 'passkey', at: { clause: 0, member: 1 } }
@@ -146,5 +148,65 @@ describe('placing an enrollment', () => {
       clauses: pathWith(GUARDIAN, OLD),
       enrollments: [enrolled(GUARDIAN), enrolled(OLD)]
     })
+  })
+})
+
+describe('recording a passed test', () => {
+  const LAST_TEST = { salt: `0x${'ab'.repeat(32)}` as const, at: 1_800_000_000_000 }
+  /** What an assertion reads: the backup flags and the attachment, no AAGUID and no transports. */
+  const ASSERTED = {
+    kind: 'synced' as const,
+    backedUp: true,
+    place: 'security-key' as const,
+    attachment: 'cross-platform' as const,
+    transports: []
+  }
+
+  const setupWith = async (enrollment: Enrollment) => {
+    const { records } = await recordsWith(pathWith(enrollment.credential), [enrollment])
+    return records.setup(CHAIN_ID, ACCOUNT)
+  }
+
+  it('takes the backup flags from the test and keeps the rest of the creation facts', async () => {
+    const created = {
+      ...BOUND_TO_THIS_MAC,
+      place: 'phone' as const,
+      attachment: 'cross-platform' as const,
+      transports: ['hybrid'],
+      aaguid: SYNCED_ON_GOOGLE.aaguid
+    }
+    const setup = await setupWith({
+      credential: OLD,
+      test: 'not-tested',
+      backup: 'device-bound',
+      credentialId: 'credential-a',
+      facts: created
+    })
+
+    const updated = await recordTest(setup, OLD, 'passed', undefined, {
+      lastTest: LAST_TEST,
+      facts: ASSERTED
+    })
+
+    const expected: Enrollment = {
+      credential: OLD,
+      test: 'passed',
+      backup: 'synced',
+      credentialId: 'credential-a',
+      facts: { ...created, kind: 'synced', backedUp: true },
+      lastTest: LAST_TEST
+    }
+    expect(updated).toEqual(expected)
+    expect((await storedOf(setup)).enrollments).toEqual([expected])
+  })
+
+  it('stores the facts the test read where the creation stored none', async () => {
+    const setup = await setupWith({ credential: OLD, test: 'not-tested' })
+
+    await recordTest(setup, OLD, 'passed', undefined, { lastTest: LAST_TEST, facts: ASSERTED })
+
+    expect((await storedOf(setup)).enrollments).toEqual([
+      { credential: OLD, test: 'passed', backup: 'synced', facts: ASSERTED, lastTest: LAST_TEST }
+    ])
   })
 })
