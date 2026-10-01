@@ -10,7 +10,7 @@ import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
 import type { Clause, Finding, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { renderFailedTestLines, renderFinding } from '../copy'
+import { renderFailedTestLine, renderFinding } from '../copy'
 import {
   addGroup,
   addMember,
@@ -468,42 +468,30 @@ describe("a threshold field's text", () => {
   })
 })
 
-describe('the lines of a failed access test', () => {
+describe('the line of a failed access test', () => {
   const failed = (cause?: string) => ({ credential: PASSKEY, test: 'failed' as const, cause })
 
-  it("give the browser's error name, then that the method may never work", () => {
-    expect(renderFailedTestLines(failed('browser-error: NotAllowedError'), t)).toEqual([
-      'NotAllowedError',
-      en.socialRecovery.ceremony.testFailedLine
-    ])
-  })
-
-  it('give the no-match sentence for a check that did not match', () => {
-    expect(renderFailedTestLines(failed('check-rejected'), t)).toEqual([
-      en.socialRecovery.ceremony.testFailedNoMatch,
-      en.socialRecovery.ceremony.testFailedLine
-    ])
-  })
-
-  it('give the other-origin sentence for a passkey refused under this origin, with or without the error name', () => {
-    ;['relying-party-mismatch', 'relying-party-mismatch: SecurityError'].forEach((cause) =>
-      expect(renderFailedTestLines(failed(cause), t)).toEqual([
-        en.socialRecovery.ceremony.relyingPartyMismatch,
-        en.socialRecovery.ceremony.testFailedLine
-      ])
+  it('gives the no-match sentence for a check that did not match, with or without a detail', () => {
+    ;['check-rejected', 'check-rejected: wrong signer'].forEach((cause) =>
+      expect(renderFailedTestLine(failed(cause), t)).toBe(
+        en.socialRecovery.ceremony.testFailedNoMatch
+      )
     )
   })
 
-  it('give only the may-never-work line for no cause, an unknown cause or text that is not an error name', () => {
-    ;[undefined, 'timeout', 'browser-error: <b>hi</b>', 'browser-error'].forEach((cause) =>
-      expect(renderFailedTestLines(failed(cause), t)).toEqual([
-        en.socialRecovery.ceremony.testFailedLine
-      ])
+  it('gives only the may-never-work line for any other cause or none', () => {
+    ;[
+      undefined,
+      'browser-error: NotAllowedError',
+      'relying-party-mismatch: SecurityError',
+      'timeout'
+    ].forEach((cause) =>
+      expect(renderFailedTestLine(failed(cause), t)).toBe(en.socialRecovery.ceremony.testFailedLine)
     )
   })
 
-  it('give nothing for a test that passed or was not run', () => {
-    expect(renderFailedTestLines(enrolled(PASSKEY), t)).toEqual([])
-    expect(renderFailedTestLines({ credential: PASSKEY, test: 'not-tested' }, t)).toEqual([])
+  it('gives nothing for a test that passed or was not run', () => {
+    expect(renderFailedTestLine(enrolled(PASSKEY), t)).toBeNull()
+    expect(renderFailedTestLine({ credential: PASSKEY, test: 'not-tested' }, t)).toBeNull()
   })
 })

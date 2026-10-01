@@ -1097,7 +1097,7 @@ describe('a threshold that is not a whole number', () => {
 describe('a method whose access test failed', () => {
   const failed = (cause?: string): Enrollment => ({ credential: PASSKEY, test: 'failed', cause })
 
-  it("shows the browser's error name and the may-never-work line under the row", async () => {
+  it('shows only the may-never-work line under the row for a browser error', async () => {
     await mount({
       clauses: [{ threshold: 1, credentials: [PASSKEY] }],
       enrollments: [failed('browser-error: NotAllowedError')]
@@ -1106,7 +1106,6 @@ describe('a method whose access test failed', () => {
       en.socialRecovery.status.method.testFailed
     )
     expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      'NotAllowedError',
       en.socialRecovery.ceremony.testFailedLine
     ])
   })
@@ -1117,18 +1116,16 @@ describe('a method whose access test failed', () => {
       enrollments: [failed('check-rejected')]
     })
     expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      en.socialRecovery.ceremony.testFailedNoMatch,
-      en.socialRecovery.ceremony.testFailedLine
+      en.socialRecovery.ceremony.testFailedNoMatch
     ])
   })
 
-  it('shows the other-origin sentence for a passkey the browser refused under this origin', async () => {
+  it('shows only the may-never-work line for a passkey the browser refused under this origin', async () => {
     await mount({
       clauses: [{ threshold: 1, credentials: [PASSKEY] }],
       enrollments: [failed('relying-party-mismatch: SecurityError')]
     })
     expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      en.socialRecovery.ceremony.relyingPartyMismatch,
       en.socialRecovery.ceremony.testFailedLine
     ])
   })

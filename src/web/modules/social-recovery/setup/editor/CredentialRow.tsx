@@ -7,15 +7,15 @@ import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
-import { renderFailedTestLines, renderKindName, renderRowChip } from './copy'
+import { renderFailedTestLine, renderKindName, renderRowChip } from './copy'
 import { enrollmentOf, guardianAddressOf, isEmptySlot, kindOf } from './operations'
 import type { CredentialRowProps } from './types'
 
 /**
  * One method of the path: a guardian's short address, its kind, the holder's
  * own label where an enrolled credential carries one, and its chip, with a
- * failed test's cause and its warning under them. An empty slot shows no
- * address and opens the picker when pressed.
+ * failed test's line under them. An empty slot shows no address and opens the
+ * picker when pressed.
  */
 const CredentialRow = ({
   credential,
@@ -33,7 +33,7 @@ const CredentialRow = ({
   const address = !empty && kind === 'ecdsa' ? guardianAddressOf(credential) : undefined
   const enrollment = empty ? undefined : enrollmentOf(credential, enrollments)
   const backup = enrollment?.backup
-  const failedLines = enrollment ? renderFailedTestLines(enrollment, t) : []
+  const failedLine = enrollment ? renderFailedTestLine(enrollment, t) : null
 
   const content = (
     <View>
@@ -57,17 +57,16 @@ const CredentialRow = ({
           </Text>
         )}
       </View>
-      {failedLines.map((line) => (
+      {!!failedLine && (
         <Text
-          key={line}
           fontSize={12}
           appearance="errorText"
           style={spacings.mtMi}
           testID={testID ? `${testID}-test-line` : undefined}
         >
-          {line}
+          {failedLine}
         </Text>
-      ))}
+      )}
     </View>
   )
 
