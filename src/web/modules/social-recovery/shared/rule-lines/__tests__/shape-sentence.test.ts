@@ -6,28 +6,17 @@
 import i18next from 'i18next'
 import { isAddressEqual } from 'viem'
 
-import en from '@common/config/localization/translations/en.json'
 import type { Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { addressBookOf } from '@web/modules/social-recovery/shared/client/addresses'
 import { emptySlot, SLOT_KINDS } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
-import { renderShapeSentence } from '..'
-import type { RuleLinesOptions, Translate } from '..'
+import { renderShapeSentence } from '@web/modules/social-recovery/shared/rule-lines'
+import type { RuleLinesOptions, Translate } from '@web/modules/social-recovery/shared/rule-lines'
 
-type SentenceTable = {
-  kinds: { passkey: string; passport: string; guardian: string; aadhaar: string; method: string }
-  anyOf: string
-  pair: string
-  list: string
-}
-type ShapeTable = { and: string; sentence: SentenceTable }
-type Table = {
-  socialRecovery: { shape: ShapeTable }
-}
-
-const EN = en as unknown as Table
+import { EN } from './harness'
+import type { Table } from './harness'
 
 const translatorOf = (table: Table): Translate => {
   const i18n = i18next.createInstance()
