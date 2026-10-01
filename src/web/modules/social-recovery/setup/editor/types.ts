@@ -16,6 +16,7 @@ import type { RuleLine } from '@web/modules/social-recovery/shared/rule-lines'
 /** A shape this wallet refuses to save, named by its sentence. */
 export type RefusalKey =
   | 'emptyGroup'
+  | 'emptyGroupSlot'
   | 'emptyRequired'
   | 'thresholdAboveMembers'
   | 'thresholdBelowOne'

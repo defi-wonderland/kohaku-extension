@@ -48,6 +48,7 @@ const VERDICT_CHIPS: Record<EnrollmentTestVerdict, MethodChip> = {
 
 const REFUSAL_KEYS: Record<RefusalKey, string> = {
   emptyGroup: 'socialRecovery.editor.refusals.emptyGroup',
+  emptyGroupSlot: 'socialRecovery.editor.refusals.emptyGroupSlot',
   emptyRequired: 'socialRecovery.editor.refusals.emptyRequired',
   thresholdAboveMembers: 'socialRecovery.editor.refusals.thresholdAboveMembers',
   thresholdBelowOne: 'socialRecovery.editor.refusals.thresholdBelowOne',

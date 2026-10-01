@@ -2,9 +2,9 @@
  * The shapes this wallet refuses to save, judged on the draft as it stands
  * before the SDK's path check runs. An empty slot stands for a method the
  * holder has yet to enroll, and the editor is where members are picked, so a
- * slot with no member never leaves it: a clause with an unfilled slot is
- * refused as a method still to enroll, a required row and a group alike, and a
- * clause with no enrolled member at all is refused as empty.
+ * slot with no member never leaves it: a group with an unfilled slot is
+ * refused as a member still to enroll, a required row with one as a method
+ * still to enroll, and a clause with no enrolled member at all as empty.
  */
 import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
@@ -49,7 +49,10 @@ const clauseRefusals = (
     refusals.push({ key: role === 'required' ? 'emptyRequired' : 'emptyGroup', clause: index })
   } else {
     if (members < clause.credentials.length) {
-      refusals.push({ key: 'emptyRequired', clause: index })
+      refusals.push({
+        key: role === 'required' ? 'emptyRequired' : 'emptyGroupSlot',
+        clause: index
+      })
     }
     if (clause.threshold > clause.credentials.length) {
       refusals.push({ key: 'thresholdAboveMembers', clause: index })
