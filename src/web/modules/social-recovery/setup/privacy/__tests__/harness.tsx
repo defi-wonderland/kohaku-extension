@@ -73,16 +73,22 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
       faults.set -= 1
       throw new Error('storage full')
     }
-    if (keys.some(refuses)) throw new Error('storage full')
+    if (keys.some(refuses)) {
+      throw new Error('storage full')
+    }
   }
   const refuseRemoval = (keys: string[]) => {
-    if (faults.remove || keys.some(refuses)) throw new Error('storage unavailable')
+    if (faults.remove || keys.some(refuses)) {
+      throw new Error('storage unavailable')
+    }
   }
   const store = (key: string, value: unknown) =>
     raw.set(key, typeof value === 'string' ? value : stringify(value))
   return {
     get: async (key, defaultValue) => {
-      if (faults.get) throw new Error('storage unavailable')
+      if (faults.get) {
+        throw new Error('storage unavailable')
+      }
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
@@ -143,7 +149,9 @@ export const harnessOf = (View: ComponentType<StepViewProps>): Harness => {
   // An input carries its test id itself, or holds the input that does.
   const inputOf = (id: string) => {
     const node = byTestId(id)
-    if (!node) return null
+    if (!node) {
+      return null
+    }
     return node instanceof HTMLInputElement ? node : node.querySelector('input')
   }
 
@@ -167,14 +175,18 @@ export const harnessOf = (View: ComponentType<StepViewProps>): Harness => {
     text: () => container.textContent ?? '',
     press: async (id) => {
       const node = byTestId(id)
-      if (!node) throw new Error(`nothing to press: ${id}`)
+      if (!node) {
+        throw new Error(`nothing to press: ${id}`)
+      }
       await act(async () => {
         node.click()
       })
     },
     type: async (id, value) => {
       const input = inputOf(id)
-      if (!input) throw new Error(`nothing to type into: ${id}`)
+      if (!input) {
+        throw new Error(`nothing to type into: ${id}`)
+      }
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
       await act(async () => {
         setValue?.call(input, value)

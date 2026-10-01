@@ -102,7 +102,9 @@ describe('the privacy step', () => {
 
   const storedDraft = async (records: WalletRecords) => {
     const read = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
-    if (read.status !== 'present') throw new Error('no draft stored')
+    if (read.status !== 'present') {
+      throw new Error('no draft stored')
+    }
     return read.value
   }
 
@@ -130,7 +132,9 @@ describe('the privacy step', () => {
 
   // Continues at whatever level the step opened on, and reads back what it stored.
   const continueAsOpened = async (records: WalletRecords) => {
-    if (h.inputOf('password')) await typePasswords('correct horse', 'correct horse')
+    if (h.inputOf('password')) {
+      await typePasswords('correct horse', 'correct horse')
+    }
     await h.press('continue')
     return (await storedDraft(records)).privacy
   }
