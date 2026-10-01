@@ -23,6 +23,7 @@ import {
   choiceOfSeconds,
   DEFAULT_CHOICE,
   hoursOfChoice,
+  isChipPastCeiling,
   PICKER_CEILING_HOURS,
   readCustomWait,
   secondsOfHours,
@@ -81,6 +82,12 @@ const WaitingPeriodView = ({
   // overwritten with a length the holder did not pick.
   const hours = loadFailed ? undefined : hoursOfChoice(choice, ceilingHours)
   const custom = choice.kind === 'custom' ? readCustomWait(choice.text, ceilingHours) : undefined
+  // A stored chip past the ceiling stays selected with the custom entry's
+  // refusal, and continue stays held until the holder picks another length.
+  const pastCeiling =
+    choice.kind === 'chip'
+      ? WAIT_CHIPS.some((chip) => chip.id === choice.id && isChipPastCeiling(chip, ceilingHours))
+      : custom?.status === 'pastCeiling'
 
   const onContinue = useCallback(async () => {
     if (hours === undefined) {
@@ -127,7 +134,8 @@ const WaitingPeriodView = ({
         {t(`${WAIT}.onePerPath`)}
       </Text>
       <View style={[flexbox.directionRow, flexbox.wrap]}>
-        {WAIT_CHIPS.map(({ id }) => {
+        {WAIT_CHIPS.map((chip) => {
+          const { id } = chip
           const selected = choice.kind === 'chip' && choice.id === id
           return (
             <Pressable
@@ -135,6 +143,7 @@ const WaitingPeriodView = ({
               testID={`wait-chip-${id}`}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
+              disabled={isChipPastCeiling(chip, ceilingHours)}
               // The web renderer reads the checked state of a radio from this prop
               // alone; the React Native types do not declare it, so it goes in a spread.
               {...{ accessibilityChecked: selected }}
@@ -178,7 +187,7 @@ const WaitingPeriodView = ({
           {t(`${WAIT}.belowMinimum`)}
         </Text>
       )}
-      {custom?.status === 'pastCeiling' && (
+      {pastCeiling && (
         <Text testID="wait-refusal" fontSize={14} appearance="errorText" style={spacings.mbTy}>
           {t(`${WAIT}.pastCeiling`, { hours: ceilingHours })}
         </Text>

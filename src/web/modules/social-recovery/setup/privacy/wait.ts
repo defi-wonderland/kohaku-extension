@@ -47,10 +47,18 @@ export const readCustomWait = (text: string, ceilingHours: number): CustomWait =
   return { status: 'accepted', hours }
 }
 
-/** The length the picker holds in hours, or undefined while the custom entry is empty or refused. */
+/** Whether a chip is longer than the longest wait the picker accepts. */
+export const isChipPastCeiling = (chip: WaitChip, ceilingHours: number): boolean =>
+  chip.hours > ceilingHours
+
+/**
+ * The length the picker holds in hours, or undefined while the custom entry is
+ * empty or refused, or while the chip held is past the ceiling.
+ */
 export const hoursOfChoice = (choice: WaitChoice, ceilingHours: number): number | undefined => {
   if (choice.kind === 'chip') {
-    return WAIT_CHIPS.find(({ id }) => id === choice.id)?.hours
+    const chip = WAIT_CHIPS.find(({ id }) => id === choice.id)
+    return chip && !isChipPastCeiling(chip, ceilingHours) ? chip.hours : undefined
   }
   const custom = readCustomWait(choice.text, ceilingHours)
   return custom.status === 'accepted' ? custom.hours : undefined
