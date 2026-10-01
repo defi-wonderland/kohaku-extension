@@ -20,7 +20,16 @@ import {
   toBuffer
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 import { normalizeP256S, parseDerSignature } from '@web/modules/social-recovery/shared/webauthn'
-import { bytesToHex, hexToBytes, numberToHex, sha256, stringToHex } from 'viem'
+import {
+  bytesToHex,
+  concat,
+  hexToBigInt,
+  hexToBytes,
+  numberToHex,
+  sha256,
+  slice,
+  stringToHex
+} from 'viem'
 
 import {
   type Assertion,
@@ -451,5 +460,74 @@ describe("the passkey double's willing device", () => {
     await expect(orchestrator.verify(elsewhere, request.place, reply.proof)).resolves.toBe(
       'rejected'
     )
+  })
+})
+
+describe('the passkey codec against bytes its encoder would not produce', () => {
+  const FOUR_BYTES: Hex = '0xdeadbeef'
+
+  /** A request under a config the willing device satisfies, and that device's proof. */
+  const willingReply = async () => {
+    const { world, requests } = await openRecovery()
+    const double = new PasskeyMethodDouble()
+    const request: ApproverRequest = {
+      ...requests[0]!,
+      method: world.descriptor.methodPasskey,
+      config: await double.satisfyingConfig(EXTENSION_ORIGIN)
+    }
+    const orchestrator = world.orchestrator()
+    const input = orchestrator.signingInput(request, { relyingPartyId: EXTENSION_ORIGIN })
+    const reply = (await orchestrator.replyFrom(
+      request,
+      input,
+      await double.satisfyingMaterial(request)
+    )) as ApproverReply
+    return { codec: world.methods.passkey.codec, orchestrator, request, proof: reply.proof }
+  }
+
+  /**
+   * The same proof with each dynamic member's offset moved one word further and
+   * an unused word placed between the head and the tails.
+   */
+  const withLooseOffsets = (proof: Hex): Hex => {
+    const word = (index: number) => slice(proof, index * 32, (index + 1) * 32)
+    const moved = (index: number) =>
+      numberToHex(hexToBigInt(word(index)) + BigInt(32), { size: 32 })
+    return concat([
+      moved(0),
+      moved(1),
+      word(2),
+      word(3),
+      numberToHex(0, { size: 32 }),
+      slice(proof, 128)
+    ])
+  }
+
+  it('round-trips a canonical proof and a canonical config', async () => {
+    const { codec, orchestrator, request, proof } = await willingReply()
+    expect(codec.encodeProof(codec.decodeProof(proof))).toBe(proof)
+    expect(codec.encodeConfig(codec.decodeConfig(request.config))).toBe(request.config)
+    await expect(orchestrator.verify(request, request.place, proof)).resolves.toBe('satisfied')
+  })
+
+  it('refuses a valid proof with four bytes appended, and the verdict is rejected', async () => {
+    const { codec, orchestrator, request, proof } = await willingReply()
+    const appended = concat([proof, FOUR_BYTES])
+    expect(() => codec.decodeProof(appended)).toThrow()
+    await expect(orchestrator.verify(request, request.place, appended)).resolves.toBe('rejected')
+  })
+
+  it('refuses a valid proof whose offsets point past an unused word', async () => {
+    const { codec, orchestrator, request, proof } = await willingReply()
+    const loose = withLooseOffsets(proof)
+    expect(() => codec.decodeProof(loose)).toThrow()
+    await expect(orchestrator.verify(request, request.place, loose)).resolves.toBe('rejected')
+  })
+
+  it('refuses a config with four bytes appended, and the verdict on a valid proof is rejected', async () => {
+    const { codec, orchestrator, request, proof } = await willingReply()
+    const appended = { ...request, config: concat([request.config, FOUR_BYTES]) }
+    expect(() => codec.decodeConfig(appended.config)).toThrow()
+    await expect(orchestrator.verify(appended, request.place, proof)).resolves.toBe('rejected')
   })
 })
