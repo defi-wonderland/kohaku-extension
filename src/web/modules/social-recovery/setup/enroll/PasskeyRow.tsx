@@ -101,7 +101,7 @@ const PasskeyRow = ({
       const created = passkeyEnrollmentOf(placing.value, book.methods.passkey, placing.userName)
       setBusy(true)
       try {
-        const placed = await placeEnrollment(setup, search, book, created)
+        const placed = await placeEnrollment(setup, search, book, created, placing.replaced)
         if (placed.status !== 'placed') {
           setPending(null)
           setDuplicate(placed.status === 'duplicate')
@@ -139,7 +139,8 @@ const PasskeyRow = ({
         setEnrollOutcome(failed('material-rejected'))
         return
       }
-      await place({ value, userName, handOff })
+      const replaced = enrollmentRef.current?.credential
+      await place({ value, userName, handOff, ...(replaced ? { replaced } : {}) })
     },
     [place]
   )

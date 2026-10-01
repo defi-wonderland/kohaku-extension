@@ -1,4 +1,9 @@
-import type { Address, ApproverRequest, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  ApproverRequest,
+  Credential,
+  Hex
+} from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyOutcome,
   EnrollValue,
@@ -252,6 +257,8 @@ export interface PendingPlacement {
   value: EnrollValue
   userName: string
   handOff: boolean
+  /** The credential the slot held when the ceremony started, which the placement replaces. */
+  replaced?: Credential
 }
 
 /** The offline block's challenge: the key test's typed data. */

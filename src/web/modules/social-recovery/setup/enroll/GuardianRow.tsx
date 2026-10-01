@@ -173,6 +173,7 @@ const GuardianRow = ({
       setAddOutcome(notSupported('no-implementation'))
       return
     }
+    const replaced = enrollment?.credential
     setBusy(true)
     try {
       const outcome = await enrollHost({
@@ -190,7 +191,7 @@ const GuardianRow = ({
         credential: { method: book.methods.ecdsa, config: outcome.value.config, label: '' },
         test: 'not-tested'
       }
-      const placed = await placeEnrollment(setup, search, book, created)
+      const placed = await placeEnrollment(setup, search, book, created, replaced)
       setDuplicate(placed.status === 'duplicate')
       setWriteFailed(placed.status === 'slot-taken')
       if (placed.status !== 'placed') {
@@ -204,7 +205,7 @@ const GuardianRow = ({
     } finally {
       setBusy(false)
     }
-  }, [client, address, book, setup, search, nameCheck, onEnrollment])
+  }, [client, address, enrollment, book, setup, search, nameCheck, onEnrollment])
 
   const applyTest = useCallback(
     async (outcome: CeremonyOutcome<unknown>) => {
