@@ -129,8 +129,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   // Continue is held until the stored draft is read, so the default never
   // replaces a stored level, and after a failed load, so a storage that comes
   // back is never overwritten with a level the holder did not pick.
-  const ready =
-    loaded && !loadFailed && (!hidden || (password !== '' && password === confirmation))
+  const ready = loaded && !loadFailed && (!hidden || (password !== '' && password === confirmation))
 
   const pick = useCallback((offered: OfferedLevel) => {
     touched.current = true
