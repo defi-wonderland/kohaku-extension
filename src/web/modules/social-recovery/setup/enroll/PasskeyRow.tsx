@@ -383,6 +383,8 @@ const PasskeyRow = ({
   const lineKey = enrollment ? testLineKeyOf(enrollment, skipped, `${PASSKEY}.testPassed`) : null
   const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
   const testError = testOutcome ? browserErrorNameOf(testOutcome) : null
+  // The note says "just now", so it shows only for a test this row ran, never for a stored one.
+  const passedNow = testOutcome?.kind === 'verdict' && testOutcome.verdict === 'passed'
   const canTest = deps.passkeysServed && client.status === 'ready' && !busy
   const canRetryUndelivered =
     !!stale && !busy && (stale.call === 'enroll' ? deps.passkeysServed : canTest && !!enrollment)
@@ -553,7 +555,7 @@ const PasskeyRow = ({
                 {t(lineKey)}
               </Text>
             )}
-            {enrollment.test === 'passed' && !!enrollment.lastTest && (
+            {passedNow && enrollment.test === 'passed' && !!enrollment.lastTest && (
               <Text testID="passkey-signed-note" fontSize={12} appearance="secondaryText">
                 {t('socialRecovery.enroll.passkey.signedNote', {
                   hash: renderHash(enrollment.lastTest.salt)

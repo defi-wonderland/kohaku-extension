@@ -92,10 +92,13 @@ export const placeEnrollment = async (
 /**
  * Stores a test's verdict on the credential's enrollment, with the cause a
  * test that did not pass reported. A passed test may bring its challenge's
- * salt and time, and the facts the ceremony read again, whose kind becomes the
- * backup kind; the enrollment keeps its credential id, its backup kind, its
- * facts and its last passed test otherwise. Returns the
- * updated enrollment, or null where the list no longer holds the credential.
+ * salt and time, and the facts the ceremony read again. An assertion reports
+ * the backup flags only, so its kind and backed-up flag replace the stored
+ * ones and its kind becomes the backup kind; the place, the attachment, the
+ * transports and the provider stay as the creation reported them. The
+ * enrollment keeps its credential id, its backup kind, its facts and its last
+ * passed test otherwise. Returns the updated enrollment, or null where the
+ * list no longer holds the credential.
  */
 export const recordTest = async (
   setup: SetupRecords,
@@ -109,9 +112,13 @@ export const recordTest = async (
   if (!found) {
     return null
   }
-  const facts = passedWith?.facts ?? found.facts
+  const read = passedWith?.facts
+  const facts =
+    read && found.facts
+      ? { ...found.facts, kind: read.kind, backedUp: read.backedUp }
+      : read ?? found.facts
   const lastTest = passedWith?.lastTest ?? found.lastTest
-  const backup = passedWith?.facts?.kind ?? found.backup
+  const backup = read?.kind ?? found.backup
   const updated: Enrollment = {
     credential: found.credential,
     test,

@@ -842,13 +842,13 @@ describe('the passkey row', () => {
       expect(enrollment).toMatchObject({
         test: 'passed',
         backup: 'synced',
-        facts: SYNCED_ON_GOOGLE
+        facts: { ...BOUND_TO_THIS_MAC, kind: 'synced', backedUp: true }
       })
       await open()
       expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(t(`${CEREMONY}.syncedLoss`))
     })
 
-    it('renders the kind line, the loss line and the signed note from the record alone', async () => {
+    it('renders the kind line and the loss line from the record alone, with no signed note', async () => {
       await reopenWith({
         credential: CREDENTIAL,
         test: 'passed',
@@ -860,9 +860,7 @@ describe('the passkey row', () => {
       expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
       expect(view!.byTestId('passkey-kind-line')?.textContent).toBe(SYNCED_KIND_LINE)
       expect(view!.byTestId('passkey-loss-line')?.textContent).toBe(t(`${CEREMONY}.syncedLoss`))
-      expect(view!.byTestId('passkey-signed-note')?.textContent).toBe(
-        t(`${PASSKEY}.signedNote`, { hash: renderHash(SALT) })
-      )
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
       expect(deps.requestIds).toEqual([])
       expect(view!.navigate).not.toHaveBeenCalled()
     })
