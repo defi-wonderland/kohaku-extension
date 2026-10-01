@@ -40,7 +40,9 @@ const rowsOf = (
 
 const rowOf = (rows: TrustRow[], method: string) => {
   const row = rows.find((held) => held.method.toLowerCase() === method.toLowerCase())
-  if (!row) throw new Error(`no trust row for ${method}`)
+  if (!row) {
+    throw new Error(`no trust row for ${method}`)
+  }
   return row
 }
 
