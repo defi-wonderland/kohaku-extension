@@ -19,6 +19,8 @@ import type {
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import type { Root, Validate } from './harness'
+
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
 // React only runs effects and state updates inside act() when this flag is set.
@@ -42,14 +44,12 @@ const EditorView = jest.requireActual<
 const { emptySlotOf } = jest.requireActual<
   typeof import('@web/modules/social-recovery/setup/editor/operations')
 >('@web/modules/social-recovery/setup/editor/operations')
-const { AADHAAR, ALICE, BOOK, makeRecords, PASSKEY, presetPath } =
+const { AADHAAR, ALICE, BOB, BOOK, makeRecords, PASSKEY, PASSPORT, presetPath } =
   jest.requireActual<typeof import('./harness')>('./harness')
-
-type Root = ReturnType<typeof createRoot>
-type Validate = (draft: SetupDraft) => Promise<ValidationResult>
 
 const { refusals, rules } = en.socialRecovery.editor
 const groupLabel = (n: number) => i18n.t('socialRecovery.shape.group', { n })
+const EMPTY_GROUP_SLOT = i18n.t('socialRecovery.editor.refusals.emptyGroupSlot')
 
 /** Two to the 48 seconds, the first wait a 48-bit field cannot hold. */
 const TWO_TO_THE_48 = 281474976710656n
@@ -191,7 +191,7 @@ describe('continue with a shape this wallet refuses', () => {
     expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.thresholdBelowOneOwnRule])
   })
 
-  it('refuses a preset whose group still has unfilled slots with the members sentence', async () => {
+  it('refuses a preset whose group still has unfilled slots with the unfilled-slot sentence', async () => {
     const { validateSetup } = await mount({
       clauses: [
         { threshold: 1, credentials: [PASSKEY] },
@@ -199,8 +199,35 @@ describe('continue with a shape this wallet refuses', () => {
       ]
     })
     await press('editor-continue')
-    expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.thresholdAboveMembers])
+    expect(allByTestId('editor-wallet-refusal')).toEqual([EMPTY_GROUP_SLOT])
     expect(validateSetup).not.toHaveBeenCalled()
+  })
+
+  it('refuses a group of two of three with two enrolled members and one unfilled slot, and never runs the path check', async () => {
+    const { validateSetup, navigate } = await mount({
+      clauses: [
+        { threshold: 1, credentials: [PASSKEY] },
+        { threshold: 2, credentials: [ALICE, BOB, emptySlotOf('zkpassport')] }
+      ]
+    })
+    await press('editor-continue')
+    expect(refusalItems()).toEqual([[groupLabel(1), EMPTY_GROUP_SLOT]])
+    expect(validateSetup).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('holds continue on a held threshold text in a group with an unfilled slot, and shows no refusal', async () => {
+    const { validateSetup, navigate } = await mount({
+      clauses: [
+        { threshold: 1, credentials: [PASSKEY] },
+        { threshold: 2, credentials: [ALICE, BOB, emptySlotOf('zkpassport')] }
+      ]
+    })
+    await typeThreshold('editor-group-1-threshold', '1.5')
+    await press('editor-continue')
+    expect(byTestId('editor-wallet-refusals')).toBeNull()
+    expect(validateSetup).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
   })
 
   it('leaves a stored wait past the field width to the waiting period and continues to it', async () => {
@@ -287,6 +314,18 @@ describe('continue with a shape this wallet refuses', () => {
 })
 
 describe('continue with a shape this wallet can save', () => {
+  it('runs the path check on a group of two of three once all three members are enrolled', async () => {
+    const clauses = [
+      { threshold: 1, credentials: [PASSKEY] },
+      { threshold: 2, credentials: [ALICE, BOB, PASSPORT] }
+    ]
+    const { validateSetup, navigate } = await mount({ clauses })
+    await press('editor-continue')
+    expect(byTestId('editor-wallet-refusals')).toBeNull()
+    expect(validateSetup).toHaveBeenCalledWith(draftOf(clauses))
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
+  })
+
   it('runs the path check and shows no refusal of its own', async () => {
     const { validateSetup, navigate } = await mount({ clauses: presetPath() })
     await press('editor-continue')

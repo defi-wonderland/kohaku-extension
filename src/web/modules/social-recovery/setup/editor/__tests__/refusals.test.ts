@@ -1,9 +1,9 @@
 /**
  * The shapes this wallet refuses to save, judged on the draft before the
  * SDK's path check, and the words they render as: each refusal fires on its
- * own shape and never on a sound one, an empty slot counts as a place but not
- * as a member, and every sentence names this wallet as the party that
- * refuses. The rules panel lists every rule the editor applies, in order.
+ * own shape and never on a sound one, an unfilled slot is refused as a place
+ * still to fill and counts as a place against the threshold, and every
+ * sentence names this wallet as the party that refuses. The rules panel lists every rule the editor applies, in order.
  */
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
@@ -71,6 +71,7 @@ const keysOf = (clauses: Clause[], wait?: bigint) =>
 
 const ALL_REFUSAL_KEYS: RefusalKey[] = [
   'emptyGroup',
+  'emptyGroupSlot',
   'emptyRequired',
   'thresholdAboveMembers',
   'thresholdBelowOne',
@@ -94,13 +95,55 @@ describe('a path this wallet can save', () => {
     expect(refusalsOf(draftOf([{ threshold: 1, credentials: [PASSKEY] }]))).toEqual([])
   })
 
-  it('answers no refusal for a group whose enrolled members meet its threshold beside an unfilled slot', () => {
+  it('answers no refusal for a group of two of three once all three members are enrolled', () => {
     expect(
       keysOf([
         { threshold: 1, credentials: [PASSKEY] },
-        { threshold: 2, credentials: [ALICE, BOB, emptySlotOf('zkpassport')] }
+        { threshold: 2, credentials: [ALICE, BOB, PASSPORT] }
       ])
     ).toEqual([])
+  })
+})
+
+describe('a group with an unfilled slot', () => {
+  it('refuses a group of two of three with one slot unfilled, though its enrolled members meet the threshold', () => {
+    expect(
+      refusalsOf(
+        draftOf([
+          { threshold: 1, credentials: [PASSKEY] },
+          { threshold: 2, credentials: [ALICE, BOB, emptySlotOf('zkpassport')] }
+        ])
+      )
+    ).toEqual([{ key: 'emptyGroupSlot', clause: 1 }])
+  })
+
+  it('refuses it with the group sentence, apart from the required row and the empty group', () => {
+    const sentence = renderRefusal({ key: 'emptyGroupSlot' }, t)
+    expect(sentence).toBe(t('socialRecovery.editor.refusals.emptyGroupSlot'))
+    expect(sentence).not.toBe(renderRefusal({ key: 'emptyRequired' }, t))
+    expect(sentence).not.toBe(renderRefusal({ key: 'emptyGroup' }, t))
+  })
+
+  it('refuses a group whose every slot is unfilled as empty, never as a slot to fill', () => {
+    expect(
+      keysOf([{ threshold: 1, credentials: [emptySlotOf('ecdsa'), emptySlotOf('zkpassport')] }])
+    ).toEqual(['emptyGroup'])
+  })
+
+  it('refuses each group with an unfilled slot and points at it', () => {
+    expect(
+      refusalsOf(
+        draftOf([
+          { threshold: 1, credentials: [PASSKEY] },
+          { threshold: 1, credentials: [ALICE, emptySlotOf('ecdsa')] },
+          { threshold: 2, credentials: [BOB, CAROL] },
+          { threshold: 1, credentials: [emptySlotOf('ecdsa'), AADHAAR] }
+        ])
+      )
+    ).toEqual([
+      { key: 'emptyGroupSlot', clause: 1 },
+      { key: 'emptyGroupSlot', clause: 3 }
+    ])
   })
 })
 
@@ -176,7 +219,7 @@ describe('a threshold above the enrolled members', () => {
     ).toEqual([{ key: 'thresholdAboveMembers', clause: 1 }])
   })
 
-  it('refuses a preset with unfilled slots with the members sentence, since a slot is not a member', () => {
+  it('judges the threshold against every place, so a preset with unfilled slots is refused for its slots alone', () => {
     expect(
       refusalsOf(
         draftOf([
@@ -187,7 +230,14 @@ describe('a threshold above the enrolled members', () => {
           }
         ])
       )
-    ).toEqual([{ key: 'thresholdAboveMembers', clause: 1 }])
+    ).toEqual([{ key: 'emptyGroupSlot', clause: 1 }])
+  })
+
+  it('refuses a threshold above every place of a group with an unfilled slot for both', () => {
+    expect(keysOf([{ threshold: 3, credentials: [ALICE, emptySlotOf('ecdsa')] }])).toEqual([
+      'emptyGroupSlot',
+      'thresholdAboveMembers'
+    ])
   })
 
   it('passes a threshold equal to the enrolled members', () => {
@@ -275,7 +325,7 @@ describe('the ceilings of a group', () => {
     ])
     expect(
       keysOf([{ threshold: 2, credentials: [...guardians(255), emptySlotOf('ecdsa')] }])
-    ).toEqual(['memberCeiling'])
+    ).toEqual(['emptyGroupSlot', 'memberCeiling'])
   })
 })
 
@@ -390,7 +440,7 @@ describe('the refusal sentences', () => {
   })
 
   it('name this wallet as the party that refuses and credit no chain, network, contract or kit', () => {
-    ALL_REFUSAL_KEYS.forEach((key) => {
+    ALL_REFUSAL_KEYS.filter((key) => key in en.socialRecovery.editor.refusals).forEach((key) => {
       const sentence = renderRefusal({ key }, t)
       expect(sentence).toMatch(/^This wallet cannot /)
       expect(sentence).not.toMatch(CREDITS_ANOTHER_PARTY)
