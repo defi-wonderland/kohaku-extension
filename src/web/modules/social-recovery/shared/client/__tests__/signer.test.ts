@@ -718,6 +718,7 @@ describe('the signer facade over the request queue', () => {
       const [abortedId, keptId] = dispatched(q.dispatch).flatMap((a) =>
         a.type === ADD ? [a.params.userRequest.id] : []
       )
+      q.push(queued(abortedId, keptId))
       controller.abort()
       await flush()
       expect(aborted.status).toBe('rejected')
@@ -747,6 +748,7 @@ describe('the signer facade over the request queue', () => {
       const q = queueOver([basicAccount(KEY)], { timeoutMs: 1000 })
       const controller = new AbortController()
       const signing = sign(q, 'bytes', controller.signal)
+      q.push(queued(addedRequest(q.dispatch).userRequest.id))
       await advance(1000)
       controller.abort()
       await flush()

@@ -121,10 +121,13 @@ export const isSignFlowFailure = (value: unknown): value is SignFlowFailure =>
  * request while a swap, bridge or transfer signs with a hardware wallet in the
  * action window, so that request times out too.
  *
- * The withdrawal reaches `userRequests` alone: a request still waiting for an
- * account switch stays until the action window closes. A holder who accepts
- * that switch after the timeout still sees the sign screen; the signature then
- * reaches no caller, but the activity records it.
+ * The queue's removal reaches `userRequests` alone: a request still waiting
+ * for an account switch stays there until the holder accepts the switch or the
+ * action window closes. After a withdrawal the facade therefore keeps watching
+ * the queue, for the same wait again, and removes the request again when it
+ * surfaces in `userRequests`. A page closed before the holder accepts the
+ * switch watches nothing: the holder then still sees the sign screen, and the
+ * signature reaches no caller, but the activity records it.
  *
  * Each signature adds an entry to the account's activity and raises a "message
  * signed" notification, and an accepted switch changes the wallet's selected
@@ -271,10 +274,57 @@ export const createSignerFacade = (
       let done = false
       let answered = false
       let queued = false
+      let inUserRequests = false
+      let waitingForSwitch = false
+      let withdrawing = false
+      let removedOnce = false
       let unsubscribe: () => void = () => {}
       let onAbort: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
       let absence: ReturnType<typeof setTimeout> | undefined
+      let watchBound: ReturnType<typeof setTimeout> | undefined
+      let gone: ReturnType<typeof setTimeout> | undefined
+
+      const remove = () =>
+        port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
+
+      const stopWatching = () => {
+        withdrawing = false
+        if (watchBound !== undefined) {
+          clearTimeout(watchBound)
+        }
+        if (gone !== undefined) {
+          clearTimeout(gone)
+        }
+        unsubscribe()
+      }
+
+      // The background may still be adding the request when it is withdrawn,
+      // and a removal that arrives first finds nothing, so the removal waits
+      // until a queue state lists the request. The queue removes only from
+      // `userRequests`: a request waiting for an account switch is removed
+      // again once the accepted switch moves it there. The watch ends when the
+      // request is removed from `userRequests`, once it stays out of both
+      // lists, or when the wait passes again.
+      const followWithdrawal = () => {
+        if (inUserRequests) {
+          remove()
+          stopWatching()
+          return
+        }
+        if (!removedOnce) {
+          removedOnce = true
+          remove()
+        }
+        if (waitingForSwitch) {
+          if (gone !== undefined) {
+            clearTimeout(gone)
+          }
+          gone = undefined
+        } else if (gone === undefined) {
+          gone = setTimeout(stopWatching, ABSENCE_GRACE_MS)
+        }
+      }
 
       const end = (withdraw: boolean): boolean => {
         if (done) {
@@ -287,10 +337,15 @@ export const createSignerFacade = (
         if (absence !== undefined) {
           clearTimeout(absence)
         }
-        unsubscribe()
         signal?.removeEventListener('abort', onAbort)
-        if (withdraw) {
-          port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
+        if (!withdraw) {
+          unsubscribe()
+          return true
+        }
+        withdrawing = true
+        watchBound = setTimeout(stopWatching, timeoutMs)
+        if (queued) {
+          followWithdrawal()
         }
         return true
       }
@@ -316,6 +371,23 @@ export const createSignerFacade = (
       signal?.addEventListener('abort', onAbort)
 
       unsubscribe = port.subscribe((update) => {
+        if (update.controller === 'requests') {
+          inUserRequests = (update.state.userRequests ?? []).some((request) =>
+            sameId(request.id, id)
+          )
+          waitingForSwitch = (update.state.userRequestsWaitingAccountSwitch ?? []).some((request) =>
+            sameId(request.id, id)
+          )
+        }
+        if (withdrawing) {
+          if (update.controller === 'requests') {
+            queued = queued || inUserRequests || waitingForSwitch
+            if (queued) {
+              followWithdrawal()
+            }
+          }
+          return
+        }
         // The first signature under the request's id is its answer; nothing
         // pushed after it counts.
         if (done || answered) {
@@ -350,11 +422,7 @@ export const createSignerFacade = (
           }, malformed)
           return
         }
-        const present = [
-          ...(update.state.userRequests ?? []),
-          ...(update.state.userRequestsWaitingAccountSwitch ?? [])
-        ].some((request) => sameId(request.id, id))
-        if (present) {
+        if (inUserRequests || waitingForSwitch) {
           queued = true
           if (absence !== undefined) {
             clearTimeout(absence)
