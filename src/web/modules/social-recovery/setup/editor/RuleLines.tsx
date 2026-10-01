@@ -22,10 +22,16 @@ const RuleLines = ({ ruleLines, checking, onMakeItAGroup, onAddSecondMethod }: R
       <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
         {t('socialRecovery.shape.header')}
       </Text>
-      {ruleLines.map((line) => {
+      {ruleLines.map((line, index) => {
         const [text] = renderRuleLines([line], t)
         return (
-          <View key={line.key} style={spacings.mbSm}>
+          <View
+            // Two groups of one shape share a line's words; the list is rebuilt
+            // from the path on every render, so a line's place is its identity.
+            // eslint-disable-next-line react/no-array-index-key
+            key={index}
+            style={spacings.mbSm}
+          >
             <Text fontSize={14} testID="editor-rule-line">
               {text}
             </Text>
