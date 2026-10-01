@@ -34,7 +34,9 @@ import {
   fakeReceiptWait,
   fakeSendPort,
   GWEI,
+  ACTION,
   KEY,
+  MANAGER,
   minedAndReverted,
   ownerTransaction,
   providerReceipt,
@@ -177,6 +179,45 @@ DRIVES.forEach(({ title, run: driveOnce, expectAsked, refusal }) =>
     })
   })
 )
+
+describe("the recovery kit's mark on an account's batch", () => {
+  const MARK = { manager: MANAGER, auditedActions: [ACTION] }
+
+  it('hands the mark to the port with the batch, and lands as an unmarked batch does', async () => {
+    const port = fakeSendPort({ value: TX_HASH })
+    const machine = drivenMachine(submittingFor('save'))
+    const { run } = machine.state()
+    await driveAccountBatch({
+      dispatch: machine.dispatch,
+      run,
+      port,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      account: ACCOUNT,
+      calls: SAVE.calls,
+      onEstimation: LISTENER,
+      recoveryKit: MARK
+    })
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, MARK)
+    expect(port.send).not.toHaveBeenCalled()
+    expect(machine.state()).toMatchObject({ status: 'landed', transactionHash: TX_HASH, run })
+  })
+
+  it('hands the mark with no listener', async () => {
+    const port = fakeSendPort({ value: TX_HASH })
+    const machine = drivenMachine(submittingFor('save'))
+    await driveAccountBatch({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      port,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      account: ACCOUNT,
+      calls: SAVE.calls,
+      recoveryKit: MARK
+    })
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, undefined, MARK)
+  })
+})
 
 describe('a send the wallet broadcast', () => {
   it('sends the transaction from the key given, announces its hash, then lands on its receipt', async () => {
