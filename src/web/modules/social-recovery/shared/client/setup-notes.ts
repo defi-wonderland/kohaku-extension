@@ -1,8 +1,8 @@
 /**
  * The public note a setup writes beside its sealed backup, and the privacy
- * level a draft's two fields encode. The client encodes the note until the SDK
- * writes the public field itself at prepare; screens call these and never
- * build the bytes on their own.
+ * level a draft's two fields encode. Whether the extension or the SDK writes the
+ * public note at prepare is still open; until that is settled the client
+ * encodes it here. Screens call these and never build the bytes on their own.
  */
 import type {
   Configuration,
@@ -10,8 +10,7 @@ import type {
   PrivacyLevel,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { levelOfFields } from '@web/modules/social-recovery/sdk-doubles'
-import { shapeNote } from '@web/modules/social-recovery/sdk-doubles/encoding'
+import { levelOfFields, shapeNote } from '@web/modules/social-recovery/sdk-doubles/encoding'
 
 /**
  * The public note of a shape-visible setup: the path's shape and wait in the
