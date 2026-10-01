@@ -28,7 +28,7 @@ import {
   PASSPORT,
   PHONE_PASSKEY,
   required
-} from './fixtures'
+} from '../__fixtures__/review'
 
 const { t } = i18n
 const ITEMS = 'socialRecovery.disclosures.items'
@@ -216,6 +216,15 @@ describe('a row of the path', () => {
   it("reads a failed test with the browser's own error name as its cause", () => {
     const row = rowOf(enrolled(PASSKEY, 'failed', { cause: 'browser-error: NotAllowedError' }))
     expect(row.lines).toEqual(['NotAllowedError', t(`${CEREMONY}.testFailedLine`)])
+  })
+
+  it('reads a passkey made under another origin by its line, with or without the error name', () => {
+    const lines = [t(`${CEREMONY}.relyingPartyMismatch`), t(`${CEREMONY}.testFailedLine`)]
+    const stored = rowOf(
+      enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch: SecurityError' })
+    )
+    const bare = rowOf(enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch' }))
+    expect([stored.lines, bare.lines]).toEqual([lines, lines])
   })
 
   it('shows no cause where a browser error carries no error name', () => {

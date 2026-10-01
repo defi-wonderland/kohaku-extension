@@ -21,7 +21,7 @@ import {
   THIRD_PARTY,
   THIRD_PARTY_MODULE,
   UNANSWERED
-} from './fixtures'
+} from '../__fixtures__/review'
 
 const trustRowsFor = (clauses: Clause[], reads: TrustReads) =>
   trustRowsOf({ clauses, enrollments: [], reads, shippedMethods: SHIPPED, addressBook: BOOK })

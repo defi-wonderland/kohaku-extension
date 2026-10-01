@@ -1,5 +1,7 @@
 import { encodeAbiParameters, getAddress, zeroAddress, zeroHash } from 'viem'
 
+import type { Root } from 'react-dom/client'
+
 import type {
   Address,
   Clause,
@@ -8,13 +10,19 @@ import type {
   ModuleInfo,
   ReadResult,
   SetupDescription,
+  SetupDraft,
   SetupState,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { addressBookOf, deploymentDescriptor } from '@web/modules/social-recovery/shared/client'
+import type {
+  FitCheckReading,
+  PrivilegeHoldersReading,
+  RemovedKeyReading
+} from '@web/modules/social-recovery/shared/client'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
-import type { MethodReads, TrustReads } from '../types'
+import type { MethodReads, ProviderKind, TrustReads } from '../types'
 
 export const BOOK = addressBookOf('sepolia')
 export const SHIPPED = deploymentDescriptor('sepolia').shippedMethods
@@ -161,16 +169,29 @@ export const descriptionOf = (
 export const readsOf = (entries: [Address, MethodReads][]): TrustReads =>
   Object.fromEntries(entries.map(([method, reads]) => [method.toLowerCase(), reads]))
 
-// Jest runs every file under __tests__, this one included; its own check runs
-// only when Jest runs this file, never from a file that imports it.
-if (expect.getState().testPath === __filename) {
-  describe('review fixtures', () => {
-    it('hold credentials on four different shipped methods and one module that is not shipped', () => {
-      const shipped = SHIPPED.map((address) => address.toLowerCase())
-      const methods = [ALICE, PASSKEY, PASSPORT, AADHAAR].map(({ method }) => method.toLowerCase())
-      expect(new Set(methods).size).toBe(4)
-      methods.forEach((method) => expect(shipped).toContain(method))
-      expect(shipped).not.toContain(THIRD_PARTY_MODULE.toLowerCase())
-    })
-  })
+export type { Root }
+
+/** One module read answered per module. */
+export type Answer<T> = (module: Address) => Promise<ReadResult<T>>
+
+/** What the review is mounted over: the stored setup and how the client and its reads answer. */
+export interface MountOptions {
+  clauses?: Clause[]
+  enrollments?: Enrollment[]
+  wait?: bigint
+  backup?: SetupDraft['privacy']['backup']
+  publicMetadata?: SetupDraft['privacy']['publicMetadata']
+  passwordSet?: boolean
+  client?: 'loading' | 'failed' | 'update-the-wallet'
+  trustedParties?: Answer<TrustedParties>
+  moduleInfo?: Answer<ModuleInfo>
+  paused?: Answer<boolean>
+  removedKey?: () => Promise<RemovedKeyReading>
+  fitCheck?: () => Promise<FitCheckReading>
+  setupState?: () => Promise<SetupState>
+  describeSetup?: () => Promise<SetupDescription>
+  privilegeHolders?: () => Promise<PrivilegeHoldersReading>
+  providerKind?: ProviderKind
+  accountLabel?: string
+  storageRefuses?: boolean
 }

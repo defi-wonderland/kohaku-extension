@@ -97,8 +97,9 @@ export const guardianAddressOf = (credential: Credential): Address | undefined =
 /**
  * The line a failed test's stored cause reads, or null where the wallet has no
  * words for it. The cause is stored as its slug, or as `<slug>: <detail>` where
- * the test carried a detail: a check that did not match reads its line, and a
- * browser error reads the browser's own error name.
+ * the test carried a detail: a check that did not match reads its line, a
+ * passkey made under another origin reads its line, and a browser error reads
+ * the browser's own error name.
  */
 const failedCauseLineOf = (cause: string | undefined, t: Translate): string | null => {
   if (!cause) {
@@ -109,6 +110,9 @@ const failedCauseLineOf = (cause: string | undefined, t: Translate): string | nu
   const detail = split === -1 ? undefined : cause.slice(split + 2)
   if (slug === 'check-rejected') {
     return t(`${CEREMONY}.testFailedNoMatch`)
+  }
+  if (slug === 'relying-party-mismatch') {
+    return t(`${CEREMONY}.relyingPartyMismatch`)
   }
   if (slug === 'browser-error' && isBrowserErrorName(detail)) {
     return detail

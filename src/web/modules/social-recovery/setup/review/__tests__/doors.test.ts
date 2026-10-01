@@ -2,7 +2,7 @@ import type { PrivilegeHoldersReading } from '@web/modules/social-recovery/share
 
 import { authoritiesOf, codeEntriesOf, doorsOf as doorsWith } from '../doors'
 import type { AccountRead, AccountReads } from '../types'
-import { descriptionOf, OTHER_KEY, REMOVED_KEY, THIRD_KEY } from './fixtures'
+import { descriptionOf, OTHER_KEY, REMOVED_KEY, THIRD_KEY } from '../__fixtures__/review'
 
 const NAMED: AccountReads['removedKey'] = {
   status: 'answered',

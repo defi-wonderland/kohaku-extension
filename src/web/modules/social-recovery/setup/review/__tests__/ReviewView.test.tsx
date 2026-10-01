@@ -10,16 +10,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type {
-  Address,
-  Clause,
-  ModuleInfo,
-  ReadResult,
-  SetupDescription,
-  SetupDraft,
-  SetupState,
-  TrustedParties
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   FitCheckReading,
   PrivilegeHoldersReading,
@@ -27,7 +18,8 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type { Enrollment, RecordStorage } from '@web/modules/social-recovery/shared/records'
 
-import type { ProviderKind, ReviewClient, ReviewKitClient } from '../types'
+import type { MountOptions, Root } from '../__fixtures__/review'
+import type { ReviewClient, ReviewKitClient } from '../types'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.
@@ -69,9 +61,11 @@ const { emptySlot } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records/slots')
 >('@web/modules/social-recovery/shared/records/slots')
 const ReviewView = jest.requireActual<typeof import('../ReviewView')>('../ReviewView').default
-const fixtures = jest.requireActual<typeof import('./fixtures')>('./fixtures')
+const fixtures =
+  jest.requireActual<typeof import('../__fixtures__/review')>('../__fixtures__/review')
 const {
   ACCOUNT,
+  AADHAAR,
   ADMIN,
   ALICE,
   BOB,
@@ -102,30 +96,6 @@ const {
   setupStateOf,
   stopDeclaration
 } = fixtures
-
-type Root = ReturnType<typeof createRoot>
-type Answer<T> = (module: Address) => Promise<ReadResult<T>>
-
-interface MountOptions {
-  clauses?: Clause[]
-  enrollments?: Enrollment[]
-  wait?: bigint
-  backup?: SetupDraft['privacy']['backup']
-  publicMetadata?: SetupDraft['privacy']['publicMetadata']
-  passwordSet?: boolean
-  client?: 'loading' | 'failed' | 'update-the-wallet'
-  trustedParties?: Answer<TrustedParties>
-  moduleInfo?: Answer<ModuleInfo>
-  paused?: Answer<boolean>
-  removedKey?: () => Promise<RemovedKeyReading>
-  fitCheck?: () => Promise<FitCheckReading>
-  setupState?: () => Promise<SetupState>
-  describeSetup?: () => Promise<SetupDescription>
-  privilegeHolders?: () => Promise<PrivilegeHoldersReading>
-  providerKind?: ProviderKind
-  accountLabel?: string
-  storageRefuses?: boolean
-}
 
 const THEME = Object.fromEntries(
   Object.entries(themeConfig.default).map(([name, byType]) => [
@@ -456,18 +426,65 @@ describe('the path rows', () => {
     expect(textOf('review-row-0-0-line-1')).toBe(t(`${CEREMONY}.testFailedLine`))
   })
 
-  it('offer to run the test again on a row whose test could not run, on the enrollment step', async () => {
+  /** The path and the query of the one place the review navigated to. */
+  const destinationOf = (navigate: jest.Mock) => {
+    expect(navigate).toHaveBeenCalledTimes(1)
+    const [path, search = ''] = String(navigate.mock.calls[0][0]).split('?')
+    return { path, query: Object.fromEntries(new URLSearchParams(search)) }
+  }
+
+  it("offer to run a guardian's test again on the enrollment step for that guardian", async () => {
     const { navigate } = await mount({
       clauses: [group(1, ALICE, BOB)],
-      enrollments: [enrolled(ALICE, 'unavailable'), enrolled(BOB)]
+      enrollments: [enrolled(ALICE), enrolled(BOB, 'unavailable')]
     })
 
-    expect(textOf('review-row-0-0-retry-test')).toBe(t('socialRecovery.actions.runTheTestAgain'))
-    expect(byTestId('review-row-0-1-retry-test')).toBeNull()
+    expect(textOf('review-row-0-1-retry-test')).toBe(t('socialRecovery.actions.runTheTestAgain'))
+    expect(byTestId('review-row-0-0-retry-test')).toBeNull()
 
-    await press('review-row-0-0-retry-test')
+    await press('review-row-0-1-retry-test')
 
-    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupEnroll)
+    expect(destinationOf(navigate)).toEqual({
+      path: `/${WEB_ROUTES.socialRecoverySetupEnroll}`,
+      query: { kind: 'ecdsa', clause: '0', member: '1' }
+    })
+  })
+
+  it("offer to run a passkey's test again on the enrollment step for that passkey", async () => {
+    const { navigate } = await mount({
+      clauses: [required(ALICE), group(1, BOB, PASSKEY)],
+      enrollments: [enrolled(ALICE), enrolled(BOB), enrolled(PASSKEY, 'unavailable')]
+    })
+
+    await press('review-row-1-1-retry-test')
+
+    expect(destinationOf(navigate)).toEqual({
+      path: `/${WEB_ROUTES.socialRecoverySetupEnroll}`,
+      query: { kind: 'passkey', clause: '1', member: '1' }
+    })
+  })
+
+  it('offer no test again on an identity row whose test could not run', async () => {
+    await mount({
+      clauses: [required(PASSPORT), required(AADHAAR)],
+      enrollments: [enrolled(PASSPORT, 'unavailable'), enrolled(AADHAAR, 'unavailable')]
+    })
+
+    expect(textOf('review-row-0-0-chip')).toBe(t('socialRecovery.status.method.testUnavailable'))
+    expect(textOf('review-row-1-0-chip')).toBe(t('socialRecovery.status.method.testUnavailable'))
+    expect(container.querySelectorAll('[data-testid$="-retry-test"]')).toHaveLength(0)
+  })
+
+  it('give a passkey made under another origin its cause before the line that it may never work', async () => {
+    await mount({
+      clauses: [required(PASSKEY)],
+      enrollments: [enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch: SecurityError' })]
+    })
+
+    expect(textsStartingWith('review-row-0-0-line-').slice(0, 2)).toEqual([
+      t(`${CEREMONY}.relyingPartyMismatch`),
+      t(`${CEREMONY}.testFailedLine`)
+    ])
   })
 
   it('offer no test again on a test that ran', async () => {
