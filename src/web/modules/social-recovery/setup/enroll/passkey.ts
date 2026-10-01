@@ -20,6 +20,7 @@ import type {
   Platform,
   TestAccessValue
 } from '@web/modules/social-recovery/shared/ceremony'
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import { NAME_MAX_LENGTH } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import type {
@@ -28,7 +29,7 @@ import type {
   Enrollment
 } from '@web/modules/social-recovery/shared/records'
 
-import type { PasskeyCeremonyRequest, PasskeyMemory } from './types'
+import type { PasskeyCeremonyRequest, PasskeyMemory, RowTarget } from './types'
 
 /** The slug the ceremony tab's route and the ceremony request carry for a passkey. */
 export const PASSKEY_SLUG = 'passkey'
@@ -169,9 +170,36 @@ export const passkeyEnrollmentOf = (
   ...(value.credentialId ? { credentialId: value.credentialId } : {})
 })
 
-/** What a stored passkey ceremony request asked for, or null for any other request. */
-export const passkeyRequestOf = (record: CeremonyRequestRecord): PasskeyCeremonyRequest | null => {
-  if (record.method !== PASSKEY_SLUG) {
+/**
+ * Whether a stored request is this row's own: the requests live under one key
+ * for every account, so a request another account or chain stored, or one for
+ * another passkey method, is not this row's to take.
+ */
+const isRequestFor = (record: CeremonyRequestRecord, target: RowTarget): boolean => {
+  if (!sameAddress(record.account, target.account)) {
+    return false
+  }
+  if (BigInt(record.chainId) !== BigInt(target.chainId)) {
+    return false
+  }
+  if (record.call === 'enroll') {
+    return sameAddress(record.methodAddress, target.methodAddress)
+  }
+  if (record.call === 'testAccess') {
+    return sameAddress(record.request.method, target.methodAddress)
+  }
+  return false
+}
+
+/**
+ * What a stored passkey ceremony request asked for, or null for any other
+ * request and for a request another account, chain or method stored.
+ */
+export const passkeyRequestOf = (
+  record: CeremonyRequestRecord,
+  target: RowTarget
+): PasskeyCeremonyRequest | null => {
+  if (record.method !== PASSKEY_SLUG || !isRequestFor(record, target)) {
     return null
   }
   if (record.call === 'enroll') {

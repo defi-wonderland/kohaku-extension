@@ -50,6 +50,7 @@ import {
   testValueOf
 } from './passkey'
 import { enrollPathOf } from './search'
+import { sameCredential } from './slot'
 import { testRequestOf } from './testRequest'
 import type {
   PassedTest,
@@ -148,10 +149,15 @@ const PasskeyRow = ({
       if (asked.call !== 'testAccess') {
         return
       }
+      // A test of a credential the slot no longer holds says nothing about the one it holds.
       const current = enrollmentRef.current
+      const tested = { method: asked.request.method, config: asked.request.config }
+      if (!current || !sameCredential(tested, current.credential)) {
+        return
+      }
       setTestOutcome(outcome)
       const verdict = testVerdictOf(outcome)
-      if (!current || !verdict) {
+      if (!verdict) {
         return
       }
       const value =
@@ -218,8 +224,16 @@ const PasskeyRow = ({
       navigate(enrollPathOf(search), { replace: true })
     }
     const take = async () => {
+      // A request this row did not store stays where it is for its own row.
       const stored = await records.ceremonyRequest(ceremonyId).read()
-      const asked = stored.status === 'present' ? passkeyRequestOf(stored.value) : null
+      const asked =
+        stored.status === 'present'
+          ? passkeyRequestOf(stored.value, {
+              account,
+              chainId,
+              methodAddress: book.methods.passkey
+            })
+          : null
       if (!asked) {
         navigate(enrollPathOf(search), { replace: true })
         return

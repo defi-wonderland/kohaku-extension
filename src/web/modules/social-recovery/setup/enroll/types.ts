@@ -234,6 +234,13 @@ export type PasskeyCeremonyRequest =
   | { call: 'enroll'; userName?: string; handOff?: boolean }
   | { call: 'testAccess'; request: ApproverRequest; handOff?: boolean }
 
+/** The account, chain and passkey method a row's own ceremony requests name. */
+export interface RowTarget {
+  account: Address
+  chainId: ChainId
+  methodAddress: Address
+}
+
 /** What the passkey row keeps that the enrollment record does not. */
 export interface PasskeyMemory {
   /** Whether the holder chose the phone hand-off to create the passkey. */
