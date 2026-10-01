@@ -26,6 +26,7 @@
  */
 import { AbiCoder, id, toBeHex, toQuantity, Wallet } from 'ethers'
 
+import type { AccountOnchainState } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 
@@ -988,6 +989,33 @@ export const networkRecord = (chain: RecoveryChain, overrides: Partial<Network> 
     rpcProvider: 'rpc',
     ...overrides
   } as Network)
+
+/**
+ * An account's state on one chain as the wallet reads it: a smart account of
+ * the current version with code, nonce 5, unless the overrides say otherwise.
+ */
+export const onchainState = (
+  accountAddr: string,
+  overrides: Partial<AccountOnchainState> = {}
+): AccountOnchainState => ({
+  accountAddr,
+  isDeployed: true,
+  eoaNonce: null,
+  nonce: 5n,
+  erc4337Nonce: 0n,
+  associatedKeys: {},
+  deployError: false,
+  balance: 0n,
+  isEOA: false,
+  isErc4337Enabled: false,
+  isErc4337Nonce: false,
+  isV2: true,
+  currentBlock: 7_000_000n,
+  isSmarterEoa: false,
+  delegatedContract: null,
+  delegatedContractName: null,
+  ...overrides
+})
 
 /**
  * The wallet's records over one in-memory storage: what a caller writes, the
