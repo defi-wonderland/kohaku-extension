@@ -3,8 +3,9 @@
  * doubles. Screens import this module and never `sdk-doubles/`, so the swap to
  * the real SDK touches this folder alone.
  *
- * The React hook lives in its own file, `useRecoveryClient`, imported by path,
- * so this module loads in a Node test without the UI's contexts.
+ * The React hooks live in their own files, `useRecoveryClient` and
+ * `useAccountFacts`, imported by path, so this module loads in a Node test
+ * without the UI's contexts.
  */
 export { RECOVERY_CHAINS, CHAIN_IDS, WALLET_RECOVERY_CHAIN, recoveryChainOf } from './chains'
 export { PLACEHOLDER_ADDRESSES, addressBookOf, sameAddress } from './addresses'
@@ -72,6 +73,13 @@ export { sendRequestPort } from './sender-port'
 export { UNKNOWN_TRANSACTION_MS, createReceiptWait } from './receipts'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
 export { shapeNoteOf, privacyLevelOf } from './setup-notes'
+export { recoveryKitMarkOf, accountBatchTransactionOf } from './account-batch'
+export {
+  CREATION_BLOCK_STAND_IN,
+  creationRecordOf,
+  clientFactsOf,
+  accountFactsOf
+} from './account-facts'
 export type {
   RecoveryChain,
   AddressBook,
@@ -139,7 +147,13 @@ export type {
   SendRefusal,
   SendRefusalReason,
   RecoveryCall,
-  SendingKeys
+  SendingKeys,
+  AccountFactsSources,
+  ListedAccountFacts,
+  AccountFactsUnavailableCause,
+  AccountFactsReading,
+  AccountBatchSource,
+  RecoveryKitMark
 } from './types'
 // `sdkStandIn` stays out of this module: tests and development code import
 // `shared/client/stand-in` by path, so no screen reaches the scripted chain.

@@ -96,7 +96,7 @@ const DRIVES = [
       driveAccountBatch({ ...base, account: ACCOUNT, calls: SAVE.calls, onEstimation: LISTENER }),
     expectAsked: (port: ReturnType<typeof fakeSendPort>) => {
       expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-      expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER)
+      expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, undefined)
       expect(port.send).not.toHaveBeenCalled()
     },
     refusal: () => accountBatchRefusal('refused', ACCOUNT)

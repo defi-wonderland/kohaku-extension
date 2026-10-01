@@ -15,6 +15,7 @@ import type {
   KeyHandle,
   ProviderReadFailure,
   ReceiptWait,
+  RecoveryKitMark,
   SendPort
 } from '@web/modules/social-recovery/shared/client'
 
@@ -310,6 +311,8 @@ export interface AccountBatchDrive extends DriveRun {
   calls: readonly PreparedCall[]
   /** Hears each reading of the sign screen's estimation for the batch. */
   onEstimation?: EstimationListener
+  /** The recovery kit's mark, for the batch that arms the kit (`recoveryKitMarkOf`). */
+  recoveryKit?: RecoveryKitMark
 }
 
 // ---------------------------------------------------------------------------

@@ -41,6 +41,13 @@
  * refused as `not-listed`. A listed basic account is refused as
  * `not-smart-account`: the wallet sends its calls as separate transactions,
  * not as one batch.
+ *
+ * A batch that arms the recovery kit carries the kit's mark in its request's
+ * `meta.recoveryKit`, the manager and its audited actions. The wallet copies
+ * it onto the operation it builds, and the sign screen then lets the account
+ * grant an audited action its privilege beside the commit at that manager.
+ * The port sets it only where the caller passes it, and never on a key's own
+ * transaction.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { isAddress, isHash } from 'viem'
@@ -67,6 +74,7 @@ import type {
   GasEstimateCall,
   KeyHandle,
   MainStatusState,
+  RecoveryKitMark,
   SendPort,
   SendPortOptions,
   SendRefusal,
@@ -209,7 +217,15 @@ const callsRequestOf = (
     isSignAction: true,
     accountAddr: request.account,
     ...(request.keyType === undefined ? {} : { keyType: request.keyType }),
-    chainId
+    chainId,
+    ...(request.recoveryKit
+      ? {
+          recoveryKit: {
+            manager: request.recoveryKit.manager,
+            auditedActions: [...request.recoveryKit.auditedActions]
+          }
+        }
+      : {})
   },
   action: { kind: 'calls', calls: request.calls.map((call) => ({ ...call })) }
 })
@@ -546,7 +562,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
     sendAccountBatch(
       account: Address,
       calls: readonly PreparedCall[],
-      onEstimation?: EstimationListener
+      onEstimation?: EstimationListener,
+      recoveryKit?: RecoveryKitMark
     ): Promise<Hex> {
       const listed = port.accounts().find((candidate) => sameAddress(candidate.addr, account))
       if (!listed) {
@@ -562,7 +579,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         account: listed.addr as Address,
         calls: calls.map((call) => ({ to: call.target, value: call.value, data: call.data })),
         refusal: (reason) => accountBatchRefusal(reason, account),
-        onEstimation
+        onEstimation,
+        recoveryKit
       })
     }
   })
