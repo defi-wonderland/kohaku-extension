@@ -142,9 +142,9 @@ export const renderRowChip = (
 
 /**
  * The lines a failed access test carries beside its chip: the cause the test
- * reported where the wallet has words for it, a check that did not match or
- * the browser's own error name, then that the method may never work. Any other
- * cause renders no words of its own.
+ * reported where the wallet has words for it, a check that did not match, a
+ * passkey made under another origin or the browser's own error name, then
+ * that the method may never work. Any other cause renders no words of its own.
  */
 export const renderFailedTestLines = (enrollment: Enrollment, t: Translate): string[] => {
   if (enrollment.test !== 'failed') {
@@ -154,6 +154,8 @@ export const renderFailedTestLines = (enrollment: Enrollment, t: Translate): str
   let cause: string | null = null
   if (slug === 'check-rejected') {
     cause = t('socialRecovery.ceremony.testFailedNoMatch')
+  } else if (slug === 'relying-party-mismatch') {
+    cause = t('socialRecovery.ceremony.relyingPartyMismatch')
   } else if (slug === 'browser-error' && isBrowserErrorName(detail)) {
     cause = detail
   }

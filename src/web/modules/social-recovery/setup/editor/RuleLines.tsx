@@ -26,9 +26,10 @@ const RuleLines = ({ ruleLines, checking, onMakeItAGroup, onAddSecondMethod }: R
         const [text] = renderRuleLines([line], t)
         return (
           <View
-            // A path of two groups can carry one line twice.
+            // Two groups of one shape share a line's words; the list is rebuilt
+            // from the path on every render, so a line's place is its identity.
             // eslint-disable-next-line react/no-array-index-key
-            key={`${line.key}-${index}`}
+            key={index}
             style={spacings.mbSm}
           >
             <Text fontSize={14} testID="editor-rule-line">

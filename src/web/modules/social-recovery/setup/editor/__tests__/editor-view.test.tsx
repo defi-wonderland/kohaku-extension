@@ -57,6 +57,7 @@ const {
   DAVE,
   enrolled,
   guardianAddress,
+  guardianOf,
   makeRecords,
   PASSKEY,
   PASSPORT,
@@ -434,6 +435,28 @@ describe('the rule lines on screen', () => {
       expect(keyWarnings).toEqual([])
     } finally {
       error.mockRestore()
+    }
+  })
+
+  it('drop every line of the old shape when one of three groups of the same shape changes its threshold', async () => {
+    const pair = (a: string, b: string) => ({
+      threshold: 1,
+      credentials: [guardianOf(a, a), guardianOf(b, b)]
+    })
+    const before = [pair('e5', 'e6'), pair('e7', 'e8'), pair('e9', 'ea')]
+    const after = [{ ...before[0], threshold: 2 }, before[1], before[2]]
+    const duplicateKeys = jest.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await mount({ clauses: before })
+      expect(shown()).toEqual(expected(before))
+      await typeThreshold('editor-group-0-threshold', '2')
+      expect(shown()).toEqual(expected(after))
+      expect(shown()).toHaveLength(getRuleLines(after).length)
+      expect(
+        duplicateKeys.mock.calls.filter((call) => String(call[0]).includes('same key'))
+      ).toEqual([])
+    } finally {
+      duplicateKeys.mockRestore()
     }
   })
 })
@@ -1113,6 +1136,17 @@ describe('a method whose access test failed', () => {
     })
     expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
       en.socialRecovery.ceremony.testFailedNoMatch,
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('shows the other-origin sentence for a passkey the browser refused under this origin', async () => {
+    await mount({
+      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
+      enrollments: [failed('relying-party-mismatch: SecurityError')]
+    })
+    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
+      en.socialRecovery.ceremony.relyingPartyMismatch,
       en.socialRecovery.ceremony.testFailedLine
     ])
   })

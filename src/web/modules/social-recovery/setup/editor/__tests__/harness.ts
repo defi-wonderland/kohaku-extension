@@ -31,26 +31,17 @@ export const guardianAddress = (byte: string): Address => `0x${byte.repeat(20)}`
 const guardianConfig = (byte: string): Hex =>
   encodeAbiParameters([{ type: 'address' }], [guardianAddress(byte)])
 
-export const ALICE: Credential = {
+/** A guardian credential whose config holds the address `byte` repeated. */
+export const guardianOf = (byte: string, label: string): Credential => ({
   method: BOOK.methods.ecdsa,
-  config: guardianConfig('a1'),
-  label: 'Alice'
-}
-export const BOB: Credential = {
-  method: BOOK.methods.ecdsa,
-  config: guardianConfig('b2'),
-  label: 'Bob'
-}
-export const CAROL: Credential = {
-  method: BOOK.methods.ecdsa,
-  config: guardianConfig('c3'),
-  label: 'Carol'
-}
-export const DAVE: Credential = {
-  method: BOOK.methods.ecdsa,
-  config: guardianConfig('d4'),
-  label: 'Dave'
-}
+  config: guardianConfig(byte),
+  label
+})
+
+export const ALICE = guardianOf('a1', 'Alice')
+export const BOB = guardianOf('b2', 'Bob')
+export const CAROL = guardianOf('c3', 'Carol')
+export const DAVE = guardianOf('d4', 'Dave')
 export const PASSKEY: Credential = {
   method: BOOK.methods.passkey,
   config: '0x0102030405060708',
