@@ -1,9 +1,10 @@
 /**
  * The shapes this wallet refuses to save, judged on the draft as it stands
- * before the SDK's path check runs. An empty slot is not a member: it stands
- * for a method the holder has yet to enroll, so a clause counts only its
- * enrolled credentials against its threshold, and a required row whose one
- * slot is unfilled is refused as a method still to enroll.
+ * before the SDK's path check runs. An empty slot stands for a method the
+ * holder has yet to enroll, and the editor is where members are picked, so a
+ * slot with no member never leaves it: a clause with an unfilled slot is
+ * refused as a method still to enroll, a required row and a group alike, and a
+ * clause with no enrolled member at all is refused as empty.
  */
 import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
@@ -46,8 +47,13 @@ const clauseRefusals = (
   const members = clause.credentials.filter((credential) => !isEmptySlot(credential)).length
   if (members === 0) {
     refusals.push({ key: role === 'required' ? 'emptyRequired' : 'emptyGroup', clause: index })
-  } else if (clause.threshold > members) {
-    refusals.push({ key: 'thresholdAboveMembers', clause: index })
+  } else {
+    if (members < clause.credentials.length) {
+      refusals.push({ key: 'emptyRequired', clause: index })
+    }
+    if (clause.threshold > clause.credentials.length) {
+      refusals.push({ key: 'thresholdAboveMembers', clause: index })
+    }
   }
   if (clause.threshold < 1) {
     refusals.push({
