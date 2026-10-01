@@ -350,7 +350,7 @@ describe('two readings of the facts, as a screen reads them', () => {
       })
     )
 
-  it("hold the same across a change of the account's balance, its block or its preferences", () => {
+  it("hold the same across a change of the account's balance, its block or a preference other than its label", () => {
     const before = readyWith()
     expect(sameFactsReading(before, readyWith({ balance: 10n ** 18n }))).toBe(true)
     expect(sameFactsReading(before, readyWith({ currentBlock: 7_000_001n }))).toBe(true)
@@ -359,10 +359,27 @@ describe('two readings of the facts, as a screen reads them', () => {
         before,
         readyWith(
           {},
-          { accounts: [{ ...smart, preferences: { label: 'Renamed', pfp: smart.addr } }] }
+          {
+            accounts: [
+              { ...smart, preferences: { ...smart.preferences, pfp: `0x${'0f'.repeat(20)}` } }
+            ]
+          }
         )
       )
     ).toBe(true)
+  })
+
+  it("differ where the account's label changes", () => {
+    const before = readyWith()
+    expect(
+      sameFactsReading(
+        before,
+        readyWith(
+          {},
+          { accounts: [{ ...smart, preferences: { ...smart.preferences, label: 'Renamed' } }] }
+        )
+      )
+    ).toBe(false)
   })
 
   it("differ where the account's code, its nonce or its account version changes", () => {

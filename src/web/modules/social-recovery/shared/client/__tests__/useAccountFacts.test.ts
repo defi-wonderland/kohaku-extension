@@ -213,6 +213,26 @@ describe('useAccountFacts', () => {
     await render()
     expect(latest).toBe(first)
   })
+
+  it('hands a new reading with the new label after the account is renamed', async () => {
+    await render()
+    const first = latest
+    wallet.accounts = [{ ...LISTED, preferences: { ...LISTED.preferences, label: 'Savings' } }]
+    await render()
+    expect(latest).not.toBe(first)
+    expect(latest).toMatchObject({
+      status: 'ready',
+      facts: { account: { preferences: { label: 'Savings' } } }
+    })
+  })
+
+  it("hands the same reading after a change of the account's picture, which it does not read", async () => {
+    await render()
+    const first = latest
+    wallet.accounts = [{ ...LISTED, preferences: { ...LISTED.preferences, pfp: OTHER_ACCOUNT } }]
+    await render()
+    expect(latest).toBe(first)
+  })
 })
 
 describe('useAccountFacts, where the wallet holds no state for the listed account on the recovery chain', () => {
