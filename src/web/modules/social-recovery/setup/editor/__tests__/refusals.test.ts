@@ -3,7 +3,8 @@
  * SDK's path check, and the words they render as: each refusal fires on its
  * own shape and never on a sound one, an unfilled slot is refused as a place
  * still to fill and counts as a place against the threshold, and every
- * sentence names this wallet as the party that refuses. The rules panel lists every rule the editor applies, in order.
+ * sentence names this wallet as the party that refuses. The rules panel
+ * lists every rule the editor applies, in order.
  */
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
@@ -207,7 +208,7 @@ describe('a required row with an unfilled slot', () => {
   })
 })
 
-describe('a threshold above the enrolled members', () => {
+describe("a threshold above the group's places", () => {
   it('refuses a group that requires more members than it lists', () => {
     expect(
       refusalsOf(
@@ -440,7 +441,7 @@ describe('the refusal sentences', () => {
   })
 
   it('name this wallet as the party that refuses and credit no chain, network, contract or kit', () => {
-    ALL_REFUSAL_KEYS.filter((key) => key in en.socialRecovery.editor.refusals).forEach((key) => {
+    ALL_REFUSAL_KEYS.filter((key) => key !== 'emptyGroupSlot').forEach((key) => {
       const sentence = renderRefusal({ key }, t)
       expect(sentence).toMatch(/^This wallet cannot /)
       expect(sentence).not.toMatch(CREDITS_ANOTHER_PARTY)
