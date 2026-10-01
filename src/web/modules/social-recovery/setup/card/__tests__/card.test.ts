@@ -1,6 +1,6 @@
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { levelFromSearch, levelOfBackup, markCardCarried, wasCardCarried } from '..'
+import { levelFromSearch, levelOfBackup, markCardCarried, wasCardCarried } from '@web/modules/social-recovery/setup/card'
 
 describe('the level of a stored backup', () => {
   it('takes the hidden level for an encrypted backup and the public level otherwise', () => {

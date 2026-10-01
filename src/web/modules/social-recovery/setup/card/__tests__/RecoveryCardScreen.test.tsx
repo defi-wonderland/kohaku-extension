@@ -85,7 +85,7 @@ jest.mock('@web/constants/browserapi', () => ({
 
 // Jest's config transforms neither images nor this package's ES modules; the
 // chrome's logo and its sidebar's scroll wrapper load them.
-jest.mock('../../../../../assets/kohaku-horizontal.png', () => 'kohaku-horizontal.png')
+jest.mock('@web/assets/kohaku-horizontal.png', () => 'kohaku-horizontal.png')
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   KeyboardAwareScrollView: jest.requireActual('react-native').ScrollView
 }))
@@ -121,8 +121,8 @@ const {
   markCardCarried,
   wasCardCarried
 }: typeof import('@web/modules/social-recovery/setup/card') = require('@web/modules/social-recovery/setup/card')
-const RecoveryCardScreen: typeof import('../RecoveryCardScreen').default =
-  require('../RecoveryCardScreen').default
+const RecoveryCardScreen: typeof import('@web/modules/social-recovery/setup/card/RecoveryCardScreen').default =
+  require('@web/modules/social-recovery/setup/card/RecoveryCardScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const S = en.socialRecovery

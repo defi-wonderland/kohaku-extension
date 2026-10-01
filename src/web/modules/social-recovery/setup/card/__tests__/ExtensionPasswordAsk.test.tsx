@@ -45,8 +45,8 @@ const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
-const ExtensionPasswordAsk: typeof import('../ExtensionPasswordAsk').default =
-  require('../ExtensionPasswordAsk').default
+const ExtensionPasswordAsk: typeof import('@web/modules/social-recovery/setup/card/ExtensionPasswordAsk').default =
+  require('@web/modules/social-recovery/setup/card/ExtensionPasswordAsk').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const S = en.socialRecovery

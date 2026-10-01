@@ -30,8 +30,8 @@ const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
-const RecoveryCardView: typeof import('../RecoveryCardView').default =
-  require('../RecoveryCardView').default
+const RecoveryCardView: typeof import('@web/modules/social-recovery/setup/card/RecoveryCardView').default =
+  require('@web/modules/social-recovery/setup/card/RecoveryCardView').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 // Given in lower case; the card shows its checksummed form.
@@ -250,6 +250,26 @@ describe('the recovery card view', () => {
       expect(rows.lines).toEqual(LINES)
       expectNamesNothingToPhish(rows.text)
       expect(onCarried).toHaveBeenCalledTimes(1)
+    })
+
+    // jsdom lays nothing out, so the file keeps the spaces when its value
+    // holds them verbatim and its rule tells the browser to show them.
+    it('saves a password with inner and trailing spaces exactly as typed', async () => {
+      const spaced = ' tide  lantern orchid '
+      await mount({ password: spaced })
+      await press('card-download')
+      expect(files).toHaveLength(1)
+      const page = new DOMParser().parseFromString(files[0].text, 'text/html')
+      const passwordValue = page.querySelectorAll('.card .value .mono')[1]
+      expect(passwordValue?.textContent).toBe(spaced)
+      expect(files[0].text).toContain(`<div class="mono">${spaced}</div>`)
+      const monoRules = Array.from(page.styleSheets)
+        .flatMap((sheet) => Array.from(sheet.cssRules))
+        .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+        .filter((rule) => passwordValue?.matches(rule.selectorText))
+      expect(monoRules.map((rule) => rule.style.getPropertyValue('white-space'))).toContain(
+        'pre-wrap'
+      )
     })
 
     it('prints with the card mounted under the page body, then takes the print view away', async () => {
