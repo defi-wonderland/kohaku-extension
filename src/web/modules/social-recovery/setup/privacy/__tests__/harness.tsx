@@ -58,12 +58,14 @@ export interface StorageFaults {
   remove?: boolean
   set?: number
   records?: string[]
+  held?: Promise<void>
 }
 
 // Switches a test flips to make the storage refuse: `get` and `remove` while
 // on, `set` for the next number of writes, and every write and removal of the
 // records named in `records` while they are listed. A write or removal of
-// several keys counts as one and lands whole or not at all.
+// several keys counts as one and lands whole or not at all. While `held` is
+// set, every read waits for it to settle.
 export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
   const raw = new Map<string, string>()
   const refuses = (key: string) => (faults.records ?? []).some((name) => key.includes(`:${name}:`))
@@ -86,6 +88,7 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
     raw.set(key, typeof value === 'string' ? value : stringify(value))
   return {
     get: async (key, defaultValue) => {
+      await faults.held
       if (faults.get) {
         throw new Error('storage unavailable')
       }
@@ -112,6 +115,21 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
       refuseRemoval(keys)
       keys.forEach((key) => raw.delete(key))
     }
+  }
+}
+
+// Holds every read of the storage from now on; the returned function lets
+// them through and waits until the view has taken in what they read.
+export const holdReads = (faults: StorageFaults): (() => Promise<void>) => {
+  let release = () => {}
+  // eslint-disable-next-line no-param-reassign
+  faults.held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return async () => {
+    await act(async () => {
+      release()
+    })
   }
 }
 

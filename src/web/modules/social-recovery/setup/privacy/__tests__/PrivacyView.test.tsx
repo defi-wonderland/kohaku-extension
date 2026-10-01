@@ -1,11 +1,11 @@
 /**
  * @jest-environment jsdom
  */
-import type { Clause, Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import type { WalletRecords } from '@web/modules/social-recovery/shared/records'
 
 import type { Harness, StorageFaults } from './harness'
-import { ACCOUNT, CHAIN_ID, draftOf, harnessOf, recordsOn } from './harness'
+import { ACCOUNT, CHAIN_ID, draftOf, harnessOf, holdReads, recordsOn } from './harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
@@ -646,6 +646,58 @@ describe('the privacy step', () => {
       expect(draft.wait).toBe(259200n)
       expect(draft.clauses).toEqual([])
       expect(await flagOf(records)).toBeUndefined()
+      expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
+    })
+  })
+
+  describe('a draft still loading', () => {
+    // Mounts the step on a draft stored at the given privacy whose reads wait
+    // until the returned function lets them through.
+    const mountHeld = async (privacy: SetupDraft['privacy']) => {
+      const faults: StorageFaults = {}
+      const records = recordsOn(faults)
+      await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(draftOf({ privacy }))
+      const release = holdReads(faults)
+      await h.mount(records)
+      return { records, release }
+    }
+
+    const disabledRadios = () => radioIds().map((id) => h.isDisabled(String(id)))
+
+    it('holds the levels, the password fields and continue until the draft is read', async () => {
+      const { release } = await mountHeld({ backup: 'encrypted', publicMetadata: '0x' })
+      expect(disabledRadios()).toEqual([true, true])
+      expect(h.inputOf('password')?.readOnly).toBe(true)
+      expect(h.inputOf('password-confirmation')?.readOnly).toBe(true)
+      expect(h.isDisabled('continue')).toBe(true)
+      await release()
+      expect(disabledRadios()).toEqual([false, false])
+      expect(h.inputOf('password')?.readOnly).toBe(false)
+      expect(h.inputOf('password-confirmation')?.readOnly).toBe(false)
+    })
+
+    it('a level pressed while the draft loads changes nothing, and the stored level shows once read', async () => {
+      const { records, release } = await mountHeld({ backup: 'encrypted', publicMetadata: '0x' })
+      await h.press('level-public')
+      expect(checkedRadios()).toEqual(['level-private'])
+      await h.press('continue')
+      await release()
+      expect(checkedRadios()).toEqual(['level-private'])
+      expect(h.byTestId('recovery-password')).not.toBeNull()
+      expect(h.navigate).not.toHaveBeenCalled()
+      expect((await storedDraft(records)).privacy.backup).toBe('encrypted')
+    })
+
+    it('a stored Public shows once read, and a level picked after it stays and is what continue stores', async () => {
+      const { records, release } = await mountHeld({ backup: 'clear', publicMetadata: '0x' })
+      expect(checkedRadios()).toEqual(['level-private'])
+      await release()
+      expect(checkedRadios()).toEqual(['level-public'])
+      await h.press('level-private')
+      expect(checkedRadios()).toEqual(['level-private'])
+      await typePasswords('correct horse', 'correct horse')
+      await h.press('continue')
+      expect((await storedDraft(records)).privacy.backup).toBe('encrypted')
       expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
     })
   })
