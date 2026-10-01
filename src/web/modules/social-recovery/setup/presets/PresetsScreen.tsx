@@ -38,6 +38,7 @@ const PresetsScreen = () => {
 
   const isScreenXxl = maxWidthSize('xxl')
   const isScreenXl = maxWidthSize('xl')
+  const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const openEditor = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupEditor), [navigate])
   const recover = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecover), [navigate])
@@ -64,10 +65,12 @@ const PresetsScreen = () => {
               <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
                 {t('socialRecovery.chrome.breadcrumb')}
               </Text>
+              {/* Another account or chain mounts a new view, so no state carries across. */}
               {!!address && (
                 <PresetsView
+                  key={`${chainId}:${address}`}
                   records={records}
-                  chainId={CHAIN_IDS[WALLET_RECOVERY_CHAIN]}
+                  chainId={chainId}
                   account={address}
                   onOpenEditor={openEditor}
                   onRecover={recover}
