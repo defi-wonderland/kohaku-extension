@@ -374,7 +374,7 @@ describe('the resume rows', () => {
       )
     })
 
-    it('shows no cause beside a test that did not fail', () => {
+    it('shows no failed line beside a test that did not fail', () => {
       const rows = resumeRowsOf(
         (['passed', 'not-tested', 'unavailable'] as EnrollmentTestVerdict[]).map((test) => ({
           ...passkey(test, 'synced'),
