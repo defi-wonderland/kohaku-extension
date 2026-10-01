@@ -6,15 +6,11 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   createClaimHost,
-  createPasskeyDevice,
   enrollHost,
-  relyingPartyOf,
   testAccessHost
 } from '@web/modules/social-recovery/shared/ceremony'
 import {
   authenticatorData,
-  derSignature,
-  EXTENSION_ID,
   EXTENSION_ORIGIN,
   fakeAttestation,
   FLAGS,
@@ -23,123 +19,21 @@ import {
   SYNCED_FLAGS,
   toBuffer
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
+import { normalizeP256S, parseDerSignature } from '@web/modules/social-recovery/shared/webauthn'
+import { bytesToHex, hexToBytes, numberToHex, sha256, stringToHex } from 'viem'
+
 import {
-  normalizeP256S,
-  parseDerSignature,
-  toBase64Url
-} from '@web/modules/social-recovery/shared/webauthn'
-import {
-  bytesToBigInt,
-  bytesToHex,
-  hexToBytes,
-  numberToHex,
-  sha256,
-  stringToBytes,
-  stringToHex
-} from 'viem'
-
-import { openRecovery } from './harness'
-
-const ECDSA_P256 = { name: 'ECDSA', namedCurve: 'P-256' } as const
-const ECDSA_SHA256 = { name: 'ECDSA', hash: 'SHA-256' } as const
-
-const relyingParty = relyingPartyOf({ protocol: 'chrome-extension:', host: EXTENSION_ID })
-
-const generateKey = async () => {
-  const pair = (await crypto.subtle.generateKey(ECDSA_P256, true, [
-    'sign',
-    'verify'
-  ])) as CryptoKeyPair
-  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey))
-  return { privateKey: pair.privateKey, point: { x: raw.slice(1, 33), y: raw.slice(33, 65) } }
-}
-
-type Key = Awaited<ReturnType<typeof generateKey>>
-
-const clientDataOf = (challenge: Uint8Array, origin = EXTENSION_ORIGIN) =>
-  stringToBytes(JSON.stringify({ type: 'webauthn.get', challenge: toBase64Url(challenge), origin }))
-
-/**
- * The credential `navigator.credentials.get` resolves: authenticator data under
- * the extension's relying party, the client data over `challenge`, and a DER
- * signature by `key` over `authenticatorData || sha256(clientDataJSON)`.
- */
-const signedAssertion = async (
-  key: Key,
-  challenge: Uint8Array,
-  {
-    clientData = clientDataOf(challenge),
-    signedClientData = clientData,
-    highS = false,
-    withSignature = true,
-    flags = SYNCED_FLAGS,
-    rpIdHash = ORIGIN_HASH
-  }: {
-    clientData?: Uint8Array
-    signedClientData?: Uint8Array
-    highS?: boolean
-    withSignature?: boolean
-    flags?: number
-    rpIdHash?: Hex
-  } = {}
-) => {
-  const authData = authenticatorData({ flags, rpIdHash })
-  const raw = new Uint8Array(
-    await crypto.subtle.sign(
-      ECDSA_SHA256,
-      key.privateKey,
-      toBuffer(Uint8Array.from([...authData, ...sha256(signedClientData, 'bytes')]))
-    )
-  )
-  const r = bytesToBigInt(raw.slice(0, 32))
-  const low = bytesToBigInt(raw.slice(32))
-  const lowS = low > P256_N / BigInt(2) ? P256_N - low : low
-  const signature = derSignature(r, highS ? P256_N - lowS : lowS)
-  const rawId = Uint8Array.from({ length: 20 }, (_, i) => i + 1)
-  return {
-    id: toBase64Url(rawId),
-    rawId: toBuffer(rawId),
-    type: 'public-key',
-    authenticatorAttachment: 'platform',
-    response: {
-      clientDataJSON: toBuffer(clientData),
-      authenticatorData: toBuffer(authData),
-      ...(withSignature ? { signature: toBuffer(signature) } : {}),
-      userHandle: null
-    },
-    getClientExtensionResults: () => ({})
-  }
-}
-
-type Assertion = Awaited<ReturnType<typeof signedAssertion>>
+  type Assertion,
+  clientDataOf,
+  generateKey,
+  openRecovery,
+  type Setup,
+  setUp,
+  signedAssertion
+} from './harness'
 
 const challengeOf = (options?: CredentialRequestOptions): Uint8Array =>
   new Uint8Array(options?.publicKey?.challenge as ArrayBuffer)
-
-/** A world, a device over fake WebAuthn calls, and the hosts' shared context. */
-const setUp = async ({
-  create,
-  get
-}: {
-  create: () => Promise<unknown>
-  get: (options?: CredentialRequestOptions) => Promise<unknown>
-}) => {
-  const { world, requests } = await openRecovery()
-  const credentials = {
-    create: jest.fn(async () => (await create()) as Credential),
-    get: jest.fn(async (options?: CredentialRequestOptions) => (await get(options)) as Credential)
-  }
-  const device = createPasskeyDevice({ credentials, relyingParty })
-  const orchestrator = world.orchestrator()
-  const context = {
-    orchestrator,
-    method: world.methods.passkey,
-    devices: { 'browser-authenticator': device }
-  }
-  return { world, request: requests[0]!, credentials, context, orchestrator }
-}
-
-type Setup = Awaited<ReturnType<typeof setUp>>
 
 const enroll = async (setup: Setup) =>
   enrollHost({
