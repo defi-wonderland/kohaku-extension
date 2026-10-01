@@ -556,6 +556,7 @@
         "exposure": {
           "guardians": "Every guardian of your path is hidden from a stranger who cannot guess their address.",
           "unguessable": "{{items}} cannot be guessed at all and lose nothing before a recovery.",
+          "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery.",
           "publication": "A recovery publishes the rule with its waiting period and every method in it, so every method of your path is exposed, the ones it used and the ones it did not."
         },
         "requiredAtPrivate": "Required at Private and Shape visible.",
@@ -718,7 +719,10 @@
       "whyNotOnCardBody": "The card carries no method, no guardian address, no threshold and no waiting period, so a photograph of the card alone names nothing to phish.",
       "warnsHeader": "What warns you",
       "banner": "Your warning for a recovery you did not start is a banner the next time you open the wallet.",
-      "wrongPassword": "That is not your extension password. Try again."
+      "wrongPassword": "That is not your extension password. Try again.",
+      "passwordGone": "Your recovery password is not on this device any more. Set it again on the privacy step to reveal it and carry the card.",
+      "passwordGoneAction": "Set the recovery password again",
+      "carrierAsks": "A new download, print or hand-off asks your extension password."
     },
     "create": {
       "controlledBy": "Controlled by {{address}}",
