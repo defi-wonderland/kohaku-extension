@@ -19,17 +19,24 @@ import { trustReadsComplete } from './trust'
 import { ACCOUNT_READ_NAMES } from './types'
 import type { AccountReadName, AccountReads, SaveBlock, SaveGate, SaveGateInput } from './types'
 
-/** Whether a credential of the path has no passed access test. */
+/**
+ * Whether a credential of the path was never tested: it has no enrollment, or
+ * its test was skipped. A test that failed, could not run or is not supported
+ * reads its own outcome on its row instead.
+ */
 export const untestedInPath = (
   clauses: readonly Clause[],
   enrollments: readonly Enrollment[]
 ): boolean =>
   clauses
     .flatMap(({ credentials }) => credentials)
-    .some(
-      (credential) =>
-        !isEmptySlot(credential) && enrollmentOf(credential, enrollments)?.test !== 'passed'
-    )
+    .some((credential) => {
+      if (isEmptySlot(credential)) {
+        return false
+      }
+      const enrollment = enrollmentOf(credential, enrollments)
+      return enrollment === undefined || enrollment.test === 'not-tested'
+    })
 
 /** Whether a member of any clause of the path is a slot no method fills. */
 const hasEmptySlot = (clauses: readonly Clause[]): boolean =>

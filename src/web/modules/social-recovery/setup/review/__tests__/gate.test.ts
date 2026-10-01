@@ -477,7 +477,6 @@ describe('the blocks the setup records decide', () => {
 describe('whether a method of the path is untested', () => {
   it('holds where a credential has no passed test', () => {
     expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'not-tested')])).toBe(true)
-    expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'failed')])).toBe(true)
     expect(untestedInPath([required(ALICE)], [])).toBe(true)
   })
 
