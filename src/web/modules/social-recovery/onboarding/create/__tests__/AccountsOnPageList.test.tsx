@@ -95,7 +95,9 @@ jest.mock('@ambire-common/libs/accountState/accountState', () => ({
     const { record } = provider
     record.accountAddrs.push(...accounts.map((account) => account.addr))
     record.readSettled = true
-    if (mockChain.failingChainIds.includes(network.chainId)) throw new Error('read failed')
+    if (mockChain.failingChainIds.includes(network.chainId)) {
+      throw new Error('read failed')
+    }
     return accounts.map((account) => ({
       accountAddr: account.addr,
       isDeployed: false,

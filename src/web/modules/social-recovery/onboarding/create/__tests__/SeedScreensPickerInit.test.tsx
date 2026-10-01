@@ -114,7 +114,9 @@ describe('the screens that open the picker on a key', () => {
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
   const press = async (id: string) => {
     const node = byTestId(id)
-    if (!node) throw new Error(`nothing to press: ${id}`)
+    if (!node) {
+      throw new Error(`nothing to press: ${id}`)
+    }
     await act(async () => {
       node.click()
     })
@@ -168,7 +170,9 @@ describe('the screens that open the picker on a key', () => {
     const field = container.querySelector<HTMLTextAreaElement>(
       '[data-testid="enter-seed-phrase-field"]'
     )
-    if (!field) throw new Error('no seed field')
+    if (!field) {
+      throw new Error('no seed field')
+    }
     await act(async () => {
       const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
       setValue?.call(field, SEED)
@@ -192,7 +196,9 @@ describe('the screens that open the picker on a key', () => {
     const field = container.querySelector<HTMLInputElement>(
       '[data-testid="enter-seed-phrase-field"]'
     )
-    if (!field) throw new Error('no key field')
+    if (!field) {
+      throw new Error('no key field')
+    }
     await act(async () => {
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
       setValue?.call(field, `0x${PRIVATE_KEY}`)

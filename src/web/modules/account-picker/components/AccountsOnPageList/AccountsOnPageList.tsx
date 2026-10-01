@@ -89,7 +89,9 @@ const readPrivilegeHolder = async (
   const answers = states.filter((accountState) => !!accountState)
   const deployedState = answers.find((accountState) => accountState.isDeployed)
 
-  if (deployedState) return findPrivilegeHolder(Object.entries(deployedState.associatedKeys))
+  if (deployedState) {
+    return findPrivilegeHolder(Object.entries(deployedState.associatedKeys))
+  }
 
   return findPrivilegeHolder(account.initialPrivileges)
 }
@@ -140,7 +142,9 @@ const AccountsOnPageList = ({
   const shouldDisplaySmartAccounts = !!state.shouldSelectSmartAccountAutomatically
 
   const smartAccounts = useMemo(() => {
-    if (!shouldDisplaySmartAccounts) return []
+    if (!shouldDisplaySmartAccounts) {
+      return []
+    }
 
     return state.accountsOnPage.filter((a) => !a.isLinked && isSmartAccount(a.account))
   }, [shouldDisplaySmartAccounts, state.accountsOnPage])
@@ -153,7 +157,9 @@ const AccountsOnPageList = ({
   const [privilegeHolders, setPrivilegeHolders] = useState<Record<string, Address | null>>({})
 
   useEffect(() => {
-    if (!smartAccounts.length || !networks.length) return
+    if (!smartAccounts.length || !networks.length) {
+      return
+    }
 
     let cancelled = false
 
@@ -164,7 +170,9 @@ const AccountsOnPageList = ({
       })
     )
       .then((holders) => {
-        if (!cancelled) setPrivilegeHolders(Object.fromEntries(holders))
+        if (!cancelled) {
+          setPrivilegeHolders(Object.fromEntries(holders))
+        }
       })
       .catch(() => {})
 
