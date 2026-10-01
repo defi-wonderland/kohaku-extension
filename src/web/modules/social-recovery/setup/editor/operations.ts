@@ -292,25 +292,6 @@ export const placeAt = (
 }
 
 /**
- * Whether the place the picker was opened for is still in the path: the empty
- * slot at its position, or the group that takes a new member. A pick into a
- * place that is gone changes nothing.
- */
-export const targetHolds = (clauses: readonly Clause[], target: PickerTarget): boolean => {
-  if (target.place === 'required' || target.place === 'second') {
-    return true
-  }
-  if (target.clause >= clauses.length) {
-    return false
-  }
-  if (target.place === 'member') {
-    return true
-  }
-  const held = clauses[target.clause].credentials[target.member]
-  return !!held && isEmptySlot(held)
-}
-
-/**
  * The threshold a field's text reads as: a whole number written in digits.
  * Empty text, a fraction, a sign or any other character reads as none.
  */

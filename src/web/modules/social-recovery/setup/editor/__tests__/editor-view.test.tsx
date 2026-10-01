@@ -1045,6 +1045,22 @@ describe('a threshold that is not a whole number', () => {
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)
   })
 
+  it('holds the check retry after a failed check while a group reads a fraction', async () => {
+    const { validateSetup } = await mount({
+      clauses: presetPath(),
+      validate: async () => {
+        throw new Error('unreachable')
+      }
+    })
+    await press('editor-continue')
+    expect(isHeld('editor-check-retry')).toBe(false)
+
+    await typeThreshold('editor-group-1-threshold', '1.5')
+    expect(isHeld('editor-check-retry')).toBe(true)
+    await press('editor-check-retry')
+    expect(validateSetup).toHaveBeenCalledTimes(1)
+  })
+
   it("goes back to the path's threshold after another edit", async () => {
     await mount({ clauses: presetPath(), enrollments: [CAROL].map(enrolled) })
     await typeThreshold('editor-group-1-threshold', '')

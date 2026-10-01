@@ -33,7 +33,6 @@ import {
   removeMember,
   sameCredential,
   setThreshold,
-  targetHolds,
   withClauses
 } from '../operations'
 import {
@@ -301,24 +300,6 @@ describe('filling and placing', () => {
       applied(placeAt(withSlot, { place: 'slot', clause: 1, member: 3, kind: 'ecdsa' }, CAROL))
         .clauses[1].credentials
     ).toEqual([ALICE, BOB, PASSPORT, CAROL])
-  })
-
-  it('holds an empty slot target only while that slot is still empty at its place', () => {
-    const target = { place: 'slot', clause: 0, member: 1 } as const
-    const clauses = [{ threshold: 2, credentials: [ALICE, emptySlotOf('ecdsa'), BOB] }]
-    expect(targetHolds(clauses, target)).toBe(true)
-    expect(targetHolds(removeMember(clauses, 0, 1), target)).toBe(false)
-    expect(targetHolds(removeMember(clauses, 0, 0), target)).toBe(false)
-    expect(targetHolds(removeClause(clauses, 0), target)).toBe(false)
-    expect(targetHolds(applied(fillSlot(clauses, target, CAROL)).clauses, target)).toBe(false)
-  })
-
-  it('holds a new member target only while its group is in the path, and a new row or second method always', () => {
-    const clauses = twoGroupPath()
-    expect(targetHolds(clauses, { place: 'member', clause: 2 })).toBe(true)
-    expect(targetHolds(removeClause(clauses, 2), { place: 'member', clause: 2 })).toBe(false)
-    expect(targetHolds([], { place: 'required' })).toBe(true)
-    expect(targetHolds([], { place: 'second' })).toBe(true)
   })
 
   it('keeps every field of the draft but its clauses', () => {

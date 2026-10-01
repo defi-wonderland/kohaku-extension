@@ -49,7 +49,6 @@ import {
   rolesOf,
   SECOND_METHOD_KINDS,
   setThreshold,
-  targetHolds,
   withClauses,
   withoutRole
 } from './operations'
@@ -199,10 +198,6 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     if (!picker) {
       return
     }
-    if (!targetHolds(current(), picker)) {
-      closePicker()
-      return
-    }
     const target = picker
     const placed = apply(placeAt(current(), target, credential), (at) =>
       placedRoles(currentRoles(), target, at)
@@ -214,10 +209,6 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onEnrollNew = (kind: SlotKind) => {
     if (!picker || checkingRef.current) {
-      return
-    }
-    if (!targetHolds(current(), picker)) {
-      closePicker()
       return
     }
     const at =
