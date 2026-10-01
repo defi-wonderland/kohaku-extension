@@ -2,9 +2,11 @@ import type { SignedMessage } from '@ambire-common/controllers/activity/types'
 import type { EstimationController } from '@ambire-common/controllers/estimation/estimation'
 import type { MainController } from '@ambire-common/controllers/main/main'
 import type { SignAccountOpController } from '@ambire-common/controllers/signAccountOp/signAccountOp'
-import type { Account } from '@ambire-common/interfaces/account'
+import type { Account, AccountOnchainState, AccountStates } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
+import type { Network } from '@ambire-common/interfaces/network'
 import type { RPCProvider } from '@ambire-common/interfaces/provider'
+import type { RecoveryKit } from '@ambire-common/interfaces/recoveryKit'
 import type { SignAccountOpError } from '@ambire-common/interfaces/signAccountOp'
 import type { Calls, TypedMessage } from '@ambire-common/interfaces/userRequest'
 import type { WindowProps } from '@ambire-common/interfaces/window'
@@ -212,6 +214,62 @@ export type ExtensionProvider = AdapterProvider &
 /** The wallet's own reads the SDK does not offer, under the name screens use. */
 export type WalletReads = IWalletReadsDouble
 export type { FitCheckReading, RemovedKeyReading, RemovedKeyUnavailableCause }
+
+// ---------------------------------------------------------------------------
+// The account's facts
+// ---------------------------------------------------------------------------
+
+/**
+ * The wallet's own state the account's facts are read from: the accounts it
+ * lists with their state on each chain, the keys the keystore holds and the
+ * networks. Each is undefined until the background pushed it.
+ */
+export interface AccountFactsSources {
+  accounts: readonly Account[] | undefined
+  accountStates: AccountStates | undefined
+  keys: readonly Pick<Key, 'addr' | 'type'>[] | undefined
+  networks: readonly Network[] | undefined
+}
+
+/** What the wallet holds for one listed account on the recovery chain. */
+export interface ListedAccountFacts {
+  /** The listed record, with the wallet's own case. */
+  account: Account
+  /** The account's state on the chain, as the wallet last read it. */
+  state: AccountOnchainState
+  /** The chain's network record. */
+  network: Network
+  /** Whether the account has code on the chain. */
+  deployed: boolean
+  /**
+   * The account's key the keystore holds, which sends the account's own
+   * operations and pays their gas. Absent where the keystore holds none of
+   * the account's keys: a view-only account.
+   */
+  key?: KeyHandle
+  /** The account's creation record; absent for a basic account. */
+  creation?: CreationRecord
+}
+
+/** Why the wallet holds no facts for an account: it does not list it, or holds no network for the chain. */
+export type AccountFactsUnavailableCause = 'not-listed' | 'no-network'
+
+export type AccountFactsReading =
+  | { status: 'loading' }
+  | { status: 'unavailable'; cause: AccountFactsUnavailableCause }
+  | { status: 'ready'; facts: ListedAccountFacts }
+
+/** The facts the account library builds a smart account's own transaction from. */
+export type AccountBatchSource = Pick<ListedAccountFacts, 'account' | 'state' | 'network'>
+
+/**
+ * The mark the wallet's own `calls` request carries for a batch that arms the
+ * recovery kit: the manager and its audited actions. With it the sign screen
+ * lets the account grant an audited action its privilege in the batch that
+ * also commits the setup at that manager; without it that grant is refused as
+ * a call to the account itself.
+ */
+export type RecoveryKitMark = RecoveryKit
 
 /** The account fields the privilege holders read takes. */
 export type PrivilegeAccount = Pick<
@@ -545,12 +603,14 @@ export interface SendPort {
   /**
    * The calls, in order, as one operation of the account. The sign screen
    * estimates it and offers the fee options; `onEstimation` hears each
-   * reading of that estimation.
+   * reading of that estimation. `recoveryKit` marks a batch that arms the
+   * recovery kit (`recoveryKitMarkOf`); no other batch carries it.
    */
   sendAccountBatch(
     account: Address,
     calls: readonly PreparedCall[],
-    onEstimation?: EstimationListener
+    onEstimation?: EstimationListener,
+    recoveryKit?: RecoveryKitMark
   ): Promise<Hex>
 }
 
@@ -564,6 +624,8 @@ export interface FollowedRequest {
   keyType?: Key['type']
   refusal: (reason: SendRefusalReason) => SendRefusal
   onEstimation?: EstimationListener
+  /** The recovery kit's mark, for an account's batch that arms the kit. */
+  recoveryKit?: RecoveryKitMark
 }
 
 export interface SendPortOptions {
