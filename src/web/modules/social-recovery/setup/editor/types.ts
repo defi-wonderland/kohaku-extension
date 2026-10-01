@@ -99,10 +99,19 @@ export interface CredentialRowProps {
   testID?: string
 }
 
+/**
+ * The text of each group's threshold field that does not read as a whole
+ * number, by the group's clause index. A field whose text reads as one shows
+ * the draft's threshold instead.
+ */
+export type HeldThresholds = Record<number, string>
+
 export interface ThresholdFieldProps {
   threshold: number
+  /** The text the field holds while it does not read as a whole number. */
+  heldText?: string
   members: number
-  onChange: (threshold: number) => void
+  onChangeText: (text: string) => void
   disabled?: boolean
   testID?: string
 }
@@ -122,25 +131,27 @@ export interface EditorHeaderProps {
 export interface RequiredRowsProps {
   rows: IndexedClause[]
   groups: IndexedClause[]
-  /** The row whose group choice is open, when more than one group can take it. */
-  movingRow: number | null
+  /** The index of the required row whose group chooser is open, when more than one group can take it. */
+  rowChoosingGroup: number | null
   addressBook: AddressBook
   enrollments: readonly Enrollment[]
   checking: boolean
   onOpenSlot: (clause: number, member: number) => void
   onMove: (row: number, group: number) => void
-  onChooseGroup: (row: number) => void
+  onOpenGroupChoice: (row: number) => void
+  onCloseGroupChoice: () => void
   onRemove: (row: number) => void
   onAdd: () => void
 }
 
 export interface GroupListProps {
   groups: IndexedClause[]
+  heldThresholds: HeldThresholds
   addressBook: AddressBook
   enrollments: readonly Enrollment[]
   checking: boolean
   onOpenSlot: (clause: number, member: number) => void
-  onThreshold: (group: number, threshold: number) => void
+  onThresholdText: (group: number, text: string) => void
   onMakeRequired: (group: number, member: number) => void
   onRemoveMember: (group: number, member: number) => void
   onAddMember: (group: number) => void
@@ -163,6 +174,8 @@ export interface EditorActionsProps {
   checking: boolean
   checkFailed: boolean
   writeFailed: boolean
+  /** Whether a threshold field holds text that is not a whole number. */
+  thresholdHeld: boolean
   onRetryWrite: () => void
   onContinue: () => void
   onBack: () => void

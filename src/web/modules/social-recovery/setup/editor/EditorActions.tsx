@@ -14,7 +14,8 @@ import type { EditorActionsProps } from './types'
  * A failed write with its retry, the path check's findings, the lines of a
  * client that cannot run the path check, and the actions:
  * Back, and Continue or what stands in its place while the client loads, is
- * refused, or the check runs or fails.
+ * refused, or the check runs or fails. Continue holds while a threshold field
+ * holds text that is not a whole number.
  */
 const EditorActions = ({
   client,
@@ -24,6 +25,7 @@ const EditorActions = ({
   checking,
   checkFailed,
   writeFailed,
+  thresholdHeld,
   onRetryWrite,
   onContinue,
   onBack
@@ -115,6 +117,7 @@ const EditorActions = ({
               testID="editor-check-retry"
               type="outline"
               text={t('socialRecovery.writes.tryAgain')}
+              disabled={thresholdHeld}
               onPress={onContinue}
               hasBottomSpacing={false}
             />
@@ -123,7 +126,7 @@ const EditorActions = ({
               testID="editor-continue"
               type="primary"
               text={t('socialRecovery.actions.continue')}
-              disabled={methodCount === 0 || writeFailed}
+              disabled={methodCount === 0 || writeFailed || thresholdHeld}
               onPress={onContinue}
               hasBottomSpacing={false}
             />

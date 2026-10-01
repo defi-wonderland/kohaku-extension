@@ -43,11 +43,13 @@ import {
   pickerEntriesOf,
   placeAt,
   placedRoles,
+  readThreshold,
   removeClause,
   removeMember,
   rolesOf,
   SECOND_METHOD_KINDS,
   setThreshold,
+  targetHolds,
   withClauses,
   withoutRole
 } from './operations'
@@ -59,6 +61,7 @@ import type {
   EditorLoad,
   EditorViewProps,
   EditResult,
+  HeldThresholds,
   PickerTarget,
   SlotPosition
 } from './types'
@@ -68,7 +71,8 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   const [load, setLoad] = useState<EditorLoad | null>(null)
   const [refused, setRefused] = useState(false)
   const [picker, setPicker] = useState<PickerTarget | null>(null)
-  const [movingRow, setMovingRow] = useState<number | null>(null)
+  const [rowChoosingGroup, setRowChoosingGroup] = useState<number | null>(null)
+  const [heldThresholds, setHeldThresholds] = useState<HeldThresholds>({})
   const [findings, setFindings] = useState<Finding[]>([])
   const [checking, setChecking] = useState(false)
   const [checkFailed, setCheckFailed] = useState(false)
@@ -142,9 +146,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   // A clause keeps the role the edit that made it gave it, so a group that
-  // loses members down to one stays a group while the holder edits.
+  // loses members down to one stays a group while the holder edits. An edit
+  // closes the picker and the group chooser, whose positions it may shift, and
+  // a threshold field's held text goes back to the path's threshold unless the
+  // edit keeps it.
   const commit = useCallback(
-    (next: Clause[], roles: ClauseRole[]) => {
+    (next: Clause[], roles: ClauseRole[], held: HeldThresholds = {}) => {
       const current = loadRef.current
       if (!current || checkingRef.current) {
         return
@@ -156,7 +163,9 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       setRefused(false)
       setFindings([])
       setCheckFailed(false)
-      setMovingRow(null)
+      setRowChoosingGroup(null)
+      setPicker(null)
+      setHeldThresholds(held)
       persist(draft)
     },
     [persist]
@@ -177,6 +186,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     [commit]
   )
 
+  const thresholdHeld = Object.keys(heldThresholds).length > 0
   const current = () => loadRef.current?.draft.clauses ?? []
   const currentRoles = () => loadRef.current?.roles ?? []
 
@@ -187,6 +197,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onPick = (credential: Credential) => {
     if (!picker) {
+      return
+    }
+    if (!targetHolds(current(), picker)) {
+      closePicker()
       return
     }
     const target = picker
@@ -200,6 +214,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   const onEnrollNew = (kind: SlotKind) => {
     if (!picker || checkingRef.current) {
+      return
+    }
+    if (!targetHolds(current(), picker)) {
+      closePicker()
       return
     }
     const at =
@@ -222,6 +240,22 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       .catch(() => undefined)
   }
 
+  // A whole number goes to the path; any other text stays in its field and
+  // holds continue, so the path the check reads is the one on screen.
+  const onThresholdText = (group: number, text: string) => {
+    if (checkingRef.current) {
+      return
+    }
+    const rest = { ...heldThresholds }
+    delete rest[group]
+    const threshold = readThreshold(text)
+    if (threshold === undefined) {
+      setHeldThresholds({ ...rest, [group]: text })
+      return
+    }
+    commit(setThreshold(current(), group, threshold), currentRoles(), rest)
+  }
+
   const onMove = (row: number, group: number) =>
     apply(moveToGroup(current(), row, group), () => withoutRole(currentRoles(), row))
 
@@ -235,7 +269,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
   }
 
   const onContinue = async () => {
-    if (client.status !== 'ready' || !loadRef.current || checkingRef.current) {
+    if (client.status !== 'ready' || !loadRef.current || checkingRef.current || thresholdHeld) {
       return
     }
     checkingRef.current = true
@@ -335,13 +369,14 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
       <RequiredRows
         rows={rows}
         groups={groups}
-        movingRow={movingRow}
+        rowChoosingGroup={rowChoosingGroup}
         addressBook={addressBook}
         enrollments={load.enrollments}
         checking={checking}
         onOpenSlot={openSlot}
         onMove={onMove}
-        onChooseGroup={setMovingRow}
+        onOpenGroupChoice={setRowChoosingGroup}
+        onCloseGroupChoice={() => setRowChoosingGroup(null)}
         onRemove={(index) =>
           commit(removeClause(current(), index), withoutRole(currentRoles(), index))
         }
@@ -350,13 +385,12 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
       <GroupList
         groups={groups}
+        heldThresholds={heldThresholds}
         addressBook={addressBook}
         enrollments={load.enrollments}
         checking={checking}
         onOpenSlot={openSlot}
-        onThreshold={(index, threshold) =>
-          commit(setThreshold(current(), index, threshold), currentRoles())
-        }
+        onThresholdText={onThresholdText}
         onMakeRequired={(index, member) =>
           apply(makeRequired(current(), index, member), () => [...currentRoles(), 'required'])
         }
@@ -403,6 +437,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         checking={checking}
         checkFailed={checkFailed}
         writeFailed={writeFailed}
+        thresholdHeld={thresholdHeld}
         onRetryWrite={retryWrite}
         onContinue={onContinue}
         onBack={() => navigate(WEB_ROUTES.socialRecoverySetup)}

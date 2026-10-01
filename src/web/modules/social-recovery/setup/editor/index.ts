@@ -7,7 +7,9 @@
 export * from './operations'
 export {
   renderClientRefusal,
+  renderFailedTestLines,
   renderFinding,
+  renderHeldThreshold,
   renderKindHeader,
   renderKindName,
   renderRowChip
@@ -19,6 +21,7 @@ export type {
   EditorLoad,
   EditorViewProps,
   EditResult,
+  HeldThresholds,
   PickerEntry,
   PickerTarget,
   SlotPosition

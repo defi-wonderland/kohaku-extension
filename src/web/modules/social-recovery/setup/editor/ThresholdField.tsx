@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { View } from 'react-native'
 
 import Input from '@common/components/Input'
@@ -7,50 +7,53 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 
+import { renderHeldThreshold } from './copy'
 import type { ThresholdFieldProps } from './types'
 
 /**
- * "Require N of M", with N typed by the holder. Any whole number goes through
- * to the path; the text stays as typed until it reads as one.
+ * "Require N of M", with N typed by the holder. Text that is not a whole
+ * number stays on screen with its refusal line and never reaches the path;
+ * otherwise the field shows the path's threshold.
  */
 const ThresholdField = ({
   threshold,
+  heldText,
   members,
-  onChange,
+  onChangeText,
   disabled,
   testID
 }: ThresholdFieldProps) => {
   const { t } = useTranslation()
-  const [text, setText] = useState(String(threshold))
-
-  useEffect(() => {
-    setText((current) => (Number(current) === threshold ? current : String(threshold)))
-  }, [threshold])
-
-  const onChangeText = (next: string) => {
-    setText(next)
-    const value = Number(next)
-    if (next.trim() !== '' && Number.isInteger(value)) {
-      onChange(value)
-    }
-  }
+  const held = heldText !== undefined
 
   return (
-    <View style={[flexbox.directionRow, flexbox.alignCenter]}>
-      <Text fontSize={14} style={spacings.mrTy}>
-        {t('socialRecovery.shape.require')}
-      </Text>
-      <Input
-        testID={testID}
-        value={text}
-        onChangeText={onChangeText}
-        keyboardType="numeric"
-        disabled={disabled}
-        containerStyle={{ ...spacings.mb0, width: 64 }}
-      />
-      <Text fontSize={14} style={spacings.mlTy}>
-        {`${t('socialRecovery.shape.of')} ${members}`}
-      </Text>
+    <View>
+      <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+        <Text fontSize={14} style={spacings.mrTy}>
+          {t('socialRecovery.shape.require')}
+        </Text>
+        <Input
+          testID={testID}
+          value={held ? heldText : String(threshold)}
+          onChangeText={onChangeText}
+          keyboardType="numeric"
+          disabled={disabled}
+          containerStyle={{ ...spacings.mb0, width: 64 }}
+        />
+        <Text fontSize={14} style={spacings.mlTy}>
+          {`${t('socialRecovery.shape.of')} ${members}`}
+        </Text>
+      </View>
+      {held && (
+        <Text
+          fontSize={14}
+          appearance="errorText"
+          style={spacings.mtTy}
+          testID={testID ? `${testID}-refusal` : undefined}
+        >
+          {renderHeldThreshold(t)}
+        </Text>
+      )}
     </View>
   )
 }
