@@ -32,6 +32,7 @@ import type {
   ReportSubscribe
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
+  CeremonyRequestRecord,
   Enrollment,
   RecordStorage,
   WalletRecords
@@ -122,6 +123,9 @@ const THEME_CONTEXT: ThemeContextReturnType = {
 // ---------------------------------------------------------------------------
 // Records
 // ---------------------------------------------------------------------------
+
+/** A stored request that carries an approver request, as the access test stores it. */
+export type TestRecord = Extract<CeremonyRequestRecord, { request: ApproverRequest }>
 
 export interface StorageFaults {
   get?: boolean

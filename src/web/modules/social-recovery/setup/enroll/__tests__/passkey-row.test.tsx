@@ -17,7 +17,7 @@ import type {
 import type { MethodChip } from '@web/modules/social-recovery/shared/display'
 
 import type { EnrollSearch } from '../types'
-import type { FakeDeps, Mounted, StorageFaults } from './harness'
+import type { FakeDeps, Mounted, StorageFaults, TestRecord } from './harness'
 import {
   ACCOUNT,
   BOOK,
@@ -998,25 +998,37 @@ describe('the passkey row', () => {
       }
     )
 
-    it('leaves a test stored for another account where it is and the verdict as it was', async () => {
-      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
-      await view!.press('passkey-run-test')
-      const id = deps.requestIds[deps.requestIds.length - 1]
-      const asked = await storedRequest(id)
-      if (asked?.call !== 'testAccess') {
-        throw new Error('no test request stored')
-      }
-      const theirs: CeremonyRequestRecord = { ...asked, account: OTHER }
-      await records.ceremonyRequest(id).write(theirs)
+    each([
+      ['another account', (asked: TestRecord): TestRecord => ({ ...asked, account: OTHER })],
+      [
+        'another passkey method',
+        (asked: TestRecord): TestRecord => ({
+          ...asked,
+          request: { ...asked.request, method: OTHER }
+        })
+      ]
+    ] as const)(
+      'leaves a test stored for %s where it is and the verdict as it was',
+      async ([, foreignOf]) => {
+        await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+        await view!.press('passkey-run-test')
+        const id = deps.requestIds[deps.requestIds.length - 1]
+        const asked = await storedRequest(id)
+        if (asked?.call !== 'testAccess') {
+          throw new Error('no test request stored')
+        }
+        const theirs = foreignOf(asked)
+        await records.ceremonyRequest(id).write(theirs)
 
-      await returnFrom(id, 'testAccess', passed({ proof: '0x0102' }))
-      const [enrollment] = await storedEnrollments(records)
-      expect(enrollment.test).toBe('not-tested')
-      expect(enrollment.lastTest).toBeUndefined()
-      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
-      expect(await storedRequest(id)).toEqual(theirs)
-      expect(deps.channel.has(id)).toBe(true)
-    })
+        await returnFrom(id, 'testAccess', passed({ proof: '0x0102' }))
+        const [enrollment] = await storedEnrollments(records)
+        expect(enrollment.test).toBe('not-tested')
+        expect(enrollment.lastTest).toBeUndefined()
+        expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
+        expect(await storedRequest(id)).toEqual(theirs)
+        expect(deps.channel.has(id)).toBe(true)
+      }
+    )
   })
 
   describe('Save and continue', () => {
