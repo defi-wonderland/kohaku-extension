@@ -486,6 +486,37 @@ describe("the UI's own port over the event bus", () => {
     expect(eventBus.events.signAccountOp?.length ?? 0).toBe(before)
   })
 
+  it("keeps a listener's throw inside the port, so the bus's later listeners still hear the push and the send still follows", async () => {
+    const before = eventBus.events.signAccountOp?.length ?? 0
+    const dispatch = jest.fn()
+    const sender = createSendPort(sendRequestPort(dispatch, LISTED, WINDOW_ID), {
+      chainId: SEPOLIA
+    })
+    const heard = jest.fn().mockImplementationOnce(() => {
+      throw new Error('the listener failed')
+    })
+    const send = track(sender.sendAccountBatch(SMART_ACCOUNT, BATCH, heard))
+    const id = String(addedRequest(dispatch).userRequest.id)
+    const later = jest.fn()
+    eventBus.addEventListener('signAccountOp', later)
+
+    const first = signScreen(id)
+    expect(() => eventBus.emit('signAccountOp', first)).not.toThrow()
+    expect(heard.mock.calls).toEqual([[READING]])
+    expect(later.mock.calls).toEqual([[first, undefined]])
+
+    eventBus.emit('signAccountOp', signScreen(id, { selectedOption: OWN }))
+    expect(heard).toHaveBeenCalledTimes(2)
+    expect(heard.mock.calls[1][0]).not.toEqual(READING)
+    expect(later).toHaveBeenCalledTimes(2)
+
+    eventBus.emit('activity', activityListing(id, operationFor(id, { hash: HASH })).state)
+    await flush()
+    expect(send).toEqual({ status: 'resolved', value: HASH })
+    eventBus.removeEventListener('signAccountOp', later)
+    expect(eventBus.events.signAccountOp?.length ?? 0).toBe(before)
+  })
+
   it('refuses an account while the wallet lists no accounts yet', async () => {
     const dispatch = jest.fn()
     const sender = createSendPort(
