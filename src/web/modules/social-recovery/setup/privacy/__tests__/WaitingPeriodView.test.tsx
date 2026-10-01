@@ -412,6 +412,16 @@ describe('the waiting period step', () => {
       await h.press('continue')
       expect(await storedDraftWait(records)).toBe(86400n)
     })
+
+    it('opens no custom entry while a stored custom wait loads, and shows its hours once read', async () => {
+      const { release } = await mountHeld(100n * 3600n)
+      expect(h.isDisabled('wait-chip-custom')).toBe(true)
+      await h.press('wait-chip-custom')
+      expect(h.inputOf('wait-custom-hours')).toBeNull()
+      await release()
+      expect(h.inputOf('wait-custom-hours')?.readOnly).toBe(false)
+      expect(h.inputOf('wait-custom-hours')?.value).toBe('100')
+    })
   })
 
   describe('what the wait is for', () => {

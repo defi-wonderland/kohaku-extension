@@ -4,7 +4,7 @@
  * the cancel costs. Continue stores the length in seconds and opens the
  * privacy step.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -46,7 +46,6 @@ const WaitingPeriodView = ({
   const [choice, setChoice] = useState<WaitChoice>(DEFAULT_CHOICE)
   const [loaded, setLoaded] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
-  const touched = useRef(false)
   const [writeFailed, setWriteFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -54,7 +53,6 @@ const WaitingPeriodView = ({
 
   useEffect(() => {
     let current = true
-    touched.current = false
     setLoaded(false)
     // The draft's wait is the one the setup saves; the record stands in only
     // while no draft exists.
@@ -66,10 +64,9 @@ const WaitingPeriodView = ({
       const stored = await setup.waitingPeriod.read()
       return stored.status === 'present' ? stored.value : undefined
     }
-    // A read that settles after the holder picked a length never replaces it.
     load()
       .then((wait) => {
-        if (current && wait !== undefined && !touched.current) {
+        if (current && wait !== undefined) {
           setChoice(choiceOfSeconds(wait))
         }
       })
@@ -87,11 +84,6 @@ const WaitingPeriodView = ({
       current = false
     }
   }, [setup])
-
-  const choose = useCallback((picked: WaitChoice) => {
-    touched.current = true
-    setChoice(picked)
-  }, [])
 
   // Continue is held until the stored wait is read, so the default never
   // replaces a stored length, and after a failed load, so a storage that
@@ -163,7 +155,7 @@ const WaitingPeriodView = ({
               // The web renderer reads the checked state of a radio from this prop
               // alone; the React Native types do not declare it, so it goes in a spread.
               {...{ accessibilityChecked: selected }}
-              onPress={() => choose({ kind: 'chip', id })}
+              onPress={() => setChoice({ kind: 'chip', id })}
               style={chipStyle(selected)}
             >
               <Text fontSize={14}>{t(`${WAIT}.chips.${id}`)}</Text>
@@ -176,7 +168,7 @@ const WaitingPeriodView = ({
           accessibilityState={{ checked: choice.kind === 'custom' }}
           disabled={!loaded}
           {...{ accessibilityChecked: choice.kind === 'custom' }}
-          onPress={() => choice.kind !== 'custom' && choose({ kind: 'custom', text: '' })}
+          onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
           style={chipStyle(choice.kind === 'custom')}
         >
           <Text fontSize={14}>{t(`${WAIT}.custom`)}</Text>
@@ -189,7 +181,7 @@ const WaitingPeriodView = ({
             value={choice.text}
             keyboardType="number-pad"
             disabled={!loaded}
-            onChangeText={(typed) => choose({ kind: 'custom', text: typed })}
+            onChangeText={(typed) => setChoice({ kind: 'custom', text: typed })}
             containerStyle={{ ...spacings.mb0, ...spacings.mrSm }}
           />
           <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>

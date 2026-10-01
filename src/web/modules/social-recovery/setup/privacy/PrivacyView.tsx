@@ -5,7 +5,7 @@
  * halves of the trade; at Public no password field renders. Continue stores
  * the level and opens the review.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -56,7 +56,6 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   const [loadFailed, setLoadFailed] = useState(false)
   const [writeFailed, setWriteFailed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const touched = useRef(false)
 
   const setup = useMemo(() => records.setup(chainId, account), [records, chainId, account])
   const book = useMemo(
@@ -66,18 +65,14 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
 
   useEffect(() => {
     let current = true
-    touched.current = false
     setLoaded(false)
-    // A read that settles after the holder picked a level never replaces it.
     setup.setupDraft
       .read()
       .then((draft) => {
         if (!current || draft.status !== 'present') {
           return
         }
-        if (!touched.current) {
-          setPicked(privacyLevelOf(draft.value.privacy))
-        }
+        setPicked(privacyLevelOf(draft.value.privacy))
         setClauses(draft.value.clauses)
       })
       .catch(() => {
@@ -130,11 +125,6 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   // replaces a stored level, and after a failed load, so a storage that comes
   // back is never overwritten with a level the holder did not pick.
   const ready = loaded && !loadFailed && (!hidden || (password !== '' && password === confirmation))
-
-  const pick = useCallback((offered: OfferedLevel) => {
-    touched.current = true
-    setPicked(offered)
-  }, [])
 
   const onContinue = useCallback(async () => {
     if (!ready) {
@@ -191,7 +181,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
           // The web renderer reads the checked state of a radio from this prop
           // alone; the React Native types do not declare it, so it goes in a spread.
           {...{ accessibilityChecked: level === offered }}
-          onPress={() => pick(offered)}
+          onPress={() => setPicked(offered)}
           style={radioStyle(level === offered)}
         >
           <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>

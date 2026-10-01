@@ -700,6 +700,18 @@ describe('the privacy step', () => {
       expect((await storedDraft(records)).privacy.backup).toBe('encrypted')
       expect(h.navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupReview)
     })
+
+    it('a held password fills the fields but continue waits for the draft, which then shows its stored Public', async () => {
+      setRecoveryPassword(CHAIN_ID, ACCOUNT, 'held before')
+      const { records, release } = await mountHeld({ backup: 'clear', publicMetadata: '0x' })
+      expect(h.inputOf('password')?.value).toBe('held before')
+      expect(h.isDisabled('continue')).toBe(true)
+      await h.press('continue')
+      expect(h.navigate).not.toHaveBeenCalled()
+      await release()
+      expect((await storedDraft(records)).privacy.backup).toBe('clear')
+      expect(checkedRadios()).toEqual(['level-public'])
+    })
   })
 
   describe('navigation', () => {
