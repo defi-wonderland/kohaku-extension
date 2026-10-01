@@ -29,7 +29,7 @@ import {
   THIRD_PARTY,
   THIRD_PARTY_MODULE,
   UNANSWERED
-} from './fixtures'
+} from '../__fixtures__/review'
 
 const rowsOf = (
   clauses: Clause[],
