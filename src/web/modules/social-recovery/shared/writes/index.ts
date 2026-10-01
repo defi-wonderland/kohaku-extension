@@ -41,6 +41,7 @@ export {
   GAS_DISPLAY_DECIMALS,
   ACCOUNT_FACTORY,
   accountFactoryOf,
+  walletAccountRefOf,
   VALUE_TRANSFER_GAS,
   DEPOSIT_ROUTES,
   roundUpForDisplay,

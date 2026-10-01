@@ -137,14 +137,15 @@ export const stateRefreshOf = (
 }
 
 /**
- * What a screen reads of ready facts: the account's record but its
- * preferences, the members of its state the account library builds the
- * account's own transaction from, the network's name and symbol, the held key
- * and the creation record.
+ * What a screen reads of ready facts: the account's record with its label but
+ * no other preference, the members of its state the account library builds
+ * the account's own transaction from, the network's name and symbol, the held
+ * key and the creation record.
  */
 const factsReadOf = (facts: ListedAccountFacts) => ({
   account: {
     addr: facts.account.addr,
+    label: facts.account.preferences.label,
     associatedKeys: facts.account.associatedKeys,
     initialPrivileges: facts.account.initialPrivileges,
     creation: facts.account.creation
@@ -169,7 +170,8 @@ const factsReadOf = (facts: ListedAccountFacts) => ({
 /**
  * Whether two readings hold the same for a screen: the same status and cause,
  * or ready facts that agree on everything a screen reads (`factsReadOf`). The
- * account's balance, its block and its preferences do not count.
+ * account's balance, its block and its preferences other than the label do
+ * not count.
  */
 export const sameFactsReading = (a: AccountFactsReading, b: AccountFactsReading): boolean => {
   if (a.status === 'ready' && b.status === 'ready') {

@@ -25,7 +25,10 @@ import { etherUnits, parseUnits } from 'viem'
 
 import { AMBIRE_ACCOUNT_FACTORY, DEPLOYLESS_SIMULATION_FROM } from '@ambire-common/consts/deploy'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import type { GasEstimateCall } from '@web/modules/social-recovery/shared/client'
+import type {
+  GasEstimateCall,
+  ListedAccountFacts
+} from '@web/modules/social-recovery/shared/client'
 import { gasCallOf, isRevertedCall, sameAddress } from '@web/modules/social-recovery/shared/client'
 
 import { assertWriteDoor, isRecoveryCall, payerOf } from './kinds'
@@ -61,6 +64,18 @@ export const ACCOUNT_FACTORY = AMBIRE_ACCOUNT_FACTORY as Address
  */
 export const accountFactoryOf = (operates: WalletAccountRef | undefined): Address =>
   operates?.factory ?? ACCOUNT_FACTORY
+
+/**
+ * The ref of a listed account, from the wallet's facts for it: its address,
+ * its label, whether it has code, and the factory its creation record names
+ * (absent for an account with no creation record).
+ */
+export const walletAccountRefOf = (facts: ListedAccountFacts): WalletAccountRef => ({
+  address: facts.account.addr as Address,
+  name: facts.account.preferences.label,
+  deployed: facts.deployed,
+  ...(facts.creation ? { factory: facts.creation.factory } : {})
+})
 
 /**
  * The transaction the provider estimates for one the key sends. The factory's
@@ -113,9 +128,9 @@ export const gasEstimateOf = (
  * The transaction the check estimates: a call anyone may send as it stands,
  * from the key (`gasCallOf`); a write the account sends as the transaction the
  * account library built for it. That one must come from the key and go to the
- * account the key operates, or to that account's factory
- * (`accountFactoryOf`) where it deploys the account, so the check never estimates a transaction of another
- * account. Throws a TypeError where it is missing or fails either tie.
+ * account the key operates, or to that account's factory (`accountFactoryOf`)
+ * where it deploys the account, so the check never estimates a transaction of
+ * another account. Throws a TypeError where it is missing or fails either tie.
  */
 export const gasTransactionOf = (
   input: Pick<GasCheckInput, 'prepared' | 'key' | 'transaction' | 'operates'>
@@ -177,10 +192,10 @@ export const transferTransactionOf = (account: Address, key: Address): GasEstima
  * account). An account with no code yet has nothing to call: its transfer
  * deploys it through the factory and runs the call in one transaction, which
  * the account library builds, so the caller passes it (to the account's
- * factory, `accountFactoryOf`)
- * and the check never estimates a call to the empty address. Where the caller
- * passed none for such an account, this answers undefined: the check cannot
- * price the transfer, so the step offers the deposit from outside alone.
+ * factory, `accountFactoryOf`) and the check never estimates a call to the
+ * empty address. Where the caller passed none for such an account, this
+ * answers undefined: the check cannot price the transfer, so the step offers
+ * the deposit from outside alone.
  * Throws a TypeError where the transaction comes from another address or goes
  * elsewhere.
  */

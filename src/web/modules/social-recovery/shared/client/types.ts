@@ -235,7 +235,14 @@ export interface AccountFactsSources {
   stateRefreshSettled?: boolean
 }
 
-/** What the wallet holds for one listed account on the recovery chain. */
+/**
+ * What the wallet holds for one listed account on the recovery chain. The
+ * reading `useAccountFacts` holds keeps current the members a screen reads
+ * (the account's record and label, the state's members the account's own
+ * transaction is built from, the network's name and symbol, `deployed`, `key`
+ * and `creation`); the others (the state's balance and block, the network's
+ * other members) may be older.
+ */
 export interface ListedAccountFacts {
   /** The listed record, with the wallet's own case. */
   account: Account
