@@ -706,28 +706,58 @@ describe('the presets view', () => {
       expect(line).not.toMatch(/[0-9]{1,2}:[0-9]{2}|\b(AM|PM|UTC|GMT)\b|2026/)
     })
 
-    const failedPasskey = (cause: string): Enrollment => ({
+    const failedPasskey = (cause?: string): Enrollment => ({
       credential: { method: BOOK.methods.passkey, config: '0x01' },
       test: 'failed',
       backup: 'synced',
       cause
     })
 
-    it('shows beside a failed passkey test the browser error it reported', async () => {
-      await storeOn({}, [], [failedPasskey('browser-error: NotAllowedError')])
-      await mount()
-      expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedLine])
-      expect(allByTestId('resume-row')).toEqual([
-        `${S.methodNames.passkey}${S.ceremony.testFailedLine}${S.status.method.testFailed}`
-      ])
+    const NO_MATCH_CAUSES = ['check-rejected', 'check-rejected: signer 0x0a']
+    NO_MATCH_CAUSES.forEach((cause) => {
+      it(`shows beside a failed passkey test with the cause "${cause}" the no-match line alone`, async () => {
+        await storeOn({}, [], [failedPasskey(cause)])
+        await mount()
+        expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedNoMatch])
+        expect(allByTestId('resume-row')).toEqual([
+          `${S.methodNames.passkey}${S.ceremony.testFailedNoMatch}${S.status.method.testFailed}`
+        ])
+      })
     })
 
-    it('shows beside a failed passkey test the words of the cause it reported', async () => {
-      await storeOn({}, [], [failedPasskey('check-rejected')])
+    const MAY_NEVER_WORK_CAUSES = [
+      'browser-error: NotAllowedError',
+      'relying-party-mismatch: SecurityError',
+      'an-unknown-slug',
+      undefined
+    ]
+    MAY_NEVER_WORK_CAUSES.forEach((cause) => {
+      it(`shows beside a failed passkey test with ${
+        cause === undefined ? 'no cause' : `the cause "${cause}"`
+      } the may-never-work line alone`, async () => {
+        await storeOn({}, [], [failedPasskey(cause)])
+        await mount()
+        expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedLine])
+        expect(allByTestId('resume-row')).toEqual([
+          `${S.methodNames.passkey}${S.ceremony.testFailedLine}${S.status.method.testFailed}`
+        ])
+      })
+    })
+
+    it('shows no failed line beside a passed or a not-tested passkey', async () => {
+      await storeOn(
+        {},
+        [],
+        [
+          { ...failedPasskey('check-rejected'), test: 'passed' },
+          { ...failedPasskey('check-rejected'), test: 'not-tested' }
+        ]
+      )
       await mount()
-      expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedNoMatch])
+      expect(allByTestId('resume-note')).toEqual([])
       expect(allByTestId('resume-row')).toEqual([
-        `${S.methodNames.passkey}${S.ceremony.testFailedNoMatch}${S.status.method.testFailed}`
+        `${S.methodNames.passkey}${S.status.method.tested}`,
+        `${S.methodNames.passkey}${S.status.method.notTested}`
       ])
     })
 

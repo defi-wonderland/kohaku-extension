@@ -335,44 +335,42 @@ describe('the resume rows', () => {
       cause
     })
 
-    it('shows the name of the browser error the test reported', () => {
-      const [row] = resumeRowsOf([failedPasskey('browser-error: NotAllowedError')], BOOK, t)
-      expect(row).toMatchObject({
-        name: S.methodNames.passkey,
-        chip: S.status.method.testFailed,
-        note: S.ceremony.testFailedLine
-      })
-    })
-
-    it('shows the words of each cause the wallet has words for', () => {
+    it('shows the no-match line alone when the check rejected the answer, with or without a detail', () => {
       const rows = resumeRowsOf(
-        [failedPasskey('check-rejected'), failedPasskey('relying-party-mismatch')],
+        [failedPasskey('check-rejected'), failedPasskey('check-rejected: signer 0x0a')],
         BOOK,
         t
       )
-      expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual([
-        { chip: S.status.method.testFailed, note: S.ceremony.testFailedNoMatch },
-        { chip: S.status.method.testFailed, note: S.ceremony.testFailedLine }
+      expect(rows.map(({ name, chip, note }) => ({ name, chip, note }))).toEqual([
+        {
+          name: S.methodNames.passkey,
+          chip: S.status.method.testFailed,
+          note: S.ceremony.testFailedNoMatch
+        },
+        {
+          name: S.methodNames.passkey,
+          chip: S.status.method.testFailed,
+          note: S.ceremony.testFailedNoMatch
+        }
       ])
     })
 
-    it('says the method may never work when the cause has no words or no browser error name', () => {
-      const rows = resumeRowsOf(
-        [
-          failedPasskey(),
-          failedPasskey('thrown'),
-          failedPasskey('service-unanswered'),
-          failedPasskey('not-judged'),
-          failedPasskey('no-implementation'),
-          failedPasskey('browser-error: not an error name'),
-          failedPasskey('browser-error')
-        ],
-        BOOK,
-        t
-      )
-      expect(rows).toHaveLength(7)
+    it('says the method may never work, and nothing else, for any other cause or none', () => {
+      const causes = [
+        undefined,
+        'browser-error: NotAllowedError',
+        'browser-error',
+        'relying-party-mismatch: SecurityError',
+        'relying-party-mismatch',
+        'an-unknown-slug',
+        'thrown',
+        'service-unanswered',
+        'not-judged',
+        'no-implementation'
+      ]
+      const rows = resumeRowsOf(causes.map(failedPasskey), BOOK, t)
       expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual(
-        rows.map(() => ({ chip: S.status.method.testFailed, note: S.ceremony.testFailedLine }))
+        causes.map(() => ({ chip: S.status.method.testFailed, note: S.ceremony.testFailedLine }))
       )
     })
 
