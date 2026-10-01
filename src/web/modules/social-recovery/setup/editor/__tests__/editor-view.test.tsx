@@ -1096,47 +1096,44 @@ describe('a threshold that is not a whole number', () => {
 
 describe('a method whose access test failed', () => {
   const failed = (cause?: string): Enrollment => ({ credential: PASSKEY, test: 'failed', cause })
+  const shownFor = async (enrollment: Enrollment) => {
+    await mount({ clauses: [{ threshold: 1, credentials: [PASSKEY] }], enrollments: [enrollment] })
+    return allByTestId('editor-slot-0-0-test-line')
+  }
 
-  it('shows only the may-never-work line under the row for a browser error', async () => {
-    await mount({
-      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
-      enrollments: [failed('browser-error: NotAllowedError')]
-    })
+  it('shows the failed chip on the row', async () => {
+    await shownFor(failed('browser-error: NotAllowedError'))
     expect(byTestId('editor-slot-0-0')?.textContent).toContain(
       en.socialRecovery.status.method.testFailed
     )
-    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      en.socialRecovery.ceremony.testFailedLine
-    ])
   })
-
-  it('shows the no-match sentence for a check that did not match', async () => {
-    await mount({
-      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
-      enrollments: [failed('check-rejected')]
+  ;['check-rejected', 'check-rejected: wrong signer'].forEach((cause) =>
+    it(`shows only the no-match sentence for the cause "${cause}"`, async () => {
+      expect(await shownFor(failed(cause))).toEqual([en.socialRecovery.ceremony.testFailedNoMatch])
     })
-    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      en.socialRecovery.ceremony.testFailedNoMatch
-    ])
-  })
+  )
 
-  it('shows only the may-never-work line for a passkey the browser refused under this origin', async () => {
-    await mount({
-      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
-      enrollments: [failed('relying-party-mismatch: SecurityError')]
+  const fallbacks: [string, string | undefined][] = [
+    ['a browser error', 'browser-error: NotAllowedError'],
+    ['a passkey the browser refused under this origin', 'relying-party-mismatch: SecurityError'],
+    ['a cause the wallet has no words for', 'timeout'],
+    ['no cause', undefined]
+  ]
+  fallbacks.forEach(([name, cause]) =>
+    it(`shows only the may-never-work line for ${name}`, async () => {
+      expect(await shownFor(failed(cause))).toEqual([en.socialRecovery.ceremony.testFailedLine])
     })
-    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([
-      en.socialRecovery.ceremony.testFailedLine
-    ])
-  })
+  )
 
-  it('shows no test line for a method whose test passed', async () => {
-    await mount({
-      clauses: [{ threshold: 1, credentials: [PASSKEY] }],
-      enrollments: [enrolled(PASSKEY)]
+  const unfailed: [string, Enrollment][] = [
+    ['passed', enrolled(PASSKEY)],
+    ['was not run', { credential: PASSKEY, test: 'not-tested' }]
+  ]
+  unfailed.forEach(([name, enrollment]) =>
+    it(`shows no test line for a method whose test ${name}`, async () => {
+      expect(await shownFor(enrollment)).toEqual([])
     })
-    expect(allByTestId('editor-slot-0-0-test-line')).toEqual([])
-  })
+  )
 })
 
 describe('the group chooser of a required row', () => {

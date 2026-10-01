@@ -484,7 +484,8 @@ describe('the line of a failed access test', () => {
       undefined,
       'browser-error: NotAllowedError',
       'relying-party-mismatch: SecurityError',
-      'timeout'
+      'timeout',
+      'timeout: check-rejected'
     ].forEach((cause) =>
       expect(renderFailedTestLine(failed(cause), t)).toBe(en.socialRecovery.ceremony.testFailedLine)
     )
