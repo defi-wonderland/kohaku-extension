@@ -329,12 +329,15 @@ export interface GasNetwork {
  * An account this wallet holds, by its address and the name the wallet gives
  * it. `deployed` is false where the account has no code yet (the wallet's own
  * account state knows), so its transfer must deploy it through the account
- * factory first.
+ * factory first. `factory` is the factory the account's creation record names,
+ * the one its address derives from; the gas check takes `ACCOUNT_FACTORY`
+ * where it is absent.
  */
 export interface WalletAccountRef {
   address: Address
   name: string
   deployed?: boolean
+  factory?: Address
 }
 
 /** The estimate of one transaction: its gas, the gas price, their product and the amount asked for. */
@@ -407,8 +410,9 @@ export interface GasCheckInput {
    * The transaction the key sends where the write rides the account's own
    * execute: a call whose sender is the account, or a batch. The account
    * library builds it from the prepared write, to the account the key operates
-   * (`operates`), or to `ACCOUNT_FACTORY` where it deploys an account with no
-   * code yet; `gasCallOf` refuses those calls. A call anyone may send
+   * (`operates`), or to that account's factory (`operates.factory`,
+   * `ACCOUNT_FACTORY` by default) where it deploys an account with no code
+   * yet; `gasCallOf` refuses those calls. A call anyone may send
    * is estimated as it stands, so this is ignored for one.
    */
   transaction?: GasEstimateCall
@@ -423,7 +427,7 @@ export interface GasCheckInput {
    * adds what the value costs). By default the account's own `executeBySender`
    * (`transferTransactionOf`), which holds only for an account with code. For
    * an account with no code yet (`operates.deployed` false, or a write whose
-   * own transaction deploys it through `ACCOUNT_FACTORY`), the check takes no
+   * own transaction deploys it through the account's factory), the check takes no
    * default: pass the factory's deploy-and-transfer transaction, or the step
    * offers the deposit from outside alone.
    */

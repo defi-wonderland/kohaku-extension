@@ -40,6 +40,7 @@ export {
   FEE_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,
   ACCOUNT_FACTORY,
+  accountFactoryOf,
   VALUE_TRANSFER_GAS,
   DEPOSIT_ROUTES,
   roundUpForDisplay,

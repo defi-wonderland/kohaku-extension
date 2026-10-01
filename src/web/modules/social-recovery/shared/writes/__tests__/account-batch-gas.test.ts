@@ -5,6 +5,7 @@
  * the factory's deploy-and-execute where it has none. The account is the
  * library's own, controlled by the sending key.
  */
+import { DEPLOYLESS_SIMULATION_FROM } from '@ambire-common/consts/deploy'
 import type { Account } from '@ambire-common/interfaces/account'
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
@@ -81,7 +82,9 @@ describe("the gas check of an account's batch, over the library's transaction", 
         })
         expect(check.kind).toBe('enough')
         expect(reads.estimateGas).toHaveBeenCalledTimes(1)
-        expect(reads.estimateGas).toHaveBeenCalledWith(transaction)
+        expect(reads.estimateGas).toHaveBeenCalledWith(
+          deployed ? transaction : { ...transaction, from: DEPLOYLESS_SIMULATION_FROM }
+        )
         expect(reads.nativeBalance).toHaveBeenCalledWith(KEY.addr)
       })
 
