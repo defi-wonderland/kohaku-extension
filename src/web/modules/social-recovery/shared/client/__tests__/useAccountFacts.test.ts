@@ -14,6 +14,14 @@ import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useA
 jest.mock('@web/hooks/useAccountsControllerState', () => ({ __esModule: true, default: jest.fn() }))
 jest.mock('@web/hooks/useKeystoreControllerState', () => ({ __esModule: true, default: jest.fn() }))
 jest.mock('@web/hooks/useNetworksControllerState', () => ({ __esModule: true, default: jest.fn() }))
+jest.mock('@web/hooks/useProvidersControllerState', () => ({
+  __esModule: true,
+  default: () => ({ providers: {} })
+}))
+jest.mock('@web/hooks/useBackgroundService', () => ({
+  __esModule: true,
+  default: () => ({ dispatch: jest.fn() })
+}))
 // viem builds a TextEncoder and a TextDecoder when either entry loads, which
 // jsdom lacks: Node's own are installed first, whichever entry loads first.
 jest.mock('viem', () => {
@@ -123,7 +131,7 @@ describe('useAccountFacts', () => {
   it('reads as loading until each state arrives, then ready', async () => {
     wallet.keys = undefined
     await render()
-    expect(latest).toEqual({ status: 'loading' })
+    expect(latest).toMatchObject({ status: 'loading' })
     wallet.keys = [{ addr: KEY, type: 'internal' }]
     await render()
     expect(latest?.status).toBe('ready')
@@ -143,12 +151,12 @@ describe('useAccountFacts', () => {
     await render()
     expect(latest?.status === 'ready' && latest.facts).not.toHaveProperty('key')
     await render('0x00000000000000000000000000000000000b0b00' as Address)
-    expect(latest).toEqual({ status: 'unavailable', cause: 'not-listed' })
+    expect(latest).toMatchObject({ status: 'unavailable', cause: 'not-listed' })
   })
 
   it('reads as loading with no account selected', async () => {
     await render(null)
-    expect(latest).toEqual({ status: 'loading' })
+    expect(latest).toMatchObject({ status: 'loading' })
   })
 
   it('hands the same reading while nothing it reads changed', async () => {

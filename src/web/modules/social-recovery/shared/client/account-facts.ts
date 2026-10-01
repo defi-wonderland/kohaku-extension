@@ -3,13 +3,22 @@
  * state: whether the account has code on the recovery chain, the account's key
  * the keystore holds, and the account's creation record.
  */
+import isEqual from 'react-fast-compare'
+
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Address, CreationRecord, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from './addresses'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
 import { networkOf } from './extension-provider'
-import type { AccountFacts, AccountFactsReading, AccountFactsSources, KeyHandle } from './types'
+import type {
+  AccountFacts,
+  AccountFactsReading,
+  AccountFactsSources,
+  AccountStateRefresh,
+  KeyHandle,
+  ListedAccountFacts
+} from './types'
 
 /**
  * The block a creation record names. The wallet holds none: an account with
@@ -59,7 +68,12 @@ const heldKeyOf = (
   return held ? { addr: held.addr as Address, type: held.type } : undefined
 }
 
-/** The facts of a listed account on the recovery chain, from the wallet's own state. */
+/**
+ * The facts of a listed account on the recovery chain, from the wallet's own
+ * state. With no state for the account on the chain it reads as loading, or as
+ * `state-unread` once the chain's provider reports it is not working or a
+ * refresh of the state ended with none.
+ */
 export const accountFactsOf = (
   address: Address | undefined,
   sources: AccountFactsSources
@@ -69,11 +83,19 @@ export const accountFactsOf = (
     return { status: 'loading' }
   }
   const account = accounts.find((candidate) => sameAddress(candidate.addr, address))
-  if (!account) return { status: 'unavailable', cause: 'not-listed' }
+  if (!account) {
+    return { status: 'unavailable', cause: 'not-listed' }
+  }
   const network = networkOf(networks, WALLET_RECOVERY_CHAIN)
-  if (!network) return { status: 'unavailable', cause: 'no-network' }
+  if (!network) {
+    return { status: 'unavailable', cause: 'no-network' }
+  }
   const state = accountStates[account.addr]?.[String(CHAIN_IDS[WALLET_RECOVERY_CHAIN])]
-  if (!state) return { status: 'loading' }
+  if (!state) {
+    return sources.providerWorking === false || sources.stateRefreshSettled === true
+      ? { status: 'unavailable', cause: 'state-unread' }
+      : { status: 'loading' }
+  }
   const key = heldKeyOf(account, keys)
   const creation = creationRecordOf(account)
   return {
@@ -87,4 +109,71 @@ export const accountFactsOf = (
       ...(creation ? { creation } : {})
     }
   }
+}
+
+/**
+ * The refresh that reads a listed account's state on the recovery chain, where
+ * the wallet holds the account and the chain's network but no state for the
+ * account there. Undefined otherwise.
+ */
+export const stateRefreshOf = (
+  address: Address | undefined,
+  sources: Pick<AccountFactsSources, 'accounts' | 'accountStates' | 'networks'>
+): AccountStateRefresh | undefined => {
+  const { accounts, accountStates, networks } = sources
+  if (!address || !accounts || !accountStates || !networks) {
+    return undefined
+  }
+  const account = accounts.find((candidate) => sameAddress(candidate.addr, address))
+  const network = networkOf(networks, WALLET_RECOVERY_CHAIN)
+  if (
+    !account ||
+    !network ||
+    accountStates[account.addr]?.[String(CHAIN_IDS[WALLET_RECOVERY_CHAIN])]
+  ) {
+    return undefined
+  }
+  return { addr: account.addr, chainIds: [network.chainId] }
+}
+
+/**
+ * What a screen reads of ready facts: the account's record but its
+ * preferences, the members of its state the account library builds the
+ * account's own transaction from, the network's name and symbol, the held key
+ * and the creation record.
+ */
+const factsReadOf = (facts: ListedAccountFacts) => ({
+  account: {
+    addr: facts.account.addr,
+    associatedKeys: facts.account.associatedKeys,
+    initialPrivileges: facts.account.initialPrivileges,
+    creation: facts.account.creation
+  },
+  state: {
+    isDeployed: facts.state.isDeployed,
+    nonce: facts.state.nonce,
+    isEOA: facts.state.isEOA,
+    isV2: facts.state.isV2,
+    isSmarterEoa: facts.state.isSmarterEoa
+  },
+  network: {
+    chainId: facts.network.chainId,
+    name: facts.network.name,
+    nativeAssetSymbol: facts.network.nativeAssetSymbol
+  },
+  deployed: facts.deployed,
+  key: facts.key,
+  creation: facts.creation
+})
+
+/**
+ * Whether two readings hold the same for a screen: the same status and cause,
+ * or ready facts that agree on everything a screen reads (`factsReadOf`). The
+ * account's balance, its block and its preferences do not count.
+ */
+export const sameFactsReading = (a: AccountFactsReading, b: AccountFactsReading): boolean => {
+  if (a.status === 'ready' && b.status === 'ready') {
+    return isEqual(factsReadOf(a.facts), factsReadOf(b.facts))
+  }
+  return isEqual(a, b)
 }

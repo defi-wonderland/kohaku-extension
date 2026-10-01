@@ -78,7 +78,9 @@ export {
   CREATION_BLOCK_STAND_IN,
   creationRecordOf,
   clientFactsOf,
-  accountFactsOf
+  accountFactsOf,
+  stateRefreshOf,
+  sameFactsReading
 } from './account-facts'
 export type {
   RecoveryChain,
@@ -152,6 +154,9 @@ export type {
   ListedAccountFacts,
   AccountFactsUnavailableCause,
   AccountFactsReading,
+  AccountFactsResult,
+  AccountStateRefresh,
+  StateRefreshProgress,
   AccountBatchSource,
   RecoveryKitMark
 } from './types'

@@ -229,6 +229,10 @@ export interface AccountFactsSources {
   accountStates: AccountStates | undefined
   keys: readonly Pick<Key, 'addr' | 'type'>[] | undefined
   networks: readonly Network[] | undefined
+  /** False where the recovery chain's provider reports it is not working. */
+  providerWorking?: boolean
+  /** True once a refresh of the account's state on the chain ran and ended. */
+  stateRefreshSettled?: boolean
 }
 
 /** What the wallet holds for one listed account on the recovery chain. */
@@ -251,13 +255,40 @@ export interface ListedAccountFacts {
   creation?: CreationRecord
 }
 
-/** Why the wallet holds no facts for an account: it does not list it, or holds no network for the chain. */
-export type AccountFactsUnavailableCause = 'not-listed' | 'no-network'
+/**
+ * Why the wallet holds no facts for an account: it does not list it, it holds
+ * no network for the chain, or it holds no state for the account on the chain
+ * and cannot read one (`state-unread`: the chain's provider is not working, or
+ * a refresh of the state ended with none).
+ */
+export type AccountFactsUnavailableCause = 'not-listed' | 'no-network' | 'state-unread'
 
 export type AccountFactsReading =
   | { status: 'loading' }
   | { status: 'unavailable'; cause: AccountFactsUnavailableCause }
   | { status: 'ready'; facts: ListedAccountFacts }
+
+/** What `useAccountFacts` hands a screen: the reading and a retry of the state's refresh. */
+export type AccountFactsResult = AccountFactsReading & {
+  /** Asks the wallet again for the account's state on the chain, where it holds none. */
+  retry: () => void
+}
+
+/** The wallet's refresh of one account's state, on the chains it names. */
+export interface AccountStateRefresh {
+  addr: string
+  chainIds: bigint[]
+}
+
+/**
+ * Where the hook's refresh of the account's state stands, for the account and
+ * the attempt `key` names: asked for, seen running in the accounts state, or
+ * ended.
+ */
+export interface StateRefreshProgress {
+  key: string
+  phase: 'requested' | 'running' | 'settled'
+}
 
 /** The facts the account library builds a smart account's own transaction from. */
 export type AccountBatchSource = Pick<ListedAccountFacts, 'account' | 'state' | 'network'>
