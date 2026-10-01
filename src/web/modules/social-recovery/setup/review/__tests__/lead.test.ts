@@ -208,10 +208,19 @@ describe('a row of the path', () => {
     ])
   })
 
+  it('reads a check that did not match by its line where the check carried a reason', () => {
+    const row = rowOf(enrolled(ALICE, 'failed', { cause: 'check-rejected: signer mismatch' }))
+    expect(row.lines).toEqual([t(`${CEREMONY}.testFailedNoMatch`), t(`${CEREMONY}.testFailedLine`)])
+  })
+
   it("reads a failed test with the browser's own error name as its cause", () => {
-    const row = rowOf(enrolled(PASSKEY, 'failed', { cause: 'NotAllowedError' }))
-    expect(row.lines[0]).toBe('NotAllowedError')
-    expect(row.lines[1]).toBe(t(`${CEREMONY}.testFailedLine`))
+    const row = rowOf(enrolled(PASSKEY, 'failed', { cause: 'browser-error: NotAllowedError' }))
+    expect(row.lines).toEqual(['NotAllowedError', t(`${CEREMONY}.testFailedLine`)])
+  })
+
+  it('shows no cause where a browser error carries no error name', () => {
+    const row = rowOf(enrolled(PASSKEY, 'failed', { cause: 'browser-error: the user left' }))
+    expect(row.lines).toEqual([t(`${CEREMONY}.testFailedLine`)])
   })
 
   it('shows no raw cause the wallet has no words for', () => {

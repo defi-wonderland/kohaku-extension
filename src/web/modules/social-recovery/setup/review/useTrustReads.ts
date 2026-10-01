@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Address, IMethodModuleReads } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { readKeyOf } from './trust'
-import { TRUST_READ_NAMES } from './types'
+import { TRUST_READ_NAMES } from './constants'
 import type { MethodReads, TrustReadName, TrustReads, TrustReadsState } from './types'
 
 const UNANSWERED = { answered: false } as const

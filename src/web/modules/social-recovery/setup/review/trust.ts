@@ -17,7 +17,7 @@ import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
 import { enrollmentOf, guardianAddressOf, isRequiredRow, kindOf } from './lead'
-import { LIGHT_CLIENT_PROVIDERS, TRUST_READ_NAMES } from './types'
+import { LIGHT_CLIENT_PROVIDERS, TRUST_READ_NAMES } from './constants'
 import type {
   AdminDeclaration,
   MethodReads,

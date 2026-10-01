@@ -39,7 +39,9 @@ const nameKeyOf = (
  * and the last two close it as a pair.
  */
 const joinNames = (names: readonly string[], t: Translate): string => {
-  if (names.length <= 1) return names[0] ?? ''
+  if (names.length <= 1) {
+    return names[0] ?? ''
+  }
   if (names.length === 2) {
     return t(`${SENTENCE}.pair`, { first: names[0], second: names[1] })
   }
@@ -56,7 +58,9 @@ const clausePart = (clause: Clause, options: RuleLinesOptions, t: Translate): st
     nameKeys.map((key) => t(key)),
     t
   )
-  if (clause.credentials.length === 1) return names
+  if (clause.credentials.length === 1) {
+    return names
+  }
   const count = t(`${SENTENCE}.anyOf`, {
     threshold: clause.threshold,
     count: clause.credentials.length

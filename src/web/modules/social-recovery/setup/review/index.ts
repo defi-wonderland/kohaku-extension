@@ -8,12 +8,8 @@ export * from './doors'
 export * from './gate'
 export * from './lead'
 export * from './trust'
-export {
-  ACCOUNT_READ_NAMES,
-  LIGHT_CLIENT_PROVIDERS,
-  REVIEW_WAIT_CHIPS,
-  TRUST_READ_NAMES
-} from './types'
+export { LIGHT_CLIENT_PROVIDERS, REVIEW_WAIT_CHIPS, TRUST_READ_NAMES } from './constants'
+export { ACCOUNT_READ_NAMES } from './types'
 export type {
   AccountRead,
   AccountReadName,
@@ -31,6 +27,7 @@ export type {
   ReviewKitClient,
   ReviewLoad,
   ReviewViewProps,
+  ReviewWaitChip,
   ReviewWaitChipId,
   SaveBlock,
   SaveGate,

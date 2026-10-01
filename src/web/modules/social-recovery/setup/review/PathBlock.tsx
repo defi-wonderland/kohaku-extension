@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Pressable, View } from 'react-native'
 
+import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
@@ -8,20 +9,22 @@ import flexbox from '@common/styles/utils/flexbox'
 import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderMemberList } from '@web/modules/social-recovery/shared/display'
 
-import { isRequiredRow, pathRowOf } from './lead'
+import { enrollmentOf, isRequiredRow, pathRowOf } from './lead'
 import type { PathBlockProps } from './types'
 
 /**
  * The path as the editor draws it: the required rows, then each group under
  * its header with its threshold, three members and a count of the rest until
- * the holder shows them all.
+ * the holder shows them all. A row whose test could not run offers to run it
+ * again, on the enrollment step where the test lives.
  */
-const PathBlock = ({ clauses, enrollments, addressBook }: PathBlockProps) => {
+const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlockProps) => {
   const { t } = useTranslation()
   const [shownAll, setShownAll] = useState<number[]>([])
 
   const renderRow = (credential: Credential, testID: string) => {
     const row = pathRowOf(credential, enrollments, addressBook, t)
+    const retryTest = enrollmentOf(credential, enrollments)?.test === 'unavailable'
     return (
       <View key={testID} testID={testID} style={spacings.mbSm}>
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
@@ -56,6 +59,18 @@ const PathBlock = ({ clauses, enrollments, addressBook }: PathBlockProps) => {
             {line}
           </Text>
         ))}
+        {retryTest && (
+          <View style={[flexbox.directionRow, spacings.mtTy]}>
+            <Button
+              testID={`${testID}-retry-test`}
+              type="outline"
+              size="small"
+              text={t('socialRecovery.actions.runTheTestAgain')}
+              onPress={onRetryTest}
+              hasBottomSpacing={false}
+            />
+          </View>
+        )}
       </View>
     )
   }

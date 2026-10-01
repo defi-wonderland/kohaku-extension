@@ -4,6 +4,7 @@
  * one the chain side uses, so what a setup writes is what a reader later sees.
  */
 import { readPublicNote } from '@web/modules/social-recovery/sdk-doubles'
+import type { PublicNoteReading } from '@web/modules/social-recovery/sdk-doubles'
 import type {
   BackupForm,
   Configuration,
@@ -41,7 +42,7 @@ const CONFIGURATION: Configuration = {
   ]
 }
 
-const textOf = (value: unknown): string =>
+const textOf = (value: PublicNoteReading): string =>
   JSON.stringify(value, (_, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))
 
 describe('shapeNoteOf', () => {

@@ -28,7 +28,7 @@ import {
 } from '@web/modules/social-recovery/shared/rule-lines'
 import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony/verdicts'
 
-import { REVIEW_WAIT_CHIPS } from './types'
+import { REVIEW_WAIT_CHIPS } from './constants'
 import type { MethodKind, PathRow, PublicationItem } from './types'
 
 const KIND_NAME_KEYS: Record<MethodKind, string> = {
@@ -95,6 +95,28 @@ export const guardianAddressOf = (credential: Credential): Address | undefined =
 }
 
 /**
+ * The line a failed test's stored cause reads, or null where the wallet has no
+ * words for it. The cause is stored as its slug, or as `<slug>: <detail>` where
+ * the test carried a detail: a check that did not match reads its line, and a
+ * browser error reads the browser's own error name.
+ */
+const failedCauseLineOf = (cause: string | undefined, t: Translate): string | null => {
+  if (!cause) {
+    return null
+  }
+  const split = cause.indexOf(': ')
+  const slug = split === -1 ? cause : cause.slice(0, split)
+  const detail = split === -1 ? undefined : cause.slice(split + 2)
+  if (slug === 'check-rejected') {
+    return t(`${CEREMONY}.testFailedNoMatch`)
+  }
+  if (slug === 'browser-error' && isBrowserErrorName(detail)) {
+    return detail
+  }
+  return null
+}
+
+/**
  * The lines a test verdict carries under its chip. A failed test reads the
  * cause the test reported where the wallet has words for it, then that the
  * method may never work.
@@ -104,12 +126,7 @@ const verdictLinesOf = (enrollment: Enrollment, t: Translate): string[] => {
     case 'not-tested':
       return [t(`${CEREMONY}.notTestedLine`)]
     case 'failed': {
-      const cause =
-        enrollment.cause === 'check-rejected'
-          ? t(`${CEREMONY}.testFailedNoMatch`)
-          : isBrowserErrorName(enrollment.cause)
-          ? enrollment.cause
-          : null
+      const cause = failedCauseLineOf(enrollment.cause, t)
       return [...(cause ? [cause] : []), t(`${CEREMONY}.testFailedLine`)]
     }
     case 'unavailable':
