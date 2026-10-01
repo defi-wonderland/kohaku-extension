@@ -588,7 +588,10 @@ export interface FeeReading {
   error?: Pick<SignAccountOpError, 'title' | 'code'>
 }
 
-/** Called with each new reading of the sign screen's estimation for the port's request. */
+/**
+ * Called with each new reading of the sign screen's estimation for the port's
+ * request. The port ignores a throw from the listener.
+ */
 export type EstimationListener = (reading: FeeReading) => void
 
 /**

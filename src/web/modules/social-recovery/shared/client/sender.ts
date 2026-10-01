@@ -439,7 +439,11 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
             return
           }
           lastReading = serialized
-          onEstimation(reading)
+          try {
+            onEstimation(reading)
+          } catch {
+            // A listener that throws must not stop the push to the event bus's other listeners.
+          }
           return
         }
         if (update.controller === 'main') {
