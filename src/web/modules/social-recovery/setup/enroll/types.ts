@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import type {
   Address,
   ApproverRequest,
@@ -6,6 +8,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyOutcome,
+  CeremonyReport,
   EnrollValue,
   Platform,
   ReportStore,
@@ -275,4 +278,159 @@ export interface OfflineBlockProps {
 
 export interface ClientStateProps {
   client: EnrollClient
+}
+
+/** Which row a shared block renders in, the prefix of its test ids. */
+export type RowSlug = 'passkey' | 'guardian'
+
+export interface TestResultLinesProps {
+  row: RowSlug
+  /** The stored verdict's lasting line, null where it reads none. */
+  lineKey: string | null
+  /** The test outcome that just arrived, null where none did. */
+  outcome: CeremonyOutcome<unknown> | null
+  /** What renders between the lasting line and the outcome's notes. */
+  children?: ReactNode
+}
+
+/** What the passkey row's report hook reads and calls. */
+export interface PasskeyReportInput
+  extends Pick<
+    RowProps,
+    'records' | 'navigate' | 'search' | 'account' | 'chainId' | 'book' | 'deps'
+  > {
+  /** Takes the stored request of a returned ceremony before its report is read. */
+  onAsked: (asked: PasskeyCeremonyRequest) => void
+  onReport: (report: CeremonyReport, asked: PasskeyCeremonyRequest) => void
+}
+
+/** The returned ceremony's report as the passkey row waits for it. */
+export interface PasskeyReport {
+  undelivered: boolean
+  /** The request whose report never came back, null where none is waiting. */
+  stale: PasskeyCeremonyRequest | null
+  /** Drops the stale request, then runs the same ceremony again. */
+  retryWith: (rerun: (stale: PasskeyCeremonyRequest) => Promise<void>) => Promise<void>
+}
+
+/** The passkey row's state and actions. */
+export interface PasskeyRowState {
+  name: string
+  setName: (name: string) => void
+  explainer: boolean
+  toggleExplainer: () => void
+  enrollOutcome: CeremonyOutcome<unknown> | null
+  testOutcome: CeremonyOutcome<unknown> | null
+  signedSalt: Hex | null
+  skipped: boolean
+  skip: () => void
+  undelivered: boolean
+  stale: PasskeyCeremonyRequest | null
+  pending: PendingPlacement | null
+  writeFailed: boolean
+  duplicate: boolean
+  busy: boolean
+  /** Whether the passkey is, or was meant to be, created on a phone. */
+  phone: boolean
+  canTest: boolean
+  canRetryUndelivered: boolean
+  place: (placing: PendingPlacement) => Promise<void>
+  create: (handOff: boolean, asName?: string) => Promise<void>
+  runTest: () => Promise<void>
+  retryUndelivered: () => Promise<void>
+}
+
+export type PasskeyCreateBlockProps = Pick<
+  PasskeyRowState,
+  'name' | 'setName' | 'enrollOutcome' | 'busy' | 'phone' | 'create'
+> & {
+  served: boolean
+}
+
+export interface PasskeyEnrolledSummaryProps {
+  enrollment: Enrollment
+  platform: Platform
+}
+
+export type PasskeyTestBlockProps = Pick<
+  PasskeyRowState,
+  'testOutcome' | 'signedSalt' | 'skipped' | 'skip' | 'canTest' | 'busy' | 'runTest' | 'create'
+> & {
+  enrollment: Enrollment
+  served: boolean
+}
+
+export type PasskeyRowNotesProps = Pick<
+  PasskeyRowState,
+  | 'undelivered'
+  | 'stale'
+  | 'canRetryUndelivered'
+  | 'retryUndelivered'
+  | 'duplicate'
+  | 'writeFailed'
+  | 'pending'
+  | 'busy'
+  | 'place'
+>
+
+/** What the guardian's advisory checks read. */
+export interface GuardianChecksInput {
+  /** The field's text. */
+  value: string
+  enrollment: Enrollment | null
+  deps: EnrollDeps
+}
+
+/** The guardian's address as the field or the enrollment gives it, and its checks. */
+export interface GuardianCheckState {
+  nameCheck: NameCheck | undefined
+  address: Address | undefined
+  checkLines: CheckLine[]
+}
+
+/** The guardian row's state and actions. */
+export interface GuardianRowState extends GuardianCheckState {
+  value: string
+  setValue: (value: string) => void
+  resolvedName: string | undefined
+  addOutcome: CeremonyOutcome<unknown> | null
+  testOutcome: CeremonyOutcome<unknown> | null
+  challenge: GuardianChallenge | null
+  offline: boolean
+  busy: boolean
+  waiting: boolean
+  writeFailed: boolean
+  duplicate: boolean
+  /** The key the wallet holds for the guardian's address, where it holds one. */
+  heldKey: HeldKey | undefined
+  add: () => Promise<void>
+  check: (signed: GuardianChallenge, signature: Hex) => Promise<void>
+  runTest: (offlineOnly: boolean) => Promise<void>
+  withdraw: () => void
+  paste: () => void
+}
+
+export type GuardianAddressFieldProps = Pick<
+  GuardianRowState,
+  'value' | 'setValue' | 'paste' | 'nameCheck' | 'address'
+> & {
+  canPaste: boolean
+}
+
+export interface GuardianEnrolledSummaryProps {
+  enrollment: Enrollment
+  address: Address
+  resolvedName: string | undefined
+}
+
+export interface GuardianChecksBlockProps {
+  lines: CheckLine[]
+}
+
+export type GuardianTestBlockProps = Pick<
+  GuardianRowState,
+  'testOutcome' | 'busy' | 'waiting' | 'runTest' | 'withdraw'
+> & {
+  enrollment: Enrollment
+  canTestOffline: boolean
 }
