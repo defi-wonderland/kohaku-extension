@@ -4,24 +4,14 @@ import type { Address, PrivacyLevel } from '@web/modules/social-recovery/sdk-int
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
-/** The shortest waiting period this wallet saves. The chain enforces no minimum. */
-export const WAIT_FLOOR_HOURS = 24
+/** The fixed chips of the picker. */
+export type WaitChipId = 'hours24' | 'hours48' | 'hours72' | 'days7'
 
-/**
- * The longest waiting period the picker accepts where the client names no
- * maximum wait: 30 days in hours, the SDK's shipped maximum. A placeholder
- * until the SDK fixes the value.
- */
-export const PICKER_CEILING_HOURS = 30 * 24
-
-/** The fixed chips of the picker with their lengths in hours, in the order they show. */
-export const WAIT_CHIPS = [
-  { id: 'hours24', hours: 24 },
-  { id: 'hours48', hours: 48 },
-  { id: 'hours72', hours: 72 },
-  { id: 'days7', hours: 7 * 24 }
-] as const
-export type WaitChipId = typeof WAIT_CHIPS[number]['id']
+/** A chip of the picker with its length in hours. */
+export interface WaitChip {
+  id: WaitChipId
+  hours: number
+}
 
 /** What the picker holds: one of the chips, or the custom entry as typed. */
 export type WaitChoice = { kind: 'chip'; id: WaitChipId } | { kind: 'custom'; text: string }
@@ -34,9 +24,8 @@ export type CustomWait =
   | { status: 'pastCeiling' }
   | { status: 'accepted'; hours: number }
 
-/** The levels this step offers, from the most hidden to the most readable, the default first. */
-export const OFFERED_LEVELS = ['private', 'shape-visible', 'public'] as const
-export type OfferedLevel = Extract<PrivacyLevel, typeof OFFERED_LEVELS[number]>
+/** The levels this step offers. */
+export type OfferedLevel = Extract<PrivacyLevel, 'private' | 'shape-visible' | 'public'>
 
 /**
  * What the privacy step stores: Private or Shape visible with the recovery
@@ -46,13 +35,6 @@ export type PrivacyChoice =
   | { level: 'private'; password: string }
   | { level: 'shape-visible'; password: string }
   | { level: 'public' }
-
-/** The slug each level's strings sit under. */
-export const LEVEL_SLUGS: { readonly [L in OfferedLevel]: string } = {
-  private: 'private',
-  'shape-visible': 'shapeVisible',
-  public: 'public'
-}
 
 /** The method kind a row of the path holds: one of the address book's method slugs. */
 export type MethodKind = keyof AddressBook['methods']

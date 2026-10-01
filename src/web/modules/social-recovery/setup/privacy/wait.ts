@@ -1,7 +1,24 @@
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { WAIT_CHIPS, WAIT_FLOOR_HOURS } from './types'
-import type { CustomWait, WaitChoice } from './types'
+import type { CustomWait, WaitChip, WaitChoice } from './types'
+
+/** The shortest waiting period this wallet saves. The chain enforces no minimum. */
+export const WAIT_FLOOR_HOURS = 24
+
+/**
+ * The longest waiting period the picker accepts where the client names no
+ * maximum wait: 30 days in hours, the SDK's shipped maximum. A placeholder
+ * until the SDK fixes the value.
+ */
+export const PICKER_CEILING_HOURS = 30 * 24
+
+/** The fixed chips of the picker with their lengths in hours, in the order they show. */
+export const WAIT_CHIPS: readonly WaitChip[] = [
+  { id: 'hours24', hours: 24 },
+  { id: 'hours48', hours: 48 },
+  { id: 'hours72', hours: 72 },
+  { id: 'days7', hours: 7 * 24 }
+]
 
 const SECONDS_PER_HOUR = 3600n
 

@@ -18,14 +18,15 @@ import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import { renderNoun } from '@web/modules/social-recovery/shared/display'
 
-import { PICKER_CEILING_HOURS, WAIT_CHIPS } from './types'
 import type { WaitChoice, WaitingPeriodViewProps } from './types'
 import {
   choiceOfSeconds,
   DEFAULT_CHOICE,
   hoursOfChoice,
+  PICKER_CEILING_HOURS,
   readCustomWait,
-  secondsOfHours
+  secondsOfHours,
+  WAIT_CHIPS
 } from './wait'
 import { writeWaitingPeriod } from './writes'
 

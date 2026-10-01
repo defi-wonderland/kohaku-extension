@@ -29,11 +29,20 @@ import { readRecoveryPassword } from '@web/modules/social-recovery/shared/record
 import { renderShapeSentence } from '@web/modules/social-recovery/shared/rule-lines'
 
 import { exposureLinesOf, kindOfMethodIn } from './exposure'
-import { LEVEL_SLUGS, OFFERED_LEVELS } from './types'
 import type { OfferedLevel, PrivacyViewProps } from './types'
 import { writePrivacy } from './writes'
 
 const LEVEL = 'socialRecovery.privacy.level'
+
+/** The levels this step offers, from the most hidden to the most readable, the default first. */
+const OFFERED_LEVELS: readonly OfferedLevel[] = ['private', 'shape-visible', 'public']
+
+/** The slug each level's strings sit under. */
+const LEVEL_SLUGS: Readonly<Record<OfferedLevel, string>> = {
+  private: 'private',
+  'shape-visible': 'shapeVisible',
+  public: 'public'
+}
 
 const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) => {
   const { t } = useTranslation()
