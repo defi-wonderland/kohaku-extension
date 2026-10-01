@@ -9,22 +9,31 @@ import flexbox from '@common/styles/utils/flexbox'
 import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderMemberList } from '@web/modules/social-recovery/shared/display'
 
-import { enrollmentOf, isRequiredRow, pathRowOf } from './lead'
-import type { PathBlockProps } from './types'
+import { enrollmentOf, isRequiredRow, kindOf, pathRowOf } from './lead'
+import type { PathBlockProps, RetryKind } from './types'
 
 /**
  * The path as the editor draws it: the required rows, then each group under
  * its header with its threshold, three members and a count of the rest until
- * the holder shows them all. A row whose test could not run offers to run it
- * again, on the enrollment step where the test lives.
+ * the holder shows them all. A passkey or guardian row whose test could not
+ * run offers to run it again, on the enrollment step for that row.
  */
 const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlockProps) => {
   const { t } = useTranslation()
   const [shownAll, setShownAll] = useState<number[]>([])
 
-  const renderRow = (credential: Credential, testID: string) => {
+  const retryKindOf = (credential: Credential): RetryKind | null => {
+    if (enrollmentOf(credential, enrollments)?.test !== 'unavailable') {
+      return null
+    }
+    const kind = kindOf(credential, addressBook)
+    return kind === 'passkey' || kind === 'ecdsa' ? kind : null
+  }
+
+  const renderRow = (credential: Credential, clause: number, member: number) => {
+    const testID = `review-row-${clause}-${member}`
     const row = pathRowOf(credential, enrollments, addressBook, t)
-    const retryTest = enrollmentOf(credential, enrollments)?.test === 'unavailable'
+    const retryKind = retryKindOf(credential)
     return (
       <View key={testID} testID={testID} style={spacings.mbSm}>
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
@@ -59,14 +68,14 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
             {line}
           </Text>
         ))}
-        {retryTest && (
+        {!!retryKind && (
           <View style={[flexbox.directionRow, spacings.mtTy]}>
             <Button
               testID={`${testID}-retry-test`}
               type="outline"
               size="small"
               text={t('socialRecovery.actions.runTheTestAgain')}
-              onPress={onRetryTest}
+              onPress={() => onRetryTest({ kind: retryKind, clause, member })}
               hasBottomSpacing={false}
             />
           </View>
@@ -89,7 +98,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
         </Text>
       )}
       {clauses.map((clause, index) =>
-        isRequiredRow(clause) ? renderRow(clause.credentials[0], `review-row-${index}-0`) : null
+        isRequiredRow(clause) ? renderRow(clause.credentials[0], index, 0) : null
       )}
       {clauses.map((clause, index) => {
         if (isRequiredRow(clause)) {
@@ -118,9 +127,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
                 {String(clause.credentials.length)}
               </Text>
             </View>
-            {list.shown.map((credential, member) =>
-              renderRow(credential, `review-row-${index}-${member}`)
-            )}
+            {list.shown.map((credential, member) => renderRow(credential, index, member))}
             {!!list.more && (
               <View style={[flexbox.directionRow, flexbox.alignCenter]}>
                 <Text fontSize={12} appearance="secondaryText" style={spacings.mrTy}>

@@ -146,12 +146,22 @@ export interface ReviewViewProps {
   navigate: (to: string) => void
 }
 
+/** The kinds whose test the enrollment step runs again. */
+export type RetryKind = Extract<MethodKind, 'passkey' | 'ecdsa'>
+
+/** The path row whose test could not run: its kind and its place in the path. */
+export interface RetryTarget {
+  kind: RetryKind
+  clause: number
+  member: number
+}
+
 export interface PathBlockProps {
   clauses: readonly Clause[]
   enrollments: readonly Enrollment[]
   addressBook: AddressBook
-  /** Leads the holder to the enrollment step, where a test that could not run runs again. */
-  onRetryTest: () => void
+  /** Leads the holder to the enrollment step for one row, where its test runs again. */
+  onRetryTest: (target: RetryTarget) => void
 }
 
 export interface TrustListProps {

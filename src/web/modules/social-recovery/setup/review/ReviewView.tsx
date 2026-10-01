@@ -34,10 +34,19 @@ import {
 import PathBlock from './PathBlock'
 import { methodsOf, trustReadsComplete, trustRowsOf } from './trust'
 import TrustList from './TrustList'
-import type { ReviewLoad, ReviewViewProps } from './types'
+import type { RetryTarget, ReviewLoad, ReviewViewProps } from './types'
 import { useTrustReads } from './useTrustReads'
 
 const REVIEW = 'socialRecovery.review'
+
+/** The enrollment step's path for one row of the path, where its test runs again. */
+const enrollPathOf = ({ kind, clause, member }: RetryTarget): string => {
+  const query = new URLSearchParams()
+  query.set('kind', kind)
+  query.set('clause', String(clause))
+  query.set('member', String(member))
+  return `/${WEB_ROUTES.socialRecoverySetupEnroll}?${query.toString()}`
+}
 
 const ReviewView = ({
   records,
@@ -196,7 +205,7 @@ const ReviewView = ({
           clauses={clauses}
           enrollments={load.enrollments}
           addressBook={addressBook}
-          onRetryTest={() => navigate(WEB_ROUTES.socialRecoverySetupEnroll)}
+          onRetryTest={(target) => navigate(enrollPathOf(target))}
         />
         {needsHostileMinorityLine(clauses) &&
           line(t(`${REVIEW}.hostileMinority`), 'review-hostile-minority')}

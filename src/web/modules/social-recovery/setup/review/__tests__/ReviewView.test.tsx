@@ -390,7 +390,9 @@ describe('the path rows', () => {
 
     await press('review-row-0-0-retry-test')
 
-    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupEnroll)
+    expect(navigate).toHaveBeenCalledWith(
+      `/${WEB_ROUTES.socialRecoverySetupEnroll}?kind=ecdsa&clause=0&member=0`
+    )
   })
 
   it('offer no test again on a test that ran', async () => {
