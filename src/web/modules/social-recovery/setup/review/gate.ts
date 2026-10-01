@@ -13,10 +13,10 @@ import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
+import { ACCOUNT_READ_NAMES } from './constants'
 import { authoritiesOf } from './doors'
 import { enrollmentOf } from './lead'
 import { trustReadsComplete } from './trust'
-import { ACCOUNT_READ_NAMES } from './types'
 import type { AccountReadName, AccountReads, SaveBlock, SaveGate, SaveGateInput } from './types'
 
 /**

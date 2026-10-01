@@ -8,8 +8,12 @@ export * from './doors'
 export * from './gate'
 export * from './lead'
 export * from './trust'
-export { LIGHT_CLIENT_PROVIDERS, REVIEW_WAIT_CHIPS, TRUST_READ_NAMES } from './constants'
-export { ACCOUNT_READ_NAMES } from './types'
+export {
+  ACCOUNT_READ_NAMES,
+  LIGHT_CLIENT_PROVIDERS,
+  REVIEW_WAIT_CHIPS,
+  TRUST_READ_NAMES
+} from './constants'
 export type {
   AccountRead,
   AccountReadName,

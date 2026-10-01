@@ -175,16 +175,22 @@ export type AccountRead<T> =
   | { status: 'answered'; value: T }
   | { status: 'failed' }
 
-export const ACCOUNT_READ_NAMES = ['removedKey', 'fitCheck', 'setupState', 'description'] as const
-export type AccountReadName = typeof ACCOUNT_READ_NAMES[number]
-
-export interface AccountReads {
-  removedKey: AccountRead<RemovedKeyReading>
-  fitCheck: AccountRead<FitCheckReading>
-  setupState: AccountRead<SetupState>
+/** What each of the account's reads that gate Save answers. */
+export interface AccountReadValues {
+  removedKey: RemovedKeyReading
+  fitCheck: FitCheckReading
+  setupState: SetupState
   /** The setup description of the draft: the candidate keys and the key a recovery removes. */
-  description: AccountRead<SetupDescription>
+  description: SetupDescription
 }
+
+/** One of the account's reads that gate Save. */
+export type AccountReadName = keyof AccountReadValues
+
+export type AccountReads = { [K in AccountReadName]: AccountRead<AccountReadValues[K]> }
+
+/** Each of the account's reads that gate Save, as a call that answers it. */
+export type AccountReaders = { [K in AccountReadName]: () => Promise<AccountReadValues[K]> }
 
 /** The account's reads with the privilege read the other doors come from, which never gates Save. */
 export interface AccountReadsHeld extends AccountReads {
