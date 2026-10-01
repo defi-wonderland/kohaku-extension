@@ -8,7 +8,7 @@ export * from './operations'
 export * from './refusals'
 export {
   renderClientRefusal,
-  renderFailedTestLines,
+  renderFailedTestLine,
   renderFinding,
   renderHeldThreshold,
   renderKindHeader,

@@ -1,6 +1,6 @@
 /**
  * The editor's words: each method kind's name and picker header, the chip a
- * row carries with a failed test's lines, the line under a threshold that is
+ * row carries with a failed test's line, the line under a threshold that is
  * not a whole number, the sentence of each refusal this wallet applies, the
  * rules panel, and the line a path check finding renders as. Every setup error
  * renders a sentence; any other finding renders its code.
@@ -11,7 +11,6 @@ import type {
   FindingCode,
   SetupErrorCode
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony/verdicts'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/display'
 import type {
@@ -141,25 +140,17 @@ export const renderRowChip = (
 }
 
 /**
- * The lines a failed access test carries beside its chip: the cause the test
- * reported where the wallet has words for it, a check that did not match, a
- * passkey made under another origin or the browser's own error name, then
- * that the method may never work. Any other cause renders no words of its own.
+ * The line a failed access test carries beside its chip: that the check did
+ * not match where the stored cause says so, else that the method may never
+ * work.
  */
-export const renderFailedTestLines = (enrollment: Enrollment, t: Translate): string[] => {
+export const renderFailedTestLine = (enrollment: Enrollment, t: Translate): string | null => {
   if (enrollment.test !== 'failed') {
-    return []
+    return null
   }
-  const [slug, detail] = (enrollment.cause ?? '').split(': ', 2)
-  let cause: string | null = null
-  if (slug === 'check-rejected') {
-    cause = t('socialRecovery.ceremony.testFailedNoMatch')
-  } else if (slug === 'relying-party-mismatch') {
-    cause = t('socialRecovery.ceremony.relyingPartyMismatch')
-  } else if (slug === 'browser-error' && isBrowserErrorName(detail)) {
-    cause = detail
-  }
-  return [...(cause ? [cause] : []), t('socialRecovery.ceremony.testFailedLine')]
+  return enrollment.cause?.startsWith('check-rejected')
+    ? t('socialRecovery.ceremony.testFailedNoMatch')
+    : t('socialRecovery.ceremony.testFailedLine')
 }
 
 /** The line under a threshold field whose text is not a whole number. */
