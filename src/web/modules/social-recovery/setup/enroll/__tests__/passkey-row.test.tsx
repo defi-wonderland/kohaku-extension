@@ -6,7 +6,7 @@
  * the backup kind the ceremony read. The access test runs through the same tab
  * and never holds the save.
  */
-import type { Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CeremonyOutcome, PasskeyFacts } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   CeremonyRequestRecord,
@@ -25,6 +25,7 @@ import {
   CHAIN_ID,
   DESCRIPTOR,
   depsOf,
+  draftOf,
   each,
   emptySlot,
   mountView,
@@ -935,6 +936,87 @@ describe('the passkey row', () => {
         expect(view!.byTestId('passkey-signed-note')).toBeNull()
       }
     )
+  })
+
+  describe('a report that is not for the slot as it stands', () => {
+    const OTHER: Address = '0x3333333333333333333333333333333333333333'
+    const FOREIGN_ID = 'request-foreign'
+    const PLAIN_PATH = `/${WEB_ROUTES.socialRecoverySetupEnroll}?kind=passkey&clause=0&member=1`
+
+    it('leaves a passkey that replaced the tested one not tested', async () => {
+      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      await view!.press('passkey-run-test')
+      const id = deps.requestIds[deps.requestIds.length - 1]
+
+      // Another tab places a new passkey in the slot while the test runs.
+      const replacing: Credential = {
+        method: BOOK.methods.passkey,
+        config: '0xbeef',
+        label: 'Other laptop'
+      }
+      const theirs: Enrollment = { credential: replacing, test: 'not-tested', backup: 'synced' }
+      const setup = records.setup(CHAIN_ID, ACCOUNT)
+      await setup.writeDraftAndPath(draftOf(pathWith(emptySlot('passkey'), replacing)))
+      await setup.enrollments.write([theirs])
+
+      await returnFrom(id, 'testAccess', passed({ proof: '0x0102', facts: BOUND_TO_THIS_MAC }))
+      expect(await storedEnrollments(records)).toEqual([theirs])
+      expect(view!.byTestId('passkey-label')?.textContent).toBe('Other laptop')
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+      expect(view!.byTestId('enroll-write-failed')).toBeNull()
+    })
+
+    each([
+      ['another account', { account: OTHER }],
+      ['another chain', { chainId: 1 }],
+      ['another passkey method', { methodAddress: OTHER }]
+    ] as const)(
+      'leaves a creation stored for %s where it is and the slot empty',
+      async ([, foreign]) => {
+        const theirs: CeremonyRequestRecord = {
+          call: 'enroll',
+          method: 'passkey',
+          account: ACCOUNT,
+          chainId: CHAIN_ID,
+          methodAddress: BOOK.methods.passkey,
+          params: { userName: 'Their laptop', handOff: false },
+          ...foreign
+        }
+        await records.ceremonyRequest(FOREIGN_ID).write(theirs)
+        await returnFrom(FOREIGN_ID, 'enroll', createdWith(SYNCED_ON_GOOGLE))
+
+        expect(await storedClauses(records)).toEqual(TWO_SLOTS)
+        expect(await storedEnrollments(records)).toEqual([])
+        expect(await storedRequest(FOREIGN_ID)).toEqual(theirs)
+        expect(deps.channel.has(FOREIGN_ID)).toBe(true)
+        expect(deps.channel.takes).not.toHaveBeenCalled()
+        expect(view!.byTestId('passkey-none-yet')).not.toBeNull()
+        expect(view!.byTestId('passkey-undelivered')).toBeNull()
+        expect(view!.inputOf('passkey-name')?.value).toBe(DEFAULT_NAME)
+        expect(view!.navigate).toHaveBeenCalledWith(PLAIN_PATH, { replace: true })
+      }
+    )
+
+    it('leaves a test stored for another account where it is and the verdict as it was', async () => {
+      await createAndReturn(createdWith(SYNCED_ON_GOOGLE))
+      await view!.press('passkey-run-test')
+      const id = deps.requestIds[deps.requestIds.length - 1]
+      const asked = await storedRequest(id)
+      if (asked?.call !== 'testAccess') {
+        throw new Error('no test request stored')
+      }
+      const theirs: CeremonyRequestRecord = { ...asked, account: OTHER }
+      await records.ceremonyRequest(id).write(theirs)
+
+      await returnFrom(id, 'testAccess', passed({ proof: '0x0102' }))
+      const [enrollment] = await storedEnrollments(records)
+      expect(enrollment.test).toBe('not-tested')
+      expect(enrollment.lastTest).toBeUndefined()
+      expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('notTested'))
+      expect(await storedRequest(id)).toEqual(theirs)
+      expect(deps.channel.has(id)).toBe(true)
+    })
   })
 
   describe('Save and continue', () => {
