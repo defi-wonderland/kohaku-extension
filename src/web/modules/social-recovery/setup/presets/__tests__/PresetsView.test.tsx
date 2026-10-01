@@ -351,12 +351,16 @@ describe('the presets view', () => {
       expect(text()).toContain(S.records.startOverNote)
     })
 
-    it('shows each enrolled row with its chip, and the guardians with their count', async () => {
+    it('shows each enrolled row with its chip, each guardian on its own row, and the count once', async () => {
       await storeDraft(ENROLLMENTS)
       await mount()
       expect(allByTestId('resume-row')).toEqual([
         'Passkey on this deviceTested',
-        'Guardians2 added, not saved on chain yetNot yet active'
+        'GuardianNot tested',
+        'GuardianNot tested'
+      ])
+      expect(allByTestId('not-yet-active')).toEqual([
+        '2 added, not saved on chain yetNot yet active'
       ])
     })
 
@@ -635,9 +639,7 @@ describe('the presets view', () => {
       )
       await mount()
       const rows = allByTestId('resume-row')
-      expect(rows).toHaveLength(2)
-      expect(rows[0]).toBe('Passkey on this deviceTested')
-      expect(rows[1]).toMatch(/^Guardians.*Not yet active$/)
+      expect(rows).toEqual(['Passkey on this deviceTested', 'GuardianNot tested'])
       expect(allByTestId('resume-chip')).not.toContain(S.status.method.notStarted)
     })
 

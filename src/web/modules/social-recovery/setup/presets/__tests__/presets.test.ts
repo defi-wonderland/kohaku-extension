@@ -18,6 +18,7 @@ import {
   draftOf,
   emptySlot,
   notStartedRowsOf,
+  notYetActiveOf,
   presetOf,
   resumeRowsOf,
   shapeRowsOf,
@@ -307,16 +308,18 @@ describe('the resume rows', () => {
     ])
   })
 
-  it('folds the guardians into one row, not yet active, with the count added', () => {
-    const rows = resumeRowsOf(
-      [guardian('0x0a'), passkey('passed', 'device-bound'), guardian('0x0b')],
-      BOOK,
-      t
-    )
-    expect(rows.map(({ name, chip, note }) => ({ name, chip, note }))).toEqual([
-      { name: 'Passkey on this device', chip: 'Tested', note: undefined },
-      { name: 'Guardians', chip: 'Not yet active', note: '2 added, not saved on chain yet' }
+  it('gives each guardian its own row after the methods, and one not-yet-active note with the count', () => {
+    const enrollments = [guardian('0x0a'), passkey('passed', 'device-bound'), guardian('0x0b')]
+    const rows = resumeRowsOf(enrollments, BOOK, t)
+    expect(rows.map(({ name, chip }) => ({ name, chip }))).toEqual([
+      { name: 'Passkey on this device', chip: 'Tested' },
+      { name: 'Guardian', chip: 'Not tested' },
+      { name: 'Guardian', chip: 'Not tested' }
     ])
+    expect(notYetActiveOf(enrollments, BOOK, t)).toEqual({
+      chip: 'Not yet active',
+      note: '2 added, not saved on chain yet'
+    })
   })
 
   it('shows no row for no enrollment', () => {

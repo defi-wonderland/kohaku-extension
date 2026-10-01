@@ -6,13 +6,13 @@ export { PRESETS, presetOf, draftOf, clausesOfShape } from './presets'
 export { emptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records'
 export { startDraft } from './draft'
 export { cardRuleLines, shapeRowsOf } from './lines'
-export { resumeRowsOf, notStartedRowsOf, draftAgeLine } from './resume'
-export { PRESET_IDS } from './types'
+export { resumeRowsOf, notYetActiveOf, notStartedRowsOf, draftAgeLine } from './resume'
 export type {
   Preset,
   PresetChoice,
   PresetId,
   PresetsViewProps,
+  ResumeNote,
   ResumeRow,
   ShapeClause,
   ShapeRow,

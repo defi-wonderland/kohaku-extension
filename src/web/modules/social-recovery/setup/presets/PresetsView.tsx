@@ -20,8 +20,15 @@ import { renderChip } from '@web/modules/social-recovery/shared/display'
 import { startDraft } from './draft'
 import { cardRuleLines, shapeRowsOf } from './lines'
 import { PRESETS } from './presets'
-import { draftAgeLine, notStartedRowsOf, resumeRowsOf } from './resume'
-import type { Preset, PresetChoice, PresetsViewProps, ResumeRow } from './types'
+import { draftAgeLine, notStartedRowsOf, notYetActiveOf, resumeRowsOf } from './resume'
+import type {
+  Preset,
+  PresetChoice,
+  PresetsLoad,
+  PresetsViewProps,
+  ResumeNote,
+  ResumeRow
+} from './types'
 
 const COST_KEYS = [
   'socialRecovery.costLines.save',
@@ -38,12 +45,14 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
   const [loadFailed, setLoadFailed] = useState(false)
   const [writeFailed, setWriteFailed] = useState(false)
   const [resumeRows, setResumeRows] = useState<ResumeRow[]>([])
+  const [notYetActive, setNotYetActive] = useState<ResumeNote | null>(null)
+  const [notStartedRows, setNotStartedRows] = useState<ResumeRow[]>([])
   const [picked, setPicked] = useState<PresetChoice | null>(null)
   const [busy, setBusy] = useState(false)
 
   const setup = useMemo(() => records.setup(chainId, account), [records, chainId, account])
 
-  const load = useCallback(async () => {
+  const read = useCallback(async (): Promise<PresetsLoad> => {
     const [at, enrollments, draft] = await Promise.all([
       records.setupSavedAt(chainId, account),
       setup.enrollments.read(),
@@ -52,27 +61,54 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     const book = addressBookOf(WALLET_RECOVERY_CHAIN)
     const enrolled = enrollments.status === 'present' ? enrollments.value : []
     const clauses = draft.status === 'present' ? draft.value.clauses : []
-    setResumeRows([
-      ...resumeRowsOf(enrolled, book, t),
-      ...notStartedRowsOf(clauses, enrolled, book, t)
-    ])
-    setSavedAt(at)
+    return {
+      savedAt: at,
+      rows: resumeRowsOf(enrolled, book, t),
+      notYetActive: notYetActiveOf(enrolled, book, t),
+      notStarted: notStartedRowsOf(clauses, enrolled, book, t)
+    }
   }, [records, setup, chainId, account, t])
+
+  const show = useCallback((loaded: PresetsLoad) => {
+    setResumeRows(loaded.rows)
+    setNotYetActive(loaded.notYetActive)
+    setNotStartedRows(loaded.notStarted)
+    setSavedAt(loaded.savedAt)
+  }, [])
 
   // A failed read shows its own state, never the cards: the holder may have a
   // draft this device could not read, and may retry or start over.
+  const showFailed = useCallback(() => {
+    setSavedAt(undefined)
+    setLoadFailed(true)
+  }, [])
+
   const reload = useCallback(() => {
     setLoadFailed(false)
-    return load().catch(() => {
-      setSavedAt(undefined)
-      setLoadFailed(true)
-    })
-  }, [load])
+    return read().then(show, showFailed)
+  }, [read, show, showFailed])
 
+  // A read that finishes after the account or the chain changed is dropped, so
+  // it never shows one account's state, or starts a draft, for another.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    reload()
-  }, [reload])
+    let cancelled = false
+    setLoadFailed(false)
+    read().then(
+      (loaded) => {
+        if (!cancelled) {
+          show(loaded)
+        }
+      },
+      () => {
+        if (!cancelled) {
+          showFailed()
+        }
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [read, show, showFailed])
 
   const open = useCallback(
     async (choice: PresetChoice) => {
@@ -124,6 +160,9 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       testID={`preset-${preset.id}`}
       accessibilityRole="radio"
       accessibilityState={{ checked: picked === preset.id }}
+      // The web renderer reads the checked state of a radio from this prop
+      // alone; the React Native types do not declare it, so it goes in a spread.
+      {...{ accessibilityChecked: picked === preset.id }}
       onPress={() => setPicked(preset.id)}
       style={cardStyle(preset.id)}
     >
@@ -188,6 +227,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         testID="preset-fromScratch"
         accessibilityRole="radio"
         accessibilityState={{ checked: picked === 'fromScratch' }}
+        {...{ accessibilityChecked: picked === 'fromScratch' }}
         onPress={() => setPicked('fromScratch')}
         style={cardStyle('fromScratch')}
       >
@@ -216,6 +256,31 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
     </View>
   )
 
+  const renderResumeRow = (row: ResumeRow) => (
+    <View
+      key={row.id}
+      testID="resume-row"
+      style={[flexbox.directionRow, flexbox.justifySpaceBetween, spacings.mbSm]}
+    >
+      <View style={flexbox.flex1}>
+        <Text fontSize={14}>{row.name}</Text>
+        {!!row.detail && (
+          <Text fontSize={12} appearance="secondaryText">
+            {row.detail}
+          </Text>
+        )}
+        {!!row.note && (
+          <Text testID="resume-note" fontSize={12} appearance="secondaryText">
+            {row.note}
+          </Text>
+        )}
+      </View>
+      <Text testID="resume-chip" fontSize={12} weight="medium" appearance="secondaryText">
+        {row.chip}
+      </Text>
+    </View>
+  )
+
   const renderResume = (at: number) => (
     <View testID="presets-resume">
       <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
@@ -224,25 +289,21 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       <Text testID="draft-age" fontSize={14} style={spacings.mbSm}>
         {draftAgeLine(at, t)}
       </Text>
-      {resumeRows.map((row) => (
+      {resumeRows.map(renderResumeRow)}
+      {!!notYetActive && (
         <View
-          key={row.id}
-          testID="resume-row"
+          testID="not-yet-active"
           style={[flexbox.directionRow, flexbox.justifySpaceBetween, spacings.mbSm]}
         >
-          <View style={flexbox.flex1}>
-            <Text fontSize={14}>{row.name}</Text>
-            {!!row.note && (
-              <Text fontSize={12} appearance="secondaryText">
-                {row.note}
-              </Text>
-            )}
-          </View>
-          <Text testID="resume-chip" fontSize={12} weight="medium" appearance="secondaryText">
-            {row.chip}
+          <Text fontSize={12} appearance="secondaryText" style={flexbox.flex1}>
+            {notYetActive.note}
+          </Text>
+          <Text fontSize={12} weight="medium" appearance="secondaryText">
+            {notYetActive.chip}
           </Text>
         </View>
-      ))}
+      )}
+      {notStartedRows.map(renderResumeRow)}
       <View style={[flexbox.directionRow, spacings.mtSm]}>
         <Button
           testID="resume"

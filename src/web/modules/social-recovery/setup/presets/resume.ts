@@ -1,12 +1,19 @@
+import { decodeAbiParameters } from 'viem'
+
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
+import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import { DEADLINE_LOCALE, renderChip } from '@web/modules/social-recovery/shared/display'
+import {
+  DEADLINE_LOCALE,
+  renderChip,
+  renderShortAddress
+} from '@web/modules/social-recovery/shared/display'
 import type { Chip, Translate } from '@web/modules/social-recovery/shared/display'
 import { SLOT_KINDS, slotKindOf } from '@web/modules/social-recovery/shared/records'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
-import type { ResumeRow, SlotKind } from './types'
+import type { ResumeNote, ResumeRow, SlotKind } from './types'
 
 const VERDICT_CHIPS: Record<EnrollmentTestVerdict, Chip<'method'>> = {
   passed: 'tested',
@@ -22,6 +29,8 @@ const METHOD_NAME_KEYS: Partial<Record<SlotKind, string>> = {
   aadhaar: 'socialRecovery.methodNames.aadhaar'
 }
 
+const CEREMONY = 'socialRecovery.ceremony'
+
 const kindOf = (enrollment: Enrollment, book: AddressBook): SlotKind | undefined =>
   SLOT_KINDS.find((kind) => sameAddress(book.methods[kind], enrollment.credential.method))
 
@@ -29,42 +38,100 @@ const nameOf = (enrollment: Enrollment, kind: SlotKind | undefined, t: Translate
   if (kind === 'passkey' && enrollment.backup === 'device-bound') {
     return t('socialRecovery.methodNames.passkeyOnThisDevice')
   }
+  if (kind === 'ecdsa') {
+    return t('socialRecovery.display.nouns.guardian')
+  }
   const key = kind && METHOD_NAME_KEYS[kind]
   return t(key || 'socialRecovery.display.nouns.method')
 }
 
+/** The guardian's address in its short form, read from the one word its config holds. */
+const guardianAddressOf = (enrollment: Enrollment): string | undefined => {
+  // The config comes back from storage, so one the codec did not write holds no address.
+  try {
+    const [address] = decodeAbiParameters([{ type: 'address' }], enrollment.credential.config)
+    return renderShortAddress(address)
+  } catch {
+    return undefined
+  }
+}
+
 /**
- * The resume block's rows: each enrolled method with the chip of its access
- * test, and the guardians as one row, not yet active until the path is saved.
+ * The cause a failed test reported, where the wallet has words for it. The
+ * stored cause is the cause's name, followed by `: ` and its detail when it
+ * carried one; the browser's own error shows by its error name.
+ */
+const causeTextOf = (cause: string | undefined, t: Translate): string | undefined => {
+  if (cause === undefined) {
+    return undefined
+  }
+  const [name, detail] = cause.split(': ')
+  switch (name) {
+    case 'check-rejected':
+      return t(`${CEREMONY}.testFailedNoMatch`)
+    case 'relying-party-mismatch':
+      return t(`${CEREMONY}.relyingPartyMismatch`)
+    case 'browser-error':
+      return isBrowserErrorName(detail) ? detail : undefined
+    default:
+      return undefined
+  }
+}
+
+const rowOf = (
+  enrollment: Enrollment,
+  kind: SlotKind | undefined,
+  id: string,
+  t: Translate
+): ResumeRow => ({
+  id,
+  name: nameOf(enrollment, kind, t),
+  chip: renderChip('method', VERDICT_CHIPS[enrollment.test], t),
+  ...(kind === 'ecdsa' ? { detail: guardianAddressOf(enrollment) } : {}),
+  ...(enrollment.test === 'failed' ? { note: causeTextOf(enrollment.cause, t) } : {})
+})
+
+/**
+ * The resume block's rows: each enrolled method, then each guardian, every
+ * row with the chip of its own access test and a failed test with the cause
+ * it reported.
  */
 export const resumeRowsOf = (
   enrollments: readonly Enrollment[],
   book: AddressBook,
   t: Translate
 ): ResumeRow[] => {
-  const rows: ResumeRow[] = []
-  let guardians = 0
+  const methods: ResumeRow[] = []
+  const guardians: ResumeRow[] = []
   enrollments.forEach((enrollment, index) => {
     const kind = kindOf(enrollment, book)
+    const row = rowOf(enrollment, kind, `${index}`, t)
     if (kind === 'ecdsa') {
-      guardians += 1
-      return
+      guardians.push(row)
+    } else {
+      methods.push(row)
     }
-    rows.push({
-      id: `${index}`,
-      name: nameOf(enrollment, kind, t),
-      chip: renderChip('method', VERDICT_CHIPS[enrollment.test], t)
-    })
   })
-  if (guardians > 0) {
-    rows.push({
-      id: 'guardians',
-      name: t('socialRecovery.methodNames.guardians'),
-      chip: renderChip('method', 'notYetActive', t),
-      note: t('socialRecovery.presets.resume.addedNotSaved', { count: guardians })
-    })
+  return [...methods, ...guardians]
+}
+
+/**
+ * The note beneath the guardian rows: the guardians added are not yet active
+ * until the path is saved on chain. None without a guardian.
+ */
+export const notYetActiveOf = (
+  enrollments: readonly Enrollment[],
+  book: AddressBook,
+  t: Translate
+): ResumeNote | null => {
+  const count = enrollments.filter((enrollment) => kindOf(enrollment, book) === 'ecdsa').length
+  if (count === 0) {
+    return null
   }
-  return rows
+  return {
+    chip: renderChip('method', 'notYetActive', t),
+    note: t('socialRecovery.presets.resume.addedNotSaved', { count })
+  }
 }
 
 const NOT_STARTED_NAME_KEYS: Record<SlotKind, string> = {
@@ -89,7 +156,9 @@ export const notStartedRowsOf = (
   clauses.forEach(({ credentials }) =>
     credentials.forEach((credential) => {
       const kind = slotKindOf(credential)
-      if (kind && !enrolled.has(kind)) kinds.add(kind)
+      if (kind && !enrolled.has(kind)) {
+        kinds.add(kind)
+      }
     })
   )
   return [...kinds].map((kind) => ({

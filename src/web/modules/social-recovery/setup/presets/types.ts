@@ -9,13 +9,7 @@ export interface ShapeClause {
   slots: readonly SlotKind[]
 }
 
-export const PRESET_IDS = [
-  'deviceAndGuardians',
-  'deviceAndId',
-  'eitherOne',
-  'guardiansOnly'
-] as const
-export type PresetId = typeof PRESET_IDS[number]
+export type PresetId = 'deviceAndGuardians' | 'deviceAndId' | 'eitherOne' | 'guardiansOnly'
 
 /** A preset: a whole path the holder adopts and may edit, with the card's own strings. */
 export interface Preset {
@@ -33,12 +27,30 @@ export type ShapeRow =
   | { kind: 'required'; text: string }
   | { kind: 'group'; count: string; members: string[] }
 
-/** One row of the resume block: an enrolled method, its chip and its note. */
+/**
+ * One row of the resume block: an enrolled method or guardian, its chip, a
+ * guardian's address and the cause a failed test reported.
+ */
 export interface ResumeRow {
   id: string
   name: string
   chip: string
+  detail?: string
   note?: string
+}
+
+/** The not-yet-active note beneath the guardian rows: its chip and its line. */
+export interface ResumeNote {
+  chip: string
+  note: string
+}
+
+/** What the presets view reads from storage: the draft's date, or none, and the resume block. */
+export interface PresetsLoad {
+  savedAt: number | null
+  rows: ResumeRow[]
+  notYetActive: ResumeNote | null
+  notStarted: ResumeRow[]
 }
 
 export interface PresetsViewProps {
