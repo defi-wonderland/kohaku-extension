@@ -485,6 +485,15 @@ describe('the lines of a failed access test', () => {
     ])
   })
 
+  it('give the other-origin sentence for a passkey refused under this origin, with or without the error name', () => {
+    ;['relying-party-mismatch', 'relying-party-mismatch: SecurityError'].forEach((cause) =>
+      expect(renderFailedTestLines(failed(cause), t)).toEqual([
+        en.socialRecovery.ceremony.relyingPartyMismatch,
+        en.socialRecovery.ceremony.testFailedLine
+      ])
+    )
+  })
+
   it('give only the may-never-work line for no cause, an unknown cause or text that is not an error name', () => {
     ;[undefined, 'timeout', 'browser-error: <b>hi</b>', 'browser-error'].forEach((cause) =>
       expect(renderFailedTestLines(failed(cause), t)).toEqual([
