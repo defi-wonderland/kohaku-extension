@@ -14,6 +14,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   browserErrorNameOf,
   ceremonyPath,
@@ -83,6 +84,7 @@ const PasskeyRow = ({
   const [memory, setMemory] = useState<PasskeyMemory>({})
   const [enrollOutcome, setEnrollOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
   const [testOutcome, setTestOutcome] = useState<CeremonyOutcome<unknown> | null>(null)
+  const [signedSalt, setSignedSalt] = useState<Hex | null>(null)
   const [skipped, setSkipped] = useState(false)
   const [undelivered, setUndelivered] = useState(false)
   const [stale, setStale] = useState<PasskeyCeremonyRequest | null>(null)
@@ -120,6 +122,7 @@ const PasskeyRow = ({
       setDuplicate(false)
       setEnrollOutcome(null)
       setTestOutcome(null)
+      setSignedSalt(null)
       setSkipped(false)
       setMemory({ handOff: placing.handOff })
       onEnrollment(created)
@@ -181,10 +184,12 @@ const PasskeyRow = ({
           passedWith
         )
         setWriteFailed(false)
+        setSignedSalt(passedWith ? passedWith.lastTest.salt : null)
         if (updated) {
           onEnrollment(updated)
         }
       } catch {
+        setSignedSalt(null)
         setWriteFailed(true)
       }
     },
@@ -383,8 +388,9 @@ const PasskeyRow = ({
   const lineKey = enrollment ? testLineKeyOf(enrollment, skipped, `${PASSKEY}.testPassed`) : null
   const testNotes = testOutcome ? testNoteKeysOf(testOutcome, lineKey) : []
   const testError = testOutcome ? browserErrorNameOf(testOutcome) : null
-  // The note says "just now", so it shows only for a test this row ran, never for a stored one.
-  const passedNow = testOutcome?.kind === 'verdict' && testOutcome.verdict === 'passed'
+  // The note says "just now", so it shows only for the test this row ran and stored.
+  const signedNow =
+    !!signedSalt && enrollment?.test === 'passed' && enrollment.lastTest?.salt === signedSalt
   const canTest = deps.passkeysServed && client.status === 'ready' && !busy
   const canRetryUndelivered =
     !!stale && !busy && (stale.call === 'enroll' ? deps.passkeysServed : canTest && !!enrollment)
@@ -555,7 +561,7 @@ const PasskeyRow = ({
                 {t(lineKey)}
               </Text>
             )}
-            {passedNow && enrollment.test === 'passed' && !!enrollment.lastTest && (
+            {signedNow && !!enrollment.lastTest && (
               <Text testID="passkey-signed-note" fontSize={12} appearance="secondaryText">
                 {t('socialRecovery.enroll.passkey.signedNote', {
                   hash: renderHash(enrollment.lastTest.salt)

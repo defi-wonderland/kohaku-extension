@@ -1076,6 +1076,43 @@ describe('the passkey row', () => {
       expect(view!.byTestId('passkey-test-line')?.textContent).toBe(t(`${PASSKEY}.testPassed`))
       expect(view!.byTestId('passkey-signed-note')).toBeNull()
     })
+
+    it('shows no signed note for a passed test whose record write fails', async () => {
+      const storedSalt: Hex = `0x${'12'.repeat(32)}`
+      ;({ records, faults } = await recordsWith(
+        pathWith(emptySlot('passkey'), {
+          method: BOOK.methods.passkey,
+          config: CONFIG,
+          label: 'Work laptop'
+        }),
+        [
+          {
+            credential: { method: BOOK.methods.passkey, config: CONFIG, label: 'Work laptop' },
+            test: 'passed',
+            backup: 'synced',
+            facts: SYNCED_ON_GOOGLE,
+            credentialId: 'credential-a',
+            lastTest: { salt: storedSalt, at: NOW }
+          }
+        ]
+      ))
+      await open()
+
+      await view!.press('passkey-run-test-again')
+      faults.refuse = [':enrollments:']
+      await returnFrom(
+        deps.requestIds[deps.requestIds.length - 1],
+        'testAccess',
+        passed({ proof: '0x0102', facts: assertedOn('platform', true) })
+      )
+
+      expect(view!.byTestId('enroll-write-failed')?.textContent).toBe(
+        t('socialRecovery.records.writeFailed')
+      )
+      expect(view!.byTestId('passkey-signed-note')).toBeNull()
+      const [enrollment] = await storedEnrollments(records)
+      expect(enrollment.lastTest).toEqual({ salt: storedSalt, at: NOW })
+    })
   })
 
   describe('a report that is not for the slot as it stands', () => {
