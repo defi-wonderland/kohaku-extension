@@ -1,7 +1,6 @@
 import { decodeAbiParameters } from 'viem'
 
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
-import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import {
@@ -57,27 +56,15 @@ const guardianAddressOf = (enrollment: Enrollment): string | undefined => {
 }
 
 /**
- * The cause a failed test reported, where the wallet has words for it. The
- * stored cause is the cause's name, followed by `: ` and its detail when it
- * carried one; the browser's own error shows by its error name.
+ * The one line under a failed test: the no-match line when the check rejected
+ * the answer, else the line that the method may never work.
  */
-const causeTextOf = (cause: string | undefined, t: Translate): string => {
-  const fallback = t(`${CEREMONY}.testFailedLine`)
-  if (cause === undefined) {
-    return fallback
-  }
-  const [name, detail] = cause.split(': ')
-  switch (name) {
-    case 'check-rejected':
-      return t(`${CEREMONY}.testFailedNoMatch`)
-    case 'relying-party-mismatch':
-      return t(`${CEREMONY}.relyingPartyMismatch`)
-    case 'browser-error':
-      return isBrowserErrorName(detail) ? detail : fallback
-    default:
-      return fallback
-  }
-}
+const failedLineOf = (cause: string | undefined, t: Translate): string =>
+  t(
+    cause?.startsWith('check-rejected')
+      ? `${CEREMONY}.testFailedNoMatch`
+      : `${CEREMONY}.testFailedLine`
+  )
 
 const rowOf = (
   enrollment: Enrollment,
@@ -89,14 +76,13 @@ const rowOf = (
   name: nameOf(enrollment, kind, t),
   chip: renderChip('method', VERDICT_CHIPS[enrollment.test], t),
   ...(kind === 'ecdsa' ? { detail: guardianAddressOf(enrollment) } : {}),
-  ...(enrollment.test === 'failed' ? { note: causeTextOf(enrollment.cause, t) } : {})
+  ...(enrollment.test === 'failed' ? { note: failedLineOf(enrollment.cause, t) } : {})
 })
 
 /**
  * The resume block's rows: each enrolled method, then each guardian, every
- * row with the chip of its own access test and a failed test with the cause
- * it reported, or with the line that the method may never work when the cause
- * has no words.
+ * row with the chip of its own access test and a failed test with its one
+ * line.
  */
 export const resumeRowsOf = (
   enrollments: readonly Enrollment[],

@@ -716,9 +716,9 @@ describe('the presets view', () => {
     it('shows beside a failed passkey test the browser error it reported', async () => {
       await storeOn({}, [], [failedPasskey('browser-error: NotAllowedError')])
       await mount()
-      expect(allByTestId('resume-note')).toEqual(['NotAllowedError'])
+      expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedLine])
       expect(allByTestId('resume-row')).toEqual([
-        `${S.methodNames.passkey}NotAllowedError${S.status.method.testFailed}`
+        `${S.methodNames.passkey}${S.ceremony.testFailedLine}${S.status.method.testFailed}`
       ])
     })
 

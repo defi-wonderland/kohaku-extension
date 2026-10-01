@@ -340,7 +340,7 @@ describe('the resume rows', () => {
       expect(row).toMatchObject({
         name: S.methodNames.passkey,
         chip: S.status.method.testFailed,
-        note: 'NotAllowedError'
+        note: S.ceremony.testFailedLine
       })
     })
 
@@ -352,7 +352,7 @@ describe('the resume rows', () => {
       )
       expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual([
         { chip: S.status.method.testFailed, note: S.ceremony.testFailedNoMatch },
-        { chip: S.status.method.testFailed, note: S.ceremony.relyingPartyMismatch }
+        { chip: S.status.method.testFailed, note: S.ceremony.testFailedLine }
       ])
     })
 
