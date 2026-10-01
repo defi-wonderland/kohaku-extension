@@ -8,7 +8,9 @@ export * from './operations'
 export * from './refusals'
 export {
   renderClientRefusal,
+  renderFailedTestLines,
   renderFinding,
+  renderHeldThreshold,
   renderKindHeader,
   renderKindName,
   renderRefusal,
@@ -23,6 +25,7 @@ export type {
   EditorLoad,
   EditorViewProps,
   EditResult,
+  HeldThresholds,
   PickerEntry,
   PickerTarget,
   Refusal,

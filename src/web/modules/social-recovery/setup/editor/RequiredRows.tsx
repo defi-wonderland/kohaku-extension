@@ -17,13 +17,14 @@ import type { RequiredRowsProps } from './types'
 const RequiredRows = ({
   rows,
   groups,
-  movingRow,
+  rowChoosingGroup,
   addressBook,
   enrollments,
   checking,
   onOpenSlot,
   onMove,
-  onChooseGroup,
+  onOpenGroupChoice,
+  onCloseGroupChoice,
   onRemove,
   onAdd
 }: RequiredRowsProps) => {
@@ -57,7 +58,7 @@ const RequiredRows = ({
                 size="small"
                 text={t('socialRecovery.editor.moveToGroup')}
                 onPress={() =>
-                  groups.length === 1 ? onMove(index, groups[0].index) : onChooseGroup(index)
+                  groups.length === 1 ? onMove(index, groups[0].index) : onOpenGroupChoice(index)
                 }
                 disabled={checking}
                 hasBottomSpacing={false}
@@ -73,7 +74,7 @@ const RequiredRows = ({
               hasBottomSpacing={false}
             />
           </View>
-          {movingRow === index && (
+          {rowChoosingGroup === index && (
             <View style={[flexbox.directionRow, flexbox.wrap]}>
               {groups.map((group, ordinal) => (
                 <Button
@@ -88,6 +89,15 @@ const RequiredRows = ({
                   style={spacings.mrTy}
                 />
               ))}
+              <Button
+                testID={`editor-row-${index}-move-cancel`}
+                type="outline"
+                size="small"
+                text={t('socialRecovery.ceremony.cancelAction')}
+                onPress={onCloseGroupChoice}
+                disabled={checking}
+                hasBottomSpacing={false}
+              />
             </View>
           )}
         </View>

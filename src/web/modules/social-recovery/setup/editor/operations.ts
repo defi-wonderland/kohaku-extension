@@ -296,6 +296,18 @@ export const placeAt = (
 }
 
 /**
+ * The threshold a field's text reads as: a whole number written in digits.
+ * Empty text, a fraction, a sign or any other character reads as none.
+ */
+export const readThreshold = (text: string): number | undefined => {
+  if (!/^[0-9]+$/.test(text)) {
+    return undefined
+  }
+  const value = Number(text)
+  return Number.isSafeInteger(value) ? value : undefined
+}
+
+/**
  * The roles once a credential was placed at a position: a new clause the
  * picker added is a required row, the second method's clause a group, and a
  * clause that took a member keeps its role.

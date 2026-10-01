@@ -17,11 +17,12 @@ import type { GroupListProps } from './types'
  */
 const GroupList = ({
   groups,
+  heldThresholds,
   addressBook,
   enrollments,
   checking,
   onOpenSlot,
-  onThreshold,
+  onThresholdText,
   onMakeRequired,
   onRemoveMember,
   onAddMember,
@@ -52,9 +53,10 @@ const GroupList = ({
           <ThresholdField
             testID={`editor-group-${index}-threshold`}
             threshold={clause.threshold}
+            heldText={heldThresholds[index]}
             members={clause.credentials.length}
             disabled={checking}
-            onChange={(threshold) => onThreshold(index, threshold)}
+            onChangeText={(text) => onThresholdText(index, text)}
           />
           {clause.credentials.map((credential, member) => (
             <View

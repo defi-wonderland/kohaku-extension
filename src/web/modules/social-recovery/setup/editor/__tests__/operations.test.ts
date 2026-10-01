@@ -11,7 +11,7 @@ import en from '@common/config/localization/translations/en.json'
 import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Clause, Finding, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { renderFinding } from '../copy'
+import { renderFailedTestLines, renderFinding } from '../copy'
 import {
   addGroup,
   addMember,
@@ -30,6 +30,7 @@ import {
   pathHolds,
   pickerEntriesOf,
   placeAt,
+  readThreshold,
   removeClause,
   removeMember,
   sameCredential,
@@ -477,5 +478,50 @@ describe('the path check at continue', () => {
       en.socialRecovery.editor.refusals.thresholdAboveMembers
     )
     expect(renderFinding(finding('clause.single-point'), t)).toBe('clause.single-point')
+  })
+})
+
+describe("a threshold field's text", () => {
+  it('reads as the whole number its digits write', () => {
+    expect(readThreshold('0')).toBe(0)
+    expect(readThreshold('3')).toBe(3)
+    expect(readThreshold('007')).toBe(7)
+  })
+
+  it('reads empty text, a fraction, a sign, an exponent, a space, a word or a number past the safe range as none', () => {
+    ;['', ' ', '1.5', '2.', '-1', '+2', '1e2', ' 2', 'two', '99999999999999999999'].forEach(
+      (text) => expect(readThreshold(text)).toBeUndefined()
+    )
+  })
+})
+
+describe('the lines of a failed access test', () => {
+  const failed = (cause?: string) => ({ credential: PASSKEY, test: 'failed' as const, cause })
+
+  it("give the browser's error name, then that the method may never work", () => {
+    expect(renderFailedTestLines(failed('browser-error: NotAllowedError'), t)).toEqual([
+      'NotAllowedError',
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('give the no-match sentence for a check that did not match', () => {
+    expect(renderFailedTestLines(failed('check-rejected'), t)).toEqual([
+      en.socialRecovery.ceremony.testFailedNoMatch,
+      en.socialRecovery.ceremony.testFailedLine
+    ])
+  })
+
+  it('give only the may-never-work line for no cause, an unknown cause or text that is not an error name', () => {
+    ;[undefined, 'timeout', 'browser-error: <b>hi</b>', 'browser-error'].forEach((cause) =>
+      expect(renderFailedTestLines(failed(cause), t)).toEqual([
+        en.socialRecovery.ceremony.testFailedLine
+      ])
+    )
+  })
+
+  it('give nothing for a test that passed or was not run', () => {
+    expect(renderFailedTestLines(enrolled(PASSKEY), t)).toEqual([])
+    expect(renderFailedTestLines({ credential: PASSKEY, test: 'not-tested' }, t)).toEqual([])
   })
 })

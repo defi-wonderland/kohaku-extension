@@ -7,14 +7,15 @@ import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
-import { renderKindName, renderRowChip } from './copy'
+import { renderFailedTestLines, renderKindName, renderRowChip } from './copy'
 import { enrollmentOf, guardianAddressOf, isEmptySlot, kindOf } from './operations'
 import type { CredentialRowProps } from './types'
 
 /**
  * One method of the path: a guardian's short address, its kind, the holder's
- * own label where an enrolled credential carries one, and its chip. An empty
- * slot shows no address and opens the picker when pressed.
+ * own label where an enrolled credential carries one, and its chip, with a
+ * failed test's cause and its warning under them. An empty slot shows no
+ * address and opens the picker when pressed.
  */
 const CredentialRow = ({
   credential,
@@ -30,28 +31,43 @@ const CredentialRow = ({
   const chip = renderRowChip(credential, enrollments, t)
   const label = !empty && credential.label ? credential.label : null
   const address = !empty && kind === 'ecdsa' ? guardianAddressOf(credential) : undefined
-  const backup = empty ? undefined : enrollmentOf(credential, enrollments)?.backup
+  const enrollment = empty ? undefined : enrollmentOf(credential, enrollments)
+  const backup = enrollment?.backup
+  const failedLines = enrollment ? renderFailedTestLines(enrollment, t) : []
 
   const content = (
-    <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
-      {!!address && (
+    <View>
+      <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
+        {!!address && (
+          <Text fontSize={14} weight="medium" style={spacings.mrTy}>
+            {renderShortAddress(address)}
+          </Text>
+        )}
         <Text fontSize={14} weight="medium" style={spacings.mrTy}>
-          {renderShortAddress(address)}
+          {renderKindName(kind, t, backup)}
         </Text>
-      )}
-      <Text fontSize={14} weight="medium" style={spacings.mrTy}>
-        {renderKindName(kind, t, backup)}
-      </Text>
-      {!!label && (
-        <Text fontSize={14} style={spacings.mrTy}>
-          {label}
+        {!!label && (
+          <Text fontSize={14} style={spacings.mrTy}>
+            {label}
+          </Text>
+        )}
+        {!!chip && (
+          <Text fontSize={12} weight="medium" appearance="secondaryText">
+            {chip}
+          </Text>
+        )}
+      </View>
+      {failedLines.map((line) => (
+        <Text
+          key={line}
+          fontSize={12}
+          appearance="errorText"
+          style={spacings.mtMi}
+          testID={testID ? `${testID}-test-line` : undefined}
+        >
+          {line}
         </Text>
-      )}
-      {!!chip && (
-        <Text fontSize={12} weight="medium" appearance="secondaryText">
-          {chip}
-        </Text>
-      )}
+      ))}
     </View>
   )
 

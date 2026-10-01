@@ -1,7 +1,15 @@
+import type { Root as ReactRoot } from 'react-dom/client'
 import { encodeAbiParameters } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
-import type { Address, Clause, Credential, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  Clause,
+  Credential,
+  Hex,
+  SetupDraft,
+  ValidationResult
+} from '@web/modules/social-recovery/sdk-interfaces'
 import { addressBookOf } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,
@@ -88,6 +96,27 @@ export interface StorageDouble extends RecordStorage {
   raw: Map<string, string>
   sets: string[]
   rejectOnce: (operation: 'get' | 'set', record: string) => void
+}
+
+/** The root a view test renders the editor into. */
+export type Root = ReactRoot
+
+/** The fake path check a view test hands the editor's client. */
+export type Validate = (draft: SetupDraft) => Promise<ValidationResult>
+
+/**
+ * What a view test stores before the editor opens, and the client it hands
+ * it: a ready client whose path check is `validate`, or one that loads, is
+ * refused, or asks for a wallet update with `retry`. `beforeRender` reaches
+ * the storage once the records are written and before the editor reads them.
+ */
+export interface MountOptions {
+  clauses?: Clause[]
+  enrollments?: Enrollment[]
+  validate?: Validate
+  client?: 'loading' | 'refused' | 'update-the-wallet'
+  retry?: () => void
+  beforeRender?: (storage: StorageDouble) => void
 }
 
 export const makeStorage = (): StorageDouble => {
