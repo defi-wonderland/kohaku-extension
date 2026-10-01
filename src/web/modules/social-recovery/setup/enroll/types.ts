@@ -313,8 +313,37 @@ export interface PasskeyReport {
   retryWith: (rerun: (stale: PasskeyCeremonyRequest) => Promise<void>) => Promise<void>
 }
 
+/** What the passkey row's ceremony launches read and set. */
+export interface PasskeyLaunchInput
+  extends Pick<
+    RowProps,
+    | 'records'
+    | 'navigate'
+    | 'search'
+    | 'account'
+    | 'chainId'
+    | 'book'
+    | 'client'
+    | 'deps'
+    | 'enrollment'
+  > {
+  /** The name field as the holder left it. */
+  name: string
+  defaultName: string
+  /** Whether the holder chose the phone hand-off to create the passkey. */
+  handOff: boolean
+  setBusy: (busy: boolean) => void
+  setWriteFailed: (failed: boolean) => void
+}
+
+/** The two ceremonies the passkey row opens in the ceremony tab. */
+export interface PasskeyLaunch {
+  create: (handOff: boolean, asName?: string) => Promise<void>
+  runTest: () => Promise<void>
+}
+
 /** The passkey row's state and actions. */
-export interface PasskeyRowState {
+export interface PasskeyRowState extends PasskeyLaunch {
   name: string
   setName: (name: string) => void
   explainer: boolean
@@ -335,8 +364,6 @@ export interface PasskeyRowState {
   canTest: boolean
   canRetryUndelivered: boolean
   place: (placing: PendingPlacement) => Promise<void>
-  create: (handOff: boolean, asName?: string) => Promise<void>
-  runTest: () => Promise<void>
   retryUndelivered: () => Promise<void>
 }
 

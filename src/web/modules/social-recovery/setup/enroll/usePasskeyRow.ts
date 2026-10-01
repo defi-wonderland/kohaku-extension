@@ -9,24 +9,18 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useTranslation } from '@common/config/localization'
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { ceremonyPath, failed } from '@web/modules/social-recovery/shared/ceremony'
+import { failed } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyOutcome, CeremonyReport } from '@web/modules/social-recovery/shared/ceremony'
 
 import { causeOf, testVerdictOf } from './outcome'
 import {
-  clipName,
   defaultPasskeyName,
-  enrollRequestOf,
   enrollValueOf,
   passkeyEnrollmentOf,
-  PASSKEY_SLUG,
   recalledMemory,
-  testRequestRecordOf,
   testValueOf
 } from './passkey'
-import { enrollPathOf } from './search'
 import { sameCredential } from './slot'
-import { testRequestOf } from './testRequest'
 import type {
   PassedTest,
   PasskeyCeremonyRequest,
@@ -35,6 +29,7 @@ import type {
   PendingPlacement,
   RowProps
 } from './types'
+import usePasskeyLaunch from './usePasskeyLaunch'
 import usePasskeyReport from './usePasskeyReport'
 import { placeEnrollment, recordTest } from './writes'
 
@@ -195,80 +190,22 @@ const usePasskeyRow = ({
     }
   })
 
-  const create = useCallback(
-    async (handOff: boolean, asName?: string) => {
-      const userName = asName ?? (clipName(name.trim()) || defaultName)
-      const id = deps.newRequestId()
-      setBusy(true)
-      try {
-        await records.ceremonyRequest(id).write(
-          enrollRequestOf({
-            account,
-            chainId,
-            methodAddress: book.methods.passkey,
-            userName,
-            handOff
-          })
-        )
-      } catch {
-        setWriteFailed(true)
-        setBusy(false)
-        return
-      }
-      navigate(
-        ceremonyPath({
-          call: 'enroll',
-          method: PASSKEY_SLUG,
-          id,
-          handOff,
-          returnTo: enrollPathOf(search, id)
-        })
-      )
-    },
-    [name, defaultName, deps, records, account, chainId, book, navigate, search]
-  )
-
-  const runTest = useCallback(async () => {
-    if (client.status !== 'ready' || !enrollment) {
-      return
-    }
-    const request = testRequestOf({
-      descriptor: client.client.descriptor,
-      chainId,
-      account,
-      method: book.methods.passkey,
-      config: enrollment.credential.config,
-      now: deps.now(),
-      randomBytes: deps.randomBytes
-    })
-    const id = deps.newRequestId()
-    setBusy(true)
-    try {
-      await records.ceremonyRequest(id).write(
-        testRequestRecordOf({
-          account,
-          chainId,
-          request,
-          credentialId: enrollment.credentialId,
-          facts: enrollment.facts,
-          handOff: memory.handOff ?? false
-        })
-      )
-    } catch {
-      setWriteFailed(true)
-      setBusy(false)
-      return
-    }
-    navigate(
-      ceremonyPath({
-        call: 'testAccess',
-        method: PASSKEY_SLUG,
-        id,
-        handOff: false,
-        returnTo: enrollPathOf(search, id)
-      })
-    )
-  }, [client, enrollment, chainId, account, book, deps, records, memory, navigate, search])
+  const { create, runTest } = usePasskeyLaunch({
+    records,
+    navigate,
+    search,
+    account,
+    chainId,
+    book,
+    client,
+    deps,
+    enrollment,
+    name,
+    defaultName,
+    handOff: memory.handOff ?? false,
+    setBusy,
+    setWriteFailed
+  })
 
   const retryUndelivered = useCallback(
     () =>
