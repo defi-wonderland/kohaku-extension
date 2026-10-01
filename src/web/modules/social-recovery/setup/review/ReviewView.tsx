@@ -192,7 +192,12 @@ const ReviewView = ({
       {title}
 
       <View style={spacings.mbLg}>
-        <PathBlock clauses={clauses} enrollments={load.enrollments} addressBook={addressBook} />
+        <PathBlock
+          clauses={clauses}
+          enrollments={load.enrollments}
+          addressBook={addressBook}
+          onRetryTest={() => navigate(WEB_ROUTES.socialRecoverySetupEnroll)}
+        />
         {needsHostileMinorityLine(clauses) &&
           line(t(`${REVIEW}.hostileMinority`), 'review-hostile-minority')}
       </View>

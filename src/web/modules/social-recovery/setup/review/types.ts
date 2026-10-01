@@ -150,6 +150,8 @@ export interface PathBlockProps {
   clauses: readonly Clause[]
   enrollments: readonly Enrollment[]
   addressBook: AddressBook
+  /** Leads the holder to the enrollment step, where a test that could not run runs again. */
+  onRetryTest: () => void
 }
 
 export interface TrustListProps {
