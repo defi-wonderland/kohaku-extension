@@ -4,7 +4,7 @@
  * the cancel costs. Continue stores the length in seconds and opens the
  * privacy step.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -44,7 +44,9 @@ const WaitingPeriodView = ({
   const { theme } = useTheme()
 
   const [choice, setChoice] = useState<WaitChoice>(DEFAULT_CHOICE)
+  const [loaded, setLoaded] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
+  const touched = useRef(false)
   const [writeFailed, setWriteFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -52,6 +54,8 @@ const WaitingPeriodView = ({
 
   useEffect(() => {
     let current = true
+    touched.current = false
+    setLoaded(false)
     // The draft's wait is the one the setup saves; the record stands in only
     // while no draft exists.
     const load = async () => {
@@ -62,9 +66,10 @@ const WaitingPeriodView = ({
       const stored = await setup.waitingPeriod.read()
       return stored.status === 'present' ? stored.value : undefined
     }
+    // A read that settles after the holder picked a length never replaces it.
     load()
       .then((wait) => {
-        if (current && wait !== undefined) {
+        if (current && wait !== undefined && !touched.current) {
           setChoice(choiceOfSeconds(wait))
         }
       })
@@ -73,14 +78,25 @@ const WaitingPeriodView = ({
           setLoadFailed(true)
         }
       })
+      .finally(() => {
+        if (current) {
+          setLoaded(true)
+        }
+      })
     return () => {
       current = false
     }
   }, [setup])
 
-  // A failed load holds continue, so a storage that comes back is never
-  // overwritten with a length the holder did not pick.
-  const hours = loadFailed ? undefined : hoursOfChoice(choice, ceilingHours)
+  const choose = useCallback((picked: WaitChoice) => {
+    touched.current = true
+    setChoice(picked)
+  }, [])
+
+  // Continue is held until the stored wait is read, so the default never
+  // replaces a stored length, and after a failed load, so a storage that
+  // comes back is never overwritten with a length the holder did not pick.
+  const hours = loaded && !loadFailed ? hoursOfChoice(choice, ceilingHours) : undefined
   const custom = choice.kind === 'custom' ? readCustomWait(choice.text, ceilingHours) : undefined
   // A stored chip past the ceiling stays selected with the custom entry's
   // refusal, and continue stays held until the holder picks another length.
@@ -143,11 +159,11 @@ const WaitingPeriodView = ({
               testID={`wait-chip-${id}`}
               accessibilityRole="radio"
               accessibilityState={{ checked: selected }}
-              disabled={isChipPastCeiling(chip, ceilingHours)}
+              disabled={!loaded || isChipPastCeiling(chip, ceilingHours)}
               // The web renderer reads the checked state of a radio from this prop
               // alone; the React Native types do not declare it, so it goes in a spread.
               {...{ accessibilityChecked: selected }}
-              onPress={() => setChoice({ kind: 'chip', id })}
+              onPress={() => choose({ kind: 'chip', id })}
               style={chipStyle(selected)}
             >
               <Text fontSize={14}>{t(`${WAIT}.chips.${id}`)}</Text>
@@ -158,8 +174,9 @@ const WaitingPeriodView = ({
           testID="wait-chip-custom"
           accessibilityRole="radio"
           accessibilityState={{ checked: choice.kind === 'custom' }}
+          disabled={!loaded}
           {...{ accessibilityChecked: choice.kind === 'custom' }}
-          onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
+          onPress={() => choice.kind !== 'custom' && choose({ kind: 'custom', text: '' })}
           style={chipStyle(choice.kind === 'custom')}
         >
           <Text fontSize={14}>{t(`${WAIT}.custom`)}</Text>
@@ -171,7 +188,8 @@ const WaitingPeriodView = ({
             testID="wait-custom-hours"
             value={choice.text}
             keyboardType="number-pad"
-            onChangeText={(typed) => setChoice({ kind: 'custom', text: typed })}
+            disabled={!loaded}
+            onChangeText={(typed) => choose({ kind: 'custom', text: typed })}
             containerStyle={{ ...spacings.mb0, ...spacings.mrSm }}
           />
           <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>

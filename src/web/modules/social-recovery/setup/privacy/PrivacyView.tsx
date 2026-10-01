@@ -5,7 +5,7 @@
  * halves of the trade; at Public no password field renders. Continue stores
  * the level and opens the review.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -52,9 +52,11 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   const [clauses, setClauses] = useState<Clause[]>([])
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+  const [loaded, setLoaded] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
   const [writeFailed, setWriteFailed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const touched = useRef(false)
 
   const setup = useMemo(() => records.setup(chainId, account), [records, chainId, account])
   const book = useMemo(
@@ -64,18 +66,28 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
 
   useEffect(() => {
     let current = true
+    touched.current = false
+    setLoaded(false)
+    // A read that settles after the holder picked a level never replaces it.
     setup.setupDraft
       .read()
       .then((draft) => {
         if (!current || draft.status !== 'present') {
           return
         }
-        setPicked(privacyLevelOf(draft.value.privacy))
+        if (!touched.current) {
+          setPicked(privacyLevelOf(draft.value.privacy))
+        }
         setClauses(draft.value.clauses)
       })
       .catch(() => {
         if (current) {
           setLoadFailed(true)
+        }
+      })
+      .finally(() => {
+        if (current) {
+          setLoaded(true)
         }
       })
     // The holder keeps the password this tab typed; a reload asks for it again.
@@ -114,9 +126,16 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
 
   const hidden = level !== 'public'
   const mismatch = hidden && confirmation !== '' && password !== confirmation
-  // A failed load holds continue, so a storage that comes back is never
-  // overwritten with a level the holder did not pick.
-  const ready = !loadFailed && (!hidden || (password !== '' && password === confirmation))
+  // Continue is held until the stored draft is read, so the default never
+  // replaces a stored level, and after a failed load, so a storage that comes
+  // back is never overwritten with a level the holder did not pick.
+  const ready =
+    loaded && !loadFailed && (!hidden || (password !== '' && password === confirmation))
+
+  const pick = useCallback((offered: OfferedLevel) => {
+    touched.current = true
+    setPicked(offered)
+  }, [])
 
   const onContinue = useCallback(async () => {
     if (!ready) {
@@ -169,10 +188,11 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
           testID={`level-${offered}`}
           accessibilityRole="radio"
           accessibilityState={{ checked: level === offered }}
+          disabled={!loaded}
           // The web renderer reads the checked state of a radio from this prop
           // alone; the React Native types do not declare it, so it goes in a spread.
           {...{ accessibilityChecked: level === offered }}
-          onPress={() => setPicked(offered)}
+          onPress={() => pick(offered)}
           style={radioStyle(level === offered)}
         >
           <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
@@ -217,12 +237,14 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
             testID="password"
             label={t(`${LEVEL}.passwordLabel`)}
             value={password}
+            disabled={!loaded}
             onChangeText={setPassword}
           />
           <InputPassword
             testID="password-confirmation"
             label={t(`${LEVEL}.confirmLabel`)}
             value={confirmation}
+            disabled={!loaded}
             onChangeText={setConfirmation}
           />
           {mismatch && (
