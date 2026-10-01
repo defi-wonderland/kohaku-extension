@@ -32,21 +32,33 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
 
   const headingText = (heading: TrustHeading, row: TrustRow): string => {
     if (heading.kind === 'ecdsa') {
-      if (!heading.guardian) return renderNoun('guardian', t)
+      if (!heading.guardian) {
+        return renderNoun('guardian', t)
+      }
       const address = renderFullAddress(heading.guardian)
       return heading.tested
         ? t(`${TRUST}.guardianHeadingTested`, { address })
         : t(`${TRUST}.guardianHeading`, { address })
     }
-    if (heading.kind === 'passkey') return heading.credential.label || kindNameOf('passkey', t)
-    if (heading.kind) return kindNameOf(heading.kind, t)
+    if (heading.kind === 'passkey') {
+      return heading.credential.label || kindNameOf('passkey', t)
+    }
+    if (heading.kind) {
+      return kindNameOf(heading.kind, t)
+    }
     return renderFullAddress(row.method)
   }
 
   const headingLinesOf = (heading: TrustHeading): string[] => {
-    if (heading.kind === 'ecdsa') return [t('socialRecovery.disclosures.smartAccount')]
-    if (isEmptySlot(heading.credential)) return []
-    if (heading.kind === 'passkey') return passkeyLinesOf(heading.backup, t)
+    if (heading.kind === 'ecdsa') {
+      return [t('socialRecovery.disclosures.smartAccount')]
+    }
+    if (isEmptySlot(heading.credential)) {
+      return []
+    }
+    if (heading.kind === 'passkey') {
+      return passkeyLinesOf(heading.backup, t)
+    }
     if (heading.kind === 'zkpassport' || heading.kind === 'aadhaar') {
       return [t('socialRecovery.disclosures.identity')]
     }
@@ -55,7 +67,9 @@ const TrustList = ({ rows, client, providerKind, onRetry }: TrustListProps) => {
 
   const renderContract = (row: TrustRow, testID: string) => {
     const { contract } = row
-    if (contract.status === 'pending') return <ActivityIndicator testID={`${testID}-pending`} />
+    if (contract.status === 'pending') {
+      return <ActivityIndicator testID={`${testID}-pending`} />
+    }
     if (contract.status === 'unavailable') {
       return (
         <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>

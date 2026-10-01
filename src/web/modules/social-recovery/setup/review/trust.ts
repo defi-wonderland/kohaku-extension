@@ -30,7 +30,9 @@ export const methodOfCredential = (
   credential: Credential,
   addressBook: AddressBook
 ): Address | undefined => {
-  if (!isEmptySlot(credential)) return credential.method
+  if (!isEmptySlot(credential)) {
+    return credential.method
+  }
   const kind = kindOf(credential, addressBook)
   return kind ? addressBook.methods[kind] : undefined
 }
@@ -85,11 +87,17 @@ const contractOf = (
     return { status: 'pending' }
   }
   const unanswered = TRUST_READ_NAMES.filter((name) => reads[name]?.answered === false)
-  if (unanswered.length > 0) return { status: 'unavailable', unanswered }
+  if (unanswered.length > 0) {
+    return { status: 'unavailable', unanswered }
+  }
   const { trustedParties, moduleInfo } = reads
-  if (!trustedParties?.answered || !moduleInfo?.answered) return { status: 'pending' }
+  if (!trustedParties?.answered || !moduleInfo?.answered) {
+    return { status: 'pending' }
+  }
   const shipped = input.shippedMethods.some((address) => sameAddress(address, method))
-  if (!shipped || !moduleInfo.value.supportsInterface) return { status: 'third-party' }
+  if (!shipped || !moduleInfo.value.supportsInterface) {
+    return { status: 'third-party' }
+  }
   const admin = nonZero(trustedParties.value.admin)
   return {
     status: 'declared',

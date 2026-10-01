@@ -56,9 +56,15 @@ const ReviewScreen = () => {
   const { status, retry } = clientState
   const kit = clientState.status === 'ready' ? clientState.client : null
   const client = useMemo<ReviewClient>(() => {
-    if (kit) return { status: 'ready', client: kit }
-    if (status === 'loading') return { status: 'loading' }
-    if (status === 'update-the-wallet') return { status: 'update-the-wallet', retry }
+    if (kit) {
+      return { status: 'ready', client: kit }
+    }
+    if (status === 'loading') {
+      return { status: 'loading' }
+    }
+    if (status === 'update-the-wallet') {
+      return { status: 'update-the-wallet', retry }
+    }
     return { status: 'failed', retry }
   }, [kit, status, retry])
 

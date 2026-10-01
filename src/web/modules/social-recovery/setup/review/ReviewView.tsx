@@ -64,7 +64,9 @@ const ReviewView = ({
     const setup = records.setup(chainId, account)
     Promise.all([setup.setupDraft.read(), setup.enrollments.read(), setup.passwordSet.read()])
       .then(([draft, enrollments, passwordSet]) => {
-        if (!live) return
+        if (!live) {
+          return
+        }
         setLoad({
           draft: draft.status === 'present' ? draft.value : defaultSetupDraft(),
           enrollments: enrollments.status === 'present' ? enrollments.value : [],
@@ -72,7 +74,9 @@ const ReviewView = ({
         })
       })
       .catch(() => {
-        if (live) setLoadFailed(true)
+        if (live) {
+          setLoadFailed(true)
+        }
       })
     return () => {
       live = false
