@@ -25,6 +25,7 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const { encodeAbiParameters }: typeof import('viem') = require('viem')
 const React: typeof import('react') = require('react')
 const {
   parse,
@@ -47,13 +48,15 @@ const {
   clausesOfShape
 }: typeof import('@web/modules/social-recovery/setup/presets') = require('@web/modules/social-recovery/setup/presets')
 const {
-  DEADLINE_LOCALE
+  DEADLINE_LOCALE,
+  renderShortAddress
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const PresetsView: typeof import('../PresetsView').default = require('../PresetsView').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const CHAIN_ID = 11155111
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
+const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
 const BOOK = addressBookOf(WALLET_RECOVERY_CHAIN)
 const S = en.socialRecovery
 
@@ -79,7 +82,9 @@ const makeStorage = (
   const raw = new Map<string, string>()
   return {
     get: async (key, defaultValue) => {
-      if (faults.get) throw new Error('storage unavailable')
+      if (faults.get) {
+        throw new Error('storage unavailable')
+      }
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
     },
@@ -95,7 +100,9 @@ const makeStorage = (
       return null
     },
     remove: async (key) => {
-      if (faults.remove) throw new Error('storage unavailable')
+      if (faults.remove) {
+        throw new Error('storage unavailable')
+      }
       raw.delete(key)
       return null
     },
@@ -110,10 +117,34 @@ const makeStorage = (
       )
     },
     removeKeys: async (keys) => {
-      if (faults.remove) throw new Error('storage unavailable')
+      if (faults.remove) {
+        throw new Error('storage unavailable')
+      }
       keys.forEach((key) => raw.delete(key))
     }
   }
+}
+
+// Holds every read of one account's records while `held` is on, until the
+// test releases them.
+const holdReads = (storage: RecordStorage, account: Address) => {
+  const waiting: (() => void)[] = []
+  const hold = {
+    held: false,
+    release: () => waiting.splice(0).forEach((resume) => resume()),
+    storage: {
+      ...storage,
+      get: async (key, defaultValue) => {
+        if (hold.held && key?.includes(account.toLowerCase())) {
+          await new Promise<void>((resume) => {
+            waiting.push(resume)
+          })
+        }
+        return storage.get(key, defaultValue)
+      }
+    } as RecordStorage
+  }
+  return hold
 }
 
 // The words any line about a guided setup would use.
@@ -142,14 +173,14 @@ describe('the presets view', () => {
 
   const setup = () => records.setup(CHAIN_ID, ACCOUNT)
 
-  const mount = async () => {
+  const mount = async (account: Address = ACCOUNT) => {
     await act(async () => {
       root.render(
         <ThemeContext.Provider value={THEME_CONTEXT}>
           <PresetsView
             records={records}
             chainId={CHAIN_ID}
-            account={ACCOUNT}
+            account={account}
             onOpenEditor={onOpenEditor}
             onRecover={onRecover}
           />
@@ -168,7 +199,9 @@ describe('the presets view', () => {
 
   const press = async (id: string) => {
     const node = byTestId(id)
-    if (!node) throw new Error(`nothing to press: ${id}`)
+    if (!node) {
+      throw new Error(`nothing to press: ${id}`)
+    }
     await act(async () => {
       node.click()
     })
@@ -176,7 +209,9 @@ describe('the presets view', () => {
 
   const storedDraft = async (): Promise<SetupDraft> => {
     const read = await setup().setupDraft.read()
-    if (read.status !== 'present') throw new Error('no draft stored')
+    if (read.status !== 'present') {
+      throw new Error('no draft stored')
+    }
     return read.value
   }
 
@@ -667,6 +702,152 @@ describe('the presets view', () => {
         `Your setup is unfinished. Draft from ${dayAndMonth}. Nothing is saved on chain until you confirm.`
       )
       expect(line).not.toMatch(/[0-9]{1,2}:[0-9]{2}|\b(AM|PM|UTC|GMT)\b|2026/)
+    })
+
+    const failedPasskey = (cause: string): Enrollment => ({
+      credential: { method: BOOK.methods.passkey, config: '0x01' },
+      test: 'failed',
+      backup: 'synced',
+      cause
+    })
+
+    it('shows beside a failed passkey test the browser error it reported', async () => {
+      await storeOn({}, [], [failedPasskey('browser-error: NotAllowedError')])
+      await mount()
+      expect(allByTestId('resume-note')).toEqual(['NotAllowedError'])
+      expect(allByTestId('resume-row')).toEqual([
+        `${S.methodNames.passkey}NotAllowedError${S.status.method.testFailed}`
+      ])
+    })
+
+    it('shows beside a failed passkey test the words of the cause it reported', async () => {
+      await storeOn({}, [], [failedPasskey('check-rejected')])
+      await mount()
+      expect(allByTestId('resume-note')).toEqual([S.ceremony.testFailedNoMatch])
+      expect(allByTestId('resume-row')).toEqual([
+        `${S.methodNames.passkey}${S.ceremony.testFailedNoMatch}${S.status.method.testFailed}`
+      ])
+    })
+
+    const GUARDIANS: Address[] = [
+      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '0xcccccccccccccccccccccccccccccccccccccccc'
+    ]
+    const guardianAt = (index: number, test: Enrollment['test'], cause?: string): Enrollment => ({
+      credential: {
+        method: BOOK.methods.ecdsa,
+        config: encodeAbiParameters([{ type: 'address' }], [GUARDIANS[index]])
+      },
+      test,
+      cause
+    })
+
+    it('shows three guardians on three rows with their own outcomes, and the not-yet-active note once', async () => {
+      await storeOn(
+        {},
+        [],
+        [
+          guardianAt(0, 'passed'),
+          guardianAt(1, 'not-tested'),
+          guardianAt(2, 'failed', 'check-rejected')
+        ]
+      )
+      await mount()
+      const guardian = S.display.nouns.guardian
+      expect(allByTestId('resume-row')).toEqual([
+        `${guardian}${renderShortAddress(GUARDIANS[0])}${S.status.method.tested}`,
+        `${guardian}${renderShortAddress(GUARDIANS[1])}${S.status.method.notTested}`,
+        `${guardian}${renderShortAddress(GUARDIANS[2])}${S.ceremony.testFailedNoMatch}${
+          S.status.method.testFailed
+        }`
+      ])
+      expect(allByTestId('not-yet-active')).toEqual([
+        `${S.presets.resume.addedNotSaved.replace('{{count}}', '3')}${S.status.method.notYetActive}`
+      ])
+    })
+
+    it('shows no not-yet-active note without a guardian', async () => {
+      await storeOn({}, [], [DEVICE_PASSKEY])
+      await mount()
+      expect(byTestId('not-yet-active')).toBeNull()
+    })
+  })
+
+  describe('the cards as radios', () => {
+    const CHOICES: PresetChoice[] = [
+      'deviceAndGuardians',
+      'deviceAndId',
+      'eitherOne',
+      'guardiansOnly',
+      'fromScratch'
+    ]
+    const checked = () =>
+      CHOICES.map((choice) => byTestId(`preset-${choice}`)?.getAttribute('aria-checked'))
+
+    it('marks no card checked before a pick', async () => {
+      await mount()
+      expect(checked()).toEqual(CHOICES.map(() => 'false'))
+    })
+
+    it('marks the picked card checked and every other card not checked', async () => {
+      await mount()
+      await press('preset-eitherOne')
+      expect(checked()).toEqual(['false', 'false', 'true', 'false', 'false'])
+      await press('preset-fromScratch')
+      expect(checked()).toEqual(['false', 'false', 'false', 'false', 'true'])
+    })
+  })
+
+  describe('another account', () => {
+    const other = () => records.setup(CHAIN_ID, OTHER_ACCOUNT)
+
+    const draftFor = async (setupRecords: ReturnType<typeof setup>, passkey: Enrollment) => {
+      await setupRecords.setupDraft.write({
+        wait: 172800n,
+        clauses: [],
+        ignoresPause: true,
+        privacy: { backup: 'encrypted', publicMetadata: '0x' }
+      })
+      await setupRecords.enrollments.write([passkey])
+    }
+
+    it("a read of the first account that ends after the switch does not replace the other's draft", async () => {
+      const held = holdReads(makeStorage(), ACCOUNT)
+      records = createWalletRecords({ storage: held.storage, now: () => DRAFTED_AT })
+      await draftFor(other(), DEVICE_PASSKEY)
+      held.held = true
+      await mount(ACCOUNT)
+      await mount(OTHER_ACCOUNT)
+      expect(allByTestId('resume-row')).toEqual([
+        `${S.methodNames.passkeyOnThisDevice}${S.status.method.tested}`
+      ])
+      await act(async () => {
+        held.release()
+      })
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(byTestId('customize')).toBeNull()
+      expect(allByTestId('resume-row')).toEqual([
+        `${S.methodNames.passkeyOnThisDevice}${S.status.method.tested}`
+      ])
+      const enrollments = await other().enrollments.read()
+      expect(enrollments.status === 'present' && enrollments.value).toEqual([DEVICE_PASSKEY])
+    })
+
+    it("a read of the first account's draft that ends after the switch does not show it for the other", async () => {
+      const held = holdReads(makeStorage(), ACCOUNT)
+      records = createWalletRecords({ storage: held.storage, now: () => DRAFTED_AT })
+      await draftFor(setup(), DEVICE_PASSKEY)
+      held.held = true
+      await mount(ACCOUNT)
+      await mount(OTHER_ACCOUNT)
+      expect(byTestId('presets-grid')).not.toBeNull()
+      await act(async () => {
+        held.release()
+      })
+      expect(byTestId('presets-resume')).toBeNull()
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(byTestId('resume-row')).toBeNull()
     })
   })
 })

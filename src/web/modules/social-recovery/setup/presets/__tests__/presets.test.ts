@@ -5,7 +5,7 @@
  * the draft reads back as the extension would read it. The strings come from
  * the real en.json through the app's own i18next instance.
  */
-import { zeroAddress } from 'viem'
+import { encodeAbiParameters, zeroAddress } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import i18n from '@common/config/localization'
@@ -27,7 +27,7 @@ import {
 } from '@web/modules/social-recovery/setup/presets'
 import type { PresetChoice, PresetId, SlotKind } from '@web/modules/social-recovery/setup/presets'
 import { addressBookOf, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
-import { DEADLINE_LOCALE } from '@web/modules/social-recovery/shared/display'
+import { DEADLINE_LOCALE, renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import {
   createWalletRecords,
   ENROLLMENT_TEST_VERDICTS,
@@ -46,6 +46,7 @@ const CHAIN_ID = 11155111
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 const UNKNOWN_METHOD: Address = '0x3333333333333333333333333333333333333333'
 const BOOK = addressBookOf(WALLET_RECOVERY_CHAIN)
+const S = en.socialRecovery
 
 const makeStorage = (): RecordStorage => {
   const raw = new Map<string, string>()
@@ -82,7 +83,9 @@ const setupOn = () => {
 
 const readDraft = async (setup: SetupRecords): Promise<SetupDraft> => {
   const read = await setup.setupDraft.read()
-  if (read.status !== 'present') throw new Error('no draft stored')
+  if (read.status !== 'present') {
+    throw new Error('no draft stored')
+  }
   return read.value
 }
 
@@ -324,6 +327,132 @@ describe('the resume rows', () => {
 
   it('shows no row for no enrollment', () => {
     expect(resumeRowsOf([], BOOK, t)).toEqual([])
+  })
+
+  describe('a failed test', () => {
+    const failedPasskey = (cause?: string): Enrollment => ({
+      ...passkey('failed', 'synced'),
+      cause
+    })
+
+    it('shows the name of the browser error the test reported', () => {
+      const [row] = resumeRowsOf([failedPasskey('browser-error: NotAllowedError')], BOOK, t)
+      expect(row).toMatchObject({
+        name: S.methodNames.passkey,
+        chip: S.status.method.testFailed,
+        note: 'NotAllowedError'
+      })
+    })
+
+    it('shows the words of each cause the wallet has words for', () => {
+      const rows = resumeRowsOf(
+        [failedPasskey('check-rejected'), failedPasskey('relying-party-mismatch')],
+        BOOK,
+        t
+      )
+      expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual([
+        { chip: S.status.method.testFailed, note: S.ceremony.testFailedNoMatch },
+        { chip: S.status.method.testFailed, note: S.ceremony.relyingPartyMismatch }
+      ])
+    })
+
+    it('shows no cause it has no words for, and none that is not a browser error name', () => {
+      const rows = resumeRowsOf(
+        [
+          failedPasskey(),
+          failedPasskey('thrown'),
+          failedPasskey('browser-error: not an error name'),
+          failedPasskey('browser-error')
+        ],
+        BOOK,
+        t
+      )
+      expect(rows.map(({ chip, note }) => ({ chip, note }))).toEqual(
+        rows.map(() => ({ chip: S.status.method.testFailed, note: undefined }))
+      )
+    })
+
+    it('shows no cause beside a test that did not fail', () => {
+      const rows = resumeRowsOf(
+        (['passed', 'not-tested', 'unavailable'] as EnrollmentTestVerdict[]).map((test) => ({
+          ...passkey(test, 'synced'),
+          cause: 'check-rejected'
+        })),
+        BOOK,
+        t
+      )
+      expect(rows.map(({ note }) => note)).toEqual([undefined, undefined, undefined])
+    })
+  })
+
+  describe('the guardians', () => {
+    const GUARDIANS: Address[] = [
+      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '0xcccccccccccccccccccccccccccccccccccccccc'
+    ]
+    const guardianAt = (
+      address: Address,
+      test: EnrollmentTestVerdict,
+      cause?: string
+    ): Enrollment => ({
+      credential: {
+        method: BOOK.methods.ecdsa,
+        config: encodeAbiParameters([{ type: 'address' }], [address])
+      },
+      test,
+      cause
+    })
+    const THREE = [
+      guardianAt(GUARDIANS[0], 'passed'),
+      guardianAt(GUARDIANS[1], 'not-tested'),
+      guardianAt(GUARDIANS[2], 'failed', 'check-rejected')
+    ]
+
+    it('gives each of three guardians its own row with its address, its outcome and a failed cause', () => {
+      expect(resumeRowsOf(THREE, BOOK, t)).toEqual([
+        {
+          id: '0',
+          name: S.display.nouns.guardian,
+          chip: S.status.method.tested,
+          detail: renderShortAddress(GUARDIANS[0])
+        },
+        {
+          id: '1',
+          name: S.display.nouns.guardian,
+          chip: S.status.method.notTested,
+          detail: renderShortAddress(GUARDIANS[1])
+        },
+        {
+          id: '2',
+          name: S.display.nouns.guardian,
+          chip: S.status.method.testFailed,
+          detail: renderShortAddress(GUARDIANS[2]),
+          note: S.ceremony.testFailedNoMatch
+        }
+      ])
+    })
+
+    it('notes once that the three are not yet active', () => {
+      expect(notYetActiveOf(THREE, BOOK, t)).toEqual({
+        chip: S.status.method.notYetActive,
+        note: t('socialRecovery.presets.resume.addedNotSaved', { count: 3 })
+      })
+    })
+
+    it('gives a guardian whose stored config holds no address its row with no address', () => {
+      const [row] = resumeRowsOf([guardian('0x0a')], BOOK, t)
+      expect(row).toEqual({
+        id: '0',
+        name: S.display.nouns.guardian,
+        chip: S.status.method.notTested
+      })
+    })
+
+    it('notes nothing when no guardian was added', () => {
+      expect(notYetActiveOf([passkey('passed', 'synced')], BOOK, t)).toBeNull()
+      expect(notYetActiveOf([], BOOK, t)).toBeNull()
+    })
   })
 })
 
