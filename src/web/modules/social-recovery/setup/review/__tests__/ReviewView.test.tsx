@@ -348,13 +348,37 @@ describe('the path rows', () => {
     })
   })
 
-  it('show a failed check that did not match by that line alone', async () => {
-    await mount({
-      clauses: [required(ALICE)],
-      enrollments: [enrolled(ALICE, 'failed', { cause: 'check-rejected' })]
-    })
+  const FAILED_LINES: [Enrollment['credential'], string | undefined, string][] = [
+    [ALICE, 'check-rejected', `${CEREMONY}.testFailedNoMatch`],
+    [ALICE, 'check-rejected: signer mismatch', `${CEREMONY}.testFailedNoMatch`],
+    [PASSKEY, 'browser-error: NotAllowedError', `${CEREMONY}.testFailedLine`],
+    [PASSKEY, 'relying-party-mismatch: SecurityError', `${CEREMONY}.testFailedLine`],
+    [ALICE, 'service-unanswered', `${CEREMONY}.testFailedLine`],
+    [ALICE, undefined, `${CEREMONY}.testFailedLine`]
+  ]
+  FAILED_LINES.forEach(([credential, cause, line]) => {
+    it(`show a failed test stored with ${
+      cause ? `the cause "${cause}"` : 'no cause'
+    } by one line`, async () => {
+      await mount({
+        clauses: [required(credential)],
+        enrollments: [enrolled(credential, 'failed', cause === undefined ? {} : { cause })]
+      })
 
-    expect(textsStartingWith('review-row-0-0-line-')).toEqual([t(`${CEREMONY}.testFailedNoMatch`)])
+      expect(textsStartingWith('review-row-0-0-line-')).toEqual([t(line)])
+    })
+  })
+
+  const UNFAILED_LINES: [Enrollment['test'], string[]][] = [
+    ['passed', []],
+    ['not-tested', [t(`${CEREMONY}.notTestedLine`)]]
+  ]
+  UNFAILED_LINES.forEach(([test, lines]) => {
+    it(`show no failed line on a ${test} test`, async () => {
+      await mount({ clauses: [required(ALICE)], enrollments: [enrolled(ALICE, test)] })
+
+      expect(textsStartingWith('review-row-0-0-line-')).toEqual(lines)
+    })
   })
 
   /** The path and the query of the one place the review navigated to. */
@@ -404,15 +428,6 @@ describe('the path rows', () => {
     expect(textOf('review-row-0-0-chip')).toBe(t('socialRecovery.status.method.testUnavailable'))
     expect(textOf('review-row-1-0-chip')).toBe(t('socialRecovery.status.method.testUnavailable'))
     expect(container.querySelectorAll('[data-testid$="-retry-test"]')).toHaveLength(0)
-  })
-
-  it('show a passkey made under another origin as a method that may never work', async () => {
-    await mount({
-      clauses: [required(PASSKEY)],
-      enrollments: [enrolled(PASSKEY, 'failed', { cause: 'relying-party-mismatch: SecurityError' })]
-    })
-
-    expect(textsStartingWith('review-row-0-0-line-')).toEqual([t(`${CEREMONY}.testFailedLine`)])
   })
 
   it('offer no test again on a test that ran', async () => {
