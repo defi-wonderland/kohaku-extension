@@ -59,7 +59,7 @@ import {
   type CredentialsLike,
   relyingPartyOf
 } from '@web/modules/social-recovery/shared/ceremony'
-import { toBase64Url } from '@web/modules/social-recovery/shared/webauthn'
+import { normalizeP256S, toBase64Url } from '@web/modules/social-recovery/shared/webauthn'
 import { bytesToBigInt, keccak256, sha256, stringToBytes, stringToHex, zeroAddress } from 'viem'
 
 /** The attempt statuses a test can script. */
@@ -458,10 +458,10 @@ export const generateKey = async () => {
   return { privateKey: pair.privateKey, point: { x: raw.slice(1, 33), y: raw.slice(33, 65) } }
 }
 
-export type Key = Awaited<ReturnType<typeof generateKey>>
+type Key = Awaited<ReturnType<typeof generateKey>>
 
 /** The browser's credential, which the SDK's own `Credential` shadows in this file. */
-export type WebAuthnCredential = Awaited<ReturnType<CredentialsLike['create']>>
+type WebAuthnCredential = Awaited<ReturnType<CredentialsLike['create']>>
 
 export const clientDataOf = (challenge: Uint8Array, origin = webAuthnFakes().EXTENSION_ORIGIN) =>
   stringToBytes(JSON.stringify({ type: 'webauthn.get', challenge: toBase64Url(challenge), origin }))
@@ -501,7 +501,7 @@ export const signedAssertion = async (
   )
   const r = bytesToBigInt(raw.slice(0, 32))
   const low = bytesToBigInt(raw.slice(32))
-  const lowS = low > P256_N / BigInt(2) ? P256_N - low : low
+  const lowS = normalizeP256S(low)
   const signature = derSignature(r, highS ? P256_N - lowS : lowS)
   const rawId = Uint8Array.from({ length: 20 }, (_, i) => i + 1)
   return {

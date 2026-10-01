@@ -81,6 +81,10 @@ eachDescribe(METHOD_KINDS)('the %s config codec', (kind) => {
     expect(codec.encodeConfig(codec.decodeConfig(config))).toBe(config)
   })
 
+  it('decodes the canonical config written in upper-case hex to the same fields', () => {
+    expect(codec.decodeConfig(`0x${config.slice(2).toUpperCase()}`)).toEqual(CONFIG_FIELDS[kind])
+  })
+
   it('refuses a config with four bytes appended', () => {
     expect(() => codec.decodeConfig(concat([config, '0xdeadbeef']))).toThrow()
   })
