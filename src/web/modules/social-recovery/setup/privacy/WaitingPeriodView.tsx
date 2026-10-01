@@ -54,16 +54,22 @@ const WaitingPeriodView = ({
     // while no draft exists.
     const load = async () => {
       const draft = await setup.setupDraft.read()
-      if (draft.status === 'present') return draft.value.wait
+      if (draft.status === 'present') {
+        return draft.value.wait
+      }
       const stored = await setup.waitingPeriod.read()
       return stored.status === 'present' ? stored.value : undefined
     }
     load()
       .then((wait) => {
-        if (current && wait !== undefined) setChoice(choiceOfSeconds(wait))
+        if (current && wait !== undefined) {
+          setChoice(choiceOfSeconds(wait))
+        }
       })
       .catch(() => {
-        if (current) setLoadFailed(true)
+        if (current) {
+          setLoadFailed(true)
+        }
       })
     return () => {
       current = false
@@ -76,7 +82,9 @@ const WaitingPeriodView = ({
   const custom = choice.kind === 'custom' ? readCustomWait(choice.text, ceilingHours) : undefined
 
   const onContinue = useCallback(async () => {
-    if (hours === undefined) return
+    if (hours === undefined) {
+      return
+    }
     setBusy(true)
     try {
       await writeWaitingPeriod(setup, secondsOfHours(hours))

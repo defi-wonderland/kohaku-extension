@@ -33,10 +33,18 @@ const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | u
 const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
   const passkeys = kinds.filter((kind) => kind === 'passkey').length
   const items: string[] = []
-  if (passkeys === 1) items.push('passkey')
-  if (passkeys > 1) items.push('passkeys')
-  if (kinds.includes('zkpassport')) items.push('passport')
-  if (kinds.includes('aadhaar')) items.push('aadhaar')
+  if (passkeys === 1) {
+    items.push('passkey')
+  }
+  if (passkeys > 1) {
+    items.push('passkeys')
+  }
+  if (kinds.includes('zkpassport')) {
+    items.push('passport')
+  }
+  if (kinds.includes('aadhaar')) {
+    items.push('aadhaar')
+  }
   return items
 }
 
@@ -52,8 +60,12 @@ const unguessableKeyOf = (items: string[]) =>
 const joinItems = ([lead, ...rest]: string[], t: Translate): string => {
   const first = t(`${ITEMS_LEAD}.${lead}`)
   const [second, third] = rest.map((item) => t(`${ITEMS}.${item}`))
-  if (third !== undefined) return t(`${ITEMS}.triple`, { first, second, third })
-  if (second !== undefined) return t(`${ITEMS}.pair`, { first, second })
+  if (third !== undefined) {
+    return t(`${ITEMS}.triple`, { first, second, third })
+  }
+  if (second !== undefined) {
+    return t(`${ITEMS}.pair`, { first, second })
+  }
   return first
 }
 
@@ -74,7 +86,9 @@ export const exposureLinesOf = (
     .map((credential) => methodKindOf(credential, book))
     .filter((kind): kind is MethodKind => kind !== undefined)
   const publication = t(`${EXPOSURE}.publication`)
-  if (level === 'public' || !kinds.includes('ecdsa')) return { publication }
+  if (level === 'public' || !kinds.includes('ecdsa')) {
+    return { publication }
+  }
   const items = unguessableItemsOf(kinds)
   return {
     guardians: t(`${EXPOSURE}.guardians`),

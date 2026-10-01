@@ -14,17 +14,27 @@ export const secondsOfHours = (hours: number): SetupDraft['wait'] =>
  * never turns into another length. The ceiling is checked before the floor.
  */
 export const readCustomWait = (text: string, ceilingHours: number): CustomWait => {
-  if (text === '') return { status: 'empty' }
-  if (!/^[0-9]+$/.test(text)) return { status: 'notWholeHours' }
+  if (text === '') {
+    return { status: 'empty' }
+  }
+  if (!/^[0-9]+$/.test(text)) {
+    return { status: 'notWholeHours' }
+  }
   const hours = Number(text)
-  if (hours > ceilingHours) return { status: 'pastCeiling' }
-  if (hours < WAIT_FLOOR_HOURS) return { status: 'belowMinimum' }
+  if (hours > ceilingHours) {
+    return { status: 'pastCeiling' }
+  }
+  if (hours < WAIT_FLOOR_HOURS) {
+    return { status: 'belowMinimum' }
+  }
   return { status: 'accepted', hours }
 }
 
 /** The length the picker holds in hours, or undefined while the custom entry is empty or refused. */
 export const hoursOfChoice = (choice: WaitChoice, ceilingHours: number): number | undefined => {
-  if (choice.kind === 'chip') return WAIT_CHIPS.find(({ id }) => id === choice.id)?.hours
+  if (choice.kind === 'chip') {
+    return WAIT_CHIPS.find(({ id }) => id === choice.id)?.hours
+  }
   const custom = readCustomWait(choice.text, ceilingHours)
   return custom.status === 'accepted' ? custom.hours : undefined
 }

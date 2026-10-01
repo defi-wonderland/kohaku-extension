@@ -41,8 +41,12 @@ export const writeWaitingPeriod = async (
  * note of the draft's shape and wait; at Public a clear backup and no note.
  */
 export const privacyOfLevel = (draft: SetupDraft, level: OfferedLevel): SetupDraft['privacy'] => {
-  if (level === 'public') return { backup: 'clear', publicMetadata: '0x' }
-  if (level === 'private') return { backup: 'encrypted', publicMetadata: '0x' }
+  if (level === 'public') {
+    return { backup: 'clear', publicMetadata: '0x' }
+  }
+  if (level === 'private') {
+    return { backup: 'encrypted', publicMetadata: '0x' }
+  }
   const { clauses, wait, ignoresPause } = draft
   return { backup: 'encrypted', publicMetadata: shapeNoteOf({ clauses, wait, ignoresPause }) }
 }
@@ -79,8 +83,11 @@ export const writePrivacy = async (
     privacy: privacyOfLevel(earlier, choice.level)
   })
   try {
-    if (choice.level !== 'public') await setup.passwordSet.write(PASSWORD_SET)
-    else await setup.passwordSet.wipe()
+    if (choice.level !== 'public') {
+      await setup.passwordSet.write(PASSWORD_SET)
+    } else {
+      await setup.passwordSet.wipe()
+    }
   } catch (error: unknown) {
     const rollback =
       draft.status === 'present'
@@ -89,6 +96,9 @@ export const writePrivacy = async (
     await rollback.catch(() => undefined)
     throw error
   }
-  if (choice.level !== 'public') setRecoveryPassword(chainId, account, choice.password)
-  else wipeRecoveryPassword(chainId, account)
+  if (choice.level !== 'public') {
+    setRecoveryPassword(chainId, account, choice.password)
+  } else {
+    wipeRecoveryPassword(chainId, account)
+  }
 }

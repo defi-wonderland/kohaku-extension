@@ -58,12 +58,16 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
     setup.setupDraft
       .read()
       .then((draft) => {
-        if (!current || draft.status !== 'present') return
+        if (!current || draft.status !== 'present') {
+          return
+        }
         setPicked(privacyLevelOf(draft.value.privacy))
         setClauses(draft.value.clauses)
       })
       .catch(() => {
-        if (current) setLoadFailed(true)
+        if (current) {
+          setLoadFailed(true)
+        }
       })
     // The holder keeps the password this tab typed; a reload asks for it again.
     const held = readRecoveryPassword(chainId, account)
@@ -106,7 +110,9 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   const ready = !loadFailed && (!hidden || (password !== '' && password === confirmation))
 
   const onContinue = useCallback(async () => {
-    if (!ready) return
+    if (!ready) {
+      return
+    }
     setBusy(true)
     try {
       await writePrivacy(
