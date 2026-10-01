@@ -624,9 +624,11 @@ export class ZkPassportMethodDouble extends MethodDouble {
   readonly codec: IMethodCodec<ZkPassportConfigFields, ProofFields> = {
     encodeConfig: ({ uniqueIdentifier }) =>
       encodeAbiParameters([{ type: 'bytes32' }], [uniqueIdentifier]),
-    decodeConfig: (config) => ({
-      uniqueIdentifier: decodeAbiParameters([{ type: 'bytes32' }], config)[0]
-    }),
+    decodeConfig: (config) => {
+      const [uniqueIdentifier] = decodeAbiParameters([{ type: 'bytes32' }], config)
+      refuseNonCanonical(config, encodeAbiParameters([{ type: 'bytes32' }], [uniqueIdentifier]))
+      return { uniqueIdentifier }
+    },
     ...opaqueProof
   }
 
@@ -694,9 +696,11 @@ export class AadhaarMethodDouble extends MethodDouble {
 
   readonly codec: IMethodCodec<AadhaarConfigFields, ProofFields> = {
     encodeConfig: ({ nullifier }) => encodeAbiParameters([{ type: 'bytes32' }], [nullifier]),
-    decodeConfig: (config) => ({
-      nullifier: decodeAbiParameters([{ type: 'bytes32' }], config)[0]
-    }),
+    decodeConfig: (config) => {
+      const [nullifier] = decodeAbiParameters([{ type: 'bytes32' }], config)
+      refuseNonCanonical(config, encodeAbiParameters([{ type: 'bytes32' }], [nullifier]))
+      return { nullifier }
+    },
     ...opaqueProof
   }
 
