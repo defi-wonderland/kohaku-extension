@@ -28,7 +28,7 @@ import {
 } from '@web/modules/social-recovery/shared/rule-lines'
 import { isBrowserErrorName } from '@web/modules/social-recovery/shared/ceremony/verdicts'
 
-import { REVIEW_WAIT_CHIPS } from './types'
+import { REVIEW_WAIT_CHIPS } from './constants'
 import type { MethodKind, PathRow, PublicationItem } from './types'
 
 const KIND_NAME_KEYS: Record<MethodKind, string> = {

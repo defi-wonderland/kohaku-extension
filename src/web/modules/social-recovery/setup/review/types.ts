@@ -19,17 +19,14 @@ import type {
 /** The kind of method a row of the path holds: one of the address book's method slugs. */
 export type MethodKind = SlotKind
 
-/** The picker's fixed lengths with their chip words, so the review names a length as the picker did. */
-export const REVIEW_WAIT_CHIPS = [
-  { id: 'hours24', hours: 24 },
-  { id: 'hours48', hours: 48 },
-  { id: 'hours72', hours: 72 },
-  { id: 'days7', hours: 7 * 24 }
-] as const
-export type ReviewWaitChipId = typeof REVIEW_WAIT_CHIPS[number]['id']
+/** The chip word of one of the picker's fixed lengths. */
+export type ReviewWaitChipId = 'hours24' | 'hours48' | 'hours72' | 'days7'
 
-/** The provider kinds that read through a light client with its prover; any other is a plain node. */
-export const LIGHT_CLIENT_PROVIDERS = ['helios', 'colibri'] as const
+/** One of the picker's fixed lengths with its chip word. */
+export interface ReviewWaitChip {
+  id: ReviewWaitChipId
+  hours: number
+}
 
 /** How the node the wallet reads through is named on the trust list. */
 export type NodeKind = 'light-client' | 'plain'
@@ -56,9 +53,8 @@ export interface PathRow {
 // The trust list
 // ---------------------------------------------------------------------------
 
-/** The two declarations the trust list reads for every method of the path. */
-export const TRUST_READ_NAMES = ['trustedParties', 'moduleInfo'] as const
-export type TrustReadName = typeof TRUST_READ_NAMES[number]
+/** A declaration the trust list reads for every method of the path. */
+export type TrustReadName = 'trustedParties' | 'moduleInfo'
 
 /** The reads of one method; a member not yet present is a read still running. */
 export interface MethodReads {

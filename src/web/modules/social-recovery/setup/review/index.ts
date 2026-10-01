@@ -6,7 +6,7 @@
  */
 export * from './lead'
 export * from './trust'
-export { LIGHT_CLIENT_PROVIDERS, REVIEW_WAIT_CHIPS, TRUST_READ_NAMES } from './types'
+export { LIGHT_CLIENT_PROVIDERS, REVIEW_WAIT_CHIPS, TRUST_READ_NAMES } from './constants'
 export type {
   MethodKind,
   MethodReads,
@@ -18,6 +18,7 @@ export type {
   ReviewKitClient,
   ReviewLoad,
   ReviewViewProps,
+  ReviewWaitChip,
   ReviewWaitChipId,
   TrustContract,
   TrustHeading,
