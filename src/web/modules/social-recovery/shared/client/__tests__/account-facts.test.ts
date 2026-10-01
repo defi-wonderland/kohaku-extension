@@ -6,7 +6,7 @@
  */
 import { Wallet } from 'ethers'
 
-import type { Account, AccountStates } from '@ambire-common/interfaces/account'
+import type { Account, AccountOnchainState, AccountStates } from '@ambire-common/interfaces/account'
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import { getBasicAccount, getSmartAccount } from '@ambire-common/libs/account/account'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
@@ -22,6 +22,8 @@ import {
   MAINNET,
   networkRecord,
   onchainState,
+  sameFactsReading,
+  stateRefreshOf,
   WALLET_RECOVERY_CHAIN
 } from './harness'
 
@@ -224,6 +226,52 @@ describe("the account's facts on the recovery chain", () => {
     ).toEqual({ status: 'loading' })
   })
 
+  describe('with no state for the account on the recovery chain', () => {
+    const noState = (overrides: Partial<AccountFactsSources> = {}) =>
+      sourcesOf({ accounts: [smart], accountStates: {}, ...overrides })
+
+    it("read as unread once the chain's provider reports it is not working, or once a refresh ended with none", () => {
+      const unread = { status: 'unavailable', cause: 'state-unread' }
+      expect(accountFactsOf(smart.addr as Address, noState({ providerWorking: false }))).toEqual(
+        unread
+      )
+      expect(accountFactsOf(smart.addr as Address, noState({ stateRefreshSettled: true }))).toEqual(
+        unread
+      )
+    })
+
+    it('read as loading while the provider works and no refresh has ended', () => {
+      expect(
+        accountFactsOf(
+          smart.addr as Address,
+          noState({ providerWorking: true, stateRefreshSettled: false })
+        )
+      ).toEqual({ status: 'loading' })
+    })
+
+    it('read a state the wallet holds as ready, whatever the provider and the refresh report', () => {
+      const reading = accountFactsOf(
+        smart.addr as Address,
+        sourcesOf({ providerWorking: false, stateRefreshSettled: true })
+      )
+      expect(reading.status).toBe('ready')
+    })
+
+    it('read an unlisted account as not listed and a missing network as no network before any unread state', () => {
+      const failing = { providerWorking: false, stateRefreshSettled: true }
+      expect(accountFactsOf(STRANGER, noState(failing))).toEqual({
+        status: 'unavailable',
+        cause: 'not-listed'
+      })
+      expect(
+        accountFactsOf(
+          smart.addr as Address,
+          noState({ ...failing, networks: [networkRecord('mainnet')] })
+        )
+      ).toEqual({ status: 'unavailable', cause: 'no-network' })
+    })
+  })
+
   it('read as loading with no account given', () => {
     expect(accountFactsOf(undefined, sourcesOf())).toEqual({ status: 'loading' })
   })
@@ -239,4 +287,126 @@ describe("the account's facts on the recovery chain", () => {
       })
     })
   )
+})
+
+describe("the refresh of a listed account's state on the recovery chain", () => {
+  const sources = (overrides: Partial<AccountFactsSources> = {}) =>
+    sourcesOf({ accounts: [smart, basic], accountStates: statesOf([basic]), ...overrides })
+
+  it('names the account as the wallet lists it and the recovery chain, where the wallet holds no state for it there', () => {
+    expect(stateRefreshOf(smart.addr as Address, sources())).toEqual({
+      addr: smart.addr,
+      chainIds: [NETWORK.chainId]
+    })
+    expect(stateRefreshOf(smart.addr.toLowerCase() as Address, sources())).toEqual({
+      addr: smart.addr,
+      chainIds: [NETWORK.chainId]
+    })
+  })
+
+  it('is asked for an account whose state the wallet holds on another chain only', () => {
+    const onAnotherChain: AccountStates = {
+      [smart.addr]: { [String(MAINNET)]: onchainState(smart.addr) }
+    }
+    expect(
+      stateRefreshOf(smart.addr as Address, sources({ accountStates: onAnotherChain }))
+    ).toEqual({ addr: smart.addr, chainIds: [NETWORK.chainId] })
+  })
+
+  it('is none for an account whose state the wallet holds, one it does not list, or with no network for the chain', () => {
+    expect(stateRefreshOf(basic.addr as Address, sources())).toBeUndefined()
+    expect(stateRefreshOf(STRANGER, sources())).toBeUndefined()
+    expect(
+      stateRefreshOf(smart.addr as Address, sources({ networks: [networkRecord('mainnet')] }))
+    ).toBeUndefined()
+  })
+
+  it('is none with no account given, or until the background pushed the accounts, their states and the networks', () => {
+    expect(stateRefreshOf(undefined, sources())).toBeUndefined()
+    const PUSHED: ('accounts' | 'accountStates' | 'networks')[] = [
+      'accounts',
+      'accountStates',
+      'networks'
+    ]
+    PUSHED.forEach((source) =>
+      expect(
+        stateRefreshOf(smart.addr as Address, sources({ [source]: undefined }))
+      ).toBeUndefined()
+    )
+  })
+})
+
+describe('two readings of the facts, as a screen reads them', () => {
+  const readyWith = (
+    state: Partial<AccountOnchainState> = {},
+    overrides: Partial<AccountFactsSources> = {}
+  ) =>
+    accountFactsOf(
+      smart.addr as Address,
+      sourcesOf({
+        accounts: [smart],
+        accountStates: { [smart.addr]: { [CHAIN]: onchainState(smart.addr, state) } },
+        ...overrides
+      })
+    )
+
+  it("hold the same across a change of the account's balance, its block or its preferences", () => {
+    const before = readyWith()
+    expect(sameFactsReading(before, readyWith({ balance: 10n ** 18n }))).toBe(true)
+    expect(sameFactsReading(before, readyWith({ currentBlock: 7_000_001n }))).toBe(true)
+    expect(
+      sameFactsReading(
+        before,
+        readyWith(
+          {},
+          { accounts: [{ ...smart, preferences: { label: 'Renamed', pfp: smart.addr } }] }
+        )
+      )
+    ).toBe(true)
+  })
+
+  it("differ where the account's code, its nonce or its account version changes", () => {
+    const before = readyWith()
+    expect(sameFactsReading(before, readyWith({ isDeployed: false }))).toBe(false)
+    expect(sameFactsReading(before, readyWith({ nonce: 6n }))).toBe(false)
+    expect(sameFactsReading(before, readyWith({ isV2: false }))).toBe(false)
+    expect(sameFactsReading(before, readyWith({ isEOA: true }))).toBe(false)
+    expect(sameFactsReading(before, readyWith({ isSmarterEoa: true }))).toBe(false)
+  })
+
+  it('differ where the held key or the creation record changes', () => {
+    const before = readyWith()
+    expect(
+      sameFactsReading(before, readyWith({}, { keys: [{ addr: CONTROLLING_KEY, type: 'trezor' }] }))
+    ).toBe(false)
+    expect(sameFactsReading(before, readyWith({}, { keys: [] }))).toBe(false)
+    expect(
+      sameFactsReading(
+        before,
+        readyWith(
+          {},
+          {
+            accounts: [{ ...smart, creation: { ...smart.creation!, salt: `0x${'01'.repeat(32)}` } }]
+          }
+        )
+      )
+    ).toBe(false)
+  })
+
+  it('differ between statuses and causes, and hold between two equal ones', () => {
+    expect(sameFactsReading({ status: 'loading' }, { status: 'loading' })).toBe(true)
+    expect(
+      sameFactsReading(
+        { status: 'unavailable', cause: 'state-unread' },
+        { status: 'unavailable', cause: 'state-unread' }
+      )
+    ).toBe(true)
+    expect(
+      sameFactsReading(
+        { status: 'unavailable', cause: 'state-unread' },
+        { status: 'unavailable', cause: 'no-network' }
+      )
+    ).toBe(false)
+    expect(sameFactsReading({ status: 'loading' }, readyWith())).toBe(false)
+  })
 })
