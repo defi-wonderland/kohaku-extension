@@ -379,6 +379,33 @@ describe('the path rows', () => {
     expect(textOf('review-row-0-0-line-1')).toBe(t(`${CEREMONY}.testFailedLine`))
   })
 
+  it('offer to run the test again on a row whose test could not run, on the enrollment step', async () => {
+    const { navigate } = await mount({
+      clauses: [group(1, ALICE, BOB)],
+      enrollments: [enrolled(ALICE, 'unavailable'), enrolled(BOB)]
+    })
+
+    expect(textOf('review-row-0-0-retry-test')).toBe(t('socialRecovery.actions.runTheTestAgain'))
+    expect(byTestId('review-row-0-1-retry-test')).toBeNull()
+
+    await press('review-row-0-0-retry-test')
+
+    expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupEnroll)
+  })
+
+  it('offer no test again on a test that ran', async () => {
+    await mount({
+      clauses: [required(ALICE), required(BOB), required(CAROL)],
+      enrollments: [
+        enrolled(ALICE, 'failed', { cause: 'check-rejected' }),
+        enrolled(BOB, 'not-tested'),
+        enrolled(CAROL)
+      ]
+    })
+
+    expect(container.querySelectorAll('[data-testid$="-retry-test"]')).toHaveLength(0)
+  })
+
   it('carry the identity line and the publication line on a passport row', async () => {
     await mount({ clauses: [required(PASSPORT)], enrollments: [enrolled(PASSPORT, 'not-tested')] })
 
