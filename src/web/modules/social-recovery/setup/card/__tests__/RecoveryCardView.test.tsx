@@ -253,23 +253,30 @@ describe('the recovery card view', () => {
     })
 
     // jsdom lays nothing out, so the file keeps the spaces when its value
-    // holds them verbatim and its rule tells the browser to show them.
+    // holds them verbatim and its own sheet tells the browser to show them.
+    // A parsed document gets no sheet in jsdom, so the file's style is read
+    // through a style element in this page.
     it('saves a password with inner and trailing spaces exactly as typed', async () => {
       const spaced = ' tide  lantern orchid '
       await mount({ password: spaced })
       await press('card-download')
       expect(files).toHaveLength(1)
+      expect(files[0].text).toContain(`<div class="mono">${spaced}</div>`)
       const page = new DOMParser().parseFromString(files[0].text, 'text/html')
       const passwordValue = page.querySelectorAll('.card .value .mono')[1]
       expect(passwordValue?.textContent).toBe(spaced)
-      expect(files[0].text).toContain(`<div class="mono">${spaced}</div>`)
-      const monoRules = Array.from(page.styleSheets)
-        .flatMap((sheet) => Array.from(sheet.cssRules))
+
+      const style = document.createElement('style')
+      style.textContent = page.querySelector('style')?.textContent ?? ''
+      document.head.appendChild(style)
+      const whiteSpace = Array.from(style.sheet?.cssRules ?? [])
         .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
         .filter((rule) => passwordValue?.matches(rule.selectorText))
-      expect(monoRules.map((rule) => rule.style.getPropertyValue('white-space'))).toContain(
-        'pre-wrap'
-      )
+        .map((rule) => rule.style.getPropertyValue('white-space'))
+        .filter(Boolean)
+        .pop()
+      style.remove()
+      expect(whiteSpace).toBe('pre-wrap')
     })
 
     it('prints with the card mounted under the page body, then takes the print view away', async () => {

@@ -6,7 +6,12 @@
  * view's rules are read from the parsed sheet and matched against a page by hand.
  */
 import type { CardFile } from '@web/modules/social-recovery/setup/card'
-import { BROWSER_CARRIERS, PRINT_VIEW_CSS, PRINT_VIEW_ID, REVOKE_DELAY_MS } from '@web/modules/social-recovery/setup/card/carriers'
+import {
+  BROWSER_CARRIERS,
+  PRINT_VIEW_CSS,
+  PRINT_VIEW_ID,
+  REVOKE_DELAY_MS
+} from '@web/modules/social-recovery/setup/card/carriers'
 
 const FILE: CardFile = {
   name: 'card.html',
