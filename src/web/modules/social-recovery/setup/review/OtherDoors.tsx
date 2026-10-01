@@ -12,8 +12,9 @@ const DOORS = 'socialRecovery.review.doors'
 /**
  * The account's other doors, one line after the security stop block: the
  * keys beside the one a recovery removes and the code entries where the
- * wallet can read them, or the line that it could not read them. A recovery
- * leaves every door untouched.
+ * wallet can read them, or the line that it could not read them. Where it
+ * names the keys without the code entries, it says the wallet cannot see every
+ * door. A recovery leaves every door untouched.
  */
 const OtherDoors = ({ doors }: OtherDoorsProps) => {
   const { t } = useTranslation()
@@ -48,6 +49,11 @@ const OtherDoors = ({ doors }: OtherDoorsProps) => {
             }),
             'review-doors'
           )}
+      {doors.kind === 'keys' &&
+        line(
+          t('socialRecovery.review.otherDoors.cannotSeeEveryDoor'),
+          'review-doors-cannot-see-every-door'
+        )}
       {doors.kind === 'pair' && (
         <>
           {line(t(`${DOORS}.marker`), 'review-doors-marker')}

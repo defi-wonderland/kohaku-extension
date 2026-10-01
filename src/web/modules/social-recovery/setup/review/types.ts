@@ -204,6 +204,7 @@ export type Doors =
   | { kind: 'pending' }
   | { kind: 'unreadable' }
   | { kind: 'none' }
+  /** The keys alone, while the code entries cannot be read. */
   | { kind: 'keys'; keys: number }
   | { kind: 'pair'; codeEntries: number; keys: number }
 
