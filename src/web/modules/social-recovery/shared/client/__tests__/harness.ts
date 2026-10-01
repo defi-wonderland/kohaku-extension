@@ -146,6 +146,7 @@ export interface EthersMock {
   getBalance: jest.Mock
   estimateGas: jest.Mock
   send: jest.Mock
+  getCode: jest.Mock
   destroy: jest.Mock
   /** The chain id this provider answers; defaults to the chain's descriptor. */
   answeredChainId: number
@@ -197,6 +198,7 @@ export const ethersOver = (chain: ScriptedChain): EthersMock => {
   mock.getBlock = jest.fn(async (tag: unknown) => blockOf(tag))
   mock.getBalance = jest.fn(async () => NODE_ANSWERS.balance)
   mock.estimateGas = jest.fn(async () => NODE_ANSWERS.gas)
+  mock.getCode = jest.fn(async () => '0x')
   mock.destroy = jest.fn()
   mock.send = jest.fn(async (method: string, params: unknown[]) => {
     switch (method) {
@@ -479,6 +481,18 @@ export const queued = (...requestIds: (string | number)[]): SignRequestUpdate =>
   state: {
     userRequests: requestIds.map((requestId) => ({ id: requestId })),
     userRequestsWaitingAccountSwitch: []
+  }
+})
+
+/** The `requests` state with some request ids queued and others waiting for an account switch. */
+export const listedIn = (
+  queuedIds: (string | number)[],
+  waitingIds: (string | number)[]
+): SignRequestUpdate => ({
+  controller: 'requests',
+  state: {
+    userRequests: queuedIds.map((requestId) => ({ id: requestId })),
+    userRequestsWaitingAccountSwitch: waitingIds.map((requestId) => ({ id: requestId }))
   }
 })
 

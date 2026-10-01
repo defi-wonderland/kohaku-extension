@@ -38,7 +38,7 @@ export {
   digestVersionRefusal,
   isDigestVersionRefusal
 } from './build-client'
-export { REMOVED_KEY_UNAVAILABLE_CAUSES } from './wallet-reads'
+export { REMOVED_KEY_UNAVAILABLE_CAUSES, createPrivilegeReads } from './wallet-reads'
 export { createCeremonyResolver, extensionClientFor } from './ceremony-resolver'
 export {
   SIGNER_MEMBERS,
@@ -71,6 +71,7 @@ export {
 export { sendRequestPort } from './sender-port'
 export { UNKNOWN_TRANSACTION_MS, createReceiptWait } from './receipts'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
+export { shapeNoteOf, privacyLevelOf } from './setup-notes'
 export type {
   RecoveryChain,
   AddressBook,
@@ -98,11 +99,16 @@ export type {
   FitCheckReading,
   RemovedKeyReading,
   RemovedKeyUnavailableCause,
+  PrivilegeAccount,
+  PrivilegeReadsProvider,
+  PrivilegeHoldersReading,
+  PrivilegeReads,
   KeyHandle,
   TypedDataToSign,
   SignerFacade,
   SignerMember,
   SignerFacadeOptions,
+  SignOptions,
   SignRequestAction,
   SignRequestPort,
   SignRequestUpdate,
