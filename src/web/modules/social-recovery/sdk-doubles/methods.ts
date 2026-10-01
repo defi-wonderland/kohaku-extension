@@ -109,6 +109,16 @@ const enrollFailure = (cause: EnrollFailure['cause']): EnrollFailure => ({
 
 const nonEmptyHex = (value: unknown): value is Hex => isHex(value) && value !== '0x'
 
+/**
+ * A decode refuses bytes its encode would not reproduce: trailing bytes, a
+ * non-canonical offset or dirty padding all fail the re-encode comparison.
+ */
+const refuseNonCanonical = (input: Hex, reencoded: Hex): void => {
+  if (reencoded.toLowerCase() !== input.toLowerCase()) {
+    throw new Error('The bytes are not the canonical encoding of the decoded fields.')
+  }
+}
+
 /** A pass-through proof codec: the doubles' proofs are opaque bytes. */
 const opaqueProof = {
   encodeProof: ({ proof }: ProofFields): Hex => proof,
@@ -272,7 +282,11 @@ export class WalletMethodDouble extends MethodDouble {
 
   readonly codec: IMethodCodec<WalletConfigFields, ProofFields> = {
     encodeConfig: ({ address }) => encodeAbiParameters([{ type: 'address' }], [address]),
-    decodeConfig: (config) => ({ address: decodeAbiParameters([{ type: 'address' }], config)[0] }),
+    decodeConfig: (config) => {
+      const [address] = decodeAbiParameters([{ type: 'address' }], config)
+      refuseNonCanonical(config, encodeAbiParameters([{ type: 'address' }], [address]))
+      return { address }
+    },
     ...opaqueProof
   }
 
@@ -338,12 +352,17 @@ export class PasskeyMethodDouble extends MethodDouble {
     encodeConfig: ({ x, y, rpIdHash }) => encodeAbiParameters(PASSKEY_CONFIG, [x, y, rpIdHash]),
     decodeConfig: (config) => {
       const [x, y, rpIdHash] = decodeAbiParameters(PASSKEY_CONFIG, config)
+      refuseNonCanonical(config, encodeAbiParameters(PASSKEY_CONFIG, [x, y, rpIdHash]))
       return { x, y, rpIdHash }
     },
     encodeProof: ({ authenticatorData, clientDataJSON, r, s }) =>
       encodeAbiParameters(PASSKEY_PROOF, [authenticatorData, clientDataJSON, r, s]),
     decodeProof: (proof) => {
       const [authenticatorData, clientDataJSON, r, s] = decodeAbiParameters(PASSKEY_PROOF, proof)
+      refuseNonCanonical(
+        proof,
+        encodeAbiParameters(PASSKEY_PROOF, [authenticatorData, clientDataJSON, r, s])
+      )
       return { authenticatorData, clientDataJSON, r, s }
     }
   }
