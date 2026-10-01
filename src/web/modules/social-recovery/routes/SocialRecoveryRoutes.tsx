@@ -4,6 +4,10 @@ import { Route, Routes } from 'react-router-dom'
 import AuthenticatedRoute from '@web/modules/router/components/AuthenticatedRoute'
 import KeystoreUnlockedRoute from '@web/modules/router/components/KeystoreUnlockedRoute'
 import RecoveryCardScreen from '@web/modules/social-recovery/setup/card/RecoveryCardScreen'
+import PrivacyScreen from '@web/modules/social-recovery/setup/privacy/PrivacyScreen'
+import WaitingPeriodScreen from '@web/modules/social-recovery/setup/privacy/WaitingPeriodScreen'
+import EditorScreen from '@web/modules/social-recovery/setup/editor/EditorScreen'
+import PresetsScreen from '@web/modules/social-recovery/setup/presets/PresetsScreen'
 import CeremonyScreen from '@web/modules/social-recovery/shared/ceremony/screen'
 
 /**
@@ -36,6 +40,10 @@ const SocialRecoveryRoutes = () => (
           socialRecoveryRecovery.
         */}
         <Route path="setup/card" element={<RecoveryCardScreen />} />
+        <Route path="setup/waiting-period" element={<WaitingPeriodScreen />} />
+        <Route path="setup/privacy" element={<PrivacyScreen />} />
+        <Route path="setup" element={<PresetsScreen />} />
+        <Route path="setup/editor" element={<EditorScreen />} />
       </Route>
     </Route>
 
