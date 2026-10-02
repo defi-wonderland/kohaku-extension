@@ -8,6 +8,7 @@
 import { Wallet } from 'ethers'
 
 import { EstimationStatus } from '@ambire-common/controllers/estimation/types'
+import { SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   activityListing,
@@ -23,6 +24,7 @@ import {
   newSendRequestId,
   operationFor,
   QueuedFor,
+  QueuedRequest,
   queuedRequest,
   queueHolding,
   requestsPush,
@@ -30,6 +32,7 @@ import {
   SendPort,
   SendRefusal,
   SendRequestAction,
+  SendRequestUpdate,
   sendQueueOver,
   signAccountOpPush,
   SMART_ACCOUNT,
@@ -45,6 +48,10 @@ const HASH: Hex = `0x${'ab'.repeat(32)}`
 
 const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
 const REMOVE = 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
+
+/** The sign screen's statuses under which it signs the operation it holds. */
+const SIGNING = [SigningStatus.InProgress, SigningStatus.WaitingForPaymaster, SigningStatus.Done]
+const NOT_SIGNING = Object.values(SigningStatus).filter((status) => !SIGNING.includes(status))
 
 const actionsOf = (dispatch: jest.Mock) => dispatched<SendRequestAction>(dispatch)
 const removals = (dispatch: jest.Mock) => actionsOf(dispatch).filter((a) => a.type === REMOVE)
@@ -177,39 +184,27 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         expect((send.value as SendRefusal).reason).toBe('other-request-pending')
       })
 
-      const SIGN_ORDERS: [string, (q: ReturnType<typeof sending>) => void][] = [
-        [
-          'the sign screen shows its request, then the wallet signs',
-          ({ q, id }) => {
-            q.push(
-              signAccountOpPush({
-                accountOp: { accountAddr: account, calls: [{ fromUserRequestId: id }] }
-              })
-            )
-            q.push(mainStatus('SIGNING'))
-          }
-        ],
-        [
-          'the wallet broadcasts while the sign screen shows its request',
-          ({ q, id }) => {
-            q.push(
-              signAccountOpPush({
-                accountOp: { accountAddr: account, calls: [{ fromUserRequestId: id }] }
-              })
-            )
-            q.push(mainStatus('BROADCASTING'))
-          }
-        ]
-      ]
-      SIGN_ORDERS.forEach(([order, signs]) =>
-        it(`withdraws nothing once ${order}, and answers the hash`, async () => {
-          const sent = sending()
-          const { q, send, id, own } = sent
+      /** The sign screen holding an operation whose calls came from these requests, at a signing status. */
+      const signScreen = (ids: string[], status?: SigningStatus) =>
+        signAccountOpPush({
+          accountOp: {
+            accountAddr: account,
+            calls: ids.map((fromUserRequestId) => ({ fromUserRequestId }))
+          },
+          ...(status ? { status: { type: status } } : {})
+        })
+      const joined = (own: QueuedRequest) => queueHolding([own, dappCalls(account)])
+      const withdrawal = (id: string) => [{ type: REMOVE, params: { id } }]
+
+      SIGNING.forEach((status) =>
+        it(`withdraws nothing for a join while the sign screen signs its request at ${status}, and answers the hash`, async () => {
+          const { q, send, id, own } = sending()
           q.push(requestsPush(queueHolding([own])))
-          signs(sent)
-          q.push(requestsPush(queueHolding([own, dappCalls(account)])))
-          q.push(mainStatus('SUCCESS'))
-          q.push(requestsPush(queueHolding([own, dappCalls(account)])))
+          q.push(signScreen([id], status))
+          q.push(mainStatus('SIGNING'))
+          q.push(requestsPush(joined(own)))
+          q.push(mainStatus('BROADCASTING'))
+          q.push(requestsPush(joined(own)))
           await advance(SEND_SETTLE_MS * 3)
           expect(removals(q.dispatch)).toEqual([])
           expect(send.status).toBe('pending')
@@ -219,22 +214,164 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         })
       )
 
-      it("still withdraws where the wallet signs another request's operation", async () => {
+      NOT_SIGNING.forEach((status) =>
+        it(`withdraws for a join while the sign screen holds its request at ${status}`, async () => {
+          const { q, send, id, own } = sending()
+          q.push(requestsPush(queueHolding([own])))
+          q.push(signScreen([id], status))
+          q.push(requestsPush(joined(own)))
+          expect(removals(q.dispatch)).toEqual(withdrawal(id))
+          await advance(SEND_SETTLE_MS)
+          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        })
+      )
+
+      it('withdraws for a join while the wallet signs another flow and the sign screen shows no signing status for its request, refusing once the wallet stops', async () => {
         const { q, send, id, own } = sending()
         q.push(requestsPush(queueHolding([own])))
-        q.push(
-          signAccountOpPush({
-            accountOp: { accountAddr: OTHER_ACCOUNT, calls: [{ fromUserRequestId: 'elsewhere' }] }
-          })
-        )
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
         q.push(mainStatus('SIGNING'))
-        q.push(requestsPush(queueHolding([own, dappCalls(account)])))
-        expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
+        q.push(requestsPush(joined(own)))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
         await advance(SEND_SETTLE_MS * 3)
         expect(send.status).toBe('pending')
         q.push(mainStatus('SUCCESS'))
         await advance(SEND_SETTLE_MS)
         expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+      })
+
+      it('still answers the hash the activity names where it withdrew while the wallet signed', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id]))
+        q.push(mainStatus('SIGNING'))
+        q.push(requestsPush(joined(own)))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(send).toEqual({ status: 'resolved', value: HASH })
+      })
+
+      SIGNING.forEach((status) =>
+        it(`withdraws for a join while the sign screen signs another request's operation at ${status}`, async () => {
+          const { q, send, id, own } = sending()
+          q.push(requestsPush(queueHolding([own])))
+          q.push(signScreen(['elsewhere'], status))
+          q.push(mainStatus('SIGNING'))
+          q.push(requestsPush(joined(own)))
+          expect(removals(q.dispatch)).toEqual(withdrawal(id))
+          q.push(mainStatus('SUCCESS'))
+          await advance(SEND_SETTLE_MS)
+          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        })
+      )
+
+      const ENDINGS: [string, (id: string) => SendRequestUpdate][] = [
+        ['back at ready to sign', (id) => signScreen([id], SigningStatus.ReadyToSign)],
+        ['paused', (id) => signScreen([id], SigningStatus.UpdatesPaused)],
+        [
+          "at another request's operation",
+          () => signScreen(['elsewhere'], SigningStatus.InProgress)
+        ],
+        ['reset', () => signAccountOpPush({})]
+      ]
+      ENDINGS.forEach(([ending, push]) =>
+        it(`withdraws once, on the push of the sign screen ${ending}, for a join the queue already holds`, async () => {
+          const { q, send, id, own } = sending()
+          q.push(requestsPush(queueHolding([own])))
+          q.push(signScreen([id], SigningStatus.InProgress))
+          q.queue = joined(own)
+          q.push(requestsPush(q.queue))
+          expect(removals(q.dispatch)).toEqual([])
+          q.push(push(id))
+          expect(removals(q.dispatch)).toEqual(withdrawal(id))
+          q.push(push(id))
+          q.push(requestsPush(q.queue))
+          expect(removals(q.dispatch)).toEqual(withdrawal(id))
+          await advance(SEND_SETTLE_MS)
+          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        })
+      )
+
+      it('withdraws for a join on a later push of the queue, after a failed signature found none', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.queue = queueHolding([own])
+        q.push(signScreen([id], SigningStatus.InProgress))
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        expect(removals(q.dispatch)).toEqual([])
+        q.push(requestsPush(joined(own)))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
+        await advance(SEND_SETTLE_MS)
+        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+      })
+
+      it('stops the check again once the sign screen signs anew after a failed signature', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.queue = queueHolding([own])
+        q.push(signScreen([id], SigningStatus.InProgress))
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        q.push(signScreen([id], SigningStatus.InProgress))
+        q.queue = joined(own)
+        q.push(requestsPush(q.queue))
+        await advance(SEND_SETTLE_MS * 3)
+        expect(removals(q.dispatch)).toEqual([])
+        expect(send.status).toBe('pending')
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
+      })
+
+      it('withdraws nothing when the signing ends after the activity lists the broadcast operation, and answers its hash', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id], SigningStatus.Done))
+        q.push(activityListing(id, operationFor(id)))
+        q.queue = joined(own)
+        q.push(signAccountOpPush({}))
+        q.push(requestsPush(q.queue))
+        expect(removals(q.dispatch)).toEqual([])
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(send).toEqual({ status: 'resolved', value: HASH })
+      })
+
+      it('withdraws nothing when the signing ends while a refusal already settles, and keeps that refusal', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id], SigningStatus.InProgress))
+        q.push(requestsPush(queueHolding([])))
+        q.queue = joined(own)
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        expect(removals(q.dispatch)).toEqual([])
+        await advance(SEND_SETTLE_MS)
+        expect((send.value as SendRefusal).reason).toBe('refused')
+      })
+
+      it('withdraws nothing while the sign screen moves from one signing status to the next, a join in the queue', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.queue = joined(own)
+        SIGNING.forEach((status) => q.push(signScreen([id], status)))
+        SIGNING.forEach((status) => q.push(signScreen([id], status)))
+        expect(removals(q.dispatch)).toEqual([])
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(send).toEqual({ status: 'resolved', value: HASH })
+      })
+
+      it('withdraws nothing when the signing ends where the queue no longer holds its request, and answers the hash', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id], SigningStatus.Done))
+        q.queue = queueHolding([dappCalls(account)])
+        q.push(signAccountOpPush({}))
+        expect(removals(q.dispatch)).toEqual([])
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(send).toEqual({ status: 'resolved', value: HASH })
       })
 
       it('still withdraws where the wallet signed with no sign screen push for its request', async () => {
