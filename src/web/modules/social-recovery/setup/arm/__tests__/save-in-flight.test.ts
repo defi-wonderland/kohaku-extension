@@ -25,7 +25,10 @@ import {
   startSave
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmStore, SaveSteps } from '@web/modules/social-recovery/setup/arm'
-import { CLAIMED_SETUP_READ_MS } from '@web/modules/social-recovery/setup/arm/constants'
+import {
+  CLAIMED_SETUP_READ_MS,
+  SEND_BLOCK_READ_MS
+} from '@web/modules/social-recovery/setup/arm/constants'
 import { attachSteps, detachSteps } from '@web/modules/social-recovery/setup/arm/run'
 
 import {
@@ -1088,7 +1091,7 @@ describe('the start block stored with the claim', () => {
     )
     expect(blockRead).toBeLessThan(writes.mock.invocationCallOrder[0])
 
-    // The send reads its own block; the stored save keeps the claim's.
+    // The send starts from the claim's block, which the stored save keeps.
     sign.release(TX_HASH)
     await advanceTimers(0)
     const marked = await stored(wired)
@@ -1194,22 +1197,205 @@ describe('the block numbers the chain answers', () => {
       expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     })
   )
+})
 
-  it('stores the hash with a usable block where the send carries a block that is not one', async () => {
+describe('the block the send starts from', () => {
+  /**
+   * Wraps the stored save's read so `answered` is called the moment the read
+   * answers, with the count of block reads asked until then.
+   */
+  const markAnswers = (wired: WiredSave) => {
+    const answered = jest.fn()
+    const readInFlight = wired.steps.readInFlight.bind(wired.steps)
+    jest.spyOn(wired.steps, 'readInFlight').mockImplementation(async () => {
+      const read = await readInFlight()
+      answered(wired.receipts.blockNumber.mock.calls.length)
+      return read
+    })
+    return answered
+  }
+
+  /** Every call any edge of the save took, by its place in the order of all calls. */
+  const edgeCallsOf = (wired: WiredSave, extra: jest.SpyInstance[]): number[] =>
+    [
+      wired.setupState,
+      wired.prepareCommitSetup,
+      wired.confirmSetup,
+      wired.reads.nativeBalance,
+      wired.reads.estimateGas,
+      wired.reads.gasPrice,
+      wired.port.sendAccountBatch,
+      wired.receipts.blockNumber,
+      wired.receipts.wait,
+      wired.requests.dispatch,
+      ...extra
+    ].flatMap((edge) => edge.mock.invocationCallOrder)
+
+  it('hands the request to the wallet with no read of the chain or the storage after the stored save answers its own claim', async () => {
     const wired = wireSave(account, script())
-    // The claim's block read and the send's both answer a negative number; the next read answers.
-    wired.receipts.blockNumber.mockResolvedValueOnce(-1).mockResolvedValueOnce(-1)
+    const answered = markAnswers(wired)
+    const touches = [
+      jest.spyOn(wired.storage, 'get'),
+      jest.spyOn(wired.storage, 'set'),
+      jest.spyOn(wired.storage, 'remove')
+    ]
+    // The claim's block read fails, so the send's block is read after the setup read; a
+    // block read asked after the stored save answered never answers.
+    let claimBlockRead = true
+    wired.receipts.blockNumber.mockImplementation(() => {
+      if (claimBlockRead) {
+        claimBlockRead = false
+        return Promise.reject(nodeError())
+      }
+      return answered.mock.calls.length > 0 ? pending<number>() : Promise.resolve(START_BLOCK)
+    })
     wired.receipts.wait.mockImplementation(() => pending())
     const store = createArmStore()
     unawaited(startSave(store, wired.steps, OPTIONS))
     await advanceTimers(0)
 
-    const marked = await stored(wired)
-    expect(marked?.transactionHash).toBe(TX_HASH)
-    expect(marked?.startBlock).toBe(START_BLOCK)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(answered).toHaveBeenCalledTimes(1)
+    const [[blockReadsAtAnswer]] = answered.mock.calls
+    expect(wired.receipts.blockNumber).toHaveBeenCalledTimes(blockReadsAtAnswer)
+
+    // The order: the setup read after the claim, the send's block, the stored save, the send.
+    const [, claimedSetupRead] = wired.setupState.mock.invocationCallOrder
+    const [, sendBlockRead] = wired.receipts.blockNumber.mock.invocationCallOrder
+    const [answeredAt] = answered.mock.invocationCallOrder
+    const [sentAt] = wired.port.sendAccountBatch.mock.invocationCallOrder
+    expect(claimedSetupRead).toBeLessThan(sendBlockRead)
+    expect(sendBlockRead).toBeLessThan(answeredAt)
+    expect(answeredAt).toBeLessThan(sentAt)
+    expect(edgeCallsOf(wired, touches).filter((at) => at > answeredAt && at < sentAt)).toEqual([])
     const { write } = store.state()
     expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
-    expect(write.status === 'submitting' && write.startBlock).toBeUndefined()
+  })
+
+  it("starts the drive's wait from the claim's block with no block read after the claim", async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.blockNumber.mockResolvedValueOnce(START_BLOCK + 5)
+    wired.receipts.wait.mockImplementation(() => pending())
+    const writes = jest.spyOn(wired.storage, 'set')
+    unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
+    await advanceTimers(0)
+
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.receipts.blockNumber).toHaveBeenCalledTimes(1)
+    expect(wired.receipts.blockNumber.mock.invocationCallOrder[0]).toBeLessThan(
+      writes.mock.invocationCallOrder[0]
+    )
+    expect(wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK + 5)
+  })
+
+  it('reads the block once after the setup read where the claim holds none, and starts the wait from it', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.blockNumber
+      .mockRejectedValueOnce(nodeError())
+      .mockResolvedValueOnce(START_BLOCK + 3)
+    wired.receipts.wait.mockImplementation(() => pending())
+    const answered = markAnswers(wired)
+    unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
+    await advanceTimers(0)
+
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.receipts.blockNumber).toHaveBeenCalledTimes(2)
+    const [, sendBlockRead] = wired.receipts.blockNumber.mock.invocationCallOrder
+    expect(sendBlockRead).toBeGreaterThan(wired.setupState.mock.invocationCallOrder[1])
+    expect(sendBlockRead).toBeLessThan(answered.mock.invocationCallOrder[0])
+    expect(wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK + 3)
+    expect((await stored(wired))?.startBlock).toBe(START_BLOCK + 3)
+  })
+
+  /** After a run that ended on the send's block: nothing sent, the claim released, the retry offered. */
+  const expectEndedNotSent = async (wired: WiredSave, store: ArmStore) => {
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(store.state().requestId).toBeUndefined()
+    expect(await stored(wired)).toBeUndefined()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(wired.steps.readInFlight).not.toHaveBeenCalled()
+  }
+
+  /** The retry runs the whole path again and sends once. */
+  const expectRetrySendsOnce = async (wired: WiredSave, store: ArmStore) => {
+    const setupReads = wired.setupState.mock.calls.length
+    const retry = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await retry
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 2)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  }
+
+  it('ends a block read past its limit with nothing sent, the claim released and the retry, and the retry sends once', async () => {
+    const wired = wireSave(account, script())
+    const late = held<number>()
+    wired.receipts.blockNumber
+      .mockRejectedValueOnce(nodeError())
+      .mockImplementationOnce(() => late.promise)
+    jest.spyOn(wired.steps, 'readInFlight')
+    const store = createArmStore()
+    unawaited(startSave(store, wired.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(await stored(wired)).toBeDefined()
+
+    await advanceTimers(SEND_BLOCK_READ_MS - 1)
+    expect(store.state().write.status).toBe('submitting')
+    expect(await stored(wired)).toBeDefined()
+
+    await advanceTimers(1)
+    await expectEndedNotSent(wired, store)
+
+    const before = store.state()
+    late.release(START_BLOCK)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    expect(store.state()).toBe(before)
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await expectRetrySendsOnce(wired, store)
+  })
+
+  it('ends a block read that fails with nothing sent, the claim released and the retry', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.blockNumber.mockRejectedValueOnce(nodeError()).mockRejectedValueOnce(nodeError())
+    jest.spyOn(wired.steps, 'readInFlight')
+    const store = createArmStore()
+    await startSave(store, wired.steps, OPTIONS)
+
+    await expectEndedNotSent(wired, store)
+    await expectRetrySendsOnce(wired, store)
+  })
+  ;[-1, 1.5, Number.MAX_SAFE_INTEGER + 1].forEach((block) =>
+    it(`ends a block read that answers ${block} with nothing sent, the claim released and the retry`, async () => {
+      const wired = wireSave(account, script())
+      wired.receipts.blockNumber.mockResolvedValueOnce(block).mockResolvedValueOnce(block)
+      jest.spyOn(wired.steps, 'readInFlight')
+      const store = createArmStore()
+      await startSave(store, wired.steps, OPTIONS)
+
+      await expectEndedNotSent(wired, store)
+      await expectRetrySendsOnce(wired, store)
+    })
+  )
+
+  it("never hands the owner's first receipt wait a block that is not a safe integer of zero or more", async () => {
+    const wired = wireSave(account, script())
+    ;[-1, 1.5, Number.MAX_SAFE_INTEGER + 1, -1, 1.5, START_BLOCK].forEach((answer) =>
+      wired.receipts.blockNumber.mockResolvedValueOnce(answer)
+    )
+    const store = createArmStore()
+    await startSave(store, wired.steps, OPTIONS)
+    await startSave(store, wired.steps, OPTIONS)
+    const last = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await last
+
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+    expect(isSaved(store.state())).toBe(true)
   })
 })
 
