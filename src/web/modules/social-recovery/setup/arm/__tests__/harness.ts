@@ -339,6 +339,16 @@ export const receiptsFor = (receipt: ReceiptCase): ReceiptWait & { wait: jest.Mo
   })
 })
 
+export const setupStateOf = (hasSetup: boolean): SetupState => ({
+  isAuthorized: hasSetup,
+  hasSetup,
+  setupCommitment: zeroHash,
+  setupNonce: 0n,
+  setupCommittedAtBlock: 0,
+  attemptActive: false,
+  block: { number: 1, timestamp: 1, hash: zeroHash }
+})
+
 /** One save wired over its real steps, with every edge a recording fake. */
 export interface WiredSave {
   steps: SaveSteps
@@ -346,6 +356,7 @@ export interface WiredSave {
   account: Address
   draft: SetupDraft
   prepared: PreparedCall | PreparedBatch
+  setupState: jest.Mock
   prepareCommitSetup: jest.Mock
   confirmSetup: jest.Mock
   reads: MockChainReads
@@ -373,9 +384,10 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
     reads += 1
     return answer()
   })
+  const setupState = jest.fn(async () => setupStateOf(false))
   const client: ArmKitClient = {
     descriptor: DESCRIPTOR,
-    setup: { prepareCommitSetup, confirmSetup }
+    setup: { setupState, prepareCommitSetup, confirmSetup }
   }
   const chainReads = chainReadsFor(script.gas)
   const port = sendPortFor(script.send, address)
@@ -402,6 +414,7 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
     account: address,
     draft,
     prepared,
+    setupState,
     prepareCommitSetup,
     confirmSetup,
     reads: chainReads,
@@ -453,16 +466,6 @@ export const runSave = async (
 // ---------------------------------------------------------------------------
 // The arrival
 // ---------------------------------------------------------------------------
-
-export const setupStateOf = (hasSetup: boolean): SetupState => ({
-  isAuthorized: hasSetup,
-  hasSetup,
-  setupCommitment: zeroHash,
-  setupNonce: 0n,
-  setupCommittedAtBlock: 0,
-  attemptActive: false,
-  block: { number: 1, timestamp: 1, hash: zeroHash }
-})
 
 export const descriptionOf = (
   candidateKeys: SetupDescription['candidateKeys'] = [{ address: REMOVED_KEY, isAuthority: true }]
@@ -647,6 +650,7 @@ export const arrivalFor = (input: ArrivalCase, account: Account): Arrival =>
     client: input.client,
     load: loadedOf(draftOf('encrypted')),
     gate: gateFor(input.gate, input.client === 'ready'),
+    setupState: { status: 'answered', value: setupStateOf(input.gate === 'already-set-up') },
     passwordHeld: input.passwordHeld
   })
 

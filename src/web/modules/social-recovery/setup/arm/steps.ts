@@ -1,8 +1,9 @@
 /**
- * The save's steps over the wallet's own seams: the prepare through the
- * client, the shared gas check of the batch the controlling key sends, the
+ * The save's steps over the wallet's own seams: the setup read and the prepare
+ * through the client, the shared gas check of the batch the controlling key sends, the
  * send through the request queue with the recovery kit's mark, the check after
- * the landing, and the wipe of the six setup records.
+ * the landing with its wait for a new block, a second wait for a receipt, and
+ * the wipe of the six setup records.
  *
  * The batch is the prepared calls in order and nothing else: for an account
  * with no code the account library deploys it in the same transaction.
@@ -22,9 +23,11 @@ import {
   assertWriteDoor,
   checkGas,
   driveAccountBatch,
+  receiptOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 
+import { waitForNewBlock } from './block'
 import type { PreparedSave, SaveSteps, SaveStepsInput } from './types'
 
 /** The calls of a prepared write, in order: a batch's own, or the one call. */
@@ -51,6 +54,10 @@ export const committedDraftOf = (draft: SetupDraft): SetupDraft => {
 export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
   const { client, facts, key } = input
   return {
+    async hasSetup(): Promise<boolean> {
+      const state = await client.setup.setupState()
+      return state.hasSetup
+    },
     async prepare(): Promise<PreparedSave> {
       const draft = committedDraftOf(input.draft)
       if (draft !== input.draft) {
@@ -71,7 +78,7 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         transaction: accountBatchTransactionOf(facts, key, calls),
         operates: walletAccountRefOf(facts)
       }),
-    send: ({ calls }, dispatch, run) =>
+    send: ({ calls }, dispatch, run, onEstimation) =>
       driveAccountBatch({
         dispatch,
         run,
@@ -79,9 +86,23 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         port: input.port,
         account: input.account,
         calls,
+        onEstimation,
         recoveryKit: recoveryKitMarkOf(client.descriptor)
       }),
+    async waitAgain(transactionHash, startBlock, dispatch, run): Promise<void> {
+      try {
+        const from = startBlock ?? (await input.receipts.blockNumber())
+        const receipt = receiptOf(await input.receipts.wait(transactionHash, from))
+        // A receipt with no status reads neither way, so the write keeps its hash.
+        if (receipt) {
+          dispatch({ type: 'receipt', run, receipt })
+        }
+      } catch (error: unknown) {
+        dispatch({ type: 'error', run, error, transactionHash })
+      }
+    },
     confirm: ({ draft, prepared }) => client.setup.confirmSetup(draft, prepared),
+    newBlock: (limitMs) => waitForNewBlock(() => input.receipts.blockNumber(), limitMs),
     wipe: () => input.records.saveSetup(input.chainId, input.account)
   }
 }

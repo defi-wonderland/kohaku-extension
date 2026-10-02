@@ -5,19 +5,28 @@
  * `setup/arm/ArmView` for the save over given props.
  */
 export { arrivalOf, armScreenOf } from './arrival'
-export { CONFIRM_READ_TIMEOUT_MS, COMMITMENT_MISMATCH_CODE } from './constants'
+export { waitForNewBlock } from './block'
+export {
+  BLOCK_POLL_MS,
+  CONFIRM_READ_TIMEOUT_MS,
+  COMMITMENT_MISMATCH_CODE,
+  NEW_BLOCK_WAIT_MS
+} from './constants'
 export { disagreedLineKeyOf, saveWriteKeysOf } from './copy'
 export { costLineKeyOf } from './cost'
 export { confirmOutcomeOf, outcomeOfConfirmation, outcomeOfConfirmFailure } from './outcome'
 export {
   armReducer,
+  checkReceiptAgain,
   createArmStore,
   initialArmState,
+  isLive,
   isSaved,
   recheckGas,
   rereadConfirmation,
   startSave
 } from './run'
+export { mayStillLand } from './refusal'
 export { cardPathOf, explorerTransactionUrlOf } from './saved'
 export { callsOf, committedDraftOf, saveStepsOf } from './steps'
 export type {
@@ -30,19 +39,23 @@ export type {
   ArmRun,
   ArmScreenKind,
   ArmState,
+  ArmStop,
   ArmStore,
   ArmViewProps,
   Arrival,
   ArrivalInput,
   ArrivalRetry,
   ConfirmOutcome,
+  ConfirmOutcomeOptions,
   ConfirmReadOptions,
   DisagreedCheck,
   DisagreedViewProps,
+  NewBlockWait,
   PreparedSave,
   SavedViewProps,
   SaveLoad,
   SaveSteps,
   SaveStepsInput,
-  SaveWriteKeys
+  SaveWriteKeys,
+  ThrownFields
 } from './types'

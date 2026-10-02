@@ -11,6 +11,8 @@ import type {
   AccountFactsReading,
   AuditedAction,
   ChainReads,
+  EstimationListener,
+  FeeReading,
   KeyHandle,
   ListedAccountFacts,
   ReceiptWait,
@@ -31,7 +33,7 @@ import type {
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
 import type { CardLevel } from '@web/modules/social-recovery/setup/card'
-import type { SaveBlock, SaveGate } from '@web/modules/social-recovery/setup/review'
+import type { AccountReads, SaveBlock, SaveGate } from '@web/modules/social-recovery/setup/review'
 
 // ---------------------------------------------------------------------------
 // The check after the batch lands
@@ -51,8 +53,26 @@ export type ConfirmOutcome =
   | { kind: 'unread' }
 
 export interface ConfirmReadOptions {
-  /** How long one read may take before it reads as unanswered, in ms. */
+  /**
+   * How long one read may take before it reads as unanswered, in ms. The wait
+   * for a new block before the second read takes no longer than this either.
+   */
   timeoutMs?: number
+}
+
+/** Waits for the chain to move past the block it reads now, for at most `limitMs`; never rejects. */
+export type NewBlockWait = (limitMs: number) => Promise<void>
+
+/** How the check is read: the read's limit, and the wait for a new block before the second read. */
+export interface ConfirmOutcomeOptions extends ConfirmReadOptions {
+  newBlock?: NewBlockWait
+}
+
+/** The members a thrown value may carry that the save reads: a coded error's code, a refusal's name and reason. */
+export interface ThrownFields {
+  code?: unknown
+  name?: unknown
+  reason?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -79,18 +99,36 @@ export type AfterLanding =
   | { stage: 'disagreed'; check: DisagreedCheck }
   | { stage: 'unread' }
 
-/** The save's state: the shared write's state, the prepared save of its run, and what follows the landing. */
+/** Why a run ended before it prepared anything: the account already holds a setup. */
+export type ArmStop = 'already-set-up'
+
+/**
+ * The save's state: the shared write's state, the prepared save of its run,
+ * what follows the landing, and three marks of the run: a setup the account
+ * already held, the sign screen's last estimation, and a receipt wait that
+ * failed while the batch may still land.
+ */
 export interface ArmState {
   write: WriteMachineState
   /** The save the run prepared; absent until the prepare answered in this run. */
   prepared?: PreparedSave
   after: AfterLanding
+  /** Set where the run found a setup on the account before it prepared; nothing moves the run after it. */
+  stop?: ArmStop
+  /** The sign screen's last estimation of the run's batch. */
+  estimation?: FeeReading
+  /** True while the run holds a hash whose receipt wait failed, until the holder asks to check again. */
+  stalled?: boolean
 }
 
 /** What moves the save. Every event but `write` carries the run it answers. */
 export type ArmEvent =
   | { type: 'write'; event: WriteEvent }
+  | { type: 'alreadySetUp'; run: number }
   | { type: 'prepared'; run: number; prepared: PreparedSave }
+  | { type: 'estimated'; run: number; reading: FeeReading }
+  | { type: 'waitStalled'; run: number }
+  | { type: 'waitResumed'; run: number }
   | { type: 'confirming'; run: number }
   | { type: 'confirmed'; run: number; outcome: ConfirmOutcome }
   | { type: 'wiped'; run: number }
@@ -105,21 +143,43 @@ export interface ArmStore {
 
 /** The steps of one save, each over the wallet's own seams. */
 export interface SaveSteps {
+  /** Whether the account already holds a setup, read from the chain at this moment. */
+  hasSetup(): Promise<boolean>
   /** The draft as it is committed, the prepared write and its calls. */
   prepare(): Promise<PreparedSave>
   /** The gas check of the batch the controlling key sends. */
   checkGas(save: PreparedSave): Promise<GasCheck>
-  /** Sends the batch and follows its receipt, feeding the write's events to `dispatch`. */
-  send(save: PreparedSave, dispatch: (event: WriteEvent) => void, run: number): Promise<void>
+  /**
+   * Sends the batch and follows its receipt, feeding the write's events to
+   * `dispatch`; `onEstimation` hears the sign screen's estimation of the batch.
+   */
+  send(
+    save: PreparedSave,
+    dispatch: (event: WriteEvent) => void,
+    run: number,
+    onEstimation?: EstimationListener
+  ): Promise<void>
+  /**
+   * Waits again for the receipt of a hash the run already sent, feeding the
+   * answer to `dispatch`; `startBlock` is the block read before the send.
+   */
+  waitAgain(
+    transactionHash: Hex,
+    startBlock: number | undefined,
+    dispatch: (event: WriteEvent) => void,
+    run: number
+  ): Promise<void>
   /** The check after the batch lands. */
   confirm(save: PreparedSave): Promise<SetupConfirmation>
+  /** Waits for a new block before the check reads again. */
+  newBlock: NewBlockWait
   /** Wipes the six setup records. */
   wipe(): Promise<void>
 }
 
 /** The part of the recovery client the save runs on. */
 export type ArmKitClient = Pick<RecoveryKitClient, 'descriptor'> & {
-  setup: Pick<ISetupClient, 'prepareCommitSetup' | 'confirmSetup'>
+  setup: Pick<ISetupClient, 'setupState' | 'prepareCommitSetup' | 'confirmSetup'>
 }
 
 /** What the save's steps are built from. */
@@ -168,6 +228,8 @@ export interface ArrivalInput {
   load: ArmLoad
   /** The review's gate, run again over the same reads. */
   gate: SaveGate
+  /** The setup read of the review's reads; a setup it finds blocks before any other block of the gate. */
+  setupState: AccountReads['setupState']
   /** Whether the recovery password is in memory. */
   passwordHeld: boolean
 }
@@ -188,8 +250,18 @@ export type Arrival =
   | { kind: 'blocked'; block: SaveBlock }
   | { kind: 'ready' }
 
-/** What the screen shows: the arrival, the run, the check running, saved, disagreed or the check unanswered. */
-export type ArmScreenKind = 'arrival' | 'run' | 'confirming' | 'saved' | 'disagreed' | 'unread'
+/**
+ * What the screen shows: the arrival, the run, a setup the run found already
+ * there, the check running, saved, disagreed or the check unanswered.
+ */
+export type ArmScreenKind =
+  | 'arrival'
+  | 'run'
+  | 'already-set-up'
+  | 'confirming'
+  | 'saved'
+  | 'disagreed'
+  | 'unread'
 
 // ---------------------------------------------------------------------------
 // The view
@@ -225,8 +297,12 @@ export interface ArmViewProps {
   onRetryReads: () => void
   /** Retries the arrival's unavailable read. */
   onRetryArrival: () => void
+  /** Starts the save from a ready arrival; present where the screen offers the button rather than starting by itself. */
+  onSave?: () => void
   /** Runs the save again from its prepare. */
   onRetry: () => void
+  /** Waits again for the receipt of the sent batch, where the wait failed. */
+  onCheckAgain: () => void
   /** Runs the gas check again from the deposit blocker. */
   onRecheck: () => void
   /** Reads the check after the landing again. */
@@ -262,4 +338,6 @@ export interface ArmRun {
   recheck: () => void
   /** Reads the check after the landing again, where it did not answer. */
   reread: () => void
+  /** Waits again for the receipt of the sent batch, where the wait failed. */
+  checkAgain: () => void
 }

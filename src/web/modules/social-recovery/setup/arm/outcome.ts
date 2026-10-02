@@ -3,14 +3,14 @@
  * save reads as saved only where the check answers that the setup landed and
  * that the recovery module recognizes the account's authorization. A setup the
  * module does not recognize, a commitment the wallet rebuilds differently, or
- * a setup the check still cannot find after a second read each read as
- * disagreed. A check that throws for any other reason, or does not answer in
+ * a setup the check still cannot find after a second read, made once the
+ * chain moved a block, each read as disagreed. A check that throws for any other reason, or does not answer in
  * time, reads as unanswered. No answer but the first reads as saved.
  */
 import type { SetupConfirmation } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { COMMITMENT_MISMATCH_CODE, CONFIRM_READ_TIMEOUT_MS } from './constants'
-import type { ConfirmOutcome, ConfirmReadOptions } from './types'
+import { COMMITMENT_MISMATCH_CODE, CONFIRM_READ_TIMEOUT_MS, NEW_BLOCK_WAIT_MS } from './constants'
+import type { ConfirmOutcome, ConfirmOutcomeOptions, ThrownFields } from './types'
 
 const AGREED: ConfirmOutcome = { kind: 'agreed' }
 const MISMATCH: ConfirmOutcome = { kind: 'disagreed', check: 'mismatch' }
@@ -31,7 +31,7 @@ export const outcomeOfConfirmation = (confirmation: SetupConfirmation): ConfirmO
 /** The outcome of a check that threw: the commitment's mismatch disagrees, anything else is unanswered. */
 export const outcomeOfConfirmFailure = (thrown: unknown): ConfirmOutcome => {
   const code =
-    typeof thrown === 'object' && thrown !== null ? (thrown as { code?: unknown }).code : undefined
+    typeof thrown === 'object' && thrown !== null ? (thrown as ThrownFields).code : undefined
   return code === COMMITMENT_MISMATCH_CODE ? MISMATCH : UNREAD
 }
 
@@ -60,19 +60,22 @@ const readInTime = (
   })
 
 /**
- * Reads the check, and once more where it did not find the setup on chain;
- * a setup the second read still cannot find reads as the commitment's
- * mismatch.
+ * Reads the check, and once more where it did not find the setup on chain,
+ * after `newBlock` waited for the chain to move a block (at most the shorter
+ * of `NEW_BLOCK_WAIT_MS` and one read's limit); a setup the second read still
+ * cannot find reads as the commitment's mismatch.
  */
 export const confirmOutcomeOf = async (
   confirm: () => Promise<SetupConfirmation>,
-  options: ConfirmReadOptions = {}
+  { timeoutMs = CONFIRM_READ_TIMEOUT_MS, newBlock }: ConfirmOutcomeOptions = {}
 ): Promise<ConfirmOutcome> => {
-  const timeoutMs = options.timeoutMs ?? CONFIRM_READ_TIMEOUT_MS
   try {
     const first = outcomeOfConfirmation(await readInTime(confirm, timeoutMs))
     if (first) {
       return first
+    }
+    if (newBlock) {
+      await newBlock(Math.min(NEW_BLOCK_WAIT_MS, timeoutMs)).catch(() => undefined)
     }
     return outcomeOfConfirmation(await readInTime(confirm, timeoutMs)) ?? MISMATCH
   } catch (thrown: unknown) {
