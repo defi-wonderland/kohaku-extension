@@ -367,29 +367,32 @@ describe('the privacy lines', () => {
         publicMetadata: shapeNoteOf({ clauses, wait: 172800n, ignoresPause: true })
       }
     }
-    const expected = [
-      t('socialRecovery.privacy.level.shapeVisible.label'),
-      t('socialRecovery.privacy.level.shapeVisible.line', {
-        shape: t(`${SHAPE}.list`, {
-          first: t(`${SHAPE}.list`, {
-            first: t(`${SHAPE}.kinds.passkey`),
-            rest: t(`${SHAPE}.pair`, {
-              first: t(`${SHAPE}.kinds.passport`),
-              second: t(`${SHAPE}.kinds.guardian`)
-            })
-          }),
-          rest: t(`${SHAPE}.anyOf`, { threshold: 2, count: 3 })
-        })
+    const shapeLine = t('socialRecovery.privacy.level.shapeVisible.line', {
+      shape: t(`${SHAPE}.list`, {
+        first: t(`${SHAPE}.list`, {
+          first: t(`${SHAPE}.kinds.passkey`),
+          rest: t(`${SHAPE}.pair`, {
+            first: t(`${SHAPE}.kinds.passport`),
+            second: t(`${SHAPE}.kinds.guardian`)
+          })
+        }),
+        rest: t(`${SHAPE}.anyOf`, { threshold: 2, count: 3 })
       })
-    ]
-
-    it('read the label and the line naming the kinds of a passkey, a passport and a guardian, any 2 of 3', () => {
-      expect(privacyLinesOf(shapeVisible, BOOK, false, t)).toEqual(expected)
-      expect(expected[1]).toContain('a passkey, a passport and a guardian, any 2 of 3')
     })
 
-    it('read the same two lines whether the recovery password is set or not', () => {
-      expect(privacyLinesOf(shapeVisible, BOOK, true, t)).toEqual(expected)
+    it('read the label and the line naming the kinds of a passkey, a passport and a guardian, any 2 of 3, before the password is stored', () => {
+      expect(privacyLinesOf(shapeVisible, BOOK, false, t)).toEqual([
+        t('socialRecovery.privacy.level.shapeVisible.label'),
+        shapeLine
+      ])
+      expect(shapeLine).toContain('a passkey, a passport and a guardian, any 2 of 3')
+    })
+
+    it('read that the recovery password is set first, then the shape line, once the password is stored', () => {
+      expect(privacyLinesOf(shapeVisible, BOOK, true, t)).toEqual([
+        t('socialRecovery.review.shapeVisibleSet'),
+        shapeLine
+      ])
     })
 
     it('name no member of the path', () => {
