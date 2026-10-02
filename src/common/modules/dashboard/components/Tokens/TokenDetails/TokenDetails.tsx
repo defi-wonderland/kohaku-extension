@@ -397,7 +397,6 @@ const TokenDetails = ({
             token={token}
             isTokenInfoLoading={isTokenInfoLoading}
             handleClose={handleClose}
-            iconWidth={action.iconWidth}
           />
         ))}
       </View>

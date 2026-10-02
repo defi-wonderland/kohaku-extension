@@ -116,7 +116,7 @@ const Collections: FC<Props> = ({
               !dashboardNetworkFilterName &&
               t("You don't have any collectibles (NFTs) yet.")}
             {!searchValue &&
-              dashboardNetworkFilter &&
+              !!dashboardNetworkFilter &&
               t(`You don't have any collectibles (NFTs) on ${dashboardNetworkFilterName}.`)}
             {searchValue &&
               t(

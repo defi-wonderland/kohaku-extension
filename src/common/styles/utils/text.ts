@@ -3,7 +3,6 @@ import { StyleSheet, TextStyle } from 'react-native'
 import { isWeb } from '@common/config/env'
 
 interface Styles {
-  highlightPrimary: TextStyle
   center: TextStyle
   right: TextStyle
   left: TextStyle
