@@ -11,7 +11,7 @@ const KeyboardContext = createContext<KeyboardContextReturnType>({
   keyboardHeight: 0
 })
 
-const KeyboardProvider: React.FC = ({ children }) => {
+const KeyboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [shown, setShown] = useState(false)
 
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0)

@@ -10,8 +10,8 @@ const PrivateModeContext = createContext<UsePrivateModeReturnType>({
   isPrivateMode: false
 })
 
-const PrivateModeProvider: React.FC = ({ children }) => {
-  const [isPrivateMode, setIsPrivateMode] = useStorage({ key: 'isPrivateMode' })
+const PrivateModeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isPrivateMode, setIsPrivateMode] = useStorage<boolean>({ key: 'isPrivateMode' })
 
   const togglePrivateMode = useCallback(() => {
     setIsPrivateMode(!isPrivateMode)
