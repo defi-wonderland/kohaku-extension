@@ -577,7 +577,9 @@ const t: Translate = (key, params) => String(i18n.t(key, params ? { ...params } 
 const englishOf = (e: Expected): string =>
   RULE_LINES[e.key].replace(/\{\{(\w+)\}\}/g, (_, name: string) => {
     const value = e.params?.[name]
-    if (value === undefined) throw new Error(`missing param ${name} for ${e.key}`)
+    if (value === undefined) {
+      throw new Error(`missing param ${name} for ${e.key}`)
+    }
     return String(value)
   })
 
@@ -596,7 +598,9 @@ describe('getRuleLines: the lines each path shape earns', () => {
       expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
       lines.forEach((line, i) => {
         const params = expected[i].params
-        if (params) expect(line.params).toMatchObject(params)
+        if (params) {
+          expect(line.params).toMatchObject(params)
+        }
       })
     })
   )
@@ -645,7 +649,9 @@ describe('getRuleLines: a path whose members wait in empty slots', () => {
       expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
       lines.forEach((line, i) => {
         const params = expected[i].params
-        if (params) expect(line.params).toMatchObject(params)
+        if (params) {
+          expect(line.params).toMatchObject(params)
+        }
       })
       expect(renderRuleLines(lines, t)).toEqual(expected.map(englishOf))
     })
@@ -684,7 +690,9 @@ describe('getRuleLines: a clause with no member', () => {
         expect(lines.map((l) => shortKey(l.key))).toEqual(expected.map((e) => e.key))
         lines.forEach((line, i) => {
           const params = expected[i].params
-          if (params) expect(line.params).toMatchObject(params)
+          if (params) {
+            expect(line.params).toMatchObject(params)
+          }
         })
         expect(renderRuleLines(lines, t)).toEqual(expected.map(englishOf))
         expect(getRuleLines(clauses, SKIP_MEMBERLESS)).toEqual(lines)

@@ -26,7 +26,9 @@ const MODULE_DIR = path.resolve(__dirname, '..')
 const sourcesOf = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : sourcesOf(full)
+    if (entry.isDirectory()) {
+      return entry.name === '__tests__' ? [] : sourcesOf(full)
+    }
     return /\.(ts|tsx)$/.test(entry.name) ? [full] : []
   })
 

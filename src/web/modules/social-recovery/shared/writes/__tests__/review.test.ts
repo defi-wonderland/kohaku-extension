@@ -113,7 +113,9 @@ describe('a retry is offered only where a retry can fix the cause', () => {
     })
     const fixable = KIT_ERROR_NAMES.find((name) => !NO_RETRY_CAUSES.submission.includes(name))
     expect(fixable).toBeDefined()
-    if (fixable) expect(canRetry(failWithReceipt('submission', kitError(fixable)))).toBe(true)
+    if (fixable) {
+      expect(canRetry(failWithReceipt('submission', kitError(fixable)))).toBe(true)
+    }
   })
 
   WRITE_KINDS.forEach((write) =>
@@ -144,7 +146,9 @@ describe("the transfer route carries the transfer's own fee", () => {
         await runGasCheck({ write, reads: mockReads({ balance: before, gas, price: PRICE }) })
       )
       const transfer = step.routes.find((route) => route.kind === 'transfer')
-      if (!transfer) throw new Error('expected the transfer route')
+      if (!transfer) {
+        throw new Error('expected the transfer route')
+      }
 
       const after = before + transfer.amount - TRANSFER_COST
       const recheck = await runGasCheck({

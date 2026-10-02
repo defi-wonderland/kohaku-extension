@@ -12,7 +12,9 @@ const loadFresh = (): DisplayModule => {
     // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
     loaded = require('@web/modules/social-recovery/shared/display') as DisplayModule
   })
-  if (!loaded) throw new Error('the display module did not load')
+  if (!loaded) {
+    throw new Error('the display module did not load')
+  }
   return loaded
 }
 
@@ -24,7 +26,9 @@ describe('name cut without Intl.Segmenter (Firefox 115)', () => {
   })
 
   afterEach(() => {
-    if (saved) Object.defineProperty(Intl, 'Segmenter', saved)
+    if (saved) {
+      Object.defineProperty(Intl, 'Segmenter', saved)
+    }
   })
 
   it('runs with Intl.Segmenter really absent', () => {

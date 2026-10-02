@@ -41,7 +41,9 @@ const makeStorage = ({ failRemove = false } = {}): StorageDouble => {
     },
     remove: async (key: string) => {
       calls.remove.push(key)
-      if (failRemove) throw new Error('storage remove failed')
+      if (failRemove) {
+        throw new Error('storage remove failed')
+      }
       raw.delete(key)
       return null
     },
@@ -53,7 +55,9 @@ const makeStorage = ({ failRemove = false } = {}): StorageDouble => {
     },
     removeKeys: async (keys: string[]) => {
       keys.forEach((key) => calls.remove.push(key))
-      if (failRemove) throw new Error('storage remove failed')
+      if (failRemove) {
+        throw new Error('storage remove failed')
+      }
       keys.forEach((key) => raw.delete(key))
     }
   } as StorageDouble

@@ -16,8 +16,9 @@ const BANS: { rule: string; pattern: RegExp }[] = [
 ]
 
 const collect = (value: unknown, out: string[] = [], seen = new Set<unknown>()): string[] => {
-  if (typeof value === 'string') out.push(value)
-  else if (value && typeof value === 'object' && !seen.has(value)) {
+  if (typeof value === 'string') {
+    out.push(value)
+  } else if (value && typeof value === 'object' && !seen.has(value)) {
     seen.add(value)
     Object.values(value as Record<string, unknown>).forEach((v) => collect(v, out, seen))
   }

@@ -84,8 +84,12 @@ const providerMock = (index: number): ProviderMock => {
   }))
   return {
     send: jest.fn(async (method: string) => {
-      if (method === 'eth_chainId') return `0x${SEPOLIA.toString(16)}`
-      if (method === 'eth_gasPrice') return `0x${GAS_PRICE.toString(16)}`
+      if (method === 'eth_chainId') {
+        return `0x${SEPOLIA.toString(16)}`
+      }
+      if (method === 'eth_gasPrice') {
+        return `0x${GAS_PRICE.toString(16)}`
+      }
       throw new Error(`The provider mock does not answer ${method}.`)
     }),
     getTransaction: jest.fn(async () => ({ replaceableTransaction: replaceable })),
@@ -116,12 +120,16 @@ const clientOf = (state: HookState | undefined): unknown =>
   state?.status === 'ready' ? state.client : undefined
 
 const readsOf = (state: HookState | undefined) => {
-  if (state?.status !== 'ready') throw new Error(`The hook is ${state?.status}, not ready.`)
+  if (state?.status !== 'ready') {
+    throw new Error(`The hook is ${state?.status}, not ready.`)
+  }
   return state.reads
 }
 
 const receiptsOf = (state: HookState | undefined) => {
-  if (state?.status !== 'ready') throw new Error(`The hook is ${state?.status}, not ready.`)
+  if (state?.status !== 'ready') {
+    throw new Error(`The hook is ${state?.status}, not ready.`)
+  }
   return state.receipts
 }
 

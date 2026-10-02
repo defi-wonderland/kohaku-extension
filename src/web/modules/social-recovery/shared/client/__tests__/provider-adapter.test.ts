@@ -101,8 +101,11 @@ describe('the provider adapter, IProvider over the extension provider', () => {
       const w = world()
       await expect(w.adapter.chainId()).resolves.toBe(w.chain.descriptor.chainId)
       const [member, args] = onlyCall(w.ethers)
-      if (member === 'send') expect(args).toEqual(['eth_chainId', []])
-      else expect(member).toBe('getNetwork')
+      if (member === 'send') {
+        expect(args).toEqual(['eth_chainId', []])
+      } else {
+        expect(member).toBe('getNetwork')
+      }
     })
 
     it('surfaces a provider failure as a thrown value', async () => {
@@ -141,8 +144,11 @@ describe('the provider adapter, IProvider over the extension provider', () => {
         }
         expect(lower(tx.to)).toBe(TO.toLowerCase())
         expect(lower(tx.data)).toBe(DATA.toLowerCase())
-        if (from) expect(lower(tx.from)).toBe(from.toLowerCase())
-        else expect(tx.from).toBeUndefined()
+        if (from) {
+          expect(lower(tx.from)).toBe(from.toLowerCase())
+        } else {
+          expect(tx.from).toBeUndefined()
+        }
         expect(sameTag(seenTag, tag)).toBe(true)
       })
     )
@@ -206,7 +212,9 @@ describe('the provider adapter, IProvider over the extension provider', () => {
       }
       w.ethers.getLogs.mockResolvedValue([{ ...log, blockNumber: 950, index: 3 }])
       w.ethers.send.mockImplementation(async (method: string) => {
-        if (method !== 'eth_getLogs') throw new Error(method)
+        if (method !== 'eth_getLogs') {
+          throw new Error(method)
+        }
         return [log]
       })
       const logs = await w.adapter.logs(filter, { from: 900, to: 1900 })
@@ -610,9 +618,13 @@ describe('through the ethers provider the extension builds for a network', () =>
   const nodeAnswering = (answers: Record<string, unknown>) => {
     const provider = providerOf(PLAIN_RPC_NETWORK)
     const send = jest.spyOn(provider, 'send').mockImplementation(async (method: string) => {
-      if (!(method in answers)) throw new Error(`The node does not answer ${method}.`)
+      if (!(method in answers)) {
+        throw new Error(`The node does not answer ${method}.`)
+      }
       const answer = answers[method]
-      if (answer instanceof Error) throw answer
+      if (answer instanceof Error) {
+        throw answer
+      }
       return answer
     })
     return { provider, requests: (): [string, unknown][] => send.mock.calls }

@@ -129,7 +129,9 @@ const makeStorage = (): StorageDouble => {
   const set = async (key: string, value: unknown): Promise<null> => {
     calls.set.push(key)
     const serialized = serialize(value)
-    if (serialized !== undefined) raw.set(key, serialized)
+    if (serialized !== undefined) {
+      raw.set(key, serialized)
+    }
     return null
   }
   const remove = async (key: string): Promise<null> => {
@@ -142,7 +144,9 @@ const makeStorage = (): StorageDouble => {
   const takeFault = (name: keyof StorageDouble['faults']) => {
     const fault = faults[name]
     delete faults[name]
-    if (fault) throw fault
+    if (fault) {
+      throw fault
+    }
   }
   return {
     raw,
@@ -151,7 +155,9 @@ const makeStorage = (): StorageDouble => {
     // The helper's rule: `if (!res[key]) return defaultValue`, then `formatValue`.
     get: async (key, defaultValue) => {
       const stored = key && raw.get(key)
-      if (!stored) return defaultValue
+      if (!stored) {
+        return defaultValue
+      }
       return formatValue(stored)
     },
     getAll: async () =>
@@ -163,7 +169,9 @@ const makeStorage = (): StorageDouble => {
       takeFault('setEntries')
       const serialized = Object.entries(entries).map(([key, value]) => [key, serialize(value)])
       serialized.forEach(([key, value]) => {
-        if (value !== undefined) raw.set(key as string, value)
+        if (value !== undefined) {
+          raw.set(key as string, value)
+        }
       })
     },
     removeKeys: async (keys) => {
@@ -319,7 +327,9 @@ const setup = (clock: { t: number } = { t: T0 }) => {
 }
 
 const present = <T>(read: RecordRead<T>) => {
-  if (read.status !== 'present') throw new Error('expected a present record')
+  if (read.status !== 'present') {
+    throw new Error('expected a present record')
+  }
   return read
 }
 
@@ -395,8 +405,11 @@ const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
       }
 
 const wipeFor = async (records: WalletRecords, event: RecoveryWipeEvent) => {
-  if (event === 'submission-landed') await landSession(records)
-  else await wipeSession(records, event)
+  if (event === 'submission-landed') {
+    await landSession(records)
+  } else {
+    await wipeSession(records, event)
+  }
 }
 
 describe('the six setup records', () => {
@@ -963,7 +976,9 @@ describe('the recovery session', () => {
     const read = present(await records.recoverySession(CHAIN_ID, ACCOUNT).read())
     expect(read.savedAt).toBe(T0)
     expect(read.value).toEqual({ state: 'live', gathering: GATHERING })
-    if (read.value.state !== 'live') throw new Error('expected a live session')
+    if (read.value.state !== 'live') {
+      throw new Error('expected a live session')
+    }
     expect(read.value.gathering.replies).toEqual(APPROVALS)
     expect(read.value.gathering.replies.map((r) => r.proof)).toEqual([PROOF_A, PROOF_B])
     expect(predictedAttemptId(read.value)).toBe(PREDICTED_ATTEMPT_ID)
@@ -1156,7 +1171,9 @@ describe('the recovery session', () => {
     const strings = (en as { socialRecovery: { records: Record<string, string> } }).socialRecovery
       .records
     Object.values(WIPE_REASON_STRING_KEYS).forEach((keys) => {
-      if (!keys) return
+      if (!keys) {
+        return
+      }
       ;[keys.title, keys.body].forEach((k) => {
         expect(k.startsWith('socialRecovery.records.')).toBe(true)
         expect(typeof strings[k.slice('socialRecovery.records.'.length)]).toBe('string')
@@ -2178,8 +2195,11 @@ const withNavigator = async (value: unknown, run: () => Promise<void>) => {
   try {
     await run()
   } finally {
-    if (saved) Object.defineProperty(globalThis, 'navigator', saved)
-    else delete (globalThis as { navigator?: unknown }).navigator
+    if (saved) {
+      Object.defineProperty(globalThis, 'navigator', saved)
+    } else {
+      delete (globalThis as { navigator?: unknown }).navigator
+    }
   }
 }
 
