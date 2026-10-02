@@ -4,7 +4,7 @@
  * away, and the wait for the sign screen that the holder can withdraw.
  */
 import React from 'react'
-import { View } from 'react-native'
+import { Pressable, View } from 'react-native'
 
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
@@ -31,61 +31,63 @@ const GuardianTestBlock = ({
   const lineKey = testLineKeyOf(enrollment, false, 'socialRecovery.enroll.guardian.testedLine')
 
   return (
-    <SectionCard tone="muted" spacing="none" testID="guardian-test-block">
-      <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
-        {t('socialRecovery.enroll.guardian.howMany')}
-      </Text>
-
-      <AccessTestHeader />
-      <TestResultLines row="guardian" lineKey={lineKey} outcome={testOutcome} />
-      {enrollment.test !== 'not-supported' && (
-        <ActionsRow
-          primary={
-            <Button
-              testID="guardian-test"
-              type="secondary"
-              size="small"
-              text={
-                enrollment.test === 'failed' || enrollment.test === 'unavailable'
-                  ? t('socialRecovery.writes.tryAgain')
-                  : t('socialRecovery.enroll.guardian.testThisKey')
-              }
-              disabled={busy}
-              onPress={() => runTest(false)}
-              hasBottomSpacing={false}
-            />
-          }
-          secondary={
-            canTestOffline && (
+    <>
+      <SectionCard tone="muted" spacing="none" testID="guardian-test-block">
+        <AccessTestHeader />
+        <TestResultLines row="guardian" lineKey={lineKey} outcome={testOutcome} />
+        {enrollment.test !== 'not-supported' && (
+          <ActionsRow
+            primary={
               <Button
-                testID="guardian-test-offline"
-                type="ghost"
+                testID="guardian-test"
+                type="secondary"
                 size="small"
-                text={t('socialRecovery.enroll.offline.title')}
+                text={
+                  enrollment.test === 'failed' || enrollment.test === 'unavailable'
+                    ? t('socialRecovery.writes.tryAgain')
+                    : t('socialRecovery.enroll.guardian.testThisKey')
+                }
                 disabled={busy}
-                onPress={() => runTest(true)}
+                onPress={() => runTest(false)}
                 hasBottomSpacing={false}
               />
-            )
-          }
-        />
-      )}
-      {waiting && (
-        <View testID="guardian-test-waiting" style={[spacings.mtSm, flexbox.alignStart]}>
-          <Text fontSize={14} style={spacings.mbTy}>
-            {t('socialRecovery.enroll.guardian.waitingForSignScreen')}
-          </Text>
-          <Button
-            testID="guardian-test-withdraw"
-            type="ghost"
-            size="small"
-            text={t('socialRecovery.enroll.guardian.testOfflineInstead')}
-            onPress={withdraw}
-            hasBottomSpacing={false}
+            }
+            secondary={
+              canTestOffline && (
+                <Button
+                  testID="guardian-test-offline"
+                  type="ghost"
+                  size="small"
+                  text={t('socialRecovery.enroll.offline.title')}
+                  disabled={busy}
+                  onPress={() => runTest(true)}
+                  hasBottomSpacing={false}
+                />
+              )
+            }
           />
-        </View>
-      )}
-    </SectionCard>
+        )}
+        {waiting && (
+          <View testID="guardian-test-waiting" style={[spacings.mtSm, flexbox.alignStart]}>
+            <Text fontSize={14} style={spacings.mbTy}>
+              {t('socialRecovery.enroll.guardian.waitingForSignScreen')}
+            </Text>
+            <Pressable
+              testID="guardian-test-withdraw"
+              accessibilityRole="button"
+              onPress={withdraw}
+            >
+              <Text fontSize={14} weight="medium" appearance="primary" underline>
+                {t('socialRecovery.enroll.guardian.testOfflineInstead')}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+      </SectionCard>
+      <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
+        {t('socialRecovery.enroll.guardian.howMany')}
+      </Text>
+    </>
   )
 }
 
