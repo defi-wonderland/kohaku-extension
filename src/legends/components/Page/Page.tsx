@@ -26,7 +26,7 @@ const Page = ({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { pathname } = useLocation()
 
-  const { connectedAccount, nonV2Account } = useAccountContext()
+  const { connectedAccount, v1Account } = useAccountContext()
 
   const openSidebar = () => setIsSidebarOpen(true)
   const closeSidebar = () => setIsSidebarOpen(false)
@@ -44,7 +44,7 @@ const Page = ({
                 <FontAwesomeIcon icon={faBars} />
               </button>
               {connectedAccount &&
-                !nonV2Account &&
+                !v1Account &&
                 pathname !== LEGENDS_ROUTES.home &&
                 pathname !== '/' && (
                   <div className={styles.account}>

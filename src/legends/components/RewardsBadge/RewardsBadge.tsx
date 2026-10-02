@@ -39,7 +39,7 @@ const RewardsBadge: React.FC = () => {
 
   const { amountFormatted } = accountPortfolio || {}
   const isNotAvailableForRewards =
-    ((accountPortfolio || accountPortfolio?.isReady) &&
+    (accountPortfolio &&
       amountFormatted &&
       Number((amountFormatted ?? '0').replace(/[^0-9.-]+/g, '')) < 500) ||
     (season1LeaderboardData?.currentUser?.level ?? 0) <= 2
@@ -204,6 +204,8 @@ const RewardsBadge: React.FC = () => {
                   </>
                 )
               }
+
+              return null
             })()}
           </div>
         </div>

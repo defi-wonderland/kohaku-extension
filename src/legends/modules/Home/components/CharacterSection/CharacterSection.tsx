@@ -22,7 +22,7 @@ const CharacterSection = () => {
   const { accountPortfolio } = usePortfolioControllerState()
   const { season1LeaderboardData } = useLeaderboardContext()
   const { isReady, amountFormatted } = accountPortfolio || {}
-  const formatXp = (xp: number) => {
+  const formatXp = (xp: number | undefined) => {
     return xp && xp.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
   }
 

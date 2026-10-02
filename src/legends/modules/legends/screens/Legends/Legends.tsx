@@ -53,7 +53,7 @@ const Legends = () => {
               </h2>
               <div className={styles.cards}>
                 {cards.map((card) => (
-                  <Card key={card.title + card.card.type} cardData={card} action={card.action} />
+                  <Card key={card.title + card.card.type} cardData={card} />
                 ))}
               </div>
             </div>
