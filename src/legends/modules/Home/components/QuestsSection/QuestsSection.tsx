@@ -7,7 +7,7 @@ import 'swiper/css/free-mode'
 import React, { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { FreeMode, Mousewheel, Navigation } from 'swiper/modules'
-import { Swiper, SwiperSlide } from 'swiper/react'
+import { Swiper, SwiperRef, SwiperSlide } from 'swiper/react'
 
 import LeftArrowIcon from '@common/assets/svg/LeftArrowIcon'
 import RightArrowIcon from '@common/assets/svg/RightArrowIcon'
@@ -21,7 +21,7 @@ import styles from './QuestsSection.module.scss'
 
 const QuestsSection = () => {
   const { legends, isLoading, error } = useLegendsContext()
-  const sliderRef = useRef(null)
+  const sliderRef = useRef<SwiperRef>(null)
 
   const SORT_ORDER = ["chest", "wheel-of-fortune", "hodl", "overachiever", "liquidity"];
   
@@ -105,7 +105,6 @@ const QuestsSection = () => {
         mousewheel={{
           enabled: true,
           sensitivity: 10,
-          sticky: true,
           releaseOnEdges: true,
           forceToAxis: true
         }}

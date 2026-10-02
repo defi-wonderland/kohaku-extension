@@ -9,7 +9,7 @@ import Text from '@common/components/Text'
 import { Trans, useTranslation } from '@common/config/localization'
 import useTheme from '@common/hooks/useTheme'
 import useToast from '@common/hooks/useToast'
-import spacings from '@common/styles/spacings'
+import spacings, { SPACING_MD } from '@common/styles/spacings'
 import { BORDER_RADIUS_PRIMARY } from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import { getGasTankTokenDetails } from '@common/utils/getGasTankTokenDetails'
@@ -54,11 +54,11 @@ const CongratsFirstCashbackModal = ({ onPress, position, portfolio, account }: P
         <ConfettiAnimation width={200} height={200} style={{ zIndex: 10 }} autoPlay loop />
         <View>
           <Image
-            source={image}
+            source={{ uri: image }}
             style={{
               height: 64,
               width: 116,
-              ...spacings.mvMd
+              marginVertical: SPACING_MD
             }}
           />
         </View>

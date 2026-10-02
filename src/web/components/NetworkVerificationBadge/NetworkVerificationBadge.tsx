@@ -1,5 +1,5 @@
 import React from 'react'
-import { Pressable, View, ViewStyle } from 'react-native'
+import { Pressable, PressableStateCallbackType, View, ViewStyle } from 'react-native'
 
 import Text from '@common/components/Text'
 import Tooltip from '@common/components/Tooltip'
@@ -46,7 +46,7 @@ const NetworkVerificationBadge = ({ style, testID }: Props) => {
         // @ts-ignore missing type, but prop is valid
         dataSet={{ tooltipId }}
       >
-        {({ hovered }: { hovered?: boolean }) => (
+        {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
           <>
             <View style={dotStyle} />
             <Text

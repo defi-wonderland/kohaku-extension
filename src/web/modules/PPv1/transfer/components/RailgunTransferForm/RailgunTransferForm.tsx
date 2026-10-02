@@ -82,7 +82,7 @@ const RailgunTransferForm = ({
   isRecipientAddressUnknownAgreed: boolean
   addressState: any
   controllerAmount: string
-  totalApprovedBalance: { total: bigint; accounts: [] }
+  totalApprovedBalance: { total: bigint; accounts: never[] }
   totalPrivateBalancesFormatted: Record<
     string,
     { amount: string; decimals: number; symbol: string; name: string }

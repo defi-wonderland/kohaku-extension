@@ -23,17 +23,14 @@ import useSwitchNetwork from '@legends/hooks/useSwitchNetwork'
 import useToast from '@legends/hooks/useToast'
 import { humanizeError } from '@legends/modules/legends/utils/errors/humanizeError'
 
-import { CardActionCalls, CardActionPredefined, CardFromResponse } from '../../types'
+import { CardAction, CardFromResponse } from '../../types'
 import CardActionButton from '../Card/CardAction/actions/CardActionButton'
 import styles from './MigrateRewardsModal.module.scss'
 
-type Action = CardActionPredefined & {
-  calls: CardActionCalls['calls']
-}
 interface MigrateRewardsModalProps {
   isOpen: boolean
   handleClose: () => void
-  action: Action | undefined
+  action: CardAction | undefined
   meta: CardFromResponse['meta'] | undefined
   card: CardFromResponse['card'] | undefined
 }
@@ -95,7 +92,7 @@ const MigrateRewardsModal: React.FC<MigrateRewardsModalProps> = ({
   useEscModal(isOpen, closeModal)
 
   const onButtonClick = useCallback(async () => {
-    if (!action || !action.calls) return
+    if (!action || !('calls' in action) || !action.calls) return
     await switchNetwork(ETHEREUM_CHAIN_ID)
 
     try {
@@ -167,7 +164,7 @@ const MigrateRewardsModal: React.FC<MigrateRewardsModalProps> = ({
                       : 'Loading...'}
                   </p>
                   <p className={styles.usdValue}>
-                    {migratableXWalletBalance
+                    {migratableXWalletBalance && xWalletClaimableBalance
                       ? formatDecimals(
                           xWalletClaimableBalance.priceIn[0].price *
                             Number(formatEther(migratableXWalletBalance)),

@@ -7,7 +7,7 @@ import { LeaderboardEntry } from '@legends/modules/leaderboard/types'
 import styles from './Podium.module.scss'
 
 interface PodiumProps {
-  data: Array<LeaderboardEntry>
+  data: LeaderboardEntry['entries']
 }
 
 const Podium: React.FC<PodiumProps> = ({ data }) => {

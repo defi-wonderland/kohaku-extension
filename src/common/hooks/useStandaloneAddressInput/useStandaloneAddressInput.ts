@@ -23,6 +23,7 @@ const useStandaloneAddressInput = () => {
   }, [])
   const handleCacheResolvedDomain = useCallback(
     (address: string, domain: string, type: 'ens') => {
+      if (!domainsCtrl) return
       domainsCtrl.saveResolvedReverseLookup({ address, name: domain, type })
     },
     [domainsCtrl]

@@ -27,7 +27,7 @@ export interface UpdateFormParams {
   withdrawalAmount: string
   hasProceeded: boolean
   selectedToken: TokenResult | null
-  addressState: AddressState
+  addressState: AddressStateOptional
 }
 
 export const usePrivacyPoolsDepositForm = () => {

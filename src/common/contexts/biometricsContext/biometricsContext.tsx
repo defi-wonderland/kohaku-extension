@@ -13,7 +13,7 @@ import { biometricsContextDefaults, BiometricsContextReturnType } from './types'
 
 const BiometricsContext = createContext<BiometricsContextReturnType>(biometricsContextDefaults)
 
-const BiometricsProvider: React.FC = ({ children }) => {
+const BiometricsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation()
   const { authStatus } = useAuth()
   const { addToast } = useToast()

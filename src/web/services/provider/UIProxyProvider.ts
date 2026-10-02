@@ -13,7 +13,7 @@ type PendingRequest = {
 }
 
 class ProxyEip1193Provider implements Eip1193Provider {
-  private chainId: bigint
+  private chainId: bigint | number
 
   private dispatch: (action: any) => void
 
@@ -21,7 +21,7 @@ class ProxyEip1193Provider implements Eip1193Provider {
 
   private eventBusListener: ((params: any) => void) | null = null
 
-  constructor(chainId: bigint, dispatch: (action: any) => void) {
+  constructor(chainId: bigint | number, dispatch: (action: any) => void) {
     this.chainId = chainId
     this.dispatch = dispatch
 
@@ -80,7 +80,7 @@ class ProxyEip1193Provider implements Eip1193Provider {
 export class UIProxyProvider extends BrowserProvider implements RPCProvider {
   private proxyProvider: ProxyEip1193Provider
 
-  constructor(chainId: bigint, rpcUrl: string, dispatch: (action: any) => void) {
+  constructor(chainId: bigint | number, rpcUrl: string, dispatch: (action: any) => void) {
     const proxyProvider = new ProxyEip1193Provider(chainId, dispatch)
     super(proxyProvider, rpcUrl)
     this.proxyProvider = proxyProvider

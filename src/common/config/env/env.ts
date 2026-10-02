@@ -41,7 +41,19 @@ enum APP_ENV {
   DEV = 'development'
 }
 
-interface Config extends EnvTypes {
+interface Config
+  extends Pick<
+    EnvTypes,
+    | 'RELAYER_URL'
+    | 'VELCRO_URL'
+    | 'SENTRY_DSN'
+    | 'NFT_CDN_URL'
+    | 'ENVIRONMENT'
+    | 'DEFAULT_KEYSTORE_PASSWORD_DEV'
+    | 'LEGENDS_NFT_ADDRESS'
+    | 'SENTRY_DSN_LEGENDS'
+    | 'SENTRY_DSN_BROWSER_EXTENSION'
+  > {
   APP_ENV: APP_ENV
 }
 

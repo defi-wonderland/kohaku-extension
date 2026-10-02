@@ -135,7 +135,7 @@ const DevicePasswordRecoverySettingsScreen = () => {
         <Controller
           control={control}
           rules={{
-            validate: isEmail
+            validate: (value) => isEmail(value)
           }}
           render={({ field: { onChange, onBlur, value } }) => (
             <Input

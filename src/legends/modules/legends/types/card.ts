@@ -21,6 +21,7 @@ export type CardActionCalls = {
 export type CardActionPredefined = {
   type: CardActionType.predefined
   predefinedId: string
+  calls?: CardActionCalls['calls']
 }
 
 export type CardActionLink = {
@@ -114,7 +115,7 @@ export interface CardFromResponse {
     }[]
     usedInvitationSlots?: number
     accountLinkingHistory: { invitedEoaOrV1: string; date: string }[]
-    availableToClaim?: BigInt
+    availableToClaim?: string
     notMetLvlThreshold?: true
     hasAlreadyMigrated?: true
     hasPenalty?: boolean

@@ -56,10 +56,11 @@ const AccountDappAssociationBottomSheet: FC<Props> = ({ sheetRef, closeBottomShe
         let dappUrls = currentAccount?.associatedDappIDs || []
         dappUrls.push(dappUrl)
         setDappUrl('')
+    if (!account) return
         dispatch({
             type: "ACCOUNTS_CONTROLLER_SET_ASSOCIATED_DAPPS",
             params: {
-                addr: account?.addr,
+                addr: account.addr,
                 dappUrls
             }
         })
@@ -69,10 +70,11 @@ const AccountDappAssociationBottomSheet: FC<Props> = ({ sheetRef, closeBottomShe
         let dappUrls = currentAccount?.associatedDappIDs || []
         dappUrls = dappUrls.filter(dapp => dapp !== url)
 
+    if (!account) return
         dispatch({
             type: "ACCOUNTS_CONTROLLER_SET_ASSOCIATED_DAPPS",
             params: {
-                addr: account?.addr,
+                addr: account.addr,
                 dappUrls
             }
         })

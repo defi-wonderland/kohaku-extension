@@ -24,22 +24,25 @@ export type ClaimableRewards = {
   }>
 }
 
+export type WalletTokenInfo = {
+  maxSupply: number
+  circulatingSupply: number
+  totalSupply: number
+  stkWalletTotalSupply: number
+  percentageStakedWallet: number
+  apy: number
+  stakedWallets: number
+  walletPrice: number
+}
+
 const PortfolioControllerStateContext = createContext<{
   accountPortfolio?: AccountPortfolio
   updateAccountPortfolio: () => void
   claimableRewardsError: string | null
   claimableRewards: ClaimableRewards | null
   isLoadingClaimableRewards: boolean
-  walletTokenInfo: {
-    maxSupply: number
-    circulatingSupply: number
-    totalSupply: number
-    stkWalletTotalSupply: number
-    percentageStakedWallet: number
-    apy: number
-    stakedWallets: number
-    walletPrice: number
-  } | null
+  xWalletClaimableBalance: ClaimableRewards | null
+  walletTokenInfo: WalletTokenInfo | null
   walletTokenPrice: number | null
   isLoadingWalletTokenInfo: boolean
 }>({
@@ -47,6 +50,7 @@ const PortfolioControllerStateContext = createContext<{
   claimableRewardsError: null,
   claimableRewards: null,
   isLoadingClaimableRewards: true,
+  xWalletClaimableBalance: null,
   walletTokenInfo: null,
   walletTokenPrice: null,
   isLoadingWalletTokenInfo: true
@@ -54,23 +58,17 @@ const PortfolioControllerStateContext = createContext<{
 
 const PortfolioControllerStateProvider: React.FC<any> = ({ children }) => {
   const getPortfolioIntervalRef: any = useRef(null)
-  const { connectedAccount, nonV2Account, isLoading } = useAccountContext()
+  const { connectedAccount, v1Account, isLoading } = useAccountContext()
   const [accountPortfolio, setAccountPortfolio] = useState<AccountPortfolio>()
   const [claimableRewards, setClaimableRewards] = useState<any>(null)
   const [isLoadingClaimableRewards, setIsLoadingClaimableRewards] = useState(true)
   const [claimableRewardsError, setClaimableRewardsError] = useState<string | null>(null)
-  const [xWalletClaimableBalance, setXWalletClaimableBalance] = useState<string | null>(null)
+  const [xWalletClaimableBalance, setXWalletClaimableBalance] = useState<ClaimableRewards | null>(
+    null
+  )
 
   const [isLoadingWalletTokenInfo, setIsLoadingWalletTokenInfo] = useState(true)
-  const [walletTokenInfo, setWalletTokenInfo] = useState<{
-    maxSupply: number
-    circulatingSupply: number
-    totalSupply: number
-    price: number
-    stkWalletTotalSupply: number
-    stakedWallets: number
-    walletPrice: number
-  } | null>(null)
+  const [walletTokenInfo, setWalletTokenInfo] = useState<WalletTokenInfo | null>(null)
   const [walletTokenPrice, setWalletTokenPrice] = useState<number | null>(null)
 
   const updateAdditionalPortfolio = useCallback(async () => {
@@ -114,7 +112,7 @@ const PortfolioControllerStateProvider: React.FC<any> = ({ children }) => {
         isReady: false
       })
 
-    // While account is loading, we don't know yet what is the value of actual value of `nonV2Account`
+    // While account is loading, we don't know yet what is the value of actual value of `v1Account`
     if (isLoading) return
 
     if (!connectedAccount) return
@@ -123,13 +121,13 @@ const PortfolioControllerStateProvider: React.FC<any> = ({ children }) => {
     if (getPortfolioIntervalRef.current) clearTimeout(getPortfolioIntervalRef.current)
 
     // We don't want to trigger a portfolio update (updateAccountPortfolio) for non v2 account
-    if (nonV2Account) {
+    if (v1Account) {
       return setAccountPortfolio((prevAccountPortfolio) => {
         // If the user switches to a non-V2 account and we already have the balance for the `connectedAccount`,
         // we want to display the balance of the `connectedAccount`.
         if (prevAccountPortfolio) return prevAccountPortfolio
 
-        // If the balance of the `connectedAccount` has not been fetched, we simply show a placeholder balance for the `nonV2Account`,
+        // If the balance of the `connectedAccount` has not been fetched, we simply show a placeholder balance for the `v1Account`,
         // as we do not want to display its actual balance.
         return {
           amount: 0,
@@ -166,7 +164,7 @@ const PortfolioControllerStateProvider: React.FC<any> = ({ children }) => {
     }
 
     await getPortfolioTillReady()
-  }, [isLoading, connectedAccount, nonV2Account, setAccountPortfolio])
+  }, [isLoading, connectedAccount, v1Account, setAccountPortfolio])
 
   const fetchWalletTokenInfo = useCallback(async () => {
     try {

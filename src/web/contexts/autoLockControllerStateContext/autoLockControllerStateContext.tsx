@@ -30,7 +30,7 @@ const AutoLockControllerStateProvider: React.FC<any> = ({ children }) => {
 
   useIdleTimer({
     onAction(e) {
-      if (['mousedown', 'mousemove'].includes(e?.type) && state.autoLockTime > 0) {
+      if (e && ['mousedown', 'mousemove'].includes(e.type) && state.autoLockTime > 0) {
         dispatch({ type: 'AUTO_LOCK_CONTROLLER_SET_LAST_ACTIVE_TIME' })
       }
     },

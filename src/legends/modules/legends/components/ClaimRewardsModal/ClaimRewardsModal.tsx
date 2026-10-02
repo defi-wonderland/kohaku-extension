@@ -19,18 +19,15 @@ import useToast from '@legends/hooks/useToast'
 import smokeAndLights from '@legends/modules/leaderboard/screens/Leaderboard/Smoke-and-lights.png'
 import { humanizeError } from '@legends/modules/legends/utils/errors/humanizeError'
 
-import { CardActionCalls, CardActionPredefined, CardFromResponse, CardStatus } from '../../types'
+import { CardAction, CardFromResponse, CardStatus } from '../../types'
 import CardActionButton from '../Card/CardAction/actions/CardActionButton'
 import rewardsCoverImg from './assets/rewards-cover.png'
 import styles from './ClaimRewardsModal.module.scss'
 
-type Action = CardActionPredefined & {
-  calls: CardActionCalls['calls']
-}
 interface ClaimRewardsModalProps {
   isOpen: boolean
   handleClose: () => void
-  action: Action | undefined
+  action: CardAction | undefined
   meta: CardFromResponse['meta'] | undefined
   card: CardFromResponse['card'] | undefined
 }
@@ -63,7 +60,7 @@ const ClaimRewardsModal: React.FC<ClaimRewardsModalProps> = ({
   useEscModal(isOpen, closeModal)
 
   const onButtonClick = useCallback(async () => {
-    if (!action || !action.calls) return
+    if (!action || !('calls' in action) || !action.calls) return
     await switchNetwork(ETHEREUM_CHAIN_ID)
 
     try {

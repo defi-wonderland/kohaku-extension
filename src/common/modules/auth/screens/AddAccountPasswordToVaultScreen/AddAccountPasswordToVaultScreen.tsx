@@ -13,7 +13,6 @@ import { isWeb } from '@common/config/env'
 import { useTranslation } from '@common/config/localization'
 import useDisableNavigatingBack from '@common/hooks/useDisableNavigatingBack'
 import useNavigation from '@common/hooks/useNavigation'
-import useRoute from '@common/hooks/useRoute'
 import AnimatedArrows from '@common/modules/auth/components/AnimatedArrows'
 import spacings, { IS_SCREEN_SIZE_S } from '@common/styles/spacings'
 import flexboxStyles from '@common/styles/utils/flexbox'
@@ -21,7 +20,6 @@ import { delayPromise } from '@common/utils/promises'
 
 const AddAccountPasswordToVaultScreen = () => {
   const { t } = useTranslation()
-  const route = useRoute()
   // const {
   //   pendingLoginAccount: pendingEmailLoginAccount,
   //   handleLogin: handleEmailLogin,
@@ -33,7 +31,6 @@ const AddAccountPasswordToVaultScreen = () => {
   //   cancelLoginAttempts: cancelJsonLoginAttempts
   // } = useJsonLogin()
   const navigation = useNavigation()
-  const { loginType } = route.params
 
   useDisableNavigatingBack(navigation)
   const {
@@ -84,7 +81,7 @@ const AddAccountPasswordToVaultScreen = () => {
           ]}
         >
           <Image
-            source={logo}
+            source={{ uri: logo }}
             style={{
               height: IS_SCREEN_SIZE_S ? 96 : 136,
               width: 120,

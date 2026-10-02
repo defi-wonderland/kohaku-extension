@@ -88,6 +88,7 @@ export async function setupBridgeMessengerRelay() {
 
       return response
     }
+    return undefined
   })
 
   // next tick

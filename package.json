@@ -135,7 +135,7 @@
     "eth-crypto": "^2.8.0",
     "eth-json-rpc-filters": "^6.0.0",
     "eth-rpc-errors": "^4.0.3",
-    "ethers": "6.13.4",
+    "ethers": "6.17.0",
     "events": "^3.3.0",
     "expo": "^47.0.0",
     "expo-application": "~5.0.1",

@@ -51,7 +51,9 @@ const DashboardPages = ({ onScroll, animatedOverviewHeight }: Props) => {
     if (dashboardNetworkFilter === 'rewards') return t('Rewards')
     if (dashboardNetworkFilter === 'gasTank') return t('Gas Tank')
 
-    const network = networks.find(({ id }) => id === dashboardNetworkFilter)
+    const network = networks.find(
+      ({ chainId }) => chainId.toString() === dashboardNetworkFilter.toString()
+    )
 
     return network?.name || null
   }, [dashboardNetworkFilter, networks, t])

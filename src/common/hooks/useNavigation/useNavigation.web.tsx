@@ -33,14 +33,17 @@ const useNavigation = (): UseNavigationReturnType => {
 
   const goBack = useCallback(() => nav(-1), [nav])
 
-  const setOptions = useCallback<UseNavigationReturnType['setOptions']>(({ headerTitle }) => {
-    if (headerTitle) {
-      document.title = headerTitle
-      titleChangeEventStream.next(headerTitle)
-    }
+  const setOptions = useCallback<UseNavigationReturnType['setOptions']>(
+    ({ headerTitle }: { headerTitle?: string }) => {
+      if (headerTitle) {
+        document.title = headerTitle
+        titleChangeEventStream.next(headerTitle)
+      }
 
-    // All other options are not supported in the web context
-  }, [])
+      // All other options are not supported in the web context
+    },
+    []
+  )
 
   // A custom implementation is required as the default setSearchParams
   // doesn't persist the current route state

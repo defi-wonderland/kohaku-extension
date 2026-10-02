@@ -20,13 +20,12 @@ const ConstantsContext = createContext<{
   constants: null
 })
 
-const ConstantsProvider: React.FC = ({ children }) => {
+const ConstantsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation()
-  const { constants, isLoading, retryFetch, hasError }: UseConstantsReturnType['constants'] =
-    useConstants({
-      fetch,
-      endpoint: CONFIG.CONSTANTS_ENDPOINT
-    })
+  const { constants, isLoading, retryFetch, hasError }: UseConstantsReturnType = useConstants({
+    fetch,
+    endpoint: CONFIG.CONSTANTS_ENDPOINT
+  })
   const [isRetrying, setIsRetrying] = useState<boolean>(false)
 
   useEffect(() => {

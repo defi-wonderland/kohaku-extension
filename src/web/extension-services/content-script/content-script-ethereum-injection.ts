@@ -1,5 +1,5 @@
 // Content Script for injecting the window.ethereum provider in the pages that we connect to
-const injectProviderScript = () => {
+const injectEthereumProviderScript = () => {
   // the script element with src won't execute immediately use inline script element instead!
   const container = document.head || document.documentElement
   const ethereumInpageScript = document.createElement('script')
@@ -13,4 +13,4 @@ const injectProviderScript = () => {
   container.removeChild(ethereumInpageScript)
 }
 
-injectProviderScript()
+injectEthereumProviderScript()

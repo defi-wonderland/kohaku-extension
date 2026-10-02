@@ -113,8 +113,8 @@ class LatticeController implements ExternalSignerController {
     }
   }
 
-  async _findTabById(id) {
-    const tabs = await browser.tabs.query({})
+  async _findTabById(id: chrome.tabs.Tab['id']) {
+    const tabs: chrome.tabs.Tab[] = await browser.tabs.query({})
     return tabs.find((tab) => tab.id === id)
   }
 
@@ -202,7 +202,7 @@ class LatticeController implements ExternalSignerController {
   }
 
   async _initSession() {
-    const setupData = {
+    const setupData: ConstructorParameters<typeof GridPlusSDKClient>[0] = {
       name: LATTICE_APP_NAME,
       baseUrl: this.creds.endpoint || LATTICE_BASE_URL,
       timeout: SDK_TIMEOUT,

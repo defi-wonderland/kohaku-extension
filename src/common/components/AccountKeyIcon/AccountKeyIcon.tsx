@@ -8,7 +8,7 @@ import SingleKeyIcon from '@common/assets/svg/SingleKeyIcon'
 import TrezorLockIcon from '@common/assets/svg/TrezorLockIcon'
 import useTheme from '@common/hooks/useTheme'
 
-const AccountKeyIcon = ({ type, color }: { type: Key['type']; color?: string }) => {
+const AccountKeyIcon = ({ type, color }: { type: Key['type'] | 'none'; color?: string }) => {
   const { theme } = useTheme()
 
   if (type === 'lattice') return <LatticeIcon color={color} width={32} height={32} />

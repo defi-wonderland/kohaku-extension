@@ -162,12 +162,7 @@ const DappCatalogScreen = () => {
         <View style={[!!isPopup && spacings.phSm, spacings.pvSm]}>
           <View style={[flexbox.directionRow, flexbox.alignCenter]}>
             <View style={[flexbox.flex1, spacings.mr]}>
-              <Search
-                placeholder={t('Search for an app')}
-                control={control}
-                setValue={setValue}
-                autoFocus
-              />
+              <Search placeholder={t('Search for an app')} control={control} autoFocus />
             </View>
             <FilterButton
               value="all"
