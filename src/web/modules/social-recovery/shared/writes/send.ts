@@ -54,6 +54,7 @@ export const driveAccountBatch = ({
   calls,
   onEstimation,
   recoveryKit,
+  requestId,
   ...rest
 }: AccountBatchDrive): Promise<void> =>
-  drive(rest, () => port.sendAccountBatch(account, calls, onEstimation, recoveryKit))
+  drive(rest, () => port.sendAccountBatch(account, calls, onEstimation, recoveryKit, requestId))

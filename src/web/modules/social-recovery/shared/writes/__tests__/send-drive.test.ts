@@ -98,7 +98,13 @@ const DRIVES = [
       driveAccountBatch({ ...base, account: ACCOUNT, calls: SAVE.calls, onEstimation: LISTENER }),
     expectAsked: (port: ReturnType<typeof fakeSendPort>) => {
       expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-      expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, undefined)
+      expect(port.sendAccountBatch).toHaveBeenCalledWith(
+        ACCOUNT,
+        SAVE.calls,
+        LISTENER,
+        undefined,
+        undefined
+      )
       expect(port.send).not.toHaveBeenCalled()
     },
     refusal: () => accountBatchRefusal('refused', ACCOUNT)
@@ -198,7 +204,13 @@ describe("the recovery kit's mark on an account's batch", () => {
       recoveryKit: MARK
     })
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, MARK)
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(
+      ACCOUNT,
+      SAVE.calls,
+      LISTENER,
+      MARK,
+      undefined
+    )
     expect(port.send).not.toHaveBeenCalled()
     expect(machine.state()).toMatchObject({ status: 'landed', transactionHash: TX_HASH, run })
   })
@@ -215,7 +227,13 @@ describe("the recovery kit's mark on an account's batch", () => {
       calls: SAVE.calls,
       recoveryKit: MARK
     })
-    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, undefined, MARK)
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(
+      ACCOUNT,
+      SAVE.calls,
+      undefined,
+      MARK,
+      undefined
+    )
   })
 })
 
