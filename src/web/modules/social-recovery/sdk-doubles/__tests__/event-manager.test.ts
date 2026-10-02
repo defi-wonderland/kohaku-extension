@@ -1,7 +1,14 @@
 import { addressOf, EventManagerDouble } from '@web/modules/social-recovery/sdk-doubles'
 import { NOTIFICATION_KINDS, type Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, expectThrown, isAddress, isHex, upperCased, World } from './harness'
+import {
+  createWorld,
+  expectThrown,
+  isAddress,
+  isHex,
+  upperCased,
+  World
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 const everything = async (world: World, filter = world.events.accountFilter()) => {
   const at = await world.provider.block('latest')

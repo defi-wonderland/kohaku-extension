@@ -10,7 +10,14 @@ import {
 
 import { getAddress, isAddress } from 'viem'
 
-import { createWorld, eachIt, expectThrown, isHex, openRecovery, replyFor } from './harness'
+import {
+  createWorld,
+  eachIt,
+  expectThrown,
+  isHex,
+  openRecovery,
+  replyFor
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 const firstRequest = async () => {
   const { world, requests } = await openRecovery()

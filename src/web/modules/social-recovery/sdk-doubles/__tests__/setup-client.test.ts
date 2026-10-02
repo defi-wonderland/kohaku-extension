@@ -29,7 +29,7 @@ import {
   upperCased,
   walletAt,
   World
-} from './harness'
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 const expectCall = (value: PreparedCall) => {
   expect(value.kind).toBe('call')

@@ -15,7 +15,15 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { createWorld, eachIt, membersOf, momentOf, NO_PAYMENT, WINDOW, World } from './harness'
+import {
+  createWorld,
+  eachIt,
+  membersOf,
+  momentOf,
+  NO_PAYMENT,
+  WINDOW,
+  World
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 /** Every way to build from a builder; each runs the construction checks. */
 const BUILD_PATHS = {

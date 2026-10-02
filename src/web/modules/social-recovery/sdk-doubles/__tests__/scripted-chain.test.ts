@@ -1,6 +1,13 @@
 import { PRIVACY_LEVELS, type Notification } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { ATTEMPT_STATUSES, CANCELLERS, World, ZERO, createWorld, eachIt } from './harness'
+import {
+  ATTEMPT_STATUSES,
+  CANCELLERS,
+  World,
+  ZERO,
+  createWorld,
+  eachIt
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 const notes = async (world: World): Promise<Notification[]> => {
   const at = await world.provider.block('latest')

@@ -25,7 +25,7 @@ import {
   openRecovery,
   startLanded,
   World
-} from './harness'
+} from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
 
 const PAST_THE_WAIT = 432_000 + 60
 
