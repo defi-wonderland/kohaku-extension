@@ -1,6 +1,6 @@
 /* eslint-disable no-param-reassign */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, DeepPartial, FieldPath, get, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Pressable, View, ViewStyle } from 'react-native'
 
@@ -445,8 +445,11 @@ const NetworkForm = ({
     // and resetting the form doesn't wait for the validation to finish so we get an error
     // when resetting the form.
     const subscription = watch(
-      async (value: Partial<NetworkFormValues>, { name }: { name?: keyof NetworkFormValues }) => {
-      if (name && !value[name]) {
+      async (
+        value: DeepPartial<NetworkFormValues>,
+        { name }: { name?: FieldPath<NetworkFormValues> }
+      ) => {
+      if (name && !get(value, name)) {
         if (
           name !== 'rpcUrl' &&
           name !== 'consensusRpcUrl' &&

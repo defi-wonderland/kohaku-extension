@@ -156,10 +156,10 @@ const KeyStoreResetScreen = () => {
             </>
           ) : (
             <>
-              <Text style={styles.text} weight="regular" fontSize={14}>
+              <Text weight="regular" fontSize={14}>
                 {t('Your email is confirmed')}.
               </Text>
-              <Text style={styles.text} weight="regular" fontSize={14}>
+              <Text weight="regular" fontSize={14}>
                 {t(
                   'To finish the extension password recovery procedure, simply add your new password when prompted'
                 )}
@@ -178,7 +178,7 @@ const KeyStoreResetScreen = () => {
               <Controller
                 control={control}
                 rules={{
-                  validate: isEmail
+                  validate: (value) => isEmail(value)
                 }}
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
