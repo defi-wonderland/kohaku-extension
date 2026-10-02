@@ -18,7 +18,14 @@ import {
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
 
-import { ACCOUNT_FACTORY, KEY, mockReads, runGasCheck, SAVE, walletAccountRefOf } from './harness'
+import {
+  ACCOUNT_FACTORY,
+  KEY,
+  mockReads,
+  runGasCheck,
+  SAVE,
+  walletAccountRefOf
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const CHAIN = String(CHAIN_IDS[WALLET_RECOVERY_CHAIN])
 const NETWORK = {

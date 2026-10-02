@@ -40,7 +40,7 @@ import {
   SAVE,
   stepOf,
   writeReducer
-} from './harness'
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const SEPOLIA = { chainId: 11155111n, name: 'Sepolia' } as Network
 
@@ -124,7 +124,9 @@ const spoofOriginNode = ({
       asked.push({ from, to, data: String(call.data) })
       const spoofRefused =
         sameAddress(to, factory) && !SIMULATION_ORIGINS.some((origin) => sameAddress(origin, from))
-      if (reverts || spoofRefused) throw nodeRevert()
+      if (reverts || spoofRefused) {
+        throw nodeRevert()
+      }
       return gas
     },
     send: async () => `0x${(2n * GWEI).toString(16)}`

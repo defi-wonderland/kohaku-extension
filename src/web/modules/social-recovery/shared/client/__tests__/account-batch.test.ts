@@ -34,7 +34,7 @@ import {
   SMART_ACCOUNT,
   smartAccount,
   WALLET_RECOVERY_CHAIN
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
 
@@ -129,7 +129,9 @@ describe("the recovery kit's mark", () => {
     const adds = addsOf(q.dispatch)
     expect(adds).toHaveLength(2)
     const own = adds[1]
-    if (own.type !== ADD) throw new Error('The second request is not an added request.')
+    if (own.type !== ADD) {
+      throw new Error('The second request is not an added request.')
+    }
     expect(own.params.userRequest.meta.accountAddr).toBe(PAYER)
     expect(own.params.userRequest.meta).not.toHaveProperty('recoveryKit')
   })
