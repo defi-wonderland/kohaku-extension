@@ -14,7 +14,8 @@
       "@mobile/*": ["src/mobile/*"],
       "@web/*": ["src/web/*"],
       "@benzin/*": ["src/benzin/*"],
-      "@legends/*": ["src/legends/*"]
+      "@legends/*": ["src/legends/*"],
+      "@kohaku-eth/railgun": ["src/ambire-common/node_modules/@kohaku-eth/railgun"]
     }
   },
   "exclude": [
