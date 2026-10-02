@@ -7,12 +7,10 @@ import { View } from 'react-native'
 
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import { lossLineKeyOf, renderKindLine } from '@web/modules/social-recovery/shared/ceremony'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { MethodRow, StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 
 import { TEST_CHIPS } from './outcome'
@@ -20,23 +18,10 @@ import type { PasskeyEnrolledSummaryProps } from './types'
 
 const PasskeyEnrolledSummary = ({ enrollment, platform }: PasskeyEnrolledSummaryProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const { facts } = enrollment
 
   return (
-    <View
-      style={[
-        common.borderRadiusPrimary,
-        spacings.phSm,
-        spacings.pvSm,
-        spacings.mbSm,
-        {
-          borderWidth: 1,
-          borderColor: theme.primaryBorder,
-          backgroundColor: theme.primaryBackground
-        }
-      ]}
-    >
+    <MethodRow>
       <View
         style={[
           flexbox.directionRow,
@@ -71,7 +56,7 @@ const PasskeyEnrolledSummary = ({ enrollment, platform }: PasskeyEnrolledSummary
       <Text testID="passkey-origin" fontSize={12} appearance="secondaryText">
         {t('socialRecovery.ceremony.passkeyOrigin')}
       </Text>
-    </View>
+    </MethodRow>
   )
 }
 

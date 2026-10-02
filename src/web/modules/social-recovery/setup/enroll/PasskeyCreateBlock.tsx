@@ -12,8 +12,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { browserErrorNameOf, noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import { NAME_MAX_LENGTH } from '@web/modules/social-recovery/shared/display'
 
 import { clipName } from './passkey'
@@ -42,7 +41,7 @@ const PasskeyCreateBlock = ({
         maxLength={NAME_MAX_LENGTH}
         onChangeText={(text: string) => setName(clipName(text))}
       />
-      <SectionCard tone="muted" style={served ? spacings.mbTy : spacings.mb0}>
+      <SectionCard tone="muted" spacing={served ? 'item' : 'none'}>
         <Text testID="passkey-none-yet" fontSize={16} weight="medium" style={spacings.mbTy}>
           {t('socialRecovery.enroll.passkey.noneYet')}
         </Text>

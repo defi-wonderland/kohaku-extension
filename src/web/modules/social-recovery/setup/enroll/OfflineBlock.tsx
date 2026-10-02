@@ -13,8 +13,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import { MethodRow, SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 
 import { challengeFileOf, challengeTextOf, signatureOf } from './guardian'
 import type { OfflineBlockProps } from './types'
@@ -26,14 +25,14 @@ const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps)
   const signature = signatureOf(pasted)
 
   return (
-    <SectionCard testID="guardian-offline" style={[spacings.mtSm, spacings.mb0]}>
+    <SectionCard tone="muted" spacing="none" testID="guardian-offline" style={spacings.mtSm}>
       <Text fontSize={16} weight="medium" style={spacings.mbTy}>
         {t('socialRecovery.enroll.offline.title')}
       </Text>
       <Text fontSize={14} style={spacings.mbSm}>
         {t('socialRecovery.enroll.offline.lead')}
       </Text>
-      <SectionCard tone="muted" style={[spacings.mbSm, flexbox.alignStart]}>
+      <MethodRow style={flexbox.alignStart}>
         <SectionLabel>{t('socialRecovery.enroll.offline.challengeHeader')}</SectionLabel>
         <View style={spacings.mbTy}>
           <QRCode value={text} size={200} quietZone={10} />
@@ -46,8 +45,8 @@ const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps)
           onPress={() => saveFile(challengeFileOf(challenge.keyTest))}
           hasBottomSpacing={false}
         />
-      </SectionCard>
-      <SectionCard tone="muted" style={spacings.mb0}>
+      </MethodRow>
+      <MethodRow style={spacings.mb0}>
         <SectionLabel>{t('socialRecovery.enroll.offline.bringBackHeader')}</SectionLabel>
         <Input
           testID="guardian-offline-signature"
@@ -67,7 +66,7 @@ const OfflineBlock = ({ challenge, busy, onCheck, saveFile }: OfflineBlockProps)
             hasBottomSpacing={false}
           />
         </View>
-      </SectionCard>
+      </MethodRow>
     </SectionCard>
   )
 }

@@ -8,9 +8,7 @@ import React from 'react'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import spacings from '@common/styles/spacings'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import { renderHash } from '@web/modules/social-recovery/shared/display'
 
 import AccessTestHeader from './AccessTestHeader'
@@ -37,7 +35,7 @@ const PasskeyTestBlock = ({
     !!signedSalt && enrollment.test === 'passed' && enrollment.lastTest?.salt === signedSalt
 
   return (
-    <SectionCard tone="muted" testID="passkey-test" style={spacings.mb0}>
+    <SectionCard tone="muted" spacing="none" testID="passkey-test">
       <AccessTestHeader />
       {enrollment.test === 'not-tested' && !skipped && (
         <>

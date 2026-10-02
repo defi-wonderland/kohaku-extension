@@ -11,8 +11,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
 import AccessTestHeader from './AccessTestHeader'
 import { testLineKeyOf } from './outcome'
@@ -32,7 +31,7 @@ const GuardianTestBlock = ({
   const lineKey = testLineKeyOf(enrollment, false, 'socialRecovery.enroll.guardian.testedLine')
 
   return (
-    <SectionCard tone="muted" testID="guardian-test-block" style={spacings.mb0}>
+    <SectionCard tone="muted" spacing="none" testID="guardian-test-block">
       <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
         {t('socialRecovery.enroll.guardian.howMany')}
       </Text>

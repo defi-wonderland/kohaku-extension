@@ -17,7 +17,7 @@ import {
   recoveryChainOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import ClientStateLine from './ClientStateLine'
@@ -102,14 +102,21 @@ const EnrollView = ({
 
   if (load.status === 'failed') {
     return (
-      <View testID="enroll-load-failed">
-        <Alert type="error" size="sm" text={t('socialRecovery.records.loadFailed')} />
+      <View>
+        <Alert
+          type="error"
+          size="sm"
+          text={
+            <Alert.Text size="sm" type="error" testID="enroll-load-failed">
+              {t('socialRecovery.records.loadFailed')}
+            </Alert.Text>
+          }
+        />
         <ActionsRow
           primary={
             <Button
               testID="enroll-load-retry"
-              type="secondary"
-              size="small"
+              type="primary"
               text={t('socialRecovery.writes.tryAgain')}
               onPress={() => setAttempt((n) => n + 1)}
               hasBottomSpacing={false}
@@ -122,6 +129,15 @@ const EnrollView = ({
   }
 
   const enrollment = load.status === 'enrolled' ? load.enrollment : null
+  let note: string | undefined
+  let noteTestID: string | undefined
+  if (enrollment) {
+    note = t('socialRecovery.enroll.saveWithoutTest')
+    noteTestID = 'enroll-save-without-test'
+  } else if (search.kind === 'passkey') {
+    note = t('socialRecovery.enroll.passkey.createFirst')
+    noteTestID = 'enroll-create-first'
+  }
   const row = {
     records,
     setup,
@@ -156,27 +172,9 @@ const EnrollView = ({
           />
         }
         secondary={back}
+        note={note}
+        noteTestID={noteTestID}
       />
-      {!enrollment && search.kind === 'passkey' && (
-        <Text
-          testID="enroll-create-first"
-          fontSize={12}
-          appearance="secondaryText"
-          style={spacings.mtTy}
-        >
-          {t('socialRecovery.enroll.passkey.createFirst')}
-        </Text>
-      )}
-      {!!enrollment && (
-        <Text
-          testID="enroll-save-without-test"
-          fontSize={12}
-          appearance="secondaryText"
-          style={spacings.mtTy}
-        >
-          {t('socialRecovery.enroll.saveWithoutTest')}
-        </Text>
-      )}
     </View>
   )
 }

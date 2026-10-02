@@ -9,14 +9,14 @@
 import React from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
 import GuardianAddressField from './GuardianAddressField'
 import GuardianChecksBlock from './GuardianChecksBlock'
@@ -127,14 +127,28 @@ const GuardianRow = (props: RowProps) => {
       </SectionCard>
 
       {row.duplicate && (
-        <Text testID="guardian-duplicate" fontSize={14} appearance="errorText">
-          {t('socialRecovery.editor.duplicate')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="guardian-duplicate">
+              {t('socialRecovery.editor.duplicate')}
+            </Alert.Text>
+          }
+        />
       )}
       {row.writeFailed && (
-        <Text testID="enroll-write-failed" fontSize={14} appearance="errorText">
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="enroll-write-failed">
+              {t('socialRecovery.records.writeFailed')}
+            </Alert.Text>
+          }
+        />
       )}
     </View>
   )

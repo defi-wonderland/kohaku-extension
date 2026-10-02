@@ -8,11 +8,9 @@ import { View } from 'react-native'
 import Avatar from '@common/components/Avatar'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { MethodRow, StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import {
   renderChip,
   renderFullAddress,
@@ -30,24 +28,10 @@ const GuardianEnrolledSummary = ({
   resolvedName
 }: GuardianEnrolledSummaryProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const resolved = resolvedName ? renderResolvedName(resolvedName, 'besideAddressToCheck', t) : null
 
   return (
-    <View
-      testID="guardian-enrolled"
-      style={[
-        common.borderRadiusPrimary,
-        spacings.phSm,
-        spacings.pvSm,
-        spacings.mbSm,
-        {
-          borderWidth: 1,
-          borderColor: theme.primaryBorder,
-          backgroundColor: theme.primaryBackground
-        }
-      ]}
-    >
+    <MethodRow testID="guardian-enrolled">
       <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.justifySpaceBetween]}>
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.flex1, spacings.mrSm]}>
           <Avatar pfp={address} isSmart={false} size={24} displayTypeBadge={false} />
@@ -81,7 +65,7 @@ const GuardianEnrolledSummary = ({
           )}
         </>
       )}
-    </View>
+    </MethodRow>
   )
 }
 

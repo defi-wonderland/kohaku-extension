@@ -6,6 +6,7 @@
 import React from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
@@ -53,20 +54,28 @@ const PasskeyRowNotes = ({
         </View>
       )}
       {duplicate && (
-        <Text testID="passkey-duplicate" fontSize={14} appearance="errorText" style={spacings.mbSm}>
-          {t('socialRecovery.editor.duplicate')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="passkey-duplicate">
+              {t('socialRecovery.editor.duplicate')}
+            </Alert.Text>
+          }
+        />
       )}
       {writeFailed && (
-        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbSm]}>
-          <Text
-            testID="enroll-write-failed"
-            fontSize={14}
-            appearance="errorText"
-            style={spacings.mrSm}
-          >
-            {t('socialRecovery.records.writeFailed')}
-          </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="enroll-write-failed">
+              {t('socialRecovery.records.writeFailed')}
+            </Alert.Text>
+          }
+        >
           {!!pending && (
             <Button
               testID="passkey-place-retry"
@@ -76,9 +85,10 @@ const PasskeyRowNotes = ({
               disabled={busy}
               onPress={() => place(pending)}
               hasBottomSpacing={false}
+              style={[flexbox.alignSelfStart, spacings.mtTy]}
             />
           )}
-        </View>
+        </Alert>
       )}
     </>
   )
