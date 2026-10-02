@@ -277,12 +277,14 @@ export interface SaveSteps {
   /**
    * Waits again for the receipt of a hash the run already sent, feeding the
    * answer to `dispatch`; `startBlock` is the block read before the send.
+   * `onKnown` hears it when the wait reads that the node knows the transaction.
    */
   waitAgain(
     transactionHash: Hex,
     startBlock: number | undefined,
     dispatch: (event: WriteEvent) => void,
-    run: number
+    run: number,
+    onKnown?: () => void
   ): Promise<void>
   /** The check after the batch lands. */
   confirm(save: PreparedSave): Promise<SetupConfirmation>

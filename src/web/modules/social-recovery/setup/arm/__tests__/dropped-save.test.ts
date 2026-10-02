@@ -193,17 +193,16 @@ const firstReadingOnArrival = async () => {
   return arrived
 }
 
-/** The first reading on arrival; the wait stalls; check again reads the second reading, and dropped. */
+/** The first reading on arrival; the wait stalls, and the stall reads the second reading, and dropped. */
 const droppedOnArrival = async () => {
   const arrived = await firstReadingOnArrival()
   await advanceTimers(RECEIPT_WAIT_MS)
-  await checkAgain(arrived.page)
   expect(isDropped(arrived.page.store)).toBe(true)
   return arrived
 }
 
 describe('a page that finds a save stored under its hash', () => {
-  it('keeps one reading on arrival an hour after the broadcast and reads nothing dropped, then reads dropped on check again, the stored save kept and nothing sent', async () => {
+  it('keeps one reading on arrival an hour after the broadcast and reads nothing dropped, then reads dropped at the stall with no press, the stored save kept and nothing sent', async () => {
     const { record, page } = await firstReadingOnArrival()
     expectSubmittingUnder(page.store, TX_HASH)
     expect(page.wired.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
@@ -211,13 +210,13 @@ describe('a page that finds a save stored under its hash', () => {
     expect(page.wired.setupState).not.toHaveBeenCalled()
 
     await advanceTimers(RECEIPT_WAIT_MS)
-    await checkAgain(page)
 
     expect(isDropped(page.store)).toBe(true)
     expect(page.store.state().unknownReading).toBeUndefined()
     expectSubmittingUnder(page.store, TX_HASH)
     expect(armScreenOf(page.store.state())).toBe('run')
-    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(2)
+    // The first reading, the wait's own read as it opens, and the stall's reading.
+    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(3)
     expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
     expect(page.wired.setupState).toHaveBeenCalledTimes(1)
     expect(await stored(page.wired)).toEqual(record)
@@ -254,18 +253,18 @@ describe('a page that finds a save stored under its hash', () => {
 
     expect(isDropped(page.store)).toBe(false)
     expect(page.store.state().unknownReading).toBeUndefined()
-    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(2)
+    // On arrival, at the stall, on check again and at its stall.
+    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(4)
     expect(page.wired.setupState).not.toHaveBeenCalled()
     expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
     expect(page.store.state().stalled).toBe(true)
   })
 
-  it('goes the landed way where the setup read of the second reading finds a setup: one check, one wipe, saved, nothing sent', async () => {
+  it('goes the landed way where the setup read of the second reading, at the stall, finds a setup: one check, one wipe, saved, nothing sent', async () => {
     const { record, page } = await firstReadingOnArrival()
     page.wired.setupState.mockResolvedValue(setupStateOf(true))
-    await advanceTimers(RECEIPT_WAIT_MS)
 
-    await checkAgain(page)
+    await advanceTimers(RECEIPT_WAIT_MS)
     await advanceTimers(SHORT_TIMEOUT_MS)
 
     expect(isSaved(page.store.state())).toBe(true)
@@ -311,19 +310,16 @@ describe('a page that finds a save stored under its hash', () => {
   ]
 
   FAILING_READS.forEach(([named, arrange, limit]) =>
-    it(`drops the kept reading and leaves the save submitting under its hash, waiting and then stalled with check again, where ${named} at the second reading`, async () => {
+    it(`drops the kept reading and leaves the save submitting under its hash, stalled with check again, where ${named} at the second reading the stall takes`, async () => {
       const { record, page } = await firstReadingOnArrival()
-      await advanceTimers(RECEIPT_WAIT_MS)
       arrange(page)
 
-      await checkAgain(page)
+      await advanceTimers(RECEIPT_WAIT_MS)
       await advanceTimers(limit)
       expect(isDropped(page.store)).toBe(false)
       expect(page.store.state().unknownReading).toBeUndefined()
       expectSubmittingUnder(page.store, TX_HASH)
       expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
-
-      await advanceTimers(RECEIPT_WAIT_MS)
       expect(page.store.state().stalled).toBe(true)
       expect(isDropped(page.store)).toBe(false)
       expect(await stored(page.wired)).toEqual(record)
@@ -333,11 +329,10 @@ describe('a page that finds a save stored under its hash', () => {
 
   it('takes nothing from a node read that answers unknown after its limit, and drops the kept reading', async () => {
     const { page } = await firstReadingOnArrival()
-    await advanceTimers(RECEIPT_WAIT_MS)
     const late = held<'unknown'>()
     page.wired.receipts.transactionKnown.mockImplementationOnce(() => late.promise)
 
-    await checkAgain(page)
+    await advanceTimers(RECEIPT_WAIT_MS)
     await advanceTimers(DROPPED_READ_MS)
     late.release('unknown')
     await advanceTimers(0)
@@ -364,7 +359,8 @@ describe('the two readings of a dropped save', () => {
     const { page, first } = await firstReadingWithWaitsOf(30 * SECOND)
 
     await advanceTimers(30 * SECOND)
-    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(2)
+    // The first reading, the wait's own read as it opens, and the second reading.
+    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(3)
     expect(isDropped(page.store)).toBe(false)
     expect(page.store.state().unknownReading).toBe(first)
     expect(page.wired.setupState).not.toHaveBeenCalled()
@@ -388,7 +384,8 @@ describe('the two readings of a dropped save', () => {
     await advanceTimers(SECOND)
 
     expect(isDropped(page.store)).toBe(true)
-    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(2)
+    // The first reading, the wait's own read as it opens, and the second reading.
+    expect(page.wired.receipts.transactionKnown).toHaveBeenCalledTimes(3)
     expect(page.wired.setupState).toHaveBeenCalledTimes(1)
   })
 
@@ -434,10 +431,57 @@ describe('the two readings of a dropped save', () => {
     })
   )
 
-  it('takes a check again press as the second reading', async () => {
-    const { page } = await firstReadingOnArrival()
-    await advanceTimers(RECEIPT_WAIT_MS)
+  it('keeps the first reading on a second one at a lower block five seconds later, and reads dropped on one at a higher block', async () => {
+    const { page, first } = await firstReadingWithWaitsOf(5 * SECOND)
+    page.wired.receipts.blockNumber.mockResolvedValue(START_BLOCK - 1)
 
+    await advanceTimers(5 * SECOND)
+    expect(isDropped(page.store)).toBe(false)
+    expect(page.store.state().unknownReading).toBe(first)
+    expect(page.wired.setupState).not.toHaveBeenCalled()
+
+    page.wired.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+    await checkAgain(page)
+    expect(isDropped(page.store)).toBe(true)
+    expect(page.wired.setupState).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the kept reading when the receipt wait reads the transaction known: the next unknown reading at a new block is a first one again', async () => {
+    const arrived = await arriveAfter(DROPPED_AFTER_MS)
+    const { page } = arrived
+    const waitRead = held<'known'>()
+    page.wired.receipts.transactionKnown
+      .mockResolvedValueOnce('unknown')
+      .mockImplementationOnce(() => waitRead.promise)
+    page.wired.receipts.wait.mockImplementation(failsAfter(30 * SECOND))
+    unawaited(page.arrive())
+    await advanceTimers(0)
+    expect(page.store.state().unknownReading).toBeDefined()
+
+    waitRead.release('known')
+    await advanceTimers(0)
+    expect(page.store.state().unknownReading).toBeUndefined()
+
+    page.wired.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+    await advanceTimers(30 * SECOND)
+    expect(isDropped(page.store)).toBe(false)
+    expect(page.store.state().unknownReading).toEqual({
+      at: Date.now(),
+      block: START_BLOCK + 1,
+      hashes: [TX_HASH]
+    })
+    expect(page.wired.setupState).not.toHaveBeenCalled()
+  })
+
+  it('takes a check again press as the second reading after a stall that took the first', async () => {
+    const { page } = await arriveAfter(DROPPED_AFTER_MS - MINUTE)
+    page.wired.receipts.wait.mockImplementationOnce(() => pending())
+    unawaited(page.arrive())
+    await advanceTimers(RECEIPT_WAIT_MS)
+    expect(page.store.state().unknownReading).toBeDefined()
+    expect(isDropped(page.store)).toBe(false)
+
+    passTime(DROPPED_RECHECK_MS)
     await checkAgain(page)
 
     expect(isDropped(page.store)).toBe(true)
@@ -511,9 +555,9 @@ describe('the hour of a dropped save', () => {
 
     const after = await recordAt({ claimedAgo: DROPPED_AFTER_MS })
     unawaited(after.arrive())
-    await advanceTimers(RECEIPT_WAIT_MS)
+    await advanceTimers(0)
     expect(after.store.state().unknownReading).toBeDefined()
-    await checkAgain(after)
+    await advanceTimers(RECEIPT_WAIT_MS)
     expect(isDropped(after.store)).toBe(true)
   })
 
@@ -712,7 +756,43 @@ describe('when the check for a dropped save runs', () => {
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('reads dropped on the second check again after the hour, and opens no other wait', async () => {
+  const AT_THE_STALL: [string, (page: Page) => void][] = [
+    ['at the same block, the minute passed', () => undefined],
+    ['at a new block', ({ wired }) => wired.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)]
+  ]
+
+  AT_THE_STALL.forEach(([named, arrange]) =>
+    it(`takes the second reading at the stall with no press, ${named}, and reads dropped`, async () => {
+      const { page } = await firstReadingOnArrival()
+      arrange(page)
+
+      await advanceTimers(RECEIPT_WAIT_MS - 1)
+      expect(isDropped(page.store)).toBe(false)
+      expect(page.wired.setupState).not.toHaveBeenCalled()
+
+      await advanceTimers(1)
+      expect(isDropped(page.store)).toBe(true)
+      expect(page.wired.setupState).toHaveBeenCalledTimes(1)
+      expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
+      expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+  )
+
+  it('checks nothing new at a stall that comes before the hour', async () => {
+    const { page } = await arriveAfter(DROPPED_AFTER_MS - RECEIPT_WAIT_MS - 1)
+    page.wired.receipts.wait.mockImplementationOnce(() => pending())
+
+    unawaited(page.arrive())
+    await advanceTimers(RECEIPT_WAIT_MS)
+
+    expect(page.store.state().stalled).toBe(true)
+    expect(isDropped(page.store)).toBe(false)
+    expect(page.store.state().unknownReading).toBeUndefined()
+    expect(page.wired.receipts.transactionKnown).not.toHaveBeenCalled()
+    expect(page.wired.setupState).not.toHaveBeenCalled()
+  })
+
+  it('reads dropped at the stall after a check again past the hour, and opens no other wait', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     await firstPageSent(storage, requests)
@@ -722,10 +802,8 @@ describe('when the check for a dropped save runs', () => {
     await checkAgain(page)
     expect(isDropped(page.store)).toBe(false)
     await advanceTimers(RECEIPT_WAIT_MS)
-    await checkAgain(page)
 
     expect(isDropped(page.store)).toBe(true)
-    expect(page.store.state().stalled).toBe(false)
     expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
   })
 
@@ -851,11 +929,10 @@ describe('when the check for a dropped save runs', () => {
 
   it('reads dropped through the steps of a screen that came back while a check read through the old ones', async () => {
     const { page, storage, requests } = await firstReadingOnArrival()
-    await advanceTimers(RECEIPT_WAIT_MS)
     const answer = held<'unknown'>()
     page.wired.receipts.transactionKnown.mockImplementationOnce(() => answer.promise)
 
-    await checkAgain(page)
+    await advanceTimers(RECEIPT_WAIT_MS)
     detachSteps(page.wired.steps)
     const next = pageOf(storage, requests)
     unawaited(attachSteps(page.store, next.wired.steps, OPTIONS))
@@ -878,7 +955,6 @@ describe('when the check for a dropped save runs', () => {
     passTime(DROPPED_AFTER_MS)
     await checkAgain(page)
     await advanceTimers(RECEIPT_WAIT_MS)
-    await checkAgain(page)
     expect(isDropped(page.store)).toBe(true)
 
     receipt.release(landedReceipt())
@@ -973,7 +1049,6 @@ describe('save again', () => {
       unawaited(page.arrive())
     })
     await advanceTimers(RECEIPT_WAIT_MS)
-    await Promise.all(pages.map((page) => checkAgain(page)))
     pages.forEach((page) => expect(isDropped(page.store)).toBe(true))
 
     pages.forEach((page) => unawaited(saveAgain(page.store, page.wired.steps, OPTIONS)))
@@ -1028,7 +1103,6 @@ describe('save again', () => {
     passTime(DROPPED_AFTER_MS)
     await checkAgain(page)
     await advanceTimers(RECEIPT_WAIT_MS)
-    await checkAgain(page)
     expect(isDropped(page.store)).toBe(true)
     const removal = held<null>()
     const remove = storage.remove.bind(storage)

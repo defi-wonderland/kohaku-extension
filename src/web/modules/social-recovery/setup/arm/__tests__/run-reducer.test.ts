@@ -324,20 +324,15 @@ describe("the save's reducer", () => {
       expect(armReducer(unclaimed, { type: 'voided', run: 1 })).toBe(unclaimed)
     })
 
-    it('reads dropped only while it submits under a hash with its claim, nothing landed and nothing checked', () => {
+    it('reads dropped only while it submits under a hash, nothing landed and nothing checked', () => {
       const dropped = armReducer(sent, { type: 'dropped', run: 1 })
       expect(dropped.dropped).toBe(true)
       expect(dropped.write).toBe(sent.write)
       expect(dropped.requestId).toBe('claimed')
       expect(armReducer(dropped, { type: 'dropped', run: 1 })).toBe(dropped)
-      // With no hash, for another run, with no claim, or once a setup was seen: nothing moves.
+      // With no hash, for another run, or once a setup was seen: nothing moves.
       expect(armReducer(claimed, { type: 'dropped', run: 1 })).toBe(claimed)
       expect(armReducer(sent, { type: 'dropped', run: 2 })).toBe(sent)
-      const unclaimedSent = armReducer(armReducer(sent, { type: 'released', run: 1 }), {
-        type: 'dropped',
-        run: 1
-      })
-      expect(unclaimedSent.dropped).toBeUndefined()
       const seen = armReducer(sent, { type: 'landedUnseen', run: 1 })
       expect(seen.landedUnseen).toBe(true)
       expect(armReducer(seen, { type: 'dropped', run: 1 })).toBe(seen)

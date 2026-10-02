@@ -240,7 +240,7 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         after: { stage: 'none' }
       }
     case 'unknownRead':
-      if (!droppableIn(state, event.run) || state.unknownReading === event.reading) {
+      if (!droppableIn(state, event.run)) {
         return state
       }
       return { ...state, unknownReading: event.reading }
@@ -252,7 +252,7 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       return rest
     }
     case 'dropped': {
-      if (!droppableIn(state, event.run) || !state.requestId) {
+      if (!droppableIn(state, event.run)) {
         return state
       }
       const { unknownReading, ...rest } = state
@@ -587,9 +587,12 @@ const hashIn = (hashes: readonly Hex[], hash: Hex): boolean =>
 const coveredBy = (kept: UnknownReading, reading: UnknownReading): boolean =>
   reading.hashes.every((hash) => hashIn(kept.hashes, hash))
 
-/** Whether `reading` read another block number than `kept`, or came `DROPPED_RECHECK_MS` after it. */
+/**
+ * Whether `reading` read a higher block number than `kept`, or came
+ * `DROPPED_RECHECK_MS` after it. A lower number is a backend that lags.
+ */
 const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.block !== kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
+  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
 
 /**
  * The check for a dropped save, through the steps `liveStepsOf` names, in
@@ -763,7 +766,8 @@ const settlesWithin = (work: Promise<void>, limitMs: number): Promise<boolean> =
  * failed and the batch may still land, or where the run follows a stored hash;
  * a wait already open on that hash is taken up rather than a second one
  * opened. A wait that fails again, or runs past `RECEIPT_WAIT_MS`, leaves the
- * run stalled under its hash until the holder asks to check again. A wait past
+ * run stalled under its hash until the holder asks to check again, and the
+ * stall checks for a dropped save once. A wait past
  * its limit goes on: a receipt it brings later is taken while the run still
  * submits that hash, and the check follows.
  */
@@ -778,12 +782,25 @@ const waitForReceipt = async (
   if (!transactionHash || write.status !== 'submitting') {
     return
   }
+  // Where a reading of the transaction unknown is kept, a wait that reads it
+  // known drops that reading.
+  const onKnown = (): void => {
+    if (pendingHashIn(store.state(), run) === transactionHash) {
+      store.dispatch({ type: 'unknownCleared', run })
+    }
+  }
   const waiting =
     openWaitsOf(store).get(transactionHash.toLowerCase()) ??
     holdWait(
       store,
       transactionHash,
-      steps.waitAgain(transactionHash, write.startBlock, writeEvent(store), run)
+      steps.waitAgain(
+        transactionHash,
+        write.startBlock,
+        writeEvent(store),
+        run,
+        store.state().unknownReading ? onKnown : undefined
+      )
     )
   const inTime = await settlesWithin(waiting, RECEIPT_WAIT_MS)
   store.dispatch({ type: 'waitStalled', run })
@@ -801,6 +818,8 @@ const waitForReceipt = async (
       await checkDropped(store, steps, run, options)
     })
     .catch(() => undefined)
+  // A stall is a check too, so a save past its hour gets its next reading with no press.
+  await checkDropped(store, steps, run, options)
 }
 
 /** Waits for the receipt of the run's hash, then the check where it landed. */
