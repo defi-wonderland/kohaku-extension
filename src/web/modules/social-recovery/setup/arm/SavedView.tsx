@@ -58,20 +58,24 @@ const SavedView = ({
       </Text>
 
       <View style={spacings.mbLg} testID="arm-saved-transaction">
-        <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
-          {t(`${ARM}.savedOnChain`)}
-        </Text>
-        <Text fontSize={14} weight="number_medium" selectable style={spacings.mbTy}>
-          {renderHash(transactionHash)}
-        </Text>
-        <Button
-          testID="arm-saved-explorer"
-          type="ghost"
-          size="small"
-          text={t(`${ARM}.explorer`)}
-          onPress={() => openUrl(explorerTransactionUrlOf(chain, transactionHash))}
-          hasBottomSpacing={false}
-        />
+        {!!transactionHash && (
+          <>
+            <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
+              {t(`${ARM}.savedOnChain`)}
+            </Text>
+            <Text fontSize={14} weight="number_medium" selectable style={spacings.mbTy}>
+              {renderHash(transactionHash)}
+            </Text>
+            <Button
+              testID="arm-saved-explorer"
+              type="ghost"
+              size="small"
+              text={t(`${ARM}.explorer`)}
+              onPress={() => openUrl(explorerTransactionUrlOf(chain, transactionHash))}
+              hasBottomSpacing={false}
+            />
+          </>
+        )}
         {line(t(`${ARM}.oneTransaction`), 'arm-saved-one-transaction')}
         {level === 'hidden' && line(t(`${ARM}.hiddenBehindPassword`), 'arm-saved-hidden')}
       </View>

@@ -23,7 +23,7 @@ import {
   renderResolvedName,
   renderValueLabel
 } from '@web/modules/social-recovery/shared/display'
-import { renderDepositStep } from '@web/modules/social-recovery/shared/writes'
+import { mayStillLand, renderDepositStep } from '@web/modules/social-recovery/shared/writes'
 import DepositStepView from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
 import WriteStateView from '@web/modules/social-recovery/shared/writes/components/WriteStateView'
 import type { SaveBlock } from '@web/modules/social-recovery/setup/review'
@@ -33,7 +33,6 @@ import { armScreenOf } from './arrival'
 import { saveWriteKeysOf } from './copy'
 import { costLineKeyOf } from './cost'
 import DisagreedView from './DisagreedView'
-import { mayStillLand } from './refusal'
 import SavedView from './SavedView'
 import type { ArmViewProps } from './types'
 
@@ -60,9 +59,11 @@ const ArmView = ({
   const { t } = useTranslation()
   const screen = armScreenOf(state)
   const { write } = state
+  // A save that landed while no page followed its hash shows no hash.
+  const landed = write.status === 'landed' || !!state.landedUnseen
   const transactionHash = write.status === 'landed' ? write.transactionHash : undefined
 
-  if (screen === 'saved' && transactionHash) {
+  if (screen === 'saved' && landed) {
     return (
       <SavedView
         transactionHash={transactionHash}
@@ -74,7 +75,7 @@ const ArmView = ({
       />
     )
   }
-  if ((screen === 'disagreed' || screen === 'unread') && transactionHash) {
+  if ((screen === 'disagreed' || screen === 'unread') && landed) {
     return (
       <DisagreedView
         transactionHash={transactionHash}
@@ -217,39 +218,23 @@ const ArmView = ({
         </DepositStepView>
       )
     }
-    if (mayStillLand(write)) {
-      // The operation may still reach the chain: no line says nothing was sent,
-      // and no retry; checking again reads the account's setup.
-      return (
-        <View testID={`arm-write-${write.status}`}>
-          <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-            {t(`${REVIEW}.after.failedTitle`)}
-          </Text>
-          <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.arm.mayStillLand')}
-          </Text>
-          <Button
-            testID="arm-check-setup"
-            type="outline"
-            size="small"
-            text={t('socialRecovery.arm.checkAgain')}
-            onPress={onCheckSetup}
-            hasBottomSpacing={false}
-          />
-        </View>
-      )
-    }
     const keys = saveWriteKeysOf(write)
-    const stalled = write.status === 'submitting' && !!write.transactionHash && !!state.stalled
+    // Check again waits for the receipt of a stalled hash, or reads again a
+    // followed request whose read did not answer.
+    const checksAgain =
+      write.status === 'submitting' &&
+      ((!!write.transactionHash && !!state.stalled) ||
+        (!write.transactionHash && state.follow === 'unread'))
     return (
       <WriteStateView
         state={write}
         title={keys.title ? t(keys.title) : undefined}
+        body={keys.body ? [t(keys.body)] : undefined}
         note={keys.note ? t(keys.note) : undefined}
         onRetry={onRetry}
         testID={`arm-write-${write.status}`}
       >
-        {stalled && (
+        {checksAgain && (
           <Button
             testID="arm-check-again"
             type="outline"
@@ -259,13 +244,24 @@ const ArmView = ({
             hasBottomSpacing={false}
           />
         )}
+        {mayStillLand(write) && (
+          <Button
+            testID="arm-check-setup"
+            type="outline"
+            size="small"
+            text={t('socialRecovery.arm.checkAgain')}
+            onPress={onCheckSetup}
+            hasBottomSpacing={false}
+          />
+        )}
       </WriteStateView>
     )
   }
 
-  // Back to the review wherever nothing is on its way to the chain.
+  // Back to the review wherever nothing is on its way to the chain; a save
+  // that may still land keeps its stored save in flight, so it offers none.
   const stopped =
-    write.status === 'failedNotSent' ||
+    (write.status === 'failedNotSent' && !mayStillLand(write)) ||
     write.status === 'failedReverted' ||
     write.status === 'gasReadError' ||
     write.status === 'needsDeposit'
