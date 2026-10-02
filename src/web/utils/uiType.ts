@@ -45,11 +45,11 @@ export const getUiType = (): UiTypeCheck => {
 
   const { pathname } = window.location
 
-  const uiTypeValues = Object.entries(UI_TYPE).reduce((m, [key, value]) => {
-    m[`is${key}`] = pathname === `/${value}.html`
-
-    return m
-  }, {} as UiTypeCheck)
+  const uiTypeValues: UiTypeCheck = {
+    isTab: pathname === `/${UI_TYPE.Tab}.html`,
+    isPopup: pathname === `/${UI_TYPE.Popup}.html`,
+    isActionWindow: pathname === `/${UI_TYPE.ActionWindow}.html`
+  }
 
   return {
     ...uiTypeValues,

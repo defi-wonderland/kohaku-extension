@@ -3,8 +3,8 @@ import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import { browser, isExtension } from '@web/constants/browserapi'
 
 const benzinStorage = {
-  get: (key: string, defaultValue: any): any => {
-    const serialized = localStorage.getItem(key)
+  get: (key: string | undefined, defaultValue: any): any => {
+    const serialized = localStorage.getItem(String(key))
     return Promise.resolve(serialized ? parse(serialized) : defaultValue)
   },
   set: (key: string, value: any) => {

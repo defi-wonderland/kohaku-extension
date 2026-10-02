@@ -65,7 +65,7 @@ export class AutoLockController extends EventEmitter {
       delayInMinutes: this.autoLockTime,
       periodInMinutes: this.autoLockTime
     })
-    browser.alarms.onAlarm.addListener((alarm) => {
+    browser.alarms.onAlarm.addListener((alarm: chrome.alarms.Alarm) => {
       if (alarm.name === ALARMS_AUTO_LOCK) {
         this.#onAutoLock()
         browser.alarms.clear(ALARMS_AUTO_LOCK)
