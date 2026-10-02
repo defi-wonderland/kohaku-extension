@@ -376,7 +376,7 @@ describe('the lines the view reads', () => {
       refusedFor('not-a-transaction'),
       refusedFor('other-request-pending')
     ]
-    expect(states.map(saveWriteKeysOf)).toEqual([
+    expect(states.map((state) => saveWriteKeysOf(state))).toEqual([
       { note: 'socialRecovery.review.after.submitting' },
       // A save never sent reads one sentence: the save's own, in place of the shared line.
       {

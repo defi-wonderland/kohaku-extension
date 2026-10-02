@@ -218,7 +218,7 @@ const ArmView = ({
         </DepositStepView>
       )
     }
-    const keys = saveWriteKeysOf(write)
+    const keys = saveWriteKeysOf(write, state.follow)
     // Check again waits for the receipt of a stalled hash, or reads again a
     // followed request whose read did not answer.
     const checksAgain =
