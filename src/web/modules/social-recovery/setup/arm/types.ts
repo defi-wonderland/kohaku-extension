@@ -260,15 +260,29 @@ export interface SaveSteps {
 }
 
 /**
- * The follow of a stored save in flight that holds no hash: the steps of the
- * screen it reads through, the run and the request it follows, and when the
- * request was claimed (ms since epoch).
+ * The follow of a stored save in flight that holds no hash: the steps it
+ * started with, the run and the request it follows, and the block the stored
+ * save holds, where it holds one.
  */
 export interface FollowHold {
   steps: SaveSteps
   run: number
   requestId: string
-  claimedAt: number
+  startBlock?: number
+}
+
+/** A follow as it reads now: its hold and the steps it reads through. */
+export interface FollowAt {
+  hold: FollowHold
+  steps: SaveSteps
+}
+
+/**
+ * The gone readings of a follow since its last other reading: the hold and
+ * the steps they were read through, and the time of the first (ms since epoch).
+ */
+export interface GoneCount extends FollowAt {
+  since: number
 }
 
 /** The part of the recovery client the save runs on. */

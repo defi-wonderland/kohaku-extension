@@ -30,7 +30,7 @@ import {
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 
-import { waitForNewBlock } from './block'
+import { blockOrNone, waitForNewBlock } from './block'
 import type { PreparedSave, SaveSteps, SaveStepsInput } from './types'
 
 /** The calls of a prepared write, in order: a batch's own, or the one call. */
@@ -57,6 +57,15 @@ export const committedDraftOf = (draft: SetupDraft): SetupDraft => {
 export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
   const { client, facts, key } = input
   const inFlight = input.records.saveInFlight(input.chainId, input.account)
+  // A block number that is not a safe integer of zero or more reads as a failed read.
+  const blockNumber = async (): Promise<number> => {
+    const answered = await input.receipts.blockNumber()
+    const block = blockOrNone(answered)
+    if (block === undefined) {
+      throw new Error(`The chain answered no usable block number: ${String(answered)}`)
+    }
+    return block
+  }
   return {
     account: input.account,
     followedSave: ({ draft, prepared }) => ({ draft, prepared, calls: callsOf(prepared) }),
@@ -125,7 +134,7 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
           unsubscribe()
         }
       }),
-    blockNumber: () => input.receipts.blockNumber(),
+    blockNumber,
     send: ({ calls }, dispatch, run, requestId, onEstimation) =>
       driveAccountBatch({
         dispatch,
@@ -140,7 +149,7 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
       }),
     async waitAgain(transactionHash, startBlock, dispatch, run): Promise<void> {
       try {
-        const from = startBlock ?? (await input.receipts.blockNumber())
+        const from = startBlock ?? (await blockNumber())
         const receipt = receiptOf(await input.receipts.wait(transactionHash, from))
         // A receipt with no status reads neither way, so the write keeps its hash.
         if (receipt) {

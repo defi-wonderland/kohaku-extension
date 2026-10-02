@@ -26,11 +26,19 @@ export const RECEIPT_WAIT_MS = 120_000
 /**
  * How long a followed request that neither the wallet's queue nor its activity
  * holds is read again, while the account shows no setup, before the stored
- * save in flight is void, in ms, counted from the page's first such reading.
+ * save in flight is void, in ms, counted from the follow's first such reading.
  * A request between leaving the queue and reaching the activity reads so for
  * a moment.
  */
 export const GONE_GRACE_MS = 60_000
+
+/**
+ * How long the setup read between a claim and its send may take, in ms,
+ * before the claim is released with nothing sent. Well under
+ * `GONE_GRACE_MS`, so a page that follows the claim does not read it void
+ * while its owner still waits on this read.
+ */
+export const CLAIMED_SETUP_READ_MS = 20_000
 
 /**
  * How long a followed request's state rests before it is read again, in ms:

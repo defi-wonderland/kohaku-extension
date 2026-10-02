@@ -2,9 +2,14 @@
  * The wait for a new block: it reads the chain's block number, then reads it
  * again every few seconds until it moved past the first one, or until its
  * limit ends. A read that fails or does not answer in time moves nothing; the
- * wait never rejects, and it never runs past its limit.
+ * wait never rejects, and it never runs past its limit. A block number the
+ * chain answers counts only as a safe integer of zero or more.
  */
 import { BLOCK_POLL_MS } from './constants'
+
+/** A block number the chain answered, or undefined where it is not a safe integer of zero or more. */
+export const blockOrNone = (block: number | undefined): number | undefined =>
+  block !== undefined && Number.isSafeInteger(block) && block >= 0 ? block : undefined
 
 const pause = (ms: number): Promise<void> =>
   new Promise((resolve) => {

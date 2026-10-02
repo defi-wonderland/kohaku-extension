@@ -131,11 +131,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   )
   // A withdrawal a hidden tab could not send is sent again once the tab is shown.
   const port = useMemo(
-    () =>
-      createSendPort(requests, {
-        chainId,
-        ...(typeof document !== 'undefined' ? { visibility: document } : {})
-      }),
+    () => createSendPort(requests, { chainId, visibility: document }),
     [requests, chainId]
   )
 

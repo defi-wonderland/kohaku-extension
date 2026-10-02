@@ -25,7 +25,7 @@ import {
   startSave
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmStore, SaveSteps } from '@web/modules/social-recovery/setup/arm'
-import { detachSteps, resumeFollow } from '@web/modules/social-recovery/setup/arm/run'
+import { attachSteps, detachSteps } from '@web/modules/social-recovery/setup/arm/run'
 
 import {
   advanceTimers,
@@ -757,7 +757,7 @@ describe('a follow with no hash whose screen went away', () => {
     const live = requestsFake()
     live.activity = [operationFor(record.requestId, { hash: TX_HASH })]
     const after = screenOver(storage, live)
-    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    unawaited(attachSteps(store, after.steps, OPTIONS))
     await advanceTimers(SHORT_TIMEOUT_MS)
 
     expect(isSaved(store.state())).toBe(true)
@@ -803,7 +803,7 @@ describe('a follow with no hash whose screen went away', () => {
     const live = requestsFake()
     live.queued = [record.requestId]
     const after = screenOver(storage, live)
-    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    unawaited(attachSteps(store, after.steps, OPTIONS))
     await advanceTimers(0)
     expect(store.state().follow).toBe('queued')
 
@@ -830,7 +830,7 @@ describe('a follow with no hash whose screen went away', () => {
     await advanceTimers(10 * GONE_GRACE_MS)
 
     const after = screenOver(storage, requestsFake())
-    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    unawaited(attachSteps(store, after.steps, OPTIONS))
     await advanceTimers(GONE_GRACE_MS - 1)
     expect(store.state().follow).toBe('gone')
     expect(store.state().requestId).toBe(record.requestId)
