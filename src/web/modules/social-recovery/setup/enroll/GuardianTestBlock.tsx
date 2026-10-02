@@ -31,8 +31,8 @@ const GuardianTestBlock = ({
   const lineKey = testLineKeyOf(enrollment, false, 'socialRecovery.enroll.guardian.testedLine')
 
   return (
-    <>
-      <SectionCard tone="muted" spacing="none" testID="guardian-test-block">
+    <View testID="guardian-test-block">
+      <SectionCard tone="muted" spacing="none">
         <AccessTestHeader />
         <TestResultLines row="guardian" lineKey={lineKey} outcome={testOutcome} />
         {enrollment.test !== 'not-supported' && (
@@ -87,7 +87,7 @@ const GuardianTestBlock = ({
       <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
         {t('socialRecovery.enroll.guardian.howMany')}
       </Text>
-    </>
+    </View>
   )
 }
 
