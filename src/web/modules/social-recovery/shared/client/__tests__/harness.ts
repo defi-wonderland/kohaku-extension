@@ -84,6 +84,7 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 // The stand-in is not part of the barrel a screen imports; tests reach it by path.
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
+import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/types'
 import {
   createWalletRecords,
   type RecordStorage
@@ -91,6 +92,8 @@ import {
 
 export * from '@web/modules/social-recovery/shared/client'
 export { sdkStandIn }
+
+export type HookState = RecoveryClientState & { retry: () => void }
 
 export const SEPOLIA = 11155111
 export const MAINNET = 1

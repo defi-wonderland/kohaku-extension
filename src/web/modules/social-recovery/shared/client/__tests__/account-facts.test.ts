@@ -25,7 +25,7 @@ import {
   sameFactsReading,
   stateRefreshOf,
   WALLET_RECOVERY_CHAIN
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 const SECOND_KEY = new Wallet(`0x${'66'.repeat(32)}`).address as Address
 const BASIC = new Wallet(`0x${'77'.repeat(32)}`).address as Address
@@ -78,7 +78,9 @@ const sourcesOf = (overrides: Partial<AccountFactsSources> = {}): AccountFactsSo
 
 const readyFacts = (address: Address, sources: AccountFactsSources) => {
   const reading = accountFactsOf(address, sources)
-  if (reading.status !== 'ready') throw new Error(`The facts are ${reading.status}, not ready.`)
+  if (reading.status !== 'ready') {
+    throw new Error(`The facts are ${reading.status}, not ready.`)
+  }
   return reading.facts
 }
 

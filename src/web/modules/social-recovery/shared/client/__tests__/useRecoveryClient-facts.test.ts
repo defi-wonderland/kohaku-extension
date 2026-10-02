@@ -24,12 +24,13 @@ import {
   CONTROLLING_KEY,
   createWorld,
   creationRecordOf,
+  HookState,
   lastArg,
   networkRecord,
   spyOnBuilder,
   WALLET_RECOVERY_CHAIN,
   World
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 jest.mock('@ambire-common/services/provider/getRpcProvider', () => ({
   getRpcProvider: jest.fn()
@@ -64,8 +65,6 @@ const networksState = useNetworksControllerState as jest.Mock
 const BASIC = '0x00000000000000000000000000000000000ba51c' as Address
 const STRANGER = '0x0000000000000000000000000000000000057a9e' as Address
 
-type HookState = ReturnType<typeof useRecoveryClient>
-
 let smart: Account
 let basic: Account
 let world: World
@@ -98,7 +97,9 @@ const render = async (account: Address, facts?: Parameters<typeof useRecoveryCli
 }
 
 const removedKeyOf = async () => {
-  if (latest?.status !== 'ready') throw new Error(`The hook is ${latest?.status}, not ready.`)
+  if (latest?.status !== 'ready') {
+    throw new Error(`The hook is ${latest?.status}, not ready.`)
+  }
   return latest.client.walletReads.removedKey()
 }
 

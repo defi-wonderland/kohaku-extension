@@ -11,6 +11,7 @@ import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import useProvidersControllerState from '@web/hooks/useProvidersControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { AccountFactsResult } from '@web/modules/social-recovery/shared/client/types'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 
 jest.mock('@web/hooks/useAccountsControllerState', () => ({ __esModule: true, default: jest.fn() }))
@@ -101,10 +102,8 @@ const REFRESH = {
   params: { addr: ACCOUNT, chainIds: [BigInt(SEPOLIA)] }
 }
 
-type Reading = ReturnType<typeof useAccountFacts>
-
 let root: Root
-let latest: Reading | undefined
+let latest: AccountFactsResult | undefined
 
 const Probe = ({ account }: { account: Address | undefined }) => {
   latest = useAccountFacts(account)
