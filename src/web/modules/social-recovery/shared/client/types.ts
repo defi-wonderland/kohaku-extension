@@ -1,6 +1,7 @@
 import type { SignedMessage } from '@ambire-common/controllers/activity/types'
 import type { EstimationController } from '@ambire-common/controllers/estimation/estimation'
 import type { MainController } from '@ambire-common/controllers/main/main'
+import type { RequestsController } from '@ambire-common/controllers/requests/requests'
 import type { SignAccountOpController } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import type { Account, AccountOnchainState, AccountStates } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
@@ -18,6 +19,7 @@ import type { AccountOp } from '@ambire-common/libs/accountOp/accountOp'
 import type { Call } from '@ambire-common/libs/accountOp/types'
 import type { TokenResult } from '@ambire-common/libs/portfolio'
 import type { Action } from '@web/extension-services/background/actions'
+import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   FitCheckReading,
   IWalletReadsDouble,
@@ -559,6 +561,18 @@ export interface SendQueueState extends RequestsState {
   actions?: ActionWindowState
 }
 
+/**
+ * The part of the `requests` controller state the send port reads from the
+ * queue the screen holds now: the requests in the queue and those waiting for
+ * an account switch, as the wallet keeps them.
+ */
+export type HeldRequestQueue = Partial<
+  Pick<RequestsController, 'userRequests' | 'userRequestsWaitingAccountSwitch'>
+>
+
+/** A `requests` state the send port reads its requests from: the one the screen holds, or one pushed. */
+export type QueueLists = HeldRequestQueue | SendQueueState
+
 /** One operation the activity lists, with the members the send port reads. */
 export type SubmittedOperation = Pick<SubmittedAccountOp, 'txnId' | 'status'> & {
   identifiedBy?: Pick<AccountOpIdentifiedBy, 'type'>
@@ -621,7 +635,7 @@ export interface SendRequestPort {
   subscribe(listener: (update: SendRequestUpdate) => void): () => void
   accounts(): readonly ListedAccount[]
   /** The `requests` controller state the wallet holds now. */
-  queue(): SendQueueState
+  queue(): HeldRequestQueue
   windowId(): number | undefined
 }
 
@@ -727,14 +741,24 @@ export interface SendPortOptions {
   /** The chain the transaction is sent on, the recovery chain's id. */
   chainId: number | bigint
   timeoutMs?: number
+  /**
+   * The page's document. A hidden tab's dispatch reaches no controller, so a
+   * withdrawal the queue has not confirmed is sent again when it is shown.
+   */
+  visibility?: VisibilitySource
 }
 
 export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
 
-/** A refusal the send port holds open for its settle period, and whether it withdrew the request. */
+/**
+ * A refusal the send port holds open for its settle period, whether it
+ * withdrew the request, and whether the queue and the sign screen showed the
+ * request gone since.
+ */
 export interface SettlingRefusal {
   reason: SendRefusalReason
   withdrawn: boolean
+  confirmed: boolean
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   CONTROLLING_KEY,
   dispatched,
   flush,
+  HeldRequestQueue,
   ListedAccount,
   newSendRequestId,
   operationFor,
@@ -20,7 +21,6 @@ import {
   queuedRequest,
   queueHolding,
   REQUEST_STATE_READ_MS,
-  SendQueueState,
   SendRequestAction,
   sendRequestPort,
   sendRequestStateOf,
@@ -50,7 +50,7 @@ const listenerCount = () =>
  * first and the smart account after it, as the wallet holds them.
  */
 const wallet = () => {
-  const held: { queue?: SendQueueState; accounts: ListedAccount[] } = {
+  const held: { queue?: HeldRequestQueue; accounts: ListedAccount[] } = {
     accounts: [SELECTED, smartAccount(SMART_ACCOUNT, CONTROLLING_KEY)]
   }
   const dispatch = jest.fn()
@@ -77,7 +77,7 @@ const wallet = () => {
       accountsOps: { [session]: { result: { items, currentPage, maxPages } } }
     })
   /** Replaces the queue the wallet holds now. */
-  const holdInQueue = (queue: SendQueueState) => {
+  const holdInQueue = (queue: HeldRequestQueue) => {
     held.queue = queue
   }
   return { held, dispatch, port, actions, asks, sessionId, page, holdInQueue }

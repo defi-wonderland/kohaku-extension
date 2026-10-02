@@ -346,13 +346,15 @@ export type CeremonyRequestRecord =
 // ---------------------------------------------------------------------------
 
 /**
- * A setup save this device sent to the wallet and has not settled: the
- * prepared value `confirmSetup` takes beside the draft, the id of the request
- * it queued, when the save claimed it (ms since epoch) and, once the wallet
- * broadcast it, the transaction hash and the block the receipt wait scans
- * from. A reloaded page or another tab finds it and sends nothing.
+ * A setup save this device sent to the wallet and has not settled: the draft
+ * the save committed and the prepared value, the two `confirmSetup` takes, the
+ * id of the request it queued, when the save claimed it (ms since epoch) and,
+ * once the wallet broadcast it, the transaction hash and the block the receipt
+ * wait scans from. A reloaded page or another tab finds it and sends nothing,
+ * and checks the save against the draft it sent, not the draft stored now.
  */
 export interface SaveInFlightRecord {
+  draft: SetupDraft
   prepared: PreparedCall | PreparedBatch
   requestId: string
   claimedAt: number
@@ -360,8 +362,14 @@ export interface SaveInFlightRecord {
   startBlock?: number
 }
 
-/** What a claim of the save in flight writes. */
-export type SaveInFlightClaim = Pick<SaveInFlightRecord, 'prepared' | 'requestId' | 'claimedAt'>
+/**
+ * What a claim of the save in flight writes: the start block too, where the
+ * page read it before the wallet broadcast.
+ */
+export type SaveInFlightClaim = Pick<
+  SaveInFlightRecord,
+  'draft' | 'prepared' | 'requestId' | 'claimedAt' | 'startBlock'
+>
 
 /**
  * The answer of a claim: `claimed` where this claim wrote the record, and the
@@ -382,13 +390,14 @@ export interface SaveInFlightAccessor {
   /** Writes the record where none is stored; where one is, writes nothing. */
   claim(claim: SaveInFlightClaim): Promise<SaveInFlightClaimResult>
   /**
-   * Writes the hash and the start block where the stored record carries
-   * `requestId`, and answers the record the storage holds after the task.
+   * Writes the hash where the stored record carries `requestId`, and the start
+   * block where one is given; with none, the record keeps the claim's. Answers
+   * the record the storage holds after the task.
    */
   markSent(
     requestId: string,
     transactionHash: Hex,
-    startBlock: number
+    startBlock?: number
   ): Promise<RecordRead<SaveInFlightRecord>>
   /** Removes the record where it carries `requestId`; answers whether it removed it. */
   release(requestId: string): Promise<boolean>
@@ -457,6 +466,10 @@ export interface WalletRecords {
   setupSavedAt(chainId: ChainId, account: Address): Promise<number | null>
   /** Removes the six setup records and the save in flight in one storage call. */
   saveSetup(chainId: ChainId, account: Address): Promise<void>
+  /**
+   * Removes the six setup records in one storage call. While a save of the
+   * account is in flight it removes nothing and throws `SaveInFlightRefusal`.
+   */
   startOverSetup(chainId: ChainId, account: Address): Promise<void>
   recoverySession(chainId: ChainId, account: Address): RecoverySessionAccessor
   listRecoverySessions(chainId: ChainId): Promise<ListedRecord<RecoverySessionRecord>[]>
