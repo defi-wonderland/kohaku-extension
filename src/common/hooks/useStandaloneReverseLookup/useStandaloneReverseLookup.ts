@@ -17,7 +17,7 @@ const useStandaloneReverseLookup = ({ address }: Props) => {
   const { domainsCtrl, state } = useDomainsContext()
 
   useEffect(() => {
-    if (!checksummedAddress) return
+    if (!checksummedAddress || !domainsCtrl) return
 
     // Initiate reverse lookup
     domainsCtrl.reverseLookup(checksummedAddress).catch((e) => {
