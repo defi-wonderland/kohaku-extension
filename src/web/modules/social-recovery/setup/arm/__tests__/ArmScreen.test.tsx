@@ -147,6 +147,9 @@ const {
   setRecoveryPassword,
   wipeRecoveryPassword
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  RECEIPT_WAIT_MS
+}: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
 const ArmScreen: typeof import('../ArmScreen').default = require('../ArmScreen').default
 const harness: typeof import('./harness') = require('./harness')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
@@ -731,15 +734,6 @@ describe('a save in progress across remounts', () => {
       ended: 'arm-disagreed-authorization',
       setUp: true,
       arrival: 'review-blocked-already-set-up'
-    },
-    {
-      named: 'unanswered',
-      arrange: () => {
-        chain.confirm = new Error('the node did not answer')
-      },
-      ended: 'arm-unread',
-      setUp: true,
-      arrival: 'review-blocked-already-set-up'
     }
   ]
 
@@ -764,6 +758,47 @@ describe('a save in progress across remounts', () => {
       expect(port.sendAccountBatch).toHaveBeenCalledTimes(sends)
     })
   )
+
+  it('keeps a refusal whose operation may still land across a remount: no Save button, no retry, nothing sent', async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+
+    await switchAway()
+
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an unanswered check across a remount, and its retry reads again and saves and wipes once', async () => {
+    chain.confirm = new Error('the node did not answer')
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    expect(byTestId('arm-unread')).not.toBeNull()
+    const checks = confirmSetup.mock.calls.length
+    chain.setupState = setupStateOf(true)
+
+    await switchAway()
+
+    expect(byTestId('arm-unread')).not.toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
+    expect(mockEntries.size).toBeGreaterThan(0)
+
+    chain.confirm = confirmation(true, true)
+    await press('arm-unread-retry')
+
+    expect(confirmSetup).toHaveBeenCalledTimes(checks + 1)
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(mockEntries.size).toBe(0)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('a receipt wait that failed after the batch was sent', () => {
@@ -786,6 +821,49 @@ describe('a receipt wait that failed after the batch was sent', () => {
     expect(byTestId('arm-saved')).not.toBeNull()
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(mockEntries.size).toBe(0)
+  })
+
+  it('shows check again once one more wait runs past its limit, and saves once on a receipt that arrives after it', async () => {
+    jest.useFakeTimers()
+    const tick = (ms: number) => act(() => harness.advanceTimers(ms))
+    try {
+      await writeRecords(draftOf('encrypted'))
+      wireClient('ready')
+      const late = held<ReturnType<typeof landedReceipt>>()
+      receipts.wait.mockRejectedValueOnce(nodeError()).mockImplementationOnce(() => late.promise)
+      act(() => root.unmount())
+      root = createRoot(container)
+      await act(async () => {
+        root.render(tree([REVIEW_PATH], 0))
+      })
+      await tick(100)
+      await act(async () => {
+        router.navigate?.(SAVE_PATH)
+      })
+      await tick(100)
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-check-again')).toBeNull()
+
+      await tick(RECEIPT_WAIT_MS)
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-check-again')).not.toBeNull()
+      expect(confirmSetup).not.toHaveBeenCalled()
+      expect(mockEntries.size).toBeGreaterThan(0)
+
+      await act(async () => {
+        late.release(landedReceipt(harness.TX_HASH))
+      })
+      await tick(100)
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(mockEntries.size).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })
 

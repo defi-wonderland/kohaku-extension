@@ -278,6 +278,15 @@ describe("the save's reducer", () => {
     expect(wrong).toEqual([])
   })
 
+  it('reads no stalled wait once the write left submitting, in every state a sequence reaches', () => {
+    expect(WALK.nodes.some(({ state }) => state.stalled === true)).toBe(true)
+    expect(
+      WALK.nodes
+        .filter(({ state }) => state.stalled === true && state.write.status !== 'submitting')
+        .map(({ path }) => json(path))
+    ).toEqual([])
+  })
+
   it("keeps the sign screen's reading only for the run that submits, and a new run starts with no reading, no stall and nothing prepared", () => {
     const readings = WALK.steps.filter(
       ({ from, event, to }) => event.type === 'estimated' && to.state !== from.state

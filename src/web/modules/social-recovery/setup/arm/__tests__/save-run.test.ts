@@ -32,6 +32,8 @@ import {
   isLive,
   isSaved,
   mayStillLand,
+  outlivesScreen,
+  RECEIPT_WAIT_MS,
   recheckGas,
   rereadConfirmation,
   saveWriteKeysOf,
@@ -40,6 +42,7 @@ import {
 import type { ArmStore } from '@web/modules/social-recovery/setup/arm'
 
 import {
+  advanceTimers,
   armingCallOf,
   CHAIN_ID,
   COMMIT,
@@ -820,6 +823,132 @@ describe('a receipt wait that failed after the batch was sent', () => {
     expect(store.state()).toBe(saved)
     expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
   })
+})
+
+describe('the time limit of one more receipt wait', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  /** A receipt wait the test answers by hand, after its first wait failed. */
+  const waitHeldAfterAFailure = (wired: ReturnType<typeof wireSave>) => {
+    let answer: (hash: typeof TX_HASH) => void = () => {}
+    const promise = new Promise<ReturnType<typeof landedReceipt>>((resolve) => {
+      answer = (hash) => resolve(landedReceipt(hash))
+    })
+    wired.receipts.wait.mockRejectedValueOnce(nodeError()).mockImplementationOnce(() => promise)
+    return { land: () => answer(TX_HASH) }
+  }
+
+  /** A second wait the test answers by hand, for check again. */
+  const nextWaitHeld = (wired: ReturnType<typeof wireSave>) => {
+    let answer: () => void = () => {}
+    const promise = new Promise<ReturnType<typeof landedReceipt>>((resolve) => {
+      answer = () => resolve(landedReceipt(TX_HASH))
+    })
+    wired.receipts.wait.mockImplementationOnce(() => promise)
+    return { land: () => answer() }
+  }
+
+  const startStalled = async (wired: ReturnType<typeof wireSave>) => {
+    const store = createArmStore()
+    const running = startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    await advanceTimers(RECEIPT_WAIT_MS - 1)
+    expect(store.state().stalled).toBeFalsy()
+    expect(store.state().write.status).toBe('submitting')
+    await advanceTimers(1)
+    await running
+    return store
+  }
+
+  it('reads stalled under its hash once one more wait runs past its limit, with nothing checked or wiped', async () => {
+    const wired = wireSave(account, script())
+    waitHeldAfterAFailure(wired)
+    const store = await startStalled(wired)
+    const { write } = store.state()
+
+    expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
+    expect(store.state().stalled).toBe(true)
+    expect(isLive(store.state())).toBe(true)
+    expect(armScreenOf(store.state())).toBe('run')
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('takes a receipt that arrives after the limit once, and goes through the check to saved', async () => {
+    const wired = wireSave(account, script())
+    const late = waitHeldAfterAFailure(wired)
+    const store = await startStalled(wired)
+
+    late.land()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(store.state().stalled).toBe(false)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads stalled again where the wait of check again runs past its limit too', async () => {
+    const wired = wireSave(account, script())
+    waitHeldAfterAFailure(wired)
+    const store = await startStalled(wired)
+    nextWaitHeld(wired)
+
+    const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    expect(store.state().stalled).toBe(false)
+    await advanceTimers(RECEIPT_WAIT_MS)
+    await checking
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(3)
+    expect(store.state().stalled).toBe(true)
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+  })
+
+  it('checks and wipes once where the late receipt and the receipt of check again arrive together', async () => {
+    const wired = wireSave(account, script())
+    const late = waitHeldAfterAFailure(wired)
+    const store = await startStalled(wired)
+    const again = nextWaitHeld(wired)
+
+    const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    late.land()
+    again.land()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await checking
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('which ended runs the screen keeps for the next arrival', () => {
+  const ENDINGS: [string, Partial<SaveScript>, boolean][] = [
+    ['a refusal whose operation may still land', { send: 'not-a-transaction' }, true],
+    ['a landed save whose check did not answer', { confirm: 'throws' }, true],
+    ['saved', {}, false],
+    ['already set up', { setup: 'set-up' }, false],
+    ['disagreed', { confirm: 'unauthorized' }, false],
+    ['the deposit step', { gas: 'deposit' }, false],
+    ['never sent', { send: 'window-closed' }, false]
+  ]
+
+  ENDINGS.forEach(([named, overrides, kept]) =>
+    it(`${kept ? 'keeps' : 'drops'} a run that ended ${named}`, async () => {
+      const wired = wireSave(account, script(overrides))
+      const store = await runSave(wired.steps)
+
+      expect(isLive(store.state())).toBe(false)
+      expect(outlivesScreen(store.state())).toBe(kept)
+    })
+  )
 })
 
 describe("the sign screen's estimation before a save never sent", () => {
