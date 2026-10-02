@@ -1,4 +1,6 @@
-export function detectScriptType(): 'background' | 'contentScript' | 'popup' | 'inpage' {
+export type ScriptType = 'background' | 'contentScript' | 'popup' | 'inpage'
+
+export function detectScriptType(): ScriptType {
   const hasChromeRuntime = typeof chrome !== 'undefined' && chrome.runtime
   const hasWindow = typeof window !== 'undefined'
 

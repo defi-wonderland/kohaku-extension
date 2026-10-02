@@ -21,6 +21,7 @@ declare module '@env' {
     PRIVACY_POOLS_RELAYER_URL: string
     HYPERSYNC_API_KEY: string
     RAILGUN_RELAYER_URL: string
+    RAILGUN_DELEGATING_SIGNER_PK?: string
     RPC_PROVIDER: string
     HELIOS_CHECKPOINT: string
     COLIBRI_PROVER_URLS: string
@@ -137,6 +138,11 @@ declare module '@env' {
   /** The Railgun Relayer URL
    */
   export const RAILGUN_RELAYER_URL: EnvTypes['RAILGUN_RELAYER_URL']
+
+  /**
+   * The private key of the Railgun delegating signer
+   */
+  export const RAILGUN_DELEGATING_SIGNER_PK: EnvTypes['RAILGUN_DELEGATING_SIGNER_PK']
 
   /**
    * The Alchemy API key

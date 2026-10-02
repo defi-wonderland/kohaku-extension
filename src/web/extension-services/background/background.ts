@@ -172,13 +172,14 @@ providerRequestTransport.reply(async ({ method, id, params }, meta) => {
   // wait for mainCtrl to be initialized before handling dapp requests
   while (!mainCtrl || !walletStateCtrl) await wait(200)
 
-  const tabId = meta.sender?.tab?.id
-  const windowId = meta.sender?.tab?.windowId
-  if (tabId === undefined || windowId === undefined || !meta.sender?.url) {
+  const sender = meta.sender as chrome.runtime.MessageSender | undefined
+  const tabId = sender?.tab?.id
+  const windowId = sender?.tab?.windowId
+  if (tabId === undefined || windowId === undefined || !sender?.url) {
     return
   }
 
-  const origin = getOriginFromUrl(meta.sender.url)
+  const origin = getOriginFromUrl(sender.url)
   const session = mainCtrl.dapps.getOrCreateDappSession({ tabId, windowId, origin })
 
   await mainCtrl.dapps.initialLoadPromise
