@@ -30,7 +30,7 @@ const PasskeyRowNotes = ({
   return (
     <>
       {undelivered && (
-        <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbSm]}>
           <Text
             testID="passkey-undelivered"
             fontSize={14}
@@ -42,7 +42,8 @@ const PasskeyRowNotes = ({
           {!!stale && (
             <Button
               testID="passkey-undelivered-retry"
-              type="outline"
+              type="secondary"
+              size="small"
               text={t('socialRecovery.ceremony.tryAgainAction')}
               disabled={!canRetryUndelivered}
               onPress={retryUndelivered}
@@ -52,12 +53,12 @@ const PasskeyRowNotes = ({
         </View>
       )}
       {duplicate && (
-        <Text testID="passkey-duplicate" fontSize={14} appearance="errorText">
+        <Text testID="passkey-duplicate" fontSize={14} appearance="errorText" style={spacings.mbSm}>
           {t('socialRecovery.editor.duplicate')}
         </Text>
       )}
       {writeFailed && (
-        <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbSm]}>
           <Text
             testID="enroll-write-failed"
             fontSize={14}
@@ -69,7 +70,8 @@ const PasskeyRowNotes = ({
           {!!pending && (
             <Button
               testID="passkey-place-retry"
-              type="outline"
+              type="secondary"
+              size="small"
               text={t('socialRecovery.writes.tryAgain')}
               disabled={busy}
               onPress={() => place(pending)}
