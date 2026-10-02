@@ -41,9 +41,10 @@ const themeConfig = jest.requireActual<typeof import('@common/styles/themeConfig
 const { renderFullAddress, renderHash, renderChip, renderValueLabel } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/display')
 >('@web/modules/social-recovery/shared/display')
-const { auditedActionOf, deploymentDescriptor, publisherKeyOf } = jest.requireActual<
-  typeof import('@web/modules/social-recovery/shared/client')
->('@web/modules/social-recovery/shared/client')
+const { accountBatchRefusal, auditedActionOf, deploymentDescriptor, publisherKeyOf } =
+  jest.requireActual<typeof import('@web/modules/social-recovery/shared/client')>(
+    '@web/modules/social-recovery/shared/client'
+  )
 const { renderDepositStep, renderGasAmount } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/writes')
 >('@web/modules/social-recovery/shared/writes')
@@ -147,7 +148,9 @@ const pageText = () => container.textContent ?? ''
 
 const press = (id: string) => {
   const node = byTestId(id)
-  if (!node) throw new Error(`nothing on screen with the test id ${id}`)
+  if (!node) {
+    throw new Error(`nothing on screen with the test id ${id}`)
+  }
   act(() => node.click())
 }
 
@@ -159,7 +162,9 @@ const buttonReading = (text: string) =>
 
 const pressText = (text: string) => {
   const node = buttonReading(text)
-  if (!node) throw new Error(`no button reads ${text}`)
+  if (!node) {
+    throw new Error(`no button reads ${text}`)
+  }
   act(() => node.click())
 }
 
@@ -217,7 +222,9 @@ describe('before the save is sent', () => {
     const action = auditedActionOf(DESCRIPTOR.action, 'sepolia')
     mount({ action })
     expect(action.kind).toBe('audited')
-    if (action.kind !== 'audited') return
+    if (action.kind !== 'audited') {
+      return
+    }
     expect(textOf('arm-module')).toContain(
       t('socialRecovery.review.trust.moduleRow', { publisher: t(publisherKeyOf(action)) })
     )
@@ -331,11 +338,14 @@ describe('the arrival blocks', () => {
   ).forEach(([arrival, retries]) =>
     it(`shows the unavailable lines for ${JSON.stringify(
       arrival
-    )}, with a retry only where one clears it`, () => {
+    )}, with the body asking to try again and the retry only where one clears it`, () => {
       const onRetryArrival = jest.fn()
       mount({ arrival, onRetryArrival })
       expect(textOf('arm-unavailable')).toContain(t('socialRecovery.client.unavailableTitle'))
-      expect(textOf('arm-unavailable')).toContain(t('socialRecovery.client.unavailableBody'))
+      expect(textOf('arm-unavailable')?.includes(t('socialRecovery.client.unavailableBody'))).toBe(
+        retries
+      )
+      expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(retries)
       expect(byTestId('arm-arrival-retry') !== null).toBe(retries)
       if (retries) {
         press('arm-arrival-retry')
@@ -358,6 +368,68 @@ describe('the arrival blocks', () => {
     mount({ arrival: { kind: 'loading' } })
     expect(byTestId('arm-spinner')).not.toBeNull()
     expect(byTestId('arm-back')).toBeNull()
+  })
+})
+
+describe('the Save button on a ready arrival', () => {
+  it('shows the summary with the Save button where the screen offers it, and the button starts the save', () => {
+    const onSave = jest.fn()
+    mount({ onSave })
+
+    expect(textOf('arm-save')).toBe(t('socialRecovery.review.save'))
+    expect(byTestId('arm-spinner')).toBeNull()
+    expect(textOf('arm-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
+    expect(byTestId('arm-module')).not.toBeNull()
+    expect(textOf('arm-cost-line')).toBe(t('socialRecovery.costLines.save'))
+    press('arm-save')
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a spinner and no button where the save starts by itself', () => {
+    mount()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('arm-spinner')).not.toBeNull()
+  })
+
+  it('shows no Save button on an arrival that is not ready, nor once a run started', () => {
+    mount({ arrival: { kind: 'blocked', block: { kind: 'empty-slot' } }, onSave: jest.fn() })
+    expect(byTestId('arm-save')).toBeNull()
+    mount({ arrival: { kind: 'loading' }, onSave: jest.fn() })
+    expect(byTestId('arm-save')).toBeNull()
+    mount({
+      state: withWrite({ status: 'submitting', write: 'save', run: 1 }),
+      onSave: jest.fn()
+    })
+    expect(byTestId('arm-save')).toBeNull()
+  })
+})
+
+describe('a run that found a setup on the account', () => {
+  const STOPPED: ArmState = {
+    write: { status: 'idle', write: 'save', run: 1 },
+    after: { stage: 'none' },
+    stop: 'already-set-up'
+  }
+
+  it("shows the review's already-set-up block with its button and the back, and nothing of a send", () => {
+    const navigate = jest.fn()
+    mount({ state: STOPPED, navigate, onSave: jest.fn() })
+
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(pageText()).toContain(t('socialRecovery.review.blocked.alreadySetUp.title'))
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('arm-back')).not.toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.writes.submitting'))
+    expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    SAVED_LINES.forEach((key) => expect(pageText()).not.toContain(t(key)))
+    press('review-blocked-open')
+    expect(navigate).toHaveBeenLastCalledWith(WEB_ROUTES.socialRecoveryManage)
+  })
+
+  it('shows the block whatever the arrival reads after the run', () => {
+    mount({ state: STOPPED, arrival: { kind: 'ready' } })
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-spinner')).toBeNull()
   })
 })
 
@@ -416,6 +488,69 @@ describe('the write states in the save words', () => {
     pressText(t('socialRecovery.writes.tryAgain'))
     expect(onRetry).toHaveBeenCalledTimes(1)
     expect(byTestId('arm-back')).not.toBeNull()
+  })
+
+  it('shows a save the port refused as not a transaction with no retry and no not-sent sentence, since it may still land', () => {
+    const onRetry = jest.fn()
+    mount({
+      state: withWrite({
+        status: 'failedNotSent',
+        write: 'save',
+        error: accountBatchRefusal('not-a-transaction', ACCOUNT),
+        run: 1
+      }),
+      onRetry
+    })
+    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
+    expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    expect(byTestId('arm-back')).not.toBeNull()
+  })
+
+  it('shows a save the port refused for another reason with the not-sent sentence and the retry', () => {
+    const onRetry = jest.fn()
+    mount({
+      state: withWrite({
+        status: 'failedNotSent',
+        write: 'save',
+        error: accountBatchRefusal('window-closed', ACCOUNT),
+        run: 1
+      }),
+      onRetry
+    })
+    expect(pageText()).toContain(t('socialRecovery.review.after.notSent'))
+    pressText(t('socialRecovery.writes.tryAgain'))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows check again under the submitting state where the receipt wait of the sent batch failed, and it waits again', () => {
+    const onCheckAgain = jest.fn()
+    const onRetry = jest.fn()
+    mount({
+      state: {
+        ...withWrite({ status: 'submitting', write: 'save', transactionHash: TX_HASH, run: 1 }),
+        stalled: true
+      },
+      onCheckAgain,
+      onRetry
+    })
+    expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
+    expect(textOf('arm-check-again')).toBe(t('socialRecovery.writes.tryAgain'))
+    expect(byTestId('arm-back')).toBeNull()
+    press('arm-check-again')
+    expect(onCheckAgain).toHaveBeenCalledTimes(1)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
+
+  it('shows no check again while the receipt wait runs, nor without a hash', () => {
+    mount({
+      state: withWrite({ status: 'submitting', write: 'save', transactionHash: TX_HASH, run: 1 })
+    })
+    expect(byTestId('arm-check-again')).toBeNull()
+    mount({
+      state: { ...withWrite({ status: 'submitting', write: 'save', run: 1 }), stalled: true }
+    })
+    expect(byTestId('arm-check-again')).toBeNull()
   })
 
   it('shows a replaced save as replaced, without the not-sent sentence', () => {
@@ -539,6 +674,21 @@ describe('the disagreed and unanswered states', () => {
       expect(openUrl).toHaveBeenCalledWith(arm.explorerTransactionUrlOf('sepolia', TX_HASH))
       press('arm-disagreed-remove-and-save')
       expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryManage)
+    })
+  )
+  ;(
+    [
+      ['the mismatch', { stage: 'disagreed', check: 'mismatch' }],
+      ['the authorization', { stage: 'disagreed', check: 'authorization' }],
+      ['an unanswered check', { stage: 'unread' }]
+    ] as [string, ArmState['after']][]
+  ).forEach(([named, after]) =>
+    it(`shows the landed transaction under the saved-on-chain header for ${named}`, () => {
+      mount({ state: withWrite(LANDED, after) })
+      const transaction = textOf('arm-disagreed-transaction') ?? ''
+      const header = transaction.indexOf(t('socialRecovery.arm.savedOnChain'))
+      expect(header).toBeGreaterThanOrEqual(0)
+      expect(transaction.indexOf(renderHash(TX_HASH))).toBeGreaterThan(header)
     })
   )
 

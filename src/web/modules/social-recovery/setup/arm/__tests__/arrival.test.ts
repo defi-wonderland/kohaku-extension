@@ -6,9 +6,11 @@
  */
 import type { Account } from '@ambire-common/interfaces/account'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
-import { levelFromSearch } from '@web/modules/social-recovery/setup/card'
+import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
 import { initialWriteState, writeReducer } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent, WriteState } from '@web/modules/social-recovery/shared/writes'
+import { levelFromSearch } from '@web/modules/social-recovery/setup/card'
+import { saveGateOf } from '@web/modules/social-recovery/setup/review'
 
 import {
   armReducer,
@@ -21,7 +23,7 @@ import {
   initialArmState,
   saveWriteKeysOf
 } from '@web/modules/social-recovery/setup/arm'
-import type { ArmEvent, ArmState } from '@web/modules/social-recovery/setup/arm'
+import type { ArmEvent, ArmState, ArrivalInput } from '@web/modules/social-recovery/setup/arm'
 
 import {
   arrivalFor,
@@ -34,10 +36,14 @@ import {
   GATE_CASES,
   gateFor,
   loadedOf,
+  REMOVED_KEY,
+  setupStateOf,
   smartAccount,
   TX_HASH
 } from './harness'
 import type { ArrivalCase } from './harness'
+
+const ALREADY_SET_UP = { kind: 'blocked', block: { kind: 'already-set-up' } }
 
 let account: Account
 
@@ -138,6 +144,72 @@ describe('the arrival', () => {
     expect(arrivalOf({ ...base, load: { status: 'loading' } })).toEqual({ kind: 'loading' })
   })
 
+  describe('a setup the account already holds', () => {
+    const withSetup = (input: Partial<ArrivalInput> = {}) =>
+      arrivalOf({
+        facts: factsReadingFor('ready', account),
+        client: 'ready',
+        load: loadedOf(draftOf('encrypted')),
+        gate: gateFor('passes'),
+        setupState: { status: 'answered', value: setupStateOf(true) },
+        passwordHeld: true,
+        ...input
+      })
+
+    GATE_CASES.forEach((gate) =>
+      it(`blocks as already set up before the gate's own reading (${gate})`, () => {
+        expect(withSetup({ gate: gateFor(gate) })).toEqual(ALREADY_SET_UP)
+      })
+    )
+
+    it('blocks as already set up before the missing recovery password', () => {
+      expect(withSetup({ passwordHeld: false })).toEqual(ALREADY_SET_UP)
+    })
+
+    it('blocks as already set up after a saved run, whose wiped records read as the default draft with no password set', () => {
+      const wiped = defaultSetupDraft()
+      expect(
+        withSetup({
+          load: { status: 'loaded', draft: wiped, enrollments: [], passwordSet: false },
+          gate: saveGateOf({
+            recordsLoaded: true,
+            clientReady: true,
+            trustRows: [],
+            untested: false,
+            clauses: wiped.clauses,
+            backup: wiped.privacy.backup,
+            passwordSet: false,
+            removedKey: { status: 'answered', value: { kind: 'named', key: REMOVED_KEY } },
+            fitCheck: { status: 'answered', value: { basis: 'deployed-code', fits: true } },
+            setupState: { status: 'answered', value: setupStateOf(true) },
+            description: { status: 'pending' }
+          }),
+          passwordHeld: false
+        })
+      ).toEqual(ALREADY_SET_UP)
+    })
+
+    it('still reads the account facts, the client and the records first', () => {
+      expect(withSetup({ facts: factsReadingFor('view-only', account) })).toEqual({
+        kind: 'unavailable',
+        retry: null
+      })
+      expect(withSetup({ facts: factsReadingFor('loading', account) })).toEqual({ kind: 'loading' })
+      expect(withSetup({ client: 'failed' })).toEqual({ kind: 'unavailable', retry: 'client' })
+      expect(withSetup({ client: 'update-the-wallet' })).toEqual({ kind: 'update-the-wallet' })
+      expect(withSetup({ client: 'loading' })).toEqual({ kind: 'loading' })
+      expect(withSetup({ load: { status: 'failed' } })).toEqual({ kind: 'load-failed' })
+      expect(withSetup({ load: { status: 'loading' } })).toEqual({ kind: 'loading' })
+    })
+
+    it('does not block where the setup read has not answered or answered none', () => {
+      expect(withSetup({ setupState: { status: 'pending' } })).toEqual({ kind: 'ready' })
+      expect(withSetup({ setupState: { status: 'answered', value: setupStateOf(false) } })).toEqual(
+        { kind: 'ready' }
+      )
+    })
+  })
+
   it('waits while a read of the gate has not come back, with no block shown', () => {
     expect(
       arrivalOf({
@@ -174,6 +246,13 @@ describe('the screen a save shows', () => {
     expect(armScreenOf(initialArmState())).toBe('arrival')
     expect(armScreenOf(apply([write({ type: 'start' })]))).toBe('run')
     expect(armScreenOf(landed)).toBe('run')
+  })
+
+  it('shows already set up once a run found a setup, and never the arrival again', () => {
+    const stopped = apply([write({ type: 'start' }), { type: 'alreadySetUp', run: 1 }])
+    expect(stopped.write.status).toBe('idle')
+    expect(armScreenOf(stopped)).toBe('already-set-up')
+    expect(armScreenOf(apply([write({ type: 'start' })], stopped))).toBe('already-set-up')
   })
 
   it('shows the check running, then saved only after the wipe, or the disagreement, or the unanswered check', () => {
