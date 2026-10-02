@@ -3,7 +3,7 @@
  * disagreed, or it did not answer. It never reads as saved. A check that
  * disagreed names itself and leads to removing the setup and saving it again;
  * a check that did not answer offers to read it again. Both show the landed
- * transaction and its explorer page.
+ * transaction under the saved-on-chain header, with its explorer page.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -60,6 +60,9 @@ const DisagreedView = ({
       )}
 
       <View style={spacings.mbLg} testID="arm-disagreed-transaction">
+        <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
+          {t('socialRecovery.arm.savedOnChain')}
+        </Text>
         <Text fontSize={14} weight="number_medium" selectable style={spacings.mbTy}>
           {renderHash(transactionHash)}
         </Text>

@@ -3,16 +3,26 @@
  * nothing over, so the save runs the review's gate again over the same reads
  * and shows the same blocks. It also needs the account's facts: an account the
  * wallet cannot read, or one whose key the keystore does not hold, cannot
- * save. An encrypted backup whose recovery password is no longer in memory
+ * save. A setup the account already holds blocks before every other block of
+ * the gate, so a save that ended, in this tab or another, never reads as the
+ * empty draft its wiped records leave. An encrypted backup whose recovery password is no longer in memory
  * (the tab was reloaded) sends the holder back to the privacy step, writing
  * nothing. The save is ready only where none of these applies and the gate
  * lets it run.
  */
+import { isSaved } from './run'
 import type { ArmScreenKind, ArmState, Arrival, ArrivalInput } from './types'
 
 const LOADING: Arrival = { kind: 'loading' }
 
-export const arrivalOf = ({ facts, client, load, gate, passwordHeld }: ArrivalInput): Arrival => {
+export const arrivalOf = ({
+  facts,
+  client,
+  load,
+  gate,
+  setupState,
+  passwordHeld
+}: ArrivalInput): Arrival => {
   if (facts.status === 'loading') {
     return LOADING
   }
@@ -34,6 +44,9 @@ export const arrivalOf = ({ facts, client, load, gate, passwordHeld }: ArrivalIn
   if (load.status === 'failed') {
     return { kind: 'load-failed' }
   }
+  if (setupState.status === 'answered' && setupState.value.hasSetup) {
+    return { kind: 'blocked', block: { kind: 'already-set-up' } }
+  }
   if (gate.blocked) {
     return { kind: 'blocked', block: gate.blocked }
   }
@@ -52,9 +65,13 @@ export const arrivalOf = ({ facts, client, load, gate, passwordHeld }: ArrivalIn
  * and the records were wiped.
  */
 export const armScreenOf = (state: ArmState): ArmScreenKind => {
+  if (isSaved(state)) {
+    return 'saved'
+  }
+  if (state.stop) {
+    return state.stop
+  }
   switch (state.after.stage) {
-    case 'saved':
-      return 'saved'
     case 'disagreed':
       return 'disagreed'
     case 'unread':

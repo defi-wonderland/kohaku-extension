@@ -88,6 +88,7 @@ describe('the arrival', () => {
           client: 'ready',
           load: loadedOf(draftOf(backup)),
           gate: gateFor('passes'),
+          setupState: { status: 'pending' },
           passwordHeld: false
         })
       ).toEqual({ kind: 'ready' })
@@ -130,6 +131,7 @@ describe('the arrival', () => {
       facts: factsReadingFor('ready', account),
       client: 'ready' as const,
       gate: gateFor('passes'),
+      setupState: { status: 'pending' } as const,
       passwordHeld: true
     }
     expect(arrivalOf({ ...base, load: { status: 'failed' } })).toEqual({ kind: 'load-failed' })
@@ -143,6 +145,7 @@ describe('the arrival', () => {
         client: 'ready',
         load: loadedOf(draftOf()),
         gate: { canSave: false, blocked: null, notTested: false },
+        setupState: { status: 'pending' },
         passwordHeld: true
       })
     ).toEqual({ kind: 'loading' })

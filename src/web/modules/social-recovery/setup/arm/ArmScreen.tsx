@@ -2,12 +2,16 @@
  * The save's route: the settings chrome around the save of the selected
  * account's setup. It reads the account's facts, the recovery client, the
  * setup records and the recovery password in memory, runs the review's reads
- * and gate again, builds the send port over the request queue, and starts the
- * save once the gate lets it run: the wallet's sign screen is the one
- * confirmation.
+ * and gate again, and builds the send port over the request queue. The save
+ * starts by itself only where the review's Save pushed the route, once the
+ * gate lets it run, and the push is then replaced so a later mount at the same
+ * entry does not start again; a reload, a typed address, or back and forward
+ * show the summary with the Save button instead. The wallet's sign screen is
+ * the one confirmation.
  */
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Linking } from 'react-native'
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
@@ -110,6 +114,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     client: clientState.status,
     load,
     gate,
+    setupState: accountReads.setupState,
     passwordHeld: password !== undefined
   })
 
@@ -145,14 +150,25 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     })
   }, [kit, chainReads, receipts, ready, draft, port, records, chainId, account, password])
 
-  const { state, start, recheck, reread } = useArmRun(steps)
+  const { state, start, recheck, reread, checkAgain } = useArmRun(
+    steps,
+    `${chainId}:${account.toLowerCase()}`
+  )
+  const navigationType = useNavigationType()
+  const location = useLocation()
+  const routerNavigate = useNavigate()
   const canStart = arrival.kind === 'ready' && steps !== null
   const untouched = state.write.status === 'idle' && state.write.run === 0
+  const pushed = navigationType === 'PUSH'
   useEffect(() => {
-    if (canStart && untouched) {
+    if (canStart && untouched && pushed) {
       start()
+      routerNavigate(
+        { pathname: location.pathname, search: location.search, hash: location.hash },
+        { replace: true, state: location.state }
+      )
     }
-  }, [canStart, untouched, start])
+  }, [canStart, untouched, pushed, start, routerNavigate, location])
 
   const retryReads = useCallback(() => {
     rows
@@ -195,7 +211,9 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       level={levelOfBackup(draft?.privacy.backup ?? 'encrypted')}
       onRetryReads={retryReads}
       onRetryArrival={retryArrival}
+      onSave={canStart && untouched && !pushed ? start : undefined}
       onRetry={start}
+      onCheckAgain={checkAgain}
       onRecheck={recheck}
       onReread={reread}
       navigate={navigate}

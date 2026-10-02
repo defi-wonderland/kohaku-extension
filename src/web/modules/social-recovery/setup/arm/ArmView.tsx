@@ -1,10 +1,11 @@
 /**
  * The save over given props: the account the save writes to with the key a
  * recovery would remove, the module that will hold the account's authority,
- * the cost line, and below them the save as it stands: the arrival's block,
- * the gas blocker naming the shortfall and the controlling key, the shared
- * submitting and failed states in the save's own words, the check after the
- * landing, then the saved screen or the disagreed one.
+ * the cost line, and below them the save as it stands: the arrival's block or
+ * the Save button, the gas blocker naming the shortfall and the controlling
+ * key, the shared submitting and failed states in the save's own words, a
+ * setup the run found already there, the check after the landing, then the
+ * saved screen or the disagreed one.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -25,12 +26,14 @@ import {
 import { renderDepositStep } from '@web/modules/social-recovery/shared/writes'
 import DepositStepView from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
 import WriteStateView from '@web/modules/social-recovery/shared/writes/components/WriteStateView'
+import type { SaveBlock } from '@web/modules/social-recovery/setup/review'
 import SaveBlocker from '@web/modules/social-recovery/setup/review/SaveBlocker'
 
 import { armScreenOf } from './arrival'
 import { saveWriteKeysOf } from './copy'
 import { costLineKeyOf } from './cost'
 import DisagreedView from './DisagreedView'
+import { mayStillLand } from './refusal'
 import SavedView from './SavedView'
 import type { ArmViewProps } from './types'
 
@@ -45,7 +48,9 @@ const ArmView = ({
   level,
   onRetryReads,
   onRetryArrival,
+  onSave,
   onRetry,
+  onCheckAgain,
   onRecheck,
   onReread,
   navigate,
@@ -124,14 +129,27 @@ const ArmView = ({
     </View>
   )
 
+  const blocker = (blocked: SaveBlock) => (
+    <SaveBlocker
+      blocked={blocked}
+      onRetry={onRetryReads}
+      onOpen={() => navigate(WEB_ROUTES.socialRecoveryManage)}
+      onEditor={() => navigate(WEB_ROUTES.socialRecoverySetupEditor)}
+      onPrivacy={() => navigate(WEB_ROUTES.socialRecoverySetupPrivacy)}
+    />
+  )
+
   const arrivalBlock = () => {
     switch (arrival.kind) {
       case 'unavailable':
-        return refusal(
-          t('socialRecovery.client.unavailableTitle'),
-          t('socialRecovery.client.unavailableBody'),
-          arrival.retry ? onRetryArrival : undefined
-        )
+        // The body asks to try again, so it shows only beside a retry.
+        return arrival.retry
+          ? refusal(
+              t('socialRecovery.client.unavailableTitle'),
+              t('socialRecovery.client.unavailableBody'),
+              onRetryArrival
+            )
+          : refusal(t('socialRecovery.client.unavailableTitle'), null)
       case 'update-the-wallet':
         return refusal(
           t('socialRecovery.client.updateTheWalletTitle'),
@@ -140,14 +158,18 @@ const ArmView = ({
       case 'load-failed':
         return refusal(t('socialRecovery.records.loadFailed'), null, onRetryArrival)
       case 'blocked':
-        return (
-          <SaveBlocker
-            blocked={arrival.block}
-            onRetry={onRetryReads}
-            onOpen={() => navigate(WEB_ROUTES.socialRecoveryManage)}
-            onEditor={() => navigate(WEB_ROUTES.socialRecoverySetupEditor)}
-            onPrivacy={() => navigate(WEB_ROUTES.socialRecoverySetupPrivacy)}
+        return blocker(arrival.block)
+      case 'ready':
+        return onSave ? (
+          <Button
+            testID="arm-save"
+            type="primary"
+            text={t(`${REVIEW}.save`)}
+            onPress={onSave}
+            hasBottomSpacing={false}
           />
+        ) : (
+          <ActivityIndicator testID="arm-spinner" />
         )
       default:
         return <ActivityIndicator testID="arm-spinner" />
@@ -187,14 +209,26 @@ const ArmView = ({
       )
     }
     const keys = saveWriteKeysOf(write)
+    const stalled = write.status === 'submitting' && !!write.transactionHash && !!state.stalled
     return (
       <WriteStateView
         state={write}
         title={keys.title ? t(keys.title) : undefined}
         note={keys.note ? t(keys.note) : undefined}
-        onRetry={onRetry}
+        onRetry={mayStillLand(write) ? undefined : onRetry}
         testID={`arm-write-${write.status}`}
-      />
+      >
+        {stalled && (
+          <Button
+            testID="arm-check-again"
+            type="outline"
+            size="small"
+            text={t('socialRecovery.writes.tryAgain')}
+            onPress={onCheckAgain}
+            hasBottomSpacing={false}
+          />
+        )}
+      </WriteStateView>
     )
   }
 
@@ -250,11 +284,13 @@ const ArmView = ({
       <View style={spacings.mbLg}>
         {screen === 'arrival' && arrivalBlock()}
         {screen === 'run' && runBlock()}
+        {screen === 'already-set-up' && blocker({ kind: 'already-set-up' })}
         {screen === 'confirming' && <ActivityIndicator testID="arm-confirming" />}
       </View>
 
       {(screen === 'arrival' && arrival.kind !== 'ready' && arrival.kind !== 'loading') ||
-      (screen === 'run' && stopped) ? (
+      (screen === 'run' && stopped) ||
+      screen === 'already-set-up' ? (
         <View style={[flexbox.directionRow, flexbox.alignCenter]}>{back}</View>
       ) : null}
     </View>
