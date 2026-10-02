@@ -38,7 +38,7 @@ const ThresholdField = ({
           onChangeText={onChangeText}
           keyboardType="numeric"
           disabled={disabled}
-          containerStyle={{ ...spacings.mb0, width: 64 }}
+          containerStyle={{ ...spacings.mb0, width: 56 }}
         />
         <Text fontSize={14} style={spacings.mlTy}>
           {`${t('socialRecovery.shape.of')} ${members}`}
