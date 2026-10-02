@@ -570,6 +570,8 @@ export const sendQueueOver = (
       return () => listeners.delete(listener)
     },
     accounts: () => world.accounts,
+    queue: () => ({}),
+    unconfirmedOperations: () => [],
     windowId: () => WINDOW_ID
   }
   world.sender = createSendPort(port, { chainId: SEPOLIA, ...options })

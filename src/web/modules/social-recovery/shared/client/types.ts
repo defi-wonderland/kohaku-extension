@@ -538,8 +538,24 @@ export interface ActionWindowState {
   actionWindow?: { windowProps?: Pick<NonNullable<WindowProps>, 'id'> | null }
 }
 
-/** The part of the `requests` controller state the send port reads: its request and the action window. */
+/**
+ * One request in the wallet's queue, with the members the send port reads:
+ * its id, its kind, and the account and chain it is for.
+ */
+export interface QueuedRequest {
+  id: string | number
+  action?: { kind?: string }
+  meta?: { accountAddr?: string; chainId?: bigint }
+}
+
+/**
+ * The part of the `requests` controller state the send port reads: the
+ * requests in the queue and those waiting for an account switch, and the
+ * action window.
+ */
 export interface SendQueueState extends RequestsState {
+  userRequests?: QueuedRequest[]
+  userRequestsWaitingAccountSwitch?: QueuedRequest[]
   actions?: ActionWindowState
 }
 
@@ -588,16 +604,38 @@ export type SendRequestUpdate =
  * How the send port reaches the background: the dispatch of
  * `useBackgroundService`, the `requests`, `activity`, `main` and
  * `signAccountOp` controller states the background pushes, the accounts the
- * wallet lists and the window the request opens beside. `sendRequestPort`
- * (sender-port.ts) wires the UI's own.
+ * wallet lists, the request queue as the wallet holds it now, the selected
+ * account's operations broadcast and not confirmed, and the window the
+ * request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's own.
  */
 export interface SendRequestPort {
   dispatch(action: SendRequestAction): void
   /** Calls the listener with each pushed controller state; returns the unsubscribe. */
   subscribe(listener: (update: SendRequestUpdate) => void): () => void
   accounts(): readonly ListedAccount[]
+  /** The `requests` controller state the wallet holds now. */
+  queue(): SendQueueState
+  /** The selected account's operations the wallet broadcast and the chain has not confirmed. */
+  unconfirmedOperations(): readonly SubmittedOperation[]
   windowId(): number | undefined
 }
+
+/**
+ * Where a request the send port queued stands, read by a page that did not
+ * queue it:
+ *
+ * - `queued`: the wallet's queue holds it, or holds it until an account switch;
+ * - `broadcast`: the wallet broadcast it as a transaction of the sender, under
+ *   `transactionHash`, and the chain has not confirmed it;
+ * - `untracked`: the wallet submitted it as an operation another party sends,
+ *   which this wallet cannot follow; it may still reach the chain;
+ * - `gone`: neither holds it.
+ */
+export type SendRequestState =
+  | { status: 'queued' }
+  | { status: 'broadcast'; transactionHash: Hex }
+  | { status: 'untracked' }
+  | { status: 'gone' }
 
 /**
  * One way the sign screen offers to pay the fee, as its controller holds it.
@@ -647,12 +685,16 @@ export interface SendPort {
    * estimates it and offers the fee options; `onEstimation` hears each
    * reading of that estimation. `recoveryKit` marks a batch that arms the
    * recovery kit (`recoveryKitMarkOf`); no other batch carries it.
+   * `requestId` is the id the request is queued under (`newSendRequestId`),
+   * so the caller knows it before the send; the port makes one where none is
+   * given.
    */
   sendAccountBatch(
     account: Address,
     calls: readonly PreparedCall[],
     onEstimation?: EstimationListener,
-    recoveryKit?: RecoveryKitMark
+    recoveryKit?: RecoveryKitMark,
+    requestId?: string
   ): Promise<Hex>
 }
 

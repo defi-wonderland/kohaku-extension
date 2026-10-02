@@ -2,8 +2,12 @@
  * The UI's own port to the request queue and the activity, for
  * `createSendPort`: the dispatch and the window id of `useBackgroundService`,
  * the `requests`, `activity`, `main` and `signAccountOp` controller states the
- * background pushes over the event bus, and the accounts the wallet lists
- * (`useAccountsControllerState().accounts`). When the sign screen closes, the
+ * background pushes over the event bus, the accounts the wallet lists
+ * (`useAccountsControllerState().accounts`), the request queue the wallet holds
+ * now (`useRequestsControllerState()`) and the selected account's operations
+ * broadcast and not confirmed
+ * (`useActivityControllerState().broadcastedButNotConfirmed`). Each getter
+ * reads the latest value the screen holds. When the sign screen closes, the
  * background pushes the reset `signAccountOp` state, its estimation back at
  * initial; a null push is read as an empty state.
  */
@@ -16,12 +20,15 @@ import type {
   SendQueueState,
   SendRequestAction,
   SendRequestPort,
-  SignAccountOpState
+  SignAccountOpState,
+  SubmittedOperation
 } from './types'
 
 export const sendRequestPort = (
   dispatch: (action: SendRequestAction) => void,
   accounts: () => readonly ListedAccount[] | undefined,
+  queue: () => SendQueueState | undefined,
+  unconfirmedOperations: () => readonly SubmittedOperation[] | undefined,
   windowId?: number
 ): SendRequestPort => ({
   dispatch,
@@ -45,5 +52,7 @@ export const sendRequestPort = (
     }
   },
   accounts: () => accounts() ?? [],
+  queue: () => queue() ?? {},
+  unconfirmedOperations: () => unconfirmedOperations() ?? [],
   windowId: () => windowId
 })
