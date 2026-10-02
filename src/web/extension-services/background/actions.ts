@@ -8,7 +8,11 @@ import {
 } from '@ambire-common/controllers/actions/actions'
 import { Filters, Pagination } from '@ambire-common/controllers/activity/activity'
 import { Contact } from '@ambire-common/controllers/addressBook/addressBook'
-import { FeeSpeed, SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
+import {
+  FeeSpeed,
+  SignAccountOpUpdateProps,
+  SigningStatus
+} from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import { Account, AccountPreferences, AccountStates } from '@ambire-common/interfaces/account'
 import { Banner } from '@ambire-common/interfaces/banner'
 import { Dapp } from '@ambire-common/interfaces/dapp'
@@ -202,6 +206,13 @@ type MainControllerUpdateNetworkAction = {
   params: {
     network: Partial<Network>
     chainId: ChainId
+  }
+}
+type MainControllerUpdateNetworksAction = {
+  type: 'MAIN_CONTROLLER_UPDATE_NETWORKS'
+  params: {
+    network: Partial<Network>
+    chainIds: ChainId[]
   }
 }
 type MainControllerRejectSignAccountOpCall = {
@@ -425,6 +436,7 @@ type MainControllerSignAccountOpUpdateStatus = {
     | 'SWAP_AND_BRIDGE_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
     | 'TRANSFER_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
     | 'PRIVACY_POOLS_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
+    | 'RAILGUN_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS'
   params: {
     status: SigningStatus
   }
@@ -807,9 +819,7 @@ type PrivacyControllerUnloadScreenAction = {
 
 type PrivacyControllerSignAccountOpUpdateAction = {
   type: 'PRIVACY_POOLS_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE'
-  params: {
-    status: SigningStatus
-  }
+  params: SignAccountOpUpdateProps
 }
 
 type PrivacyControllerHasUserProceededAction = {
@@ -879,6 +889,10 @@ type PrivacyControllerAddImportedAccountToActivityControllerAction = {
   }
 }
 
+type RailgunControllerInitializeSdkAction = {
+  type: 'RAILGUN_CONTROLLER_SDK_LOADED'
+}
+
 type RailgunControllerUpdateFormAction = {
   type: 'RAILGUN_CONTROLLER_UPDATE_FORM'
   params: {
@@ -897,9 +911,7 @@ type RailgunControllerUnloadScreenAction = {
 
 type RailgunControllerSignAccountOpUpdateAction = {
   type: 'RAILGUN_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE'
-  params: {
-    status: SigningStatus
-  }
+  params: SignAccountOpUpdateProps
 }
 
 type RailgunControllerHasUserProceededAction = {
@@ -1076,7 +1088,7 @@ type ProviderRpcRequestAction = {
   type: 'PROVIDER_RPC_REQUEST'
   params: {
     requestId: string
-    chainId: bigint
+    chainId: bigint | number
     method: string
     params: any[]
   }
@@ -1108,6 +1120,7 @@ export type Action =
   | MainControllerAddNetwork
   | KeystoreControllerUpdateKeyPreferencesAction
   | MainControllerUpdateNetworkAction
+  | MainControllerUpdateNetworksAction
   | MainControllerAccountPickerSetPageAction
   | MainControllerAccountPickerSetHdPathTemplateAction
   | MainControllerAccountPickerAddAccounts
@@ -1236,6 +1249,7 @@ export type Action =
   | PrivacyControllerResetSecretAction
   | PrivacyControllerGeneratePPv1KeysAction
   | PrivacyControllerAddImportedAccountToActivityControllerAction
+  | RailgunControllerInitializeSdkAction
   | RailgunControllerUpdateFormAction
   | RailgunControllerUnloadScreenAction
   | RailgunControllerSignAccountOpUpdateAction
