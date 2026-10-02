@@ -11,7 +11,7 @@ import { ThemeProvider } from '@common/contexts/themeContext'
 import useTheme from '@common/hooks/useTheme'
 import useToast from '@common/hooks/useToast'
 import GestureHandler from '@common/modules/app-init/screens/AppInit/GestureHandler'
-import spacings from '@common/styles/spacings'
+import spacings, { SPACING_XL } from '@common/styles/spacings'
 import { DEFAULT_THEME, THEME_TYPES, ThemeType } from '@common/styles/themeConfig'
 import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
@@ -166,7 +166,7 @@ const ErrorBoundaryInner = ({ error }: Props) => {
             }
           ]}
         >
-          <AmbireLogoHorizontal width={124} height={43} style={spacings.mbXl} />
+          <AmbireLogoHorizontal width={124} height={43} style={{ marginBottom: SPACING_XL }} />
           <Text
             fontSize={20}
             weight="medium"

@@ -24,7 +24,16 @@ const AmbireLogoHorizontalOG: React.FC<SvgProps> = ({ ...rest }) => (
         <Stop offset="0" stopColor="#141833" />
         <Stop offset="1" stopColor="#9aa2d8" />
       </LinearGradient>
-      <LinearGradient id="linear-gradient-3" x1="0.534" x2="0.54" xlinkHref="#linear-gradient-2" />
+      <LinearGradient
+        id="linear-gradient-3"
+        x1="0.534"
+        x2="0.54"
+        y2="1"
+        gradientUnits="objectBoundingBox"
+      >
+        <Stop offset="0" stopColor="#141833" />
+        <Stop offset="1" stopColor="#9aa2d8" />
+      </LinearGradient>
     </Defs>
     <G id="logo-ambire-OG-hor" transform="translate(-1005.349 -90.016)">
       <G id="_1967776972864" transform="translate(1008.549 90.016)">

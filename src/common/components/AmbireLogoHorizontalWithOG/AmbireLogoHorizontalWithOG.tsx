@@ -1,6 +1,5 @@
 import React from 'react'
 import { View } from 'react-native'
-import { SvgProps } from 'react-native-svg'
 
 import usePrevious from '@common/hooks/usePrevious'
 import ConfettiAnimation from '@common/modules/dashboard/components/ConfettiAnimation'
@@ -9,7 +8,9 @@ import useInviteControllerState from '@web/hooks/useInviteControllerState'
 import styles, { CONFETTI_HEIGHT, CONFETTI_WIDTH } from './styles'
 import ToggleOG from './ToggleOG'
 
-const AmbireLogoHorizontalWithOG: React.FC<SvgProps> = ({ ...rest }) => {
+const AmbireLogoHorizontalWithOG: React.FC<React.ComponentProps<typeof ToggleOG>> = ({
+  ...rest
+}) => {
   const { isOG } = useInviteControllerState()
   const prevIsOG = usePrevious(isOG)
 
