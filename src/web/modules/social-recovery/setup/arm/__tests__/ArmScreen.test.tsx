@@ -30,7 +30,13 @@ import type {
   SetupConfirmation,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type { KeyHandle, SendPort } from '@web/modules/social-recovery/shared/client'
+import type {
+  KeyHandle,
+  SendPort,
+  SendRequestAction,
+  SubmittedOperation
+} from '@web/modules/social-recovery/shared/client'
+import type { ArmKitClient } from '@web/modules/social-recovery/setup/arm'
 import type { Chain } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
@@ -72,9 +78,24 @@ jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
   default: () => ({ accounts: [] })
 }))
+const mockQueue: { current: { userRequests: { id: string }[] }; listeners: Set<() => void> } = {
+  current: { userRequests: [] },
+  listeners: new Set()
+}
 jest.mock('@web/hooks/useRequestsControllerState', () => ({
   __esModule: true,
-  default: () => ({ userRequests: [] })
+  default: () => {
+    const { useSyncExternalStore } = jest.requireActual<typeof import('react')>('react')
+    return useSyncExternalStore(
+      (listener: () => void) => {
+        mockQueue.listeners.add(listener)
+        return () => {
+          mockQueue.listeners.delete(listener)
+        }
+      },
+      () => mockQueue.current
+    )
+  }
 }))
 jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
   useAccountFacts: (account: string | undefined) =>
@@ -88,6 +109,7 @@ jest.mock('@web/modules/social-recovery/shared/client', () => ({
   createSendPort: () => mockPort.current
 }))
 const mockEntries = new Map<string, unknown>()
+const mockRemovals: string[][] = []
 jest.mock('@web/constants/browserapi', () => ({
   ...jest.requireActual('@web/constants/browserapi'),
   browser: {
@@ -98,6 +120,7 @@ jest.mock('@web/constants/browserapi', () => ({
           Object.entries(items).forEach(([key, value]) => mockEntries.set(key, value))
         },
         remove: async (keys: string[]) => {
+          mockRemovals.push(keys)
           keys.forEach((key) => mockEntries.delete(key))
         }
       }
@@ -146,8 +169,14 @@ const {
   wipeRecoveryPassword
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const {
-  RECEIPT_WAIT_MS
+  createArmStore,
+  GONE_GRACE_MS,
+  RECEIPT_WAIT_MS,
+  saveStepsOf,
+  startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
+const eventBus: typeof import('@web/extension-services/event/eventBus').default =
+  require('@web/extension-services/event/eventBus').default
 const ArmScreen: typeof import('@web/modules/social-recovery/setup/arm/ArmScreen').default =
   require('@web/modules/social-recovery/setup/arm/ArmScreen').default
 const harness: typeof import('@web/modules/social-recovery/setup/arm/__tests__/harness') = require('@web/modules/social-recovery/setup/arm/__tests__/harness')
@@ -187,8 +216,41 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
-// The background the route sends its requests through; the send port the test hands in replaces them.
-const BACKGROUND = { dispatch: jest.fn(), windowId: undefined } as never
+/** The operations the account's activity lists for a page that reads it; null where it does not answer. */
+const activity: { current: SubmittedOperation[] | null } = { current: [] }
+
+/**
+ * The background the route sends its requests through: the send port the test
+ * hands in replaces the sends, and the activity answers each page a reading
+ * asks for over the event bus, as the background pushes it.
+ */
+const backgroundDispatch = jest.fn((action: SendRequestAction) => {
+  const items = activity.current
+  if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS' || items === null) {
+    return
+  }
+  const { sessionId, pagination } = action.params
+  harness.unawaited(
+    Promise.resolve().then(() =>
+      eventBus.emit('activity', {
+        accountsOps: {
+          [String(sessionId)]: {
+            result: { items, currentPage: pagination?.fromPage ?? 0, maxPages: 1 }
+          }
+        }
+      })
+    )
+  )
+})
+const BACKGROUND = { dispatch: backgroundDispatch, windowId: undefined } as never
+
+/** The wallet's queue now holds the ids given; the screen's hook and the queue's push both carry it. */
+const setQueue = (ids: string[]) =>
+  act(() => {
+    mockQueue.current = { userRequests: ids.map((id) => ({ id })) }
+    mockQueue.listeners.forEach((listener) => listener())
+    eventBus.emit('requests', mockQueue.current)
+  })
 
 const REVIEW_PATH = `/${WEB_ROUTES.socialRecoverySetupReview}`
 const SAVE_PATH = `/${WEB_ROUTES.socialRecoverySetupSave}`
@@ -198,16 +260,22 @@ const CARD_PATH = `/${WEB_ROUTES.socialRecoverySetupCard}`
 const router: {
   pathname: string
   search: string
+  hash: string
+  state: unknown
   type: string
   navigate: ((to: string | number) => void) | null
-} = { pathname: '', search: '', type: '', navigate: null }
+  push: ((to: string, state: unknown) => void) | null
+} = { pathname: '', search: '', hash: '', state: null, type: '', navigate: null, push: null }
 
 const RouterProbe = () => {
-  const { pathname, search } = useLocation()
+  const { pathname, search, hash, state } = useLocation()
   const navigate = useNavigate()
   router.pathname = pathname
   router.search = search
+  router.hash = hash
+  router.state = state
   router.type = useNavigationType()
+  router.push = (to, held) => navigate(to, { state: held })
   router.navigate = (to) => {
     if (typeof to === 'number') {
       navigate(to)
@@ -264,12 +332,36 @@ const settle = () =>
     }
   })
 
+/** The stored saves in flight on this device. */
+const storedSaves = () =>
+  [...mockEntries.keys()].filter((entry) => entry.includes(':saveInFlight:'))
+
+/** The wipes after an agreed check: one removal of the six setup records with the save in flight. */
+const wipes = () =>
+  mockRemovals.filter(
+    (keys) => keys.length > 1 && keys.some((entry) => entry.includes(':saveInFlight:'))
+  ).length
+
 const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 const pageText = () => container.textContent ?? ''
 const press = async (id: string) => {
   const node = byTestId(id)
   if (!node) {
     throw new Error(`nothing to press: ${id}`)
+  }
+  await act(async () => {
+    node.click()
+  })
+  await settle()
+}
+
+/** Presses the pressable that shows exactly this text. */
+const pressText = async (text: string) => {
+  const node = Array.from(container.querySelectorAll<HTMLElement>('[tabindex]')).find(
+    (candidate) => candidate.textContent === text
+  )
+  if (!node) {
+    throw new Error(`no button reads ${text}`)
   }
   await act(async () => {
     node.click()
@@ -419,7 +511,10 @@ beforeEach(async () => {
   document.body.appendChild(container)
   root = createRoot(container)
   mockEntries.clear()
+  mockRemovals.length = 0
   mockFacts.clear()
+  mockQueue.current = { userRequests: [] }
+  activity.current = []
   mockFacts.set('loading', { status: 'loading', retry: jest.fn() })
   chain = { ...CHAIN }
   seed += 2
@@ -814,7 +909,7 @@ describe('a save in progress across remounts', () => {
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('ends a kept refusal whose operation may still land as already set up where the arrival reads a setup, and drops the run', async () => {
+  it('runs the check on a kept refusal whose operation may still land where the arrival reads a setup, and saves with one wipe', async () => {
     chain.send = 'not-a-transaction'
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
@@ -825,19 +920,21 @@ describe('a save in progress across remounts', () => {
     await switchAway()
 
     expect(byTestId('arm-write-failedNotSent')).toBeNull()
-    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
-    expect(pageText()).toContain(t('socialRecovery.review.blocked.alreadySetUp.open'))
-    expect(byTestId('arm-back')).not.toBeNull()
+    expect(byTestId('arm-saved')).not.toBeNull()
+    // No page followed a hash, so the saved screen shows none.
+    expect(byTestId('arm-saved-explorer')).toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(confirmSetup).toHaveBeenCalledWith(draftOf('encrypted'), preparedOf(address, false))
+    expect(mockEntries.size).toBe(0)
     expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
 
-    // The ended run is gone: a later arrival reads the account from scratch.
-    chain.setupState = setupStateOf(false)
+    // The saved run is gone with the screen: a later arrival reads the setup on the account.
     await switchAway()
 
-    expect(byTestId('review-blocked-already-set-up')).toBeNull()
-    expect(byTestId('arm-write-failedNotSent')).toBeNull()
-    expect(byTestId('arm-save')).not.toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -987,29 +1084,28 @@ describe('a first receipt wait that does not settle', () => {
     }
   })
 
-  it('waits again on check again while the first wait still runs, and checks and wipes once whichever receipt comes first', async () => {
+  it('takes up the first wait on check again while it still runs, opening no other, and checks and wipes once when it lands', async () => {
     jest.useFakeTimers()
     try {
       const { tick, first } = await openWithFirstWaitHeld()
       await tick(RECEIPT_WAIT_MS)
-      const again = held<ReturnType<typeof landedReceipt>>()
-      receipts.wait.mockImplementationOnce(() => again.promise)
 
       await act(async () => {
         byTestId('arm-check-again')?.click()
       })
       await tick(100)
 
-      expect(receipts.wait).toHaveBeenCalledTimes(2)
-      expect(receipts.wait.mock.calls[1][0]).toBe(harness.TX_HASH)
+      expect(receipts.wait).toHaveBeenCalledTimes(1)
       expect(byTestId('arm-check-again')).toBeNull()
       expect(byTestId('arm-write-submitting')).not.toBeNull()
 
+      await tick(RECEIPT_WAIT_MS)
+      expect(byTestId('arm-check-again')).not.toBeNull()
       await act(async () => {
-        again.release(landedReceipt(harness.TX_HASH))
+        byTestId('arm-check-again')?.click()
       })
       await tick(100)
-      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(receipts.wait).toHaveBeenCalledTimes(1)
 
       await act(async () => {
         first.release(landedReceipt(harness.TX_HASH))
@@ -1017,6 +1113,7 @@ describe('a first receipt wait that does not settle', () => {
       await tick(100)
 
       expect(byTestId('arm-saved')).not.toBeNull()
+      expect(receipts.wait).toHaveBeenCalledTimes(1)
       expect(confirmSetup).toHaveBeenCalledTimes(1)
       expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
       expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
@@ -1028,27 +1125,26 @@ describe('a first receipt wait that does not settle', () => {
 })
 
 describe('a save the wallet did not send', () => {
-  it('shows a refusal as not a transaction under the save title with no not-sent line, no retry and no Save button, only the back and check again', async () => {
+  it('shows a refusal as not a transaction with no failure title, its one line and check again: no retry, no Save, no back', async () => {
     chain.send = 'not-a-transaction'
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
     await openByPush()
 
     expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
-    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.failedTitle'))
     expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
     expect(byTestId('arm-save')).toBeNull()
-    expect(byTestId('arm-back')).not.toBeNull()
-    expect(pageText().indexOf(t('socialRecovery.arm.mayStillLand'))).toBeGreaterThan(
-      pageText().indexOf(t('socialRecovery.review.after.failedTitle'))
-    )
+    expect(byTestId('arm-back')).toBeNull()
+    expect(pageText()).toContain(t('socialRecovery.arm.mayStillLand'))
     expect(byTestId('arm-check-setup')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
     expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(storedSaves()).toHaveLength(1)
   })
 
-  it('ends a refusal as not a transaction as already set up where check again finds the setup, and sends nothing', async () => {
+  it('runs the check where check again finds the setup after a refusal as not a transaction, and saves with one wipe and nothing more sent', async () => {
     chain.send = 'not-a-transaction'
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
@@ -1059,12 +1155,13 @@ describe('a save the wallet did not send', () => {
     await press('arm-check-setup')
 
     expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
-    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-saved')).not.toBeNull()
     expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
     expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-    expect(confirmSetup).not.toHaveBeenCalled()
-    expect(mockEntries.size).toBeGreaterThan(0)
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(mockEntries.size).toBe(0)
   })
 
   it('keeps a refusal as not a transaction where check again finds no setup: no retry, no Save button, nothing sent', async () => {
@@ -1105,7 +1202,8 @@ describe('a save the wallet did not send', () => {
     await press('arm-check-setup')
 
     expect(setupState).toHaveBeenCalledTimes(setupReads + 2)
-    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -1328,5 +1426,273 @@ describe('a reload of the save route after it ended', () => {
 
     await press('arm-save')
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * Another page of this device, over the same storage, the same client and the
+ * same chain reads: it claims the save and sends, then goes away, before the
+ * wallet answered the hash or after the hash was written. Its run is never
+ * driven again. Answers its send port and the save it stored.
+ */
+const anotherPageLeaves = async (withHash: boolean, flush: () => Promise<void>) => {
+  const { createWalletRecords, extensionRecordStorage } = jest.requireActual<
+    typeof import('@web/modules/social-recovery/shared/records')
+  >('@web/modules/social-recovery/shared/records')
+  const records = createWalletRecords({ storage: extensionRecordStorage })
+  const { client: kit } = mockClient.current as { client: ArmKitClient }
+  const firstPort = sendPortFor('sent', address)
+  const firstReceipts = receiptsFor('landed')
+  if (withHash) {
+    firstReceipts.wait.mockImplementation(() => harness.pending())
+  } else {
+    firstPort.sendAccountBatch.mockImplementation(() => harness.pending())
+  }
+  const steps = saveStepsOf({
+    client: kit,
+    reads,
+    receipts: firstReceipts,
+    port: firstPort,
+    requests: harness.requestsFake(),
+    records,
+    setup: records.setup(CHAIN_ID, address),
+    chainId: CHAIN_ID,
+    account: address,
+    facts: factsOf(account, { key }),
+    key,
+    draft: draftOf('encrypted'),
+    password: PASSWORD
+  })
+  harness.unawaited(startSave(createArmStore(), steps))
+  await flush()
+  const read = await records.saveInFlight(CHAIN_ID, address).read()
+  if (read.status !== 'present') {
+    throw new Error('the other page stored no save')
+  }
+  expect(read.value.transactionHash).toBe(withHash ? harness.TX_HASH : undefined)
+  expect(firstPort.sendAccountBatch).toHaveBeenCalledTimes(1)
+  return { firstPort, record: read.value }
+}
+
+describe('a save another page of this device sent', () => {
+  const ARRIVALS: [string, () => Promise<void>][] = [
+    ['a reload with the recovery password gone', reload],
+    ['a second tab reached by the review push', openByPush]
+  ]
+
+  ARRIVALS.forEach(([named, open]) =>
+    it(`offers no Save on ${named} while the save waits for its receipt, sends nothing, and saves with one check and one wipe`, async () => {
+      await writeRecords(draftOf('encrypted'))
+      wireClient('ready')
+      const { firstPort, record } = await anotherPageLeaves(true, settle)
+      const prepares = prepareCommitSetup.mock.calls.length
+      const receipt = held<ReturnType<typeof landedReceipt>>()
+      receipts.wait.mockImplementationOnce(() => receipt.promise)
+
+      await open()
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-save')).toBeNull()
+      expect(byTestId('review-blocked-password-missing')).toBeNull()
+      expect(receipts.wait).toHaveBeenCalledWith(harness.TX_HASH, record.startBlock)
+
+      await act(async () => {
+        receipt.release(landedReceipt(harness.TX_HASH))
+      })
+      await settle()
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(byTestId('arm-saved-explorer')).not.toBeNull()
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(confirmSetup).toHaveBeenCalledWith(draftOf('encrypted'), record.prepared)
+      expect(wipes()).toBe(1)
+      expect(mockEntries.size).toBe(0)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+      expect(firstPort.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(prepareCommitSetup).toHaveBeenCalledTimes(prepares)
+    })
+  )
+
+  describe('where the other page went away before the hash was written', () => {
+    const tick = (ms: number) => act(() => harness.advanceTimers(ms))
+
+    /** A second tab typed to the route, over Jest's fake clock. */
+    const arrive = async () => {
+      act(() => root.unmount())
+      root = createRoot(container)
+      await act(async () => {
+        root.render(tree([SAVE_PATH], 0))
+      })
+      await tick(100)
+    }
+
+    const activityReads = () =>
+      backgroundDispatch.mock.calls.filter(
+        ([action]) => action.type === 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS'
+      ).length
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    const leave = async () => {
+      await writeRecords(draftOf('encrypted'))
+      wireClient('ready')
+      return anotherPageLeaves(false, () => tick(100))
+    }
+
+    it('shows the save waiting while the wallet queue holds the request, then follows its hash to saved when the wallet broadcasts it', async () => {
+      const { record } = await leave()
+      setQueue([record.requestId])
+
+      await arrive()
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-save')).toBeNull()
+      expect(byTestId('arm-check-again')).toBeNull()
+
+      activity.current = [harness.operationFor(record.requestId, { hash: harness.TX_HASH })]
+      setQueue([])
+      await tick(100)
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(receipts.wait).toHaveBeenCalledWith(harness.TX_HASH, harness.START_BLOCK)
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(wipes()).toBe(1)
+      expect(mockEntries.size).toBe(0)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('follows a request the wallet broadcast under its hash to saved, sending nothing', async () => {
+      const { record } = await leave()
+      activity.current = [harness.operationFor(record.requestId, { hash: harness.TX_HASH })]
+
+      await arrive()
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(wipes()).toBe(1)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('shows a request the wallet cannot follow as a save that may still land: no title, its line, check again, no Save', async () => {
+      const { record } = await leave()
+      activity.current = [harness.operationFor(record.requestId, { untracked: true })]
+
+      await arrive()
+
+      expect(pageText()).toContain(t('socialRecovery.arm.mayStillLand'))
+      expect(pageText()).not.toContain(t('socialRecovery.review.after.failedTitle'))
+      expect(byTestId('arm-check-setup')).not.toBeNull()
+      expect(byTestId('arm-save')).toBeNull()
+      expect(storedSaves()).toHaveLength(1)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('saves with no hash where the request is gone and the account holds a setup', async () => {
+      await leave()
+      chain.setupState = setupStateOf(true)
+
+      await arrive()
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(byTestId('arm-saved-explorer')).toBeNull()
+      expect(byTestId('review-blocked-already-set-up')).toBeNull()
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(wipes()).toBe(1)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('offers no Save while the activity does not answer, and check again reads it at once', async () => {
+      await leave()
+      activity.current = null
+
+      await arrive()
+      expect(byTestId('arm-check-again')).toBeNull()
+      await tick(10_000)
+      expect(byTestId('arm-check-again')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
+      expect(byTestId('arm-save')).toBeNull()
+
+      const before = activityReads()
+      await act(async () => {
+        byTestId('arm-check-again')?.click()
+      })
+      await tick(0)
+      expect(activityReads()).toBe(before + 1)
+
+      await tick(10 * GONE_GRACE_MS)
+      expect(byTestId('arm-save')).toBeNull()
+      expect(storedSaves()).toHaveLength(1)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('keeps reading a gone request with no setup until the grace period, then offers Save again with the stored save released', async () => {
+      await leave()
+
+      await arrive()
+      await tick(GONE_GRACE_MS - 1_000)
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-save')).toBeNull()
+      expect(storedSaves()).toHaveLength(1)
+
+      await tick(1_000)
+
+      expect(byTestId('arm-save')).not.toBeNull()
+      expect(storedSaves()).toHaveLength(0)
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+  })
+})
+
+describe('the save in its own words', () => {
+  it('shows a save never sent with its title and one sentence, and releases the stored save', async () => {
+    chain.send = 'refused'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+
+    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).toContain(t('socialRecovery.review.after.notSent'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
+    expect(storedSaves()).toHaveLength(0)
+  })
+
+  it('shows another waiting request with the save title, the shared line and Try again, releases the stored save, and Try again sends once more', async () => {
+    chain.send = 'other-request-pending'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+
+    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).toContain(t('socialRecovery.writes.otherRequestPending'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
+    expect(byTestId('arm-back')).not.toBeNull()
+    expect(storedSaves()).toHaveLength(0)
+
+    port.sendAccountBatch.mockResolvedValue(harness.TX_HASH)
+    await pressText(t('socialRecovery.writes.tryAgain'))
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(2)
+    expect(byTestId('arm-saved')).not.toBeNull()
+  })
+
+  it('replaces the push on the first mount keeping its state, search and hash', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('loading')
+    await mountAt([REVIEW_PATH])
+    await act(async () => {
+      router.push?.(`${SAVE_PATH}?from=review#top`, { from: 'review' })
+    })
+    await settle()
+
+    expect(router.type).toBe('REPLACE')
+    expect(router.pathname).toBe(SAVE_PATH)
+    expect(router.search).toBe('?from=review')
+    expect(router.hash).toBe('#top')
+    expect(router.state).toEqual({ from: 'review' })
   })
 })

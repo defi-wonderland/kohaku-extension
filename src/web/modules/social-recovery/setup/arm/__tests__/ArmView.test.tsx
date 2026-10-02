@@ -486,7 +486,7 @@ describe('the write states in the save words', () => {
     expect(byTestId('arm-back')).toBeNull()
   })
 
-  it('shows a save never sent under its own title, with the retry and the back', () => {
+  it('shows a save never sent under its own title with one sentence, the retry and the back', () => {
     const onRetry = jest.fn()
     mount({
       state: withWrite({
@@ -499,14 +499,14 @@ describe('the write states in the save words', () => {
     })
     expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
     expect(pageText()).toContain(t('socialRecovery.review.after.notSent'))
-    // The shared not-sent line shows beside the save's own sentence.
-    expect(pageText()).toContain(t('socialRecovery.writes.notSent'))
+    // The save's own sentence stands in place of the shared not-sent line.
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
     pressText(t('socialRecovery.writes.tryAgain'))
     expect(onRetry).toHaveBeenCalledTimes(1)
     expect(byTestId('arm-back')).not.toBeNull()
   })
 
-  it('shows a save the port refused as not a transaction under its title with no not-sent line and no retry, only the back and check again, since it may still land', () => {
+  it('shows a save that may still land with no failure title, its one line and check again, and no retry, Save or back', () => {
     const onRetry = jest.fn()
     const onCheckSetup = jest.fn()
     mount({
@@ -514,19 +514,22 @@ describe('the write states in the save words', () => {
         status: 'failedNotSent',
         write: 'save',
         error: accountBatchRefusal('not-a-transaction', ACCOUNT),
+        mayStillLand: true,
         run: 1
       }),
       onRetry,
       onCheckSetup
     })
-    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.failedTitle'))
     expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.mayStillLand'))
     expect(byTestId('arm-save')).toBeNull()
-    expect(byTestId('arm-back')).not.toBeNull()
-    // The state's own line, under the save's title: the save may still land.
-    const title = pageText().indexOf(t('socialRecovery.review.after.failedTitle'))
-    expect(pageText().indexOf(t('socialRecovery.arm.mayStillLand'))).toBeGreaterThan(title)
+    // The stored save stays while the operation may still land, so nothing leads back to the review.
+    expect(byTestId('arm-back')).toBeNull()
+    expect(textOf('arm-write-failedNotSent')).toBe(
+      `${t('socialRecovery.arm.mayStillLand')}${t('socialRecovery.arm.checkAgain')}`
+    )
     // The one control reads check again, which reads the setup; nothing reads try again.
     expect(t('socialRecovery.arm.checkAgain')).not.toBe(t('socialRecovery.writes.tryAgain'))
     expect(textOf('arm-check-setup')).toBe(t('socialRecovery.arm.checkAgain'))
@@ -536,6 +539,59 @@ describe('the write states in the save words', () => {
     expect(onCheckSetup).toHaveBeenCalledTimes(1)
     expect(onRetry).not.toHaveBeenCalled()
   })
+
+  it('shows another request waiting in the wallet under the save title with the shared line, the retry and the back', () => {
+    const onRetry = jest.fn()
+    mount({
+      state: withWrite({
+        status: 'failedNotSent',
+        write: 'save',
+        error: accountBatchRefusal('other-request-pending', ACCOUNT),
+        otherRequest: true,
+        run: 1
+      }),
+      onRetry
+    })
+    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).toContain(t('socialRecovery.writes.otherRequestPending'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
+    expect(byTestId('arm-back')).not.toBeNull()
+    pressText(t('socialRecovery.writes.tryAgain'))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a followed request whose read did not answer as submitting with check again, which reads it again', () => {
+    const onCheckAgain = jest.fn()
+    mount({
+      state: {
+        ...withWrite({ status: 'submitting', write: 'save', run: 2 }),
+        requestId: 'stored',
+        follow: 'unread'
+      },
+      onCheckAgain
+    })
+    expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('arm-back')).toBeNull()
+    press('arm-check-again')
+    expect(onCheckAgain).toHaveBeenCalledTimes(1)
+  })
+  ;(['queued', 'gone'] as const).forEach((follow) =>
+    it(`shows a followed request read ${follow} as submitting, with no check again and no Save`, () => {
+      mount({
+        state: {
+          ...withWrite({ status: 'submitting', write: 'save', run: 2 }),
+          requestId: 'stored',
+          follow
+        }
+      })
+      expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
+      expect(byTestId('arm-check-again')).toBeNull()
+      expect(byTestId('arm-save')).toBeNull()
+      expect(byTestId('arm-back')).toBeNull()
+    })
+  )
 
   it('shows the line of a save that may still land only for a refusal that may still land', () => {
     mount({
@@ -682,6 +738,24 @@ describe('the saved screen', () => {
     press('arm-saved-continue')
     expect(navigate).toHaveBeenCalledWith(arm.cardPathOf('hidden'))
     expect(navigate.mock.calls[0][0]).toContain('level=hidden')
+  })
+
+  it('shows a save that landed while no page followed its hash as saved, with no hash and no explorer', () => {
+    const UNSEEN: ArmState = {
+      write: { status: 'submitting', write: 'save', run: 2 },
+      after: { stage: 'saved' },
+      landedUnseen: true
+    }
+    mount({ state: UNSEEN })
+    expect(byTestId('arm-saved')).not.toBeNull()
+    SAVED_LINES.forEach((key) => expect(pageText()).toContain(t(key)))
+    expect(byTestId('arm-saved-explorer')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.arm.savedOnChain'))
+
+    mount({ state: { ...UNSEEN, after: { stage: 'disagreed', check: 'mismatch' } } })
+    expect(textOf('arm-disagreed-check')).toBe(t('socialRecovery.arm.disagreed.mismatch'))
+    expect(byTestId('arm-disagreed-transaction')).toBeNull()
+    expect(byTestId('arm-saved')).toBeNull()
   })
 
   it('names the hidden setup only at the hidden level', () => {

@@ -5,8 +5,9 @@
  * with the runs its history holds a landed receipt and an agreed check for.
  * A seeded set of long random sequences runs beside it.
  *
- * Saved is never reached without a landed receipt of the run and an agreed
- * check of that same run, and an event of another run never moves the state.
+ * Saved is never reached without a landing of the run (its landed receipt, or
+ * the account's setup where no page followed the hash) and an agreed check of
+ * that same run, and an event of another run never moves the state.
  * A run that found a setup on the account ends there, and nothing moves it
  * after; the sign screen's reading and a stalled receipt wait belong to the
  * run that submits.
@@ -91,7 +92,10 @@ const ALPHABET: ArmEvent[] = [
     { type: 'confirmed', run, outcome: { kind: 'disagreed', check: 'authorization' } },
     { type: 'confirmed', run, outcome: { kind: 'unread' } },
     { type: 'wiped', run }
-  ])
+  ]),
+  // A landing seen only in the account's setup, for the first run alone: the runs are alike, and
+  // a later run still meets it as another run's event.
+  { type: 'landedUnseen', run: 1 }
 ]
 
 const runOf = (event: ArmEvent): number | undefined => {
@@ -103,6 +107,10 @@ const runOf = (event: ArmEvent): number | undefined => {
 
 const isLandedReceipt = (event: ArmEvent): boolean =>
   event.type === 'write' && event.event.type === 'receipt' && event.event.receipt.status === 1
+
+/** A landing of the run: its landed receipt, or a setup the account showed where no page followed the hash. */
+const isLanding = (event: ArmEvent): boolean =>
+  isLandedReceipt(event) || event.type === 'landedUnseen'
 
 const isAgreed = (event: ArmEvent): boolean =>
   event.type === 'confirmed' && event.outcome.kind === 'agreed'
@@ -131,7 +139,7 @@ const walkAll = (): Walk => {
           const run = runOf(event)
           const to: Node = {
             state: armReducer(node.state, event),
-            landed: withRun(node.landed, run, isLandedReceipt(event)),
+            landed: withRun(node.landed, run, isLanding(event)),
             agreed: withRun(node.agreed, run, isAgreed(event)),
             path: [...node.path, event]
           }
@@ -155,7 +163,8 @@ const savedWithoutWitness = ({ state, landed, agreed }: Node) =>
 const seeded = (seed: number) => {
   let value = seed
   return () => {
-    value = (value * 1103515245 + 12345) % 2147483648
+    // In big integers, so no product loses precision.
+    value = Number((BigInt(value) * 1103515245n + 12345n) % 2147483648n)
     return value / 2147483648
   }
 }
@@ -218,7 +227,7 @@ describe("the save's reducer", () => {
         const run = runOf(event)
         node = {
           state: armReducer(node.state, event),
-          landed: withRun(node.landed, run, isLandedReceipt(event)),
+          landed: withRun(node.landed, run, isLanding(event)),
           agreed: withRun(node.agreed, run, isAgreed(event)),
           path: [...node.path, event]
         }
@@ -234,24 +243,50 @@ describe("the save's reducer", () => {
     expect(broken).toEqual([])
   })
 
-  it('ends a run as already set up only while it reads the setup before the gas check, or after a refusal that may still land, dropping what it prepared', () => {
+  it('ends a run as already set up only while it reads the setup before the gas check, dropping what it prepared', () => {
     const moved = WALK.steps.filter(
       ({ from, event, to }) => event.type === 'alreadySetUp' && to.state !== from.state
     )
     expect(moved.length).toBeGreaterThan(0)
-    // Both readings are reached: the start's read and a refusal that may still land.
-    expect(moved.some(({ from }) => mayStillLand(from.state.write))).toBe(true)
-    expect(moved.some(({ from }) => from.state.write.status === 'checkingGas')).toBe(true)
+    // A refusal that may still land meets the event and stays: a setup found then leads to the check.
+    expect(
+      WALK.steps.some(
+        ({ from, event }) => event.type === 'alreadySetUp' && mayStillLand(from.state.write)
+      )
+    ).toBe(true)
     const wrong = moved
       .filter(
         ({ from, to }) =>
-          (from.state.write.status !== 'checkingGas' && !mayStillLand(from.state.write)) ||
+          from.state.write.status !== 'checkingGas' ||
           to.state.stop !== 'already-set-up' ||
           to.state.write.status !== 'idle' ||
           to.state.prepared !== undefined
       )
       .map(({ from }) => json(from.path))
     expect(wrong).toEqual([])
+  })
+
+  it('takes a landing seen only in the setup only for a save it holds that may still land or submits with no hash, and reads saved only after the agreed check', () => {
+    const landings = WALK.steps.filter(
+      ({ from, event, to }) => event.type === 'landedUnseen' && to.state !== from.state
+    )
+    const awaitsHash = ({ write }: ArmState) =>
+      write.status === 'submitting' && !write.transactionHash
+    expect(landings.some(({ from }) => mayStillLand(from.state.write))).toBe(true)
+    expect(landings.some(({ from }) => awaitsHash(from.state))).toBe(true)
+    expect(
+      landings
+        .filter(
+          ({ from, to }) =>
+            !from.state.prepared ||
+            from.state.after.stage !== 'none' ||
+            !(mayStillLand(from.state.write) || awaitsHash(from.state)) ||
+            to.state.landedUnseen !== true
+        )
+        .map(({ from }) => json(from.path))
+    ).toEqual([])
+    // Saved is reached that way too, and the witness check above covers it.
+    expect(WALK.nodes.some(({ state }) => isSaved(state) && state.landedUnseen)).toBe(true)
   })
 
   it('moves nothing after a run ended as already set up, whatever event arrives', () => {

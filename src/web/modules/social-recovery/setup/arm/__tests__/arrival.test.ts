@@ -6,6 +6,7 @@
  */
 import type { Account } from '@ambire-common/interfaces/account'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
 import { initialWriteState, writeReducer } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent, WriteState } from '@web/modules/social-recovery/shared/writes'
@@ -35,6 +36,7 @@ import {
   FACTS_CASES,
   GATE_CASES,
   gateFor,
+  IN_FLIGHT_CASES,
   loadedOf,
   REMOVED_KEY,
   setupStateOf,
@@ -215,6 +217,66 @@ describe('the arrival', () => {
     })
   })
 
+  describe('a save in flight stored on this device', () => {
+    const EVERY_ARRIVAL = crossProduct({
+      gate: GATE_CASES,
+      facts: FACTS_CASES,
+      client: CLIENT_CASES,
+      passwordHeld: [true, false]
+    })
+    /** The readings that come before the stored save: the account, the client and the records. */
+    const BEFORE_THE_RECORD = ['loading', 'unavailable', 'update-the-wallet', 'load-failed']
+
+    it('offers the save only once the read of a stored save answered none', () => {
+      const ready = crossProduct({ arrival: EVERY_ARRIVAL, inFlight: IN_FLIGHT_CASES }).filter(
+        ({ arrival, inFlight }) => arrivalFor(arrival, account, { inFlight }).kind === 'ready'
+      )
+      expect(ready).toEqual([{ arrival: READY, inFlight: 'none' }])
+    })
+
+    it('reads loading until the read answers, and its failure as the records that could not load', () => {
+      expect(arrivalFor(READY, account, { inFlight: undefined })).toEqual({ kind: 'loading' })
+      expect(arrivalFor(READY, account, { inFlight: 'reading' })).toEqual({ kind: 'loading' })
+      expect(arrivalFor(READY, account, { inFlight: 'failed' })).toEqual({ kind: 'load-failed' })
+    })
+
+    it('ranks below the account facts, the client and the records, and above a setup on the account, every gate block and the missing password', () => {
+      const outranked: string[] = []
+      const wrong: string[] = []
+      EVERY_ARRIVAL.forEach((input) => {
+        const without = arrivalFor(input, account, { inFlight: 'none' })
+        ;(['reading', 'failed'] as const).forEach((inFlight) => {
+          const withRecord = arrivalFor(input, account, { inFlight })
+          const expected = BEFORE_THE_RECORD.includes(without.kind)
+            ? without
+            : inFlight === 'failed'
+            ? { kind: 'load-failed' }
+            : { kind: 'loading' }
+          if (JSON.stringify(withRecord) !== JSON.stringify(expected)) {
+            wrong.push(
+              `${JSON.stringify({ ...input, inFlight })} read ${JSON.stringify(withRecord)}`
+            )
+          }
+          if (without.kind === 'blocked' && inFlight === 'reading') {
+            outranked.push(without.block.kind)
+          }
+        })
+      })
+      expect(wrong).toEqual([])
+      // Every block the record outranks is met: a setup, each gate block and the missing password.
+      expect(new Set(outranked)).toEqual(
+        new Set([
+          'already-set-up',
+          'unavailable',
+          'removed-key-unreadable',
+          'cannot-recover',
+          'empty-slot',
+          'password-missing'
+        ])
+      )
+    })
+  })
+
   it('waits while a read of the gate has not come back, with no block shown', () => {
     expect(
       arrivalOf({
@@ -288,6 +350,12 @@ describe('the lines the view reads', () => {
   })
 
   it("sets the save's own title and sentence over the shared write states", () => {
+    const refusedFor = (reason: 'not-a-transaction' | 'other-request-pending') =>
+      writeReducer(writeReducer(initialWriteState('save'), { type: 'start' }), {
+        type: 'error',
+        run: 1,
+        error: accountBatchRefusal(reason, REMOVED_KEY)
+      })
     const states: WriteState[] = [
       { status: 'submitting', write: 'save' },
       { status: 'failedNotSent', write: 'save', error: new Error('refused') },
@@ -304,17 +372,24 @@ describe('the lines the view reads', () => {
         receipt: { transactionHash: TX_HASH, status: 0 },
         cause: { kind: 'unnamed' }
       },
-      writeReducer(initialWriteState('save'), { type: 'start' })
+      writeReducer(initialWriteState('save'), { type: 'start' }),
+      refusedFor('not-a-transaction'),
+      refusedFor('other-request-pending')
     ]
     expect(states.map(saveWriteKeysOf)).toEqual([
       { note: 'socialRecovery.review.after.submitting' },
+      // A save never sent reads one sentence: the save's own, in place of the shared line.
       {
         title: 'socialRecovery.review.after.failedTitle',
-        note: 'socialRecovery.review.after.notSent'
+        body: 'socialRecovery.review.after.notSent'
       },
       { title: 'socialRecovery.review.after.failedTitle' },
       { title: 'socialRecovery.review.after.failedTitle' },
-      {}
+      {},
+      // A save that may still land carries no failure title.
+      { body: 'socialRecovery.arm.mayStillLand' },
+      // Another waiting request keeps the shared line, which names it.
+      { title: 'socialRecovery.review.after.failedTitle' }
     ])
   })
 

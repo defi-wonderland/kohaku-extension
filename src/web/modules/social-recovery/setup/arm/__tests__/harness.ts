@@ -9,7 +9,12 @@
  * - the send port, which answers a hash or the port's own refusal;
  * - the receipt wait, which answers a receipt or rejects as ethers does for a
  *   reverted or replaced transaction;
- * - the records' wipe and the draft write-back.
+ * - the draft write-back;
+ * - the wallet's queue and the account's activity, as a page that did not
+ *   queue the save reads them.
+ *
+ * The records' wipe and the save in flight are the records lane's own over an
+ * in-memory storage, which several saves may share as the pages of one device.
  *
  * The account is the account library's own smart account, controlled by `KEY`,
  * so the batch's transaction is the one the library builds. Nothing reaches a
@@ -21,6 +26,7 @@ import type { Account } from '@ambire-common/interfaces/account'
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import type { Network } from '@ambire-common/interfaces/network'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
+import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import en from '@common/config/localization/translations/en.json'
 import type {
@@ -57,10 +63,17 @@ import type {
   RemovedKeyReading,
   SendPort,
   SendRefusalReason,
-  SendRequestPort
+  SendRequestAction,
+  SendRequestPort,
+  SendRequestUpdate,
+  SubmittedOperation
 } from '@web/modules/social-recovery/shared/client'
 import { createWalletRecords } from '@web/modules/social-recovery/shared/records'
-import type { ChainId, RecordStorage } from '@web/modules/social-recovery/shared/records'
+import type {
+  ChainId,
+  RecordStorage,
+  SaveInFlightAccessor
+} from '@web/modules/social-recovery/shared/records'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'
 import { saveGateOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import type { AccountReads, SaveGate } from '@web/modules/social-recovery/setup/review'
@@ -447,12 +460,111 @@ export interface WiredSave {
   reads: MockChainReads
   port: ReturnType<typeof sendPortFor>
   receipts: ReturnType<typeof receiptsFor>
+  /** The records' after-save removal, which also takes the stored save in flight. */
   saveSetup: jest.Mock
   writeDraftAndPath: jest.Mock
+  /** The save in flight stored for the account, over the save's own storage. */
+  inFlight: SaveInFlightAccessor
+  requests: RequestsFake
+  storage: MemoryStorage
+}
+
+export type MemoryStorage = RecordStorage & { raw: Map<string, string> }
+
+/** What a save is wired over beside its script: the device's storage and the wallet's queue and activity. */
+export interface WireOptions {
+  /** One storage for several saves stands for one device with several pages. */
+  storage?: MemoryStorage
+  requests?: RequestsFake
+}
+
+/**
+ * The wallet's queue and the account's activity as another page reads them:
+ * the queue holds the ids in `queued`; the activity answers each page asked
+ * with the operations in `activity`, on one page, or never where it is null.
+ */
+export interface RequestsFake extends SendRequestPort {
+  dispatch: jest.Mock
+  queued: string[]
+  activity: SubmittedOperation[] | null
+  /** Pushes the queue as it stands now, as the background pushes a change of it. */
+  pushQueue(): void
+}
+
+/** Starts work the test does not wait for; where it ends shows in the state the test reads. */
+export const unawaited = (work: Promise<unknown>): void => {
+  work.catch(() => undefined)
+}
+
+/** The ways an operation the wallet submitted carries the save's request. */
+export interface OperationFacts {
+  hash?: Hex
+  status?: AccountOpStatus
+  /** Another party's operation, which the wallet cannot follow. */
+  untracked?: boolean
+}
+
+/** The operation the activity lists for the request `requestId`. */
+export const operationFor = (
+  requestId: string,
+  {
+    hash,
+    status = AccountOpStatus.BroadcastedButNotConfirmed,
+    untracked = false
+  }: OperationFacts = {}
+): SubmittedOperation => ({
+  status,
+  identifiedBy: { type: untracked ? 'UserOperation' : 'Transaction' },
+  ...(hash ? { txnId: hash } : {}),
+  calls: [{ fromUserRequestId: requestId }]
+})
+
+export const requestsFake = (): RequestsFake => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  const push = (update: SendRequestUpdate) => listeners.forEach((listener) => listener(update))
+  const fake: RequestsFake = {
+    queued: [],
+    activity: [],
+    dispatch: jest.fn((action: SendRequestAction) => {
+      if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
+        return
+      }
+      const items = fake.activity
+      if (items === null) {
+        return
+      }
+      const { sessionId, pagination } = action.params
+      unawaited(
+        Promise.resolve().then(() =>
+          push({
+            controller: 'activity',
+            state: {
+              accountsOps: {
+                [String(sessionId)]: {
+                  result: { items, currentPage: pagination?.fromPage ?? 0, maxPages: 1 }
+                }
+              }
+            }
+          })
+        )
+      )
+    }),
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [],
+    queue: () => ({ userRequests: fake.queued.map((id) => ({ id })) }),
+    windowId: () => undefined,
+    pushQueue: () => push({ controller: 'requests', state: fake.queue() })
+  }
+  return fake
 }
 
 /** The extension's storage helper in memory, with the raw entries a test reads. */
-export const memoryStorage = (): RecordStorage & { raw: Map<string, string> } => {
+export const memoryStorage = (): MemoryStorage => {
   const raw = new Map<string, string>()
   return {
     raw,
@@ -477,7 +589,11 @@ export const memoryStorage = (): RecordStorage & { raw: Map<string, string> } =>
   }
 }
 
-export const wireSave = (account: Account, script: SaveScript): WiredSave => {
+export const wireSave = (
+  account: Account,
+  script: SaveScript,
+  { storage = memoryStorage(), requests = requestsFake() }: WireOptions = {}
+): WiredSave => {
   const address = account.addr as Address
   const facts = factsOf(account, { deployed: script.deployed })
   const draft = draftOf(script.backup, script.publicMetadata)
@@ -508,16 +624,10 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
   const chainReads = chainReadsFor(script.gas)
   const port = sendPortFor(script.send, address, script.estimation)
   const receipts = receiptsFor(script.receipt)
-  const saveSetup = jest.fn(async () => undefined)
   const writeDraftAndPath = jest.fn(async () => ({ draft, path: null }))
-  const requests: SendRequestPort = {
-    dispatch: () => undefined,
-    subscribe: () => () => undefined,
-    accounts: () => [],
-    queue: () => ({}),
-    windowId: () => undefined
-  }
-  const { saveInFlight } = createWalletRecords({ storage: memoryStorage() })
+  const records = createWalletRecords({ storage })
+  const saveSetup = jest.fn((chainId: ChainId, owner: Address) => records.saveSetup(chainId, owner))
+  const { saveInFlight } = records
   const steps = saveStepsOf({
     client,
     reads: chainReads,
@@ -546,9 +656,81 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
     port,
     receipts,
     saveSetup,
-    writeDraftAndPath
+    writeDraftAndPath,
+    inFlight: saveInFlight(CHAIN_ID, address),
+    requests,
+    storage
   }
 }
+
+/** A promise that never settles: the edge that answers it never does, or its page went away. */
+export const pending = <T>(): Promise<T> => new Promise<T>(() => {})
+
+/**
+ * One way a run ends and what it leaves of the stored save in flight: still
+ * there, claimed and gone (released, or removed with the setup records), or
+ * never claimed.
+ */
+export interface Ending {
+  named: string
+  overrides: Partial<SaveScript>
+  record: 'kept' | 'gone' | 'absent'
+  arrange?: (wired: WiredSave) => void
+}
+
+export const ENDINGS: Ending[] = [
+  ...SEND_REFUSAL_REASONS.filter((send) => send !== 'not-a-transaction').map(
+    (send): Ending => ({
+      named: `a refusal of the port (${send})`,
+      overrides: { send },
+      record: 'gone'
+    })
+  ),
+  {
+    named: 'a refusal that may still land',
+    overrides: { send: 'not-a-transaction' },
+    record: 'kept'
+  },
+  { named: 'a replaced transaction', overrides: { receipt: 'replaced' }, record: 'gone' },
+  { named: 'a reverted transaction', overrides: { receipt: 'reverted' }, record: 'gone' },
+  ...(['unauthorized', 'mismatch', 'never-landed'] as const).map(
+    (confirm): Ending => ({
+      named: `a landed save whose check disagreed (${confirm})`,
+      overrides: { confirm },
+      record: 'gone'
+    })
+  ),
+  { named: 'a landed save whose check agreed', overrides: {}, record: 'gone' },
+  ...(['throws', 'no-answer'] as const).map(
+    (confirm): Ending => ({
+      named: `a landed save whose check did not answer (${confirm})`,
+      overrides: { confirm },
+      record: 'kept'
+    })
+  ),
+  {
+    named: 'a receipt wait past its limit',
+    overrides: {},
+    record: 'kept',
+    arrange: (wired) => wired.receipts.wait.mockImplementation(() => pending())
+  },
+  {
+    named: 'a receipt wait that failed twice',
+    overrides: {},
+    record: 'kept',
+    arrange: (wired) => wired.receipts.wait.mockRejectedValue(nodeError())
+  },
+  {
+    named: 'a sign window the page left open',
+    overrides: {},
+    record: 'kept',
+    arrange: (wired) => wired.port.sendAccountBatch.mockImplementation(() => pending())
+  },
+  { named: 'a key short of gas', overrides: { gas: 'deposit' }, record: 'absent' },
+  { named: 'a gas check that could not read', overrides: { gas: 'read-fails' }, record: 'absent' },
+  { named: 'a refusal of the prepare', overrides: { prepare: 'refuses' }, record: 'absent' },
+  { named: 'a setup already on the account', overrides: { setup: 'set-up' }, record: 'absent' }
+]
 
 /** How long a check that never answers is given before it reads as unanswered, in the tests. */
 export const SHORT_TIMEOUT_MS = 15
@@ -752,7 +934,15 @@ export interface ArrivalCase {
   passwordHeld: boolean
 }
 
-export const arrivalFor = (input: ArrivalCase, account: Account): Arrival =>
+/** The read of a stored save in flight as the arrival takes it: not started, reading, none, or failed. */
+export const IN_FLIGHT_CASES = [undefined, 'reading', 'none', 'failed'] as const
+export type InFlightCase = typeof IN_FLIGHT_CASES[number]
+
+export const arrivalFor = (
+  input: ArrivalCase,
+  account: Account,
+  { inFlight }: { inFlight: InFlightCase } = { inFlight: 'none' }
+): Arrival =>
   arrivalOf({
     facts: factsReadingFor(input.facts, account),
     client: input.client,
@@ -760,7 +950,7 @@ export const arrivalFor = (input: ArrivalCase, account: Account): Arrival =>
     gate: gateFor(input.gate, input.client === 'ready'),
     setupState: { status: 'answered', value: setupStateOf(input.gate === 'already-set-up') },
     passwordHeld: input.passwordHeld,
-    inFlight: 'none'
+    inFlight
   })
 
 /** Whether the holder starts the save a second time, and what the setup read answers then. */
@@ -803,7 +993,7 @@ export interface Chain {
   setupState: SetupState
   paused: { answered: true; value: boolean } | { answered: false }
   confirm: SetupConfirmation | Error
-  send: 'sent' | 'refused' | 'not-a-transaction'
+  send: 'sent' | 'refused' | 'not-a-transaction' | 'other-request-pending'
   estimation?: FeeReading
 }
 

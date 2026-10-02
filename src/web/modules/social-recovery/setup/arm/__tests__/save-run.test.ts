@@ -279,7 +279,11 @@ describe('the send and the receipt', () => {
       expect(write.status === 'failedNotSent' && write.replaced).toBeFalsy()
       expect(canRetry(write)).toBe(true)
       expect(mayStillLand(write)).toBe(false)
-      expect(saveWriteKeysOf(write).note).toBe('socialRecovery.review.after.notSent')
+      // One sentence: the save's own, in place of the shared line.
+      expect(saveWriteKeysOf(write)).toEqual({
+        title: 'socialRecovery.review.after.failedTitle',
+        body: 'socialRecovery.review.after.notSent'
+      })
       expect(wired.confirmSetup).not.toHaveBeenCalled()
       expect(wired.saveSetup).not.toHaveBeenCalled()
       expect(armScreenOf(store.state())).toBe('run')
@@ -292,10 +296,8 @@ describe('the send and the receipt', () => {
     const refused = store.state()
     expect(refused.write.status).toBe('failedNotSent')
     expect(mayStillLand(refused.write)).toBe(true)
-    // The save does not say that nothing was sent: the operation may still land.
-    expect(saveWriteKeysOf(refused.write)).toEqual({
-      title: 'socialRecovery.review.after.failedTitle'
-    })
+    // No failure title and no word that nothing was sent: the operation may still land.
+    expect(saveWriteKeysOf(refused.write)).toEqual({ body: 'socialRecovery.arm.mayStillLand' })
     wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
 
     await startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
@@ -358,9 +360,9 @@ describe('after the batch landed', () => {
     )
   })
 
-  it('wipes the six setup records once the check agrees, keeps the recovery password, and reads saved', async () => {
-    const wired = wireSave(account, script())
+  it('wipes the six setup records and the stored save in flight once the check agrees, keeps the recovery password, and reads saved', async () => {
     const storage = memoryStorage()
+    const wired = wireSave(account, script(), { storage })
     const records = createWalletRecords({ storage })
     const setup = records.setup(CHAIN_ID, wired.account)
     await setup.setupDraft.write(wired.draft)
@@ -369,9 +371,24 @@ describe('after the batch landed', () => {
     await setup.waitingPeriod.write(wired.draft.wait)
     expect(storage.raw.size).toBe(4)
     setRecoveryPassword(CHAIN_ID, wired.account, PASSWORD)
-    wired.saveSetup.mockImplementation(records.saveSetup)
-
-    const store = await runSave(wired.steps)
+    let answer: (value: ReturnType<typeof confirmation>) => void = () => {}
+    wired.confirmSetup.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    const store = createArmStore()
+    const running = startSave(store, wired.steps, { timeoutMs: 10_000 })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    // While the check runs, the save in flight is stored beside the four records, under its hash.
+    expect(storage.raw.size).toBe(5)
+    const held = await wired.inFlight.read()
+    expect(held.status === 'present' && held.value.transactionHash).toBe(TX_HASH)
+    answer(confirmation(true, true))
+    await running
 
     expect(isSaved(store.state())).toBe(true)
     expect(armScreenOf(store.state())).toBe('saved')
@@ -713,19 +730,38 @@ describe('a refusal whose operation may still land, read again', () => {
     return { wired, store }
   }
 
-  it('ends as already set up where check again finds the setup, with nothing prepared, sent or wiped, and the run no longer kept', async () => {
+  it('runs the check with the run save where check again finds the setup, and reads saved with one wipe, nothing prepared or sent again', async () => {
     const { wired, store } = await refusedRun()
+    expect((await wired.inFlight.read()).status).toBe('present')
     wired.setupState.mockResolvedValue(setupStateOf(true))
 
-    await checkSetupAgain(store, wired.steps)
+    await checkSetupAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
     expect(wired.setupState).toHaveBeenCalledTimes(2)
-    expect(store.state().stop).toBe('already-set-up')
-    expect(armScreenOf(store.state())).toBe('already-set-up')
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.confirmSetup).toHaveBeenCalledWith(wired.draft, wired.prepared)
+    expect(isSaved(store.state())).toBe(true)
+    expect(armScreenOf(store.state())).toBe('saved')
+    expect(store.state().stop).toBeUndefined()
     expect(outlivesScreen(store.state())).toBe(false)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect((await wired.inFlight.read()).status).toBe('absent')
     expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads disagreed where check again finds a setup the check does not agree with, wipes nothing and releases the stored save', async () => {
+    const { wired, store } = await refusedRun()
+    wired.setupState.mockResolvedValue(setupStateOf(true))
+    wired.confirmSetup.mockResolvedValue(confirmation(true, false))
+
+    await checkSetupAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(store.state().after).toEqual({ stage: 'disagreed', check: 'authorization' })
+    expect(armScreenOf(store.state())).toBe('disagreed')
     expect(wired.saveSetup).not.toHaveBeenCalled()
+    expect((await wired.inFlight.read()).status).toBe('absent')
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
   it('stays as it was where check again finds no setup, or its read throws, and a later check again still reads', async () => {
@@ -739,23 +775,33 @@ describe('a refusal whose operation may still land, read again', () => {
     await checkSetupAgain(store, wired.steps)
     expect(store.state()).toBe(refused)
     expect(outlivesScreen(store.state())).toBe(true)
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+    expect((await wired.inFlight.read()).status).toBe('present')
 
     wired.setupState.mockResolvedValue(setupStateOf(true))
-    await checkSetupAgain(store, wired.steps)
+    await checkSetupAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
     expect(wired.setupState).toHaveBeenCalledTimes(4)
-    expect(store.state().stop).toBe('already-set-up')
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it("ends as already set up on the arrival's read of a setup, and stays on a read of none", async () => {
+  it("runs the check on the arrival's read of a setup, and stays on a read of none", async () => {
     const { store, wired } = await refusedRun()
     const refused = store.state()
 
     await endWhereSetUp(store, wired.steps, false)
     expect(store.state()).toBe(refused)
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
 
+    await endWhereSetUp(store, wired.steps, true, { timeoutMs: SHORT_TIMEOUT_MS })
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+
+    // A second read of the setup moves nothing more.
     await endWhereSetUp(store, wired.steps, true)
-    expect(store.state().stop).toBe('already-set-up')
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
   })
 
   it('moves no other ended run on a setup read, nor reads the setup for one', async () => {
@@ -1018,7 +1064,7 @@ describe('the time limit of one more receipt wait', () => {
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('reads stalled again where the wait of check again runs past its limit too', async () => {
+  it('takes up the wait still open on the hash on check again, opens no other, and reads stalled again past its limit', async () => {
     const wired = wireSave(account, script())
     waitHeldAfterAFailure(wired)
     const store = await startStalled(wired)
@@ -1026,12 +1072,34 @@ describe('the time limit of one more receipt wait', () => {
 
     const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
     expect(store.state().stalled).toBe(false)
-    await advanceTimers(RECEIPT_WAIT_MS)
+    await advanceTimers(RECEIPT_WAIT_MS - 1)
+    expect(store.state().stalled).toBe(false)
+    await advanceTimers(1)
     await checking
 
-    expect(wired.receipts.wait).toHaveBeenCalledTimes(3)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
     expect(store.state().stalled).toBe(true)
     expect(wired.confirmSetup).not.toHaveBeenCalled()
+  })
+
+  it('opens one wait for two presses of check again, and checks and wipes once when it lands', async () => {
+    const wired = wireSave(account, script())
+    const late = waitHeldAfterAFailure(wired)
+    const store = await startStalled(wired)
+
+    const first = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    await advanceTimers(RECEIPT_WAIT_MS)
+    await first
+    expect(store.state().stalled).toBe(true)
+    const second = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    late.land()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await second
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
   })
 
   it('checks and wipes once where the late receipt and the receipt of check again arrive together', async () => {
@@ -1206,22 +1274,22 @@ describe('the time limit of the first receipt wait', () => {
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('checks and wipes once where the first wait and the wait of check again both bring the receipt', async () => {
+  it('takes up the first wait on check again while it still runs, and checks and wipes once when it brings the receipt', async () => {
     const wired = wireSave(account, script())
     const { store, first, running } = await startWaiting(wired)
     await advanceTimers(RECEIPT_WAIT_MS)
-    const again = waitHeld(wired)
 
     const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
     expect(store.state().stalled).toBe(false)
+    await advanceTimers(0)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
     first.land()
-    again.land()
     await advanceTimers(SHORT_TIMEOUT_MS)
     await checking
 
     expect(running.settled).toBe(true)
     expect(isSaved(store.state())).toBe(true)
-    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
     expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
     expect(wired.saveSetup).toHaveBeenCalledTimes(1)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
