@@ -55,10 +55,9 @@ const getTokenEligibility = (
   validTokens: any,
   tokenNetwork: Network | undefined
 ) =>
-  null ||
-  (tokenData?.address &&
-    tokenNetwork?.chainId &&
-    validTokens?.erc20[`${tokenData?.address}-${tokenNetwork?.chainId}`])
+  tokenData?.address &&
+  tokenNetwork?.chainId &&
+  validTokens?.erc20[`${tokenData?.address}-${tokenNetwork?.chainId}`]
 
 const handleTokenIsInPortfolio = async (
   isTokenCustom: boolean,
@@ -99,13 +98,12 @@ const getTokenFromTemporaryTokens = (
   tokenData: { address: string } | CustomToken,
   tokenNetwork: Network | undefined
 ) =>
-  undefined ||
-  (tokenData &&
-    tokenNetwork &&
-    temporaryTokens?.[tokenNetwork.chainId.toString()] &&
-    temporaryTokens?.[tokenNetwork.chainId.toString()]?.result?.tokens?.find(
-      (x) => x.address.toLowerCase() === tokenData.address.toLowerCase()
-    ))
+  tokenData &&
+  tokenNetwork &&
+  temporaryTokens?.[tokenNetwork.chainId.toString()] &&
+  temporaryTokens?.[tokenNetwork.chainId.toString()]?.result?.tokens?.find(
+    (x) => x.address.toLowerCase() === tokenData.address.toLowerCase()
+  )
 
 export {
   selectNetwork,

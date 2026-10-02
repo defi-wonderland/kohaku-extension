@@ -21,7 +21,7 @@ function RagequitForm({
   ethPrice,
   chainId
 }: {
-  poolInfo?: PoolInfo
+  poolInfo?: PoolInfo | null
   // totalPendingBalance: { total: bigint; accounts: PoolAccount[] }
   totalDeclinedBalance: { total: bigint; accounts: PoolAccount[] }
   ethPrice: number

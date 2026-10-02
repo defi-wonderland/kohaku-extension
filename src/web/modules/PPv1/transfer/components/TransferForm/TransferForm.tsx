@@ -13,7 +13,7 @@ import flexbox from '@common/styles/utils/flexbox'
 import useTheme from '@common/hooks/useTheme'
 
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
-import { PoolAccount } from '@web/contexts/privacyPoolsControllerStateContext'
+import { INote } from '@ambire-common/controllers/privacyPools/privacyPoolsV1'
 import { getTokenId } from '@web/utils/token'
 import { SelectedAccountPortfolioTokenResult } from '@ambire-common/interfaces/selectedAccount'
 import Recipient from '../Recipient'
@@ -64,7 +64,7 @@ const TransferForm = ({
   controllerAmount: string
   quoteFee: string
   updateQuoteStatus: 'INITIAL' | 'LOADING' | undefined
-    totalApprovedBalance: { total: bigint; accounts: PoolAccount[] }
+    totalApprovedBalance: { total: bigint; accounts: INote[] }
   disabled?: boolean
 }) => {
   const { validation } = addressInputState

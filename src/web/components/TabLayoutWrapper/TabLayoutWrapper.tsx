@@ -136,7 +136,7 @@ export const TabLayoutContainer = ({
 }
 
 interface TabLayoutWrapperMainContentProps extends WrapperProps {
-  children: React.ReactNode
+  children?: React.ReactNode
   withScroll?: boolean
   wrapperRef?: any
 }

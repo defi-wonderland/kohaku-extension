@@ -32,7 +32,7 @@ type WrapperProps = {
   children: React.ReactNode
   title: string | React.ReactNode
   description?: string
-  handleGoBack: () => void
+  handleGoBack?: () => void
   buttons: React.ReactNode
 }
 
