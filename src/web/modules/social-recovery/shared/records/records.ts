@@ -16,7 +16,7 @@ import isEqual from 'react-fast-compare'
 import { bytesToHex, isAddress, isAddressEqual } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
-import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
@@ -35,6 +35,9 @@ import type {
   RecordRead,
   RecoverySessionAccessor,
   RecoverySessionRecord,
+  SaveInFlightAccessor,
+  SaveInFlightClaim,
+  SaveInFlightRecord,
   SessionRead,
   SessionRevision,
   SetupDraftRecord,
@@ -89,7 +92,8 @@ const recoverySessionPrefix = (chainId: ChainId): string =>
  *   `passwordSet`: the six setup records;
  * - `recoverySession`: the live gathering, the reason line a wipe leaves, or in
  *   its landed state the countdown's record;
- * - `decryptedSetupCache`: the setup the recovery password unlocked.
+ * - `decryptedSetupCache`: the setup the recovery password unlocked;
+ * - `saveInFlight`: the setup save sent to the wallet and not yet settled.
  *
  * A ceremony request is keyed by its request id alone,
  * `socialRecovery:ceremonyRequest:<id>`, since the ceremony tab reads it from
@@ -102,6 +106,8 @@ export const recordKeys = {
     `${recoverySessionPrefix(chainId)}${accountPart(account)}`,
   decryptedSetupCache: (chainId: ChainId, account: Address): string =>
     `${RECORDS_KEY_PREFIX}:decryptedSetupCache:${chainPart(chainId)}:${accountPart(account)}`,
+  saveInFlight: (chainId: ChainId, account: Address): string =>
+    `${RECORDS_KEY_PREFIX}:saveInFlight:${chainPart(chainId)}:${accountPart(account)}`,
   ceremonyRequest: (id: string): string =>
     `${RECORDS_KEY_PREFIX}:ceremonyRequest:${requestIdPart(id)}`
 }
@@ -155,6 +161,28 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
     default:
       return false
   }
+}
+
+/**
+ * Whether a stored value is a save in flight: a prepared call or batch, the
+ * request id, the claim time and, where present, the hash and the start block.
+ */
+const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  const prepared = record.prepared as { kind?: unknown } | null | undefined
+  return (
+    typeof prepared === 'object' &&
+    prepared !== null &&
+    (prepared.kind === 'call' || prepared.kind === 'batch') &&
+    typeof record.requestId === 'string' &&
+    record.requestId !== '' &&
+    typeof record.claimedAt === 'number' &&
+    Number.isFinite(record.claimedAt) &&
+    (record.transactionHash === undefined || typeof record.transactionHash === 'string') &&
+    (record.startBlock === undefined ||
+      (Number.isSafeInteger(record.startBlock) && (record.startBlock as number) >= 0))
+  )
 }
 
 /**
@@ -329,11 +357,18 @@ export const createWalletRecords = ({
   }
 
   /**
-   * The setup landed on chain: wipes the six setup records. The recovery
-   * password held in memory stays for the tab's life, so the Recovery Card can
-   * show it. Platform credentials are untouched.
+   * The setup landed on chain: wipes the six setup records and the save in
+   * flight in one storage call, so a saved setup leaves no record behind. The
+   * recovery password held in memory stays for the tab's life, so the Recovery
+   * Card can show it. Platform credentials are untouched.
    */
-  const saveSetup = (chainId: ChainId, account: Address) => wipeSetupRecords(chainId, account)
+  const saveSetup = async (chainId: ChainId, account: Address): Promise<void> => {
+    const keys = [
+      ...SETUP_RECORD_NAMES.map((name) => recordKeys.setup(name, chainId, account)),
+      recordKeys.saveInFlight(chainId, account)
+    ]
+    await inQueues(keys, () => storage.removeKeys(keys))
+  }
 
   /**
    * The holder starts over: wipes the six setup records, then the recovery
@@ -649,6 +684,60 @@ export const createWalletRecords = ({
     }
   }
 
+  // --- the save in flight -------------------------------------------------
+
+  /**
+   * The setup save of one account sent to the wallet and not yet settled. A
+   * stored value that is not a save in flight reads absent, and a claim writes
+   * over it.
+   */
+  const saveInFlight = (chainId: ChainId, account: Address): SaveInFlightAccessor => {
+    const key = recordKeys.saveInFlight(chainId, account)
+    const read = async (): Promise<RecordRead<SaveInFlightRecord>> => {
+      const stored: unknown = await storage.get(key, undefined)
+      if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) return ABSENT
+      return { status: 'present', value: stored.value, savedAt: stored.savedAt }
+    }
+    return {
+      read,
+      claim: (claim: SaveInFlightClaim) =>
+        inQueue(key, async () => {
+          const current = await read()
+          if (current.status === 'present') {
+            return { claimed: false, record: { value: current.value, savedAt: current.savedAt } }
+          }
+          const record = await writeKey<SaveInFlightRecord>(key, {
+            prepared: claim.prepared,
+            requestId: claim.requestId,
+            claimedAt: claim.claimedAt
+          })
+          return { claimed: true, record }
+        }),
+      markSent: (requestId: string, transactionHash: Hex, startBlock: number) =>
+        inQueue(key, async () => {
+          const current = await read()
+          if (current.status !== 'present' || current.value.requestId !== requestId) {
+            return current
+          }
+          const record = await writeKey<SaveInFlightRecord>(key, {
+            ...current.value,
+            transactionHash,
+            startBlock
+          })
+          return { status: 'present' as const, ...record }
+        }),
+      release: (requestId: string) =>
+        inQueue(key, async () => {
+          const current = await read()
+          if (current.status !== 'present' || current.value.requestId !== requestId) {
+            return false
+          }
+          await storage.remove(key)
+          return true
+        })
+    }
+  }
+
   return {
     setup,
     setupSavedAt,
@@ -663,6 +752,7 @@ export const createWalletRecords = ({
     countdown,
     listCountdowns,
     decryptedSetupCache,
+    saveInFlight,
     ceremonyRequest
   }
 }
