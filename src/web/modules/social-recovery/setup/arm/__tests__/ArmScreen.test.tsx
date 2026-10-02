@@ -185,6 +185,7 @@ const {
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const {
   createArmStore,
+  DROPPED_AFTER_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
@@ -2147,5 +2148,173 @@ describe('the save in its own words', () => {
     expect(router.search).toBe('?from=review')
     expect(router.hash).toBe('#top')
     expect(router.state).toEqual({ from: 'review' })
+  })
+})
+
+describe('a save the network dropped', () => {
+  const tick = (ms: number) => act(() => harness.advanceTimers(ms))
+  /** Moves the clock without running a timer, as a tab that slept does. */
+  const passTime = (ms: number) => jest.setSystemTime(Date.now() + ms)
+
+  /** The route mounted afresh at its address, as a second tab or a remount reaches it. */
+  const arrive = async () => {
+    act(() => root.unmount())
+    root = createRoot(container)
+    await act(async () => {
+      root.render(tree([SAVE_PATH], 0))
+    })
+    await tick(100)
+  }
+
+  const leave = () => {
+    act(() => root.unmount())
+    root = createRoot(container)
+  }
+
+  const transactionReads = () => receipts.transactionKnown.mock.calls.length
+
+  /** Another page sent the save under its hash and went away; this page's node knows no transaction. */
+  const sentElsewhere = async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    receipts.transactionKnown.mockResolvedValue('unknown')
+    return anotherPageLeaves(true, () => tick(100))
+  }
+
+  const expectDropped = () => {
+    expect(byTestId('arm-dropped-line')?.textContent).toBe(t('socialRecovery.arm.dropped'))
+    expect(byTestId('arm-save-again')?.textContent).toBe(t('socialRecovery.arm.saveAgain'))
+    expect(byTestId('arm-write-submitting')).toBeNull()
+    expect(byTestId('arm-check-again')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(byTestId('arm-back')).not.toBeNull()
+  }
+
+  const pressSaveAgain = async () => {
+    await act(async () => {
+      byTestId('arm-save-again')?.click()
+    })
+    await tick(100)
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it('shows the dropped line and Save again on an arrival an hour after the broadcast, with no wait for the receipt and nothing sent', async () => {
+    await sentElsewhere()
+    passTime(DROPPED_AFTER_MS)
+
+    await arrive()
+
+    expectDropped()
+    expect(receipts.transactionKnown).toHaveBeenCalledWith(harness.TX_HASH)
+    expect(receipts.wait).not.toHaveBeenCalled()
+    expect(storedSaves()).toHaveLength(1)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('shows the submitting state, then check again, before the hour, and the dropped line on check again after it', async () => {
+    await sentElsewhere()
+    receipts.wait.mockImplementation(() => harness.pending())
+
+    await arrive()
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    await tick(RECEIPT_WAIT_MS)
+    expect(byTestId('arm-check-again')).not.toBeNull()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    expect(receipts.transactionKnown).not.toHaveBeenCalled()
+
+    passTime(DROPPED_AFTER_MS)
+    await act(async () => {
+      byTestId('arm-check-again')?.click()
+    })
+    await tick(100)
+
+    expectDropped()
+    expect(receipts.wait).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the stored save on Save again, then sends once through the ordinary start and saves with one wipe', async () => {
+    const { record } = await sentElsewhere()
+    passTime(DROPPED_AFTER_MS)
+    await arrive()
+    expectDropped()
+    const prepares = prepareCommitSetup.mock.calls.length
+    const setupReads = setupState.mock.calls.length
+    const releasedAtSend: number[] = []
+    port.sendAccountBatch.mockImplementation(async () => {
+      releasedAtSend.push(releases())
+      return harness.TX_HASH
+    })
+
+    await pressSaveAgain()
+    await pressSaveAgain()
+
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(releasedAtSend).toEqual([1])
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch.mock.calls[0][4]).not.toBe(record.requestId)
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(prepares + 1)
+    expect(setupState.mock.calls.length).toBeGreaterThanOrEqual(setupReads + 2)
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wipes()).toBe(1)
+    expect(storedSaves()).toHaveLength(0)
+  })
+
+  it('ends Save again as already set up with nothing sent where another tab saved meanwhile', async () => {
+    await sentElsewhere()
+    passTime(DROPPED_AFTER_MS)
+    await arrive()
+    expectDropped()
+    chain.setupState = setupStateOf(true)
+
+    await pressSaveAgain()
+
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(releases()).toBe(1)
+  })
+
+  it('drops a dropped run when the screen leaves, and the next arrival reads it again from the chain and the stored save', async () => {
+    await sentElsewhere()
+    passTime(DROPPED_AFTER_MS)
+    await arrive()
+    expectDropped()
+    const nodeReads = transactionReads()
+    const setupReads = setupState.mock.calls.length
+
+    leave()
+    await arrive()
+
+    expectDropped()
+    expect(transactionReads()).toBeGreaterThan(nodeReads)
+    expect(setupState.mock.calls.length).toBeGreaterThan(setupReads)
+    expect(receipts.wait).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('reads dropped when the screen comes back after the hour to a save it left waiting for its receipt', async () => {
+    await sentElsewhere()
+    receipts.wait.mockImplementation(() => harness.pending())
+    await arrive()
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+
+    leave()
+    passTime(DROPPED_AFTER_MS)
+    await tick(100)
+    expect(receipts.transactionKnown).not.toHaveBeenCalled()
+    await arrive()
+
+    expectDropped()
+    expect(receipts.wait).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 })

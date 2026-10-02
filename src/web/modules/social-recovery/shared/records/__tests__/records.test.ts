@@ -2786,7 +2786,11 @@ describe('the setup save in flight', () => {
     clock.t = T0 + HOUR
     await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
     clock.t = T0 + 4 * HOUR
-    const again = await saving.markSent(SAVE_CLAIM.requestId, `0x${'ee'.repeat(32)}`, START_BLOCK + 9)
+    const again = await saving.markSent(
+      SAVE_CLAIM.requestId,
+      `0x${'ee'.repeat(32)}`,
+      START_BLOCK + 9
+    )
     expect(present(again).value.sentAt).toBe(T0 + HOUR)
     expect(present(await saving.read()).value.sentAt).toBe(T0 + HOUR)
   })
