@@ -40,6 +40,7 @@ import {
   isSessionRevisionConflict,
   newCeremonyRequestId,
   predictedAttemptId,
+  readRecoveryPassword,
   recordAge,
   recordKeys,
   RecordRead,
@@ -54,9 +55,11 @@ import {
   SETUP_RECORD_NAMES,
   SetupRecordName,
   SetupRecordValues,
+  setRecoveryPassword,
   SLOT_KINDS,
   slotKindOf,
-  WIPE_REASON_STRING_KEYS
+  WIPE_REASON_STRING_KEYS,
+  wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 
 // The extension's `browser.storage.local` for `extensionRecordStorage`: one
@@ -2799,11 +2802,18 @@ describe('start over is refused while a setup save is in flight', () => {
     reads.forEach((read) => expect(read).toBe(ABSENT))
   }
 
+  // The recovery password is held in memory once per module, so no test leaves one behind.
+  afterEach(() => {
+    wipeRecoveryPassword(CHAIN_ID, ACCOUNT)
+  })
+
   it('with a save in flight, it rejects with the refusal and removes nothing', async () => {
     const { storage, records } = setup()
     await writeAllSetup(records)
     await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    setRecoveryPassword(CHAIN_ID, ACCOUNT, 'correct horse battery staple')
     const refusal = await rejectionOf(records.startOverSetup(CHAIN_ID, ACCOUNT))
+    expect(readRecoveryPassword(CHAIN_ID, ACCOUNT)).toBe('correct horse battery staple')
     expect(refusal).toBeInstanceOf(SaveInFlightRefusal)
     expect(isSaveInFlightRefusal(refusal)).toBe(true)
     expect(storage.calls.removeKeys).toEqual([])
