@@ -90,6 +90,7 @@ jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   __esModule: true,
   default: () => null
 }))
+jest.mock('@common/components/Avatar', () => ({ __esModule: true, default: () => null }))
 // The wallet's spinner is an animation Jest cannot draw; the stub marks its place.
 jest.mock('@common/components/Spinner', () => ({
   __esModule: true,
