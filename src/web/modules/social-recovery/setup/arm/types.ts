@@ -196,16 +196,31 @@ export interface SaveSteps {
   checkGas(save: PreparedSave): Promise<GasCheck>
   /** The account the save writes to. */
   account: Address
-  /** A stored save's prepared write as the run checks it: with the draft the records hold, and its calls. */
-  followedSave(prepared: PreparedCall | PreparedBatch): PreparedSave
+  /** A stored save as the run checks it: the draft and the prepared write it sent, and its calls. */
+  followedSave(record: SaveInFlightRecord): PreparedSave
   /** A new id for the batch's request in the wallet's queue. */
   newRequestId(): string
   /** The save in flight stored on this device for the account, where one is. */
   readInFlight(): Promise<RecordRead<SaveInFlightRecord>>
-  /** Stores the save in flight where none is; answers whether it did, and the record stored. */
-  claim(save: PreparedSave, requestId: string): Promise<SaveInFlightClaimResult>
-  /** Writes the hash and the start block into the stored save in flight of `requestId`. */
-  markSent(requestId: string, transactionHash: Hex, startBlock: number): Promise<void>
+  /**
+   * Stores the save in flight where none is, with the block read before the
+   * send where it was read; answers whether it did, and the record stored.
+   */
+  claim(
+    save: PreparedSave,
+    requestId: string,
+    startBlock?: number
+  ): Promise<SaveInFlightClaimResult>
+  /**
+   * Writes the hash into the stored save in flight of `requestId`, and the
+   * start block where one is given; with none, the record keeps the claim's.
+   * Answers the record stored after it.
+   */
+  markSent(
+    requestId: string,
+    transactionHash: Hex,
+    startBlock?: number
+  ): Promise<RecordRead<SaveInFlightRecord>>
   /** Removes the stored save in flight of `requestId`. */
   release(requestId: string): Promise<void>
   /** Where the wallet holds the request `requestId`: its queue, its activity, or neither. */
@@ -242,6 +257,18 @@ export interface SaveSteps {
   newBlock: NewBlockWait
   /** Wipes the six setup records. */
   wipe(): Promise<void>
+}
+
+/**
+ * The follow of a stored save in flight that holds no hash: the steps of the
+ * screen it reads through, the run and the request it follows, and when the
+ * request was claimed (ms since epoch).
+ */
+export interface FollowHold {
+  steps: SaveSteps
+  run: number
+  requestId: string
+  claimedAt: number
 }
 
 /** The part of the recovery client the save runs on. */

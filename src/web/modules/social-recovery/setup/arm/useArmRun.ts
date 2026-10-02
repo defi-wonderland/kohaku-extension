@@ -10,7 +10,9 @@
  * found, failed, the deposit step or disagreed), the run is dropped, and the
  * next arrival reads the chain again before anything starts. Once it has
  * steps, a run that never started reads the save in flight stored on this
- * device, and follows one where it is stored.
+ * device, and follows one where it is stored. A follow of a stored save with
+ * no hash reads the wallet's queue through the steps of the screen that holds
+ * it: when those steps go, it pauses, and the next steps take it up.
  */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
@@ -18,11 +20,13 @@ import {
   checkReceiptAgain,
   checkSetupAgain,
   createArmStore,
+  detachSteps,
   endWhereSetUp,
   lookForSave,
   outlivesScreen,
   recheckGas,
   rereadConfirmation,
+  resumeFollow,
   startSave
 } from './run'
 import type { ArmRun, ArmStore, SaveSteps } from './types'
@@ -57,9 +61,12 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
   }, [store, runKey])
 
   useEffect(() => {
-    if (steps) {
-      lookForSave(store, steps).catch(() => undefined)
+    if (!steps) {
+      return undefined
     }
+    resumeFollow(store, steps).catch(() => undefined)
+    lookForSave(store, steps).catch(() => undefined)
+    return () => detachSteps(steps)
   }, [store, steps])
 
   const lookAgain = useCallback(() => {

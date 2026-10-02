@@ -59,11 +59,7 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
   const inFlight = input.records.saveInFlight(input.chainId, input.account)
   return {
     account: input.account,
-    followedSave: (prepared) => ({
-      draft: committedDraftOf(input.draft),
-      prepared,
-      calls: callsOf(prepared)
-    }),
+    followedSave: ({ draft, prepared }) => ({ draft, prepared, calls: callsOf(prepared) }),
     async hasSetup(): Promise<boolean> {
       const state = await client.setup.setupState()
       return state.hasSetup
@@ -90,11 +86,16 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
       }),
     newRequestId: newSendRequestId,
     readInFlight: () => inFlight.read(),
-    claim: ({ prepared }, requestId) =>
-      inFlight.claim({ prepared, requestId, claimedAt: Date.now() }),
-    async markSent(requestId, transactionHash, startBlock): Promise<void> {
-      await inFlight.markSent(requestId, transactionHash, startBlock)
-    },
+    claim: ({ draft, prepared }, requestId, startBlock) =>
+      inFlight.claim({
+        draft,
+        prepared,
+        requestId,
+        claimedAt: Date.now(),
+        ...(startBlock !== undefined ? { startBlock } : {})
+      }),
+    markSent: (requestId, transactionHash, startBlock) =>
+      inFlight.markSent(requestId, transactionHash, startBlock),
     async release(requestId): Promise<void> {
       await inFlight.release(requestId)
     },

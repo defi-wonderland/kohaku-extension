@@ -7,7 +7,9 @@
  *                     ├─ a setup found ─▶ already set up (the run ends, nothing sent)
  *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas: the setup read, the gas check
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
- *                     └─ enough ───▶ submitting ──▶ failedNotSent | failedReverted | landed
+ *                     └─ enough ───▶ the claim, the setup read again
+ *                                     ├─ a setup found ─▶ already set up (the claim released)
+ *                                     └─ none ─▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   failedNotSent that may still land ──a setup read finds one──▶ already set up
  *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
@@ -21,10 +23,12 @@
  * Every start reads the account's setup before it prepares, so a retry, a
  * second tab or an operation that landed after all never sends a second
  * setup. After the gas check reads enough, the run stores the save in flight
- * on this device under a new request id, and sends only where that claim
- * wrote it. A page that finds a stored save, on arrival or as the loser of a
- * claim, sends nothing and follows it: under its hash it waits for the
- * receipt; with no hash it reads where the wallet holds the request. The
+ * on this device under a new request id, with the block read before it, and
+ * sends only where that claim wrote it and a setup read after the claim still
+ * finds none. A page that finds a stored save, on arrival or as the loser of a
+ * claim, sends nothing and follows it with the draft and the prepared write it
+ * sent: under its hash it waits for the receipt; with no hash it reads where
+ * the wallet holds the request, and only while its screen is there. The
  * stored save is released where the run ends with nothing on its way to the
  * chain, and the check's agreement removes it with the setup records. A
  * refusal whose operation may still land offers no retry, only a read of the
@@ -52,6 +56,7 @@ import type {
   ArmState,
   ArmStore,
   ConfirmReadOptions,
+  FollowHold,
   PreparedSave,
   SaveSteps
 } from './types'
@@ -184,18 +189,22 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       return rest
     }
     case 'voided':
-      // A followed request no page can find, with no setup on the account: the save is offered again.
+      // A followed request no page can find, with no setup on the account: the
+      // stored save is read again before the save is offered.
       if (!awaitingHashIn(state, event.run) || !state.requestId) {
         return state
       }
       return {
         write: writeReducer(state.write, { type: 'reset' }),
-        after: { stage: 'none' },
-        lookup: 'none'
+        after: { stage: 'none' }
       }
     case 'alreadySetUp':
-      // Taken while the run reads the setup before it prepares or sends.
-      if (!inRun(state, event.run) || state.write.status !== 'checkingGas') {
+      // Taken while the run reads the setup before it prepares, or after its
+      // claim and before its send.
+      if (
+        !inRun(state, event.run) ||
+        (state.write.status !== 'checkingGas' && !awaitingHashIn(state, event.run))
+      ) {
         return state
       }
       return {
@@ -520,41 +529,75 @@ const reattach = async (
 const stillFollowing = (store: ArmStore, run: number, requestId: string): boolean =>
   awaitingHashIn(store.state(), run) && store.state().requestId === requestId
 
+// The follow each store holds of a stored save with no hash, with the steps of the screen it reads through.
+const FOLLOWS = new WeakMap<ArmStore, FollowHold>()
+
+// The steps of a screen that went away: their queue and accounts no longer change.
+const DETACHED = new WeakSet<SaveSteps>()
+
 /**
- * Follows a stored save in flight that holds no hash, by where the wallet
- * holds its request: still queued, read again when the queue changes;
- * broadcast, its hash stored and its receipt waited for; on a route the wallet
- * cannot follow, the may-still-land state; a read that did not answer, read
- * again after a rest or on "check again", never taken as gone; gone, the
- * account's setup read: a setup found landed while no page watched and is
- * checked as after a receipt, and where none is found for `GONE_GRACE_MS`
- * after the first such reading, the stored save is void and released.
+ * Whether the follow of `hold` reads on. It pauses, and keeps its hold, where
+ * its screen went away or a later screen took the follow up; it ends, and
+ * drops its hold, where the run no longer follows the request.
+ */
+const followGoesOn = (store: ArmStore, hold: FollowHold): boolean => {
+  if (FOLLOWS.get(store) !== hold || DETACHED.has(hold.steps)) {
+    return false
+  }
+  if (stillFollowing(store, hold.run, hold.requestId)) {
+    return true
+  }
+  FOLLOWS.delete(store)
+  return false
+}
+
+const endFollow = (store: ArmStore, hold: FollowHold): void => {
+  if (FOLLOWS.get(store) === hold) {
+    FOLLOWS.delete(store)
+  }
+}
+
+/**
+ * Follows the stored save in flight the store holds with no hash, through the
+ * steps of the screen that holds it, by where the wallet holds its request:
+ * still queued, read again when the queue changes; broadcast, its hash stored
+ * and its receipt waited for; on a route the wallet cannot follow, the
+ * may-still-land state; a read that did not answer, read again after a rest or
+ * on "check again", never taken as gone; gone, the account's setup read: a
+ * setup found landed while no page watched and is checked as after a receipt.
+ * Where none is found, the stored save is void only once both the gone
+ * readings since the last other reading and the claim itself are older than
+ * `GONE_GRACE_MS`; it is then released. Answers whether it was. Once its
+ * screen goes away the follow reads, voids and releases nothing more; the
+ * next screen takes it up.
  */
 const followRequest = async (
   store: ArmStore,
-  steps: SaveSteps,
-  run: number,
+  hold: FollowHold,
   options: ConfirmReadOptions,
   firstGone?: number
-): Promise<void> => {
-  const { requestId } = store.state()
-  if (!requestId || !stillFollowing(store, run, requestId)) {
-    return
+): Promise<boolean> => {
+  if (!followGoesOn(store, hold)) {
+    return false
   }
+  const { steps, run, requestId, claimedAt } = hold
   const reading: SendRequestState = await steps
     .requestState(requestId)
     .catch((): SendRequestState => ({ status: 'unread' }))
-  if (!stillFollowing(store, run, requestId)) {
-    return
+  if (!followGoesOn(store, hold)) {
+    return false
   }
   if (reading.status === 'broadcast') {
-    const startBlock = await steps.blockNumber().catch(() => undefined)
+    endFollow(store, hold)
+    // With no block given, the record keeps the one read before the send.
+    const stored = await steps.markSent(requestId, reading.transactionHash).catch(() => undefined)
     if (!stillFollowing(store, run, requestId)) {
-      return
+      return false
     }
-    if (startBlock !== undefined) {
-      await steps.markSent(requestId, reading.transactionHash, startBlock).catch(() => undefined)
-    }
+    const startBlock =
+      stored?.status === 'present' && stored.value.requestId === requestId
+        ? stored.value.startBlock
+        : undefined
     writeEvent(store)({
       type: 'sent',
       run,
@@ -562,53 +605,56 @@ const followRequest = async (
       ...(startBlock !== undefined ? { startBlock } : {})
     })
     await reattach(store, steps, run, options)
-    return
+    return false
   }
   if (reading.status === 'untracked') {
+    endFollow(store, hold)
     writeEvent(store)({
       type: 'error',
       run,
       error: accountBatchRefusal('not-a-transaction', steps.account)
     })
-    return
+    return false
   }
   if (reading.status === 'queued') {
     store.dispatch({ type: 'followed', run, reading: 'queued' })
     await steps.queueMoved(FOLLOW_REREAD_MS)
-    await followRequest(store, steps, run, options)
-    return
+    return followRequest(store, hold, options)
   }
   if (reading.status === 'unread') {
     store.dispatch({ type: 'followed', run, reading: 'unread' })
     await rest(store, FOLLOW_REREAD_MS)
-    await followRequest(store, steps, run, options, firstGone)
-    return
+    return followRequest(store, hold, options)
   }
   const goneSince = firstGone ?? Date.now()
   const found = await steps.hasSetup().catch(() => undefined)
-  if (!stillFollowing(store, run, requestId)) {
-    return
+  if (!followGoesOn(store, hold)) {
+    return false
   }
   if (found) {
+    endFollow(store, hold)
     store.dispatch({ type: 'landedUnseen', run })
     await settle(store, steps, run, options)
-    return
+    return false
   }
-  if (found === false && Date.now() - goneSince >= GONE_GRACE_MS) {
+  const now = Date.now()
+  if (found === false && now - goneSince >= GONE_GRACE_MS && now - claimedAt >= GONE_GRACE_MS) {
+    endFollow(store, hold)
     store.dispatch({ type: 'voided', run })
     await steps.release(requestId).catch(() => undefined)
-    return
+    return true
   }
   store.dispatch({ type: 'followed', run, reading: 'gone' })
   await rest(store, FOLLOW_REREAD_MS)
-  await followRequest(store, steps, run, options, goneSince)
+  return followRequest(store, hold, options, goneSince)
 }
 
 /**
  * Follows a stored save in flight in place of a send: from the arrival in a
- * new run, or in the run whose claim it beat. Under its hash the run waits for
- * the receipt and checks as after its own send; with no hash it follows the
- * request. Nothing is sent.
+ * new run, or in the run whose claim it beat. The check runs with the draft
+ * and the prepared write the stored save sent. Under its hash the run waits
+ * for the receipt and checks as after its own send; with no hash it follows
+ * the request. Nothing is sent. Answers whether the stored save was void.
  */
 const followSave = async (
   store: ArmStore,
@@ -616,25 +662,100 @@ const followSave = async (
   run: number,
   record: SaveInFlightRecord,
   options: ConfirmReadOptions
-): Promise<void> => {
+): Promise<boolean> => {
   const before = store.state()
   store.dispatch({
     type: 'follow',
     run,
     requestId: record.requestId,
-    prepared: steps.followedSave(record.prepared),
+    prepared: steps.followedSave(record),
     ...(record.transactionHash ? { transactionHash: record.transactionHash } : {}),
     ...(record.startBlock !== undefined ? { startBlock: record.startBlock } : {})
   })
   if (store.state() === before) {
-    return
+    return false
   }
   const followed = store.state().write.run
   if (record.transactionHash) {
     await reattach(store, steps, followed, options)
+    return false
+  }
+  const hold: FollowHold = {
+    steps,
+    run: followed,
+    requestId: record.requestId,
+    claimedAt: record.claimedAt
+  }
+  FOLLOWS.set(store, hold)
+  return followRequest(store, hold, options)
+}
+
+/**
+ * Before the save is offered: reads the save in flight stored on this device
+ * and, where one is, follows it in a new run with nothing sent. Reads once per
+ * run held, and again only after a read that failed.
+ */
+export const lookForSave = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  const state = store.state()
+  if (
+    state.write.status !== 'idle' ||
+    state.stop ||
+    (state.lookup !== undefined && state.lookup !== 'failed')
+  ) {
     return
   }
-  await followRequest(store, steps, followed, options)
+  const { run } = state.write
+  store.dispatch({ type: 'lookup', run, reading: 'reading' })
+  let read
+  try {
+    read = await steps.readInFlight()
+  } catch {
+    store.dispatch({ type: 'lookup', run, reading: 'failed' })
+    return
+  }
+  if (read.status !== 'present') {
+    store.dispatch({ type: 'lookup', run, reading: 'none' })
+    return
+  }
+  // A void save may have let another page store its own: the save is offered only where none is.
+  if (await followSave(store, steps, run, read.value, options)) {
+    await lookForSave(store, steps, options)
+  }
+}
+
+/**
+ * Marks the steps of a screen that went away: a follow reading through them
+ * pauses at its next step, with nothing read, voided or released.
+ */
+export const detachSteps = (steps: SaveSteps): void => {
+  DETACHED.add(steps)
+}
+
+/**
+ * Takes up, through the steps of the screen now held, the follow of a stored
+ * save with no hash that a screen gone away, or an earlier set of its steps,
+ * left paused. The reading starts again, and so does the count of gone
+ * readings.
+ */
+export const resumeFollow = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  DETACHED.delete(steps)
+  const hold = FOLLOWS.get(store)
+  if (!hold || hold.steps === steps || !stillFollowing(store, hold.run, hold.requestId)) {
+    return
+  }
+  const resumed: FollowHold = { ...hold, steps }
+  FOLLOWS.set(store, resumed)
+  if (await followRequest(store, resumed, options)) {
+    await lookForSave(store, steps, options)
+  }
 }
 
 /** Whether the sign screen's estimation read no fee option the payer could cover, or an error. */
@@ -671,13 +792,30 @@ const recheckAfterShortSigning = async (
   writeEvent(store)({ type: 'gasChecked', run: next, check })
 }
 
+/**
+ * The block the stored save gets with its hash: none where its claim stored
+ * one, so the claim's stays; else the send's, or the chain's block now where
+ * it reads. The hash is stored whether or not a block is.
+ */
+const markedBlockOf = async (
+  steps: SaveSteps,
+  claimBlock: number | undefined,
+  sendBlock: number | undefined
+): Promise<number | undefined> => {
+  if (claimBlock !== undefined) {
+    return undefined
+  }
+  return sendBlock ?? steps.blockNumber().catch(() => undefined)
+}
+
 /** The send of a claimed save under its request id, with the first receipt wait's limit. */
 const sendClaimed = async (
   store: ArmStore,
   steps: SaveSteps,
   run: number,
   prepared: PreparedSave,
-  requestId: string
+  requestId: string,
+  claimBlock: number | undefined
 ): Promise<boolean> => {
   const dispatch = writeEvent(store)
   // The first receipt wait runs inside the send; its limit starts when the hash arrives.
@@ -695,8 +833,9 @@ const sendClaimed = async (
       holdWait(store, event.transactionHash, sending).catch(() => undefined)
     }
     const { transactionHash, startBlock } = event
-    const block = startBlock !== undefined ? Promise.resolve(startBlock) : steps.blockNumber()
-    block.then((from) => steps.markSent(requestId, transactionHash, from)).catch(() => undefined)
+    markedBlockOf(steps, claimBlock, startBlock)
+      .then((from) => steps.markSent(requestId, transactionHash, from))
+      .catch(() => undefined)
     if (limit === undefined) {
       limit = setTimeout(() => {
         ranOut = true
@@ -747,16 +886,23 @@ const checkAndSend = async (
   if (!awaitingHashIn(store.state(), run)) {
     return
   }
+  // The receipt wait of any page that follows this save scans from the block read before the claim.
+  const claimBlock = await steps.blockNumber().catch(() => undefined)
+  if (!awaitingHashIn(store.state(), run)) {
+    return
+  }
   const requestId = steps.newRequestId()
   let claim
   try {
-    claim = await steps.claim(prepared, requestId)
+    claim = await steps.claim(prepared, requestId, claimBlock)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     return
   }
   if (!claim.claimed) {
-    await followSave(store, steps, run, claim.record.value, options)
+    if (await followSave(store, steps, run, claim.record.value, options)) {
+      await lookForSave(store, steps, options)
+    }
     return
   }
   store.dispatch({ type: 'claimed', run, requestId })
@@ -764,7 +910,27 @@ const checkAndSend = async (
     await steps.release(requestId).catch(() => undefined)
     return
   }
-  const ranOut = await sendClaimed(store, steps, run, prepared, requestId)
+  // Another page's save may have landed, and its stored save left, after this
+  // run's first setup read: the claim then finds no record, so the setup is
+  // read once more before the send.
+  let landedMeanwhile: boolean
+  try {
+    landedMeanwhile = await steps.hasSetup()
+  } catch (error: unknown) {
+    dispatch({ type: 'error', run, error })
+    await releaseWhereEnded(store, steps)
+    return
+  }
+  if (landedMeanwhile) {
+    store.dispatch({ type: 'alreadySetUp', run })
+    await steps.release(requestId).catch(() => undefined)
+    return
+  }
+  if (!stillFollowing(store, run, requestId)) {
+    await steps.release(requestId).catch(() => undefined)
+    return
+  }
+  const ranOut = await sendClaimed(store, steps, run, prepared, requestId, claimBlock)
   // Past the first wait's limit, the holder's check again is the next wait, not one started here.
   if (!ranOut) {
     await waitForReceipt(store, steps, run, options)
@@ -836,40 +1002,6 @@ export const recheckGas = async (
     return
   }
   await checkAndSend(store, steps, run, options)
-}
-
-/**
- * Before the save is offered: reads the save in flight stored on this device
- * and, where one is, follows it in a new run with nothing sent. Reads once per
- * run held, and again only after a read that failed.
- */
-export const lookForSave = async (
-  store: ArmStore,
-  steps: SaveSteps,
-  options: ConfirmReadOptions = {}
-): Promise<void> => {
-  const state = store.state()
-  if (
-    state.write.status !== 'idle' ||
-    state.stop ||
-    (state.lookup !== undefined && state.lookup !== 'failed')
-  ) {
-    return
-  }
-  const { run } = state.write
-  store.dispatch({ type: 'lookup', run, reading: 'reading' })
-  let read
-  try {
-    read = await steps.readInFlight()
-  } catch {
-    store.dispatch({ type: 'lookup', run, reading: 'failed' })
-    return
-  }
-  if (read.status !== 'present') {
-    store.dispatch({ type: 'lookup', run, reading: 'none' })
-    return
-  }
-  await followSave(store, steps, run, read.value, options)
 }
 
 /**
