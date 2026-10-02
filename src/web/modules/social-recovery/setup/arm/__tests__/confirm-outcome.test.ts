@@ -12,7 +12,7 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import type { SetupConfirmation } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { codedError, confirmation } from './harness'
+import { codedError, confirmation } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 const reads = (...answers: (SetupConfirmation | Error | 'never')[]) => {
   let index = 0

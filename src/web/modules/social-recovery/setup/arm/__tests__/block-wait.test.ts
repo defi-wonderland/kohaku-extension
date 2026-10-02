@@ -17,7 +17,14 @@ import {
   waitForNewBlock
 } from '@web/modules/social-recovery/setup/arm'
 
-import { advanceTimers, confirmation, HAPPY, smartAccount, START_BLOCK, wireSave } from './harness'
+import {
+  advanceTimers,
+  confirmation,
+  HAPPY,
+  smartAccount,
+  START_BLOCK,
+  wireSave
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 let account: Account
 

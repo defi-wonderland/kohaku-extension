@@ -49,10 +49,12 @@ import type {
   EstimationListener,
   FeeOption,
   FeeReading,
+  FitCheckReading,
   KeyHandle,
   ListedAccountFacts,
   ProviderTransactionReceipt,
   ReceiptWait,
+  RemovedKeyReading,
   SendPort,
   SendRefusalReason
 } from '@web/modules/social-recovery/shared/client'
@@ -70,8 +72,10 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import type {
   ArmClientStatus,
+  ArmEvent,
   ArmKitClient,
   ArmLoad,
+  ArmState,
   Arrival,
   ArmStore,
   SaveSteps
@@ -723,6 +727,50 @@ export const arrivalFor = (input: ArrivalCase, account: Account): Arrival =>
     setupState: { status: 'answered', value: setupStateOf(input.gate === 'already-set-up') },
     passwordHeld: input.passwordHeld
   })
+
+/** Whether the holder starts the save a second time, and what the setup read answers then. */
+export const RETRIES = ['none', 'no-setup', 'set-up'] as const
+export type Retry = typeof RETRIES[number]
+
+/** One row of the combination table: how the save arrives, how its run answers, and its second start. */
+export interface Row {
+  arrival: ArrivalCase
+  script: SaveScript
+  retry: Retry
+}
+
+// ---------------------------------------------------------------------------
+// The reducer's walk
+// ---------------------------------------------------------------------------
+
+/** A state the walk reached, the runs its history landed and agreed, and one path to it. */
+export interface Node {
+  state: ArmState
+  landed: readonly number[]
+  agreed: readonly number[]
+  path: readonly ArmEvent[]
+}
+
+export interface Walk {
+  nodes: Node[]
+  /** Each step from a reached node: the node, the event and the state it led to. */
+  steps: { from: Node; event: ArmEvent; to: Node }[]
+}
+
+// ---------------------------------------------------------------------------
+// The screen
+// ---------------------------------------------------------------------------
+
+/** How the chain and the client answer in one test of the mounted screen. */
+export interface Chain {
+  removedKey: RemovedKeyReading
+  fitCheck: FitCheckReading
+  setupState: SetupState
+  paused: { answered: true; value: boolean } | { answered: false }
+  confirm: SetupConfirmation | Error
+  send: 'sent' | 'refused' | 'not-a-transaction'
+  estimation?: FeeReading
+}
 
 /** Every combination of the given dimensions, in order. */
 export const crossProduct = <T extends Record<string, readonly unknown[]>>(

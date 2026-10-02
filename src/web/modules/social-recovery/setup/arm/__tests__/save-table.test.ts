@@ -61,14 +61,21 @@ import {
   GATE_CASES,
   HAPPY,
   landedReceipt,
+  RETRIES,
   runSave,
   setupStateOf,
   SHORT_TIMEOUT_MS,
   smartAccount,
   TX_HASH,
   wireSave
-} from './harness'
-import type { ArrivalCase, SaveScript, WiredSave } from './harness'
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import type {
+  ArrivalCase,
+  Retry,
+  Row,
+  SaveScript,
+  WiredSave
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 /** The send, the receipt and the check, pruned by the second rule. */
 const AFTER_GAS: Pick<SaveScript, 'send' | 'receipt' | 'confirm'>[] = [
@@ -85,10 +92,6 @@ const AFTER_GAS: Pick<SaveScript, 'send' | 'receipt' | 'confirm'>[] = [
     confirm
   }))
 ]
-
-/** Whether the holder starts the save a second time, and what the setup read answers then. */
-const RETRIES = ['none', 'no-setup', 'set-up'] as const
-type Retry = typeof RETRIES[number]
 
 const READY: ArrivalCase = { gate: 'passes', facts: 'ready', client: 'ready', passwordHeld: true }
 
@@ -116,12 +119,6 @@ const sameArrival = (one: ArrivalCase, other: ArrivalCase) =>
   one.facts === other.facts &&
   one.client === other.client &&
   one.passwordHeld === other.passwordHeld
-
-interface Row {
-  arrival: ArrivalCase
-  script: SaveScript
-  retry: Retry
-}
 
 const ROWS: Row[] = [
   ...ARRIVALS.filter((arrival) => !sameArrival(arrival, READY)).map((arrival) => ({

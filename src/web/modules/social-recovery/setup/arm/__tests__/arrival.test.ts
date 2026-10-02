@@ -40,8 +40,8 @@ import {
   setupStateOf,
   smartAccount,
   TX_HASH
-} from './harness'
-import type { ArrivalCase } from './harness'
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import type { ArrivalCase } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 const ALREADY_SET_UP = { kind: 'blocked', block: { kind: 'already-set-up' } }
 

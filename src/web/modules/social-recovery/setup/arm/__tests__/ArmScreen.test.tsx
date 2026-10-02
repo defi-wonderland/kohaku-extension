@@ -28,16 +28,10 @@ import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
   Clause,
   SetupConfirmation,
-  SetupDraft,
-  SetupState
+  SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
-import type {
-  FeeReading,
-  FitCheckReading,
-  KeyHandle,
-  RemovedKeyReading,
-  SendPort
-} from '@web/modules/social-recovery/shared/client'
+import type { KeyHandle, SendPort } from '@web/modules/social-recovery/shared/client'
+import type { Chain } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -150,8 +144,9 @@ const {
 const {
   RECEIPT_WAIT_MS
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
-const ArmScreen: typeof import('../ArmScreen').default = require('../ArmScreen').default
-const harness: typeof import('./harness') = require('./harness')
+const ArmScreen: typeof import('@web/modules/social-recovery/setup/arm/ArmScreen').default =
+  require('@web/modules/social-recovery/setup/arm/ArmScreen').default
+const harness: typeof import('@web/modules/social-recovery/setup/arm/__tests__/harness') = require('@web/modules/social-recovery/setup/arm/__tests__/harness')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const {
@@ -228,17 +223,6 @@ const DECLARATION = {
     pauseHolder: '0x0000000000000000000000000000000000000000' as const,
     pendingPauseHolder: '0x0000000000000000000000000000000000000000' as const
   }
-}
-
-/** How the chain and the client answer in one test. */
-interface Chain {
-  removedKey: RemovedKeyReading
-  fitCheck: FitCheckReading
-  setupState: SetupState
-  paused: { answered: true; value: boolean } | { answered: false }
-  confirm: SetupConfirmation | Error
-  send: 'sent' | 'refused' | 'not-a-transaction'
-  estimation?: FeeReading
 }
 
 const CHAIN: Chain = {

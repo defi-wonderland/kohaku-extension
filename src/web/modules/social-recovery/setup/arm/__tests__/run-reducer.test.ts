@@ -25,7 +25,15 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmEvent, ArmState, PreparedSave } from '@web/modules/social-recovery/setup/arm'
 
-import { COMMIT, draftOf, feeReading, KEY, nodeError, TX_HASH } from './harness'
+import {
+  COMMIT,
+  draftOf,
+  feeReading,
+  KEY,
+  nodeError,
+  TX_HASH
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import type { Node, Walk } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 const LAST_RUN = 3
 
@@ -108,22 +116,8 @@ const json = (value: unknown) =>
     typeof held === 'bigint' ? `${held}n` : held instanceof Error ? held.message : held
   )
 
-/** A state the walk reached, the runs its history landed and agreed, and one path to it. */
-interface Node {
-  state: ArmState
-  landed: readonly number[]
-  agreed: readonly number[]
-  path: readonly ArmEvent[]
-}
-
 const withRun = (runs: readonly number[], run: number | undefined, holds: boolean) =>
   holds && run !== undefined && !runs.includes(run) ? [...runs, run].sort() : runs
-
-interface Walk {
-  nodes: Node[]
-  /** Each step from a reached node: the node, the event and the state it led to. */
-  steps: { from: Node; event: ArmEvent; to: Node }[]
-}
 
 const walkAll = (): Walk => {
   const seen = new Set<string>()

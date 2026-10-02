@@ -67,8 +67,8 @@ import {
   START_BLOCK,
   TX_HASH,
   wireSave
-} from './harness'
-import type { SaveScript } from './harness'
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import type { SaveScript } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 let account: Account
 

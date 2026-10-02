@@ -15,7 +15,7 @@ import type { Address, Hex, KitError } from '@web/modules/social-recovery/sdk-in
 import type { DepositStep, WriteMachineState } from '@web/modules/social-recovery/shared/writes'
 import type { SaveBlock } from '@web/modules/social-recovery/setup/review'
 
-import type { ArmState, ArmViewProps, Arrival } from '../types'
+import type { ArmState, ArmViewProps, Arrival } from '@web/modules/social-recovery/setup/arm/types'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // Jest's config does not transform the clipboard package's ES modules, which the gas blocker loads.
@@ -52,7 +52,9 @@ const arm = jest.requireActual<typeof import('@web/modules/social-recovery/setup
   '@web/modules/social-recovery/setup/arm'
 )
 const { getAddress } = jest.requireActual<typeof import('viem')>('viem')
-const ArmView = jest.requireActual<typeof import('../ArmView')>('../ArmView').default
+const ArmView = jest.requireActual<typeof import('@web/modules/social-recovery/setup/arm/ArmView')>(
+  '@web/modules/social-recovery/setup/arm/ArmView'
+).default
 
 const THEME = Object.fromEntries(
   Object.entries(themeConfig.default).map(([name, byType]) => [
