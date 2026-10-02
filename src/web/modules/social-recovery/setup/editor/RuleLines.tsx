@@ -6,7 +6,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import { renderRuleLines, RULE_LINE_KEYS } from '@web/modules/social-recovery/shared/rule-lines'
 
 import type { RuleLinesProps } from './types'

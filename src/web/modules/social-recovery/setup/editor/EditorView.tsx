@@ -15,14 +15,13 @@ import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
-import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
 import type {
   Clause,
   Credential,
   Finding,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 import { getRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
@@ -336,17 +335,18 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
               {t('socialRecovery.records.loadFailed')}
             </Alert.Text>
           }
-        >
-          <Button
-            testID="editor-load-retry"
-            type="secondary"
-            size="small"
-            text={t('socialRecovery.writes.tryAgain')}
-            onPress={retryLoad}
-            hasBottomSpacing={false}
-            style={[flexbox.alignSelfStart, spacings.mtTy]}
-          />
-        </Alert>
+        />
+        <ActionsRow
+          primary={
+            <Button
+              testID="editor-load-retry"
+              type="primary"
+              text={t('socialRecovery.writes.tryAgain')}
+              onPress={retryLoad}
+              hasBottomSpacing={false}
+            />
+          }
+        />
       </View>
     )
   }

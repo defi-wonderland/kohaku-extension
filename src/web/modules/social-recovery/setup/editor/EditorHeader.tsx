@@ -3,7 +3,7 @@ import React from 'react'
 import Alert from '@common/components/Alert'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
+import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
 
 import type { EditorHeaderProps } from './types'
 
@@ -27,9 +27,12 @@ const EditorHeader = ({ mode, refused }: EditorHeaderProps) => {
         <Alert
           type="error"
           size="sm"
-          text={t('socialRecovery.editor.duplicate')}
           style={spacings.mbLg}
-          testID="editor-refusal"
+          text={
+            <Alert.Text size="sm" type="error" testID="editor-refusal">
+              {t('socialRecovery.editor.duplicate')}
+            </Alert.Text>
+          }
         />
       )}
     </>

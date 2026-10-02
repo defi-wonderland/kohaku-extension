@@ -3,8 +3,7 @@ import React, { useMemo } from 'react'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import { SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 
 import { renderRulesPanel } from './copy'
 

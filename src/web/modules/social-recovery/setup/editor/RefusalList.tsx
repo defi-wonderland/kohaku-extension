@@ -4,7 +4,7 @@ import { View } from 'react-native'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
 import { renderRefusal, renderRefusalPlace } from './copy'
 import type { RefusalListProps } from './types'
@@ -18,7 +18,7 @@ const RefusalList = ({ refusals, roles }: RefusalListProps) => {
   }
 
   return (
-    <SectionCard tone="muted" style={spacings.mbMd} testID="editor-wallet-refusals">
+    <SectionCard tone="muted" testID="editor-wallet-refusals">
       {refusals.map((refusal, index) => {
         const place = renderRefusalPlace(refusal, roles, t)
         return (

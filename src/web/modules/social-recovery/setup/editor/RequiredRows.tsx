@@ -4,12 +4,13 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import {
+  MethodRow,
+  SectionCard,
+  SectionLabel
+} from '@web/modules/social-recovery/shared/chrome'
 
 import CredentialRow from './CredentialRow'
 import type { RequiredRowsProps } from './types'
@@ -33,30 +34,19 @@ const RequiredRows = ({
   onAdd
 }: RequiredRowsProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
 
   return (
     <View style={spacings.mbLg} testID="editor-required">
       <SectionLabel>{t('socialRecovery.editor.requiredHeader')}</SectionLabel>
       {rows.length === 0 && (
-        <SectionCard tone="muted" style={spacings.mbSm}>
+        <SectionCard tone="muted" spacing="item">
           <Text fontSize={14} appearance="secondaryText">
             {t('socialRecovery.editor.nothingRequired')}
           </Text>
         </SectionCard>
       )}
       {rows.map(({ clause, index }) => (
-        <View
-          key={index}
-          style={[
-            common.borderRadiusPrimary,
-            spacings.phSm,
-            spacings.pvSm,
-            spacings.mbTy,
-            { borderWidth: 1, borderColor: theme.primaryBorder }
-          ]}
-          testID={`editor-row-${index}`}
-        >
+        <MethodRow key={index} testID={`editor-row-${index}`}>
           <CredentialRow
             credential={clause.credentials[0]}
             addressBook={addressBook}
@@ -116,7 +106,7 @@ const RequiredRows = ({
               />
             </View>
           )}
-        </View>
+        </MethodRow>
       ))}
       <Button
         testID="editor-add-required"

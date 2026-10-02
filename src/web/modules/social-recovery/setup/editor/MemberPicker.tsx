@@ -4,13 +4,14 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import {
+  ActionsRow,
+  MethodRow,
+  SectionCard,
+  SectionLabel
+} from '@web/modules/social-recovery/shared/chrome'
 
 import { renderKindHeader } from './copy'
 import CredentialRow from './CredentialRow'
@@ -31,7 +32,6 @@ const MemberPicker = ({
   disabled
 }: MemberPickerProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const enrollments = kinds.flatMap((kind) => entries[kind].map((entry) => entry.enrollment))
 
   return (
@@ -46,17 +46,9 @@ const MemberPicker = ({
         <View key={kind} testID={`editor-picker-${kind}`} style={spacings.mbMd}>
           <SectionLabel>{renderKindHeader(kind, t)}</SectionLabel>
           {entries[kind].map(({ enrollment, inPath }, index) => (
-            <View
+            <MethodRow
               key={`${enrollment.credential.method}:${enrollment.credential.config}`}
-              style={[
-                flexbox.directionRow,
-                flexbox.alignCenter,
-                common.borderRadiusPrimary,
-                spacings.phSm,
-                spacings.pvSm,
-                spacings.mbTy,
-                { borderWidth: 1, borderColor: theme.primaryBorder }
-              ]}
+              style={[flexbox.directionRow, flexbox.alignCenter]}
             >
               <CredentialRow
                 credential={enrollment.credential}
@@ -78,7 +70,7 @@ const MemberPicker = ({
                 hasBottomSpacing={false}
                 style={spacings.mlSm}
               />
-            </View>
+            </MethodRow>
           ))}
           <Button
             testID={`editor-picker-${kind}-new`}

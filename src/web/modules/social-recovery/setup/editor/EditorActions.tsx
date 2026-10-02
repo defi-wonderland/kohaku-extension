@@ -6,7 +6,7 @@ import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 
 import { renderClientRefusal, renderFinding } from './copy'
 import RefusalList from './RefusalList'

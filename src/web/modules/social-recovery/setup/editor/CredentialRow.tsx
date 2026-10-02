@@ -6,7 +6,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
 import { renderFailedTestLine, renderKindName, renderRowChip } from './copy'
@@ -61,11 +61,7 @@ const CredentialRow = ({
             {label}
           </Text>
         )}
-        {!!chip && (
-          <View style={{ marginLeft: 'auto' }}>
-            <StatusChip text={chip} />
-          </View>
-        )}
+        {!!chip && <StatusChip text={chip} style={{ marginLeft: 'auto' }} />}
       </View>
       {!!failedLine && (
         <Text

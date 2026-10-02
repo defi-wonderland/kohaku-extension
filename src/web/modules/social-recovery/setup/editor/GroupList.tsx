@@ -4,12 +4,13 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import {
+  MethodRow,
+  SectionCard,
+  SectionLabel
+} from '@web/modules/social-recovery/shared/chrome'
 
 import CredentialRow from './CredentialRow'
 import ThresholdField from './ThresholdField'
@@ -34,7 +35,6 @@ const GroupList = ({
   onAddGroup
 }: GroupListProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
 
   return (
     <View style={spacings.mbLg} testID="editor-groups">
@@ -46,14 +46,14 @@ const GroupList = ({
         )}
       </SectionLabel>
       {groups.length === 0 && (
-        <SectionCard tone="muted" style={spacings.mbSm}>
+        <SectionCard tone="muted" spacing="item">
           <Text fontSize={14} appearance="secondaryText">
             {t('socialRecovery.editor.noGroup')}
           </Text>
         </SectionCard>
       )}
       {groups.map(({ clause, index }, ordinal) => (
-        <SectionCard key={index} style={spacings.mbSm} testID={`editor-group-${index}`}>
+        <SectionCard key={index} spacing="item" testID={`editor-group-${index}`}>
           <View
             style={[
               flexbox.directionRow,
@@ -76,17 +76,10 @@ const GroupList = ({
             />
           </View>
           {clause.credentials.map((credential, member) => (
-            <View
+            <MethodRow
               // A member's place in its group is its identity in the path.
               // eslint-disable-next-line react/no-array-index-key
               key={member}
-              style={[
-                common.borderRadiusPrimary,
-                spacings.phSm,
-                spacings.pvSm,
-                spacings.mbTy,
-                { borderWidth: 1, borderColor: theme.primaryBorder }
-              ]}
             >
               <CredentialRow
                 credential={credential}
@@ -119,7 +112,7 @@ const GroupList = ({
                   hasBottomSpacing={false}
                 />
               </View>
-            </View>
+            </MethodRow>
           ))}
           <View style={[flexbox.directionRow, flexbox.wrap, spacings.mtTy]}>
             <Button
