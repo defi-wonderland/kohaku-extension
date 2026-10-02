@@ -333,11 +333,16 @@ export const privacyLinesOf = (
       { skipMemberlessClauses: true, kindOfMethod },
       (key, params) => t(key, { ...params })
     )
+    // A path with no member has no shape to name, so the line reads its own text.
+    let shapeLine = t('socialRecovery.privacy.level.shapeVisible.line', { shape })
+    if (shape === '') {
+      shapeLine = t('socialRecovery.privacy.level.shapeVisible.lineEmpty')
+    }
     return [
       passwordSet
         ? t('socialRecovery.review.shapeVisibleSet')
         : t('socialRecovery.privacy.level.shapeVisible.label'),
-      t('socialRecovery.privacy.level.shapeVisible.line', { shape })
+      shapeLine
     ]
   }
   if (passwordSet) {
