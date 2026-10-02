@@ -66,6 +66,7 @@ export {
   DEFAULT_SEND_TIMEOUT_MS,
   SEND_SETTLE_MS,
   createSendPort,
+  REQUEST_STATE_READ_MS,
   newSendRequestId,
   sendRequestStateOf,
   sendRefusal,

@@ -565,10 +565,16 @@ export type SubmittedOperation = Pick<SubmittedAccountOp, 'txnId' | 'status'> & 
   calls?: Pick<Call, 'fromUserRequestId' | 'txnId'>[]
 }
 
-/** The part of the `activity` controller state the send port reads: the operations of each session. */
+/**
+ * The part of the `activity` controller state the send port reads: one page of
+ * each session's operations, newest first, with the page's index and the
+ * number of pages.
+ */
 export interface ActivityState {
   accountsOps?: {
-    [sessionId: string]: { result?: { items?: SubmittedOperation[] } } | undefined
+    [sessionId: string]:
+      | { result?: { items?: SubmittedOperation[]; currentPage?: number; maxPages?: number } }
+      | undefined
   }
 }
 
@@ -580,13 +586,14 @@ export interface MainStatusState {
 /**
  * The part of the `signAccountOp` controller state the send port reads: the
  * operation the sign screen estimates, with the requests its calls came from,
- * the estimation's status, fee options and own error, the fee speeds, the
- * holder's pick and the errors the sign screen shows, first one first.
+ * the sign screen's signing status, the estimation's status, fee options and
+ * own error, the fee speeds, the holder's pick and the errors the sign screen
+ * shows, first one first.
  */
 export type SignAccountOpState = Partial<
   Pick<
     SignAccountOpController,
-    'feeSpeeds' | 'selectedFeeSpeed' | 'selectedOption' | 'rbfAccountOps' | 'errors'
+    'status' | 'feeSpeeds' | 'selectedFeeSpeed' | 'selectedOption' | 'rbfAccountOps' | 'errors'
   >
 > & {
   accountOp?: Pick<AccountOp, 'accountAddr'> & { calls?: Pick<Call, 'fromUserRequestId'>[] }
@@ -604,9 +611,9 @@ export type SendRequestUpdate =
  * How the send port reaches the background: the dispatch of
  * `useBackgroundService`, the `requests`, `activity`, `main` and
  * `signAccountOp` controller states the background pushes, the accounts the
- * wallet lists, the request queue as the wallet holds it now, the selected
- * account's operations broadcast and not confirmed, and the window the
- * request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's own.
+ * wallet lists, the request queue as the wallet holds it now, and the window
+ * the request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's
+ * own.
  */
 export interface SendRequestPort {
   dispatch(action: SendRequestAction): void
@@ -615,8 +622,6 @@ export interface SendRequestPort {
   accounts(): readonly ListedAccount[]
   /** The `requests` controller state the wallet holds now. */
   queue(): SendQueueState
-  /** The selected account's operations the wallet broadcast and the chain has not confirmed. */
-  unconfirmedOperations(): readonly SubmittedOperation[]
   windowId(): number | undefined
 }
 
@@ -624,18 +629,22 @@ export interface SendRequestPort {
  * Where a request the send port queued stands, read by a page that did not
  * queue it:
  *
- * - `queued`: the wallet's queue holds it, or holds it until an account switch;
- * - `broadcast`: the wallet broadcast it as a transaction of the sender, under
- *   `transactionHash`, and the chain has not confirmed it;
+ * - `queued`: the wallet's queue holds it, or holds it until an account
+ *   switch, or the account's activity lists its transaction with no hash yet;
+ * - `broadcast`: the account's activity lists it as a transaction of the
+ *   sender under `transactionHash`, whatever its status there (pending, stuck,
+ *   confirmed or failed); the receipt of that hash decides;
  * - `untracked`: the wallet submitted it as an operation another party sends,
  *   which this wallet cannot follow; it may still reach the chain;
- * - `gone`: neither holds it.
+ * - `gone`: neither the queue nor the account's activity holds it;
+ * - `unread`: the activity did not answer in time, so nothing is known.
  */
 export type SendRequestState =
   | { status: 'queued' }
   | { status: 'broadcast'; transactionHash: Hex }
   | { status: 'untracked' }
   | { status: 'gone' }
+  | { status: 'unread' }
 
 /**
  * One way the sign screen offers to pay the fee, as its controller holds it.

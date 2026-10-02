@@ -551,8 +551,6 @@ export interface SendWorld {
   listeners: () => number
   /** The request queue the wallet holds now, which the port pulls; a test may replace it. */
   queue: SendQueueState
-  /** The selected account's operations broadcast and not confirmed, which the port pulls. */
-  unconfirmed: SubmittedOperation[]
   /** The port the sender runs over. */
   port: SendRequestPort
 }
@@ -572,7 +570,6 @@ export const sendQueueOver = (
   world.push = (update) => [...listeners].forEach((l) => l(update))
   world.listeners = () => listeners.size
   world.queue = {}
-  world.unconfirmed = []
   world.port = {
     dispatch: world.dispatch,
     subscribe(listener) {
@@ -581,7 +578,6 @@ export const sendQueueOver = (
     },
     accounts: () => world.accounts,
     queue: () => world.queue,
-    unconfirmedOperations: () => world.unconfirmed,
     windowId: () => WINDOW_ID
   }
   world.sender = createSendPort(world.port, { chainId: SEPOLIA, ...options })

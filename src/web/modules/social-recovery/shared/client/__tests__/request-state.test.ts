@@ -15,6 +15,7 @@ import {
   SendQueueState,
   sendRequestPort,
   sendRequestStateOf,
+  SEPOLIA,
   SMART_ACCOUNT,
   SubmittedOperation
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
@@ -29,8 +30,7 @@ const wallet = () => {
   const port = sendRequestPort(
     dispatch,
     () => [],
-    () => held.queue,
-    () => held.unconfirmed
+    () => held.queue
   )
   return { held, dispatch, port }
 }
@@ -42,18 +42,18 @@ describe("a queued request's state, read by another page", () => {
   it('reads queued where the queue holds the request', () => {
     const { held, port } = wallet()
     held.queue = queueHolding([queuedRequest(OTHER_ID, { account: SMART_ACCOUNT })])
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'gone' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'gone' })
     held.queue = queueHolding([
       queuedRequest(OTHER_ID, { account: SMART_ACCOUNT }),
       queuedRequest(ID, { account: SMART_ACCOUNT })
     ])
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'queued' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'queued' })
   })
 
   it('reads queued where the request waits for an account switch', () => {
     const { held, port } = wallet()
     held.queue = queueHolding([], [queuedRequest(ID, { account: SMART_ACCOUNT })])
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'queued' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'queued' })
   })
 
   it("reads broadcast with the operation's hash where a pending transaction carries the request", () => {
@@ -62,7 +62,10 @@ describe("a queued request's state, read by another page", () => {
       operationFor(OTHER_ID, { hash: CALL_HASH }),
       operationFor(ID, { hash: HASH, status: AccountOpStatus.BroadcastedButNotConfirmed })
     ]
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'broadcast', transactionHash: HASH })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({
+      status: 'broadcast',
+      transactionHash: HASH
+    })
   })
 
   it("reads broadcast with the call's own hash where the wallet sent each call as its own transaction", () => {
@@ -76,7 +79,7 @@ describe("a queued request's state, read by another page", () => {
         { kind: 'MultipleTxns', hash: HASH }
       )
     ]
-    expect(sendRequestStateOf(port, ID)).toEqual({
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({
       status: 'broadcast',
       transactionHash: CALL_HASH
     })
@@ -87,9 +90,9 @@ describe("a queued request's state, read by another page", () => {
     it(`reads untracked where the wallet submitted the request as a ${kind}, hash or none`, () => {
       const { held, port } = wallet()
       held.unconfirmed = [operationFor(ID, { kind, hash: HASH })]
-      expect(sendRequestStateOf(port, ID)).toEqual({ status: 'untracked' })
+      expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'untracked' })
       held.unconfirmed = [operationFor(ID, { kind })]
-      expect(sendRequestStateOf(port, ID)).toEqual({ status: 'untracked' })
+      expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'untracked' })
     })
   )
 
@@ -100,29 +103,32 @@ describe("a queued request's state, read by another page", () => {
       [queuedRequest(OTHER_ID, { account: SMART_ACCOUNT })]
     )
     held.unconfirmed = [operationFor(OTHER_ID, { hash: HASH })]
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'gone' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'gone' })
   })
 
   it('reads gone where a transaction carries the request but names no hash', () => {
     const { held, port } = wallet()
     held.unconfirmed = [operationFor(ID)]
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'gone' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'gone' })
   })
 
   it('reads gone while the screen holds neither state yet', () => {
     const { port } = wallet()
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'gone' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'gone' })
   })
 
   it('reads the state the screen holds at each call, and asks nothing of the wallet', () => {
     const { held, dispatch, port } = wallet()
     held.queue = queueHolding([queuedRequest(ID, { account: SMART_ACCOUNT })])
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'queued' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'queued' })
     held.queue = queueHolding([])
     held.unconfirmed = [operationFor(ID, { hash: HASH })]
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'broadcast', transactionHash: HASH })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({
+      status: 'broadcast',
+      transactionHash: HASH
+    })
     held.unconfirmed = []
-    expect(sendRequestStateOf(port, ID)).toEqual({ status: 'gone' })
+    expect(sendRequestStateOf(port, ID, SMART_ACCOUNT, SEPOLIA)).toEqual({ status: 'gone' })
     expect(dispatch).not.toHaveBeenCalled()
   })
 })

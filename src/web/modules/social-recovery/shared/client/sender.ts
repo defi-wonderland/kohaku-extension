@@ -51,9 +51,9 @@
  *
  * The queue joins every `calls` request of one account and chain into one
  * operation. So the port queues nothing where another `calls` request of the
- * account and chain is already in the queue, and until the wallet starts to
- * sign it withdraws its own request where another one joins it, refusing with
- * `other-request-pending` in both cases.
+ * account and chain is already in the queue, and until the sign screen that
+ * holds its request starts to sign it withdraws its own request where another
+ * one joins it, refusing with `other-request-pending` in both cases.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { isAddress, isHash } from 'viem'
@@ -61,6 +61,7 @@ import { isAddress, isHash } from 'viem'
 import { Session } from '@ambire-common/classes/session'
 import { EstimationStatus } from '@ambire-common/controllers/estimation/types'
 import { getFeeSpeedIdentifier } from '@ambire-common/controllers/signAccountOp/helper'
+import { noStateUpdateStatuses } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { SignAccountOpError } from '@ambire-common/interfaces/signAccountOp'
 import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
@@ -209,6 +210,12 @@ const TRANSACTION_OPERATIONS: readonly string[] = ['Transaction', 'MultipleTxns'
 /** The activity page the port reads: the operation it sent is the newest of the account. */
 const ACTIVITY_PAGE = { fromPage: 0, itemsPerPage: 10 }
 
+/**
+ * How long a reading of a request's state waits for the activity to answer
+ * each page it asks for, before it reads `unread`.
+ */
+export const REQUEST_STATE_READ_MS = 10 * 1000
+
 /** The estimation statuses after which the sign screen holds its fee options or its error. */
 const SETTLED_ESTIMATIONS: readonly string[] = [EstimationStatus.Success, EstimationStatus.Error]
 
@@ -293,26 +300,116 @@ const hashOf = (operation: SubmittedOperation, id: string): Hex | undefined => {
 const isBusy = (state: MainStatusState): boolean =>
   BUSY_STATUSES.includes(state.statuses?.signAndBroadcastAccountOp ?? '')
 
+/** Whether calls the wallet holds came from the request. */
+const carriesRequest = (calls: SubmittedOperation['calls'], id: string): boolean =>
+  !!calls?.some((call) => call.fromUserRequestId === id)
+
 /**
- * Where a request the send port queued stands, read from the queue and the
- * selected account's unconfirmed operations as the wallet holds them now. A
- * pure read: it subscribes to nothing.
+ * Whether the sign screen started to sign the operation that holds the
+ * request: its status is one under which the sign controller takes no update.
  */
-export const sendRequestStateOf = (port: SendRequestPort, requestId: string): SendRequestState => {
-  if (queuedRequestsOf(port.queue()).some((queued) => queued.id === requestId)) {
-    return { status: 'queued' }
-  }
-  const operation = port
-    .unconfirmedOperations()
-    .find((item) => item.calls?.some((call) => call.fromUserRequestId === requestId))
-  if (!operation) {
-    return { status: 'gone' }
-  }
+const signsRequest = (state: SignAccountOpState, id: string): boolean =>
+  !!state.status &&
+  noStateUpdateStatuses.includes(state.status.type) &&
+  carriesRequest(state.accountOp?.calls, id)
+
+const isQueued = (port: SendRequestPort, id: string): boolean =>
+  queuedRequestsOf(port.queue()).some((queued) => queued.id === id)
+
+/** The state of a request whose operation the activity lists. */
+const operationStateOf = (operation: SubmittedOperation, id: string): SendRequestState => {
   if (!TRANSACTION_OPERATIONS.includes(operation.identifiedBy?.type ?? '')) {
     return { status: 'untracked' }
   }
-  const transactionHash = hashOf(operation, requestId)
-  return transactionHash ? { status: 'broadcast', transactionHash } : { status: 'gone' }
+  const transactionHash = hashOf(operation, id)
+  return transactionHash ? { status: 'broadcast', transactionHash } : { status: 'queued' }
+}
+
+/**
+ * Where a request the send port queued stands, read from the queue the wallet
+ * holds now and from the account's own activity on the chain, whichever
+ * account the wallet has selected. The activity is read through a session of
+ * its own, asked page by page, newest first, until a page lists the request's
+ * operation or the list ends; the session is closed in every outcome. A page
+ * the activity does not answer within `REQUEST_STATE_READ_MS` ends the read as
+ * `unread`.
+ */
+export const sendRequestStateOf = (
+  port: SendRequestPort,
+  requestId: string,
+  account: Address,
+  chainId: number | bigint
+): Promise<SendRequestState> => {
+  if (isQueued(port, requestId)) {
+    return Promise.resolve({ status: 'queued' })
+  }
+  // The activity keys its operations by the account's address with the
+  // wallet's own case.
+  const listed = port.accounts().find((candidate) => sameAddress(candidate.addr, account))
+  const filters = { account: listed?.addr ?? account, chainId: BigInt(chainId) }
+  const sessionId = `social-recovery-request-state:${uuidv4()}`
+  return new Promise<SendRequestState>((resolve) => {
+    let done = false
+    let page = ACTIVITY_PAGE.fromPage
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let unsubscribe: () => void = () => {}
+
+    const finish = (state: SendRequestState) => {
+      if (done) {
+        return
+      }
+      done = true
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
+      unsubscribe()
+      port.dispatch({
+        type: 'MAIN_CONTROLLER_ACTIVITY_RESET_ACC_OPS_FILTERS',
+        params: { sessionId }
+      })
+      resolve(state)
+    }
+    const ask = () => {
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
+      timer = setTimeout(() => finish({ status: 'unread' }), REQUEST_STATE_READ_MS)
+      port.dispatch({
+        type: 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS',
+        params: {
+          sessionId,
+          filters,
+          pagination: { fromPage: page, itemsPerPage: ACTIVITY_PAGE.itemsPerPage }
+        }
+      })
+    }
+
+    unsubscribe = port.subscribe((update) => {
+      if (done || update.controller !== 'activity') {
+        return
+      }
+      const result = update.state.accountsOps?.[sessionId]?.result
+      // A push from before the activity took the page asked for holds no
+      // session, or the page before it.
+      if (!result || (result.currentPage ?? ACTIVITY_PAGE.fromPage) !== page) {
+        return
+      }
+      const operation = result.items?.find((item) => carriesRequest(item.calls, requestId))
+      if (operation) {
+        finish(operationStateOf(operation, requestId))
+        return
+      }
+      if (page + 1 < (result.maxPages ?? 0)) {
+        page += 1
+        ask()
+        return
+      }
+      // The queue may push a state between moving a request from one of its
+      // lists to the other, so it is read once more before `gone`.
+      finish(isQueued(port, requestId) ? { status: 'queued' } : { status: 'gone' })
+    })
+    ask()
+  })
 }
 
 const sameFeeOption = (a: FeePaymentOption, b: FeePaymentOption): boolean =>
@@ -372,7 +469,7 @@ const estimationErrorOf = (state: SignAccountOpState): SignAccountOpError | unde
  */
 const feeReadingOf = (state: SignAccountOpState, id: string): FeeReading | undefined => {
   const { accountOp, estimation } = state
-  if (!accountOp?.calls?.some((call) => call.fromUserRequestId === id)) {
+  if (!accountOp || !carriesRequest(accountOp.calls, id)) {
     return undefined
   }
   if (!SETTLED_ESTIMATIONS.includes(estimation?.status ?? '')) {
@@ -408,7 +505,6 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let timedOut = false
       let busy = false
       let signStarted = false
-      let signScreenOnRequest = false
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
       let unsubscribe: () => void = () => {}
@@ -501,10 +597,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           return
         }
         if (update.controller === 'signAccountOp') {
-          signScreenOnRequest = !!update.state.accountOp?.calls?.some(
-            (call) => call.fromUserRequestId === id
-          )
-          if (busy && signScreenOnRequest) {
+          if (signsRequest(update.state, id)) {
             signStarted = true
           }
           if (!onEstimation) {
@@ -528,9 +621,6 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         if (update.controller === 'main') {
           const next = isBusy(update.state)
-          if (next && signScreenOnRequest) {
-            signStarted = true
-          }
           if (next !== busy) {
             busy = next
             armSettle()
@@ -539,7 +629,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         if (update.controller === 'activity') {
           const operation = update.state.accountsOps?.[id]?.result?.items?.find((item) =>
-            item.calls?.some((call) => call.fromUserRequestId === id)
+            carriesRequest(item.calls, id)
           )
           if (!operation) {
             return
@@ -591,11 +681,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           settle('timeout', true)
           return
         }
-        // Until the wallet starts to sign the operation that holds this
-        // request, another request that joins it withdraws this one: the
-        // holder would sign both together. The wallet signs one operation at
-        // a time, so it signs this one where it signs or broadcasts while the
-        // sign screen holds this request.
+        // Until the sign screen that holds this request starts to sign its
+        // operation, another request that joins it withdraws this one: the
+        // holder would sign both together. The wallet's own signing status
+        // covers every sign flow, so only the sign screen's status tells.
         if (!signStarted && otherCallsRequestIn(update.state, id, account, chainId)) {
           settle('other-request-pending', true)
           return
