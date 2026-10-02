@@ -3,6 +3,8 @@ import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { View } from 'react-native'
 
+import { Account } from '@ambire-common/interfaces/account'
+import { Key } from '@ambire-common/interfaces/keystore'
 import { FeePaymentOption } from '@ambire-common/libs/estimate/interfaces'
 import formatDecimals from '@ambire-common/utils/formatDecimals/formatDecimals'
 import shortenAddress from '@ambire-common/utils/shortenAddress'
@@ -15,9 +17,33 @@ import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
+import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import useSignAccountOpControllerState from '@web/hooks/useSignAccountOpControllerState'
+
+/**
+ * The label of the fee payer: a listed account's label, else the label of a
+ * keystore key (or its short address when it has none). Null for a payer the
+ * wallet does not know.
+ */
+export const getPaidByLabel = (
+  paidBy: string,
+  accounts: Pick<Account, 'addr' | 'preferences'>[],
+  keys: Pick<Key, 'addr' | 'label'>[]
+): string | null => {
+  const paidByAccount = accounts.find((a) => a.addr === paidBy)
+  if (paidByAccount) {
+    return paidByAccount.preferences.label
+  }
+
+  const paidByKey = keys.find((k) => k.addr.toLowerCase() === paidBy.toLowerCase())
+  if (paidByKey) {
+    return paidByKey.label || shortenAddress(paidBy, 13)
+  }
+
+  return null
+}
 
 const PayOption = ({
   feeOption,
@@ -33,16 +59,12 @@ const PayOption = ({
   const { t } = useTranslation()
   const { theme } = useTheme()
   const { accounts } = useAccountsControllerState()
+  const { keys } = useKeystoreControllerState()
   const { account } = useSelectedAccountControllerState()
   const { networks } = useNetworksControllerState()
   const signAccountOpState = useSignAccountOpControllerState()
 
   const iconSize = 24
-
-  const paidByAccountData = useMemo(
-    () => accounts.find((a) => a.addr === feeOption.paidBy),
-    [accounts, feeOption.paidBy]
-  )
 
   const formattedAmount = useMemo(() => {
     return formatDecimals(Number(formatUnits(amount, feeOption.token.decimals)), 'amount')
@@ -67,11 +89,12 @@ const PayOption = ({
 
   const isPaidByAnotherAccount = feeOption.paidBy !== account?.addr
 
-  const paidByLabel = useMemo(() => {
-    return paidByAccountData?.preferences.label
-  }, [paidByAccountData?.preferences.label])
+  const paidByLabel = useMemo(
+    () => getPaidByLabel(feeOption.paidBy, accounts, keys),
+    [accounts, keys, feeOption.paidBy]
+  )
 
-  if (!paidByAccountData) return null
+  if (paidByLabel === null) return null
 
   return (
     <View
