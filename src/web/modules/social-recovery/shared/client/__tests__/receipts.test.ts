@@ -397,6 +397,21 @@ describe('whether the node knows a transaction', () => {
     ).rejects.toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: HASH })
   })
 
+  it('asks the node nothing for a read that starts after the caller released the provider', async () => {
+    const node = nodeWith({ blockNumber: START, transactions: [sent()] })
+    const asked = jest.spyOn(node.provider, 'getTransaction')
+    const release = new AbortController()
+    release.abort()
+    const reading = track(
+      createReceiptWait(node.provider, { signal: release.signal }).transactionKnown(HASH)
+    )
+    await flush()
+    expect(reading.status).toBe('rejected')
+    expect(reading.value).toMatchObject({ name: 'ReceiptWaitReleased', transactionHash: HASH })
+    expect(asked).not.toHaveBeenCalled()
+    expect(node.asked('eth_getTransactionByHash')).toBe(0)
+  })
+
   it('rejects a read in flight when the caller releases the provider, naming the hash', async () => {
     const node = nodeWith({ blockNumber: START, transactions: [sent()] })
     jest.spyOn(node.provider, 'getTransaction').mockImplementation(() => new Promise(() => {}))

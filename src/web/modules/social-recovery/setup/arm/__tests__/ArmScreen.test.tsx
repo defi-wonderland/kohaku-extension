@@ -2206,20 +2206,49 @@ describe('a save the network dropped', () => {
     jest.useRealTimers()
   })
 
-  it('shows the dropped line and Save again on an arrival an hour after the broadcast, with no wait for the receipt and nothing sent', async () => {
+  const pressCheckAgain = async () => {
+    await act(async () => {
+      byTestId('arm-check-again')?.click()
+    })
+    await tick(100)
+  }
+
+  /**
+   * An arrival an hour after the broadcast: its check keeps a first reading
+   * and the page waits for the receipt; the wait stalls, and check again
+   * reads the second reading and the save as dropped.
+   */
+  const droppedOnArrival = async () => {
+    receipts.wait.mockImplementationOnce(() => harness.pending())
+    await arrive()
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    await tick(RECEIPT_WAIT_MS)
+    await pressCheckAgain()
+    expectDropped()
+  }
+
+  it('keeps the submitting state on an arrival an hour after the broadcast, and shows the dropped line and Save again on check again, with nothing sent', async () => {
     await sentElsewhere()
     passTime(DROPPED_AFTER_MS)
+    receipts.wait.mockImplementationOnce(() => harness.pending())
 
     await arrive()
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    expect(receipts.transactionKnown).toHaveBeenCalledWith(harness.TX_HASH)
+    await tick(RECEIPT_WAIT_MS)
+    expect(byTestId('arm-check-again')).not.toBeNull()
+    await pressCheckAgain()
 
     expectDropped()
-    expect(receipts.transactionKnown).toHaveBeenCalledWith(harness.TX_HASH)
-    expect(receipts.wait).not.toHaveBeenCalled()
+    expect(transactionReads()).toBe(2)
+    expect(receipts.wait).toHaveBeenCalledTimes(1)
     expect(storedSaves()).toHaveLength(1)
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('shows the submitting state, then check again, before the hour, and the dropped line on check again after it', async () => {
+  it('shows the submitting state, then check again, before the hour, and the dropped line on the second check again after it', async () => {
     await sentElsewhere()
     receipts.wait.mockImplementation(() => harness.pending())
 
@@ -2232,20 +2261,21 @@ describe('a save the network dropped', () => {
     expect(receipts.transactionKnown).not.toHaveBeenCalled()
 
     passTime(DROPPED_AFTER_MS)
-    await act(async () => {
-      byTestId('arm-check-again')?.click()
-    })
-    await tick(100)
+    await pressCheckAgain()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    await tick(RECEIPT_WAIT_MS)
+    await pressCheckAgain()
 
     expectDropped()
+    expect(transactionReads()).toBe(2)
     expect(receipts.wait).toHaveBeenCalledTimes(1)
   })
 
   it('releases the stored save on Save again, then sends once through the ordinary start and saves with one wipe', async () => {
     const { record } = await sentElsewhere()
     passTime(DROPPED_AFTER_MS)
-    await arrive()
-    expectDropped()
+    await droppedOnArrival()
     const prepares = prepareCommitSetup.mock.calls.length
     const setupReads = setupState.mock.calls.length
     const releasedAtSend: number[] = []
@@ -2271,8 +2301,7 @@ describe('a save the network dropped', () => {
   it('ends Save again as already set up with nothing sent where another tab saved meanwhile', async () => {
     await sentElsewhere()
     passTime(DROPPED_AFTER_MS)
-    await arrive()
-    expectDropped()
+    await droppedOnArrival()
     chain.setupState = setupStateOf(true)
 
     await pressSaveAgain()
@@ -2283,25 +2312,22 @@ describe('a save the network dropped', () => {
     expect(releases()).toBe(1)
   })
 
-  it('drops a dropped run when the screen leaves, and the next arrival reads it again from the chain and the stored save', async () => {
+  it('drops a dropped run when the screen leaves, and the next arrival reads it again from the chain and the stored save, from a first reading', async () => {
     await sentElsewhere()
     passTime(DROPPED_AFTER_MS)
-    await arrive()
-    expectDropped()
+    await droppedOnArrival()
     const nodeReads = transactionReads()
     const setupReads = setupState.mock.calls.length
 
     leave()
-    await arrive()
+    await droppedOnArrival()
 
-    expectDropped()
-    expect(transactionReads()).toBeGreaterThan(nodeReads)
+    expect(transactionReads()).toBe(nodeReads + 2)
     expect(setupState.mock.calls.length).toBeGreaterThan(setupReads)
-    expect(receipts.wait).not.toHaveBeenCalled()
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('reads dropped when the screen comes back after the hour to a save it left waiting for its receipt', async () => {
+  it('reads dropped when the screen comes back after the hour to a save it left waiting for its receipt, on its next check again', async () => {
     await sentElsewhere()
     receipts.wait.mockImplementation(() => harness.pending())
     await arrive()
@@ -2312,6 +2338,10 @@ describe('a save the network dropped', () => {
     await tick(100)
     expect(receipts.transactionKnown).not.toHaveBeenCalled()
     await arrive()
+    expect(byTestId('arm-dropped-line')).toBeNull()
+    expect(transactionReads()).toBe(1)
+    await tick(RECEIPT_WAIT_MS)
+    await pressCheckAgain()
 
     expectDropped()
     expect(receipts.wait).toHaveBeenCalledTimes(1)

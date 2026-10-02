@@ -356,6 +356,27 @@ describe("the save's reducer", () => {
       // A setup found after the reading lands it the unseen way and leaves dropped behind.
       const seen = armReducer(dropped, { type: 'landedUnseen', run: 1 })
       expect(seen.landedUnseen).toBe(true)
+      expect(seen.dropped).toBeUndefined()
+    })
+
+    it('keeps a reading of unknown transactions only while the run could still read dropped, and lets it go at dropped, at a setup seen, when the write leaves submitting and on its clear', () => {
+      const reading = { at: 1, block: 7, hashes: [TX_HASH] }
+      const kept = armReducer(sent, { type: 'unknownRead', run: 1, reading })
+      expect(kept.unknownReading).toBe(reading)
+      expect(kept.write).toBe(sent.write)
+      // With no hash, for another run, or once a setup was seen: nothing is kept.
+      expect(armReducer(claimed, { type: 'unknownRead', run: 1, reading })).toBe(claimed)
+      expect(armReducer(sent, { type: 'unknownRead', run: 2, reading })).toBe(sent)
+      const seen = armReducer(sent, { type: 'landedUnseen', run: 1 })
+      expect(armReducer(seen, { type: 'unknownRead', run: 1, reading })).toBe(seen)
+
+      expect(armReducer(kept, { type: 'dropped', run: 1 }).unknownReading).toBeUndefined()
+      expect(armReducer(kept, { type: 'landedUnseen', run: 1 }).unknownReading).toBeUndefined()
+      expect(armReducer(kept, receipt(1, 1)).unknownReading).toBeUndefined()
+      expect(armReducer(kept, { type: 'unknownCleared', run: 1 }).unknownReading).toBeUndefined()
+      expect(armReducer(kept, { type: 'unknownCleared', run: 2 })).toBe(kept)
+      // A stall keeps it: the next check reads against it.
+      expect(armReducer(kept, { type: 'waitStalled', run: 1 }).unknownReading).toBe(reading)
     })
 
     it('saves again from dropped alone: the write back to idle in the same run, the claim and the prepared save gone, the stored save read as none', () => {
