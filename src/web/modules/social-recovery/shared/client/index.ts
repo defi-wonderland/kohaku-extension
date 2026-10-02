@@ -66,8 +66,12 @@ export {
   DEFAULT_SEND_TIMEOUT_MS,
   SEND_SETTLE_MS,
   createSendPort,
+  REQUEST_STATE_READ_MS,
+  newSendRequestId,
+  sendRequestStateOf,
   sendRefusal,
-  accountBatchRefusal
+  accountBatchRefusal,
+  isSendRefusal
 } from './sender'
 export { sendRequestPort } from './sender-port'
 export { UNKNOWN_TRANSACTION_MS, createReceiptWait } from './receipts'
@@ -134,7 +138,9 @@ export type {
   ReceiptWait,
   SendRequestAction,
   ActionWindowState,
+  QueuedRequest,
   SendQueueState,
+  SendRequestState,
   SubmittedOperation,
   ActivityState,
   MainStatusState,

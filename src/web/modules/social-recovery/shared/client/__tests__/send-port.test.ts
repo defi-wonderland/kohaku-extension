@@ -777,7 +777,12 @@ describe("the UI's own port over the event bus", () => {
     const before = listenerCounts()
     const dispatch = jest.fn()
     const sender = createSendPort(
-      sendRequestPort(dispatch, () => [basicAccount(KEY)], WINDOW_ID),
+      sendRequestPort(
+        dispatch,
+        () => [basicAccount(KEY)],
+        () => undefined,
+        WINDOW_ID
+      ),
       { chainId: SEPOLIA }
     )
     const send = track(sender.send(HANDLE, TRANSACTION))
@@ -801,7 +806,11 @@ describe("the UI's own port over the event bus", () => {
   it('refuses a key while the wallet lists no accounts yet', async () => {
     const dispatch = jest.fn()
     const sender = createSendPort(
-      sendRequestPort(dispatch, () => undefined),
+      sendRequestPort(
+        dispatch,
+        () => undefined,
+        () => undefined
+      ),
       { chainId: SEPOLIA }
     )
     const caught = await thrownBy(sender.send(HANDLE, TRANSACTION))

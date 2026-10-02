@@ -13,6 +13,8 @@ import type {
   Credential,
   Gathering,
   Hex,
+  PreparedBatch,
+  PreparedCall,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -340,6 +342,59 @@ export type CeremonyRequestRecord =
   | (CeremonyRequestTarget & { call: 'healthCheck' })
 
 // ---------------------------------------------------------------------------
+// The save in flight
+// ---------------------------------------------------------------------------
+
+/**
+ * A setup save this device sent to the wallet and has not settled: the
+ * prepared value `confirmSetup` takes beside the draft, the id of the request
+ * it queued, when the save claimed it (ms since epoch) and, once the wallet
+ * broadcast it, the transaction hash and the block the receipt wait scans
+ * from. A reloaded page or another tab finds it and sends nothing.
+ */
+export interface SaveInFlightRecord {
+  prepared: PreparedCall | PreparedBatch
+  requestId: string
+  claimedAt: number
+  transactionHash?: Hex
+  startBlock?: number
+}
+
+/** What a claim of the save in flight writes. */
+export type SaveInFlightClaim = Pick<SaveInFlightRecord, 'prepared' | 'requestId' | 'claimedAt'>
+
+/**
+ * The answer of a claim: `claimed` where this claim wrote the record, and the
+ * record the storage holds after it, this claim's or the one already there.
+ */
+export interface SaveInFlightClaimResult {
+  claimed: boolean
+  record: StoredRecord<SaveInFlightRecord>
+}
+
+/**
+ * The save in flight of one account on one chain. Each member is one task in
+ * the key's queue, so a claim is the admission between pages: of two claims
+ * started together, one writes and the other reads the winner's record.
+ */
+export interface SaveInFlightAccessor {
+  read(): Promise<RecordRead<SaveInFlightRecord>>
+  /** Writes the record where none is stored; where one is, writes nothing. */
+  claim(claim: SaveInFlightClaim): Promise<SaveInFlightClaimResult>
+  /**
+   * Writes the hash and the start block where the stored record carries
+   * `requestId`, and answers the record the storage holds after the task.
+   */
+  markSent(
+    requestId: string,
+    transactionHash: Hex,
+    startBlock: number
+  ): Promise<RecordRead<SaveInFlightRecord>>
+  /** Removes the record where it carries `requestId`; answers whether it removed it. */
+  release(requestId: string): Promise<boolean>
+}
+
+// ---------------------------------------------------------------------------
 // What `createWalletRecords` returns
 // ---------------------------------------------------------------------------
 
@@ -400,6 +455,7 @@ export interface WalletRecordsOptions {
 export interface WalletRecords {
   setup(chainId: ChainId, account: Address): SetupRecords
   setupSavedAt(chainId: ChainId, account: Address): Promise<number | null>
+  /** Removes the six setup records and the save in flight in one storage call. */
   saveSetup(chainId: ChainId, account: Address): Promise<void>
   startOverSetup(chainId: ChainId, account: Address): Promise<void>
   recoverySession(chainId: ChainId, account: Address): RecoverySessionAccessor
@@ -428,6 +484,7 @@ export interface WalletRecords {
   countdown(chainId: ChainId, account: Address): CountdownAccessor
   listCountdowns(chainId: ChainId): Promise<ListedRecord<CountdownRecord>[]>
   decryptedSetupCache(chainId: ChainId, account: Address): RecordAccessor<DecryptedSetupCacheRecord>
+  saveInFlight(chainId: ChainId, account: Address): SaveInFlightAccessor
   /**
    * The ceremony request stored under one request id, one from
    * `newCeremonyRequestId`. The caller writes it before it opens the ceremony

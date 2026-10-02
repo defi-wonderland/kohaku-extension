@@ -2,10 +2,12 @@
  * The UI's own port to the request queue and the activity, for
  * `createSendPort`: the dispatch and the window id of `useBackgroundService`,
  * the `requests`, `activity`, `main` and `signAccountOp` controller states the
- * background pushes over the event bus, and the accounts the wallet lists
- * (`useAccountsControllerState().accounts`). When the sign screen closes, the
- * background pushes the reset `signAccountOp` state, its estimation back at
- * initial; a null push is read as an empty state.
+ * background pushes over the event bus, the accounts the wallet lists
+ * (`useAccountsControllerState().accounts`) and the request queue the wallet
+ * holds now (`useRequestsControllerState()`). Each getter reads the latest
+ * value the screen holds. When the sign screen closes, the background pushes
+ * the reset `signAccountOp` state, its estimation back at initial; a null push
+ * is read as an empty state.
  */
 import eventBus from '@web/extension-services/event/eventBus'
 
@@ -22,6 +24,7 @@ import type {
 export const sendRequestPort = (
   dispatch: (action: SendRequestAction) => void,
   accounts: () => readonly ListedAccount[] | undefined,
+  queue: () => SendQueueState | undefined,
   windowId?: number
 ): SendRequestPort => ({
   dispatch,
@@ -45,5 +48,6 @@ export const sendRequestPort = (
     }
   },
   accounts: () => accounts() ?? [],
+  queue: () => queue() ?? {},
   windowId: () => windowId
 })

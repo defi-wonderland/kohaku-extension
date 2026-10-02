@@ -55,6 +55,7 @@ import {
 } from './harness'
 
 const OTHER_HASH: Hex = `0x${'d'.repeat(64)}`
+const REQUEST_ID = 'social-recovery-sender:from-the-caller'
 
 /** The error an event or a failed state carries, to compare by identity. */
 const errorOf = (value: object): unknown => (value as { error?: unknown }).error
@@ -95,10 +96,22 @@ const DRIVES = [
   {
     title: "an account's batch",
     run: (base: Omit<Parameters<typeof driveSend>[0], 'key' | 'transaction'>) =>
-      driveAccountBatch({ ...base, account: ACCOUNT, calls: SAVE.calls, onEstimation: LISTENER }),
+      driveAccountBatch({
+        ...base,
+        account: ACCOUNT,
+        calls: SAVE.calls,
+        onEstimation: LISTENER,
+        requestId: REQUEST_ID
+      }),
     expectAsked: (port: ReturnType<typeof fakeSendPort>) => {
       expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-      expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, undefined)
+      expect(port.sendAccountBatch).toHaveBeenCalledWith(
+        ACCOUNT,
+        SAVE.calls,
+        LISTENER,
+        undefined,
+        REQUEST_ID
+      )
       expect(port.send).not.toHaveBeenCalled()
     },
     refusal: () => accountBatchRefusal('refused', ACCOUNT)
@@ -183,7 +196,7 @@ DRIVES.forEach(({ title, run: driveOnce, expectAsked, refusal }) =>
 describe("the recovery kit's mark on an account's batch", () => {
   const MARK = { manager: MANAGER, auditedActions: [ACTION] }
 
-  it('hands the mark to the port with the batch, and lands as an unmarked batch does', async () => {
+  it("hands the mark and the caller's request id to the port with the batch, and lands as an unmarked batch does", async () => {
     const port = fakeSendPort({ value: TX_HASH })
     const machine = drivenMachine(submittingFor('save'))
     const { run } = machine.state()
@@ -195,15 +208,22 @@ describe("the recovery kit's mark on an account's batch", () => {
       account: ACCOUNT,
       calls: SAVE.calls,
       onEstimation: LISTENER,
-      recoveryKit: MARK
+      recoveryKit: MARK,
+      requestId: REQUEST_ID
     })
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
-    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, LISTENER, MARK)
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(
+      ACCOUNT,
+      SAVE.calls,
+      LISTENER,
+      MARK,
+      REQUEST_ID
+    )
     expect(port.send).not.toHaveBeenCalled()
     expect(machine.state()).toMatchObject({ status: 'landed', transactionHash: TX_HASH, run })
   })
 
-  it('hands the mark with no listener', async () => {
+  it('hands the mark with no listener and no request id, leaving the port to make the id', async () => {
     const port = fakeSendPort({ value: TX_HASH })
     const machine = drivenMachine(submittingFor('save'))
     await driveAccountBatch({
@@ -215,7 +235,13 @@ describe("the recovery kit's mark on an account's batch", () => {
       calls: SAVE.calls,
       recoveryKit: MARK
     })
-    expect(port.sendAccountBatch).toHaveBeenCalledWith(ACCOUNT, SAVE.calls, undefined, MARK)
+    expect(port.sendAccountBatch).toHaveBeenCalledWith(
+      ACCOUNT,
+      SAVE.calls,
+      undefined,
+      MARK,
+      undefined
+    )
   })
 })
 

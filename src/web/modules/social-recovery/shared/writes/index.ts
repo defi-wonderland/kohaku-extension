@@ -16,7 +16,15 @@ export {
   payerOf,
   assertWriteDoor
 } from './kinds'
-export { WRITE_STATUSES, FAILED_STATUSES, isFailedState, canRetry, offersMoveFunds } from './states'
+export {
+  WRITE_STATUSES,
+  FAILED_STATUSES,
+  isFailedState,
+  canRetry,
+  offersMoveFunds,
+  mayStillLand,
+  otherRequestPending
+} from './states'
 export {
   ATTEMPT_ENDS,
   ATTEMPT_STILL_RUNNING,
