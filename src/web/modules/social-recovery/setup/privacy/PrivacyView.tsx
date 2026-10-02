@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import InputPassword from '@common/components/InputPassword'
 import Text from '@common/components/Text'
@@ -16,11 +17,13 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
-import RadioCard from '@web/modules/social-recovery/shared/chrome/RadioCard'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import {
+  ActionsRow,
+  PageTitle,
+  RadioCard,
+  SectionCard,
+  StatusChip
+} from '@web/modules/social-recovery/shared/chrome'
 import {
   addressBookOf,
   privacyLevelOf,
@@ -205,7 +208,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
       </SectionCard>
       {hidden ? (
         <View testID="recovery-password">
-          <SectionCard label={renderPasswordName('recoveryPassword', t)} style={spacings.mbSm}>
+          <SectionCard label={renderPasswordName('recoveryPassword', t)} spacing="item">
             <Text fontSize={14} style={spacings.mbSm}>
               {t(`${LEVEL}.requiredAtPrivate`)}
             </Text>
@@ -247,9 +250,16 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
         </SectionCard>
       )}
       {writeFailed && (
-        <Text testID="write-failed" fontSize={14} appearance="errorText" style={spacings.mbSm}>
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="write-failed">
+              {t('socialRecovery.records.writeFailed')}
+            </Alert.Text>
+          }
+        />
       )}
       <ActionsRow
         primary={

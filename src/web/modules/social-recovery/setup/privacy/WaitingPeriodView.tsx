@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Input from '@common/components/Input'
 import Text from '@common/components/Text'
@@ -14,10 +15,12 @@ import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
-import PillChoice from '@web/modules/social-recovery/shared/chrome/PillChoice'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import {
+  ActionsRow,
+  PageTitle,
+  PillChoice,
+  SectionCard
+} from '@web/modules/social-recovery/shared/chrome'
 import { renderNoun } from '@web/modules/social-recovery/shared/display'
 
 import type { WaitChoice, WaitingPeriodViewProps } from './types'
@@ -133,28 +136,27 @@ const WaitingPeriodView = ({
           {WAIT_CHIPS.map((chip) => {
             const { id } = chip
             return (
-              <View key={id} style={[spacings.mrSm, spacings.mbSm]}>
-                <PillChoice
-                  testID={`wait-chip-${id}`}
-                  label={t(`${WAIT}.chips.${id}`)}
-                  selected={choice.kind === 'chip' && choice.id === id}
-                  disabled={!loaded || isChipPastCeiling(chip, ceilingHours)}
-                  onPress={() => setChoice({ kind: 'chip', id })}
-                />
-              </View>
+              <PillChoice
+                key={id}
+                testID={`wait-chip-${id}`}
+                label={t(`${WAIT}.chips.${id}`)}
+                selected={choice.kind === 'chip' && choice.id === id}
+                disabled={!loaded || isChipPastCeiling(chip, ceilingHours)}
+                onPress={() => setChoice({ kind: 'chip', id })}
+                style={[spacings.mrSm, spacings.mbSm]}
+              />
             )
           })}
         </View>
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
-          <View style={[spacings.mrSm, spacings.mbSm]}>
-            <PillChoice
-              testID="wait-chip-custom"
-              label={t(`${WAIT}.custom`)}
-              selected={choice.kind === 'custom'}
-              disabled={!loaded}
-              onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
-            />
-          </View>
+          <PillChoice
+            testID="wait-chip-custom"
+            label={t(`${WAIT}.custom`)}
+            selected={choice.kind === 'custom'}
+            disabled={!loaded}
+            onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
+            style={[spacings.mrSm, spacings.mbSm]}
+          />
           {choice.kind === 'custom' && (
             <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbSm]}>
               <Input
@@ -200,9 +202,16 @@ const WaitingPeriodView = ({
         </Text>
       </SectionCard>
       {writeFailed && (
-        <Text testID="write-failed" fontSize={14} appearance="errorText" style={spacings.mbSm}>
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="write-failed">
+              {t('socialRecovery.records.writeFailed')}
+            </Alert.Text>
+          }
+        />
       )}
       <ActionsRow
         primary={
