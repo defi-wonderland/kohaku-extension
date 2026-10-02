@@ -19,6 +19,9 @@
  *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
  *                                                  stalled ──check again──▶ the wait again
+ *   submitting with a hash, an hour after its broadcast, the node knowing none
+ *   of its transactions and the account no setup ──▶ dropped ──save again──▶
+ *                                                  the stored save released, then a new start
  *   failedNotSent after a short estimation of the sign screen ──▶ the gas check again,
  *                                                  and the deposit step where it is short
  *   landed ──▶ confirming ──▶ saving (the records wiped) ──▶ saved
@@ -60,6 +63,8 @@ import type { WriteEvent, WriteMachineState } from '@web/modules/social-recovery
 
 import {
   CLAIMED_SETUP_READ_MS,
+  DROPPED_AFTER_MS,
+  DROPPED_READ_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
@@ -117,6 +122,13 @@ const followedWriteOf = (
 const pendingHashIn = (state: ArmState, run: number) =>
   inRun(state, run) && state.write.status === 'submitting' ? state.write.transactionHash : undefined
 
+/** Whether the run submits a hash that could still read as dropped. */
+const droppableIn = (state: ArmState, run: number): boolean =>
+  !!pendingHashIn(state, run) &&
+  !state.dropped &&
+  !state.landedUnseen &&
+  state.after.stage === 'none'
+
 /** The save's reducer. Pure: an event a state does not take leaves it as it was (the same object). */
 export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
   switch (event.type) {
@@ -141,6 +153,10 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       // A stalled wait ends with the write's submitting: whatever settled it answered.
       if (state.stalled && write.status !== 'submitting') {
         next.stalled = false
+      }
+      // A dropped save whose transaction settled after all is no longer dropped.
+      if (state.dropped && write.status !== 'submitting') {
+        delete next.dropped
       }
       // A followed request's reading ends with a hash, or with the write's submitting.
       if (state.follow && (write.status !== 'submitting' || write.transactionHash)) {
@@ -191,11 +207,11 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         !state.prepared ||
         state.landedUnseen ||
         state.after.stage !== 'none' ||
-        !(mayStillLand(write) || (write.status === 'submitting' && !write.transactionHash))
+        !(mayStillLand(write) || write.status === 'submitting')
       ) {
         return state
       }
-      const { follow, ...rest } = state
+      const { follow, stalled, ...rest } = state
       return { ...rest, landedUnseen: true }
     }
     case 'released': {
@@ -215,6 +231,22 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       return {
         write: writeReducer(state.write, { type: 'reset' }),
         after: { stage: 'none' }
+      }
+    case 'dropped':
+      if (!droppableIn(state, event.run) || !state.requestId) {
+        return state
+      }
+      return { ...state, dropped: true }
+    case 'droppedReleased':
+      // The holder saves again: the dropped save's stored save is gone, and
+      // the next start reads and claims as any start does.
+      if (!inRun(state, event.run) || !state.dropped) {
+        return state
+      }
+      return {
+        write: writeReducer(state.write, { type: 'reset' }),
+        after: { stage: 'none' },
+        lookup: 'none'
       }
     case 'alreadySetUp':
       // Taken while the run reads the setup before it prepares, or after its
@@ -306,11 +338,12 @@ export const createArmStore = (initial: ArmState = initialArmState()): ArmStore 
 /**
  * Whether the run still has work in flight that a new start must not repeat:
  * the setup read, the prepare or the gas check, the send or its receipt wait,
- * a followed request, or the check after the landing and the wipe.
+ * a followed request, or the check after the landing and the wipe. A dropped
+ * save has none: its stored save stays, and the next arrival reads it again.
  */
 export const isLive = (state: ArmState): boolean => {
   const { write, after } = state
-  if (state.stop) {
+  if (state.stop || state.dropped) {
     return false
   }
   if (landedOf(state)) {
@@ -494,6 +527,125 @@ const settle = async (
   }
 }
 
+// The steps of the screen attached to each store, set when a screen takes the store up.
+const ATTACHED = new WeakMap<ArmStore, SaveSteps>()
+
+// The steps of a screen that went away: their queue and accounts no longer change.
+const DETACHED = new WeakSet<SaveSteps>()
+
+/**
+ * The steps a read of the store goes through: those of the screen attached
+ * now, else `steps` while their screen is still there, else none.
+ */
+const liveStepsOf = (store: ArmStore, steps: SaveSteps): SaveSteps | undefined => {
+  const attached = ATTACHED.get(store)
+  if (attached && !DETACHED.has(attached)) {
+    return attached
+  }
+  return DETACHED.has(steps) ? undefined : steps
+}
+
+// The one check for a dropped save of each store, while one reads.
+const DROP_CHECKS = new WeakMap<ArmStore, Promise<boolean>>()
+
+/** Every hash the run's batch went out under, and the stored save's, each once. */
+const sentHashesIn = (write: WriteMachineState, stored: Hex | undefined): Hex[] => {
+  const sent = write.status === 'submitting' ? write.sentHashes ?? [] : []
+  const current = write.status === 'submitting' ? write.transactionHash : undefined
+  const all = [...sent, ...(current ? [current] : []), ...(stored ? [stored] : [])]
+  return all.filter(
+    (hash, at) => all.findIndex((other) => other.toLowerCase() === hash.toLowerCase()) === at
+  )
+}
+
+/**
+ * The check for a dropped save, through the steps `liveStepsOf` names, in
+ * order: the stored save still names the run's request, and its broadcast
+ * (its claim, where it holds no time of the broadcast) is older than
+ * `DROPPED_AFTER_MS`; the node knows none of the run's transactions; the
+ * account holds no setup. All three read the run as dropped. A setup found
+ * is checked as after a landed receipt. A read that fails or passes its
+ * limit, a screen that went away, or a run that moved meanwhile, moves
+ * nothing. `known` is the stored save as just read, where the caller holds
+ * it. Answers whether the check ended the wait: dropped, or landed.
+ */
+const readDropped = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  options: ConfirmReadOptions,
+  known: SaveInFlightRecord | undefined
+): Promise<boolean> => {
+  const through = liveStepsOf(store, steps)
+  const transactionHash = pendingHashIn(store.state(), run)
+  const { requestId } = store.state()
+  if (!through || !transactionHash || !requestId || !droppableIn(store.state(), run)) {
+    return false
+  }
+  const unmoved = (): boolean =>
+    liveStepsOf(store, steps) === through &&
+    droppableIn(store.state(), run) &&
+    store.state().requestId === requestId &&
+    pendingHashIn(store.state(), run) === transactionHash
+  let record = known
+  if (!record) {
+    const stored = await through.readInFlight().catch(() => undefined)
+    if (!unmoved() || stored?.status !== 'present') {
+      return false
+    }
+    record = stored.value
+  }
+  if (
+    record.requestId !== requestId ||
+    Date.now() - (record.sentAt ?? record.claimedAt) < DROPPED_AFTER_MS
+  ) {
+    return false
+  }
+  const hashes = sentHashesIn(store.state().write, record.transactionHash)
+  const readings = await Promise.all(
+    hashes.map((hash) =>
+      readWithin(() => through.transactionKnown(hash), 'transaction read', DROPPED_READ_MS)
+    )
+  ).catch(() => undefined)
+  if (!unmoved() || !readings || readings.some((reading) => reading !== 'unknown')) {
+    return false
+  }
+  const found = await readWithin(() => through.hasSetup(), 'setup read', DROPPED_READ_MS).catch(
+    () => undefined
+  )
+  if (!unmoved() || found === undefined) {
+    return false
+  }
+  if (found) {
+    store.dispatch({ type: 'landedUnseen', run })
+    await settle(store, through, run, options)
+    return true
+  }
+  store.dispatch({ type: 'dropped', run })
+  return !!store.state().dropped
+}
+
+/** Runs the check for a dropped save, or takes up the one the store runs now. */
+const checkDropped = (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  options: ConfirmReadOptions,
+  known?: SaveInFlightRecord
+): Promise<boolean> => {
+  const running = DROP_CHECKS.get(store)
+  if (running) {
+    return running
+  }
+  const checking: Promise<boolean> = readDropped(store, steps, run, options, known).finally(() => {
+    if (DROP_CHECKS.get(store) === checking) {
+      DROP_CHECKS.delete(store)
+    }
+  })
+  DROP_CHECKS.set(store, checking)
+  return checking
+}
+
 /** Resolves true when `work` settles within `limitMs`, false when the limit passes first. */
 const settlesWithin = (work: Promise<void>, limitMs: number): Promise<boolean> =>
   new Promise((resolve) => {
@@ -539,15 +691,18 @@ const waitForReceipt = async (
     )
   const inTime = await settlesWithin(waiting, RECEIPT_WAIT_MS)
   store.dispatch({ type: 'waitStalled', run })
+  // A wait that ended with the hash still unsettled may have ended on a
+  // transaction the node no longer knows.
   if (inTime) {
+    await checkDropped(store, steps, run, options)
     return
   }
   waiting
-    .then(() => {
+    .then(async () => {
       if (store.state().after.stage === 'none') {
-        return settle(store, steps, run, options)
+        await settle(store, steps, run, options)
       }
-      return undefined
+      await checkDropped(store, steps, run, options)
     })
     .catch(() => undefined)
 }
@@ -570,26 +725,12 @@ const stillFollowing = (store: ArmStore, run: number, requestId: string): boolea
 // The follow each store holds of a stored save with no hash.
 const FOLLOWS = new WeakMap<ArmStore, FollowHold>()
 
-// The steps of the screen attached to each store, set when a screen takes the store up.
-const ATTACHED = new WeakMap<ArmStore, SaveSteps>()
-
-// The steps of a screen that went away: their queue and accounts no longer change.
-const DETACHED = new WeakSet<SaveSteps>()
-
 // The one reading of each store's follow, while one reads.
 const READING = new WeakMap<ArmStore, symbol>()
 
-/**
- * The steps a follow reads through: those of the screen attached now, else
- * the steps it started with while their screen is still there, else none.
- */
-const followStepsOf = (store: ArmStore, hold: FollowHold): SaveSteps | undefined => {
-  const attached = ATTACHED.get(store)
-  if (attached && !DETACHED.has(attached)) {
-    return attached
-  }
-  return DETACHED.has(hold.steps) ? undefined : hold.steps
-}
+/** The steps a follow reads through, by the rule of `liveStepsOf`. */
+const followStepsOf = (store: ArmStore, hold: FollowHold): SaveSteps | undefined =>
+  liveStepsOf(store, hold.steps)
 
 /**
  * Where the follow read by `reading` stands now: its hold and the steps it
@@ -780,7 +921,9 @@ const followSave = async (
   }
   const followed = store.state().write.run
   if (record.transactionHash) {
-    await reattach(store, steps, followed, options)
+    if (!(await checkDropped(store, steps, followed, options, record))) {
+      await reattach(store, steps, followed, options)
+    }
     return undefined
   }
   FOLLOWS.set(store, {
@@ -856,6 +999,12 @@ export const attachSteps = async (
   const voidedThrough = await readFollow(store, options)
   if (voidedThrough) {
     await lookForSave(store, voidedThrough, options)
+    return
+  }
+  // A wait that ended while no screen was attached checked nothing.
+  const { run } = store.state().write
+  if (pendingHashIn(store.state(), run)) {
+    await checkDropped(store, steps, run, options)
   }
 }
 
@@ -1088,6 +1237,8 @@ const checkAndSend = async (
   // Past the first wait's limit, the holder's check again is the next wait, not one started here.
   if (!ranOut) {
     await waitForReceipt(store, steps, run, options)
+  } else {
+    await checkDropped(store, steps, run, options)
   }
   await releaseWhereEnded(store, steps)
   const after = store.state()
@@ -1203,9 +1354,10 @@ export const checkSetupAgain = async (
 }
 
 /**
- * From a stalled receipt wait: waits for the same hash once more, taking up
- * the wait still open on it, then the check where it landed. From a followed
- * request whose read did not answer: reads it again at once.
+ * From a stalled receipt wait: checks for a dropped save first; where it does
+ * not read dropped, waits for the same hash once more, taking up the wait
+ * still open on it, then the check where it landed. From a followed request
+ * whose read did not answer: reads it again at once.
  */
 export const checkReceiptAgain = async (
   store: ArmStore,
@@ -1222,6 +1374,9 @@ export const checkReceiptAgain = async (
     return
   }
   store.dispatch({ type: 'waitResumed', run })
+  if (await checkDropped(store, steps, run, options)) {
+    return
+  }
   await reattach(store, steps, run, options)
 }
 
@@ -1235,6 +1390,43 @@ export const rereadConfirmation = async (
     return
   }
   await settle(store, steps, store.state().write.run, options)
+}
+
+// The stores whose holder pressed "save again", while its release runs.
+const SAVING_AGAIN = new WeakSet<ArmStore>()
+
+/**
+ * From a dropped save: releases its stored save in flight by the run's
+ * request id, then starts a new save through the ordinary start, with its
+ * setup read before the prepare, its claim, its setup read after the claim
+ * and its read of the stored save before the send. A release that fails
+ * starts nothing and leaves the save dropped. A press while one runs does
+ * nothing.
+ */
+export const saveAgain = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  const state = store.state()
+  const { requestId } = state
+  const { run } = state.write
+  if (!state.dropped || !requestId || SAVING_AGAIN.has(store)) {
+    return
+  }
+  SAVING_AGAIN.add(store)
+  try {
+    await steps.release(requestId)
+  } catch {
+    SAVING_AGAIN.delete(store)
+    return
+  }
+  store.dispatch({ type: 'droppedReleased', run })
+  SAVING_AGAIN.delete(store)
+  if (!inRun(store.state(), run) || store.state().write.status !== 'idle') {
+    return
+  }
+  await startSave(store, steps, options)
 }
 
 /** Whether the save reads as saved: only after the check agreed and the wipe ran. */

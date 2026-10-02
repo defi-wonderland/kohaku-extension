@@ -49,6 +49,20 @@ export const CLAIMED_SETUP_READ_MS = 20_000
 export const SEND_BLOCK_READ_MS = 10_000
 
 /**
+ * How long after its broadcast (after its claim, where the stored save holds
+ * no time of the broadcast) a save whose transaction the node does not know,
+ * and whose setup the account does not hold, reads as dropped, in ms.
+ */
+export const DROPPED_AFTER_MS = 60 * 60 * 1000
+
+/**
+ * How long each read of the check for a dropped save may take, the node's
+ * read of a transaction and the setup read, in ms. A read past it moves
+ * nothing.
+ */
+export const DROPPED_READ_MS = 20_000
+
+/**
  * How long a followed request's state rests before it is read again, in ms:
  * after a read that did not answer, while it reads neither in the queue nor in
  * the activity, and at most while the queue holds it and does not change.

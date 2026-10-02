@@ -135,6 +135,7 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         }
       }),
     blockNumber,
+    transactionKnown: (transactionHash) => input.receipts.transactionKnown(transactionHash),
     send: ({ calls }, dispatch, run, requestId, startBlock, onEstimation) =>
       driveAccountBatch({
         dispatch,

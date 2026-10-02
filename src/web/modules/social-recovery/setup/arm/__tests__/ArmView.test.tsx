@@ -185,6 +185,7 @@ const mount = (overrides: Partial<ArmViewProps> = {}) => {
     onRetry: jest.fn(),
     onCheckAgain: jest.fn(),
     onCheckSetup: jest.fn(),
+    onSaveAgain: jest.fn(),
     onRecheck: jest.fn(),
     onReread: jest.fn(),
     navigate: jest.fn(),
