@@ -244,7 +244,9 @@ const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
 
 const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
   expect(outcome.type).toBe('verdict')
-  if (outcome.type !== 'verdict') return
+  if (outcome.type !== 'verdict') {
+    return
+  }
   expect(outcome.verdict).toBe(expected.verdict)
   // A failed test is never a skipped one.
   expect(scan(outcome.raw)).not.toMatch(/not[\s_-]?tested|skipped/i)
@@ -252,8 +254,11 @@ const expectOneVerdict = (outcome: Outcome, expected: Case, call: Call) => {
     case 'failed':
       expect(outcome.cause).toEqual(expect.any(String))
       expect((outcome.cause ?? '').length).toBeGreaterThan(0)
-      if (typeof expected.cause === 'string') expect(outcome.cause).toContain(expected.cause)
-      else if (expected.cause) expect(outcome.cause).toMatch(expected.cause)
+      if (typeof expected.cause === 'string') {
+        expect(outcome.cause).toContain(expected.cause)
+      } else if (expected.cause) {
+        expect(outcome.cause).toMatch(expected.cause)
+      }
       break
     case 'unavailable':
       expect(outcome.retry).toBe(true)

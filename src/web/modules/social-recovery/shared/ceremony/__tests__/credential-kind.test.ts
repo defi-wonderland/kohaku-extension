@@ -120,8 +120,11 @@ describe('the kind line of an enrollment', () => {
 
   afterEach(() => {
     creds.restore()
-    if (saved) Object.defineProperty(navigator, 'platform', saved)
-    else delete (navigator as unknown as Record<string, unknown>).platform
+    if (saved) {
+      Object.defineProperty(navigator, 'platform', saved)
+    } else {
+      delete (navigator as unknown as Record<string, unknown>).platform
+    }
   })
 
   const enrollWith = async (attestation: Parameters<typeof fakeAttestation>[0]) => {

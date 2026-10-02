@@ -34,16 +34,22 @@ const routeTags = (source: string): RouteTag[] => {
   while (match) {
     if (match[0] === '</Route>') {
       const tag = open.pop()
-      if (!tag) throw new Error(`unbalanced </Route> at ${match.index}`)
+      if (!tag) {
+        throw new Error(`unbalanced </Route> at ${match.index}`)
+      }
       tag.closes = match.index
     } else {
       let depth = 0
       let i = match.index + match[0].length
       for (; i < source.length; i++) {
         const c = source[i]
-        if (c === '{') depth++
-        else if (c === '}') depth--
-        else if (c === '>' && depth === 0) break
+        if (c === '{') {
+          depth++
+        } else if (c === '}') {
+          depth--
+        } else if (c === '>' && depth === 0) {
+          break
+        }
       }
       const selfClosing = source[i - 1] === '/'
       const tag: RouteTag = {
@@ -53,12 +59,16 @@ const routeTags = (source: string): RouteTag[] => {
         selfClosing
       }
       tags.push(tag)
-      if (!selfClosing) open.push(tag)
+      if (!selfClosing) {
+        open.push(tag)
+      }
       re.lastIndex = i + 1
     }
     match = re.exec(source)
   }
-  if (open.length) throw new Error('unclosed <Route>')
+  if (open.length) {
+    throw new Error('unclosed <Route>')
+  }
   return tags
 }
 

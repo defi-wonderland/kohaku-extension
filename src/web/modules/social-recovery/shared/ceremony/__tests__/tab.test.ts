@@ -330,7 +330,9 @@ const render = async (
 /** Clicks the one button that reads `text`. */
 const press = async (page: HTMLElement, text: string) => {
   const matching = Array.from(page.querySelectorAll('button')).filter((b) => b.textContent === text)
-  if (matching.length !== 1) throw new Error(`${matching.length} "${text}" buttons`)
+  if (matching.length !== 1) {
+    throw new Error(`${matching.length} "${text}" buttons`)
+  }
   await act(async () => {
     matching[0].click()
     await flush(20)
