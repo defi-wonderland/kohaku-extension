@@ -43,6 +43,7 @@ import {
   ScriptedChain,
   SetupClientDouble
 } from '@web/modules/social-recovery/sdk-doubles'
+import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   Address,
   BlockTag,
@@ -555,6 +556,8 @@ export interface SendWorld {
   queue: HeldAndPushedQueue
   /** The port the sender runs over. */
   port: SendRequestPort
+  /** Puts a queue state in the getter and pushes it, as the wallet does. */
+  show: (state: HeldAndPushedQueue) => void
 }
 
 /**
@@ -582,8 +585,53 @@ export const sendQueueOver = (
     queue: () => world.queue,
     windowId: () => WINDOW_ID
   }
+  world.show = (state) => {
+    world.queue = state
+    world.push({ controller: 'requests', state })
+  }
   world.sender = createSendPort(world.port, { chainId: SEPOLIA, ...options })
   return world
+}
+
+export interface FakeVisibility {
+  /** The page's document as the send port reads it. */
+  source: VisibilitySource
+  /** Shows the page and fires `visibilitychange`. */
+  show: () => void
+  /** Hides the page and fires `visibilitychange`. */
+  hide: () => void
+  /** How many `visibilitychange` listeners are added now. */
+  listeners: () => number
+}
+
+/** A page's document that a test shows and hides by hand, with no DOM. */
+export const fakeVisibility = (initial: 'visible' | 'hidden' = 'visible'): FakeVisibility => {
+  let state: string = initial
+  // A list, not a set, so a listener added twice counts twice.
+  const listeners: (() => void)[] = []
+  const fire = (next: string) => {
+    state = next
+    ;[...listeners].forEach((listener) => listener())
+  }
+  return {
+    source: {
+      get visibilityState() {
+        return state
+      },
+      addEventListener: (_type, listener) => {
+        listeners.push(listener)
+      },
+      removeEventListener: (_type, listener) => {
+        const at = listeners.indexOf(listener)
+        if (at >= 0) {
+          listeners.splice(at, 1)
+        }
+      }
+    },
+    show: () => fire('visible'),
+    hide: () => fire('hidden'),
+    listeners: () => listeners.length
+  }
 }
 
 /** The id of the action window the queue opened, as its window props carry it. */
