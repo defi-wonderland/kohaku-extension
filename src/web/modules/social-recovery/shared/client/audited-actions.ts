@@ -7,18 +7,15 @@
  * descriptors' `auditedActions` sets are read from it.
  *
  * The action addresses are placeholders to replace once deployed (addresses.ts).
+ * A chain whose deployment record (deployments.ts) names a deployed kit takes
+ * its audited actions from that deployment instead of this table.
  */
 import { PLACEHOLDER_ADDRESSES, sameAddress } from './addresses'
+import { RECOVERY_CHAINS } from './chains'
+import { deploymentOf } from './deployments'
 import type { AuditedAction, Publisher, PublisherKey, RecoveryChain, UnknownAction } from './types'
 
-/**
- * The publishers of the audited actions, as slugs. A slug is data, never
- * copy: a screen renders a publisher's name through its en.json key,
- * `publisherKeyOf`, and this folder ships no string.
- */
-export const PUBLISHERS = ['ethereumFoundation'] as const
-
-/** The table: one row per audited action per chain. */
+/** The table: one row per audited action per chain, for a chain that runs the stand-in. */
 export const AUDITED_ACTIONS = [
   {
     kind: 'audited',
@@ -42,7 +39,20 @@ export const AUDITED_ACTIONS = [
  */
 export const UNKNOWN_ACTION = Object.freeze({ kind: 'unknown-action' } as const)
 
-const rows = (): readonly AuditedAction[] => AUDITED_ACTIONS
+const rowsOn = (chain: RecoveryChain): readonly AuditedAction[] => {
+  const deployment = deploymentOf(chain)
+  if (deployment.kind === 'stand-in') {
+    return AUDITED_ACTIONS.filter((row) => row.chain === chain)
+  }
+  return deployment.facts.auditedActions.map(({ action, publisher }) => ({
+    kind: 'audited',
+    chain,
+    action,
+    publisher
+  }))
+}
+
+const rows = (): readonly AuditedAction[] => RECOVERY_CHAINS.flatMap(rowsOn)
 
 /** The audited actions of one chain, the only list a screen offers. */
 export const auditedActionsOn = (chain: RecoveryChain): AuditedAction[] =>
