@@ -115,12 +115,21 @@ jest.mock('@web/modules/social-recovery/shared/client', () => ({
 const mockEntries = new Map<string, unknown>()
 const mockRemovals: string[][] = []
 const mockOnRemove: { current: ((keys: string[]) => void) | null } = { current: null }
+/** Where set, the next storage read waits for it, then reads the entries as they stand then. */
+const mockReadHold: { current: Promise<void> | null } = { current: null }
 jest.mock('@web/constants/browserapi', () => ({
   ...jest.requireActual('@web/constants/browserapi'),
   browser: {
     storage: {
       local: {
-        get: async () => Object.fromEntries(mockEntries),
+        get: async () => {
+          const hold = mockReadHold.current
+          if (hold) {
+            mockReadHold.current = null
+            await hold
+          }
+          return Object.fromEntries(mockEntries)
+        },
         set: async (items: Record<string, unknown>) => {
           Object.entries(items).forEach(([key, value]) => mockEntries.set(key, value))
         },
@@ -520,6 +529,7 @@ beforeEach(async () => {
   mockEntries.clear()
   mockRemovals.length = 0
   mockOnRemove.current = null
+  mockReadHold.current = null
   mockPortOptions.length = 0
   mockFacts.clear()
   mockQueue.current = { userRequests: [] }
@@ -1912,6 +1922,170 @@ describe('a save another page of this device sent', () => {
         expect(port.sendAccountBatch).not.toHaveBeenCalled()
       })
     })
+
+    /** Ways the screen changes while its read of the stored save is in flight. */
+    const WHILE_READING: [string, () => Promise<void>][] = [
+      [
+        'leaves and comes back',
+        async () => {
+          act(() => root.unmount())
+          root = createRoot(container)
+          await arrive()
+        }
+      ],
+      [
+        'takes new steps',
+        async () => {
+          // The account's facts read again: the screen builds its steps anew on the same run.
+          mockFacts.set(address.toLowerCase(), {
+            status: 'ready',
+            facts: factsOf(account, { key }),
+            retry: jest.fn()
+          })
+          await select(address)
+          await tick(100)
+        }
+      ]
+    ]
+
+    WHILE_READING.forEach(([named, change]) =>
+      it(`follows a stored save with no hash whose read was in flight when the screen ${named}, to saved`, async () => {
+        const { record } = await leave()
+        const ready = mockClient.current
+        mockClient.current = { status: 'loading', retry: jest.fn() }
+        await arrive()
+        expect(byTestId('arm-save')).toBeNull()
+
+        // The client reads ready: the screen's first read of the stored save waits.
+        const read = held<void>()
+        mockReadHold.current = read.promise
+        mockClient.current = ready
+        await select(address)
+        await tick(100)
+        expect(mockReadHold.current).toBeNull()
+
+        setQueue([record.requestId])
+        await change()
+        await act(async () => {
+          read.release()
+        })
+        await tick(100)
+
+        expect(byTestId('arm-write-submitting')).not.toBeNull()
+        expect(pageText()).toContain(t('socialRecovery.review.after.submitting'))
+        expect(byTestId('arm-save')).toBeNull()
+
+        activity.current = [harness.operationFor(record.requestId, { hash: harness.TX_HASH })]
+        setQueue([])
+        await tick(100)
+
+        expect(byTestId('arm-saved')).not.toBeNull()
+        expect(confirmSetup).toHaveBeenCalledTimes(1)
+        expect(wipes()).toBe(1)
+        expect(port.sendAccountBatch).not.toHaveBeenCalled()
+      })
+    )
+
+    AWAY.forEach(([named, away, back]) =>
+      it(`follows, after ${named}, the save that beat this screen's claim while it was away, reading and voiding nothing while away`, async () => {
+        await writeRecords(draftOf('encrypted'))
+        await writeRecords(draftOf('clear'), true, other.addr)
+        wireClient('ready')
+        await arrive()
+        const gas = held<bigint>()
+        reads.nativeBalance.mockImplementationOnce(() => gas.promise)
+        await act(async () => {
+          byTestId('arm-save')?.click()
+        })
+        await tick(100)
+        expect(byTestId('arm-write-checkingGas')).not.toBeNull()
+
+        await away()
+        const { firstPort, record } = await anotherPageLeaves(false, () => tick(100))
+        const readsAway = activityReads()
+        await act(async () => {
+          gas.release(10n ** 18n)
+        })
+        await tick(10 * GONE_GRACE_MS)
+
+        expect(activityReads()).toBe(readsAway)
+        expect(storedSaves()).toHaveLength(1)
+        expect(releases()).toBe(0)
+        expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+        setQueue([record.requestId])
+        await back()
+        expect(byTestId('arm-write-submitting')).not.toBeNull()
+        expect(pageText()).toContain(t('socialRecovery.review.after.submitting'))
+        expect(byTestId('arm-save')).toBeNull()
+
+        activity.current = [harness.operationFor(record.requestId, { hash: harness.TX_HASH })]
+        setQueue([])
+        await tick(100)
+
+        expect(byTestId('arm-saved')).not.toBeNull()
+        expect(confirmSetup).toHaveBeenCalledTimes(1)
+        expect(wipes()).toBe(1)
+        expect(port.sendAccountBatch).not.toHaveBeenCalled()
+        expect(firstPort.sendAccountBatch).toHaveBeenCalledTimes(1)
+      })
+    )
+
+    /** What another page does to this screen's claim while its setup read after the claim waits. */
+    const MEANWHILE: [string, (entry: string, claimed: string, requestId: string) => void][] = [
+      [
+        'claims anew after a void',
+        (entry, claimed, requestId) =>
+          mockEntries.set(entry, claimed.split(requestId).join('claimed meanwhile'))
+      ],
+      ['voids it', (entry) => mockEntries.delete(entry)]
+    ]
+
+    MEANWHILE.forEach(([named, meanwhile]) =>
+      it(`sends nothing and releases nothing where another page ${named} before the send`, async () => {
+        await writeRecords(draftOf('encrypted'))
+        wireClient('ready')
+        let done = false
+        setupState.mockImplementation(async () => {
+          const [entry] = storedSaves()
+          if (entry && !done) {
+            done = true
+            const claimed = mockEntries.get(entry) as string
+            const {
+              value: { requestId }
+            } = JSON.parse(claimed) as { value: { requestId: string } }
+            meanwhile(entry, claimed, requestId)
+          }
+          return chain.setupState
+        })
+        setQueue(['claimed meanwhile'])
+        await arrive()
+        await act(async () => {
+          byTestId('arm-save')?.click()
+        })
+        await tick(100)
+
+        expect(done).toBe(true)
+        expect(port.sendAccountBatch).not.toHaveBeenCalled()
+        expect(releases()).toBe(0)
+        if (named === 'voids it') {
+          expect(storedSaves()).toHaveLength(0)
+          expect(byTestId('arm-save')).not.toBeNull()
+          return
+        }
+        expect(storedSaves()).toHaveLength(1)
+        expect(byTestId('arm-save')).toBeNull()
+        expect(byTestId('arm-write-submitting')).not.toBeNull()
+        expect(pageText()).toContain(t('socialRecovery.review.after.submitting'))
+
+        activity.current = [harness.operationFor('claimed meanwhile', { hash: harness.TX_HASH })]
+        setQueue([])
+        await tick(100)
+        expect(byTestId('arm-saved')).not.toBeNull()
+        expect(wipes()).toBe(1)
+        expect(port.sendAccountBatch).not.toHaveBeenCalled()
+      })
+    )
   })
 })
 
