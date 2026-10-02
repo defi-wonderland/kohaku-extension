@@ -5,9 +5,10 @@
  * Every field of both is a placeholder until each deployment lands: the
  * addresses (addresses.ts), the deployment block, the digest version and the
  * release string. A chain whose deployment record (deployments.ts) names a
- * deployed kit reads that deployment's facts instead. The digest version is the domain version this build derives
- * typed data under, the manager contract's `DIGEST_VERSION`;
- * `buildRecoveryClient` refuses a manager that publishes another one.
+ * deployed kit reads that deployment's facts instead. The digest version is
+ * the domain version this build derives typed data under, the manager
+ * contract's `DIGEST_VERSION`; `buildRecoveryClient` refuses a manager that
+ * publishes another one.
  *
  * The two audited sets are the kit's claim, not the address fields read back:
  * `shippedMethods` are the four shipped modules and `auditedActions` come from

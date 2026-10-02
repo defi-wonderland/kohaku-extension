@@ -127,6 +127,12 @@ export interface DeploymentAddresses {
   servedImplementation: Address
 }
 
+/** A deployment variable's raw text and the facts parsed from it. */
+export interface ParsedDeploymentVariable {
+  raw: string
+  facts: DeploymentFacts
+}
+
 /** What a chain runs: the scripted stand-in, or a deployed kit and its facts. */
 export type Deployment = { kind: 'stand-in' } | { kind: 'deployed'; facts: DeploymentFacts }
 

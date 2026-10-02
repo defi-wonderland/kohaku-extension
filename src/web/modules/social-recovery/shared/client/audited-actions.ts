@@ -56,9 +56,7 @@ const rows = (): readonly AuditedAction[] => RECOVERY_CHAINS.flatMap(rowsOn)
 
 /** The audited actions of one chain, the only list a screen offers. */
 export const auditedActionsOn = (chain: RecoveryChain): AuditedAction[] =>
-  rows()
-    .filter((row) => row.chain === chain)
-    .map((row) => ({ ...row }))
+  rowsOn(chain).map((row) => ({ ...row }))
 
 /**
  * The table's row for an action address, on the given chain where one is
@@ -68,9 +66,8 @@ export const auditedActionOf = (
   action: string | undefined,
   chain?: RecoveryChain
 ): AuditedAction | UnknownAction => {
-  const row = rows().find(
-    (r) => sameAddress(r.action, action) && (chain === undefined || r.chain === chain)
-  )
+  const candidates = chain === undefined ? rows() : rowsOn(chain)
+  const row = candidates.find((r) => sameAddress(r.action, action))
   return row ? { ...row } : UNKNOWN_ACTION
 }
 

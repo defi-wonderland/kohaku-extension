@@ -19,6 +19,7 @@ import type {
   DeployedAuditedAction,
   Deployment,
   DeploymentFacts,
+  ParsedDeploymentVariable,
   Publisher,
   RecoveryChain
 } from './types'
@@ -159,7 +160,7 @@ export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   return facts
 }
 
-let parsedVariable: { raw: string; facts: DeploymentFacts } | undefined
+let parsedVariable: ParsedDeploymentVariable | undefined
 
 const sepoliaOverride = (): DeploymentFacts | undefined => {
   const raw = sepoliaDeploymentVariable()

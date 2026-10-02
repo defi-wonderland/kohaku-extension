@@ -439,6 +439,24 @@ describe('a malformed deployment variable', () => {
     expect(addressBookOf('mainnet')).toEqual(bookOf(MAINNET_PLACEHOLDERS))
   })
 
+  it('leaves the mainnet audited lookups readable', () => {
+    variable.mockReturnValue('{')
+    expect(auditedActionsOn('mainnet')).toEqual([
+      {
+        kind: 'audited',
+        chain: 'mainnet',
+        action: MAINNET_PLACEHOLDERS.action,
+        publisher: 'ethereumFoundation'
+      }
+    ])
+    expect(auditedActionOf(MAINNET_PLACEHOLDERS.action, 'mainnet')).toEqual(
+      auditedActionsOn('mainnet')[0]
+    )
+    expect(auditedActionOf(ACTION, 'mainnet')).toBe(UNKNOWN_ACTION)
+    expect(isAuditedAction(MAINNET_PLACEHOLDERS.action, 'mainnet')).toBe(true)
+    expect(() => auditedActionOf(MAINNET_PLACEHOLDERS.action)).toThrow(/not JSON/)
+  })
+
   it('takes a valid value of every field it knows', () => {
     const full = {
       ...FACTS,
