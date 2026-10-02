@@ -57,7 +57,7 @@ const UI = {
   BUNDLE_PROGRESS: 'ui-bundle_progress',
   ADDRESS_VALIDATION: 'ui-address_validation',
   IFRAME_FAILURE: 'ui-iframe_failure'
-}
+} as const
 
 const MNEMONICS = {
   mnemonic_all: 'all all all all all all all all all all all all',
