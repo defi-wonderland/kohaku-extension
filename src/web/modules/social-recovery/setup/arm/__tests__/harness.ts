@@ -22,9 +22,11 @@
  */
 import { getAddress, zeroAddress, zeroHash } from 'viem'
 
+import { Session } from '@ambire-common/classes/session'
 import type { Account } from '@ambire-common/interfaces/account'
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import type { Network } from '@ambire-common/interfaces/network'
+import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
@@ -519,6 +521,14 @@ export const operationFor = (
   calls: [{ fromUserRequestId: requestId }]
 })
 
+/** A request of the wallet's queue under `id`; the reads of the save look at its id only. */
+const queuedRequestOf = (id: string): SignUserRequest => ({
+  id,
+  action: { kind: 'calls', calls: [] },
+  session: new Session(),
+  meta: { isSignAction: true, accountAddr: zeroAddress, chainId: BigInt(CHAIN_ID) }
+})
+
 export const requestsFake = (): RequestsFake => {
   const listeners = new Set<(update: SendRequestUpdate) => void>()
   const push = (update: SendRequestUpdate) => listeners.forEach((listener) => listener(update))
@@ -556,9 +566,10 @@ export const requestsFake = (): RequestsFake => {
       }
     },
     accounts: () => [],
-    queue: () => ({ userRequests: fake.queued.map((id) => ({ id })) }),
+    queue: () => ({ userRequests: fake.queued.map(queuedRequestOf) }),
     windowId: () => undefined,
-    pushQueue: () => push({ controller: 'requests', state: fake.queue() })
+    pushQueue: () =>
+      push({ controller: 'requests', state: { userRequests: fake.queued.map(queuedRequestOf) } })
   }
   return fake
 }

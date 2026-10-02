@@ -28,9 +28,9 @@ import {
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
 import type {
+  HeldRequestQueue,
   ListedAccount,
-  PrivilegeHoldersReading,
-  SendQueueState
+  PrivilegeHoldersReading
 } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
@@ -117,21 +117,27 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
-  // The requests controller's state as the background pushed it, read as the
-  // send port reads its own pushes of that state.
-  const queueRef = useRef<unknown>(queue)
+  const queueRef = useRef<HeldRequestQueue | undefined>(queue)
   queueRef.current = queue
   const requests = useMemo(
     () =>
       sendRequestPort(
         dispatch,
         () => accountsRef.current,
-        () => queueRef.current as SendQueueState | undefined,
+        () => queueRef.current,
         windowId
       ),
     [dispatch, windowId]
   )
-  const port = useMemo(() => createSendPort(requests, { chainId }), [requests, chainId])
+  // A withdrawal a hidden tab could not send is sent again once the tab is shown.
+  const port = useMemo(
+    () =>
+      createSendPort(requests, {
+        chainId,
+        ...(typeof document !== 'undefined' ? { visibility: document } : {})
+      }),
+    [requests, chainId]
+  )
 
   const ready = facts.status === 'ready' ? facts.facts : null
   const steps = useMemo<SaveSteps | null>(() => {
