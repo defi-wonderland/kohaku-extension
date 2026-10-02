@@ -33,7 +33,6 @@ import {
   DirectWipeEvent,
   emptySlot,
   Enrollment,
-  ExpectedRevision,
   extensionRecordStorage,
   isEmptySlot,
   isSaveInFlightRefusal,
@@ -62,6 +61,10 @@ import {
   WIPE_REASON_STRING_KEYS,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import type {
+  RichJsonStorageDouble,
+  SessionUpdate
+} from '@web/modules/social-recovery/shared/records/__fixtures__/types'
 
 // The extension's `browser.storage.local` for `extensionRecordStorage`: one
 // in-memory store, holding what the helper writes.
@@ -85,25 +88,6 @@ jest.mock('@web/constants/browserapi', () => {
   }
 })
 
-type StorageDouble = {
-  get: RecordStorage['get']
-  set: (key: string, value: unknown) => Promise<null>
-  remove: (key: string) => Promise<null>
-  setEntries: RecordStorage['setEntries']
-  removeKeys: RecordStorage['removeKeys']
-  /** The helper's `get()` with no key: every entry, each value parsed. */
-  getAll: () => Promise<Record<string, unknown>>
-  /** What `browser.storage.local` would hold: one string per key. */
-  raw: Map<string, string>
-  /**
-   * The keys of every `set` and `remove` call, in order, and the keys of each
-   * `setEntries` and `removeKeys` call, one list per call.
-   */
-  calls: { set: string[]; remove: string[]; setEntries: string[][]; removeKeys: string[][] }
-  /** An error the next `setEntries` or `removeKeys` call rejects with, storing nothing. */
-  faults: { setEntries?: Error; removeKeys?: Error }
-}
-
 // The helper's `formatValue`: parse a string, or return it as is when it is not JSON.
 const formatValue = (stored: string): unknown => {
   try {
@@ -113,7 +97,7 @@ const formatValue = (stored: string): unknown => {
   }
 }
 
-const makeStorage = (): StorageDouble => {
+const makeStorage = (): RichJsonStorageDouble => {
   const raw = new Map<string, string>()
   const calls = {
     set: [] as string[],
@@ -121,7 +105,7 @@ const makeStorage = (): StorageDouble => {
     setEntries: [] as string[][],
     removeKeys: [] as string[][]
   }
-  const faults: StorageDouble['faults'] = {}
+  const faults: RichJsonStorageDouble['faults'] = {}
   // The helper's serialization: a string as is, anything else through richJson.
   // `browser.storage.local.set({ [key]: undefined })` stores nothing.
   const serialize = (value: unknown): string | undefined =>
@@ -141,7 +125,7 @@ const makeStorage = (): StorageDouble => {
   }
   // One `browser.storage.local` call over several keys lands whole or not at
   // all: every value is serialized first, and an injected fault stores nothing.
-  const takeFault = (name: keyof StorageDouble['faults']) => {
+  const takeFault = (name: keyof RichJsonStorageDouble['faults']) => {
     const fault = faults[name]
     delete faults[name]
     if (fault) {
@@ -373,10 +357,11 @@ const endSessionCountdown = async (records: WalletRecords, account: Address = AC
   records.endCountdown(CHAIN_ID, account, await revisionNow(records, account, CHAIN_ID))
 
 // Every stored string, keys included, to prove a secret is gone.
-const dump = (storage: StorageDouble) => [...storage.raw.entries()].flat().join('\n')
+const dump = (storage: RichJsonStorageDouble) => [...storage.raw.entries()].flat().join('\n')
 
 // Every stored value, parsed back as the helper would.
-const storedValues = (storage: StorageDouble) => [...storage.raw.values()].map((s) => parse(s))
+const storedValues = (storage: RichJsonStorageDouble) =>
+  [...storage.raw.values()].map((s) => parse(s))
 
 // A call that may throw synchronously or reject, as a promise.
 const attempt = (fn: () => unknown) => Promise.resolve().then(fn)
@@ -1807,8 +1792,6 @@ const repliesOf = (read: SessionRead) => {
 }
 
 const CONFLICT = { status: 'rejected', reason: expect.any(SessionRevisionConflict) }
-
-type SessionUpdate = (records: WalletRecords, revision: ExpectedRevision) => Promise<unknown>
 
 describe('a session update refuses when the session changed after its caller read it', () => {
   it('a reply write from a read taken before a wipe is refused and cannot bring the session back', async () => {
