@@ -1,7 +1,9 @@
-type IntlWithSegmenter = { Segmenter?: unknown }
-const intl = Intl as unknown as IntlWithSegmenter
+import type {
+  DisplayModule,
+  IntlWithSegmenter
+} from '@web/modules/social-recovery/shared/display/__fixtures__/types'
 
-type DisplayModule = typeof import('@web/modules/social-recovery/shared/display')
+const intl = Intl as unknown as IntlWithSegmenter
 
 // Loaded fresh after the delete, so no segmenter built at load time or cached
 // by an earlier test hides the missing API. A plain require: ts-jest's

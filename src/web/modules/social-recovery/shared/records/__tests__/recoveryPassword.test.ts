@@ -14,19 +14,15 @@ import {
   createWalletRecords,
   readRecoveryPassword,
   recordKeys,
-  RecordStorage,
   setRecoveryPassword,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import type {
+  CountingStorageDouble,
+  HolderModule
+} from '@web/modules/social-recovery/shared/records/__fixtures__/types'
 
-type StorageDouble = RecordStorage & {
-  raw: Map<string, unknown>
-  calls: { set: string[]; remove: string[] }
-}
-
-type HolderModule = typeof import('@web/modules/social-recovery/shared/records')
-
-const makeStorage = ({ failRemove = false } = {}): StorageDouble => {
+const makeStorage = ({ failRemove = false } = {}): CountingStorageDouble => {
   const raw = new Map<string, unknown>()
   const calls = { set: [] as string[], remove: [] as string[] }
   return {
@@ -60,7 +56,7 @@ const makeStorage = ({ failRemove = false } = {}): StorageDouble => {
       }
       keys.forEach((key) => raw.delete(key))
     }
-  } as StorageDouble
+  } as CountingStorageDouble
 }
 
 const ACCOUNT: Address = '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed'

@@ -471,9 +471,6 @@ const ECDSA_P256 = { name: 'ECDSA', namedCurve: 'P-256' } as const
 const ECDSA_SHA256 = { name: 'ECDSA', hash: 'SHA-256' } as const
 
 /* eslint-disable global-require, @typescript-eslint/no-var-requires */
-// The WebAuthn fakes load on first use, never with this file: the ceremony
-// harness registers its own checks under any file named harness.ts that loads
-// it, and those checks need a DOM this file's own run does not have.
 const webAuthnFakes = () =>
   require('@web/modules/social-recovery/shared/ceremony/__tests__/harness') as typeof import('@web/modules/social-recovery/shared/ceremony/__tests__/harness')
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
