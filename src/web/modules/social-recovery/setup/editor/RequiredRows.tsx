@@ -6,11 +6,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import {
-  MethodRow,
-  SectionCard,
-  SectionLabel
-} from '@web/modules/social-recovery/shared/chrome'
+import { MethodRow, SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 
 import CredentialRow from './CredentialRow'
 import type { RequiredRowsProps } from './types'
