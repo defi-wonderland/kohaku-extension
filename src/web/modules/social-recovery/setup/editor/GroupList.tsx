@@ -4,8 +4,12 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
+import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
+import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
 
 import CredentialRow from './CredentialRow'
 import ThresholdField from './ThresholdField'
@@ -30,40 +34,59 @@ const GroupList = ({
   onAddGroup
 }: GroupListProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
 
   return (
     <View style={spacings.mbLg} testID="editor-groups">
-      <Text fontSize={16} weight="semiBold" style={spacings.mbSm} testID="editor-groups-header">
+      <SectionLabel testID="editor-groups-header">
         {t(
           groups.length === 1
             ? 'socialRecovery.editor.groupHeader'
             : 'socialRecovery.editor.groupsHeader'
         )}
-      </Text>
+      </SectionLabel>
       {groups.length === 0 && (
-        <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-          {t('socialRecovery.editor.noGroup')}
-        </Text>
+        <SectionCard tone="muted" style={spacings.mbSm}>
+          <Text fontSize={14} appearance="secondaryText">
+            {t('socialRecovery.editor.noGroup')}
+          </Text>
+        </SectionCard>
       )}
       {groups.map(({ clause, index }, ordinal) => (
-        <View key={index} style={spacings.mbMd} testID={`editor-group-${index}`}>
-          <Text fontSize={14} weight="semiBold" style={spacings.mbTy}>
-            {t('socialRecovery.shape.group', { n: ordinal + 1 })}
-          </Text>
-          <ThresholdField
-            testID={`editor-group-${index}-threshold`}
-            threshold={clause.threshold}
-            heldText={heldThresholds[index]}
-            members={clause.credentials.length}
-            disabled={checking}
-            onChangeText={(text) => onThresholdText(index, text)}
-          />
+        <SectionCard key={index} style={spacings.mbSm} testID={`editor-group-${index}`}>
+          <View
+            style={[
+              flexbox.directionRow,
+              flexbox.alignCenter,
+              flexbox.justifySpaceBetween,
+              flexbox.wrap,
+              spacings.mbSm
+            ]}
+          >
+            <Text fontSize={16} weight="medium" style={spacings.mrSm}>
+              {t('socialRecovery.shape.group', { n: ordinal + 1 })}
+            </Text>
+            <ThresholdField
+              testID={`editor-group-${index}-threshold`}
+              threshold={clause.threshold}
+              heldText={heldThresholds[index]}
+              members={clause.credentials.length}
+              disabled={checking}
+              onChangeText={(text) => onThresholdText(index, text)}
+            />
+          </View>
           {clause.credentials.map((credential, member) => (
             <View
               // A member's place in its group is its identity in the path.
               // eslint-disable-next-line react/no-array-index-key
               key={member}
-              style={[flexbox.directionRow, flexbox.alignCenter, spacings.mtTy]}
+              style={[
+                common.borderRadiusPrimary,
+                spacings.phSm,
+                spacings.pvSm,
+                spacings.mbTy,
+                { borderWidth: 1, borderColor: theme.primaryBorder }
+              ]}
             >
               <CredentialRow
                 credential={credential}
@@ -73,30 +96,35 @@ const GroupList = ({
                 disabled={checking}
                 testID={`editor-slot-${index}-${member}`}
               />
-              <Button
-                testID={`editor-member-${index}-${member}-required`}
-                type="outline"
-                size="small"
-                text={t('socialRecovery.editor.makeRequired')}
-                onPress={() => onMakeRequired(index, member)}
-                disabled={checking}
-                hasBottomSpacing={false}
-              />
-              <Button
-                testID={`editor-member-${index}-${member}-remove`}
-                type="outline"
-                size="small"
-                text={t('socialRecovery.actions.remove')}
-                onPress={() => onRemoveMember(index, member)}
-                disabled={checking}
-                hasBottomSpacing={false}
-              />
+              <View
+                style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mtTy]}
+              >
+                <Button
+                  testID={`editor-member-${index}-${member}-required`}
+                  type="secondary"
+                  size="small"
+                  text={t('socialRecovery.editor.makeRequired')}
+                  onPress={() => onMakeRequired(index, member)}
+                  disabled={checking}
+                  hasBottomSpacing={false}
+                  style={spacings.mrTy}
+                />
+                <Button
+                  testID={`editor-member-${index}-${member}-remove`}
+                  type="secondary"
+                  size="small"
+                  text={t('socialRecovery.actions.remove')}
+                  onPress={() => onRemoveMember(index, member)}
+                  disabled={checking}
+                  hasBottomSpacing={false}
+                />
+              </View>
             </View>
           ))}
-          <View style={[flexbox.directionRow, spacings.mtSm]}>
+          <View style={[flexbox.directionRow, flexbox.wrap, spacings.mtTy]}>
             <Button
               testID={`editor-group-${index}-add`}
-              type="outline"
+              type="secondary"
               size="small"
               text={t('socialRecovery.editor.addMember')}
               onPress={() => onAddMember(index)}
@@ -106,7 +134,7 @@ const GroupList = ({
             />
             <Button
               testID={`editor-group-${index}-remove`}
-              type="outline"
+              type="secondary"
               size="small"
               text={t('socialRecovery.editor.removeGroup')}
               onPress={() => onRemoveGroup(index)}
@@ -114,16 +142,17 @@ const GroupList = ({
               hasBottomSpacing={false}
             />
           </View>
-        </View>
+        </SectionCard>
       ))}
       <Button
         testID="editor-add-group"
-        type="outline"
+        type="secondary"
         size="small"
         text={t('socialRecovery.editor.addGroup')}
         onPress={onAddGroup}
         disabled={checking}
         hasBottomSpacing={false}
+        style={[flexbox.alignSelfStart, spacings.mtTy]}
       />
     </View>
   )

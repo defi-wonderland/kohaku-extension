@@ -4,6 +4,7 @@ import { View } from 'react-native'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
+import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
 
 import { renderRefusal, renderRefusalPlace } from './copy'
 import type { RefusalListProps } from './types'
@@ -17,7 +18,7 @@ const RefusalList = ({ refusals, roles }: RefusalListProps) => {
   }
 
   return (
-    <View style={spacings.mbMd} testID="editor-wallet-refusals">
+    <SectionCard tone="muted" style={spacings.mbMd} testID="editor-wallet-refusals">
       {refusals.map((refusal, index) => {
         const place = renderRefusalPlace(refusal, roles, t)
         return (
@@ -25,14 +26,14 @@ const RefusalList = ({ refusals, roles }: RefusalListProps) => {
             // Two clauses can be refused with one sentence.
             // eslint-disable-next-line react/no-array-index-key
             key={index}
-            style={spacings.mbTy}
+            style={index < refusals.length - 1 ? spacings.mbTy : undefined}
             testID="editor-wallet-refusal-item"
           >
             {!!place && (
               <Text
                 fontSize={12}
-                weight="semiBold"
-                appearance="errorText"
+                appearance="secondaryText"
+                style={spacings.mbMi}
                 testID="editor-wallet-refusal-place"
               >
                 {place}
@@ -44,7 +45,7 @@ const RefusalList = ({ refusals, roles }: RefusalListProps) => {
           </View>
         )
       })}
-    </View>
+    </SectionCard>
   )
 }
 

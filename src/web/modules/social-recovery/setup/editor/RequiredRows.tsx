@@ -4,8 +4,12 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
+import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
+import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
+import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
 
 import CredentialRow from './CredentialRow'
 import type { RequiredRowsProps } from './types'
@@ -29,32 +33,43 @@ const RequiredRows = ({
   onAdd
 }: RequiredRowsProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
 
   return (
     <View style={spacings.mbLg} testID="editor-required">
-      <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
-        {t('socialRecovery.editor.requiredHeader')}
-      </Text>
+      <SectionLabel>{t('socialRecovery.editor.requiredHeader')}</SectionLabel>
       {rows.length === 0 && (
-        <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-          {t('socialRecovery.editor.nothingRequired')}
-        </Text>
+        <SectionCard tone="muted" style={spacings.mbSm}>
+          <Text fontSize={14} appearance="secondaryText">
+            {t('socialRecovery.editor.nothingRequired')}
+          </Text>
+        </SectionCard>
       )}
       {rows.map(({ clause, index }) => (
-        <View key={index} style={spacings.mbSm} testID={`editor-row-${index}`}>
-          <View style={[flexbox.directionRow, flexbox.alignCenter]}>
-            <CredentialRow
-              credential={clause.credentials[0]}
-              addressBook={addressBook}
-              enrollments={enrollments}
-              onPress={() => onOpenSlot(index, 0)}
-              disabled={checking}
-              testID={`editor-slot-${index}-0`}
-            />
+        <View
+          key={index}
+          style={[
+            common.borderRadiusPrimary,
+            spacings.phSm,
+            spacings.pvSm,
+            spacings.mbTy,
+            { borderWidth: 1, borderColor: theme.primaryBorder }
+          ]}
+          testID={`editor-row-${index}`}
+        >
+          <CredentialRow
+            credential={clause.credentials[0]}
+            addressBook={addressBook}
+            enrollments={enrollments}
+            onPress={() => onOpenSlot(index, 0)}
+            disabled={checking}
+            testID={`editor-slot-${index}-0`}
+          />
+          <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mtTy]}>
             {groups.length > 0 && (
               <Button
                 testID={`editor-row-${index}-move`}
-                type="outline"
+                type="secondary"
                 size="small"
                 text={t('socialRecovery.editor.moveToGroup')}
                 onPress={() =>
@@ -62,11 +77,12 @@ const RequiredRows = ({
                 }
                 disabled={checking}
                 hasBottomSpacing={false}
+                style={spacings.mrTy}
               />
             )}
             <Button
               testID={`editor-row-${index}-remove`}
-              type="outline"
+              type="secondary"
               size="small"
               text={t('socialRecovery.actions.remove')}
               onPress={() => onRemove(index)}
@@ -75,12 +91,12 @@ const RequiredRows = ({
             />
           </View>
           {rowChoosingGroup === index && (
-            <View style={[flexbox.directionRow, flexbox.wrap]}>
+            <View style={[flexbox.directionRow, flexbox.wrap, spacings.mtTy]}>
               {groups.map((group, ordinal) => (
                 <Button
                   key={group.index}
                   testID={`editor-row-${index}-move-${group.index}`}
-                  type="outline"
+                  type="secondary"
                   size="small"
                   text={t('socialRecovery.shape.group', { n: ordinal + 1 })}
                   onPress={() => onMove(index, group.index)}
@@ -91,7 +107,7 @@ const RequiredRows = ({
               ))}
               <Button
                 testID={`editor-row-${index}-move-cancel`}
-                type="outline"
+                type="secondary"
                 size="small"
                 text={t('socialRecovery.ceremony.cancelAction')}
                 onPress={onCloseGroupChoice}
@@ -104,12 +120,13 @@ const RequiredRows = ({
       ))}
       <Button
         testID="editor-add-required"
-        type="outline"
+        type="secondary"
         size="small"
         text={t('socialRecovery.editor.addRequired')}
         onPress={onAdd}
         disabled={checking}
         hasBottomSpacing={false}
+        style={[flexbox.alignSelfStart, spacings.mtTy]}
       />
     </View>
   )
