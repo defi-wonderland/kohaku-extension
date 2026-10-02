@@ -414,6 +414,30 @@ describe('the privacy lines', () => {
       ])
     })
 
+    it('read the line for an empty path where the groups have no member, with or without the password stored', () => {
+      const memberlessGroups = [{ threshold: 1, credentials: [] }]
+      const memberless: Pick<SetupDraft, 'privacy' | 'clauses'> = {
+        clauses: memberlessGroups,
+        privacy: {
+          backup: 'encrypted',
+          publicMetadata: shapeNoteOf({
+            clauses: memberlessGroups,
+            wait: 172800n,
+            ignoresPause: true
+          })
+        }
+      }
+      const emptyLine = t('socialRecovery.privacy.level.shapeVisible.lineEmpty')
+      expect(privacyLinesOf(memberless, BOOK, false, t)).toEqual([
+        t('socialRecovery.privacy.level.shapeVisible.label'),
+        emptyLine
+      ])
+      expect(privacyLinesOf(memberless, BOOK, true, t)).toEqual([
+        t('socialRecovery.review.shapeVisibleSet'),
+        emptyLine
+      ])
+    })
+
     it('name no member of the path', () => {
       const text = privacyLinesOf(shapeVisible, BOOK, true, t).join(' ')
       expect(text).not.toContain(PASSKEY.label)

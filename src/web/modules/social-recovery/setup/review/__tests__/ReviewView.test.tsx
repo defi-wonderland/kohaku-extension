@@ -682,6 +682,20 @@ describe('the lead', () => {
         shapeLine
       ])
     })
+
+    it('reads that the recovery password is set, then the line for an empty path, where the path has no member', async () => {
+      const memberless: Clause[] = [{ threshold: 1, credentials: [] }]
+      await mount({
+        clauses: memberless,
+        publicMetadata: shapeNoteOf({ clauses: memberless, wait: 172800n, ignoresPause: true }),
+        passwordSet: true
+      })
+
+      expect(textsStartingWith('review-privacy-')).toEqual([
+        t('socialRecovery.review.shapeVisibleSet'),
+        t('socialRecovery.privacy.level.shapeVisible.lineEmpty')
+      ])
+    })
   })
 
   it('reads the Private label alone before the password is stored', async () => {
