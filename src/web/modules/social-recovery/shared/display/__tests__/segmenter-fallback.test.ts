@@ -1,7 +1,7 @@
 type IntlWithSegmenter = { Segmenter?: unknown }
 const intl = Intl as unknown as IntlWithSegmenter
 
-type DisplayModule = typeof import('..')
+type DisplayModule = typeof import('@web/modules/social-recovery/shared/display')
 
 // Loaded fresh after the delete, so no segmenter built at load time or cached
 // by an earlier test hides the missing API. A plain require: ts-jest's
@@ -10,9 +10,11 @@ const loadFresh = (): DisplayModule => {
   let loaded: DisplayModule | undefined
   jest.isolateModules(() => {
     // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
-    loaded = require('..') as DisplayModule
+    loaded = require('@web/modules/social-recovery/shared/display') as DisplayModule
   })
-  if (!loaded) throw new Error('the display module did not load')
+  if (!loaded) {
+    throw new Error('the display module did not load')
+  }
   return loaded
 }
 
@@ -24,7 +26,9 @@ describe('name cut without Intl.Segmenter (Firefox 115)', () => {
   })
 
   afterEach(() => {
-    if (saved) Object.defineProperty(Intl, 'Segmenter', saved)
+    if (saved) {
+      Object.defineProperty(Intl, 'Segmenter', saved)
+    }
   })
 
   it('runs with Intl.Segmenter really absent', () => {
