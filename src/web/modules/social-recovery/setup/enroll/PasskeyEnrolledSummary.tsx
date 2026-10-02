@@ -44,7 +44,7 @@ const PasskeyEnrolledSummary = ({ enrollment, platform }: PasskeyEnrolledSummary
         />
       </View>
       {!!facts && (
-        <Text testID="passkey-kind-line" fontSize={14}>
+        <Text testID="passkey-kind-line" fontSize={14} style={spacings.mbTy}>
           {renderKindLine(facts, platform, t)}
         </Text>
       )}
