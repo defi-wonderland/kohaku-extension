@@ -16,6 +16,8 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
+  BUILD_PATHS,
+  type BuildPath,
   createWorld,
   eachIt,
   membersOf,
@@ -24,16 +26,6 @@ import {
   WINDOW,
   World
 } from '@web/modules/social-recovery/sdk-doubles/__tests__/harness'
-
-/** Every way to build from a builder; each runs the construction checks. */
-const BUILD_PATHS = {
-  buildSetupClient: (b: RecoveryKitBuilderDouble) => b.buildSetupClient(),
-  buildRecoveryClient: (b: RecoveryKitBuilderDouble) => b.buildRecoveryClient(),
-  buildMethodsOrchestrator: (b: RecoveryKitBuilderDouble) => b.buildMethodsOrchestrator(),
-  recoveryAction: (b: RecoveryKitBuilderDouble) => b.recoveryAction(),
-  methodModuleReads: (b: RecoveryKitBuilderDouble) => b.methodModuleReads()
-}
-type BuildPath = keyof typeof BUILD_PATHS
 
 /** The code a build path refuses with, thrown or rejected; undefined where it builds. */
 const refusalCode = async (

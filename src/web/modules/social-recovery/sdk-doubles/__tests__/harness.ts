@@ -51,6 +51,7 @@ import type {
   ModuleInfo,
   PaymentOrder,
   PrivacyLevel,
+  ReadResult,
   SetupDraft,
   TrustedParties
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -73,7 +74,23 @@ export type Canceller = typeof CANCELLERS[number]
 export const METHOD_KINDS = ['wallet', 'passkey', 'zkPassport', 'aadhaar'] as const
 export type MethodKind = typeof METHOD_KINDS[number]
 
+/** Every way to build from a builder; each runs the construction checks. */
+export const BUILD_PATHS = {
+  buildSetupClient: (b: RecoveryKitBuilderDouble) => b.buildSetupClient(),
+  buildRecoveryClient: (b: RecoveryKitBuilderDouble) => b.buildRecoveryClient(),
+  buildMethodsOrchestrator: (b: RecoveryKitBuilderDouble) => b.buildMethodsOrchestrator(),
+  recoveryAction: (b: RecoveryKitBuilderDouble) => b.recoveryAction(),
+  methodModuleReads: (b: RecoveryKitBuilderDouble) => b.methodModuleReads()
+}
+export type BuildPath = keyof typeof BUILD_PATHS
+
 export const PASSWORD = 'correct horse battery staple'
+
+export interface StandingRow {
+  method: Address
+  moduleInfo: ReadResult<ModuleInfo>
+  paused: ReadResult<boolean>
+}
 
 export interface CommittedSetup {
   configuration: Configuration

@@ -26,6 +26,7 @@ import {
   isHex,
   passportAt,
   PASSWORD,
+  type StandingRow,
   upperCased,
   walletAt,
   World
@@ -65,12 +66,6 @@ const withPassport = (world: World): SetupDraft => {
     ...draft.clauses,
     { threshold: 1, credentials: [passportAt(world, 'passport')] }
   ])
-}
-
-interface StandingRow {
-  method: Address
-  moduleInfo: ReadResult<ModuleInfo>
-  paused: ReadResult<boolean>
 }
 
 describe('setup client double', () => {
