@@ -31,7 +31,8 @@ import sessionStorage from '../webapi/sessionStorage'
 
 /**
  * Keeps only the members a page may send to the sign controller's update,
- * so a member the action does not declare never reaches the controller.
+ * so a member the action does not declare never reaches the controller. A
+ * member the page left out stays out, so the controller keeps its value.
  */
 export const pickSignAccountOpUpdateParams = ({
   accountOp,
@@ -44,15 +45,15 @@ export const pickSignAccountOpUpdateParams = ({
   signingKeyType,
   gasUsedTooHighAgreed
 }: Omit<Extract<Action, { type: 'SIGN_ACCOUNT_OP_UPDATE' }>['params'], 'updateType'>) => ({
-  accountOp,
-  gasPrices,
-  estimation,
-  feeToken,
-  paidBy,
-  speed,
-  signingKeyAddr,
-  signingKeyType,
-  gasUsedTooHighAgreed
+  ...(accountOp !== undefined && { accountOp }),
+  ...(gasPrices !== undefined && { gasPrices }),
+  ...(estimation !== undefined && { estimation }),
+  ...(feeToken !== undefined && { feeToken }),
+  ...(paidBy !== undefined && { paidBy }),
+  ...(speed !== undefined && { speed }),
+  ...(signingKeyAddr !== undefined && { signingKeyAddr }),
+  ...(signingKeyType !== undefined && { signingKeyType }),
+  ...(gasUsedTooHighAgreed !== undefined && { gasUsedTooHighAgreed })
 })
 
 export const handleActions = async (

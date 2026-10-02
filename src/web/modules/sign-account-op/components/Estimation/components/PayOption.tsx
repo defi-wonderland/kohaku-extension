@@ -45,6 +45,19 @@ export const getPaidByLabel = (
   return null
 }
 
+/**
+ * The payer's short address for the line under its label. Null when the label
+ * already is that short address, so the address shows once.
+ */
+export const getPaidByAddressLine = (paidBy: string, paidByLabel: string): string | null => {
+  const shortAddress = shortenAddress(paidBy, 13)
+  if (paidByLabel === shortAddress) {
+    return null
+  }
+
+  return shortAddress
+}
+
 const PayOption = ({
   feeOption,
   amountUsd,
@@ -94,7 +107,11 @@ const PayOption = ({
     [accounts, keys, feeOption.paidBy]
   )
 
-  if (paidByLabel === null) return null
+  if (paidByLabel === null) {
+    return null
+  }
+
+  const paidByAddressLine = getPaidByAddressLine(feeOption.paidBy, paidByLabel)
 
   return (
     <View
@@ -153,9 +170,11 @@ const PayOption = ({
               {paidByLabel}
             </Text>
           </View>
-          <Text fontSize={10} weight="medium">
-            {shortenAddress(feeOption.paidBy, 13)}
-          </Text>
+          {paidByAddressLine !== null && (
+            <Text fontSize={10} weight="medium">
+              {paidByAddressLine}
+            </Text>
+          )}
         </View>
       )}
       {warning && (

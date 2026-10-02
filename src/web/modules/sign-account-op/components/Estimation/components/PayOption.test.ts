@@ -1,7 +1,10 @@
 import { getAddress } from 'viem'
 
 import shortenAddress from '@ambire-common/utils/shortenAddress'
-import { getPaidByLabel } from '@web/modules/sign-account-op/components/Estimation/components/PayOption'
+import {
+  getPaidByAddressLine,
+  getPaidByLabel
+} from '@web/modules/sign-account-op/components/Estimation/components/PayOption'
 
 // The row's views and controller hooks reach the browser and the background
 // service, which the node environment has not; the label needs none of them.
@@ -57,5 +60,21 @@ describe('the label of the fee payer', () => {
 
   it('gives no label for a payer the wallet does not know', () => {
     expect(getPaidByLabel(UNKNOWN, accounts, [{ addr: KEY, label: 'Ledger key' }])).toBeNull()
+  })
+})
+
+describe('the address line under the fee payer label', () => {
+  it('shows the short address under a listed account label', () => {
+    expect(getPaidByAddressLine(LISTED, 'Savings')).toBe(shortenAddress(LISTED, 13))
+  })
+
+  it('shows the short address under a keystore key label', () => {
+    expect(getPaidByAddressLine(KEY, 'Ledger key')).toBe(shortenAddress(KEY, 13))
+  })
+
+  it('shows no second line for a keystore key with an empty label, so the address shows once', () => {
+    const label = getPaidByLabel(KEY, accounts, [{ addr: KEY, label: '' }]) as string
+
+    expect(getPaidByAddressLine(KEY, label)).toBeNull()
   })
 })

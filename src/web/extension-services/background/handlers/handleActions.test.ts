@@ -66,15 +66,15 @@ describe('the members a page sends to the sign controller update', () => {
     })
   })
 
-  it('gives an absent declared member as undefined and adds nothing else', () => {
+  it('leaves an absent declared member out and adds nothing else', () => {
     const picked = pickSignAccountOpUpdateParams({
       paidBy: '0x1111111111111111111111111111111111111111'
     })
 
-    expect(Object.keys(picked).sort()).toEqual(DECLARED_MEMBERS)
+    expect(Object.keys(picked)).toEqual(['paidBy'])
     expect(picked.paidBy).toBe('0x1111111111111111111111111111111111111111')
     DECLARED_MEMBERS.filter((member) => member !== 'paidBy').forEach((member) => {
-      expect(picked[member as keyof typeof picked]).toBeUndefined()
+      expect(member in picked).toBe(false)
     })
   })
 })
