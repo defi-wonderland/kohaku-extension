@@ -103,10 +103,10 @@ describe('the arrival', () => {
   ;(
     [
       ['loading', { kind: 'loading' }],
-      ['not-listed', { kind: 'unavailable', retry: null }],
-      ['no-network', { kind: 'unavailable', retry: null }],
+      ['not-listed', { kind: 'unavailable', retry: null, cause: 'not-listed' }],
+      ['no-network', { kind: 'unavailable', retry: null, cause: 'not-listed' }],
       ['state-unread', { kind: 'unavailable', retry: 'facts' }],
-      ['view-only', { kind: 'unavailable', retry: null }]
+      ['view-only', { kind: 'unavailable', retry: null, cause: 'view-only' }]
     ] as const
   ).forEach(([facts, arrival]) =>
     it(`reads the account facts ${facts} as not ready`, () => {
@@ -117,7 +117,8 @@ describe('the arrival', () => {
   it('reads a facts reading before the gate, so a view-only account never shows the gate block', () => {
     expect(arrivalFor({ ...READY, facts: 'view-only', gate: 'already-set-up' }, account)).toEqual({
       kind: 'unavailable',
-      retry: null
+      retry: null,
+      cause: 'view-only'
     })
   })
   ;(
@@ -192,7 +193,8 @@ describe('the arrival', () => {
     it('still reads the account facts, the client and the records first', () => {
       expect(withSetup({ facts: factsReadingFor('view-only', account) })).toEqual({
         kind: 'unavailable',
-        retry: null
+        retry: null,
+        cause: 'view-only'
       })
       expect(withSetup({ facts: factsReadingFor('loading', account) })).toEqual({ kind: 'loading' })
       expect(withSetup({ client: 'failed' })).toEqual({ kind: 'unavailable', retry: 'client' })

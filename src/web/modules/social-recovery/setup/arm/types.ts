@@ -54,8 +54,8 @@ export type ConfirmOutcome =
 
 export interface ConfirmReadOptions {
   /**
-   * How long one read may take before it reads as unanswered, in ms. The wait
-   * for a new block before the second read takes no longer than this either.
+   * How long one read may take before it reads as unanswered, in ms. Each wait
+   * for a new block before a further read takes no longer than this either.
    */
   timeoutMs?: number
 }
@@ -63,7 +63,7 @@ export interface ConfirmReadOptions {
 /** Waits for the chain to move past the block it reads now, for at most `limitMs`; never rejects. */
 export type NewBlockWait = (limitMs: number) => Promise<void>
 
-/** How the check is read: the read's limit, and the wait for a new block before the second read. */
+/** How the check is read: the read's limit, and the wait for a new block before each further read. */
 export interface ConfirmOutcomeOptions extends ConfirmReadOptions {
   newBlock?: NewBlockWait
 }
@@ -241,13 +241,20 @@ export interface ArrivalInput {
 export type ArrivalRetry = 'facts' | 'client' | null
 
 /**
+ * Why an unavailable arrival offers no retry: the wallet does not list the
+ * account or reaches no network for it, or holds no key for it.
+ */
+export type ArrivalUnavailableCause = 'not-listed' | 'view-only'
+
+/**
  * The save on arrival: still reading, unavailable, a wallet that must update,
  * records that could not be read, a block the review's gate (or the missing
  * recovery password) raises, or ready to send.
  */
 export type Arrival =
   | { kind: 'loading' }
-  | { kind: 'unavailable'; retry: ArrivalRetry }
+  | { kind: 'unavailable'; retry: Exclude<ArrivalRetry, null> }
+  | { kind: 'unavailable'; retry: null; cause: ArrivalUnavailableCause }
   | { kind: 'update-the-wallet' }
   | { kind: 'load-failed' }
   | { kind: 'blocked'; block: SaveBlock }

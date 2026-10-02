@@ -27,10 +27,12 @@ export const arrivalOf = ({
     return LOADING
   }
   if (facts.status === 'unavailable') {
-    return { kind: 'unavailable', retry: facts.cause === 'state-unread' ? 'facts' : null }
+    return facts.cause === 'state-unread'
+      ? { kind: 'unavailable', retry: 'facts' }
+      : { kind: 'unavailable', retry: null, cause: 'not-listed' }
   }
   if (!facts.facts.key) {
-    return { kind: 'unavailable', retry: null }
+    return { kind: 'unavailable', retry: null, cause: 'view-only' }
   }
   if (client === 'update-the-wallet') {
     return { kind: 'update-the-wallet' }

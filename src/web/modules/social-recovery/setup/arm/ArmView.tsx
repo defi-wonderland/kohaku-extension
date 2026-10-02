@@ -143,14 +143,22 @@ const ArmView = ({
   const arrivalBlock = () => {
     switch (arrival.kind) {
       case 'unavailable':
-        // The body asks to try again, so it shows only beside a retry.
-        return arrival.retry
-          ? refusal(
-              t('socialRecovery.client.unavailableTitle'),
-              t('socialRecovery.client.unavailableBody'),
-              onRetryArrival
-            )
-          : refusal(t('socialRecovery.client.unavailableTitle'), null)
+        // The shared body asks to try again, so it shows only beside a retry.
+        if (arrival.retry) {
+          return refusal(
+            t('socialRecovery.client.unavailableTitle'),
+            t('socialRecovery.client.unavailableBody'),
+            onRetryArrival
+          )
+        }
+        return refusal(
+          t('socialRecovery.client.unavailableTitle'),
+          t(
+            arrival.cause === 'view-only'
+              ? 'socialRecovery.arm.viewOnly'
+              : 'socialRecovery.arm.notListed'
+          )
+        )
       case 'update-the-wallet':
         return refusal(
           t('socialRecovery.client.updateTheWalletTitle'),
@@ -217,11 +225,14 @@ const ArmView = ({
           <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
             {t(`${REVIEW}.after.failedTitle`)}
           </Text>
+          <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
+            {t('socialRecovery.arm.mayStillLand')}
+          </Text>
           <Button
             testID="arm-check-setup"
             type="outline"
             size="small"
-            text={t('socialRecovery.writes.tryAgain')}
+            text={t('socialRecovery.arm.checkAgain')}
             onPress={onCheckSetup}
             hasBottomSpacing={false}
           />
@@ -243,7 +254,7 @@ const ArmView = ({
             testID="arm-check-again"
             type="outline"
             size="small"
-            text={t('socialRecovery.writes.tryAgain')}
+            text={t('socialRecovery.arm.checkAgain')}
             onPress={onCheckAgain}
             hasBottomSpacing={false}
           />
