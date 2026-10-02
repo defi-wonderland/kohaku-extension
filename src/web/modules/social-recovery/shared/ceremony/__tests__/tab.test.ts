@@ -55,7 +55,7 @@ import {
   resetVisibility,
   setVisibility,
   SYNCED_FLAGS
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 const mockUi = { isTab: true, isPopup: false, isActionWindow: false }
 const mockNetworks: { current: Network[]; listeners: Set<() => void> } = {

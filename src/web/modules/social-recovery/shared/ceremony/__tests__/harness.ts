@@ -883,6 +883,29 @@ export const hosts = {
 }
 export type HostName = keyof typeof hosts
 
+/** The calls a host runs to a verdict for a scripted method. */
+export type Call = Exclude<HostName, 'healthCheck'>
+
+/** One scripted method and the verdict its host reports. */
+export interface Case {
+  title: string
+  script: MethodScript
+  verdict: FourVerdict
+  cause?: string | RegExp
+}
+
+/** A listener on the extension's `storage.onChanged`. */
+export type ChangeListener = (changes: Record<string, { newValue?: unknown }>, area: string) => void
+
+/** One JSX tag found in a route file's text. */
+export interface RouteTag {
+  text: string
+  start: number
+  end: number
+  selfClosing: boolean
+  closes?: number
+}
+
 /** The synced or device-bound kind the module reads from authenticator data. */
 export const kindFromAuthData = (authData: Uint8Array): string =>
   ceremony().passkeyFactsOf({ authenticatorData: authData }).kind
@@ -987,7 +1010,7 @@ export const loadWithReactJsx = (
 
 // Registered only when Jest runs this file itself: a suite that imports the
 // harness does not run its checks again under its own hooks.
-const runningHarnessItself = /[\\/]harness\.ts$/.test(expect.getState().testPath ?? '')
+const runningHarnessItself = expect.getState().testPath === __filename
 
 const describeHarness = runningHarnessItself ? describe : () => undefined
 

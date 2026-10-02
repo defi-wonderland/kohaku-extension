@@ -23,7 +23,7 @@ import {
   P256_N,
   parseSignature,
   signaturesIn
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 const R = BigInt('0x1c2e8b4f5a6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9011223344556677')
 // A high s with its top bit set, as a real one has, so its DER needs a 0x00 pad.

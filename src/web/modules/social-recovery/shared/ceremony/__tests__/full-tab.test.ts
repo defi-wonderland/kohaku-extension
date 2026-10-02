@@ -10,21 +10,13 @@
 import fs from 'fs'
 import path from 'path'
 
-import { ceremony } from './harness'
+import { ceremony, RouteTag } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 const ROOT = path.resolve(__dirname, '../../../../../../..')
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8')
 
 const MAIN_ROUTES = 'src/web/modules/router/components/MainRoutes/MainRoutes.tsx'
 const REGISTRY = 'src/web/modules/social-recovery/routes/SocialRecoveryRoutes.tsx'
-
-interface RouteTag {
-  text: string
-  start: number
-  end: number
-  selfClosing: boolean
-  closes?: number
-}
 
 /** Drops JSX and line comments, keeping offsets meaningless but order intact. */
 const stripComments = (source: string) =>

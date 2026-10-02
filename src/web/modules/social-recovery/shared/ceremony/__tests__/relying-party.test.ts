@@ -28,7 +28,7 @@ import {
   relyingParty,
   stringsIn,
   SYNCED_FLAGS
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 let point: P256Point
 let bareIdHash: string

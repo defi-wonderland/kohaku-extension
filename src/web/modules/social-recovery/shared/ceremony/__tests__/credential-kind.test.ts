@@ -32,7 +32,7 @@ import {
   UNKNOWN_AAGUID,
   ZERO_AAGUID,
   zeroHash
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 let point: P256Point
 

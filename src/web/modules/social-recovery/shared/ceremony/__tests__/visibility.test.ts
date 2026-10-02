@@ -20,7 +20,7 @@ import {
   notAllowedError,
   resetVisibility,
   setVisibility
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 afterEach(() => {
   resetVisibility()

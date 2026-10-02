@@ -34,7 +34,7 @@ import {
   replyFailure,
   rowChipOf,
   SYNCED_FLAGS
-} from './harness'
+} from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 const NOTE = (key: string) => `socialRecovery.ceremony.${key}`
 

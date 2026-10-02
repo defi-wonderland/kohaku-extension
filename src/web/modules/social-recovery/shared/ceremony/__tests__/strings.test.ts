@@ -12,7 +12,7 @@ import path from 'path'
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
 
-import { ceremony } from './harness'
+import { ceremony } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
 
 const MODULE_DIR = path.resolve(__dirname, '..')
 
