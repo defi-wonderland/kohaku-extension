@@ -31,7 +31,7 @@ const CardFace = ({ account, passwordRow, onScreen = false, testID }: CardFacePr
         spacings.phLg,
         spacings.pvMd,
         common.borderRadiusSecondary,
-        { borderWidth: 1, borderColor: theme.primaryBorder }
+        { borderWidth: 2, borderColor: theme.primaryText }
       ]}
     >
       <Text
