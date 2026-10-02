@@ -21,7 +21,7 @@ import {
   setRecoveryPassword,
   SETUP_RECORD_NAMES
 } from '@web/modules/social-recovery/shared/records'
-import { canRetry } from '@web/modules/social-recovery/shared/writes'
+import { canRetry, mayStillLand } from '@web/modules/social-recovery/shared/writes'
 
 import {
   armScreenOf,
@@ -34,7 +34,6 @@ import {
   endWhereSetUp,
   isLive,
   isSaved,
-  mayStillLand,
   outlivesScreen,
   RECEIPT_WAIT_MS,
   recheckGas,
@@ -749,13 +748,13 @@ describe('a refusal whose operation may still land, read again', () => {
   })
 
   it("ends as already set up on the arrival's read of a setup, and stays on a read of none", async () => {
-    const { store } = await refusedRun()
+    const { store, wired } = await refusedRun()
     const refused = store.state()
 
-    endWhereSetUp(store, false)
+    await endWhereSetUp(store, wired.steps, false)
     expect(store.state()).toBe(refused)
 
-    endWhereSetUp(store, true)
+    await endWhereSetUp(store, wired.steps, true)
     expect(store.state().stop).toBe('already-set-up')
   })
 
@@ -764,7 +763,7 @@ describe('a refusal whose operation may still land, read again', () => {
     const store = await runSave(wired.steps)
     const refused = store.state()
 
-    endWhereSetUp(store, true)
+    await endWhereSetUp(store, wired.steps, true)
     await checkSetupAgain(store, wired.steps)
 
     expect(store.state()).toBe(refused)

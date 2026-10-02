@@ -72,6 +72,10 @@ jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
   default: () => ({ accounts: [] })
 }))
+jest.mock('@web/hooks/useRequestsControllerState', () => ({
+  __esModule: true,
+  default: () => ({ userRequests: [] })
+}))
 jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
   useAccountFacts: (account: string | undefined) =>
     mockFacts.get(account?.toLowerCase() ?? '') ?? mockFacts.get('loading')

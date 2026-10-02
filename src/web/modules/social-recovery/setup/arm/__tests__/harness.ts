@@ -56,8 +56,10 @@ import type {
   ReceiptWait,
   RemovedKeyReading,
   SendPort,
-  SendRefusalReason
+  SendRefusalReason,
+  SendRequestPort
 } from '@web/modules/social-recovery/shared/client'
+import { createWalletRecords } from '@web/modules/social-recovery/shared/records'
 import type { ChainId, RecordStorage } from '@web/modules/social-recovery/shared/records'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'
 import { saveGateOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
@@ -449,6 +451,32 @@ export interface WiredSave {
   writeDraftAndPath: jest.Mock
 }
 
+/** The extension's storage helper in memory, with the raw entries a test reads. */
+export const memoryStorage = (): RecordStorage & { raw: Map<string, string> } => {
+  const raw = new Map<string, string>()
+  return {
+    raw,
+    get: async (key, defaultValue) => {
+      const stored = key && raw.get(key)
+      return stored ? parse(stored) : defaultValue
+    },
+    set: async (key, value) => {
+      raw.set(key, typeof value === 'string' ? value : stringify(value))
+      return null
+    },
+    remove: async (key) => {
+      raw.delete(key)
+      return null
+    },
+    setEntries: async (entries) => {
+      Object.entries(entries).forEach(([key, value]) => raw.set(key, stringify(value)))
+    },
+    removeKeys: async (keys) => {
+      keys.forEach((key) => raw.delete(key))
+    }
+  }
+}
+
 export const wireSave = (account: Account, script: SaveScript): WiredSave => {
   const address = account.addr as Address
   const facts = factsOf(account, { deployed: script.deployed })
@@ -482,12 +510,21 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
   const receipts = receiptsFor(script.receipt)
   const saveSetup = jest.fn(async () => undefined)
   const writeDraftAndPath = jest.fn(async () => ({ draft, path: null }))
+  const requests: SendRequestPort = {
+    dispatch: () => undefined,
+    subscribe: () => () => undefined,
+    accounts: () => [],
+    queue: () => ({}),
+    windowId: () => undefined
+  }
+  const { saveInFlight } = createWalletRecords({ storage: memoryStorage() })
   const steps = saveStepsOf({
     client,
     reads: chainReads,
     receipts,
     port,
-    records: { saveSetup },
+    requests,
+    records: { saveSetup, saveInFlight },
     setup: { writeDraftAndPath } as never,
     chainId: CHAIN_ID,
     account: address,
@@ -510,32 +547,6 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
     receipts,
     saveSetup,
     writeDraftAndPath
-  }
-}
-
-/** The extension's storage helper in memory, with the raw entries a test reads. */
-export const memoryStorage = (): RecordStorage & { raw: Map<string, string> } => {
-  const raw = new Map<string, string>()
-  return {
-    raw,
-    get: async (key, defaultValue) => {
-      const stored = key && raw.get(key)
-      return stored ? parse(stored) : defaultValue
-    },
-    set: async (key, value) => {
-      raw.set(key, typeof value === 'string' ? value : stringify(value))
-      return null
-    },
-    remove: async (key) => {
-      raw.delete(key)
-      return null
-    },
-    setEntries: async (entries) => {
-      Object.entries(entries).forEach(([key, value]) => raw.set(key, stringify(value)))
-    },
-    removeKeys: async (keys) => {
-      keys.forEach((key) => raw.delete(key))
-    }
   }
 }
 
@@ -748,7 +759,8 @@ export const arrivalFor = (input: ArrivalCase, account: Account): Arrival =>
     load: loadedOf(draftOf('encrypted')),
     gate: gateFor(input.gate, input.client === 'ready'),
     setupState: { status: 'answered', value: setupStateOf(input.gate === 'already-set-up') },
-    passwordHeld: input.passwordHeld
+    passwordHeld: input.passwordHeld,
+    inFlight: 'none'
   })
 
 /** Whether the holder starts the save a second time, and what the setup read answers then. */

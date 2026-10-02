@@ -15,14 +15,10 @@ import { zeroHash } from 'viem'
 
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
+import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
 import type { DepositStep, GasCheck } from '@web/modules/social-recovery/shared/writes'
 
-import {
-  armReducer,
-  initialArmState,
-  isSaved,
-  mayStillLand
-} from '@web/modules/social-recovery/setup/arm'
+import { armReducer, initialArmState, isSaved } from '@web/modules/social-recovery/setup/arm'
 import type { ArmEvent, ArmState, PreparedSave } from '@web/modules/social-recovery/setup/arm'
 
 import {

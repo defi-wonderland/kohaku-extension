@@ -1,14 +1,15 @@
 /**
  * The save's route: the settings chrome around the save of the selected
  * account's setup. It reads the account's facts, the recovery client, the
- * setup records and the recovery password in memory, runs the review's reads
- * and gate again, and builds the send port over the request queue. The save
- * starts by itself only where the review's Save pushed the route, in the mount
- * that took the push, once the gate lets it run; the push is replaced as soon
- * as the step mounts, so a later mount at the same entry, for this account or
- * another, does not start again. A reload, a typed address, or back and
- * forward show the summary with the Save button instead. The wallet's sign screen is
- * the one confirmation.
+ * setup records, the save in flight stored on this device and the recovery
+ * password in memory, runs the review's reads and gate again, and builds the
+ * send port over the request queue. The save starts by itself only where the
+ * review's Save pushed the route, in the mount that took the push, once the
+ * gate lets it run and no save in flight is stored; the push is replaced as
+ * soon as the step mounts, so a later mount at the same entry, for this
+ * account or another, does not start again. A reload, a typed address, or
+ * back and forward show the summary with the Save button instead. The
+ * wallet's sign screen is the one confirmation.
  */
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Linking } from 'react-native'
@@ -16,6 +17,7 @@ import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
+import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import {
   addressBookOf,
@@ -27,7 +29,8 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ListedAccount,
-  PrivilegeHoldersReading
+  PrivilegeHoldersReading,
+  SendQueueState
 } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
@@ -62,6 +65,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const { account: selected } = useSelectedAccountControllerState()
   const { accounts } = useAccountsControllerState()
   const { dispatch, windowId } = useBackgroundService()
+  const queue = useRequestsControllerState()
   const facts = useAccountFacts(account)
   const clientState = useRecoveryClient(account)
   const { load, retry: retryLoad } = useSaveLoad(records, chainId, account)
@@ -110,25 +114,24 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     passwordSet: load.status === 'loaded' && load.passwordSet
   })
   const password = readRecoveryPassword(chainId, account)
-  const arrival = arrivalOf({
-    facts,
-    client: clientState.status,
-    load,
-    gate,
-    setupState: accountReads.setupState,
-    passwordHeld: password !== undefined
-  })
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
-  const port = useMemo(
+  // The requests controller's state as the background pushed it, read as the
+  // send port reads its own pushes of that state.
+  const queueRef = useRef<unknown>(queue)
+  queueRef.current = queue
+  const requests = useMemo(
     () =>
-      createSendPort(
-        sendRequestPort(dispatch, () => accountsRef.current, windowId),
-        { chainId }
+      sendRequestPort(
+        dispatch,
+        () => accountsRef.current,
+        () => queueRef.current as SendQueueState | undefined,
+        windowId
       ),
-    [dispatch, windowId, chainId]
+    [dispatch, windowId]
   )
+  const port = useMemo(() => createSendPort(requests, { chainId }), [requests, chainId])
 
   const ready = facts.status === 'ready' ? facts.facts : null
   const steps = useMemo<SaveSteps | null>(() => {
@@ -140,6 +143,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       reads: chainReads,
       receipts,
       port,
+      requests,
       records,
       setup: records.setup(chainId, account),
       chainId,
@@ -149,12 +153,19 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       draft,
       password
     })
-  }, [kit, chainReads, receipts, ready, draft, port, records, chainId, account, password])
+  }, [kit, chainReads, receipts, ready, draft, port, requests, records, chainId, account, password])
 
-  const { state, start, recheck, reread, checkAgain, checkSetup, endWhereSetUp } = useArmRun(
-    steps,
-    `${chainId}:${account.toLowerCase()}`
-  )
+  const { state, start, recheck, reread, checkAgain, checkSetup, endWhereSetUp, lookAgain } =
+    useArmRun(steps, `${chainId}:${account.toLowerCase()}`)
+  const arrival = arrivalOf({
+    facts,
+    client: clientState.status,
+    load,
+    gate,
+    setupState: accountReads.setupState,
+    passwordHeld: password !== undefined,
+    inFlight: state.lookup
+  })
   // A kept refusal whose operation may still land ends where the arrival's setup read finds it landed.
   const arrivalFoundSetup =
     accountReads.setupState.status === 'answered' && accountReads.setupState.value.hasSetup
@@ -165,7 +176,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const location = useLocation()
   const routerNavigate = useNavigate()
   const canStart = arrival.kind === 'ready' && steps !== null
-  const untouched = state.write.status === 'idle' && state.write.run === 0
+  const untouched = state.write.status === 'idle' && !state.stop
   const pushed = navigationType === 'PUSH'
   // Only the mount that took the push starts by itself; the push is replaced at
   // once, so a step mounted later at this entry, for another account, does not.
@@ -179,7 +190,10 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     }
   }, [pushed, routerNavigate, location])
   useEffect(() => {
-    if (canStart && untouched && startWhenReady.current) {
+    // A run that moved first (a stored save in flight followed) consumes the push.
+    if (!untouched) {
+      startWhenReady.current = false
+    } else if (canStart && startWhenReady.current) {
       startWhenReady.current = false
       start()
     }
@@ -194,13 +208,18 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
 
   const retryArrival = useCallback(() => {
     if (arrival.kind === 'load-failed') {
-      retryLoad()
+      if (load.status === 'failed') {
+        retryLoad()
+      }
+      if (state.lookup === 'failed') {
+        lookAgain()
+      }
     } else if (arrival.kind === 'unavailable' && arrival.retry === 'facts') {
       facts.retry()
     } else if (arrival.kind === 'unavailable' && arrival.retry === 'client') {
       clientState.retry()
     }
-  }, [arrival, retryLoad, facts, clientState])
+  }, [arrival, load, retryLoad, state.lookup, lookAgain, facts, clientState])
 
   const openUrl = useCallback((url: string) => {
     Linking.openURL(url).catch(() => undefined)
