@@ -46,6 +46,9 @@ import {
 import type {
   AccountFactsReading,
   ChainReads,
+  EstimationListener,
+  FeeOption,
+  FeeReading,
   KeyHandle,
   ListedAccountFacts,
   ProviderTransactionReceipt,
@@ -105,6 +108,16 @@ export const smartAccount = async (): Promise<Account> => {
     built = await getSmartAccount([{ addr: KEY.addr, hash: dedicatedToOneSAPriv }], [])
   }
   return built
+}
+
+/**
+ * A smart account of its own with its own controlling key, one per seed, for a
+ * test that must not share the account's held save with another test.
+ */
+export const keyedAccount = async (seed: number): Promise<{ account: Account; key: KeyHandle }> => {
+  const key: KeyHandle = { addr: `0x${seed.toString(16).padStart(40, '0')}`, type: 'internal' }
+  const account = await getSmartAccount([{ addr: key.addr, hash: dedicatedToOneSAPriv }], [])
+  return { account, key }
 }
 
 /** The account's facts as the wallet reads them, with or without code, and with or without its key. */
@@ -230,11 +243,14 @@ export const CONFIRM_CASES = [
   'no-answer'
 ] as const
 export const SEND_CASES = ['sent', ...SEND_REFUSAL_REASONS] as const
+export const SETUP_CASES = ['none', 'set-up', 'throws'] as const
 
 export type GasCase = typeof GAS_CASES[number]
 export type ReceiptCase = typeof RECEIPT_CASES[number]
 export type ConfirmCase = typeof CONFIRM_CASES[number]
 export type SendCase = 'sent' | SendRefusalReason
+/** What the setup read at the start of a run answers: no setup, a setup, or a throw. */
+export type SetupCase = typeof SETUP_CASES[number]
 
 /** How each edge of one save answers. */
 export interface SaveScript {
@@ -242,10 +258,14 @@ export interface SaveScript {
   authorized: boolean
   /** Whether the account has code on the chain. */
   deployed: boolean
+  /** What the setup read answers; no setup where left out. */
+  setup?: SetupCase
   /** Whether the prepare answers or refuses. */
   prepare: 'answers' | 'refuses'
   gas: GasCase
   send: SendCase
+  /** The sign screen's estimation the port reports before it answers, where it reports one. */
+  estimation?: FeeReading
   receipt: ReceiptCase
   confirm: ConfirmCase
   backup?: SetupDraft['privacy']['backup']
@@ -310,13 +330,47 @@ export const chainReadsFor = (gas: GasCase): MockChainReads => ({
   gasPrice: jest.fn(async () => 2n * GWEI)
 })
 
-export const sendPortFor = (send: SendCase, account: Address) => {
-  const sendAccountBatch = jest.fn(async () => {
-    if (send !== 'sent') {
-      throw accountBatchRefusal(send, account)
+/** One fee option of the sign screen, paid by `KEY` in the chain's native token. */
+export const feeOption = (available: boolean): FeeOption => ({
+  paidBy: KEY.addr,
+  token: { address: zeroAddress, symbol: 'ETH', decimals: 18 },
+  balance: available ? 10n ** 18n : 0n,
+  amount: 10n ** 15n,
+  available,
+  selected: true
+})
+
+/** The sign screen's estimation as the port reports it: its options and, where it has one, its error. */
+export const feeReading = ({
+  available = true,
+  error = false
+}: { available?: boolean; error?: boolean } = {}): FeeReading => ({
+  options: [feeOption(available)],
+  ...(error
+    ? { error: { title: 'Insufficient funds to cover the fee', code: 'insufficient-funds' } }
+    : {})
+})
+
+/** An error of the node while it waits for a receipt: it names no receipt and no replacement. */
+export const nodeError = (): Error =>
+  Object.assign(new Error('could not coalesce error'), { code: 'UNKNOWN_ERROR' })
+
+export const sendPortFor = (send: SendCase, account: Address, estimation?: FeeReading) => {
+  const sendAccountBatch = jest.fn(
+    async (
+      _account: Address,
+      _calls: readonly PreparedCall[],
+      onEstimation?: EstimationListener
+    ): Promise<Hex> => {
+      if (estimation && onEstimation) {
+        onEstimation(estimation)
+      }
+      if (send !== 'sent') {
+        throw accountBatchRefusal(send, account)
+      }
+      return TX_HASH
     }
-    return TX_HASH
-  })
+  )
   const port: SendPort & { send: jest.Mock; sendAccountBatch: jest.Mock } = {
     send: jest.fn(async () => {
       throw new Error('the save never sends from a key alone')
@@ -326,7 +380,9 @@ export const sendPortFor = (send: SendCase, account: Address) => {
   return port
 }
 
-export const receiptsFor = (receipt: ReceiptCase): ReceiptWait & { wait: jest.Mock } => ({
+export const receiptsFor = (
+  receipt: ReceiptCase
+): ReceiptWait & { blockNumber: jest.Mock; wait: jest.Mock } => ({
   blockNumber: jest.fn(async () => START_BLOCK),
   wait: jest.fn(async (hash: Hex) => {
     if (receipt === 'reverted') {
@@ -384,13 +440,18 @@ export const wireSave = (account: Account, script: SaveScript): WiredSave => {
     reads += 1
     return answer()
   })
-  const setupState = jest.fn(async () => setupStateOf(false))
+  const setupState = jest.fn(async () => {
+    if (script.setup === 'throws') {
+      throw new Error('the node did not answer the setup read')
+    }
+    return setupStateOf(script.setup === 'set-up')
+  })
   const client: ArmKitClient = {
     descriptor: DESCRIPTOR,
     setup: { setupState, prepareCommitSetup, confirmSetup }
   }
   const chainReads = chainReadsFor(script.gas)
-  const port = sendPortFor(script.send, address)
+  const port = sendPortFor(script.send, address, script.estimation)
   const receipts = receiptsFor(script.receipt)
   const saveSetup = jest.fn(async () => undefined)
   const writeDraftAndPath = jest.fn(async () => ({ draft, path: null }))
@@ -453,6 +514,15 @@ export const memoryStorage = (): RecordStorage & { raw: Map<string, string> } =>
 
 /** How long a check that never answers is given before it reads as unanswered, in the tests. */
 export const SHORT_TIMEOUT_MS = 15
+
+/** Jest's fake clock as its runtime offers it, beyond the typings this repository carries. */
+export interface AsyncFakeTimers {
+  advanceTimersByTimeAsync(ms: number): Promise<void>
+}
+
+/** Advances Jest's fake clock by `ms`, running the promises each timer settles before the next timer. */
+export const advanceTimers = (ms: number): Promise<void> =>
+  (jest as unknown as AsyncFakeTimers).advanceTimersByTimeAsync(ms)
 
 /** Runs one save to its end over a fresh store, as the screen starts it. */
 export const runSave = async (

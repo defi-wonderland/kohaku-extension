@@ -8,6 +8,7 @@
 import type { Account } from '@ambire-common/interfaces/account'
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import {
+  accountBatchRefusal,
   accountBatchTransactionOf,
   privacyLevelOf,
   recoveryKitMarkOf,
@@ -25,13 +26,18 @@ import { canRetry } from '@web/modules/social-recovery/shared/writes'
 import {
   armScreenOf,
   callsOf,
+  checkReceiptAgain,
   committedDraftOf,
   createArmStore,
+  isLive,
   isSaved,
+  mayStillLand,
   recheckGas,
   rereadConfirmation,
+  saveWriteKeysOf,
   startSave
 } from '@web/modules/social-recovery/setup/arm'
+import type { ArmStore } from '@web/modules/social-recovery/setup/arm'
 
 import {
   armingCallOf,
@@ -40,13 +46,20 @@ import {
   confirmation,
   DESCRIPTOR,
   draftOf,
+  feeReading,
   HAPPY,
   KEY,
+  landedReceipt,
   memoryStorage,
+  minedAndReverted,
+  nodeError,
   PASSWORD,
+  replacedTransaction,
   runSave,
+  setupStateOf,
   SHORT_TIMEOUT_MS,
   smartAccount,
+  START_BLOCK,
   TX_HASH,
   wireSave
 } from './harness'
@@ -129,7 +142,9 @@ describe('the gas check before the send', () => {
     const { write } = store.state()
 
     expect(write.status).toBe('needsDeposit')
-    if (write.status !== 'needsDeposit') return
+    if (write.status !== 'needsDeposit') {
+      return
+    }
     expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
     expect(write.step.payer).toBe('accountKey')
     expect(write.step.shortfall).toBeGreaterThan(0n)
@@ -249,7 +264,7 @@ describe('the send and the receipt', () => {
     'timeout'
   ] as const
 
-  REASONS.forEach((send) =>
+  REASONS.filter((send) => send !== 'not-a-transaction').forEach((send) =>
     it(`reads a refusal of the port (${send}) as never sent, with the retry, and wipes nothing`, async () => {
       const wired = wireSave(account, script({ send }))
       const store = await runSave(wired.steps)
@@ -258,21 +273,44 @@ describe('the send and the receipt', () => {
       expect(write.status).toBe('failedNotSent')
       expect(write.status === 'failedNotSent' && write.replaced).toBeFalsy()
       expect(canRetry(write)).toBe(true)
+      expect(mayStillLand(write)).toBe(false)
+      expect(saveWriteKeysOf(write).note).toBe('socialRecovery.review.after.notSent')
       expect(wired.confirmSetup).not.toHaveBeenCalled()
       expect(wired.saveSetup).not.toHaveBeenCalled()
       expect(armScreenOf(store.state())).toBe('run')
     })
   )
 
-  it('sends a second batch on a retry after the port answered that the operation was not a transaction', async () => {
+  it('offers no retry after the port answered that the operation was not a transaction: a start then prepares and sends nothing', async () => {
     const wired = wireSave(account, script({ send: 'not-a-transaction' }))
     const store = await runSave(wired.steps)
+    const refused = store.state()
+    expect(refused.write.status).toBe('failedNotSent')
+    expect(mayStillLand(refused.write)).toBe(true)
+    // The save does not say that nothing was sent: the operation may still land.
+    expect(saveWriteKeysOf(refused.write)).toEqual({
+      title: 'socialRecovery.review.after.failedTitle'
+    })
     wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
 
     await startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
-    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(2)
-    expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(2)
+    expect(store.state()).toBe(refused)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it("reads a thrown value that names the same reason but is not the port's refusal as never sent, with the retry", async () => {
+    const wired = wireSave(account, script())
+    wired.port.sendAccountBatch.mockRejectedValue(
+      Object.assign(new Error('not-a-transaction'), { reason: 'not-a-transaction' })
+    )
+    const store = await runSave(wired.steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(mayStillLand(store.state().write)).toBe(false)
   })
 
   it('reads a reverted receipt as reverted, with the cause it carries and the gas gone, and wipes nothing', async () => {
@@ -281,7 +319,9 @@ describe('the send and the receipt', () => {
     const { write } = store.state()
 
     expect(write.status).toBe('failedReverted')
-    if (write.status !== 'failedReverted') return
+    if (write.status !== 'failedReverted') {
+      return
+    }
     expect(write.transactionHash).toBe(TX_HASH)
     // The drive decodes no kit error for the receipt, so the cause is the one the wallet cannot name.
     expect(write.cause).toEqual({ kind: 'unnamed' })
@@ -464,5 +504,448 @@ describe('after the batch landed', () => {
 
     expect(store.state()).toBe(saved)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+const restart = (store: ArmStore, wired: ReturnType<typeof wireSave>) =>
+  startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+describe('the setup read at the start of every run', () => {
+  it('reads the setup first on the first start, before the prepare, the gas check and the send', async () => {
+    const wired = wireSave(account, script())
+    await runSave(wired.steps)
+
+    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.setupState.mock.invocationCallOrder[0]).toBeLessThan(
+      wired.prepareCommitSetup.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('ends the first start as already set up where the account holds a setup, with nothing prepared, estimated, sent or wiped', async () => {
+    const wired = wireSave(account, script({ setup: 'set-up' }))
+    const store = await runSave(wired.steps)
+
+    expect(store.state().stop).toBe('already-set-up')
+    expect(armScreenOf(store.state())).toBe('already-set-up')
+    expect(isLive(store.state())).toBe(false)
+    expect(wired.prepareCommitSetup).not.toHaveBeenCalled()
+    expect(wired.reads.estimateGas).not.toHaveBeenCalled()
+    expect(wired.reads.nativeBalance).not.toHaveBeenCalled()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('reads a setup read that throws as never sent, with the retry, and sends nothing', async () => {
+    const wired = wireSave(account, script({ setup: 'throws' }))
+    const store = await runSave(wired.steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(store.state().stop).toBeUndefined()
+    expect(wired.prepareCommitSetup).not.toHaveBeenCalled()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  /** Each way a run fails with the retry offered, and how the edge that failed answers on the retry. */
+  const FAILURES: [string, Partial<SaveScript>, (wired: ReturnType<typeof wireSave>) => void][] = [
+    [
+      'a setup read that threw',
+      { setup: 'throws' },
+      (wired) => wired.setupState.mockResolvedValue(setupStateOf(false))
+    ],
+    [
+      'a refusal of the prepare',
+      { prepare: 'refuses' },
+      (wired) => wired.prepareCommitSetup.mockResolvedValue(wired.prepared)
+    ],
+    [
+      'a gas check that could not read',
+      { gas: 'read-fails' },
+      (wired) => wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    ],
+    [
+      'a refusal of the port',
+      { send: 'window-closed' },
+      (wired) => wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+    ],
+    [
+      'a reverted receipt',
+      { receipt: 'reverted' },
+      (wired) => wired.receipts.wait.mockImplementation(async (hash) => landedReceipt(hash))
+    ],
+    [
+      'a replaced transaction',
+      { receipt: 'replaced' },
+      (wired) => wired.receipts.wait.mockImplementation(async (hash) => landedReceipt(hash))
+    ]
+  ]
+
+  FAILURES.forEach(([named, overrides, heal]) => {
+    it(`after ${named}, a retry reads the setup again and, where the account now holds one, ends as already set up with nothing more sent`, async () => {
+      const wired = wireSave(account, script(overrides))
+      const store = await runSave(wired.steps)
+      expect(canRetry(store.state().write)).toBe(true)
+      const prepares = wired.prepareCommitSetup.mock.calls.length
+      const sends = wired.port.sendAccountBatch.mock.calls.length
+      const estimates = wired.reads.estimateGas.mock.calls.length
+      heal(wired)
+      wired.setupState.mockResolvedValue(setupStateOf(true))
+
+      await restart(store, wired)
+
+      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      expect(store.state().stop).toBe('already-set-up')
+      expect(armScreenOf(store.state())).toBe('already-set-up')
+      expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(prepares)
+      expect(wired.reads.estimateGas).toHaveBeenCalledTimes(estimates)
+      expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(sends)
+      expect(wired.confirmSetup).not.toHaveBeenCalled()
+      expect(wired.saveSetup).not.toHaveBeenCalled()
+    })
+
+    it(`after ${named}, a retry reads the setup again before it prepares and, where none is there, sends once and saves`, async () => {
+      const wired = wireSave(account, script(overrides))
+      const store = await runSave(wired.steps)
+      const sends = wired.port.sendAccountBatch.mock.calls.length
+      heal(wired)
+
+      await restart(store, wired)
+
+      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      const lastPrepare = Math.max(...wired.prepareCommitSetup.mock.invocationCallOrder)
+      expect(wired.setupState.mock.invocationCallOrder[1]).toBeLessThan(lastPrepare)
+      expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(sends + 1)
+      expect(isSaved(store.state())).toBe(true)
+      expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("in two tabs, ends the second tab's retry as already set up once the first tab saved, sending nothing more", async () => {
+    let onChain = false
+    const first = wireSave(account, script())
+    const second = wireSave(account, script({ send: 'window-closed' }))
+    ;[first, second].forEach((tab) =>
+      tab.setupState.mockImplementation(async () => setupStateOf(onChain))
+    )
+    first.receipts.wait.mockImplementation(async (hash) => {
+      onChain = true
+      return landedReceipt(hash)
+    })
+
+    const secondStore = await runSave(second.steps)
+    expect(secondStore.state().write.status).toBe('failedNotSent')
+    const firstStore = await runSave(first.steps)
+    expect(isSaved(firstStore.state())).toBe(true)
+    second.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+
+    await restart(secondStore, second)
+
+    expect(secondStore.state().stop).toBe('already-set-up')
+    expect(second.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(second.prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(first.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(second.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('after a refusal whose operation landed after all, the next arrival ends as already set up and sends nothing', async () => {
+    const wired = wireSave(account, script({ send: 'not-a-transaction' }))
+    const store = await runSave(wired.steps)
+    // Nothing is in flight for the screen to keep, so the next arrival starts a new run.
+    expect(isLive(store.state())).toBe(false)
+    wired.setupState.mockResolvedValue(setupStateOf(true))
+    wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+
+    const next = await runSave(wired.steps)
+
+    expect(next.state().stop).toBe('already-set-up')
+    expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('moves nothing once a run ended as already set up: no start, recheck, check again or reread', async () => {
+    const wired = wireSave(account, script({ setup: 'set-up' }))
+    const store = await runSave(wired.steps)
+    const stopped = store.state()
+    wired.setupState.mockResolvedValue(setupStateOf(false))
+
+    await restart(store, wired)
+    await recheckGas(store, wired.steps)
+    await checkReceiptAgain(store, wired.steps)
+    await rereadConfirmation(store, wired.steps)
+
+    expect(store.state()).toBe(stopped)
+    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.prepareCommitSetup).not.toHaveBeenCalled()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('a receipt wait that failed after the batch was sent', () => {
+  it('waits once more for the same hash, from the block read before the send, and goes on to the check when the receipt arrives', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.wait.mockRejectedValueOnce(nodeError())
+    const store = await runSave(wired.steps)
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(wired.receipts.wait.mock.calls[1]).toEqual([TX_HASH, START_BLOCK])
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.confirmSetup.mock.invocationCallOrder[0]).toBeGreaterThan(
+      wired.receipts.wait.mock.invocationCallOrder[1]
+    )
+    expect(isSaved(store.state())).toBe(true)
+    expect(store.state().stalled).toBeFalsy()
+  })
+
+  it('waits once more where the receipt came back with no status', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.wait.mockResolvedValueOnce({ hash: TX_HASH, status: null } as never)
+    const store = await runSave(wired.steps)
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('reads stalled under its hash where the second wait fails too, sends and wipes nothing, and keeps the run live', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.wait.mockRejectedValueOnce(nodeError()).mockRejectedValueOnce(nodeError())
+    const store = await runSave(wired.steps)
+    const { write } = store.state()
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(write.status).toBe('submitting')
+    expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
+    expect(store.state().stalled).toBe(true)
+    expect(isLive(store.state())).toBe(true)
+    expect(armScreenOf(store.state())).toBe('run')
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+
+    // A stalled save offers no new start and no gas check: its batch may still land.
+    const stalled = store.state()
+    await restart(store, wired)
+    await recheckGas(store, wired.steps)
+    expect(store.state()).toBe(stalled)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits again on check again, and goes through the check to saved once the receipt lands', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.wait.mockRejectedValueOnce(nodeError()).mockRejectedValueOnce(nodeError())
+    const store = await runSave(wired.steps)
+
+    await checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(3)
+    expect(wired.receipts.wait.mock.calls[2]).toEqual([TX_HASH, START_BLOCK])
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads stalled again where check again fails, and waits again on the next press', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.wait
+      .mockRejectedValueOnce(nodeError())
+      .mockRejectedValueOnce(nodeError())
+      .mockRejectedValueOnce(nodeError())
+    const store = await runSave(wired.steps)
+
+    await checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(3)
+    expect(store.state().stalled).toBe(true)
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+
+    await checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(4)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('does not read saved where the receipt of check again lands and the check disagrees', async () => {
+    const wired = wireSave(account, script({ confirm: 'unauthorized' }))
+    wired.receipts.wait.mockRejectedValueOnce(nodeError()).mockRejectedValueOnce(nodeError())
+    const store = await runSave(wired.steps)
+
+    await checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(store.state().after).toEqual({ stage: 'disagreed', check: 'authorization' })
+    expect(isSaved(store.state())).toBe(false)
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  const SETTLED: [string, () => Error, 'failedReverted' | 'failedNotSent'][] = [
+    ['reverted', () => minedAndReverted(), 'failedReverted'],
+    ['replaced', () => replacedTransaction(), 'failedNotSent']
+  ]
+
+  SETTLED.forEach(([named, thrown, status]) => {
+    it(`reads a ${named} receipt on the second wait as ${named}, with no check and nothing wiped`, async () => {
+      const wired = wireSave(account, script())
+      wired.receipts.wait.mockRejectedValueOnce(nodeError()).mockRejectedValueOnce(thrown())
+      const store = await runSave(wired.steps)
+
+      expect(store.state().write.status).toBe(status)
+      expect(store.state().stalled).toBeFalsy()
+      expect(wired.confirmSetup).not.toHaveBeenCalled()
+      expect(wired.saveSetup).not.toHaveBeenCalled()
+    })
+
+    it(`reads a ${named} receipt on check again as ${named}, with no check and nothing wiped`, async () => {
+      const wired = wireSave(account, script())
+      wired.receipts.wait
+        .mockRejectedValueOnce(nodeError())
+        .mockRejectedValueOnce(nodeError())
+        .mockRejectedValueOnce(thrown())
+      const store = await runSave(wired.steps)
+
+      await checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+      expect(store.state().write.status).toBe(status)
+      expect(wired.confirmSetup).not.toHaveBeenCalled()
+      expect(wired.saveSetup).not.toHaveBeenCalled()
+    })
+  })
+
+  it('does nothing on check again where no wait failed', async () => {
+    const wired = wireSave(account, script())
+    const store = await runSave(wired.steps)
+    const saved = store.state()
+
+    await checkReceiptAgain(store, wired.steps)
+
+    expect(store.state()).toBe(saved)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("the sign screen's estimation before a save never sent", () => {
+  const SHORT_READINGS: [string, ReturnType<typeof feeReading>][] = [
+    ['an error', feeReading({ error: true })],
+    ['no available option', feeReading({ available: false })]
+  ]
+
+  SHORT_READINGS.forEach(([named, estimation]) => {
+    it(`runs the gas check again after a reading with ${named}, and shows the deposit step in a new run that read the setup`, async () => {
+      const wired = wireSave(account, script({ send: 'refused', estimation }))
+      wired.reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+      const store = await runSave(wired.steps)
+      const { write } = store.state()
+
+      expect(write.status).toBe('needsDeposit')
+      expect(write.run).toBe(2)
+      if (write.status !== 'needsDeposit') {
+        return
+      }
+      expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
+      expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(2)
+      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
+      expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+      // Continue sends once the key holds enough.
+      wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+      await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+      expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(2)
+      expect(isSaved(store.state())).toBe(true)
+    })
+  })
+
+  it('keeps the not-sent state with the retry, and sends nothing by itself, where the gas check again reads enough', async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    const store = await runSave(wired.steps)
+    const { write } = store.state()
+
+    expect(write.status).toBe('failedNotSent')
+    expect(write.run).toBe(1)
+    expect(canRetry(write)).toBe(true)
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(2)
+    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the not-sent state where the gas check again throws', async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    wired.reads.nativeBalance
+      .mockResolvedValueOnce(10n ** 18n)
+      .mockRejectedValueOnce(new Error('node down'))
+    const store = await runSave(wired.steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(store.state().write.run).toBe(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends as already set up, with no deposit step, where the gas check again is short and the account now holds a setup', async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    wired.reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+    wired.setupState
+      .mockResolvedValueOnce(setupStateOf(false))
+      .mockResolvedValueOnce(setupStateOf(true))
+    const store = await runSave(wired.steps)
+
+    expect(store.state().stop).toBe('already-set-up')
+    expect(store.state().write.status).not.toBe('needsDeposit')
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs no gas check again after a reading that was fine', async () => {
+    const wired = wireSave(account, script({ send: 'refused', estimation: feeReading() }))
+    const store = await runSave(wired.steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs no gas check again after a short reading where the operation may still land', async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'not-a-transaction', estimation: feeReading({ error: true }) })
+    )
+    const store = await runSave(wired.steps)
+
+    expect(mayStillLand(store.state().write)).toBe(true)
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs no gas check again after a short reading where the sent transaction was replaced', async () => {
+    const wired = wireSave(
+      account,
+      script({ receipt: 'replaced', estimation: feeReading({ error: true }) })
+    )
+    const store = await runSave(wired.steps)
+    const { write } = store.state()
+
+    expect(write.status === 'failedNotSent' && write.replaced).toBe('replaced')
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not carry a run's short reading into the next run", async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    const store = await runSave(wired.steps)
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(2)
+    wired.port.sendAccountBatch.mockRejectedValue(accountBatchRefusal('refused', wired.account))
+
+    await restart(store, wired)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(store.state().write.run).toBe(2)
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(3)
   })
 })

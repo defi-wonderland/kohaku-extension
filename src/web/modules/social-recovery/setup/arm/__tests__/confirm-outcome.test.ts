@@ -19,7 +19,9 @@ const reads = (...answers: (SetupConfirmation | Error | 'never')[]) => {
   return jest.fn(() => {
     const answer = answers[Math.min(index, answers.length - 1)]
     index += 1
-    if (answer === 'never') return new Promise<SetupConfirmation>(() => {})
+    if (answer === 'never') {
+      return new Promise<SetupConfirmation>(() => {})
+    }
     return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer)
   })
 }

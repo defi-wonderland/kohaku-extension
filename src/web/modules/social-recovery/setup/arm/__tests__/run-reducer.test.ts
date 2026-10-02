@@ -7,6 +7,9 @@
  *
  * Saved is never reached without a landed receipt of the run and an agreed
  * check of that same run, and an event of another run never moves the state.
+ * A run that found a setup on the account ends there, and nothing moves it
+ * after; the sign screen's reading and a stalled receipt wait belong to the
+ * run that submits.
  */
 import { zeroHash } from 'viem'
 
@@ -16,7 +19,7 @@ import type { DepositStep, GasCheck } from '@web/modules/social-recovery/shared/
 import { armReducer, initialArmState, isSaved } from '@web/modules/social-recovery/setup/arm'
 import type { ArmEvent, ArmState, PreparedSave } from '@web/modules/social-recovery/setup/arm'
 
-import { COMMIT, draftOf, KEY, TX_HASH } from './harness'
+import { COMMIT, draftOf, feeReading, KEY, nodeError, TX_HASH } from './harness'
 
 const LAST_RUN = 3
 
@@ -62,7 +65,12 @@ const ALPHABET: ArmEvent[] = [
     receipt(run, 0),
     receipt(run, 1, zeroHash),
     { type: 'write', event: { type: 'error', run, error: new Error('refused') } },
+    { type: 'write', event: { type: 'error', run, error: nodeError(), transactionHash: TX_HASH } },
+    { type: 'alreadySetUp', run },
     { type: 'prepared', run, prepared: SAVE },
+    { type: 'estimated', run, reading: feeReading({ error: true }) },
+    { type: 'waitStalled', run },
+    { type: 'waitResumed', run },
     { type: 'confirming', run },
     { type: 'confirmed', run, outcome: { kind: 'agreed' } },
     { type: 'confirmed', run, outcome: { kind: 'disagreed', check: 'mismatch' } },
@@ -73,7 +81,9 @@ const ALPHABET: ArmEvent[] = [
 ]
 
 const runOf = (event: ArmEvent): number | undefined => {
-  if (event.type !== 'write') return event.run
+  if (event.type !== 'write') {
+    return event.run
+  }
   return 'run' in event.event ? event.event.run : undefined
 }
 
@@ -212,12 +222,85 @@ describe("the save's reducer", () => {
           agreed: withRun(node.agreed, run, isAgreed(event)),
           path: [...node.path, event]
         }
-        if (isSaved(node.state)) savedSeen += 1
-        if (savedWithoutWitness(node)) broken.push(json(node.path))
+        if (isSaved(node.state)) {
+          savedSeen += 1
+        }
+        if (savedWithoutWitness(node)) {
+          broken.push(json(node.path))
+        }
       }
     }
     expect(savedSeen).toBeGreaterThan(0)
     expect(broken).toEqual([])
+  })
+
+  it('ends a run as already set up only while it reads the setup, before it prepared anything', () => {
+    const moved = WALK.steps.filter(
+      ({ from, event, to }) => event.type === 'alreadySetUp' && to.state !== from.state
+    )
+    expect(moved.length).toBeGreaterThan(0)
+    const wrong = moved
+      .filter(
+        ({ from, to }) =>
+          from.state.write.status !== 'checkingGas' ||
+          from.state.prepared !== undefined ||
+          to.state.stop !== 'already-set-up' ||
+          to.state.write.status !== 'idle' ||
+          to.state.prepared !== undefined
+      )
+      .map(({ from }) => json(from.path))
+    expect(wrong).toEqual([])
+  })
+
+  it('moves nothing after a run ended as already set up, whatever event arrives', () => {
+    const fromStopped = WALK.steps.filter(({ from }) => from.state.stop !== undefined)
+    expect(fromStopped.length).toBeGreaterThan(0)
+    const moved = fromStopped
+      .filter(({ from, to }) => to.state !== from.state)
+      .map(({ event, from }) => `${json(event)} after ${json(from.path)}`)
+    expect(moved).toEqual([])
+    expect(WALK.nodes.filter(({ state }) => state.stop !== undefined && isSaved(state))).toEqual([])
+  })
+
+  it("marks a receipt wait stalled only on a run that holds its batch's hash while it submits", () => {
+    const stalls = WALK.steps.filter(
+      ({ from, event, to }) => event.type === 'waitStalled' && to.state !== from.state
+    )
+    expect(stalls.length).toBeGreaterThan(0)
+    const wrong = stalls
+      .filter(
+        ({ from, event }) =>
+          from.state.write.status !== 'submitting' ||
+          !from.state.write.transactionHash ||
+          runOf(event) !== from.state.write.run
+      )
+      .map(({ from }) => json(from.path))
+    expect(wrong).toEqual([])
+  })
+
+  it("keeps the sign screen's reading only for the run that submits, and a new run starts with no reading, no stall and nothing prepared", () => {
+    const readings = WALK.steps.filter(
+      ({ from, event, to }) => event.type === 'estimated' && to.state !== from.state
+    )
+    expect(readings.length).toBeGreaterThan(0)
+    expect(
+      readings
+        .filter(({ from }) => from.state.write.status !== 'submitting')
+        .map(({ from }) => json(from.path))
+    ).toEqual([])
+    const newRuns = WALK.steps.filter(({ from, to }) => to.state.write.run !== from.state.write.run)
+    expect(newRuns.length).toBeGreaterThan(0)
+    expect(
+      newRuns
+        .filter(
+          ({ to }) =>
+            to.state.estimation !== undefined ||
+            to.state.stalled !== undefined ||
+            to.state.prepared !== undefined ||
+            to.state.after.stage !== 'none'
+        )
+        .map(({ from }) => json(from.path))
+    ).toEqual([])
   })
 
   it('takes no later check or wipe once the run read disagreed', () => {
