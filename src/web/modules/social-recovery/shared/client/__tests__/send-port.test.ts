@@ -15,6 +15,7 @@
  */
 import { Wallet } from 'ethers'
 
+import { SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import eventBus from '@web/extension-services/event/eventBus'
 import { addressOf } from '@web/modules/social-recovery/sdk-doubles'
@@ -40,8 +41,11 @@ import {
   OperationKind,
   operationFor,
   operationOf,
+  queuedRequest,
   queuedWith,
+  queueHolding,
   queueOver,
+  requestsPush,
   SEND_SETTLE_MS,
   SendRefusal,
   SendRefusalReason,
@@ -51,6 +55,7 @@ import {
   sendSubject,
   SendWorld,
   SEPOLIA,
+  signAccountOpPush,
   SMART_ACCOUNT,
   smartAccount,
   thrownBy,
@@ -525,6 +530,82 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         await advance(SEND_SETTLE_MS * 10)
         expect(send.status).toBe('pending')
         expect(withdrew(q, id)).toBe(false)
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(send).toEqual({ status: 'resolved', value: HASH })
+      })
+    })
+
+    describe('the time limit while the sign screen signs its request', () => {
+      /** The sign screen holding the operation of this request at a status. */
+      const signScreen = (id: string, status: SigningStatus) =>
+        signAccountOpPush({
+          accountOp: { accountAddr: names, calls: [{ fromUserRequestId: id }] },
+          status: { type: status }
+        })
+      const signingOwn = () => {
+        const { q, send, id } = sending()
+        q.queue = queueHolding([queuedRequest(id, { account: names })])
+        q.push(requestsPush(q.queue))
+        return { q, send, id }
+      }
+      const removalsOf = (q: SendWorld) => actionsOf(q.dispatch).filter((a) => a.type === REMOVE)
+
+      ;[SigningStatus.InProgress, SigningStatus.UpdatesPaused].forEach((status) =>
+        it(`withdraws nothing and does not refuse once the time passes while the sign screen is at ${status}, and answers the hash the activity names`, async () => {
+          const { q, send, id } = signingOwn()
+          q.push(signScreen(id, status))
+          await advance(DEFAULT_SEND_TIMEOUT_MS + SEND_SETTLE_MS * 3)
+          q.push(requestsPush(q.queue))
+          await advance(SEND_SETTLE_MS * 3)
+          expect(removalsOf(q)).toEqual([])
+          expect(send.status).toBe('pending')
+          q.push(activityListing(id, operationFor(id, { hash: HASH })))
+          await flush()
+          expect(send).toEqual({ status: 'resolved', value: HASH })
+          expect(removalsOf(q)).toEqual([])
+          expect(q.listeners()).toBe(0)
+          expect(jest.getTimerCount()).toBe(0)
+        })
+      )
+
+      it('withdraws once and refuses as timeout after the settle period when the signing ends back at ready to sign after the time passed', async () => {
+        const { q, send, id } = signingOwn()
+        q.push(signScreen(id, SigningStatus.InProgress))
+        await advance(DEFAULT_SEND_TIMEOUT_MS + SEND_SETTLE_MS)
+        expect(removalsOf(q)).toEqual([])
+        q.push(signScreen(id, SigningStatus.ReadyToSign))
+        expect(removalsOf(q)).toEqual([{ type: REMOVE, params: { id } }])
+        q.push(signScreen(id, SigningStatus.ReadyToSign))
+        q.push(requestsPush(q.queue))
+        expect(removalsOf(q)).toHaveLength(1)
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
+        expectRefusal(send, 'timeout')
+        expect(q.listeners()).toBe(0)
+        expect(jest.getTimerCount()).toBe(0)
+      })
+
+      it('withdraws nothing when the signing ends before the time passes, and withdraws once the time passes', async () => {
+        const { q, send, id } = signingOwn()
+        q.push(signScreen(id, SigningStatus.InProgress))
+        await advance(DEFAULT_SEND_TIMEOUT_MS - 1)
+        q.push(signScreen(id, SigningStatus.ReadyToSign))
+        expect(removalsOf(q)).toEqual([])
+        await advance(1)
+        expect(removalsOf(q)).toEqual([{ type: REMOVE, params: { id } }])
+        await advance(SEND_SETTLE_MS)
+        expectRefusal(send, 'timeout')
+      })
+
+      it('withdraws nothing when the signing ends after the time passed where the queue no longer holds its request, and answers the hash', async () => {
+        const { q, send, id } = signingOwn()
+        q.push(signScreen(id, SigningStatus.Done))
+        await advance(DEFAULT_SEND_TIMEOUT_MS)
+        q.queue = queueHolding([])
+        q.push(signAccountOpPush({}))
+        expect(removalsOf(q)).toEqual([])
         q.push(activityListing(id, operationFor(id, { hash: HASH })))
         await flush()
         expect(send).toEqual({ status: 'resolved', value: HASH })

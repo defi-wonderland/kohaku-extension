@@ -117,7 +117,8 @@ export const MISSING_SEND_ACTION = 'KEYSTORE_CONTROLLER_SEND_WITH_KEY' as const
  *   transaction of the sender follows it, and its hash, where one comes, is
  *   not the call's; that operation may still reach the chain;
  * - `timeout`: no answer came in time; the port withdraws the request, or
- *   waits until the queue drops one that waited for an account switch;
+ *   waits until the queue drops one that waited for an account switch, or
+ *   until the sign screen stops signing or pausing on it;
  * - `other-request-pending`: another `calls` request of the same account and
  *   chain waits in the queue, which would join it to this one; the port
  *   queued nothing, or withdrew its request before the wallet signed it.
@@ -603,11 +604,13 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
 
       // The queue withdraws a request only from its own list, never one that
       // waits for an account switch, so the timeout waits until the queue
-      // takes it in or drops it.
+      // takes it in or drops it. A withdrawal cannot stop a signature either,
+      // so the timeout also waits while the sign screen signs or pauses on
+      // this request, and applies once it stops with nothing broadcast.
       timer = setTimeout(() => {
         timer = undefined
         timedOut = true
-        if (!waiting) {
+        if (!waiting && !signing) {
           settle('timeout', true)
         }
       }, timeoutMs)
@@ -620,14 +623,15 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           const wasSigning = signing
           signing = signsRequest(update.state, id)
           // A failed signature takes the sign screen back to taking updates
-          // with no push of the queue, so a request that joined while it
-          // signed is looked for in the queue the screen holds now.
+          // with no push of the queue, so a time limit that passed while it
+          // signed, or a request that joined then, is read from the queue the
+          // screen holds now.
           if (wasSigning && !signing && !broadcast && settling === undefined) {
             const queue = port.queue()
-            if (
-              (queue.userRequests ?? []).some((queued) => queued.id === id) &&
-              otherCallsRequestIn(queue, id, account, chainId)
-            ) {
+            const queued = (queue.userRequests ?? []).some((held) => held.id === id)
+            if (queued && timedOut) {
+              settle('timeout', true)
+            } else if (queued && otherCallsRequestIn(queue, id, account, chainId)) {
               settle('other-request-pending', true)
             }
           }
@@ -708,7 +712,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         if (!inQueue) {
           return
         }
-        if (timedOut) {
+        if (timedOut && !signing) {
           settle('timeout', true)
           return
         }
