@@ -4,13 +4,10 @@ import { Pressable, View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
-import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
-import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { MethodRow, SectionLabel, StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import { renderMemberList } from '@web/modules/social-recovery/shared/display'
 
 import { enrollmentOf, isRequiredRow, kindOf, pathRowOf } from './lead'
@@ -24,7 +21,6 @@ import type { PathBlockProps, RetryKind } from './types'
  */
 const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlockProps) => {
   const { t } = useTranslation()
-  const { theme } = useTheme()
   const [shownAll, setShownAll] = useState<number[]>([])
 
   const retryKindOf = (credential: Credential): RetryKind | null => {
@@ -40,17 +36,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
     const row = pathRowOf(credential, enrollments, addressBook, t)
     const retryKind = retryKindOf(credential)
     return (
-      <View
-        key={testID}
-        testID={testID}
-        style={[
-          common.borderRadiusPrimary,
-          spacings.phSm,
-          spacings.pvSm,
-          spacings.mbTy,
-          { borderWidth: 1, borderColor: theme.primaryBorder }
-        ]}
-      >
+      <MethodRow key={testID} testID={testID}>
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.justifySpaceBetween]}>
           <View style={[flexbox.flex1, flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
             <Text fontSize={14} weight="medium" style={spacings.mrTy} testID={`${testID}-name`}>
@@ -68,9 +54,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
             )}
           </View>
           {!!row.chip && (
-            <View style={spacings.mlTy}>
-              <StatusChip text={row.chip} testID={`${testID}-chip`} />
-            </View>
+            <StatusChip text={row.chip} testID={`${testID}-chip`} style={spacings.mlTy} />
           )}
         </View>
         {row.lines.map((line, index) => (
@@ -98,7 +82,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
             />
           </View>
         )}
-      </View>
+      </MethodRow>
     )
   }
 
@@ -108,11 +92,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
   return (
     <View testID="review-path">
       <SectionLabel>{t('socialRecovery.review.pathHeader')}</SectionLabel>
-      {hasRequired && (
-        <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
-          {t('socialRecovery.editor.requiredHeader')}
-        </Text>
-      )}
+      {hasRequired && <SectionLabel>{t('socialRecovery.editor.requiredHeader')}</SectionLabel>}
       {clauses.map((clause, index) =>
         isRequiredRow(clause) ? renderRow(clause.credentials[0], index, 0) : null
       )}

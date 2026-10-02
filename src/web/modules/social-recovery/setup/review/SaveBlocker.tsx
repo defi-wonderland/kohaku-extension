@@ -6,8 +6,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { SectionCard, StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import { chipKey } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
@@ -111,9 +110,12 @@ const SaveBlocker = ({ blocked, ...handlers }: SaveBlockerProps) => {
       {(chip !== undefined || title !== undefined) && (
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
           {chip !== undefined && (
-            <View style={spacings.mrSm}>
-              <StatusChip text={t(chip)} tone="error" testID="review-blocked-chip" />
-            </View>
+            <StatusChip
+              text={t(chip)}
+              tone="error"
+              testID="review-blocked-chip"
+              style={spacings.mrSm}
+            />
           )}
           {title !== undefined && titleOf(t(title))}
         </View>

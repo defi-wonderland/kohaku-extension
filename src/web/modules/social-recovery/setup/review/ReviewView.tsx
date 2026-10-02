@@ -19,11 +19,13 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import {
+  ActionsRow,
+  PageTitle,
+  SectionCard,
+  SectionLabel,
+  StatusChip
+} from '@web/modules/social-recovery/shared/chrome'
 import {
   addressBookOf,
   recoveryChainOf,
@@ -169,14 +171,15 @@ const ReviewView = ({
         {title}
         {loadFailed ? (
           <>
-            <Text
-              fontSize={14}
-              appearance="errorText"
-              style={spacings.mbMd}
-              testID="review-load-failed"
-            >
-              {t('socialRecovery.records.loadFailed')}
-            </Text>
+            <Alert
+              type="error"
+              size="sm"
+              text={
+                <Alert.Text size="sm" type="error" testID="review-load-failed">
+                  {t('socialRecovery.records.loadFailed')}
+                </Alert.Text>
+              }
+            />
             <ActionsRow
               primary={
                 <Button
@@ -239,16 +242,15 @@ const ReviewView = ({
   }
 
   const clientRetry = (client.status === 'update-the-wallet' || client.status === 'failed') && (
-    <View style={spacings.mrSm}>
-      <Button
-        testID="review-client-retry"
-        type="secondary"
-        size="small"
-        text={t('socialRecovery.writes.tryAgain')}
-        onPress={client.retry}
-        hasBottomSpacing={false}
-      />
-    </View>
+    <Button
+      testID="review-client-retry"
+      type="secondary"
+      size="small"
+      text={t('socialRecovery.writes.tryAgain')}
+      onPress={client.retry}
+      hasBottomSpacing={false}
+      style={spacings.mrSm}
+    />
   )
 
   return (
@@ -316,6 +318,8 @@ const ReviewView = ({
 
       <Pressable
         testID="review-verify-details"
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
         onPress={() => setExpanded((open) => !open)}
         style={[
           flexbox.directionRow,
@@ -421,9 +425,11 @@ const ReviewView = ({
       {gate.notTested && (
         <SectionCard testID="review-not-tested">
           <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
-            <View style={spacings.mrSm}>
-              <StatusChip text={renderChip('method', 'notTested', t)} tone="warning" />
-            </View>
+            <StatusChip
+              text={renderChip('method', 'notTested', t)}
+              tone="warning"
+              style={spacings.mrSm}
+            />
             <Text fontSize={16} weight="medium">
               {t(`${REVIEW}.blocked.notTested.title`)}
             </Text>
@@ -446,10 +452,10 @@ const ReviewView = ({
           />
         }
         secondary={
-          <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+          <>
             {clientRetry}
             {back}
-          </View>
+          </>
         }
         note={t(`${REVIEW}.oneConfirmation`)}
       />

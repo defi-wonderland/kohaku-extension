@@ -5,8 +5,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import { SectionCard, StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import {
   renderFullAddress,
   renderNoun,
@@ -87,7 +86,7 @@ const StopBlock = ({ rows }: StopBlockProps) => {
     <SectionCard
       tone="muted"
       label={renderNoun('securityStop', t)}
-      style={spacings.mbTy}
+      spacing="item"
       testID="review-stop-block"
     >
       {rows.map((row, index) => {
