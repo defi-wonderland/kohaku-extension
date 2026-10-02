@@ -393,6 +393,33 @@ describe('the lines the view reads', () => {
     ])
   })
 
+  it("sets the save's own sentence over a followed request: unread or gone with no hash, and the submitting note otherwise", () => {
+    const noHash: WriteState = { status: 'submitting', write: 'save' }
+    const withHash: WriteState = { status: 'submitting', write: 'save', transactionHash: TX_HASH }
+    const refused: WriteState = { status: 'failedNotSent', write: 'save', error: new Error('x') }
+    const rows = (['queued', 'unread', 'gone', undefined] as const).flatMap((follow) =>
+      [noHash, withHash, refused].map((state) => ({
+        status: state.status,
+        keys: saveWriteKeysOf(state, follow)
+      }))
+    )
+    const notes = rows.filter(({ status }) => status === 'submitting').map(({ keys }) => keys.note)
+    expect(notes).toEqual([
+      'socialRecovery.review.after.submitting',
+      'socialRecovery.review.after.submitting',
+      'socialRecovery.arm.unread',
+      'socialRecovery.review.after.submitting',
+      'socialRecovery.arm.lookingForSave',
+      'socialRecovery.review.after.submitting',
+      'socialRecovery.review.after.submitting',
+      'socialRecovery.review.after.submitting'
+    ])
+    // A reading of the follow never changes the keys of a state that is not submitting.
+    rows
+      .filter(({ status }) => status !== 'submitting')
+      .forEach(({ keys }) => expect(keys).toEqual(saveWriteKeysOf(refused)))
+  })
+
   it('names the check that disagreed', () => {
     expect(disagreedLineKeyOf('mismatch')).toBe('socialRecovery.arm.disagreed.mismatch')
     expect(disagreedLineKeyOf('authorization')).toBe(

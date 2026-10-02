@@ -561,7 +561,7 @@ describe('the write states in the save words', () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a followed request whose read did not answer as submitting with check again, which reads it again', () => {
+  it('shows a followed request whose read did not answer as submitting with its own sentence in place of the submitting one, and check again, which reads it again', () => {
     const onCheckAgain = jest.fn()
     mount({
       state: {
@@ -571,25 +571,59 @@ describe('the write states in the save words', () => {
       },
       onCheckAgain
     })
+    expect(t('socialRecovery.arm.unread')).not.toBe(t('socialRecovery.review.after.submitting'))
     expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
+    expect(pageText()).toContain(t('socialRecovery.arm.unread'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.submitting'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.lookingForSave'))
     expect(byTestId('arm-save')).toBeNull()
     expect(byTestId('arm-back')).toBeNull()
     press('arm-check-again')
     expect(onCheckAgain).toHaveBeenCalledTimes(1)
   })
-  ;(['queued', 'gone'] as const).forEach((follow) =>
-    it(`shows a followed request read ${follow} as submitting, with no check again and no Save`, () => {
-      mount({
-        state: {
-          ...withWrite({ status: 'submitting', write: 'save', run: 2 }),
-          requestId: 'stored',
-          follow
-        }
-      })
-      expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
-      expect(byTestId('arm-check-again')).toBeNull()
+
+  it('shows a followed request neither the queue nor the activity holds as submitting with its own sentence in place of the submitting one, with no check again and no Save', () => {
+    mount({
+      state: {
+        ...withWrite({ status: 'submitting', write: 'save', run: 2 }),
+        requestId: 'stored',
+        follow: 'gone'
+      }
+    })
+    expect(t('socialRecovery.arm.lookingForSave')).not.toBe(
+      t('socialRecovery.review.after.submitting')
+    )
+    expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
+    expect(pageText()).toContain(t('socialRecovery.arm.lookingForSave'))
+    expect(pageText()).not.toContain(t('socialRecovery.review.after.submitting'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.unread'))
+    expect(byTestId('arm-check-again')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('arm-back')).toBeNull()
+  })
+
+  const SUBMITTING_NOTE: [string, Partial<ArmState>, WriteMachineState][] = [
+    ['queued', { follow: 'queued' }, { status: 'submitting', write: 'save', run: 2 }],
+    [
+      'broadcast under its hash',
+      {},
+      { status: 'submitting', write: 'save', transactionHash: TX_HASH, run: 2 }
+    ],
+    [
+      'stalled under its hash',
+      { stalled: true },
+      { status: 'submitting', write: 'save', transactionHash: TX_HASH, run: 2 }
+    ],
+    ['in the wallet window of this page', {}, { status: 'submitting', write: 'save', run: 1 }]
+  ]
+
+  SUBMITTING_NOTE.forEach(([named, held, write]) =>
+    it(`keeps the submitting sentence, and neither of the follow's own, for a save ${named}`, () => {
+      mount({ state: { ...withWrite(write), requestId: 'stored', ...held } })
+      expect(pageText()).toContain(t('socialRecovery.review.after.submitting'))
+      expect(pageText()).not.toContain(t('socialRecovery.arm.unread'))
+      expect(pageText()).not.toContain(t('socialRecovery.arm.lookingForSave'))
       expect(byTestId('arm-save')).toBeNull()
-      expect(byTestId('arm-back')).toBeNull()
     })
   )
 

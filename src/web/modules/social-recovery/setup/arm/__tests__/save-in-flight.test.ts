@@ -8,12 +8,14 @@
  */
 import type { Account } from '@ambire-common/interfaces/account'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
+import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
 import { canRetry, mayStillLand } from '@web/modules/social-recovery/shared/writes'
 
 import {
   armScreenOf,
   checkReceiptAgain,
   checkSetupAgain,
+  committedDraftOf,
   createArmStore,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
@@ -22,10 +24,12 @@ import {
   RECEIPT_WAIT_MS,
   startSave
 } from '@web/modules/social-recovery/setup/arm'
-import type { ArmStore } from '@web/modules/social-recovery/setup/arm'
+import type { ArmStore, SaveSteps } from '@web/modules/social-recovery/setup/arm'
+import { detachSteps, resumeFollow } from '@web/modules/social-recovery/setup/arm/run'
 
 import {
   advanceTimers,
+  draftOf,
   ENDINGS,
   HAPPY,
   landedReceipt,
@@ -602,5 +606,571 @@ describe('a page that finds a save stored with no hash', () => {
     expect(offersSave(store)).toBe(false)
     expect(store.state().write.status).toBe('submitting')
     expect(await stored(wired)).toBeDefined()
+  })
+})
+
+describe('the setup read after the claim', () => {
+  it("sends nothing where another page's save landed, and its stored save left, during this page's gas check: the claim is released and the run ends as already set up", async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    let onChain = false
+    const first = wireSave(account, script(), { storage, requests })
+    const second = wireSave(account, script(), { storage, requests })
+    ;[first, second].forEach((page) =>
+      page.setupState.mockImplementation(async () => setupStateOf(onChain))
+    )
+    first.receipts.wait.mockImplementation(async (hash) => {
+      onChain = true
+      return landedReceipt(hash)
+    })
+    const gas = held<bigint>()
+    second.reads.nativeBalance.mockImplementationOnce(() => gas.promise)
+
+    // The second page reads no stored save and no setup, and offers Save; Save starts its run.
+    const store = createArmStore()
+    await lookForSave(store, second.steps, OPTIONS)
+    expect(offersSave(store)).toBe(true)
+    const running = startSave(store, second.steps, OPTIONS)
+    await advanceTimers(0)
+    expect(store.state().write.status).toBe('checkingGas')
+    expect(second.setupState).toHaveBeenCalledTimes(1)
+
+    // Meanwhile the first page's save lands, its check agrees, and its wipe takes the stored save.
+    const firstStore = createArmStore()
+    const firstRun = startSave(firstStore, first.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await firstRun
+    expect(isSaved(firstStore.state())).toBe(true)
+    expect(await stored(first)).toBeUndefined()
+    const writes = jest.spyOn(storage, 'set')
+    const removals = jest.spyOn(storage, 'remove')
+
+    gas.release(10n ** 18n)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    // The second page's claim found no record and was written, then released.
+    expect(writes).toHaveBeenCalledTimes(1)
+    expect(removals).toHaveBeenCalledTimes(1)
+    expect(second.setupState).toHaveBeenCalledTimes(2)
+    expect(second.setupState.mock.invocationCallOrder[1]).toBeGreaterThan(
+      writes.mock.invocationCallOrder[0]
+    )
+    expect(store.state().stop).toBe('already-set-up')
+    expect(armScreenOf(store.state())).toBe('already-set-up')
+    expect(store.state().requestId).toBeUndefined()
+    expect(second.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(first.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(second.confirmSetup).not.toHaveBeenCalled()
+    expect(second.saveSetup).not.toHaveBeenCalled()
+    expect(await stored(second)).toBeUndefined()
+  })
+
+  it('reads a setup read after the claim that throws as never sent, with the claim released and nothing sent, and the retry sends once', async () => {
+    const wired = wireSave(account, script())
+    wired.setupState
+      .mockResolvedValueOnce(setupStateOf(false))
+      .mockRejectedValueOnce(new Error('the node did not answer the setup read'))
+    const removals = jest.spyOn(wired.storage, 'remove')
+    const store = createArmStore()
+
+    await startSave(store, wired.steps, OPTIONS)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(store.state().requestId).toBeUndefined()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(removals).toHaveBeenCalledTimes(1)
+    expect(await stored(wired)).toBeUndefined()
+
+    const retry = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await retry
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+    expect(await stored(wired)).toBeUndefined()
+  })
+})
+
+/** The first page went away before the wallet answered the hash; another page's screen follows the save it stored. */
+const followWithNoHash = async () => {
+  const storage = memoryStorage()
+  const { record } = await firstPageLeaves(storage, requestsFake(), { withHash: false })
+  return { storage, record }
+}
+
+/** A screen's steps over the device's storage and the wallet's queue and activity as that screen reads them. */
+const screenOver = (storage: MemoryStorage, requests: RequestsFake) =>
+  wireSave(account, script(), { storage, requests })
+
+/** Counts the subscriptions to the wallet's pushes that are still open. */
+const openSubscriptions = (requests: RequestsFake) => {
+  let open = 0
+  const subscribe = requests.subscribe.bind(requests)
+  jest.spyOn(requests, 'subscribe').mockImplementation((listener) => {
+    open += 1
+    const unsubscribe = subscribe(listener)
+    let closed = false
+    return () => {
+      if (!closed) {
+        closed = true
+        open -= 1
+      }
+      unsubscribe()
+    }
+  })
+  return () => open
+}
+
+describe('a follow with no hash whose screen went away', () => {
+  it('pauses while the request was queued at the unmount, reads, voids and releases nothing far past the grace, and on the next screen reads the live queue to saved', async () => {
+    const { storage, record } = await followWithNoHash()
+    const gone = requestsFake()
+    gone.queued = [record.requestId]
+    const subscriptions = openSubscriptions(gone)
+    const before = screenOver(storage, gone)
+    const reads = jest.spyOn(before.steps, 'requestState')
+    const store = createArmStore()
+    unawaited(lookForSave(store, before.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(store.state().follow).toBe('queued')
+
+    // The screen unmounts: its queue stays as it was, the request in it.
+    detachSteps(before.steps)
+    const readsAtUnmount = reads.mock.calls.length
+    const removals = jest.spyOn(storage, 'remove')
+    await advanceTimers(10 * GONE_GRACE_MS)
+
+    expect(reads).toHaveBeenCalledTimes(readsAtUnmount)
+    expect(store.state().write.status).toBe('submitting')
+    expect(store.state().requestId).toBe(record.requestId)
+    expect(store.state().landedUnseen).toBeUndefined()
+    expect(removals).not.toHaveBeenCalled()
+    expect((await stored(before))?.transactionHash).toBeUndefined()
+    expect(before.setupState).not.toHaveBeenCalled()
+    // Nothing of the paused follow is left running.
+    expect(jest.getTimerCount()).toBe(0)
+    expect(subscriptions()).toBe(0)
+
+    // The wallet broadcast it meanwhile; the next screen reads its own live queue and activity.
+    const live = requestsFake()
+    live.activity = [operationFor(record.requestId, { hash: TX_HASH })]
+    const after = screenOver(storage, live)
+    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    await advanceTimers(SHORT_TIMEOUT_MS)
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(after.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+    expect(after.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(after.saveSetup).toHaveBeenCalledTimes(1)
+    expect(before.confirmSetup).not.toHaveBeenCalled()
+    expect(before.saveSetup).not.toHaveBeenCalled()
+    expect(reads).toHaveBeenCalledTimes(readsAtUnmount)
+    expect(await stored(after)).toBeUndefined()
+    expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(before.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('pauses while the request was not yet queued at the unmount, voids nothing far past the grace, and on the next screen follows it queued, then broadcast, to saved', async () => {
+    const { storage, record } = await followWithNoHash()
+    const gone = requestsFake()
+    const subscriptions = openSubscriptions(gone)
+    const before = screenOver(storage, gone)
+    const reads = jest.spyOn(before.steps, 'requestState')
+    const store = createArmStore()
+    unawaited(lookForSave(store, before.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(store.state().follow).toBe('gone')
+
+    detachSteps(before.steps)
+    const readsAtUnmount = reads.mock.calls.length
+    const setupReadsAtUnmount = before.setupState.mock.calls.length
+    const removals = jest.spyOn(storage, 'remove')
+    await advanceTimers(10 * GONE_GRACE_MS)
+
+    expect(reads).toHaveBeenCalledTimes(readsAtUnmount)
+    expect(before.setupState).toHaveBeenCalledTimes(setupReadsAtUnmount)
+    expect(store.state().write.status).toBe('submitting')
+    expect(store.state().requestId).toBe(record.requestId)
+    expect(offersSave(store)).toBe(false)
+    expect(removals).not.toHaveBeenCalled()
+    expect(await stored(before)).toBeDefined()
+    expect(jest.getTimerCount()).toBe(0)
+    expect(subscriptions()).toBe(0)
+
+    // The wallet took the request in late; the next screen finds it queued, then broadcast.
+    const live = requestsFake()
+    live.queued = [record.requestId]
+    const after = screenOver(storage, live)
+    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(store.state().follow).toBe('queued')
+
+    live.queued = []
+    live.activity = [operationFor(record.requestId, { hash: TX_HASH })]
+    live.pushQueue()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(after.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(after.saveSetup).toHaveBeenCalledTimes(1)
+    expect(before.confirmSetup).not.toHaveBeenCalled()
+    expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('counts the grace again from the first gone reading after the next screen took the follow up', async () => {
+    const { storage, record } = await followWithNoHash()
+    const before = screenOver(storage, requestsFake())
+    const store = createArmStore()
+    unawaited(lookForSave(store, before.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(store.state().follow).toBe('gone')
+    detachSteps(before.steps)
+    await advanceTimers(10 * GONE_GRACE_MS)
+
+    const after = screenOver(storage, requestsFake())
+    unawaited(resumeFollow(store, after.steps, OPTIONS))
+    await advanceTimers(GONE_GRACE_MS - 1)
+    expect(store.state().follow).toBe('gone')
+    expect(store.state().requestId).toBe(record.requestId)
+    expect(await stored(after)).toBeDefined()
+
+    await advanceTimers(1)
+    expect(offersSave(store)).toBe(true)
+    expect(await stored(after)).toBeUndefined()
+    expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('a follower checks with the draft the stored save sent', () => {
+  /** A second page whose own setup records now hold another draft than the one the first page sent. */
+  const pageWithAnotherDraft = (storage: MemoryStorage, requests: RequestsFake) => {
+    const page = wireSave(account, script({ backup: 'clear' }), { storage, requests })
+    expect(page.draft).not.toEqual(draftOf('encrypted'))
+    return page
+  }
+
+  const FOLLOWS: {
+    named: string
+    withHash: boolean
+    arrange: (requestId: string, page: WiredSave, requests: RequestsFake) => void
+  }[] = [
+    { named: 'under its hash', withHash: true, arrange: () => {} },
+    {
+      named: 'with no hash, broadcast',
+      withHash: false,
+      arrange: (requestId, _page, requests) => {
+        // eslint-disable-next-line no-param-reassign
+        requests.activity = [operationFor(requestId, { hash: TX_HASH })]
+      }
+    },
+    {
+      named: 'with no hash, gone with a setup on the account',
+      withHash: false,
+      arrange: (_requestId, page) => {
+        page.setupState.mockResolvedValue(setupStateOf(true))
+      }
+    }
+  ]
+
+  FOLLOWS.forEach(({ named, withHash, arrange }) =>
+    it(`checks ${named} with the sent draft and prepared write, reads agreed and wipes`, async () => {
+      const storage = memoryStorage()
+      const requests = requestsFake()
+      const { record } = await firstPageLeaves(storage, requests, { withHash })
+      expect(record.draft).toEqual(draftOf('encrypted'))
+      const page = pageWithAnotherDraft(storage, requests)
+      arrange(record.requestId, page, requests)
+      const store = createArmStore()
+
+      const arriving = lookForSave(store, page.steps, OPTIONS)
+      await advanceTimers(SHORT_TIMEOUT_MS)
+      await arriving
+
+      expect(page.confirmSetup).toHaveBeenCalledTimes(1)
+      expect(page.confirmSetup).toHaveBeenCalledWith(record.draft, record.prepared)
+      expect(isSaved(store.state())).toBe(true)
+      expect(page.saveSetup).toHaveBeenCalledTimes(1)
+      expect(await stored(page)).toBeUndefined()
+      expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+  )
+
+  it('stores at the claim the draft the save commits, with its shape note rebuilt, and a follower checks with that draft', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const stale = shapeNoteOf({ clauses: [], wait: 1n, ignoresPause: true })
+    const first = wireSave(account, script({ publicMetadata: stale }), { storage, requests })
+    first.receipts.wait.mockImplementation(() => pending())
+    unawaited(startSave(createArmStore(), first.steps, OPTIONS))
+    await advanceTimers(0)
+    const record = await stored(first)
+    const committed = committedDraftOf(first.draft)
+    expect(committed).not.toEqual(first.draft)
+    expect(record?.draft).toEqual(committed)
+
+    const page = secondPage(storage, requests)
+    const arriving = page.arrive()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await arriving
+    expect(page.wired.confirmSetup).toHaveBeenCalledWith(committed, record?.prepared)
+    expect(isSaved(page.store.state())).toBe(true)
+  })
+
+  it('checks with the sent draft on a start that lost the claim, not with the draft it prepared itself', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const { record } = await firstPageLeaves(storage, requests, { withHash: true })
+    const page = pageWithAnotherDraft(storage, requests)
+    const store = createArmStore()
+
+    const running = startSave(store, page.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    expect(page.prepareCommitSetup).toHaveBeenCalledWith(page.draft, undefined)
+    expect(page.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(page.confirmSetup).toHaveBeenCalledWith(record.draft, record.prepared)
+    expect(isSaved(store.state())).toBe(true)
+    expect(page.saveSetup).toHaveBeenCalledTimes(1)
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('the read of the stored save after a void', () => {
+  it('releases the void save before it reads again, and follows the save another page claimed meanwhile, with no Save offered', async () => {
+    const { storage, record } = await followWithNoHash()
+    const requests = requestsFake()
+    const page = screenOver(storage, requests)
+    const other = screenOver(storage, requests)
+    const store = createArmStore()
+    const seen: string[] = []
+    const steps: SaveSteps = {
+      ...page.steps,
+      readInFlight: () => {
+        seen.push('read')
+        return page.steps.readInFlight()
+      },
+      release: async (requestId) => {
+        const { write, lookup, requestId: claim } = store.state()
+        seen.push(`release while ${write.status}, lookup ${lookup}, claim ${claim}`)
+        await page.steps.release(requestId)
+        // Another page claims under a new id between the release and the next read.
+        requests.queued = ['claimed meanwhile']
+        await other.steps.claim(
+          { draft: other.draft, prepared: other.prepared, calls: [] },
+          'claimed meanwhile',
+          START_BLOCK
+        )
+      }
+    }
+
+    unawaited(lookForSave(store, steps, OPTIONS))
+    await advanceTimers(GONE_GRACE_MS)
+
+    expect(seen).toEqual(['read', 'release while idle, lookup undefined, claim undefined', 'read'])
+    expect(store.state().requestId).toBe('claimed meanwhile')
+    expect(store.state().write.status).toBe('submitting')
+    expect(store.state().follow).toBe('queued')
+    expect(offersSave(store)).toBe(false)
+    expect((await stored(page))?.requestId).toBe('claimed meanwhile')
+    expect(record.requestId).not.toBe('claimed meanwhile')
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('offers no Save between the void and the read that answers none, then offers it', async () => {
+    const { storage } = await followWithNoHash()
+    const page = screenOver(storage, requestsFake())
+    const second = held<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
+    let readsMade = 0
+    const steps: SaveSteps = {
+      ...page.steps,
+      readInFlight: () => {
+        readsMade += 1
+        return readsMade === 1 ? page.steps.readInFlight() : second.promise
+      }
+    }
+    const store = createArmStore()
+
+    unawaited(lookForSave(store, steps, OPTIONS))
+    await advanceTimers(GONE_GRACE_MS)
+
+    expect(readsMade).toBe(2)
+    expect(store.state().write.status).toBe('idle')
+    expect(store.state().lookup).toBe('reading')
+    expect(offersSave(store)).toBe(false)
+    expect(await stored(page)).toBeUndefined()
+
+    second.release(await page.steps.readInFlight())
+    await advanceTimers(0)
+    expect(offersSave(store)).toBe(true)
+  })
+})
+
+describe('the age of the claim before a void', () => {
+  it('does not void a claim younger than the grace, though the gone readings since an earlier first reading ran past it', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = screenOver(storage, requests)
+    // A claim whose time reads later than this page's first gone reading.
+    const claimedAt = Date.now() + GONE_GRACE_MS / 2
+    await owner.inFlight.claim({
+      draft: owner.draft,
+      prepared: owner.prepared,
+      requestId: 'younger claim',
+      claimedAt
+    })
+    const page = secondPage(storage, requests)
+
+    unawaited(page.arrive())
+    await advanceTimers(0)
+    expect(page.store.state().follow).toBe('gone')
+    await advanceTimers(GONE_GRACE_MS)
+
+    expect(page.store.state().requestId).toBe('younger claim')
+    expect(offersSave(page.store)).toBe(false)
+    expect(await stored(page.wired)).toBeDefined()
+
+    await advanceTimers(claimedAt + GONE_GRACE_MS - Date.now() - 1)
+    expect(await stored(page.wired)).toBeDefined()
+    await advanceTimers(FOLLOW_REREAD_MS)
+    expect(offersSave(page.store)).toBe(true)
+    expect(await stored(page.wired)).toBeUndefined()
+  })
+
+  it('counts the grace again from the first gone reading after a reading that did not answer', async () => {
+    const { storage } = await followWithNoHash()
+    const requests = requestsFake()
+    const page = secondPage(storage, requests)
+    unawaited(page.arrive())
+    await advanceTimers(0)
+    expect(page.store.state().follow).toBe('gone')
+
+    // Gone for most of the grace, then one reading that does not answer.
+    await advanceTimers(GONE_GRACE_MS - 2 * FOLLOW_REREAD_MS)
+    requests.activity = null
+    while (page.store.state().follow !== 'unread') {
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(1_000)
+    }
+    requests.activity = []
+    while (page.store.state().follow !== 'gone') {
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(1_000)
+    }
+    const countFrom = Date.now()
+
+    await advanceTimers(GONE_GRACE_MS - 1_000)
+    expect(page.store.state().follow).toBe('gone')
+    expect(offersSave(page.store)).toBe(false)
+    expect(await stored(page.wired)).toBeDefined()
+
+    await advanceTimers(countFrom + GONE_GRACE_MS + FOLLOW_REREAD_MS - Date.now())
+    expect(offersSave(page.store)).toBe(true)
+    expect(await stored(page.wired)).toBeUndefined()
+  })
+})
+
+describe('the start block stored with the claim', () => {
+  it('stores the block read just before the claim, and keeps it when the hash is written', async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.blockNumber.mockResolvedValueOnce(START_BLOCK + 5)
+    const sign = held<typeof TX_HASH>()
+    wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
+    wired.receipts.wait.mockImplementation(() => pending())
+    const writes = jest.spyOn(wired.storage, 'set')
+    unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
+    await advanceTimers(0)
+
+    const claimed = await stored(wired)
+    expect(claimed?.startBlock).toBe(START_BLOCK + 5)
+    expect(claimed?.transactionHash).toBeUndefined()
+    const [blockRead] = wired.receipts.blockNumber.mock.invocationCallOrder
+    expect(blockRead).toBeGreaterThan(
+      Math.max(...wired.reads.nativeBalance.mock.invocationCallOrder)
+    )
+    expect(blockRead).toBeLessThan(writes.mock.invocationCallOrder[0])
+
+    // The send reads its own block; the stored save keeps the claim's.
+    sign.release(TX_HASH)
+    await advanceTimers(0)
+    const marked = await stored(wired)
+    expect(marked?.transactionHash).toBe(TX_HASH)
+    expect(marked?.startBlock).toBe(START_BLOCK + 5)
+  })
+
+  it("stores a claim with no block where the block read fails, then the hash with the send's block", async () => {
+    const wired = wireSave(account, script())
+    wired.receipts.blockNumber.mockRejectedValueOnce(nodeError())
+    const sign = held<typeof TX_HASH>()
+    wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
+    wired.receipts.wait.mockImplementation(() => pending())
+    unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
+    await advanceTimers(0)
+
+    const claimed = await stored(wired)
+    expect(claimed).toBeDefined()
+    expect(claimed?.startBlock).toBeUndefined()
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+    sign.release(TX_HASH)
+    await advanceTimers(0)
+    const marked = await stored(wired)
+    expect(marked?.transactionHash).toBe(TX_HASH)
+    expect(marked?.startBlock).toBe(START_BLOCK)
+  })
+
+  it("waits, as a follower of a broadcast request, from the claim's block, which its hash write keeps", async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const first = wireSave(account, script(), { storage, requests })
+    first.receipts.blockNumber.mockResolvedValue(START_BLOCK - 7)
+    first.port.sendAccountBatch.mockImplementation(() => pending())
+    unawaited(startSave(createArmStore(), first.steps, OPTIONS))
+    await advanceTimers(0)
+    const record = await stored(first)
+    expect(record?.startBlock).toBe(START_BLOCK - 7)
+
+    requests.activity = [operationFor(record!.requestId, { hash: TX_HASH })]
+    const page = secondPage(storage, requests)
+    const receipt = held<ReturnType<typeof landedReceipt>>()
+    page.wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
+    const arriving = page.arrive()
+    await advanceTimers(0)
+
+    const marked = await stored(page.wired)
+    expect(marked?.transactionHash).toBe(TX_HASH)
+    expect(marked?.startBlock).toBe(START_BLOCK - 7)
+    expect(page.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK - 7)
+
+    receipt.release(landedReceipt())
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await arriving
+    expect(isSaved(page.store.state())).toBe(true)
+  })
+
+  it('stores the hash a follower read where the claim holds no block and its own block read fails', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const first = wireSave(account, script(), { storage, requests })
+    first.receipts.blockNumber.mockRejectedValueOnce(nodeError())
+    first.port.sendAccountBatch.mockImplementation(() => pending())
+    unawaited(startSave(createArmStore(), first.steps, OPTIONS))
+    await advanceTimers(0)
+    const record = await stored(first)
+    expect(record?.startBlock).toBeUndefined()
+
+    requests.activity = [operationFor(record!.requestId, { hash: TX_HASH })]
+    const page = secondPage(storage, requests)
+    page.wired.receipts.blockNumber.mockRejectedValue(nodeError())
+    page.wired.receipts.wait.mockImplementation(() => pending())
+    unawaited(page.arrive())
+    await advanceTimers(0)
+
+    const marked = await stored(page.wired)
+    expect(marked?.transactionHash).toBe(TX_HASH)
+    expect(marked?.startBlock).toBeUndefined()
+    expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 })
