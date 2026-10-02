@@ -51,9 +51,9 @@
  *
  * The queue joins every `calls` request of one account and chain into one
  * operation. So the port queues nothing where another `calls` request of the
- * account and chain is already in the queue, and until the sign screen that
- * holds its request starts to sign it withdraws its own request where another
- * one joins it, refusing with `other-request-pending` in both cases.
+ * account and chain is already in the queue, and except while the sign screen
+ * that holds its request signs it withdraws its own request where another one
+ * joins it, refusing with `other-request-pending` in both cases.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { isAddress, isHash } from 'viem'
@@ -521,7 +521,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let waiting = false
       let timedOut = false
       let busy = false
-      let signStarted = false
+      let signing = false
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
       let unsubscribe: () => void = () => {}
@@ -614,8 +614,19 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           return
         }
         if (update.controller === 'signAccountOp') {
-          if (signsRequest(update.state, id)) {
-            signStarted = true
+          const wasSigning = signing
+          signing = signsRequest(update.state, id)
+          // A failed signature takes the sign screen back to taking updates
+          // with no push of the queue, so a request that joined while it
+          // signed is looked for in the queue the screen holds now.
+          if (wasSigning && !signing && !broadcast && settling === undefined) {
+            const queue = port.queue()
+            if (
+              (queue.userRequests ?? []).some((queued) => queued.id === id) &&
+              otherCallsRequestIn(queue, id, account, chainId)
+            ) {
+              settle('other-request-pending', true)
+            }
           }
           if (!onEstimation) {
             return
@@ -698,11 +709,11 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           settle('timeout', true)
           return
         }
-        // Until the sign screen that holds this request starts to sign its
+        // Except while the sign screen that holds this request signs its
         // operation, another request that joins it withdraws this one: the
         // holder would sign both together. The wallet's own signing status
         // covers every sign flow, so only the sign screen's status tells.
-        if (!signStarted && otherCallsRequestIn(update.state, id, account, chainId)) {
+        if (!signing && otherCallsRequestIn(update.state, id, account, chainId)) {
           settle('other-request-pending', true)
           return
         }
