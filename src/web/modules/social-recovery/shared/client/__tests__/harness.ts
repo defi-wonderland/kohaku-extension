@@ -66,10 +66,12 @@ import {
   type KeyHandle,
   type ListedAccount,
   type MainStatusState,
+  type QueuedRequest,
   type RecoveryChain,
   type RecoveryClientConfiguration,
   type SendPort,
   type SendPortOptions,
+  type SendQueueState,
   type SendRefusal,
   type SendRefusalReason,
   type SendRequestPort,
@@ -547,6 +549,12 @@ export interface SendWorld {
   push: (update: SendRequestUpdate) => void
   /** How many listeners are subscribed now. */
   listeners: () => number
+  /** The request queue the wallet holds now, which the port pulls; a test may replace it. */
+  queue: SendQueueState
+  /** The selected account's operations broadcast and not confirmed, which the port pulls. */
+  unconfirmed: SubmittedOperation[]
+  /** The port the sender runs over. */
+  port: SendRequestPort
 }
 
 /**
@@ -563,18 +571,20 @@ export const sendQueueOver = (
   world.dispatch = jest.fn()
   world.push = (update) => [...listeners].forEach((l) => l(update))
   world.listeners = () => listeners.size
-  const port: SendRequestPort = {
+  world.queue = {}
+  world.unconfirmed = []
+  world.port = {
     dispatch: world.dispatch,
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
     accounts: () => world.accounts,
-    queue: () => ({}),
-    unconfirmedOperations: () => [],
+    queue: () => world.queue,
+    unconfirmedOperations: () => world.unconfirmed,
     windowId: () => WINDOW_ID
   }
-  world.sender = createSendPort(port, { chainId: SEPOLIA, ...options })
+  world.sender = createSendPort(world.port, { chainId: SEPOLIA, ...options })
   return world
 }
 
@@ -681,6 +691,35 @@ export const waitingForSwitch = (...requestIds: (string | number)[]): SendReques
     userRequests: [],
     userRequestsWaitingAccountSwitch: requestIds.map((requestId) => ({ id: requestId }))
   }
+})
+
+/** What a request in the wallet's queue is for: its kind, its account and its chain. */
+export interface QueuedFor {
+  account: string
+  chainId?: bigint
+  kind?: string
+}
+
+/** One request in the wallet's queue, with the kind, account and chain the queue keeps. */
+export const queuedRequest = (
+  requestId: string | number,
+  { account, chainId = BigInt(SEPOLIA), kind = 'calls' }: QueuedFor
+): QueuedRequest => ({ id: requestId, action: { kind }, meta: { accountAddr: account, chainId } })
+
+/** The `requests` state holding these requests, those waiting for an account switch, and the window open. */
+export const queueHolding = (
+  requests: QueuedRequest[],
+  waiting: QueuedRequest[] = []
+): SendQueueState => ({
+  userRequests: requests,
+  userRequestsWaitingAccountSwitch: waiting,
+  actions: { actionWindow: { windowProps: { id: ACTION_WINDOW_ID } } }
+})
+
+/** The push of a `requests` state. */
+export const requestsPush = (state: SendQueueState): SendRequestUpdate => ({
+  controller: 'requests',
+  state
 })
 
 /** A smart account the wallet lists, as the wallet holds its address: checksummed. */
