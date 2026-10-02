@@ -135,11 +135,16 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         }
       }),
     blockNumber,
-    send: ({ calls }, dispatch, run, requestId, onEstimation) =>
+    send: ({ calls }, dispatch, run, requestId, startBlock, onEstimation) =>
       driveAccountBatch({
         dispatch,
         run,
-        receipts: input.receipts,
+        // The drive starts from the block the run already holds, so it reads
+        // nothing from the network before it hands the request to the wallet.
+        receipts: {
+          blockNumber: () => Promise.resolve(startBlock),
+          wait: (transactionHash, from) => input.receipts.wait(transactionHash, from)
+        },
         port: input.port,
         account: input.account,
         calls,

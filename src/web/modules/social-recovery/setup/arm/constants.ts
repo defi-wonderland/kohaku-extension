@@ -41,6 +41,14 @@ export const GONE_GRACE_MS = 60_000
 export const CLAIMED_SETUP_READ_MS = 20_000
 
 /**
+ * How long the read of the block a claimed send starts from may take, where
+ * the claim holds no block, in ms, before the claim is released with nothing
+ * sent. Read after the setup read and before the stored save is read again,
+ * so no network read sits between that read and the send.
+ */
+export const SEND_BLOCK_READ_MS = 10_000
+
+/**
  * How long a followed request's state rests before it is read again, in ms:
  * after a read that did not answer, while it reads neither in the queue nor in
  * the activity, and at most while the queue holds it and does not change.

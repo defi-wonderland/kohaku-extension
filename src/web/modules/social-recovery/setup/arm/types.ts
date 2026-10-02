@@ -230,15 +230,17 @@ export interface SaveSteps {
   /** The chain's block number now. */
   blockNumber(): Promise<number>
   /**
-   * Sends the batch under `requestId` and follows its receipt, feeding the
-   * write's events to `dispatch`; `onEstimation` hears the sign screen's
-   * estimation of the batch.
+   * Sends the batch under `requestId` and follows its receipt from
+   * `startBlock`, feeding the write's events to `dispatch`; `onEstimation`
+   * hears the sign screen's estimation of the batch. Nothing is read from the
+   * network before the request is handed to the wallet.
    */
   send(
     save: PreparedSave,
     dispatch: (event: WriteEvent) => void,
     run: number,
     requestId: string,
+    startBlock: number,
     onEstimation?: EstimationListener
   ): Promise<void>
   /**

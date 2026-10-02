@@ -9,10 +9,12 @@
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ the claim, the setup read again (time-limited)
  *                                     ├─ a setup found ─▶ already set up (the claim released)
- *                                     └─ none ─▶ the stored save read again
- *                                                ├─ another's ─▶ followed (nothing sent or released)
- *                                                ├─ none ─────▶ looked for again, then offered
- *                                                └─ its own ──▶ submitting ──▶ failedNotSent | failedReverted | landed
+ *                                     └─ none ─▶ the send's block: the claim's, else read (time-limited)
+ *                                                ├─ unread ─▶ failedNotSent (the claim released)
+ *                                                └─ known ──▶ the stored save read again
+ *                                                             ├─ another's ─▶ followed (nothing sent or released)
+ *                                                             ├─ none ─────▶ looked for again, then offered
+ *                                                             └─ its own ──▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   failedNotSent that may still land ──a setup read finds one──▶ already set up
  *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
@@ -29,8 +31,10 @@
  * on this device under a new request id, with the block read before it, and
  * sends only where that claim wrote it, a setup read after the claim still
  * finds none within its limit, and the stored save read just before the send
- * is still its own. A page that finds a stored save, on arrival, as the loser
- * of a claim or as a claim no longer stored, sends nothing and follows it with
+ * is still its own. The block the send starts from is known before that last
+ * read, so nothing is read from the network between it and the send. A page
+ * that finds a stored save, on arrival, as the loser of a claim or as a claim
+ * no longer stored, sends nothing and follows it with
  * the draft and the prepared write it sent: under its hash it waits for the
  * receipt; with no hash it reads where the wallet holds the request, through
  * the screen attached now, and only while one is. The
@@ -54,12 +58,12 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent, WriteMachineState } from '@web/modules/social-recovery/shared/writes'
 
-import { blockOrNone } from './block'
 import {
   CLAIMED_SETUP_READ_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
-  RECEIPT_WAIT_MS
+  RECEIPT_WAIT_MS,
+  SEND_BLOCK_READ_MS
 } from './constants'
 import { confirmOutcomeOf } from './outcome'
 import type {
@@ -411,17 +415,17 @@ const rest = (store: ArmStore, ms: number, moved?: Promise<void>): Promise<void>
     moved?.then(wake, wake)
   })
 
-/** The account's setup read, rejected where it does not answer within `limitMs`; a later answer moves nothing. */
-const setupReadWithin = (steps: SaveSteps, limitMs: number): Promise<boolean> =>
-  new Promise<boolean>((resolve, reject) => {
+/** The answer of `read`, rejected where it does not answer within `limitMs`; a later answer moves nothing. */
+const readWithin = <T>(read: () => Promise<T>, named: string, limitMs: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`The setup read did not answer in ${limitMs} ms.`)),
+      () => reject(new Error(`The ${named} did not answer in ${limitMs} ms.`)),
       limitMs
     )
-    steps.hasSetup().then(
-      (found) => {
+    read().then(
+      (answer) => {
         clearTimeout(timer)
-        resolve(found)
+        resolve(answer)
       },
       (error: unknown) => {
         clearTimeout(timer)
@@ -889,31 +893,6 @@ const recheckAfterShortSigning = async (
   writeEvent(store)({ type: 'gasChecked', run: next, check })
 }
 
-/**
- * The block the stored save gets with its hash: none where its claim stored
- * one, so the claim's stays; else the send's, or the chain's block now where
- * it reads. The hash is stored whether or not a block is.
- */
-const markedBlockOf = async (
-  steps: SaveSteps,
-  claimBlock: number | undefined,
-  sendBlock: number | undefined
-): Promise<number | undefined> => {
-  if (claimBlock !== undefined) {
-    return undefined
-  }
-  return sendBlock ?? steps.blockNumber().catch(() => undefined)
-}
-
-/** The write's event with a sent block that is not a safe integer of zero or more dropped. */
-const withUsableBlock = (event: WriteEvent): WriteEvent => {
-  if (event.type !== 'sent' || blockOrNone(event.startBlock) === event.startBlock) {
-    return event
-  }
-  const { startBlock, ...sent } = event
-  return sent
-}
-
 /** The send of a claimed save under its request id, with the first receipt wait's limit. */
 const sendClaimed = async (
   store: ArmStore,
@@ -921,7 +900,8 @@ const sendClaimed = async (
   run: number,
   prepared: PreparedSave,
   requestId: string,
-  claimBlock: number | undefined
+  claimBlock: number | undefined,
+  sendBlock: number
 ): Promise<boolean> => {
   const dispatch = writeEvent(store)
   // The first receipt wait runs inside the send; its limit starts when the hash arrives.
@@ -929,8 +909,7 @@ const sendClaimed = async (
   let ranOut = false
   let sentHash: Hex | undefined
   let sending: Promise<void> | undefined
-  const sendDispatch = (sendEvent: WriteEvent) => {
-    const event = withUsableBlock(sendEvent)
+  const sendDispatch = (event: WriteEvent) => {
     dispatch(event)
     if (event.type !== 'sent' || event.run !== run) {
       return
@@ -939,9 +918,9 @@ const sendClaimed = async (
     if (sending) {
       holdWait(store, event.transactionHash, sending).catch(() => undefined)
     }
-    const { transactionHash, startBlock } = event
-    markedBlockOf(steps, claimBlock, startBlock)
-      .then((from) => steps.markSent(requestId, transactionHash, from))
+    // The stored save keeps its claim's block where it holds one, else takes the send's.
+    steps
+      .markSent(requestId, event.transactionHash, claimBlock === undefined ? sendBlock : undefined)
       .catch(() => undefined)
     if (limit === undefined) {
       limit = setTimeout(() => {
@@ -951,7 +930,7 @@ const sendClaimed = async (
     }
   }
   try {
-    sending = steps.send(prepared, sendDispatch, run, requestId, (reading) =>
+    sending = steps.send(prepared, sendDispatch, run, requestId, sendBlock, (reading) =>
       store.dispatch({ type: 'estimated', run, reading })
     )
     await sending
@@ -1056,7 +1035,7 @@ const checkAndSend = async (
   // threw, so a page that follows this claim does not wait on it for long.
   let landedMeanwhile: boolean
   try {
-    landedMeanwhile = await setupReadWithin(steps, CLAIMED_SETUP_READ_MS)
+    landedMeanwhile = await readWithin(() => steps.hasSetup(), 'setup read', CLAIMED_SETUP_READ_MS)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     await releaseWhereEnded(store, steps)
@@ -1066,6 +1045,23 @@ const checkAndSend = async (
     store.dispatch({ type: 'alreadySetUp', run })
     await steps.release(requestId).catch(() => undefined)
     return
+  }
+  // The block the send's receipt wait starts from is known before the stored
+  // save is read again, so no network read sits between that read and the
+  // send: the claim's block, else one read within its limit. A read that
+  // fails, answers no usable block or passes its limit ends the run as a
+  // failed setup read does.
+  let sendBlock: number
+  if (claimBlock !== undefined) {
+    sendBlock = claimBlock
+  } else {
+    try {
+      sendBlock = await readWithin(() => steps.blockNumber(), 'block read', SEND_BLOCK_READ_MS)
+    } catch (error: unknown) {
+      dispatch({ type: 'error', run, error })
+      await releaseWhereEnded(store, steps)
+      return
+    }
   }
   // A page that read this claim gone for longer than its grace may have
   // voided it, and the holder saved there under another claim: the run sends
@@ -1087,7 +1083,8 @@ const checkAndSend = async (
     await steps.release(requestId).catch(() => undefined)
     return
   }
-  const ranOut = await sendClaimed(store, steps, run, prepared, requestId, claimBlock)
+  // Nothing is awaited from the stored save's read to the send's hand-over.
+  const ranOut = await sendClaimed(store, steps, run, prepared, requestId, claimBlock, sendBlock)
   // Past the first wait's limit, the holder's check again is the next wait, not one started here.
   if (!ranOut) {
     await waitForReceipt(store, steps, run, options)
