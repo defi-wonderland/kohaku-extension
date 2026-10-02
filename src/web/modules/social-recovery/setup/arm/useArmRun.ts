@@ -1,5 +1,5 @@
 /**
- * Holds the save's run for the screen, and the four moves the screen offers
+ * Holds the save's run for the screen, and the moves the screen offers
  * over the steps it is given. A move with no steps yet does nothing.
  *
  * The run lives outside the screen, one per chain and account, so a remount
@@ -14,7 +14,9 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'r
 
 import {
   checkReceiptAgain,
+  checkSetupAgain,
   createArmStore,
+  endWhereSetUp,
   outlivesScreen,
   recheckGas,
   rereadConfirmation,
@@ -71,6 +73,23 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
       checkReceiptAgain(store, stepsRef.current).catch(() => undefined)
     }
   }, [store])
+  const checkSetup = useCallback(() => {
+    if (stepsRef.current) {
+      checkSetupAgain(store, stepsRef.current).catch(() => undefined)
+    }
+  }, [store])
+  const endKeptRunWhereSetUp = useCallback(
+    (hasSetup: boolean) => endWhereSetUp(store, hasSetup),
+    [store]
+  )
 
-  return { state, start, recheck, reread, checkAgain }
+  return {
+    state,
+    start,
+    recheck,
+    reread,
+    checkAgain,
+    checkSetup,
+    endWhereSetUp: endKeptRunWhereSetUp
+  }
 }

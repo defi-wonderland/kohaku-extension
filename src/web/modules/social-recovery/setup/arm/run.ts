@@ -5,9 +5,10 @@
  *
  *   idle ──start──▶ checkingGas: the setup read, the prepare, then the gas check
  *                     ├─ a setup found ─▶ already set up (the run ends, nothing sent)
- *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas
+ *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas: the setup read, the gas check
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ submitting ──▶ failedNotSent | failedReverted | landed
+ *   failedNotSent that may still land ──a setup read finds one──▶ already set up
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
  *                                                  stalled ──check again──▶ the wait again
  *   failedNotSent after a short estimation of the sign screen ──▶ the gas check again,
@@ -18,7 +19,8 @@
  *
  * Every start reads the account's setup before it prepares, so a retry, a
  * second tab or an operation that landed after all never sends a second
- * setup. A refusal whose operation may still land offers no retry. The
+ * setup. A refusal whose operation may still land offers no retry, only a
+ * read of the setup that ends the run where the operation landed. The
  * records are wiped, and the save reads as saved, only after the check agreed
  * on a landed receipt of the run. A failed or disagreed save wipes nothing.
  * Every event after the write's carries its run, so the answer of a run the
@@ -78,7 +80,12 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       return { ...state, write }
     }
     case 'alreadySetUp':
-      if (!inRun(state, event.run) || state.write.status !== 'checkingGas' || state.prepared) {
+      // Taken while the run reads the setup before it prepares or sends, and
+      // after a refusal whose operation may still land, once a read finds it landed.
+      if (
+        !inRun(state, event.run) ||
+        (state.write.status !== 'checkingGas' && !mayStillLand(state.write))
+      ) {
         return state
       }
       return {
@@ -407,7 +414,11 @@ export const startSave = async (
   await checkAndSend(store, steps, run, options)
 }
 
-/** From the deposit blocker: the gas check again on the same prepared save, then the send. */
+/**
+ * From the deposit blocker: the account's setup read again, then the gas check
+ * again on the same prepared save, then the send. A setup found meanwhile, by
+ * another tab, ends the run with nothing checked or sent.
+ */
 export const recheckGas = async (
   store: ArmStore,
   steps: SaveSteps,
@@ -417,7 +428,43 @@ export const recheckGas = async (
     return
   }
   writeEvent(store)({ type: 'recheck' })
-  await checkAndSend(store, steps, store.state().write.run, options)
+  const { run } = store.state().write
+  if (!(await noSetupYet(store, steps, run))) {
+    return
+  }
+  await checkAndSend(store, steps, run, options)
+}
+
+/**
+ * Ends a refusal whose operation may still land as already set up, where a
+ * read of the account's setup found one. Moves nothing in any other state.
+ */
+export const endWhereSetUp = (store: ArmStore, hasSetup: boolean): void => {
+  const { write } = store.state()
+  if (hasSetup && mayStillLand(write)) {
+    store.dispatch({ type: 'alreadySetUp', run: write.run })
+  }
+}
+
+/**
+ * From a refusal whose operation may still land: reads the account's setup
+ * again. A setup found ends the run as already set up; no setup, or a read
+ * that fails, leaves the run as it was, with nothing sent.
+ */
+export const checkSetupAgain = async (store: ArmStore, steps: SaveSteps): Promise<void> => {
+  if (!mayStillLand(store.state().write)) {
+    return
+  }
+  const { run } = store.state().write
+  let found: boolean
+  try {
+    found = await steps.hasSetup()
+  } catch {
+    return
+  }
+  if (inRun(store.state(), run)) {
+    endWhereSetUp(store, found)
+  }
 }
 
 /** From a stalled receipt wait: waits for the same hash once more, then the check where it landed. */

@@ -51,6 +51,7 @@ const ArmView = ({
   onSave,
   onRetry,
   onCheckAgain,
+  onCheckSetup,
   onRecheck,
   onReread,
   navigate,
@@ -208,6 +209,25 @@ const ArmView = ({
         </DepositStepView>
       )
     }
+    if (mayStillLand(write)) {
+      // The operation may still reach the chain: no line says nothing was sent,
+      // and no retry; checking again reads the account's setup.
+      return (
+        <View testID={`arm-write-${write.status}`}>
+          <Text fontSize={16} weight="semiBold" style={spacings.mbSm}>
+            {t(`${REVIEW}.after.failedTitle`)}
+          </Text>
+          <Button
+            testID="arm-check-setup"
+            type="outline"
+            size="small"
+            text={t('socialRecovery.writes.tryAgain')}
+            onPress={onCheckSetup}
+            hasBottomSpacing={false}
+          />
+        </View>
+      )
+    }
     const keys = saveWriteKeysOf(write)
     const stalled = write.status === 'submitting' && !!write.transactionHash && !!state.stalled
     return (
@@ -215,7 +235,7 @@ const ArmView = ({
         state={write}
         title={keys.title ? t(keys.title) : undefined}
         note={keys.note ? t(keys.note) : undefined}
-        onRetry={mayStillLand(write) ? undefined : onRetry}
+        onRetry={onRetry}
         testID={`arm-write-${write.status}`}
       >
         {stalled && (

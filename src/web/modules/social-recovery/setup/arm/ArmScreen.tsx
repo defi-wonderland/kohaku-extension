@@ -150,10 +150,16 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     })
   }, [kit, chainReads, receipts, ready, draft, port, records, chainId, account, password])
 
-  const { state, start, recheck, reread, checkAgain } = useArmRun(
+  const { state, start, recheck, reread, checkAgain, checkSetup, endWhereSetUp } = useArmRun(
     steps,
     `${chainId}:${account.toLowerCase()}`
   )
+  // A kept refusal whose operation may still land ends where the arrival's setup read finds it landed.
+  const arrivalFoundSetup =
+    accountReads.setupState.status === 'answered' && accountReads.setupState.value.hasSetup
+  useEffect(() => {
+    endWhereSetUp(arrivalFoundSetup)
+  }, [arrivalFoundSetup, endWhereSetUp])
   const navigationType = useNavigationType()
   const location = useLocation()
   const routerNavigate = useNavigate()
@@ -214,6 +220,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       onSave={canStart && untouched && !pushed ? start : undefined}
       onRetry={start}
       onCheckAgain={checkAgain}
+      onCheckSetup={checkSetup}
       onRecheck={recheck}
       onReread={reread}
       navigate={navigate}

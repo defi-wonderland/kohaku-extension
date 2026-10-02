@@ -19,7 +19,9 @@ export { confirmOutcomeOf, outcomeOfConfirmation, outcomeOfConfirmFailure } from
 export {
   armReducer,
   checkReceiptAgain,
+  checkSetupAgain,
   createArmStore,
+  endWhereSetUp,
   initialArmState,
   isLive,
   isSaved,

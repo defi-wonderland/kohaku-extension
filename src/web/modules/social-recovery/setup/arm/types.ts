@@ -306,6 +306,8 @@ export interface ArmViewProps {
   onRetry: () => void
   /** Waits again for the receipt of the sent batch, where the wait failed. */
   onCheckAgain: () => void
+  /** Reads the account's setup again, where the refused operation may still land. */
+  onCheckSetup: () => void
   /** Runs the gas check again from the deposit blocker. */
   onRecheck: () => void
   /** Reads the check after the landing again. */
@@ -343,4 +345,8 @@ export interface ArmRun {
   reread: () => void
   /** Waits again for the receipt of the sent batch, where the wait failed. */
   checkAgain: () => void
+  /** Reads the account's setup again after a refusal whose operation may still land. */
+  checkSetup: () => void
+  /** Ends a refusal whose operation may still land as already set up, where a setup read found one. */
+  endWhereSetUp: (hasSetup: boolean) => void
 }
