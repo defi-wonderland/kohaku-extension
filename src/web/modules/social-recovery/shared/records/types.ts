@@ -464,6 +464,10 @@ export interface WalletRecords {
   setupSavedAt(chainId: ChainId, account: Address): Promise<number | null>
   /** Removes the six setup records and the save in flight in one storage call. */
   saveSetup(chainId: ChainId, account: Address): Promise<void>
+  /**
+   * Removes the six setup records in one storage call. While a save of the
+   * account is in flight it removes nothing and throws `SaveInFlightRefusal`.
+   */
   startOverSetup(chainId: ChainId, account: Address): Promise<void>
   recoverySession(chainId: ChainId, account: Address): RecoverySessionAccessor
   listRecoverySessions(chainId: ChainId): Promise<ListedRecord<RecoverySessionRecord>[]>

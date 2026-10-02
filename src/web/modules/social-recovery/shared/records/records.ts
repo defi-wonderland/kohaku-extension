@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file -- the two refusals a records update throws */
 /**
  * The wallet's records: the social recovery records this device keeps, in the
  * extension's local storage and never in a background controller, since the
@@ -239,8 +240,9 @@ const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
 /**
  * Runs one update that spans several keys while it holds the queue of each,
  * taken one after another in the order given, so no single-key update of any
- * of them interleaves with it. Every caller passes its keys in the order of
- * `SETUP_RECORD_NAMES`, so two such updates never wait on each other.
+ * of them interleaves with it. Every caller passes its setup keys in the order
+ * of `SETUP_RECORD_NAMES` and the save in flight's key after them, and a
+ * single-key update holds one key alone, so no two updates wait on each other.
  */
 const inQueues = <R>(keys: readonly string[], task: () => Promise<R>): Promise<R> =>
   keys.reduceRight<() => Promise<R>>((inner, key) => () => inQueue(key, inner), task)()
@@ -266,6 +268,22 @@ export class SessionRevisionConflict extends Error {
 
 export const isSessionRevisionConflict = (error: unknown): error is SessionRevisionConflict =>
   error instanceof SessionRevisionConflict
+
+/**
+ * The refusal of a start over while a setup save of the account is in flight:
+ * the save may still land, so the setup records stay and nothing was removed.
+ */
+export class SaveInFlightRefusal extends Error {
+  constructor(key: string) {
+    super(`The setup save ${key} is in flight: start over waits until it settles`)
+    this.name = 'SaveInFlightRefusal'
+    // Keeps `instanceof` working where the build compiles classes to functions.
+    Object.setPrototypeOf(this, SaveInFlightRefusal.prototype)
+  }
+}
+
+export const isSaveInFlightRefusal = (error: unknown): error is SaveInFlightRefusal =>
+  error instanceof SaveInFlightRefusal
 
 /** The revision an update passes after this read: the read's revision, or `null` when absent. */
 export const revisionOf = (read: SessionRead | CountdownRead): ExpectedRevision =>
@@ -311,13 +329,19 @@ export const createWalletRecords = ({
     age: async (at?: number) => recordAge(await readKey<T>(key), at ?? now())
   })
 
-  // --- the six setup records -----------------------------------------------
-
-  /** Removes the six setup records in one storage call, so a wipe never lands in part. */
-  const wipeSetupRecords = async (chainId: ChainId, account: Address): Promise<void> => {
-    const keys = SETUP_RECORD_NAMES.map((name) => recordKeys.setup(name, chainId, account))
-    await inQueues(keys, () => storage.removeKeys(keys))
+  /**
+   * The save in flight stored under a key. A stored value that is not a save in
+   * flight reads absent.
+   */
+  const readSaveInFlight = async (key: string): Promise<RecordRead<SaveInFlightRecord>> => {
+    const stored: unknown = await storage.get(key, undefined)
+    if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) {
+      return ABSENT
+    }
+    return { status: 'present', value: stored.value, savedAt: stored.savedAt }
   }
+
+  // --- the six setup records -----------------------------------------------
 
   /**
    * The six setup records of an account: the setup draft, the inventory, the
@@ -373,12 +397,22 @@ export const createWalletRecords = ({
   }
 
   /**
-   * The holder starts over: wipes the six setup records, then the recovery
-   * password held in memory, which no screen shows again. Platform credentials
-   * are untouched.
+   * The holder starts over: wipes the six setup records in one storage call,
+   * then the recovery password held in memory, which no screen shows again.
+   * While a save of the account is in flight it removes nothing and throws
+   * `SaveInFlightRefusal`, since that save may still land. It takes the keys in
+   * the order `saveSetup` takes them, the save in flight last, and reads that
+   * record while it holds them all. Platform credentials are untouched.
    */
   const startOverSetup = async (chainId: ChainId, account: Address): Promise<void> => {
-    await wipeSetupRecords(chainId, account)
+    const setupKeys = SETUP_RECORD_NAMES.map((name) => recordKeys.setup(name, chainId, account))
+    const saveKey = recordKeys.saveInFlight(chainId, account)
+    await inQueues([...setupKeys, saveKey], async () => {
+      if ((await readSaveInFlight(saveKey)).status === 'present') {
+        throw new SaveInFlightRefusal(saveKey)
+      }
+      await storage.removeKeys(setupKeys)
+    })
     wipeRecoveryPassword(chainId, account)
   }
 
@@ -695,13 +729,7 @@ export const createWalletRecords = ({
    */
   const saveInFlight = (chainId: ChainId, account: Address): SaveInFlightAccessor => {
     const key = recordKeys.saveInFlight(chainId, account)
-    const read = async (): Promise<RecordRead<SaveInFlightRecord>> => {
-      const stored: unknown = await storage.get(key, undefined)
-      if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) {
-        return ABSENT
-      }
-      return { status: 'present', value: stored.value, savedAt: stored.savedAt }
-    }
+    const read = () => readSaveInFlight(key)
     return {
       read,
       claim: (claim: SaveInFlightClaim) =>
