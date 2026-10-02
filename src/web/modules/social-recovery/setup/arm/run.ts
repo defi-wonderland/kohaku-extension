@@ -9,6 +9,7 @@
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   failedNotSent that may still land ──a setup read finds one──▶ already set up
+ *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
  *                                                  stalled ──check again──▶ the wait again
  *   failedNotSent after a short estimation of the sign screen ──▶ the gas check again,
@@ -360,15 +361,32 @@ const checkAndSend = async (
   if (!inRun(store.state(), run) || store.state().write.status !== 'submitting') {
     return
   }
+  // The first receipt wait runs inside the send; its limit starts when the hash arrives.
+  let limit: ReturnType<typeof setTimeout> | undefined
+  let ranOut = false
+  const sendDispatch = (event: WriteEvent) => {
+    dispatch(event)
+    if (event.type === 'sent' && event.run === run && limit === undefined) {
+      limit = setTimeout(() => {
+        ranOut = true
+        store.dispatch({ type: 'waitStalled', run })
+      }, RECEIPT_WAIT_MS)
+    }
+  }
   try {
-    await steps.send(prepared, dispatch, run, (reading) =>
+    await steps.send(prepared, sendDispatch, run, (reading) =>
       store.dispatch({ type: 'estimated', run, reading })
     )
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     return
+  } finally {
+    clearTimeout(limit)
   }
-  await waitForReceipt(store, steps, run, options)
+  // Past the first wait's limit, the holder's check again is the next wait, not one started here.
+  if (!ranOut) {
+    await waitForReceipt(store, steps, run, options)
+  }
   const after = store.state()
   if (
     inRun(after, run) &&
