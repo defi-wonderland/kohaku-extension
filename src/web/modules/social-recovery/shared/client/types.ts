@@ -630,13 +630,15 @@ export interface SendRequestPort {
  * queue it:
  *
  * - `queued`: the wallet's queue holds it, or holds it until an account
- *   switch, or the account's activity lists its transaction with no hash yet;
+ *   switch, or the account's activity lists its transaction with no hash yet
+ *   and not rejected;
  * - `broadcast`: the account's activity lists it as a transaction of the
  *   sender under `transactionHash`, whatever its status there (pending, stuck,
  *   confirmed or failed); the receipt of that hash decides;
  * - `untracked`: the wallet submitted it as an operation another party sends,
  *   which this wallet cannot follow; it may still reach the chain;
- * - `gone`: neither the queue nor the account's activity holds it;
+ * - `gone`: neither the queue nor the account's activity holds it, or the
+ *   activity lists its transaction as rejected with no hash;
  * - `unread`: the activity did not answer in time, so nothing is known.
  */
 export type SendRequestState =

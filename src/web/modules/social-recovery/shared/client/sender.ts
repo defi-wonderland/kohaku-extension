@@ -61,7 +61,7 @@ import { isAddress, isHash } from 'viem'
 import { Session } from '@ambire-common/classes/session'
 import { EstimationStatus } from '@ambire-common/controllers/estimation/types'
 import { getFeeSpeedIdentifier } from '@ambire-common/controllers/signAccountOp/helper'
-import { noStateUpdateStatuses } from '@ambire-common/controllers/signAccountOp/signAccountOp'
+import { SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { SignAccountOpError } from '@ambire-common/interfaces/signAccountOp'
 import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
@@ -216,6 +216,19 @@ const ACTIVITY_PAGE = { fromPage: 0, itemsPerPage: 10 }
  */
 export const REQUEST_STATE_READ_MS = 10 * 1000
 
+/**
+ * The sign screen's statuses once the holder confirmed and the sign
+ * controller signs, waits for the paymaster or signed. Unlike the pause for a
+ * warning or a hardware wallet, which the screen leaves to take updates
+ * again, the controller leaves these only where the signature or its
+ * broadcast failed.
+ */
+const SIGNING_STATUSES: readonly SigningStatus[] = [
+  SigningStatus.InProgress,
+  SigningStatus.WaitingForPaymaster,
+  SigningStatus.Done
+]
+
 /** The estimation statuses after which the sign screen holds its fee options or its error. */
 const SETTLED_ESTIMATIONS: readonly string[] = [EstimationStatus.Success, EstimationStatus.Error]
 
@@ -304,14 +317,15 @@ const isBusy = (state: MainStatusState): boolean =>
 const carriesRequest = (calls: SubmittedOperation['calls'], id: string): boolean =>
   !!calls?.some((call) => call.fromUserRequestId === id)
 
-/**
- * Whether the sign screen started to sign the operation that holds the
- * request: its status is one under which the sign controller takes no update.
- */
+/** Whether the sign screen started to sign the operation that holds the request. */
 const signsRequest = (state: SignAccountOpState, id: string): boolean =>
   !!state.status &&
-  noStateUpdateStatuses.includes(state.status.type) &&
+  SIGNING_STATUSES.includes(state.status.type) &&
   carriesRequest(state.accountOp?.calls, id)
+
+/** Whether the wallet rejected the operation before it reached the chain, so it names no transaction. */
+const neverBroadcast = (operation: SubmittedOperation): boolean =>
+  operation.status === AccountOpStatus.Rejected
 
 const isQueued = (port: SendRequestPort, id: string): boolean =>
   queuedRequestsOf(port.queue()).some((queued) => queued.id === id)
@@ -322,7 +336,10 @@ const operationStateOf = (operation: SubmittedOperation, id: string): SendReques
     return { status: 'untracked' }
   }
   const transactionHash = hashOf(operation, id)
-  return transactionHash ? { status: 'broadcast', transactionHash } : { status: 'queued' }
+  if (transactionHash) {
+    return { status: 'broadcast', transactionHash }
+  }
+  return neverBroadcast(operation) ? { status: 'gone' } : { status: 'queued' }
 }
 
 /**
@@ -646,7 +663,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           const hash = hashOf(operation, id)
           if (hash) {
             succeed(hash)
-          } else if (operation.status === AccountOpStatus.Rejected) {
+          } else if (neverBroadcast(operation)) {
             fail('not-broadcast')
           }
           return
