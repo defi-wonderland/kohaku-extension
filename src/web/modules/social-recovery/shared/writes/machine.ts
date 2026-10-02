@@ -169,7 +169,9 @@ export const writeReducer = (state: WriteMachineState, event: WriteEvent): Write
         { error: event.error, ...(transactionHash ? { transactionHash } : {}) },
         context
       )
-      if (failure.status === 'failedNotSent') return { ...withRefusalReading(failure), run }
+      if (failure.status === 'failedNotSent') {
+        return { ...withRefusalReading(failure), run }
+      }
       if (failure.status !== 'submitting' || !failure.transactionHash) return { ...failure, run }
       // A hash the run already tracks leaves the current hash active: an error
       // from waiting on a hash a replacement superseded must not make it the

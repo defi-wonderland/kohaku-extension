@@ -168,7 +168,9 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
  * request id, the claim time and, where present, the hash and the start block.
  */
 const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
-  if (typeof value !== 'object' || value === null) return false
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
   const record = value as Record<string, unknown>
   const prepared = record.prepared as { kind?: unknown } | null | undefined
   return (
@@ -695,7 +697,9 @@ export const createWalletRecords = ({
     const key = recordKeys.saveInFlight(chainId, account)
     const read = async (): Promise<RecordRead<SaveInFlightRecord>> => {
       const stored: unknown = await storage.get(key, undefined)
-      if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) return ABSENT
+      if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) {
+        return ABSENT
+      }
       return { status: 'present', value: stored.value, savedAt: stored.savedAt }
     }
     return {

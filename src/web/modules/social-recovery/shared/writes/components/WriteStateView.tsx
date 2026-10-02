@@ -7,11 +7,11 @@
  *
  * A write's screen may set its own title over the state (the setup could not
  * be saved, the recovery could not be started), its own lines in place of the
- * state's, and its own sentence after the reading, from its own keys. The reverted reading already speaks in the
- * write's own words (`revertedKeyOf`), so a note belongs after the not-sent
- * reading, where the screen adds what stays on this device. Its own actions,
- * such as back or the cancel's move-funds action where `offersMoveFunds`
- * answers true, go in as children.
+ * state's, and its own sentence after the reading, from its own keys. The
+ * reverted reading already speaks in the write's own words (`revertedKeyOf`),
+ * so a note belongs after the not-sent reading, where the screen adds what
+ * stays on this device. Its own actions, such as back or the cancel's
+ * move-funds action where `offersMoveFunds` answers true, go in as children.
  */
 import React from 'react'
 import { View } from 'react-native'
