@@ -6,7 +6,7 @@ import 'swiper/css/free-mode'
 
 import React, { useMemo, useRef, useState } from 'react'
 import { Navigation } from 'swiper/modules'
-import { Swiper, SwiperSlide } from 'swiper/react'
+import { Swiper, SwiperRef, SwiperSlide } from 'swiper/react'
 
 import { Character, CHARACTERS } from '../../constants/characters'
 import styles from './CharacterSlider.module.scss'
@@ -33,7 +33,7 @@ const CharacterSlider = ({
     CHARACTERS.findIndex((character) => character.id === initialCharacterId)
   )
 
-  const sliderRef = useRef(null)
+  const sliderRef = useRef<SwiperRef>(null)
   const characters = useMemo(() => doubleCharacters(CHARACTERS), [])
 
   // Handler to go to the next character
