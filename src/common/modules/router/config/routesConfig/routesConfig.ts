@@ -4,7 +4,7 @@ import i18n from '@common/config/localization/localization'
 import { ROUTES } from '@common/modules/router/constants/common'
 
 type RouteConfig = {
-  [K in keyof typeof ROUTES]: {
+  [route: string]: {
     route: string
     title: string
     name: string
