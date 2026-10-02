@@ -165,8 +165,9 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
 }
 
 /**
- * Whether a stored value is a save in flight: a prepared call or batch, the
- * request id, the claim time and, where present, the hash and the start block.
+ * Whether a stored value is a save in flight: a draft, a prepared call or
+ * batch, the request id, the claim time and, where present, the hash and the
+ * start block.
  */
 const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
   if (typeof value !== 'object' || value === null) {
@@ -175,6 +176,8 @@ const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
   const record = value as Record<string, unknown>
   const prepared = record.prepared as { kind?: unknown } | null | undefined
   return (
+    typeof record.draft === 'object' &&
+    record.draft !== null &&
     typeof prepared === 'object' &&
     prepared !== null &&
     (prepared.kind === 'call' || prepared.kind === 'batch') &&
@@ -739,6 +742,7 @@ export const createWalletRecords = ({
             return { claimed: false, record: { value: current.value, savedAt: current.savedAt } }
           }
           const record = await writeKey<SaveInFlightRecord>(key, {
+            draft: claim.draft,
             prepared: claim.prepared,
             requestId: claim.requestId,
             claimedAt: claim.claimedAt,

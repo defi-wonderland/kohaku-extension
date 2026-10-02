@@ -234,6 +234,7 @@ const PREPARED_BATCH: PreparedBatch = {
   block: PREPARED_CALL.block
 }
 const SAVE_CLAIM: SaveInFlightClaim = {
+  draft: SETUP_DRAFT,
   prepared: PREPARED_CALL,
   requestId: 'social-recovery-sender:first',
   claimedAt: T0
@@ -2500,7 +2501,23 @@ describe('the ceremony request under its request id', () => {
 
 describe('the setup save in flight', () => {
   const KEY = recordKeys.saveInFlight(CHAIN_ID, ACCOUNT)
+  // A committed draft whose wait is beyond a safe integer, so only a bigint keeps it.
+  const SECOND_DRAFT: SetupDraft = {
+    ...SETUP_DRAFT,
+    wait: 2n ** 64n + 1n,
+    clauses: [
+      {
+        threshold: 2,
+        credentials: [
+          { method: METHOD, config: '0xabcd', label: 'phone' },
+          { method: ACTION, config: '0x1234', salt: `0x${'0f'.repeat(32)}` }
+        ]
+      }
+    ],
+    ignoresPause: true
+  }
   const SECOND_CLAIM: SaveInFlightClaim = {
+    draft: SECOND_DRAFT,
     prepared: PREPARED_BATCH,
     requestId: 'social-recovery-sender:second',
     claimedAt: T0 + HOUR
@@ -2574,6 +2591,24 @@ describe('the setup save in flight', () => {
     expect(batch.kind === 'batch' && batch.calls[1].value).toBe(2n ** 70n)
   })
 
+  it('a claim stores the committed draft, and another page reads the same draft back with its bigint wait', async () => {
+    const { storage, records } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SECOND_CLAIM)
+    const tab = createWalletRecords({ storage, now: () => T0 })
+    const { draft } = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value
+    expect(draft).toEqual(SECOND_DRAFT)
+    expect(draft.wait).toBe(2n ** 64n + 1n)
+  })
+
+  it('keeps the draft it was claimed with when the setup draft record changes after the claim', async () => {
+    const { records } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    await records.setup(CHAIN_ID, ACCOUNT).writeDraftAndPath(SECOND_DRAFT)
+    expect(present(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).value.draft).toEqual(
+      SETUP_DRAFT
+    )
+  })
+
   it('is kept per chain and account: a claim for one leaves another account and another chain free', async () => {
     const { records } = setup()
     await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
@@ -2601,6 +2636,17 @@ describe('the setup save in flight', () => {
     expect(present(marked).value).toEqual(sent)
     expect(present(await saving.read()).value).toEqual(sent)
     expect((await saving.claim(SECOND_CLAIM)).record.value).toEqual(sent)
+  })
+
+  it('marking it sent keeps the draft of the claim, its bigint wait included', async () => {
+    const { storage, records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SECOND_CLAIM)
+    await saving.markSent(SECOND_CLAIM.requestId, TX_HASH, START_BLOCK)
+    const tab = createWalletRecords({ storage, now: () => T0 })
+    const { draft } = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value
+    expect(draft).toEqual(SECOND_DRAFT)
+    expect(draft.wait).toBe(2n ** 64n + 1n)
   })
 
   const CLAIM_BLOCK = 7_000_100
@@ -2691,6 +2737,9 @@ describe('the setup save in flight', () => {
     ['a bare string', 'saving'],
     ['a record with a savedAt that is no number', { value: SAVE_CLAIM, savedAt: 'now' }],
     ['a stored null', stored(null)],
+    ['a record with no draft', stored({ ...SAVE_CLAIM, draft: undefined })],
+    ['a record whose draft is null', stored({ ...SAVE_CLAIM, draft: null })],
+    ['a record whose draft is a string', stored({ ...SAVE_CLAIM, draft: 'draft' })],
     ['a record with no prepared value', stored({ ...SAVE_CLAIM, prepared: undefined })],
     ['a record whose prepared value is null', stored({ ...SAVE_CLAIM, prepared: null })],
     [

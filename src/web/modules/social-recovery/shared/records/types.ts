@@ -346,13 +346,15 @@ export type CeremonyRequestRecord =
 // ---------------------------------------------------------------------------
 
 /**
- * A setup save this device sent to the wallet and has not settled: the
- * prepared value `confirmSetup` takes beside the draft, the id of the request
- * it queued, when the save claimed it (ms since epoch) and, once the wallet
- * broadcast it, the transaction hash and the block the receipt wait scans
- * from. A reloaded page or another tab finds it and sends nothing.
+ * A setup save this device sent to the wallet and has not settled: the draft
+ * the save committed and the prepared value, the two `confirmSetup` takes, the
+ * id of the request it queued, when the save claimed it (ms since epoch) and,
+ * once the wallet broadcast it, the transaction hash and the block the receipt
+ * wait scans from. A reloaded page or another tab finds it and sends nothing,
+ * and checks the save against the draft it sent, not the draft stored now.
  */
 export interface SaveInFlightRecord {
+  draft: SetupDraft
   prepared: PreparedCall | PreparedBatch
   requestId: string
   claimedAt: number
@@ -366,7 +368,7 @@ export interface SaveInFlightRecord {
  */
 export type SaveInFlightClaim = Pick<
   SaveInFlightRecord,
-  'prepared' | 'requestId' | 'claimedAt' | 'startBlock'
+  'draft' | 'prepared' | 'requestId' | 'claimedAt' | 'startBlock'
 >
 
 /**
