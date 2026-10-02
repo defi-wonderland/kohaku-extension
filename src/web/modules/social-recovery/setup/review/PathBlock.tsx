@@ -4,9 +4,13 @@ import { Pressable, View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
+import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import SectionLabel from '@web/modules/social-recovery/shared/chrome/SectionLabel'
+import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
 import { renderMemberList } from '@web/modules/social-recovery/shared/display'
 
 import { enrollmentOf, isRequiredRow, kindOf, pathRowOf } from './lead'
@@ -20,6 +24,7 @@ import type { PathBlockProps, RetryKind } from './types'
  */
 const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlockProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
   const [shownAll, setShownAll] = useState<number[]>([])
 
   const retryKindOf = (credential: Credential): RetryKind | null => {
@@ -35,25 +40,37 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
     const row = pathRowOf(credential, enrollments, addressBook, t)
     const retryKind = retryKindOf(credential)
     return (
-      <View key={testID} testID={testID} style={spacings.mbSm}>
-        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
-          <Text fontSize={14} weight="medium" style={spacings.mrTy} testID={`${testID}-name`}>
-            {row.name}
-          </Text>
-          {!!row.aside && (
-            <Text fontSize={14} style={spacings.mrTy} testID={`${testID}-aside`}>
-              {row.aside}
+      <View
+        key={testID}
+        testID={testID}
+        style={[
+          common.borderRadiusPrimary,
+          spacings.phSm,
+          spacings.pvSm,
+          spacings.mbTy,
+          { borderWidth: 1, borderColor: theme.primaryBorder }
+        ]}
+      >
+        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.justifySpaceBetween]}>
+          <View style={[flexbox.flex1, flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
+            <Text fontSize={14} weight="medium" style={spacings.mrTy} testID={`${testID}-name`}>
+              {row.name}
             </Text>
-          )}
+            {!!row.aside && (
+              <Text
+                fontSize={14}
+                appearance="secondaryText"
+                style={spacings.mrTy}
+                testID={`${testID}-aside`}
+              >
+                {row.aside}
+              </Text>
+            )}
+          </View>
           {!!row.chip && (
-            <Text
-              fontSize={12}
-              weight="medium"
-              appearance="secondaryText"
-              testID={`${testID}-chip`}
-            >
-              {row.chip}
-            </Text>
+            <View style={spacings.mlTy}>
+              <StatusChip text={row.chip} testID={`${testID}-chip`} />
+            </View>
           )}
         </View>
         {row.lines.map((line, index) => (
@@ -63,6 +80,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
             key={index}
             fontSize={12}
             appearance="secondaryText"
+            style={spacings.mtMi}
             testID={`${testID}-line-${index}`}
           >
             {line}
@@ -72,7 +90,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
           <View style={[flexbox.directionRow, spacings.mtTy]}>
             <Button
               testID={`${testID}-retry-test`}
-              type="outline"
+              type="secondary"
               size="small"
               text={t('socialRecovery.actions.runTheTestAgain')}
               onPress={() => onRetryTest({ kind: retryKind, clause, member })}
@@ -89,11 +107,9 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
 
   return (
     <View testID="review-path">
-      <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
-        {t('socialRecovery.review.pathHeader')}
-      </Text>
+      <SectionLabel>{t('socialRecovery.review.pathHeader')}</SectionLabel>
       {hasRequired && (
-        <Text fontSize={12} weight="medium" style={spacings.mbTy}>
+        <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.mbTy}>
           {t('socialRecovery.editor.requiredHeader')}
         </Text>
       )}
@@ -109,23 +125,32 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
         return (
           // Clauses have no identity of their own; their order is the path's.
           // eslint-disable-next-line react/no-array-index-key
-          <View key={index} testID={`review-group-${index}`} style={spacings.mbSm}>
-            <Text fontSize={14} weight="semiBold" style={spacings.mbTy}>
-              {t('socialRecovery.shape.group', { n: groupNumber })}
-            </Text>
-            <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
-              <Text fontSize={14} style={spacings.mrTy}>
-                {t('socialRecovery.shape.require')}
+          <View key={index} testID={`review-group-${index}`} style={spacings.mtTy}>
+            <View
+              style={[
+                flexbox.directionRow,
+                flexbox.alignCenter,
+                flexbox.justifySpaceBetween,
+                spacings.mbTy
+              ]}
+            >
+              <Text fontSize={16} weight="medium">
+                {t('socialRecovery.shape.group', { n: groupNumber })}
               </Text>
-              <Text fontSize={14} weight="medium" style={spacings.mrTy}>
-                {String(clause.threshold)}
-              </Text>
-              <Text fontSize={14} style={spacings.mrTy}>
-                {t('socialRecovery.shape.of')}
-              </Text>
-              <Text fontSize={14} weight="medium">
-                {String(clause.credentials.length)}
-              </Text>
+              <View style={[flexbox.directionRow, flexbox.alignCenter]}>
+                <Text fontSize={14} style={spacings.mrTy}>
+                  {t('socialRecovery.shape.require')}
+                </Text>
+                <Text fontSize={14} weight="medium" style={spacings.mrTy}>
+                  {String(clause.threshold)}
+                </Text>
+                <Text fontSize={14} style={spacings.mrTy}>
+                  {t('socialRecovery.shape.of')}
+                </Text>
+                <Text fontSize={14} weight="medium">
+                  {String(clause.credentials.length)}
+                </Text>
+              </View>
             </View>
             {list.shown.map((credential, member) => renderRow(credential, index, member))}
             {!!list.more && (

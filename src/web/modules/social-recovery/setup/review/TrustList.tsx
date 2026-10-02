@@ -4,8 +4,11 @@ import { ActivityIndicator, View } from 'react-native'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
+import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
+import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
 import { auditedActionOf, publisherKeyOf } from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress, renderNoun } from '@web/modules/social-recovery/shared/display'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
@@ -26,6 +29,16 @@ const TRUST = 'socialRecovery.review.trust'
  */
 const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: TrustListProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
+
+  const rowStyle = [
+    common.borderRadiusPrimary,
+    spacings.phSm,
+    spacings.ptSm,
+    spacings.pbMi,
+    spacings.mbTy,
+    { borderWidth: 1, borderColor: theme.secondaryBorder }
+  ]
 
   const line = (text: string, testID?: string) => (
     <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy} testID={testID}>
@@ -89,23 +102,21 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
   const renderContract = (row: TrustRow, testID: string) => {
     const { contract } = row
     if (contract.status === 'pending') {
-      return <ActivityIndicator testID={`${testID}-pending`} />
+      return <ActivityIndicator testID={`${testID}-pending`} style={spacings.mbTy} />
     }
     if (contract.status === 'unavailable') {
       return (
         <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
-          <Text
-            fontSize={12}
-            weight="medium"
-            appearance="errorText"
-            style={spacings.mrSm}
-            testID={`${testID}-unavailable`}
-          >
-            {t('socialRecovery.review.blocked.unavailable.chip')}
-          </Text>
+          <View style={spacings.mrSm}>
+            <StatusChip
+              text={t('socialRecovery.review.blocked.unavailable.chip')}
+              tone="error"
+              testID={`${testID}-unavailable`}
+            />
+          </View>
           <Button
             testID={`${testID}-retry`}
-            type="outline"
+            type="secondary"
             size="small"
             text={t('socialRecovery.writes.tryAgain')}
             onPress={() => onRetry(row.method)}
@@ -156,7 +167,7 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
       {rows.map((row, index) => {
         const testID = `review-trust-${index}`
         return (
-          <View key={row.method} testID={testID} style={spacings.mbSm}>
+          <View key={row.method} testID={testID} style={rowStyle}>
             {!!row.guardians &&
               line(
                 row.guardians.tested === row.guardians.count
@@ -174,6 +185,7 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
                 key={member}
                 fontSize={14}
                 weight="medium"
+                style={spacings.mbTy}
                 testID={`${testID}-heading-${member}`}
               >
                 {headingText(heading, row)}
@@ -192,8 +204,8 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
           </View>
         )
       })}
-      <View testID="review-trust-module" style={spacings.mbSm}>
-        <Text fontSize={14} weight="medium">
+      <View testID="review-trust-module" style={rowStyle}>
+        <Text fontSize={14} weight="medium" style={spacings.mbTy}>
           {action.kind === 'audited'
             ? t(`${TRUST}.moduleRow`, { publisher: t(publisherKeyOf(action)) })
             : renderNoun('recoveryModule', t)}
@@ -203,12 +215,14 @@ const TrustList = ({ rows, stopRows, doors, client, providerKind, onRetry }: Tru
       </View>
       <StopBlock rows={stopRows} />
       <OtherDoors doors={doors} />
-      {line(
-        nodeKindOf(providerKind) === 'light-client'
-          ? t(`${TRUST}.nodeLightClient`)
-          : t(`${TRUST}.nodePlain`),
-        'review-trust-node'
-      )}
+      <View style={rowStyle}>
+        {line(
+          nodeKindOf(providerKind) === 'light-client'
+            ? t(`${TRUST}.nodeLightClient`)
+            : t(`${TRUST}.nodePlain`),
+          'review-trust-node'
+        )}
+      </View>
       {line(t(`${TRUST}.selfAttested`))}
       {line(t(`${TRUST}.deadProvider`))}
     </View>

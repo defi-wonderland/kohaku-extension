@@ -3,7 +3,9 @@ import { ActivityIndicator, View } from 'react-native'
 
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
+import common from '@common/styles/utils/common'
 
 import type { OtherDoorsProps } from './types'
 
@@ -18,6 +20,16 @@ const DOORS = 'socialRecovery.review.doors'
  */
 const OtherDoors = ({ doors }: OtherDoorsProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
+
+  const rowStyle = [
+    common.borderRadiusPrimary,
+    spacings.phSm,
+    spacings.ptSm,
+    spacings.pbMi,
+    spacings.mbTy,
+    { borderWidth: 1, borderColor: theme.secondaryBorder }
+  ]
 
   const line = (text: string, testID?: string) => (
     <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy} testID={testID}>
@@ -26,18 +38,18 @@ const OtherDoors = ({ doors }: OtherDoorsProps) => {
   )
 
   if (doors.kind === 'pending') {
-    return <ActivityIndicator testID="review-doors-pending" />
+    return <ActivityIndicator testID="review-doors-pending" style={spacings.mbTy} />
   }
   if (doors.kind === 'unreadable') {
-    return line(t(`${DOORS}.unreadable`), 'review-doors')
+    return <View style={rowStyle}>{line(t(`${DOORS}.unreadable`), 'review-doors')}</View>
   }
   if (doors.kind === 'none') {
-    return line(t(`${DOORS}.none`), 'review-doors')
+    return <View style={rowStyle}>{line(t(`${DOORS}.none`), 'review-doors')}</View>
   }
 
   const keys = t(`${DOORS}.keysBeside`, { count: doors.keys })
   return (
-    <View style={spacings.mbSm}>
+    <View style={rowStyle}>
       {doors.kind === 'keys'
         ? line(t(`${DOORS}.line`, { doors: keys }), 'review-doors')
         : line(
