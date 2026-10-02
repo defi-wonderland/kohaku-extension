@@ -240,6 +240,14 @@ describe('useAccountFacts, where the wallet holds no state for the listed accoun
     wallet.accountStates = {}
   })
 
+  /** The accounts state reports its account states loading, then no longer loading. */
+  const loadingRan = async () => {
+    wallet.areAccountStatesLoading = true
+    await render()
+    wallet.areAccountStatesLoading = false
+    await render()
+  }
+
   it("asks the wallet once to refresh the account's state on the chain, and reads as loading", async () => {
     await render()
     expect(dispatch).toHaveBeenCalledTimes(1)
@@ -269,15 +277,49 @@ describe('useAccountFacts, where the wallet holds no state for the listed accoun
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
-  it('reads as unread once the refresh ran and ended with no state', async () => {
+  it('asks once more by itself where the refresh ran and ended with no state, and reads as loading meanwhile', async () => {
     await render()
+    await loadingRan()
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(dispatch).toHaveBeenLastCalledWith(REFRESH)
+    expect(latest).toMatchObject({ status: 'loading' })
+    await render()
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(latest).toMatchObject({ status: 'loading' })
+  })
+
+  it('reads as ready where the second refresh brings the state', async () => {
+    await render()
+    await loadingRan()
     wallet.areAccountStatesLoading = true
     await render()
-    expect(latest).toMatchObject({ status: 'loading' })
+    wallet.accountStates = stateOf(true)
     wallet.areAccountStatesLoading = false
     await render()
+    expect(latest).toMatchObject({ status: 'ready', facts: { deployed: true } })
+    expect(dispatch).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads as ready where the state arrives before the second refresh is seen running', async () => {
+    await render()
+    await loadingRan()
+    wallet.accountStates = stateOf(false)
+    await render()
+    expect(latest).toMatchObject({ status: 'ready', facts: { deployed: false } })
+    expect(dispatch).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads as unread once the second refresh ran and ended with no state, and asks no more', async () => {
+    await render()
+    await loadingRan()
+    expect(latest).toMatchObject({ status: 'loading' })
+    await loadingRan()
     expect(latest).toMatchObject({ status: 'unavailable', cause: 'state-unread' })
-    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    await loadingRan()
+    await loadingRan()
+    expect(latest).toMatchObject({ status: 'unavailable', cause: 'state-unread' })
+    expect(dispatch).toHaveBeenCalledTimes(2)
   })
 
   it('stays loading while the accounts state never reported the refresh running', async () => {
@@ -304,27 +346,27 @@ describe('useAccountFacts, where the wallet holds no state for the listed accoun
     expect(latest?.status).toBe('ready')
   })
 
-  it('asks again at each retry, reads as loading again, and reads the outcome of that refresh', async () => {
+  it('asks again at each retry, at most twice each time, and reads the outcome of that refresh', async () => {
     await render()
-    wallet.areAccountStatesLoading = true
-    await render()
-    wallet.areAccountStatesLoading = false
-    await render()
-    expect(latest).toMatchObject({ status: 'unavailable', cause: 'state-unread' })
-
-    await act(async () => latest?.retry())
-    expect(dispatch).toHaveBeenCalledTimes(2)
-    expect(dispatch).toHaveBeenLastCalledWith(REFRESH)
-    expect(latest).toMatchObject({ status: 'loading' })
-
-    wallet.areAccountStatesLoading = true
-    await render()
-    wallet.areAccountStatesLoading = false
-    await render()
+    await loadingRan()
+    await loadingRan()
     expect(latest).toMatchObject({ status: 'unavailable', cause: 'state-unread' })
 
     await act(async () => latest?.retry())
     expect(dispatch).toHaveBeenCalledTimes(3)
+    expect(dispatch).toHaveBeenLastCalledWith(REFRESH)
+    expect(latest).toMatchObject({ status: 'loading' })
+
+    await loadingRan()
+    expect(dispatch).toHaveBeenCalledTimes(4)
+    expect(latest).toMatchObject({ status: 'loading' })
+    await loadingRan()
+    expect(latest).toMatchObject({ status: 'unavailable', cause: 'state-unread' })
+    await loadingRan()
+    expect(dispatch).toHaveBeenCalledTimes(4)
+
+    await act(async () => latest?.retry())
+    expect(dispatch).toHaveBeenCalledTimes(5)
     wallet.accountStates = stateOf(true)
     await render()
     expect(latest?.status).toBe('ready')
