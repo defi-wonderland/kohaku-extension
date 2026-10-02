@@ -308,9 +308,10 @@ export const publicationSentenceOf = (
 
 /**
  * The privacy block's lines, by the level the draft's privacy fields encode:
- * Private with the recovery password set, the Private label alone where the
- * password step has not stored its record, the Shape visible label with the
- * path's shape as anyone reads it, or the Public level's own label and line.
+ * Private or Shape visible with the recovery password set, the level's label
+ * alone where the password step has not stored its record, Shape visible
+ * followed by the path's shape as anyone reads it, or the Public level's own
+ * label and line.
  */
 export const privacyLinesOf = (
   draft: Pick<SetupDraft, 'privacy' | 'clauses'>,
@@ -333,7 +334,9 @@ export const privacyLinesOf = (
       (key, params) => t(key, { ...params })
     )
     return [
-      t('socialRecovery.privacy.level.shapeVisible.label'),
+      passwordSet
+        ? t('socialRecovery.review.shapeVisibleSet')
+        : t('socialRecovery.privacy.level.shapeVisible.label'),
       t('socialRecovery.privacy.level.shapeVisible.line', { shape })
     ]
   }
