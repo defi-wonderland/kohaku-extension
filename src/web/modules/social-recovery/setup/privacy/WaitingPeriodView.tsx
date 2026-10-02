@@ -147,30 +147,28 @@ const WaitingPeriodView = ({
               />
             )
           })}
-        </View>
-        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
           <PillChoice
             testID="wait-chip-custom"
             label={t(`${WAIT}.custom`)}
             selected={choice.kind === 'custom'}
             disabled={!loaded}
             onPress={() => choice.kind !== 'custom' && setChoice({ kind: 'custom', text: '' })}
-            style={[spacings.mrSm, spacings.mbSm]}
+            style={spacings.mbSm}
           />
-          {choice.kind === 'custom' && (
-            <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbSm]}>
-              <Input
-                testID="wait-custom-hours"
-                value={choice.text}
-                keyboardType="number-pad"
-                disabled={!loaded}
-                onChangeText={(typed) => setChoice({ kind: 'custom', text: typed })}
-                containerStyle={{ ...spacings.mb0, ...spacings.mrSm }}
-              />
-              <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>
-            </View>
-          )}
         </View>
+        {choice.kind === 'custom' && (
+          <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbSm]}>
+            <Input
+              testID="wait-custom-hours"
+              value={choice.text}
+              keyboardType="number-pad"
+              disabled={!loaded}
+              onChangeText={(typed) => setChoice({ kind: 'custom', text: typed })}
+              containerStyle={{ ...spacings.mb0, ...spacings.mrSm }}
+            />
+            <Text fontSize={14}>{t(`${WAIT}.customUnit`)}</Text>
+          </View>
+        )}
         {custom?.status === 'notWholeHours' && (
           <Text testID="wait-refusal" fontSize={14} appearance="errorText" style={spacings.mbTy}>
             {t(`${WAIT}.wholeHours`)}
