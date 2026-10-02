@@ -5,7 +5,10 @@ import { EventEmitter } from 'events'
 import { Messenger } from '@ambire-common/interfaces/messenger'
 import { delayPromise } from '@common/utils/promises'
 import { ETH_RPC_METHODS_AMBIRE_MUST_HANDLE } from '@web/constants/common'
-import { providerRequestTransport } from '@web/extension-services/background/provider/providerRequestTransport'
+import {
+  providerRequestTransport,
+  RequestArguments
+} from '@web/extension-services/background/provider/providerRequestTransport'
 import DedupePromise from '@web/extension-services/inpage/services/dedupePromise'
 import PushEventHandlers from '@web/extension-services/inpage/services/pushEventsHandlers'
 import ReadyPromise from '@web/extension-services/inpage/services/readyPromise'
@@ -19,6 +22,13 @@ export interface StateProvider {
   initialized: boolean
   isPermanentlyDisconnected: boolean
 }
+
+type LegacyRequestPayload = RequestArguments & {
+  id?: number | string
+  jsonrpc?: string
+}
+
+type LegacyRequestCallback = (error: unknown, response?: unknown) => void
 
 const $ = document.querySelector.bind(document)
 
@@ -71,6 +81,12 @@ function getIconWithRetry(delay = 1000): Promise<string> {
       }
     }, delay)
   })
+}
+
+// The legacy methods that shimLegacy installs on the instance
+export interface EthereumProvider {
+  enable?: () => Promise<unknown>
+  net_version?: () => Promise<unknown>
 }
 
 export class EthereumProvider extends EventEmitter {
@@ -264,11 +280,11 @@ export class EthereumProvider extends EventEmitter {
   }
 
   // TODO: support multi request!
-  request = async (data) => {
+  request = async (data: RequestArguments) => {
     return this.#dedupePromise.call(data.method, () => this._request(data))
   }
 
-  _request = async (data) => {
+  _request = async (data: RequestArguments) => {
     if (!data) {
       throw ethErrors.rpc.invalidRequest()
     }
@@ -343,7 +359,8 @@ export class EthereumProvider extends EventEmitter {
         { id }
       )
 
-      if (response.id !== id) return
+      if (response === undefined) throw new TypeError('The wallet returned no response')
+      if (typeof response === 'boolean' || response.id !== id) return
       if (response.error) {
         const error =
           (response.error as any)?.code && response.error?.message
@@ -363,12 +380,15 @@ export class EthereumProvider extends EventEmitter {
     })
   }
 
-  requestInternalMethods = (data) => {
+  requestInternalMethods = (data: RequestArguments) => {
     return this.#dedupePromise.call(data.method, () => this._request(data))
   }
 
   // shim to MetaMask legacy api
-  sendAsync = (payload, callback) => {
+  sendAsync = (
+    payload: LegacyRequestPayload | LegacyRequestPayload[],
+    callback: LegacyRequestCallback
+  ) => {
     if (Array.isArray(payload)) {
       return Promise.all(
         payload.map(
@@ -386,9 +406,10 @@ export class EthereumProvider extends EventEmitter {
     this.request({ method, params })
       .then((result) => callback(null, { ...rest, method, result }))
       .catch((error) => callback(error, { ...rest, method, error }))
+    return undefined
   }
 
-  send = (payload, callback?) => {
+  send = (payload: string | LegacyRequestPayload, callback?: unknown[] | LegacyRequestCallback) => {
     if (typeof payload === 'string' && (!callback || Array.isArray(callback))) {
       // send(method, params? = [])
       return this.request({
@@ -404,6 +425,8 @@ export class EthereumProvider extends EventEmitter {
     if (typeof payload === 'object' && typeof callback === 'function') {
       return this.sendAsync(payload, callback)
     }
+
+    if (typeof payload === 'string') throw new Error("sync method doesn't support")
 
     let result
     switch (payload.method) {
@@ -430,7 +453,7 @@ export class EthereumProvider extends EventEmitter {
     const legacyMethods = [
       ['enable', 'eth_requestAccounts'],
       ['net_version', 'net_version']
-    ]
+    ] as const
 
     // eslint-disable-next-line @typescript-eslint/naming-convention, no-restricted-syntax
     for (const [_method, method] of legacyMethods) {
