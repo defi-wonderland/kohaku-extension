@@ -378,7 +378,7 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expect(send.status).toBe('pending')
       })
 
-      it('withdraws its request once the window stays closed for the grace, and refuses as window-closed after the settle period', async () => {
+      it('withdraws its request once the window stays closed for the grace, and refuses as window-closed a settle period after the queue shows it gone', async () => {
         const { q, send, id } = sending()
         q.push(queuedWith('open', id))
         q.push(queuedWith('closed', id))
@@ -386,8 +386,12 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expect(withdrew(q, id)).toBe(false)
         await advance(1)
         expect(actionsOf(q.dispatch)).toContainEqual({ type: REMOVE, params: { id } })
+        await advance(SEND_SETTLE_MS * 3)
         expect(send.status).toBe('pending')
-        await advance(SEND_SETTLE_MS)
+        q.push(queuedWith('closed'))
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
         expectRefusal(send, 'window-closed')
         expect(actionsOf(q.dispatch)).toContainEqual({
           type: CLOSE_SESSION,
@@ -426,15 +430,19 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expect(q.listeners()).toBe(0)
       })
 
-      it('withdraws its request once the wait passes with no answer, and refuses as timeout after the settle period', async () => {
+      it('withdraws its request once the wait passes with no answer, and refuses as timeout a settle period after the queue shows it gone', async () => {
         const { q, send, id } = sending()
         q.push(queuedWith('open', id))
         await advance(DEFAULT_SEND_TIMEOUT_MS - 1)
         expect(withdrew(q, id)).toBe(false)
         await advance(1)
         expect(actionsOf(q.dispatch)).toContainEqual({ type: REMOVE, params: { id } })
+        await advance(SEND_SETTLE_MS * 3)
         expect(send.status).toBe('pending')
-        await advance(SEND_SETTLE_MS)
+        q.push(queuedWith('open'))
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
         expectRefusal(send, 'timeout')
         expect(actionsOf(q.dispatch)).toContainEqual({
           type: CLOSE_SESSION,
@@ -449,12 +457,21 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expectRefusal(send, 'timeout')
       })
 
-      it('keeps the refusal of a request it withdrew, though a queue state still lists it before the withdrawal lands', async () => {
+      it('holds the refusal of a request it withdrew while a queue state still lists it, and refuses a settle period after a state shows it gone', async () => {
         const { q, send, id } = sending()
         q.push(queuedWith('open', id))
         await advance(DEFAULT_SEND_TIMEOUT_MS)
         q.push(queuedWith('open', id))
-        await advance(SEND_SETTLE_MS)
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        expect(q.listeners()).toBe(1)
+        q.push(queuedWith('open', id))
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.push(queuedWith('open'))
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
         expectRefusal(send, 'timeout')
       })
     })
@@ -469,6 +486,7 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
             q.push(queuedWith('open', id))
             q.push(mainStatus(busy))
             await bring(q, id)
+            q.push(queuedWith('closed'))
             await advance(SEND_SETTLE_MS * 10)
             expect(send.status).toBe('pending')
             q.push(mainStatus('SUCCESS'))
@@ -569,7 +587,7 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         })
       )
 
-      it('withdraws once and refuses as timeout after the settle period when the signing ends back at ready to sign after the time passed', async () => {
+      it('withdraws once and refuses as timeout a settle period after the queue shows it gone, when the signing ends back at ready to sign after the time passed', async () => {
         const { q, send, id } = signingOwn()
         q.push(signScreen(id, SigningStatus.InProgress))
         await advance(DEFAULT_SEND_TIMEOUT_MS + SEND_SETTLE_MS)
@@ -579,6 +597,10 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         q.push(signScreen(id, SigningStatus.ReadyToSign))
         q.push(requestsPush(q.queue))
         expect(removalsOf(q)).toHaveLength(1)
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.queue = queueHolding([])
+        q.push(requestsPush(q.queue))
         await advance(SEND_SETTLE_MS - 1)
         expect(send.status).toBe('pending')
         await advance(1)
@@ -595,6 +617,10 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expect(removalsOf(q)).toEqual([])
         await advance(1)
         expect(removalsOf(q)).toEqual([{ type: REMOVE, params: { id } }])
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.queue = queueHolding([])
+        q.push(requestsPush(q.queue))
         await advance(SEND_SETTLE_MS)
         expectRefusal(send, 'timeout')
       })
@@ -621,12 +647,15 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         expect(withdrew(q, id)).toBe(false)
       })
 
-      it('withdraws the request once it enters the queue after the timeout, and refuses as timeout after the settle period', async () => {
+      it('withdraws the request once it enters the queue after the timeout, and refuses as timeout a settle period after the queue shows it gone', async () => {
         const { q, send, id } = sending()
         q.push(waitingForSwitch(id))
         await advance(DEFAULT_SEND_TIMEOUT_MS)
         q.push(queuedWith('open', id))
         expect(actionsOf(q.dispatch)).toContainEqual({ type: REMOVE, params: { id } })
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.push(queuedWith('open'))
         await advance(SEND_SETTLE_MS - 1)
         expect(send.status).toBe('pending')
         await advance(1)
@@ -678,6 +707,7 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
             q.push(queuedWith('open', id))
             q.push(queuedWith('closed', id))
             await advance(ABSENCE_GRACE_MS)
+            q.push(queuedWith('closed'))
           }
         },
         {
@@ -687,6 +717,7 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
           bring: async (q, id) => {
             q.push(queuedWith('open', id))
             await advance(DEFAULT_SEND_TIMEOUT_MS)
+            q.push(queuedWith('open'))
           }
         },
         {

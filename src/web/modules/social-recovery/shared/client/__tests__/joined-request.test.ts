@@ -34,10 +34,12 @@ import {
   SendRequestAction,
   SendRequestUpdate,
   sendQueueOver,
+  SendWorld,
   signAccountOpPush,
   SMART_ACCOUNT,
   smartAccount,
-  track
+  track,
+  TrackedSend
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 const KEY = new Wallet(`0x${'11'.repeat(32)}`).address as Address
@@ -150,26 +152,42 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         const own = queuedRequest(id, { account })
         return { q, send, id, own }
       }
-
-      it('withdraws its own request and refuses as other-request-pending after the settle period', async () => {
-        const { q, send, id, own } = sending()
-        q.push(requestsPush(queueHolding([own])))
-        await flush()
-        expect(removals(q.dispatch)).toEqual([])
-        q.push(requestsPush(queueHolding([own, dappCalls(account)])))
-        expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
+      /** The queue once the removal landed: the dapp's request alone. */
+      const gone = () => requestsPush(queueHolding([dappCalls(account)]))
+      /**
+       * The send stays pending past the settle period while no queue state
+       * showed its request gone, and refuses one settle period after one does.
+       */
+      const refusesOnceGone = async (q: SendWorld, send: TrackedSend) => {
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        expect(q.listeners()).toBe(1)
+        q.push(gone())
         await advance(SEND_SETTLE_MS - 1)
         expect(send.status).toBe('pending')
         await advance(1)
         expect(send.status).toBe('rejected')
         expect((send.value as SendRefusal).reason).toBe('other-request-pending')
         expect(q.listeners()).toBe(0)
+      }
+
+      it('withdraws its own request and refuses as other-request-pending a settle period after the queue shows it gone', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        await flush()
+        expect(removals(q.dispatch)).toEqual([])
+        q.push(requestsPush(queueHolding([own, dappCalls(account)])))
+        expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
+        await refusesOnceGone(q, send)
       })
 
       it('withdraws its own request for another one that waits for an account switch', async () => {
         const { q, send, id, own } = sending()
         q.push(requestsPush(queueHolding([own], [dappCalls(account)])))
         expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
+        await advance(SEND_SETTLE_MS * 3)
+        expect(send.status).toBe('pending')
+        q.push(requestsPush(queueHolding([], [dappCalls(account)])))
         await advance(SEND_SETTLE_MS)
         expect((send.value as SendRefusal).reason).toBe('other-request-pending')
       })
@@ -189,8 +207,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         q.push(mainStatus('INITIAL'))
         q.push(requestsPush(queueHolding([own, dappCalls(account)])))
         expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
-        await advance(SEND_SETTLE_MS)
-        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        await refusesOnceGone(q, send)
       })
 
       /** The sign screen holding an operation whose calls came from these requests, at a signing status. */
@@ -230,8 +247,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
           q.push(signScreen([id], status))
           q.push(requestsPush(joined(own)))
           expect(removals(q.dispatch)).toEqual(withdrawal(id))
-          await advance(SEND_SETTLE_MS)
-          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+          await refusesOnceGone(q, send)
         })
       )
 
@@ -242,10 +258,13 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         q.push(mainStatus('SIGNING'))
         q.push(requestsPush(joined(own)))
         expect(removals(q.dispatch)).toEqual(withdrawal(id))
+        q.push(gone())
         await advance(SEND_SETTLE_MS * 3)
         expect(send.status).toBe('pending')
         q.push(mainStatus('SUCCESS'))
-        await advance(SEND_SETTLE_MS)
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
         expect((send.value as SendRefusal).reason).toBe('other-request-pending')
       })
 
@@ -272,8 +291,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
           q.push(requestsPush(joined(own)))
           expect(removals(q.dispatch)).toEqual(withdrawal(id))
           q.push(mainStatus('SUCCESS'))
-          await advance(SEND_SETTLE_MS)
-          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+          await refusesOnceGone(q, send)
         })
       )
 
@@ -298,8 +316,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
           q.push(push(id))
           q.push(requestsPush(q.queue))
           expect(removals(q.dispatch)).toEqual(withdrawal(id))
-          await advance(SEND_SETTLE_MS)
-          expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+          await refusesOnceGone(q, send)
         })
       )
 
@@ -317,11 +334,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         q.push(signScreen([id], SigningStatus.ReadyToSign))
         q.push(requestsPush(q.queue))
         expect(removals(q.dispatch)).toEqual(withdrawal(id))
-        await advance(SEND_SETTLE_MS - 1)
-        expect(send.status).toBe('pending')
-        await advance(1)
-        expect(send.status).toBe('rejected')
-        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        await refusesOnceGone(q, send)
       })
 
       it('withdraws nothing for a join while the sign screen pauses on its request, and answers the hash the holder signs from the pause', async () => {
@@ -351,8 +364,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         expect(removals(q.dispatch)).toEqual([])
         q.push(requestsPush(joined(own)))
         expect(removals(q.dispatch)).toEqual(withdrawal(id))
-        await advance(SEND_SETTLE_MS)
-        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        await refusesOnceGone(q, send)
       })
 
       it('stops the check again once the sign screen signs anew after a failed signature', async () => {
@@ -428,8 +440,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
         q.push(mainStatus('SUCCESS'))
         q.push(requestsPush(queueHolding([own, dappCalls(account)])))
         expect(removals(q.dispatch)).toEqual([{ type: REMOVE, params: { id } }])
-        await advance(SEND_SETTLE_MS)
-        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+        await refusesOnceGone(q, send)
       })
 
       const NOT_JOINING: [string, QueuedFor][] = [
