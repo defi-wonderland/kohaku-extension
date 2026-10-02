@@ -743,13 +743,17 @@ export const createWalletRecords = ({
           if (current.status === 'present') {
             return { claimed: false, record: { value: current.value, savedAt: current.savedAt } }
           }
-          const record = await writeKey<SaveInFlightRecord>(key, {
+          const value: SaveInFlightRecord = {
             draft: claim.draft,
             prepared: claim.prepared,
             requestId: claim.requestId,
             claimedAt: claim.claimedAt,
             ...(claim.startBlock === undefined ? {} : { startBlock: claim.startBlock })
-          })
+          }
+          if (!isSaveInFlight(value)) {
+            throw new Error(`Invalid save in flight, not written: ${key}`)
+          }
+          const record = await writeKey<SaveInFlightRecord>(key, value)
           return { claimed: true, record }
         }),
       markSent: (requestId: string, transactionHash: Hex, startBlock?: number) =>
@@ -758,11 +762,15 @@ export const createWalletRecords = ({
           if (current.status !== 'present' || current.value.requestId !== requestId) {
             return current
           }
-          const record = await writeKey<SaveInFlightRecord>(key, {
+          const value: SaveInFlightRecord = {
             ...current.value,
             transactionHash,
             ...(startBlock === undefined ? {} : { startBlock })
-          })
+          }
+          if (!isSaveInFlight(value)) {
+            throw new Error(`Invalid save in flight, not written: ${key}`)
+          }
+          const record = await writeKey<SaveInFlightRecord>(key, value)
           return { status: 'present' as const, ...record }
         }),
       release: (requestId: string) =>

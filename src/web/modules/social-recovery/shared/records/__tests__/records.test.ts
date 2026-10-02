@@ -2733,6 +2733,33 @@ describe('the setup save in flight', () => {
     expect(storage.calls.remove).toEqual([])
   })
 
+  const UNREADABLE_CLAIMS: [string, SaveInFlightClaim][] = [
+    ['a negative start block', { ...SAVE_CLAIM, startBlock: -1 }],
+    ['an empty request id', { ...SAVE_CLAIM, requestId: '' }],
+    ['a claim time that is not finite', { ...SAVE_CLAIM, claimedAt: Number.POSITIVE_INFINITY }]
+  ]
+  UNREADABLE_CLAIMS.forEach(([label, claim]) =>
+    it(`a claim with ${label} rejects and writes nothing, so the record still reads absent`, async () => {
+      const { storage, records } = setup()
+      const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+      await expect(saving.claim(claim)).rejects.toThrow(KEY)
+      expect(storage.calls.set).toEqual([])
+      expect(await saving.read()).toBe(ABSENT)
+    })
+  )
+
+  it('marking it sent with a start block that is not a number rejects and keeps the claim as it was', async () => {
+    const { storage, records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    const writes = storage.calls.set.length
+    await expect(saving.markSent(SAVE_CLAIM.requestId, TX_HASH, NaN)).rejects.toThrow(KEY)
+    expect(storage.calls.set).toHaveLength(writes)
+    const kept = present(await saving.read()).value
+    expect(kept).toEqual(SAVE_CLAIM)
+    expect(kept.transactionHash).toBeUndefined()
+  })
+
   const stored = (value: unknown) => ({ value, savedAt: T0 })
   const MALFORMED: [string, unknown][] = [
     ['a bare record with no savedAt', SAVE_CLAIM],

@@ -1,8 +1,7 @@
 /**
- * The UI's own send port pulls the queue from the `requests` controller state
- * the screen holds, the value `useRequestsControllerState` answers, as it is.
+ * The UI's own send port reads the queue through its getter, from the
+ * `requests` controller state the screen holds, as it is.
  */
-import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import {
   BATCH,
   CONTROLLING_KEY,
@@ -21,19 +20,14 @@ import {
   track
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
-let mockHeld: HeldRequestQueue = {}
+let held: HeldRequestQueue = {}
 
-jest.mock('@web/hooks/useRequestsControllerState', () => ({
-  __esModule: true,
-  default: () => mockHeld
-}))
-
-const portOverTheHook = () => {
+const portOverTheHeldQueue = () => {
   const dispatch = jest.fn()
   const port = sendRequestPort(
     dispatch,
     () => [smartAccount(SMART_ACCOUNT, CONTROLLING_KEY)],
-    useRequestsControllerState
+    () => held
   )
   return { dispatch, port }
 }
@@ -45,14 +39,14 @@ beforeEach(() => {
 afterEach(() => {
   jest.clearAllTimers()
   jest.useRealTimers()
-  mockHeld = {}
+  held = {}
 })
 
-describe('the send port over the requests state the hook answers', () => {
+describe('the send port over the queue the screen holds, read through its getter', () => {
   it('reads a request the held queue keeps waiting for an account switch as queued, reading no activity', async () => {
     const id = newSendRequestId()
-    mockHeld = queueHolding([], [queuedRequest(id, { account: SMART_ACCOUNT })])
-    const { dispatch, port } = portOverTheHook()
+    held = queueHolding([], [queuedRequest(id, { account: SMART_ACCOUNT })])
+    const { dispatch, port } = portOverTheHeldQueue()
     await expect(sendRequestStateOf(port, id, SMART_ACCOUNT, SEPOLIA)).resolves.toEqual({
       status: 'queued'
     })
@@ -60,10 +54,8 @@ describe('the send port over the requests state the hook answers', () => {
   })
 
   it("refuses a batch beside a calls request of the account on the chain in the held queue, by the request's own kind, account and chain", async () => {
-    mockHeld = queueHolding([
-      queuedRequest('dapp-request', { account: SMART_ACCOUNT.toLowerCase() })
-    ])
-    const { dispatch, port } = portOverTheHook()
+    held = queueHolding([queuedRequest('dapp-request', { account: SMART_ACCOUNT.toLowerCase() })])
+    const { dispatch, port } = portOverTheHeldQueue()
     const send = track(
       createSendPort(port, { chainId: SEPOLIA }).sendAccountBatch(SMART_ACCOUNT, BATCH)
     )
@@ -74,10 +66,10 @@ describe('the send port over the requests state the hook answers', () => {
   })
 
   it('queues a batch beside a request of the account that is not a calls request', async () => {
-    mockHeld = queueHolding([
+    held = queueHolding([
       queuedRequest('dapp-request', { account: SMART_ACCOUNT, kind: 'typedMessage' })
     ])
-    const { dispatch, port } = portOverTheHook()
+    const { dispatch, port } = portOverTheHeldQueue()
     const send = track(
       createSendPort(port, { chainId: SEPOLIA }).sendAccountBatch(SMART_ACCOUNT, BATCH)
     )
