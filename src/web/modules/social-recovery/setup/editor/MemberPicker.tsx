@@ -59,12 +59,12 @@ const MemberPicker = ({
                   addressBook={addressBook}
                   enrollments={enrollments}
                 />
+                {inPath && (
+                  <Text fontSize={12} appearance="secondaryText" style={spacings.mtMi}>
+                    {t('socialRecovery.editor.picker.alreadyInPath')}
+                  </Text>
+                )}
               </View>
-              {inPath && (
-                <Text fontSize={12} appearance="secondaryText" style={spacings.mlSm}>
-                  {t('socialRecovery.editor.picker.alreadyInPath')}
-                </Text>
-              )}
               <Button
                 testID={`editor-picker-${kind}-${index}`}
                 type="secondary"
