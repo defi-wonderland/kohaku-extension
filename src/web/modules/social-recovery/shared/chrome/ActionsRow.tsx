@@ -7,14 +7,16 @@ import flexbox from '@common/styles/utils/flexbox'
 
 import type { ActionsRowProps } from './types'
 
-const ActionsRow = ({ primary, secondary, note, testID }: ActionsRowProps) => (
+const ActionsRow = ({ primary, secondary, note, noteTestID, testID }: ActionsRowProps) => (
   <View testID={testID} style={spacings.mtSm}>
     <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
       {primary}
-      {!!secondary && <View style={spacings.mlSm}>{secondary}</View>}
+      {!!secondary && (
+        <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mlSm]}>{secondary}</View>
+      )}
     </View>
     {!!note && (
-      <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
+      <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy} testID={noteTestID}>
         {note}
       </Text>
     )}

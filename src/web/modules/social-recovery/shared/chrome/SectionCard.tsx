@@ -8,7 +8,20 @@ import common from '@common/styles/utils/common'
 import SectionLabel from './SectionLabel'
 import type { SectionCardProps } from './types'
 
-const SectionCard = ({ label, tone = 'plain', children, style, testID }: SectionCardProps) => {
+const BOTTOM_MARGIN = {
+  block: spacings.mbLg,
+  item: spacings.mbSm,
+  none: spacings.mb0
+} as const
+
+const SectionCard = ({
+  label,
+  tone = 'plain',
+  spacing = 'block',
+  children,
+  style,
+  testID
+}: SectionCardProps) => {
   const { theme } = useTheme()
 
   return (
@@ -18,7 +31,7 @@ const SectionCard = ({ label, tone = 'plain', children, style, testID }: Section
         common.borderRadiusSecondary,
         spacings.ph,
         spacings.pv,
-        spacings.mbLg,
+        BOTTOM_MARGIN[spacing],
         {
           borderWidth: 1,
           borderColor: theme.secondaryBorder,

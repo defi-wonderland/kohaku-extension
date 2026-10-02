@@ -7,7 +7,7 @@ import spacings from '@common/styles/spacings'
 
 import type { PillChoiceProps } from './types'
 
-const PillChoice = ({ label, selected, onPress, disabled, testID }: PillChoiceProps) => {
+const PillChoice = ({ label, selected, onPress, disabled, style, testID }: PillChoiceProps) => {
   const { theme } = useTheme()
 
   return (
@@ -26,12 +26,15 @@ const PillChoice = ({ label, selected, onPress, disabled, testID }: PillChoicePr
         {
           borderRadius: 50,
           borderWidth: 1,
-          borderColor: selected ? theme.primary : theme.secondaryBorder,
+          borderColor: selected ? theme.primary : theme.primaryBorder,
           ...(selected ? { backgroundColor: theme.tertiaryBackground } : {})
-        }
+        },
+        style
       ]}
     >
-      <Text fontSize={14}>{label}</Text>
+      <Text fontSize={14} weight="medium">
+        {label}
+      </Text>
     </Pressable>
   )
 }

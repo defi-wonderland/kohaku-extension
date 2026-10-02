@@ -15,6 +15,7 @@ import themeConfig, { THEME_TYPES } from '@common/styles/themeConfig'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import {
   ActionsRow,
+  MethodRow,
   NoteBox,
   PageTitle,
   PillChoice,
@@ -26,17 +27,6 @@ import {
 
 // React only runs effects and state updates inside act() when this flag is set.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-
-// The folder's index also exports the settings chrome, whose sidebar and logo
-// Jest cannot load; neither is mounted here.
-jest.mock('@web/modules/settings/components/Sidebar', () => ({
-  __esModule: true,
-  default: () => null
-}))
-jest.mock('@common/components/AmbireLogoHorizontal', () => ({
-  __esModule: true,
-  default: () => null
-}))
 
 const THEME = Object.fromEntries(
   Object.entries(themeConfig).map(([name, byType]) => [name, byType[THEME_TYPES.LIGHT]])
@@ -182,6 +172,23 @@ describe('a pill choice', () => {
     press('pill')
     expect(onPress).not.toHaveBeenCalled()
   })
+
+  it('keeps its label, its checked state and its handler when it is given a style', () => {
+    const onPress = jest.fn()
+    mount(
+      <PillChoice
+        testID="pill"
+        label="48 hours"
+        selected
+        onPress={onPress}
+        style={{ marginRight: 8 }}
+      />
+    )
+    expect(byTestId('pill')?.textContent).toBe('48 hours')
+    expect(checkedOf('pill')).toBe('true')
+    press('pill')
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('a status chip', () => {
@@ -195,6 +202,11 @@ describe('a status chip', () => {
 
   it('holds its text and nothing else with no tone given', () => {
     mount(<StatusChip testID="chip" text="Saved" />)
+    expect(byTestId('chip')?.textContent).toBe('Saved')
+  })
+
+  it('holds its text and nothing else when it is given a style', () => {
+    mount(<StatusChip testID="chip" text="Saved" tone="success" style={{ marginLeft: 8 }} />)
     expect(byTestId('chip')?.textContent).toBe('Saved')
   })
 })
@@ -225,6 +237,59 @@ describe('an actions row', () => {
       />
     )
     expect(byTestId('actions')?.textContent).toBe('ContinueContinue unlocks when you pick one.')
+  })
+
+  it('keeps the primary action before both buttons of a two-button secondary', () => {
+    mount(
+      <ActionsRow
+        testID="actions"
+        primary={<Text testID="primary">Save</Text>}
+        secondary={
+          <>
+            <Text testID="retry">Try again</Text>
+            <Text testID="back">Back</Text>
+          </>
+        }
+      />
+    )
+    expect(byTestId('actions')?.contains(byTestId('retry'))).toBe(true)
+    expect(byTestId('actions')?.contains(byTestId('back'))).toBe(true)
+    expect(byTestId('actions')?.textContent).toBe('SaveTry againBack')
+  })
+
+  it('shows the note under the test id it is given for it', () => {
+    mount(
+      <ActionsRow
+        testID="actions"
+        primary={<Text>Continue</Text>}
+        note="Create your passkey first."
+        noteTestID="note"
+      />
+    )
+    expect(byTestId('note')?.textContent).toBe('Create your passkey first.')
+    expect(byTestId('actions')?.contains(byTestId('note'))).toBe(true)
+  })
+})
+
+describe('a method row', () => {
+  it('shows its children under its test id', () => {
+    mount(
+      <MethodRow testID="row">
+        <Text testID="label">Passkey</Text>
+        <Text>Not tested</Text>
+      </MethodRow>
+    )
+    expect(byTestId('row')?.contains(byTestId('label'))).toBe(true)
+    expect(byTestId('row')?.textContent).toBe('PasskeyNot tested')
+  })
+
+  it('shows its children under its test id when it is quiet', () => {
+    mount(
+      <MethodRow testID="row" quiet>
+        <Text>Recovery password</Text>
+      </MethodRow>
+    )
+    expect(byTestId('row')?.textContent).toBe('Recovery password')
   })
 })
 
