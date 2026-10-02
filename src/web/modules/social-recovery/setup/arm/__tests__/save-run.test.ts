@@ -298,6 +298,8 @@ describe('the send and the receipt', () => {
     expect(mayStillLand(refused.write)).toBe(true)
     // No failure title and no word that nothing was sent: the operation may still land.
     expect(saveWriteKeysOf(refused.write)).toEqual({ body: 'socialRecovery.arm.mayStillLand' })
+    // The run read the setup before it prepared, and once more after its claim.
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
     wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
 
     await startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
@@ -305,7 +307,7 @@ describe('the send and the receipt', () => {
     expect(store.state()).toBe(refused)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
-    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
     expect(wired.saveSetup).not.toHaveBeenCalled()
   })
 
@@ -550,14 +552,19 @@ const restart = (store: ArmStore, wired: ReturnType<typeof wireSave>) =>
   startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
 describe('the setup read at the start of every run', () => {
-  it('reads the setup first on the first start, before the prepare, the gas check and the send', async () => {
+  it('reads the setup first on the first start, before the prepare, the gas check and the send, and once more after the claim and before the send', async () => {
     const wired = wireSave(account, script())
+    const writes = jest.spyOn(wired.storage, 'set')
     await runSave(wired.steps)
 
-    expect(wired.setupState).toHaveBeenCalledTimes(1)
-    expect(wired.setupState.mock.invocationCallOrder[0]).toBeLessThan(
-      wired.prepareCommitSetup.mock.invocationCallOrder[0]
-    )
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    const [first, second] = wired.setupState.mock.invocationCallOrder
+    expect(first).toBeLessThan(wired.prepareCommitSetup.mock.invocationCallOrder[0])
+    const claimedAt = writes.mock.invocationCallOrder[0]
+    expect(Math.max(...wired.reads.nativeBalance.mock.invocationCallOrder)).toBeLessThan(claimedAt)
+    expect(second).toBeGreaterThan(claimedAt)
+    expect(second).toBeLessThan(wired.port.sendAccountBatch.mock.invocationCallOrder[0])
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
   it('ends the first start as already set up where the account holds a setup, with nothing prepared, estimated, sent or wiped', async () => {
@@ -628,12 +635,13 @@ describe('the setup read at the start of every run', () => {
       const prepares = wired.prepareCommitSetup.mock.calls.length
       const sends = wired.port.sendAccountBatch.mock.calls.length
       const estimates = wired.reads.estimateGas.mock.calls.length
+      const setupReads = wired.setupState.mock.calls.length
       heal(wired)
       wired.setupState.mockResolvedValue(setupStateOf(true))
 
       await restart(store, wired)
 
-      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 1)
       expect(store.state().stop).toBe('already-set-up')
       expect(armScreenOf(store.state())).toBe('already-set-up')
       expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(prepares)
@@ -647,13 +655,19 @@ describe('the setup read at the start of every run', () => {
       const wired = wireSave(account, script(overrides))
       const store = await runSave(wired.steps)
       const sends = wired.port.sendAccountBatch.mock.calls.length
+      const setupReads = wired.setupState.mock.calls.length
       heal(wired)
 
       await restart(store, wired)
 
-      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      // The retry reads once before it prepares, and once after its claim and before its send.
+      expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 2)
+      const order = wired.setupState.mock.invocationCallOrder
       const lastPrepare = Math.max(...wired.prepareCommitSetup.mock.invocationCallOrder)
-      expect(wired.setupState.mock.invocationCallOrder[1]).toBeLessThan(lastPrepare)
+      const lastSend = Math.max(...wired.port.sendAccountBatch.mock.invocationCallOrder)
+      expect(order[setupReads]).toBeLessThan(lastPrepare)
+      expect(order[setupReads + 1]).toBeGreaterThan(lastPrepare)
+      expect(order[setupReads + 1]).toBeLessThan(lastSend)
       expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(sends + 1)
       expect(isSaved(store.state())).toBe(true)
       expect(wired.saveSetup).toHaveBeenCalledTimes(1)
@@ -733,11 +747,12 @@ describe('a refusal whose operation may still land, read again', () => {
   it('runs the check with the run save where check again finds the setup, and reads saved with one wipe, nothing prepared or sent again', async () => {
     const { wired, store } = await refusedRun()
     expect((await wired.inFlight.read()).status).toBe('present')
+    const setupReads = wired.setupState.mock.calls.length
     wired.setupState.mockResolvedValue(setupStateOf(true))
 
     await checkSetupAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
-    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 1)
     expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
     expect(wired.confirmSetup).toHaveBeenCalledWith(wired.draft, wired.prepared)
     expect(isSaved(store.state())).toBe(true)
@@ -767,6 +782,7 @@ describe('a refusal whose operation may still land, read again', () => {
   it('stays as it was where check again finds no setup, or its read throws, and a later check again still reads', async () => {
     const { wired, store } = await refusedRun()
     const refused = store.state()
+    const setupReads = wired.setupState.mock.calls.length
 
     await checkSetupAgain(store, wired.steps)
     expect(store.state()).toBe(refused)
@@ -780,7 +796,7 @@ describe('a refusal whose operation may still land, read again', () => {
 
     wired.setupState.mockResolvedValue(setupStateOf(true))
     await checkSetupAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
-    expect(wired.setupState).toHaveBeenCalledTimes(4)
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 3)
     expect(isSaved(store.state())).toBe(true)
     expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
@@ -808,12 +824,13 @@ describe('a refusal whose operation may still land, read again', () => {
     const wired = wireSave(account, script({ send: 'window-closed' }))
     const store = await runSave(wired.steps)
     const refused = store.state()
+    const setupReads = wired.setupState.mock.calls.length
 
     await endWhereSetUp(store, wired.steps, true)
     await checkSetupAgain(store, wired.steps)
 
     expect(store.state()).toBe(refused)
-    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads)
   })
 })
 
@@ -842,13 +859,22 @@ describe("the deposit step's Continue", () => {
     const wired = wireSave(account, script({ gas: 'deposit' }))
     const store = await runSave(wired.steps)
     const balances = wired.reads.nativeBalance.mock.calls.length
+    const setupReads = wired.setupState.mock.calls.length
     wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
 
     await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
-    expect(wired.setupState).toHaveBeenCalledTimes(2)
-    expect(wired.setupState.mock.invocationCallOrder[1]).toBeLessThan(
+    // Continue reads once before its gas check, and once after its claim and before its send.
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 2)
+    const order = wired.setupState.mock.invocationCallOrder
+    expect(order[setupReads]).toBeLessThan(
       wired.reads.nativeBalance.mock.invocationCallOrder[balances]
+    )
+    expect(order[setupReads + 1]).toBeGreaterThan(
+      Math.max(...wired.reads.nativeBalance.mock.invocationCallOrder)
+    )
+    expect(order[setupReads + 1]).toBeLessThan(
+      wired.port.sendAccountBatch.mock.invocationCallOrder[0]
     )
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(isSaved(store.state())).toBe(true)
@@ -1338,7 +1364,11 @@ describe("the sign screen's estimation before a save never sent", () => {
       }
       expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
       expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(2)
-      expect(wired.setupState).toHaveBeenCalledTimes(2)
+      // The first run's read before its prepare and after its claim, then the new run's own.
+      expect(wired.setupState).toHaveBeenCalledTimes(3)
+      expect(wired.setupState.mock.invocationCallOrder[2]).toBeGreaterThan(
+        wired.port.sendAccountBatch.mock.invocationCallOrder[0]
+      )
       expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
       expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
 
@@ -1362,7 +1392,8 @@ describe("the sign screen's estimation before a save never sent", () => {
     expect(write.run).toBe(1)
     expect(canRetry(write)).toBe(true)
     expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(2)
-    expect(wired.setupState).toHaveBeenCalledTimes(1)
+    // No new run started: only the reads before the prepare and after the claim.
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -1387,13 +1418,16 @@ describe("the sign screen's estimation before a save never sent", () => {
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
     wired.reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+    // No setup before the prepare nor after the claim; the new run's read finds one.
     wired.setupState
+      .mockResolvedValueOnce(setupStateOf(false))
       .mockResolvedValueOnce(setupStateOf(false))
       .mockResolvedValueOnce(setupStateOf(true))
     const store = await runSave(wired.steps)
 
     expect(store.state().stop).toBe('already-set-up')
     expect(store.state().write.status).not.toBe('needsDeposit')
+    expect(wired.setupState).toHaveBeenCalledTimes(3)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 

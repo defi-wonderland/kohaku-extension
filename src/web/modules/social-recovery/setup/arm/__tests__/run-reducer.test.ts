@@ -243,11 +243,16 @@ describe("the save's reducer", () => {
     expect(broken).toEqual([])
   })
 
-  it('ends a run as already set up only while it reads the setup before the gas check, dropping what it prepared', () => {
+  it('ends a run as already set up only while it reads the setup before the gas check, or after the gas check and before its send, dropping what it prepared', () => {
     const moved = WALK.steps.filter(
       ({ from, event, to }) => event.type === 'alreadySetUp' && to.state !== from.state
     )
     expect(moved.length).toBeGreaterThan(0)
+    const beforeTheSend = ({ write, landedUnseen }: ArmState) =>
+      write.status === 'submitting' && !write.transactionHash && !landedUnseen
+    // Both moments are reached: the read before the prepare, and the read after the gas check.
+    expect(moved.some(({ from }) => from.state.write.status === 'checkingGas')).toBe(true)
+    expect(moved.some(({ from }) => beforeTheSend(from.state))).toBe(true)
     // A refusal that may still land meets the event and stays: a setup found then leads to the check.
     expect(
       WALK.steps.some(
@@ -257,13 +262,67 @@ describe("the save's reducer", () => {
     const wrong = moved
       .filter(
         ({ from, to }) =>
-          from.state.write.status !== 'checkingGas' ||
+          (from.state.write.status !== 'checkingGas' && !beforeTheSend(from.state)) ||
           to.state.stop !== 'already-set-up' ||
           to.state.write.status !== 'idle' ||
           to.state.prepared !== undefined
       )
       .map(({ from }) => json(from.path))
     expect(wrong).toEqual([])
+    // Under a hash the batch is on its way to the chain: a setup read then never ends the run.
+    expect(
+      WALK.steps
+        .filter(
+          ({ from, event }) =>
+            event.type === 'alreadySetUp' &&
+            from.state.write.status === 'submitting' &&
+            !!from.state.write.transactionHash
+        )
+        .filter(({ from, to }) => to.state !== from.state)
+        .map(({ from }) => json(from.path))
+    ).toEqual([])
+  })
+
+  describe('over a claimed run', () => {
+    /** The arrival read no stored save; the run prepared, read enough gas and claimed. */
+    const CLAIMED: ArmEvent[] = [
+      { type: 'lookup', run: 0, reading: 'none' },
+      START,
+      { type: 'prepared', run: 1, prepared: SAVE },
+      { type: 'write', event: { type: 'gasChecked', run: 1, check: ENOUGH } },
+      { type: 'claimed', run: 1, requestId: 'claimed' }
+    ]
+    const claimed = CLAIMED.reduce(armReducer, initialArmState())
+    const sent = armReducer(claimed, {
+      type: 'write',
+      event: { type: 'sent', run: 1, transactionHash: TX_HASH }
+    })
+
+    it('ends as already set up after the claim and before the send, dropping the claim and the prepared save', () => {
+      expect(claimed.requestId).toBe('claimed')
+      const stopped = armReducer(claimed, { type: 'alreadySetUp', run: 1 })
+      expect(stopped.stop).toBe('already-set-up')
+      expect(stopped.write.status).toBe('idle')
+      expect(stopped.requestId).toBeUndefined()
+      expect(stopped.prepared).toBeUndefined()
+      // Under a hash, or for another run, a setup read moves nothing.
+      expect(armReducer(sent, { type: 'alreadySetUp', run: 1 })).toBe(sent)
+      expect(armReducer(claimed, { type: 'alreadySetUp', run: 2 })).toBe(claimed)
+    })
+
+    it('voids only while it waits with no hash, back to the arrival with no lookup, claim or prepared save', () => {
+      const voided = armReducer(claimed, { type: 'voided', run: 1 })
+      expect(voided.write.status).toBe('idle')
+      expect(voided.lookup).toBeUndefined()
+      expect(voided.requestId).toBeUndefined()
+      expect(voided.prepared).toBeUndefined()
+      expect(voided.stop).toBeUndefined()
+      expect(armReducer(sent, { type: 'voided', run: 1 })).toBe(sent)
+      expect(armReducer(claimed, { type: 'voided', run: 2 })).toBe(claimed)
+      // A run that holds no claim has nothing to void.
+      const unclaimed = CLAIMED.slice(0, -1).reduce(armReducer, initialArmState())
+      expect(armReducer(unclaimed, { type: 'voided', run: 1 })).toBe(unclaimed)
+    })
   })
 
   it('takes a landing seen only in the setup only for a save it holds that may still land or submits with no hash, and reads saved only after the agreed check', () => {
