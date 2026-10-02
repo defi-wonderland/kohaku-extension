@@ -25,14 +25,18 @@
  * with a key the keystore holds cannot be stopped once it began, so an
  * operation that names the request still answers its hash in that time.
  *
- * A request the port withdraws is not gone until the queue shows it gone: the
- * wallet drops a hidden tab's dispatch, and removes a request only from its
- * waiting requests, not from those that wait for an account switch. So after
- * a withdrawal the port keeps following until a queue state lists the request
- * in neither list, and only then counts its settle period; while the request
- * stays listed, an operation that names it still answers its hash. The port
- * sends the removal again when the request enters the waiting requests and,
- * where the caller gives the page's document, when the page is shown again.
+ * A request the port withdraws is not gone until the queue shows it gone and
+ * the sign screen no longer holds it: the wallet drops a hidden tab's
+ * dispatch, removes a request only from its waiting requests, not from those
+ * that wait for an account switch, and a sign screen that pauses or signs
+ * keeps the operation it froze. So after a withdrawal the port keeps following
+ * until a queue state lists the request in neither list and the sign screen's
+ * last state holds no operation that carries it, and only then counts its
+ * settle period; until then, an operation that names it still answers its
+ * hash. Except while the sign screen signs or pauses on the request, the port
+ * sends the removal again when the request enters the waiting requests, when
+ * the sign screen stops with the request still waiting and, where the caller
+ * gives the page's document, when the page is shown again.
  *
  * The queue sends for an account the wallet lists, from that account's keys.
  * A key that is itself a basic account (an EOA the wallet lists, its own only
@@ -332,11 +336,20 @@ const isBusy = (state: MainStatusState): boolean =>
 const carriesRequest = (calls: SubmittedOperation['calls'], id: string): boolean =>
   !!calls?.some((call) => call.fromUserRequestId === id)
 
+/**
+ * Whether the sign screen holds an operation that carries the request, which
+ * it could still sign. A screen that pauses or signs takes no calls update, so
+ * its operation keeps a request the queue already dropped, and a pause that
+ * ends does not take the dropped update back. A screen with no status is a
+ * reset one, or one that has not yet reached ready to sign and still takes
+ * every update.
+ */
+const holdsRequest = (state: SignAccountOpState, id: string): boolean =>
+  !!state.status && carriesRequest(state.accountOp?.calls, id)
+
 /** Whether the sign screen started to sign the operation that holds the request. */
 const signsRequest = (state: SignAccountOpState, id: string): boolean =>
-  !!state.status &&
-  SIGNING_STATUSES.includes(state.status.type) &&
-  carriesRequest(state.accountOp?.calls, id)
+  !!state.status && SIGNING_STATUSES.includes(state.status.type) && holdsRequest(state, id)
 
 /** Whether the wallet rejected the operation before it reached the chain, so it names no transaction. */
 const neverBroadcast = (operation: SubmittedOperation): boolean =>
@@ -538,7 +551,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let timedOut = false
       let busy = false
       let signing = false
+      let held = false
       let inRequests = false
+      let listed = false
+      let lastQueue: QueueLists | undefined
       let windowClosed = false
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
@@ -593,8 +609,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
       }
       // A refusal waits while the wallet signs or broadcasts, and while the
-      // queue still lists a request the port withdrew, and then for a full
-      // settle period after both stopped.
+      // queue or the sign screen still holds a request the port withdrew, and
+      // then for a full settle period after all of them stopped.
       const armSettle = () => {
         if (settleTimer !== undefined) {
           clearTimeout(settleTimer)
@@ -606,26 +622,29 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         const { reason } = settling
         settleTimer = setTimeout(() => fail(reason), SEND_SETTLE_MS)
       }
-      // A withdrawal is confirmed by a queue state that lists the request in
-      // neither list. Until then the removal may have been dropped, so it is
-      // sent again each time the request enters the waiting requests, and
-      // again when a hidden page is shown with the request still there.
-      const followWithdrawal = (wasInRequests: boolean, listed: boolean) => {
+      // A withdrawal is confirmed while the last queue state lists the request
+      // in neither list and the last sign screen state holds no operation that
+      // carries it; a later state that holds it again takes the confirmation
+      // back.
+      const confirmWithdrawal = () => {
         if (settling === undefined || !settling.withdrawn) {
           return
         }
-        if (!listed) {
-          if (!settling.confirmed) {
-            settling.confirmed = true
-            armSettle()
-          }
-          return
-        }
-        if (settling.confirmed) {
-          settling.confirmed = false
+        const confirmed = !listed && !held
+        if (confirmed !== settling.confirmed) {
+          settling.confirmed = confirmed
           armSettle()
         }
-        if (inRequests && !wasInRequests) {
+      }
+      // Until the withdrawal is confirmed the removal may have been dropped, so
+      // it is sent again each time the request enters the waiting requests,
+      // except while the sign screen signs or pauses on it.
+      const followWithdrawal = (wasInRequests: boolean) => {
+        if (settling === undefined || !settling.withdrawn) {
+          return
+        }
+        confirmWithdrawal()
+        if (inRequests && !wasInRequests && !signing) {
           remove()
         }
       }
@@ -635,7 +654,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         // Before any queue state listed the request, the queue the page holds
         // now tells whether there is anything to withdraw.
-        const confirmed = !withdraw || (!seen && !isQueued(port, id))
+        if (!seen) {
+          listed = isQueued(port, id)
+        }
+        const confirmed = !withdraw || (!listed && !held)
         settling = { reason, withdrawn: withdraw, confirmed }
         if (timer !== undefined) {
           clearTimeout(timer)
@@ -649,13 +671,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           remove()
           if (visibility && onShown === undefined) {
             onShown = () => {
-              if (
-                !done &&
-                settling?.withdrawn &&
-                !settling.confirmed &&
-                inRequests &&
-                isVisible(visibility)
-              ) {
+              if (!done && settling?.withdrawn && inRequests && !signing && isVisible(visibility)) {
                 remove()
               }
             }
@@ -685,14 +701,22 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         if (update.controller === 'signAccountOp') {
           const wasSigning = signing
           signing = signsRequest(update.state, id)
-          // A failed signature takes the sign screen back to taking updates
-          // with no push of the queue, so a time limit that passed while it
-          // signed, or a request that joined then, is read from the queue the
-          // screen holds now.
-          if (wasSigning && !signing && !broadcast && settling === undefined) {
-            const queue = port.queue()
-            const queued = (queue.userRequests ?? []).some((held) => held.id === id)
-            if (queued && timedOut) {
+          held = holdsRequest(update.state, id)
+          confirmWithdrawal()
+          // A failed signature or the end of a pause takes the sign screen back
+          // to taking updates with no push of the queue, so a time limit that
+          // passed while it signed, a request that joined then, or a removal
+          // held back then, is read from the last queue state.
+          if (wasSigning && !signing && !broadcast) {
+            const queue = lastQueue ?? port.queue()
+            const queued = (queue.userRequests ?? []).some(
+              (queuedRequest) => queuedRequest.id === id
+            )
+            if (settling !== undefined) {
+              if (settling.withdrawn && !settling.confirmed && queued) {
+                remove()
+              }
+            } else if (queued && timedOut) {
               settle('timeout', true)
             } else if (queued && windowClosed) {
               settle('window-closed', true)
@@ -751,6 +775,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           }
           return
         }
+        lastQueue = update.state
         if (broadcast) {
           return
         }
@@ -759,9 +784,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         const wasInRequests = inRequests
         inRequests = inQueue
         waiting = userRequestsWaitingAccountSwitch.some((queued) => queued.id === id)
+        listed = inQueue || waiting
         if (settling !== undefined) {
           if (settling.withdrawn) {
-            followWithdrawal(wasInRequests, inQueue || waiting)
+            followWithdrawal(wasInRequests)
             return
           }
           // The queue moves a request between its two lists after an account

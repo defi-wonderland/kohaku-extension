@@ -245,7 +245,9 @@ const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
  * taken one after another in the order given, so no single-key update of any
  * of them interleaves with it. Every caller passes its setup keys in the order
  * of `SETUP_RECORD_NAMES` and the save in flight's key after them, and a
- * single-key update holds one key alone, so no two updates wait on each other.
+ * single-key update holds one key alone. An update can wait for another that
+ * holds a key it needs, but never for one that waits for a key it holds, so
+ * the waits never form a cycle.
  */
 const inQueues = <R>(keys: readonly string[], task: () => Promise<R>): Promise<R> =>
   keys.reduceRight<() => Promise<R>>((inner, key) => () => inQueue(key, inner), task)()

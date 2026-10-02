@@ -752,7 +752,8 @@ export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
 
 /**
  * A refusal the send port holds open for its settle period, whether it
- * withdrew the request, and whether the queue showed the request gone since.
+ * withdrew the request, and whether the queue and the sign screen showed the
+ * request gone since.
  */
 export interface SettlingRefusal {
   reason: SendRefusalReason
