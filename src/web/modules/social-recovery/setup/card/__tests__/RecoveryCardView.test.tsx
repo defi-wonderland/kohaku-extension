@@ -134,6 +134,7 @@ describe('the recovery card view', () => {
             account={ACCOUNT}
             level={level}
             password={password ?? undefined}
+            missingPassword={{ kind: 'gone' }}
             carriedBefore={carriedBefore}
             onCarried={onCarried}
             carriers={{ download, print }}

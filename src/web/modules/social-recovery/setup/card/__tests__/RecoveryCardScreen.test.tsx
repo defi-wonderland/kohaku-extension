@@ -93,6 +93,14 @@ jest.mock('react-native-keyboard-aware-scroll-view', () => ({
 jest.mock('@common/hooks/useNavigation', () =>
   jest.requireActual('@common/hooks/useNavigation/useNavigation.web')
 )
+// The recovery client answers that the account has no saved setup.
+jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
+  useRecoveryClient: () => ({
+    status: 'ready',
+    client: { setup: { setupState: async () => ({ hasSetup: false }) } },
+    retry: () => {}
+  })
+}))
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
