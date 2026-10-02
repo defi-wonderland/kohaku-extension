@@ -4,17 +4,18 @@
  *
  * The run lives outside the screen, one per chain and account, so a remount
  * (an account switch and back, a route rendered again) takes up the run in
- * flight instead of starting a second one. When the screen leaves a run that
- * has nothing in flight (saved, a setup found, failed, the deposit step,
- * disagreed or unanswered), the run is dropped, and the next arrival reads the
- * chain again before anything starts.
+ * flight instead of starting a second one. The screen also keeps a refusal
+ * whose operation may still reach the chain, and a landed save whose check did
+ * not answer. When the screen leaves any other ended run (saved, a setup
+ * found, failed, the deposit step or disagreed), the run is dropped, and the
+ * next arrival reads the chain again before anything starts.
  */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
 import {
   checkReceiptAgain,
   createArmStore,
-  isLive,
+  outlivesScreen,
   recheckGas,
   rereadConfirmation,
   startSave
@@ -44,7 +45,7 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
       RUNS.set(runKey, store)
     }
     return () => {
-      if (RUNS.get(runKey) === store && !isLive(store.state())) {
+      if (RUNS.get(runKey) === store && !outlivesScreen(store.state())) {
         RUNS.delete(runKey)
       }
     }

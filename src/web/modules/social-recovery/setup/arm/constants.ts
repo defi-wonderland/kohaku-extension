@@ -10,6 +10,12 @@ export const CONFIRM_READ_TIMEOUT_MS = 60_000
  */
 export const NEW_BLOCK_WAIT_MS = 30_000
 
+/**
+ * The longest one more wait for the receipt of a sent batch runs before the
+ * save reads stalled and offers to check again, in ms.
+ */
+export const RECEIPT_WAIT_MS = 120_000
+
 /** How often the wait for a new block reads the chain's block number, in ms. */
 export const BLOCK_POLL_MS = 2_000
 

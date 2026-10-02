@@ -10,7 +10,8 @@ export {
   BLOCK_POLL_MS,
   CONFIRM_READ_TIMEOUT_MS,
   COMMITMENT_MISMATCH_CODE,
-  NEW_BLOCK_WAIT_MS
+  NEW_BLOCK_WAIT_MS,
+  RECEIPT_WAIT_MS
 } from './constants'
 export { disagreedLineKeyOf, saveWriteKeysOf } from './copy'
 export { costLineKeyOf } from './cost'
@@ -22,6 +23,7 @@ export {
   initialArmState,
   isLive,
   isSaved,
+  outlivesScreen,
   recheckGas,
   rereadConfirmation,
   startSave

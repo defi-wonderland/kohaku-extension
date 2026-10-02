@@ -117,7 +117,10 @@ export interface ArmState {
   stop?: ArmStop
   /** The sign screen's last estimation of the run's batch. */
   estimation?: FeeReading
-  /** True while the run holds a hash whose receipt wait failed, until the holder asks to check again. */
+  /**
+   * True while the run submits a hash whose receipt wait failed or ran past its
+   * limit, until the holder asks to check again or the write leaves submitting.
+   */
   stalled?: boolean
 }
 

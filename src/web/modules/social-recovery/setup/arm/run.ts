@@ -8,7 +8,7 @@
  *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ submitting ──▶ failedNotSent | failedReverted | landed
- *   submitting with a hash, its receipt wait failed ──▶ one more wait ──▶ stalled
+ *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
  *                                                  stalled ──check again──▶ the wait again
  *   failedNotSent after a short estimation of the sign screen ──▶ the gas check again,
  *                                                  and the deposit step where it is short
@@ -28,6 +28,7 @@ import type { FeeReading } from '@web/modules/social-recovery/shared/client'
 import { initialWriteState, writeReducer } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
 
+import { RECEIPT_WAIT_MS } from './constants'
 import { confirmOutcomeOf } from './outcome'
 import { mayStillLand } from './refusal'
 import type {
@@ -69,6 +70,10 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       // A new run starts from nothing: its own prepare, its own landing.
       if (write.run !== state.write.run) {
         return { write, after: { stage: 'none' } }
+      }
+      // A stalled wait ends with the write's submitting: whatever settled it answered.
+      if (state.stalled && write.status !== 'submitting') {
+        return { ...state, write, stalled: false }
       }
       return { ...state, write }
     }
@@ -173,6 +178,17 @@ export const isLive = (state: ArmState): boolean => {
   )
 }
 
+/**
+ * Whether the screen keeps the run when it leaves it, so the next arrival
+ * takes it up instead of reading the chain and offering a new save: a run with
+ * work in flight; a refusal whose operation may still reach the chain, which a
+ * new save could repeat while the setup read finds nothing yet; and a landed
+ * batch whose check did not answer, which holds the hash and the reread that
+ * leads to saved and the wipe of the records. Every other ended run is dropped.
+ */
+export const outlivesScreen = (state: ArmState): boolean =>
+  isLive(state) || (!state.stop && (mayStillLand(state.write) || state.after.stage === 'unread'))
+
 const writeEvent = (store: ArmStore) => (event: WriteEvent) =>
   store.dispatch({ type: 'write', event })
 
@@ -204,16 +220,23 @@ const settle = async (
   if (!prepared || !landedIn(store.state(), run)) {
     return
   }
+  // Only the settle whose event moved the run goes on, so a second one never reads or wipes again.
+  const before = store.state()
   store.dispatch({ type: 'confirming', run })
-  if (store.state().after.stage !== 'confirming') {
+  if (store.state() === before || store.state().after.stage !== 'confirming') {
     return
   }
   const outcome = await confirmOutcomeOf(() => steps.confirm(prepared), {
     ...options,
     newBlock: steps.newBlock
   })
+  const confirming = store.state()
   store.dispatch({ type: 'confirmed', run, outcome })
-  if (outcome.kind !== 'agreed' || store.state().after.stage !== 'saving') {
+  if (
+    outcome.kind !== 'agreed' ||
+    store.state() === confirming ||
+    store.state().after.stage !== 'saving'
+  ) {
     return
   }
   try {
@@ -224,19 +247,54 @@ const settle = async (
   store.dispatch({ type: 'wiped', run })
 }
 
+/** Resolves true when `work` settles within `limitMs`, false when the limit passes first. */
+const settlesWithin = (work: Promise<void>, limitMs: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), limitMs)
+    work.then(
+      () => {
+        clearTimeout(timer)
+        resolve(true)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(true)
+      }
+    )
+  })
+
 /**
  * One more wait for the receipt of the hash the run holds, where its wait
- * failed and the batch may still land; a wait that fails again leaves the run
- * stalled under its hash until the holder asks to check again.
+ * failed and the batch may still land; a wait that fails again, or runs past
+ * `RECEIPT_WAIT_MS`, leaves the run stalled under its hash until the holder
+ * asks to check again. A wait past its limit goes on: a receipt it brings
+ * later is taken while the run still submits that hash, and the check follows.
  */
-const waitForReceipt = async (store: ArmStore, steps: SaveSteps, run: number): Promise<void> => {
+const waitForReceipt = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  options: ConfirmReadOptions
+): Promise<void> => {
   const transactionHash = pendingHashIn(store.state(), run)
   const { write } = store.state()
   if (!transactionHash || write.status !== 'submitting') {
     return
   }
-  await steps.waitAgain(transactionHash, write.startBlock, writeEvent(store), run)
+  const waiting = steps.waitAgain(transactionHash, write.startBlock, writeEvent(store), run)
+  const inTime = await settlesWithin(waiting, RECEIPT_WAIT_MS)
   store.dispatch({ type: 'waitStalled', run })
+  if (inTime) {
+    return
+  }
+  waiting
+    .then(() => {
+      if (store.state().after.stage === 'none') {
+        return settle(store, steps, run, options)
+      }
+      return undefined
+    })
+    .catch(() => undefined)
 }
 
 /** Whether the sign screen's estimation read no fee option the payer could cover, or an error. */
@@ -303,7 +361,7 @@ const checkAndSend = async (
     dispatch({ type: 'error', run, error })
     return
   }
-  await waitForReceipt(store, steps, run)
+  await waitForReceipt(store, steps, run, options)
   const after = store.state()
   if (
     inRun(after, run) &&
@@ -373,7 +431,7 @@ export const checkReceiptAgain = async (
     return
   }
   store.dispatch({ type: 'waitResumed', run })
-  await waitForReceipt(store, steps, run)
+  await waitForReceipt(store, steps, run, options)
   await settle(store, steps, run, options)
 }
 
