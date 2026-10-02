@@ -19,6 +19,7 @@ import type { AccountOp } from '@ambire-common/libs/accountOp/accountOp'
 import type { Call } from '@ambire-common/libs/accountOp/types'
 import type { TokenResult } from '@ambire-common/libs/portfolio'
 import type { Action } from '@web/extension-services/background/actions'
+import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   FitCheckReading,
   IWalletReadsDouble,
@@ -740,14 +741,23 @@ export interface SendPortOptions {
   /** The chain the transaction is sent on, the recovery chain's id. */
   chainId: number | bigint
   timeoutMs?: number
+  /**
+   * The page's document. A hidden tab's dispatch reaches no controller, so a
+   * withdrawal the queue has not confirmed is sent again when it is shown.
+   */
+  visibility?: VisibilitySource
 }
 
 export type SendRefusalReason = typeof SEND_REFUSAL_REASONS[number]
 
-/** A refusal the send port holds open for its settle period, and whether it withdrew the request. */
+/**
+ * A refusal the send port holds open for its settle period, whether it
+ * withdrew the request, and whether the queue showed the request gone since.
+ */
 export interface SettlingRefusal {
   reason: SendRefusalReason
   withdrawn: boolean
+  confirmed: boolean
 }
 
 /**

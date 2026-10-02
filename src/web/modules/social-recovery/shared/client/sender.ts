@@ -25,6 +25,15 @@
  * with a key the keystore holds cannot be stopped once it began, so an
  * operation that names the request still answers its hash in that time.
  *
+ * A request the port withdraws is not gone until the queue shows it gone: the
+ * wallet drops a hidden tab's dispatch, and removes a request only from its
+ * waiting requests, not from those that wait for an account switch. So after
+ * a withdrawal the port keeps following until a queue state lists the request
+ * in neither list, and only then counts its settle period; while the request
+ * stays listed, an operation that names it still answers its hash. The port
+ * sends the removal again when the request enters the waiting requests and,
+ * where the caller gives the page's document, when the page is shown again.
+ *
  * The queue sends for an account the wallet lists, from that account's keys.
  * A key that is itself a basic account (an EOA the wallet lists, its own only
  * associated key) therefore sends its own transaction and pays its gas. Any
@@ -71,6 +80,8 @@ import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import type { FeePaymentOption } from '@ambire-common/libs/estimate/interfaces'
 import { stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Hex, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
+
+import { isVisible } from '@web/modules/social-recovery/shared/ceremony/visibility'
 
 import { sameAddress } from './addresses'
 import { ABSENCE_GRACE_MS, listedBasicAccountOf } from './signer'
@@ -510,6 +521,7 @@ const feeReadingOf = (state: SignAccountOpState, id: string): FeeReading | undef
 export const createSendPort = (port: SendRequestPort, options: SendPortOptions): SendPort => {
   const timeoutMs = options.timeoutMs ?? DEFAULT_SEND_TIMEOUT_MS
   const chainId = BigInt(options.chainId)
+  const { visibility } = options
 
   /** Queues the request and follows it until the activity names its hash or a refusal settles. */
   const follow = (request: FollowedRequest): Promise<Hex> => {
@@ -526,12 +538,18 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let timedOut = false
       let busy = false
       let signing = false
+      let inRequests = false
+      let windowClosed = false
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
       let unsubscribe: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
       let closed: ReturnType<typeof setTimeout> | undefined
       let settleTimer: ReturnType<typeof setTimeout> | undefined
+      let onShown: (() => void) | undefined
+
+      const remove = () =>
+        port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
 
       const clearWaits = () => {
         if (timer !== undefined) {
@@ -554,6 +572,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         done = true
         clearWaits()
         unsubscribe()
+        if (visibility && onShown) {
+          visibility.removeEventListener('visibilitychange', onShown)
+        }
+        onShown = undefined
         port.dispatch({
           type: 'MAIN_CONTROLLER_ACTIVITY_RESET_ACC_OPS_FILTERS',
           params: { sessionId: id }
@@ -570,24 +592,51 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           reject(refusal(reason))
         }
       }
-      // A refusal waits while the wallet signs or broadcasts, and then for a
-      // full settle period after it stopped.
+      // A refusal waits while the wallet signs or broadcasts, and while the
+      // queue still lists a request the port withdrew, and then for a full
+      // settle period after both stopped.
       const armSettle = () => {
         if (settleTimer !== undefined) {
           clearTimeout(settleTimer)
         }
         settleTimer = undefined
-        if (settling === undefined || busy) {
+        if (settling === undefined || busy || !settling.confirmed) {
           return
         }
         const { reason } = settling
         settleTimer = setTimeout(() => fail(reason), SEND_SETTLE_MS)
       }
+      // A withdrawal is confirmed by a queue state that lists the request in
+      // neither list. Until then the removal may have been dropped, so it is
+      // sent again each time the request enters the waiting requests, and
+      // again when a hidden page is shown with the request still there.
+      const followWithdrawal = (wasInRequests: boolean, listed: boolean) => {
+        if (settling === undefined || !settling.withdrawn) {
+          return
+        }
+        if (!listed) {
+          if (!settling.confirmed) {
+            settling.confirmed = true
+            armSettle()
+          }
+          return
+        }
+        if (settling.confirmed) {
+          settling.confirmed = false
+          armSettle()
+        }
+        if (inRequests && !wasInRequests) {
+          remove()
+        }
+      }
       const settle = (reason: SendRefusalReason, withdraw: boolean) => {
         if (done || settling !== undefined) {
           return
         }
-        settling = { reason, withdrawn: withdraw }
+        // Before any queue state listed the request, the queue the page holds
+        // now tells whether there is anything to withdraw.
+        const confirmed = !withdraw || (!seen && !isQueued(port, id))
+        settling = { reason, withdrawn: withdraw, confirmed }
         if (timer !== undefined) {
           clearTimeout(timer)
         }
@@ -597,7 +646,21 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         timer = undefined
         closed = undefined
         if (withdraw) {
-          port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
+          remove()
+          if (visibility && onShown === undefined) {
+            onShown = () => {
+              if (
+                !done &&
+                settling?.withdrawn &&
+                !settling.confirmed &&
+                inRequests &&
+                isVisible(visibility)
+              ) {
+                remove()
+              }
+            }
+            visibility.addEventListener('visibilitychange', onShown)
+          }
         }
         armSettle()
       }
@@ -631,6 +694,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
             const queued = (queue.userRequests ?? []).some((held) => held.id === id)
             if (queued && timedOut) {
               settle('timeout', true)
+            } else if (queued && windowClosed) {
+              settle('window-closed', true)
             } else if (queued && otherCallsRequestIn(queue, id, account, chainId)) {
               settle('other-request-pending', true)
             }
@@ -691,12 +756,18 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         const { userRequests = [], userRequestsWaitingAccountSwitch = [] } = update.state
         const inQueue = userRequests.some((queued) => queued.id === id)
+        const wasInRequests = inRequests
+        inRequests = inQueue
         waiting = userRequestsWaitingAccountSwitch.some((queued) => queued.id === id)
         if (settling !== undefined) {
+          if (settling.withdrawn) {
+            followWithdrawal(wasInRequests, inQueue || waiting)
+            return
+          }
           // The queue moves a request between its two lists after an account
           // switch and may push a state between the two moves: a request the
           // port did not withdraw that is back in either list is still open.
-          if (settling.withdrawn || (!inQueue && !waiting)) {
+          if (!inQueue && !waiting) {
             return
           }
           settling = undefined
@@ -726,6 +797,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         if (update.state.actions?.actionWindow?.windowProps) {
           windowSeen = true
+          windowClosed = false
           if (closed !== undefined) {
             clearTimeout(closed)
           }
@@ -733,10 +805,16 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         } else if (windowSeen && closed === undefined) {
           // The queue keeps a transaction request when its window closes, so
           // the holder could still send it from the dashboard later. The port
-          // withdraws it instead, once the window stays closed.
+          // withdraws it instead, once the window stays closed, and not while
+          // the sign screen signs or pauses on this request, which a withdrawal
+          // cannot stop: then it applies once that ends with nothing broadcast.
           closed = setTimeout(() => {
             closed = undefined
-            settle('window-closed', true)
+            if (signing) {
+              windowClosed = true
+            } else {
+              settle('window-closed', true)
+            }
           }, ABSENCE_GRACE_MS)
         }
       })
