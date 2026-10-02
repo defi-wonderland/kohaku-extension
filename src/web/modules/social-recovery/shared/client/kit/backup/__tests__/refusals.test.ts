@@ -15,9 +15,9 @@ import {
   BACKUP_PADDED_SIZE,
   backupPlaintextSizeOf,
   clearBackupOf,
-  openClearBackup,
-  sealBackup
+  openClearBackup
 } from '@web/modules/social-recovery/shared/client/kit/backup'
+import { sealBackupWithRandomness } from '@web/modules/social-recovery/shared/client/kit/backup/seal'
 import type {
   BackupBinding,
   BackupRandomness
@@ -84,7 +84,9 @@ describe('the padded size', () => {
 
   it('refuses to seal a rule one byte wider, with both sizes', async () => {
     expect(backupPlaintextSizeOf(ONE_BYTE_OVER)).toBe(2458)
-    await expect(sealBackup(ONE_BYTE_OVER, PASSWORD, BINDING, RANDOMNESS)).rejects.toMatchObject({
+    await expect(
+      sealBackupWithRandomness(ONE_BYTE_OVER, PASSWORD, BINDING, RANDOMNESS)
+    ).rejects.toMatchObject({
       name: 'BackupRefusal',
       reason: 'too-wide',
       plaintextSize: 2458,
@@ -98,7 +100,9 @@ describe('the padded size', () => {
       ignoresPause: false,
       clauses: [{ threshold: 1, credentials: Array.from({ length: 17 }, (_, i) => widest(i)) }]
     }
-    await expect(sealBackup(seventeen, PASSWORD, BINDING, RANDOMNESS)).rejects.toMatchObject({
+    await expect(
+      sealBackupWithRandomness(seventeen, PASSWORD, BINDING, RANDOMNESS)
+    ).rejects.toMatchObject({
       reason: 'too-wide',
       plaintextSize: 9 + 2 + 17 * (20 + 2 + 96 + 1 + 32),
       paddedSize: 2457
@@ -148,9 +152,9 @@ describe('a value wider than its field', () => {
   tooWide.forEach(([what, configuration]) => {
     it(`refuses ${what}, in the clear form and in a seal`, async () => {
       expect(refusalOf(() => clearBackupOf(configuration))).toMatchObject(FIELD_WIDTH)
-      await expect(sealBackup(configuration, PASSWORD, BINDING, RANDOMNESS)).rejects.toMatchObject(
-        FIELD_WIDTH
-      )
+      await expect(
+        sealBackupWithRandomness(configuration, PASSWORD, BINDING, RANDOMNESS)
+      ).rejects.toMatchObject(FIELD_WIDTH)
     })
   })
 
@@ -177,9 +181,9 @@ describe('a value wider than its field', () => {
 
   wrongRandomness.forEach(([what, randomness]) => {
     it(`refuses to seal with ${what}`, async () => {
-      await expect(sealBackup(small(), PASSWORD, BINDING, randomness)).rejects.toMatchObject(
-        FIELD_WIDTH
-      )
+      await expect(
+        sealBackupWithRandomness(small(), PASSWORD, BINDING, randomness)
+      ).rejects.toMatchObject(FIELD_WIDTH)
     })
   })
 })

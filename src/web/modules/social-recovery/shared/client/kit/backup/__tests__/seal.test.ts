@@ -32,6 +32,7 @@ import type {
   BackupBinding,
   BackupRandomness
 } from '@web/modules/social-recovery/shared/client/kit/backup'
+import { sealBackupWithRandomness } from '@web/modules/social-recovery/shared/client/kit/backup/seal'
 
 jest.setTimeout(30_000)
 
@@ -182,7 +183,7 @@ describe('a seal with given random values', () => {
   let payload: Hex
 
   beforeAll(async () => {
-    payload = await sealBackup(MIXED, PASSWORD, BINDING, FIXED)
+    payload = await sealBackupWithRandomness(MIXED, PASSWORD, BINDING, FIXED)
   })
 
   it('lays out the version, the given salt, the given nonce, then the ciphertext and tag', () => {
@@ -217,7 +218,8 @@ describe('the round trip', () => {
     )
     expect(size(first)).toBe(2502)
     expect(size(second)).toBe(2502)
-    expect(sliceHex(first, 1, 29)).not.toBe(sliceHex(second, 1, 29))
+    expect(sliceHex(first, 1, 17)).not.toBe(sliceHex(second, 1, 17))
+    expect(sliceHex(first, 17, 29)).not.toBe(sliceHex(second, 17, 29))
     await expect(openBackup(first, PASSWORD, BINDING)).resolves.toStrictEqual(EMPTY_RULE)
     await expect(openBackup(second, PASSWORD, BINDING)).resolves.toStrictEqual({
       wait: 0n,
@@ -233,6 +235,24 @@ describe('the round trip', () => {
   })
 })
 
+describe('a binding that does not encode', () => {
+  const SHORT_COMMITMENT: BackupBinding = { ...BINDING, setupCommitment: `0x${'ab'.repeat(31)}` }
+
+  it('throws the encoder error from a seal and from an open, not a refusal', async () => {
+    const sealError: unknown = await sealBackup(EMPTY_RULE, PASSWORD, SHORT_COMMITMENT).catch(
+      (error: unknown) => error
+    )
+    expect(sealError).toBeInstanceOf(Error)
+    expect(sealError).not.toMatchObject({ name: 'BackupRefusal' })
+    const payload = await sealBackup(EMPTY_RULE, PASSWORD, BINDING)
+    const openError: unknown = await openBackup(payload, PASSWORD, SHORT_COMMITMENT).catch(
+      (error: unknown) => error
+    )
+    expect(openError).toBeInstanceOf(Error)
+    expect(openError).not.toMatchObject({ name: 'BackupRefusal' })
+  })
+})
+
 describe('the password', () => {
   const COMPOSED = 'café Ångström'
   const DECOMPOSED = 'café Ångström'
@@ -240,7 +260,7 @@ describe('the password', () => {
   it('opens whichever Unicode form it was typed in', async () => {
     expect(DECOMPOSED).not.toBe(COMPOSED)
     expect(DECOMPOSED.normalize('NFC')).toBe(COMPOSED)
-    const payload = await sealBackup(MIXED, DECOMPOSED, BINDING, FIXED)
+    const payload = await sealBackupWithRandomness(MIXED, DECOMPOSED, BINDING, FIXED)
     await expect(openBackup(payload, COMPOSED, BINDING)).resolves.toStrictEqual(MIXED_OPENED)
     const plaintext = await decryptByHand(payload, COMPOSED, BINDING)
     expect(plaintext[0]).toBe(0x01)

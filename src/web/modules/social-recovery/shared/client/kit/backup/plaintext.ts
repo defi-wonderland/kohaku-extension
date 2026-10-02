@@ -147,12 +147,18 @@ const readCredential = (reader: PlaintextReader): Credential => {
 }
 
 /**
- * Reads a serialised plaintext. With `padded`, every byte after the last
- * credential must be zero; without it, no byte may follow.
+ * Reads a serialised plaintext. With `padded` (the sealed form), every byte
+ * after the last credential must be zero and another leading byte is
+ * malformed, since the sealed version fixes the plaintext's; without it (the
+ * clear form), no byte may follow and another leading byte is an unknown
+ * version.
  */
 export const configurationOfPlaintext = (bytes: Uint8Array, padded: boolean): Configuration => {
   const reader = readerOf(bytes)
   const version = reader.byte()
+  if (version !== BACKUP_PLAINTEXT_VERSION && padded) {
+    throw malformed(`the sealed plaintext has version ${version}`)
+  }
   if (version !== BACKUP_PLAINTEXT_VERSION) {
     throw backupRefusal('unknown-version', `The backup plaintext has version ${version}.`, {
       version

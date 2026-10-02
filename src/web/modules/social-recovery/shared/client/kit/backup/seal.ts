@@ -58,13 +58,11 @@ export const backupAssociatedDataOf = (binding: BackupBinding): Hex =>
   )
 
 const keyOf = async (password: string, kdfSalt: Uint8Array): Promise<CryptoKey> => {
-  const material = await crypto.subtle.importKey(
-    'raw',
-    new Uint8Array(stringToBytes(password.normalize('NFC'))),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  )
+  const passwordBytes = new Uint8Array(stringToBytes(password.normalize('NFC')))
+  const material = await crypto.subtle.importKey('raw', passwordBytes, 'PBKDF2', false, [
+    'deriveKey'
+  ])
+  passwordBytes.fill(0)
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
@@ -91,16 +89,12 @@ const drawRandomness = (): BackupRandomness => ({
   nonce: crypto.getRandomValues(new Uint8Array(BACKUP_NONCE_SIZE))
 })
 
-/**
- * Seals a configuration under the password, bound to its setup. Refuses a
- * plaintext wider than BACKUP_PADDED_SIZE. The random values are drawn here
- * unless the caller passes them.
- */
-export const sealBackup = async (
+// For tests and vectors only: a production seal never takes its random values from a caller.
+export const sealBackupWithRandomness = async (
   configuration: Configuration,
   password: string,
   binding: BackupBinding,
-  randomness: BackupRandomness = drawRandomness()
+  randomness: BackupRandomness
 ): Promise<Hex> => {
   const { kdfSalt, nonce } = randomness
   if (kdfSalt.length !== BACKUP_KDF_SALT_SIZE || nonce.length !== BACKUP_NONCE_SIZE) {
@@ -113,6 +107,16 @@ export const sealBackup = async (
     concat([Uint8Array.of(BACKUP_SEALED_VERSION), kdfSalt, nonce, new Uint8Array(ciphertext)])
   )
 }
+
+/**
+ * Seals a configuration under the password, bound to its setup, with a fresh
+ * random salt and nonce. Refuses a plaintext wider than BACKUP_PADDED_SIZE.
+ */
+export const sealBackup = (
+  configuration: Configuration,
+  password: string,
+  binding: BackupBinding
+): Promise<Hex> => sealBackupWithRandomness(configuration, password, binding, drawRandomness())
 
 /**
  * Opens a sealed backup read from the chain with the password and the setup it
@@ -141,14 +145,11 @@ export const openBackup = async (
   }
   const kdfSaltEnd = 1 + BACKUP_KDF_SALT_SIZE
   const nonceEnd = kdfSaltEnd + BACKUP_NONCE_SIZE
+  const params = cipherParamsOf(bytes.subarray(kdfSaltEnd, nonceEnd), binding)
   const key = await keyOf(password, bytes.subarray(1, kdfSaltEnd))
   let plaintext: ArrayBuffer
   try {
-    plaintext = await crypto.subtle.decrypt(
-      cipherParamsOf(bytes.subarray(kdfSaltEnd, nonceEnd), binding),
-      key,
-      new Uint8Array(bytes.subarray(nonceEnd))
-    )
+    plaintext = await crypto.subtle.decrypt(params, key, new Uint8Array(bytes.subarray(nonceEnd)))
   } catch {
     throw backupRefusal('unopened', 'The backup does not open with this password for this setup.')
   }

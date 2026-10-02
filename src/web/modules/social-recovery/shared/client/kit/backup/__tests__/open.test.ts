@@ -173,6 +173,14 @@ describe('a payload the tag accepts', () => {
     )
   })
 
+  it('is refused as malformed when its plaintext leads with another version', async () => {
+    const plaintext = padded(0)
+    plaintext[0] = 0x05
+    await expect(openBackup(await sealByHand(plaintext), PASSWORD, BINDING)).rejects.toMatchObject(
+      MALFORMED
+    )
+  })
+
   it('is refused when a byte after the rule is not zero', async () => {
     await expect(openBackup(await sealByHand(padded(1)), PASSWORD, BINDING)).rejects.toMatchObject(
       MALFORMED
