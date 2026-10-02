@@ -41,11 +41,11 @@ const delayBetweenPopupsIfNeeded = (status: 'JUST_UNLOCKED' | 'ALREADY_UNLOCKED'
 const delayBetweenStarting = () => wait(DELAY_BETWEEN_POPUPS)
 
 class TrezorSigner implements KeystoreSignerInterface {
-  key: ExternalKey
+  key: ExternalKey & { isExternallyStored: boolean }
 
   controller: TrezorController | null = null
 
-  constructor(_key: ExternalKey) {
+  constructor(_key: ExternalKey & { isExternallyStored: boolean }) {
     this.key = _key
   }
 

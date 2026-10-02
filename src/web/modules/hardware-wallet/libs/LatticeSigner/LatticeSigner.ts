@@ -17,11 +17,11 @@ import LatticeController, {
 } from '@web/modules/hardware-wallet/controllers/LatticeController'
 
 class LatticeSigner implements KeystoreSignerInterface {
-  key: ExternalKey
+  key: ExternalKey & { isExternallyStored: boolean }
 
   controller: LatticeController | null = null
 
-  constructor(_key: ExternalKey) {
+  constructor(_key: ExternalKey & { isExternallyStored: boolean }) {
     this.key = _key
   }
 
