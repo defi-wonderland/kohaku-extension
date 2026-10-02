@@ -1,7 +1,7 @@
 import './unlock-screen-background.css'
 
 import React from 'react'
-import { View } from 'react-native'
+import { View, ViewStyle } from 'react-native'
 import Svg, { ClipPath, Defs, Ellipse, G, Path, Stop, SvgProps } from 'react-native-svg'
 
 import useTheme from '@common/hooks/useTheme'
@@ -13,39 +13,38 @@ interface Props extends SvgProps {
   height?: number
 }
 
+// Web styles: a percentage radius draws the ellipses, and the View types take a number only
+const safariRedEllipse: React.CSSProperties = {
+  width: 310,
+  height: 360,
+  borderRadius: '50%',
+  backgroundColor: '#D01C15',
+  position: 'absolute',
+  zIndex: 5,
+  top: -100,
+  left: -90
+}
+
+const safariLightEllipse: React.CSSProperties = {
+  width: 350,
+  height: 440,
+  borderRadius: '50%',
+  backgroundColor: '#F9F6E9',
+  position: 'absolute',
+  zIndex: 5,
+  bottom: -130,
+  right: -150
+}
+
 const UnlockScreenBackground: React.FC<Props> = ({ width = 600, height = 360, ...rest }) => {
   const { themeType } = useTheme()
   return (
     <View style={themeType === THEME_TYPES.DARK ? { opacity: 0.55 } : { opacity: 1 }}>
       {!!isSafari() && (
-        <View
-          style={{
-            width: 310,
-            height: 360,
-            borderRadius: '50%',
-            backgroundColor: '#D01C15',
-            position: 'absolute',
-            zIndex: 5,
-            top: -100,
-            left: -90
-          }}
-          nativeID="unlock-screen-background-safari"
-        />
+        <View style={safariRedEllipse as ViewStyle} nativeID="unlock-screen-background-safari" />
       )}
       {!!isSafari() && (
-        <View
-          style={{
-            width: 350,
-            height: 440,
-            borderRadius: '50%',
-            backgroundColor: '#F9F6E9',
-            position: 'absolute',
-            zIndex: 5,
-            bottom: -130,
-            right: -150
-          }}
-          nativeID="unlock-screen-background-safari"
-        />
+        <View style={safariLightEllipse as ViewStyle} nativeID="unlock-screen-background-safari" />
       )}
       <Svg width={width} height={height} viewBox="0 0 600 360" {...rest}>
         <Defs>

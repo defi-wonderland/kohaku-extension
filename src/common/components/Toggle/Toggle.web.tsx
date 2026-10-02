@@ -57,7 +57,7 @@ const Toggle: React.FC<ToggleProps> = ({
             : themeType === THEME_TYPES.DARK
             ? (theme.quaternaryBackground as string)
             : `${theme.secondaryText as string}3D`,
-          ...trackStyle
+          ...(trackStyle as React.CSSProperties)
         }}
       >
         <div
@@ -81,7 +81,7 @@ const Toggle: React.FC<ToggleProps> = ({
                 : (theme.secondaryBorder as string)
             }`,
             transform: isOn ? 'translateX(12px)' : '',
-            ...toggleStyle
+            ...(toggleStyle as React.CSSProperties)
           }}
         />
         {children}

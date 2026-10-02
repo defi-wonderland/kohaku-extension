@@ -1,5 +1,5 @@
 import React from 'react'
-import { View } from 'react-native'
+import { View, ViewStyle } from 'react-native'
 
 import { AnimateLayoutChanges, defaultAnimateLayoutChanges, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -25,7 +25,7 @@ const DraggableItem = ({ id, children }: Props) => {
   }
 
   return (
-    <View ref={setNodeRef} style={style}>
+    <View ref={setNodeRef as React.Ref<View>} style={style as ViewStyle}>
       {children(isDragging, listeners, attributes)}
     </View>
   )
