@@ -376,7 +376,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
 
   return (
     <View testID="editor">
-      <EditorHeader mode={load.mode} refused={refused} />
+      <EditorHeader mode={load.mode} refused={refused && !picker} />
 
       <RequiredRows
         rows={rows}
@@ -425,6 +425,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
           onEnrollNew={onEnrollNew}
           onClose={closePicker}
           disabled={checking}
+          refused={refused}
         />
       )}
 

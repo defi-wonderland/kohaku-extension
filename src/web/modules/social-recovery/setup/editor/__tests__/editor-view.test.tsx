@@ -366,6 +366,7 @@ describe('the duplicate refusal on screen', () => {
     expect(picker).toContain(en.socialRecovery.editor.picker.alreadyInPath)
     await press('editor-picker-ecdsa-0')
     expect(byTestId('editor-refusal')?.textContent).toBe(en.socialRecovery.editor.duplicate)
+    expect(byTestId('editor-picker')?.contains(byTestId('editor-refusal'))).toBe(true)
     expect(storage.sets.length).toBe(writesBefore)
     expect(await stored()).toEqual({ draft: draftOf(presetPath()), path: presetPath() })
   })

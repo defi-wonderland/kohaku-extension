@@ -1,6 +1,7 @@
 import React from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
@@ -20,7 +21,8 @@ import type { MemberPickerProps } from './types'
 /**
  * "Add to your path": the enrolled credentials by kind, each one the path
  * already holds marked so, and for each kind the way to a new one: a new
- * address for a guardian, a new enrollment for the others.
+ * address for a guardian, a new enrollment for the others. A pick the path
+ * already holds leaves its refusal under the entries, beside the press.
  */
 const MemberPicker = ({
   entries,
@@ -29,7 +31,8 @@ const MemberPicker = ({
   onPick,
   onEnrollNew,
   onClose,
-  disabled
+  disabled,
+  refused
 }: MemberPickerProps) => {
   const { t } = useTranslation()
   const enrollments = kinds.flatMap((kind) => entries[kind].map((entry) => entry.enrollment))
@@ -90,6 +93,17 @@ const MemberPicker = ({
           />
         </View>
       ))}
+      {refused && (
+        <Alert
+          type="error"
+          size="sm"
+          text={
+            <Alert.Text size="sm" type="error" testID="editor-refusal">
+              {t('socialRecovery.editor.duplicate')}
+            </Alert.Text>
+          }
+        />
+      )}
       <ActionsRow
         primary={
           <Button
