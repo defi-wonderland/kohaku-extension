@@ -142,7 +142,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
                   testID={`review-group-${index}-show-all`}
                   onPress={() => setShownAll((held) => [...held, index])}
                 >
-                  <Text fontSize={12} weight="medium" appearance="primary">
+                  <Text fontSize={12} weight="medium" appearance="primary" underline>
                     {t('socialRecovery.review.showAllMembers')}
                   </Text>
                 </Pressable>

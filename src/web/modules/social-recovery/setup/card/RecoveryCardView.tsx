@@ -224,7 +224,7 @@ const RecoveryCardView = ({
           onPress={() => setWhyOpen((open) => !open)}
           style={[flexbox.alignSelfStart, spacings.mtSm]}
         >
-          <Text fontSize={14} weight="medium" appearance="primary">
+          <Text fontSize={14} weight="medium" appearance="primary" underline>
             {t('socialRecovery.card.whyNotOnCard')}
           </Text>
         </Pressable>

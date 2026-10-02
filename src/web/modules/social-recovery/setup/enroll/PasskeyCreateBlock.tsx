@@ -95,6 +95,7 @@ const PasskeyCreateBlock = ({
                   disabled={busy}
                   onPress={() => create(true)}
                   hasBottomSpacing={false}
+                  textUnderline
                 />
               }
             />

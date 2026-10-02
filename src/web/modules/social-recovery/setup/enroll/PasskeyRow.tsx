@@ -56,6 +56,7 @@ const PasskeyRow = (props: RowProps) => {
             text={t('socialRecovery.actions.learnMore')}
             onPress={row.toggleExplainer}
             hasBottomSpacing={false}
+            textUnderline
           />
         </View>
         {row.explainer && (
