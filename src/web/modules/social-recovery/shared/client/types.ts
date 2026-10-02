@@ -290,11 +290,12 @@ export interface AccountStateRefresh {
 /**
  * Where the hook's refresh of the account's state stands, for the account and
  * the attempt `key` names: asked for, seen running in the accounts state, or
- * ended.
+ * ended, and how many times the attempt asked the wallet.
  */
 export interface StateRefreshProgress {
   key: string
   phase: 'requested' | 'running' | 'settled'
+  dispatches: number
 }
 
 /** The facts the account library builds a smart account's own transaction from. */

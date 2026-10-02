@@ -6,11 +6,15 @@
  *
  * The wallet reads account states for some accounts only, and writes none
  * where a read fails. Where it lists the account but holds no state for it on
- * the chain, the hook asks the wallet once to refresh that state, and once
- * more at each `retry`. The refresh has ended when the accounts state reported
- * its account states loading after the request and then reported them no
- * longer loading; a state still absent then reads as `state-unread`, as does
- * one the chain's provider reports it cannot read.
+ * the chain, the hook asks the wallet to refresh that state, and again at each
+ * `retry`. A refresh has ended when the accounts state reported its account
+ * states loading after the request and then reported them no longer loading.
+ * The loading flag covers every load on every chain, and a request made while
+ * the chain is already loading joins that load, which may not read this
+ * account; so a refresh that ends with no state is asked for once more by
+ * itself, at most two requests in all for each attempt. A state still absent
+ * after the second reads as `state-unread`, as does one the chain's provider
+ * reports it cannot read.
  *
  * The reading stays the same object while nothing a screen reads changed
  * (`sameFactsReading`), so a refresh of another account, or of this account's
@@ -29,6 +33,8 @@ import { accountFactsOf, sameFactsReading, stateRefreshOf } from './account-fact
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from './chains'
 import type { AccountFactsReading, AccountFactsResult, StateRefreshProgress } from './types'
 
+const REFRESH_DISPATCHES_PER_ATTEMPT = 2
+
 export const useAccountFacts = (account: Address | undefined): AccountFactsResult => {
   const { accounts, accountStates, areAccountStatesLoading } = useAccountsControllerState()
   const { keys } = useKeystoreControllerState()
@@ -46,7 +52,7 @@ export const useAccountFacts = (account: Address | undefined): AccountFactsResul
     if (!refresh || !refreshKey || current) {
       return
     }
-    setProgress({ key: refreshKey, phase: 'requested' })
+    setProgress({ key: refreshKey, phase: 'requested', dispatches: 1 })
     dispatch({ type: 'ACCOUNTS_CONTROLLER_UPDATE_ACCOUNT_STATE', params: refresh })
   }, [refresh, refreshKey, current, dispatch])
 
@@ -54,9 +60,14 @@ export const useAccountFacts = (account: Address | undefined): AccountFactsResul
     if (current?.phase === 'requested' && areAccountStatesLoading) {
       setProgress({ ...current, phase: 'running' })
     } else if (current?.phase === 'running' && !areAccountStatesLoading) {
-      setProgress({ ...current, phase: 'settled' })
+      if (refresh && current.dispatches < REFRESH_DISPATCHES_PER_ATTEMPT) {
+        setProgress({ ...current, phase: 'requested', dispatches: current.dispatches + 1 })
+        dispatch({ type: 'ACCOUNTS_CONTROLLER_UPDATE_ACCOUNT_STATE', params: refresh })
+      } else {
+        setProgress({ ...current, phase: 'settled' })
+      }
     }
-  }, [current, areAccountStatesLoading])
+  }, [current, areAccountStatesLoading, refresh, dispatch])
 
   const providerWorking = providers?.[String(CHAIN_IDS[WALLET_RECOVERY_CHAIN])]?.isWorking
   const next = accountFactsOf(account, {

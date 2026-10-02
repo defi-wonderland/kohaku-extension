@@ -4,7 +4,6 @@
  * account's key sends for it, which the gas check estimates.
  */
 import { getBaseAccount } from '@ambire-common/libs/account/getBaseAccount'
-import { isSmartAccount } from '@ambire-common/libs/account/account'
 import type { AccountOp } from '@ambire-common/libs/accountOp/accountOp'
 import type {
   Address,
@@ -35,7 +34,7 @@ export const accountBatchTransactionOf = (
   calls: readonly PreparedCall[]
 ): GasEstimateCall => {
   const { account, state, network } = source
-  if (!isSmartAccount(account) || !account.creation) {
+  if (!account.creation) {
     throw new TypeError(
       `The account ${account.addr} is a basic account, whose calls the wallet sends as separate transactions.`
     )
