@@ -225,7 +225,9 @@
       },
       "revertedExecuteGone": "Could not execute. The transaction reached the chain and reverted. {{cause}} The gas it spent is gone.",
       "gasCheckFailed": "Could not finish the gas check. The node did not answer.",
-      "replaced": "Another transaction from this key took this one's place before it ran. Nothing changed."
+      "replaced": "Another transaction from this key took this one's place before it ran. Nothing changed.",
+      "mayStillLand": "This went out on a route this wallet cannot follow. It may still reach the chain.",
+      "otherRequestPending": "Another request for this account is waiting in the wallet. Sign or reject it, then try again."
     },
     "ceremony": {
       "passedNote": "check {{hash}} · passed just now",
