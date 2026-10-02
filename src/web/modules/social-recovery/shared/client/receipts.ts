@@ -110,6 +110,9 @@ export const createReceiptWait = (
   blockNumber: () => provider.getBlockNumber(),
 
   async transactionKnown(transactionHash: Hex): Promise<TransactionKnown> {
+    if (signal?.aborted) {
+      throw released(transactionHash)
+    }
     const transaction = await untilReleased(
       signal,
       transactionHash,

@@ -19,8 +19,9 @@
  *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
  *   submitting with a hash, its receipt wait failed ──▶ one more wait, time-limited ──▶ stalled
  *                                                  stalled ──check again──▶ the wait again
- *   submitting with a hash, an hour after its broadcast, the node knowing none
- *   of its transactions and the account no setup ──▶ dropped ──save again──▶
+ *   submitting with a hash, an hour after its broadcast, two checks a new block
+ *   or a minute apart each reading none of its transactions known to the
+ *   node, and the account no setup ──▶ dropped ──save again──▶
  *                                                  the stored save released, then a new start
  *   failedNotSent after a short estimation of the sign screen ──▶ the gas check again,
  *                                                  and the deposit step where it is short
@@ -65,6 +66,7 @@ import {
   CLAIMED_SETUP_READ_MS,
   DROPPED_AFTER_MS,
   DROPPED_READ_MS,
+  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
@@ -80,7 +82,8 @@ import type {
   FollowHold,
   GoneCount,
   PreparedSave,
-  SaveSteps
+  SaveSteps,
+  UnknownReading
 } from './types'
 
 /** The save before anything ran. */
@@ -154,9 +157,13 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       if (state.stalled && write.status !== 'submitting') {
         next.stalled = false
       }
-      // A dropped save whose transaction settled after all is no longer dropped.
+      // A dropped save whose transaction settled after all is no longer dropped,
+      // and a kept reading of its transactions no longer holds.
       if (state.dropped && write.status !== 'submitting') {
         delete next.dropped
+      }
+      if (state.unknownReading && write.status !== 'submitting') {
+        delete next.unknownReading
       }
       // A followed request's reading ends with a hash, or with the write's submitting.
       if (state.follow && (write.status !== 'submitting' || write.transactionHash)) {
@@ -211,7 +218,7 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       ) {
         return state
       }
-      const { follow, stalled, ...rest } = state
+      const { follow, stalled, dropped, unknownReading, ...rest } = state
       return { ...rest, landedUnseen: true }
     }
     case 'released': {
@@ -232,11 +239,25 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         write: writeReducer(state.write, { type: 'reset' }),
         after: { stage: 'none' }
       }
-    case 'dropped':
+    case 'unknownRead':
+      if (!droppableIn(state, event.run) || state.unknownReading === event.reading) {
+        return state
+      }
+      return { ...state, unknownReading: event.reading }
+    case 'unknownCleared': {
+      if (!inRun(state, event.run) || !state.unknownReading) {
+        return state
+      }
+      const { unknownReading, ...rest } = state
+      return rest
+    }
+    case 'dropped': {
       if (!droppableIn(state, event.run) || !state.requestId) {
         return state
       }
-      return { ...state, dropped: true }
+      const { unknownReading, ...rest } = state
+      return { ...rest, dropped: true }
+    }
     case 'droppedReleased':
       // The holder saves again: the dropped save's stored save is gone, and
       // the next start reads and claims as any start does.
@@ -558,16 +579,34 @@ const sentHashesIn = (write: WriteMachineState, stored: Hex | undefined): Hex[] 
   )
 }
 
+/** Whether `hash` is one of `hashes`, in any case. */
+const hashIn = (hashes: readonly Hex[], hash: Hex): boolean =>
+  hashes.some((held) => held.toLowerCase() === hash.toLowerCase())
+
+/** Whether the kept reading read every hash `reading` asked for. */
+const coveredBy = (kept: UnknownReading, reading: UnknownReading): boolean =>
+  reading.hashes.every((hash) => hashIn(kept.hashes, hash))
+
+/** Whether `reading` read another block number than `kept`, or came `DROPPED_RECHECK_MS` after it. */
+const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
+  reading.block !== kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
+
 /**
  * The check for a dropped save, through the steps `liveStepsOf` names, in
- * order: the stored save still names the run's request, and its broadcast
- * (its claim, where it holds no time of the broadcast) is older than
- * `DROPPED_AFTER_MS`; the node knows none of the run's transactions; the
- * account holds no setup. All three read the run as dropped. A setup found
- * is checked as after a landed receipt. A read that fails or passes its
- * limit, a screen that went away, or a run that moved meanwhile, moves
- * nothing. `known` is the stored save as just read, where the caller holds
- * it. Answers whether the check ended the wait: dropped, or landed.
+ * order: the stored save still names the run's request and holds a hash, and
+ * its broadcast (its claim, where it holds no time of the broadcast) is older
+ * than `DROPPED_AFTER_MS`; the node knows none of the run's transactions,
+ * read with the chain's block number; an earlier check kept such a reading of
+ * every one of these hashes, and this one is `apartFrom` it; the account holds no
+ * setup. All of these read the run as dropped. A first reading is kept, and
+ * the check ends there. A setup found is checked as after a landed receipt.
+ * A stored save that holds no hash while the run holds one gets the hash
+ * written again, so its broadcast counts from that write. Every other end of
+ * the check, a known transaction, or a read that fails or passes its limit,
+ * drops the kept reading. A screen that went away, or a run that moved
+ * meanwhile, moves nothing. `known` is the stored save as just read, where
+ * the caller holds it. Answers whether the check ended the wait: dropped, or
+ * landed.
  */
 const readDropped = async (
   store: ArmStore,
@@ -577,44 +616,88 @@ const readDropped = async (
   known: SaveInFlightRecord | undefined
 ): Promise<boolean> => {
   const through = liveStepsOf(store, steps)
-  const transactionHash = pendingHashIn(store.state(), run)
-  const { requestId } = store.state()
-  if (!through || !transactionHash || !requestId || !droppableIn(store.state(), run)) {
+  const { write, requestId } = store.state()
+  if (
+    !through ||
+    !requestId ||
+    !droppableIn(store.state(), run) ||
+    write.status !== 'submitting' ||
+    !write.transactionHash
+  ) {
     return false
   }
+  const { transactionHash } = write
   const unmoved = (): boolean =>
     liveStepsOf(store, steps) === through &&
     droppableIn(store.state(), run) &&
     store.state().requestId === requestId &&
     pendingHashIn(store.state(), run) === transactionHash
+  const notDropped = (): boolean => {
+    store.dispatch({ type: 'unknownCleared', run })
+    return false
+  }
   let record = known
   if (!record) {
     const stored = await through.readInFlight().catch(() => undefined)
-    if (!unmoved() || stored?.status !== 'present') {
+    if (!unmoved()) {
       return false
+    }
+    if (stored?.status !== 'present') {
+      return notDropped()
     }
     record = stored.value
   }
-  if (
-    record.requestId !== requestId ||
-    Date.now() - (record.sentAt ?? record.claimedAt) < DROPPED_AFTER_MS
-  ) {
-    return false
+  if (record.requestId !== requestId) {
+    return notDropped()
+  }
+  if (!record.transactionHash) {
+    // As the send writes it: the record keeps its claim's block, else takes the send's.
+    const startBlock = record.startBlock === undefined ? write.startBlock : undefined
+    await through.markSent(requestId, transactionHash, startBlock).catch(() => undefined)
+    if (!unmoved()) {
+      return false
+    }
+    return notDropped()
+  }
+  if (Date.now() - (record.sentAt ?? record.claimedAt) < DROPPED_AFTER_MS) {
+    return notDropped()
   }
   const hashes = sentHashesIn(store.state().write, record.transactionHash)
-  const readings = await Promise.all(
-    hashes.map((hash) =>
-      readWithin(() => through.transactionKnown(hash), 'transaction read', DROPPED_READ_MS)
+  const at = Date.now()
+  const answers = await Promise.all([
+    readWithin(() => through.blockNumber(), 'block read', DROPPED_READ_MS),
+    Promise.all(
+      hashes.map((hash) =>
+        readWithin(() => through.transactionKnown(hash), 'transaction read', DROPPED_READ_MS)
+      )
     )
-  ).catch(() => undefined)
-  if (!unmoved() || !readings || readings.some((reading) => reading !== 'unknown')) {
+  ]).catch(() => undefined)
+  if (!unmoved()) {
+    return false
+  }
+  if (!answers || answers[1].some((answer) => answer !== 'unknown')) {
+    return notDropped()
+  }
+  const reading: UnknownReading = { at, block: answers[0], hashes }
+  // A reading too close to the kept one leaves the kept one as it is, so the
+  // minute counts from the first; one that asked for a hash the kept one did
+  // not read starts the count again.
+  const kept = store.state().unknownReading
+  if (!kept || !coveredBy(kept, reading)) {
+    store.dispatch({ type: 'unknownRead', run, reading })
+    return false
+  }
+  if (!apartFrom(kept, reading)) {
     return false
   }
   const found = await readWithin(() => through.hasSetup(), 'setup read', DROPPED_READ_MS).catch(
     () => undefined
   )
-  if (!unmoved() || found === undefined) {
+  if (!unmoved()) {
     return false
+  }
+  if (found === undefined) {
+    return notDropped()
   }
   if (found) {
     store.dispatch({ type: 'landedUnseen', run })
@@ -625,7 +708,11 @@ const readDropped = async (
   return !!store.state().dropped
 }
 
-/** Runs the check for a dropped save, or takes up the one the store runs now. */
+/**
+ * Runs the check for a dropped save, or takes up the one the store runs now.
+ * A check that ends unanswered after another screen attached runs once more,
+ * through the steps attached now.
+ */
 const checkDropped = (
   store: ArmStore,
   steps: SaveSteps,
@@ -637,11 +724,20 @@ const checkDropped = (
   if (running) {
     return running
   }
-  const checking: Promise<boolean> = readDropped(store, steps, run, options, known).finally(() => {
-    if (DROP_CHECKS.get(store) === checking) {
-      DROP_CHECKS.delete(store)
-    }
-  })
+  const through = liveStepsOf(store, steps)
+  const checking: Promise<boolean> = readDropped(store, steps, run, options, known)
+    .then((ended) => {
+      const now = liveStepsOf(store, steps)
+      if (ended || !now || now === through) {
+        return ended
+      }
+      return readDropped(store, now, run, options, undefined)
+    })
+    .finally(() => {
+      if (DROP_CHECKS.get(store) === checking) {
+        DROP_CHECKS.delete(store)
+      }
+    })
   DROP_CHECKS.set(store, checking)
   return checking
 }

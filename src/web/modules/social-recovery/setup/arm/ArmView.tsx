@@ -221,7 +221,7 @@ const ArmView = ({
       )
     }
     // A dropped save offers one move: release it and save again.
-    if (state.dropped && write.status === 'submitting') {
+    if (state.dropped) {
       return (
         <View testID="arm-dropped">
           <Text fontSize={14} style={spacings.mbSm} testID="arm-dropped-line">

@@ -120,6 +120,17 @@ export type InFlightLookup = 'reading' | 'none' | 'failed'
 export type FollowReading = 'queued' | 'unread' | 'gone'
 
 /**
+ * A check for a dropped save that read every transaction of the run unknown
+ * to the node: when it read (ms since epoch), the chain's block number it read
+ * with them, and the hashes it asked for.
+ */
+export interface UnknownReading {
+  at: number
+  block: number
+  hashes: readonly Hex[]
+}
+
+/**
  * The save's state: the shared write's state, the prepared save of its run,
  * what follows the landing, and the marks of the run: a setup the account
  * already held, the sign screen's last estimation, a receipt wait that failed
@@ -152,10 +163,16 @@ export interface ArmState {
    */
   landedUnseen?: true
   /**
+   * The first of the two readings a dropped save needs, kept until the next
+   * check: that check reads it again, or the reading goes.
+   */
+  unknownReading?: UnknownReading
+  /**
    * True where the run's broadcast save reads as dropped: its broadcast is
-   * older than `DROPPED_AFTER_MS`, the node knows none of its transactions and
-   * the account holds no setup. The save in flight stays stored until the
-   * holder saves again.
+   * older than `DROPPED_AFTER_MS`, two checks apart by a new block or by
+   * `DROPPED_RECHECK_MS` each read every one of its transactions unknown to
+   * the node, and the account holds no setup. The save in flight stays stored
+   * until the holder saves again.
    */
   dropped?: true
 }
@@ -179,6 +196,8 @@ export type ArmEvent =
   | { type: 'landedUnseen'; run: number }
   | { type: 'released'; run: number }
   | { type: 'voided'; run: number }
+  | { type: 'unknownRead'; run: number; reading: UnknownReading }
+  | { type: 'unknownCleared'; run: number }
   | { type: 'dropped'; run: number }
   | { type: 'droppedReleased'; run: number }
   | { type: 'estimated'; run: number; reading: FeeReading }
