@@ -1,6 +1,7 @@
 import React from 'react'
 import { View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
@@ -8,13 +9,15 @@ import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { MethodRow, SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 
+import { renderHeldThreshold } from './copy'
 import CredentialRow from './CredentialRow'
 import ThresholdField from './ThresholdField'
 import type { GroupListProps } from './types'
 
 /**
- * The groups, each with its threshold field, its members and their actions,
- * and the way to add a group.
+ * The groups, each with its threshold field and the line refusing text that
+ * is not a whole number, its members and their actions, and the way to add a
+ * group.
  */
 const GroupList = ({
   groups,
@@ -71,6 +74,22 @@ const GroupList = ({
               onChangeText={(text) => onThresholdText(index, text)}
             />
           </View>
+          {heldThresholds[index] !== undefined && (
+            <Alert
+              type="error"
+              size="sm"
+              style={spacings.mbSm}
+              text={
+                <Alert.Text
+                  size="sm"
+                  type="error"
+                  testID={`editor-group-${index}-threshold-refusal`}
+                >
+                  {renderHeldThreshold(t)}
+                </Alert.Text>
+              }
+            />
+          )}
           {clause.credentials.map((credential, member) => (
             <MethodRow
               // A member's place in its group is its identity in the path.
