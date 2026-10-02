@@ -18,6 +18,8 @@ import type {
   Configuration,
   Gathering,
   Hex,
+  PreparedBatch,
+  PreparedCall,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { parseCeremonySearch } from '@web/modules/social-recovery/shared/ceremony'
@@ -44,6 +46,7 @@ import {
   RecoverySessionRecord,
   RecoveryWipeEvent,
   revisionOf,
+  SaveInFlightClaim,
   SessionRead,
   SessionRevisionConflict,
   SETUP_RECORD_NAMES,
@@ -212,6 +215,27 @@ const CONFIGURATION: Configuration = {
   ignoresPause: false
 }
 const CACHE: DecryptedSetupCacheRecord = { configuration: CONFIGURATION, setupNonce: 3n }
+
+// A prepared save whose value is beyond a safe integer, so only a bigint keeps it.
+const PREPARED_CALL: PreparedCall = {
+  kind: 'call',
+  target: ACCOUNT,
+  value: 10n ** 21n + 1n,
+  data: '0xabcdef',
+  sender: 'account',
+  block: { number: 7_000_000, hash: `0x${'ab'.repeat(32)}` }
+}
+const PREPARED_BATCH: PreparedBatch = {
+  kind: 'batch',
+  calls: [PREPARED_CALL, { ...PREPARED_CALL, value: 2n ** 70n, data: '0x01' }],
+  atomic: true,
+  block: PREPARED_CALL.block
+}
+const SAVE_CLAIM: SaveInFlightClaim = {
+  prepared: PREPARED_CALL,
+  requestId: 'social-recovery-sender:first',
+  claimedAt: T0
+}
 
 const PREDICTED_ATTEMPT_ID = 7n
 const VALID_UNTIL = '1700086400'
@@ -708,21 +732,72 @@ describe('the setup draft and its path are written together', () => {
 describe('a setup wipe removes the six records in one storage call', () => {
   const sixKeys = (account: Address = ACCOUNT) =>
     SETUP_RECORD_NAMES.map((name) => recordKeys.setup(name, CHAIN_ID, account))
+
+  it('save removes the six keys and the save in flight in one call, so no record is left behind', async () => {
+    const { storage, records } = setup()
+    await writeAllSetup(records)
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    await records.saveSetup(CHAIN_ID, ACCOUNT)
+    expect(storage.calls.removeKeys).toHaveLength(1)
+    expect([...storage.calls.removeKeys[0]].sort()).toEqual(
+      [...sixKeys(), recordKeys.saveInFlight(CHAIN_ID, ACCOUNT)].sort()
+    )
+    expect(storage.calls.remove).toEqual([])
+    expect(storage.raw.size).toBe(0)
+    expect(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
+  })
+
+  it('save leaves the save in flight of another account in place', async () => {
+    const { records } = setup()
+    await records.saveInFlight(CHAIN_ID, OTHER_ACCOUNT).claim(SAVE_CLAIM)
+    await records.saveSetup(CHAIN_ID, ACCOUNT)
+    expect(present(await records.saveInFlight(CHAIN_ID, OTHER_ACCOUNT).read()).value).toEqual(
+      SAVE_CLAIM
+    )
+  })
+
+  it('start over removes the six keys in one call and leaves the save in flight', async () => {
+    const { storage, records } = setup()
+    await writeAllSetup(records)
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    await records.startOverSetup(CHAIN_ID, ACCOUNT)
+    expect(storage.calls.removeKeys).toHaveLength(1)
+    expect([...storage.calls.removeKeys[0]].sort()).toEqual([...sixKeys()].sort())
+    expect(storage.calls.remove).toEqual([])
+    expect(present(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('save that fails in storage leaves the save in flight in place too', async () => {
+    const { storage, records } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    storage.faults.removeKeys = new Error('storage unavailable')
+    await expect(records.saveSetup(CHAIN_ID, ACCOUNT)).rejects.toThrow('storage unavailable')
+    expect(present(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('through the extension storage, save removes the six and the save in flight in one browser storage call', async () => {
+    const { browser } = jest.requireMock('@web/constants/browserapi')
+    const records = createWalletRecords({ storage: extensionRecordStorage, now: () => T0 })
+    await writeAllSetup(records)
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    const removeSpy = jest.spyOn(browser.storage.local, 'remove')
+    try {
+      await records.saveSetup(CHAIN_ID, ACCOUNT)
+      expect(removeSpy).toHaveBeenCalledTimes(1)
+      expect([...(removeSpy.mock.calls[0][0] as string[])].sort()).toEqual(
+        [...sixKeys(), recordKeys.saveInFlight(CHAIN_ID, ACCOUNT)].sort()
+      )
+      expect(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
+    } finally {
+      removeSpy.mockRestore()
+    }
+  })
   ;(
     [
       ['save', 'saveSetup'],
       ['start over', 'startOverSetup']
     ] as const
   ).forEach(([label, act]) => {
-    it(`${label} removes all six keys in one call`, async () => {
-      const { storage, records } = setup()
-      await writeAllSetup(records)
-      await records[act](CHAIN_ID, ACCOUNT)
-      expect(storage.calls.removeKeys).toHaveLength(1)
-      expect([...storage.calls.removeKeys[0]].sort()).toEqual([...sixKeys()].sort())
-      expect(storage.calls.remove).toEqual([])
-    })
-
     it(`${label} that fails in storage leaves every setup record in place`, async () => {
       const { storage, records } = setup()
       await writeAllSetup(records)
@@ -2430,4 +2505,197 @@ describe('the ceremony request under its request id', () => {
     const ids = Array.from({ length: 200 }, () => newCeremonyRequestId())
     expect(new Set(ids).size).toBe(ids.length)
   })
+})
+
+describe('the setup save in flight', () => {
+  const KEY = recordKeys.saveInFlight(CHAIN_ID, ACCOUNT)
+  const SECOND_CLAIM: SaveInFlightClaim = {
+    prepared: PREPARED_BATCH,
+    requestId: 'social-recovery-sender:second',
+    claimedAt: T0 + HOUR
+  }
+  const TX_HASH: Hex = `0x${'cd'.repeat(32)}`
+  const START_BLOCK = 7_000_123
+
+  it('a claim on an empty key writes the record and answers it as claimed', async () => {
+    const { records } = setup()
+    const result = await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    expect(result).toEqual({ claimed: true, record: { value: SAVE_CLAIM, savedAt: T0 } })
+    expect(present(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('reads absent before any claim', async () => {
+    const { records } = setup()
+    expect(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
+  })
+
+  it("a second claim writes nothing and answers the first claim's record", async () => {
+    const { storage, records, clock } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    const writes = storage.calls.set.length
+    clock.t = T0 + HOUR
+    const tab = createWalletRecords({ storage, now: () => clock.t })
+    const result = await tab.saveInFlight(CHAIN_ID, ACCOUNT).claim(SECOND_CLAIM)
+    expect(result).toEqual({ claimed: false, record: { value: SAVE_CLAIM, savedAt: T0 } })
+    expect(storage.calls.set).toHaveLength(writes)
+    expect(present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  const raceTwoClaims = async () => {
+    const storage = makeStorage()
+    const first = createWalletRecords({ storage, now: () => T0 })
+    const second = createWalletRecords({ storage, now: () => T0 + 1 })
+    const results = await Promise.all([
+      first.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM),
+      second.saveInFlight(CHAIN_ID, ACCOUNT).claim(SECOND_CLAIM)
+    ])
+    const winners = results.filter((result) => result.claimed)
+    const losers = results.filter((result) => !result.claimed)
+    expect(winners).toHaveLength(1)
+    expect(losers).toHaveLength(1)
+    expect(losers[0].record).toEqual(winners[0].record)
+    expect(storage.calls.set).toEqual([KEY])
+    expect(present(await first.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(
+      winners[0].record.value
+    )
+  }
+
+  it('of two claims started together on two pages, exactly one wins and the other answers its record', async () => {
+    await raceTwoClaims()
+  })
+
+  it('with the Web Locks API, two claims started together take the lock of the key and give one winner', async () => {
+    const locks = exclusiveLocks()
+    await withNavigator({ locks }, raceTwoClaims)
+    expect(locks.names).toEqual([KEY, KEY])
+  })
+
+  it('a prepared value with bigints survives the round trip as bigints, call and batch alike', async () => {
+    const { storage, records } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    await records.saveInFlight(CHAIN_ID, OTHER_ACCOUNT).claim(SECOND_CLAIM)
+    const tab = createWalletRecords({ storage, now: () => T0 })
+    const call = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value.prepared
+    const batch = present(await tab.saveInFlight(CHAIN_ID, OTHER_ACCOUNT).read()).value.prepared
+    expect(call).toEqual(PREPARED_CALL)
+    expect(batch).toEqual(PREPARED_BATCH)
+    expect(call.kind === 'call' && call.value).toBe(10n ** 21n + 1n)
+    expect(batch.kind === 'batch' && batch.calls[1].value).toBe(2n ** 70n)
+  })
+
+  it('is kept per chain and account: a claim for one leaves another account and another chain free', async () => {
+    const { records } = setup()
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SAVE_CLAIM)
+    const otherAccount = await records.saveInFlight(CHAIN_ID, OTHER_ACCOUNT).claim(SECOND_CLAIM)
+    const otherChain = await records.saveInFlight(1n, ACCOUNT).claim(SECOND_CLAIM)
+    expect(otherAccount.claimed).toBe(true)
+    expect(otherChain.claimed).toBe(true)
+    expect(present(await records.saveInFlight(CHAIN_ID, ACCOUNT).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('reads the same record under an address in another letter case', async () => {
+    const { records } = setup()
+    await records.saveInFlight(CHAIN_ID, LOWER).claim(SAVE_CLAIM)
+    const again = await records.saveInFlight(CHAIN_ID, CHECKSUMMED).claim(SECOND_CLAIM)
+    expect(again.claimed).toBe(false)
+    expect(present(await records.saveInFlight(CHAIN_ID, MISCASED).read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('marking it sent under its own request id adds the hash and the start block and keeps the rest', async () => {
+    const { records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: START_BLOCK }
+    const marked = await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
+    expect(present(marked).value).toEqual(sent)
+    expect(present(await saving.read()).value).toEqual(sent)
+    expect((await saving.claim(SECOND_CLAIM)).record.value).toEqual(sent)
+  })
+
+  it('marking it sent under another request id writes nothing and answers the record as it is', async () => {
+    const { storage, records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    const writes = storage.calls.set.length
+    const marked = await saving.markSent(SECOND_CLAIM.requestId, TX_HASH, START_BLOCK)
+    expect(present(marked).value).toEqual(SAVE_CLAIM)
+    expect(storage.calls.set).toHaveLength(writes)
+    expect(present(await saving.read()).value).toEqual(SAVE_CLAIM)
+  })
+
+  it('marking it sent with no record writes nothing and answers absent', async () => {
+    const { storage, records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    expect(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)).toBe(ABSENT)
+    expect(storage.raw.size).toBe(0)
+    expect(storage.calls.set).toEqual([])
+  })
+
+  it('a release under its own request id removes the record, and a claim after it wins', async () => {
+    const { records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    expect(await saving.release(SAVE_CLAIM.requestId)).toBe(true)
+    expect(await saving.read()).toBe(ABSENT)
+    expect((await saving.claim(SECOND_CLAIM)).claimed).toBe(true)
+  })
+
+  it('a release under another request id removes nothing and answers false', async () => {
+    const { storage, records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
+    expect(await saving.release(SECOND_CLAIM.requestId)).toBe(false)
+    expect(storage.calls.remove).toEqual([])
+    expect(present(await saving.read()).value).toEqual({
+      ...SAVE_CLAIM,
+      transactionHash: TX_HASH,
+      startBlock: START_BLOCK
+    })
+  })
+
+  it('a release with no record answers false', async () => {
+    const { storage, records } = setup()
+    expect(await records.saveInFlight(CHAIN_ID, ACCOUNT).release(SAVE_CLAIM.requestId)).toBe(false)
+    expect(storage.calls.remove).toEqual([])
+  })
+
+  const stored = (value: unknown) => ({ value, savedAt: T0 })
+  const MALFORMED: [string, unknown][] = [
+    ['a bare record with no savedAt', SAVE_CLAIM],
+    ['a bare false', false],
+    ['a bare string', 'saving'],
+    ['a record with a savedAt that is no number', { value: SAVE_CLAIM, savedAt: 'now' }],
+    ['a stored null', stored(null)],
+    ['a record with no prepared value', stored({ ...SAVE_CLAIM, prepared: undefined })],
+    ['a record whose prepared value is null', stored({ ...SAVE_CLAIM, prepared: null })],
+    [
+      'a record whose prepared value is of another kind',
+      stored({ ...SAVE_CLAIM, prepared: { ...PREPARED_CALL, kind: 'transfer' } })
+    ],
+    ['a record with no request id', stored({ ...SAVE_CLAIM, requestId: undefined })],
+    ['a record with an empty request id', stored({ ...SAVE_CLAIM, requestId: '' })],
+    ['a record whose request id is a number', stored({ ...SAVE_CLAIM, requestId: 7 })],
+    ['a record with no claim time', stored({ ...SAVE_CLAIM, claimedAt: undefined })],
+    ['a record whose claim time is a string', stored({ ...SAVE_CLAIM, claimedAt: '1700' })],
+    ['a record whose hash is a number', stored({ ...SAVE_CLAIM, transactionHash: 7 })],
+    ['a record whose start block is negative', stored({ ...SAVE_CLAIM, startBlock: -1 })],
+    ['a record whose start block is a fraction', stored({ ...SAVE_CLAIM, startBlock: 1.5 })],
+    ['a record whose start block is a string', stored({ ...SAVE_CLAIM, startBlock: '12' })]
+  ]
+  MALFORMED.forEach(([label, value]) =>
+    it(`reads ${label} as absent, and a claim writes over it`, async () => {
+      const { storage, records } = setup()
+      await storage.set(KEY, value)
+      const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+      expect(await saving.read()).toBe(ABSENT)
+      expect(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)).toBe(ABSENT)
+      expect(await saving.release(SAVE_CLAIM.requestId)).toBe(false)
+      expect(await saving.claim(SECOND_CLAIM)).toEqual({
+        claimed: true,
+        record: { value: SECOND_CLAIM, savedAt: T0 }
+      })
+      expect(present(await saving.read()).value).toEqual(SECOND_CLAIM)
+    })
+  )
 })
