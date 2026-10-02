@@ -82,11 +82,10 @@ import type {
   GasEstimateCall,
   KeyHandle,
   MainStatusState,
-  QueuedRequest,
+  QueueLists,
   RecoveryKitMark,
   SendPort,
   SendPortOptions,
-  SendQueueState,
   SendRefusal,
   SendRefusalReason,
   SendRequestPort,
@@ -245,7 +244,7 @@ const SETTLED_ESTIMATIONS: readonly string[] = [EstimationStatus.Success, Estima
 export const newSendRequestId = (): string => `social-recovery-sender:${uuidv4()}`
 
 /** Every request in the queue, those waiting for an account switch included. */
-const queuedRequestsOf = (state: SendQueueState): QueuedRequest[] => [
+const queuedRequestsOf = (state: QueueLists) => [
   ...(state.userRequests ?? []),
   ...(state.userRequestsWaitingAccountSwitch ?? [])
 ]
@@ -255,7 +254,7 @@ const queuedRequestsOf = (state: SendQueueState): QueuedRequest[] => [
  * the chain, which the wallet would join into one operation with it.
  */
 const otherCallsRequestIn = (
-  state: SendQueueState,
+  state: QueueLists,
   id: string,
   account: Address,
   chainId: bigint

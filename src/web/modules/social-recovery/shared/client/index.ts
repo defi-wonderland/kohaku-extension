@@ -140,6 +140,7 @@ export type {
   ActionWindowState,
   QueuedRequest,
   SendQueueState,
+  HeldRequestQueue,
   SendRequestState,
   SubmittedOperation,
   ActivityState,

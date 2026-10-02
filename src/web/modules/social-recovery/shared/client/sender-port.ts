@@ -13,6 +13,7 @@ import eventBus from '@web/extension-services/event/eventBus'
 
 import type {
   ActivityState,
+  HeldRequestQueue,
   ListedAccount,
   MainStatusState,
   SendQueueState,
@@ -24,7 +25,7 @@ import type {
 export const sendRequestPort = (
   dispatch: (action: SendRequestAction) => void,
   accounts: () => readonly ListedAccount[] | undefined,
-  queue: () => SendQueueState | undefined,
+  queue: () => HeldRequestQueue | undefined,
   windowId?: number
 ): SendRequestPort => ({
   dispatch,

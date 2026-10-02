@@ -26,8 +26,10 @@
  */
 import { AbiCoder, id, toBeHex, toQuantity, Wallet } from 'ethers'
 
+import { Session } from '@ambire-common/classes/session'
 import type { AccountOnchainState } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
+import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 
 import {
@@ -63,10 +65,10 @@ import {
   WALLET_RECOVERY_CHAIN,
   type ApprovingClient,
   type ExtensionProvider,
+  type HeldRequestQueue,
   type KeyHandle,
   type ListedAccount,
   type MainStatusState,
-  type QueuedRequest,
   type RecoveryChain,
   type RecoveryClientConfiguration,
   type SendPort,
@@ -549,8 +551,8 @@ export interface SendWorld {
   push: (update: SendRequestUpdate) => void
   /** How many listeners are subscribed now. */
   listeners: () => number
-  /** The request queue the wallet holds now, which the port pulls; a test may replace it. */
-  queue: SendQueueState
+  /** The request queue the wallet holds now, which the port pulls; a test may replace it and push it. */
+  queue: HeldAndPushedQueue
   /** The port the sender runs over. */
   port: SendRequestPort
 }
@@ -689,24 +691,41 @@ export const waitingForSwitch = (...requestIds: (string | number)[]): SendReques
   }
 })
 
+/** The kinds of request a test puts in the wallet's queue. */
+export type QueuedKind = 'calls' | 'message' | 'typedMessage'
+
 /** What a request in the wallet's queue is for: its kind, its account and its chain. */
 export interface QueuedFor {
   account: string
   chainId?: bigint
-  kind?: string
+  kind?: QueuedKind
+}
+
+/** A `requests` state the wallet both holds and pushes. */
+export type HeldAndPushedQueue = HeldRequestQueue & SendQueueState
+
+const QUEUED_ACTIONS: Record<QueuedKind, SignUserRequest['action']> = {
+  calls: { kind: 'calls', calls: [] },
+  message: { kind: 'message', message: '0x' },
+  typedMessage: { kind: 'typedMessage', domain: {}, types: {}, message: {}, primaryType: '' }
 }
 
 /** One request in the wallet's queue, with the kind, account and chain the queue keeps. */
 export const queuedRequest = (
   requestId: string | number,
   { account, chainId = BigInt(SEPOLIA), kind = 'calls' }: QueuedFor
-): QueuedRequest => ({ id: requestId, action: { kind }, meta: { accountAddr: account, chainId } })
+): SignUserRequest => ({
+  id: requestId,
+  action: QUEUED_ACTIONS[kind],
+  session: new Session(),
+  meta: { isSignAction: true, accountAddr: account, chainId }
+})
 
 /** The `requests` state holding these requests, those waiting for an account switch, and the window open. */
 export const queueHolding = (
-  requests: QueuedRequest[],
-  waiting: QueuedRequest[] = []
-): SendQueueState => ({
+  requests: SignUserRequest[],
+  waiting: SignUserRequest[] = []
+): HeldAndPushedQueue => ({
   userRequests: requests,
   userRequestsWaitingAccountSwitch: waiting,
   actions: { actionWindow: { windowProps: { id: ACTION_WINDOW_ID } } }

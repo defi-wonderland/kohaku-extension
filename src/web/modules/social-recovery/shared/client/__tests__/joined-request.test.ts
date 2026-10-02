@@ -9,6 +9,7 @@ import { Wallet } from 'ethers'
 
 import { EstimationStatus } from '@ambire-common/controllers/estimation/types'
 import { SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
+import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   activityListing,
@@ -24,7 +25,6 @@ import {
   newSendRequestId,
   operationFor,
   QueuedFor,
-  QueuedRequest,
   queuedRequest,
   queueHolding,
   requestsPush,
@@ -202,7 +202,7 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
           },
           ...(status ? { status: { type: status } } : {})
         })
-      const joined = (own: QueuedRequest) => queueHolding([own, dappCalls(account)])
+      const joined = (own: SignUserRequest) => queueHolding([own, dappCalls(account)])
       const withdrawal = (id: string) => [{ type: REMOVE, params: { id } }]
 
       SIGNING.forEach((status) =>
