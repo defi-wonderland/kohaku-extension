@@ -28,7 +28,9 @@ import type { DepositStepViewProps } from '@web/modules/social-recovery/shared/w
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
-const harness = jest.requireActual<typeof import('./harness')>('./harness')
+const harness = jest.requireActual<
+  typeof import('@web/modules/social-recovery/shared/writes/__tests__/harness')
+>('@web/modules/social-recovery/shared/writes/__tests__/harness')
 const { depositStepFor, GAS_KEYS, mockReads, OTHER_KEY, renderDepositStep, runGasCheck, stepOf } =
   harness
 const { t } = jest.requireActual<typeof import('@common/config/localization')>(

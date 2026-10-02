@@ -21,11 +21,11 @@ import type {
   BlockTag,
   FilterSpec,
   Hex,
-  IProvider,
   PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
+  AdapterWorld,
   adapterOver,
   callException,
   createChainReads,
@@ -39,6 +39,7 @@ import {
   gasCallOf,
   isProviderReadFailure,
   isRevertedCall,
+  JsonRpcTransport,
   NODE_ANSWERS,
   nodeRevert,
   PLAIN_RPC_NETWORK,
@@ -46,7 +47,7 @@ import {
   SEPOLIA,
   thrownBy,
   underlyingCalls
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 const TO = '0x1111111111111111111111111111111111111111' as Address
 const FROM = '0x2222222222222222222222222222222222222222' as Address
@@ -68,13 +69,7 @@ const sameNumber = (seen: unknown, n: number): boolean =>
 
 const lower = (a: unknown) => (typeof a === 'string' ? a.toLowerCase() : a)
 
-interface World {
-  chain: ScriptedChain
-  ethers: EthersMock
-  adapter: IProvider
-}
-
-const world = (): World => {
+const world = (): AdapterWorld => {
   const chain = new ScriptedChain()
   const ethers = ethersOver(chain)
   return { chain, ethers, adapter: adapterOver(ethers) }
@@ -596,11 +591,6 @@ describe('the balance and gas reads on the typed members of the ethers provider'
     })
   )
 })
-
-/** The batch transport under an ethers JSON-RPC provider's `send`. */
-interface JsonRpcTransport {
-  _send(payload: unknown): Promise<unknown[]>
-}
 
 describe('through the ethers provider the extension builds for a network', () => {
   const built: ExtensionProvider[] = []

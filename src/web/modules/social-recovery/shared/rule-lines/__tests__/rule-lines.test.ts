@@ -13,8 +13,9 @@ import { addressBookOf } from '@web/modules/social-recovery/shared/client/addres
 import { emptySlot, SLOT_KINDS } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
-import { getRuleLines, renderRuleLines } from '..'
-import type { RuleLinesOptions, Translate } from '..'
+import { getRuleLines, renderRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
+import type { RuleLinesOptions, Translate } from '@web/modules/social-recovery/shared/rule-lines'
+import type { Expected } from '@web/modules/social-recovery/shared/rule-lines/__tests__/harness'
 
 // One method address per family: the failure-domain line keys on the method
 // address.
@@ -59,8 +60,6 @@ const RULE_LINES = (en as { socialRecovery: { ruleLines: Record<string, string> 
 const PREFIX = 'socialRecovery.ruleLines.'
 
 const shortKey = (key: string): string => (key.startsWith(PREFIX) ? key.slice(PREFIX.length) : key)
-
-type Expected = { key: string; params?: Record<string, number> }
 
 const SINGLE_METHOD: Expected[] = [
   { key: 'singleMethod' },

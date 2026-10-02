@@ -19,7 +19,7 @@ import {
   UNRESOLVED,
   userRejected,
   WRITE_KINDS
-} from './harness'
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const MODULE_DIR = path.resolve(__dirname, '..')
 

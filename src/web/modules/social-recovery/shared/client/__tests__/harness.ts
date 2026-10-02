@@ -100,6 +100,24 @@ export { sdkStandIn }
 
 export type HookState = RecoveryClientState & { retry: () => void }
 
+export interface ProviderMock {
+  send: jest.Mock
+  getTransaction: jest.Mock
+  getBlockNumber: jest.Mock
+  /** The replacement-aware response each transaction answers, by the start block given. */
+  replaceable: jest.Mock
+  once: jest.Mock
+  off: jest.Mock
+  destroy: jest.Mock
+}
+
+export type AdapterWorld = Pick<World, 'chain' | 'ethers' | 'adapter'>
+
+/** The batch transport under an ethers JSON-RPC provider's `send`. */
+export interface JsonRpcTransport {
+  _send(payload: unknown): Promise<unknown[]>
+}
+
 export const SEPOLIA = 11155111
 export const MAINNET = 1
 

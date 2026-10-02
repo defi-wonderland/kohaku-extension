@@ -48,7 +48,7 @@ import {
   writeReducer,
   WRITES_KEYS,
   WriteState
-} from './harness'
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const REVERTED_AND_GONE = /\bthe gas it spent is gone\b/i
 const STILL_READY = /\bthe recovery is still ready\b/i

@@ -20,7 +20,7 @@ import {
   SUBMISSION,
   transferTransactionOf,
   WRITE_KINDS
-} from './harness'
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 

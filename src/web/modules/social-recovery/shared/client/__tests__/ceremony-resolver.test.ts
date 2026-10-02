@@ -38,7 +38,7 @@ import {
   sameAddress,
   spyOnBuilder,
   thrownBy
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 jest.mock('@ambire-common/services/provider/getRpcProvider', () => ({
   getRpcProvider: jest.fn()

@@ -58,6 +58,7 @@ import {
   setRecoveryPassword,
   SLOT_KINDS,
   slotKindOf,
+  WalletRecords,
   WIPE_REASON_STRING_KEYS,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
@@ -317,8 +318,6 @@ const setup = (clock: { t: number } = { t: T0 }) => {
   return { storage, records, clock }
 }
 
-type Records = ReturnType<typeof createWalletRecords>
-
 const present = <T>(read: RecordRead<T>) => {
   if (read.status !== 'present') throw new Error('expected a present record')
   return read
@@ -326,11 +325,11 @@ const present = <T>(read: RecordRead<T>) => {
 
 // Each session update below passes the revision of a fresh read, as a caller
 // does, so a refusal comes from the rule under test and never from the revision.
-const revisionNow = async (records: Records, account: Address, chainId: ChainId) =>
+const revisionNow = async (records: WalletRecords, account: Address, chainId: ChainId) =>
   revisionOf(await records.recoverySession(chainId, account).read())
 
 const writeSession = async (
-  records: Records,
+  records: WalletRecords,
   value: Gathering,
   account: Address = ACCOUNT,
   chainId: ChainId = CHAIN_ID
@@ -339,7 +338,11 @@ const writeSession = async (
     .recoverySession(chainId, account)
     .write(value, await revisionNow(records, account, chainId))
 
-const wipeSession = async (records: Records, event: DirectWipeEvent, account: Address = ACCOUNT) =>
+const wipeSession = async (
+  records: WalletRecords,
+  event: DirectWipeEvent,
+  account: Address = ACCOUNT
+) =>
   records.wipeRecoverySession(
     CHAIN_ID,
     account,
@@ -348,15 +351,15 @@ const wipeSession = async (records: Records, event: DirectWipeEvent, account: Ad
   )
 
 const landSession = async (
-  records: Records,
+  records: WalletRecords,
   account: Address = ACCOUNT,
   chainId: ChainId = CHAIN_ID
 ) => records.landSubmission(chainId, account, await revisionNow(records, account, chainId))
 
-const clearWiped = async (records: Records, account: Address = ACCOUNT) =>
+const clearWiped = async (records: WalletRecords, account: Address = ACCOUNT) =>
   records.clearWipedSession(CHAIN_ID, account, await revisionNow(records, account, CHAIN_ID))
 
-const endSessionCountdown = async (records: Records, account: Address = ACCOUNT) =>
+const endSessionCountdown = async (records: WalletRecords, account: Address = ACCOUNT) =>
   records.endCountdown(CHAIN_ID, account, await revisionNow(records, account, CHAIN_ID))
 
 // Every stored string, keys included, to prove a secret is gone.
@@ -368,7 +371,7 @@ const storedValues = (storage: StorageDouble) => [...storage.raw.values()].map((
 // A call that may throw synchronously or reject, as a promise.
 const attempt = (fn: () => unknown) => Promise.resolve().then(fn)
 
-const writeAllSetup = async (records: Records, account: Address = ACCOUNT) => {
+const writeAllSetup = async (records: WalletRecords, account: Address = ACCOUNT) => {
   const six = records.setup(CHAIN_ID, account)
   await six.setupDraft.write(SETUP_SAMPLES.setupDraft)
   await six.inventory.write(SETUP_SAMPLES.inventory)
@@ -391,7 +394,7 @@ const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
         ...(event === 'deadline-passed' ? { deadline: VALID_UNTIL } : {})
       }
 
-const wipeFor = async (records: Records, event: RecoveryWipeEvent) => {
+const wipeFor = async (records: WalletRecords, event: RecoveryWipeEvent) => {
   if (event === 'submission-landed') await landSession(records)
   else await wipeSession(records, event)
 }
@@ -399,7 +402,7 @@ const wipeFor = async (records: Records, event: RecoveryWipeEvent) => {
 describe('the six setup records', () => {
   SETUP_RECORD_NAMES.forEach((name: SetupRecordName) =>
     describe(name, () => {
-      const accessorOf = (records: Records) =>
+      const accessorOf = (records: WalletRecords) =>
         records.setup(CHAIN_ID, ACCOUNT)[name] as unknown as {
           read(): Promise<RecordRead<unknown>>
           write(value: unknown): Promise<unknown>
@@ -1788,7 +1791,7 @@ const repliesOf = (read: SessionRead) => {
 
 const CONFLICT = { status: 'rejected', reason: expect.any(SessionRevisionConflict) }
 
-type SessionUpdate = (records: Records, revision: ExpectedRevision) => Promise<unknown>
+type SessionUpdate = (records: WalletRecords, revision: ExpectedRevision) => Promise<unknown>
 
 describe('a session update refuses when the session changed after its caller read it', () => {
   it('a reply write from a read taken before a wipe is refused and cannot bring the session back', async () => {
@@ -2022,7 +2025,7 @@ describe('a session update refuses when the session changed after its caller rea
 
 describe('the revision an update names', () => {
   it('an update that names the empty revision meets the conflict, or returns false for a clear or an end on another state, and writes nothing', async () => {
-    const states: [string, (records: Records) => Promise<unknown>][] = [
+    const states: [string, (records: WalletRecords) => Promise<unknown>][] = [
       ['none', async () => undefined],
       ['live', (records) => writeSession(records, GATHERING)],
       [
@@ -2183,8 +2186,8 @@ const withNavigator = async (value: unknown, run: () => Promise<void>) => {
 // Two reply writes from one read, the first held after its read: the second
 // must wait for the first, then meet the conflict; a retry keeps both replies.
 const raceTwoReplyWrites = async (
-  first: { records: Records; storage: Pick<RecordStorage, 'get'> },
-  second: Records
+  first: { records: WalletRecords; storage: Pick<RecordStorage, 'get'> },
+  second: WalletRecords
 ) => {
   await first.records.recoverySession(CHAIN_ID, ACCOUNT).write(gathering(ACCOUNT, []), null)
   const read = await first.records.recoverySession(CHAIN_ID, ACCOUNT).read()
@@ -2813,7 +2816,7 @@ describe('start over is refused while a setup save is in flight', () => {
       (error: unknown) => error
     )
 
-  const expectSetupKept = async (records: Records) => {
+  const expectSetupKept = async (records: WalletRecords) => {
     const six = records.setup(CHAIN_ID, ACCOUNT)
     const reads = await Promise.all(SETUP_RECORD_NAMES.map((name) => six[name].read()))
     reads.forEach((read, i) =>
@@ -2823,7 +2826,7 @@ describe('start over is refused while a setup save is in flight', () => {
     )
   }
 
-  const expectSetupGone = async (records: Records) => {
+  const expectSetupGone = async (records: WalletRecords) => {
     const six = records.setup(CHAIN_ID, ACCOUNT)
     const reads = await Promise.all(SETUP_RECORD_NAMES.map((name) => six[name].read()))
     reads.forEach((read) => expect(read).toBe(ABSENT))

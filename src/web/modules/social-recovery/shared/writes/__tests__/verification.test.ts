@@ -51,7 +51,7 @@ import {
   writeReducer,
   WRITES_KEYS,
   initialWriteState
-} from './harness'
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const t = i18n.t
 const PRICE = 3n * GWEI

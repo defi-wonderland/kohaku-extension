@@ -2,7 +2,7 @@ import en from '@common/config/localization/translations/en.json'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
-import * as display from '..'
+import * as display from '@web/modules/social-recovery/shared/display'
 
 const BANS: { rule: string; pattern: RegExp }[] = [
   { rule: 'policy', pattern: /\bpolic(?:y|ies)\b/i },
