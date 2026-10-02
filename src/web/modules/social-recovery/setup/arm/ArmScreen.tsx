@@ -3,10 +3,11 @@
  * account's setup. It reads the account's facts, the recovery client, the
  * setup records and the recovery password in memory, runs the review's reads
  * and gate again, and builds the send port over the request queue. The save
- * starts by itself only where the review's Save pushed the route, once the
- * gate lets it run, and the push is then replaced so a later mount at the same
- * entry does not start again; a reload, a typed address, or back and forward
- * show the summary with the Save button instead. The wallet's sign screen is
+ * starts by itself only where the review's Save pushed the route, in the mount
+ * that took the push, once the gate lets it run; the push is replaced as soon
+ * as the step mounts, so a later mount at the same entry, for this account or
+ * another, does not start again. A reload, a typed address, or back and
+ * forward show the summary with the Save button instead. The wallet's sign screen is
  * the one confirmation.
  */
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -166,15 +167,23 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const canStart = arrival.kind === 'ready' && steps !== null
   const untouched = state.write.status === 'idle' && state.write.run === 0
   const pushed = navigationType === 'PUSH'
+  // Only the mount that took the push starts by itself; the push is replaced at
+  // once, so a step mounted later at this entry, for another account, does not.
+  const startWhenReady = useRef(pushed)
   useEffect(() => {
-    if (canStart && untouched && pushed) {
-      start()
+    if (pushed) {
       routerNavigate(
         { pathname: location.pathname, search: location.search, hash: location.hash },
         { replace: true, state: location.state }
       )
     }
-  }, [canStart, untouched, pushed, start, routerNavigate, location])
+  }, [pushed, routerNavigate, location])
+  useEffect(() => {
+    if (canStart && untouched && startWhenReady.current) {
+      startWhenReady.current = false
+      start()
+    }
+  }, [canStart, untouched, start])
 
   const retryReads = useCallback(() => {
     rows
@@ -217,7 +226,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       level={levelOfBackup(draft?.privacy.backup ?? 'encrypted')}
       onRetryReads={retryReads}
       onRetryArrival={retryArrival}
-      onSave={canStart && untouched && !pushed ? start : undefined}
+      onSave={canStart && untouched && !startWhenReady.current ? start : undefined}
       onRetry={start}
       onCheckAgain={checkAgain}
       onCheckSetup={checkSetup}
