@@ -41,7 +41,7 @@ import {
   thrownBy,
   track,
   WINDOW_ID
-} from './harness'
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 /** A basic account the wallet lists, which the sign screen offers as a payer. */
 const PAYER = new Wallet(`0x${'55'.repeat(32)}`).address as Address
