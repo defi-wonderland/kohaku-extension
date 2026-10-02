@@ -19,11 +19,16 @@ import type {
   RecoveryChain,
   RecoveryKitClient,
   SendPort,
+  SendRequestPort,
+  SendRequestState,
   UnknownAction
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
   Enrollment,
+  RecordRead,
+  SaveInFlightClaimResult,
+  SaveInFlightRecord,
   SetupRecords,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
@@ -68,11 +73,9 @@ export interface ConfirmOutcomeOptions extends ConfirmReadOptions {
   newBlock?: NewBlockWait
 }
 
-/** The members a thrown value may carry that the save reads: a coded error's code, a refusal's name and reason. */
+/** The member a thrown value may carry that the check reads: a coded error's code. */
 export interface ThrownFields {
   code?: unknown
-  name?: unknown
-  reason?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -103,14 +106,28 @@ export type AfterLanding =
 export type ArmStop = 'already-set-up'
 
 /**
+ * The read of a save in flight stored on this device, before the save is
+ * offered: still reading, none stored, or a read that failed.
+ */
+export type InFlightLookup = 'reading' | 'none' | 'failed'
+
+/**
+ * Where a followed save in flight stands while it holds no hash: still in the
+ * wallet's queue, a read of the wallet's activity that did not answer, or a
+ * request neither the queue nor the activity holds, read again for a while.
+ */
+export type FollowReading = 'queued' | 'unread' | 'gone'
+
+/**
  * The save's state: the shared write's state, the prepared save of its run,
- * what follows the landing, and three marks of the run: a setup the account
- * already held, the sign screen's last estimation, and a receipt wait that
- * failed while the batch may still land.
+ * what follows the landing, and the marks of the run: a setup the account
+ * already held, the sign screen's last estimation, a receipt wait that failed
+ * while the batch may still land, the request the run holds in flight, and a
+ * landing seen only in the account's setup.
  */
 export interface ArmState {
   write: WriteMachineState
-  /** The save the run prepared; absent until the prepare answered in this run. */
+  /** The save the run prepared, or the stored one it follows; absent until either is known. */
   prepared?: PreparedSave
   after: AfterLanding
   /** Set where the run found a setup on the account before it prepared; nothing moves the run after it. */
@@ -122,13 +139,38 @@ export interface ArmState {
    * limit, until the holder asks to check again or the write leaves submitting.
    */
   stalled?: boolean
+  /** The read of a stored save in flight; absent until the first read starts. */
+  lookup?: InFlightLookup
+  /** The id of the request the stored save in flight names, while the run holds it. */
+  requestId?: string
+  /** Where the followed request stands while the run holds no hash. */
+  follow?: FollowReading
+  /**
+   * True where the account's setup shows the save landed while no page
+   * followed its hash: the check runs as after a landed receipt.
+   */
+  landedUnseen?: true
 }
 
 /** What moves the save. Every event but `write` carries the run it answers. */
 export type ArmEvent =
   | { type: 'write'; event: WriteEvent }
+  | { type: 'lookup'; run: number; reading: InFlightLookup }
   | { type: 'alreadySetUp'; run: number }
   | { type: 'prepared'; run: number; prepared: PreparedSave }
+  | { type: 'claimed'; run: number; requestId: string }
+  | {
+      type: 'follow'
+      run: number
+      requestId: string
+      prepared: PreparedSave
+      transactionHash?: Hex
+      startBlock?: number
+    }
+  | { type: 'followed'; run: number; reading: FollowReading }
+  | { type: 'landedUnseen'; run: number }
+  | { type: 'released'; run: number }
+  | { type: 'voided'; run: number }
   | { type: 'estimated'; run: number; reading: FeeReading }
   | { type: 'waitStalled'; run: number }
   | { type: 'waitResumed'; run: number }
@@ -152,14 +194,36 @@ export interface SaveSteps {
   prepare(): Promise<PreparedSave>
   /** The gas check of the batch the controlling key sends. */
   checkGas(save: PreparedSave): Promise<GasCheck>
+  /** The account the save writes to. */
+  account: Address
+  /** A stored save's prepared write as the run checks it: with the draft the records hold, and its calls. */
+  followedSave(prepared: PreparedCall | PreparedBatch): PreparedSave
+  /** A new id for the batch's request in the wallet's queue. */
+  newRequestId(): string
+  /** The save in flight stored on this device for the account, where one is. */
+  readInFlight(): Promise<RecordRead<SaveInFlightRecord>>
+  /** Stores the save in flight where none is; answers whether it did, and the record stored. */
+  claim(save: PreparedSave, requestId: string): Promise<SaveInFlightClaimResult>
+  /** Writes the hash and the start block into the stored save in flight of `requestId`. */
+  markSent(requestId: string, transactionHash: Hex, startBlock: number): Promise<void>
+  /** Removes the stored save in flight of `requestId`. */
+  release(requestId: string): Promise<void>
+  /** Where the wallet holds the request `requestId`: its queue, its activity, or neither. */
+  requestState(requestId: string): Promise<SendRequestState>
+  /** Resolves on the next change of the wallet's queue, or after `limitMs`; never rejects. */
+  queueMoved(limitMs: number): Promise<void>
+  /** The chain's block number now. */
+  blockNumber(): Promise<number>
   /**
-   * Sends the batch and follows its receipt, feeding the write's events to
-   * `dispatch`; `onEstimation` hears the sign screen's estimation of the batch.
+   * Sends the batch under `requestId` and follows its receipt, feeding the
+   * write's events to `dispatch`; `onEstimation` hears the sign screen's
+   * estimation of the batch.
    */
   send(
     save: PreparedSave,
     dispatch: (event: WriteEvent) => void,
     run: number,
+    requestId: string,
     onEstimation?: EstimationListener
   ): Promise<void>
   /**
@@ -191,7 +255,9 @@ export interface SaveStepsInput {
   reads: ChainReads
   receipts: ReceiptWait
   port: SendPort
-  records: Pick<WalletRecords, 'saveSetup'>
+  /** The wallet's queue and activity, read for a request another page queued. */
+  requests: SendRequestPort
+  records: Pick<WalletRecords, 'saveSetup' | 'saveInFlight'>
   setup: Pick<SetupRecords, 'writeDraftAndPath'>
   chainId: ChainId
   account: Address
@@ -235,6 +301,8 @@ export interface ArrivalInput {
   setupState: AccountReads['setupState']
   /** Whether the recovery password is in memory. */
   passwordHeld: boolean
+  /** The read of a stored save in flight; undefined until it starts. */
+  inFlight: InFlightLookup | undefined
 }
 
 /** Which retry clears an unavailable arrival, where one does. */
@@ -280,6 +348,8 @@ export type ArmScreenKind =
 /** The keys of the save's own title and sentence over a shared write state. */
 export interface SaveWriteKeys {
   title?: string
+  /** The save's own line in place of the shared state's lines. */
+  body?: string
   note?: string
 }
 
@@ -311,7 +381,11 @@ export interface ArmViewProps {
   onSave?: () => void
   /** Runs the save again from its prepare. */
   onRetry: () => void
-  /** Waits again for the receipt of the sent batch, where the wait failed. */
+  /**
+   * Waits again for the receipt of the sent batch, where the wait failed, or
+   * reads again where the wallet holds a followed request, where the read did
+   * not answer.
+   */
   onCheckAgain: () => void
   /** Reads the account's setup again, where the refused operation may still land. */
   onCheckSetup: () => void
@@ -324,7 +398,8 @@ export interface ArmViewProps {
 }
 
 export interface SavedViewProps {
-  transactionHash: Hex
+  /** The landed transaction; absent where the save landed while no page followed its hash. */
+  transactionHash?: Hex
   chain: RecoveryChain
   account: ArmAccount
   level: CardLevel
@@ -333,7 +408,8 @@ export interface SavedViewProps {
 }
 
 export interface DisagreedViewProps {
-  transactionHash: Hex
+  /** The landed transaction; absent where the save landed while no page followed its hash. */
+  transactionHash?: Hex
   chain: RecoveryChain
   /** The check that disagreed; absent where the check did not answer. */
   check?: DisagreedCheck
@@ -350,10 +426,15 @@ export interface ArmRun {
   recheck: () => void
   /** Reads the check after the landing again, where it did not answer. */
   reread: () => void
-  /** Waits again for the receipt of the sent batch, where the wait failed. */
+  /**
+   * Waits again for the receipt of the sent batch, where the wait failed, or
+   * reads the followed request again, where its read did not answer.
+   */
   checkAgain: () => void
+  /** Reads the stored save in flight again, where its read failed. */
+  lookAgain: () => void
   /** Reads the account's setup again after a refusal whose operation may still land. */
   checkSetup: () => void
-  /** Ends a refusal whose operation may still land as already set up, where a setup read found one. */
+  /** Checks a refusal whose operation may still land as after a landing, where a setup read found a setup. */
   endWhereSetUp: (hasSetup: boolean) => void
 }

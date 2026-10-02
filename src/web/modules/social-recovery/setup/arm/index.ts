@@ -11,6 +11,8 @@ export {
   CONFIRM_READ_TIMEOUT_MS,
   CONFIRM_REREAD_BLOCKS,
   COMMITMENT_MISMATCH_CODE,
+  FOLLOW_REREAD_MS,
+  GONE_GRACE_MS,
   NEW_BLOCK_WAIT_MS,
   RECEIPT_WAIT_MS
 } from './constants'
@@ -26,12 +28,12 @@ export {
   initialArmState,
   isLive,
   isSaved,
+  lookForSave,
   outlivesScreen,
   recheckGas,
   rereadConfirmation,
   startSave
 } from './run'
-export { mayStillLand } from './refusal'
 export { cardPathOf, explorerTransactionUrlOf } from './saved'
 export { callsOf, committedDraftOf, saveStepsOf } from './steps'
 export type {
@@ -56,6 +58,8 @@ export type {
   ConfirmReadOptions,
   DisagreedCheck,
   DisagreedViewProps,
+  FollowReading,
+  InFlightLookup,
   NewBlockWait,
   PreparedSave,
   SavedViewProps,

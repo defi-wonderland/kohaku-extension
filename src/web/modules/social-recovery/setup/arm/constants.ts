@@ -23,6 +23,22 @@ export const CONFIRM_REREAD_BLOCKS = 3
  */
 export const RECEIPT_WAIT_MS = 120_000
 
+/**
+ * How long a followed request that neither the wallet's queue nor its activity
+ * holds is read again, while the account shows no setup, before the stored
+ * save in flight is void, in ms, counted from the page's first such reading.
+ * A request between leaving the queue and reaching the activity reads so for
+ * a moment.
+ */
+export const GONE_GRACE_MS = 60_000
+
+/**
+ * How long a followed request's state rests before it is read again, in ms:
+ * after a read that did not answer, while it reads neither in the queue nor in
+ * the activity, and at most while the queue holds it and does not change.
+ */
+export const FOLLOW_REREAD_MS = 5_000
+
 /** How often the wait for a new block reads the chain's block number, in ms. */
 export const BLOCK_POLL_MS = 2_000
 

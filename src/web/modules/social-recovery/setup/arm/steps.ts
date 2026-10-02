@@ -2,8 +2,9 @@
  * The save's steps over the wallet's own seams: the setup read and the prepare
  * through the client, the shared gas check of the batch the controlling key sends, the
  * send through the request queue with the recovery kit's mark, the check after
- * the landing with its wait for a new block, a second wait for a receipt, and
- * the wipe of the six setup records.
+ * the landing with its wait for a new block, a second wait for a receipt, the
+ * wipe of the six setup records, and the save in flight stored on this device
+ * with the wallet's reading of its request.
  *
  * The batch is the prepared calls in order and nothing else: for an account
  * with no code the account library deploys it in the same transaction.
@@ -15,8 +16,10 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   accountBatchTransactionOf,
+  newSendRequestId,
   privacyLevelOf,
   recoveryKitMarkOf,
+  sendRequestStateOf,
   shapeNoteOf
 } from '@web/modules/social-recovery/shared/client'
 import {
@@ -53,7 +56,14 @@ export const committedDraftOf = (draft: SetupDraft): SetupDraft => {
 
 export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
   const { client, facts, key } = input
+  const inFlight = input.records.saveInFlight(input.chainId, input.account)
   return {
+    account: input.account,
+    followedSave: (prepared) => ({
+      draft: committedDraftOf(input.draft),
+      prepared,
+      calls: callsOf(prepared)
+    }),
     async hasSetup(): Promise<boolean> {
       const state = await client.setup.setupState()
       return state.hasSetup
@@ -78,7 +88,44 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         transaction: accountBatchTransactionOf(facts, key, calls),
         operates: walletAccountRefOf(facts)
       }),
-    send: ({ calls }, dispatch, run, onEstimation) =>
+    newRequestId: newSendRequestId,
+    readInFlight: () => inFlight.read(),
+    claim: ({ prepared }, requestId) =>
+      inFlight.claim({ prepared, requestId, claimedAt: Date.now() }),
+    async markSent(requestId, transactionHash, startBlock): Promise<void> {
+      await inFlight.markSent(requestId, transactionHash, startBlock)
+    },
+    async release(requestId): Promise<void> {
+      await inFlight.release(requestId)
+    },
+    requestState: (requestId) =>
+      sendRequestStateOf(input.requests, requestId, input.account, input.chainId),
+    queueMoved: (limitMs) =>
+      new Promise((resolve) => {
+        let moved = false
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let unsubscribe: (() => void) | undefined
+        const done = () => {
+          if (moved) {
+            return
+          }
+          moved = true
+          clearTimeout(timer)
+          unsubscribe?.()
+          resolve()
+        }
+        timer = setTimeout(done, limitMs)
+        unsubscribe = input.requests.subscribe(({ controller }) => {
+          if (controller === 'requests') {
+            done()
+          }
+        })
+        if (moved) {
+          unsubscribe()
+        }
+      }),
+    blockNumber: () => input.receipts.blockNumber(),
+    send: ({ calls }, dispatch, run, requestId, onEstimation) =>
       driveAccountBatch({
         dispatch,
         run,
@@ -87,7 +134,8 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
         account: input.account,
         calls,
         onEstimation,
-        recoveryKit: recoveryKitMarkOf(client.descriptor)
+        recoveryKit: recoveryKitMarkOf(client.descriptor),
+        requestId
       }),
     async waitAgain(transactionHash, startBlock, dispatch, run): Promise<void> {
       try {

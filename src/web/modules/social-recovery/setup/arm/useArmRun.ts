@@ -8,7 +8,9 @@
  * whose operation may still reach the chain, and a landed save whose check did
  * not answer. When the screen leaves any other ended run (saved, a setup
  * found, failed, the deposit step or disagreed), the run is dropped, and the
- * next arrival reads the chain again before anything starts.
+ * next arrival reads the chain again before anything starts. Once it has
+ * steps, a run that never started reads the save in flight stored on this
+ * device, and follows one where it is stored.
  */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
@@ -17,6 +19,7 @@ import {
   checkSetupAgain,
   createArmStore,
   endWhereSetUp,
+  lookForSave,
   outlivesScreen,
   recheckGas,
   rereadConfirmation,
@@ -53,6 +56,17 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
     }
   }, [store, runKey])
 
+  useEffect(() => {
+    if (steps) {
+      lookForSave(store, steps).catch(() => undefined)
+    }
+  }, [store, steps])
+
+  const lookAgain = useCallback(() => {
+    if (stepsRef.current) {
+      lookForSave(store, stepsRef.current).catch(() => undefined)
+    }
+  }, [store])
   const start = useCallback(() => {
     if (stepsRef.current) {
       startSave(store, stepsRef.current).catch(() => undefined)
@@ -79,7 +93,11 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
     }
   }, [store])
   const endKeptRunWhereSetUp = useCallback(
-    (hasSetup: boolean) => endWhereSetUp(store, hasSetup),
+    (hasSetup: boolean) => {
+      if (stepsRef.current) {
+        endWhereSetUp(store, stepsRef.current, hasSetup).catch(() => undefined)
+      }
+    },
     [store]
   )
 
@@ -90,6 +108,7 @@ export const useArmRun = (steps: SaveSteps | null, runKey: string): ArmRun => {
     reread,
     checkAgain,
     checkSetup,
-    endWhereSetUp: endKeptRunWhereSetUp
+    endWhereSetUp: endKeptRunWhereSetUp,
+    lookAgain
   }
 }

@@ -20,20 +20,33 @@
  *
  * Every start reads the account's setup before it prepares, so a retry, a
  * second tab or an operation that landed after all never sends a second
- * setup. A refusal whose operation may still land offers no retry, only a
- * read of the setup that ends the run where the operation landed. The
- * records are wiped, and the save reads as saved, only after the check agreed
- * on a landed receipt of the run. A failed or disagreed save wipes nothing.
- * Every event after the write's carries its run, so the answer of a run the
- * holder left behind moves nothing.
+ * setup. After the gas check reads enough, the run stores the save in flight
+ * on this device under a new request id, and sends only where that claim
+ * wrote it. A page that finds a stored save, on arrival or as the loser of a
+ * claim, sends nothing and follows it: under its hash it waits for the
+ * receipt; with no hash it reads where the wallet holds the request. The
+ * stored save is released where the run ends with nothing on its way to the
+ * chain, and the check's agreement removes it with the setup records. A
+ * refusal whose operation may still land offers no retry, only a read of the
+ * setup; a setup found then is checked as after a landed receipt. The records
+ * are wiped, and the save reads as saved, only after the check agreed on a
+ * landing of the run. A failed or disagreed save wipes nothing. Every event
+ * after the write's carries its run, so the answer of a run the holder left
+ * behind moves nothing.
  */
-import type { FeeReading } from '@web/modules/social-recovery/shared/client'
-import { initialWriteState, writeReducer } from '@web/modules/social-recovery/shared/writes'
-import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
+import type { FeeReading, SendRequestState } from '@web/modules/social-recovery/shared/client'
+import type { SaveInFlightRecord } from '@web/modules/social-recovery/shared/records'
+import {
+  initialWriteState,
+  mayStillLand,
+  writeReducer
+} from '@web/modules/social-recovery/shared/writes'
+import type { WriteEvent, WriteMachineState } from '@web/modules/social-recovery/shared/writes'
 
-import { RECEIPT_WAIT_MS } from './constants'
+import { FOLLOW_REREAD_MS, GONE_GRACE_MS, RECEIPT_WAIT_MS } from './constants'
 import { confirmOutcomeOf } from './outcome'
-import { mayStillLand } from './refusal'
 import type {
   ArmEvent,
   ArmState,
@@ -51,8 +64,32 @@ export const initialArmState = (): ArmState => ({
 
 const inRun = (state: ArmState, run: number): boolean => state.write.run === run
 
-const landedIn = (state: ArmState, run: number): boolean =>
-  inRun(state, run) && state.write.status === 'landed'
+/** Whether the run's batch landed: its receipt, or the account's setup where no page followed its hash. */
+const landedOf = (state: ArmState): boolean =>
+  state.write.status === 'landed' || !!state.landedUnseen
+
+const landedIn = (state: ArmState, run: number): boolean => inRun(state, run) && landedOf(state)
+
+/** Whether the run submits with no hash yet: the wallet's window waits, or a followed request is read. */
+const awaitingHashIn = (state: ArmState, run: number): boolean =>
+  inRun(state, run) &&
+  state.write.status === 'submitting' &&
+  !state.write.transactionHash &&
+  !state.landedUnseen
+
+/** The submitting state a followed save starts in, under its hash where the stored save holds one. */
+const followedWriteOf = (
+  write: WriteMachineState,
+  run: number,
+  transactionHash: Hex | undefined,
+  startBlock: number | undefined
+): WriteMachineState => ({
+  status: 'submitting',
+  write: write.write,
+  run,
+  ...(transactionHash ? { transactionHash } : {}),
+  ...(transactionHash && startBlock !== undefined ? { startBlock } : {})
+})
 
 /** The hash of the run's batch while it waits for its receipt. */
 const pendingHashIn = (state: ArmState, run: number) =>
@@ -72,21 +109,93 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
       }
       // A new run starts from nothing: its own prepare, its own landing.
       if (write.run !== state.write.run) {
-        return { write, after: { stage: 'none' } }
+        return {
+          write,
+          after: { stage: 'none' },
+          ...(state.lookup ? { lookup: state.lookup } : {})
+        }
       }
+      const next: ArmState = { ...state, write }
       // A stalled wait ends with the write's submitting: whatever settled it answered.
       if (state.stalled && write.status !== 'submitting') {
-        return { ...state, write, stalled: false }
+        next.stalled = false
       }
-      return { ...state, write }
+      // A followed request's reading ends with a hash, or with the write's submitting.
+      if (state.follow && (write.status !== 'submitting' || write.transactionHash)) {
+        delete next.follow
+      }
+      return next
     }
-    case 'alreadySetUp':
-      // Taken while the run reads the setup before it prepares or sends, and
-      // after a refusal whose operation may still land, once a read finds it landed.
+    case 'lookup':
       if (
         !inRun(state, event.run) ||
-        (state.write.status !== 'checkingGas' && !mayStillLand(state.write))
+        state.write.status !== 'idle' ||
+        state.stop ||
+        state.lookup === event.reading
       ) {
+        return state
+      }
+      return { ...state, lookup: event.reading }
+    case 'claimed':
+      if (!awaitingHashIn(state, event.run) || state.requestId) {
+        return state
+      }
+      return { ...state, requestId: event.requestId }
+    case 'follow': {
+      // From the arrival, a new run follows the stored save; in a run whose
+      // claim lost, the run follows it in place of its own.
+      const fromArrival = state.write.status === 'idle' && !state.stop && inRun(state, event.run)
+      if (!fromArrival && (!awaitingHashIn(state, event.run) || state.requestId)) {
+        return state
+      }
+      const run = fromArrival ? event.run + 1 : event.run
+      return {
+        write: followedWriteOf(state.write, run, event.transactionHash, event.startBlock),
+        after: { stage: 'none' },
+        prepared: event.prepared,
+        requestId: event.requestId,
+        ...(state.lookup ? { lookup: state.lookup } : {})
+      }
+    }
+    case 'followed':
+      if (!awaitingHashIn(state, event.run) || !state.requestId || state.follow === event.reading) {
+        return state
+      }
+      return { ...state, follow: event.reading }
+    case 'landedUnseen': {
+      const { write } = state
+      if (
+        !inRun(state, event.run) ||
+        !state.prepared ||
+        state.landedUnseen ||
+        state.after.stage !== 'none' ||
+        !(mayStillLand(write) || (write.status === 'submitting' && !write.transactionHash))
+      ) {
+        return state
+      }
+      const { follow, ...rest } = state
+      return { ...rest, landedUnseen: true }
+    }
+    case 'released': {
+      if (!inRun(state, event.run) || !state.requestId) {
+        return state
+      }
+      const { requestId, ...rest } = state
+      return rest
+    }
+    case 'voided':
+      // A followed request no page can find, with no setup on the account: the save is offered again.
+      if (!awaitingHashIn(state, event.run) || !state.requestId) {
+        return state
+      }
+      return {
+        write: writeReducer(state.write, { type: 'reset' }),
+        after: { stage: 'none' },
+        lookup: 'none'
+      }
+    case 'alreadySetUp':
+      // Taken while the run reads the setup before it prepares or sends.
+      if (!inRun(state, event.run) || state.write.status !== 'checkingGas') {
         return state
       }
       return {
@@ -170,20 +279,17 @@ export const createArmStore = (initial: ArmState = initialArmState()): ArmStore 
 /**
  * Whether the run still has work in flight that a new start must not repeat:
  * the setup read, the prepare or the gas check, the send or its receipt wait,
- * or the check after the landing and the wipe.
+ * a followed request, or the check after the landing and the wipe.
  */
 export const isLive = (state: ArmState): boolean => {
   const { write, after } = state
   if (state.stop) {
     return false
   }
-  if (write.status === 'checkingGas' || write.status === 'submitting') {
-    return true
+  if (landedOf(state)) {
+    return after.stage === 'none' || after.stage === 'confirming' || after.stage === 'saving'
   }
-  return (
-    write.status === 'landed' &&
-    (after.stage === 'none' || after.stage === 'confirming' || after.stage === 'saving')
-  )
+  return write.status === 'checkingGas' || write.status === 'submitting'
 }
 
 /**
@@ -195,10 +301,91 @@ export const isLive = (state: ArmState): boolean => {
  * leads to saved and the wipe of the records. Every other ended run is dropped.
  */
 export const outlivesScreen = (state: ArmState): boolean =>
-  isLive(state) || (!state.stop && (mayStillLand(state.write) || state.after.stage === 'unread'))
+  isLive(state) ||
+  (!state.stop &&
+    (state.after.stage === 'unread' || (!landedOf(state) && mayStillLand(state.write))))
 
 const writeEvent = (store: ArmStore) => (event: WriteEvent) =>
   store.dispatch({ type: 'write', event })
+
+/**
+ * Whether the run ended with nothing on its way to the chain, so its stored
+ * save in flight goes: a save never sent that cannot still land (refused,
+ * replaced, refused for another request), a revert, or a landing whose check
+ * disagreed. A send that may still land, a receipt wait in flight or stalled,
+ * and a check that did not answer keep it.
+ */
+const endedWithNothingInFlight = (state: ArmState): boolean => {
+  const { write, after } = state
+  if (after.stage === 'disagreed') {
+    return true
+  }
+  if (landedOf(state)) {
+    return false
+  }
+  return (
+    write.status === 'failedReverted' || (write.status === 'failedNotSent' && !mayStillLand(write))
+  )
+}
+
+/** Releases the run's stored save in flight where the run ended with nothing on its way to the chain. */
+const releaseWhereEnded = async (store: ArmStore, steps: SaveSteps): Promise<void> => {
+  const state = store.state()
+  const { requestId } = state
+  if (!requestId || !endedWithNothingInFlight(state)) {
+    return
+  }
+  store.dispatch({ type: 'released', run: state.write.run })
+  await steps.release(requestId).catch(() => undefined)
+}
+
+// The receipt waits a store holds open, by hash, so a second wait on a hash takes up the first.
+const OPEN_WAITS = new WeakMap<ArmStore, Map<string, Promise<void>>>()
+
+const openWaitsOf = (store: ArmStore): Map<string, Promise<void>> => {
+  const held = OPEN_WAITS.get(store)
+  if (held) {
+    return held
+  }
+  const created = new Map<string, Promise<void>>()
+  OPEN_WAITS.set(store, created)
+  return created
+}
+
+/** Holds `waiting` as the open wait of `hash` until it settles; answers the held wait. */
+const holdWait = (store: ArmStore, hash: Hex, waiting: Promise<void>): Promise<void> => {
+  const waits = openWaitsOf(store)
+  const key = hash.toLowerCase()
+  const held: Promise<void> = waiting.finally(() => {
+    if (waits.get(key) === held) {
+      waits.delete(key)
+    }
+  })
+  waits.set(key, held)
+  return held
+}
+
+const dropWait = (store: ArmStore, hash: Hex): void => {
+  openWaitsOf(store).delete(hash.toLowerCase())
+}
+
+// The wake of a followed request's rest, so "check again" reads at once.
+const WAKES = new WeakMap<ArmStore, () => void>()
+
+/** Rests for `ms`, or until the holder asks to check again. */
+const rest = (store: ArmStore, ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const wake = () => {
+      clearTimeout(timer)
+      if (WAKES.get(store) === wake) {
+        WAKES.delete(store)
+      }
+      resolve()
+    }
+    timer = setTimeout(wake, ms)
+    WAKES.set(store, wake)
+  })
 
 /** Reads the account's setup at the start of a run; a setup found ends the run with nothing prepared. */
 const noSetupYet = async (store: ArmStore, steps: SaveSteps, run: number): Promise<boolean> => {
@@ -215,8 +402,9 @@ const noSetupYet = async (store: ArmStore, steps: SaveSteps, run: number): Promi
 }
 
 /**
- * After a landed receipt: the check, then the wipe where it agreed. A wipe
- * that fails still reads as saved, since the setup is live on chain.
+ * After a landing: the check, then the wipe where it agreed. A wipe that
+ * fails still reads as saved, since the setup is live on chain. A check that
+ * disagreed releases the stored save in flight.
  */
 const settle = async (
   store: ArmStore,
@@ -224,35 +412,39 @@ const settle = async (
   run: number,
   options: ConfirmReadOptions
 ): Promise<void> => {
-  const { prepared } = store.state()
-  if (!prepared || !landedIn(store.state(), run)) {
-    return
-  }
-  // Only the settle whose event moved the run goes on, so a second one never reads or wipes again.
-  const before = store.state()
-  store.dispatch({ type: 'confirming', run })
-  if (store.state() === before || store.state().after.stage !== 'confirming') {
-    return
-  }
-  const outcome = await confirmOutcomeOf(() => steps.confirm(prepared), {
-    ...options,
-    newBlock: steps.newBlock
-  })
-  const confirming = store.state()
-  store.dispatch({ type: 'confirmed', run, outcome })
-  if (
-    outcome.kind !== 'agreed' ||
-    store.state() === confirming ||
-    store.state().after.stage !== 'saving'
-  ) {
-    return
-  }
   try {
-    await steps.wipe()
-  } catch {
-    // The setup is live whether or not this device could drop its draft.
+    const { prepared } = store.state()
+    if (!prepared || !landedIn(store.state(), run)) {
+      return
+    }
+    // Only the settle whose event moved the run goes on, so a second one never reads or wipes again.
+    const before = store.state()
+    store.dispatch({ type: 'confirming', run })
+    if (store.state() === before || store.state().after.stage !== 'confirming') {
+      return
+    }
+    const outcome = await confirmOutcomeOf(() => steps.confirm(prepared), {
+      ...options,
+      newBlock: steps.newBlock
+    })
+    const confirming = store.state()
+    store.dispatch({ type: 'confirmed', run, outcome })
+    if (
+      outcome.kind !== 'agreed' ||
+      store.state() === confirming ||
+      store.state().after.stage !== 'saving'
+    ) {
+      return
+    }
+    try {
+      await steps.wipe()
+    } catch {
+      // The setup is live whether or not this device could drop its draft.
+    }
+    store.dispatch({ type: 'wiped', run })
+  } finally {
+    await releaseWhereEnded(store, steps)
   }
-  store.dispatch({ type: 'wiped', run })
 }
 
 /** Resolves true when `work` settles within `limitMs`, false when the limit passes first. */
@@ -273,10 +465,12 @@ const settlesWithin = (work: Promise<void>, limitMs: number): Promise<boolean> =
 
 /**
  * One more wait for the receipt of the hash the run holds, where its wait
- * failed and the batch may still land; a wait that fails again, or runs past
- * `RECEIPT_WAIT_MS`, leaves the run stalled under its hash until the holder
- * asks to check again. A wait past its limit goes on: a receipt it brings
- * later is taken while the run still submits that hash, and the check follows.
+ * failed and the batch may still land, or where the run follows a stored hash;
+ * a wait already open on that hash is taken up rather than a second one
+ * opened. A wait that fails again, or runs past `RECEIPT_WAIT_MS`, leaves the
+ * run stalled under its hash until the holder asks to check again. A wait past
+ * its limit goes on: a receipt it brings later is taken while the run still
+ * submits that hash, and the check follows.
  */
 const waitForReceipt = async (
   store: ArmStore,
@@ -289,7 +483,13 @@ const waitForReceipt = async (
   if (!transactionHash || write.status !== 'submitting') {
     return
   }
-  const waiting = steps.waitAgain(transactionHash, write.startBlock, writeEvent(store), run)
+  const waiting =
+    openWaitsOf(store).get(transactionHash.toLowerCase()) ??
+    holdWait(
+      store,
+      transactionHash,
+      steps.waitAgain(transactionHash, write.startBlock, writeEvent(store), run)
+    )
   const inTime = await settlesWithin(waiting, RECEIPT_WAIT_MS)
   store.dispatch({ type: 'waitStalled', run })
   if (inTime) {
@@ -303,6 +503,138 @@ const waitForReceipt = async (
       return undefined
     })
     .catch(() => undefined)
+}
+
+/** Waits for the receipt of the run's hash, then the check where it landed. */
+const reattach = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  options: ConfirmReadOptions
+): Promise<void> => {
+  await waitForReceipt(store, steps, run, options)
+  await settle(store, steps, run, options)
+}
+
+/** Whether the run still follows `requestId` with no hash. */
+const stillFollowing = (store: ArmStore, run: number, requestId: string): boolean =>
+  awaitingHashIn(store.state(), run) && store.state().requestId === requestId
+
+/**
+ * Follows a stored save in flight that holds no hash, by where the wallet
+ * holds its request: still queued, read again when the queue changes;
+ * broadcast, its hash stored and its receipt waited for; on a route the wallet
+ * cannot follow, the may-still-land state; a read that did not answer, read
+ * again after a rest or on "check again", never taken as gone; gone, the
+ * account's setup read: a setup found landed while no page watched and is
+ * checked as after a receipt, and where none is found for `GONE_GRACE_MS`
+ * after the first such reading, the stored save is void and released.
+ */
+const followRequest = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  options: ConfirmReadOptions,
+  firstGone?: number
+): Promise<void> => {
+  const { requestId } = store.state()
+  if (!requestId || !stillFollowing(store, run, requestId)) {
+    return
+  }
+  const reading: SendRequestState = await steps
+    .requestState(requestId)
+    .catch((): SendRequestState => ({ status: 'unread' }))
+  if (!stillFollowing(store, run, requestId)) {
+    return
+  }
+  if (reading.status === 'broadcast') {
+    const startBlock = await steps.blockNumber().catch(() => undefined)
+    if (!stillFollowing(store, run, requestId)) {
+      return
+    }
+    if (startBlock !== undefined) {
+      await steps.markSent(requestId, reading.transactionHash, startBlock).catch(() => undefined)
+    }
+    writeEvent(store)({
+      type: 'sent',
+      run,
+      transactionHash: reading.transactionHash,
+      ...(startBlock !== undefined ? { startBlock } : {})
+    })
+    await reattach(store, steps, run, options)
+    return
+  }
+  if (reading.status === 'untracked') {
+    writeEvent(store)({
+      type: 'error',
+      run,
+      error: accountBatchRefusal('not-a-transaction', steps.account)
+    })
+    return
+  }
+  if (reading.status === 'queued') {
+    store.dispatch({ type: 'followed', run, reading: 'queued' })
+    await steps.queueMoved(FOLLOW_REREAD_MS)
+    await followRequest(store, steps, run, options)
+    return
+  }
+  if (reading.status === 'unread') {
+    store.dispatch({ type: 'followed', run, reading: 'unread' })
+    await rest(store, FOLLOW_REREAD_MS)
+    await followRequest(store, steps, run, options, firstGone)
+    return
+  }
+  const goneSince = firstGone ?? Date.now()
+  const found = await steps.hasSetup().catch(() => undefined)
+  if (!stillFollowing(store, run, requestId)) {
+    return
+  }
+  if (found) {
+    store.dispatch({ type: 'landedUnseen', run })
+    await settle(store, steps, run, options)
+    return
+  }
+  if (found === false && Date.now() - goneSince >= GONE_GRACE_MS) {
+    store.dispatch({ type: 'voided', run })
+    await steps.release(requestId).catch(() => undefined)
+    return
+  }
+  store.dispatch({ type: 'followed', run, reading: 'gone' })
+  await rest(store, FOLLOW_REREAD_MS)
+  await followRequest(store, steps, run, options, goneSince)
+}
+
+/**
+ * Follows a stored save in flight in place of a send: from the arrival in a
+ * new run, or in the run whose claim it beat. Under its hash the run waits for
+ * the receipt and checks as after its own send; with no hash it follows the
+ * request. Nothing is sent.
+ */
+const followSave = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  record: SaveInFlightRecord,
+  options: ConfirmReadOptions
+): Promise<void> => {
+  const before = store.state()
+  store.dispatch({
+    type: 'follow',
+    run,
+    requestId: record.requestId,
+    prepared: steps.followedSave(record.prepared),
+    ...(record.transactionHash ? { transactionHash: record.transactionHash } : {}),
+    ...(record.startBlock !== undefined ? { startBlock: record.startBlock } : {})
+  })
+  if (store.state() === before) {
+    return
+  }
+  const followed = store.state().write.run
+  if (record.transactionHash) {
+    await reattach(store, steps, followed, options)
+    return
+  }
+  await followRequest(store, steps, followed, options)
 }
 
 /** Whether the sign screen's estimation read no fee option the payer could cover, or an error. */
@@ -339,7 +671,61 @@ const recheckAfterShortSigning = async (
   writeEvent(store)({ type: 'gasChecked', run: next, check })
 }
 
-/** The gas check of the run's prepared save, the send where the key holds enough, then the check. */
+/** The send of a claimed save under its request id, with the first receipt wait's limit. */
+const sendClaimed = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  prepared: PreparedSave,
+  requestId: string
+): Promise<boolean> => {
+  const dispatch = writeEvent(store)
+  // The first receipt wait runs inside the send; its limit starts when the hash arrives.
+  let limit: ReturnType<typeof setTimeout> | undefined
+  let ranOut = false
+  let sentHash: Hex | undefined
+  let sending: Promise<void> | undefined
+  const sendDispatch = (event: WriteEvent) => {
+    dispatch(event)
+    if (event.type !== 'sent' || event.run !== run) {
+      return
+    }
+    sentHash = event.transactionHash
+    if (sending) {
+      holdWait(store, event.transactionHash, sending).catch(() => undefined)
+    }
+    const { transactionHash, startBlock } = event
+    const block = startBlock !== undefined ? Promise.resolve(startBlock) : steps.blockNumber()
+    block.then((from) => steps.markSent(requestId, transactionHash, from)).catch(() => undefined)
+    if (limit === undefined) {
+      limit = setTimeout(() => {
+        ranOut = true
+        store.dispatch({ type: 'waitStalled', run })
+      }, RECEIPT_WAIT_MS)
+    }
+  }
+  try {
+    sending = steps.send(prepared, sendDispatch, run, requestId, (reading) =>
+      store.dispatch({ type: 'estimated', run, reading })
+    )
+    await sending
+  } catch (error: unknown) {
+    dispatch({ type: 'error', run, error })
+  } finally {
+    clearTimeout(limit)
+    if (sentHash) {
+      dropWait(store, sentHash)
+    }
+  }
+  return ranOut
+}
+
+/**
+ * The gas check of the run's prepared save; where the key holds enough, the
+ * claim of the save in flight, then the send under the claim's id, or, where
+ * another page's save is stored, that save followed with nothing sent; then
+ * the check.
+ */
 const checkAndSend = async (
   store: ArmStore,
   steps: SaveSteps,
@@ -358,35 +744,32 @@ const checkAndSend = async (
     dispatch({ type: 'error', run, error })
     return
   }
-  if (!inRun(store.state(), run) || store.state().write.status !== 'submitting') {
+  if (!awaitingHashIn(store.state(), run)) {
     return
   }
-  // The first receipt wait runs inside the send; its limit starts when the hash arrives.
-  let limit: ReturnType<typeof setTimeout> | undefined
-  let ranOut = false
-  const sendDispatch = (event: WriteEvent) => {
-    dispatch(event)
-    if (event.type === 'sent' && event.run === run && limit === undefined) {
-      limit = setTimeout(() => {
-        ranOut = true
-        store.dispatch({ type: 'waitStalled', run })
-      }, RECEIPT_WAIT_MS)
-    }
-  }
+  const requestId = steps.newRequestId()
+  let claim
   try {
-    await steps.send(prepared, sendDispatch, run, (reading) =>
-      store.dispatch({ type: 'estimated', run, reading })
-    )
+    claim = await steps.claim(prepared, requestId)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     return
-  } finally {
-    clearTimeout(limit)
   }
+  if (!claim.claimed) {
+    await followSave(store, steps, run, claim.record.value, options)
+    return
+  }
+  store.dispatch({ type: 'claimed', run, requestId })
+  if (store.state().requestId !== requestId) {
+    await steps.release(requestId).catch(() => undefined)
+    return
+  }
+  const ranOut = await sendClaimed(store, steps, run, prepared, requestId)
   // Past the first wait's limit, the holder's check again is the next wait, not one started here.
   if (!ranOut) {
     await waitForReceipt(store, steps, run, options)
   }
+  await releaseWhereEnded(store, steps)
   const after = store.state()
   if (
     inRun(after, run) &&
@@ -403,10 +786,11 @@ const checkAndSend = async (
 
 /**
  * Starts the save, from nothing or from a state that offers the retry: a new
- * run reads the account's setup, prepares the save again, runs the gas check
- * and sends. A setup already on the account ends the run with nothing
- * prepared; a refusal of the prepare reads as never sent. Does nothing where
- * the save cannot start, nor after a refusal whose operation may still land.
+ * run reads the account's setup, prepares the save again, runs the gas check,
+ * claims the save in flight and sends. A setup already on the account ends
+ * the run with nothing prepared; a refusal of the prepare reads as never sent.
+ * Does nothing where the save cannot start, nor after a refusal whose
+ * operation may still land.
  */
 export const startSave = async (
   store: ArmStore,
@@ -416,6 +800,7 @@ export const startSave = async (
   if (mayStillLand(store.state().write)) {
     return
   }
+  await releaseWhereEnded(store, steps)
   const before = store.state().write.run
   writeEvent(store)({ type: 'start' })
   const { run } = store.state().write
@@ -434,8 +819,8 @@ export const startSave = async (
 
 /**
  * From the deposit blocker: the account's setup read again, then the gas check
- * again on the same prepared save, then the send. A setup found meanwhile, by
- * another tab, ends the run with nothing checked or sent.
+ * again on the same prepared save, then the claim and the send. A setup found
+ * meanwhile, by another tab, ends the run with nothing checked or sent.
  */
 export const recheckGas = async (
   store: ArmStore,
@@ -454,23 +839,69 @@ export const recheckGas = async (
 }
 
 /**
- * Ends a refusal whose operation may still land as already set up, where a
- * read of the account's setup found one. Moves nothing in any other state.
+ * Before the save is offered: reads the save in flight stored on this device
+ * and, where one is, follows it in a new run with nothing sent. Reads once per
+ * run held, and again only after a read that failed.
  */
-export const endWhereSetUp = (store: ArmStore, hasSetup: boolean): void => {
-  const { write } = store.state()
-  if (hasSetup && mayStillLand(write)) {
-    store.dispatch({ type: 'alreadySetUp', run: write.run })
+export const lookForSave = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  const state = store.state()
+  if (
+    state.write.status !== 'idle' ||
+    state.stop ||
+    (state.lookup !== undefined && state.lookup !== 'failed')
+  ) {
+    return
   }
+  const { run } = state.write
+  store.dispatch({ type: 'lookup', run, reading: 'reading' })
+  let read
+  try {
+    read = await steps.readInFlight()
+  } catch {
+    store.dispatch({ type: 'lookup', run, reading: 'failed' })
+    return
+  }
+  if (read.status !== 'present') {
+    store.dispatch({ type: 'lookup', run, reading: 'none' })
+    return
+  }
+  await followSave(store, steps, run, read.value, options)
+}
+
+/**
+ * From a refusal whose operation may still land: where a read of the account's
+ * setup found one, the save landed while no page followed it, and the check
+ * runs with the run's save as after a landed receipt. No setup moves nothing.
+ */
+export const endWhereSetUp = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  hasSetup: boolean,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  const { write } = store.state()
+  if (!hasSetup || !mayStillLand(write) || store.state().landedUnseen) {
+    return
+  }
+  store.dispatch({ type: 'landedUnseen', run: write.run })
+  await settle(store, steps, write.run, options)
 }
 
 /**
  * From a refusal whose operation may still land: reads the account's setup
- * again. A setup found ends the run as already set up; no setup, or a read
- * that fails, leaves the run as it was, with nothing sent.
+ * again. A setup found leads to the check; no setup, or a read that fails,
+ * leaves the run as it was, with nothing sent.
  */
-export const checkSetupAgain = async (store: ArmStore, steps: SaveSteps): Promise<void> => {
-  if (!mayStillLand(store.state().write)) {
+export const checkSetupAgain = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  options: ConfirmReadOptions = {}
+): Promise<void> => {
+  if (!mayStillLand(store.state().write) || store.state().landedUnseen) {
     return
   }
   const { run } = store.state().write
@@ -481,23 +912,31 @@ export const checkSetupAgain = async (store: ArmStore, steps: SaveSteps): Promis
     return
   }
   if (inRun(store.state(), run)) {
-    endWhereSetUp(store, found)
+    await endWhereSetUp(store, steps, found, options)
   }
 }
 
-/** From a stalled receipt wait: waits for the same hash once more, then the check where it landed. */
+/**
+ * From a stalled receipt wait: waits for the same hash once more, taking up
+ * the wait still open on it, then the check where it landed. From a followed
+ * request whose read did not answer: reads it again at once.
+ */
 export const checkReceiptAgain = async (
   store: ArmStore,
   steps: SaveSteps,
   options: ConfirmReadOptions = {}
 ): Promise<void> => {
-  const { run } = store.state().write
-  if (!store.state().stalled || !pendingHashIn(store.state(), run)) {
+  const state = store.state()
+  const { run } = state.write
+  if (state.follow === 'unread' && awaitingHashIn(state, run)) {
+    WAKES.get(store)?.()
+    return
+  }
+  if (!state.stalled || !pendingHashIn(state, run)) {
     return
   }
   store.dispatch({ type: 'waitResumed', run })
-  await waitForReceipt(store, steps, run, options)
-  await settle(store, steps, run, options)
+  await reattach(store, steps, run, options)
 }
 
 /** Reads the check again where it did not answer. */
