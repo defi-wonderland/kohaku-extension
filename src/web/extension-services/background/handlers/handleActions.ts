@@ -29,6 +29,32 @@ import { ExtendedAccountPreferences } from '@web/interfaces/account-preferences'
 
 import sessionStorage from '../webapi/sessionStorage'
 
+/**
+ * Keeps only the members a page may send to the sign controller's update,
+ * so a member the action does not declare never reaches the controller.
+ */
+export const pickSignAccountOpUpdateParams = ({
+  accountOp,
+  gasPrices,
+  estimation,
+  feeToken,
+  paidBy,
+  speed,
+  signingKeyAddr,
+  signingKeyType,
+  gasUsedTooHighAgreed
+}: Omit<Extract<Action, { type: 'SIGN_ACCOUNT_OP_UPDATE' }>['params'], 'updateType'>) => ({
+  accountOp,
+  gasPrices,
+  estimation,
+  feeToken,
+  paidBy,
+  speed,
+  signingKeyAddr,
+  signingKeyType,
+  gasUsedTooHighAgreed
+})
+
 export const handleActions = async (
   action: Action,
   {
@@ -296,7 +322,7 @@ export const handleActions = async (
       return await mainCtrl.activity.hideBanner(params)
 
     case 'MAIN_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE':
-      return mainCtrl?.signAccountOp?.update(params)
+      return mainCtrl?.signAccountOp?.update(pickSignAccountOpUpdateParams(params))
     case 'MAIN_CONTROLLER_SIGN_ACCOUNT_OP_UPDATE_STATUS':
       return mainCtrl?.signAccountOp?.updateStatus(params.status)
     case 'MAIN_CONTROLLER_HANDLE_SIGN_AND_BROADCAST_ACCOUNT_OP': {
@@ -346,32 +372,34 @@ export const handleActions = async (
     case 'SIGN_ACCOUNT_OP_UPDATE': {
       console.log('DEBUG: SIGN_ACCOUNT_OP_UPDATE', params)
 
+      const updateParams = pickSignAccountOpUpdateParams(params)
+
       if (params.updateType === 'Main') {
-        return mainCtrl?.signAccountOp?.update(params)
+        return mainCtrl?.signAccountOp?.update(updateParams)
       }
 
       if (params.updateType === 'Swap&Bridge') {
-        return mainCtrl?.swapAndBridge?.signAccountOpController?.update(params)
+        return mainCtrl?.swapAndBridge?.signAccountOpController?.update(updateParams)
       }
 
       if (params.updateType === 'PrivacyPools') {
-        return mainCtrl?.privacyPools?.signAccountOpController?.update(params)
+        return mainCtrl?.privacyPools?.signAccountOpController?.update(updateParams)
       }
 
       if (params.updateType === 'PrivacyPoolsV1') {
-        return mainCtrl?.privacyPoolsV1?.signAccountOpController?.update(params)
+        return mainCtrl?.privacyPoolsV1?.signAccountOpController?.update(updateParams)
       }
 
       if (params.updateType === 'Railgun') {
-        return mainCtrl?.railgun?.signAccountOpController?.update(params)
+        return mainCtrl?.railgun?.signAccountOpController?.update(updateParams)
       }
 
       if (params.updateType === 'RailgunV2') {
-        return mainCtrl?.railgunV2?.signAccountOpController?.update(params)
+        return mainCtrl?.railgunV2?.signAccountOpController?.update(updateParams)
       }
 
       // 'Transfer&TopUp'
-      return mainCtrl?.transfer?.signAccountOpController?.update(params)
+      return mainCtrl?.transfer?.signAccountOpController?.update(updateParams)
     }
 
     case 'SELECTED_ACCOUNT_SET_DASHBOARD_NETWORK_FILTER': {
