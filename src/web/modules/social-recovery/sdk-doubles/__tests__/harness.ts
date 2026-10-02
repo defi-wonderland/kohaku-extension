@@ -195,7 +195,9 @@ export const createWorld = (seed: ChainSeed = {}): World => {
     // "Nobody" here is a security stop's veto; a setup write is the other nobody.
     if (canceller === 'nobody') {
       chain.cancelAttempt('nobody', { vetoingMethod: descriptor.methodZkpassport })
-    } else chain.cancelAttempt(canceller)
+    } else {
+      chain.cancelAttempt(canceller)
+    }
   }
 
   return {
@@ -224,7 +226,9 @@ export const createWorld = (seed: ChainSeed = {}): World => {
     keys,
     script: {
       setupNone: () => {
-        if (chain.setup.status === 'committed') chain.clearSetup()
+        if (chain.setup.status === 'committed') {
+          chain.clearSetup()
+        }
       },
       setupCommitted: (level) => {
         const password = level === 'public' ? undefined : PASSWORD
@@ -232,10 +236,16 @@ export const createWorld = (seed: ChainSeed = {}): World => {
         return { configuration, draft: draft(level), password }
       },
       attempt: (status, canceller = 'account') => {
-        if (status === 'none') return
+        if (status === 'none') {
+          return
+        }
         chain.openAttempt({ ready: status !== 'pending', payload })
-        if (status === 'cancelled') cancel(canceller)
-        if (status === 'executed') chain.executeAttempt()
+        if (status === 'cancelled') {
+          cancel(canceller)
+        }
+        if (status === 'executed') {
+          chain.executeAttempt()
+        }
       },
       authorized: (held) => chain.setAuthorized(held),
       code: (present) => chain.setHasCode(present),
@@ -376,7 +386,9 @@ export const openingOf = async (world: World, attemptId: bigint) => {
     to: at.number
   })
   const opening = notes.find((n) => n.kind === 'attempt-started' && n.attemptId === attemptId)
-  if (opening?.kind !== 'attempt-started') throw new Error('no opening notification')
+  if (opening?.kind !== 'attempt-started') {
+    throw new Error('no opening notification')
+  }
   return opening
 }
 

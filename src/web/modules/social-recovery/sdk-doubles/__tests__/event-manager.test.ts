@@ -103,7 +103,9 @@ describe('event manager double', () => {
     const started = (await everything(world)).filter((n) => n.kind === 'attempt-started')
     expect(started).toHaveLength(1)
     const [note] = started
-    if (note?.kind !== 'attempt-started') throw new Error('no opening notification')
+    if (note?.kind !== 'attempt-started') {
+      throw new Error('no opening notification')
+    }
     expect(note.attemptId).toBe(state.attempt.attemptId)
     expect(note.consumableAfter).toBe(state.attempt.consumableAfter)
     expect(isHex(note.payload)).toBe(true)
@@ -132,7 +134,9 @@ describe('event manager double', () => {
     world.script.keysUpdated(world.descriptor.methodZkpassport, keys)
     const notes = await everything(world, world.events.methodFilter())
     const updated = notes.find((n) => n.kind === 'method-keys-updated')
-    if (updated?.kind !== 'method-keys-updated') throw new Error('no key update')
+    if (updated?.kind !== 'method-keys-updated') {
+      throw new Error('no key update')
+    }
     expect(updated.method.toLowerCase()).toBe(world.descriptor.methodZkpassport.toLowerCase())
     expect(updated.current).toEqual(keys)
   })

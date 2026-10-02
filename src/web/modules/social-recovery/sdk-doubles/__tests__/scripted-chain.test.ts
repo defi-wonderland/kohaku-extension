@@ -41,8 +41,11 @@ describe('scripted chain', () => {
 
         // Private shows nothing in the public field; shape-visible shows the
         // shape there and keeps the values encrypted; public is all clear.
-        if (level === 'private') expect(last!.publicMetadata).toBe('0x')
-        else expect(last!.publicMetadata).not.toBe('0x')
+        if (level === 'private') {
+          expect(last!.publicMetadata).toBe('0x')
+        } else {
+          expect(last!.publicMetadata).not.toBe('0x')
+        }
         expect(last!.privateMetadata).not.toBe('0x')
       }
     )
@@ -83,8 +86,11 @@ describe('scripted chain', () => {
         if (status === 'ready') {
           expect(record.attempt.consumableAfter).toBeLessThanOrEqual(record.block.timestamp)
         }
-        if (status === 'executed') expect(kinds).toContain('attempt-consumed')
-        else expect(kinds).not.toContain('attempt-consumed')
+        if (status === 'executed') {
+          expect(kinds).toContain('attempt-consumed')
+        } else {
+          expect(kinds).not.toContain('attempt-consumed')
+        }
       }
     )
 
@@ -104,15 +110,22 @@ describe('scripted chain', () => {
       const [note] = cancelled
       expect(note!.attemptId).toBe(record.attempt.attemptId)
       // cancelledBy derives from the raw fields.
-      if (note!.vetoingMethod !== ZERO) expect(note!.cancelledBy).toBe('cancelByVeto')
-      else if (note!.usedPlaces.length > 0) expect(note!.cancelledBy).toBe('cancelByProofs')
-      else if (note!.canceller === ZERO) expect(note!.cancelledBy).toBe('setupWrite')
-      else expect(note!.cancelledBy).toBe('cancelByOwner')
+      if (note!.vetoingMethod !== ZERO) {
+        expect(note!.cancelledBy).toBe('cancelByVeto')
+      } else if (note!.usedPlaces.length > 0) {
+        expect(note!.cancelledBy).toBe('cancelByProofs')
+      } else if (note!.canceller === ZERO) {
+        expect(note!.cancelledBy).toBe('setupWrite')
+      } else {
+        expect(note!.cancelledBy).toBe('cancelByOwner')
+      }
       if (canceller === 'account') {
         expect(note!.cancelledBy).toBe('cancelByOwner')
         expect(note!.canceller.toLowerCase()).toBe(world.account.toLowerCase())
       }
-      if (canceller === 'proofs') expect(note!.cancelledBy).toBe('cancelByProofs')
+      if (canceller === 'proofs') {
+        expect(note!.cancelledBy).toBe('cancelByProofs')
+      }
       // The harness scripts "nobody" as a security stop's veto, the stopped
       // method authorizing the cancel; the setup write is the next test.
       if (canceller === 'nobody') {
