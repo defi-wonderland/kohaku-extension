@@ -713,8 +713,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           settle('timeout', true)
           return
         }
-        // Except while the sign screen that holds this request signs its
-        // operation, another request that joins it withdraws this one: the
+        // Except while the sign screen that holds this request signs or pauses
+        // on its operation, another request that joins it withdraws this one: the
         // holder would sign both together. The wallet's own signing status
         // covers every sign flow, so only the sign screen's status tells.
         if (!signing && otherCallsRequestIn(update.state, id, account, chainId)) {
