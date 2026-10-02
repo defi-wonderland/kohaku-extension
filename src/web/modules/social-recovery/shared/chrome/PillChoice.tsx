@@ -27,7 +27,7 @@ const PillChoice = ({ label, selected, onPress, disabled, style, testID }: PillC
           borderRadius: 50,
           borderWidth: 1,
           borderColor: selected ? theme.primary : theme.primaryBorder,
-          ...(selected ? { backgroundColor: theme.tertiaryBackground } : {})
+          ...(selected ? { backgroundColor: theme.secondaryBackground } : {})
         },
         style
       ]}

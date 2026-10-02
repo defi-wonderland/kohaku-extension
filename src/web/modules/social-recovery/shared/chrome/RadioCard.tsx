@@ -31,7 +31,7 @@ const RadioCard = ({ selected, onPress, disabled, testID, children }: RadioCardP
         {
           borderWidth: 1,
           borderColor: selected ? theme.primary : theme.secondaryBorder,
-          ...(selected ? { backgroundColor: theme.tertiaryBackground } : {})
+          ...(selected ? { backgroundColor: theme.secondaryBackground } : {})
         }
       ]}
     >
