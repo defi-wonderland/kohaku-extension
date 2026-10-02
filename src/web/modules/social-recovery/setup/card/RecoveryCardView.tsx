@@ -17,10 +17,12 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
-import PageTitle from '@web/modules/social-recovery/shared/chrome/PageTitle'
-import SectionCard from '@web/modules/social-recovery/shared/chrome/SectionCard'
-import StatusChip from '@web/modules/social-recovery/shared/chrome/StatusChip'
+import {
+  ActionsRow,
+  PageTitle,
+  SectionCard,
+  StatusChip
+} from '@web/modules/social-recovery/shared/chrome'
 import { renderHiddenValue, renderPasswordName } from '@web/modules/social-recovery/shared/display'
 
 import CardFace, { CARD_LABEL_COLUMN } from './CardFace'
@@ -156,9 +158,7 @@ const RecoveryCardView = ({
           {revealed ? password : hidden.dots}
         </Text>
         {!revealed && (
-          <View style={spacings.mrSm}>
-            <StatusChip testID="card-password-chip" text={hidden.chip} />
-          </View>
+          <StatusChip testID="card-password-chip" text={hidden.chip} style={spacings.mrSm} />
         )}
         <Button
           testID="card-reveal"

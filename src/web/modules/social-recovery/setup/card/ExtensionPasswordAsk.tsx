@@ -13,7 +13,7 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
-import ActionsRow from '@web/modules/social-recovery/shared/chrome/ActionsRow'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 
 import type { PasswordAskAnswer } from './types'
@@ -110,7 +110,7 @@ const ExtensionPasswordAsk = ({ onConfirmed, onCancel }: PasswordAskAnswer) => {
         secondary={
           <Button
             testID="card-password-cancel"
-            type="secondary"
+            type="outline"
             hasBottomSpacing={false}
             text={t('socialRecovery.ceremony.backAction')}
             onPress={cancel}
