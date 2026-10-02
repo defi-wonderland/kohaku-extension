@@ -9,6 +9,7 @@ export { waitForNewBlock } from './block'
 export {
   BLOCK_POLL_MS,
   CONFIRM_READ_TIMEOUT_MS,
+  CONFIRM_REREAD_BLOCKS,
   COMMITMENT_MISMATCH_CODE,
   NEW_BLOCK_WAIT_MS,
   RECEIPT_WAIT_MS
@@ -49,6 +50,7 @@ export type {
   Arrival,
   ArrivalInput,
   ArrivalRetry,
+  ArrivalUnavailableCause,
   ConfirmOutcome,
   ConfirmOutcomeOptions,
   ConfirmReadOptions,
