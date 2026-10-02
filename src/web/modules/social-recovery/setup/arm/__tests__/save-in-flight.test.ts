@@ -276,6 +276,35 @@ describe('each way a run ends, against the stored save after it', () => {
   )
 })
 
+describe('the read of a stored save before the save is offered', () => {
+  it('offers no Save after a read that failed, and a second read follows the stored save', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    await firstPageLeaves(storage, requests, { withHash: true })
+    const page = secondPage(storage, requests)
+    jest.spyOn(storage, 'get').mockRejectedValueOnce(new Error('storage unavailable'))
+
+    await page.arrive()
+    expect(page.store.state().lookup).toBe('failed')
+    expect(offersSave(page.store)).toBe(false)
+
+    unawaited(page.arrive())
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    expect(isSaved(page.store.state())).toBe(true)
+    expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('reads once per run held: a page that read none does not read again by itself', async () => {
+    const page = secondPage(memoryStorage(), requestsFake())
+    const reads = jest.spyOn(page.wired.storage, 'get')
+    await page.arrive()
+    await page.arrive()
+
+    expect(offersSave(page.store)).toBe(true)
+    expect(reads).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('a page that finds a save stored under its hash', () => {
   it('offers no Save, sends nothing, waits for the same hash and reaches saved with one check and one wipe', async () => {
     const storage = memoryStorage()
