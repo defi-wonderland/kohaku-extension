@@ -1,11 +1,12 @@
 /**
  * The check after a landed save, read as the save reads it: each answer the
- * client's `confirmSetup` can give, a second read where the first did not find
- * the setup, and a check that throws or never answers.
+ * client's `confirmSetup` can give, the further reads where a read did not find
+ * the setup, and a check that throws or never answers at any read.
  */
 import {
   COMMITMENT_MISMATCH_CODE,
   CONFIRM_READ_TIMEOUT_MS,
+  CONFIRM_REREAD_BLOCKS,
   confirmOutcomeOf,
   outcomeOfConfirmation,
   outcomeOfConfirmFailure
@@ -13,6 +14,10 @@ import {
 import type { SetupConfirmation } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { codedError, confirmation } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+
+/** Read 1 is the first; each later read follows a read that did not find the setup. */
+const EVERY_READ = Array.from({ length: 1 + CONFIRM_REREAD_BLOCKS }, (_, index) => index + 1)
+const LATER_READS = EVERY_READ.slice(1)
 
 const reads = (...answers: (SetupConfirmation | Error | 'never')[]) => {
   let index = 0
@@ -68,30 +73,50 @@ describe('the check as the save reads it', () => {
     expect(unauthorized).toHaveBeenCalledTimes(1)
   })
 
-  it('reads once more where the setup was not found, then reads it as the mismatch', async () => {
+  it('reads again where the setup was not found, and reads the mismatch only after the first read and every further read found nothing', async () => {
     const check = reads(confirmation(false, true))
     expect(await confirmOutcomeOf(check)).toEqual({ kind: 'disagreed', check: 'mismatch' })
-    expect(check).toHaveBeenCalledTimes(2)
+    expect(check).toHaveBeenCalledTimes(1 + CONFIRM_REREAD_BLOCKS)
   })
 
-  it('agrees where the second read finds the setup landed and authorized', async () => {
-    const check = reads(confirmation(false, true), confirmation(true, true))
-    expect(await confirmOutcomeOf(check)).toEqual({ kind: 'agreed' })
-    expect(check).toHaveBeenCalledTimes(2)
+  LATER_READS.forEach((read) => {
+    const notFound = Array.from({ length: read - 1 }, () => confirmation(false, true))
+
+    it(`agrees where read ${read} is the first to find the setup landed and authorized, and reads no more`, async () => {
+      const check = reads(...notFound, confirmation(true, true), confirmation(false, true))
+      expect(await confirmOutcomeOf(check)).toEqual({ kind: 'agreed' })
+      expect(check).toHaveBeenCalledTimes(read)
+    })
+
+    it(`reads the authorization disagreement where read ${read} is the first to find the setup, unauthorized`, async () => {
+      const check = reads(...notFound, confirmation(true, false), confirmation(true, true))
+      expect(await confirmOutcomeOf(check)).toEqual({ kind: 'disagreed', check: 'authorization' })
+      expect(check).toHaveBeenCalledTimes(read)
+    })
   })
 
-  it('reads the authorization disagreement where the second read finds the setup unauthorized', async () => {
-    const check = reads(confirmation(false, true), confirmation(true, false))
-    expect(await confirmOutcomeOf(check)).toEqual({ kind: 'disagreed', check: 'authorization' })
-  })
+  EVERY_READ.forEach((read) => {
+    const notFound = Array.from({ length: read - 1 }, () => confirmation(false, true))
 
-  it('reads a mismatch thrown at the second read as the mismatch, and another throw as unanswered', async () => {
-    expect(
-      await confirmOutcomeOf(reads(confirmation(false, true), codedError(COMMITMENT_MISMATCH_CODE)))
-    ).toEqual({ kind: 'disagreed', check: 'mismatch' })
-    expect(
-      await confirmOutcomeOf(reads(confirmation(false, true), new Error('node down')))
-    ).toEqual({ kind: 'unread' })
+    it(`reads a throw at read ${read} as unanswered, and the coded mismatch there as the mismatch, reading no more`, async () => {
+      const thrown = reads(...notFound, new Error('node down'), confirmation(true, true))
+      expect(await confirmOutcomeOf(thrown)).toEqual({ kind: 'unread' })
+      expect(thrown).toHaveBeenCalledTimes(read)
+
+      const mismatch = reads(
+        ...notFound,
+        codedError(COMMITMENT_MISMATCH_CODE),
+        confirmation(true, true)
+      )
+      expect(await confirmOutcomeOf(mismatch)).toEqual({ kind: 'disagreed', check: 'mismatch' })
+      expect(mismatch).toHaveBeenCalledTimes(read)
+    })
+
+    it(`gives read ${read} its own time limit, and reads one that does not answer as unanswered`, async () => {
+      const check = reads(...notFound, 'never')
+      expect(await confirmOutcomeOf(check, { timeoutMs: 10 })).toEqual({ kind: 'unread' })
+      expect(check).toHaveBeenCalledTimes(read)
+    })
   })
 
   it('reads a check that throws as unanswered, never as agreed', async () => {
@@ -126,11 +151,5 @@ describe('the check as the save reads it', () => {
     } finally {
       jest.useRealTimers()
     }
-  })
-
-  it('gives the second read its own time limit', async () => {
-    const check = reads(confirmation(false, true), 'never')
-    expect(await confirmOutcomeOf(check, { timeoutMs: 10 })).toEqual({ kind: 'unread' })
-    expect(check).toHaveBeenCalledTimes(2)
   })
 })

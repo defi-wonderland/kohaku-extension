@@ -1,6 +1,6 @@
 /**
- * The wait for a new block before the check after a landed save reads a
- * second time: it ends once the chain's block number moved past the first one
+ * The wait for a new block before each further read of the check after a
+ * landed save: it ends once the chain's block number moved past the first one
  * it read, or once its limit passed, and never rejects. Over fake timers, so
  * each poll and each limit is a step of the clock.
  */
@@ -9,6 +9,7 @@ import type { Account } from '@ambire-common/interfaces/account'
 import {
   BLOCK_POLL_MS,
   CONFIRM_READ_TIMEOUT_MS,
+  CONFIRM_REREAD_BLOCKS,
   confirmOutcomeOf,
   createArmStore,
   isSaved,
@@ -214,22 +215,99 @@ describe('the second read of the check', () => {
     expect(wired.saveSetup).toHaveBeenCalledTimes(1)
   })
 
-  it('reads the second time at the limit where the chain never moves, and reads the mismatch where it still finds nothing', async () => {
+  it("reads again at each wait's limit where the chain never moves, and reads the mismatch only once the last read still finds nothing", async () => {
     const wired = wireSave(account, {
       ...HAPPY,
-      confirm: 'not-landed-twice',
+      confirm: 'never-landed',
       authorized: false,
       deployed: true
     })
     const store = createArmStore()
     const run = track(startSave(store, wired.steps))
 
-    await advanceTimers(NEW_BLOCK_WAIT_MS - 1)
+    await advanceTimers(0)
     expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
-    await advanceTimers(1)
-    expect(wired.confirmSetup).toHaveBeenCalledTimes(2)
+    for (let reread = 1; reread <= CONFIRM_REREAD_BLOCKS; reread += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(NEW_BLOCK_WAIT_MS - 1)
+      expect(wired.confirmSetup).toHaveBeenCalledTimes(reread)
+      expect(store.state().after).toEqual({ stage: 'confirming' })
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(1)
+      expect(wired.confirmSetup).toHaveBeenCalledTimes(reread + 1)
+    }
     expect(run.settled).toBe(true)
     expect(store.state().after).toEqual({ stage: 'disagreed', check: 'mismatch' })
     expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+})
+
+describe('the further reads of the check', () => {
+  it('reads again after each new block, and saves where only the last read finds the setup', async () => {
+    const wired = wireSave(account, {
+      ...HAPPY,
+      confirm: 'agreed-on-last-read',
+      authorized: false,
+      deployed: true
+    })
+    let head = START_BLOCK
+    wired.receipts.blockNumber.mockImplementation(async () => head)
+    const store = createArmStore()
+    const run = track(startSave(store, wired.steps))
+
+    await advanceTimers(0)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    for (let reread = 1; reread <= CONFIRM_REREAD_BLOCKS; reread += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(3 * BLOCK_POLL_MS)
+      expect(wired.confirmSetup).toHaveBeenCalledTimes(reread)
+      expect(wired.saveSetup).not.toHaveBeenCalled()
+      head += 1
+      // eslint-disable-next-line no-await-in-loop
+      await advanceTimers(BLOCK_POLL_MS)
+      expect(wired.confirmSetup).toHaveBeenCalledTimes(reread + 1)
+    }
+    expect(run.settled).toBe(true)
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for a new block before each further read and never after the last, each wait capped by the read limit', async () => {
+    const newBlock = jest.fn(async () => undefined)
+    const confirm = jest.fn().mockResolvedValue(confirmation(false, true))
+    const outcome = confirmOutcomeOf(confirm, { newBlock })
+    await advanceTimers(0)
+
+    expect(await outcome).toEqual({ kind: 'disagreed', check: 'mismatch' })
+    expect(confirm).toHaveBeenCalledTimes(1 + CONFIRM_REREAD_BLOCKS)
+    expect(newBlock).toHaveBeenCalledTimes(CONFIRM_REREAD_BLOCKS)
+    newBlock.mock.calls.forEach((call) =>
+      expect(call).toEqual([Math.min(NEW_BLOCK_WAIT_MS, CONFIRM_READ_TIMEOUT_MS)])
+    )
+    newBlock.mock.invocationCallOrder.forEach((waited, index) => {
+      expect(waited).toBeGreaterThan(confirm.mock.invocationCallOrder[index])
+      expect(waited).toBeLessThan(confirm.mock.invocationCallOrder[index + 1])
+    })
+  })
+
+  it('stays confirming for at most every wait at its limit and the last read at its own, then reads unanswered', async () => {
+    const newBlock = (limitMs: number) => waitForNewBlock(async () => START_BLOCK, limitMs)
+    // Every read but the last finds nothing at once; the last never answers.
+    const confirm = jest.fn()
+    confirm.mockImplementation(() =>
+      confirm.mock.calls.length > CONFIRM_REREAD_BLOCKS
+        ? new Promise(() => {})
+        : Promise.resolve(confirmation(false, true))
+    )
+    const outcome = confirmOutcomeOf(confirm, { newBlock })
+    const seen = track(outcome)
+    const longest = CONFIRM_REREAD_BLOCKS * NEW_BLOCK_WAIT_MS + CONFIRM_READ_TIMEOUT_MS
+
+    await advanceTimers(longest - 1)
+    expect(confirm).toHaveBeenCalledTimes(1 + CONFIRM_REREAD_BLOCKS)
+    expect(seen.settled).toBe(false)
+    await advanceTimers(1)
+    expect(seen.settled).toBe(true)
+    expect(await outcome).toEqual({ kind: 'unread' })
   })
 })

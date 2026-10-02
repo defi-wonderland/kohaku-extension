@@ -29,6 +29,7 @@ import {
   checkReceiptAgain,
   checkSetupAgain,
   committedDraftOf,
+  CONFIRM_REREAD_BLOCKS,
   createArmStore,
   endWhereSetUp,
   isLive,
@@ -424,7 +425,12 @@ describe('after the batch landed', () => {
   const DISAGREED: [string, SaveScript['confirm'], 'mismatch' | 'authorization', number][] = [
     ['an authorization the module does not recognize', 'unauthorized', 'authorization', 1],
     ["the commitment's coded mismatch", 'mismatch', 'mismatch', 1],
-    ['a setup the check found on neither read', 'not-landed-twice', 'mismatch', 2]
+    [
+      'a setup the check found on no read, the first or any further one',
+      'never-landed',
+      'mismatch',
+      1 + CONFIRM_REREAD_BLOCKS
+    ]
   ]
 
   DISAGREED.forEach(([named, confirm, check, reads]) =>
@@ -453,6 +459,18 @@ describe('after the batch landed', () => {
     expect(wired.confirmSetup).toHaveBeenCalledTimes(2)
     expect(isSaved(store.state())).toBe(true)
     expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads saved where only the last further read found the setup, and wipes once after it', async () => {
+    const wired = wireSave(account, script({ confirm: 'agreed-on-last-read' }))
+    const store = await runSave(wired.steps)
+
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1 + CONFIRM_REREAD_BLOCKS)
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup.mock.invocationCallOrder[0]).toBeGreaterThan(
+      Math.max(...wired.confirmSetup.mock.invocationCallOrder)
+    )
   })
   ;(
     [
@@ -1030,6 +1048,181 @@ describe('the time limit of one more receipt wait', () => {
     await checking
 
     expect(isSaved(store.state())).toBe(true)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the time limit of the first receipt wait', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  /** A promise's settlement as a flag the test reads between steps of the clock. */
+  const track = (promise: Promise<unknown>) => {
+    const seen = { settled: false }
+    promise.then(
+      () => {
+        seen.settled = true
+      },
+      () => {
+        seen.settled = true
+      }
+    )
+    return seen
+  }
+
+  /** A receipt wait the test lands or fails by hand. */
+  const waitHeld = (wired: ReturnType<typeof wireSave>) => {
+    let land: () => void = () => {}
+    let fail: () => void = () => {}
+    const promise = new Promise<ReturnType<typeof landedReceipt>>((resolve, reject) => {
+      land = () => resolve(landedReceipt(TX_HASH))
+      fail = () => reject(nodeError())
+    })
+    wired.receipts.wait.mockImplementationOnce(() => promise)
+    return { land, fail }
+  }
+
+  /** Starts the save with a first receipt wait that does not settle, and runs the clock to the hash. */
+  const startWaiting = async (wired: ReturnType<typeof wireSave>) => {
+    const first = waitHeld(wired)
+    const store = createArmStore()
+    const running = track(startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS }))
+    await advanceTimers(0)
+    const { write } = store.state()
+    expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
+    return { store, first, running }
+  }
+
+  it('reads stalled under its hash once the first wait runs its limit past the hash, with nothing checked, wiped or sent again', async () => {
+    const wired = wireSave(account, script())
+    const { store, running } = await startWaiting(wired)
+
+    await advanceTimers(RECEIPT_WAIT_MS - 1)
+    expect(store.state().stalled).toBeFalsy()
+    await advanceTimers(1)
+
+    const { write } = store.state()
+    expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
+    expect(store.state().stalled).toBe(true)
+    expect(isLive(store.state())).toBe(true)
+    expect(armScreenOf(store.state())).toBe('run')
+    expect(running.settled).toBe(false)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts the limit from the hash, so a sign window open longer than the limit stalls nothing', async () => {
+    const wired = wireSave(account, script())
+    waitHeld(wired)
+    let sign: (hash: typeof TX_HASH) => void = () => {}
+    wired.port.sendAccountBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          sign = resolve
+        })
+    )
+    const store = createArmStore()
+    const running = track(startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS }))
+
+    await advanceTimers(2 * RECEIPT_WAIT_MS)
+    expect(running.settled).toBe(false)
+    expect(store.state().write.status).toBe('submitting')
+    expect(store.state().stalled).toBeFalsy()
+
+    sign(TX_HASH)
+    await advanceTimers(RECEIPT_WAIT_MS - 1)
+    expect(store.state().stalled).toBeFalsy()
+    await advanceTimers(1)
+    expect(store.state().stalled).toBe(true)
+  })
+
+  it('takes a receipt the first wait brings after its limit once, and goes through the check to saved', async () => {
+    const wired = wireSave(account, script())
+    const { store, first, running } = await startWaiting(wired)
+    await advanceTimers(RECEIPT_WAIT_MS)
+    expect(store.state().stalled).toBe(true)
+
+    first.land()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+
+    expect(running.settled).toBe(true)
+    expect(isSaved(store.state())).toBe(true)
+    expect(store.state().stalled).toBe(false)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts no wait by itself where the first wait fails after its limit, and check again is the next wait', async () => {
+    const wired = wireSave(account, script())
+    const { store, first, running } = await startWaiting(wired)
+    await advanceTimers(RECEIPT_WAIT_MS)
+
+    first.fail()
+    await advanceTimers(2 * RECEIPT_WAIT_MS)
+
+    expect(running.settled).toBe(true)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(store.state().stalled).toBe(true)
+    expect(store.state().write.status).toBe('submitting')
+    expect(wired.confirmSetup).not.toHaveBeenCalled()
+
+    const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await checking
+
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(wired.receipts.wait.mock.calls[1]).toEqual([TX_HASH, START_BLOCK])
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.saveSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends the first limit with the first wait, so the one more wait after a failure in time gets its own full limit', async () => {
+    const wired = wireSave(account, script())
+    const { store, first } = await startWaiting(wired)
+    waitHeld(wired)
+    const half = RECEIPT_WAIT_MS / 2
+
+    await advanceTimers(half)
+    first.fail()
+    await advanceTimers(half)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(store.state().stalled).toBeFalsy()
+
+    await advanceTimers(half - 1)
+    expect(store.state().stalled).toBeFalsy()
+    await advanceTimers(1)
+    expect(store.state().stalled).toBe(true)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks and wipes once where the first wait and the wait of check again both bring the receipt', async () => {
+    const wired = wireSave(account, script())
+    const { store, first, running } = await startWaiting(wired)
+    await advanceTimers(RECEIPT_WAIT_MS)
+    const again = waitHeld(wired)
+
+    const checking = checkReceiptAgain(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    expect(store.state().stalled).toBe(false)
+    first.land()
+    again.land()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await checking
+
+    expect(running.settled).toBe(true)
+    expect(isSaved(store.state())).toBe(true)
+    expect(wired.receipts.wait).toHaveBeenCalledTimes(2)
     expect(wired.confirmSetup).toHaveBeenCalledTimes(1)
     expect(wired.saveSetup).toHaveBeenCalledTimes(1)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)

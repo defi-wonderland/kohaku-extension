@@ -332,21 +332,34 @@ describe('the arrival blocks', () => {
     press('review-blocked-retry')
     expect(onRetryReads).toHaveBeenCalledTimes(1)
   })
+  const UNAVAILABLE_BODIES = [
+    'socialRecovery.client.unavailableBody',
+    'socialRecovery.arm.notListed',
+    'socialRecovery.arm.viewOnly'
+  ]
   ;(
     [
-      [{ kind: 'unavailable', retry: 'facts' }, true],
-      [{ kind: 'unavailable', retry: 'client' }, true],
-      [{ kind: 'unavailable', retry: null }, false]
-    ] as [Arrival, boolean][]
-  ).forEach(([arrival, retries]) =>
-    it(`shows the unavailable lines for ${JSON.stringify(
+      [{ kind: 'unavailable', retry: 'facts' }, 'socialRecovery.client.unavailableBody'],
+      [{ kind: 'unavailable', retry: 'client' }, 'socialRecovery.client.unavailableBody'],
+      [{ kind: 'unavailable', retry: null, cause: 'not-listed' }, 'socialRecovery.arm.notListed'],
+      [{ kind: 'unavailable', retry: null, cause: 'view-only' }, 'socialRecovery.arm.viewOnly']
+    ] as [Arrival, string][]
+  ).forEach(([arrival, body]) =>
+    it(`shows the unavailable title for ${JSON.stringify(
       arrival
-    )}, with the body asking to try again and the retry only where one clears it`, () => {
+    )} with its own body, and the retry only beside the body that asks to try again`, () => {
+      const retries = body === 'socialRecovery.client.unavailableBody'
+      // Each body reads apart from the others, also while a key still reads as its own path.
+      expect(new Set(UNAVAILABLE_BODIES.map((key) => t(key))).size).toBe(UNAVAILABLE_BODIES.length)
       const onRetryArrival = jest.fn()
       mount({ arrival, onRetryArrival })
-      expect(textOf('arm-unavailable')).toContain(t('socialRecovery.client.unavailableTitle'))
-      expect(textOf('arm-unavailable')?.includes(t('socialRecovery.client.unavailableBody'))).toBe(
-        retries
+      const shown = textOf('arm-unavailable') ?? ''
+      expect(shown).toContain(t('socialRecovery.client.unavailableTitle'))
+      expect(shown.indexOf(t(body))).toBeGreaterThan(
+        shown.indexOf(t('socialRecovery.client.unavailableTitle'))
+      )
+      UNAVAILABLE_BODIES.filter((other) => other !== body).forEach((other) =>
+        expect(shown).not.toContain(t(other))
       )
       expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(retries)
       expect(byTestId('arm-arrival-retry') !== null).toBe(retries)
@@ -511,12 +524,31 @@ describe('the write states in the save words', () => {
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
     expect(byTestId('arm-save')).toBeNull()
     expect(byTestId('arm-back')).not.toBeNull()
-    expect(textOf('arm-check-setup')).toBe(t('socialRecovery.writes.tryAgain'))
-    // The one control that reads "try again" is check again, which reads the setup and never retries the save.
-    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
-    pressText(t('socialRecovery.writes.tryAgain'))
+    // The state's own line, under the save's title: the save may still land.
+    const title = pageText().indexOf(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText().indexOf(t('socialRecovery.arm.mayStillLand'))).toBeGreaterThan(title)
+    // The one control reads check again, which reads the setup; nothing reads try again.
+    expect(t('socialRecovery.arm.checkAgain')).not.toBe(t('socialRecovery.writes.tryAgain'))
+    expect(textOf('arm-check-setup')).toBe(t('socialRecovery.arm.checkAgain'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    pressText(t('socialRecovery.arm.checkAgain'))
     expect(onCheckSetup).toHaveBeenCalledTimes(1)
     expect(onRetry).not.toHaveBeenCalled()
+  })
+
+  it('shows the line of a save that may still land only for a refusal that may still land', () => {
+    mount({
+      state: withWrite({
+        status: 'failedNotSent',
+        write: 'save',
+        error: accountBatchRefusal('window-closed', ACCOUNT),
+        run: 1
+      })
+    })
+    expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.mayStillLand'))
+    expect(byTestId('arm-check-setup')).toBeNull()
   })
 
   it('shows a save the port refused for another reason with the not-sent sentence and the retry', () => {
@@ -547,7 +579,9 @@ describe('the write states in the save words', () => {
       onRetry
     })
     expect(pageText()).toContain(t('socialRecovery.writes.submitting'))
-    expect(textOf('arm-check-again')).toBe(t('socialRecovery.writes.tryAgain'))
+    expect(textOf('arm-check-again')).toBe(t('socialRecovery.arm.checkAgain'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.mayStillLand'))
     expect(byTestId('arm-back')).toBeNull()
     press('arm-check-again')
     expect(onCheckAgain).toHaveBeenCalledTimes(1)

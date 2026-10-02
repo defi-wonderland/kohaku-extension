@@ -65,6 +65,7 @@ import type { AccountReads, SaveGate } from '@web/modules/social-recovery/setup/
 
 import {
   arrivalOf,
+  CONFIRM_REREAD_BLOCKS,
   createArmStore,
   isSaved,
   saveStepsOf,
@@ -240,8 +241,9 @@ export const RECEIPT_CASES = ['landed', 'reverted', 'replaced'] as const
 export const CONFIRM_CASES = [
   'agreed',
   'unauthorized',
-  'not-landed-twice',
+  'never-landed',
   'not-landed-then-agreed',
+  'agreed-on-last-read',
   'mismatch',
   'throws',
   'no-answer'
@@ -292,10 +294,18 @@ const confirmAnswers = (confirm: ConfirmCase): (() => Promise<SetupConfirmation>
       return [async () => confirmation(true, true)]
     case 'unauthorized':
       return [async () => confirmation(true, false)]
-    case 'not-landed-twice':
+    case 'never-landed':
       return [async () => confirmation(false, true)]
     case 'not-landed-then-agreed':
       return [async () => confirmation(false, true), async () => confirmation(true, true)]
+    case 'agreed-on-last-read':
+      return [
+        ...Array.from(
+          { length: CONFIRM_REREAD_BLOCKS },
+          () => async () => confirmation(false, true)
+        ),
+        async () => confirmation(true, true)
+      ]
     case 'mismatch':
       return [
         async () => {
@@ -313,9 +323,22 @@ const confirmAnswers = (confirm: ConfirmCase): (() => Promise<SetupConfirmation>
   }
 }
 
-/** Whether the script's check, read once and once more where it did not find the setup, agrees. */
+/** Whether the script's check, read again while it does not find the setup, agrees. */
 export const confirmAgrees = (confirm: ConfirmCase): boolean =>
-  confirm === 'agreed' || confirm === 'not-landed-then-agreed'
+  confirm === 'agreed' || confirm === 'not-landed-then-agreed' || confirm === 'agreed-on-last-read'
+
+/** How many times the script's check is read where the batch landed: every read up to the deciding one. */
+export const confirmReadsOf = (confirm: ConfirmCase): number => {
+  switch (confirm) {
+    case 'never-landed':
+    case 'agreed-on-last-read':
+      return 1 + CONFIRM_REREAD_BLOCKS
+    case 'not-landed-then-agreed':
+      return 2
+    default:
+      return 1
+  }
+}
 
 export type MockChainReads = ChainReads & {
   nativeBalance: jest.Mock

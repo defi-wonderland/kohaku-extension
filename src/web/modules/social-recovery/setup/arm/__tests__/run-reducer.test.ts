@@ -293,6 +293,24 @@ describe("the save's reducer", () => {
     ).toEqual([])
   })
 
+  it('takes a landed receipt of its own hash on a stalled wait, which ends the stall at landed', () => {
+    const late = WALK.steps.filter(
+      ({ from, event }) =>
+        from.state.stalled === true &&
+        isLandedReceipt(event) &&
+        runOf(event) === from.state.write.run &&
+        event.type === 'write' &&
+        event.event.type === 'receipt' &&
+        event.event.receipt.transactionHash === TX_HASH
+    )
+    expect(late.length).toBeGreaterThan(0)
+    expect(
+      late
+        .filter(({ to }) => to.state.write.status !== 'landed' || to.state.stalled !== false)
+        .map(({ from }) => json(from.path))
+    ).toEqual([])
+  })
+
   it("keeps the sign screen's reading only for the run that submits, and a new run starts with no reading, no stall and nothing prepared", () => {
     const readings = WALK.steps.filter(
       ({ from, event, to }) => event.type === 'estimated' && to.state !== from.state

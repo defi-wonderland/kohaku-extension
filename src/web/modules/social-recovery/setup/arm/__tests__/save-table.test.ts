@@ -33,7 +33,9 @@
  * batch, and a start whose setup read finds a setup prepares, estimates and
  * sends nothing. Nothing is sent unless the arrival was ready, the setup read
  * found none, the prepare answered and the gas check answered enough; what is
- * sent is the prepared calls in order, with the recovery kit's mark.
+ * sent is the prepared calls in order, with the recovery kit's mark. After a
+ * landed batch the check is read up to its deciding read and no further, so a
+ * setup no read finds is read once and once after every new block.
  */
 import type { Account } from '@ambire-common/interfaces/account'
 import { recoveryKitMarkOf, SEND_REFUSAL_REASONS } from '@web/modules/social-recovery/shared/client'
@@ -54,6 +56,7 @@ import {
   CONFIRM_CASES,
   confirmAgrees,
   confirmation,
+  confirmReadsOf,
   crossProduct,
   DESCRIPTOR,
   FACTS_CASES,
@@ -179,8 +182,8 @@ beforeAll(async () => {
 describe('every combination of the save inputs', () => {
   it('has one row per arrival that never starts, and one per first run of a ready arrival and second start', () => {
     expect(ARRIVALS).toHaveLength(9 * 6 * 4 * 2)
-    expect(FIRST_RUNS).toHaveLength(2 * 2 * 2 * 3 * 17 + 2)
-    expect(ROWS).toHaveLength(431 + 410 * 3)
+    expect(FIRST_RUNS).toHaveLength(2 * 2 * 2 * 3 * 18 + 2)
+    expect(ROWS).toHaveLength(431 + 434 * 3)
   })
 
   it('reads saved, shows the saved screen and wipes the records only after a landed, agreed save, and sends at most one batch per start', async () => {
@@ -295,6 +298,12 @@ describe('every combination of the save inputs', () => {
       }
       if (!landed && wired.confirmSetup.mock.calls.length !== 0) {
         fail(row, 'the check ran with no landed receipt')
+      }
+      // An unanswered check is read once more by the screen's reread after the run.
+      const reread = script.confirm === 'throws' || script.confirm === 'no-answer' ? 1 : 0
+      const reads = confirmReadsOf(script.confirm) + reread
+      if (firstLanded && wired.confirmSetup.mock.calls.length !== reads) {
+        fail(row, `the check was read ${wired.confirmSetup.mock.calls.length} times`)
       }
     }
 

@@ -483,6 +483,53 @@ describe('the start of the save', () => {
     expect(byTestId('arm-save')).not.toBeNull()
   })
 
+  it("replaces the push at once while the account's facts load, and starts that save by itself once they read ready", async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('loading')
+    await openByPush()
+
+    expect(router.type).toBe('REPLACE')
+    expect(router.pathname).toBe(SAVE_PATH)
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+    mockFacts.set(address.toLowerCase(), {
+      status: 'ready',
+      facts: factsOf(account, { key }),
+      retry: jest.fn()
+    })
+    await select(address)
+    await settle()
+
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch.mock.calls[0][0]).toBe(address)
+    expect(byTestId('arm-saved')).not.toBeNull()
+  })
+
+  it("starts nothing for another account selected while the pushed account's facts load, and shows it the summary with the Save button", async () => {
+    await writeRecords(draftOf('encrypted'))
+    await writeRecords(draftOf('clear'), true, other.addr)
+    wireClient('loading')
+    await openByPush()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await select(other.addr)
+    await settle()
+
+    expect(router.type).toBe('REPLACE')
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(byTestId('arm-save')?.textContent).toBe(t('socialRecovery.review.save'))
+    expect(byTestId('arm-removed-key')).not.toBeNull()
+    expect(byTestId('arm-cost-line')).not.toBeNull()
+
+    await press('arm-save')
+
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch.mock.calls[0][0]).toBe(other.addr)
+  })
+
   const POPS: [string, SetupDraft['privacy']['backup'], () => Promise<void>][] = [
     ['a reload', 'clear', reload],
     ['a typed address', 'encrypted', openByAddress],
@@ -754,9 +801,10 @@ describe('a save in progress across remounts', () => {
 
     expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
     expect(byTestId('arm-save')).toBeNull()
-    // The one "try again" on the page is check again, which reads the setup; no retry of the save.
-    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
-    expect(byTestId('arm-check-setup')).not.toBeNull()
+    // The one control is check again, which reads the setup; nothing retries the save.
+    expect(pageText()).toContain(t('socialRecovery.arm.mayStillLand'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(byTestId('arm-check-setup')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
     expect(byTestId('review-blocked-already-set-up')).toBeNull()
     expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
@@ -823,7 +871,8 @@ describe('a receipt wait that failed after the batch was sent', () => {
     await openByPush()
 
     expect(byTestId('arm-write-submitting')).not.toBeNull()
-    expect(byTestId('arm-check-again')?.textContent).toBe(t('socialRecovery.writes.tryAgain'))
+    expect(byTestId('arm-check-again')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
     expect(confirmSetup).not.toHaveBeenCalled()
     expect(mockEntries.size).toBeGreaterThan(0)
     expect(byTestId('arm-saved')).toBeNull()
@@ -881,6 +930,99 @@ describe('a receipt wait that failed after the batch was sent', () => {
   })
 })
 
+describe('a first receipt wait that does not settle', () => {
+  /** Opens the save by the review's push over Jest's fake clock, with the first receipt wait held. */
+  const openWithFirstWaitHeld = async () => {
+    const tick = (ms: number) => act(() => harness.advanceTimers(ms))
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    const first = held<ReturnType<typeof landedReceipt>>()
+    receipts.wait.mockImplementationOnce(() => first.promise)
+    act(() => root.unmount())
+    root = createRoot(container)
+    await act(async () => {
+      root.render(tree([REVIEW_PATH], 0))
+    })
+    await tick(100)
+    await act(async () => {
+      router.navigate?.(SAVE_PATH)
+    })
+    await tick(100)
+    return { tick, first }
+  }
+
+  it('shows check again under the submitting state once the wait runs its limit, and takes the receipt it brings later once', async () => {
+    jest.useFakeTimers()
+    try {
+      const { tick, first } = await openWithFirstWaitHeld()
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+
+      await tick(RECEIPT_WAIT_MS - 300)
+      expect(byTestId('arm-check-again')).toBeNull()
+      await tick(300)
+
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+      expect(byTestId('arm-check-again')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
+      expect(receipts.wait).toHaveBeenCalledTimes(1)
+      expect(confirmSetup).not.toHaveBeenCalled()
+      expect(mockEntries.size).toBeGreaterThan(0)
+
+      await act(async () => {
+        first.release(landedReceipt(harness.TX_HASH))
+      })
+      await tick(100)
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(byTestId('arm-check-again')).toBeNull()
+      expect(receipts.wait).toHaveBeenCalledTimes(1)
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(mockEntries.size).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('waits again on check again while the first wait still runs, and checks and wipes once whichever receipt comes first', async () => {
+    jest.useFakeTimers()
+    try {
+      const { tick, first } = await openWithFirstWaitHeld()
+      await tick(RECEIPT_WAIT_MS)
+      const again = held<ReturnType<typeof landedReceipt>>()
+      receipts.wait.mockImplementationOnce(() => again.promise)
+
+      await act(async () => {
+        byTestId('arm-check-again')?.click()
+      })
+      await tick(100)
+
+      expect(receipts.wait).toHaveBeenCalledTimes(2)
+      expect(receipts.wait.mock.calls[1][0]).toBe(harness.TX_HASH)
+      expect(byTestId('arm-check-again')).toBeNull()
+      expect(byTestId('arm-write-submitting')).not.toBeNull()
+
+      await act(async () => {
+        again.release(landedReceipt(harness.TX_HASH))
+      })
+      await tick(100)
+      expect(byTestId('arm-saved')).not.toBeNull()
+
+      await act(async () => {
+        first.release(landedReceipt(harness.TX_HASH))
+      })
+      await tick(100)
+
+      expect(byTestId('arm-saved')).not.toBeNull()
+      expect(confirmSetup).toHaveBeenCalledTimes(1)
+      expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+      expect(mockEntries.size).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+})
+
 describe('a save the wallet did not send', () => {
   it('shows a refusal as not a transaction under the save title with no not-sent line, no retry and no Save button, only the back and check again', async () => {
     chain.send = 'not-a-transaction'
@@ -894,8 +1036,11 @@ describe('a save the wallet did not send', () => {
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
     expect(byTestId('arm-save')).toBeNull()
     expect(byTestId('arm-back')).not.toBeNull()
-    expect(byTestId('arm-check-setup')?.textContent).toBe(t('socialRecovery.writes.tryAgain'))
-    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
+    expect(pageText().indexOf(t('socialRecovery.arm.mayStillLand'))).toBeGreaterThan(
+      pageText().indexOf(t('socialRecovery.review.after.failedTitle'))
+    )
+    expect(byTestId('arm-check-setup')?.textContent).toBe(t('socialRecovery.arm.checkAgain'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -1103,6 +1248,9 @@ describe('the blocks on arrival', () => {
       expect(prepareCommitSetup).not.toHaveBeenCalled()
       expect(port.sendAccountBatch).not.toHaveBeenCalled()
       expect(byTestId('arm-saved')).toBeNull()
+      // A view-only account holds no key to save with, and the page says so with no retry.
+      expect(pageText().includes(t('socialRecovery.arm.viewOnly'))).toBe(facts === 'view-only')
+      expect(byTestId('arm-arrival-retry') !== null).toBe(facts === 'state-unread')
     })
   )
 
