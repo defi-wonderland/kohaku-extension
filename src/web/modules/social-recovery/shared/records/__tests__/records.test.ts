@@ -2612,6 +2612,39 @@ describe('the setup save in flight', () => {
     expect((await saving.claim(SECOND_CLAIM)).record.value).toEqual(sent)
   })
 
+  const CLAIM_BLOCK = 7_000_100
+
+  it('a claim with a start block stores it beside the claim', async () => {
+    const { storage, records } = setup()
+    const claim = { ...SAVE_CLAIM, startBlock: CLAIM_BLOCK }
+    const result = await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(claim)
+    expect(result).toEqual({ claimed: true, record: { value: claim, savedAt: T0 } })
+    const tab = createWalletRecords({ storage, now: () => T0 })
+    expect(present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value.startBlock).toBe(
+      CLAIM_BLOCK
+    )
+  })
+
+  it("marking it sent with no start block adds the hash and keeps the claim's start block", async () => {
+    const { records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim({ ...SAVE_CLAIM, startBlock: CLAIM_BLOCK })
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: CLAIM_BLOCK }
+    expect(present(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH)).value).toEqual(sent)
+    expect(present(await saving.read()).value).toEqual(sent)
+  })
+
+  it("marking it sent with a start block replaces the claim's start block", async () => {
+    const { records } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim({ ...SAVE_CLAIM, startBlock: CLAIM_BLOCK })
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: START_BLOCK }
+    expect(
+      present(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)).value
+    ).toEqual(sent)
+    expect(present(await saving.read()).value).toEqual(sent)
+  })
+
   it('marking it sent under another request id writes nothing and answers the record as it is', async () => {
     const { storage, records } = setup()
     const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)

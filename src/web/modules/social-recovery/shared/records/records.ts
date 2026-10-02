@@ -713,11 +713,12 @@ export const createWalletRecords = ({
           const record = await writeKey<SaveInFlightRecord>(key, {
             prepared: claim.prepared,
             requestId: claim.requestId,
-            claimedAt: claim.claimedAt
+            claimedAt: claim.claimedAt,
+            ...(claim.startBlock === undefined ? {} : { startBlock: claim.startBlock })
           })
           return { claimed: true, record }
         }),
-      markSent: (requestId: string, transactionHash: Hex, startBlock: number) =>
+      markSent: (requestId: string, transactionHash: Hex, startBlock?: number) =>
         inQueue(key, async () => {
           const current = await read()
           if (current.status !== 'present' || current.value.requestId !== requestId) {
@@ -726,7 +727,7 @@ export const createWalletRecords = ({
           const record = await writeKey<SaveInFlightRecord>(key, {
             ...current.value,
             transactionHash,
-            startBlock
+            ...(startBlock === undefined ? {} : { startBlock })
           })
           return { status: 'present' as const, ...record }
         }),

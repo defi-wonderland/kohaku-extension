@@ -360,8 +360,14 @@ export interface SaveInFlightRecord {
   startBlock?: number
 }
 
-/** What a claim of the save in flight writes. */
-export type SaveInFlightClaim = Pick<SaveInFlightRecord, 'prepared' | 'requestId' | 'claimedAt'>
+/**
+ * What a claim of the save in flight writes: the start block too, where the
+ * page read it before the wallet broadcast.
+ */
+export type SaveInFlightClaim = Pick<
+  SaveInFlightRecord,
+  'prepared' | 'requestId' | 'claimedAt' | 'startBlock'
+>
 
 /**
  * The answer of a claim: `claimed` where this claim wrote the record, and the
@@ -382,13 +388,14 @@ export interface SaveInFlightAccessor {
   /** Writes the record where none is stored; where one is, writes nothing. */
   claim(claim: SaveInFlightClaim): Promise<SaveInFlightClaimResult>
   /**
-   * Writes the hash and the start block where the stored record carries
-   * `requestId`, and answers the record the storage holds after the task.
+   * Writes the hash where the stored record carries `requestId`, and the start
+   * block where one is given; with none, the record keeps the claim's. Answers
+   * the record the storage holds after the task.
    */
   markSent(
     requestId: string,
     transactionHash: Hex,
-    startBlock: number
+    startBlock?: number
   ): Promise<RecordRead<SaveInFlightRecord>>
   /** Removes the record where it carries `requestId`; answers whether it removed it. */
   release(requestId: string): Promise<boolean>
