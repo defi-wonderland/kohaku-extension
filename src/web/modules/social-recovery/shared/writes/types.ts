@@ -103,13 +103,19 @@ export interface LandedState {
  * the wallet met before any transaction hash: a refused signature, a gas
  * estimate that would revert, or a broadcast that failed. `replaced` is
  * present where another transaction took the call's place before it was mined
- * (`cancelled` or `replaced`), so the call itself never ran.
+ * (`cancelled` or `replaced`), so the call itself never ran. `mayStillLand`
+ * is present where the wallet submitted the call as an operation another party
+ * sends, which this wallet cannot follow and which may still reach the chain,
+ * so no retry is offered. `otherRequest` is present where another request for
+ * the account waited in the wallet, so the call was not sent.
  */
 export interface FailedNotSentState {
   status: 'failedNotSent'
   write: WriteKind
   error: unknown
   replaced?: ReplacedReason
+  mayStillLand?: true
+  otherRequest?: true
 }
 
 /**
@@ -313,6 +319,8 @@ export interface AccountBatchDrive extends DriveRun {
   onEstimation?: EstimationListener
   /** The recovery kit's mark, for the batch that arms the kit (`recoveryKitMarkOf`). */
   recoveryKit?: RecoveryKitMark
+  /** The id the batch's request is queued under (`newSendRequestId`); the port makes one by default. */
+  requestId?: string
 }
 
 // ---------------------------------------------------------------------------
