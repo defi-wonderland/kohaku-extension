@@ -759,7 +759,7 @@ describe('a save in progress across remounts', () => {
     })
   )
 
-  it('keeps a refusal whose operation may still land across a remount: no Save button, no retry, nothing sent', async () => {
+  it('keeps a refusal whose operation may still land across a remount whose arrival reads no setup: no Save button, no retry, nothing sent', async () => {
     chain.send = 'not-a-transaction'
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
@@ -770,8 +770,38 @@ describe('a save in progress across remounts', () => {
 
     expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
     expect(byTestId('arm-save')).toBeNull()
-    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    // The one "try again" on the page is check again, which reads the setup; no retry of the save.
+    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
+    expect(byTestId('arm-check-setup')).not.toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
     expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends a kept refusal whose operation may still land as already set up where the arrival reads a setup, and drops the run', async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    chain.setupState = setupStateOf(true)
+
+    await switchAway()
+
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(pageText()).toContain(t('socialRecovery.review.blocked.alreadySetUp.open'))
+    expect(byTestId('arm-back')).not.toBeNull()
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+    // The ended run is gone: a later arrival reads the account from scratch.
+    chain.setupState = setupStateOf(false)
+    await switchAway()
+
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(byTestId('arm-save')).not.toBeNull()
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -868,7 +898,7 @@ describe('a receipt wait that failed after the batch was sent', () => {
 })
 
 describe('a save the wallet did not send', () => {
-  it('offers no retry and no not-sent sentence where the port refused it as not a transaction', async () => {
+  it('shows a refusal as not a transaction under the save title with no not-sent line, no retry and no Save button, only the back and check again', async () => {
     chain.send = 'not-a-transaction'
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
@@ -876,8 +906,73 @@ describe('a save the wallet did not send', () => {
 
     expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
     expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
-    expect(pageText()).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('arm-back')).not.toBeNull()
+    expect(byTestId('arm-check-setup')?.textContent).toBe(t('socialRecovery.writes.tryAgain'))
+    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends a refusal as not a transaction as already set up where check again finds the setup, and sends nothing', async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    const setupReads = setupState.mock.calls.length
+    chain.setupState = setupStateOf(true)
+
+    await press('arm-check-setup')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(confirmSetup).not.toHaveBeenCalled()
+    expect(mockEntries.size).toBeGreaterThan(0)
+  })
+
+  it('keeps a refusal as not a transaction where check again finds no setup: no retry, no Save button, nothing sent', async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    const setupReads = setupState.mock.calls.length
+
+    await press('arm-check-setup')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    expect(byTestId('arm-check-setup')).not.toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(byTestId('review-blocked-already-set-up')).toBeNull()
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a refusal as not a transaction where the setup read of check again throws, and check again can be pressed again', async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    const setupReads = setupState.mock.calls.length
+    setupState.mockRejectedValueOnce(new Error('the node did not answer'))
+
+    await press('arm-check-setup')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
+    expect(byTestId('arm-check-setup')).not.toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+    chain.setupState = setupStateOf(true)
+    await press('arm-check-setup')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 2)
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -897,6 +992,52 @@ describe('a save the wallet did not send', () => {
     await press('arm-gas-continue')
 
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(2)
+    expect(byTestId('arm-saved')).not.toBeNull()
+  })
+})
+
+describe("the deposit step's Continue", () => {
+  it('reads the setup first and, where another tab saved meanwhile, ends as already set up with no gas check and nothing sent', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance.mockResolvedValueOnce(0n)
+    await openByPush()
+    expect(byTestId('arm-gas-blocker')).not.toBeNull()
+    const balances = reads.nativeBalance.mock.calls.length
+    const estimates = reads.estimateGas.mock.calls.length
+    const setupReads = setupState.mock.calls.length
+    chain.setupState = setupStateOf(true)
+
+    await press('arm-gas-continue')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
+    expect(byTestId('arm-gas-blocker')).toBeNull()
+    expect(reads.nativeBalance).toHaveBeenCalledTimes(balances)
+    expect(reads.estimateGas).toHaveBeenCalledTimes(estimates)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(mockEntries.size).toBeGreaterThan(0)
+  })
+
+  it('reads the setup first and, where none is there, checks the gas again and sends once', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance.mockResolvedValueOnce(0n)
+    await openByPush()
+    expect(byTestId('arm-gas-blocker')).not.toBeNull()
+    const setupReads = setupState.mock.calls.length
+    const balances = reads.nativeBalance.mock.calls.length
+
+    await press('arm-gas-continue')
+
+    expect(setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(reads.nativeBalance).toHaveBeenCalledTimes(balances + 1)
+    expect(setupState.mock.invocationCallOrder[setupReads]).toBeLessThan(
+      reads.nativeBalance.mock.invocationCallOrder[balances]
+    )
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
     expect(byTestId('arm-saved')).not.toBeNull()
   })
 })

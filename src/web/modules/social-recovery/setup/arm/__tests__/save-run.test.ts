@@ -27,8 +27,10 @@ import {
   armScreenOf,
   callsOf,
   checkReceiptAgain,
+  checkSetupAgain,
   committedDraftOf,
   createArmStore,
+  endWhereSetUp,
   isLive,
   isSaved,
   mayStillLand,
@@ -682,6 +684,111 @@ describe('the setup read at the start of every run', () => {
     expect(wired.setupState).toHaveBeenCalledTimes(1)
     expect(wired.prepareCommitSetup).not.toHaveBeenCalled()
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('a refusal whose operation may still land, read again', () => {
+  const refusedRun = async () => {
+    const wired = wireSave(account, script({ send: 'not-a-transaction' }))
+    const store = await runSave(wired.steps)
+    expect(mayStillLand(store.state().write)).toBe(true)
+    wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+    return { wired, store }
+  }
+
+  it('ends as already set up where check again finds the setup, with nothing prepared, sent or wiped, and the run no longer kept', async () => {
+    const { wired, store } = await refusedRun()
+    wired.setupState.mockResolvedValue(setupStateOf(true))
+
+    await checkSetupAgain(store, wired.steps)
+
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect(store.state().stop).toBe('already-set-up')
+    expect(armScreenOf(store.state())).toBe('already-set-up')
+    expect(outlivesScreen(store.state())).toBe(false)
+    expect(wired.prepareCommitSetup).toHaveBeenCalledTimes(1)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('stays as it was where check again finds no setup, or its read throws, and a later check again still reads', async () => {
+    const { wired, store } = await refusedRun()
+    const refused = store.state()
+
+    await checkSetupAgain(store, wired.steps)
+    expect(store.state()).toBe(refused)
+
+    wired.setupState.mockRejectedValueOnce(new Error('the node did not answer'))
+    await checkSetupAgain(store, wired.steps)
+    expect(store.state()).toBe(refused)
+    expect(outlivesScreen(store.state())).toBe(true)
+
+    wired.setupState.mockResolvedValue(setupStateOf(true))
+    await checkSetupAgain(store, wired.steps)
+    expect(wired.setupState).toHaveBeenCalledTimes(4)
+    expect(store.state().stop).toBe('already-set-up')
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it("ends as already set up on the arrival's read of a setup, and stays on a read of none", async () => {
+    const { store } = await refusedRun()
+    const refused = store.state()
+
+    endWhereSetUp(store, false)
+    expect(store.state()).toBe(refused)
+
+    endWhereSetUp(store, true)
+    expect(store.state().stop).toBe('already-set-up')
+  })
+
+  it('moves no other ended run on a setup read, nor reads the setup for one', async () => {
+    const wired = wireSave(account, script({ send: 'window-closed' }))
+    const store = await runSave(wired.steps)
+    const refused = store.state()
+
+    endWhereSetUp(store, true)
+    await checkSetupAgain(store, wired.steps)
+
+    expect(store.state()).toBe(refused)
+    expect(wired.setupState).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("the deposit step's Continue", () => {
+  it('reads the setup first and, where another tab saved meanwhile, ends as already set up with no gas check and nothing sent', async () => {
+    const wired = wireSave(account, script({ gas: 'deposit' }))
+    const store = await runSave(wired.steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+    const balances = wired.reads.nativeBalance.mock.calls.length
+    const estimates = wired.reads.estimateGas.mock.calls.length
+    wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    wired.setupState.mockResolvedValue(setupStateOf(true))
+
+    await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect(store.state().stop).toBe('already-set-up')
+    expect(store.state().prepared).toBeUndefined()
+    expect(wired.reads.nativeBalance).toHaveBeenCalledTimes(balances)
+    expect(wired.reads.estimateGas).toHaveBeenCalledTimes(estimates)
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(wired.saveSetup).not.toHaveBeenCalled()
+  })
+
+  it('reads the setup before the gas check and, where none is there, checks and sends as before', async () => {
+    const wired = wireSave(account, script({ gas: 'deposit' }))
+    const store = await runSave(wired.steps)
+    const balances = wired.reads.nativeBalance.mock.calls.length
+    wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+
+    await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect(wired.setupState.mock.invocationCallOrder[1]).toBeLessThan(
+      wired.reads.nativeBalance.mock.invocationCallOrder[balances]
+    )
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
   })
 })
 

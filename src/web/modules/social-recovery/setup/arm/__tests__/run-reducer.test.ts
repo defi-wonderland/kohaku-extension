@@ -14,9 +14,15 @@
 import { zeroHash } from 'viem'
 
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
 import type { DepositStep, GasCheck } from '@web/modules/social-recovery/shared/writes'
 
-import { armReducer, initialArmState, isSaved } from '@web/modules/social-recovery/setup/arm'
+import {
+  armReducer,
+  initialArmState,
+  isSaved,
+  mayStillLand
+} from '@web/modules/social-recovery/setup/arm'
 import type { ArmEvent, ArmState, PreparedSave } from '@web/modules/social-recovery/setup/arm'
 
 import { COMMIT, draftOf, feeReading, KEY, nodeError, TX_HASH } from './harness'
@@ -66,6 +72,10 @@ const ALPHABET: ArmEvent[] = [
     receipt(run, 1, zeroHash),
     { type: 'write', event: { type: 'error', run, error: new Error('refused') } },
     { type: 'write', event: { type: 'error', run, error: nodeError(), transactionHash: TX_HASH } },
+    {
+      type: 'write',
+      event: { type: 'error', run, error: accountBatchRefusal('not-a-transaction', KEY.addr) }
+    },
     { type: 'alreadySetUp', run },
     { type: 'prepared', run, prepared: SAVE },
     { type: 'estimated', run, reading: feeReading({ error: true }) },
@@ -234,16 +244,18 @@ describe("the save's reducer", () => {
     expect(broken).toEqual([])
   })
 
-  it('ends a run as already set up only while it reads the setup, before it prepared anything', () => {
+  it('ends a run as already set up only while it reads the setup before the gas check, or after a refusal that may still land, dropping what it prepared', () => {
     const moved = WALK.steps.filter(
       ({ from, event, to }) => event.type === 'alreadySetUp' && to.state !== from.state
     )
     expect(moved.length).toBeGreaterThan(0)
+    // Both readings are reached: the start's read and a refusal that may still land.
+    expect(moved.some(({ from }) => mayStillLand(from.state.write))).toBe(true)
+    expect(moved.some(({ from }) => from.state.write.status === 'checkingGas')).toBe(true)
     const wrong = moved
       .filter(
         ({ from, to }) =>
-          from.state.write.status !== 'checkingGas' ||
-          from.state.prepared !== undefined ||
+          (from.state.write.status !== 'checkingGas' && !mayStillLand(from.state.write)) ||
           to.state.stop !== 'already-set-up' ||
           to.state.write.status !== 'idle' ||
           to.state.prepared !== undefined

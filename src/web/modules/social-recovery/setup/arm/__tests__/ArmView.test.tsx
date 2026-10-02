@@ -182,6 +182,7 @@ const mount = (overrides: Partial<ArmViewProps> = {}) => {
     onRetryArrival: jest.fn(),
     onRetry: jest.fn(),
     onCheckAgain: jest.fn(),
+    onCheckSetup: jest.fn(),
     onRecheck: jest.fn(),
     onReread: jest.fn(),
     navigate: jest.fn(),
@@ -490,8 +491,9 @@ describe('the write states in the save words', () => {
     expect(byTestId('arm-back')).not.toBeNull()
   })
 
-  it('shows a save the port refused as not a transaction with no retry and no not-sent sentence, since it may still land', () => {
+  it('shows a save the port refused as not a transaction under its title with no not-sent line and no retry, only the back and check again, since it may still land', () => {
     const onRetry = jest.fn()
+    const onCheckSetup = jest.fn()
     mount({
       state: withWrite({
         status: 'failedNotSent',
@@ -499,12 +501,20 @@ describe('the write states in the save words', () => {
         error: accountBatchRefusal('not-a-transaction', ACCOUNT),
         run: 1
       }),
-      onRetry
+      onRetry,
+      onCheckSetup
     })
     expect(pageText()).toContain(t('socialRecovery.review.after.failedTitle'))
+    expect(pageText()).not.toContain(t('socialRecovery.writes.notSent'))
     expect(pageText()).not.toContain(t('socialRecovery.review.after.notSent'))
-    expect(hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    expect(byTestId('arm-save')).toBeNull()
     expect(byTestId('arm-back')).not.toBeNull()
+    expect(textOf('arm-check-setup')).toBe(t('socialRecovery.writes.tryAgain'))
+    // The one control that reads "try again" is check again, which reads the setup and never retries the save.
+    expect(pageText().split(t('socialRecovery.writes.tryAgain'))).toHaveLength(2)
+    pressText(t('socialRecovery.writes.tryAgain'))
+    expect(onCheckSetup).toHaveBeenCalledTimes(1)
+    expect(onRetry).not.toHaveBeenCalled()
   })
 
   it('shows a save the port refused for another reason with the not-sent sentence and the retry', () => {
