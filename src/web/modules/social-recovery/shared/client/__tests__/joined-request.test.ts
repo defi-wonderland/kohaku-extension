@@ -49,8 +49,17 @@ const HASH: Hex = `0x${'ab'.repeat(32)}`
 const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
 const REMOVE = 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
 
-/** The sign screen's statuses under which it signs the operation it holds. */
-const SIGNING = [SigningStatus.InProgress, SigningStatus.WaitingForPaymaster, SigningStatus.Done]
+/**
+ * The sign screen's statuses under which it may sign the operation it holds
+ * as it stands, the pause for a warning first, as the screen moves through
+ * them.
+ */
+const SIGNING = [
+  SigningStatus.UpdatesPaused,
+  SigningStatus.InProgress,
+  SigningStatus.WaitingForPaymaster,
+  SigningStatus.Done
+]
 const NOT_SIGNING = Object.values(SigningStatus).filter((status) => !SIGNING.includes(status))
 
 const actionsOf = (dispatch: jest.Mock) => dispatched<SendRequestAction>(dispatch)
@@ -270,7 +279,6 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
 
       const ENDINGS: [string, (id: string) => SendRequestUpdate][] = [
         ['back at ready to sign', (id) => signScreen([id], SigningStatus.ReadyToSign)],
-        ['paused', (id) => signScreen([id], SigningStatus.UpdatesPaused)],
         [
           "at another request's operation",
           () => signScreen(['elsewhere'], SigningStatus.InProgress)
@@ -294,6 +302,45 @@ SUBJECTS.forEach(({ title, account, accounts, start }) =>
           expect((send.value as SendRefusal).reason).toBe('other-request-pending')
         })
       )
+
+      it('withdraws nothing for a join while the sign screen pauses on its request, and withdraws once when the pause ends back at ready to sign', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id], SigningStatus.UpdatesPaused))
+        q.queue = joined(own)
+        q.push(requestsPush(q.queue))
+        await advance(SEND_SETTLE_MS * 3)
+        expect(removals(q.dispatch)).toEqual([])
+        expect(send.status).toBe('pending')
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
+        q.push(signScreen([id], SigningStatus.ReadyToSign))
+        q.push(requestsPush(q.queue))
+        expect(removals(q.dispatch)).toEqual(withdrawal(id))
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
+        expect(send.status).toBe('rejected')
+        expect((send.value as SendRefusal).reason).toBe('other-request-pending')
+      })
+
+      it('withdraws nothing for a join while the sign screen pauses on its request, and answers the hash the holder signs from the pause', async () => {
+        const { q, send, id, own } = sending()
+        q.push(requestsPush(queueHolding([own])))
+        q.push(signScreen([id], SigningStatus.UpdatesPaused))
+        q.queue = joined(own)
+        q.push(requestsPush(q.queue))
+        q.push(signScreen([id], SigningStatus.InProgress))
+        q.push(mainStatus('SIGNING'))
+        q.push(requestsPush(q.queue))
+        await advance(SEND_SETTLE_MS * 3)
+        expect(removals(q.dispatch)).toEqual([])
+        expect(send.status).toBe('pending')
+        q.push(activityListing(id, operationFor(id, { hash: HASH })))
+        await flush()
+        expect(removals(q.dispatch)).toEqual([])
+        expect(send).toEqual({ status: 'resolved', value: HASH })
+      })
 
       it('withdraws for a join on a later push of the queue, after a failed signature found none', async () => {
         const { q, send, id, own } = sending()

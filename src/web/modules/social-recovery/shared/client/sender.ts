@@ -52,8 +52,9 @@
  * The queue joins every `calls` request of one account and chain into one
  * operation. So the port queues nothing where another `calls` request of the
  * account and chain is already in the queue, and except while the sign screen
- * that holds its request signs it withdraws its own request where another one
- * joins it, refusing with `other-request-pending` in both cases.
+ * that holds its request signs it or pauses on it withdraws its own request
+ * where another one joins it, refusing with `other-request-pending` in both
+ * cases.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { isAddress, isHash } from 'viem'
@@ -217,16 +218,19 @@ const ACTIVITY_PAGE = { fromPage: 0, itemsPerPage: 10 }
 export const REQUEST_STATE_READ_MS = 10 * 1000
 
 /**
- * The sign screen's statuses once the holder confirmed and the sign
- * controller signs, waits for the paymaster or signed. Unlike the pause for a
- * warning or a hardware wallet, which the screen leaves to take updates
- * again, the controller leaves these only where the signature or its
- * broadcast failed.
+ * The sign screen's statuses under which it may sign the operation it holds
+ * as it stands: the sign controller signs, waits for the paymaster or signed
+ * once the holder confirmed, or pauses for a warning or a hardware wallet.
+ * While paused, the controller takes no new calls and can still sign the
+ * operation it froze, so a request that joins then cannot enter it. The
+ * controller leaves these statuses back to taking updates only where a
+ * signature or its broadcast failed or the pause ended.
  */
 const SIGNING_STATUSES: readonly SigningStatus[] = [
   SigningStatus.InProgress,
   SigningStatus.WaitingForPaymaster,
-  SigningStatus.Done
+  SigningStatus.Done,
+  SigningStatus.UpdatesPaused
 ]
 
 /** The estimation statuses after which the sign screen holds its fee options or its error. */
