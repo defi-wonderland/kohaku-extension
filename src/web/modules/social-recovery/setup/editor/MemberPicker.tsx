@@ -50,11 +50,13 @@ const MemberPicker = ({
               key={`${enrollment.credential.method}:${enrollment.credential.config}`}
               style={[flexbox.directionRow, flexbox.alignCenter]}
             >
-              <CredentialRow
-                credential={enrollment.credential}
-                addressBook={addressBook}
-                enrollments={enrollments}
-              />
+              <View style={flexbox.flex1}>
+                <CredentialRow
+                  credential={enrollment.credential}
+                  addressBook={addressBook}
+                  enrollments={enrollments}
+                />
+              </View>
               {inPath && (
                 <Text fontSize={12} appearance="secondaryText" style={spacings.mlSm}>
                   {t('socialRecovery.editor.picker.alreadyInPath')}

@@ -102,12 +102,12 @@ const EnrollView = ({
 
   if (load.status === 'failed') {
     return (
-      <View>
+      <View testID="enroll-load-failed">
         <Alert
           type="error"
           size="sm"
           text={
-            <Alert.Text size="sm" type="error" testID="enroll-load-failed">
+            <Alert.Text size="sm" type="error">
               {t('socialRecovery.records.loadFailed')}
             </Alert.Text>
           }

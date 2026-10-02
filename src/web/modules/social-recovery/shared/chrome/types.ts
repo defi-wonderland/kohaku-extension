@@ -47,7 +47,7 @@ export type StatusChipTone = 'default' | 'success' | 'warning' | 'error'
 export interface StatusChipProps {
   text: string
   tone?: StatusChipTone
-  style?: StyleProp<ViewStyle>
+  style?: ViewStyle
   testID?: string
 }
 
