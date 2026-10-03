@@ -38,7 +38,7 @@ export const holdsPrivilege = (privilege: string): boolean =>
   isHex(privilege) && hexToBigInt(privilege) !== 0n
 
 // The entry point holds a privilege on an ERC-4337 account, but it is no key.
-export const isKey = (value: string): value is Address =>
+const isKey = (value: string): value is Address =>
   isAddress(value, { strict: false }) && !isAddressEqual(value, ERC_4337_ENTRYPOINT)
 
 export const distinctKeys = (values: readonly string[]): Address[] =>
