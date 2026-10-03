@@ -957,6 +957,33 @@ describe('a save in progress across remounts', () => {
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
+  it("runs the check on a kept refusal whose operation may still land where the arrival reads a setup before the account's facts load, and saves with one wipe", async () => {
+    chain.send = 'not-a-transaction'
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByPush()
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    chain.setupState = setupStateOf(true)
+    const setupReads = setupState.mock.calls.length
+    const ready = mockFacts.get(address.toLowerCase())
+    mockFacts.set(address.toLowerCase(), { status: 'loading', retry: jest.fn() })
+
+    await switchAway()
+
+    expect(setupState.mock.calls.length).toBeGreaterThan(setupReads)
+    expect(confirmSetup).not.toHaveBeenCalled()
+
+    mockFacts.set(address.toLowerCase(), ready)
+    await select(address)
+    await settle()
+
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(mockEntries.size).toBe(0)
+  })
+
   it('keeps an unanswered check across a remount, and its retry reads again and saves and wipes once', async () => {
     chain.confirm = new Error('the node did not answer')
     await writeRecords(draftOf('encrypted'))

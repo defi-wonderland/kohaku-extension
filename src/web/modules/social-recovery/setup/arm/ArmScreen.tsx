@@ -173,7 +173,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     accountReads.setupState.status === 'answered' && accountReads.setupState.value.hasSetup
   useEffect(() => {
     endWhereSetUp(arrivalFoundSetup)
-  }, [arrivalFoundSetup, endWhereSetUp])
+  }, [arrivalFoundSetup, endWhereSetUp, steps])
   const navigationType = useNavigationType()
   const location = useLocation()
   const routerNavigate = useNavigate()
