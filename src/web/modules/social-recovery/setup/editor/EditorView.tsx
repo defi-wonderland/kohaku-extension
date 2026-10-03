@@ -256,8 +256,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     commit(setThreshold(current(), group, threshold), currentRoles(), rest)
   }
 
-  const onMove = (row: number, group: number) =>
-    apply(moveToGroup(current(), row, group), () => withoutRole(currentRoles(), row))
+  const onMove = (row: number, group: number) => {
+    setPicker(null)
+    return apply(moveToGroup(current(), row, group), () => withoutRole(currentRoles(), row))
+  }
 
   // Every edit holds while the check runs, so the check runs on the draft
   // the holder goes on with.
@@ -403,9 +405,10 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
         checking={checking}
         onOpenSlot={openSlot}
         onThresholdText={onThresholdText}
-        onMakeRequired={(index, member) =>
+        onMakeRequired={(index, member) => {
+          setPicker(null)
           apply(makeRequired(current(), index, member), () => [...currentRoles(), 'required'])
-        }
+        }}
         onRemoveMember={(index, member) =>
           commit(removeMember(current(), index, member), currentRoles())
         }
