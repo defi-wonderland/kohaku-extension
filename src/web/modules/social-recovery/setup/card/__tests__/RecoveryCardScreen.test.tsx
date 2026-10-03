@@ -17,6 +17,7 @@ import type { ThemeProps } from '@common/styles/themeConfig'
 import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   deferred,
+  digestVersionRefusal,
   restoreRefusalOf
 } from '@web/modules/social-recovery/setup/card/__tests__/harness'
 import type {
@@ -523,6 +524,37 @@ describe('the recovery card screen', () => {
       expect(byTestId('card-password-value')?.textContent).toBe(S.display.hiddenValue)
     })
 
+    const others: [string, () => void, string][] = [
+      ['no saved setup', () => {}, 'card-password-gone'],
+      ['a saved setup', () => savedSetup(), 'card-recovery-password-ask']
+    ]
+    others.forEach(([what, given, row]) => {
+      it(`never shows the held password of one account on another with ${what}, and shows it again back on the first`, async () => {
+        given()
+        const first = newAccount()
+        const second = newAccount()
+        setRecoveryPassword(CHAIN_ID, first, PASSWORD)
+        await mount(first)
+        await press('card-reveal')
+        expect(byTestId('card-password-value')?.textContent).toBe(PASSWORD)
+
+        await select(second)
+        await settle()
+        expect(byTestId('card-account')?.textContent?.toLowerCase()).toBe(second)
+        expect(byTestId(row)).not.toBeNull()
+        expect(byTestId('card-password-value')).toBeNull()
+        expect(container.innerHTML).not.toContain(PASSWORD)
+        expect(carriersDisabled()).toEqual([true, true, true])
+
+        await select(first)
+        await settle()
+        expect(byTestId(row)).toBeNull()
+        await press('card-reveal')
+        expect(byTestId('card-password-value')?.textContent).toBe(PASSWORD)
+        expect(carriersDisabled()).toEqual([false, false, false])
+      })
+    })
+
     it('never shows one account with the level read for another', async () => {
       const first = newAccount()
       const second = newAccount()
@@ -624,9 +656,13 @@ describe('the recovery card screen', () => {
       expect(setup.setupState).not.toHaveBeenCalled()
       expect(byTestId('card-recovery-password-ask')).toBeNull()
     })
-    ;(['failed', 'update-the-wallet'] as const).forEach((status) => {
-      it(`asks when the client is ${status}, and a check says it could not check and tries the client again`, async () => {
-        mockClient.current = { status, error: new Error('no client') }
+    const unbuilt: FakeClientState[] = [
+      { status: 'failed', error: new Error('no client') },
+      { status: 'update-the-wallet', refusal: digestVersionRefusal() }
+    ]
+    unbuilt.forEach((state) => {
+      it(`asks when the client is ${state.status}, and a check says it could not check and tries the client again`, async () => {
+        mockClient.current = state
         const account = newAccount()
         await mount(account)
         expect(byTestId('card-recovery-password-ask')).not.toBeNull()
@@ -647,6 +683,7 @@ describe('the recovery card screen', () => {
 
     it('keeps a half-typed password while the client is built again, then checks it', async () => {
       mockClient.current = { status: 'failed', error: new Error('no client') }
+      savedSetup()
       const account = newAccount()
       await mount(account)
       await typeRecovery(TYPED)
@@ -655,12 +692,75 @@ describe('the recovery card screen', () => {
       expect(recoveryField()?.value).toBe(TYPED)
       opensBackup(TYPED)
       await clientSays({ status: 'ready', client: { setup } })
+      await settle()
+      expect(setup.setupState).toHaveBeenCalledTimes(1)
+      expect(byTestId('card-recovery-password-ask')).not.toBeNull()
+      expect(byTestId('card-password-gone')).toBeNull()
       expect(recoveryField()?.value).toBe(TYPED)
 
       await press('card-recovery-password-check')
       await settle()
       expect(setup.getSetup.mock.calls).toEqual([[{ password: TYPED }]])
       expect(readRecoveryPassword(CHAIN_ID, account)).toBe(TYPED)
+    })
+
+    it('reads the setup again once a client is ready after one that failed, and leads back to the privacy step when there is none', async () => {
+      mockClient.current = { status: 'failed', error: new Error('no client') }
+      const account = newAccount()
+      await mount(account)
+      expect(byTestId('card-recovery-password-ask')).not.toBeNull()
+      await typeRecovery(TYPED)
+      await press('card-recovery-password-check')
+      await settle()
+      expect(retry).toHaveBeenCalledTimes(1)
+      expect(setup.setupState).not.toHaveBeenCalled()
+
+      await clientSays({ status: 'ready', client: { setup } })
+      await settle()
+      expect(setup.setupState).toHaveBeenCalledTimes(1)
+      expect(byTestId('card-password-gone')?.textContent).toBe(
+        t('socialRecovery.card.passwordGone')
+      )
+      expect(byTestId('card-recovery-password-ask')).toBeNull()
+      expect(setup.getSetup).not.toHaveBeenCalled()
+      expect(readRecoveryPassword(CHAIN_ID, account)).toBeUndefined()
+
+      await clientSays({ status: 'loading' })
+      await clientSays({ status: 'ready', client: { setup } })
+      await settle()
+      expect(setup.setupState).toHaveBeenCalledTimes(1)
+      await press('card-password-gone-action')
+      expect(location.pathname).toBe(`/${WEB_ROUTES.socialRecoverySetupPrivacy}`)
+    })
+
+    it('leads back to the privacy step when a check finds no saved backup', async () => {
+      setup.setupState.mockRejectedValue(new Error('the node did not answer'))
+      setup.getSetup.mockRejectedValue(restoreRefusalOf('restore.no-backup'))
+      const account = newAccount()
+      await mount(account)
+      expect(byTestId('card-recovery-password-ask')).not.toBeNull()
+      await typeRecovery(TYPED)
+      await press('card-recovery-password-check')
+      await settle()
+
+      expect(setup.getSetup.mock.calls).toEqual([[{ password: TYPED }]])
+      expect(byTestId('card-password-gone')?.textContent).toBe(
+        t('socialRecovery.card.passwordGone')
+      )
+      expect(byTestId('card-recovery-password-ask')).toBeNull()
+      expect(byTestId('card-recovery-password-unchecked')).toBeNull()
+      expect(container.querySelector('input')).toBeNull()
+      expect(readRecoveryPassword(CHAIN_ID, account)).toBeUndefined()
+      expect(carriersDisabled()).toEqual([true, true, true])
+      await press('card-password-gone-action')
+      expect(location.pathname).toBe(`/${WEB_ROUTES.socialRecoverySetupPrivacy}`)
+    })
+
+    it('masks the typed recovery password', async () => {
+      savedSetup()
+      await mount(newAccount())
+      await typeRecovery(TYPED)
+      expect(recoveryField()?.getAttribute('type')).toBe('password')
     })
 
     it('keeps a right password in memory and shows the card as with a password held', async () => {

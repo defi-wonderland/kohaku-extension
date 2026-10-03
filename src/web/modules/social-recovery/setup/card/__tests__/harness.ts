@@ -1,9 +1,11 @@
 /**
  * What the card tests share: the fake recovery client the screen test hands
- * the screen, a promise a test settles by hand, and the refusal the setup read
- * throws when a password does not open the saved backup.
+ * the screen, a promise a test settles by hand, the refusal the setup read
+ * throws when a password does not open the saved backup, and the refusal a
+ * client built against another digest version fails with.
  */
 import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
+import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
 
 /** The two setup reads the card's password row calls on the client. */
 export interface FakeSetupReads {
@@ -15,8 +17,8 @@ export interface FakeSetupReads {
 export type FakeClientState =
   | { status: 'loading' }
   | { status: 'ready'; client: { setup: FakeSetupReads } }
-  | { status: 'failed'; error: Error }
-  | { status: 'update-the-wallet'; error: Error }
+  | { status: 'failed'; error: unknown }
+  | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
 
 /** A promise with its two ends in the test's hands. */
 export interface Deferred<T> {
@@ -41,6 +43,14 @@ export const restoreRefusalOf = (cause: RestoreCause): RestoreRefusal => {
   error.cause = { code: cause, subject: 'setup', values: {} }
   return error
 }
+
+/** The refusal of a client built against another deployment's digest version. */
+export const digestVersionRefusal = (): DigestVersionRefusal =>
+  Object.assign(new Error('The manager publishes another digest version.'), {
+    name: 'DigestVersionRefusal' as const,
+    state: 'update-the-wallet' as const,
+    carried: { name: 'Recovery', version: '1' }
+  })
 
 // Jest runs every file under __tests__, this one included; its own check runs
 // only when Jest runs this file, never from a file that imports the harness.
