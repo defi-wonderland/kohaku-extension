@@ -329,6 +329,22 @@ describe('the setup events of a manager', () => {
     )
   })
 
+  it('drops a log whose address is hex but no address, and answers the other logs', async () => {
+    const { provider } = chainWithLogs([
+      committedLog({ nonce: 1n }, 11_829_400),
+      committedLog({ nonce: 2n }, 11_829_401, { address: `0x${'ab'.repeat(10)}` as Address }),
+      clearedLog(1n, 11_829_402)
+    ])
+    const logs = await createSetupEvents(provider, MANAGER).setupLogsOf(ACCOUNT, {
+      from: 11_829_364,
+      to: 11_829_500
+    })
+    expect(logs.map((log) => [log.kind, log.nonce, log.at.blockNumber])).toEqual([
+      ['setup-committed', 1n, 11_829_400],
+      ['setup-cleared', 1n, 11_829_402]
+    ])
+  })
+
   it('finds the commit with the nonce and the commitment, in any case', async () => {
     const wanted = committedLog({ nonce: 2n }, 11_829_410)
     const { provider, logsRead } = chainWithLogs([

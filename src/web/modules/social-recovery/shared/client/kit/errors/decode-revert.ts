@@ -8,7 +8,6 @@
 import { decodeErrorResult, type Hex, slice } from 'viem'
 
 import {
-  KIT_ERROR_NAMES,
   type KitError,
   type KitErrorName,
   type KitErrorSource
@@ -28,15 +27,15 @@ const RENAMED: Readonly<Record<string, KitErrorName>> = {
   NotAKey: 'ReservedAuthority'
 }
 
-const kitErrorNameOf = (stripped: string): KitErrorName | undefined =>
-  RENAMED[stripped] ?? KIT_ERROR_NAMES.find((name) => name === stripped)
+// Every prefixed error of the two ABIs has a kit name.
+const kitErrorNameOf = (stripped: string): KitErrorName =>
+  RENAMED[stripped] ?? (stripped as KitErrorName)
 
 /**
  * The kit error a revert carries: its source, its kit name, its selector and
  * its arguments by name, without the leading underscore. Undefined for data
  * that is no kit error: empty data, an unknown selector, arguments that do not
- * decode, the language's own errors, or a contract error with no kit name.
- * Never throws.
+ * decode, or the language's own errors. Never throws.
  */
 export const decodeRevert = (data: Hex): KitError | undefined => {
   try {
@@ -47,9 +46,6 @@ export const decodeRevert = (data: Hex): KitError | undefined => {
     }
     const [prefix, source] = prefixed
     const name = kitErrorNameOf(errorName.slice(prefix.length))
-    if (!name) {
-      return undefined
-    }
     const values = args ?? []
     return {
       kind: 'known',

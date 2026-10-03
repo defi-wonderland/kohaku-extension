@@ -4,7 +4,13 @@
  * `SetupCleared(account indexed, action indexed, nonce)`, their filters, their
  * decoding and the two scans a setup reads them through.
  */
-import { decodeEventLog, encodeAbiParameters, encodeEventTopics, isAddressEqual } from 'viem'
+import {
+  decodeEventLog,
+  encodeAbiParameters,
+  encodeEventTopics,
+  isAddress,
+  isAddressEqual
+} from 'viem'
 
 import type {
   Address,
@@ -92,7 +98,12 @@ export const createSetupEvents = (provider: IProvider, manager: Address): SetupE
   const setupLogsIn = async (filter: FilterSpec, scan: LogScan): Promise<SetupLog[]> => {
     const logs = await logsInChunks(provider, filter, scan)
     return logs
-      .filter((log) => !log.removed && isAddressEqual(log.address, manager))
+      .filter(
+        (log) =>
+          !log.removed &&
+          isAddress(log.address, { strict: false }) &&
+          isAddressEqual(log.address, manager)
+      )
       .map(decodeSetupLog)
       .filter((log): log is SetupLog => log !== undefined)
   }
