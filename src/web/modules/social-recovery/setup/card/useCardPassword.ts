@@ -5,13 +5,20 @@
  * again, checked by opening the saved backup with it; no saved setup leads back
  * to the privacy step. A setup read that fails, or a client that cannot be
  * built, still shows the ask, since the check itself says whether a setup
- * answers. The typed password goes to the check and, once it opens the backup,
+ * answers: a check that finds no saved backup leads back to the privacy step,
+ * and a client ready after one that could not be built reads the setup once
+ * more. The typed password goes to the check and, once it opens the backup,
  * to the in-memory holder; nothing else keeps it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isAddressEqual } from 'viem'
 
-import type { Address, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
+import { RESTORE_CAUSES } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  RestoreCause,
+  RestoreRefusal
+} from '@web/modules/social-recovery/sdk-interfaces'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
@@ -35,13 +42,16 @@ const GONE: MissingPasswordRow = { kind: 'gone' }
 
 const sameAccount = (a: Address | null, b: Address): boolean => !!a && isAddressEqual(a, b)
 
-/** The refusal of a setup read whose password does not open the saved backup. */
-const isBackupUnopened = (error: unknown): boolean => {
+/** The restore cause a refused setup read carries, if the thrown value is a restore refusal. */
+const restoreCauseOf = (error: unknown): RestoreCause | undefined => {
   if (typeof error !== 'object' || error === null || !('cause' in error)) {
-    return false
+    return undefined
   }
   const { cause } = error as Partial<RestoreRefusal>
-  return typeof cause === 'object' && cause !== null && cause.code === 'restore.backup-unopened'
+  if (typeof cause !== 'object' || cause === null) {
+    return undefined
+  }
+  return RESTORE_CAUSES.find((known) => known === cause.code)
 }
 
 export const useCardPassword = (address: Address | null, level: CardLevel | null): CardPassword => {
@@ -61,14 +71,19 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
   const clientFailed = clientState.status === 'failed' || clientState.status === 'update-the-wallet'
 
   const [reading, setReading] = useState<SetupReading | null>(null)
-  const readRow = reading && sameAccount(address, reading.address) ? reading.row : null
+  const ownReading = reading && sameAccount(address, reading.address) ? reading : null
+  const readRow = ownReading ? ownReading.row : null
+  // A row the failed client made is read once more when a client is ready.
+  const readAgain = ownReading?.source === 'failed-client'
 
   useEffect(() => {
-    if (!needed || !address || readRow) {
+    if (!needed || !address || (readRow && !readAgain)) {
       return
     }
     if (clientFailed) {
-      setReading({ address, row: 'ask' })
+      if (!readRow) {
+        setReading({ address, row: 'ask', source: 'failed-client' })
+      }
       return
     }
     if (!kit) {
@@ -79,18 +94,18 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
       .then(() => kit.setup.setupState())
       .then((state) => {
         if (live) {
-          setReading({ address, row: state.hasSetup ? 'ask' : 'gone' })
+          setReading({ address, row: state.hasSetup ? 'ask' : 'gone', source: 'setup' })
         }
       })
       .catch(() => {
         if (live) {
-          setReading({ address, row: 'ask' })
+          setReading({ address, row: 'ask', source: 'setup' })
         }
       })
     return () => {
       live = false
     }
-  }, [needed, address, readRow, clientFailed, kit])
+  }, [needed, address, readRow, readAgain, clientFailed, kit])
 
   // An answer counts only for the account still selected on a mounted screen.
   const current = useRef(address)
@@ -121,7 +136,12 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
         if (!stillHere()) {
           return 'stale'
         }
-        return isBackupUnopened(error) ? 'wrong' : 'unchecked'
+        const cause = restoreCauseOf(error)
+        if (cause === 'restore.no-backup') {
+          setReading({ address, row: 'gone', source: 'setup' })
+          return 'no-backup'
+        }
+        return cause === 'restore.backup-unopened' ? 'wrong' : 'unchecked'
       }
       if (!stillHere()) {
         return 'stale'

@@ -50,11 +50,12 @@ export interface PasswordAskAnswer {
 
 /**
  * What a check of a typed recovery password found: it opened the saved backup
- * and the holder keeps it, it did not open the backup, the check itself failed,
+ * and the holder keeps it, it did not open the backup, the account has no saved
+ * backup and the row leads back to the privacy step, the check itself failed,
  * or the answer came after the screen left or the account changed and changed
  * nothing.
  */
-export type RecoveryPasswordCheck = 'opened' | 'wrong' | 'unchecked' | 'stale'
+export type RecoveryPasswordCheck = 'opened' | 'wrong' | 'no-backup' | 'unchecked' | 'stale'
 
 /** The line the recovery password ask shows under its field after a check. */
 export type RecoveryPasswordAskLine = 'wrong' | 'unchecked'
@@ -73,10 +74,17 @@ export interface RecoveryPasswordAskProps {
   check: (typed: string) => Promise<RecoveryPasswordCheck>
 }
 
+/**
+ * What made the row: the account's setup read or a check, or a client that
+ * could not be built, whose row is read again once a client is ready.
+ */
+export type SetupReadingSource = 'setup' | 'failed-client'
+
 /** What the setup read made of the row, with the account it was read for. */
 export interface SetupReading {
   address: Address
   row: 'ask' | 'gone'
+  source: SetupReadingSource
 }
 
 /** A password a check opened, with the account it opened for. */
