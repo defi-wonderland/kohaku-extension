@@ -58,7 +58,7 @@ export const RECORDS_KEY_PREFIX = 'socialRecovery'
  * that is a safe integer and not negative, so it keeps every digit.
  */
 const isChainId = (value: unknown): value is ChainId =>
-  (typeof value === 'bigint' && value >= 0) ||
+  (typeof value === 'bigint' && value >= 0n) ||
   (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
 
 const chainPart = (chainId: ChainId | string): string => {
