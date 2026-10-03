@@ -460,6 +460,13 @@ export interface DigestVersionRefusal extends Error {
   published?: DomainVersion
 }
 
+/** The refusal of a client member the deployed kit does not serve yet. */
+export interface NotServedRefusal extends Error {
+  name: 'NotServedRefusal'
+  /** The member, as `<part>.<member>`. */
+  member: string
+}
+
 export type RecoveryClientState =
   | { status: 'loading' }
   | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; receipts: ReceiptWait }
