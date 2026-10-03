@@ -104,6 +104,7 @@ export interface ProviderMock {
   send: jest.Mock
   getTransaction: jest.Mock
   getBlockNumber: jest.Mock
+  getCode: jest.Mock
   /** The replacement-aware response each transaction answers, by the start block given. */
   replaceable: jest.Mock
   once: jest.Mock
