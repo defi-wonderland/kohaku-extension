@@ -33,7 +33,6 @@ export const DEPLOYMENT_CHECKS = [
 export const deploymentRefusal = (check: DeploymentCheck, message: string): DeploymentRefusal => {
   const error = new Error(message) as DeploymentRefusal
   error.name = 'DeploymentRefusal'
-  error.cause = 'deployment'
   error.check = check
   return error
 }

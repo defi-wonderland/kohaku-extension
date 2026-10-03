@@ -472,7 +472,6 @@ export interface DigestVersionRefusal extends Error {
  */
 export interface DeploymentRefusal extends Error {
   name: 'DeploymentRefusal'
-  cause: 'deployment'
   check: DeploymentCheck
 }
 

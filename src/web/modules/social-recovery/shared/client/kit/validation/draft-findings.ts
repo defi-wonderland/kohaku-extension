@@ -65,7 +65,7 @@ export const verifyCostOf = (method: Address, methods: DeploymentMethods): bigin
 const isSecondary = (method: Address, methods: DeploymentMethods): boolean =>
   sameAddress(method, methods.methodAadhaar) || sameAddress(method, methods.methodZkpassport)
 
-const isBackupRefusal = (value: unknown): value is BackupRefusal =>
+export const isBackupRefusal = (value: unknown): value is BackupRefusal =>
   value instanceof Error && value.name === 'BackupRefusal'
 
 /** The rows of each clause, over the draft alone. */

@@ -50,7 +50,6 @@ import {
   openClearBackup,
   sealBackup
 } from '../backup'
-import type { BackupRefusal } from '../backup'
 import type { SetupLog } from '../events'
 import {
   armingData,
@@ -59,15 +58,12 @@ import {
   setupBodyOf,
   setupCommitmentOf
 } from '../formats'
-import { draftFindingsOf } from '../validation'
+import { draftFindingsOf, isBackupRefusal } from '../validation'
 import { storedCommitCallOf } from './commit-call'
 import { notServedEvents, notServedRefusal } from './not-served'
 import { accountBatchOf, accountCallOf, pinnedBlockOf } from './prepared'
 import { withNamedRevert } from './reverts'
 import type { KitSetupContext, MethodStandingReads } from './types'
-
-const isBackupRefusal = (value: unknown): value is BackupRefusal =>
-  value instanceof Error && value.name === 'BackupRefusal'
 
 /** A module whose views reverted: answered with the empty name and version. */
 const undeclared = (reads: MethodStandingReads): boolean =>

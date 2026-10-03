@@ -137,7 +137,6 @@ describe('a chain whose deployment record names a deployed kit', () => {
       const node = deployedNode(script)
       expect(await thrownBy(buildRecoveryClient(configOver(node)))).toMatchObject({
         name: 'DeploymentRefusal',
-        cause: 'deployment',
         check
       })
     })
