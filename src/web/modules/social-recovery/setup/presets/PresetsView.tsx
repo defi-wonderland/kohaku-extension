@@ -399,19 +399,28 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         <NoteBox testID="honesty-note">{t('socialRecovery.honestyNote')}</NoteBox>
       </View>
       {writeLine === 'writeFailed' && (
-        <Text testID="write-failed" fontSize={14} appearance="errorText" style={spacings.mbSm}>
-          {t('socialRecovery.records.writeFailed')}
-        </Text>
+        <Alert
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={
+            <Alert.Text size="sm" type="error" testID="write-failed">
+              {t('socialRecovery.records.writeFailed')}
+            </Alert.Text>
+          }
+        />
       )}
       {writeLine === 'startOverWhileSaving' && (
-        <Text
-          testID="start-over-while-saving"
-          fontSize={14}
-          appearance="errorText"
+        <Alert
+          type="error"
+          size="sm"
           style={spacings.mbSm}
-        >
-          {t('socialRecovery.records.startOverWhileSaving')}
-        </Text>
+          text={
+            <Alert.Text size="sm" type="error" testID="start-over-while-saving">
+              {t('socialRecovery.records.startOverWhileSaving')}
+            </Alert.Text>
+          }
+        />
       )}
       {loadFailed && renderLoadFailed()}
       {!loadFailed && savedAt === null && renderGrid()}
