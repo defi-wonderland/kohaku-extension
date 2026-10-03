@@ -163,7 +163,7 @@ export interface RecoveryClientConfiguration extends AccountFacts {
   /** The provider adapter over the extension's own provider (`createProviderAdapter`). */
   provider: IProvider
   /** The code read beside the provider adapter (`createCodeRead`), which a deployed kit needs. */
-  codeRead?: CodeRead
+  codeRead: CodeRead
 }
 
 // ---------------------------------------------------------------------------

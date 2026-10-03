@@ -46,10 +46,8 @@ import { deploymentOf } from './deployments'
 import { descriptorOf } from './descriptors'
 import { buildKitClient, checkActionConstants, readManagerDomain } from './kit/builder'
 import { createActionReads, createManagerReads } from './kit/reads'
-import { providerReadFailure } from './provider-adapter'
 import { sdkStandIn } from './stand-in'
 import type {
-  CodeRead,
   DeploymentFacts,
   DigestVersionRefusal,
   DomainVersion,
@@ -103,14 +101,6 @@ export const checkDigestVersion = (domain: Domain, descriptor: DeploymentDescrip
 const isConstructionRefusal = (value: unknown): value is ConstructionRefusal =>
   value instanceof Error && value.name === 'ConstructionRefusal'
 
-/** The code read of a configuration that names none: every read fails. */
-const NO_CODE_READ: CodeRead = {
-  code: () =>
-    Promise.reject(
-      providerReadFailure('code', new Error('The client configuration names no code read.'))
-    )
-}
-
 /**
  * The SDK's construction checks over the provider and the manager's domain, in
  * the SDK's order: the provider's chain (`chain-id`), the domain's chain and
@@ -157,10 +147,7 @@ const buildDeployedClient = async (
   descriptor: DeploymentDescriptor,
   clientConfiguration: ClientConfiguration
 ): Promise<RecoveryKitClient> => {
-  const { provider } = config
-  // A configuration with no code read builds a client whose code-aware reads
-  // fail; the approving side, which reads no chain, still serves.
-  const codeRead = config.codeRead ?? NO_CODE_READ
+  const { provider, codeRead } = config
   const manager = createManagerReads(provider, descriptor.manager)
   await checkChainAndDomain(
     provider,

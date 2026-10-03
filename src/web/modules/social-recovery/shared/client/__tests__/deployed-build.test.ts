@@ -207,27 +207,6 @@ describe('a chain whose deployment record names a deployed kit', () => {
     expect(await thrownBy(buildRecoveryClient(configOver(node)))).toBe(chainFailure)
   })
 
-  it('builds with no code read named, whose code-aware reads then fail and whose approving side serves', async () => {
-    const node = deployedNode()
-    node.answer(MANAGER, stateOfCall(DEPLOYED_ACTION), stateAnswer(NO_STATE))
-    const client = await buildRecoveryClient(configOver(node, { codeRead: undefined }))
-    expect(await thrownBy(client.setup.setupState())).toMatchObject({
-      name: 'ProviderReadFailure',
-      read: 'code'
-    })
-    expect(client.methodFor('ecdsa')).toBeDefined()
-    expect(
-      await thrownBy(
-        buildRecoveryClient(
-          configOver(deployedNode({ managerCode: false }), { codeRead: undefined })
-        )
-      )
-    ).toMatchObject({
-      name: 'ProviderReadFailure',
-      read: 'code'
-    })
-  })
-
   it("judges an account with no code by the creation's privileges the configuration carries", async () => {
     const node = deployedNode()
     node.answer(MANAGER, stateOfCall(DEPLOYED_ACTION), stateAnswer(NO_STATE))
