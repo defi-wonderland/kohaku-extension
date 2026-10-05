@@ -416,6 +416,12 @@ export const createKitSetupClient = (ctx: KitSetupContext): ISetupClient => {
       return Promise.reject(notServedRefusal('setup.prepareClearSetup'))
     },
 
+    /**
+     * Whether the prepared commit landed and still stands: its log is found
+     * from the prepared block on, and the manager holds its nonce and its
+     * commitment at the same block. A commit cleared or replaced since reads
+     * as not landed. The arming is read apart.
+     */
     confirmSetup(
       draft: SetupDraft,
       prepared: PreparedCall | PreparedBatch
@@ -442,7 +448,7 @@ export const createKitSetupClient = (ctx: KitSetupContext): ISetupClient => {
         const from =
           Number.isSafeInteger(preparedAt) && preparedAt >= 0 ? preparedAt : descriptor.deployedAt
         const block = await pin()
-        const [found, isAuthorized] = await Promise.all([
+        const [found, state, isAuthorized] = await Promise.all([
           events.commitOf(
             {
               account,
@@ -452,14 +458,18 @@ export const createKitSetupClient = (ctx: KitSetupContext): ISetupClient => {
             },
             { from, to: block.number }
           ),
+          manager.stateOf(account, actionAddress, block.number),
           action.isAuthorized(account, block.number)
         ])
+        const stands =
+          state.setupNonce === commit.nonce && state.setupCommitment === commit.setupCommitment
+        const landed = !!found && stands
         return {
-          landed: !!found,
+          landed,
           nonce: commit.nonce,
           setupCommitment: commit.setupCommitment,
           isAuthorized,
-          ...(found ? { position: found.at } : {})
+          ...(found && landed ? { position: found.at } : {})
         }
       })
     },

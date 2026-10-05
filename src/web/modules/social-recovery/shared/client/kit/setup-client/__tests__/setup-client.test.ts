@@ -616,11 +616,22 @@ describe('prepareCommitSetup', () => {
   })
 
   describe('confirmSetup', () => {
-    const landedWorld = (log: ReturnType<typeof committedLog> | undefined, authorized = true) => {
+    /** The manager's state once the prepared commit landed and stands. */
+    const SAVED = {
+      setupCommitment: commitmentOf(CONFIGURATION, 1n),
+      setupNonce: 1n,
+      setupCommittedAtBlock: HEAD
+    }
+    const landedWorld = (
+      log: ReturnType<typeof committedLog> | undefined,
+      authorized = true,
+      state = SAVED
+    ) => {
       const world = kitWorld({ accountCode: ACCOUNT_CODE })
       scriptAction(world.node, { supportsAccount: true, authorized })
       if (log) {
         world.node.addLog(log)
+        scriptState(world.node, state)
       }
       return world
     }
@@ -678,6 +689,40 @@ describe('prepareCommitSetup', () => {
         unarmedPrivate
       )
       expect(earlier.landed).toBe(false)
+    })
+
+    it('misses a commit that landed and was then cleared, with the arming kept', async () => {
+      const world = landedWorld(commitLogAt(HEAD), true, {
+        setupCommitment: zeroHash,
+        setupNonce: 1n,
+        setupCommittedAtBlock: 0
+      })
+      const confirmation = await world.setup.confirmSetup(draftAt('private'), unarmedPrivate)
+      expect(confirmation).toEqual({
+        landed: false,
+        nonce: 1n,
+        setupCommitment: commitmentOf(CONFIGURATION, 1n),
+        isAuthorized: true
+      })
+    })
+
+    it('misses a commit that landed and was then replaced by a later setup', async () => {
+      const world = landedWorld(commitLogAt(HEAD), true, {
+        setupCommitment: `0x${'5a'.repeat(32)}`,
+        setupNonce: 2n,
+        setupCommittedAtBlock: HEAD - 1
+      })
+      const confirmation = await world.setup.confirmSetup(draftAt('private'), unarmedPrivate)
+      expect(confirmation.landed).toBe(false)
+      expect(confirmation).not.toHaveProperty('position')
+    })
+
+    it("reads the manager's state at the block the log scan ends and the arming is read", async () => {
+      const world = landedWorld(commitLogAt(HEAD))
+      await world.setup.confirmSetup(draftAt('private'), unarmedPrivate)
+      expect(world.node.provider.logs.mock.calls.map((call) => call[1].to)).toEqual([HEAD])
+      expect(callsTo(world, stateOfCall()).map((c) => c.block)).toEqual([HEAD])
+      expect(callsTo(world, ACTION_CALLS.isAuthorized).map((c) => c.block)).toEqual([HEAD])
     })
 
     it('reads from the deployment block where the stored save carries no block', async () => {
