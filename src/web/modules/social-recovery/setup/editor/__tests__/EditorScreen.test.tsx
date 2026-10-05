@@ -112,6 +112,19 @@ const {
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
 const EditorScreen: typeof import('@web/modules/social-recovery/setup/editor/EditorScreen').default =
   require('@web/modules/social-recovery/setup/editor/EditorScreen').default
+const {
+  createWalletRecords,
+  defaultSetupDraft
+}: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  CHAIN_IDS,
+  WALLET_RECOVERY_CHAIN
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  ALICE,
+  BOB,
+  PASSPORT
+}: typeof import('@web/modules/social-recovery/setup/editor/__tests__/harness') = require('@web/modules/social-recovery/setup/editor/__tests__/harness')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
@@ -208,6 +221,61 @@ describe('the editor screen', () => {
     expect(byTestId('screen-spinner')).toBeNull()
     expect(byTestId('editor-title')).not.toBeNull()
     expect(container.textContent?.indexOf(BREADCRUMB)).toBe(0)
+  })
+
+  const press = async (id: string) => {
+    const node = byTestId(id)
+    if (!node) {
+      throw new Error(`nothing on screen with the test id ${id}`)
+    }
+    act(() => node.click())
+    await settle()
+  }
+
+  // A required row whose credential is also a member of the group after it.
+  const storeRowAlsoInGroup = () =>
+    createWalletRecords({ storage: mockStorage })
+      .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], ACCOUNT)
+      .setupDraft.write({
+        ...defaultSetupDraft(),
+        clauses: [
+          { threshold: 1, credentials: [ALICE] },
+          { threshold: 2, credentials: [ALICE, BOB, PASSPORT] }
+        ]
+      })
+
+  const expectOneRefusalInTheHeader = () => {
+    expect(byTestId('editor-picker')).toBeNull()
+    const refusals = container.querySelectorAll('[data-testid="editor-refusal"]')
+    expect(refusals).toHaveLength(1)
+    expect(refusals[0].textContent).toBe(en.socialRecovery.editor.duplicate)
+    // The header's line sits under the title and above the required rows.
+    const inOrder = container.querySelectorAll<HTMLElement>(
+      '[data-testid="editor-title"], [data-testid="editor-refusal"], [data-testid="editor-required"]'
+    )
+    expect(Array.from(inOrder, (node) => node.dataset.testid)).toEqual([
+      'editor-title',
+      'editor-refusal',
+      'editor-required'
+    ])
+  }
+
+  it('closes an open picker and refuses in the header when a row moves into a group that holds it', async () => {
+    await storeRowAlsoInGroup()
+    await showAccount(ACCOUNT)
+    await press('editor-add-required')
+    expect(byTestId('editor-picker')).not.toBeNull()
+    await press('editor-row-0-move')
+    expectOneRefusalInTheHeader()
+  })
+
+  it('closes an open picker and refuses in the header when a group member a row holds is made required', async () => {
+    await storeRowAlsoInGroup()
+    await showAccount(ACCOUNT)
+    await press('editor-add-required')
+    expect(byTestId('editor-picker')).not.toBeNull()
+    await press('editor-member-1-0-required')
+    expectOneRefusalInTheHeader()
   })
 
   it('takes the spinner back when the account is cleared', async () => {
