@@ -71,6 +71,14 @@ export const DROPPED_RECHECK_MS = 60_000
 export const DROPPED_READ_MS = 20_000
 
 /**
+ * How old a claim may be, in ms, when the stored save's last read before the
+ * send answers, for its page to send. Above the two limited reads before that
+ * read (`CLAIMED_SETUP_READ_MS + SEND_BLOCK_READ_MS`) and well under
+ * `GONE_GRACE_MS`, so a page that follows the claim cannot have voided it yet.
+ */
+export const CLAIM_SEND_LIMIT_MS = 40_000
+
+/**
  * How long a followed request's state rests before it is read again, in ms:
  * after a read that did not answer, while it reads neither in the queue nor in
  * the activity, and at most while the queue holds it and does not change.

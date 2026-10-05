@@ -11,9 +11,11 @@
  *                                     ├─ a setup found ─▶ already set up (the claim released)
  *                                     └─ none ─▶ the send's block: the claim's, else read (time-limited)
  *                                                ├─ unread ─▶ failedNotSent (the claim released)
- *                                                └─ known ──▶ the stored save read again
+ *                                                └─ known ──▶ the stored save read again (time-limited)
+ *                                                             ├─ unread ───▶ failedNotSent (the claim released)
  *                                                             ├─ another's ─▶ followed (nothing sent or released)
  *                                                             ├─ none ─────▶ looked for again, then offered
+ *                                                             ├─ its own, the claim old ─▶ failedNotSent (the claim released)
  *                                                             └─ its own ──▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   failedNotSent that may still land ──a setup read finds one──▶ already set up
  *   submitting with a hash, its first receipt wait past its limit ──▶ stalled
@@ -35,8 +37,10 @@
  * on this device under a new request id, with the block read before it, and
  * sends only where that claim wrote it, a setup read after the claim still
  * finds none within its limit, and the stored save read just before the send
- * is still its own. The block the send starts from is known before that last
- * read, so nothing is read from the network between it and the send. A page
+ * answers, within its limit, that it is still its own. That answer is believed
+ * only while the claim is young, well before a page that follows the claim may
+ * void it. The block the send starts from is known before that last read, so
+ * nothing is read from the network between it and the send. A page
  * that finds a stored save, on arrival, as the loser of a claim or as a claim
  * no longer stored, sends nothing and follows it with
  * the draft and the prepared write it sent: under its hash it waits for the
@@ -63,6 +67,7 @@ import {
 import type { WriteEvent, WriteMachineState } from '@web/modules/social-recovery/shared/writes'
 
 import {
+  CLAIM_SEND_LIMIT_MS,
   CLAIMED_SETUP_READ_MS,
   DROPPED_AFTER_MS,
   DROPPED_READ_MS,
@@ -894,8 +899,10 @@ const endFollow = (store: ArmStore, reading: symbol): void => {
  * that did not answer, read again after a rest or on "check again", never
  * taken as gone; gone, the account's setup read: a setup found landed while no
  * page watched and is checked as after a receipt. Where none is found, the
- * stored save is void once the gone readings since the last other reading are
- * older than `GONE_GRACE_MS`; it is then released. Each step reads through
+ * stored save is void once a gone reading began `GONE_GRACE_MS` or more after
+ * the first gone reading since the last other reading, timed by when each
+ * reading began, not by when the setup read after it answered; it is then
+ * released. Each step reads through
  * the steps `followNow` names; an answer read through steps that are no
  * longer those is dropped and the step reads again, and the count of gone
  * readings starts again. Answers the steps of a void, where the stored save
@@ -913,6 +920,7 @@ const followStep = async (
   }
   const { hold, steps } = at
   const { run, requestId } = hold
+  const readAt = Date.now()
   const state: SendRequestState = await steps
     .requestState(requestId)
     .catch((): SendRequestState => ({ status: 'unread' }))
@@ -959,7 +967,7 @@ const followStep = async (
     await rest(store, FOLLOW_REREAD_MS)
     return followStep(store, reading, options)
   }
-  const since = gone && gone.hold === hold && gone.steps === steps ? gone.since : Date.now()
+  const since = gone && gone.hold === hold && gone.steps === steps ? gone.since : readAt
   const found = await steps.hasSetup().catch(() => undefined)
   if (!stillAt(store, reading, at)) {
     return followStep(store, reading, options)
@@ -970,7 +978,7 @@ const followStep = async (
     await settle(store, steps, run, options)
     return undefined
   }
-  if (found === false && Date.now() - since >= GONE_GRACE_MS) {
+  if (found === false && readAt - since >= GONE_GRACE_MS) {
     endFollow(store, reading)
     store.dispatch({ type: 'voided', run })
     await steps.release(requestId).catch(() => undefined)
@@ -1330,10 +1338,11 @@ const checkAndSend = async (
   // A page that read this claim gone for longer than its grace may have
   // voided it, and the holder saved there under another claim: the run sends
   // only while the stored save is still its own, and else goes on as a page
-  // that arrives, with nothing sent and nothing released.
+  // that arrives, with nothing sent and nothing released. A read past its
+  // limit ends the run as a failed setup read does.
   let stored: RecordRead<SaveInFlightRecord>
   try {
-    stored = await steps.readInFlight()
+    stored = await readWithin(() => steps.readInFlight(), 'stored save read', SEND_BLOCK_READ_MS)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     await releaseWhereEnded(store, steps)
@@ -1341,6 +1350,20 @@ const checkAndSend = async (
   }
   if (stored.status !== 'present' || stored.value.requestId !== requestId) {
     await yieldClaim(store, steps, run, stored, options)
+    return
+  }
+  // An answer is believed only while the claim is young: a follower voids
+  // no sooner than its grace after the claim, so an answer that arrives later
+  // may show a claim already voided and saved on another page.
+  if (Date.now() - stored.value.claimedAt >= CLAIM_SEND_LIMIT_MS) {
+    dispatch({
+      type: 'error',
+      run,
+      error: new Error(
+        `The stored save answered ${CLAIM_SEND_LIMIT_MS} ms or more after the claim.`
+      )
+    })
+    await releaseWhereEnded(store, steps)
     return
   }
   if (!stillFollowing(store, run, requestId)) {
