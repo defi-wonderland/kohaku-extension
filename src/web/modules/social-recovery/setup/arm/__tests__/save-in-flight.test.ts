@@ -1070,6 +1070,51 @@ describe('the void of a followed save', () => {
     expect(offersSave(page.store)).toBe(true)
     expect(await stored(page.wired)).toBeUndefined()
   })
+
+  it('keeps the claim where a slow setup read answers none past the grace after a gone reading taken before the request was queued', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = wireSave(account, script(), { storage, requests })
+    owner.port.sendAccountBatch.mockImplementation(() => pending())
+    const answer = held<void>()
+    const readInFlight = owner.steps.readInFlight.bind(owner.steps)
+    jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
+      const capture = await readInFlight()
+      await answer.promise
+      return capture
+    })
+    unawaited(startSave(createArmStore(), owner.steps, OPTIONS))
+    await advanceTimers(0)
+    const claim = await stored(owner)
+    expect(claim).toBeDefined()
+    expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    // The follower reads the request gone, then its setup read hangs.
+    const follower = secondPage(storage, requests)
+    const setup = held<ReturnType<typeof setupStateOf>>()
+    follower.wired.setupState.mockImplementationOnce(() => setup.promise)
+    unawaited(follower.arrive())
+    await advanceTimers(0)
+    expect(follower.wired.setupState).toHaveBeenCalledTimes(1)
+
+    // Meanwhile the owner's page hands its request to the wallet, which queues it.
+    answer.release()
+    await advanceTimers(0)
+    expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    requests.queued = [claim!.requestId]
+    await advanceTimers(GONE_GRACE_MS + 1_000)
+
+    setup.release(setupStateOf(false))
+    await advanceTimers(0)
+    expect(await stored(owner)).toEqual(claim)
+    expect(offersSave(follower.store)).toBe(false)
+    expect(follower.store.state().requestId).toBe(claim!.requestId)
+
+    await advanceTimers(FOLLOW_REREAD_MS)
+    expect(follower.store.state().follow).toBe('queued')
+    expect(await stored(owner)).toEqual(claim)
+    expect(follower.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
 })
 
 describe('the start block stored with the claim', () => {

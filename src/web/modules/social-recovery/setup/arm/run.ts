@@ -643,8 +643,10 @@ const endFollow = (store: ArmStore, reading: symbol): void => {
  * that did not answer, read again after a rest or on "check again", never
  * taken as gone; gone, the account's setup read: a setup found landed while no
  * page watched and is checked as after a receipt. Where none is found, the
- * stored save is void once the gone readings since the last other reading are
- * older than `GONE_GRACE_MS`; it is then released. Each step reads through
+ * stored save is void once a gone reading began `GONE_GRACE_MS` or more after
+ * the first gone reading since the last other reading, timed by when each
+ * reading began, not by when the setup read after it answered; it is then
+ * released. Each step reads through
  * the steps `followNow` names; an answer read through steps that are no
  * longer those is dropped and the step reads again, and the count of gone
  * readings starts again. Answers the steps of a void, where the stored save
@@ -662,6 +664,7 @@ const followStep = async (
   }
   const { hold, steps } = at
   const { run, requestId } = hold
+  const readAt = Date.now()
   const state: SendRequestState = await steps
     .requestState(requestId)
     .catch((): SendRequestState => ({ status: 'unread' }))
@@ -708,7 +711,7 @@ const followStep = async (
     await rest(store, FOLLOW_REREAD_MS)
     return followStep(store, reading, options)
   }
-  const since = gone && gone.hold === hold && gone.steps === steps ? gone.since : Date.now()
+  const since = gone && gone.hold === hold && gone.steps === steps ? gone.since : readAt
   const found = await steps.hasSetup().catch(() => undefined)
   if (!stillAt(store, reading, at)) {
     return followStep(store, reading, options)
@@ -719,7 +722,7 @@ const followStep = async (
     await settle(store, steps, run, options)
     return undefined
   }
-  if (found === false && Date.now() - since >= GONE_GRACE_MS) {
+  if (found === false && readAt - since >= GONE_GRACE_MS) {
     endFollow(store, reading)
     store.dispatch({ type: 'voided', run })
     await steps.release(requestId).catch(() => undefined)
