@@ -2275,7 +2275,11 @@ describe('updates of one session run one at a time, across wrappers and pages', 
       expect(await landSession(records)).toMatchObject({ value: { account: ACCOUNT } })
       expect(await endSessionCountdown(records)).toBe(true)
     })
-    expect(locks.names).toEqual(Array(7).fill(SESSION_KEY))
+    expect(locks.names).toEqual([
+      ...Array(3).fill(SESSION_KEY),
+      recordKeys.recoveryEntry(CHAIN_ID, ACCOUNT),
+      ...Array(4).fill(SESSION_KEY)
+    ])
   })
 
   it('with the Web Locks API, two reply writes from one read run one at a time through the lock', async () => {
