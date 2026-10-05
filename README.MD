@@ -63,9 +63,13 @@ What you can test this way: the whole setup flow, up to a real save transaction 
 ### What you need
 
 - Node `>=22.12 <23`, yarn `1.22`, Chrome, and SSH access to GitHub (the `src/ambire-common` submodule is fetched over SSH).
-- The fork's **RPC URL** and its **explorer URL**. Both come from the Tenderly dashboard of the virtual network, or from whoever deployed the contracts. They are deliberately not written in this repository: the RPC URL lets anyone send transactions to the fork.
 - A way to give test ETH to an address **on the fork**: the faucet in the Tenderly dashboard of the virtual network. ETH on public Sepolia does not reach the fork.
-- The addresses of the deployed contracts. For the fork deployed on 2026-10-02 (forked from Sepolia at block 11829361, chain id 11155111):
+- The fork and the contracts on it. The fork used for this milestone was deployed on 2026-10-02 (forked from Sepolia at block 11829361, chain id 11155111). It is a shared test network: anyone with the RPC URL can send transactions to it.
+
+  | | |
+  | --- | --- |
+  | RPC URL | `https://virtual.sepolia.us-east.rpc.tenderly.co/e326a9bd-73b2-43c1-8079-eb37dd576267` |
+  | Explorer | `https://dashboard.tenderly.co/explorer/vnet/e326a9bd-73b2-43c1-8079-eb37dd576267` |
 
   | Contract | Address | Deployed at block |
   | --- | --- | --- |
@@ -80,15 +84,15 @@ What you can test this way: the whole setup flow, up to a real save transaction 
 2. In `.env`, set these three values. The deployment value is one line of JSON inside single quotes:
 
    ```
-   SEPOLIA_RPC_URL="<the fork's RPC URL>"
+   SEPOLIA_RPC_URL="https://virtual.sepolia.us-east.rpc.tenderly.co/e326a9bd-73b2-43c1-8079-eb37dd576267"
    RPC_PROVIDER="rpc"
-   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"0x734B9Aa580d4A184Ea129E791C4C9Fb8734B3aC6","methodEcdsa":"0x2CEC192aEDBC3C7348e19eEE7CefE1f12dFA50f9","methodPasskey":"0xF6f15A5E84615644d09BdBBB23ecc67E804B6043","action":"0x1e612c81087aaE64C31cb68953A480D06c5E4ac7","deployedAt":11829364,"digestVersion":"1","managerVersion":"1.0.0","auditedActions":[{"action":"0x1e612c81087aaE64C31cb68953A480D06c5E4ac7","publisher":"ethereumFoundation"}],"explorerUrl":"<the fork explorer's base URL>"}'
+   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"0x734B9Aa580d4A184Ea129E791C4C9Fb8734B3aC6","methodEcdsa":"0x2CEC192aEDBC3C7348e19eEE7CefE1f12dFA50f9","methodPasskey":"0xF6f15A5E84615644d09BdBBB23ecc67E804B6043","action":"0x1e612c81087aaE64C31cb68953A480D06c5E4ac7","deployedAt":11829364,"digestVersion":"1","managerVersion":"1.0.0","auditedActions":[{"action":"0x1e612c81087aaE64C31cb68953A480D06c5E4ac7","publisher":"ethereumFoundation"}],"explorerUrl":"https://dashboard.tenderly.co/explorer/vnet/e326a9bd-73b2-43c1-8079-eb37dd576267"}'
    ```
 
    - `RPC_PROVIDER` must be `rpc`. The light clients (`colibri`, `helios`) follow public Sepolia and cannot follow a fork.
-   - `explorerUrl` is optional. It is the base that `/tx/<hash>` is appended to, so "View on explorer" opens the fork's own transaction page. For a Tenderly virtual network it has the form `https://dashboard.tenderly.co/explorer/vnet/<network id>`. Without it the link opens Sepolia's Etherscan, which does not know the fork's transactions.
+   - `explorerUrl` is optional. It is the base that `/tx/<hash>` is appended to, so "View on explorer" opens the fork's own transaction page. For a Tenderly virtual network it has the form `https://dashboard.tenderly.co/explorer/vnet/<network id>`, as in the value above. Without it the link opens Sepolia's Etherscan, which does not know the fork's transactions.
    - Write the addresses with their checksum capitals as above, or all in lower case.
-   - With `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` empty, the wallet builds its built-in stand-in client, which exists for development and for the unit tests: against a real node the setup does not complete. With a malformed value (a missing or unknown field, a bad address) the recovery screens say they are unavailable.
+   - With `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` empty, the wallet builds its built-in stand-in client, which exists for development and for the unit tests: against a real node the setup does not complete. With a malformed value (a missing or unknown field, a bad address) most recovery screens fall to the wallet's "Something went wrong, but your funds are safe!" page. If you see that page on a recovery screen, check this value first.
 3. Build: `yarn build:web:webkit` (about two minutes). The extension is in `build/webkit-prod`.
 
 The build inlines the `.env` values. After any change to `.env`, build again and reload the extension.
@@ -149,7 +153,7 @@ The save is one transaction. It is sent and paid by the smart account's own key 
 - On the fork's explorer, the transaction is sent by the account's key to the account factory, and it contains the two calls: the grant to the recovery module, and `commitSetup` on the manager. The manager emits `SetupCommitted` for your account.
 - Try the edges you care about: close the tab while "Submitting" shows and open the save page again (it must follow the same save, not offer a second one); open the save page in two tabs; reject the request in the sign window (the screen must say the save was not sent and offer to try again).
 
-A reference run on 2026-10-05 saved a setup with one group (one guardian address and one passkey, any 1 of 2), a 48 hour waiting period and the Private level: transaction `0x6d17dcc6b7f51a1c54ca17b14044b5c530b6f1a645f7783925a4377c79c77d3d` in block 11829369, 280,141 gas. A simulated start of a recovery by that guardian succeeded against the saved setup.
+A reference run on 2026-10-05 saved a setup with one group (one guardian address and one passkey, any 1 of 2), a 48 hour waiting period and the Private level: transaction `0x6d17dcc6b7f51a1c54ca17b14044b5c530b6f1a645f7783925a4377c79c77d3d` in block 11829369, 280,141 gas ([on the fork's explorer](https://dashboard.tenderly.co/explorer/vnet/e326a9bd-73b2-43c1-8079-eb37dd576267/tx/0x6d17dcc6b7f51a1c54ca17b14044b5c530b6f1a645f7783925a4377c79c77d3d)). A simulated start of a recovery by that guardian succeeded against the saved setup.
 
 ### Caveats
 
