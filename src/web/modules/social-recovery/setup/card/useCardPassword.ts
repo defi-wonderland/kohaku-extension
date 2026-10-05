@@ -107,8 +107,13 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
     }
   }, [needed, address, readRow, readAgain, clientFailed, kit])
 
-  // An answer counts only for the account still selected on a mounted screen.
+  // An answer counts only for the account still selected on a mounted screen,
+  // and only for the latest check since the selection last changed.
   const current = useRef(address)
+  const generation = useRef(0)
+  if (current.current !== address) {
+    generation.current += 1
+  }
   current.current = address
   const mounted = useRef(true)
   useEffect(() => {
@@ -129,7 +134,9 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
         }
         return 'unchecked'
       }
-      const stillHere = () => mounted.current && sameAccount(current.current, address)
+      const mine = ++generation.current
+      const stillHere = () =>
+        mounted.current && generation.current === mine && sameAccount(current.current, address)
       try {
         await kit.setup.getSetup({ password: typed })
       } catch (error: unknown) {
