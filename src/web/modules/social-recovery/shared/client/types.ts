@@ -46,6 +46,7 @@ import type { ChainId, SlotKind, WalletRecords } from '@web/modules/social-recov
 import type { UNKNOWN_ACTION } from './audited-actions'
 import type { RECOVERY_CHAINS } from './chains'
 import type { PUBLISHERS } from './deployments'
+import type { DEPLOYMENT_CHECKS } from './kit/builder/construction'
 import type { PROVIDER_READS } from './provider-adapter'
 import type { MISSING_SEND_ACTION, SEND_REFUSAL_REASONS } from './sender'
 import type { RECOVERY_CALLS } from './sending'
@@ -148,6 +149,8 @@ export interface AccountFacts {
   accountImplementation?: Address
   /** The wallet's own keys it asks `isAuthority` about; never the account's signer set. */
   candidateKeys?: Address[]
+  /** The privileges the account's creation grants, the keys of an account with no code yet. */
+  initialPrivileges?: Account['initialPrivileges']
 }
 
 export interface RecoveryClientConfiguration extends AccountFacts {
@@ -159,6 +162,8 @@ export interface RecoveryClientConfiguration extends AccountFacts {
   addressBook: AddressBook
   /** The provider adapter over the extension's own provider (`createProviderAdapter`). */
   provider: IProvider
+  /** The code read beside the provider adapter (`createCodeRead`), which a deployed kit needs. */
+  codeRead: CodeRead
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +254,21 @@ export interface ReceiptWait {
    */
   wait(transactionHash: Hex, startBlock: number): Promise<ProviderTransactionReceipt>
 }
+
+/** Whether the node knows a transaction by its hash, as one read of it answered. */
+export type TransactionKnown = 'known' | 'unknown'
+
+/** The read of a transaction by its hash, over the extension's provider. */
+export interface TransactionLookup {
+  /**
+   * One read of the transaction: `known` where the node answers it, `unknown`
+   * where it answers none. A read that fails rejects; it never reads unknown.
+   */
+  transactionKnown(transactionHash: Hex): Promise<TransactionKnown>
+}
+
+/** The receipt wait with the read of a transaction by its hash, over one provider. */
+export type ReceiptReads = ReceiptWait & TransactionLookup
 
 /** What a receipt wait takes: the signal the caller aborts when it releases the provider. */
 export interface ReceiptWaitOptions {
@@ -460,9 +480,28 @@ export interface DigestVersionRefusal extends Error {
   published?: DomainVersion
 }
 
+/**
+ * The refusal of a deployed kit whose contracts disagree with the deployment
+ * this build names: an address with no contract of the expected kind, or an
+ * action bound to another manager, implementation, kit slot or binding.
+ */
+export interface DeploymentRefusal extends Error {
+  name: 'DeploymentRefusal'
+  check: DeploymentCheck
+}
+
+export type DeploymentCheck = typeof DEPLOYMENT_CHECKS[number]
+
+/** The refusal of a client member the deployed kit does not serve yet. */
+export interface NotServedRefusal extends Error {
+  name: 'NotServedRefusal'
+  /** The member, as `<part>.<member>`. */
+  member: string
+}
+
 export type RecoveryClientState =
   | { status: 'loading' }
-  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; receipts: ReceiptWait }
+  | { status: 'ready'; client: RecoveryKitClient; reads: ChainReads; receipts: ReceiptReads }
   | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
   | { status: 'failed'; error: unknown }
 
