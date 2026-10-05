@@ -26,6 +26,7 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmStore, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 import {
+  CLAIM_SEND_LIMIT_MS,
   CLAIMED_SETUP_READ_MS,
   SEND_BLOCK_READ_MS
 } from '@web/modules/social-recovery/setup/arm/constants'
@@ -1693,6 +1694,133 @@ describe('the time limit of the setup read after the claim', () => {
     await advanceTimers(SHORT_TIMEOUT_MS)
     await retry
     expect(wired.setupState).toHaveBeenCalledTimes(4)
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
+})
+
+describe('the age of the claim when the stored save is read before the send', () => {
+  /**
+   * The stored save's last read before the send captures the storage at once
+   * and answers that capture, by the device's clock, when the claim is `age`
+   * ms old.
+   */
+  const answersAtClaimAge = (wired: WiredSave, age: number) => {
+    const readInFlight = wired.steps.readInFlight.bind(wired.steps)
+    jest.spyOn(wired.steps, 'readInFlight').mockImplementationOnce(async () => {
+      const capture = await readInFlight()
+      if (capture.status === 'present') {
+        jest.setSystemTime(capture.value.claimedAt + age)
+      }
+      return capture
+    })
+  }
+
+  it('sends nothing on an answer of its own claim that arrives after a follower voided it and the holder saved on that page', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = wireSave(account, script(), { storage, requests })
+    const answer = held<void>()
+    const readInFlight = owner.steps.readInFlight.bind(owner.steps)
+    jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
+      const capture = await readInFlight()
+      await answer.promise
+      return capture
+    })
+    const ownerStore = createArmStore()
+    const running = startSave(ownerStore, owner.steps, OPTIONS)
+    await advanceTimers(0)
+    const claim = await stored(owner)
+    expect(claim).toBeDefined()
+    expect(ownerStore.state().requestId).toBe(claim?.requestId)
+    expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    // The owner's page sleeps: the device's clock moves on, its timers do not run.
+    const follower = secondPage(storage, requests)
+    unawaited(follower.arrive())
+    await advanceTimers(0)
+    expect(follower.store.state().follow).toBe('gone')
+    jest.setSystemTime(Date.now() + GONE_GRACE_MS)
+    await advanceTimers(FOLLOW_REREAD_MS)
+    expect(offersSave(follower.store)).toBe(true)
+    expect(await stored(owner)).toBeUndefined()
+
+    const saving = startSave(follower.store, follower.wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await saving
+    expect(isSaved(follower.store.state())).toBe(true)
+    expect(follower.wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    const saved = follower.store.state()
+
+    answer.release()
+    await advanceTimers(0)
+    await running
+    expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(ownerStore.state().write.status).toBe('failedNotSent')
+    expect(canRetry(ownerStore.state().write)).toBe(true)
+    expect(mayStillLand(ownerStore.state().write)).toBe(false)
+    expect(follower.store.state()).toBe(saved)
+    expect(
+      owner.port.sendAccountBatch.mock.calls.length +
+        follower.wired.port.sendAccountBatch.mock.calls.length
+    ).toBe(1)
+  })
+
+  it('sends once on an answer that arrives when the claim is just under the limit', async () => {
+    const wired = wireSave(account, script())
+    answersAtClaimAge(wired, CLAIM_SEND_LIMIT_MS - 1)
+    const store = createArmStore()
+    const running = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('refuses an answer that arrives when the claim is at the limit, releases the claim, and the retry sends once', async () => {
+    const wired = wireSave(account, script())
+    answersAtClaimAge(wired, CLAIM_SEND_LIMIT_MS)
+    const store = createArmStore()
+    await startSave(store, wired.steps, OPTIONS)
+
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(store.state().requestId).toBeUndefined()
+    expect(await stored(wired)).toBeUndefined()
+
+    const retry = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await retry
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('ends a read that never answers at its limit with nothing sent, the claim released and the retry', async () => {
+    const wired = wireSave(account, script())
+    jest.spyOn(wired.steps, 'readInFlight').mockImplementationOnce(() => pending())
+    const store = createArmStore()
+    unawaited(startSave(store, wired.steps, OPTIONS))
+    await advanceTimers(0)
+    expect(await stored(wired)).toBeDefined()
+
+    await advanceTimers(SEND_BLOCK_READ_MS - 1)
+    expect(store.state().write.status).toBe('submitting')
+    expect(await stored(wired)).toBeDefined()
+
+    await advanceTimers(1)
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(store.state().requestId).toBeUndefined()
+    expect(await stored(wired)).toBeUndefined()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    const retry = startSave(store, wired.steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await retry
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(isSaved(store.state())).toBe(true)
   })
