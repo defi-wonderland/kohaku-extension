@@ -53,9 +53,17 @@ import type {
 /** The prefix of every storage key the records use. */
 export const RECORDS_KEY_PREFIX = 'socialRecovery'
 
+/**
+ * Whether a value is a chain id: a bigint that is not negative, or a number
+ * that is a safe integer and not negative, so it keeps every digit.
+ */
+const isChainId = (value: unknown): value is ChainId =>
+  (typeof value === 'bigint' && value >= 0n) ||
+  (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+
 const chainPart = (chainId: ChainId | string): string => {
   const text = String(chainId)
-  if (!/^[0-9]+$/.test(text)) {
+  if ((typeof chainId !== 'string' && !isChainId(chainId)) || !/^[0-9]+$/.test(text)) {
     throw new Error(`Invalid chain id: ${text}`)
   }
   return text
@@ -153,7 +161,7 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
   if (
     typeof record.account !== 'string' ||
     !isAddress(record.account, { strict: false }) ||
-    (typeof record.chainId !== 'number' && typeof record.chainId !== 'bigint') ||
+    !isChainId(record.chainId) ||
     typeof record.method !== 'string'
   ) {
     return false
@@ -176,8 +184,8 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
 
 /**
  * Whether a stored value is a save in flight: a draft, a prepared call or
- * batch, the request id, the claim time and, where present, the hash and the
- * start block.
+ * batch, the request id, the claim time and, where present, the hash, the
+ * time of its first write and the start block.
  */
 const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
   if (typeof value !== 'object' || value === null) {
@@ -196,6 +204,8 @@ const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
     typeof record.claimedAt === 'number' &&
     Number.isFinite(record.claimedAt) &&
     (record.transactionHash === undefined || typeof record.transactionHash === 'string') &&
+    (record.sentAt === undefined ||
+      (typeof record.sentAt === 'number' && Number.isFinite(record.sentAt))) &&
     (record.startBlock === undefined ||
       (Number.isSafeInteger(record.startBlock) && (record.startBlock as number) >= 0))
   )
@@ -791,6 +801,7 @@ export const createWalletRecords = ({
           const value: SaveInFlightRecord = {
             ...current.value,
             transactionHash,
+            ...(current.value.transactionHash === undefined ? { sentAt: now() } : {}),
             ...(startBlock === undefined ? {} : { startBlock })
           }
           if (!isSaveInFlight(value)) {

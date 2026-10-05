@@ -839,7 +839,7 @@ describe('a setup wipe removes the six records in one storage call', () => {
 
 describe('an invalid address or chain id is refused, never stored under a bad key', () => {
   const BAD_ADDRESSES = ['', '0x', 'not-an-address', '0x123', `${ACCOUNT}00`, ACCOUNT.slice(2)]
-  const BAD_CHAINS: unknown[] = [-1, -1n, 1.5, NaN, 'abc', '0x1']
+  const BAD_CHAINS: unknown[] = [-1, -1n, 1.5, NaN, Infinity, 2 ** 53, 'abc', '0x1']
 
   BAD_ADDRESSES.forEach((bad) =>
     it(`refuses the address '${bad}' and writes nothing`, async () => {
@@ -878,6 +878,20 @@ describe('an invalid address or chain id is refused, never stored under a bad ke
       expect(storage.raw.size).toBe(0)
     })
   )
+
+  it('keys a number chain id and the same bigint chain id alike', async () => {
+    const { records } = setup()
+    expect(recordKeys.setup('inventory', 11155111, ACCOUNT)).toBe(
+      recordKeys.setup('inventory', 11155111n, ACCOUNT)
+    )
+    expect(recordKeys.recoverySession(11155111, ACCOUNT)).toBe(
+      recordKeys.recoverySession(11155111n, ACCOUNT)
+    )
+    await records.setup(11155111, ACCOUNT).inventory.write(['passport'])
+    expect(present(await records.setup(11155111n, ACCOUNT).inventory.read()).value).toEqual([
+      'passport'
+    ])
+  })
 })
 
 describe('no record is a bare boolean or zero', () => {
@@ -2342,6 +2356,15 @@ describe('the ceremony request under its request id', () => {
     expect(present(await records.ceremonyRequest('as-number').read()).value.chainId).toBe(11155111)
   })
 
+  const CHAIN_IDS: ChainId[] = [1, 11155111, 1n]
+  CHAIN_IDS.forEach((chainId) =>
+    it(`reads a request whose chain id is ${typeof chainId} ${String(chainId)}`, async () => {
+      const { records } = setup()
+      await records.ceremonyRequest(ID).write({ ...ENROLL, chainId })
+      expect(present(await records.ceremonyRequest(ID).read()).value.chainId).toBe(chainId)
+    })
+  )
+
   it('reads a request whose account is in a letter case that fails the checksum', async () => {
     const { records } = setup()
     await records.ceremonyRequest(ID).write({ ...ENROLL, account: MISCASED })
@@ -2415,6 +2438,37 @@ describe('the ceremony request under its request id', () => {
       await storage.set(recordKeys.ceremonyRequest(ID), value)
       expect(await records.ceremonyRequest(ID).read()).toBe(ABSENT)
       expect(await records.ceremonyRequest(ID).age(T0)).toBeNull()
+    })
+  )
+
+  // A storage that hands back the value it holds as is, so a chain id that rich
+  // JSON would turn into null still reaches the read.
+  const holding = (value: unknown) => {
+    const storage = makeStorage()
+    const get = (async () => value) as typeof storage.get
+    return createWalletRecords({ storage: { ...storage, get }, now: () => T0 })
+  }
+  const BAD_CHAIN_IDS: [string, unknown][] = [
+    ['a fraction', 1.5],
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['negative', -1],
+    ['a negative bigint', -1n],
+    ['a number above the safe range', 2 ** 53]
+  ]
+  BAD_CHAIN_IDS.forEach(([label, chainId]) =>
+    it(`reads a request whose chain id is ${label} as absent`, async () => {
+      const records = holding(stored({ ...ENROLL, chainId }))
+      expect(await records.ceremonyRequest(ID).read()).toBe(ABSENT)
+      expect(await records.ceremonyRequest(ID).age(T0)).toBeNull()
+    })
+  )
+  CHAIN_IDS.forEach((chainId) =>
+    it(`reads a request held as is whose chain id is ${typeof chainId} ${String(
+      chainId
+    )}`, async () => {
+      const records = holding(stored({ ...ENROLL, chainId }))
+      expect(present(await records.ceremonyRequest(ID).read()).value.chainId).toBe(chainId)
     })
   )
 
@@ -2640,7 +2694,7 @@ describe('the setup save in flight', () => {
     const { records } = setup()
     const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
     await saving.claim(SAVE_CLAIM)
-    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: START_BLOCK }
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: T0, startBlock: START_BLOCK }
     const marked = await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
     expect(present(marked).value).toEqual(sent)
     expect(present(await saving.read()).value).toEqual(sent)
@@ -2675,7 +2729,7 @@ describe('the setup save in flight', () => {
     const { records } = setup()
     const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
     await saving.claim({ ...SAVE_CLAIM, startBlock: CLAIM_BLOCK })
-    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: CLAIM_BLOCK }
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: T0, startBlock: CLAIM_BLOCK }
     expect(present(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH)).value).toEqual(sent)
     expect(present(await saving.read()).value).toEqual(sent)
   })
@@ -2684,7 +2738,7 @@ describe('the setup save in flight', () => {
     const { records } = setup()
     const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
     await saving.claim({ ...SAVE_CLAIM, startBlock: CLAIM_BLOCK })
-    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: START_BLOCK }
+    const sent = { ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: T0, startBlock: START_BLOCK }
     expect(
       present(await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)).value
     ).toEqual(sent)
@@ -2729,6 +2783,7 @@ describe('the setup save in flight', () => {
     expect(present(await saving.read()).value).toEqual({
       ...SAVE_CLAIM,
       transactionHash: TX_HASH,
+      sentAt: T0,
       startBlock: START_BLOCK
     })
   })
@@ -2766,6 +2821,55 @@ describe('the setup save in flight', () => {
     expect(kept.transactionHash).toBeUndefined()
   })
 
+  it('marking it sent writes the time of the first hash from the clock of the records, not the claim time', async () => {
+    const { storage, records, clock } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    clock.t = T0 + 3 * HOUR
+    await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
+    const tab = createWalletRecords({ storage, now: () => T0 + 9 * HOUR })
+    const read = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value
+    expect(read.sentAt).toBe(T0 + 3 * HOUR)
+    expect(read.claimedAt).toBe(SAVE_CLAIM.claimedAt)
+  })
+
+  it('marking it sent a second time keeps the time of the first hash, whatever hash or block it brings', async () => {
+    const { records, clock } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    clock.t = T0 + HOUR
+    await saving.markSent(SAVE_CLAIM.requestId, TX_HASH, START_BLOCK)
+    clock.t = T0 + 4 * HOUR
+    const again = await saving.markSent(
+      SAVE_CLAIM.requestId,
+      `0x${'ee'.repeat(32)}`,
+      START_BLOCK + 9
+    )
+    expect(present(again).value.sentAt).toBe(T0 + HOUR)
+    expect(present(await saving.read()).value.sentAt).toBe(T0 + HOUR)
+  })
+
+  it('a record stored with a hash and no time of it, as written before the time was kept, reads present and keeps no time when marked again', async () => {
+    const { storage, records, clock } = setup()
+    const older = { ...SAVE_CLAIM, transactionHash: TX_HASH, startBlock: START_BLOCK }
+    await storage.set(KEY, { value: older, savedAt: T0 })
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    expect(present(await saving.read()).value).toEqual(older)
+    clock.t = T0 + 2 * HOUR
+    const again = await saving.markSent(SAVE_CLAIM.requestId, TX_HASH)
+    expect(present(again).value.sentAt).toBeUndefined()
+    expect(present(await saving.read()).value).toEqual(older)
+  })
+
+  it('marking it sent under another request id writes no time of a hash', async () => {
+    const { records, clock } = setup()
+    const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await saving.claim(SAVE_CLAIM)
+    clock.t = T0 + HOUR
+    await saving.markSent(SECOND_CLAIM.requestId, TX_HASH, START_BLOCK)
+    expect(present(await saving.read()).value.sentAt).toBeUndefined()
+  })
+
   const stored = (value: unknown) => ({ value, savedAt: T0 })
   const MALFORMED: [string, unknown][] = [
     ['a bare record with no savedAt', SAVE_CLAIM],
@@ -2788,6 +2892,18 @@ describe('the setup save in flight', () => {
     ['a record with no claim time', stored({ ...SAVE_CLAIM, claimedAt: undefined })],
     ['a record whose claim time is a string', stored({ ...SAVE_CLAIM, claimedAt: '1700' })],
     ['a record whose hash is a number', stored({ ...SAVE_CLAIM, transactionHash: 7 })],
+    [
+      'a record whose time of the hash is a string',
+      stored({ ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: '1700' })
+    ],
+    [
+      'a record whose time of the hash is null, as JSON stores a time that is not finite',
+      stored({ ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: null })
+    ],
+    [
+      'a record whose time of the hash is not finite',
+      stored({ ...SAVE_CLAIM, transactionHash: TX_HASH, sentAt: Number.POSITIVE_INFINITY })
+    ],
     ['a record whose start block is negative', stored({ ...SAVE_CLAIM, startBlock: -1 })],
     ['a record whose start block is a fraction', stored({ ...SAVE_CLAIM, startBlock: 1.5 })],
     ['a record whose start block is a string', stored({ ...SAVE_CLAIM, startBlock: '12' })]
