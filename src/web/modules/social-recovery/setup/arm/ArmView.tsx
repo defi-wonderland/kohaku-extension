@@ -28,7 +28,11 @@ import {
   renderResolvedName,
   renderValueLabel
 } from '@web/modules/social-recovery/shared/display'
-import { mayStillLand, renderDepositStep } from '@web/modules/social-recovery/shared/writes'
+import {
+  mayStillLand,
+  renderDepositStep,
+  type WriteStatus
+} from '@web/modules/social-recovery/shared/writes'
 import DepositStepView from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
 import WriteStateView from '@web/modules/social-recovery/shared/writes/components/WriteStateView'
 import type { SaveBlock } from '@web/modules/social-recovery/setup/review'
@@ -45,7 +49,12 @@ const REVIEW = 'socialRecovery.review'
 
 // The write states that draw lines of their own; the gas check's spinner and
 // the states that render nothing stay outside a card.
-const CARDED_WRITE_STATUSES = ['gasReadError', 'submitting', 'failedNotSent', 'failedReverted']
+const CARDED_WRITE_STATUSES: readonly WriteStatus[] = [
+  'gasReadError',
+  'submitting',
+  'failedNotSent',
+  'failedReverted'
+]
 
 const ArmView = ({
   arrival,
