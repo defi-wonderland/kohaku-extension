@@ -52,6 +52,7 @@ import {
 } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 import type {
   MemoryStorage,
+  Page,
   RequestsFake,
   SaveScript,
   WiredSave
@@ -130,14 +131,12 @@ const firstPageSent = async (storage: MemoryStorage, requests: RequestsFake) => 
 }
 
 /** A page over the same storage whose node knows no transaction and whose account holds no setup. */
-const pageOf = (storage: MemoryStorage, requests: RequestsFake) => {
+const pageOf = (storage: MemoryStorage, requests: RequestsFake): Page => {
   const wired = wireSave(account, script(), { storage, requests })
   wired.receipts.transactionKnown.mockResolvedValue('unknown')
   const store = createArmStore()
   return { wired, store, arrive: () => lookForSave(store, wired.steps, OPTIONS) }
 }
-
-type Page = ReturnType<typeof pageOf>
 
 const isDropped = (store: ArmStore) => store.state().dropped === true
 

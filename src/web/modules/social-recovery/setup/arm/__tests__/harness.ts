@@ -472,6 +472,13 @@ export interface WiredSave {
   storage: MemoryStorage
 }
 
+/** A page over a save's storage: its wiring, its store, and its arrival. */
+export interface Page {
+  wired: WiredSave
+  store: ArmStore
+  arrive: () => Promise<void>
+}
+
 export type MemoryStorage = RecordStorage & { raw: Map<string, string> }
 
 /** What a save is wired over beside its script: the device's storage and the wallet's queue and activity. */
