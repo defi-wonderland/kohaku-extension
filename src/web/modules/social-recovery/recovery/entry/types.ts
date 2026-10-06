@@ -10,6 +10,7 @@ import type {
   IRecoveryActionInteractor,
   ISetupClient,
   PrivacyLevel,
+  RestoreCause,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
@@ -268,6 +269,12 @@ export type ReadoutClient =
   | { status: 'update-the-wallet' }
   | { status: 'failed'; retry: () => void }
 
+/** The restore cause a thrown restore refusal carries, with the backup's refusal reason where it names one. */
+export interface RestoreRefusalReading {
+  cause: RestoreCause
+  reason?: unknown
+}
+
 /** The path's shape a shape-visible setup publishes: each clause's threshold and its methods, no value. */
 export interface ShapeNote {
   clauses: { threshold: number; methods: Address[] }[]
@@ -340,14 +347,21 @@ export type EntryRecordRead =
   | { status: 'absent' }
   | { status: 'failed' }
 
-/** One row of the readout: the method's kind name and its value, or the hidden value. */
+export interface ReadoutEntryState {
+  read: EntryRecordRead
+  retry: () => void
+}
+
+/** One row of the readout's path. */
 export interface ReadoutRow {
-  kindName: string
-  /** The value line; null where the row has none to show. */
-  value: string | null
-  hidden: boolean
-  /** A passkey committed under another origin than this build's. */
-  originMismatch: boolean
+  /** The row's value: a guardian's address, a passkey's name, the kind's name, or the hidden value. */
+  name: string
+  /** The kind word beside the value, where the value is not the kind's name itself. */
+  aside: string | null
+  /** The hidden chip beside a masked value. */
+  chip: string | null
+  /** The lines under the row, in order. */
+  lines: string[]
 }
 
 /** One clause of the readout: a required row, or a group with its threshold. */
@@ -357,6 +371,18 @@ export interface ReadoutClause {
   rows: ReadoutRow[]
 }
 
+/** The path as the readout draws it: the clauses, the rule lines and the waiting period. */
+export interface ReadoutPath {
+  clauses: ReadoutClause[]
+  ruleLines: string[]
+  /** The waiting period, or the hidden value. */
+  wait: string
+  /** The hidden chip beside a masked waiting period. */
+  waitChip: string | null
+  /** Whether a group lets the holder pick which members answer. */
+  choice: boolean
+}
+
 /** The values the readout's rows read beside the configuration. */
 export interface ReadoutRowContext {
   addressBook: AddressBook
@@ -364,21 +390,34 @@ export interface ReadoutRowContext {
   ownRpIdHash: Hex
 }
 
+export interface ReadoutStageProps {
+  records: ReadoutOptions['records']
+  chainId: ChainId
+  account: Address
+  entry: RecoveryEntryRecord
+  networkName: string
+  context: ReadoutRowContext
+  navigate: (to: string) => void
+}
+
 export interface ReadoutViewProps {
   state: ReadoutState
   account: Address
   networkName: string
   context: ReadoutRowContext
+  onBack: () => void
 }
 
 export interface ReadoutPasswordAskProps {
+  level: HiddenLevel
   unlock: UnlockState
+  networkName: string
   onUnlock: (password: string) => void
   onAskAgain: () => void
   onRetry: () => void
-  networkName: string
+  onBack: () => void
 }
 
-export interface ReadoutClausesProps {
-  clauses: readonly ReadoutClause[]
+export interface ReadoutPathBlockProps {
+  path: ReadoutPath
 }
