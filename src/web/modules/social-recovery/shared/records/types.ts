@@ -322,6 +322,9 @@ export interface StoredSession extends StoredRecord<RecoverySessionRecord> {
   revision: SessionRevision
 }
 
+/** A stored recovery session whose value is the live session. */
+export type LiveStoredSession = StoredSession & { value: LiveRecoverySession }
+
 /** A read of the recovery session. */
 export type SessionRead = AbsentRecord | ({ status: 'present' } & StoredSession)
 

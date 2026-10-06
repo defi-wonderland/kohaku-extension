@@ -33,6 +33,7 @@ import type {
   ListedRecord,
   ListedRecoveryEntry,
   LiveRecoverySession,
+  LiveStoredSession,
   RecordAccessor,
   RecordRead,
   RecoveryEntryAccessor,
@@ -604,7 +605,7 @@ export const createWalletRecords = ({
     current: SessionRead,
     chainId: ChainId,
     account: Address
-  ): StoredSession & { value: LiveRecoverySession } => {
+  ): LiveStoredSession => {
     if (current.status !== 'present' || current.value.state !== 'live') {
       throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
     }
@@ -861,13 +862,13 @@ export const createWalletRecords = ({
    * One of four events wipes a live recovery session: the deadline passed,
    * another attempt opened, the setup changed or the recoverer abandoned. The
    * gathering, with its replies, its row notes, its submission in flight and
-   * its attempt id, is deleted,
-   * and the session keeps the reason, the account and, for `deadline-passed`,
-   * the deadline. The recoverer's abandon ends the recovery, so it also removes
-   * the account's recovery entry; the other three events leave it. Returns
-   * whether it wiped anything: an absent, wiped or landed session is left
-   * unchanged, and so is the entry, except that an abandon of a session an
-   * abandon already wiped removes the entry that abandon left.
+   * its attempt id, is deleted, and the session keeps the reason, the account
+   * and, for `deadline-passed`, the deadline. The recoverer's abandon ends the
+   * recovery, so it also removes the account's recovery entry; the other three
+   * events leave it. Returns whether it wiped anything: an absent, wiped or
+   * landed session is left unchanged, and so is the entry, except that an
+   * abandon of a session an abandon already wiped removes the entry that
+   * abandon left.
    * `submission-landed` runs through `landSubmission`, and a security stop or a
    * pause is no wipe event. Throws `SessionRevisionConflict`
    * when the session changed after the caller read `expectedRevision`.
@@ -917,9 +918,9 @@ export const createWalletRecords = ({
    * The submission landed: the live session survives as the countdown's record,
    * `{ state: 'landed', account }`, written in one set in place of the live
    * session, so the gathering, its replies, its submission in flight and its
-   * attempt id are gone in the same write. Refuses when no live session exists, and throws
-   * `SessionRevisionConflict` when the session changed after the caller read
-   * `expectedRevision`.
+   * attempt id are gone in the same write. Refuses when no live session
+   * exists, and throws `SessionRevisionConflict` when the session changed
+   * after the caller read `expectedRevision`.
    */
   const landSubmission = async (
     chainId: ChainId,
