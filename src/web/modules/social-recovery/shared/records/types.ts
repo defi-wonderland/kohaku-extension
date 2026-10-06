@@ -232,18 +232,48 @@ export const ROW_NOTES: readonly RowNote[] = ['declined', 'unanswered'] as const
 export type RowNotes = Partial<Record<number, RowNote>>
 
 /**
+ * The submission this device sent for the live session's request and has not
+ * settled: the id of the request it queued, the block read before the send,
+ * when it was claimed (ms since epoch) and, once the wallet broadcast it, the
+ * transaction hash. A reloaded page or another tab finds it and sends nothing.
+ */
+export interface SubmissionInFlightRecord {
+  requestId: string
+  startBlock: number
+  claimedAt: number
+  transactionHash?: Hex
+}
+
+/** What a claim of the submission in flight writes: everything but the hash. */
+export type SubmissionInFlightClaim = Omit<SubmissionInFlightRecord, 'transactionHash'>
+
+/**
+ * The answer of a claim: `claimed` where this claim wrote the submission, or
+ * `false` where the session already carried one and the caller follows it; the
+ * submission the session holds after the task, this claim's or the one already
+ * there; and the stored session, whose revision a later update passes.
+ */
+export interface SubmissionClaimResult {
+  claimed: boolean
+  submission: SubmissionInFlightRecord
+  record: StoredSession
+}
+
+/**
  * The live recovery session: the SDK's gathering record, stored so the
  * gathering survives a closed tab. Its request carries everything a resume
  * needs: the account, the predicted attempt id (the attempt id the wallet built
  * the request against), the setup nonce the request was built under and the
  * deadline (`validUntil`). Its replies are the approvals. The gathering's
  * purpose is `approval`. `notes` holds the recoverer's row notes, which live
- * and die with the gathering.
+ * and die with the gathering, and `submission` the submission in flight for
+ * its request, which dies with it too.
  */
 export interface LiveRecoverySession {
   state: 'live'
   gathering: Gathering
   notes?: RowNotes
+  submission?: SubmissionInFlightRecord
 }
 
 /**
@@ -497,7 +527,8 @@ export interface RecoverySessionAccessor {
    * writes nothing. Refuses a cancellation gathering, a gathering whose request
    * names another account or chain, a landed session, and over a live session a
    * gathering whose request differs in any field or that leaves a filled place
-   * without a reply. Over a wiped session it starts the new gathering.
+   * without a reply. Over a wiped session it starts the new gathering, with no
+   * submission in flight; over a live session it keeps the one it carries.
    */
   write(gathering: Gathering, expectedRevision: ExpectedRevision): Promise<StoredSession>
   /**
@@ -512,6 +543,34 @@ export interface RecoverySessionAccessor {
     note: RowNote | null,
     expectedRevision: ExpectedRevision
   ): Promise<StoredSession>
+  /**
+   * Writes the submission in flight on a live session that carries none, under
+   * the same revision rule as `write`. Where the session already carries one it
+   * writes nothing and answers that one with `claimed: false`. Refuses a
+   * session that is not live.
+   */
+  claimSubmission(
+    claim: SubmissionInFlightClaim,
+    expectedRevision: ExpectedRevision
+  ): Promise<SubmissionClaimResult>
+  /**
+   * Writes the transaction hash on the submission in flight that carries
+   * `requestId`, under the same revision rule as `write`. Refuses a session
+   * that is not live and a submission under another request id or none. The
+   * hash it already holds writes nothing and answers the stored session.
+   */
+  setSubmissionHash(
+    requestId: string,
+    transactionHash: Hex,
+    expectedRevision: ExpectedRevision
+  ): Promise<StoredSession>
+  /**
+   * Removes the submission in flight where it carries `requestId`, under the
+   * same revision rule as `write`, and answers the session the storage holds
+   * after the task. With no submission under that id, in any state of the
+   * session, it writes nothing and checks no revision.
+   */
+  releaseSubmission(requestId: string, expectedRevision: ExpectedRevision): Promise<SessionRead>
   age(at?: number): Promise<number | null>
 }
 

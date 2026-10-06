@@ -51,6 +51,8 @@ import type {
   SetupRecords,
   StoredRecord,
   StoredSession,
+  SubmissionInFlightClaim,
+  SubmissionInFlightRecord,
   WalletRecords,
   WalletRecordsOptions
 } from './types'
@@ -243,6 +245,26 @@ const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
 }
 
 /**
+ * Whether a stored value is a submission in flight: the request id, the start
+ * block, the claim time and, where present, the hash.
+ */
+const isSubmissionInFlight = (value: unknown): value is SubmissionInFlightRecord => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.requestId === 'string' &&
+    record.requestId !== '' &&
+    Number.isSafeInteger(record.startBlock) &&
+    (record.startBlock as number) >= 0 &&
+    typeof record.claimedAt === 'number' &&
+    Number.isFinite(record.claimedAt) &&
+    (record.transactionHash === undefined || typeof record.transactionHash === 'string')
+  )
+}
+
+/**
  * Deep equality of a stored request and the request a write names, as the
  * storage keeps them: both pass through the rich JSON the storage writes, so a
  * key whose value is `undefined` counts as absent on both sides. The storage
@@ -274,24 +296,36 @@ const notesKept = (notes: RowNotes | undefined, gathering: Gathering): RowNotes 
   return kept.length ? Object.fromEntries(kept) : undefined
 }
 
-/** The live session of a gathering, with no `notes` member where it has none. */
-const liveSession = (gathering: Gathering, notes: RowNotes | undefined): LiveRecoverySession =>
-  notes ? { state: 'live', gathering, notes } : { state: 'live', gathering }
+/**
+ * The live session of a gathering, with no `notes` member where it has none
+ * and no `submission` member where no submission is in flight.
+ */
+const liveSession = (
+  gathering: Gathering,
+  notes: RowNotes | undefined,
+  submission: SubmissionInFlightRecord | undefined
+): LiveRecoverySession => ({
+  state: 'live',
+  gathering,
+  ...(notes ? { notes } : {}),
+  ...(submission ? { submission } : {})
+})
 
 /**
  * A stored session as a read hands it out: a live session keeps only the notes
- * its gathering allows. A stored gathering whose places or replies are not
- * lists keeps no notes and still reads, so a wipe or a new write can replace
- * it.
+ * its gathering allows, and its submission in flight where that is one. A
+ * stored gathering whose places or replies are not lists keeps no notes and
+ * still reads, so a wipe or a new write can replace it.
  */
 const sessionAsRead = (value: RecoverySessionRecord): RecoverySessionRecord => {
   if (value.state !== 'live') {
     return value
   }
   const { gathering } = value
+  const submission = isSubmissionInFlight(value.submission) ? value.submission : undefined
   return Array.isArray(gathering.places) && Array.isArray(gathering.replies)
-    ? liveSession(gathering, notesKept(value.notes, gathering))
-    : liveSession(gathering, undefined)
+    ? liveSession(gathering, notesKept(value.notes, gathering), submission)
+    : liveSession(gathering, undefined, submission)
 }
 
 const newRevision = (): SessionRevision =>
@@ -563,6 +597,21 @@ export const createWalletRecords = ({
   }
 
   /**
+   * The stored live session of a read, or the refusal of an update that needs
+   * one: an absent, wiped or landed session carries no gathering to act on.
+   */
+  const liveOrRefuse = (
+    current: SessionRead,
+    chainId: ChainId,
+    account: Address
+  ): StoredSession & { value: LiveRecoverySession } => {
+    if (current.status !== 'present' || current.value.state !== 'live') {
+      throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
+    }
+    return { value: current.value, savedAt: current.savedAt, revision: current.revision }
+  }
+
+  /**
    * Runs one update of a recovery session in its key's queue: reads the stored
    * session, throws `SessionRevisionConflict` when its revision is not the one
    * the caller read, and otherwise hands the read to `apply`.
@@ -609,10 +658,11 @@ export const createWalletRecords = ({
               'A landed session holds the countdown: end it once its attempt ends, then gather again'
             )
           }
-          const notes =
+          const live =
             current.status === 'present' && current.value.state === 'live'
-              ? notesKept(current.value.notes, gathering)
+              ? current.value
               : undefined
+          const notes = live ? notesKept(live.notes, gathering) : undefined
           if (current.status === 'present' && current.value.state === 'live') {
             const stored = current.value.gathering
             // A new request would replace the gathering: that takes a wipe first.
@@ -634,7 +684,7 @@ export const createWalletRecords = ({
               )
             }
           }
-          return writeSessionAt(key, liveSession(gathering, notes))
+          return writeSessionAt(key, liveSession(gathering, notes, live?.submission))
         })
       },
       setNote: (place: number, note: RowNote | null, expectedRevision: ExpectedRevision) =>
@@ -644,7 +694,7 @@ export const createWalletRecords = ({
               `No live recovery session for ${account} on chain ${chainPart(chainId)}`
             )
           }
-          const { gathering, notes = {} } = current.value
+          const { gathering, notes = {}, submission } = current.value
           if (!gathering.places.some((entry) => entry.place === place)) {
             throw new Error(`The gathering has no place ${place}`)
           }
@@ -658,7 +708,62 @@ export const createWalletRecords = ({
             Object.entries(notes).filter(([noted]) => Number(noted) !== place)
           )
           const next = notesKept(note === null ? others : { ...others, [place]: note }, gathering)
-          return writeSessionAt(key, liveSession(gathering, next))
+          return writeSessionAt(key, liveSession(gathering, next, submission))
+        }),
+      claimSubmission: (claim: SubmissionInFlightClaim, expectedRevision: ExpectedRevision) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = liveOrRefuse(current, chainId, account)
+          const live = stored.value
+          if (live.submission) {
+            return { claimed: false, submission: live.submission, record: stored }
+          }
+          const submission: SubmissionInFlightRecord = {
+            requestId: claim.requestId,
+            startBlock: claim.startBlock,
+            claimedAt: claim.claimedAt
+          }
+          if (!isSubmissionInFlight(submission)) {
+            throw new Error(`Invalid submission in flight, not written: ${key}`)
+          }
+          const record = await writeSessionAt(
+            key,
+            liveSession(live.gathering, live.notes, submission)
+          )
+          return { claimed: true, submission, record }
+        }),
+      setSubmissionHash: (
+        requestId: string,
+        transactionHash: Hex,
+        expectedRevision: ExpectedRevision
+      ) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = liveOrRefuse(current, chainId, account)
+          const live = stored.value
+          const { submission } = live
+          if (!submission || submission.requestId !== requestId) {
+            throw new Error(`No submission in flight under request ${requestId}: ${key}`)
+          }
+          if (submission.transactionHash === transactionHash) {
+            return stored
+          }
+          return writeSessionAt(
+            key,
+            liveSession(live.gathering, live.notes, { ...submission, transactionHash })
+          )
+        }),
+      releaseSubmission: (requestId: string, expectedRevision: ExpectedRevision) =>
+        inSessionQueue(chainId, account, async (current) => {
+          if (
+            current.status !== 'present' ||
+            current.value.state !== 'live' ||
+            current.value.submission?.requestId !== requestId
+          ) {
+            return current
+          }
+          checkRevision(current, expectedRevision, key)
+          const { gathering, notes } = current.value
+          const written = await writeSessionAt(key, liveSession(gathering, notes, undefined))
+          return { status: 'present' as const, ...written }
         }),
       age: async (at?: number) => recordAge(await readSessionAt(key), at ?? now())
     }
@@ -755,7 +860,8 @@ export const createWalletRecords = ({
   /**
    * One of four events wipes a live recovery session: the deadline passed,
    * another attempt opened, the setup changed or the recoverer abandoned. The
-   * gathering, with its replies, its row notes and its attempt id, is deleted,
+   * gathering, with its replies, its row notes, its submission in flight and
+   * its attempt id, is deleted,
    * and the session keeps the reason, the account and, for `deadline-passed`,
    * the deadline. The recoverer's abandon ends the recovery, so it also removes
    * the account's recovery entry; the other three events leave it. Returns
@@ -810,8 +916,8 @@ export const createWalletRecords = ({
   /**
    * The submission landed: the live session survives as the countdown's record,
    * `{ state: 'landed', account }`, written in one set in place of the live
-   * session, so the gathering, its replies and its attempt id are gone in the
-   * same write. Refuses when no live session exists, and throws
+   * session, so the gathering, its replies, its submission in flight and its
+   * attempt id are gone in the same write. Refuses when no live session exists, and throws
    * `SessionRevisionConflict` when the session changed after the caller read
    * `expectedRevision`.
    */
