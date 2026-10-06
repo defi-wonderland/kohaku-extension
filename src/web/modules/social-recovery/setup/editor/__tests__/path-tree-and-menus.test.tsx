@@ -11,6 +11,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type {
   Clause,
+  Credential,
   SetupDraft,
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -61,6 +62,12 @@ const {
 } = jest.requireActual<
   typeof import('@web/modules/social-recovery/setup/editor/__tests__/harness')
 >('@web/modules/social-recovery/setup/editor/__tests__/harness')
+
+/** An empty slot with no label, so the wallet cannot tell which kind it waits for. */
+const UNREAD_SLOT: Credential = {
+  method: '0x0000000000000000000000000000000000000000',
+  config: '0x'
+}
 
 // The sentence the editor no longer shows, kept as text so the test outlives its string.
 const SIZING_SENTENCE = 'A group of any one of two is the shape this wallet prefers at two methods.'
@@ -127,6 +134,13 @@ const press = async (id: string) => {
   await settle()
 }
 
+const keyDown = async (key: string) => {
+  act(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+  })
+  await settle()
+}
+
 const mouseDownOn = async (node: Node) => {
   act(() => {
     node.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
@@ -157,13 +171,17 @@ const mount = async (clauses: Clause[], enrollments: Enrollment[] = []) => {
   })
   await settle()
   const writesBefore = storage.sets.length
+  const storedPath = async () => {
+    const path = await records.path.read()
+    return path.status === 'present' ? path.value : null
+  }
   const storedClauses = async () => {
     const [draft, path] = await Promise.all([records.setupDraft.read(), records.path.read()])
     const draftClauses = draft.status === 'present' ? draft.value.clauses : null
     expect(path.status === 'present' ? path.value : null).toEqual(draftClauses)
     return draftClauses
   }
-  return { storage, navigate, writesBefore, storedClauses }
+  return { storage, navigate, writesBefore, storedClauses, storedPath }
 }
 
 /** The route and the slot a navigation opened. */
@@ -487,4 +505,199 @@ describe('"Make it a group" without the sizing sentence', () => {
     await mount(clauses)
     expect(byTestId('editor-make-it-a-group')).toBeNull()
   })
+})
+
+describe('an empty slot of a kind the wallet cannot read', () => {
+  const NO_LABEL: Clause[] = [
+    { threshold: 1, credentials: [PASSKEY] },
+    { threshold: 1, credentials: [ALICE, UNREAD_SLOT] }
+  ]
+  const UNKNOWN_LABEL: Clause[] = [
+    { threshold: 1, credentials: [PASSKEY] },
+    { threshold: 1, credentials: [ALICE, { ...UNREAD_SLOT, label: 'fingerprint' }] }
+  ]
+
+  it.each([
+    ['no label', NO_LABEL],
+    ['a label that names no kind', UNKNOWN_LABEL]
+  ])('with %s opens the four kinds under it, writing nothing', async (_name, clauses) => {
+    const { navigate, storage, writesBefore } = await mount(clauses, ENROLLED_ALL)
+    expect(byTestId('editor-slot-1-1-menu')).toBeNull()
+    await press('editor-slot-1-1')
+    expect(menuEntries('editor-slot-1-1-menu')).toEqual(ALL_KINDS)
+    ALL_KINDS.forEach((kind) =>
+      expect(byTestId(`editor-slot-1-1-menu-${kind}`)?.textContent).toBe(KIND_NAMES[kind])
+    )
+    expect(navigate).not.toHaveBeenCalled()
+    expect(storage.sets.length).toBe(writesBefore)
+  })
+
+  it('closes its kinds on a second press of the slot', async () => {
+    await mount(NO_LABEL, ENROLLED_ALL)
+    await press('editor-slot-1-1')
+    await press('editor-slot-1-1')
+    expect(byTestId('editor-slot-1-1-menu')).toBeNull()
+  })
+
+  it.each(ALL_KINDS)(
+    'becomes an empty %s slot in its place on a pick and opens that enrollment',
+    async (kind) => {
+      const { navigate, storedClauses } = await mount(NO_LABEL, ENROLLED_ALL)
+      await press('editor-slot-1-1')
+      await press(`editor-slot-1-1-menu-${kind}`)
+      expect(await storedClauses()).toEqual([
+        { threshold: 1, credentials: [PASSKEY] },
+        { threshold: 1, credentials: [ALICE, emptySlotOf(kind)] }
+      ])
+      expect(enrollOpened(navigate)).toEqual({
+        route: WEB_ROUTES.socialRecoverySetupEnroll,
+        slot: { kind, clause: '1', member: '1' }
+      })
+      expect(byTestId('editor-slot-1-1-menu')).toBeNull()
+    }
+  )
+
+  it('as a required row becomes the picked kind in its own row', async () => {
+    const { navigate, storedClauses } = await mount(
+      [
+        { threshold: 1, credentials: [UNREAD_SLOT] },
+        { threshold: 2, credentials: [ALICE, BOB] }
+      ],
+      ENROLLED_ALL
+    )
+    await press('editor-slot-0-0')
+    await press('editor-slot-0-0-menu-passkey')
+    expect(await storedClauses()).toEqual([
+      { threshold: 1, credentials: [emptySlotOf('passkey')] },
+      { threshold: 2, credentials: [ALICE, BOB] }
+    ])
+    expect(enrollOpened(navigate).slot).toEqual({ kind: 'passkey', clause: '0', member: '0' })
+  })
+
+  it('on a pick whose write fails closes the menu, keeps the stored slot and opens nothing', async () => {
+    const { navigate, storage, storedPath } = await mount(NO_LABEL, ENROLLED_ALL)
+    await press('editor-slot-1-1')
+    storage.rejectOnce('set', 'path')
+    await press('editor-slot-1-1-menu-passkey')
+    await settle()
+    expect(byTestId('editor-slot-1-1-menu')).toBeNull()
+    expect(byTestId('editor-slot-1-1')).not.toBeNull()
+    expect(byTestId('editor-write-failed')?.textContent).toBe(en.socialRecovery.records.writeFailed)
+    expect(await storedPath()).toEqual(NO_LABEL)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('a row that cannot open its method', () => {
+  it('does not open the enroll step on an enrolled credential with no enrollment record', async () => {
+    const { navigate } = await mount(presetPath())
+    await press('editor-slot-0-0')
+    await press('editor-slot-1-0')
+    await press('editor-slot-1-2')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(byTestId('editor-slot-0-0')?.getAttribute('role')).not.toBe('button')
+  })
+
+  it('does not open a credential of a method the wallet does not know, even when enrolled', async () => {
+    const foreign: Credential = { ...ALICE, method: '0x9999999999999999999999999999999999999999' }
+    const { navigate } = await mount(
+      [{ threshold: 1, credentials: [foreign] }],
+      [enrolled(foreign)]
+    )
+    await press('editor-slot-0-0')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(byTestId('editor-slot-0-0-menu')).toBeNull()
+  })
+})
+
+describe('the arrow on a row that opens', () => {
+  /** The arrows on screen, by the row each one ends. */
+  const arrows = () =>
+    idsStartingWith('editor-slot-')
+      .filter((id) => id.endsWith('-opens'))
+      .sort()
+
+  it('ends an enrolled row whose enrollment the records hold and every empty slot', async () => {
+    await mount(
+      [
+        { threshold: 1, credentials: [PASSKEY] },
+        { threshold: 1, credentials: [ALICE, emptySlotOf('aadhaar'), UNREAD_SLOT] }
+      ],
+      ENROLLED_ALL
+    )
+    ;['editor-slot-0-0', 'editor-slot-1-0', 'editor-slot-1-1', 'editor-slot-1-2'].forEach((id) => {
+      const arrow = byTestId(`${id}-opens`)
+      expect(arrow).not.toBeNull()
+      expect(byTestId(id)?.contains(arrow)).toBe(true)
+    })
+  })
+
+  it('is absent from every row when the records hold no enrollment', async () => {
+    await mount(presetPath())
+    expect(byTestId('editor-slot-0-0')).not.toBeNull()
+    expect(arrows()).toEqual([])
+  })
+
+  it('shows only on the rows whose enrollment the records hold', async () => {
+    await mount(presetPath(), [enrolled(PASSKEY), enrolled(BOB)])
+    expect(arrows()).toEqual(['editor-slot-0-0-opens', 'editor-slot-1-1-opens'])
+  })
+})
+
+describe('a kind menu and the keyboard', () => {
+  it('closes the open menu on Escape, writing nothing and opening nothing', async () => {
+    const { navigate, storage, writesBefore } = await mount(presetPath())
+    await press('editor-add-required')
+    await keyDown('Escape')
+    expect(byTestId('editor-add-required-menu')).toBeNull()
+    await press('editor-group-1-add')
+    await keyDown('Escape')
+    expect(byTestId('editor-group-1-add-menu')).toBeNull()
+    expect(storage.sets.length).toBe(writesBefore)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it("closes an empty slot's kinds on Escape", async () => {
+    await mount([{ threshold: 1, credentials: [UNREAD_SLOT] }])
+    await press('editor-slot-0-0')
+    expect(byTestId('editor-slot-0-0-menu')).not.toBeNull()
+    await keyDown('Escape')
+    expect(byTestId('editor-slot-0-0-menu')).toBeNull()
+  })
+
+  it('stays open on any other key', async () => {
+    await mount(presetPath())
+    await press('editor-add-required')
+    await keyDown('Enter')
+    await keyDown('a')
+    expect(byTestId('editor-add-required-menu')).not.toBeNull()
+  })
+
+  it('opens again after Escape closed it', async () => {
+    await mount(presetPath())
+    await press('editor-add-required')
+    await keyDown('Escape')
+    await press('editor-add-required')
+    expect(byTestId('editor-add-required-menu')).not.toBeNull()
+  })
+
+  it.each(['editor-add-required', 'editor-group-1-add'])(
+    'announces %s as a control that opens a menu',
+    async (id) => {
+      await mount(presetPath())
+      expect(byTestId(id)?.getAttribute('aria-haspopup')).toBe('menu')
+      await press(id)
+      expect(byTestId(id)?.getAttribute('aria-haspopup')).toBe('menu')
+    }
+  )
+
+  it.each(['editor-add-required', 'editor-group-1-add'])(
+    'announces whether the menu of %s is open',
+    async (id) => {
+      await mount(presetPath())
+      expect(byTestId(id)?.getAttribute('aria-expanded')).toBe('false')
+      await press(id)
+      expect(byTestId(id)?.getAttribute('aria-expanded')).toBe('true')
+    }
+  )
 })
