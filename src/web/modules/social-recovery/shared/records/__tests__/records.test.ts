@@ -3320,6 +3320,33 @@ describe('the recovery entry', () => {
     expect(await records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
   })
 
+  it('an abandon again after one whose removal of the entry failed removes the entry and wipes nothing', async () => {
+    const { storage, records } = setup()
+    await writeSession(records, GATHERING)
+    await records.recoveryEntry(CHAIN_ID, ACCOUNT).write(ENTRY)
+    failNext(storage, 'remove', ENTRY_KEY)
+    await expect(wipeSession(records, 'recoverer-abandoned')).rejects.toThrow(
+      /storage remove failed/
+    )
+    const session = storage.raw.get(SESSION_KEY)
+    const revision = await revisionNow(records, ACCOUNT, CHAIN_ID)
+    expect(
+      await records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'recoverer-abandoned', revision)
+    ).toBe(false)
+    expect(await records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
+    expect(storage.raw.has(ENTRY_KEY)).toBe(false)
+    expect(storage.raw.get(SESSION_KEY)).toBe(session)
+  })
+
+  it('an entry written with a field beyond its three is stored without it', async () => {
+    const { storage, records } = setup()
+    const extra = { ...ENTRY, gathering: 'kept nowhere' } as RecoveryEntryRecord
+    await records.recoveryEntry(CHAIN_ID, ACCOUNT).write(extra)
+    expect(storage.raw.get(ENTRY_KEY)).not.toContain('kept nowhere')
+    expect(storage.raw.get(ENTRY_KEY)).not.toContain('gathering')
+    expect(present(await records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).value).toEqual(ENTRY)
+  })
+
   it('an abandon whose session write fails leaves the live session and the entry', async () => {
     const { storage, records } = setup()
     await writeSession(records, GATHERING)
@@ -3503,7 +3530,7 @@ describe('the row notes of a live session', () => {
     })
   })
 
-  it('a stored note outside the two is dropped by the next write or note', async () => {
+  it('a stored note outside the two reads as no note, and the next write or note drops it', async () => {
     const stored = {
       value: { state: 'live', gathering: NOTE_GATHERING, notes: { 0: 'maybe', 1: 'declined' } },
       savedAt: T0,
@@ -3511,6 +3538,11 @@ describe('the row notes of a live session', () => {
     }
     const write = setup()
     await write.storage.set(SESSION_KEY, stored)
+    expect(await liveOf(write.records)).toEqual({
+      state: 'live',
+      gathering: NOTE_GATHERING,
+      notes: { 1: 'declined' }
+    })
     await writeSession(write.records, gathering(ACCOUNT, [APPROVALS[1]]))
     expect(await liveOf(write.records)).toEqual({
       state: 'live',
@@ -3521,6 +3553,18 @@ describe('the row notes of a live session', () => {
     await setNote(note.records, 1, 'unanswered')
     expect((await liveOf(note.records)).notes).toEqual({ 1: 'unanswered' })
     expect(storedSession(note.storage)).not.toContain('maybe')
+  })
+
+  it('a stored session whose notes are null reads with no notes and takes a note', async () => {
+    const { storage, records } = setup()
+    await storage.set(SESSION_KEY, {
+      value: { state: 'live', gathering: NOTE_GATHERING, notes: null },
+      savedAt: T0,
+      revision: 'a'.repeat(24)
+    })
+    expect(await liveOf(records)).toEqual({ state: 'live', gathering: NOTE_GATHERING })
+    await setNote(records, 1, 'declined')
+    expect((await liveOf(records)).notes).toEqual({ 1: 'declined' })
   })
 
   it('a note on a wiped, a landed or an absent session is refused and writes nothing', async () => {

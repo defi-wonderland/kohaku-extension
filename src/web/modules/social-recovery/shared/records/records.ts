@@ -325,9 +325,9 @@ const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
  * of them interleaves with it. Every caller passes its setup keys in the order
  * of `SETUP_RECORD_NAMES` and the save in flight's key after them, the
  * recoverer's abandon passes the session's key and the recovery entry's key
- * after it, and a single-key update holds one key alone. An update can wait for another that
- * holds a key it needs, but never for one that waits for a key it holds, so
- * the waits never form a cycle.
+ * after it, and a single-key update holds one key alone. An update can wait
+ * for another that holds a key it needs, but never for one that waits for a
+ * key it holds, so the waits never form a cycle.
  */
 const inQueues = <R>(keys: readonly string[], task: () => Promise<R>): Promise<R> =>
   keys.reduceRight<() => Promise<R>>((inner, key) => () => inQueue(key, inner), task)()
@@ -510,9 +510,13 @@ export const createWalletRecords = ({
     if (!isStoredSession(stored)) {
       return ABSENT
     }
+    const { value } = stored
     return {
       status: 'present',
-      value: stored.value,
+      value:
+        value.state === 'live'
+          ? liveSession(value.gathering, notesKept(value.notes, value.gathering))
+          : value,
       savedAt: stored.savedAt,
       revision: stored.revision
     }
@@ -696,7 +700,12 @@ export const createWalletRecords = ({
         if (!isRecoveryEntry(value) || !isAddressEqual(value.account, account)) {
           throw new Error(`Invalid recovery entry, not written: ${key}`)
         }
-        return inQueue(key, () => writeKey<RecoveryEntryRecord>(key, value))
+        const entry: RecoveryEntryRecord = {
+          account: value.account,
+          route: value.route,
+          receivingAccount: value.receivingAccount
+        }
+        return inQueue(key, () => writeKey<RecoveryEntryRecord>(key, entry))
       },
       clear: () => removeKey(key)
     }
@@ -733,8 +742,10 @@ export const createWalletRecords = ({
    * the deadline. The recoverer's abandon ends the recovery, so it also removes
    * the account's recovery entry; the other three events leave it. Returns
    * whether it wiped anything: an absent, wiped or landed session is left
-   * unchanged, and so is the entry. `submission-landed` runs through `landSubmission`, and a
-   * security stop or a pause is no wipe event. Throws `SessionRevisionConflict`
+   * unchanged, and so is the entry, except that an abandon of a session an
+   * abandon already wiped removes the entry that abandon left.
+   * `submission-landed` runs through `landSubmission`, and a security stop or a
+   * pause is no wipe event. Throws `SessionRevisionConflict`
    * when the session changed after the caller read `expectedRevision`.
    */
   const wipeRecoverySession = (
@@ -750,6 +761,15 @@ export const createWalletRecords = ({
       const current = await readSessionAt(key)
       checkRevision(current, expectedRevision, key)
       if (current.status !== 'present' || current.value.state !== 'live') {
+        // An abandon cut off between its two calls left the entry: this one ends it.
+        if (
+          abandons &&
+          current.status === 'present' &&
+          current.value.state === 'wiped' &&
+          current.value.reason === 'recoverer-abandoned'
+        ) {
+          await storage.remove(entryKey)
+        }
         return false
       }
       const { request } = current.value.gathering
