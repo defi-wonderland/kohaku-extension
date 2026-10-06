@@ -3,7 +3,9 @@
  * per place of the gathering under the path's clauses, the headline that
  * counts a group as one unit, the request's deadline, and continue once the
  * assessment finds the rule satisfied. Nothing renders before the stored
- * session is read; a failed read never renders as an empty path.
+ * session is read and the account's recovery state has answered once; a
+ * failed read never renders as an empty path, and a failed poll holds every
+ * row until a poll succeeds.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -20,19 +22,31 @@ import { addressBookOf, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recove
 
 import AbandonBlock from './AbandonBlock'
 import ChecklistRows from './ChecklistRows'
+import DeadlineBlock from './DeadlineBlock'
 import GuardianRow from './GuardianRow'
 import IdentityRow from './IdentityRow'
-import { deadlineLineOf } from './lines'
 import PasskeyRow from './PasskeyRow'
-import { headlineOf, layoutOf, rowStatesOf, unlockLineKeyOf } from './rows'
+import PollAlert from './PollAlert'
+import { attemptLive } from './poll'
+import {
+  chosenPlacesOf,
+  headlineOf,
+  layoutOf,
+  methodDidNotAnswer,
+  rowStatesOf,
+  unlockLineKeyOf,
+  unsatisfiedOf
+} from './rows'
 import { submitPathOf } from './search'
 import type {
   AlertKeys,
   AnsweredMemory,
   ChecklistFailure,
   ChecklistRow,
-  ChecklistViewProps
+  ChecklistViewProps,
+  SlotReading
 } from './types'
+import UnsatisfiedBlock from './UnsatisfiedBlock'
 import useChecklist from './useChecklist'
 import useGuardianSupport from './useGuardianSupport'
 import usePasskeyClaim from './usePasskeyClaim'
@@ -86,9 +100,10 @@ const ChecklistView = ({
   const [answered, setAnswered] = useState<Partial<Record<number, AnsweredMemory>>>({})
   const [pendingFailed, setPendingFailed] = useState(false)
 
-  const { load, assessment, addReply } = checklist
+  const { load, assessment, addReply, poll } = checklist
   const kit = client.status === 'ready' ? client.client : null
   const live = load.phase === 'live' ? load : null
+  const pollClock = poll.status === 'answered' ? poll.clock : null
 
   const layout = useMemo(
     () => (live ? layoutOf(live.configuration, live.session.gathering, book) : null),
@@ -108,12 +123,34 @@ const ChecklistView = ({
       return new Map<number, ApproverRequest>()
     }
   }, [live, kit])
+  // The places the submission would carry, from the client's own pick, so a
+  // filled row it leaves out reads not needed.
+  const chosen = useMemo(
+    () =>
+      live && kit && assessment && pollClock !== null
+        ? chosenPlacesOf(kit, live.session.gathering, assessment, Math.floor(pollClock / 1000))
+        : undefined,
+    [live, kit, assessment, pollClock]
+  )
+  const { outcomes } = claim
+  const didNotAnswer = useMemo(
+    () =>
+      new Set(
+        Object.entries(outcomes)
+          .filter(([, held]) => !!held && methodDidNotAnswer(held.outcome))
+          .map(([place]) => Number(place))
+      ),
+    [outcomes]
+  )
   const states = useMemo(
     () =>
       layout && assessment
-        ? rowStatesOf(layout, assessment, live?.session.notes, claim.asked)
+        ? rowStatesOf(layout, assessment, live?.session.notes, claim.asked, {
+            chosen,
+            didNotAnswer
+          })
         : null,
-    [layout, assessment, live, claim.asked]
+    [layout, assessment, live, claim.asked, chosen, didNotAnswer]
   )
   const guardianSupport = useGuardianSupport({
     kit,
@@ -158,6 +195,17 @@ const ChecklistView = ({
       applyPending().catch(() => setPendingFailed(true))
     }
   }, [isLive, pending, pendingFailed, checklist.busy, applyPending])
+
+  // A wiped session keeps no claim: every request and report of this
+  // checklist's ceremonies goes, a report that lands later included.
+  const isWiped = load.phase === 'wiped'
+  const { forgetAll } = claim
+  const ceremonyId = search.ceremony
+  useEffect(() => {
+    if (isWiped && (pending || ceremonyId)) {
+      forgetAll()
+    }
+  }, [isWiped, pending, ceremonyId, forgetAll])
 
   const title = (
     <PageTitle
@@ -242,6 +290,12 @@ const ChecklistView = ({
   }
 
   if (load.phase === 'wiped') {
+    let slot: SlotReading = 'unread'
+    if (poll.status === 'failed') {
+      slot = 'failed'
+    } else if (poll.status === 'answered') {
+      slot = attemptLive(poll.facts.attempt) ? 'held' : 'free'
+    }
     return (
       <WipedBlock
         session={load.session}
@@ -251,11 +305,18 @@ const ChecklistView = ({
         onGatherAgain={() => {
           checklist.gatherAgain().catch(() => undefined)
         }}
+        hadReplies={load.hadReplies}
+        slot={slot}
+        onRetryPoll={checklist.retryPoll}
+        onReadSetupAgain={() => {
+          checklist.readSetupAgain().catch(() => undefined)
+        }}
       />
     )
   }
 
-  if (!live) {
+  // The rows never render before the account's recovery state answered once.
+  if (!live || poll.status === 'pending') {
     return (
       <View testID="checklist">
         {title}
@@ -274,9 +335,13 @@ const ChecklistView = ({
   }
 
   const headline = headlineOf(layout, assessment)
-  const deadline = deadlineLineOf(live.session.gathering, deps.now(), deps.timeZone, t)
-  const busy = checklist.busy || claim.busy
+  // A failed poll, or a death the records could not wipe, holds every add,
+  // launch and continue until a poll succeeds.
+  const held = poll.status === 'failed' || checklist.deathFailed
+  const dormant = poll.status === 'answered' && !poll.facts.authorized
+  const busy = checklist.busy || claim.busy || held
   const satisfied = assessment.ruleSatisfied
+  const unsatisfied = unsatisfiedOf(layout, assessment, states)
 
   const renderRow = (row: ChecklistRow) => {
     const state = states.get(row.place)
@@ -327,11 +392,35 @@ const ChecklistView = ({
       <Text fontSize={16} weight="semiBold" style={spacings.mbTy} testID="checklist-progress">
         {t(`${CHECKLIST}.progress`, { done: headline.done, total: headline.total })}
       </Text>
-      {!!deadline && (
-        <Text fontSize={14} style={spacings.mbSm} testID="checklist-deadline">
-          {deadline}
-        </Text>
+      <DeadlineBlock
+        gathering={live.session.gathering}
+        layout={layout}
+        now={deps.now}
+        timeZone={deps.timeZone}
+      />
+      {poll.status === 'failed' && <PollAlert withRows onRetry={checklist.retryPoll} />}
+      {checklist.deathFailed && (
+        <Alert
+          testID="checklist-death-failed"
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
+          text={t('socialRecovery.records.writeFailed')}
+        >
+          {retryButton(checklist.retryPoll, 'checklist-death-failed-retry')}
+        </Alert>
       )}
+      {dormant && (
+        <Alert
+          testID="checklist-dormant"
+          type="warning"
+          size="sm"
+          style={spacings.mbSm}
+          title={t('socialRecovery.wait.cannotExecute.notAuthorized')}
+          text={t('socialRecovery.wait.cannotExecute.notAuthorizedRepair')}
+        />
+      )}
+      {!!unsatisfied && <UnsatisfiedBlock reading={unsatisfied} />}
       {claim.undelivered && (
         <Alert
           testID="checklist-undelivered"
@@ -369,7 +458,7 @@ const ChecklistView = ({
             testID="checklist-continue"
             type="primary"
             text={t('socialRecovery.actions.continue')}
-            disabled={!satisfied || busy}
+            disabled={!satisfied || busy || dormant}
             onPress={() => navigate(submitPathOf(account))}
             hasBottomSpacing={false}
           />
@@ -393,13 +482,15 @@ const ChecklistView = ({
       >
         {t(`${CHECKLIST}.leavingKeeps`)}
       </Text>
-      <AbandonBlock
-        busy={busy}
-        failed={checklist.abandonFailed}
-        onAbandon={() => {
-          checklist.abandon(claim.forgetPending).catch(() => undefined)
-        }}
-      />
+      {unsatisfied?.kind !== 'didNotAnswer' && (
+        <AbandonBlock
+          busy={checklist.busy || claim.busy}
+          failed={checklist.abandonFailed}
+          onAbandon={() => {
+            checklist.abandon(claim.forgetAll).catch(() => undefined)
+          }}
+        />
+      )}
     </View>
   )
 }

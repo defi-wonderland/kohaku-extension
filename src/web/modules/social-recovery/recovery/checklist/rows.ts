@@ -19,10 +19,13 @@ import { kindOf } from '@web/modules/social-recovery/setup/review'
 
 import type {
   ChecklistHeadline,
+  ChecklistKitClient,
   ChecklistLayout,
   ChecklistRow,
   RowState,
-  UnlockLineKey
+  RowStateExtras,
+  UnlockLineKey,
+  UnsatisfiedReading
 } from './types'
 
 /** The passkey config's layout: the point's x and y, then the relying-party hash. */
@@ -128,27 +131,34 @@ export const isAsked = (row: ChecklistRow): boolean =>
   row.kind === 'passkey' || row.kind === 'ecdsa'
 
 /**
- * One row's state. A reply completes it. Once its clause is complete, or the
- * rule is satisfied, a row still open is not needed: the submission uses the
- * smallest set. An open row reads its note where it has one, waits while this
- * tab has asked it, and otherwise reads not asked, as every row this release
- * does not ask does.
+ * One row's state. A reply completes it, unless the rule is satisfied and the
+ * submission the client builds leaves it out: then it is not needed, as every
+ * row outside the smallest set is, whether or not it holds a reply. Once its
+ * clause is complete, or the rule is satisfied, a row still open is not
+ * needed. An open row whose method did not answer this time reads so; else it
+ * reads its note where it has one, waits while this tab has asked it, and
+ * otherwise reads not asked, as every row this release does not ask does.
  */
 export const rowStateOf = (
   row: ChecklistRow,
   assessment: Assessment,
   notes: RowNotes | undefined,
-  asked: ReadonlySet<number>
+  asked: ReadonlySet<number>,
+  extras: RowStateExtras = {}
 ): RowState => {
   const replied = assessment.filled.includes(row.place)
   if (replied) {
-    return { chip: 'complete', replied }
+    const dropped = assessment.ruleSatisfied && !!extras.chosen && !extras.chosen.has(row.place)
+    return { chip: dropped ? 'notNeeded' : 'complete', replied }
   }
   if (assessment.ruleSatisfied || clauseComplete(assessment, row.clause)) {
     return { chip: 'notNeeded', replied }
   }
   if (!isAsked(row)) {
     return { chip: 'notAsked', replied }
+  }
+  if (extras.didNotAnswer?.has(row.place)) {
+    return { chip: 'didNotAnswer', replied }
   }
   const note = notes?.[row.place]
   if (note) {
@@ -157,19 +167,102 @@ export const rowStateOf = (
   return { chip: asked.has(row.place) ? 'waiting' : 'notAsked', replied }
 }
 
+/** Every row of the layout, the required rows first. */
+const rowsOf = (layout: ChecklistLayout): ChecklistRow[] => [
+  ...layout.required,
+  ...layout.groups.flatMap((group) => group.rows)
+]
+
 /** Every row's state by place. */
 export const rowStatesOf = (
   layout: ChecklistLayout,
   assessment: Assessment,
   notes: RowNotes | undefined,
-  asked: ReadonlySet<number>
+  asked: ReadonlySet<number>,
+  extras: RowStateExtras = {}
 ): Map<number, RowState> =>
   new Map(
-    [...layout.required, ...layout.groups.flatMap((group) => group.rows)].map((row) => [
-      row.place,
-      rowStateOf(row, assessment, notes, asked)
-    ])
+    rowsOf(layout).map((row) => [row.place, rowStateOf(row, assessment, notes, asked, extras)])
   )
+
+/**
+ * The places the submission carries once the rule is satisfied, as the
+ * client's own builder picks them, or undefined where the rule is not
+ * satisfied or the client builds no submission here. The pick reads no chain.
+ */
+export const chosenPlacesOf = (
+  kit: Pick<ChecklistKitClient, 'recovery'>,
+  gathering: Gathering,
+  assessment: Assessment,
+  nowSeconds: number
+): ReadonlySet<number> | undefined => {
+  if (!assessment.ruleSatisfied) {
+    return undefined
+  }
+  try {
+    const built = kit.recovery.complete(gathering, undefined, nowSeconds)
+    return new Set(built.proofs.map((proof) => Number(proof.place)))
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether a claim's outcome says its method did not answer this time: the
+ * device or the hand-off could not be reached, or the ceremony failed. A reply
+ * the client refused is an answer, not a silence.
+ */
+export const methodDidNotAnswer = (outcome: CeremonyOutcome<unknown>): boolean => {
+  if (outcome.kind !== 'verdict') {
+    return false
+  }
+  if (outcome.verdict === 'unavailable') {
+    return true
+  }
+  return outcome.verdict === 'failed' && outcome.cause !== 'check-rejected'
+}
+
+/**
+ * Why the path is not satisfied, named from its own rows: a required row
+ * whose method did not answer this time, a group whose rows still open cannot
+ * reach its threshold, a guardian row still open, or else rows outstanding.
+ * Null once the rule is satisfied.
+ */
+export const unsatisfiedOf = (
+  layout: ChecklistLayout,
+  assessment: Assessment,
+  states: ReadonlyMap<number, RowState>
+): UnsatisfiedReading | null => {
+  if (assessment.ruleSatisfied) {
+    return null
+  }
+  const silent = layout.required
+    .filter((row) => states.get(row.place)?.chip === 'didNotAnswer')
+    .map((row) => row.place)
+  if (silent.length > 0) {
+    return { kind: 'didNotAnswer', places: silent }
+  }
+  const short = layout.groups
+    .filter((group) => {
+      if (clauseComplete(assessment, group.clause)) {
+        return false
+      }
+      const reachable = group.rows.filter((row) => {
+        const state = states.get(row.place)
+        return !!state && (state.replied || (!state.note && isAsked(row)))
+      }).length
+      return reachable < group.threshold
+    })
+    .map((group) => group.clause)
+  if (short.length > 0) {
+    return { kind: 'groupCannotReach', clauses: short }
+  }
+  const guardianOpen = rowsOf(layout).some((row) => {
+    const state = states.get(row.place)
+    return row.kind === 'ecdsa' && !!state && !state.replied && state.chip !== 'notNeeded'
+  })
+  return guardianOpen ? { kind: 'guardianOpen' } : { kind: 'needsMore' }
+}
 
 /** The unlock line by the path's shape: required rows and groups, required rows only, or groups only. */
 export const unlockLineKeyOf = (layout: ChecklistLayout): UnlockLineKey => {
