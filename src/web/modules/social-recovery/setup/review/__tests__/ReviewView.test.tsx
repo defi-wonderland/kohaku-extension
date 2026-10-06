@@ -59,6 +59,9 @@ const { zeroAddress } = jest.requireActual<typeof import('viem')>('viem')
 const { emptySlot } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/records/slots')
 >('@web/modules/social-recovery/shared/records/slots')
+const { kindNameOf } = jest.requireActual<
+  typeof import('@web/modules/social-recovery/setup/review/lead')
+>('@web/modules/social-recovery/setup/review/lead')
 const ReviewView = jest.requireActual<
   typeof import('@web/modules/social-recovery/setup/review/ReviewView')
 >('@web/modules/social-recovery/setup/review/ReviewView').default
@@ -166,6 +169,23 @@ const textsStartingWith = (prefix: string) =>
     (node) => node.textContent
   )
 const pageText = () => container.textContent ?? ''
+const byPrefix = (prefix: string) => container.querySelector(`[data-testid^="${prefix}"]`)
+/** Whether the node with the first id sits before the node with the second in the document. */
+const isBefore = (first: string, second: string) => {
+  const ids = Array.from(container.querySelectorAll('[data-testid]'), (node) =>
+    node.getAttribute('data-testid')
+  )
+  const [a, b] = [ids.indexOf(first), ids.indexOf(second)]
+  if (a < 0 || b < 0) {
+    throw new Error(`nothing on screen with the test id ${a < 0 ? first : second}`)
+  }
+  return a < b
+}
+/** Whether the node with the inner id sits inside the node with the outer id. */
+const isInside = (inner: string, outer: string) => {
+  const node = byTestId(inner)
+  return !!node && !!byTestId(outer)?.contains(node)
+}
 const isDisabled = (id: string) => byTestId(id)?.getAttribute('aria-disabled') === 'true'
 
 const press = async (id: string) => {
@@ -281,6 +301,126 @@ describe('the verify-the-details expander', () => {
     expect(byTestId('review-trust-list')).not.toBeNull()
     expect(pageText()).toContain(t('socialRecovery.review.trust.selfAttested'))
     expect(pageText()).toContain(t('socialRecovery.review.trust.deadProvider'))
+  })
+})
+
+describe('the verify-the-details toggle', () => {
+  it('reads collapsed on arrival and expanded once pressed', async () => {
+    await mount()
+
+    expect(byTestId('review-verify-details')?.getAttribute('aria-expanded')).toBe('false')
+
+    await press('review-verify-details')
+
+    expect(byTestId('review-verify-details')?.getAttribute('aria-expanded')).toBe('true')
+  })
+})
+
+describe('the sections the review no longer shows', () => {
+  it('shows no security stop, no other doors and no node line on a path of two methods whose every read answered', async () => {
+    await mount({
+      clauses: [required(PASSKEY), group(1, ALICE, BOB)],
+      enrollments: [enrolled(PASSKEY), enrolled(ALICE), enrolled(BOB)]
+    })
+    await press('review-verify-details')
+
+    expect(isDisabled('review-save')).toBe(false)
+    expect(byTestId('review-trust-list')).not.toBeNull()
+    expect(byPrefix('review-stop')).toBeNull()
+    expect(byPrefix('review-doors')).toBeNull()
+    expect(byTestId('review-trust-node')).toBeNull()
+    const gone = [
+      t('socialRecovery.display.nouns.securityStop'),
+      t('socialRecovery.review.stop.nobody'),
+      t('socialRecovery.review.stop.noPause'),
+      t('socialRecovery.review.stop.ignoresStops'),
+      t('socialRecovery.review.stop.methodNotStopped', { method: kindNameOf('passkey', t) }),
+      t('socialRecovery.review.stop.methodNotStopped', { method: kindNameOf('ecdsa', t) }),
+      t('socialRecovery.review.doors.none'),
+      t('socialRecovery.review.doors.unreadable'),
+      t('socialRecovery.review.doors.untouched'),
+      t('socialRecovery.review.otherDoors.cannotSeeEveryDoor'),
+      t('socialRecovery.review.trust.nodePlain'),
+      t('socialRecovery.review.trust.nodeLightClient')
+    ]
+    gone.forEach((text) => expect(pageText()).not.toContain(text))
+  })
+})
+
+describe('the titled sections of the details', () => {
+  const mountTwoMethods = async () => {
+    await mount({
+      clauses: [required(PASSKEY), group(1, ALICE, BOB)],
+      enrollments: [
+        enrolled(PASSKEY, 'passed', { backup: 'synced' }),
+        enrolled(ALICE),
+        enrolled(BOB)
+      ]
+    })
+    await press('review-verify-details')
+  }
+
+  it('titles one section per method contract with its kind, then one for the recovery module, in that order', async () => {
+    await mountTwoMethods()
+
+    expect(textOf('review-trust-0')?.startsWith(kindNameOf('passkey', t))).toBe(true)
+    expect(textOf('review-trust-1')?.startsWith(kindNameOf('ecdsa', t))).toBe(true)
+    expect(byTestId('review-trust-2')).toBeNull()
+    expect(
+      textOf('review-trust-module')?.startsWith(t('socialRecovery.display.nouns.recoveryModule'))
+    ).toBe(true)
+    expect(isBefore('review-trust-0', 'review-trust-1')).toBe(true)
+    expect(isBefore('review-trust-1', 'review-trust-module')).toBe(true)
+  })
+
+  it("keeps each method's headings and lines inside its own section", async () => {
+    await mountTwoMethods()
+
+    expect(textOf('review-trust-0-heading-0')).toBe(PASSKEY.label)
+    expect(isInside('review-trust-0-heading-0', 'review-trust-0')).toBe(true)
+    expect(isInside('review-trust-0-method', 'review-trust-0')).toBe(true)
+    expect(textOf('review-trust-0-heading-0-line-0')).toBe(t('socialRecovery.ceremony.syncedLoss'))
+    expect(textOf('review-trust-0-heading-0-line-1')).toBe(
+      t('socialRecovery.ceremony.passkeyOrigin')
+    )
+    expect(isInside('review-trust-0-heading-0-line-1', 'review-trust-0')).toBe(true)
+
+    expect(isInside('review-trust-1-guardians', 'review-trust-1')).toBe(true)
+    expect(isInside('review-trust-1-heading-0', 'review-trust-1')).toBe(true)
+    expect(isInside('review-trust-1-heading-1', 'review-trust-1')).toBe(true)
+    expect(isInside('review-trust-1-method', 'review-trust-1')).toBe(true)
+    expect(textOf('review-trust-1-heading-1-line-0')).toBe(
+      t('socialRecovery.disclosures.smartAccount')
+    )
+    expect(isInside('review-trust-1-heading-1-line-0', 'review-trust-1')).toBe(true)
+    expect(textOf('review-trust-0')).not.toContain(t('socialRecovery.disclosures.smartAccount'))
+  })
+
+  it('keeps the identity line inside the identity method section', async () => {
+    await mount({ clauses: [required(PASSPORT)], enrollments: [enrolled(PASSPORT)] })
+    await press('review-verify-details')
+
+    expect(textOf('review-trust-0')?.startsWith(kindNameOf('zkpassport', t))).toBe(true)
+    expect(textOf('review-trust-0-heading-0-line-0')).toBe(t('socialRecovery.disclosures.identity'))
+    expect(isInside('review-trust-0-heading-0-line-0', 'review-trust-0')).toBe(true)
+  })
+
+  it("holds the module's two lines in the module section and the closing lines after it, outside every section", async () => {
+    await mountTwoMethods()
+
+    const module = textOf('review-trust-module') ?? ''
+    expect(module).toContain(t('socialRecovery.review.trust.moduleAuthority'))
+    expect(module).toContain(t('socialRecovery.review.trust.auditedOnly'))
+    expect(module).not.toContain(t('socialRecovery.review.trust.selfAttested'))
+
+    const list = textOf('review-trust-list') ?? ''
+    const closing = list.indexOf(t('socialRecovery.review.trust.selfAttested'))
+    expect(closing).toBeGreaterThan(list.indexOf(t('socialRecovery.review.trust.auditedOnly')))
+    expect(list.indexOf(t('socialRecovery.review.trust.deadProvider'))).toBeGreaterThan(closing)
+    ;['review-trust-0', 'review-trust-1'].forEach((id) => {
+      expect(textOf(id)).not.toContain(t('socialRecovery.review.trust.selfAttested'))
+      expect(textOf(id)).not.toContain(t('socialRecovery.review.trust.deadProvider'))
+    })
   })
 })
 
@@ -541,6 +681,58 @@ describe('the path rows', () => {
     await press('review-group-0-show-all')
 
     expect(textOf('review-row-0-3-name')).toBe(renderFullAddress(guardianAddress('d4')))
+  })
+})
+
+describe('the path tree', () => {
+  it('draws a node per required row and per group, required rows first, each holding its row or group', async () => {
+    await mount({
+      clauses: [group(2, ALICE, BOB, CAROL), required(PASSKEY), required(PASSPORT)],
+      enrollments: [enrolled(ALICE), enrolled(BOB), enrolled(CAROL), enrolled(PASSKEY)]
+    })
+
+    expect(byTestId('review-path')).not.toBeNull()
+    ;['review-path-node-0', 'review-path-node-1', 'review-path-node-2'].forEach((id) =>
+      expect(isInside(id, 'review-path')).toBe(true)
+    )
+    expect(byTestId('review-path-node-3')).toBeNull()
+    expect(isInside('review-row-1-0', 'review-path-node-1')).toBe(true)
+    expect(isInside('review-row-2-0', 'review-path-node-2')).toBe(true)
+    expect(isInside('review-group-0', 'review-path-node-0')).toBe(true)
+    expect(isInside('review-row-0-2', 'review-group-0')).toBe(true)
+    expect(isBefore('review-path-node-1', 'review-path-node-2')).toBe(true)
+    expect(isBefore('review-path-node-2', 'review-path-node-0')).toBe(true)
+  })
+
+  it('heads a group with its number and its Require N of M', async () => {
+    await mount({ clauses: [required(PASSKEY), group(2, ALICE, BOB, CAROL)] })
+
+    const header = textOf('review-group-1') ?? ''
+    expect(header).toContain(t('socialRecovery.shape.group', { n: 1 }))
+    expect(header).toContain(
+      `${t('socialRecovery.shape.require')}2${t('socialRecovery.shape.of')}3`
+    )
+  })
+
+  it('joins its parts with the and word, once between each two', async () => {
+    await mount({ clauses: [required(PASSKEY), group(1, ALICE, BOB), group(1, CAROL, DAVE)] })
+
+    const and = t('socialRecovery.shape.and')
+    const junctions = Array.from(
+      byTestId('review-path')?.children ?? [],
+      (node) => node.textContent
+    ).filter((text) => text === and)
+    expect(junctions).toHaveLength(2)
+  })
+
+  it('keeps the show-all action inside a group drawn as a node', async () => {
+    await mount({ clauses: [required(PASSKEY), group(2, ALICE, BOB, CAROL, DAVE)] })
+
+    expect(isInside('review-group-1-show-all', 'review-path-node-1')).toBe(true)
+
+    await press('review-group-1-show-all')
+
+    expect(isInside('review-row-1-3', 'review-path-node-1')).toBe(true)
   })
 })
 
@@ -1543,6 +1735,49 @@ describe('an untested method', () => {
       t('socialRecovery.review.blocked.notTested.title')
     )
     expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('names the one untested passkey by its label and kind under the singular title', async () => {
+    await mount({
+      clauses: [required(PASSKEY), group(1, ALICE, BOB)],
+      enrollments: [enrolled(PASSKEY, 'not-tested'), enrolled(ALICE), enrolled(BOB)]
+    })
+
+    const warning = textOf('review-not-tested') ?? ''
+    expect(warning).toContain(t('socialRecovery.review.blocked.notTested.title', { count: 1 }))
+    expect(warning).not.toContain(t('socialRecovery.review.blocked.notTested.title', { count: 2 }))
+    expect(textOf('review-not-tested-0-0-name')).toBe(PASSKEY.label)
+    expect(textOf('review-not-tested-0-0-kind')).toBe(kindNameOf('passkey', t))
+    expect(byTestId('review-not-tested-1-0')).toBeNull()
+    expect(byTestId('review-not-tested-1-1')).toBeNull()
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('names two untested methods with the count in the title, the guardian by its full address', async () => {
+    await mount({
+      clauses: [required(PASSKEY), group(1, ALICE, BOB)],
+      enrollments: [enrolled(PASSKEY, 'not-tested'), enrolled(ALICE)]
+    })
+
+    const title = t('socialRecovery.review.blocked.notTested.title', { count: 2 })
+    expect(title).toContain('2')
+    expect(textOf('review-not-tested')).toContain(title)
+    expect(textOf('review-not-tested-0-0-name')).toBe(PASSKEY.label)
+    expect(textOf('review-not-tested-1-1-name')).toBe(renderFullAddress(guardianAddress('b2')))
+    expect(textOf('review-not-tested-1-1-kind')).toBe(kindNameOf('ecdsa', t))
+    expect(byTestId('review-not-tested-1-0')).toBeNull()
+    expect(isBefore('review-not-tested-0-0', 'review-not-tested-1-1')).toBe(true)
+    expect(isDisabled('review-save')).toBe(false)
+  })
+
+  it('names no empty slot as an untested method', async () => {
+    await mount({
+      clauses: [group(1, ALICE, emptySlot('passkey'))],
+      enrollments: [enrolled(ALICE, 'not-tested')]
+    })
+
+    expect(textOf('review-not-tested-0-0-name')).toBe(renderFullAddress(guardianAddress('a1')))
+    expect(byTestId('review-not-tested-0-1')).toBeNull()
   })
 
   it('warns where a skipped test stands beside a failed one', async () => {
