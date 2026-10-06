@@ -323,13 +323,20 @@ const logAt = (blockNumber: number, transactionHash: Hex, logIndex = 0) => ({
   removed: false
 })
 
-/** An opening of an attempt; `payload` and `setupNonce` name another party's opening where they differ from ours. */
+/**
+ * An opening of an attempt; `payload` and `setupNonce` name another party's
+ * opening where they differ from ours, and `usedMethods` the methods it names.
+ */
 export const attemptStarted = (
   account: Address,
   usedPlaces: number[],
   attemptId = 1n,
   blockNumber = START_BLOCK,
-  { payload = PAYLOAD, setupNonce = 1n }: { payload?: Hex; setupNonce?: bigint } = {}
+  {
+    payload = PAYLOAD,
+    setupNonce = 1n,
+    usedMethods = []
+  }: { payload?: Hex; setupNonce?: bigint; usedMethods?: Address[] } = {}
 ): Notification => ({
   kind: 'attempt-started',
   account,
@@ -338,7 +345,7 @@ export const attemptStarted = (
   setupNonce,
   setupBody: '0x01',
   usedPlaces: usedPlaces.map(BigInt),
-  usedMethods: [],
+  usedMethods,
   payload,
   order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
   consumableAfter: CONSUME_TIME - 10,
