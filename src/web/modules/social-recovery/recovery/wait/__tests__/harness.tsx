@@ -49,8 +49,10 @@ import type {
   TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
+  ExecutionInFlightRecord,
   RecoveryEntryRecord,
   RecoveryRoute,
+  StoredSession,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type { TestStorage } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
@@ -159,7 +161,8 @@ const {
   sendRefusal
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
-  createWalletRecords
+  createWalletRecords,
+  recordKeys
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const checklist: typeof import('@web/modules/social-recovery/recovery/checklist/__tests__/harness') = require('@web/modules/social-recovery/recovery/checklist/__tests__/harness')
 const {
@@ -340,6 +343,14 @@ export const minedAndReverted = (hash: Hex = TX_HASH): Error =>
     code: 'CALL_EXCEPTION',
     receipt: { hash, status: 0, blockNumber: START_BLOCK + 10, gasUsed: 51_234n },
     transaction: { hash }
+  })
+
+/** ethers' error from `wait()` on a transaction another transaction of the key replaced before it was mined. */
+export const replacedByAnother = (hash: Hex = TX_HASH): Error =>
+  Object.assign(new Error('transaction was replaced'), {
+    code: 'TRANSACTION_REPLACED',
+    reason: 'replaced',
+    hash
   })
 
 export const landedReceipt = (hash: Hex = TX_HASH): ProviderTransactionReceipt =>
@@ -566,6 +577,78 @@ export const landCountdown = async (
   await records.landSubmission(CHAIN_ID, account, live.revision)
 }
 
+/**
+ * Stores the countdown as a wallet stored it before the landing kept the
+ * landed attempt: the account alone, with no attempt id, setup number or
+ * payload hash.
+ */
+export const storeCountdownWithoutAttempt = async (
+  storage: TestStorage,
+  account: Address
+): Promise<void> => {
+  const key = recordKeys.recoverySession(CHAIN_ID, account)
+  const stored = (await storage.get(key)) as StoredSession
+  if (stored.value.state !== 'landed') {
+    throw new Error('no landed session')
+  }
+  const { attemptId, setupNonce, payloadHash, ...older } = stored.value
+  await storage.set(key, { ...stored, value: older })
+}
+
+/** The request id under which another page claims the execution. */
+export const OTHER_REQUEST = 'social-recovery-sender:another-page'
+/** The hash another page's execution went out under. */
+export const OTHER_TX_HASH: Hex =
+  '0x7e7e2e6a0d4f3e8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a'
+/** The block another page read before its claim. */
+export const CLAIM_BLOCK = START_BLOCK + 20
+
+/** The execution in flight the countdown holds, or undefined where it holds none or no countdown is stored. */
+export const executionOf = async (
+  records: WalletRecords,
+  account: Address
+): Promise<ExecutionInFlightRecord | undefined> => {
+  const read = await records.countdown(CHAIN_ID, account).read()
+  return read.status === 'present' ? read.value.execution : undefined
+}
+
+/**
+ * Writes another page's claim of the execution on the countdown, as that page
+ * writes it before its send, and its hash where it has one.
+ */
+export const claimElsewhere = async (
+  records: WalletRecords,
+  account: Address,
+  { claimedAt = Date.now(), transactionHash }: { claimedAt?: number; transactionHash?: Hex } = {}
+): Promise<void> => {
+  const countdown = records.countdown(CHAIN_ID, account)
+  const read = await countdown.read()
+  if (read.status !== 'present') {
+    throw new Error('no countdown')
+  }
+  const written = await countdown.claimExecution(
+    { requestId: OTHER_REQUEST, startBlock: CLAIM_BLOCK, claimedAt },
+    read.revision
+  )
+  if (transactionHash) {
+    await countdown.setExecutionHash(OTHER_REQUEST, transactionHash, written.record.revision)
+  }
+}
+
+/** Writes the hash of another page's claim, as that page does once the wallet sent it. */
+export const hashElsewhere = async (
+  records: WalletRecords,
+  account: Address,
+  transactionHash: Hex = OTHER_TX_HASH
+): Promise<void> => {
+  const countdown = records.countdown(CHAIN_ID, account)
+  const read = await countdown.read()
+  if (read.status !== 'present') {
+    throw new Error('no countdown')
+  }
+  await countdown.setExecutionHash(OTHER_REQUEST, transactionHash, read.revision)
+}
+
 // ---------------------------------------------------------------------------
 // The clock
 // ---------------------------------------------------------------------------
@@ -723,6 +806,46 @@ export const mountWait = (account: Address): Promise<Mounted> =>
       <WaitScreen />
     </MemoryRouter>
   )
+
+/**
+ * The libraries both pages share, as one browser holds them: everything else
+ * loads again for the other page, so its runs and its records' queues are its
+ * own, as another tab's are.
+ */
+const SHARED_LIBRARIES = [
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-native-web',
+  'react-router',
+  'react-router-dom',
+  '@common/contexts/themeContext',
+  '@common/config/localization'
+]
+
+/**
+ * Mounts the wait at its route for `account` as another page of the same
+ * wallet: another tab, or this tab after a reload. It shares only the
+ * extension's storage and the wallet's edges with the first page.
+ */
+export const mountWaitInAnotherPage = (account: Address): Promise<Mounted> => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require, import/no-dynamic-require */
+  const shared = SHARED_LIBRARIES.map((name) => [name, require(name)] as const)
+  let OtherWaitScreen: typeof WaitScreen = WaitScreen
+  jest.isolateModules(() => {
+    shared.forEach(([name, library]) => jest.doMock(name, () => library))
+    OtherWaitScreen = require('@web/modules/social-recovery/recovery/wait/WaitScreen').default
+  })
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require, import/no-dynamic-require */
+  return mountElement(
+    <MemoryRouter
+      initialEntries={[waitPathOf(account)]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <OtherWaitScreen />
+    </MemoryRouter>
+  )
+}
 
 /** Mounts the home band over `records`, with no live session's headline. */
 export const mountBand = (records: WalletRecords): Promise<Mounted> =>
