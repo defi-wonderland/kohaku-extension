@@ -2,7 +2,8 @@
  * What the card tests share: the fake recovery client the screen test hands
  * the screen, a promise a test settles by hand, the refusal the setup read
  * throws when a password does not open the saved backup, and the refusal a
- * client built against another digest version fails with.
+ * client built against another digest version fails with, and a reader of the
+ * text the card's PDF draws.
  */
 import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
 import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
@@ -19,6 +20,12 @@ export type FakeClientState =
   | { status: 'ready'; client: { setup: FakeSetupReads } }
   | { status: 'failed'; error: unknown }
   | { status: 'update-the-wallet'; refusal: DigestVersionRefusal }
+
+/** One text block the PDF draws: its font resource and its strings joined. */
+export interface PdfTextBlock {
+  font: string
+  text: string
+}
 
 /** A promise with its two ends in the test's hands. */
 export interface Deferred<T> {
@@ -51,6 +58,26 @@ export const digestVersionRefusal = (): DigestVersionRefusal =>
     state: 'update-the-wallet' as const,
     carried: { name: 'Recovery', version: '1' }
   })
+
+const decodeLiteral = (literal: string): string =>
+  literal.replace(/\\([0-7]{3}|[\\()])/g, (_, escaped: string) =>
+    escaped.length === 3 ? String.fromCharCode(parseInt(escaped, 8)) : escaped
+  )
+
+/**
+ * The PDF's text blocks in drawing order, each block's wrapped lines joined
+ * back into its text. Bytes above 0x7f read as Latin-1, enough for the card's
+ * own strings.
+ */
+export const pdfTextBlocks = (bytes: Uint8Array): PdfTextBlock[] => {
+  const file = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
+  return Array.from(file.matchAll(/\nBT\n([\s\S]*?)\nET/g), ([, block]) => ({
+    font: block.match(/(\/F\d+) [\d.]+ Tf/)?.[1] ?? '',
+    text: Array.from(block.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g), ([, literal]) =>
+      decodeLiteral(literal)
+    ).join('')
+  }))
+}
 
 // Jest runs every file under __tests__, this one included; its own check runs
 // only when Jest runs this file, never from a file that imports the harness.

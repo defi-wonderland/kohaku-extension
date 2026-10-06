@@ -18,7 +18,7 @@ import type {
   CardLevel,
   PasswordAskAnswer
 } from '@web/modules/social-recovery/setup/card'
-import { deferred } from '@web/modules/social-recovery/setup/card/__tests__/harness'
+import { deferred, pdfTextBlocks } from '@web/modules/social-recovery/setup/card/__tests__/harness'
 import type {
   MissingPasswordRow,
   RecoveryPasswordCheck
@@ -182,16 +182,16 @@ describe('the recovery card view', () => {
     })
   }
 
-  // The file's card as its rows read: each label with its value, then each line.
+  // The file's card as its rows read: each label with its value in the
+  // fixed-width font, then each line in the regular one.
   const fileRows = (file: CardFile) => {
-    const page = new DOMParser().parseFromString(file.text, 'text/html')
+    const blocks = pdfTextBlocks(file.bytes)
     return {
-      values: Array.from(page.querySelectorAll('.card .value'), (row) => [
-        row.querySelector('.label')?.textContent,
-        row.querySelector('.mono')?.textContent
-      ]),
-      lines: Array.from(page.querySelectorAll('.card p'), (line) => line.textContent),
-      text: page.body.textContent ?? ''
+      values: blocks.flatMap((block, at) =>
+        block.font === '/F3' ? [[blocks[at - 1]?.text, block.text]] : []
+      ),
+      lines: blocks.filter((block) => block.font === '/F1').map((block) => block.text),
+      text: blocks.map((block) => block.text).join('\n')
     }
   }
 
@@ -268,31 +268,12 @@ describe('the recovery card view', () => {
       expect(onCarried).toHaveBeenCalledTimes(1)
     })
 
-    // jsdom lays nothing out, so the file keeps the spaces when its value
-    // holds them verbatim and its own sheet tells the browser to show them.
-    // A parsed document gets no sheet in jsdom, so the file's style is read
-    // through a style element in this page.
     it('saves a password with inner and trailing spaces exactly as typed', async () => {
       const spaced = ' tide  lantern orchid '
       await mount({ password: spaced })
       await press('card-download')
       expect(files).toHaveLength(1)
-      expect(files[0].text).toContain(`<div class="mono">${spaced}</div>`)
-      const page = new DOMParser().parseFromString(files[0].text, 'text/html')
-      const passwordValue = page.querySelectorAll('.card .value .mono')[1]
-      expect(passwordValue?.textContent).toBe(spaced)
-
-      const style = document.createElement('style')
-      style.textContent = page.querySelector('style')?.textContent ?? ''
-      document.head.appendChild(style)
-      const whiteSpace = Array.from(style.sheet?.cssRules ?? [])
-        .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
-        .filter((rule) => passwordValue?.matches(rule.selectorText))
-        .map((rule) => rule.style.getPropertyValue('white-space'))
-        .filter(Boolean)
-        .pop()
-      style.remove()
-      expect(whiteSpace).toBe('pre-wrap')
+      expect(fileRows(files[0]).values[1]).toEqual([S.display.passwords.recoveryPassword, spaced])
     })
 
     it('prints with the card mounted under the page body, then takes the print view away', async () => {
@@ -305,15 +286,6 @@ describe('the recovery card view', () => {
       expect(document.querySelector('[data-testid="print-view"]')).toBeNull()
       expect(document.body.textContent).not.toContain(PASSWORD)
       expect(onCarried).toHaveBeenCalledTimes(1)
-    })
-
-    it('hands the card to another device through the print view', async () => {
-      await mount()
-      await press('card-send')
-      expect(printed).toHaveLength(1)
-      expect(printed[0].printView).toBe(true)
-      expect(files).toHaveLength(0)
-      expect(document.querySelector('[data-testid="print-view"]')).toBeNull()
     })
   })
 
@@ -340,7 +312,7 @@ describe('the recovery card view', () => {
       const rows = fileRows(files[0])
       expect(rows.values).toEqual([[S.display.values.account, CHECKSUMMED]])
       expect(rows.lines).toEqual(LINES)
-      expect(files[0].text).not.toContain('orchid')
+      expect(fileRows(files[0]).text).not.toContain('orchid')
     })
   })
 
@@ -377,14 +349,9 @@ describe('the recovery card view', () => {
 
     it('disables every carrier, so nothing carries a card without its password', async () => {
       await mount({ password: null })
-      expect(['card-download', 'card-print', 'card-send'].map(isDisabled)).toEqual([
-        true,
-        true,
-        true
-      ])
+      expect(['card-download', 'card-print'].map(isDisabled)).toEqual([true, true])
       await press('card-download')
       await press('card-print')
-      await press('card-send')
       expect(files).toHaveLength(0)
       expect(printed).toHaveLength(0)
       expect(byTestId('card-password-ask')).toBeNull()
@@ -405,7 +372,6 @@ describe('the recovery card view', () => {
         'card-password-gone-action',
         'card-download',
         'card-print',
-        'card-send',
         'card-why',
         'card-warns',
         'card-continue',
@@ -439,7 +405,6 @@ describe('the recovery card view', () => {
       expect(byTestId('card-password-ask')).not.toBeNull()
       expect(byTestId('card-download')).toBeNull()
       expect(byTestId('card-print')).toBeNull()
-      expect(byTestId('card-send')).toBeNull()
       expect(printed).toHaveLength(0)
       expect(onCarried).toHaveBeenCalledTimes(1)
 
@@ -566,11 +531,7 @@ describe('the recovery card view', () => {
       expect(byTestId('card-password-gone')).toBeNull()
       expect(byTestId('card-recovery-password-ask')).toBeNull()
       expect(container.querySelector('input')).toBeNull()
-      expect(['card-download', 'card-print', 'card-send'].map(isDisabled)).toEqual([
-        true,
-        true,
-        true
-      ])
+      expect(['card-download', 'card-print'].map(isDisabled)).toEqual([true, true])
     })
 
     it('asks the recovery password in the row, beside back and continue, with every carrier off', async () => {
@@ -585,11 +546,7 @@ describe('the recovery card view', () => {
         t('socialRecovery.card.passwordAskAction')
       )
       expect(isDisabled('card-recovery-password-check')).toBe(true)
-      expect(['card-download', 'card-print', 'card-send'].map(isDisabled)).toEqual([
-        true,
-        true,
-        true
-      ])
+      expect(['card-download', 'card-print'].map(isDisabled)).toEqual([true, true])
       const ids = Array.from(container.querySelectorAll<HTMLElement>('[data-testid]'), (node) =>
         node.getAttribute('data-testid')
       )

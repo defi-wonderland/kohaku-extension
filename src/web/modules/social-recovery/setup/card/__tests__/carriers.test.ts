@@ -13,10 +13,12 @@ import {
   REVOKE_DELAY_MS
 } from '@web/modules/social-recovery/setup/card/carriers'
 
+const TEXT = 'tide lantern orchid'
 const FILE: CardFile = {
-  name: 'card.html',
-  type: 'text/html',
-  text: '<p>tide lantern orchid</p>'
+  name: 'card.pdf',
+  type: 'application/pdf',
+  bytes: Uint8Array.from(TEXT, (char) => char.charCodeAt(0)),
+  replacedCharacters: false
 }
 
 const readBlob = (blob: Blob): Promise<string> =>
@@ -66,11 +68,11 @@ describe('the file carrier', () => {
     jest.restoreAllMocks()
   })
 
-  it('saves the file from an object URL built from its text and type', async () => {
+  it('saves the file from an object URL built from its bytes and type', async () => {
     BROWSER_CARRIERS.download(FILE)
     expect(blobs).toHaveLength(1)
     expect(blobs[0].type).toBe(FILE.type)
-    expect(await readBlob(blobs[0])).toBe(FILE.text)
+    expect(await readBlob(blobs[0])).toBe(TEXT)
     expect(clicks).toEqual([{ href: OBJECT_URL, download: FILE.name, inPage: true, live: true }])
   })
 

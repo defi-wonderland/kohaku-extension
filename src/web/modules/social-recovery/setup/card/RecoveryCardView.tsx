@@ -1,7 +1,7 @@
 /**
  * The Recovery Card screen: the card with the password hidden behind a reveal,
- * the three carriers, and what warns the holder of a recovery they did not
- * start. The first carrier runs at once; every later one asks the extension
+ * its two carriers, the PDF file and the print, and what warns the holder of a
+ * recovery they did not start. The first carrier runs at once; every later one asks the extension
  * password first. At the hidden level with no password in memory, after a
  * reload or in a new tab, the password row asks the recovery password again
  * when a saved setup can check it, and otherwise says so and leads back to the
@@ -212,15 +212,6 @@ const RecoveryCardView = ({
                 text={t('socialRecovery.card.print')}
                 disabled={passwordMissing}
                 onPress={() => press('print')}
-                style={spacings.mrSm}
-              />
-              <Button
-                testID="card-send"
-                type="secondary"
-                hasBottomSpacing={false}
-                text={t('socialRecovery.card.sendToDevice')}
-                disabled={passwordMissing}
-                onPress={() => press('sendToDevice')}
               />
             </View>
             <Text fontSize={12} appearance="secondaryText" style={spacings.mtSm}>
