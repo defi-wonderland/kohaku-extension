@@ -32,3 +32,5 @@ export type {
   PathTreeProps,
   PathTreeSegment
 } from './types'
+export { default as FieldInput } from './FieldInput'
+export type { FieldInputProps } from './types'

@@ -1,16 +1,14 @@
 /**
  * The enroll route: the settings chrome around the enroll view for the
  * selected account on the recovery chain, with the page's own helpers the
- * view uses: the ceremony's report channel, the name resolution, the chain
- * reads over the extension's provider, the keystore's keys and the request
- * queue that signs a guardian's test on this device.
+ * view uses: the ceremony's report channel, the name resolution on mainnet,
+ * the chain reads over the extension's provider, the keystore's keys and the
+ * request queue that signs a guardian's test on this device.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { isAddress } from 'viem'
 
-import type { MinNetworkConfig } from '@ambire-common/services/provider'
-import { resolveENSDomain } from '@ambire-common/services/ensDomains'
 import useNavigation from '@common/hooks/useNavigation'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
@@ -39,11 +37,11 @@ import {
   extensionRecordStorage,
   newCeremonyRequestId
 } from '@web/modules/social-recovery/shared/records'
-import { getRpcProviderForUI } from '@web/services/provider'
 
 import { browserClipboard, saveChallengeFile } from './carriers'
 import { guardianChainOf } from './chain'
 import EnrollView from './EnrollView'
+import { resolveMainnetName } from './names'
 import { parseEnrollSearch } from './search'
 import type { EnrollClient, EnrollDeps, GuardianChain, HeldKey } from './types'
 
@@ -154,17 +152,14 @@ const EnrollScreen = () => {
       newRequestId: newCeremonyRequestId,
       now: Date.now,
       randomBytes,
-      resolveName: (name: string) =>
-        resolveENSDomain(name, undefined, (config: MinNetworkConfig) =>
-          getRpcProviderForUI(config, dispatch)
-        ),
+      resolveName: resolveMainnetName,
       chain,
       keys: heldKeys,
       signTypedData: (key, typedData, options) => signer.signTypedData(key, typedData, options),
       readClipboard: browserClipboard(),
       saveFile: saveChallengeFile
     }),
-    [dispatch, chain, heldKeys, signer]
+    [chain, heldKeys, signer]
   )
 
   return (
