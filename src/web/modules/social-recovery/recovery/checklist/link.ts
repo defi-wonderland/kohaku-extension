@@ -110,7 +110,8 @@ const orderOf = (value: unknown): SerializedPaymentOrder | null | undefined => {
 /**
  * The request a link carries, from the link itself or from the route's search
  * string, or null where any field is missing or has the wrong type. An
- * approval request carries the handover bytes and the payment order.
+ * approval request carries the handover bytes; a missing payment order means
+ * no payment.
  */
 export const requestOfApprovalLink = (search: string): ApproverRequest | null => {
   const at = search.lastIndexOf('?')
@@ -138,7 +139,7 @@ export const requestOfApprovalLink = (search: string): ApproverRequest | null =>
     !isDecimal(r.setupNonce) ||
     !isHexField(r.setupBodyHash) ||
     (r.payload !== undefined && !isHexField(r.payload)) ||
-    (r.purpose === 'approval' && (r.payload === undefined || order === undefined)) ||
+    (r.purpose === 'approval' && r.payload === undefined) ||
     !isDecimal(r.validUntil) ||
     !isIndex(r.place) ||
     !isAddressField(r.method) ||
