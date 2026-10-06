@@ -208,7 +208,7 @@ describe('opening the checklist', () => {
   each([
     ['deadline-passed', 'expired', true],
     ['another-attempt-opened', 'void', false],
-    ['setup-changed', 'setupChanged', true]
+    ['setup-changed', 'setupChanged', false]
   ] as const)(
     'renders a session the %s wipe ended with its reason',
     async ([reason, slug, offers]) => {
@@ -216,6 +216,11 @@ describe('opening the checklist', () => {
       const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
       await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, reason, seeded.revision)
       const kit = fakeKit(MIXED_PATH)
+      kit.recoveryState.mockResolvedValue({
+        attempt: { state: 'Waiting', attemptId: 3n, setupNonce: 1n },
+        nextAttemptId: 4n,
+        setupNonce: 1n
+      })
       view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
 
       expect(kit.initRecoveryGathering).not.toHaveBeenCalled()

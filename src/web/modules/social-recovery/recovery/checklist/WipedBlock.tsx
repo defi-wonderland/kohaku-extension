@@ -1,7 +1,10 @@
 /**
- * A session a wipe ended: the reason it keeps, as its title and body, that
- * nothing was submitted, and the action that gathers again in its place. A
- * session another attempt voided offers no new gathering.
+ * A session a wipe ended, rendered from the reason it keeps and nothing else:
+ * its title and body, that nothing was submitted, and the way on each reason
+ * gives. An expired request is gathered again whole, or afresh where no
+ * approval was given. A request another attempt voided names the slot that
+ * attempt holds and who clears it, and offers no new gathering until a poll
+ * reads the slot free. A changed setup is read again at the readout.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -15,26 +18,101 @@ import { ActionsRow, PageTitle } from '@web/modules/social-recovery/shared/chrom
 import { WIPE_REASON_STRING_KEYS } from '@web/modules/social-recovery/shared/records'
 
 import { dateOf } from './lines'
+import PollAlert from './PollAlert'
 import type { WipedBlockProps } from './types'
 
-const WipedBlock = ({ session, timeZone, busy, failed, onGatherAgain }: WipedBlockProps) => {
+const DEATHS = 'socialRecovery.checklist.deaths'
+
+const WipedBlock = ({
+  session,
+  timeZone,
+  busy,
+  failed,
+  onGatherAgain,
+  hadReplies,
+  slot,
+  onRetryPoll,
+  onReadSetupAgain
+}: WipedBlockProps) => {
   const { t } = useTranslation()
   const keys = WIPE_REASON_STRING_KEYS[session.reason]
-  // While another attempt holds the account's one slot, a new set could not be submitted.
-  const gathersAgain = session.reason !== 'another-attempt-opened'
   const deadline = session.deadline !== undefined ? Number(session.deadline) * 1000 : NaN
+  const voided = session.reason === 'another-attempt-opened'
+  const slotFree = voided && slot === 'free'
+
+  const line = (key: string, testID: string) => (
+    <Text fontSize={14} style={spacings.mbTy} testID={testID}>
+      {t(key)}
+    </Text>
+  )
+
+  const action = (key: string, testID: string, onPress: () => void) => (
+    <ActionsRow
+      primary={
+        <Button
+          testID={testID}
+          type="primary"
+          text={t(key)}
+          disabled={busy}
+          onPress={onPress}
+          hasBottomSpacing={false}
+        />
+      }
+    />
+  )
+
+  const way = () => {
+    switch (session.reason) {
+      case 'deadline-passed': {
+        const afresh = hadReplies === false
+        return (
+          <>
+            {afresh
+              ? line(`${DEATHS}.expiredNoApproval`, 'checklist-expired-afresh')
+              : line(`${DEATHS}.expiredRegather`, 'checklist-expired-regather')}
+            {action(
+              afresh ? `${DEATHS}.startNewRequest` : `${DEATHS}.gatherAgain`,
+              'checklist-gather-again',
+              onGatherAgain
+            )}
+          </>
+        )
+      }
+      case 'another-attempt-opened':
+        if (slotFree) {
+          return (
+            <>
+              {line(`${DEATHS}.slotFreeBody`, 'checklist-slot-free')}
+              {action(`${DEATHS}.gatherAgain`, 'checklist-gather-again', onGatherAgain)}
+            </>
+          )
+        }
+        return (
+          <>
+            {line(`${DEATHS}.voidSlot`, 'checklist-void-slot')}
+            {line(`${DEATHS}.voidCannotSubmit`, 'checklist-void-cannot-submit')}
+            {line(`${DEATHS}.voidReopen`, 'checklist-void-reopen')}
+          </>
+        )
+      case 'setup-changed':
+        return action(`${DEATHS}.readSetupAgain`, 'checklist-read-setup-again', onReadSetupAgain)
+      default:
+        return action(`${DEATHS}.gatherAgain`, 'checklist-gather-again', onGatherAgain)
+    }
+  }
 
   return (
     <View testID="checklist-wiped">
       {!!keys && (
         <PageTitle
-          title={t(keys.title)}
+          title={slotFree ? t(`${DEATHS}.slotFreeTitle`) : t(keys.title)}
           lead={t(keys.body, {
             deadline: Number.isFinite(deadline) ? dateOf(deadline, timeZone) : ''
           })}
           titleTestID="checklist-wiped-title"
         />
       )}
+      {voided && slot === 'failed' && <PollAlert withRows={false} onRetry={onRetryPoll} />}
       <Text fontSize={14} style={spacings.mbSm} testID="checklist-wiped-note">
         {t('socialRecovery.records.wipedNote')}
       </Text>
@@ -48,20 +126,7 @@ const WipedBlock = ({ session, timeZone, busy, failed, onGatherAgain }: WipedBlo
           text={t('socialRecovery.client.unavailableBody')}
         />
       )}
-      {gathersAgain && (
-        <ActionsRow
-          primary={
-            <Button
-              testID="checklist-gather-again"
-              type="primary"
-              text={t('socialRecovery.checklist.deaths.gatherAgain')}
-              disabled={busy}
-              onPress={onGatherAgain}
-              hasBottomSpacing={false}
-            />
-          }
-        />
-      )}
+      {way()}
     </View>
   )
 }

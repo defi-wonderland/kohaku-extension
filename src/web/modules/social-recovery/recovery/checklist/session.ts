@@ -58,7 +58,7 @@ const restoreCauseOf = (error: unknown): RestoreCause | undefined => {
 }
 
 /** A stored session as what opening found. */
-const resultOfRead = (read: SessionRead): OpenResult | null => {
+export const resultOfRead = (read: SessionRead): OpenResult | null => {
   if (read.status !== 'present') {
     return null
   }

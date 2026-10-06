@@ -445,6 +445,8 @@ export interface FakeKit {
   assess: jest.Mock
   getSetup: jest.Mock
   removedKey: jest.Mock
+  recoveryState: jest.Mock
+  isAuthorized: jest.Mock
 }
 
 /**
@@ -475,10 +477,23 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
   const assess = jest.fn((gathering: Gathering) => assessmentOf(configuration, gathering))
   const getSetup = jest.fn(async () => configuration)
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))
+  const recoveryState = jest.fn(async () => ({
+    attempt: { state: 'None', attemptId: 0n, setupNonce: 1n },
+    nextAttemptId: 1n,
+    setupNonce: 1n
+  }))
+  const isAuthorized = jest.fn(async () => true)
   const client = {
-    recovery: { initRecoveryGathering, getApproverRequests, addApproverReply, assess },
+    recovery: {
+      initRecoveryGathering,
+      getApproverRequests,
+      addApproverReply,
+      assess,
+      recoveryState
+    },
     setup: { getSetup },
-    walletReads: { removedKey }
+    walletReads: { removedKey },
+    action: { isAuthorized }
   } as unknown as ChecklistKitClient
   return {
     state: { status: 'ready', client },
@@ -487,7 +502,9 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     addApproverReply,
     assess,
     getSetup,
-    removedKey
+    removedKey,
+    recoveryState,
+    isAuthorized
   }
 }
 
@@ -605,6 +622,7 @@ export const depsOf = (overrides: Partial<ChecklistDeps> = {}): FakeDeps => {
     rpIdHash: RP_HASH,
     passkeysServed: true,
     readPassword: () => undefined,
+    forgetPassword: () => undefined,
     ...overrides,
     channel,
     requestIds

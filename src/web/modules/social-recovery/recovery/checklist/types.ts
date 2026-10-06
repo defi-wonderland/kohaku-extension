@@ -5,6 +5,7 @@ import type {
   ApproverReply,
   ApproverRequest,
   Assessment,
+  Attempt,
   Configuration,
   Gathering,
   GatheringPlace,
@@ -15,7 +16,8 @@ import type {
   CeremonyOutcome,
   PasskeyFacts,
   ReportStore,
-  ReportSubscribe
+  ReportSubscribe,
+  VisibilitySource
 } from '@web/modules/social-recovery/shared/ceremony'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
 import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
@@ -89,11 +91,29 @@ export interface RowState {
   note?: RowNote
 }
 
+/** What a row's state reads beyond the assessment and the notes. */
+export interface RowStateExtras {
+  /** The places the submission would carry, where the client named them; a filled place outside reads not needed. */
+  chosen?: ReadonlySet<number>
+  /** The places whose method did not answer this time. */
+  didNotAnswer?: ReadonlySet<number>
+}
+
+/** Why the path cannot be satisfied yet, read from the rows' own states, in the order the checklist names them. */
+export type UnsatisfiedReading =
+  | { kind: 'didNotAnswer'; places: number[] }
+  | { kind: 'groupCannotReach'; clauses: number[] }
+  | { kind: 'guardianOpen' }
+  | { kind: 'needsMore' }
+
 // ---------------------------------------------------------------------------
 // The client and the inputs
 // ---------------------------------------------------------------------------
 
-export type ChecklistKitClient = Pick<RecoveryKitClient, 'recovery' | 'setup' | 'walletReads'>
+export type ChecklistKitClient = Pick<
+  RecoveryKitClient,
+  'recovery' | 'setup' | 'walletReads' | 'action'
+>
 
 export type ChecklistClient =
   | { status: 'loading' }
@@ -120,6 +140,10 @@ export interface ChecklistDeps {
   /** Whether this page serves passkeys. */
   passkeysServed: boolean
   readPassword: (chainId: ChainId, account: Address) => string | undefined
+  /** Drops the recovery password held in memory, so the readout asks it again. */
+  forgetPassword: (chainId: ChainId, account: Address) => void
+  /** The page's document, whose return to view polls the chain at once. */
+  visibility?: VisibilitySource
 }
 
 /** The recovery entry record of the account being recovered, as the screen reads it. */
@@ -172,7 +196,13 @@ export type ChecklistFailure = 'records' | 'setup' | 'open' | 'destination'
 export type ChecklistLoad =
   | { phase: 'loading' }
   | { phase: 'failed'; cause: ChecklistFailure }
-  | { phase: 'wiped'; session: WipedRecoverySession; revision: SessionRevision }
+  | {
+      phase: 'wiped'
+      session: WipedRecoverySession
+      revision: SessionRevision
+      /** Whether the gathering held a reply when this tab wiped it; unknown for a wipe read from storage. */
+      hadReplies?: boolean
+    }
   | ({ phase: 'live' } & LiveChecklist)
   /** Another tab changed the session after this one read it. */
   | { phase: 'conflict' }
@@ -253,6 +283,13 @@ export interface ChecklistState {
   gatherAgain: () => Promise<void>
   /** Gathering again did not open; the wiped reason stays on screen. */
   gatherFailed: boolean
+  /** Clears the wiped line, the decrypted setup and the password held, and sends the holder to the readout. */
+  readSetupAgain: () => Promise<void>
+  /** The last poll of the account's recovery state. */
+  poll: PollState
+  retryPoll: () => void
+  /** A death the poll read could not be wiped; the next poll tries again. */
+  deathFailed: boolean
   busy: boolean
 }
 
@@ -264,7 +301,49 @@ export interface ChecklistHookInput {
   client: ChecklistClient
   destination: DestinationReading
   navigate: Navigate
-  deps: Pick<ChecklistDeps, 'now' | 'readPassword'>
+  deps: Pick<ChecklistDeps, 'now' | 'readPassword' | 'forgetPassword' | 'visibility'>
+}
+
+// ---------------------------------------------------------------------------
+// The poll
+// ---------------------------------------------------------------------------
+
+/** One poll's reading of the account: the attempt, the counters and whether the account authorizes the action. */
+export interface PollFacts {
+  attempt: Attempt
+  nextAttemptId: bigint
+  setupNonce: bigint
+  authorized: boolean
+}
+
+/**
+ * The poll as the checklist reads it: nothing returned yet since the session
+ * opened, the last round answered with the clock read before it, or the last
+ * round failed or ran past its limit.
+ */
+export type PollState =
+  | { status: 'pending' }
+  | { status: 'answered'; facts: PollFacts; clock: number }
+  | { status: 'failed' }
+
+/** Which session the poll reads for: the request of a live session, or a session another attempt voided. */
+export type PollTarget =
+  | { kind: 'live'; key: string; gathering: Gathering }
+  | { kind: 'void'; key: string }
+
+export interface PollInput {
+  kit: ChecklistKitClient | null
+  target: PollTarget | null
+  deps: Pick<ChecklistDeps, 'now' | 'visibility'>
+  /** Runs before each round's read, with the clock read then; true stops the round. */
+  before: (clock: number) => boolean
+  /** Runs after each round that answered, with the clock read before its read. */
+  after: (facts: PollFacts, clock: number) => void
+}
+
+export interface PollHook {
+  poll: PollState
+  retry: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +418,8 @@ export interface PasskeyClaim {
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
   /** The session was abandoned: the pending claim's request and report go. */
   forgetPending: () => void
+  /** The session was wiped: the request and the report of every claim this checklist knows of go. */
+  forgetAll: () => void
   /** The places this tab asked: a claim launched, pending or undelivered. */
   asked: ReadonlySet<number>
   /** The place whose report never came back, with its retry. */
@@ -532,12 +613,37 @@ export interface AbandonBlockProps {
   onAbandon: () => void
 }
 
+/** Whether the account's one attempt slot is held, as the last poll read it on a voided session. */
+export type SlotReading = 'unread' | 'held' | 'free' | 'failed'
+
 export interface WipedBlockProps {
   session: WipedRecoverySession
   timeZone: string
   busy: boolean
   failed: boolean
   onGatherAgain: () => void
+  /** Whether the gathering held a reply; unknown reads as the regather line. */
+  hadReplies?: boolean
+  slot: SlotReading
+  onRetryPoll: () => void
+  onReadSetupAgain: () => void
+}
+
+export interface DeadlineBlockProps {
+  gathering: Gathering
+  layout: ChecklistLayout
+  now: () => number
+  timeZone: string
+}
+
+export interface UnsatisfiedBlockProps {
+  reading: UnsatisfiedReading
+}
+
+export interface PollAlertProps {
+  /** Whether rows sit under the alert, so it says they may be out of date. */
+  withRows: boolean
+  onRetry: () => void
 }
 
 export interface ChecklistChromeProps {

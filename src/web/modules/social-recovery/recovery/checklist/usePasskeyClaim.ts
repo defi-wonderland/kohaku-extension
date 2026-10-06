@@ -6,7 +6,9 @@
  * arrives through the subscription. A claim that did not pass loses its
  * request, its report and its id at once; a passed claim waits as `pending`,
  * its request, report and id kept, until the checklist adds its reply to the
- * live session or the session is abandoned.
+ * live session or the session is abandoned. Once the session is wiped, every
+ * claim this checklist knows of loses its request and its report, a report
+ * that lands after the wipe included.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -190,6 +192,16 @@ const usePasskeyClaim = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending])
 
+  // A wiped session keeps no claim: the waiting one and the one the search
+  // names lose their request and report. The listener stays, so a report the
+  // ceremony tab writes later is taken and removed in turn.
+  const forgetAll = useCallback(() => {
+    const ids = [pending?.id, ceremonyId].filter((id): id is string => typeof id === 'string')
+    new Set(ids).forEach((id) => forget(id, true))
+    setPending(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, ceremonyId])
+
   const asked = useMemo(
     () =>
       new Set(
@@ -206,6 +218,7 @@ const usePasskeyClaim = ({
     pending,
     settle,
     forgetPending,
+    forgetAll,
     asked,
     undelivered,
     retryUndelivered,

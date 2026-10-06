@@ -29,7 +29,8 @@ import {
   createWalletRecords,
   extensionRecordStorage,
   newCeremonyRequestId,
-  readRecoveryPassword
+  readRecoveryPassword,
+  wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 
 import ChecklistChrome from './ChecklistChrome'
@@ -87,7 +88,9 @@ const ChecklistBody = ({ records, account, entry, search }: ChecklistBodyProps) 
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       rpIdHash: relyingPartyOf(window.location).rpIdHash,
       passkeysServed: pagePasskeysServed(),
-      readPassword: readRecoveryPassword
+      readPassword: readRecoveryPassword,
+      forgetPassword: wipeRecoveryPassword,
+      visibility: document
     }),
     []
   )
