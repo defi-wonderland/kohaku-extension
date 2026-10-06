@@ -37,13 +37,15 @@ import {
   unlockLineKeyOf,
   unsatisfiedOf
 } from './rows'
-import { submitPathOf } from './search'
+import { submitPathOf, waitPathOf } from './search'
 import type {
   AlertKeys,
   AnsweredMemory,
   ChecklistFailure,
   ChecklistRow,
   ChecklistViewProps,
+  DeadRequest,
+  Navigate,
   SlotReading
 } from './types'
 import UnsatisfiedBlock from './UnsatisfiedBlock'
@@ -86,6 +88,20 @@ const ChecklistView = ({
 }: ChecklistViewProps) => {
   const { t } = useTranslation()
   const book = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
+  const claim = usePasskeyClaim({ records, chainId, account, search, navigate, deps })
+  // A landed request keeps no claim either: the tab leaves for the wait only
+  // once the claims of the request that landed lose their requests and reports.
+  const lastRequest = useRef<DeadRequest | null>(null)
+  const { forgetAll } = claim
+  const leave = useCallback<Navigate>(
+    (to, options) => {
+      if (to === waitPathOf(account) && lastRequest.current) {
+        forgetAll(lastRequest.current)
+      }
+      navigate(to, options)
+    },
+    [account, forgetAll, navigate]
+  )
   const checklist = useChecklist({
     records,
     chainId,
@@ -93,16 +109,19 @@ const ChecklistView = ({
     entry,
     client,
     destination,
-    navigate,
+    navigate: leave,
     deps
   })
-  const claim = usePasskeyClaim({ records, chainId, account, search, navigate, deps })
   const [answered, setAnswered] = useState<Partial<Record<number, AnsweredMemory>>>({})
   const [pendingFailed, setPendingFailed] = useState(false)
 
   const { load, assessment, addReply, poll } = checklist
   const kit = client.status === 'ready' ? client.client : null
   const live = load.phase === 'live' ? load : null
+  if (live) {
+    const { attemptId, setupNonce } = live.session.gathering.request
+    lastRequest.current = { attemptId, setupNonce }
+  }
   const pollClock = poll.status === 'answered' ? poll.clock : null
 
   const layout = useMemo(
@@ -204,7 +223,6 @@ const ChecklistView = ({
   // of the request that died goes, a report that lands later included.
   const died = load.phase === 'wiped' ? load.died : undefined
   const isWiped = load.phase === 'wiped'
-  const { forgetAll } = claim
   const ceremonyId = search.ceremony
   useEffect(() => {
     if (isWiped) {

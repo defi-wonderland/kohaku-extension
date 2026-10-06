@@ -10,7 +10,8 @@
  * claim this checklist knows of loses its request and its report, a report
  * that lands after the wipe included, and so does every claim of the account
  * stored for the request that died, one this tab never saw included. No
- * outcome outlives the wipe.
+ * outcome and no undelivered claim outlives the wipe. A landed session leaves
+ * no claim behind in the same way.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -227,15 +228,17 @@ const usePasskeyClaim = ({
     )
   }
 
-  // A wiped session keeps no claim: the waiting one, the one the search names
-  // and every stored one of the request that died lose their request and
-  // report, and no outcome stays. The listener stays, so a report the
-  // ceremony tab writes later is taken and removed in turn.
+  // A wiped or landed session keeps no claim: the waiting one, the one the
+  // search names and every stored one of the request that ended lose their
+  // request and report, and no outcome and no undelivered claim stays. The
+  // listener stays, so a report the ceremony tab writes later is taken and
+  // removed in turn.
   const forgetAll = useCallback(
     (died?: DeadRequest) => {
       const ids = [pending?.id, ceremonyId].filter((id): id is string => typeof id === 'string')
       new Set(ids).forEach((id) => forget(id, true))
       setPending(null)
+      setUndelivered(null)
       setOutcomes((held) => (Object.keys(held).length > 0 ? {} : held))
       forgetStored(died).catch(() => undefined)
     },

@@ -1,9 +1,11 @@
 /**
  * The open checklist's poll: one round at once when a session opens, then on
- * every period and whenever the tab returns to view. Rounds never overlap. A
- * round that has not returned leaves the poll as it stood, and a session that
- * changes starts again from nothing returned, so no reading of an earlier
- * session ever stands for the new one.
+ * every period and whenever the tab returns to view. Rounds never overlap: a
+ * round asked for while one reads runs once that one returns, so a deadline
+ * that passes during a slow read wipes on its return. A round that has not
+ * returned leaves the poll as it stood, and a session that changes starts
+ * again from nothing returned, so no reading of an earlier session ever
+ * stands for the new one.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -32,11 +34,16 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
   // Each session's rounds carry its number; a round of an earlier one is dropped.
   const generation = useRef(0)
   const inFlight = useRef<number | null>(null)
+  const again = useRef(false)
 
   const run = useCallback(async () => {
     const current = kitRef.current
     const id = generation.current
-    if (!current || !targetRef.current || inFlight.current === id) {
+    if (!current || !targetRef.current) {
+      return
+    }
+    if (inFlight.current === id) {
+      again.current = true
       return
     }
     const clock = depsRef.current.now()
@@ -53,11 +60,15 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
     }
     if (!facts) {
       setPoll({ status: 'failed' })
-      return
+    } else {
+      // A death the round reads holds the rows before the answer renders them.
+      afterRef.current(facts, clock)
+      setPoll({ status: 'answered', facts, clock })
     }
-    // A death the round reads holds the rows before the answer renders them.
-    afterRef.current(facts, clock)
-    setPoll({ status: 'answered', facts, clock })
+    if (again.current) {
+      again.current = false
+      await run()
+    }
   }, [])
 
   const key = target?.key ?? null
@@ -65,6 +76,7 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
   useEffect(() => {
     generation.current += 1
     inFlight.current = null
+    again.current = false
     setPoll(PENDING)
     if (!kit || key === null) {
       return undefined
