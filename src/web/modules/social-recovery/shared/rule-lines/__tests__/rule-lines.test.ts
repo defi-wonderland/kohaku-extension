@@ -632,6 +632,19 @@ describe('getRuleLines: the lines each path shape earns', () => {
     expect(keys).not.toContain('bothMustAnswer')
   })
 
+  it('ends every two-row path, of any two kinds, on the different places line with no line about its size', () => {
+    const methods = [PASSKEY, PASSPORT, AADHAAR, GUARDIAN]
+    methods.forEach((first) =>
+      methods.forEach((second) => {
+        const keys = keysOf([row(first), row(second)])
+        expect(keys[keys.length - 1]).toBe('differentPlaces')
+        expect(keys).not.toContain('sizingRule')
+        expect(keysOfWith([row(first), noMember(1), row(second)], SKIP_MEMBERLESS)).toEqual(keys)
+      })
+    )
+    expect(keysOf([group(1, [PASSKEY, PASSPORT])])).not.toContain('sizingRule')
+  })
+
   it('a group of passkeys alone is one failure domain; a passport beside a passkey is not', () => {
     expect(keysOf([group(1, [PASSKEY, PASSKEY])])).toContain('oneFailureDomain')
     expect(keysOf([group(1, [PASSKEY, PASSPORT])])).not.toContain('oneFailureDomain')
