@@ -7,7 +7,9 @@
  * step; otherwise the deposit step waits for the funds and moves on to the
  * checklist by itself once they arrive.
  *
- * With no entry for the account the holder goes back to the account step. An
+ * With no entry for the account the holder goes back to the account step,
+ * and so does Back where no key in this wallet can send the recovery; Back
+ * elsewhere returns to the readout. An
  * entry on the logged-in route has no gas step here: its check runs at the
  * submission, so the holder goes straight on to the checklist.
  */
@@ -36,6 +38,7 @@ import {
   accountParamOf,
   accountStepPathOf,
   checklistPathOf,
+  readoutPathOf,
   selectedSmartAccountOf
 } from './navigation'
 import { fastTrackSendingKeyOf } from './sendingKey'
@@ -105,14 +108,23 @@ const GasStepScreen = () => {
   const state: GasStepState =
     entry.status === 'failed'
       ? { kind: 'failed' }
+      : sendingKey === null
+      ? { kind: 'noSendingKey' }
       : entry.status === 'present' && freshInstall
       ? gas.state
       : { kind: 'loading' }
   const retry = entry.status === 'failed' ? () => setEntryRun((run) => run + 1) : gas.retry
+  const back = () => {
+    if (account) {
+      navigate(readoutPathOf(account))
+    }
+  }
+  const backToAccount = () =>
+    navigate(accountStepPathOf(present?.receivingAccount), { replace: true })
 
   return (
     <PlainChrome title={t('socialRecovery.routes.recover')} testID="fast-track-gas-screen">
-      <GasStepView state={state} onRetry={retry} />
+      <GasStepView state={state} onRetry={retry} onBack={back} onBackToAccount={backToAccount} />
     </PlainChrome>
   )
 }

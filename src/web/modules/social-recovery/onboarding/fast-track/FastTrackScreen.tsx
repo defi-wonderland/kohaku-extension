@@ -10,7 +10,7 @@
  * password through the wallet's own keystore setup, unlocked, and moves on
  * once the keystore holds it and is unlocked.
  */
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { useTranslation } from '@common/config/localization'
@@ -41,6 +41,8 @@ const PasswordStep = () => {
   // would let the drop replace the next step's entry.
   const dropping = acknowledgedOf(location.state)
 
+  const back = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecover), [navigate])
+
   useEffect(() => {
     if (done && !dropping) {
       navigate(WEB_ROUTES.socialRecoveryFastTrackKey, { replace: true, state: ACKNOWLEDGED_STATE })
@@ -49,7 +51,7 @@ const PasswordStep = () => {
 
   return (
     <PlainChrome title={t('socialRecovery.routes.recover')} testID="fast-track">
-      {!skipped && <PasswordStepView setup={setup} />}
+      {!skipped && <PasswordStepView setup={setup} onBack={back} />}
     </PlainChrome>
   )
 }

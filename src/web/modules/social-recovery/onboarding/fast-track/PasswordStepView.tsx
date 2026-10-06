@@ -1,7 +1,8 @@
 /**
  * Step 2 of 3: the extension password, set as on any first run through the
  * wallet's own keystore setup, in the fast track's words. Continue stays
- * disabled until both fields agree and the password meets the wallet's rule.
+ * disabled until both fields agree and the password meets the wallet's rule;
+ * Back returns to the warning.
  */
 import React, { useCallback } from 'react'
 import { Controller } from 'react-hook-form'
@@ -31,7 +32,7 @@ import type { PasswordStepViewProps } from './types'
 
 const PASSWORD = 'socialRecovery.fastTrack.password'
 
-const PasswordStepView = ({ setup }: PasswordStepViewProps) => {
+const PasswordStepView = ({ setup, onBack }: PasswordStepViewProps) => {
   const { t } = useTranslation()
   const { control, formState, password, handleKeystoreSetup, isKeystoreSetupLoading } = setup
 
@@ -129,6 +130,15 @@ const PasswordStepView = ({ setup }: PasswordStepViewProps) => {
             text={t('socialRecovery.actions.continue')}
             disabled={disabled}
             onPress={submit}
+            hasBottomSpacing={false}
+          />
+        }
+        secondary={
+          <Button
+            testID="fast-track-password-back"
+            type="outline"
+            text={t('socialRecovery.ceremony.backAction')}
+            onPress={onBack}
             hasBottomSpacing={false}
           />
         }

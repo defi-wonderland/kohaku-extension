@@ -2,46 +2,65 @@
  * The key step's route. It opens only from the password step, which hands
  * on the warning's acknowledgment; any other arrival meets the warning first.
  * With no extension password yet the holder goes back to step 2; with a
- * locked keystore, to the wallet's unlock. Once the wallet lists the slot's
- * accounts, the holder goes on to the account step on the fresh install's
- * route, with the slot's smart account as the account that receives control.
+ * locked keystore, to the wallet's unlock.
+ *
+ * A wallet that already lists accounts when the step opens (a Back or a
+ * reload after the add, or a logged-in wallet at this URL) makes no new
+ * phrase: the holder goes on to the account step for the selected smart
+ * account. Once the wallet lists the slot's accounts, the step closes the
+ * wallet's picker session and its newly-added marks, as the wallet's own create
+ * flow does, and the holder goes on to the account step on the fresh
+ * install's route, with the slot's smart account as the account that receives
+ * control. Both moves replace this step in the history, so Back never returns
+ * to it.
  */
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
+import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
+import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/RecoverScreen'
 import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 
 import { ACKNOWLEDGED_STATE } from './constants'
 import KeyStepView from './KeyStepView'
-import { accountStepPathOf, acknowledgedOf } from './navigation'
+import { accountStepPathOf, acknowledgedOf, selectedSmartAccountOf } from './navigation'
 import useAcknowledgment from './useAcknowledgment'
 import useFastTrackKey from './useFastTrackKey'
 
 const KeyStep = () => {
   const { t } = useTranslation()
   const { navigate } = useNavigation()
+  const { dispatch } = useBackgroundService()
   const location = useLocation()
   const key = useFastTrackKey()
   const [acknowledged, setAcknowledged] = useState(false)
   const dropping = acknowledgedOf(location.state)
+  const closed = useRef(false)
   const { listed } = key
 
   useEffect(() => {
-    if (listed && !dropping) {
-      navigate(accountStepPathOf(listed.smartAccount))
+    if (!listed || dropping || closed.current) {
+      return
     }
-  }, [listed, dropping, navigate])
+    closed.current = true
+    dispatch({ type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET' })
+    dispatch({ type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE' })
+    navigate(accountStepPathOf(listed.smartAccount), { replace: true })
+  }, [listed, dropping, dispatch, navigate])
 
   const proceed = useCallback(() => {
     if (acknowledged) {
       key.add()
     }
   }, [acknowledged, key])
+
+  const back = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecover), [navigate])
 
   return (
     <PlainChrome title={t('socialRecovery.routes.recover')} testID="fast-track-key-screen">
@@ -53,6 +72,7 @@ const KeyStep = () => {
         onAcknowledge={setAcknowledged}
         onContinue={proceed}
         onRetry={key.retry}
+        onBack={back}
       />
     </PlainChrome>
   )
@@ -63,9 +83,15 @@ const KeyStepScreen = () => {
   const location = useLocation()
   const acknowledged = useAcknowledgment()
   const { hasPasswordSecret, isUnlocked } = useKeystoreControllerState()
+  const { accounts } = useAccountsControllerState()
+  const { account: selected } = useSelectedAccountControllerState()
+  // Whether the wallet listed accounts before this step opened.
+  const [alreadyListed] = useState(!!accounts?.length)
   const dropping = acknowledgedOf(location.state)
 
-  const away = !acknowledged
+  const away = alreadyListed
+    ? accountStepPathOf(selectedSmartAccountOf(selected))
+    : !acknowledged
     ? null
     : !hasPasswordSecret
     ? WEB_ROUTES.socialRecoveryFastTrack
@@ -82,11 +108,11 @@ const KeyStepScreen = () => {
     }
   }, [away, dropping, navigate])
 
-  if (!acknowledged) {
-    return <RecoverScreen />
-  }
   if (away) {
     return null
+  }
+  if (!acknowledged) {
+    return <RecoverScreen />
   }
   return <KeyStep />
 }

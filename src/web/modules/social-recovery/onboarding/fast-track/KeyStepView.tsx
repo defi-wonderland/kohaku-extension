@@ -3,7 +3,7 @@
  * with the paper line and the only-backup warning; the key that will control
  * the account shows as an address, never as a field. Continue stays disabled
  * until the holder confirms the words are written down, and while the wallet
- * adds the accounts.
+ * adds the accounts; Back is disabled while the add runs.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -43,7 +43,8 @@ const KeyStepView = ({
   acknowledged,
   onAcknowledge,
   onContinue,
-  onRetry
+  onRetry,
+  onBack
 }: KeyStepViewProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
@@ -72,6 +73,16 @@ const KeyStepView = ({
       testID="fast-track-key-step"
     />
   )
+  const backButton = (disabled: boolean) => (
+    <Button
+      testID="fast-track-key-back"
+      type="outline"
+      text={t('socialRecovery.ceremony.backAction')}
+      disabled={disabled}
+      onPress={onBack}
+      hasBottomSpacing={false}
+    />
+  )
   const title = <PageTitle title={t(`${KEY}.title`)} titleTestID="fast-track-key-title" />
 
   if (phase === 'creating' || phase === 'createFailed' || !words.length || !controllingKey) {
@@ -84,6 +95,7 @@ const KeyStepView = ({
         ) : (
           <ActivityIndicator testID="fast-track-key-spinner" />
         )}
+        <ActionsRow testID="fast-track-key-actions" primary={backButton(false)} />
       </View>
     )
   }
@@ -175,6 +187,7 @@ const KeyStepView = ({
             {adding && <ActivityIndicator style={spacings.mlTy} />}
           </Button>
         }
+        secondary={backButton(adding)}
       />
     </View>
   )

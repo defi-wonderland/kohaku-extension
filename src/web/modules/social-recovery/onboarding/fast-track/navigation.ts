@@ -33,6 +33,10 @@ export const accountStepPathOf = (receivingAccount?: Address): string => {
 export const checklistPathOf = (account: Address): string =>
   `${WEB_ROUTES.socialRecoveryRecoveryChecklist}?${new URLSearchParams({ account }).toString()}`
 
+/** The readout of the account being recovered. */
+export const readoutPathOf = (account: Address): string =>
+  `${WEB_ROUTES.socialRecoveryRecoveryReadout}?${new URLSearchParams({ account }).toString()}`
+
 /** The account being recovered, from the URL's `account` parameter; undefined where it is no address. */
 export const accountParamOf = (search: URLSearchParams): Address | undefined => {
   const value = search.get('account')
