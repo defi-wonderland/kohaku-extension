@@ -92,12 +92,15 @@ const KeyStepView = ({
       <View testID="fast-track-key">
         {counter}
         {title}
-        {phase === 'createFailed' ? (
-          failure('fast-track-key-create-failed')
-        ) : (
+        {phase === 'createFailed' && failure('fast-track-key-create-failed')}
+        {phase === 'addFailed' && failure('fast-track-key-add-failed')}
+        {phase !== 'createFailed' && phase !== 'addFailed' && (
           <ActivityIndicator testID="fast-track-key-spinner" />
         )}
-        <ActionsRow testID="fast-track-key-actions" primary={backButton(false)} />
+        <ActionsRow
+          testID="fast-track-key-actions"
+          primary={backButton(phase === 'adding' && !pending)}
+        />
       </View>
     )
   }

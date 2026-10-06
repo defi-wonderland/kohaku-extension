@@ -21,6 +21,13 @@
  * more. An add reads as failed only once the picker is idle again and added
  * nothing, so nothing was saved; a retry keeps the phrase the holder wrote
  * down, and a success that lands after a failure still lists the slot.
+ *
+ * A mount that finds the picker still adding accounts (an earlier mount's add,
+ * left through Back) makes no phrase and sends no add: a new phrase would
+ * take the keystore's place of the one that add is saving. It waits for that
+ * add to end; once the wallet lists the accounts, the step goes on as a
+ * wallet that already lists accounts does. Where that add fails, the step
+ * reads as failed, and its retry makes a new phrase, since nothing was saved.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -54,17 +61,19 @@ const useFastTrackKey = (): FastTrackKey => {
   const { authStatus } = useAuth()
   const { getExtraEntropy } = useExtraEntropy()
 
+  // Whether an add the picker ran before this mount still runs.
+  const [waiting, setWaiting] = useState(picker.addAccountsStatus === 'LOADING')
   const [seedRun, setSeedRun] = useState(0)
   const [seed, setSeed] = useState<TempSeed | null>(null)
   const [slotKeys, setSlotKeys] = useState<SlotKeys | null>(null)
-  const [phase, setPhase] = useState<KeyStepPhase>('creating')
+  const [phase, setPhase] = useState<KeyStepPhase>(waiting ? 'adding' : 'creating')
   const made = useRef<MadePhrase | null>(null)
   // What the picker went through since the last add started.
-  const seen = useRef<AddProgress>({ started: false, loading: false, success: false })
+  const seen = useRef<AddProgress>({ started: waiting, loading: waiting, success: false })
 
   // 1. Make the phrase and hand it to the keystore, once per run.
   useEffect(() => {
-    if (made.current?.run === seedRun) {
+    if (waiting || made.current?.run === seedRun) {
       return
     }
     const { phrase } = new EntropyGenerator().generateRandomMnemonic(
@@ -80,7 +89,7 @@ const useFastTrackKey = (): FastTrackKey => {
       params: { seed: phrase, hdPathTemplate: BIP44_STANDARD_DERIVATION_TEMPLATE }
     })
     dispatch({ type: 'KEYSTORE_CONTROLLER_SEND_TEMP_SEED_TO_UI' })
-  }, [seedRun, dispatch, getExtraEntropy])
+  }, [waiting, seedRun, dispatch, getExtraEntropy])
 
   useEffect(() => {
     if (phase !== 'creating') {
@@ -243,16 +252,19 @@ const useFastTrackKey = (): FastTrackKey => {
   const retry = useCallback(() => {
     if (phase === 'createFailed') {
       setSeedRun((run) => run + 1)
+    } else if (phase === 'addFailed' && waiting) {
+      setWaiting(false)
     } else if (phase === 'addFailed') {
       add()
     }
-  }, [phase, add])
+  }, [phase, waiting, add])
 
   return {
     phase,
     words: seed && slotKeys ? seed.seed.split(' ') : [],
     controllingKey: slotKeys?.controllingKey ?? null,
     listed: listedAndSelected ? listed : null,
+    listedByEarlierAdd: waiting && !!accounts?.length && selected,
     pending: phase === 'adding' && limitReached,
     add,
     retry

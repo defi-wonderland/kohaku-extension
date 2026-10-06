@@ -66,6 +66,11 @@ export interface FastTrackKey {
   /** The slot's accounts once listed. */
   listed: ListedSlot | null
   /**
+   * Whether an add that ran before this mount, which this mount waited for,
+   * ended with the wallet listing accounts and an account selected.
+   */
+  listedByEarlierAdd: boolean
+  /**
    * Whether the add passed its limit while the picker still runs it, or after
    * it reported success with the slot not listed yet: nothing is sent again,
    * and the holder may go back.
@@ -73,7 +78,10 @@ export interface FastTrackKey {
   pending: boolean
   /** Adds the slot's accounts; runs only from `words` or `addFailed`. */
   add: () => void
-  /** Starts the failed part again: the phrase from `createFailed`, the add from `addFailed`. */
+  /**
+   * Starts the failed part again: the phrase from `createFailed`, the add from
+   * `addFailed`, or a new phrase where the failed add ran before this mount.
+   */
   retry: () => void
 }
 

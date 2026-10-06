@@ -7,12 +7,13 @@
  * A wallet that already lists accounts when the step opens (a Back or a
  * reload after the add, or a logged-in wallet at this URL) makes no new
  * phrase: past the warning, the holder goes on to the account step for the
- * selected smart account. Once the wallet lists the slot's accounts, the step closes the
- * wallet's picker session and its newly-added marks, as the wallet's own create
- * flow does, and the holder goes on to the account step on the fresh
- * install's route, with the slot's smart account as the account that receives
- * control. Both moves replace this step in the history, so Back never returns
- * to it.
+ * selected smart account. So does a step that opens while the wallet still
+ * adds the accounts of an earlier visit, once that add lists them. Once the
+ * wallet lists the slot's accounts, the step closes the wallet's picker
+ * session and its newly-added marks, as the wallet's own create flow does,
+ * and the holder goes on to the account step on the fresh install's route,
+ * with the slot's smart account as the account that receives control. Every
+ * move replaces this step in the history, so Back never returns to it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -38,21 +39,24 @@ const KeyStep = () => {
   const { navigate } = useNavigation()
   const { dispatch } = useBackgroundService()
   const location = useLocation()
+  const { account: selected } = useSelectedAccountControllerState()
   const key = useFastTrackKey()
   const [acknowledged, setAcknowledged] = useState(false)
   const dropping = acknowledgedOf(location.state)
   const closed = useRef(false)
-  const { listed } = key
+  const { listed, listedByEarlierAdd } = key
 
   useEffect(() => {
-    if (!listed || dropping || closed.current) {
+    if ((!listed && !listedByEarlierAdd) || dropping || closed.current) {
       return
     }
     closed.current = true
     dispatch({ type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET' })
     dispatch({ type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE' })
-    navigate(accountStepPathOf(listed.smartAccount), { replace: true })
-  }, [listed, dropping, dispatch, navigate])
+    navigate(accountStepPathOf(listed ? listed.smartAccount : selectedSmartAccountOf(selected)), {
+      replace: true
+    })
+  }, [listed, listedByEarlierAdd, selected, dropping, dispatch, navigate])
 
   const proceed = useCallback(() => {
     if (acknowledged) {
