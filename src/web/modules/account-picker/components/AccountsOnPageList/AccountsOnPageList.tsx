@@ -409,14 +409,20 @@ const AccountsOnPageList = ({
                         (selectedAcc) => selectedAcc.account.addr === addr
                       )
 
+                    const isSmartAccountSelected = isAccountSelected(acc.account.addr)
+                    const isKeySelected = !!keyEntry && isAccountSelected(keyEntry.account.addr)
+
                     return (
                       <View key={acc.account.addr} style={!isLast && spacings.mbTy}>
+                        {/* A switch keeps the position it was drawn with, so each row is
+                            drawn again when its selection changes. */}
                         <Account
+                          key={`${acc.account.addr}-${isSmartAccountSelected ? 'on' : 'off'}`}
                           account={acc.account}
                           type="smart"
                           withBottomSpacing={!!keyEntry}
                           unused={!accountUsageMap[acc.account.addr]}
-                          isSelected={isAccountSelected(acc.account.addr)}
+                          isSelected={isSmartAccountSelected}
                           importStatus={acc.importStatus}
                           onSelect={handleSelectAccount}
                           onDeselect={handleDeselectAccount}
@@ -425,11 +431,12 @@ const AccountsOnPageList = ({
                         />
                         {!!keyEntry && (
                           <Account
+                            key={`${keyEntry.account.addr}-${isKeySelected ? 'on' : 'off'}`}
                             account={keyEntry.account}
                             type="basic"
                             withBottomSpacing={false}
                             unused={!accountUsageMap[keyEntry.account.addr]}
-                            isSelected={isAccountSelected(keyEntry.account.addr)}
+                            isSelected={isKeySelected}
                             importStatus={keyEntry.importStatus}
                             onSelect={handleSelectAccount}
                             onDeselect={handleDeselectAccount}
