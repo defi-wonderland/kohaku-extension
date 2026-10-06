@@ -64,7 +64,7 @@ describe('the configuration read', () => {
     const world = await openWorld({ route: 'logged-in', walletAdds: true })
     const { get } = world.storage
     world.storage.get = async (key, fallback) => {
-      if (key.includes('decrypted')) {
+      if (key?.includes('decrypted')) {
         throw new Error('storage unavailable')
       }
       return get(key, fallback)
@@ -99,7 +99,7 @@ describe('the enrollments read', () => {
     })
     const { get } = world.storage
     world.storage.get = async (key, fallback) => {
-      if (key.includes('enrollments')) {
+      if (key?.includes('enrollments')) {
         throw new Error('storage unavailable')
       }
       return get(key, fallback)
