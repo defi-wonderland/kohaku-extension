@@ -1,6 +1,7 @@
 /**
- * The done screen's one read: the manager's consume event of the account's
- * current attempt, from the manager's deployment block to the block the
+ * The done screen's one read: the manager's consume event of the attempt
+ * this device landed, or of the account's current attempt where the countdown
+ * has ended, from the manager's deployment block to the block the
  * attempt read pins, and the account's privilege events of that same
  * transaction, which name the key granted and the key removed. The screen
  * names the keys as these events report them and never as the account's
@@ -61,10 +62,13 @@ const granting = (notice: PrivilegeNotice): boolean => hexToBigInt(notice.priv) 
  * transaction moved, the removed key's latest earlier grant where an event
  * names one, and the consume's block time. An attempt that is not consumed,
  * or a consume of an earlier attempt only, answers none: the current attempt
- * may still run. Against a landed attempt, a manager's attempt that is not it,
- * or an opening under its id that is not it, answers none too. A consume
- * whose transaction names no granted or no removed key is a read that has not
- * caught up yet, and fails.
+ * may still run. Against a landed attempt, an opening under its id that is
+ * not it answers none too. Where the manager already holds a later attempt,
+ * the consume is the one under the landed attempt's id, it needs at least one
+ * opening before it, and the used methods are that opening's; a manager's
+ * attempt under the landed id that is not the landed one answers none. A
+ * consume whose transaction names no granted or no removed key is a read that
+ * has not caught up yet, and fails.
  */
 export const readConsume = (
   kit: DoneKitClient,
@@ -81,18 +85,22 @@ export const readConsume = (
       !notice.at.removed && isAddressEqual(notice.account, kit.account)
 
     const { attempt } = state
-    if (attempt.state !== 'Consumed') {
+    const landed = match.kind === 'landed' ? match.landed : null
+    const later = landed !== null && !isAttemptOf(attempt, landed)
+    if (later) {
+      if (attempt.state !== 'None' && attempt.attemptId === landed.attemptId) {
+        return { kind: 'none' }
+      }
+    } else if (attempt.state !== 'Consumed') {
       return { kind: 'none' }
     }
-    if (match.kind === 'landed' && !isAttemptOf(attempt, match.landed)) {
-      return { kind: 'none' }
-    }
+    const attemptId = landed ? landed.attemptId : attempt.attemptId
 
     const notifications = await events.fetch(events.accountFilter(), range)
     const consumed = notifications
       .filter((notice): notice is ConsumedNotice => notice.kind === 'attempt-consumed')
       .filter(ofAccount)
-      .filter((notice) => notice.attemptId === attempt.attemptId)
+      .filter((notice) => notice.attemptId === attemptId)
       .pop()
     if (!consumed) {
       return { kind: 'none' }
@@ -101,10 +109,14 @@ export const readConsume = (
       .filter((notice): notice is StartedNotice => notice.kind === 'attempt-started')
       .filter(ofAccount)
       .filter((notice) => notice.attemptId === consumed.attemptId && before(notice.at, consumed.at))
-    if (match.kind === 'landed' && opened.some((notice) => !isOpeningOf(notice, match.landed))) {
+    if (landed && opened.some((notice) => !isOpeningOf(notice, landed))) {
       return { kind: 'none' }
     }
     const started = opened.pop()
+    const usedMethods = later ? started?.usedMethods : attempt.usedMethods
+    if (!usedMethods) {
+      return { kind: 'none' }
+    }
 
     const privileges = (await events.fetch(events.privilegeFilter(), range))
       .filter((notice): notice is PrivilegeNotice => notice.kind === 'privilege-changed')
@@ -135,7 +147,7 @@ export const readConsume = (
         granted,
         removed,
         ...(removedPrivilege ? { removedPrivilege } : {}),
-        usedMethods: attempt.usedMethods,
+        usedMethods,
         time
       }
     }

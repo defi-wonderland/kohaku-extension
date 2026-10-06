@@ -276,7 +276,7 @@ const recordsOf = async ({ records, account }: World) => ({
 
 describe('the consume of the current attempt only', () => {
   it('answers none for a consume of an earlier attempt while the current one reads consumed, and changes nothing', async () => {
-    const world = await openWorld({ route: 'logged-in', walletAdds: true })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true, attempt: 2 })
     setRecoveryPassword(CHAIN_ID, world.account, 'pw')
     const { account, kit } = world
     kit.chain.accountEvents = [
@@ -299,7 +299,7 @@ describe('the consume of the current attempt only', () => {
   const states = ['Waiting', 'Cancelled', 'None'] as const
   states.forEach((state) => {
     it(`answers none where the current attempt reads ${state}, though an earlier consume of the same id exists, and changes nothing`, async () => {
-      const world = await openWorld({ route: 'fresh-install' })
+      const world = await openWorld({ route: 'fresh-install', countdown: state !== 'None' })
       world.kit.chain.attempt = { ...world.kit.chain.attempt, state }
       const before = await recordsOf(world)
       const screen = await mountDone(world.account)
