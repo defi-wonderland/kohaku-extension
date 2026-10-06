@@ -55,6 +55,8 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
 const React: typeof import('react') = require('react')
 const {
   MemoryRouter,
+  NavigationType,
+  unstable_HistoryRouter: HistoryRouter,
   useLocation,
   useNavigate
 }: typeof import('react-router-dom') = require('react-router-dom')
@@ -124,10 +126,12 @@ const open = (...names: string[]) =>
     )
   })
 
-// A reload of the tab: the page goes and comes back over the same session storage.
+// A reload of the tab: the page goes and comes back over the same session storage,
+// with nothing kept in the module's memory.
 const reload = (...names: string[]) => {
   act(() => root.unmount())
   root = createRoot(container)
+  freshPage()
   open(...names)
 }
 
@@ -154,6 +158,10 @@ afterEach(() => {
 })
 
 describe("the setup tab's account", () => {
+  beforeEach(() => {
+    freshPage()
+  })
+
   it('works on the selected account when the tab opens, with no difference', () => {
     mockSelected.state = { account: { addr: ACCOUNT } }
     open('screen')
@@ -731,6 +739,267 @@ describe('the locations of a setup visit', () => {
     freshPage()
     mountOn(entry('arrival', FROM_THE_DASHBOARD), 'screen')
     expect(reads.screen.account).toBe(OTHER_ACCOUNT)
+    expect(reads.screen.differs).toBe(true)
+  })
+})
+
+type RouterHistory = Parameters<typeof HistoryRouter>[0]['history']
+type HistoryTarget = Parameters<RouterHistory['push']>[0]
+type HistoryListener = Parameters<RouterHistory['listen']>[0]
+
+// A tab history the test can watch: how often the page pushed or replaced an
+// entry, and where in the list of entries it stands.
+type WatchedHistory = {
+  history: RouterHistory & { readonly index: number }
+  pushes: jest.SpyInstance
+  replaces: jest.SpyInstance
+}
+
+// A tab history in memory, like the router's own: the first entry with no key of
+// its own gets the key of an entry the router did not push.
+const memoryHistory = (initial: Partial<Location>[], start: number) => {
+  let created = 0
+  const toLocation = (to: HistoryTarget, state: unknown, key?: string): Location => {
+    created += 1
+    const path = typeof to === 'string' ? { pathname: to } : to
+    return {
+      pathname: path.pathname ?? '/',
+      search: path.search ?? '',
+      hash: path.hash ?? '',
+      state: state ?? null,
+      key: key ?? `entry-${created}`
+    }
+  }
+  const entries = initial.map((at, n) =>
+    toLocation(at, at.state, at.key ?? (n === 0 ? 'default' : undefined))
+  )
+  let index = start
+  let action: RouterHistory['action'] = NavigationType.Pop
+  let listener: HistoryListener | null = null
+  const notify = (delta: number) => listener?.({ action, location: entries[index], delta })
+  const history: WatchedHistory['history'] = {
+    get index() {
+      return index
+    },
+    get action() {
+      return action
+    },
+    get location() {
+      return entries[index]
+    },
+    createHref: (to) => (typeof to === 'string' ? to : `${to.pathname ?? ''}${to.search ?? ''}`),
+    createURL: (to) => new URL(typeof to === 'string' ? to : to.pathname ?? '/', 'http://tab'),
+    encodeLocation: (to) => ({
+      pathname: typeof to === 'string' ? to : to.pathname ?? '',
+      search: typeof to === 'string' ? '' : to.search ?? '',
+      hash: typeof to === 'string' ? '' : to.hash ?? ''
+    }),
+    push: (to, state) => {
+      action = NavigationType.Push
+      index += 1
+      entries.splice(index, entries.length, toLocation(to, state))
+      notify(1)
+    },
+    replace: (to, state) => {
+      action = NavigationType.Replace
+      entries[index] = toLocation(to, state)
+      notify(0)
+    },
+    go: (delta) => {
+      action = NavigationType.Pop
+      index = Math.min(Math.max(index + delta, 0), entries.length - 1)
+      notify(delta)
+    },
+    listen: (next) => {
+      listener = next
+      return () => {
+        listener = null
+      }
+    }
+  }
+  return history
+}
+
+// The tab's history stands on the given entries, and the page renders over it.
+const mountOnWatchedHistory = (
+  entries: Partial<Location>[],
+  index: number,
+  ...names: string[]
+): WatchedHistory => {
+  act(() => root.unmount())
+  root = createRoot(container)
+  Object.keys(rendered).forEach((name) => delete rendered[name])
+  const history = memoryHistory(entries, index)
+  const pushes = jest.spyOn(history, 'push')
+  const replaces = jest.spyOn(history, 'replace')
+  act(() => {
+    root.render(
+      <HistoryRouter history={history}>
+        <Navigator />
+        {names.map((name) => (
+          <Probe key={name} name={name} />
+        ))}
+      </HistoryRouter>
+    )
+  })
+  return { history, pushes, replaces }
+}
+
+// A later entry the tab can go Forward to, so a push over the first entry shows.
+const LATER_ENTRY: Partial<Location> = {
+  pathname: '/dashboard',
+  key: 'later'
+}
+
+describe('an entry the router did not push', () => {
+  beforeEach(() => {
+    freshPage()
+  })
+
+  it.each([
+    ['an unpushed entry', UNPUSHED],
+    ['a pushed entry from the dashboard', entry('arrival', FROM_THE_DASHBOARD)]
+  ])(
+    'starts on the selected account when a second unpushed entry opens the setup in the same page, over a visit that began on %s',
+    (_, first) => {
+      mockSelected.state = { account: { addr: ACCOUNT } }
+      mountOn(first, 'screen')
+      expect(reads.screen.account).toBe(ACCOUNT)
+      select(OTHER_ACCOUNT)
+      expect(reads.screen.account).toBe(ACCOUNT)
+      mountOn(UNPUSHED, 'screen')
+      expect(rendered.screen).not.toContain(ACCOUNT)
+      expect(reads.screen.account).toBe(OTHER_ACCOUNT)
+      expect(reads.screen.differs).toBe(false)
+      select(THIRD_ACCOUNT)
+      expect(reads.screen.account).toBe(OTHER_ACCOUNT)
+      expect(reads.screen.differs).toBe(true)
+    }
+  )
+
+  it.each([
+    ['no route state', undefined],
+    ['a previous route outside the setup', FROM_THE_DASHBOARD]
+  ])(
+    'replaces the unpushed entry in place with a keyed entry for the same URL and %s',
+    (_, state) => {
+      mockSelected.state = { account: { addr: ACCOUNT } }
+      const { history, pushes, replaces } = mountOnWatchedHistory(
+        [
+          { pathname: '/social-recovery/setup', search: '?from=wallet', hash: '#top', state },
+          LATER_ENTRY
+        ],
+        0,
+        'screen'
+      )
+      expect(current.key).not.toBe('default')
+      expect(current.pathname).toBe('/social-recovery/setup')
+      expect(current.search).toBe('?from=wallet')
+      expect(current.hash).toBe('#top')
+      expect(current.state).toEqual(state ?? null)
+      expect(pushes).not.toHaveBeenCalled()
+      expect(replaces).toHaveBeenCalledTimes(1)
+      expect(history.index).toBe(0)
+      // The later entry is still there, so the history did not grow over it.
+      go(1)
+      expect(current.key).toBe('later')
+    }
+  )
+
+  it.each([
+    ['no route state', undefined],
+    ['a previous route outside the setup', FROM_THE_DASHBOARD]
+  ])(
+    'keeps the account on Back from a setup step to the keyed entry that replaced an unpushed one with %s',
+    (_, state) => {
+      mockSelected.state = { account: { addr: ACCOUNT } }
+      mountOn({ ...UNPUSHED, state }, 'screen')
+      const keyed = current
+      expect(keyed.key).not.toBe('default')
+      select(OTHER_ACCOUNT)
+      go('/social-recovery/setup/editor', { prevRoute: { pathname: '/social-recovery/setup' } })
+      expect(reads.screen.account).toBe(ACCOUNT)
+      go(-1)
+      expect(current.key).toBe(keyed.key)
+      expect(rendered.screen).not.toContain(OTHER_ACCOUNT)
+      expect(reads.screen.account).toBe(ACCOUNT)
+      expect(reads.screen.differs).toBe(true)
+      expect(reads.screen.selected).toBe(OTHER_ACCOUNT)
+    }
+  )
+
+  it.each([
+    ['no route state', undefined],
+    ['a previous route outside the setup', FROM_THE_DASHBOARD]
+  ])(
+    'keeps the account when the page loads again on the keyed entry that replaced an unpushed one with %s',
+    (_, state) => {
+      mockSelected.state = { account: { addr: ACCOUNT } }
+      mountOn({ ...UNPUSHED, state }, 'screen')
+      const keyed = current
+      expect(keyed.key).not.toBe('default')
+      select(OTHER_ACCOUNT)
+      freshPage()
+      const { pushes, replaces } = mountOnWatchedHistory(
+        [{ pathname: keyed.pathname, key: keyed.key, state: keyed.state }],
+        0,
+        'screen'
+      )
+      expect(current.key).toBe(keyed.key)
+      expect(pushes).not.toHaveBeenCalled()
+      expect(replaces).not.toHaveBeenCalled()
+      expect(rendered.screen).not.toContain(OTHER_ACCOUNT)
+      expect(reads.screen.account).toBe(ACCOUNT)
+      expect(reads.screen.differs).toBe(true)
+      // A second load decides the same way.
+      freshPage()
+      mountOn({ pathname: keyed.pathname, key: keyed.key, state: keyed.state }, 'screen')
+      expect(reads.screen.account).toBe(ACCOUNT)
+    }
+  )
+
+  it('replaces the unpushed entry once for every reader, and not again on a rerender or a new selection', () => {
+    mockSelected.state = { account: { addr: ACCOUNT } }
+    const { history, pushes, replaces } = mountOnWatchedHistory(
+      [UNPUSHED, LATER_ENTRY],
+      0,
+      'chrome',
+      'screen'
+    )
+    expect(replaces).toHaveBeenCalledTimes(1)
+    const keyed = current.key
+    expect(keyed).not.toBe('default')
+    act(() => {
+      root.render(
+        <HistoryRouter history={history}>
+          <Navigator />
+          <Probe name="chrome" />
+          <Probe name="screen" />
+        </HistoryRouter>
+      )
+    })
+    select(OTHER_ACCOUNT)
+    select(ACCOUNT)
+    expect(replaces).toHaveBeenCalledTimes(1)
+    expect(pushes).not.toHaveBeenCalled()
+    expect(current.key).toBe(keyed)
+    expect(reads.chrome.account).toBe(ACCOUNT)
+    expect(reads.screen.account).toBe(ACCOUNT)
+  })
+
+  it('leaves the unpushed entry and latches nothing until the wallet selects an account', () => {
+    const { pushes, replaces } = mountOnWatchedHistory([UNPUSHED, LATER_ENTRY], 0, 'screen')
+    expect(current.key).toBe('default')
+    expect(reads.screen.account).toBeUndefined()
+    expect(replaces).not.toHaveBeenCalled()
+    expect(pushes).not.toHaveBeenCalled()
+    expect(Object.values(sessionStorage)).not.toContain(ACCOUNT)
+    select(ACCOUNT)
+    expect(current.key).not.toBe('default')
+    expect(replaces).toHaveBeenCalledTimes(1)
+    expect(reads.screen.account).toBe(ACCOUNT)
+    select(OTHER_ACCOUNT)
+    expect(reads.screen.account).toBe(ACCOUNT)
     expect(reads.screen.differs).toBe(true)
   })
 })
