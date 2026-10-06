@@ -2,16 +2,18 @@
  * The lookup before it found a setup: the read running, a read that failed
  * with its retry, a client this wallet version cannot read with, and the one
  * dead end that says no setup was found, which renders only where the setup
- * read answered that the account has no setup commitment.
+ * read answered that the account has no setup commitment, under the address
+ * looked up.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
+import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import { ActionsRow, SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 import ReadFailedBlock from './ReadFailedBlock'
@@ -19,8 +21,10 @@ import type { LookupStateProps } from './types'
 
 const ACCOUNT = 'socialRecovery.entry.account'
 const NO_SETUP = 'socialRecovery.entry.noSetup'
+const LABELS = 'socialRecovery.entry.labels'
 
 const LookupState = ({
+  target,
   networkName,
   client,
   setupState,
@@ -42,14 +46,26 @@ const LookupState = ({
 
   if (client.status === 'update-the-wallet') {
     return (
+      // No setup read ran, so the state says nothing about whether a setup exists.
       <View testID="entry-lookup-update-the-wallet">
-        <ReadFailedBlock
+        <Alert
           testID="entry-lookup-refused"
+          type="error"
+          size="sm"
+          style={spacings.mbSm}
           title={t('socialRecovery.client.updateTheWalletTitle')}
-          body={t('socialRecovery.client.updateTheWalletBody')}
-          onRetry={client.retry}
         />
-        <ActionsRow primary={another} />
+        <ActionsRow
+          primary={
+            <Button
+              testID="entry-lookup-update"
+              type="primary"
+              text={t('socialRecovery.client.updateTheWalletAction')}
+              onPress={client.update}
+              hasBottomSpacing={false}
+            />
+          }
+        />
       </View>
     )
   }
@@ -98,6 +114,22 @@ const LookupState = ({
       <Text fontSize={20} weight="medium" style={spacings.mbSm} testID="entry-no-setup-title">
         {t(`${NO_SETUP}.title`, { network: networkName })}
       </Text>
+      <SectionCard testID="entry-no-setup-account">
+        <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
+        <Text
+          fontSize={14}
+          weight="number_medium"
+          selectable
+          style={spacings.mbSm}
+          testID="entry-no-setup-address"
+        >
+          {renderFullAddress(target.address)}
+        </Text>
+        <SectionLabel>{t(`${LABELS}.network`)}</SectionLabel>
+        <Text fontSize={14} testID="entry-no-setup-network">
+          {networkName}
+        </Text>
+      </SectionCard>
       <Text
         fontSize={14}
         weight="number_medium"
@@ -105,7 +137,7 @@ const LookupState = ({
         style={spacings.mbTy}
         testID="entry-no-setup-module"
       >
-        {t(`${NO_SETUP}.module`, { module: renderFullAddress(client.client.descriptor.manager) })}
+        {t(`${NO_SETUP}.module`, { module: renderFullAddress(client.client.descriptor.action) })}
       </Text>
       <Text fontSize={14} style={spacings.mbTy}>
         {t(`${NO_SETUP}.checkCard`)}

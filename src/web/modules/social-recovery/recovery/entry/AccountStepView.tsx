@@ -2,8 +2,12 @@
  * The account step: the field, then the lookup of the account's setup, the
  * confirmation that it is the holder's account, and the reads that decide
  * whether this recovery can go on. The confirmation writes the recovery entry
- * before any of those reads runs. Every read has its loading state and its
- * failed state with retry; none renders as the next state before it answered.
+ * before any of those reads runs; where the account already has an entry and
+ * a live session, the confirmation resumes that recovery at the checklist and
+ * writes nothing. Leaving a state that refuses the account clears the entry,
+ * so a refused account never reads as a recovery in progress. Every read has
+ * its loading state and its failed state with retry; none renders as the next
+ * state before it answered.
  */
 import React, { useCallback, useState } from 'react'
 import { View } from 'react-native'
@@ -20,7 +24,7 @@ import ConfirmedReadsView from './ConfirmedReadsView'
 import LookupField from './LookupField'
 import LookupState from './LookupState'
 import { confirmedStepOf } from './refusal'
-import { readoutPathOf, routeEntryPathOf } from './search'
+import { checklistPathOf, readoutPathOf, routeEntryPathOf } from './search'
 import type { AccountStepViewProps } from './types'
 import { useConfirmedReads } from './useConfirmedReads'
 import { useSetupRead } from './useSetupRead'
@@ -54,30 +58,61 @@ const AccountStepView = ({
     onTarget(null)
   }, [onTarget])
 
+  /** Clears the entry this step wrote, then leaves; a failed clear does not hold the holder here. */
+  const leave = useCallback(
+    (next: () => void) => {
+      if (!confirmed || !target) {
+        next()
+        return
+      }
+      records.recoveryEntry(chainId, target.address).clear().then(next, next)
+    },
+    [confirmed, target, records, chainId]
+  )
+
   const confirm = useCallback(() => {
     if (!target || writing) {
       return
     }
+    const { address } = target
     setWriting(true)
     setWriteFailed(false)
-    records
-      .recoveryEntry(chainId, target.address)
-      .write({
-        account: target.address,
-        route: search.route,
-        receivingAccount: search.receivingAccount
+    const entry = records.recoveryEntry(chainId, address)
+    const resumes = async (): Promise<boolean> => {
+      const held = await entry.read()
+      if (held.status !== 'present') {
+        return false
+      }
+      const session = await records.recoverySession(chainId, address).read()
+      return session.status === 'present' && session.value.state === 'live'
+    }
+    resumes()
+      .then(async (resume) => {
+        if (resume) {
+          return 'resume' as const
+        }
+        await entry.write({
+          account: address,
+          route: search.route,
+          receivingAccount: search.receivingAccount
+        })
+        return 'written' as const
       })
       .then(
-        () => {
+        (outcome) => {
           setWriting(false)
-          setConfirmed(true)
+          if (outcome === 'resume') {
+            navigate(checklistPathOf(address))
+          } else {
+            setConfirmed(true)
+          }
         },
         () => {
           setWriting(false)
           setWriteFailed(true)
         }
       )
-  }, [target, writing, records, chainId, search])
+  }, [target, writing, records, chainId, search, navigate])
 
   if (!target) {
     return <LookupField networkName={networkName} onTarget={onTarget} resolveName={resolveName} />
@@ -91,6 +126,7 @@ const AccountStepView = ({
   if (!found) {
     return (
       <LookupState
+        target={target}
         networkName={networkName}
         client={client}
         setupState={setupState}
@@ -139,7 +175,8 @@ const AccountStepView = ({
         networkName={networkName}
         attemptActive={found.attemptActive}
         onRetry={reads.retry}
-        onChooseAnother={() => navigate(routeEntryPathOf(search.route))}
+        onBack={() => leave(backToField)}
+        onChooseAnother={() => leave(() => navigate(routeEntryPathOf(search.route)))}
         onContinue={() => navigate(readoutPathOf(target.address))}
       />
     </View>

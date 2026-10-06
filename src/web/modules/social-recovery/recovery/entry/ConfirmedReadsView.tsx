@@ -62,10 +62,25 @@ const ConfirmedReadsView = ({
   networkName,
   attemptActive,
   onRetry,
+  onBack,
   onChooseAnother,
   onContinue
 }: ConfirmedReadsViewProps) => {
   const { t } = useTranslation()
+
+  // Every blocked state offers one way out and no continue.
+  const back = (onPress: () => void, testID: string) => (
+    <View style={[flexbox.directionRow, spacings.mtTy]}>
+      <Button
+        testID={testID}
+        type="secondary"
+        size="small"
+        text={t('socialRecovery.ceremony.backAction')}
+        onPress={onPress}
+        hasBottomSpacing={false}
+      />
+    </View>
+  )
 
   const line = (text: string, testID?: string) => (
     <Text fontSize={14} style={spacings.mbTy} testID={testID}>
@@ -102,12 +117,21 @@ const ConfirmedReadsView = ({
   if (step.kind === 'dormant') {
     return (
       <SectionCard testID="entry-dormant">
-        <Text fontSize={16} weight="medium" style={spacings.mbTy} testID="entry-dormant-title">
-          {t(`${ENTRY}.dormant.title`)}
-        </Text>
+        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
+          <StatusChip
+            text={t(chipKey('recovery', 'notActive'))}
+            tone="warning"
+            style={spacings.mrSm}
+            testID="entry-dormant-chip"
+          />
+          <Text fontSize={16} weight="medium" testID="entry-dormant-title">
+            {t(`${ENTRY}.dormant.title`)}
+          </Text>
+        </View>
         {line(t(`${ENTRY}.dormant.onlyOwnKey`))}
         {line(t(`${ENTRY}.dormant.neverExecutes`))}
         {attemptActive && line(t(`${ENTRY}.dormant.runningCannotExecute`), 'entry-dormant-running')}
+        {back(onBack, 'entry-dormant-back')}
       </SectionCard>
     )
   }
@@ -128,6 +152,7 @@ const ConfirmedReadsView = ({
         <Text fontSize={14} appearance="secondaryText" testID="entry-cannot-recover-reason">
           {t(REFUSAL_REASONS[step.refusal])}
         </Text>
+        {back(onBack, 'entry-cannot-recover-back')}
       </SectionCard>
     )
   }
@@ -136,18 +161,9 @@ const ConfirmedReadsView = ({
     return (
       <SectionCard testID={`entry-destination-${step.refusal}`}>
         {line(t(DESTINATION_REFUSALS[step.refusal]), 'entry-destination-refusal')}
-        {route === 'logged-in' && (
-          <View style={[flexbox.directionRow, spacings.mtTy]}>
-            <Button
-              testID="entry-destination-choose-another"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.ceremony.backAction')}
-              onPress={onChooseAnother}
-              hasBottomSpacing={false}
-            />
-          </View>
-        )}
+        {route === 'logged-in'
+          ? back(onChooseAnother, 'entry-destination-choose-another')
+          : back(onBack, 'entry-destination-back')}
       </SectionCard>
     )
   }

@@ -19,7 +19,11 @@ import {
   SectionCard,
   SectionLabel
 } from '@web/modules/social-recovery/shared/chrome'
-import { renderFullAddress, renderResolvedName } from '@web/modules/social-recovery/shared/display'
+import {
+  renderFullAddress,
+  renderResolvedName,
+  renderValueLabel
+} from '@web/modules/social-recovery/shared/display'
 
 import type { ConfirmAccountProps } from './types'
 
@@ -54,7 +58,7 @@ const ConfirmAccount = ({
               </Text>
             )}
             <Text fontSize={12} appearance="secondaryText">
-              {t(`${LABELS}.accountLookedUp`)}
+              {renderValueLabel('accountBeingRecovered', t)}
             </Text>
           </View>
         </View>

@@ -13,8 +13,17 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import WarningGate from '@web/modules/social-recovery/onboarding/recover/WarningGate'
-import { ActionsRow, PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
-import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import {
+  ActionsRow,
+  PageTitle,
+  SectionCard,
+  SectionLabel
+} from '@web/modules/social-recovery/shared/chrome'
+import {
+  renderFullAddress,
+  renderShortAddress,
+  renderValueLabel
+} from '@web/modules/social-recovery/shared/display'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { choiceFor } from './receiving'
@@ -70,6 +79,20 @@ const OwnerStageView = ({ choices, loaded, onContinue }: OwnerStageViewProps) =>
           ))}
         </View>
         <SectionCard tone="muted" spacing="item" testID="entry-owner-sentences">
+          {!!chosen && (
+            <>
+              <SectionLabel>{renderValueLabel('newKey', t)}</SectionLabel>
+              <Text
+                fontSize={14}
+                weight="number_medium"
+                selectable
+                style={spacings.mbSm}
+                testID="entry-owner-new-key"
+              >
+                {renderFullAddress(chosen.key.addr)}
+              </Text>
+            </>
+          )}
           {!!chosen && (
             <Text fontSize={14} style={spacings.mbTy} testID="entry-owner-installs">
               {t(`${OWNER}.installs`, {
