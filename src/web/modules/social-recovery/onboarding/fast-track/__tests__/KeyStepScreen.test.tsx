@@ -449,6 +449,31 @@ describe('the key step', () => {
       expect(where()).toBe(ACCOUNT_STEP)
     })
 
+    it('keeps waiting while that add still runs with the slot listed, and moves on once it ends', async () => {
+      await atEarlierAdd()
+      await walletListsSlot()
+
+      expect(dispatched()).toEqual([])
+      expect(movesAway()).toEqual([])
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([
+        { kind: 'dispatch', type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET', params: undefined },
+        {
+          kind: 'dispatch',
+          type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE',
+          params: undefined
+        }
+      ])
+      expect(movesAway()).toEqual([
+        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: undefined }
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
     const failures: { name: string; ends: Record<string, unknown> }[] = [
       { name: 'goes idle with no success', ends: { addAccountsStatus: 'INITIAL' } },
       {
