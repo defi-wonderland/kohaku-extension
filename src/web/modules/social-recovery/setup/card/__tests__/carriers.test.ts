@@ -29,7 +29,8 @@ const FILE: CardFile = {
   name: 'card.pdf',
   type: 'application/pdf',
   bytes: Uint8Array.from(TEXT, (char) => char.charCodeAt(0)),
-  replacedCharacters: false
+  replacedCharacters: false,
+  pages: 1
 }
 
 const readBlob = (blob: Blob): Promise<string> =>
