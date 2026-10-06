@@ -334,7 +334,6 @@ export interface DetailsBlockProps {
 
 export interface RunBlockProps {
   run: SubmitState
-  sending: SendingReading
   onStart: () => void
   onCheckAgain: () => void
   onReread: () => void
