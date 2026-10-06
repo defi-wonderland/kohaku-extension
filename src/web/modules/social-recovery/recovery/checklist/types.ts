@@ -1,0 +1,445 @@
+import type { ReactNode } from 'react'
+
+import type {
+  Address,
+  ApproverReply,
+  ApproverRequest,
+  Assessment,
+  Configuration,
+  GatheringPlace,
+  Hex
+} from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  CeremonyOutcome,
+  PasskeyFacts,
+  ReportStore,
+  ReportSubscribe
+} from '@web/modules/social-recovery/shared/ceremony'
+import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
+import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
+import type {
+  ChainId,
+  LiveRecoverySession,
+  RecoveryEntryRecord,
+  RecoveryRoute,
+  RowNote,
+  SessionRevision,
+  WalletRecords,
+  WipedRecoverySession
+} from '@web/modules/social-recovery/shared/records'
+import type { MethodKind } from '@web/modules/social-recovery/setup/review'
+
+export type Navigate = (to: string, options?: { replace?: boolean }) => void
+
+// ---------------------------------------------------------------------------
+// The search
+// ---------------------------------------------------------------------------
+
+/** The checklist's search: the account being recovered, and a ceremony that returned. */
+export interface ChecklistSearch {
+  account: Address
+  ceremony?: string
+}
+
+// ---------------------------------------------------------------------------
+// The rows
+// ---------------------------------------------------------------------------
+
+/** One place of the gathering as the checklist draws it, with the clause it stands in. */
+export interface ChecklistRow {
+  place: number
+  clause: number
+  kind: MethodKind | undefined
+  gatheringPlace: GatheringPlace
+}
+
+/** One clause of more than one member: its header counts the filled members against the threshold. */
+export interface ChecklistGroup {
+  clause: number
+  threshold: number
+  rows: ChecklistRow[]
+}
+
+/** The rows of a path: the required rows first, then each group. */
+export interface ChecklistLayout {
+  required: ChecklistRow[]
+  groups: ChecklistGroup[]
+}
+
+/** The headline's count: a required row and a group each count as one unit. */
+export interface ChecklistHeadline {
+  done: number
+  total: number
+}
+
+/** The unlock line's key by the path's shape. */
+export type UnlockLineKey =
+  | 'socialRecovery.checklist.continueUnlock'
+  | 'socialRecovery.checklist.continueUnlockRequiredOnly'
+  | 'socialRecovery.checklist.continueUnlockGroupsOnly'
+
+/** What the checklist knows of a row beyond the gathering: its note, and how this tab answered it. */
+export interface RowState {
+  chip: CollectionChip
+  replied: boolean
+  note?: RowNote
+}
+
+// ---------------------------------------------------------------------------
+// The client and the inputs
+// ---------------------------------------------------------------------------
+
+export type ChecklistKitClient = Pick<RecoveryKitClient, 'recovery' | 'setup' | 'walletReads'>
+
+export type ChecklistClient =
+  | { status: 'loading' }
+  | { status: 'ready'; client: ChecklistKitClient }
+  | { status: 'update-the-wallet'; retry: () => void }
+  | { status: 'failed'; retry: () => void }
+
+/** The key the recovery installs: the receiving account's controlling key. */
+export type DestinationReading =
+  | { status: 'loading' }
+  | { status: 'ready'; key: Address }
+  | { status: 'unavailable'; retry: () => void }
+
+/** The page's own helpers the checklist uses. */
+export interface ChecklistDeps {
+  reportStore: ReportStore
+  reportSubscribe: ReportSubscribe
+  newRequestId: () => string
+  /** Milliseconds since epoch. */
+  now: () => number
+  timeZone: string
+  /** The relying-party hash of this page's origin, the one a passkey here answers under. */
+  rpIdHash: Hex
+  /** Whether this page serves passkeys. */
+  passkeysServed: boolean
+  readPassword: (chainId: ChainId, account: Address) => string | undefined
+}
+
+/** The recovery entry record of the account being recovered, as the screen reads it. */
+export type EntryReading =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'absent' }
+  | { status: 'present'; entry: RecoveryEntryRecord }
+
+export interface ChecklistBodyProps {
+  records: WalletRecords
+  account: Address
+  entry: RecoveryEntryRecord
+  search: ChecklistSearch
+}
+
+export interface ChecklistViewProps {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  entry: RecoveryEntryRecord
+  client: ChecklistClient
+  destination: DestinationReading
+  search: ChecklistSearch
+  navigate: Navigate
+  deps: ChecklistDeps
+}
+
+// ---------------------------------------------------------------------------
+// The session
+// ---------------------------------------------------------------------------
+
+/** A live session as the checklist holds it: the record, its revision and the path's clauses. */
+export interface LiveChecklist {
+  session: LiveRecoverySession
+  revision: SessionRevision
+  savedAt: number
+  configuration: Configuration
+}
+
+/** The title and body keys of an alert. */
+export interface AlertKeys {
+  title: string
+  body: string
+}
+
+/** Why the checklist could not open: the records, the setup, the gathering or the destination key. */
+export type ChecklistFailure = 'records' | 'setup' | 'open' | 'destination'
+
+export type ChecklistLoad =
+  | { phase: 'loading' }
+  | { phase: 'failed'; cause: ChecklistFailure }
+  | { phase: 'wiped'; session: WipedRecoverySession; revision: SessionRevision }
+  | ({ phase: 'live' } & LiveChecklist)
+  /** Another tab changed the session after this one read it. */
+  | { phase: 'conflict' }
+
+/** What opening the checklist found or made. */
+export type OpenResult =
+  | { kind: 'live'; session: LiveRecoverySession; revision: SessionRevision; savedAt: number }
+  | { kind: 'wiped'; session: WipedRecoverySession; revision: SessionRevision }
+  | { kind: 'landed' }
+  /** No session is stored and the destination key is not known yet. */
+  | { kind: 'needs-destination' }
+
+export interface OpenInput {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  client: ChecklistKitClient
+  configuration: Configuration
+  destination: Address | undefined
+}
+
+export interface GatherAgainInput extends OpenInput {
+  /** The revision of the wiped session the holder read. */
+  revision: SessionRevision
+}
+
+export interface ConfigurationInput {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  client: ChecklistKitClient
+  password: string | undefined
+}
+
+/** Where the setup's configuration comes from: the decrypted cache, or the password held in memory. */
+export type ConfigurationReading =
+  | { kind: 'configuration'; configuration: Configuration }
+  | { kind: 'none' }
+
+/** What adding a reply came to. */
+export type AddReplyResult =
+  | { kind: 'added' }
+  | { kind: 'refused'; cause: string }
+  | { kind: 'conflict' }
+  | { kind: 'write-failed' }
+
+export interface ChecklistState {
+  load: ChecklistLoad
+  assessment: Assessment | null
+  retry: () => void
+  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+  setNote: (place: number, note: RowNote | null) => Promise<void>
+  noteFailed: boolean
+  abandon: () => Promise<void>
+  abandonFailed: boolean
+  gatherAgain: () => Promise<void>
+  busy: boolean
+}
+
+export interface ChecklistHookInput {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  entry: RecoveryEntryRecord
+  client: ChecklistClient
+  destination: DestinationReading
+  navigate: Navigate
+  deps: Pick<ChecklistDeps, 'now' | 'readPassword'>
+}
+
+// ---------------------------------------------------------------------------
+// The passkey claim
+// ---------------------------------------------------------------------------
+
+/** What a stored claim request asked for, read back when its ceremony returns. */
+export interface ClaimAsked {
+  place: number
+  request: ApproverRequest
+  handOff: boolean
+}
+
+export interface ClaimRequestInput {
+  account: Address
+  chainId: ChainId
+  request: ApproverRequest
+  handOff: boolean
+}
+
+/** The account and chain a claim request must name to be this checklist's. */
+export interface ClaimTarget {
+  account: Address
+  chainId: ChainId
+}
+
+/** A passed claim's reply, with where the authenticator sat where the report says. */
+export interface PassedClaim {
+  reply: ApproverReply
+  facts?: Pick<PasskeyFacts, 'place'>
+}
+
+/** A passed claim waiting for the live session to take it. */
+export interface ClaimReply extends PassedClaim {
+  place: number
+}
+
+/** How this tab saw a place answered: from the phone or on this device, and when. */
+export interface AnsweredMemory {
+  phone: boolean
+  at: number
+}
+
+/** One place's last ceremony outcome, with the route the holder chose for it. */
+export interface ClaimOutcome {
+  outcome: CeremonyOutcome<unknown>
+  handOff: boolean
+}
+
+export interface PasskeyClaimInput {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  search: ChecklistSearch
+  navigate: Navigate
+  deps: Pick<ChecklistDeps, 'reportStore' | 'reportSubscribe' | 'newRequestId' | 'now'>
+}
+
+export interface PasskeyClaim {
+  /** Stores the claim's request and opens the ceremony tab. */
+  launch: (request: ApproverRequest, handOff: boolean) => Promise<void>
+  /** The last outcome each place's ceremony reported, a passed one included. */
+  outcomes: Partial<Record<number, ClaimOutcome>>
+  /** A passed claim the checklist has not added yet. */
+  pending: ClaimReply | null
+  settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
+  /** The place whose report never came back, with its retry. */
+  undelivered: ClaimAsked | null
+  retryUndelivered: () => Promise<void>
+  launchFailed: boolean
+  busy: boolean
+}
+
+// ---------------------------------------------------------------------------
+// The rows' components
+// ---------------------------------------------------------------------------
+
+export interface RowFrameProps {
+  row: ChecklistRow
+  state: RowState
+  /** The method's kind name. */
+  title: string
+  label?: string
+  detail?: string
+  children?: ReactNode
+}
+
+export interface PasskeyRowProps {
+  row: ChecklistRow
+  state: RowState
+  request: ApproverRequest | undefined
+  outcome: ClaimOutcome | undefined
+  answered: AnsweredMemory | undefined
+  rpIdHash: Hex
+  served: boolean
+  busy: boolean
+  timeZone: string
+  launch: (request: ApproverRequest, handOff: boolean) => void
+}
+
+export interface GuardianRowProps {
+  row: ChecklistRow
+  state: RowState
+  request: ApproverRequest | undefined
+  sessionSavedAt: number
+  timeZone: string
+  busy: boolean
+  setNote: (place: number, note: RowNote | null) => void
+  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+}
+
+/** The guardian row's carriers, its message and its paste field mount here. */
+export interface GuardianCarriersProps {
+  place: number
+  request: ApproverRequest | undefined
+  replied: boolean
+  busy: boolean
+  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+}
+
+export interface IdentityRowProps {
+  row: ChecklistRow
+  state: RowState
+}
+
+export interface ChecklistRowsProps {
+  layout: ChecklistLayout
+  assessment: Assessment
+  renderRow: (row: ChecklistRow) => ReactNode
+}
+
+export interface AbandonBlockProps {
+  busy: boolean
+  failed: boolean
+  onAbandon: () => void
+}
+
+export interface WipedBlockProps {
+  session: WipedRecoverySession
+  timeZone: string
+  busy: boolean
+  onGatherAgain: () => void
+}
+
+export interface ChecklistChromeProps {
+  route: RecoveryRoute
+  children: ReactNode
+  testID?: string
+}
+
+// ---------------------------------------------------------------------------
+// The recovery in progress and the home band
+// ---------------------------------------------------------------------------
+
+/** One live session of the chain with its entry, as the in-progress screen and the home band list it. */
+export interface InProgressItem {
+  account: Address
+  session: LiveRecoverySession
+  revision: SessionRevision
+  entry: RecoveryEntryRecord | null
+  /** When the request was made, ms since epoch. */
+  startedAt: number
+}
+
+export type InProgressLoad =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'ready'; items: InProgressItem[] }
+
+/** The headline of one listed session, null where it cannot be read; a hook. */
+export type SessionHeadlineHook = (item: InProgressItem) => ChecklistHeadline | null
+
+export interface InProgressViewProps {
+  records: WalletRecords
+  chainId: ChainId
+  navigate: Navigate
+  timeZone: string
+  /** Whether this device holds the unlocked recovery path of the account. */
+  holdsPath: (account: Address) => Promise<boolean>
+  useHeadline: SessionHeadlineHook
+}
+
+export interface InProgressRowProps {
+  item: InProgressItem
+  holds: boolean | undefined
+  useHeadline: SessionHeadlineHook
+  timeZone: string
+  busy: boolean
+  onContinue: (item: InProgressItem, holds: boolean) => void
+  onAbandon: (item: InProgressItem) => void
+}
+
+export interface HomeRecoveryLineProps {
+  item: InProgressItem
+  timeZone: string
+  useHeadline: SessionHeadlineHook
+  onOpen: () => void
+}
+
+export interface HomeRecoveryBandViewProps {
+  records: WalletRecords
+  chainId: ChainId
+  navigate: Navigate
+  timeZone: string
+  useHeadline: SessionHeadlineHook
+}
