@@ -109,8 +109,7 @@ describe('decoding one privilege log', () => {
     ['one topic', { ...good, topics: good.topics.slice(0, 1) }],
     ['three topics', { ...good, topics: [...good.topics, pad('0x01')] }],
     ['no topic', { ...good, topics: [] }],
-    ['empty data', { ...good, data: '0x' }],
-    ['an emitter that is no address', { ...good, address: `0x${'ab'.repeat(10)}` as Address }]
+    ['empty data', { ...good, data: '0x' }]
   ]
   ignored.forEach(([label, log]) =>
     it(`answers undefined for ${label}, never throwing`, () => {

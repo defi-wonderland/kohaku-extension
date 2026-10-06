@@ -5,7 +5,7 @@
  * writes are read through. The privileges the creation code writes emit no
  * log.
  */
-import { decodeEventLog, encodeEventTopics, isAddress, isAddressEqual } from 'viem'
+import { decodeEventLog, encodeEventTopics, isAddressEqual } from 'viem'
 
 import type {
   Address,
@@ -28,17 +28,12 @@ const PRIVILEGE_LOG_TOPICS = 2
 
 /**
  * One raw log as a privilege write of the account that emitted it, or
- * undefined for a log of another event, with another number of topics, from
- * an emitter that is no address, or with data that does not decode. Never
- * throws.
+ * undefined for a log of another event, with another number of topics, or
+ * with data that does not decode. Never throws.
  */
 export const decodePrivilegeLog = (log: RawLog): PrivilegeChangedLog | undefined => {
   const [topic, ...indexed] = log.topics
-  if (
-    topic === undefined ||
-    log.topics.length !== PRIVILEGE_LOG_TOPICS ||
-    !isAddress(log.address, { strict: false })
-  ) {
+  if (topic === undefined || log.topics.length !== PRIVILEGE_LOG_TOPICS) {
     return undefined
   }
   try {
