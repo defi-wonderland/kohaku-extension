@@ -24,6 +24,7 @@ import {
   configurationOf,
   depsOf,
   each,
+  entryOf,
   fakeKit,
   gatheringOf,
   GUARDIANS,
@@ -45,11 +46,15 @@ import {
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
   ceremonyPath,
+  ceremonyResultKey,
   dismissed,
   failed,
   passed,
   unavailable
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
+const {
+  WEB_ROUTES
+}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const {
   checklistPathOf,
   claimAskedOf
@@ -297,6 +302,193 @@ describe('the passkey row', () => {
       expect(stored.status === 'present' && stored.value).toMatchObject({
         params: { handOff: false }
       })
+    }
+  )
+
+  /** The report the ceremony tab left for `id`, as the channel holds it. */
+  const reportHeld = async (id: string) =>
+    (await deps.reportStore.get(ceremonyResultKey(id), undefined)) !== undefined
+
+  const repliesOf = async () => {
+    const stored = await storedSession(world.records)
+    return stored?.value.state === 'live' ? stored.value.gathering.replies : null
+  }
+
+  it('adds a passed claim on a reload under the same ceremony id once the session write works', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const reply = replyOf(gathering, 0)
+    world.storage.refuse.push('recoverySession')
+    await deps.channel.report(id, 'createClaim', passed({ reply }))
+
+    const failedBack = await open({ account: ACCOUNT, ceremony: id })
+    expect(failedBack.byTestId('checklist-write-failed')).not.toBeNull()
+    expect(await reportHeld(id)).toBe(true)
+
+    world.storage.refuse.splice(0)
+    const reload = await open({ account: ACCOUNT, ceremony: id })
+
+    expect(await repliesOf()).toEqual([reply])
+    expect(reload.byTestId('checklist-write-failed')).toBeNull()
+    expect(reload.byTestId('checklist-row-0-chip')?.textContent).toBe(
+      t('socialRecovery.status.collection.complete')
+    )
+    expect(await reportHeld(id)).toBe(false)
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
+  })
+
+  it('keeps a report that lands through the listener across a reload until its reply is added', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    expect(back.byTestId('checklist-undelivered')).not.toBeNull()
+    const reply = replyOf(gathering, 0)
+    world.storage.refuse.push('recoverySession')
+
+    await outside(() => deps.channel.report(id, 'createClaim', passed({ reply })))
+    await outside(async () => undefined)
+
+    expect(back.byTestId('checklist-write-failed')).not.toBeNull()
+    expect(await repliesOf()).toEqual([])
+
+    world.storage.refuse.splice(0)
+    await open({ account: ACCOUNT, ceremony: id })
+
+    expect(await repliesOf()).toEqual([reply])
+    expect(await reportHeld(id)).toBe(false)
+  })
+
+  it('renders a reply another tab overtook as a conflict to reload, and adds the reply after it', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    const read = await storedSession(world.records)
+    await outside(() =>
+      world.otherTab
+        .recoverySession(CHAIN_ID, ACCOUNT)
+        .setNote(1, 'declined', read?.revision ?? null)
+    )
+    const reply = replyOf(gathering, 0)
+
+    await outside(() => deps.channel.report(id, 'createClaim', passed({ reply })))
+    await outside(async () => undefined)
+
+    expect(back.byTestId('checklist-conflict')).not.toBeNull()
+    expect(back.byTestId('checklist-write-failed')).toBeNull()
+    const afterConflict = await storedSession(world.records)
+    expect(afterConflict?.value.state === 'live' && afterConflict.value.notes).toEqual({
+      1: 'declined'
+    })
+    expect(await repliesOf()).toEqual([])
+
+    await back.press('checklist-conflict-retry')
+
+    const both = await storedSession(world.records)
+    expect(both?.value.state === 'live' && both.value.gathering.replies).toEqual([reply])
+    expect(both?.value.state === 'live' && both.value.notes).toEqual({ 1: 'declined' })
+  })
+
+  /** A passed claim whose session write failed: it waits, its request and its report kept. */
+  const waitingClaim = async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    world.storage.refuse.push('recoverySession')
+    await deps.channel.report(id, 'createClaim', passed({ reply: replyOf(gathering, 0) }))
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    expect(back.byTestId('checklist-write-failed')).not.toBeNull()
+    world.storage.refuse.splice(0)
+    return { back, id }
+  }
+
+  it('takes a waiting claim with the abandoned session', async () => {
+    const { back, id } = await waitingClaim()
+
+    await back.press('checklist-cannot-complete')
+    await back.press('checklist-abandon-action')
+
+    expect((await storedSession(world.records))?.value.state).toBe('wiped')
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
+    expect(await reportHeld(id)).toBe(false)
+    expect(back.navigate).toHaveBeenLastCalledWith(`/${WEB_ROUTES.socialRecoveryRecovery}`, {
+      replace: true
+    })
+  })
+
+  it('keeps the session, the entry and the waiting claim where another tab wrote before the abandon', async () => {
+    const { back, id } = await waitingClaim()
+    const read = await storedSession(world.records)
+    await outside(() =>
+      world.otherTab
+        .recoverySession(CHAIN_ID, ACCOUNT)
+        .setNote(1, 'declined', read?.revision ?? null)
+    )
+
+    await back.press('checklist-cannot-complete')
+    await back.press('checklist-abandon-action')
+
+    expect(back.byTestId('checklist-conflict')).not.toBeNull()
+    const after = await storedSession(world.records)
+    expect(after?.value.state === 'live' && after.value.notes).toEqual({ 1: 'declined' })
+    expect((await world.records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).status).toBe('present')
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+    expect(await reportHeld(id)).toBe(true)
+    expect(back.navigate).not.toHaveBeenCalledWith(`/${WEB_ROUTES.socialRecoveryRecovery}`, {
+      replace: true
+    })
+  })
+
+  it('shows the no passkey block on the fresh install before any claim', async () => {
+    world = testRecords()
+    await seedEntry(world.records, entryOf('fresh-install'))
+    await seedCache(world.records, PATH)
+    await seedSession(world.records, gathering)
+    view?.unmount()
+    view = await mountChecklist({
+      records: world.records,
+      client: kit.state,
+      deps,
+      entry: entryOf('fresh-install')
+    })
+
+    expect(view.byTestId('checklist-row-0-no-passkey')?.textContent).toBe(
+      t(`${PASSKEY}.noPasskeyHeader`)
+    )
+    expect(view.byTestId('checklist-row-0-answer-here')).toBeNull()
+    expect(view.byTestId('checklist-row-0-scan')).not.toBeNull()
+  })
+
+  it('shows no such block on the logged-in wallet before any claim', async () => {
+    const mounted = await open()
+
+    expect(mounted.byTestId('checklist-row-0-no-passkey')).toBeNull()
+    expect(mounted.byTestId('checklist-row-0-answer-here')).not.toBeNull()
+  })
+
+  each([
+    [
+      'a cancel the browser reports as NotAllowedError',
+      dismissed('cancelled', 'NotAllowedError'),
+      true
+    ],
+    ['a cancel the browser reports as AbortError', dismissed('cancelled', 'AbortError'), false],
+    ['a cancel with no detail', dismissed('cancelled'), false],
+    ['a refusal reported as NotAllowedError', dismissed('refused', 'NotAllowedError'), false]
+  ] as const)(
+    'on the logged-in wallet, decides the no passkey block after %s',
+    async ([, outcome, shown]) => {
+      const mounted = await open()
+      await mounted.press('checklist-row-0-answer-here')
+      const [id] = deps.requestIds
+
+      const back = await returnFrom(id, outcome)
+
+      expect(back.byTestId('checklist-row-0-no-passkey') !== null).toBe(shown)
+      expect(back.byTestId('checklist-row-0-answer-here') === null).toBe(shown)
+      expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
     }
   )
 

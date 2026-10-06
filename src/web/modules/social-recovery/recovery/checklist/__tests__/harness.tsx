@@ -638,7 +638,8 @@ export const outside = (change: () => Promise<unknown>) =>
     await change()
   })
 
-const mount = async (element: (navigate: jest.Mock) => ReactElement): Promise<Mounted> => {
+/** Mounts any element under the app's theme. */
+export const mount = async (element: (navigate: jest.Mock) => ReactElement): Promise<Mounted> => {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root: Root = createRoot(container)
