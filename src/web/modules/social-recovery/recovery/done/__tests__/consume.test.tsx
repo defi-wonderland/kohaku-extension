@@ -83,7 +83,7 @@ describe('the done screen names the keys from the consume transaction', () => {
   })
 
   it('takes the keys from the latest consume of the account, ignoring other transactions and removed logs', async () => {
-    const world = await openWorld({ route: 'logged-in', walletAdds: true })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true, attempt: 2 })
     const { account, kit } = world
     const earlierKey: Address = '0x00000000000000000000000000000000000e0001'
     const strangerKey: Address = '0x00000000000000000000000000000000000e0002'
@@ -313,7 +313,7 @@ describe('the consume of the current attempt only', () => {
   })
 
   it('takes the consume of the current attempt id, not the last consume of the history', async () => {
-    const world = await openWorld({ route: 'logged-in', walletAdds: true })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true, attempt: 2 })
     const { account, kit } = world
     const earlierKey: Address = '0x00000000000000000000000000000000000e0004'
     kit.chain.accountEvents = [

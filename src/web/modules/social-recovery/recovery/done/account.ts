@@ -11,6 +11,7 @@
  * the recovery reads do not carry yet. The preferences are the ones the
  * picker gives a new account.
  */
+import type { Account } from '@ambire-common/interfaces/account'
 import { getDefaultAccountPreferences, getSmartAccount } from '@ambire-common/libs/account/account'
 import { isAddressEqual } from 'viem'
 
@@ -42,3 +43,15 @@ export const recoveredAccountOf = async ({
     creation: isAddressEqual(computed.addr as Address, account) ? 'reproduced' : 'stand-in'
   }
 }
+
+/** Whether the wallet lists the account with the key among its associated keys. */
+export const listsWithKey = (
+  accounts: readonly Account[] | undefined,
+  account: Address,
+  key: Address
+): boolean =>
+  !!accounts?.some(
+    (candidate) =>
+      isAddressEqual(candidate.addr as Address, account) &&
+      candidate.associatedKeys.some((associated) => isAddressEqual(associated as Address, key))
+  )

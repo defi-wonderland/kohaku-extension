@@ -7,12 +7,19 @@
  * its enrollments name, the add of the recovered account to this wallet, and
  * the last act.
  *
- * A search with no account goes to the account step. No entry record, as
- * after the last act: where the wallet lists the account the screen renders
- * from the consume event alone with no line by route, otherwise the account
- * step. A read that found no consume goes back to the wait; a read of the
- * setup or of the enrollments that fails renders failed with retry, never as
- * a path this device does not hold. The last act ends the countdown, clears
+ * A search with no account goes to the account step. The countdown's record
+ * is read once, before the last act ends it: while it names the attempt this
+ * device landed, the consume is matched against that attempt; a record that
+ * does not name it renders failed with retry, never another attempt's keys.
+ * No entry record, as after the last act: where the wallet lists the account
+ * the screen renders from the consume event alone with no line by route,
+ * otherwise the account step. With neither the countdown nor the entry record
+ * the screen adds nothing: it renders only where the wallet already lists the
+ * account with the granted key, otherwise it goes to the account step, since
+ * this device may never have run the recovery. A read that found no consume
+ * goes back to the wait; a read of the countdown, the setup or the
+ * enrollments that fails renders failed with retry, never as a path this
+ * device does not hold. The last act ends the countdown, clears
  * the entry record and the recovery password held in memory, and keeps the
  * decrypted setup cache as this device's cache of the setup. Edit selects the
  * recovered account and opens the editor once the wallet reports it selected.
@@ -64,11 +71,14 @@ import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/c
 import { within } from '@web/modules/social-recovery/recovery/wait'
 import { enrollmentOf } from '@web/modules/social-recovery/setup/review'
 
+import { listsWithKey } from './account'
 import DoneChrome from './DoneChrome'
 import DoneView from './DoneView'
+import { consumeMatchOf } from './read'
 import { summaryOf } from './summary'
 import type {
   BlockTimeRead,
+  ConsumeMatch,
   DoneBodyProps,
   DoneEntryReading,
   DoneRead,
@@ -118,7 +128,33 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     }
   }, [hasNetwork])
 
-  const { read: consumeRead, retry: retryRead } = useConsumeRead({ kit, blockTime })
+  // The attempt this device landed, read before the last act ends the countdown.
+  const [localAttempt, setLocalAttempt] = useState(0)
+  const [landedRead, setLandedRead] = useState<LocalRead<ConsumeMatch>>(PENDING)
+  useEffect(() => {
+    let live = true
+    setLandedRead(PENDING)
+    records
+      .countdown(CHAIN_ID, account)
+      .read()
+      .then((read) => {
+        if (live) {
+          const match = consumeMatchOf(read)
+          setLandedRead(match ? { status: 'answered', value: match } : { status: 'failed' })
+        }
+      })
+      .catch(() => {
+        if (live) {
+          setLandedRead({ status: 'failed' })
+        }
+      })
+    return () => {
+      live = false
+    }
+  }, [records, account, localAttempt])
+  const match = landedRead.status === 'answered' ? landedRead.value : null
+
+  const { read: consumeRead, retry: retryRead } = useConsumeRead({ kit, match, blockTime })
   const event =
     consumeRead.status === 'answered' && consumeRead.reading.kind === 'found'
       ? consumeRead.reading.event
@@ -132,7 +168,6 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
   }, [none, navigate, account])
 
   // The setup this device holds, and the passkey kinds its enrollments name.
-  const [localAttempt, setLocalAttempt] = useState(0)
   const [configuration, setConfiguration] = useState<LocalRead<Configuration | null>>(PENDING)
   useEffect(() => {
     if (!kit) {
@@ -150,19 +185,21 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
           password: readRecoveryPassword(CHAIN_ID, account)
         }),
       POLL_LIMIT_MS
-    ).then((reading) => {
-      if (!live) {
-        return
-      }
-      if (!reading) {
-        setConfiguration({ status: 'failed' })
-        return
-      }
-      setConfiguration({
-        status: 'answered',
-        value: reading.kind === 'configuration' ? reading.configuration : null
+    )
+      .then((reading) => {
+        if (!live) {
+          return
+        }
+        if (!reading) {
+          setConfiguration({ status: 'failed' })
+          return
+        }
+        setConfiguration({
+          status: 'answered',
+          value: reading.kind === 'configuration' ? reading.configuration : null
+        })
       })
-    })
+      .catch(() => undefined)
     return () => {
       live = false
     }
@@ -200,11 +237,21 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     return summaryOf({ configuration: configuration.value, addressBook, event, passkeyKindOf })
   }, [event, configuration, enrollments, addressBook])
 
+  // Neither the countdown nor the entry record: this device's last act ran, or it never ran this recovery.
+  const recordsGone = match?.kind === 'ended' && !entry
   const { state: add, retry: retryAdd } = useRecoveredAccountAdd({
     completesSetup: route === 'fresh-install',
+    dispatches: !recordsGone,
     account,
     event
   })
+  const notOurs =
+    recordsGone && !!event && !!accounts && !listsWithKey(accounts, account, event.granted)
+  useEffect(() => {
+    if (notOurs) {
+      navigate(accountStepPath(), { replace: true })
+    }
+  }, [notOurs, navigate])
 
   const listedAccount = accounts?.find((candidate) =>
     isAddressEqual(candidate.addr as Address, account)
@@ -217,9 +264,15 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     ? receivingAccount?.preferences.label || renderShortAddress(receiving)
     : null
 
-  const localFailed = configuration.status === 'failed' || enrollments.status === 'failed'
+  const countdownFailed = landedRead.status === 'failed'
+  const localFailed =
+    countdownFailed || configuration.status === 'failed' || enrollments.status === 'failed'
   const read = useMemo<DoneRead>(() => {
-    if (clientState.status === 'failed' || clientState.status === 'update-the-wallet') {
+    if (
+      clientState.status === 'failed' ||
+      clientState.status === 'update-the-wallet' ||
+      countdownFailed
+    ) {
       return { status: 'failed' }
     }
     if (consumeRead.status !== 'answered' || consumeRead.reading.kind === 'none') {
@@ -228,8 +281,8 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     if (localFailed) {
       return { status: 'failed' }
     }
-    return summary ? consumeRead : PENDING
-  }, [clientState.status, consumeRead, localFailed, summary])
+    return summary && !notOurs ? consumeRead : PENDING
+  }, [clientState.status, countdownFailed, consumeRead, localFailed, summary, notOurs])
   const onRetryRead = useCallback(() => {
     if (clientState.status === 'failed' || clientState.status === 'update-the-wallet') {
       clientState.retry()

@@ -16,7 +16,7 @@ import type {
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records/types'
-import type { StartedNotice } from '@web/modules/social-recovery/recovery/wait'
+import type { LandedAttempt, StartedNotice } from '@web/modules/social-recovery/recovery/wait'
 
 // ---------------------------------------------------------------------------
 // The consume event
@@ -51,6 +51,12 @@ export interface ConsumeEvent {
   time: number
 }
 
+/**
+ * What the consume is matched against: the attempt the countdown's record
+ * landed on this device, or the ended countdown, where the last act ran.
+ */
+export type ConsumeMatch = { kind: 'landed'; landed: LandedAttempt } | { kind: 'ended' }
+
 /** What one read of the events found: no consume of the account, or its consume. */
 export type ConsumeReading = { kind: 'none' } | { kind: 'found'; event: ConsumeEvent }
 
@@ -61,6 +67,8 @@ export type DoneRead =
 
 export interface DoneReadInput {
   kit: DoneKitClient | null
+  /** Null until the countdown's record is read. */
+  match: ConsumeMatch | null
   blockTime: BlockTimeRead | null
 }
 
@@ -148,6 +156,8 @@ export type AddState =
 export interface AddInput {
   /** The add also marks the wallet's onboarding complete, on the fast track. */
   completesSetup: boolean
+  /** False where the add may only find the account listed with the key, never dispatch. */
+  dispatches: boolean
   account: Address
   event: ConsumeEvent | null
 }

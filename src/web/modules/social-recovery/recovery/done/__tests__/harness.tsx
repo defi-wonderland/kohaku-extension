@@ -238,6 +238,7 @@ const { WEB_ROUTES } = require('@common/modules/router/constants/common')
 const {
   encodeAbiParameters,
   getAddress,
+  keccak256,
   pad,
   toHex,
   zeroAddress,
@@ -303,6 +304,10 @@ export const PINNED_TIME = 1_700_900_000
 /** This device's clock when a test starts, in ms. */
 export const DEVICE_NOW = 1_800_000_000_000
 
+/** The payload the landed request carried and the attempt's opening names. */
+export const PAYLOAD: Hex = '0xc0ffee'
+export const PAYLOAD_HASH: Hex = keccak256(PAYLOAD)
+
 let accountSeed = 0x30000
 /** An account no other test recovered. */
 export const freshAccount = (): Address => {
@@ -332,7 +337,7 @@ export const attemptStarted = (
   setupBody: '0x01',
   usedPlaces: usedPlaces.map(BigInt),
   usedMethods: [],
-  payload: '0xc0ffee',
+  payload: PAYLOAD,
   order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
   consumableAfter: CONSUME_TIME - 10,
   at: logAt(blockNumber, START_TX)
@@ -409,7 +414,7 @@ export const consumedAttempt = (usedMethods: Address[] = []): Attempt => ({
   attemptId: 1n,
   setupNonce: 1n,
   consumableAfter: CONSUME_TIME - 10,
-  payloadHash: zeroHash,
+  payloadHash: PAYLOAD_HASH,
   order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
   usedMethods,
   ignoresPause: false
@@ -690,7 +695,8 @@ export const openWorld = async ({
   countdown = true,
   entry = true,
   listed = false,
-  walletAdds = false
+  walletAdds = false,
+  attempt = 1
 }: {
   route?: RecoveryRoute
   configuration?: Configuration
@@ -701,6 +707,8 @@ export const openWorld = async ({
   entry?: boolean
   listed?: boolean | 'without-key'
   walletAdds?: boolean
+  /** The attempt id the countdown's record landed. */
+  attempt?: number
 } = {}): Promise<World> => {
   const account = freshAccount()
   const storage = makeStorage()
@@ -749,9 +757,10 @@ export const openWorld = async ({
     await records.setup(CHAIN_ID, account).enrollments.write(enrollments)
   }
   if (countdown) {
+    const opened = gatheringOf(configuration, attempt, account)
     const live = await records
       .recoverySession(CHAIN_ID, account)
-      .write(gatheringOf(configuration, 1, account), null)
+      .write({ ...opened, request: { ...opened.request, payload: PAYLOAD } }, null)
     await records.landSubmission(CHAIN_ID, account, live.revision)
   }
   mockWallet.storage = storage
