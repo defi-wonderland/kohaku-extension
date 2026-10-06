@@ -5,7 +5,7 @@
  * setup, the confirmation, the recovery entry it writes and the reads that
  * decide whether the recovery can go on.
  */
-import type { Mounted } from './harness'
+import type { Mounted } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import {
   BASIC,
   CHAIN_ID,
@@ -14,6 +14,7 @@ import {
   deferred,
   dispatch,
   failedClient,
+  readyClient,
   kit,
   LOST,
   LOST_KEY,
@@ -39,7 +40,7 @@ import {
   t,
   valueLabel,
   VIEW_ONLY
-} from './harness'
+} from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 
 const LOGGED_IN = searchOf('logged-in', BASIC)
 const FRESH_INSTALL = searchOf('fresh-install', SMART)
@@ -220,21 +221,23 @@ describe('the lookup', () => {
     expect(page.has('entry-confirm')).toBe(false)
   })
 
-  it('offers the update action alone on update the wallet, and says nothing about a setup', async () => {
+  it('tells how to update the wallet as a plain line, with no action, and says nothing about a setup', async () => {
     setClient(LOST, refusedClient())
     const page = await open(LOGGED_IN)
     await lookUp(page, LOST.toLowerCase())
-    const state = page.textOf('entry-lookup-update-the-wallet')
-    expect(state).not.toContain(t('socialRecovery.client.updateTheWalletBody'))
-    expect(state).not.toContain(t('socialRecovery.writes.tryAgain'))
-    expect(state).not.toContain(t('socialRecovery.entry.noSetup.tryAnother'))
-    expect(page.has('entry-lookup-refused-retry')).toBe(false)
-    expect(page.has('entry-lookup-another')).toBe(false)
-    expect(page.textOf('entry-lookup-update')).toBe(
+    const state = page.byTestId('entry-lookup-update-the-wallet')
+    expect(state?.textContent).not.toContain(t('socialRecovery.client.updateTheWalletBody'))
+    expect(state?.textContent).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(state?.textContent).not.toContain(t('socialRecovery.entry.noSetup.tryAnother'))
+    expect(page.textOf('entry-lookup-update-how')).toBe(
       t('socialRecovery.client.updateTheWalletAction')
     )
-    await page.press('entry-lookup-update')
-    expect(dispatch).toHaveBeenCalledWith({ type: 'EXTENSION_UPDATE_CONTROLLER_APPLY_UPDATE' })
+    expect(state?.querySelector('[role="button"], button')).toBeNull()
+    expect(page.has('entry-lookup-refused-retry')).toBe(false)
+    expect(page.has('entry-lookup-another')).toBe(false)
+    expect(page.has('entry-lookup-update')).toBe(false)
+    await page.press('entry-lookup-update-how')
+    expect(dispatch).not.toHaveBeenCalled()
     expect(kit.setupState).not.toHaveBeenCalled()
   })
 
@@ -371,6 +374,18 @@ describe('the confirmation', () => {
       route: 'fresh-install',
       receivingAccount: SMART
     })
+  })
+
+  it('shows the write failure and writes nothing when the stored entry cannot be read', async () => {
+    const page = await open(LOGGED_IN)
+    await lookUp(page, LOST.toLowerCase())
+    storage.refuseGet = true
+    await page.press('entry-confirm-mine')
+    expect(page.has('entry-confirm-write-failed')).toBe(true)
+    expect(storage.set).not.toHaveBeenCalled()
+    expect(kit.isAuthorized).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    expectNoContinue(page)
   })
 
   it('starts no read when the entry write fails', async () => {
@@ -701,5 +716,33 @@ describe('leaving a blocked state', () => {
     expect(page.has('entry-account-field')).toBe(true)
     expect(await storedEntry(LOST)).toBeNull()
     expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('the no-setup dead end after a confirmation', () => {
+  /** Confirms the lost account, then has the rebuilt client read that it carries no setup. */
+  const setupGoneAfterConfirm = async (page: Mounted) => {
+    await confirmLost(page)
+    expect(await storedEntry(LOST)).not.toBeNull()
+    kit.setupState.mockResolvedValueOnce(setupStateOf({ hasSetup: false }))
+    setClient(LOST, readyClient())
+    await outside(() => undefined)
+    expect(page.has('entry-no-setup')).toBe(true)
+  }
+
+  it('clears the entry when the holder tries another address', async () => {
+    const page = await open(LOGGED_IN)
+    await setupGoneAfterConfirm(page)
+    await page.press('entry-lookup-another')
+    expect(page.has('entry-account-field')).toBe(true)
+    expect(await storedEntry(LOST)).toBeNull()
+  })
+
+  it('clears the entry when the holder closes', async () => {
+    const page = await open(LOGGED_IN)
+    await setupGoneAfterConfirm(page)
+    await page.press('entry-no-setup-close')
+    expect(navigate).toHaveBeenCalledWith('social-recovery/setup')
+    expect(await storedEntry(LOST)).toBeNull()
   })
 })

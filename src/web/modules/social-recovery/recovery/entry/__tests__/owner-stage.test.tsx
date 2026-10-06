@@ -21,7 +21,7 @@ import {
   VAULT,
   VIEW_ONLY,
   WATCHED
-} from './harness'
+} from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 
 const ACK = 'recovery-warning-acknowledge'
 const CONTINUE = 'entry-owner-continue'

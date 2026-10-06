@@ -60,6 +60,8 @@ interface StorageDouble extends RecordStorage {
   refuse: boolean
   /** While true, every removal rejects and removes nothing. */
   refuseRemove: boolean
+  /** While true, every read rejects. */
+  refuseGet: boolean
 }
 
 /** The looked-up account's reads, one mock each, so a test scripts each call. */
@@ -98,8 +100,13 @@ const mockStorage: StorageDouble = {
   raw: new Map(),
   refuse: false,
   refuseRemove: false,
-  get: async (key, defaultValue) =>
-    key && mockStorage.raw.has(key) ? mockStorage.raw.get(key) : defaultValue,
+  refuseGet: false,
+  get: async (key, defaultValue) => {
+    if (mockStorage.refuseGet) {
+      throw new Error('storage unavailable')
+    }
+    return key && mockStorage.raw.has(key) ? mockStorage.raw.get(key) : defaultValue
+  },
   getAll: async () => Object.fromEntries(mockStorage.raw),
   set: jest.fn(async (key: string, value: unknown) => {
     if (mockStorage.hold) {
@@ -422,6 +429,9 @@ const readyState = (): ClientState =>
     retry: () => {}
   } as unknown as ClientState)
 
+/** A new ready client over the same scripted reads, as a rebuilt client hands the screen. */
+export const readyClient = readyState
+
 /** Sets the client state the screen gets for an account, and renders it. */
 export const setClient = (account: Address, state: ClientState | null) => {
   act(() => {
@@ -468,6 +478,7 @@ export const resetEdges = () => {
   mockStorage.hold = undefined
   mockStorage.refuse = false
   mockStorage.refuseRemove = false
+  mockStorage.refuseGet = false
   mockClients.byAccount.clear()
   mockClients.ready = readyState()
   answerAsRecoverable()
