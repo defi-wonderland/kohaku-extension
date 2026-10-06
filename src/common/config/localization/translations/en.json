@@ -131,7 +131,8 @@
       "publishers": {
         "ethereumFoundation": "Ethereum Foundation"
       },
-      "accountWithName": "{{account}} · {{name}}"
+      "accountWithName": "{{account}} · {{name}}",
+      "nameWithAccount": "{{name}} · {{account}}"
     },
     "ruleLines": {
       "allMustAnswer": "All {{n}} must answer. Losing any one locks you out.",
@@ -301,6 +302,8 @@
     },
     "actions": {
       "continue": "Continue",
+      "back": "Back",
+      "cancel": "Cancel",
       "add": "Add",
       "remove": "Remove",
       "learnMore": "Learn more",
@@ -892,6 +895,7 @@
       },
       "noSetup": {
         "title": "No recovery setup was found for this account on {{network}} under the recovery module this wallet knows.",
+        "lead": "This account carries no recovery setup on the network named above.",
         "module": "Recovery module this wallet knows: {{module}}",
         "checkCard": "Check the address on your Recovery Card.",
         "otherWallet": "A setup committed by another wallet may sit under a recovery module this build does not read.",
@@ -919,9 +923,11 @@
       }
     },
     "readout": {
+      "title": "What this account's recovery needs",
       "leadCommitted": "This is the setup committed for this account on the network named below.",
       "leadUnlocked": "This setup is readable on this device, after the recovery password unlocked it.",
       "leadPrivate": "This account has a recovery setup. Its contents are private.",
+      "configuredLine": "This account has a recovery setup.",
       "locked": {
         "title": "We cannot show your setup yet.",
         "enterPassword": "Enter the recovery password from your Recovery Card.",
@@ -940,6 +946,7 @@
       },
       "reading": "Reading the setup from {{network}}…",
       "readFailedTitle": "We could not read the setup from {{network}}.",
+      "entryReadFailed": "This device could not read which account you are recovering. Try again.",
       "eventFailed": {
         "title": "The password worked, but we could not read the setup event on {{network}}.",
         "body": "The recovery registry names the block this event sits in, and that block is on {{network}}, the network you are already reading."
@@ -995,16 +1002,21 @@
         "askCallBack": "Ask them to call you back on a number they already have. Do not call them first.",
         "readValues": "When they call, read them the account and the new key.",
         "howTheyAnswer": "Your guardian pastes the link into a browser that has Kohaku, signs on the page with the wallet that holds the key, or through the page's offline block on an air-gapped machine, and sends back one line. Paste it below.",
+        "offlineBlock": "Open the approval page and use its offline block: carry the payload to your air-gapped machine by QR, sign it there, and bring the approval back. Paste it below.",
         "ownKey": "If you hold this key yourself, open the approval page and sign there like any guardian.",
         "hardwareWallet": "A hardware wallet without a descriptor for this request shows two hashes and asks for blind signing. The values on the approval page are what to compare.",
         "openPage": "Open the approval page",
         "copyLink": "Copy the link",
         "copyMessage": "Copy a message with the link",
         "showQr": "Show the QR code",
+        "hideQr": "Hide the QR code",
+        "qrFailed": "The QR code could not be drawn. Copy the link instead.",
         "copied": "Copied",
         "copyFailed": "Could not copy. Select the text by hand.",
         "messageSays": "The message names the install with its source and the publisher to check, and the call, and says the link reveals the account and the new key, so it is not to be forwarded.",
         "unlockReason": "The link and the approval page stay locked until the account, the new key, the key being removed and the payment line are shown.",
+        "removedKeyReadFailed": "This wallet could not read the key this recovery removes. The link stays locked until it does.",
+        "removedKeyUnavailable": "This wallet cannot name the key this recovery removes, so this row cannot be carried to a guardian.",
         "pasteLabel": "Paste the approval",
         "pasteHint": "One line, as your guardian sent it back.",
         "addAction": "Add approval",
@@ -1054,9 +1066,16 @@
         "voidSlot": "That attempt holds this account's one recovery slot. In this release only that account's own key can clear it.",
         "voidCannotSubmit": "A fresh set gathered now could not be submitted while that attempt waits, and it would die of its own deadline.",
         "voidReopen": "Reopen this flow later to see whether the slot cleared.",
+        "readFailed": "Could not read whether that attempt still runs.",
+        "wipeFailed": "This device could not record that this request ended. Nothing changed. Try again.",
         "slotFreeTitle": "That recovery attempt ended",
         "slotFreeBody": "That attempt ended, so this account's one recovery slot is free. A fresh set gathered now can be submitted.",
-        "readSetupAgain": "Read the setup again"
+        "readSetupAgain": "Read the setup again",
+        "readSetupFailed": "This wallet could not clear the setup it holds. Try again."
+      },
+      "dormant": {
+        "title": "The account no longer authorizes the recovery module.",
+        "body": "Your approvals are kept. Only the account's own key can re-activate this setup; this recovery goes on once it does."
       },
       "pollFailed": {
         "title": "Could not read the account's recovery state.",
@@ -1116,24 +1135,35 @@
         "items": {
           "guardianAddress": "this guardian's address",
           "guardianAddresses": "these guardians' addresses",
-          "ownKey": "your own key's address"
+          "ownKey": "your own key's address",
+          "passkey": "your passkey's public key",
+          "passport": "the identifier your passport produces",
+          "aadhaar": "the identifier your Aadhaar produces"
         }
       },
       "checkLine": "This wallet checked every approval against the chain again just now.",
       "checking": "Checking every approval against the chain…",
       "checkFailed": "This wallet could not check the approvals against the chain. That says nothing about whether they are valid. Try again.",
+      "checkAgain": "Check again",
       "action": "Start recovery",
       "unlockReason": "Start recovery stays locked until the account, the new key, the key being removed and the payment line are shown and every approval has verified.",
+      "removedKeyUnavailable": "This wallet cannot name the key this recovery removes.",
       "approvalNotVerified": "The approval for {{row}} did not verify. Go back to the checklist and add it again.",
       "gas": {
         "lead": "Submitting the recovery is one transaction the sending key pays for. The account cannot pay for itself until it is recovered.",
         "collectedStays": "Everything you collected stays where it is."
       },
+      "noSendingKey": "This wallet holds no key that can send this recovery.",
       "failedTitle": "The recovery could not be started",
       "notSent": "The transaction was rejected before it reached the chain. Nothing was submitted and no waiting period has started. Everything you collected is still here.",
+      "droppedTitle": "The network no longer knows this transaction.",
+      "droppedBody": "It was not mined within an hour and no node holds it. Nothing changed on the account. Start the recovery again.",
+      "landingReadFailedTitle": "The transaction landed, but this wallet could not confirm the attempt it started.",
+      "landingReadFailedBody": "Nothing is lost. Try the read again; the waiting period starts from the attempt the registry reports.",
       "alreadyRunning": {
         "cannotHelp": "Sending it again cannot help.",
-        "whatYouCanDo": "Wait for that attempt to finish or be cancelled. In this release only the account's own key can cancel it."
+        "whatYouCanDo": "Wait for that attempt to finish or be cancelled. In this release only the account's own key can cancel it.",
+        "view": "View that recovery"
       }
     },
     "wait": {
@@ -1143,6 +1173,12 @@
       "finishes": "Finishes {{date}}",
       "endFromChain": "The end comes from the recovery registry on chain, not from this device's clock.",
       "startedOnChain": "Recovery started on chain",
+      "explorer": "View on explorer",
+      "path": {
+        "bothRequired": "{{first}} and {{second}}, both required",
+        "anyOf": "Any {{threshold}} of {{count}} of your guardians",
+        "eitherOne": "{{first}} or {{second}}, either one"
+      },
       "canCloseTitle": "You can close this",
       "canCloseBody": "The countdown runs without this browser. Open the wallet during the wait and this card shows again; it prompts you at execution due.",
       "ownerCanCancelTitle": "The owner can still cancel",
@@ -1150,6 +1186,8 @@
       "youWillSee": "If that happens, you will see it here.",
       "whoFinishesTitle": "Who finishes it",
       "whoFinishesBody": "You do, from the same key that started it, after the same gas check.",
+      "readFailedTitle": "This device could not read the recovery's state.",
+      "readFailedBody": "The countdown is unchanged on the network. Try again.",
       "pollFailed": {
         "title": "We could not read this recovery.",
         "body": "The read failed. This says nothing about whether the recovery still runs.",
@@ -1162,6 +1200,7 @@
         "executing": "Executing… your key is sending the transaction",
         "notSent": "Could not execute. The transaction was rejected before it reached the chain. Nothing changed. The recovery is still ready."
       },
+      "noSendingKey": "This wallet holds no key that can execute this recovery.",
       "cancelled": {
         "title": "This recovery was cancelled",
         "wiped": "Every approval you collected was wiped. Starting again means gathering the whole set again.",
@@ -1174,11 +1213,15 @@
         "startAgain": "Start again",
         "startNew": "Start a new recovery"
       },
+      "cancelledOn": "Cancelled on {{date}}",
+      "leaveFailed": "This device could not record that this recovery ended. Nothing changed. Try again.",
       "cannotExecute": {
         "title": "This recovery can no longer execute",
         "notAuthorized": "The account no longer authorizes the recovery module.",
         "notAuthorizedRepair": "Only the account's own key can re-activate this setup.",
         "upgradedAway": "The account was upgraded away from the recovery module.",
+        "movedPrivilege": "A key on the account moved a privilege during the wait, so this recovery can no longer execute.",
+        "unmatched": "This device cannot confirm that the attempt the registry reports is the one it submitted, so it will not execute it.",
         "refused": "The execution is refused. This wallet read: {{read}}",
         "approvalsDie": "The approvals die with this attempt.",
         "noRetry": "There is no retry, and no new recovery can start.",
@@ -1190,6 +1233,8 @@
     "done": {
       "title": "The account is yours again",
       "lead": "Control moved to your new key on {{date}}. The address did not change, and everything in the account came with it.",
+      "readFailedTitle": "This device could not read what the recovery did.",
+      "readFailedBody": "The account is unchanged by this. Try again.",
       "freshKey": "One fresh key on this device, with no second key behind it.",
       "nowInWallet": "This account is now in this wallet.",
       "sharedKey": "The key of {{account}}, now shared by two accounts. They share a key until one of them rotates it.",
@@ -1198,6 +1243,9 @@
       "whatHeader": "What this recovery did",
       "published": "On chain in the clear: the whole path, the rule with its waiting period and every method in it.",
       "used": "It used: {{methods}}.",
+      "guardianAddress": "your guardian's address",
+      "twoMembers": "two members of your path",
+      "listJoiner": ", ",
       "usedPublished": "The methods it used published their configuration too.",
       "discoverable": "Every guardian of your path is now discoverable, the ones who approved and the ones who did not.",
       "unusedStays": "A passkey this recovery did not use cannot be guessed from the chain, so it loses nothing.",
@@ -1225,7 +1273,9 @@
         "groupOfTwo": "Your path is a group of two members. Removing one leaves the other as the whole rule."
       },
       "close": "Done",
-      "addFailed": "This wallet could not add the recovered account to its list. The recovery itself is done. Try again."
+      "addFailed": "This wallet could not add the recovered account to its list. The recovery itself is done. Try again.",
+      "addRetry": "Try again",
+      "lastActFailed": "This device could not close its records of this recovery. The account is recovered; try again to close them."
     },
     "home": {
       "recovering": "Recovering {{account}}",
