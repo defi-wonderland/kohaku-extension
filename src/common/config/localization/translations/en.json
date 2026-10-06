@@ -817,7 +817,13 @@
         "paper": "Paper is safer than a screenshot, a note app, or a password manager you may lose with this device.",
         "acknowledge": "I wrote the words down and stored them away from this device.",
         "action": "Continue to recovery",
-        "createFailed": "This device could not create the key. Nothing was saved. Try again."
+        "creating": "Creating your new key…",
+        "createFailed": "This device could not create the key. Nothing was saved. Try again.",
+        "addFailed": "This wallet could not add the new key's accounts. The key may still be added in the background. Wait a moment, then try again."
+      },
+      "gas": {
+        "noSendingKey": "This wallet holds no key of the recovery phrase you created here, so nothing can send the recovery. Start the fast track again.",
+        "entryReadFailed": "This device could not read which account you are recovering. Try again."
       }
     },
     "entry": {
@@ -866,16 +872,21 @@
         "notMine": "Not mine",
         "readsOnly": "This step reads the chain. Nothing is signed.",
         "readingSetup": "Reading the recovery setup…",
+        "readingAuthorization": "Reading whether the account still authorizes the recovery module…",
+        "readingFit": "Checking whether this release can recover this account…",
+        "readingDestination": "Checking the key that receives control…",
         "setupReadFailedTitle": "We could not read the recovery setup.",
         "setupReadFailedBody": "The read failed. This says nothing about whether a setup exists.",
         "authorizationReadFailedTitle": "We could not read whether the account still authorizes the recovery module.",
         "readFailed": "The read failed.",
         "fitReadFailedTitle": "This wallet could not check whether this release can recover this account.",
         "fitReadFailedBody": "The read failed. This is not a refusal. Try again.",
+        "destinationReadFailedTitle": "This wallet could not read whether this key can receive control.",
         "wrongAccountTitle": "Wrong account?",
         "wrongAccountBody": "Go back and check the address on your Recovery Card, character by character.",
         "startsNothingTitle": "Confirming starts nothing",
-        "startsNothingBody": "This step reads the chain. Nobody is contacted and no approval is gathered."
+        "startsNothingBody": "This step reads the chain. Nobody is contacted and no approval is gathered.",
+        "writeFailed": "This device could not keep the account you confirmed. Nothing changed. Try again."
       },
       "noSetup": {
         "title": "No recovery setup was found for this account on {{network}} under the recovery module this wallet knows.",
@@ -895,7 +906,8 @@
       },
       "destination": {
         "holdsPrivilege": "This key already holds a privilege on the account you are recovering, so this recovery cannot install it. Choose another account.",
-        "alreadyAKey": "This key is already one of the account's keys. Choose another account."
+        "alreadyAKey": "This key is already one of the account's keys. Choose another account.",
+        "chooseAnother": "Choose another account"
       },
       "dormant": {
         "title": "This setup is not active on the account.",
@@ -956,6 +968,11 @@
       "cannotComplete": "I cannot complete this path",
       "leavingKeeps": "Leaving keeps this session on this device. Nothing is submitted, and you can continue it until the deadline.",
       "backToChecklist": "Back to the checklist",
+      "conflictTitle": "This recovery changed in another tab.",
+      "conflictBody": "Reload to see the latest state. Nothing you added was lost.",
+      "openFailedTitle": "This wallet could not open the collection.",
+      "openFailedBody": "Nothing was submitted. Try again, or read the setup again.",
+      "writeFailed": "This device could not keep this recovery's progress. Nothing changed. Try again.",
       "passkey": {
         "answerHere": "Answer on this device",
         "answeredHere": "Answered on this device · {{date}}",
