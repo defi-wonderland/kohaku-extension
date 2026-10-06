@@ -141,6 +141,61 @@ describe('the approval page link', () => {
     })
   )
 
+  it('reads an approval request with no handover bytes as no request', () => {
+    const { payload, ...withoutPayload } = REQUEST
+
+    expect(payload).toBeDefined()
+    expect(requestOfApprovalLink(linkCarrying(withoutPayload))).toBeNull()
+  })
+
+  it('reads an approval request with no order as no request', () => {
+    const { order, ...withoutOrder } = REQUEST
+
+    expect(order).toBeDefined()
+    expect(requestOfApprovalLink(linkCarrying(withoutOrder))).toBeNull()
+  })
+
+  it('reads a cancellation request with neither from a link built elsewhere', () => {
+    const { payload, order, ...bare } = REQUEST
+    const cancellation = { ...bare, purpose: 'cancellation' }
+
+    expect([payload, order]).not.toContain(undefined)
+    expect(requestOfApprovalLink(linkCarrying(cancellation))).toEqual(cancellation)
+  })
+
+  it('reads a request of exactly 16 KiB, and the next longer one as no request', () => {
+    const base = JSON.stringify({ ...REQUEST, filler: '' }).length
+    const atLength = (length: number): string => {
+      let filler = 'x'.repeat(Math.floor((length * 3) / 4) - base - 4)
+      let line = ''
+      do {
+        filler += 'x'
+        line = Buffer.from(JSON.stringify({ ...REQUEST, filler })).toString('base64url')
+      } while (line.length < length)
+      return line
+    }
+    const linkOf = (line: string) => `${TAB}#/${WEB_ROUTES.socialRecoveryApprove}?request=${line}`
+    const longest = atLength(16 * 1024)
+    const tooLong = atLength(16 * 1024 + 1)
+
+    expect(longest).toHaveLength(16 * 1024)
+    expect(tooLong.length).toBeGreaterThan(16 * 1024)
+    expect(requestOfApprovalLink(linkOf(longest))).toEqual(REQUEST)
+    expect(requestOfApprovalLink(linkOf(tooLong))).toBeNull()
+  })
+
+  it('reads a line of a megabyte as no request, and never throws', () => {
+    const huge = Buffer.from(
+      JSON.stringify({ ...REQUEST, filler: 'x'.repeat(1024 * 1024) })
+    ).toString('base64url')
+    const garbage = '*'.repeat(1024 * 1024)
+
+    expect(() => requestOfApprovalLink(`?request=${huge}`)).not.toThrow()
+    expect(requestOfApprovalLink(`?request=${huge}`)).toBeNull()
+    expect(() => requestOfApprovalLink(`?request=${garbage}`)).not.toThrow()
+    expect(requestOfApprovalLink(`?request=${garbage}`)).toBeNull()
+  })
+
   it('drops a setup body a link from elsewhere adds, so the page never reads one', () => {
     const decoded = requestOfApprovalLink(linkCarrying({ ...REQUEST, setupBody: GATHERING_BODY }))
 
