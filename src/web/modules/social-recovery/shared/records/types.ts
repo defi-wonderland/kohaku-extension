@@ -17,6 +17,7 @@ import type {
   PreparedCall,
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
+import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
 
 /**
  * The storage the records sit on: the extension's own helper
@@ -220,16 +221,29 @@ export type WipeReason = RecoveryWipeEvent
 export type DirectWipeEvent = Exclude<RecoveryWipeEvent, 'submission-landed'>
 
 /**
+ * The notes the recoverer puts on a guardian's row while gathering: the guardian
+ * declined, or never answered. The slugs are the collection chips of the same
+ * name.
+ */
+export type RowNote = Extract<CollectionChip, 'declined' | 'unanswered'>
+export const ROW_NOTES: readonly RowNote[] = ['declined', 'unanswered'] as const
+
+/** The row notes of a live session by place number; a place with no note has no member. */
+export type RowNotes = Partial<Record<number, RowNote>>
+
+/**
  * The live recovery session: the SDK's gathering record, stored so the
  * gathering survives a closed tab. Its request carries everything a resume
  * needs: the account, the predicted attempt id (the attempt id the wallet built
  * the request against), the setup nonce the request was built under and the
  * deadline (`validUntil`). Its replies are the approvals. The gathering's
- * purpose is `approval`.
+ * purpose is `approval`. `notes` holds the recoverer's row notes, which live
+ * and die with the gathering.
  */
 export interface LiveRecoverySession {
   state: 'live'
   gathering: Gathering
+  notes?: RowNotes
 }
 
 /**
@@ -311,6 +325,44 @@ export interface DecryptedSetupCacheRecord {
 export interface ListedRecord<T> {
   account: Address
   record: StoredRecord<T> & { revision: SessionRevision }
+}
+
+// ---------------------------------------------------------------------------
+// The recovery entry
+// ---------------------------------------------------------------------------
+
+/**
+ * The two routes into a recovery: the fresh install's fast track, or the
+ * logged-in wallet's settings.
+ */
+export const RECOVERY_ROUTES = ['fresh-install', 'logged-in'] as const
+export type RecoveryRoute = typeof RECOVERY_ROUTES[number]
+
+/**
+ * The recovery entry: the account being recovered, the route the recoverer
+ * came by, and the wallet's own account whose key receives control. Kept from
+ * the account's confirmation to the done screen; no wipe of the session
+ * touches it except the recoverer's abandon.
+ */
+export interface RecoveryEntryRecord {
+  account: Address
+  route: RecoveryRoute
+  receivingAccount: Address
+}
+
+/** The recovery entry of one account on one chain. */
+export interface RecoveryEntryAccessor {
+  read(): Promise<RecordRead<RecoveryEntryRecord>>
+  /** Refuses an entry that names another account than the accessor's. */
+  write(value: RecoveryEntryRecord): Promise<StoredRecord<RecoveryEntryRecord>>
+  /** Removes the entry; an absent entry stays absent. */
+  clear(): Promise<void>
+}
+
+/** One account's recovery entry in a listing of a chain's entries. */
+export interface ListedRecoveryEntry {
+  account: Address
+  record: StoredRecord<RecoveryEntryRecord>
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +500,18 @@ export interface RecoverySessionAccessor {
    * without a reply. Over a wiped session it starts the new gathering.
    */
   write(gathering: Gathering, expectedRevision: ExpectedRevision): Promise<StoredSession>
+  /**
+   * Sets the note of one place of the live session, or clears it with `null`,
+   * under the same revision rule as `write`. Refuses a session that is not
+   * live, a place the gathering does not have, and a note on a place that holds
+   * a reply. A change that leaves the notes as they are writes nothing and
+   * answers the stored session.
+   */
+  setNote(
+    place: number,
+    note: RowNote | null,
+    expectedRevision: ExpectedRevision
+  ): Promise<StoredSession>
   age(at?: number): Promise<number | null>
 }
 
@@ -477,6 +541,12 @@ export interface WalletRecords {
   startOverSetup(chainId: ChainId, account: Address): Promise<void>
   recoverySession(chainId: ChainId, account: Address): RecoverySessionAccessor
   listRecoverySessions(chainId: ChainId): Promise<ListedRecord<RecoverySessionRecord>[]>
+  recoveryEntry(chainId: ChainId, account: Address): RecoveryEntryAccessor
+  listRecoveryEntries(chainId: ChainId): Promise<ListedRecoveryEntry[]>
+  /**
+   * Wipes a live session with one of the four direct events. The recoverer's
+   * abandon also removes the account's recovery entry in the same update.
+   */
   wipeRecoverySession(
     chainId: ChainId,
     account: Address,
