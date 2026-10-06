@@ -341,6 +341,24 @@ describe('the recovery card view', () => {
       expect(onCarried).toHaveBeenCalledTimes(1)
     })
 
+    it('asks nothing for a download on a card carried before, while print still asks', async () => {
+      await mount({ password: OUTSIDE, carriedBefore: true })
+      await press('card-download')
+      expect(byTestId('card-password-ask')).toBeNull()
+      expect(byTestId('card-recovery-password-ask')).toBeNull()
+      expect(byTestId('ask-confirm')).toBeNull()
+      expect(files).toHaveLength(0)
+      expect(onCarried).not.toHaveBeenCalled()
+
+      await press('card-print')
+      expect(byTestId('card-password-ask')).not.toBeNull()
+      expect(printed).toHaveLength(0)
+      await press('ask-confirm')
+      expect(printed).toHaveLength(1)
+      expect(files).toHaveLength(0)
+      expect(onCarried).toHaveBeenCalledTimes(1)
+    })
+
     it('downloads a password typed as those code letters and gives it back exactly', async () => {
       await mount({ password: CODE_LETTERS })
       expect(byTestId('card-download-unavailable')).toBeNull()
