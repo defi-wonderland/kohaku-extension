@@ -189,9 +189,7 @@ describe('the readout at Private', () => {
     world.chain.failRead('events.fetch')
     await unlockWith(page, CARD_PASSWORD)
     expect(page.has('readout-event-failed')).toBe(true)
-    expect(page.text()).toContain(
-      t('socialRecovery.readout.eventFailed.title', { network: NETWORK })
-    )
+    expect(page.text()).toContain(t('socialRecovery.readout.readFailedTitle', { network: NETWORK }))
     expect(page.has('readout-wrong-password')).toBe(false)
     expect(page.has('readout-no-details')).toBe(false)
     expectNothingOfTheSetup(page)

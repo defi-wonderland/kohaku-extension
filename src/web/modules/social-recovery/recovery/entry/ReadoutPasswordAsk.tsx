@@ -1,8 +1,9 @@
 /**
  * The recovery password ask at a hidden level: the field and unlock, the
  * check running, the wrong password's blocker with the pointer to the card,
- * and the failed read of the setup event after a password that worked. Each
- * state keeps the line that the account has a recovery setup. The field's
+ * and the failed read of the setup event. The restore reads that event before
+ * it can judge the password, so the failure never says the password worked.
+ * Each state keeps the line that the account has a recovery setup. The field's
  * value lives in this component alone and is emptied once a check starts.
  */
 import React, { useCallback, useState } from 'react'
@@ -109,7 +110,11 @@ const ReadoutPasswordAsk = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          title={t(`${READOUT}.eventFailed.title`, { network: networkName })}
+          title={
+            level === 'private'
+              ? t(`${READOUT}.readFailedTitle`, { network: networkName })
+              : t(`${READOUT}.detailsFailed`)
+          }
           text={t(`${READOUT}.eventFailed.body`, { network: networkName })}
         >
           <View style={[flexbox.directionRow, spacings.mtTy]}>
