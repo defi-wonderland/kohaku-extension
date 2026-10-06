@@ -1,10 +1,11 @@
 /**
- * The done screen's one read: the manager's consume event of the account,
- * from the manager's deployment block to the block the attempt read pins, and
- * the account's privilege events of that same transaction, which name the
- * key granted and the key removed. The screen names the keys as these events
- * report them and never as the account's signer state reads. A read that
- * throws, or does not answer within its limit, answers nothing.
+ * The done screen's one read: the manager's consume event of the account's
+ * current attempt, from the manager's deployment block to the block the
+ * attempt read pins, and the account's privilege events of that same
+ * transaction, which name the key granted and the key removed. The screen
+ * names the keys as these events report them and never as the account's
+ * signer state reads. A read that throws, or does not answer within its
+ * limit, answers nothing.
  */
 import { hexToBigInt, isAddressEqual } from 'viem'
 
@@ -30,11 +31,13 @@ const sameTransaction = (a: LogPosition, b: LogPosition): boolean =>
 const granting = (notice: PrivilegeNotice): boolean => hexToBigInt(notice.priv) !== 0n
 
 /**
- * The latest consume of the account with the opening of the same attempt,
- * the two keys its transaction moved, the privilege the removed key held
- * before it where an earlier event names one, and the consume's block time.
- * A consume whose transaction names no granted or no removed key is a read
- * that has not caught up yet, and fails.
+ * The consume of the attempt the manager's record holds, where that record
+ * reads consumed, with the opening of the same attempt, the two keys its
+ * transaction moved, the removed key's latest earlier grant where an event
+ * names one, and the consume's block time. An attempt that is not consumed,
+ * or a consume of an earlier attempt only, answers none: the current attempt
+ * may still run. A consume whose transaction names no granted or no removed
+ * key is a read that has not caught up yet, and fails.
  */
 export const readConsume = (
   kit: DoneKitClient,
@@ -49,10 +52,16 @@ export const readConsume = (
     const ofAccount = (notice: Pick<ConsumedNotice, 'at' | 'account'>): boolean =>
       !notice.at.removed && isAddressEqual(notice.account, kit.account)
 
+    const { attempt } = state
+    if (attempt.state !== 'Consumed') {
+      return { kind: 'none' }
+    }
+
     const notifications = await events.fetch(events.accountFilter(), range)
     const consumed = notifications
       .filter((notice): notice is ConsumedNotice => notice.kind === 'attempt-consumed')
       .filter(ofAccount)
+      .filter((notice) => notice.attemptId === attempt.attemptId)
       .pop()
     if (!consumed) {
       return { kind: 'none' }
@@ -92,7 +101,7 @@ export const readConsume = (
         granted,
         removed,
         ...(removedPrivilege ? { removedPrivilege } : {}),
-        usedMethods: state.attempt.usedMethods,
+        usedMethods: attempt.usedMethods,
         time
       }
     }

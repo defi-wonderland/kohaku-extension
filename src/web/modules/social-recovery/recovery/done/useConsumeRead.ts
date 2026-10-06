@@ -1,7 +1,8 @@
 /**
- * The consume event's read, once the client and the block time read are
- * ready, and again on retry. Until it answers it reads pending; a read that
- * fails reads failed, never the last answer.
+ * The consume event's read, once the client is ready, and again on retry.
+ * Until it answers it reads pending; a read that fails, or the extension
+ * holding no network for the recovery chain to read the block time on, reads
+ * failed, never the last answer.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -20,21 +21,21 @@ const useConsumeRead = ({ kit, blockTime }: DoneReadInput): DoneReadHook => {
   useEffect(() => {
     generation.current += 1
     const id = generation.current
-    setRead(PENDING)
-    if (!kit || !blockTime) {
+    if (!kit) {
+      setRead(PENDING)
       return undefined
     }
-    readConsume(kit, blockTime, POLL_LIMIT_MS)
-      .then((reading) => {
-        if (id === generation.current) {
-          setRead(reading ? { status: 'answered', reading } : { status: 'failed' })
-        }
-      })
-      .catch(() => {
-        if (id === generation.current) {
-          setRead({ status: 'failed' })
-        }
-      })
+    if (!blockTime) {
+      setRead({ status: 'failed' })
+      return undefined
+    }
+    setRead(PENDING)
+    // The read answers undefined for a throw or a read over its limit, and never rejects.
+    readConsume(kit, blockTime, POLL_LIMIT_MS).then((reading) => {
+      if (id === generation.current) {
+        setRead(reading ? { status: 'answered', reading } : { status: 'failed' })
+      }
+    })
     return () => {
       generation.current += 1
     }
