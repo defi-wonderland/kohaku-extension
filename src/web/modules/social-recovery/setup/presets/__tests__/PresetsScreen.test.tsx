@@ -223,4 +223,50 @@ describe('the presets screen', () => {
     expect(byTestId('presets-grid')).toBeNull()
     expect(byTestId('setup-other-account')?.textContent).toContain(S.chrome.otherAccount.title)
   })
+
+  // The page comes up again on a history entry with its own key and route state.
+  const openFrom = async (key: string, prevRoute: string) => {
+    act(() => root.unmount())
+    root = createRoot(container)
+    await act(async () => {
+      root.render(
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/social-recovery/setup',
+              key,
+              state: { prevRoute: { pathname: prevRoute } }
+            }
+          ]}
+        >
+          <ThemeContext.Provider value={THEME_CONTEXT}>
+            <PresetsScreen />
+          </ThemeContext.Provider>
+        </MemoryRouter>
+      )
+    })
+  }
+
+  it('opens on the account the wallet selects when the holder comes back from outside the setup', async () => {
+    await createWalletRecords({ storage: mockStorage })
+      .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], ACCOUNT)
+      .setupDraft.write({
+        wait: 172800n,
+        clauses: [],
+        ignoresPause: true,
+        privacy: { backup: 'encrypted', publicMetadata: '0x' }
+      })
+    await showAccount(ACCOUNT)
+    expect(byTestId('presets-resume')).not.toBeNull()
+    mockSelected.state = { account: { addr: OTHER_ACCOUNT } }
+    await openFrom('second-visit', '/dashboard')
+    expect(byTestId('presets-grid')).not.toBeNull()
+    expect(byTestId('presets-resume')).toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+    // A reload of that entry stays on the account of the new visit.
+    mockSelected.state = { account: { addr: ACCOUNT } }
+    await openFrom('second-visit', '/dashboard')
+    expect(byTestId('presets-grid')).not.toBeNull()
+    expect(byTestId('setup-other-account')?.textContent).toContain(S.chrome.otherAccount.title)
+  })
 })
