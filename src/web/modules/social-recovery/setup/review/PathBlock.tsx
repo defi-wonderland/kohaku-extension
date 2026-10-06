@@ -10,6 +10,7 @@ import type { Credential } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   MethodRow,
   PathTree,
+  PathTreeHeader,
   PathTreeNode,
   SectionCard,
   SectionLabel,
@@ -20,9 +21,8 @@ import { renderMemberList } from '@web/modules/social-recovery/shared/display'
 import { enrollmentOf, isRequiredRow, kindOf, pathRowOf } from './lead'
 import type { PathBlockProps, RetryKind } from './types'
 
-// Where the line meets a row's first line and a group's header.
+// Where the line meets a row's first line.
 const ROW_ANCHOR = 24
-const GROUP_ANCHOR = 36
 
 /**
  * The path as the editor draws it, one tree with the line on the left and
@@ -106,7 +106,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
     const list = renderMemberList(clause.credentials, { showAll: shownAll.includes(index) }, t)
     return (
       <SectionCard spacing="item" testID={`review-group-${index}`}>
-        <View
+        <PathTreeHeader
           style={[
             flexbox.directionRow,
             flexbox.alignCenter,
@@ -131,7 +131,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
               {String(clause.credentials.length)}
             </Text>
           </View>
-        </View>
+        </PathTreeHeader>
         {list.shown.map((credential, member) => renderRow(credential, index, member))}
         {!!list.more && (
           <View style={[flexbox.directionRow, flexbox.alignCenter]}>
@@ -171,11 +171,7 @@ const PathBlock = ({ clauses, enrollments, addressBook, onRetryTest }: PathBlock
       )}
       {groups.flatMap((index, position) => [
         ...(position > 0 ? [<PathTreeNode key={`and-${index}`} variant="junction" />] : []),
-        <PathTreeNode
-          key={`group-${index}`}
-          anchor={GROUP_ANCHOR}
-          testID={`review-path-node-${index}`}
-        >
+        <PathTreeNode key={`group-${index}`} testID={`review-path-node-${index}`}>
           {renderGroup(index, position + 1)}
         </PathTreeNode>
       ])}
