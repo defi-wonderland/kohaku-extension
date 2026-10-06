@@ -26,6 +26,7 @@ import { accountStepPathOf, checklistPathOf } from './search'
 import type {
   EntryRecordRead,
   HiddenLevel,
+  ReadoutEntryState,
   ReadoutOptions,
   ReadoutState,
   ReadoutStep,
@@ -41,7 +42,7 @@ export const useReadoutEntry = (
   records: Pick<WalletRecords, 'recoveryEntry'>,
   chainId: ChainId,
   account: Address | null
-): { read: EntryRecordRead; retry: () => void } => {
+): ReadoutEntryState => {
   const [read, setRead] = useState<EntryRecordRead>({ status: 'pending' })
   const [attempt, setAttempt] = useState(0)
 
@@ -91,6 +92,12 @@ export const useReadout = ({
   const [attempt, setAttempt] = useState(0)
   const [continuing, setContinuing] = useState(false)
   const kit = client.status === 'ready' ? client.client : null
+  const { route, receivingAccount } = entry
+
+  // The router hands a new navigate on every location change; a read keeps
+  // running across that and navigates with the latest one.
+  const go = useRef(navigate)
+  go.current = navigate
 
   // Each run of the reads and each unlock answers only while it is the latest.
   const generation = useRef(0)
@@ -119,12 +126,17 @@ export const useReadout = ({
       cacheWrite.current = write.catch(() => undefined)
       if (resumes.current) {
         setStep({ kind: 'leaving' })
-        cacheWrite.current.then(() => navigate(checklistPathOf(account)))
+        const mine = generation.current
+        cacheWrite.current.then(() => {
+          if (generation.current === mine) {
+            go.current(checklistPathOf(account))
+          }
+        })
         return
       }
       setStep({ kind: 'readable', level, configuration })
     },
-    [chainId, account, records, navigate]
+    [chainId, account, records]
   )
 
   useEffect(() => {
@@ -133,6 +145,7 @@ export const useReadout = ({
     const current = () => generation.current === mine
     resumes.current = false
     typed.current = null
+    state.current = null
     if (client.status === 'update-the-wallet') {
       setStep({ kind: 'update-the-wallet' })
       return undefined
@@ -150,7 +163,7 @@ export const useReadout = ({
         }
         if (cache.status === 'present') {
           setStep({ kind: 'leaving' })
-          navigate(checklistPathOf(account))
+          go.current(checklistPathOf(account))
           return
         }
         resumes.current = true
@@ -163,9 +176,7 @@ export const useReadout = ({
       if (!read.hasSetup) {
         // The setup is gone since the account step: the account step says so.
         setStep({ kind: 'leaving' })
-        navigate(
-          accountStepPathOf({ route: entry.route, receivingAccount: entry.receivingAccount })
-        )
+        go.current(accountStepPathOf({ route, receivingAccount }))
         return
       }
       const reading = await readSetupReading(kit, read)
@@ -197,7 +208,7 @@ export const useReadout = ({
     return () => {
       generation.current += 1
     }
-  }, [client.status, kit, records, chainId, account, entry, attempt, navigate, opened])
+  }, [client.status, kit, records, chainId, account, route, receivingAccount, attempt, opened])
 
   /** Opens the setup with the recovery password, at the hidden level the step shows. */
   const check = useCallback(
@@ -242,7 +253,7 @@ export const useReadout = ({
 
   const unlock = useCallback(
     (password: string) => {
-      if (step.kind === 'locked' && step.unlock.status !== 'checking' && password) {
+      if (step.kind === 'locked' && step.unlock.status === 'idle' && password) {
         check(password, step.level, step.shape)
       }
     },
@@ -275,8 +286,8 @@ export const useReadout = ({
     setContinuing(true)
     // The checklist asks the password again where the cache write failed, so
     // continue waits for the write to settle and never for it to succeed.
-    cacheWrite.current.then(() => navigate(continuePathOf(entry.route, account)))
-  }, [step, continuing, navigate, entry.route, account])
+    cacheWrite.current.then(() => go.current(continuePathOf(route, account)))
+  }, [step, continuing, route, account])
 
   return { step, retry, unlock, askAgain, onContinue, continuing }
 }
