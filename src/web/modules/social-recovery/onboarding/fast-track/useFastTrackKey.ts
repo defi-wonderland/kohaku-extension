@@ -16,9 +16,11 @@
  *    account's key agrees with the derived one, the keystore holds both keys
  *    and the wallet has selected an account.
  *
- * A phrase the keystore did not confirm, or an add that failed or did not
- * land, within the limit reads as failed, with retry. A retry of the add
- * keeps the phrase the holder wrote down.
+ * A phrase the keystore did not confirm within the limit reads as failed,
+ * with retry; while it waits, a tab shown again hands the phrase over once
+ * more. An add reads as failed only once the picker is idle again and added
+ * nothing, so nothing was saved; a retry keeps the phrase the holder wrote
+ * down, and a success that lands after a failure still lists the slot.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -35,7 +37,14 @@ import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 
 import { KEY_STEP_LIMIT_MS, RECOVERY_PHRASE_WORDS } from './constants'
 import { listedSlotOf, slotKeysOf, tempSeedOf } from './derivation'
-import type { FastTrackKey, KeyStepPhase, SlotKeys, TempSeed } from './types'
+import type {
+  AddProgress,
+  FastTrackKey,
+  KeyStepPhase,
+  MadePhrase,
+  SlotKeys,
+  TempSeed
+} from './types'
 
 const useFastTrackKey = (): FastTrackKey => {
   const { dispatch } = useBackgroundService()
@@ -49,9 +58,9 @@ const useFastTrackKey = (): FastTrackKey => {
   const [seed, setSeed] = useState<TempSeed | null>(null)
   const [slotKeys, setSlotKeys] = useState<SlotKeys | null>(null)
   const [phase, setPhase] = useState<KeyStepPhase>('creating')
-  const made = useRef<{ run: number; phrase: string } | null>(null)
+  const made = useRef<MadePhrase | null>(null)
   // What the picker went through since the last add started.
-  const seen = useRef({ started: false, loading: false, success: false })
+  const seen = useRef<AddProgress>({ started: false, loading: false, success: false })
 
   // 1. Make the phrase and hand it to the keystore, once per run.
   useEffect(() => {
@@ -83,6 +92,27 @@ const useFastTrackKey = (): FastTrackKey => {
     )
     return () => clearTimeout(limit)
   }, [phase, seedRun])
+
+  // A hidden tab drops what it dispatches: while the phrase is not
+  // confirmed, a tab shown again hands it to the keystore once more.
+  useEffect(() => {
+    if (phase !== 'creating') {
+      return undefined
+    }
+    const onVisible = () => {
+      const current = made.current
+      if (document.visibilityState !== 'visible' || !current) {
+        return
+      }
+      dispatch({
+        type: 'KEYSTORE_CONTROLLER_ADD_TEMP_SEED',
+        params: { seed: current.phrase, hdPathTemplate: BIP44_STANDARD_DERIVATION_TEMPLATE }
+      })
+      dispatch({ type: 'KEYSTORE_CONTROLLER_SEND_TEMP_SEED_TO_UI' })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [phase, dispatch])
 
   // The keystore sends the phrase it holds; only the one made here counts.
   useEffect(() => {
@@ -123,14 +153,30 @@ const useFastTrackKey = (): FastTrackKey => {
   const selected = authStatus === AUTH_STATUS.AUTHENTICATED
   const listedAndSelected = !!listed && selected
 
+  const { addAccountsStatus, selectNextAccountStatus, pageError } = picker
+  // A page error ends the picker's selection where it stood, so a selection
+  // still marked loading beside one is not running any more.
+  const pickerBusy =
+    addAccountsStatus === 'LOADING' || (selectNextAccountStatus === 'LOADING' && !pageError)
+  const [limitReached, setLimitReached] = useState(false)
+
   // 3. Open the picker on the phrase; its init selects the slot's basic
-  // account with its smart account and adds them.
+  // account with its smart account and adds them. Nothing goes out where the
+  // slot is already listed, or while the picker still runs an add.
   const add = useCallback(() => {
     if (!seed || (phase !== 'words' && phase !== 'addFailed')) {
       return
     }
-    seen.current = { started: false, loading: false, success: false }
+    if (listed) {
+      setPhase('listed')
+      return
+    }
+    setLimitReached(false)
     setPhase('adding')
+    if (pickerBusy) {
+      return
+    }
+    seen.current = { started: false, loading: false, success: false }
     dispatch({
       type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT_PRIVATE_KEY_OR_SEED_PHRASE',
       params: {
@@ -141,16 +187,19 @@ const useFastTrackKey = (): FastTrackKey => {
       }
     })
     dispatch({ type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT' })
-  }, [seed, phase, dispatch])
+  }, [seed, phase, listed, pickerBusy, dispatch])
 
-  // 4. Follow the add until the slot is listed, or it failed.
-  const { addAccountsStatus, selectNextAccountStatus, pageError } = picker
+  // 4. Follow the add until the slot is listed, or the picker is idle again
+  // having added nothing. A late success after a failure still lists the slot.
   useEffect(() => {
-    if (phase !== 'adding') {
+    if (phase !== 'adding' && phase !== 'addFailed') {
       return
     }
     if (listedAndSelected) {
       setPhase('listed')
+      return
+    }
+    if (phase !== 'adding') {
       return
     }
     const run = seen.current
@@ -163,22 +212,31 @@ const useFastTrackKey = (): FastTrackKey => {
     if (addAccountsStatus === 'SUCCESS') {
       run.success = true
     }
+    if (pickerBusy || run.success) {
+      return
+    }
     // The picker reports a failed add by going back to idle without success,
-    // and a failed derivation of its page through its page error.
-    const addFailed = run.loading && !run.success && addAccountsStatus === 'INITIAL'
-    if (addFailed || (run.started && !!pageError)) {
+    // and a failed derivation of its page through its page error. Past the
+    // limit, an idle picker that added nothing reads as failed too.
+    const addFailed = run.loading && addAccountsStatus === 'INITIAL'
+    if (addFailed || (run.started && !!pageError) || limitReached) {
       setPhase('addFailed')
     }
-  }, [phase, listedAndSelected, addAccountsStatus, selectNextAccountStatus, pageError])
+  }, [
+    phase,
+    listedAndSelected,
+    addAccountsStatus,
+    selectNextAccountStatus,
+    pageError,
+    pickerBusy,
+    limitReached
+  ])
 
   useEffect(() => {
     if (phase !== 'adding') {
       return undefined
     }
-    const limit = setTimeout(
-      () => setPhase((current) => (current === 'adding' ? 'addFailed' : current)),
-      KEY_STEP_LIMIT_MS
-    )
+    const limit = setTimeout(() => setLimitReached(true), KEY_STEP_LIMIT_MS)
     return () => clearTimeout(limit)
   }, [phase])
 

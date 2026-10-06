@@ -18,10 +18,12 @@ export {
   accountStepPathOf,
   acknowledgedOf,
   checklistPathOf,
+  readoutPathOf,
   selectedSmartAccountOf
 } from './navigation'
 export { fastTrackSendingKeyOf } from './sendingKey'
 export type {
+  AddProgress,
   EntryReading,
   FastTrackKey,
   FastTrackNavigationState,
@@ -31,6 +33,7 @@ export type {
   KeyStepViewProps,
   KeyStoreSetup,
   ListedSlot,
+  MadePhrase,
   PasswordStepViewProps,
   SlotKeys,
   SubmissionCheckInput,

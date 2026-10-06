@@ -38,6 +38,8 @@ export type KeyStoreSetup = ReturnType<typeof useKeyStoreSetup>
 
 export interface PasswordStepViewProps {
   setup: KeyStoreSetup
+  /** Goes back to the warning. */
+  onBack: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +52,7 @@ export interface PasswordStepViewProps {
  * - `createFailed`: it did not within the limit;
  * - `words`: the words are on screen, waiting for the acknowledgment and continue;
  * - `adding`: the wallet is adding the slot's accounts;
- * - `addFailed`: the add failed or did not land within the limit;
+ * - `addFailed`: the picker is idle again and added nothing, so nothing was saved;
  * - `listed`: the wallet lists both accounts and the keystore holds both keys.
  */
 export type KeyStepPhase = 'creating' | 'createFailed' | 'words' | 'adding' | 'addFailed' | 'listed'
@@ -77,6 +79,21 @@ export interface KeyStepViewProps {
   onAcknowledge: (acknowledged: boolean) => void
   onContinue: () => void
   onRetry: () => void
+  /** Goes back to the warning; disabled while the wallet adds the accounts. */
+  onBack: () => void
+}
+
+/** The phrase this mount made, with the run that made it. */
+export interface MadePhrase {
+  run: number
+  phrase: string
+}
+
+/** What the picker went through since the last add started. */
+export interface AddProgress {
+  started: boolean
+  loading: boolean
+  success: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -101,12 +118,14 @@ export interface SubmissionCheckInput {
 }
 
 /**
- * Where the gas step stands: reading, a failed read with retry, the deposit
- * step while the key holds too little, or enough, so the step moves on.
+ * Where the gas step stands: reading, a failed read with retry, no key in this
+ * wallet that can send the recovery (no retry), the deposit step while the key
+ * holds too little, or enough, so the step moves on.
  */
 export type GasStepState =
   | { kind: 'loading' }
   | { kind: 'failed' }
+  | { kind: 'noSendingKey' }
   | { kind: 'deposit'; step: DepositStep }
   | { kind: 'enough' }
 
@@ -118,4 +137,8 @@ export interface SubmissionGas {
 export interface GasStepViewProps {
   state: GasStepState
   onRetry: () => void
+  /** Goes back to the readout. */
+  onBack: () => void
+  /** Goes back to the account step, where no key in this wallet can send the recovery. */
+  onBackToAccount: () => void
 }

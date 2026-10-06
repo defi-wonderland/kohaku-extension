@@ -1,12 +1,10 @@
-import { isAddress, isAddressEqual } from 'viem'
+import { isAddress } from 'viem'
 
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import { isSmartAccount } from '@ambire-common/libs/account/account'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-
-const sameAs = (address: string) => (candidate: string) =>
-  isAddress(candidate) && isAddress(address) && isAddressEqual(candidate, address)
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
 
 /**
  * The key that sends the fast track's recovery and pays its gas: the ordinary
@@ -28,7 +26,7 @@ export const fastTrackSendingKeyOf = (
   keys: readonly Key[]
 ): Address | null => {
   const smart = accounts.find(
-    (account) => isSmartAccount(account) && sameAs(receivingAccount)(account.addr)
+    (account) => isSmartAccount(account) && sameAddress(account.addr, receivingAccount)
   )
   if (!smart) {
     return null
@@ -39,7 +37,7 @@ export const fastTrackSendingKeyOf = (
         (key) =>
           key.type === 'internal' &&
           key.dedicatedToOneSA &&
-          smart.associatedKeys.some(sameAs(key.addr))
+          smart.associatedKeys.some((associated) => sameAddress(associated, key.addr))
       )
       .map((key) => key.meta.fromSeedId)
   )
@@ -52,7 +50,7 @@ export const fastTrackSendingKeyOf = (
   )
   const basics = accounts.filter(
     (account) =>
-      !isSmartAccount(account) && ordinaryKeys.some((key) => sameAs(key.addr)(account.addr))
+      !isSmartAccount(account) && ordinaryKeys.some((key) => sameAddress(key.addr, account.addr))
   )
   const [basic] = basics
   return basics.length === 1 && basic && isAddress(basic.addr) ? basic.addr : null

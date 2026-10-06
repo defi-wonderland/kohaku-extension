@@ -1,4 +1,4 @@
-import { isAddress, isAddressEqual } from 'viem'
+import { isAddress } from 'viem'
 
 import {
   DERIVATION_OPTIONS,
@@ -9,6 +9,7 @@ import type { Key } from '@ambire-common/interfaces/keystore'
 import { isSmartAccount } from '@ambire-common/libs/account/account'
 import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
 
 import { SLOT_INDEX } from './constants'
 import type { ListedSlot, SlotKeys, TempSeed } from './types'
@@ -60,9 +61,6 @@ export const slotKeysOf = async (seed: TempSeed, index: number = SLOT_INDEX): Pr
   return { ordinaryKey, controllingKey }
 }
 
-const sameAs = (address: Address) => (candidate: string) =>
-  isAddress(candidate) && isAddressEqual(candidate, address)
-
 /**
  * The slot's two accounts, once the wallet lists them and the keystore holds
  * both keys: the basic account at the ordinary key, and the smart account
@@ -76,13 +74,15 @@ export const listedSlotOf = (
   keys: readonly Key[]
 ): ListedSlot | null => {
   const basic = accounts.find(
-    (account) => !isSmartAccount(account) && sameAs(slot.ordinaryKey)(account.addr)
+    (account) => !isSmartAccount(account) && sameAddress(account.addr, slot.ordinaryKey)
   )
   const smart = accounts.find(
-    (account) => isSmartAccount(account) && account.associatedKeys.some(sameAs(slot.controllingKey))
+    (account) =>
+      isSmartAccount(account) &&
+      account.associatedKeys.some((key) => sameAddress(key, slot.controllingKey))
   )
   const holds = (address: Address) =>
-    keys.some((key) => key.type === 'internal' && sameAs(address)(key.addr))
+    keys.some((key) => key.type === 'internal' && sameAddress(key.addr, address))
   if (
     !basic ||
     !smart ||
