@@ -82,6 +82,11 @@ jest.mock('react-native-qrcode-svg', () => {
   }
 })
 
+// The clipboard module ships untranspiled modules.
+jest.mock('@common/utils/clipboard', () => ({
+  setStringAsync: jest.fn(async () => true)
+}))
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
 const {
