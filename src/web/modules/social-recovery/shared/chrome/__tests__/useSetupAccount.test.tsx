@@ -16,6 +16,13 @@ import type { Location, NavigateFunction } from 'react-router-dom'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import type { SetupAccount } from '@web/modules/social-recovery/shared/chrome'
 
+import type {
+  HistoryListener,
+  HistoryTarget,
+  RouterHistory,
+  WatchedHistory
+} from '@web/modules/social-recovery/shared/chrome/__fixtures__/types'
+
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -749,18 +756,6 @@ describe('the locations of a setup visit', () => {
     expect(reads.screen.differs).toBe(true)
   })
 })
-
-type RouterHistory = Parameters<typeof HistoryRouter>[0]['history']
-type HistoryTarget = Parameters<RouterHistory['push']>[0]
-type HistoryListener = Parameters<RouterHistory['listen']>[0]
-
-// A tab history the test can watch: how often the page pushed or replaced an
-// entry, and where in the list of entries it stands.
-type WatchedHistory = {
-  history: RouterHistory & { readonly index: number }
-  pushes: jest.SpyInstance
-  replaces: jest.SpyInstance
-}
 
 // A tab history in memory, like the router's own: the first entry with no key of
 // its own gets the key of an entry the router did not push.
