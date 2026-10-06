@@ -24,7 +24,7 @@ const PresetsScreen = () => {
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const openEditor = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupEditor), [navigate])
-  const recover = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecover), [navigate])
+  const recover = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecovery), [navigate])
 
   // The selected account arrives from the background's state push.
   const address = account && isAddress(account.addr) ? account.addr : null
