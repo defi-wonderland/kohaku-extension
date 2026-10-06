@@ -3,7 +3,8 @@
  *
  * The module's text field: a focused field draws neutral colours in both
  * themes, never the wallet's accent red, while a field with an error or one
- * marked valid keeps the wallet input's own colours.
+ * marked valid keeps the wallet input's own colours. A field disabled while
+ * focused keeps the neutral colours.
  */
 import React from 'react'
 import { createRoot, Root } from 'react-dom/client'
@@ -114,6 +115,19 @@ describe.each([
     focus()
     expect(borders()).toEqual(errorBorders)
     expect(container.textContent).toContain('Wrong')
+  })
+
+  it('keeps the neutral focus colours when a focused field becomes disabled', () => {
+    mount(type, <FieldInput testID="field" value="" onChangeText={() => {}} />)
+    focus()
+    const neutral = {
+      inner: asRendered(theme.primary),
+      outer: asRendered(theme.primaryBorder)
+    }
+    expect(borders()).toEqual(neutral)
+    mount(type, <FieldInput testID="field" value="" disabled onChangeText={() => {}} />)
+    expect(borders()).toEqual(neutral)
+    expect([borders().inner, borders().outer]).not.toContain(asRendered(theme.linkText))
   })
 
   it('keeps the valid colours of a field marked valid while it is focused', () => {

@@ -7,7 +7,12 @@
 import { JsonRpcProvider } from 'ethers'
 
 import type { NameReaderFactory } from '@web/modules/social-recovery/setup/enroll/types'
-import type { FakeNameReaders } from '@web/modules/social-recovery/setup/enroll/__tests__/harness'
+import type {
+  AsyncFakeTimers,
+  FakeNameAnswer,
+  FakeNameReaders,
+  NameReadOutcome
+} from '@web/modules/social-recovery/setup/enroll/__tests__/harness'
 import {
   mainnetNameReader,
   resolveMainnetName
@@ -17,8 +22,8 @@ const ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
 const FIRST_URL = 'https://ethereum-rpc.publicnode.com'
 const SECOND_URL = 'https://cloudflare-eth.com'
 
-/** One answer per endpoint, in the order the endpoints are read: an address, null, or a throw. */
-const fakeReaders = (...answers: (string | null | Error)[]): FakeNameReaders => {
+/** One answer per endpoint, in the order the endpoints are read. */
+const fakeReaders = (...answers: FakeNameAnswer[]): FakeNameReaders => {
   const urls: string[] = []
   const names: string[] = []
   const destroyed: string[] = []
@@ -30,6 +35,14 @@ const fakeReaders = (...answers: (string | null | Error)[]): FakeNameReaders => 
         names.push(name)
         if (answer instanceof Error) {
           throw answer
+        }
+        if (answer === 'never') {
+          return new Promise<string | null>(() => {})
+        }
+        if (answer !== null && typeof answer === 'object') {
+          return new Promise<string | null>((resolve) => {
+            setTimeout(() => resolve(answer.address), answer.afterMs)
+          })
         }
         return answer ?? null
       },
@@ -90,5 +103,90 @@ describe('the mainnet name resolver', () => {
     } finally {
       reader.destroy()
     }
+  })
+})
+
+/** Advances Jest's fake clock by `ms`, running the promises each timer settles before the next timer. */
+const advanceTimers = (ms: number): Promise<void> =>
+  (jest as unknown as AsyncFakeTimers).advanceTimersByTimeAsync(ms)
+
+describe('the mainnet name resolver with a slow endpoint', () => {
+  const LIMIT_MS = 5_000
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.clearAllTimers()
+    jest.useRealTimers()
+  })
+
+  /** Starts a read and records its result once it settles. */
+  const startRead = (name: string, readers: FakeNameReaders): NameReadOutcome => {
+    const outcome: NameReadOutcome = { settled: false }
+    resolveMainnetName(name, readers.readerOf)
+      .then((address) => {
+        outcome.settled = true
+        outcome.address = address
+      })
+      .catch(() => {})
+    return outcome
+  }
+
+  it('reads the second endpoint when the first never answers, and leaves no timer behind', async () => {
+    const readers = fakeReaders('never', { afterMs: 1_000, address: ADDRESS })
+    const outcome = startRead('bluejay.eth', readers)
+
+    await advanceTimers(LIMIT_MS - 1)
+    expect(outcome.settled).toBe(false)
+    expect(readers.urls).toEqual([FIRST_URL])
+
+    await advanceTimers(1)
+    expect(readers.urls).toEqual([FIRST_URL, SECOND_URL])
+    expect(readers.destroyed).toEqual([FIRST_URL])
+    expect(outcome.settled).toBe(false)
+
+    await advanceTimers(1_000)
+    expect(outcome).toEqual({ settled: true, address: ADDRESS })
+    expect(readers.destroyed).toEqual([FIRST_URL, SECOND_URL])
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('reads a name as unresolved when both endpoints hang, after both limits, and destroys both readers', async () => {
+    const readers = fakeReaders('never', 'never')
+    const outcome = startRead('bluejay.eth', readers)
+
+    await advanceTimers(LIMIT_MS)
+    expect(outcome.settled).toBe(false)
+    expect(readers.urls).toEqual([FIRST_URL, SECOND_URL])
+
+    await advanceTimers(LIMIT_MS - 1)
+    expect(outcome.settled).toBe(false)
+
+    await advanceTimers(1)
+    expect(outcome).toEqual({ settled: true, address: '' })
+    expect(readers.destroyed).toEqual([FIRST_URL, SECOND_URL])
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('leaves no timer behind when the first endpoint answers before the limit', async () => {
+    const readers = fakeReaders({ afterMs: LIMIT_MS - 1, address: ADDRESS })
+    const outcome = startRead('bluejay.eth', readers)
+
+    await advanceTimers(LIMIT_MS - 1)
+    expect(outcome).toEqual({ settled: true, address: ADDRESS })
+    expect(readers.urls).toEqual([FIRST_URL])
+    expect(readers.destroyed).toEqual([FIRST_URL])
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('leaves no timer behind when the first endpoint answers at once', async () => {
+    const readers = fakeReaders(ADDRESS)
+    const outcome = startRead('bluejay.eth', readers)
+
+    await advanceTimers(0)
+    expect(outcome).toEqual({ settled: true, address: ADDRESS })
+    expect(jest.getTimerCount()).toBe(0)
   })
 })
