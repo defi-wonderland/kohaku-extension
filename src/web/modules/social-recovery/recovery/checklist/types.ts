@@ -245,7 +245,8 @@ export interface ChecklistState {
   addReply: (reply: ApproverReply) => Promise<AddReplyResult>
   setNote: (place: number, note: RowNote | null) => Promise<void>
   noteFailed: boolean
-  abandon: () => Promise<void>
+  /** Wipes the live session; `onWiped` runs once the wipe lands, before the tab leaves. */
+  abandon: (onWiped?: () => void) => Promise<void>
   abandonFailed: boolean
   gatherAgain: () => Promise<void>
   /** Gathering again did not open; the wiped reason stays on screen. */
@@ -334,6 +335,8 @@ export interface PasskeyClaim {
    * ceremony id go, and a refusal reads as the place's note.
    */
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
+  /** The session was abandoned: the pending claim's request and report go. */
+  forgetPending: () => void
   /** The places this tab asked: a claim launched, pending or undelivered. */
   asked: ReadonlySet<number>
   /** The place whose report never came back, with its retry. */
@@ -366,6 +369,7 @@ export interface PasskeyRowProps {
   served: boolean
   busy: boolean
   timeZone: string
+  route: RecoveryRoute
   launch: (request: ApproverRequest, handOff: boolean) => void
 }
 

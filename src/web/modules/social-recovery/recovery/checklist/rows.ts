@@ -184,16 +184,17 @@ export const unlockLineKeyOf = (layout: ChecklistLayout): UnlockLineKey => {
 
 /**
  * Whether a claim found no passkey to answer with on this device: the device
- * did not answer, or the authenticator could not meet the request. The
- * holder's own cancel, a refusal by the page's focus or policy, and every
- * failure of the check are not.
+ * did not answer, the authenticator could not meet the request, or the
+ * browser closed the prompt with `NotAllowedError`, the way it reports a
+ * device that holds no passkey for this site. An abort, a refusal by the
+ * page's focus or policy, and every failure of the check are not.
  */
 export const deviceHoldsNoPasskey = (outcome: CeremonyOutcome<unknown>): boolean => {
   if (outcome.kind === 'dismissed') {
-    return (
-      outcome.note === 'refused' &&
-      (outcome.detail === 'InvalidStateError' || outcome.detail === 'NotSupportedError')
-    )
+    if (outcome.note === 'cancelled') {
+      return outcome.detail === 'NotAllowedError'
+    }
+    return outcome.detail === 'InvalidStateError' || outcome.detail === 'NotSupportedError'
   }
   return outcome.verdict === 'unavailable' && outcome.cause === 'device-unavailable'
 }
