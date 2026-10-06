@@ -304,7 +304,13 @@
     },
     "chrome": {
       "settings": "Settings",
-      "breadcrumb": "Settings › Account recovery"
+      "breadcrumb": "Settings › Account recovery",
+      "otherAccount": {
+        "title": "The wallet now selects another account",
+        "body": "This setup belongs to {{account}}. Your work here stays with that account.",
+        "switchAction": "Set up recovery for the selected account instead",
+        "selectToSave": "Select this account in the wallet before you save."
+      }
     },
     "methodNames": {
       "passkey": "Passkey",
@@ -675,6 +681,7 @@
         },
         "notTested": {
           "title": "An untested method is in your path",
+          "title_plural": "{{count}} untested methods are in your path",
           "body": "An untested method may fail on the day it is needed. You can still save."
         },
         "alreadySetUp": {
@@ -727,7 +734,7 @@
     },
     "card": {
       "title": "Your Recovery Card",
-      "lead": "Save it, print it or send it to another device. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
+      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
       "cardTitle": "Kohaku · Recovery card",
       "reveal": "Reveal",
       "hide": "Hide",
@@ -747,14 +754,16 @@
       "wrongPassword": "That is not your extension password. Try again.",
       "passwordGone": "Your recovery password is not on this device any more. Set it again on the privacy step to reveal it and carry the card.",
       "passwordGoneAction": "Set the recovery password again",
-      "carrierAsks": "A new download, print or hand-off asks your extension password.",
+      "carrierAsks": "A new download or print asks your extension password.",
       "passwordAsk": "Enter your recovery password to show your Recovery Card. This is not your extension password.",
       "passwordAskAction": "Show the card",
       "wrongRecoveryPassword": "That is not your recovery password. Try again.",
-      "passwordUnchecked": "This wallet could not check your recovery password. Try again."
+      "passwordUnchecked": "This wallet could not check your recovery password. Try again.",
+      "downloadUnavailable": "Your recovery password has characters a PDF cannot carry. Print the card instead."
     },
     "create": {
       "controlledBy": "Controlled by {{address}}",
+      "controllingKeyRow": "Controlling key of {{account}}. It is added together with that account and is not an account of its own.",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
       "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
     },
