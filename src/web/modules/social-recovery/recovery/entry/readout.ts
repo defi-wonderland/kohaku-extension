@@ -128,8 +128,8 @@ const isNotServed = (error: unknown): boolean =>
 
 /**
  * Why a restore with the recovery password failed. A backup the password does
- * not open is a wrong password; a failure that is no refusal came after the
- * password, in the read of the setup event.
+ * not open is a wrong password; a failure that is no refusal is a failed read
+ * of the setup event, which the restore makes before it can judge the password.
  */
 export const unlockFailureOf = (error: unknown): UnlockFailure => {
   const refusal = restoreRefusalOf(error)
@@ -166,7 +166,7 @@ const noteBodyOf = (note: Hex): unknown => {
       if (typeof value !== 'object' || value === null) {
         return value
       }
-      const { $bigint: digits } = value as { $bigint?: unknown }
+      const { $bigint: digits } = value as Record<string, unknown>
       if (typeof digits !== 'string' || Object.keys(value).length !== 1 || !/^\d+$/.test(digits)) {
         return value
       }
@@ -200,7 +200,7 @@ const clausesOfBody = (body: unknown): unknown[] | null => {
   if (typeof body !== 'object' || body === null) {
     return null
   }
-  const { clauses } = body as { clauses?: unknown }
+  const { clauses } = body as Record<string, unknown>
   return Array.isArray(clauses) && clauses.length > 0 ? clauses : null
 }
 
@@ -208,7 +208,7 @@ const isShapeClause = (value: unknown): value is ShapeNote['clauses'][number] =>
   if (typeof value !== 'object' || value === null) {
     return false
   }
-  const { threshold, methods } = value as { threshold?: unknown; methods?: unknown }
+  const { threshold, methods } = value as Record<string, unknown>
   return isThreshold(threshold) && Array.isArray(methods) && methods.every(isMethod)
 }
 
@@ -216,7 +216,7 @@ const isNoteClause = (value: unknown): value is Clause => {
   if (typeof value !== 'object' || value === null) {
     return false
   }
-  const { threshold, credentials } = value as { threshold?: unknown; credentials?: unknown }
+  const { threshold, credentials } = value as Record<string, unknown>
   return isThreshold(threshold) && Array.isArray(credentials) && credentials.every(isNoteCredential)
 }
 
@@ -242,7 +242,7 @@ export const configurationOfNote = (note: Hex): Configuration | null => {
   if (!clauses || !clauses.every(isNoteClause)) {
     return null
   }
-  const { wait, ignoresPause } = body as { wait?: unknown; ignoresPause?: unknown }
+  const { wait, ignoresPause } = body as Record<string, unknown>
   if (typeof wait !== 'bigint' || typeof ignoresPause !== 'boolean') {
     return null
   }
