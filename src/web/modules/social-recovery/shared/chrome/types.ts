@@ -97,6 +97,15 @@ export interface SetupAccount {
   switchToSelected: () => void
 }
 
+/** A location a setup visit settled, as the tab's session storage keeps it. */
+export interface VisitedLocation {
+  key: string
+  pathname: string
+}
+
+/** How a location stands to the setup visit: already in it, a new step in it, or the start of a new one. */
+export type VisitDecision = 'settled' | 'inside' | 'arrival'
+
 export interface OtherAccountNoticeProps {
   /** The account the setup tab works on. */
   account: Address

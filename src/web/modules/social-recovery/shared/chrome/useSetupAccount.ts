@@ -3,7 +3,7 @@
  * the setup from outside it, and the tab latches the wallet's selected account
  * then. The latch holds across a selection change in the wallet, the navigation
  * inside the setup and a reload, so a draft stays with its account. The latch
- * lives in the tab's session storage.
+ * and the visit's locations live in the tab's session storage.
  */
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -14,21 +14,22 @@ import type { Address } from 'viem'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 
-import type { SetupAccount } from './types'
+import type { SetupAccount, VisitDecision, VisitedLocation } from './types'
 
 const LATCH_KEY = 'socialRecovery.setupAccount'
-// The history entry that started the visit, so a reload of it keeps the latch.
-const ARRIVAL_KEY = 'socialRecovery.setupArrival'
+const VISIT_KEY = 'socialRecovery.setupVisit'
+const VISIT_LIMIT = 50
 // The router gives this key to every entry it did not push, such as a typed URL.
 const UNPUSHED_KEY = 'default'
 
 const SETUP_PATH = `/${WEB_ROUTES.socialRecoverySetup}`
+const CEREMONY_PATH = `/${WEB_ROUTES.socialRecoveryCeremony}`
 
 const listeners = new Set<() => void>()
 
 // The location this page already decided on, so the chrome and the screen that
 // both read it, and a view that remounts on it, decide once.
-let settledLocation: Location | null = null
+let settledLocation: VisitedLocation | null = null
 
 const sessionStore = (): Storage | undefined => {
   try {
@@ -72,19 +73,43 @@ const subscribe = (listener: () => void) => {
   }
 }
 
-const isSettled = (location: Location) =>
-  location === settledLocation ||
-  (location.key !== UNPUSHED_KEY && location.key === readStored(ARRIVAL_KEY))
+const isVisitedLocation = (value: unknown): value is VisitedLocation =>
+  typeof value === 'object' &&
+  value !== null &&
+  'key' in value &&
+  typeof value.key === 'string' &&
+  'pathname' in value &&
+  typeof value.pathname === 'string'
 
-const settle = (location: Location) => {
-  settledLocation = location
-  store(ARRIVAL_KEY, location.key)
+// The list comes back from storage, so only well-formed entries count.
+const readVisit = (): VisitedLocation[] => {
+  const stored = readStored(VISIT_KEY)
+  if (stored === null) {
+    return []
+  }
+  try {
+    const parsed: unknown = JSON.parse(stored)
+    return Array.isArray(parsed) ? parsed.filter(isVisitedLocation) : []
+  } catch {
+    return []
+  }
 }
 
-// The holder arrives from outside the setup when the history entry names no
-// previous route (a typed URL or a plain link) or a previous route that is not
-// a setup route. The entry's state is whatever the history holds, so it is checked.
-const arrivesFromOutside = (state: unknown): boolean => {
+const storeVisit = (visit: VisitedLocation[]) => {
+  store(VISIT_KEY, JSON.stringify(visit.slice(-VISIT_LIMIT)))
+}
+
+const visitedOf = ({ key, pathname }: Location): VisitedLocation => ({ key, pathname })
+
+const isUnder = (pathname: string, base: string) =>
+  pathname === base || pathname.startsWith(`${base}/`)
+
+const isSetupPath = (pathname: string) => isUnder(pathname, SETUP_PATH)
+
+const isModulePath = (pathname: string) => isSetupPath(pathname) || isUnder(pathname, CEREMONY_PATH)
+
+// The entry's state is whatever the history holds, so it is checked.
+const prevPathnameOf = (state: unknown): string | undefined => {
   const prevRoute =
     typeof state === 'object' && state !== null && 'prevRoute' in state
       ? state.prevRoute
@@ -93,10 +118,49 @@ const arrivesFromOutside = (state: unknown): boolean => {
     typeof prevRoute === 'object' && prevRoute !== null && 'pathname' in prevRoute
       ? prevRoute.pathname
       : undefined
-  return (
-    typeof pathname !== 'string' ||
-    (pathname !== SETUP_PATH && !pathname.startsWith(`${SETUP_PATH}/`))
-  )
+  return typeof pathname === 'string' ? pathname : undefined
+}
+
+// A location the visit already settled keeps the latch: a later reader of the
+// same location, Back, Forward, or a reload of an entry the router pushed. An
+// entry the router did not push (a typed URL, the wallet opening the setup in
+// its reused tab, or a reload of such an entry) is an arrival. Any other new
+// entry stays in the visit when its previous route is a setup route, or, with
+// no previous route, when the visit's last location is a setup or ceremony
+// route; otherwise it is an arrival.
+const decide = (location: Location): VisitDecision => {
+  if (settledLocation?.key === location.key && settledLocation.pathname === location.pathname) {
+    return 'settled'
+  }
+  if (location.key === UNPUSHED_KEY) {
+    return 'arrival'
+  }
+  const visit = readVisit()
+  if (visit.some(({ key }) => key === location.key)) {
+    return 'settled'
+  }
+  const prevPathname = prevPathnameOf(location.state)
+  if (prevPathname !== undefined) {
+    return isSetupPath(prevPathname) ? 'inside' : 'arrival'
+  }
+  const last = visit[visit.length - 1]
+  return last && isModulePath(last.pathname) ? 'inside' : 'arrival'
+}
+
+// The location joins the visit as its last location.
+const record = (location: Location) => {
+  settledLocation = visitedOf(location)
+  if (location.key === UNPUSHED_KEY) {
+    return
+  }
+  storeVisit([...readVisit().filter(({ key }) => key !== location.key), visitedOf(location)])
+}
+
+// A new visit starts at the location. An entry the router did not push cannot
+// be told apart later, so it starts the visit with no location in the list.
+const startVisit = (location: Location) => {
+  settledLocation = visitedOf(location)
+  storeVisit(location.key === UNPUSHED_KEY ? [] : [visitedOf(location)])
 }
 
 const useSetupAccount = (): SetupAccount => {
@@ -108,21 +172,18 @@ const useSetupAccount = (): SetupAccount => {
   const stored = useSyncExternalStore(subscribe, readLatch)
   // On an arrival the earlier visit's latch no longer counts, even before the
   // new one is stored.
-  const arriving = !isSettled(location) && arrivesFromOutside(location.state)
-  const latched = arriving ? null : stored
+  const latched = decide(location) === 'arrival' ? null : stored
 
   useEffect(() => {
     if (!selected) {
       return
     }
-    if (!isSettled(location)) {
-      const arrived = arrivesFromOutside(location.state)
-      settle(location)
-      if (arrived) {
-        latch(selected)
-        return
-      }
+    if (decide(location) === 'arrival') {
+      startVisit(location)
+      latch(selected)
+      return
     }
+    record(location)
     if (!stored) {
       latch(selected)
     }
@@ -133,9 +194,10 @@ const useSetupAccount = (): SetupAccount => {
 
   const switchToSelected = useCallback(() => {
     if (selected) {
+      startVisit(location)
       latch(selected)
     }
-  }, [selected])
+  }, [location, selected])
 
   return useMemo(
     () => ({
