@@ -19,6 +19,20 @@ export interface LogScan {
   to?: number
 }
 
+/** A decoded `LogPrivilegeChanged` log: the account that emitted it, the address and its new value. */
+export type PrivilegeChangedLog = Extract<Notification, { kind: 'privilege-changed' }>
+
+/**
+ * The privilege writes of an account. The read scans in chunks, keeps only
+ * the account's own logs of the event that decode, and drops a log a reorg
+ * removed. A failed log read rejects with the adapter's failure.
+ */
+export interface PrivilegeEvents {
+  privilegeFilter(account: Address): FilterSpec
+  /** Every privilege write of the account over the scan, in chain order. */
+  privilegeLogsOf(account: Address, scan: LogScan): Promise<PrivilegeChangedLog[]>
+}
+
 /** The commit a save looks for: its account, its action, its nonce and its commitment. */
 export interface CommitQuery {
   account: Address
