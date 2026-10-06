@@ -16,11 +16,11 @@ import { ERC_4337_ENTRYPOINT } from '@ambire-common/consts/deploy'
 import AccountPickerController from '@ambire-common/controllers/accountPicker/accountPicker'
 import {
   Account as AccountInterface,
-  AccountOnPage
-  // ImportStatus
+  AccountOnPage,
+  ImportStatus
 } from '@ambire-common/interfaces/account'
 import { Network } from '@ambire-common/interfaces/network'
-import { isSmartAccount } from '@ambire-common/libs/account/account'
+import { getBasicAccount, isSmartAccount } from '@ambire-common/libs/account/account'
 import { getAccountState } from '@ambire-common/libs/accountState/accountState'
 // import WarningFilledIcon from '@common/assets/svg/WarningFilledIcon'
 import Alert from '@common/components/Alert'
@@ -29,7 +29,6 @@ import Pagination from '@common/components/Pagination'
 import ScrollableWrapper from '@common/components/ScrollableWrapper'
 import Spinner from '@common/components/Spinner'
 import Text from '@common/components/Text'
-import Tooltip from '@common/components/Tooltip'
 import { useTranslation } from '@common/config/localization'
 import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
@@ -41,7 +40,7 @@ import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import Account from '@web/modules/account-picker/components/Account'
 import AnimatedDownArrow from '@web/modules/account-picker/components/AccountsOnPageList/AnimatedDownArrow/AnimatedDownArrow'
 import AccountsRetrieveError from '@web/modules/account-picker/components/AccountsRetrieveError'
-import { renderFullAddress, renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import { getRpcProviderForUI } from '@web/services/provider'
 
 import getStyles from './styles'
@@ -277,6 +276,12 @@ const AccountsOnPageList = ({
   useEffect(() => {
     if (!usageCheckComplete || state.accountsLoading || isLoading) return
     if (subType === 'private-key') return
+    // On a newly created seed the picker has already chosen what to add; a used
+    // basic account is never selected on its own.
+    if (state.shouldSelectSmartAccountAutomatically) {
+      if (scanStateRef.current.phase !== 'done') finishScan()
+      return
+    }
 
     const scan = scanStateRef.current
     if (scan.phase === 'done') return
@@ -460,23 +465,11 @@ const AccountsOnPageList = ({
             </View>
           ) : (
             <>
-              <View style={[spacings.ph, spacings.pbLg]}>
-                {Object.keys(slots).map((key, i) => {
-                  return (
-                    <View key={key}>
-                      {getAccounts({
-                        accounts: slots[key],
-                        isLastSlot: i === Object.keys(slots).length - 1,
-                        slotIndex: 1
-                      })}
-                    </View>
-                  )
-                })}
-              </View>
               {!!smartAccounts.length && (
                 <View
                   style={[
                     styles.smartAccountWrapper,
+                    spacings.mbLg,
                     {
                       borderWidth: themeType === THEME_TYPES.DARK ? 0 : 1,
                       // @ts-ignore
@@ -494,19 +487,29 @@ const AccountsOnPageList = ({
                   </View>
                   {smartAccounts.map((acc, i) => {
                     const holder = privilegeHolders[acc.account.addr]
-                    const holderTooltipId = `controlled-by-${acc.account.addr}`
                     const isLast = i === smartAccounts.length - 1
+                    const isSmartAccountSelected = state.selectedAccounts.some(
+                      (selectedAcc) => selectedAcc.account.addr === acc.account.addr
+                    )
+                    // The key is added with the smart account and is never an
+                    // account of its own, so its row selects the smart account.
+                    const toggleSmartAccount = () =>
+                      isSmartAccountSelected
+                        ? handleDeselectAccount(acc.account)
+                        : handleSelectAccount(acc.account)
+                    // A switch keeps the position it was drawn with, so both rows
+                    // of the pair are drawn again when the selection changes.
+                    const selectionKey = isSmartAccountSelected ? 'selected' : 'unselected'
 
                     return (
                       <View key={acc.account.addr} style={!isLast && spacings.mbTy}>
                         <Account
+                          key={`${acc.account.addr}-${selectionKey}`}
                           account={acc.account}
                           type="smart"
-                          withBottomSpacing={false}
+                          withBottomSpacing={!!holder}
                           unused={!accountUsageMap[acc.account.addr]}
-                          isSelected={state.selectedAccounts.some(
-                            (selectedAcc) => selectedAcc.account.addr === acc.account.addr
-                          )}
+                          isSelected={isSmartAccountSelected}
                           importStatus={acc.importStatus}
                           onSelect={handleSelectAccount}
                           onDeselect={handleDeselectAccount}
@@ -514,27 +517,44 @@ const AccountsOnPageList = ({
                           shouldBeDisplayedAsNew={false}
                         />
                         {!!holder && (
-                          <>
-                            <Text
-                              fontSize={12}
-                              appearance="secondaryText"
-                              style={[spacings.mtTy, spacings.mlTy]}
-                              testID={holderTooltipId}
-                              // @ts-ignore
-                              dataSet={{ tooltipId: holderTooltipId }}
-                            >
-                              {t('socialRecovery.create.controlledBy', {
-                                address: renderShortAddress(holder)
-                              })}
-                            </Text>
-                            <Tooltip content={renderFullAddress(holder)} id={holderTooltipId} />
-                          </>
+                          <Account
+                            key={`${holder}-${selectionKey}`}
+                            account={{ ...getBasicAccount(holder, []), usedOnNetworks: [] }}
+                            type="basic"
+                            withBottomSpacing={false}
+                            unused={false}
+                            isSelected={isSmartAccountSelected}
+                            importStatus={ImportStatus.NotImported}
+                            onSelect={toggleSmartAccount}
+                            onDeselect={toggleSmartAccount}
+                            displayTypeBadge={false}
+                            displayTypePill={false}
+                            shouldBeDisplayedAsNew={false}
+                            caption={t('socialRecovery.create.controllingKeyRow', {
+                              account: isAddress(acc.account.addr, { strict: false })
+                                ? renderShortAddress(acc.account.addr)
+                                : acc.account.addr
+                            })}
+                          />
                         )}
                       </View>
                     )
                   })}
                 </View>
               )}
+              <View style={[spacings.ph, spacings.pbLg]}>
+                {Object.keys(slots).map((key, i) => {
+                  return (
+                    <View key={key}>
+                      {getAccounts({
+                        accounts: slots[key],
+                        isLastSlot: i === Object.keys(slots).length - 1,
+                        slotIndex: 1
+                      })}
+                    </View>
+                  )
+                })}
+              </View>
             </>
           )}
         </ScrollableWrapper>
