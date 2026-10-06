@@ -38,8 +38,9 @@ const KindMenuButton = ({
       onPress={onToggle}
       disabled={disabled}
       hasBottomSpacing={false}
-      accessibilityState={{ expanded: open }}
-      aria-haspopup="menu"
+      // react-native-web renders these two as aria-haspopup and aria-expanded; the React Native
+      // types do not declare them, so they travel in a spread
+      {...{ accessibilityHasPopup: 'menu', accessibilityExpanded: open }}
       childrenPosition="right"
     >
       {open ? <UpArrowIcon style={spacings.mlTy} /> : <DownArrowIcon style={spacings.mlTy} />}
