@@ -223,6 +223,25 @@ describe('the guardian paste', () => {
     })
   )
 
+  it('reads a reply padded past 16 KiB as not an approval, keeps the paste and writes nothing', async () => {
+    await open()
+    const reply = replyOf(gathering, 1)
+    const line = lineOf({ ...reply, note: 'x'.repeat(16 * 1024) })
+    const before = sessionWrites()
+
+    await paste(1, line)
+
+    expect(errorLines(1)).toEqual([t(`${PASTE}.notAnApproval`), t(`${PASTE}.notAnApprovalRepair`)])
+    expect(sessionWrites()).toBe(before)
+    expect(kit.verifyReply).not.toHaveBeenCalled()
+    expectSettled(1, line, 'error')
+
+    await paste(1, lineOf(reply))
+
+    expect(await repliesHeld()).toEqual([reply])
+    expectSettled(1, '', 'added')
+  })
+
   it('reads a reply missing its signature as not an approval', async () => {
     await open()
     const reply: Partial<ApproverReply> = { ...replyOf(gathering, 1) }
@@ -308,6 +327,26 @@ describe('the guardian paste', () => {
 
     expect(errorLines(1)).toEqual([t(`${PASTE}.checkFailed`)])
     expect(sessionWrites()).toBe(before)
+    expectSettled(1, line, 'error')
+
+    await view?.press(id(1, 'paste-add'))
+
+    expect(await repliesHeld()).toEqual([reply])
+    expectSettled(1, '', 'added')
+  })
+
+  it('reads a verify that judges nothing as a failed check, keeps the paste and adds on the retry', async () => {
+    await open()
+    kit.verifyReply.mockResolvedValueOnce('not-judged')
+    const reply = replyOf(gathering, 1)
+    const line = lineOf(reply)
+    const before = sessionWrites()
+
+    await paste(1, line)
+
+    expect(errorLines(1)).toEqual([t(`${PASTE}.checkFailed`)])
+    expect(sessionWrites()).toBe(before)
+    expect(await repliesHeld()).toEqual([])
     expectSettled(1, line, 'error')
 
     await view?.press(id(1, 'paste-add'))
