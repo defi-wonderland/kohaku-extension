@@ -4,11 +4,16 @@ import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
   Address,
+  Configuration,
+  Hex,
+  IEventManager,
   IRecoveryActionInteractor,
   ISetupClient,
+  PrivacyLevel,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
+  AddressBook,
   FitCheckReading,
   KeyHandle,
   RecoveryKitClient,
@@ -17,6 +22,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
+  RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
@@ -241,4 +247,138 @@ export interface ReadFailedBlockProps {
   body: string
   onRetry: () => void
   testID: string
+}
+
+// ---------------------------------------------------------------------------
+// The readout
+// ---------------------------------------------------------------------------
+
+/** The part of the recovery client the readout reads. */
+export interface ReadoutKitClient {
+  setup: Pick<ISetupClient, 'setupState' | 'getSetup'> & {
+    events: Pick<IEventManager, 'accountFilter' | 'fetch'>
+  }
+}
+
+/** The recovery client for the account being recovered, as the readout takes it. */
+export type ReadoutClient =
+  | { status: 'loading' }
+  | { status: 'ready'; client: ReadoutKitClient }
+  /** This wallet version cannot read the setup; only an update of the wallet helps. */
+  | { status: 'update-the-wallet' }
+  | { status: 'failed'; retry: () => void }
+
+/** The path's shape a shape-visible setup publishes: each clause's threshold and its methods, no value. */
+export interface ShapeNote {
+  clauses: { threshold: number; methods: Address[] }[]
+}
+
+/**
+ * What the setup read answers before the recovery password: sealed, the shape
+ * readable with the values withheld, or the whole configuration readable; or
+ * a setup this device cannot open at all: a backup this build cannot read, no
+ * backup, or a backup that does not match the commitment.
+ */
+export type SetupReading =
+  | { kind: 'sealed' }
+  | { kind: 'shape-readable'; shape: ShapeNote }
+  | { kind: 'readable'; configuration: Configuration }
+  | { kind: 'unreadable' }
+  | { kind: 'no-details' }
+  | { kind: 'mismatch' }
+
+/** Why the recovery password did not open the setup. */
+export type UnlockFailure = 'wrong' | 'event-failed' | 'unreadable' | 'no-details' | 'mismatch'
+
+/** The password ask at a hidden level. */
+export type UnlockState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'wrong' }
+  | { status: 'event-failed' }
+
+/** The two levels that hide the values until the recovery password. */
+export type HiddenLevel = Exclude<PrivacyLevel, 'public'>
+
+/** Where the readout stands. */
+export type ReadoutStep =
+  | { kind: 'reading' }
+  | { kind: 'read-failed' }
+  | { kind: 'update-the-wallet' }
+  | { kind: 'no-details' }
+  | { kind: 'mismatch' }
+  | { kind: 'locked'; level: HiddenLevel; shape?: ShapeNote; unlock: UnlockState }
+  | { kind: 'readable'; level: PrivacyLevel; configuration: Configuration }
+  /** The readout sends the holder on to another screen. */
+  | { kind: 'leaving' }
+
+export interface ReadoutState {
+  step: ReadoutStep
+  /** Runs again the read that failed. */
+  retry: () => void
+  unlock: (password: string) => void
+  /** Leaves the wrong password's blocker for the password field. */
+  askAgain: () => void
+  onContinue: () => void
+  continuing: boolean
+}
+
+export interface ReadoutOptions {
+  client: ReadoutClient
+  records: Pick<WalletRecords, 'recoverySession' | 'decryptedSetupCache'>
+  chainId: ChainId
+  /** The account being recovered. */
+  account: Address
+  entry: RecoveryEntryRecord
+  navigate: (to: string) => void
+}
+
+/** A read of the recovery entry record. */
+export type EntryRecordRead =
+  | { status: 'pending' }
+  | { status: 'present'; entry: RecoveryEntryRecord }
+  | { status: 'absent' }
+  | { status: 'failed' }
+
+/** One row of the readout: the method's kind name and its value, or the hidden value. */
+export interface ReadoutRow {
+  kindName: string
+  /** The value line; null where the row has none to show. */
+  value: string | null
+  hidden: boolean
+  /** A passkey committed under another origin than this build's. */
+  originMismatch: boolean
+}
+
+/** One clause of the readout: a required row, or a group with its threshold. */
+export interface ReadoutClause {
+  threshold: number
+  required: boolean
+  rows: ReadoutRow[]
+}
+
+/** The values the readout's rows read beside the configuration. */
+export interface ReadoutRowContext {
+  addressBook: AddressBook
+  /** The relying-party hash of this build's origin. */
+  ownRpIdHash: Hex
+}
+
+export interface ReadoutViewProps {
+  state: ReadoutState
+  account: Address
+  networkName: string
+  context: ReadoutRowContext
+}
+
+export interface ReadoutPasswordAskProps {
+  unlock: UnlockState
+  onUnlock: (password: string) => void
+  onAskAgain: () => void
+  onRetry: () => void
+  networkName: string
+}
+
+export interface ReadoutClausesProps {
+  clauses: readonly ReadoutClause[]
 }
