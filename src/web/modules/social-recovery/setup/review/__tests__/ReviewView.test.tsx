@@ -328,20 +328,20 @@ describe('the sections the review no longer shows', () => {
     expect(byTestId('review-trust-list')).not.toBeNull()
     expect(byPrefix('review-stop')).toBeNull()
     expect(byPrefix('review-doors')).toBeNull()
-    expect(byTestId('review-trust-node')).toBeNull()
+    expect(byPrefix('review-trust-node')).toBeNull()
     const gone = [
-      t('socialRecovery.display.nouns.securityStop'),
-      t('socialRecovery.review.stop.nobody'),
-      t('socialRecovery.review.stop.noPause'),
-      t('socialRecovery.review.stop.ignoresStops'),
-      t('socialRecovery.review.stop.methodNotStopped', { method: kindNameOf('passkey', t) }),
-      t('socialRecovery.review.stop.methodNotStopped', { method: kindNameOf('ecdsa', t) }),
-      t('socialRecovery.review.doors.none'),
-      t('socialRecovery.review.doors.unreadable'),
-      t('socialRecovery.review.doors.untouched'),
-      t('socialRecovery.review.otherDoors.cannotSeeEveryDoor'),
-      t('socialRecovery.review.trust.nodePlain'),
-      t('socialRecovery.review.trust.nodeLightClient')
+      'Security stop',
+      'method · not stopped',
+      'method · stopped',
+      'Nobody can stop this method.',
+      'can stop this method and lift the stop.',
+      'The only stop in the kit is the one an identity method carries.',
+      'This release ignores every stop',
+      'Other doors on this account',
+      'The wallet cannot see every door',
+      'A recovery leaves them untouched.',
+      'Your node ·',
+      'It sees the request before the chain does.'
     ]
     gone.forEach((text) => expect(pageText()).not.toContain(text))
   })

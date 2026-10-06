@@ -353,6 +353,13 @@ describe('the save gate', () => {
     })
   })
 
+  it('lets Save run where a method reads as stopped', () => {
+    const trustRows = passkeyRows(answered(declaration(), info(), { answered: true, value: true }))
+
+    expect(trustRows[0]?.contract.status).toBe('declared')
+    expect(gateOf({ trustRows })).toEqual({ canSave: true, blocked: null, notTested: false })
+  })
+
   it('lets a third-party module count as a trust read that answered', () => {
     const trustRows = trustRowsOf({
       clauses: [group(2, PASSKEY, THIRD_PARTY)],
