@@ -211,12 +211,15 @@ describe('the guardian row carriers', () => {
     expect(mounted.byTestId(id(1, 'unlock-reason'))).not.toBeNull()
   })
 
-  it('keeps the carriers locked where the request names no payment line', async () => {
+  it('reads no payment and unlocks the carriers where the request names no order', async () => {
     kit = fakeKit(MIXED_PATH)
     const mounted = await open()
 
-    expect(locked(mounted, 1)).toEqual([true, true, true, true])
-    expect(mounted.byTestId(id(1, 'unlock-reason'))).not.toBeNull()
+    expect(mounted.byTestId(id(1, 'value-payment'))?.textContent).toBe(
+      t('socialRecovery.display.values.noPayment')
+    )
+    expect(locked(mounted, 1)).toEqual([false, false, false, false])
+    expect(mounted.byTestId(id(1, 'unlock-reason'))).toBeNull()
   })
 
   it('writes the link to the clipboard, a link that reads back to the place request', async () => {
