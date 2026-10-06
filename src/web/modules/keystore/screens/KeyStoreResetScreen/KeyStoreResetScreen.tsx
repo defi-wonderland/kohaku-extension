@@ -32,7 +32,7 @@ import ResetEntryGate from '@web/modules/social-recovery/onboarding/recover/Rese
 import KeystoreResetForm from '../../components/KeyStoreResetForm'
 import styles from './styles'
 
-export const KeyStoreResetContent = () => {
+const KeyStoreResetContent = () => {
   const { t } = useTranslation()
 
   const {
