@@ -194,4 +194,30 @@ describe('the presets screen', () => {
     expect(byTestId('presets-grid')).not.toBeNull()
     expect(byTestId('presets-resume')).toBeNull()
   })
+
+  // The wallet selects another account while the tab stays open on its own.
+  const selectInWallet = async (account: Address) => {
+    mockSelected.state = { account: { addr: account } }
+    await act(async () => {
+      mockSelected.listeners.forEach((listener) => listener())
+    })
+  }
+
+  it("keeps the tab's account and its draft when the wallet selects another account, and says so", async () => {
+    await createWalletRecords({ storage: mockStorage })
+      .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], ACCOUNT)
+      .setupDraft.write({
+        wait: 172800n,
+        clauses: [],
+        ignoresPause: true,
+        privacy: { backup: 'encrypted', publicMetadata: '0x' }
+      })
+    await showAccount(ACCOUNT)
+    expect(byTestId('presets-resume')).not.toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+    await selectInWallet(OTHER_ACCOUNT)
+    expect(byTestId('presets-resume')).not.toBeNull()
+    expect(byTestId('presets-grid')).toBeNull()
+    expect(byTestId('setup-other-account')?.textContent).toContain(S.chrome.otherAccount.title)
+  })
 })

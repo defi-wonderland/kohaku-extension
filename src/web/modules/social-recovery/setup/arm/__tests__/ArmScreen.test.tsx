@@ -2374,3 +2374,32 @@ describe('a save the network dropped', () => {
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 })
+
+describe('the wallet selecting another account while the tab is open', () => {
+  it("keeps the save on the tab's account, says so, and the Save button sends for the tab's account", async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+    expect(byTestId('arm-save')).not.toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+
+    // Unlike a fresh tab, the open tab keeps what it latched.
+    act(() => {
+      mockSelected.current = { addr: other.addr, preferences: { label: 'Account 2' } }
+      mockSelected.listeners.forEach((listener) => listener())
+    })
+    await settle()
+
+    expect(byTestId('setup-other-account')?.textContent).toContain(
+      t('socialRecovery.chrome.otherAccount.title')
+    )
+    expect(byTestId('arm-save')).not.toBeNull()
+    expect(byTestId('arm-removed-key')).not.toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await press('arm-save')
+
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch.mock.calls[0][0]).toBe(address)
+  })
+})

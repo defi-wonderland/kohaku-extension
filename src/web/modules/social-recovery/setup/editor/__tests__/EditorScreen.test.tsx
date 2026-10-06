@@ -128,6 +128,7 @@ const {
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
+const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
 const BREADCRUMB = en.socialRecovery.chrome.breadcrumb
 
 const THEME = Object.fromEntries(
@@ -286,5 +287,32 @@ describe('the editor screen', () => {
     await showAccount(null)
     expect(byTestId('editor')).toBeNull()
     expect(byTestId('screen-spinner')).not.toBeNull()
+  })
+
+  // The wallet selects another account while the tab stays open on its own.
+  const selectInWallet = async (account: Address) => {
+    mockSelected.state = { account: { addr: account } }
+    await act(async () => {
+      mockSelected.listeners.forEach((listener) => listener())
+    })
+    await settle()
+  }
+
+  it("keeps the tab's account and its rows when the wallet selects another account, and says so", async () => {
+    await storeRowAlsoInGroup()
+    await showAccount(ACCOUNT)
+    expect(byTestId('editor-row-0-move')).not.toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+    await selectInWallet(OTHER_ACCOUNT)
+    expect(byTestId('editor-row-0-move')).not.toBeNull()
+    expect(byTestId('editor-member-1-0-required')).not.toBeNull()
+    expect(byTestId('setup-other-account')?.textContent).toContain(
+      en.socialRecovery.chrome.otherAccount.title
+    )
+    // Switching takes the selected account, which has no rows of its own.
+    await press('setup-other-account-switch')
+    expect(byTestId('setup-other-account')).toBeNull()
+    expect(byTestId('editor')).not.toBeNull()
+    expect(byTestId('editor-row-0-move')).toBeNull()
   })
 })
