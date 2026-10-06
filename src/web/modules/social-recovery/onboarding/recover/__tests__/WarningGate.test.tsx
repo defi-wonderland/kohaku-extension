@@ -33,7 +33,14 @@ const WARNING = en.socialRecovery.recover.warning
 
 const FORMS = ['recover', 'reset', 'condensed'] as const
 
-const gateOf = (form: typeof FORMS[number], onContinue: () => void = () => {}) => {
+// The forms that draw their own continue and leave.
+const GATED = ['recover', 'reset'] as const
+
+const gateOf = (
+  form: typeof FORMS[number],
+  onContinue: () => void = () => {},
+  onAcknowledgedChange: (acknowledged: boolean) => void = () => {}
+) => {
   if (form === 'recover') {
     return (
       <WarningGate
@@ -47,7 +54,7 @@ const gateOf = (form: typeof FORMS[number], onContinue: () => void = () => {}) =
   if (form === 'reset') {
     return <WarningGate form="reset" onContinue={onContinue} onLeave={() => {}} />
   }
-  return <WarningGate form="condensed" onContinue={onContinue} />
+  return <WarningGate form="condensed" onAcknowledgedChange={onAcknowledgedChange} />
 }
 
 let container: HTMLDivElement
@@ -89,7 +96,7 @@ const press = (id: string) => {
 const continueDisabled = () =>
   byTestId('recovery-warning-continue')?.getAttribute('aria-disabled') === 'true'
 
-FORMS.forEach((form) => {
+GATED.forEach((form) => {
   describe(`the ${form} form of the warning`, () => {
     it('keeps continue disabled and does nothing on a press before the acknowledgment', () => {
       const onContinue = jest.fn()
@@ -135,12 +142,58 @@ FORMS.forEach((form) => {
       press('recovery-warning-continue')
       expect(onContinue).not.toHaveBeenCalled()
     })
+  })
+})
 
-    it('never calls the seed anything but the recovery phrase', () => {
-      mount(gateOf(form))
+FORMS.forEach((form) => {
+  it(`never calls the seed anything but the recovery phrase in the ${form} form`, () => {
+    mount(gateOf(form))
 
-      expect(container.textContent).not.toMatch(/seed|mnemonic|secret phrase/i)
-    })
+    expect(container.textContent).not.toMatch(/seed|mnemonic|secret phrase/i)
+  })
+})
+
+describe('the condensed form of the warning', () => {
+  // The wallet's checkbox draws its check mark only while it is ticked.
+  const isChecked = () => !!byTestId('recovery-warning-acknowledge')?.querySelector('svg')
+
+  it('draws no continue and no leave', () => {
+    mount(gateOf('condensed'))
+
+    expect(byTestId('recovery-warning-acknowledge')).not.toBeNull()
+    expect(byTestId('recovery-warning-continue')).toBeNull()
+    expect(byTestId('recovery-warning-leave')).toBeNull()
+    expect(byTestId('recovery-warning-actions')).toBeNull()
+    expect(container.textContent).not.toContain(en.socialRecovery.actions.continue)
+    expect(container.textContent).not.toContain(WARNING.leave)
+  })
+
+  it('reports the acknowledgment given and then taken back', () => {
+    const onAcknowledgedChange = jest.fn()
+    mount(gateOf('condensed', undefined, onAcknowledgedChange))
+
+    expect(onAcknowledgedChange).not.toHaveBeenCalled()
+    press('recovery-warning-acknowledge')
+    press('recovery-warning-acknowledge')
+
+    expect(onAcknowledgedChange.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('starts unticked on every mount', () => {
+    const onAcknowledgedChange = jest.fn()
+    mount(gateOf('condensed', undefined, onAcknowledgedChange))
+    press('recovery-warning-acknowledge')
+    expect(isChecked()).toBe(true)
+
+    unmount()
+    onAcknowledgedChange.mockClear()
+    mount(gateOf('condensed', undefined, onAcknowledgedChange))
+
+    expect(isChecked()).toBe(false)
+    expect(onAcknowledgedChange).not.toHaveBeenCalled()
+    // The first click after a remount gives the acknowledgment, not takes it back.
+    press('recovery-warning-acknowledge')
+    expect(onAcknowledgedChange.mock.calls).toEqual([[true]])
   })
 })
 
