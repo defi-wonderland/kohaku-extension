@@ -291,13 +291,37 @@ export interface WipedRecoverySession {
 }
 
 /**
+ * The execution this device sent for the landed session's attempt and has not
+ * settled: the id of the request it queued, the block read before the send,
+ * when it was claimed (ms since epoch) and, once the wallet broadcast it, the
+ * transaction hash. A reloaded page or another tab finds it and sends nothing.
+ */
+export interface ExecutionInFlightRecord {
+  requestId: string
+  startBlock: number
+  claimedAt: number
+  transactionHash?: Hex
+}
+
+/** What a claim of the execution in flight writes: everything but the hash. */
+export type ExecutionInFlightClaim = Omit<ExecutionInFlightRecord, 'transactionHash'>
+
+/**
  * The session after the submission lands: it survives as the countdown's
- * record, holding the account address alone. The countdown reads the attempt id
- * from the chain. The gathering, its replies and its attempt id are gone.
+ * record, holding the account and the landed request's attempt id and setup
+ * nonce (decimal strings, as the request carries them) and the keccak256 of
+ * its payload, against which the countdown matches the attempt the chain
+ * reports. A session landed before these were kept reads without them, and no
+ * attempt matches it. `execution` is the execution in flight for the attempt.
+ * The gathering and its replies are gone.
  */
 export interface LandedRecoverySession {
   state: 'landed'
   account: Address
+  attemptId?: string
+  setupNonce?: string
+  payloadHash?: Hex
+  execution?: ExecutionInFlightRecord
 }
 
 export type RecoverySessionRecord =
@@ -325,21 +349,37 @@ export interface StoredSession extends StoredRecord<RecoverySessionRecord> {
 /** A stored recovery session whose value is the live session. */
 export type LiveStoredSession = StoredSession & { value: LiveRecoverySession }
 
+/** A stored recovery session whose value is the landed session. */
+export type LandedStoredSession = StoredSession & { value: LandedRecoverySession }
+
 /** A read of the recovery session. */
 export type SessionRead = AbsentRecord | ({ status: 'present' } & StoredSession)
 
 /**
  * The countdown's record as `countdown(chainId, account)` reads it from the
- * landed session: the account address alone.
+ * landed session: the account, the landed attempt's fields where the session
+ * holds them, and the execution in flight where there is one.
  */
-export interface CountdownRecord {
-  account: Address
-}
+export type CountdownRecord = Omit<LandedRecoverySession, 'state'>
+
+/** A stored countdown, with the revision of the landed session it reads from. */
+export type StoredCountdown = StoredRecord<CountdownRecord> & { revision: SessionRevision }
 
 /** A read of the countdown, with the revision of the landed session it reads from. */
-export type CountdownRead =
-  | AbsentRecord
-  | ({ status: 'present'; revision: SessionRevision } & StoredRecord<CountdownRecord>)
+export type CountdownRead = AbsentRecord | ({ status: 'present' } & StoredCountdown)
+
+/**
+ * The answer of a claim of the execution in flight: `claimed` where this claim
+ * wrote the execution, or `false` where the landed session already carried one
+ * and the caller follows it; the execution the session holds after the task,
+ * this claim's or the one already there; and the stored countdown, whose
+ * revision a later update passes.
+ */
+export interface ExecutionClaimResult {
+  claimed: boolean
+  execution: ExecutionInFlightRecord
+  record: StoredCountdown
+}
 
 /**
  * The decrypted setup cache: the setup the recovery password unlocked on this
@@ -580,6 +620,34 @@ export interface RecoverySessionAccessor {
 /** The countdown's record, read from the session in its landed state. */
 export interface CountdownAccessor {
   read(): Promise<CountdownRead>
+  /**
+   * Writes the execution in flight on a landed session that carries none,
+   * under the same revision rule as the session's `write`. Where the session
+   * already carries one it writes nothing and answers that one with
+   * `claimed: false`. Refuses a session that is not landed.
+   */
+  claimExecution(
+    claim: ExecutionInFlightClaim,
+    expectedRevision: ExpectedRevision
+  ): Promise<ExecutionClaimResult>
+  /**
+   * Writes the transaction hash on the execution in flight that carries
+   * `requestId`, under the same revision rule. Refuses a session that is not
+   * landed and an execution under another request id or none. The hash it
+   * already holds writes nothing and answers the stored countdown.
+   */
+  setExecutionHash(
+    requestId: string,
+    transactionHash: Hex,
+    expectedRevision: ExpectedRevision
+  ): Promise<StoredCountdown>
+  /**
+   * Removes the execution in flight where it carries `requestId`, under the
+   * same revision rule, and answers the countdown the storage holds after the
+   * task. With no execution under that id, in any state of the session, it
+   * writes nothing and checks no revision.
+   */
+  releaseExecution(requestId: string, expectedRevision: ExpectedRevision): Promise<CountdownRead>
   age(at?: number): Promise<number | null>
 }
 
@@ -619,7 +687,7 @@ export interface WalletRecords {
     chainId: ChainId,
     account: Address,
     expectedRevision: ExpectedRevision
-  ): Promise<StoredRecord<CountdownRecord> & { revision: SessionRevision }>
+  ): Promise<StoredCountdown>
   clearWipedSession(
     chainId: ChainId,
     account: Address,

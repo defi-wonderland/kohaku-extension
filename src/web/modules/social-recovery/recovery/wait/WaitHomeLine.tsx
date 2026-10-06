@@ -1,8 +1,8 @@
 /**
  * One submitted recovery on the home surface: the account being recovered
- * with the waiting period running and its countdown, or execution due, as one
- * attempt read gives it, and the way to open the wait. While that read loads,
- * fails or names another reading, the line names the account alone.
+ * with the waiting period running and its countdown, or execution due, as the
+ * latest attempt read gives it, and the way to open the wait. While that read
+ * loads, fails or names another reading, the line names the account alone.
  */
 import React from 'react'
 import { View } from 'react-native'

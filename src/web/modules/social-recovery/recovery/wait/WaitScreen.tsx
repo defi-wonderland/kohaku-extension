@@ -52,6 +52,7 @@ import type { SendingReading } from '@web/modules/social-recovery/recovery/submi
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
 import { anchorOf, donePathOf } from './phase'
+import { landedAttemptOf } from './read'
 import { executeStepsOf } from './steps'
 import type {
   CountdownReading,
@@ -72,7 +73,7 @@ import WaitView from './WaitView'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
-const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps) => {
+const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) => {
   const { navigate } = useNavigation()
   const { accounts } = useAccountsControllerState()
   const { keys: keystoreKeys } = useKeystoreControllerState()
@@ -173,6 +174,7 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   const { poll, retry: retryPoll } = useWaitPoll({
     kit,
     keys: handover,
+    landed,
     visibility: document
   })
   const answered = poll.status === 'answered' ? poll : null
@@ -242,10 +244,14 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   const network = sending.status === 'ready' ? sending.network : null
   const now = useCallback(() => Date.now(), [])
   const steps = useMemo<ExecuteSteps | null>(() => {
-    if (!kit || !chainReads || !receipts || !due || !payload || !plan || !network) {
+    if (!kit || !chainReads || !receipts || !landed || !due || !payload || !plan || !network) {
       return null
     }
     return executeStepsOf({
+      records,
+      chainId: CHAIN_ID,
+      account,
+      landed,
       client: kit,
       reads: chainReads,
       receipts,
@@ -256,8 +262,11 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
       payload,
       now
     })
-  }, [kit, chainReads, receipts, due, payload, plan, network, port, now])
-  const run = useExecuteRun(steps, `${CHAIN_ID}:${account.toLowerCase()}`)
+  }, [kit, chainReads, receipts, landed, due, payload, plan, network, port, now, records, account])
+  const run = useExecuteRun(
+    steps,
+    `${CHAIN_ID}:${account.toLowerCase()}:${landed ? landed.attemptId.toString() : ''}`
+  )
 
   // A landed execution is read back at once; a send the attempt read still disagrees with is checked for a drop.
   const writeStatus = run.state.write.status
@@ -274,8 +283,11 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   }, [answered, writeStatus, checkDropped])
 
   const consumed = answered?.phase.kind === 'consumed'
+  const releaseRun = useRef(run.release)
+  releaseRun.current = run.release
   useEffect(() => {
     if (consumed) {
+      releaseRun.current()
       navigate(donePathOf(account), { replace: true })
     }
   }, [consumed, navigate, account])
@@ -283,19 +295,27 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   const [leave, setLeave] = useState<LeaveState>('idle')
   const onLeave = useCallback(() => {
     setLeave('leaving')
+    // The countdown is read again first: an execution claim written since the open moved its revision.
     records
-      .endCountdown(CHAIN_ID, account, revision)
+      .countdown(CHAIN_ID, account)
+      .read()
+      .then((read) =>
+        records.endCountdown(CHAIN_ID, account, read.status === 'present' ? read.revision : null)
+      )
       .then(() => records.recoveryEntry(CHAIN_ID, account).clear())
       .then(() => navigate(routeEntryPathOf(entry.route), { replace: true }))
       .catch(() => setLeave('failed'))
-  }, [records, account, revision, navigate, entry.route])
+  }, [records, account, navigate, entry.route])
 
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
+  // The transfer screen sends from the selected account, so the account being recovered is selected first.
+  const listedAddress = ownFacts.status === 'ready' ? ownFacts.facts.account.addr : null
   const onMoveFunds = useCallback(() => {
-    if (holdsAccountKey) {
+    if (holdsAccountKey && listedAddress) {
+      dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: listedAddress } })
       navigate(`/${WEB_ROUTES.transfer}`)
     }
-  }, [holdsAccountKey, navigate])
+  }, [holdsAccountKey, listedAddress, dispatch, navigate])
 
   const chain = kit?.chain
   const onOpenExplorer = useCallback(
@@ -359,7 +379,11 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         return
       }
       if (countdown.status === 'present') {
-        setReading({ status: 'present', revision: countdown.revision, savedAt: countdown.savedAt })
+        setReading({
+          status: 'present',
+          savedAt: countdown.savedAt,
+          landed: landedAttemptOf(countdown.value)
+        })
         return
       }
       const session = await records.recoverySession(CHAIN_ID, account).read()
@@ -387,8 +411,8 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         records={records}
         account={account}
         entry={entry}
-        revision={reading.revision}
         savedAt={reading.savedAt}
+        landed={reading.landed}
       />
     )
   }

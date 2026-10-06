@@ -1,6 +1,7 @@
 /**
  * The running recovery as the last poll read it: its chip, the day it started
- * on this device, the countdown against the pinned block's time, the end in
+ * (on chain, the attempt's end less the setup's waiting period, where this
+ * device holds the setup; else the day the submission landed here), the countdown against the pinned block's time, the end in
  * the reader's zone from the attempt the manager reports, the account and the
  * new key, the recovery path by its rule lines where this device holds the
  * setup, and the transaction that started it on chain.
@@ -50,19 +51,16 @@ const CountdownBlock = ({
     [configuration, book, t]
   )
 
-  if (phase.kind !== 'waiting' && phase.kind !== 'executionDue' && phase.kind !== 'cannotExecute') {
+  if (phase.kind !== 'waiting' && phase.kind !== 'executionDue') {
     return null
   }
+  const startedMs = configuration
+    ? (phase.attempt.consumableAfter - Number(configuration.wait)) * 1000
+    : startedAt
 
-  let chip = renderChip('attempt', 'recoveryInProgress', t)
-  let tone: 'default' | 'success' | 'error' = 'default'
-  if (phase.kind === 'executionDue') {
-    chip = renderChip('attempt', 'executionDue', t)
-    tone = 'success'
-  } else if (phase.kind === 'cannotExecute') {
-    chip = renderChip('recovery', 'cannotRecover', t)
-    tone = 'error'
-  }
+  const due = phase.kind === 'executionDue'
+  const chip = renderChip('attempt', due ? 'executionDue' : 'recoveryInProgress', t)
+  const tone = due ? 'success' : 'default'
   const transactionHash = story.started?.at.transactionHash
 
   const value = (label: string, text: string, testID: string) => (
@@ -87,7 +85,7 @@ const CountdownBlock = ({
       <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbTy]}>
         <StatusChip testID="wait-chip" text={chip} tone={tone} style={spacings.mrSm} />
         <Text fontSize={12} appearance="secondaryText" testID="wait-started">
-          {t(`${WAIT}.started`, { date: dateOf(startedAt, timeZone) })}
+          {t(`${WAIT}.started`, { date: dateOf(startedMs, timeZone) })}
         </Text>
       </View>
       {remainingMs !== null && (

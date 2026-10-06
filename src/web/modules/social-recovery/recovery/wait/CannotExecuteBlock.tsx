@@ -35,8 +35,10 @@ const CannotExecuteBlock = ({ cause, holdsAccountKey, onMoveFunds }: CannotExecu
     causeLine = t(`${CANNOT}.notAuthorized`)
   } else if (cause === 'upgradedAway') {
     causeLine = t(`${CANNOT}.upgradedAway`)
-  } else {
+  } else if (cause === 'privilegeMoved') {
     causeLine = t(`${CANNOT}.refused`, { read: t(causeKey('ReservedAuthority')) })
+  } else {
+    causeLine = t(`${CANNOT}.refused`, { read: t(causeKey('NotConsumable')) })
   }
 
   return (
