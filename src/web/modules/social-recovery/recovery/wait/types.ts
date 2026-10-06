@@ -77,6 +77,12 @@ export interface HandoverKeys {
   removedKey: Address | null
 }
 
+/** The key being removed as this wallet read it: null where it names none holding on the account. */
+export type RemovedKeyReading =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'named'; key: Address | null }
+
 export type HandoverKeysReading =
   | { status: 'loading' }
   | { status: 'failed' }
@@ -280,6 +286,8 @@ export interface WaitBodyProps {
   revision: SessionRevision
   savedAt: number
 }
+
+export type WaitGateProps = Omit<WaitBodyProps, 'revision' | 'savedAt'>
 
 export interface CountdownBlockProps {
   round: WaitRound
