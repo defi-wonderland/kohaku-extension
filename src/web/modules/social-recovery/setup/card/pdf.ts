@@ -42,8 +42,8 @@ const FONT_NAMES: Record<PdfFont, string> = {
 // Helvetica's widths vary by character; about 0.56 is its average over ordinary
 // lower-case text, which is no bound, since capitals and wide letters run
 // wider. The figures here sit above that average so an ordinary English line,
-// capitals included, stays inside the padding; a run of the widest letters can
-// still reach into the padding, never past the border.
+// capitals included, stays inside the padding; a long run of the widest
+// letters, such as "W", can still overflow the padding and the border.
 const ADVANCE: Record<PdfFont, number> = {
   regular: 0.62,
   bold: 0.66,
@@ -307,7 +307,14 @@ const pagesOf = (blocks: PdfBlock[]): PdfPage[] => {
   }
   blocks.forEach((block, index) => {
     const started = page.operators.length > 0
-    if (started && page.cursor - roomAskedBy(block, blocks[index + 1]) < LOWEST_BASELINE) {
+    // A block right after its label starts where the label left it: the label
+    // already kept room for this block's first line, and the rest splits by line.
+    const followsLabel = index > 0 && blocks[index - 1].keepWithNext
+    if (
+      started &&
+      !followsLabel &&
+      page.cursor - roomAskedBy(block, blocks[index + 1]) < LOWEST_BASELINE
+    ) {
       turn()
     }
     let from = 0
