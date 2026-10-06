@@ -11,6 +11,7 @@ import type {
   Gathering,
   Hex
 } from '@web/modules/social-recovery/sdk-interfaces'
+import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type { RowNotes } from '@web/modules/social-recovery/shared/records'
@@ -26,6 +27,9 @@ import type {
 
 /** The passkey config's layout: the point's x and y, then the relying-party hash. */
 const PASSKEY_CONFIG = [{ type: 'bytes32' }, { type: 'bytes32' }, { type: 'bytes32' }] as const
+
+/** A clause asks something when its threshold is one or more and it has a member. */
+const asksSomething = (threshold: number, members: number): boolean => threshold >= 1 && members > 0
 
 /**
  * The rows of a gathering under the path's clauses. Places are numbered in
@@ -62,14 +66,19 @@ export const layoutOf = (
   }
   const layout: ChecklistLayout = { required: [], groups: [] }
   configuration.clauses.forEach((clause, index) => {
-    if (clause.threshold < 1 || clause.credentials.length === 0) {
+    if (!asksSomething(clause.threshold, clause.credentials.length)) {
       return
     }
     const members = rows.filter((row) => row.clause === index).sort((a, b) => a.place - b.place)
     if (clause.credentials.length === 1) {
       layout.required.push(...members)
     } else {
-      layout.groups.push({ clause: index, threshold: clause.threshold, rows: members })
+      layout.groups.push({
+        clause: index,
+        number: layout.groups.length + 1,
+        threshold: clause.threshold,
+        rows: members
+      })
     }
   })
   return layout
@@ -102,10 +111,12 @@ export const headlineOf = (layout: ChecklistLayout, assessment: Assessment): Che
 
 /**
  * The headline straight from an assessment, for a surface that holds no
- * configuration: every clause that asks something is one unit.
+ * configuration: every clause that asks something is one unit, as on the
+ * checklist. A clause whose threshold the assessment reports at one or more
+ * has a member, since a memberless clause at such a threshold never commits.
  */
 export const headlineOfAssessment = (assessment: Assessment): ChecklistHeadline => {
-  const units = assessment.clauses.filter((entry) => entry.threshold > 0)
+  const units = assessment.clauses.filter((entry) => asksSomething(entry.threshold, 1))
   return {
     done: units.filter((entry) => entry.filled >= entry.threshold).length,
     total: units.length
@@ -119,13 +130,15 @@ export const isAsked = (row: ChecklistRow): boolean =>
 /**
  * One row's state. A reply completes it. Once its clause is complete, or the
  * rule is satisfied, a row still open is not needed: the submission uses the
- * smallest set. A row this release does not ask reads not asked, an open row
- * reads its note where it has one, and any other open row waits.
+ * smallest set. An open row reads its note where it has one, waits while this
+ * tab has asked it, and otherwise reads not asked, as every row this release
+ * does not ask does.
  */
 export const rowStateOf = (
   row: ChecklistRow,
   assessment: Assessment,
-  notes: RowNotes | undefined
+  notes: RowNotes | undefined,
+  asked: ReadonlySet<number>
 ): RowState => {
   const replied = assessment.filled.includes(row.place)
   if (replied) {
@@ -138,19 +151,23 @@ export const rowStateOf = (
     return { chip: 'notAsked', replied }
   }
   const note = notes?.[row.place]
-  return note ? { chip: note, replied, note } : { chip: 'waiting', replied }
+  if (note) {
+    return { chip: note, replied, note }
+  }
+  return { chip: asked.has(row.place) ? 'waiting' : 'notAsked', replied }
 }
 
 /** Every row's state by place. */
 export const rowStatesOf = (
   layout: ChecklistLayout,
   assessment: Assessment,
-  notes: RowNotes | undefined
+  notes: RowNotes | undefined,
+  asked: ReadonlySet<number>
 ): Map<number, RowState> =>
   new Map(
     [...layout.required, ...layout.groups.flatMap((group) => group.rows)].map((row) => [
       row.place,
-      rowStateOf(row, assessment, notes)
+      rowStateOf(row, assessment, notes, asked)
     ])
   )
 
@@ -163,6 +180,22 @@ export const unlockLineKeyOf = (layout: ChecklistLayout): UnlockLineKey => {
     return 'socialRecovery.checklist.continueUnlockGroupsOnly'
   }
   return 'socialRecovery.checklist.continueUnlock'
+}
+
+/**
+ * Whether a claim found no passkey to answer with on this device: the device
+ * did not answer, or the authenticator could not meet the request. The
+ * holder's own cancel, a refusal by the page's focus or policy, and every
+ * failure of the check are not.
+ */
+export const deviceHoldsNoPasskey = (outcome: CeremonyOutcome<unknown>): boolean => {
+  if (outcome.kind === 'dismissed') {
+    return (
+      outcome.note === 'refused' &&
+      (outcome.detail === 'InvalidStateError' || outcome.detail === 'NotSupportedError')
+    )
+  }
+  return outcome.verdict === 'unavailable' && outcome.cause === 'device-unavailable'
 }
 
 /**

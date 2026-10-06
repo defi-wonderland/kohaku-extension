@@ -15,7 +15,7 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
-import { inProgressItemsOf } from './inProgress'
+import { inProgressItemsOf, routeOfItems } from './inProgress'
 import InProgressRow from './InProgressRow'
 import { checklistPathOf, readoutPathOf, routeEntryPathOf } from './search'
 import type { InProgressItem, InProgressLoad, InProgressViewProps } from './types'
@@ -28,7 +28,8 @@ const InProgressView = ({
   navigate,
   timeZone,
   holdsPath,
-  useHeadline
+  useHeadline,
+  onRoute
 }: InProgressViewProps) => {
   const { t } = useTranslation()
   const [load, setLoad] = useState<InProgressLoad>({ status: 'loading' })
@@ -51,6 +52,7 @@ const InProgressView = ({
           return
         }
         setLoad({ status: 'ready', items })
+        onRoute?.(routeOfItems(items))
         const held = await Promise.all(
           items.map(
             async (item) => [item.account.toLowerCase(), await holdsPath(item.account)] as const
@@ -68,6 +70,8 @@ const InProgressView = ({
     return () => {
       live = false
     }
+    // The route is reported once per read of the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, chainId, navigate, holdsPath, attempt])
 
   const onContinue = useCallback(

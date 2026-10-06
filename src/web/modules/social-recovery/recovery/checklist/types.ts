@@ -56,6 +56,8 @@ export interface ChecklistRow {
 /** One clause of more than one member: its header counts the filled members against the threshold. */
 export interface ChecklistGroup {
   clause: number
+  /** The group's number among the path's groups, from one. */
+  number: number
   threshold: number
   rows: ChecklistRow[]
 }
@@ -175,11 +177,23 @@ export type ChecklistLoad =
 
 /** What opening the checklist found or made. */
 export type OpenResult =
-  | { kind: 'live'; session: LiveRecoverySession; revision: SessionRevision; savedAt: number }
+  | {
+      kind: 'live'
+      session: LiveRecoverySession
+      revision: SessionRevision
+      savedAt: number
+      /** The configuration the gathering was opened over, where it is not the one passed in. */
+      configuration?: Configuration
+    }
   | { kind: 'wiped'; session: WipedRecoverySession; revision: SessionRevision }
   | { kind: 'landed' }
   /** No session is stored and the destination key is not known yet. */
   | { kind: 'needs-destination' }
+  /** The cached setup is stale and no recovery password is held to read it again. */
+  | { kind: 'needs-password' }
+
+/** Where the configuration came from: the decrypted cache, or the recovery password. */
+export type ConfigurationSourceKind = 'cache' | 'password'
 
 export interface OpenInput {
   records: WalletRecords
@@ -187,6 +201,9 @@ export interface OpenInput {
   account: Address
   client: ChecklistKitClient
   configuration: Configuration
+  source: ConfigurationSourceKind
+  /** The recovery password held in memory, which reads the setup again over a stale cache. */
+  password: string | undefined
   destination: Address | undefined
 }
 
@@ -205,8 +222,14 @@ export interface ConfigurationInput {
 
 /** Where the setup's configuration comes from: the decrypted cache, or the password held in memory. */
 export type ConfigurationReading =
-  | { kind: 'configuration'; configuration: Configuration }
+  | { kind: 'configuration'; configuration: Configuration; source: ConfigurationSourceKind }
   | { kind: 'none' }
+
+/** The configuration the checklist holds, with where it came from. */
+export interface HeldConfiguration {
+  configuration: Configuration
+  source: ConfigurationSourceKind
+}
 
 /** What adding a reply came to. */
 export type AddReplyResult =
@@ -225,6 +248,8 @@ export interface ChecklistState {
   abandon: () => Promise<void>
   abandonFailed: boolean
   gatherAgain: () => Promise<void>
+  /** Gathering again did not open; the wiped reason stays on screen. */
+  gatherFailed: boolean
   busy: boolean
 }
 
@@ -272,6 +297,8 @@ export interface PassedClaim {
 /** A passed claim waiting for the live session to take it. */
 export interface ClaimReply extends PassedClaim {
   place: number
+  /** The ceremony request's id, kept until the reply is added. */
+  id: string
 }
 
 /** How this tab saw a place answered: from the phone or on this device, and when. */
@@ -302,7 +329,13 @@ export interface PasskeyClaim {
   outcomes: Partial<Record<number, ClaimOutcome>>
   /** A passed claim the checklist has not added yet. */
   pending: ClaimReply | null
+  /**
+   * The checklist took the pending reply: the request record and the
+   * ceremony id go, and a refusal reads as the place's note.
+   */
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
+  /** The places this tab asked: a claim launched, pending or undelivered. */
+  asked: ReadonlySet<number>
   /** The place whose report never came back, with its retry. */
   undelivered: ClaimAsked | null
   retryUndelivered: () => Promise<void>
@@ -320,7 +353,6 @@ export interface RowFrameProps {
   /** The method's kind name. */
   title: string
   label?: string
-  detail?: string
   children?: ReactNode
 }
 
@@ -341,8 +373,6 @@ export interface GuardianRowProps {
   row: ChecklistRow
   state: RowState
   request: ApproverRequest | undefined
-  sessionSavedAt: number
-  timeZone: string
   busy: boolean
   setNote: (place: number, note: RowNote | null) => void
   addReply: (reply: ApproverReply) => Promise<AddReplyResult>
@@ -378,6 +408,7 @@ export interface WipedBlockProps {
   session: WipedRecoverySession
   timeZone: string
   busy: boolean
+  failed: boolean
   onGatherAgain: () => void
 }
 
@@ -417,6 +448,8 @@ export interface InProgressViewProps {
   /** Whether this device holds the unlocked recovery path of the account. */
   holdsPath: (account: Address) => Promise<boolean>
   useHeadline: SessionHeadlineHook
+  /** The route whose chrome the listed recoveries take, once the list is read. */
+  onRoute?: (route: RecoveryRoute) => void
 }
 
 export interface InProgressRowProps {

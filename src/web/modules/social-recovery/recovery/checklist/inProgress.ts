@@ -7,11 +7,21 @@ import { isAddressEqual } from 'viem'
 import type {
   ListedRecord,
   ListedRecoveryEntry,
+  RecoveryRoute,
   RecoverySessionRecord
 } from '@web/modules/social-recovery/shared/records'
 
 import { startedAtOf } from './lines'
 import type { InProgressItem } from './types'
+
+/**
+ * The chrome the listed recoveries take: the fresh install's plain header when
+ * every one of them came by the fast track, the settings chrome otherwise.
+ */
+export const routeOfItems = (items: readonly InProgressItem[]): RecoveryRoute =>
+  items.length > 0 && items.every((item) => item.entry?.route === 'fresh-install')
+    ? 'fresh-install'
+    : 'logged-in'
 
 export const inProgressItemsOf = (
   sessions: readonly ListedRecord<RecoverySessionRecord>[],

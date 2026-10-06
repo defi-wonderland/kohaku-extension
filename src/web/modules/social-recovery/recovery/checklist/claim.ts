@@ -40,7 +40,7 @@ export const claimAskedOf = (
   if (!sameAddress(record.account, target.account)) {
     return null
   }
-  if (BigInt(record.chainId) !== BigInt(target.chainId)) {
+  if (String(record.chainId) !== String(target.chainId)) {
     return null
   }
   if (!sameAddress(record.request.account, target.account)) {

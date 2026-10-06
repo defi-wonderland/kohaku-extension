@@ -1,6 +1,6 @@
 /**
  * One live recovery on the home surface: the account being recovered, its
- * headline with the day it started where the client can assess it, and the
+ * not submitted chip, its headline with the day it started where the client can assess it, and the
  * way to open it.
  */
 import React from 'react'
@@ -11,8 +11,8 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import { MethodRow } from '@web/modules/social-recovery/shared/chrome'
-import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import { MethodRow, StatusChip } from '@web/modules/social-recovery/shared/chrome'
+import { renderChip, renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
 import { dateOf } from './lines'
 import type { HomeRecoveryLineProps } from './types'
@@ -41,6 +41,11 @@ const HomeRecoveryLine = ({ item, timeZone, useHeadline, onOpen }: HomeRecoveryL
             </Text>
           )}
         </View>
+        <StatusChip
+          testID={`home-recovery-${id}-chip`}
+          text={renderChip('session', 'notSubmitted', t)}
+          style={spacings.mrSm}
+        />
         <Button
           testID={`home-recovery-${id}-open`}
           type="secondary"

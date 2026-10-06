@@ -1,7 +1,6 @@
 /**
- * One checklist row's frame: the method's kind name, its label with a detail
- * line where the kind has one, the collection chip, and the row's body by
- * kind below.
+ * One checklist row's frame: the method's kind name, its label, the
+ * collection chip, and the row's body by kind below.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -25,7 +24,7 @@ const CHIP_TONES: Partial<Record<CollectionChip, StatusChipTone>> = {
   stopped: 'error'
 }
 
-const RowFrame = ({ row, state, title, label, detail, children }: RowFrameProps) => {
+const RowFrame = ({ row, state, title, label, children }: RowFrameProps) => {
   const { t } = useTranslation()
 
   return (
@@ -38,15 +37,6 @@ const RowFrame = ({ row, state, title, label, detail, children }: RowFrameProps)
           {!!label && (
             <Text testID={`checklist-row-${row.place}-label`} fontSize={12} weight="medium">
               {label}
-            </Text>
-          )}
-          {!!detail && (
-            <Text
-              testID={`checklist-row-${row.place}-detail`}
-              fontSize={12}
-              appearance="secondaryText"
-            >
-              {detail}
             </Text>
           )}
         </View>

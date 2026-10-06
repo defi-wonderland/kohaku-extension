@@ -1,14 +1,21 @@
 /**
  * Opening the checklist over the records: the setup's configuration from the
  * decrypted cache or the recovery password held in memory, the stored session
- * read first, and a new gathering only where none is stored. A live session is
+ * read first, and a new gathering only where none is live. A live session is
  * never replaced: of two tabs that open together, one writes and the other
  * reads the winner's session.
  */
-import type { Address, Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  Configuration,
+  Gathering,
+  RestoreCause,
+  RestoreRefusal
+} from '@web/modules/social-recovery/sdk-interfaces'
+import { RESTORE_CAUSES } from '@web/modules/social-recovery/sdk-interfaces'
 import { REQUEST_WINDOW_SECONDS } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
-import type { SessionRead } from '@web/modules/social-recovery/shared/records'
+import type { ExpectedRevision, SessionRead } from '@web/modules/social-recovery/shared/records'
 
 import { NO_PAYMENT_ORDER } from './constants'
 import type {
@@ -27,7 +34,7 @@ import type {
 export const configurationOf = async (input: ConfigurationInput): Promise<ConfigurationReading> => {
   const cached = await input.records.decryptedSetupCache(input.chainId, input.account).read()
   if (cached.status === 'present') {
-    return { kind: 'configuration', configuration: cached.value.configuration }
+    return { kind: 'configuration', configuration: cached.value.configuration, source: 'cache' }
   }
   if (input.password === undefined) {
     return { kind: 'none' }
@@ -35,7 +42,19 @@ export const configurationOf = async (input: ConfigurationInput): Promise<Config
   const configuration: Configuration = await input.client.setup.getSetup({
     password: input.password
   })
-  return { kind: 'configuration', configuration }
+  return { kind: 'configuration', configuration, source: 'password' }
+}
+
+/** The restore cause a thrown value carries, where it is a restore refusal. */
+const restoreCauseOf = (error: unknown): RestoreCause | undefined => {
+  if (typeof error !== 'object' || error === null || !('cause' in error)) {
+    return undefined
+  }
+  const { cause } = error as Partial<RestoreRefusal>
+  if (typeof cause !== 'object' || cause === null) {
+    return undefined
+  }
+  return RESTORE_CAUSES.find((known) => known === cause.code)
 }
 
 /** A stored session as what opening found. */
@@ -53,16 +72,14 @@ const resultOfRead = (read: SessionRead): OpenResult | null => {
   return { kind: 'landed' }
 }
 
-/**
- * Opens a new gathering over the configuration, the handover naming the
- * destination key and the key the recovery removes, and writes it as the live
- * session where none is stored. Where another tab wrote first, its session is
- * the one this tab reads.
- */
-const startGathering = async (input: OpenInput, destination: Address): Promise<OpenResult> => {
-  const { records, chainId, account, client, configuration } = input
-  const removed = await client.walletReads.removedKey()
-  const gathering = await client.recovery.initRecoveryGathering(
+/** A gathering opened over a configuration, for the destination key and the key the recovery removes. */
+const initOver = async (
+  input: OpenInput,
+  destination: Address,
+  configuration: Configuration
+): Promise<Gathering> => {
+  const removed = await input.client.walletReads.removedKey()
+  return input.client.recovery.initRecoveryGathering(
     configuration,
     {
       newAuthority: destination,
@@ -71,9 +88,41 @@ const startGathering = async (input: OpenInput, destination: Address): Promise<O
     NO_PAYMENT_ORDER,
     { window: REQUEST_WINDOW_SECONDS }
   )
-  const accessor = records.recoverySession(chainId, account)
+}
+
+/**
+ * Opens a new gathering over the configuration, the handover naming the
+ * destination key and the key the recovery removes, and writes it as the live
+ * session under the revision the caller read: none, or the wiped session it
+ * replaces. A cached setup the chain no longer commits is read again with the
+ * recovery password held in memory; with none held, the holder unlocks it at
+ * the readout. Where another tab wrote first, its session is the one this tab
+ * reads.
+ */
+const startGathering = async (
+  input: OpenInput,
+  destination: Address,
+  expected: ExpectedRevision
+): Promise<OpenResult> => {
+  let { configuration } = input
+  let fresh: Configuration | undefined
+  let gathering: Gathering
   try {
-    const stored = await accessor.write(gathering, null)
+    gathering = await initOver(input, destination, configuration)
+  } catch (error: unknown) {
+    if (input.source !== 'cache' || restoreCauseOf(error) !== 'restore.commitment-mismatch') {
+      throw error
+    }
+    if (input.password === undefined) {
+      return { kind: 'needs-password' }
+    }
+    configuration = await input.client.setup.getSetup({ password: input.password })
+    fresh = configuration
+    gathering = await initOver(input, destination, configuration)
+  }
+  const accessor = input.records.recoverySession(input.chainId, input.account)
+  try {
+    const stored = await accessor.write(gathering, expected)
     if (stored.value.state !== 'live') {
       throw new Error('The session write stored no live session')
     }
@@ -81,7 +130,8 @@ const startGathering = async (input: OpenInput, destination: Address): Promise<O
       kind: 'live',
       session: stored.value,
       revision: stored.revision,
-      savedAt: stored.savedAt
+      savedAt: stored.savedAt,
+      ...(fresh ? { configuration: fresh } : {})
     }
   } catch (error: unknown) {
     if (!isSessionRevisionConflict(error)) {
@@ -96,35 +146,32 @@ const startGathering = async (input: OpenInput, destination: Address): Promise<O
 }
 
 /**
- * What the checklist opens on: the stored session where one exists, live,
- * wiped or landed, and otherwise a new gathering once the destination key is
- * known.
+ * What the checklist opens on: a stored live, wiped or landed session, and
+ * otherwise a new gathering once the destination key is known. The line the
+ * recoverer's own abandon leaves is no reason to show: it counts as no session,
+ * and the new gathering replaces it.
  */
 export const openChecklist = async (input: OpenInput): Promise<OpenResult> => {
-  const found = resultOfRead(
-    await input.records.recoverySession(input.chainId, input.account).read()
-  )
-  if (found) {
+  const read = await input.records.recoverySession(input.chainId, input.account).read()
+  const found = resultOfRead(read)
+  const abandoned =
+    found?.kind === 'wiped' && found.session.reason === 'recoverer-abandoned' ? found : null
+  if (found && !abandoned) {
     return found
   }
   if (!input.destination) {
     return { kind: 'needs-destination' }
   }
-  return startGathering(input, input.destination)
+  return startGathering(input, input.destination, abandoned ? abandoned.revision : null)
 }
 
 /**
- * Gathers again after a wipe: the wiped line goes, then a new gathering
- * opens. Where the session changed since it was read, nothing is cleared and
- * the checklist opens on what is stored.
+ * Gathers again after a wipe: the new gathering opens first and replaces the
+ * wiped line in one write, so a failed open keeps the reason on screen.
  */
 export const gatherAgain = async (input: GatherAgainInput): Promise<OpenResult> => {
-  try {
-    await input.records.clearWipedSession(input.chainId, input.account, input.revision)
-  } catch (error: unknown) {
-    if (!isSessionRevisionConflict(error)) {
-      throw error
-    }
+  if (!input.destination) {
+    return { kind: 'needs-destination' }
   }
-  return openChecklist(input)
+  return startGathering(input, input.destination, input.revision)
 }

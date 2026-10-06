@@ -1,12 +1,15 @@
 /**
- * The recovery in progress's route: the settings chrome around the list of
- * the recovery chain's live sessions, with this device's hold on each
+ * The recovery in progress's route: the list of the recovery chain's live
+ * sessions, under the plain header where every one came by the fast track and
+ * the settings chrome otherwise, with this device's hold on each
  * account's unlocked path, the decrypted setup cache or the recovery password
  * held in memory.
  */
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
+import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
+import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
@@ -15,6 +18,7 @@ import {
   extensionRecordStorage,
   readRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 
 import InProgressView from './InProgressView'
 import useSessionHeadline from './useSessionHeadline'
@@ -22,7 +26,9 @@ import useSessionHeadline from './useSessionHeadline'
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
 const InProgressScreen = () => {
+  const { t } = useTranslation()
   const { navigate } = useNavigation()
+  const [route, setRoute] = useState<RecoveryRoute>('logged-in')
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
 
@@ -37,18 +43,25 @@ const InProgressScreen = () => {
     [records]
   )
 
-  return (
-    <SetupChrome testID="in-progress-screen">
-      <InProgressView
-        records={records}
-        chainId={CHAIN_ID}
-        navigate={navigate}
-        timeZone={timeZone}
-        holdsPath={holdsPath}
-        useHeadline={useSessionHeadline}
-      />
-    </SetupChrome>
+  const view = (
+    <InProgressView
+      records={records}
+      chainId={CHAIN_ID}
+      navigate={navigate}
+      timeZone={timeZone}
+      holdsPath={holdsPath}
+      useHeadline={useSessionHeadline}
+      onRoute={setRoute}
+    />
   )
+  if (route === 'fresh-install') {
+    return (
+      <PlainChrome title={t('socialRecovery.routes.recovery')} testID="in-progress-screen">
+        {view}
+      </PlainChrome>
+    )
+  }
+  return <SetupChrome testID="in-progress-screen">{view}</SetupChrome>
 }
 
 export default React.memo(InProgressScreen)

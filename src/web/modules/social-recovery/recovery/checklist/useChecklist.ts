@@ -19,6 +19,7 @@ import { readoutPathOf, routeEntryPathOf, waitPathOf } from './search'
 import { configurationOf, gatherAgain as gatherAgainOver, openChecklist } from './session'
 import type {
   AddReplyResult,
+  HeldConfiguration,
   ChecklistHookInput,
   ChecklistLoad,
   ChecklistState,
@@ -56,6 +57,7 @@ const useChecklist = ({
   const [busy, setBusy] = useState(false)
   const [noteFailed, setNoteFailed] = useState(false)
   const [abandonFailed, setAbandonFailed] = useState(false)
+  const [gatherFailed, setGatherFailed] = useState(false)
 
   const kit = client.status === 'ready' ? client.client : null
   const destinationKey = destination.status === 'ready' ? destination.key : undefined
@@ -65,7 +67,7 @@ const useChecklist = ({
   // render's copy, so two changes in a row both carry the latest revision.
   const loadRef = useRef(load)
   loadRef.current = load
-  const configurationRef = useRef<Configuration | null>(null)
+  const configurationRef = useRef<HeldConfiguration | null>(null)
   const destinationRef = useRef(destinationKey)
   destinationRef.current = destinationKey
   const depsRef = useRef(deps)
@@ -78,12 +80,16 @@ const useChecklist = ({
       switch (result.kind) {
         case 'live':
           setNeedsDestination(false)
+          // A stale cache read again with the password: the rows follow the setup the chain commits.
+          if (result.configuration) {
+            configurationRef.current = { configuration: result.configuration, source: 'password' }
+          }
           setLoad({
             phase: 'live',
             session: result.session,
             revision: result.revision,
             savedAt: result.savedAt,
-            configuration
+            configuration: result.configuration ?? configuration
           })
           return
         case 'wiped':
@@ -92,6 +98,10 @@ const useChecklist = ({
           return
         case 'landed':
           navigateRef.current(waitPathOf(account), { replace: true })
+          return
+        case 'needs-password':
+          configurationRef.current = null
+          navigateRef.current(readoutPathOf(account), { replace: true })
           return
         case 'needs-destination':
         default:
@@ -115,8 +125,8 @@ const useChecklist = ({
     }
     let live = true
     const run = async () => {
-      let configuration = configurationRef.current
-      if (!configuration) {
+      let held = configurationRef.current
+      if (!held) {
         try {
           const reading = await configurationOf({
             records,
@@ -132,8 +142,8 @@ const useChecklist = ({
             navigateRef.current(readoutPathOf(account), { replace: true })
             return
           }
-          configuration = reading.configuration
-          configurationRef.current = configuration
+          held = { configuration: reading.configuration, source: reading.source }
+          configurationRef.current = held
         } catch {
           if (live) {
             setLoad({ phase: 'failed', cause: 'setup' })
@@ -147,11 +157,12 @@ const useChecklist = ({
           chainId,
           account,
           client: kit,
-          configuration,
+          ...held,
+          password: depsRef.current.readPassword(chainId, account),
           destination: destinationRef.current
         })
         if (live) {
-          apply(result, configuration)
+          apply(result, held.configuration)
         }
       } catch {
         if (live) {
@@ -281,27 +292,31 @@ const useChecklist = ({
 
   const gatherAgain = useCallback(async () => {
     const current = loadRef.current
-    const configuration = configurationRef.current
-    if (current.phase !== 'wiped' || !kit || !configuration) {
+    const held = configurationRef.current
+    if (current.phase !== 'wiped' || !kit || !held) {
       return
     }
     setBusy(true)
+    setGatherFailed(false)
     try {
       const result = await gatherAgainOver({
         records,
         chainId,
         account,
         client: kit,
-        configuration,
+        ...held,
+        password: depsRef.current.readPassword(chainId, account),
         destination: destinationRef.current,
         revision: current.revision
       })
-      apply(result, configuration)
+      // Without the destination key nothing opened, and the reason stays.
       if (result.kind === 'needs-destination') {
-        setLoad(LOADING)
+        setGatherFailed(true)
+      } else {
+        apply(result, held.configuration)
       }
     } catch {
-      setLoad({ phase: 'failed', cause: 'open' })
+      setGatherFailed(true)
     } finally {
       setBusy(false)
     }
@@ -329,6 +344,7 @@ const useChecklist = ({
     abandon,
     abandonFailed,
     gatherAgain,
+    gatherFailed,
     busy
   }
 }

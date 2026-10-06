@@ -1,7 +1,6 @@
 /**
- * A guardian row: the guardian's name where the path names one, its short
- * address, the chip, the approval once one is added, and the slot the row's
- * carriers mount in. While the row is open the recoverer can note it declined
+ * A guardian row: the guardian's short address, the chip, the verified line
+ * once an approval is added, and the slot the row's carriers mount in. While the row is open the recoverer can note it declined
  * or unanswered, a note one tap clears.
  */
 import React from 'react'
@@ -12,37 +11,19 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import {
-  renderNoun,
-  renderResolvedName,
-  renderShortAddress
-} from '@web/modules/social-recovery/shared/display'
+import { renderNoun, renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import { guardianAddressOf } from '@web/modules/social-recovery/setup/review'
 
 import GuardianCarriers from './GuardianCarriers'
-import { dateOf } from './lines'
 import RowFrame from './RowFrame'
 import type { GuardianRowProps } from './types'
 
 const GUARDIAN = 'socialRecovery.checklist.guardian'
 
-const GuardianRow = ({
-  row,
-  state,
-  request,
-  sessionSavedAt,
-  timeZone,
-  busy,
-  setNote,
-  addReply
-}: GuardianRowProps) => {
+const GuardianRow = ({ row, state, request, busy, setNote, addReply }: GuardianRowProps) => {
   const { t } = useTranslation()
   const { place } = row
   const address = guardianAddressOf(row.gatheringPlace)
-  const short = address ? renderShortAddress(address) : undefined
-  const named = row.gatheringPlace.label
-    ? renderResolvedName(row.gatheringPlace.label, 'informationOnly', t)
-    : null
   const open = !state.replied && state.chip !== 'notNeeded'
 
   const noteButton = (key: string, testID: string, onPress: () => void, primary = false) => (
@@ -63,12 +44,11 @@ const GuardianRow = ({
       row={row}
       state={state}
       title={renderNoun('guardian', t)}
-      label={named ? named.name : short}
-      detail={named ? short : undefined}
+      label={address ? renderShortAddress(address) : undefined}
     >
       {state.replied && (
-        <Text fontSize={14} style={spacings.mtTy} testID={`checklist-row-${place}-added`}>
-          {t(`${GUARDIAN}.added`, { date: dateOf(sessionSavedAt, timeZone) })}
+        <Text fontSize={14} style={spacings.mtTy} testID={`checklist-row-${place}-verified`}>
+          {t(`${GUARDIAN}.verified`)}
         </Text>
       )}
       <GuardianCarriers

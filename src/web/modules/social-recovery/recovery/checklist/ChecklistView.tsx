@@ -108,8 +108,11 @@ const ChecklistView = ({
     }
   }, [live, kit])
   const states = useMemo(
-    () => (layout && assessment ? rowStatesOf(layout, assessment, live?.session.notes) : null),
-    [layout, assessment, live]
+    () =>
+      layout && assessment
+        ? rowStatesOf(layout, assessment, live?.session.notes, claim.asked)
+        : null,
+    [layout, assessment, live, claim.asked]
   )
 
   // A passed claim joins the session once it is live; a conflict keeps it
@@ -233,7 +236,8 @@ const ChecklistView = ({
       <WipedBlock
         session={load.session}
         timeZone={deps.timeZone}
-        busy={checklist.busy}
+        busy={checklist.busy || destination.status !== 'ready'}
+        failed={checklist.gatherFailed}
         onGatherAgain={() => {
           checklist.gatherAgain().catch(() => undefined)
         }}
@@ -294,8 +298,6 @@ const ChecklistView = ({
           row={row}
           state={state}
           request={request}
-          sessionSavedAt={live.savedAt}
-          timeZone={deps.timeZone}
           busy={busy}
           setNote={(place, note) => {
             checklist.setNote(place, note).catch(() => undefined)
