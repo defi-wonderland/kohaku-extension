@@ -148,11 +148,13 @@ describe('the approval page link', () => {
     expect(requestOfApprovalLink(linkCarrying(withoutPayload))).toBeNull()
   })
 
-  it('reads an approval request with no order as no request', () => {
+  it('reads back an approval request with no order as one with no payment', () => {
     const { order, ...withoutOrder } = REQUEST
 
     expect(order).toBeDefined()
-    expect(requestOfApprovalLink(linkCarrying(withoutOrder))).toBeNull()
+    const read = requestOfApprovalLink(approvalLinkOf(withoutOrder, TAB))
+    expect(read).toEqual(withoutOrder)
+    expect(read).not.toHaveProperty('order')
   })
 
   it('reads a cancellation request with neither from a link built elsewhere', () => {

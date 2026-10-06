@@ -254,6 +254,29 @@ describe('the guardian row carriers', () => {
     expect(mounted.byTestId(id(1, 'unlock-reason'))).toBeNull()
   })
 
+  it('cuts a link the approval page reads back where the request carries the handover bytes and no order', async () => {
+    const withoutOrder = (of: Gathering, place: number) => {
+      const request = servedRequestOf(of, place)
+      delete request.order
+      return request
+    }
+    kit.getApproverRequests.mockImplementation((of: Gathering) =>
+      of.places.map((place) => withoutOrder(of, place.place))
+    )
+    const mounted = await open()
+
+    expect(mounted.byTestId(id(1, 'value-payment'))?.textContent).toBe(
+      t('socialRecovery.display.values.noPayment')
+    )
+    await mounted.press(id(1, 'copy-link'))
+
+    expect(clipboard.setStringAsync).toHaveBeenCalledTimes(1)
+    const [written] = clipboard.setStringAsync.mock.calls[0]
+    const read = requestOfApprovalLink(written)
+    expect(read).toEqual(withoutOrder(gathering, 1))
+    expect(read).not.toHaveProperty('order')
+  })
+
   it('says how the guardian answers under the values, above the link line and the carriers', async () => {
     const mounted = await open()
     const expected = [id(1, 'values'), id(1, 'how-they-answer'), id(1, 'link'), id(1, 'open-page')]
