@@ -24,7 +24,9 @@ export type {
 } from './types'
 export { default as PathTree } from './PathTree'
 export { default as PathTreeNode } from './PathTreeNode'
+export { default as PathTreeHeader } from './PathTreeHeader'
 export type {
+  PathTreeHeaderProps,
   PathTreeNodeProps,
   PathTreeNodeVariant,
   PathTreeProps,

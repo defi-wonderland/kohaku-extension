@@ -1,4 +1,4 @@
-import React, { useContext } from 'react'
+import React, { useContext, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 
 import Text from '@common/components/Text'
@@ -10,6 +10,7 @@ import {
   PATH_TREE_ANCHOR,
   PATH_TREE_GUTTER,
   PATH_TREE_LINE,
+  PathTreeHeaderContext,
   PathTreeLabelContext,
   PathTreeSegmentContext
 } from './pathTreeContext'
@@ -19,8 +20,9 @@ const LINE_LEFT = (PATH_TREE_GUTTER - PATH_TREE_LINE) / 2
 
 /**
  * One node of a path tree, its content right of the line's column. A branch
- * gets a tick from the line into its content; a node the line only passes
- * keeps the column so every node's content starts at one edge.
+ * gets a tick from the line into its content, at the middle of the
+ * `PathTreeHeader` inside it once that is laid out; a node the line only
+ * passes keeps the column so every node's content starts at one edge.
  */
 const PathTreeNode = ({
   children,
@@ -31,15 +33,19 @@ const PathTreeNode = ({
   const { theme } = useTheme()
   const segment = useContext(PathTreeSegmentContext)
   const label = useContext(PathTreeLabelContext)
+  const content = useRef<View>(null)
+  const [headerMiddle, setHeaderMiddle] = useState<number>()
+  const header = useMemo(() => ({ node: content, onMiddle: setHeaderMiddle }), [])
+  const tick = headerMiddle ?? anchor
   const line = { position: 'absolute', left: LINE_LEFT, width: PATH_TREE_LINE } as const
-  const color = { backgroundColor: theme.primaryBorder }
+  const color = { backgroundColor: theme.secondaryBorder }
 
   return (
     <View testID={testID} style={flexbox.directionRow}>
       <View style={{ width: PATH_TREE_GUTTER }}>
         {segment === 'full' && <View style={[line, color, { top: 0, bottom: 0 }]} />}
-        {segment === 'top' && <View style={[line, color, { top: 0, height: anchor }]} />}
-        {segment === 'bottom' && <View style={[line, color, { top: anchor, bottom: 0 }]} />}
+        {segment === 'top' && <View style={[line, color, { top: 0, height: tick }]} />}
+        {segment === 'bottom' && <View style={[line, color, { top: tick, bottom: 0 }]} />}
         {variant === 'branch' && segment !== 'none' && (
           <View
             style={[
@@ -47,7 +53,7 @@ const PathTreeNode = ({
               {
                 position: 'absolute',
                 left: LINE_LEFT,
-                top: anchor - PATH_TREE_LINE / 2,
+                top: tick - PATH_TREE_LINE / 2,
                 width: PATH_TREE_GUTTER - LINE_LEFT,
                 height: PATH_TREE_LINE
               }
@@ -55,13 +61,13 @@ const PathTreeNode = ({
           />
         )}
       </View>
-      <View style={flexbox.flex1}>
+      <View ref={content} style={flexbox.flex1}>
         {variant === 'junction' ? (
           <Text fontSize={12} weight="semiBold" appearance="secondaryText" style={spacings.pbTy}>
             {label}
           </Text>
         ) : (
-          children
+          <PathTreeHeaderContext.Provider value={header}>{children}</PathTreeHeaderContext.Provider>
         )}
       </View>
     </View>

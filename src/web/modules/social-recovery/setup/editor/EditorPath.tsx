@@ -19,10 +19,6 @@ import { ADD_KINDS } from './operations'
 import RequiredRow from './RequiredRow'
 import type { EditorPathProps } from './types'
 
-// Where the line meets a row's first line and a group's header.
-const ROW_ANCHOR = 24
-const GROUP_ANCHOR = 36
-
 /**
  * The path as one tree: the required rows, then the groups, with the line on
  * the left joining them and "and" between each two, since recovery needs every
@@ -69,11 +65,7 @@ const EditorPath = ({
       </PathTreeNode>
       {rows.flatMap((row, position) => [
         ...(position > 0 ? [<PathTreeNode key={`and-${row.index}`} variant="junction" />] : []),
-        <PathTreeNode
-          key={`row-${row.index}`}
-          anchor={ROW_ANCHOR}
-          testID={`editor-path-node-${row.index}`}
-        >
+        <PathTreeNode key={`row-${row.index}`} testID={`editor-path-node-${row.index}`}>
           <RequiredRow
             row={row}
             groups={groups}
@@ -119,11 +111,7 @@ const EditorPath = ({
       </PathTreeNode>
       {groups.flatMap((group, position) => [
         ...(position > 0 ? [<PathTreeNode key={`and-${group.index}`} variant="junction" />] : []),
-        <PathTreeNode
-          key={`group-${group.index}`}
-          anchor={GROUP_ANCHOR}
-          testID={`editor-path-node-${group.index}`}
-        >
+        <PathTreeNode key={`group-${group.index}`} testID={`editor-path-node-${group.index}`}>
           <GroupCard
             group={group}
             ordinal={position + 1}

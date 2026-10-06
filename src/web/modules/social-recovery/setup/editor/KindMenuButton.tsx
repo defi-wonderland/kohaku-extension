@@ -9,7 +9,11 @@ import flexbox from '@common/styles/utils/flexbox'
 import KindMenuAnchor from './KindMenuAnchor'
 import type { KindMenuButtonProps } from './types'
 
-/** A button that opens the kinds it can add, each one a single press away. */
+/**
+ * A button that opens the kinds it can add, each one a single press away. While
+ * the menu is open the button holds its hovered look at full strength, so a
+ * press does not leave it faded.
+ */
 const KindMenuButton = ({
   text,
   open,
@@ -38,12 +42,14 @@ const KindMenuButton = ({
       onPress={onToggle}
       disabled={disabled}
       hasBottomSpacing={false}
+      forceHoveredStyle={open}
+      childrenContainerStyle={spacings.mlTy}
       // react-native-web renders these two as aria-haspopup and aria-expanded; the React Native
       // types do not declare them, so they travel in a spread
       {...{ accessibilityHasPopup: 'menu', accessibilityExpanded: open }}
       childrenPosition="right"
     >
-      {open ? <UpArrowIcon style={spacings.mlTy} /> : <DownArrowIcon style={spacings.mlTy} />}
+      {open ? <UpArrowIcon /> : <DownArrowIcon />}
     </Button>
   </KindMenuAnchor>
 )
