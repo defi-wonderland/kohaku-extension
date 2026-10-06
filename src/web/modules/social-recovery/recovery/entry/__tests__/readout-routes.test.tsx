@@ -1,0 +1,239 @@
+/**
+ * @jest-environment jsdom
+ *
+ * Where the readout comes from and where it leads: the recovery entry record
+ * it reads for the route, the chrome of each route, a live session that sends
+ * the holder on to the checklist, continue on each route, and a read that
+ * answers after the readout moved on.
+ */
+import type { Mounted } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
+import {
+  BASIC,
+  CARD_PASSWORD,
+  CHAIN_ID,
+  commitLostSetup,
+  deferred,
+  LOST,
+  LOST_SETUP,
+  mountReadout,
+  navigate,
+  outside,
+  readoutSearchOf,
+  rebuildClient,
+  records,
+  resetEdges,
+  SMART,
+  settle,
+  storage,
+  storedCache,
+  storeEntry,
+  storeLiveRecovery,
+  t
+} from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
+import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import { wipeRecoveryPassword } from '@web/modules/social-recovery/shared/records'
+
+const ACCOUNT_STEP = '/social-recovery/recovery/account'
+const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST}`
+const GAS_STEP = `/social-recovery/fast-track/gas?account=${LOST}`
+
+let screen: Mounted | null = null
+const open = async (search: string = readoutSearchOf(LOST)) => {
+  screen = await mountReadout(search)
+  return screen
+}
+
+beforeEach(() => {
+  resetEdges()
+  wipeRecoveryPassword(CHAIN_ID, LOST)
+})
+afterEach(() => {
+  screen?.unmount()
+  screen = null
+})
+
+const navigatedTo = () => navigate.mock.calls.map(([path]) => path)
+
+const storeCache = async (state: SetupState) => {
+  await records().decryptedSetupCache(CHAIN_ID, LOST).write({
+    configuration: LOST_SETUP,
+    setupNonce: state.setupNonce,
+    setupCommitment: state.setupCommitment
+  })
+}
+
+describe('the recovery entry record', () => {
+  it('sends the holder to the account step when no entry record is stored for the account', async () => {
+    await commitLostSetup('public')
+    const page = await open()
+    expect(navigate).toHaveBeenCalledWith(ACCOUNT_STEP)
+    expect(page.has('readout')).toBe(false)
+  })
+
+  it('sends the holder to the account step when only another account has an entry record', async () => {
+    await records()
+      .recoveryEntry(CHAIN_ID, SMART)
+      .write({ account: SMART, route: 'logged-in', receivingAccount: BASIC })
+    await commitLostSetup('public')
+    const page = await open()
+    expect(navigate).toHaveBeenCalledWith(ACCOUNT_STEP)
+    expect(page.has('readout')).toBe(false)
+  })
+
+  const unusable: [string, string][] = [
+    ['no search', ''],
+    ['a malformed account', '?account=0x1234']
+  ]
+  unusable.forEach(([name, search]) => {
+    it(`sends the holder to the account step for ${name}`, async () => {
+      await storeEntry('logged-in')
+      const page = await open(search)
+      expect(navigate).toHaveBeenCalledWith(ACCOUNT_STEP)
+      expect(page.has('readout')).toBe(false)
+    })
+  })
+
+  it('shows the third of five stages in the settings chrome on the logged-in route', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    const page = await open()
+    expect(page.textOf('recovery-stage')).toBe(
+      t('socialRecovery.entry.stageCounter', { step: 3, total: 5 })
+    )
+    expect(page.text()).toContain(t('socialRecovery.chrome.breadcrumb'))
+  })
+
+  it('shows the plain header and no counter on the fresh-install route', async () => {
+    await storeEntry('fresh-install', SMART)
+    await commitLostSetup('public')
+    const page = await open()
+    expect(page.has('recovery-stage')).toBe(false)
+    expect(page.text()).not.toContain(t('socialRecovery.chrome.breadcrumb'))
+    expect(page.text()).toContain(t('socialRecovery.routes.recover'))
+    expect(page.has('readout-readable-public')).toBe(true)
+  })
+})
+
+describe('continue', () => {
+  it('goes to the checklist on the logged-in route', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    const page = await open()
+    expect(navigate).not.toHaveBeenCalled()
+    await page.press('readout-continue')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+
+  it('goes to the gas step on the fresh-install route', async () => {
+    await storeEntry('fresh-install', SMART)
+    await commitLostSetup('public')
+    const page = await open()
+    await page.press('readout-continue')
+    expect(navigatedTo()).toEqual([GAS_STEP])
+  })
+
+  it('goes on from a private setup once the card password opened it', async () => {
+    await storeEntry('fresh-install', SMART)
+    await commitLostSetup('private')
+    const page = await open()
+    await page.type('readout-password-field', CARD_PASSWORD)
+    await page.press('readout-unlock')
+    await page.press('readout-continue')
+    expect(navigatedTo()).toEqual([GAS_STEP])
+  })
+
+  it('goes on only once the opened setup is written, so the next screen finds it', async () => {
+    await storeEntry('logged-in')
+    const hold = deferred<void>()
+    storage.hold = hold
+    await commitLostSetup('public')
+    const page = await open()
+    expect(page.has('readout-readable-public')).toBe(true)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    await outside(() => hold.resolve())
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(await storedCache()).not.toBeNull()
+  })
+
+  it('sends once for a double press', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    const page = await open()
+    await page.press('readout-continue')
+    await page.press('readout-continue')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+})
+
+describe('a live session', () => {
+  it('sends the holder to the checklist with no chain read when this device keeps the opened setup', async () => {
+    const world = await commitLostSetup('private')
+    await storeLiveRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
+    await storeCache(await world.client.setup.setupState())
+    const setupState = jest.spyOn(world.client.setup, 'setupState')
+    const page = await open()
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(setupState).not.toHaveBeenCalled()
+    expect(page.has('readout-password-field')).toBe(false)
+  })
+
+  it('asks the card password first when this device keeps no opened setup, then keeps it and sends the holder to the checklist', async () => {
+    await commitLostSetup('private')
+    await storeLiveRecovery(LOST, { route: 'logged-in', receivingAccount: BASIC })
+    const page = await open()
+    expect(page.has('readout-locked-private')).toBe(true)
+    expect(navigate).not.toHaveBeenCalled()
+    await page.type('readout-password-field', CARD_PASSWORD)
+    await page.press('readout-unlock')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(await storedCache()).not.toBeNull()
+  })
+
+  it('keeps a public setup it reads again and sends the holder to the checklist with no password', async () => {
+    await commitLostSetup('public')
+    await storeLiveRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
+    await open()
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(await storedCache()).not.toBeNull()
+  })
+})
+
+describe('a read that answers after the readout moved on', () => {
+  it('does not navigate on a setup read that answers after the screen closed', async () => {
+    const world = await commitLostSetup('public')
+    await storeLiveRecovery(LOST, { route: 'logged-in', receivingAccount: BASIC })
+    const held = deferred<void>()
+    const real = world.client.setup.setupState.bind(world.client.setup)
+    jest.spyOn(world.client.setup, 'setupState').mockImplementationOnce(async () => {
+      await held.promise
+      return real()
+    })
+    const page = await open()
+    expect(page.has('readout-reading')).toBe(true)
+    page.unmount()
+    screen = null
+    await outside(() => held.resolve())
+    expect(navigate).not.toHaveBeenCalled()
+    expect(await storedCache()).toBeNull()
+  })
+
+  it('ignores a stale read from the client before a rebuild and renders the latest one', async () => {
+    await storeEntry('logged-in')
+    const world = await commitLostSetup('public')
+    const held = deferred<void>()
+    const real = world.client.setup.setupState.bind(world.client.setup)
+    jest.spyOn(world.client.setup, 'setupState').mockImplementationOnce(async () => {
+      await held.promise
+      return { ...(await real()), hasSetup: false }
+    })
+    const page = await open()
+    expect(page.has('readout-reading')).toBe(true)
+    await rebuildClient(world)
+    await settle()
+    expect(page.has('readout-readable-public')).toBe(true)
+    await outside(() => held.resolve())
+    expect(navigate).not.toHaveBeenCalled()
+    expect(page.has('readout-readable-public')).toBe(true)
+  })
+})
