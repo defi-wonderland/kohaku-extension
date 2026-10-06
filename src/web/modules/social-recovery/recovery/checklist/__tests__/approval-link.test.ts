@@ -67,8 +67,8 @@ describe('the approval page link', () => {
     expect(requestOfApprovalLink(link.slice(link.indexOf('?')))).toEqual(REQUEST)
   })
 
-  it('reads back a request that carries no order and no handover bytes', () => {
-    const bare: ApproverRequest = { ...REQUEST }
+  it('reads back a cancellation request that carries no order and no handover bytes', () => {
+    const bare: ApproverRequest = { ...REQUEST, purpose: 'cancellation' }
     delete bare.order
     delete bare.payload
 

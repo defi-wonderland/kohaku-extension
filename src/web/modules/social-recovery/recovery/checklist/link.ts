@@ -40,10 +40,54 @@ export const tabPageUrl = (): string => {
   return TAB_PAGE
 }
 
+/**
+ * The request's declared fields in a fresh object, so a field a client adds
+ * beside them never travels in the link.
+ */
+const declaredFieldsOf = ({
+  kind,
+  version,
+  purpose,
+  chainId,
+  manager,
+  digestVersion,
+  account,
+  action,
+  attemptId,
+  setupNonce,
+  setupBodyHash,
+  payload,
+  order,
+  validUntil,
+  place,
+  method,
+  config,
+  salt
+}: ApproverRequest): ApproverRequest => ({
+  kind,
+  version,
+  purpose,
+  chainId,
+  manager,
+  digestVersion,
+  account,
+  action,
+  attemptId,
+  setupNonce,
+  setupBodyHash,
+  ...(payload !== undefined ? { payload } : {}),
+  ...(order ? { order: { token: order.token, amount: order.amount, payee: order.payee } } : {}),
+  validUntil,
+  place,
+  method,
+  config,
+  salt
+})
+
 /** The link to the approval page for one place's request, one line. */
 export const approvalLinkOf = (request: ApproverRequest, tabUrl: string = tabPageUrl()): string => {
   const query = new URLSearchParams()
-  query.set(APPROVAL_REQUEST_KEY, lineOfRecord(request))
+  query.set(APPROVAL_REQUEST_KEY, lineOfRecord(declaredFieldsOf(request)))
   return `${tabUrl}#/${WEB_ROUTES.socialRecoveryApprove}?${query.toString()}`
 }
 
@@ -65,7 +109,8 @@ const orderOf = (value: unknown): SerializedPaymentOrder | null | undefined => {
 
 /**
  * The request a link carries, from the link itself or from the route's search
- * string, or null where any field is missing or has the wrong type.
+ * string, or null where any field is missing or has the wrong type. An
+ * approval request carries the handover bytes and the payment order.
  */
 export const requestOfApprovalLink = (search: string): ApproverRequest | null => {
   const at = search.lastIndexOf('?')
@@ -93,6 +138,7 @@ export const requestOfApprovalLink = (search: string): ApproverRequest | null =>
     !isDecimal(r.setupNonce) ||
     !isHexField(r.setupBodyHash) ||
     (r.payload !== undefined && !isHexField(r.payload)) ||
+    (r.purpose === 'approval' && (r.payload === undefined || order === undefined)) ||
     !isDecimal(r.validUntil) ||
     !isIndex(r.place) ||
     !isAddressField(r.method) ||
