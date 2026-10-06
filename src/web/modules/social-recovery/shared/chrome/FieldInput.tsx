@@ -25,7 +25,7 @@ const FieldInput = ({
 }: FieldInputProps) => {
   const { theme } = useTheme()
   const [focused, setFocused] = useState(false)
-  const neutral = focused && !disabled && !error && !isValid
+  const neutral = focused && !error && !isValid
 
   const handleFocus = (event: NativeSyntheticEvent<TextInputFocusEventData>) => {
     setFocused(true)
