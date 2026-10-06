@@ -35,6 +35,14 @@ const values = {
 const paragraphs = paragraphKeys.map((key) => i18n.t(`${MESSAGE_PREFIX}.${key}`, values))
 const joined = paragraphs.join('\n\n')
 
+const rendered = (key: string) => i18n.t(`${MESSAGE_PREFIX}.${key}`, values)
+
+const expectCarried = (key: string) => {
+  const text = rendered(key)
+  expect(text).not.toContain(MESSAGE_PREFIX)
+  expect(joined.includes(text)).toBe(true)
+}
+
 describe("the guardian's message", () => {
   it('has paragraphs to join and two names that resolve to text', () => {
     expect(paragraphKeys.length).toBeGreaterThan(0)
@@ -72,5 +80,23 @@ describe("the guardian's message", () => {
 
   it('tells the guardian to call the owner back before approving', () => {
     expect(paragraphs.some((paragraph) => /\bcall\b[^.]*\bback\b/i.test(paragraph))).toBe(true)
+  })
+
+  it('tells the guardian to hang up on a call received first and call back', () => {
+    expectCarried('callReceived')
+    expect(rendered('callReceived')).toMatch(/\bhang up\b[^.]*\bcall me back\b/i)
+  })
+
+  it('says anyone holding the request can submit it until the deadline', () => {
+    expectCarried('submittable')
+    expect(rendered('submittable')).toMatch(/\banyone holding this request can submit it\b/i)
+  })
+
+  it('asks for the call back before the guardian approves on the page', () => {
+    const callBack = joined.indexOf(rendered('callBack'))
+    const approveOnPage = joined.indexOf(rendered('approveOnPage'))
+    expect(callBack).toBeGreaterThanOrEqual(0)
+    expect(approveOnPage).toBeGreaterThanOrEqual(0)
+    expect(callBack).toBeLessThan(approveOnPage)
   })
 })

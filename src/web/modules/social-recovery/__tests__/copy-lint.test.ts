@@ -238,14 +238,17 @@ describe('socialRecovery required keys', () => {
   )
 })
 
-// The artefact a guardian returns is an approval everywhere; only the offline
-// signing block names the signature the offline signer hands back.
-const OFFLINE_BLOCK = 'socialRecovery/enroll/offline/'
+// The artefact a guardian returns is an approval everywhere; only an offline
+// signing block, a key path with an offline segment, names the signature the
+// offline signer hands back.
+const OFFLINE_SEGMENT = '/offline/'
 const SIGNATURE = /\bsignatures?\b/i
+
+const isOfflineBlock = (keyPath: string) => keyPath.includes(OFFLINE_SEGMENT)
 
 // A link, a store page or an address is an interpolation the screen fills,
 // never text fixed in the copy.
-const RAW_LINK = /\bhttps?:\/\/|\bwww\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s]/i
+const RAW_LINK = /\b[a-z][a-z0-9+.-]*:\/\/|\bwww\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s]/i
 const RAW_HEX = /\b0x[0-9a-f]{4,}/i
 
 const PASTE_ERROR_KEYS = [
@@ -258,7 +261,7 @@ const PASTE_ERROR_KEYS = [
 describe('socialRecovery copy rules', () => {
   it('says "signature" only inside the offline signing block', () => {
     const offenders = strings
-      .filter(({ keyPath, value }) => SIGNATURE.test(value) && !keyPath.startsWith(OFFLINE_BLOCK))
+      .filter(({ keyPath, value }) => SIGNATURE.test(value) && !isOfflineBlock(keyPath))
       .map(({ keyPath, value }) => `${keyPath}: ${value}`)
     expect(offenders).toEqual([])
   })
@@ -325,6 +328,7 @@ describe('copy-lint patterns (self-check)', () => {
   it('flags a raw link or address and passes a name or an empty hex hint', () => {
     ;[
       'Open https://kohaku.test/approve',
+      'Open chrome-extension://abcdefgh/approve',
       'See www.example.org',
       'Install from chromewebstore.google.com/detail/kohaku',
       'Send to 0x2bA9c0ffee'
@@ -339,6 +343,12 @@ describe('copy-lint patterns (self-check)', () => {
     expect(SIGNATURE.test('Signatures')).toBe(true)
     expect(SIGNATURE.test('signaturePlaceholder')).toBe(false)
     expect(SIGNATURE.test('signed it')).toBe(false)
+  })
+
+  it('allows "signature" under any offline segment and nowhere else', () => {
+    expect(isOfflineBlock('socialRecovery/approve/offline/x')).toBe(true)
+    expect(isOfflineBlock('socialRecovery/enroll/offline/x')).toBe(true)
+    expect(isOfflineBlock('socialRecovery/approve/x')).toBe(false)
   })
 
   it('reads Protected case-sensitively', () => {
