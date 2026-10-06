@@ -9,6 +9,10 @@ import flexbox from '@common/styles/utils/flexbox'
 import KindMenuAnchor from './KindMenuAnchor'
 import type { KindMenuButtonProps } from './types'
 
+// The secondary button's hovered label colour; the icon only follows it while
+// the pointer is over the button, so the open state names it.
+const OPEN_ICON_COLOR = '#fff'
+
 /**
  * A button that opens the kinds it can add, each one a single press away. While
  * the menu is open the button holds its hovered look at full strength, so a
@@ -49,7 +53,7 @@ const KindMenuButton = ({
       {...{ accessibilityHasPopup: 'menu', accessibilityExpanded: open }}
       childrenPosition="right"
     >
-      {open ? <UpArrowIcon /> : <DownArrowIcon />}
+      {open ? <UpArrowIcon color={OPEN_ICON_COLOR} /> : <DownArrowIcon />}
     </Button>
   </KindMenuAnchor>
 )
