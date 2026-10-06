@@ -104,15 +104,12 @@ const useGuardianSupport = ({
     }
   }, [kit, gathering, requests, layout])
 
-  return {
-    tabUrl,
-    newKey: destination.status === 'ready' ? destination.key : undefined,
-    removed,
-    retryRemoved,
-    timeZone,
-    addedAt,
-    paste
-  }
+  const newKey = destination.status === 'ready' ? destination.key : undefined
+
+  return useMemo(
+    () => ({ tabUrl, newKey, removed, retryRemoved, timeZone, addedAt, paste }),
+    [tabUrl, newKey, removed, retryRemoved, timeZone, addedAt, paste]
+  )
 }
 
 export default useGuardianSupport

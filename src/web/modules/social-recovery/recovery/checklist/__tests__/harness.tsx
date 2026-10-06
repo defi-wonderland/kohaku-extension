@@ -28,7 +28,8 @@ import type {
   Configuration,
   Credential,
   Gathering,
-  Hex
+  Hex,
+  SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyCall,
@@ -385,6 +386,23 @@ export const requestOf = (gathering: Gathering, place: number): ApproverRequest 
   }
 }
 
+/** The order of the first release, no payment, as the client serialises it on a request. */
+export const NO_PAYMENT: SerializedPaymentOrder = {
+  token: '0x0000000000000000000000000000000000000000',
+  amount: '0',
+  payee: '0x0000000000000000000000000000000000000000'
+}
+
+/** The handover bytes a served request carries. */
+export const HANDOVER: Hex = '0xabcdef'
+
+/** A place's request as the client serves it: with the order and the handover bytes. */
+export const servedRequestOf = (gathering: Gathering, place: number): ApproverRequest => ({
+  ...requestOf(gathering, place),
+  payload: HANDOVER,
+  order: NO_PAYMENT
+})
+
 export const replyOf = (gathering: Gathering, place: number): ApproverReply => {
   const at = gathering.places[place]
   const r = gathering.request
@@ -452,6 +470,12 @@ export interface FakeKit {
   recoveryState: jest.Mock
   isAuthorized: jest.Mock
   complete: jest.Mock
+  verifyReply: jest.Mock
+}
+
+export interface FakeKitOptions {
+  /** Requests carry the order and the handover bytes, as the client serves them. */
+  served?: boolean
 }
 
 /**
@@ -459,14 +483,16 @@ export interface FakeKit {
  * under the next attempt number; a reply the gathering does not name is
  * refused as the SDK refuses it.
  */
-export const fakeKit = (configuration: Configuration): FakeKit => {
+export const fakeKit = (configuration: Configuration, options: FakeKitOptions = {}): FakeKit => {
   let inits = 0
   const initRecoveryGathering = jest.fn(async () => {
     inits += 1
     return gatheringOf(configuration, inits)
   })
   const getApproverRequests = jest.fn((gathering: Gathering) =>
-    gathering.places.map((place) => requestOf(gathering, place.place))
+    gathering.places.map((place) =>
+      (options.served ? servedRequestOf : requestOf)(gathering, place.place)
+    )
   )
   const addApproverReply = jest.fn((gathering: Gathering, reply: ApproverReply): AddResult => {
     if (reply.attemptId !== gathering.request.attemptId) {
@@ -492,6 +518,7 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
   const complete = jest.fn((): AttemptRequest => {
     throw new Error('no submission built')
   })
+  const verifyReply = jest.fn(async () => 'satisfied')
   const client = {
     recovery: {
       initRecoveryGathering,
@@ -502,7 +529,7 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
       complete
     },
     setup: { getSetup },
-    walletReads: { removedKey },
+    walletReads: { removedKey, verifyReply },
     action: { isAuthorized }
   } as unknown as ChecklistKitClient
   return {
@@ -515,7 +542,8 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     removedKey,
     recoveryState,
     isAuthorized,
-    complete
+    complete,
+    verifyReply
   }
 }
 
@@ -701,6 +729,10 @@ export interface Mounted {
   text: () => string
   press: (id: string) => Promise<void>
   isDisabled: (id: string) => boolean
+  /** Types into the text field at `id`, or the one inside it. */
+  type: (id: string, value: string) => Promise<void>
+  /** What the text field at `id`, or the one inside it, holds. */
+  valueOf: (id: string) => string | undefined
   /** The path of the last navigation. */
   lastPath: () => string | undefined
 }
@@ -742,6 +774,10 @@ export const mount = async (element: (navigate: jest.Mock) => ReactElement): Pro
   const root: Root = createRoot(container)
   const navigate = jest.fn()
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  const inputOf = (id: string) => {
+    const node = byTestId(id)
+    return node instanceof HTMLInputElement ? node : node?.querySelector('input') ?? null
+  }
 
   await act(async () => {
     root.render(
@@ -767,6 +803,18 @@ export const mount = async (element: (navigate: jest.Mock) => ReactElement): Pro
       await settle()
     },
     isDisabled: (id) => byTestId(id)?.getAttribute('aria-disabled') === 'true',
+    type: async (id, value) => {
+      const input = inputOf(id)
+      if (!input) {
+        throw new Error(`nothing to type into: ${id}`)
+      }
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      await act(async () => {
+        setValue?.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    },
+    valueOf: (id) => inputOf(id)?.value,
     lastPath: () => {
       const { calls } = navigate.mock
       return calls[calls.length - 1]?.[0]
