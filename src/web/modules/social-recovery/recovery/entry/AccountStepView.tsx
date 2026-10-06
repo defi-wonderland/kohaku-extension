@@ -131,9 +131,11 @@ const AccountStepView = ({
         client={client}
         setupState={setupState}
         onRetrySetup={retrySetup}
-        onAnotherAddress={backToField}
+        onAnotherAddress={() => leave(backToField)}
         onClose={
-          search.route === 'logged-in' ? () => navigate(WEB_ROUTES.socialRecoverySetup) : undefined
+          search.route === 'logged-in'
+            ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
+            : undefined
         }
       />
     )

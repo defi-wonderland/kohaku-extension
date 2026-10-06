@@ -84,8 +84,8 @@ export type EntryKitClient = Pick<RecoveryKitClient, 'descriptor'> & {
 export type EntryClient =
   | { status: 'loading' }
   | { status: 'ready'; client: EntryKitClient }
-  /** The wallet's version cannot read the setup; `update` applies a pending wallet update. */
-  | { status: 'update-the-wallet'; update: () => void }
+  /** This wallet version cannot read the setup; only an update of the wallet helps. */
+  | { status: 'update-the-wallet' }
   | { status: 'failed'; retry: () => void }
 
 // ---------------------------------------------------------------------------

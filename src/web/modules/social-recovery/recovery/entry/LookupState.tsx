@@ -55,17 +55,9 @@ const LookupState = ({
           style={spacings.mbSm}
           title={t('socialRecovery.client.updateTheWalletTitle')}
         />
-        <ActionsRow
-          primary={
-            <Button
-              testID="entry-lookup-update"
-              type="primary"
-              text={t('socialRecovery.client.updateTheWalletAction')}
-              onPress={client.update}
-              hasBottomSpacing={false}
-            />
-          }
-        />
+        <Text fontSize={14} testID="entry-lookup-update-how">
+          {t('socialRecovery.client.updateTheWalletAction')}
+        </Text>
       </View>
     )
   }

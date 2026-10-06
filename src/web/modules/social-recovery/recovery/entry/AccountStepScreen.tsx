@@ -77,8 +77,8 @@ const AccountStepScreen = () => {
     }
   }, [unusable, route, navigate])
 
-  // The acknowledgment travels in the navigation state alone, so a reload or
-  // a direct URL shows the warning again.
+  // The acknowledgment travels in the history entry's navigation state alone,
+  // so a direct URL or a new tab shows the warning again; a reload keeps it.
   const [acknowledged, setAcknowledged] = useState(() => acknowledgedInState(location.state))
   const pass = useCallback(() => setAcknowledged(true), [])
 
@@ -94,13 +94,10 @@ const AccountStepScreen = () => {
       return { status: 'loading' }
     }
     if (status === 'update-the-wallet') {
-      return {
-        status: 'update-the-wallet',
-        update: () => dispatch({ type: 'EXTENSION_UPDATE_CONTROLLER_APPLY_UPDATE' })
-      }
+      return { status: 'update-the-wallet' }
     }
     return { status: 'failed', retry }
-  }, [kit, status, retry, dispatch])
+  }, [kit, status, retry])
 
   const networkName =
     networkOf(networks, WALLET_RECOVERY_CHAIN)?.name ?? CHAIN_NAMES[WALLET_RECOVERY_CHAIN]
