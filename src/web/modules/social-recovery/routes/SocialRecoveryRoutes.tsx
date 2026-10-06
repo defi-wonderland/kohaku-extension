@@ -13,6 +13,9 @@ import EditorScreen from '@web/modules/social-recovery/setup/editor/EditorScreen
 import PresetsScreen from '@web/modules/social-recovery/setup/presets/PresetsScreen'
 import CeremonyScreen from '@web/modules/social-recovery/shared/ceremony/screen'
 import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/RecoverScreen'
+import FastTrackScreen from '@web/modules/social-recovery/onboarding/fast-track/FastTrackScreen'
+import KeyStepScreen from '@web/modules/social-recovery/onboarding/fast-track/KeyStepScreen'
+import GasStepScreen from '@web/modules/social-recovery/onboarding/fast-track/GasStepScreen'
 
 /**
  * The route registry of the account recovery module.
@@ -51,6 +54,7 @@ const SocialRecoveryRoutes = () => (
         <Route path="setup" element={<PresetsScreen />} />
         <Route path="setup/editor" element={<EditorScreen />} />
         <Route path="setup/save" element={<ArmScreen />} />
+        <Route path="fast-track/gas" element={<GasStepScreen />} />
       </Route>
     </Route>
 
@@ -63,6 +67,8 @@ const SocialRecoveryRoutes = () => (
       {/* The passkey ceremony tab. It needs no guard, because a fresh install with no keystore also opens it. */}
       <Route path="ceremony" element={<CeremonyScreen />} />
       <Route path="recover" element={<RecoverScreen />} />
+      <Route path="fast-track" element={<FastTrackScreen />} />
+      <Route path="fast-track/key" element={<KeyStepScreen />} />
     </Route>
   </Routes>
 )
