@@ -6,8 +6,10 @@ import type {
   ApproverRequest,
   Assessment,
   Configuration,
+  Gathering,
   GatheringPlace,
-  Hex
+  Hex,
+  Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyOutcome,
@@ -377,6 +379,7 @@ export interface GuardianRowProps {
   row: ChecklistRow
   state: RowState
   request: ApproverRequest | undefined
+  support: GuardianSupport
   busy: boolean
   setNote: (place: number, note: RowNote | null) => void
   addReply: (reply: ApproverReply) => Promise<AddReplyResult>
@@ -387,8 +390,129 @@ export interface GuardianCarriersProps {
   place: number
   request: ApproverRequest | undefined
   replied: boolean
+  /** The row still takes an approval: not complete and not outside the smallest set. */
+  open: boolean
   busy: boolean
-  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+  addReply: AddReply
+  support: GuardianSupport
+}
+
+// ---------------------------------------------------------------------------
+// The guardian rows' link, values and paste check
+// ---------------------------------------------------------------------------
+
+export type AddReply = (reply: ApproverReply) => Promise<AddReplyResult>
+
+/** The key the recovery removes, as the checklist read it for the guardian rows. */
+export type RemovedKeyRead =
+  | { status: 'loading' }
+  | { status: 'named'; key: Address }
+  | { status: 'unavailable' }
+  | { status: 'failed' }
+
+export type GuardianValueName = 'account' | 'newKey' | 'keyBeingRemoved' | 'payment'
+
+/** One value of a guardian row's block: its label, and the value once it rendered. */
+export interface GuardianValueLine {
+  name: GuardianValueName
+  label: string
+  value: string | null
+}
+
+/** The four values a guardian compares, and whether all four rendered. */
+export interface GuardianValueBlock {
+  lines: GuardianValueLine[]
+  ready: boolean
+}
+
+/** The error line a paste renders, one per written error. */
+export type PasteError =
+  | { kind: 'notAnApproval' }
+  | { kind: 'duplicate' }
+  | { kind: 'expired'; one: boolean }
+  | { kind: 'noMatch' }
+  | { kind: 'checkFailed' }
+  | { kind: 'writeFailed' }
+  /** Another tab changed the session; the checklist renders the reload. */
+  | { kind: 'conflict' }
+
+/** The pure steps' answer: a written error, or the reply to verify against its own place's request. */
+export type PasteJudgement =
+  | { kind: 'refused'; error: PasteError }
+  | { kind: 'verify'; reply: ApproverReply; request: ApproverRequest | undefined }
+
+/** What a paste came to: the reply added to its place, or one written error. */
+export type PasteOutcome = { kind: 'added'; place: number } | { kind: 'error'; error: PasteError }
+
+/** What the verify of one reply came to; a check the client does not serve passes the reply on to the add. */
+export type VerifyStep = 'pass' | 'rejected' | 'failed'
+
+export type VerifyReply = (request: ApproverRequest, reply: ApproverReply) => Promise<Verdict>
+
+export interface PasteJudgeInput {
+  text: string
+  gathering: Gathering
+  requests: ReadonlyMap<number, ApproverRequest>
+  /** The clock read before any await, in seconds. */
+  nowSeconds: number
+  /** One approval is the whole request: a one-row path or a group of threshold one. */
+  oneApproval: boolean
+  /** Whether the client refuses the reply's kind or version. */
+  versionRefused: (reply: ApproverReply) => boolean
+}
+
+export interface PasteInput extends Omit<PasteJudgeInput, 'nowSeconds'> {
+  /** Milliseconds since epoch. */
+  now: () => number
+  verifyReply: VerifyReply
+  addReply: AddReply
+}
+
+export type Paste = (text: string, addReply: AddReply) => Promise<PasteOutcome>
+
+/** What every guardian row of the checklist shares: the values read once, and what a paste checks against. */
+export interface GuardianSupport {
+  /** The page the link opens on: the extension's own full-tab page. */
+  tabUrl: string
+  newKey: Address | undefined
+  removed: RemovedKeyRead
+  retryRemoved: () => void
+  timeZone: string
+  /** When this tab added each place's approval, ms since epoch. */
+  addedAt: Partial<Record<number, number>>
+  /** Null while the session is not live. */
+  paste: Paste | null
+}
+
+export interface GuardianSupportInput {
+  kit: ChecklistKitClient | null
+  gathering: Gathering | null
+  requests: ReadonlyMap<number, ApproverRequest>
+  layout: ChecklistLayout | null
+  destination: DestinationReading
+  now: () => number
+  timeZone: string
+}
+
+/** The copy result a carrier shows under the buttons. */
+export interface CopyFeedback {
+  what: 'link' | 'message'
+  copied: boolean
+}
+
+export interface GuardianValuesProps {
+  place: number
+  request: ApproverRequest
+  block: GuardianValueBlock
+  removed: RemovedKeyRead
+  retryRemoved: () => void
+}
+
+export interface PasteFieldProps {
+  place: number
+  busy: boolean
+  paste: Paste | null
+  addReply: AddReply
 }
 
 export interface IdentityRowProps {

@@ -22,3 +22,9 @@ export const CHECKLIST_SEARCH_KEYS = {
   account: 'account',
   ceremony: 'ceremony'
 } as const
+
+/** The search key of the approval page's link that carries the request. */
+export const APPROVAL_REQUEST_KEY = 'request'
+
+/** The extension's page that opens in a full tab. */
+export const TAB_PAGE = 'tab.html'
