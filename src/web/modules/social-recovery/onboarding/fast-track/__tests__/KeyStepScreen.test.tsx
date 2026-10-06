@@ -408,6 +408,123 @@ describe('the key step', () => {
     })
   })
 
+  describe('a step that opens while an earlier add still runs', () => {
+    const atEarlierAdd = async () => {
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await mount(KEY_STEP, ACKNOWLEDGED)
+    }
+
+    it('makes no phrase, sends nothing and shows no words while it waits', async () => {
+      await atEarlierAdd()
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(byTestId('fast-track-key-words')).toBeNull()
+      expect(text()).not.toContain('junk')
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(isDisabled('fast-track-key-back')).toBe(true)
+    })
+
+    it('goes on to the account step once that add lists the slot, closing the picker session', async () => {
+      await atEarlierAdd()
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+
+      expect(movesAway()).toEqual([])
+
+      await walletListsSlot()
+      await setController('picker', { addAccountsStatus: 'INITIAL' })
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([
+        { kind: 'dispatch', type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET', params: undefined },
+        {
+          kind: 'dispatch',
+          type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE',
+          params: undefined
+        }
+      ])
+      expect(movesAway()).toEqual([
+        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: undefined }
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    const failures: { name: string; ends: Record<string, unknown> }[] = [
+      { name: 'goes idle with no success', ends: { addAccountsStatus: 'INITIAL' } },
+      {
+        name: 'ends in a page error',
+        ends: { addAccountsStatus: 'INITIAL', pageError: 'The page could not be derived' }
+      }
+    ]
+    failures.forEach(({ name, ends }) => {
+      it(`fails with retry where that add ${name}, and retry makes one new phrase`, async () => {
+        await atEarlierAdd()
+        await setController('picker', ends)
+
+        expect(byTestId('fast-track-key-add-failed')?.textContent).toContain(
+          'This device could not create the key. Nothing was saved.'
+        )
+        expect(mockEdge.made).toBe(0)
+        expect(dispatched()).toEqual([])
+
+        await press('fast-track-key-retry')
+        await keystoreSends(PHRASE)
+
+        expect(mockEdge.made).toBe(1)
+        expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
+        expect(byTestId('fast-track-key-add-failed')).toBeNull()
+        expect(byTestId('fast-track-key-word-11')?.textContent).toBe('junk')
+      })
+    })
+
+    it('frees Back at the limit while that add still runs, and sends nothing', async () => {
+      jest.useFakeTimers()
+      await atEarlierAdd()
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS - 1)
+      })
+      expect(isDisabled('fast-track-key-back')).toBe(true)
+
+      await act(async () => {
+        jest.advanceTimersByTime(1)
+      })
+
+      expect(isDisabled('fast-track-key-back')).toBe(false)
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+    })
+
+    it('leaves for the warning on Back at the limit, with nothing sent', async () => {
+      jest.useFakeTimers()
+      await atEarlierAdd()
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS)
+      })
+
+      await press('fast-track-key-back')
+      await flush()
+
+      expect(movesAway()).toMatchObject([{ to: 'social-recovery/recover', replace: false }])
+      expect(byTestId('recovery-warning')).not.toBeNull()
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+    })
+
+    const settled = ['INITIAL', 'SUCCESS']
+    settled.forEach((status) => {
+      it(`makes one phrase at mount where the picker reads ${status}`, async () => {
+        await setController('picker', { addAccountsStatus: status })
+
+        await mount(KEY_STEP, ACKNOWLEDGED)
+
+        expect(mockEdge.made).toBe(1)
+        expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
+      })
+    })
+  })
+
   describe('the guards and Back', () => {
     it('sends a holder with no extension password back to step 2, still acknowledged', async () => {
       await setController('keystore', { hasPasswordSecret: false, isUnlocked: false })
