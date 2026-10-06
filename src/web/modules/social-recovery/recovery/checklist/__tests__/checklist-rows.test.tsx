@@ -37,6 +37,9 @@ import {
 const {
   WEB_ROUTES
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
+const {
+  renderShortAddress
+}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const CHECKLIST = 'socialRecovery.checklist'
@@ -91,7 +94,17 @@ describe('the checklist rows', () => {
       t('socialRecovery.display.nouns.guardian')
     )
     ;[0, 1, 2, 3, 4].forEach((place) =>
-      expect(mounted.byTestId(`checklist-row-${place}-chip`)?.textContent).toBe(chip('waiting'))
+      expect(mounted.byTestId(`checklist-row-${place}-chip`)?.textContent).toBe(chip('notAsked'))
+    )
+  })
+
+  it('heads a group with its number and its shape, the threshold of its member count', async () => {
+    const { view: mounted } = await open(MIXED_PATH, gatheringOf(MIXED_PATH))
+
+    expect(mounted.byTestId('checklist-group-2-shape')?.textContent).toBe(
+      `${t('socialRecovery.shape.group', { n: 1 })}${t('socialRecovery.shape.require')}2${t(
+        'socialRecovery.shape.of'
+      )}3`
     )
   })
 
@@ -119,7 +132,7 @@ describe('the checklist rows', () => {
 
     expect(mounted.byTestId('checklist-row-2-chip')?.textContent).toBe(chip('complete'))
     expect(mounted.byTestId('checklist-row-4-chip')?.textContent).toBe(chip('notNeeded'))
-    expect(mounted.byTestId('checklist-row-0-chip')?.textContent).toBe(chip('waiting'))
+    expect(mounted.byTestId('checklist-row-0-chip')?.textContent).toBe(chip('notAsked'))
     expect(mounted.isDisabled('checklist-continue')).toBe(true)
   })
 
@@ -191,18 +204,19 @@ describe('the checklist rows', () => {
     expect(mounted.byTestId('checklist-row-0')?.querySelector('[tabindex="0"]')).toBeNull()
   })
 
-  it('shows the guardian name with its short address, and the date an approval was added', async () => {
+  it('labels a guardian row with its short address alone, and shows the verified line once it replied', async () => {
     const { view: mounted } = await open(MIXED_PATH, withReplies(gatheringOf(MIXED_PATH), [1]))
 
-    expect(mounted.byTestId('checklist-row-1-label')?.textContent).toContain('Alice')
-    expect(mounted.byTestId('checklist-row-1-detail')?.textContent?.toLowerCase()).toContain(
-      GUARDIANS[0].slice(-4).toLowerCase()
+    expect(mounted.byTestId('checklist-row-1-label')?.textContent).toBe(
+      renderShortAddress(GUARDIANS[0])
     )
-    expect(mounted.byTestId('checklist-row-1-added')?.textContent).toContain(
-      t(`${CHECKLIST}.guardian.added`, { date: '' }).trim()
+    expect(mounted.byTestId('checklist-row-1')?.textContent).not.toContain('Alice')
+    expect(mounted.byTestId('checklist-row-1-verified')?.textContent).toBe(
+      t(`${CHECKLIST}.guardian.verified`)
     )
-    expect(mounted.byTestId('checklist-row-2-label')?.textContent?.toLowerCase()).toContain(
-      GUARDIANS[1].slice(-4).toLowerCase()
+    expect(mounted.byTestId('checklist-row-2-label')?.textContent).toBe(
+      renderShortAddress(GUARDIANS[1])
     )
+    expect(mounted.byTestId('checklist-row-2-verified')).toBeNull()
   })
 })

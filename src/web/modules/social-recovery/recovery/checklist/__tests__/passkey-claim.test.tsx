@@ -51,7 +51,8 @@ const {
   unavailable
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
 const {
-  checklistPathOf
+  checklistPathOf,
+  claimAskedOf
 }: typeof import('@web/modules/social-recovery/recovery/checklist') = require('@web/modules/social-recovery/recovery/checklist')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
@@ -182,8 +183,62 @@ describe('the passkey row', () => {
     expect(after?.value.state === 'live' && after.value.gathering.replies).toEqual([])
     expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
     expect(back.byTestId('checklist-row-0-chip')?.textContent).toBe(
-      t('socialRecovery.status.collection.waiting')
+      t('socialRecovery.status.collection.notAsked')
     )
+  })
+
+  it('keeps the claim request and the ceremony id until the reply is added', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const release = world.storage.hold('recoverySession')
+    await deps.channel.report(id, 'createClaim', passed({ reply: replyOf(gathering, 0) }))
+
+    const back = await open({ account: ACCOUNT, ceremony: id })
+
+    expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+    expect(back.navigate).not.toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+
+    await outside(async () => release())
+    await outside(async () => undefined)
+
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
+    expect(back.navigate).toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+  })
+
+  it('keeps the claim request and the ceremony id where the session write fails', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    world.storage.refuse.push('recoverySession')
+    await deps.channel.report(id, 'createClaim', passed({ reply: replyOf(gathering, 0) }))
+
+    const back = await open({ account: ACCOUNT, ceremony: id })
+
+    expect(kit.addApproverReply).toHaveBeenCalled()
+    expect(back.byTestId('checklist-write-failed')).not.toBeNull()
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+    expect(back.navigate).not.toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+    const after = await storedSession(world.records)
+    expect(after?.value.state === 'live' && after.value.gathering.replies).toEqual([])
+  })
+
+  it('reads waiting only while this tab has launched the claim or waits for its report', async () => {
+    const mounted = await open()
+    const chipOf = (shown: Mounted) => shown.byTestId('checklist-row-0-chip')?.textContent
+    expect(chipOf(mounted)).toBe(t('socialRecovery.status.collection.notAsked'))
+
+    await mounted.press('checklist-row-0-answer-here')
+    expect(chipOf(mounted)).toBe(t('socialRecovery.status.collection.waiting'))
+
+    const [id] = deps.requestIds
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    expect(back.byTestId('checklist-undelivered')).not.toBeNull()
+    expect(chipOf(back)).toBe(t('socialRecovery.status.collection.waiting'))
+
+    const reload = await open()
+    expect(chipOf(reload)).toBe(t('socialRecovery.status.collection.notAsked'))
   })
 
   each([
@@ -202,7 +257,7 @@ describe('the passkey row', () => {
 
       expect(kit.addApproverReply).not.toHaveBeenCalled()
       expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(noteKey))
-      expect(back.byTestId('checklist-row-0-no-passkey')).not.toBeNull()
+      expect(back.byTestId('checklist-row-0-no-passkey')).toBeNull()
       expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
 
       await back.press('checklist-row-0-retry')
@@ -215,6 +270,55 @@ describe('the passkey row', () => {
       })
     }
   )
+
+  each([
+    [
+      'a device that did not answer',
+      unavailable('device-unavailable'),
+      `${CEREMONY}.unavailableNote`
+    ],
+    ['InvalidStateError', dismissed('refused', 'InvalidStateError'), `${CEREMONY}.refusedNote`],
+    ['NotSupportedError', dismissed('refused', 'NotSupportedError'), `${CEREMONY}.refusedNote`]
+  ] as const)(
+    'renders the no passkey block after %s, with the scan and the security key',
+    async ([, outcome, noteKey]) => {
+      const mounted = await open()
+      await mounted.press('checklist-row-0-answer-here')
+      const [id] = deps.requestIds
+
+      const back = await returnFrom(id, outcome)
+
+      expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(noteKey))
+      expect(back.byTestId('checklist-row-0-no-passkey')?.textContent).toBe(
+        t(`${PASSKEY}.noPasskeyHeader`)
+      )
+      await back.press('checklist-row-0-security-key')
+      const stored = await world.records.ceremonyRequest(deps.requestIds[1]).read()
+      expect(stored.status === 'present' && stored.value).toMatchObject({
+        params: { handOff: false }
+      })
+    }
+  )
+
+  it('takes a stored request whose chain id is a string, and drops one of another chain', () => {
+    const record = {
+      call: 'createClaim',
+      method: 'passkey',
+      account: ACCOUNT,
+      chainId: CHAIN_ID,
+      request: requestOf(gathering, 0),
+      params: { handOff: true }
+    } as const
+    const target = { account: ACCOUNT, chainId: CHAIN_ID }
+
+    expect(claimAskedOf({ ...record, chainId: String(CHAIN_ID) } as never, target)).toEqual({
+      place: 0,
+      request: requestOf(gathering, 0),
+      handOff: true
+    })
+    expect(claimAskedOf({ ...record, chainId: 'not-a-chain' } as never, target)).toBeNull()
+    expect(claimAskedOf({ ...record, chainId: 1 }, target)).toBeNull()
+  })
 
   it('shows the lines on synced passkeys and on passkeys of another browser', async () => {
     const mounted = await open()

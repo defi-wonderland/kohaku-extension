@@ -15,6 +15,8 @@ import type {
 import {
   ACCOUNT,
   CHAIN_ID,
+  each,
+  entryOf,
   gatheringOf,
   MIXED_PATH,
   mountBand,
@@ -150,6 +152,21 @@ describe('the recovery in progress', () => {
     expect((await storedSession(world.records, SECOND_ACCOUNT))?.value.state).toBe('live')
   })
 
+  each([
+    ['every recovery came by the fast track', 'fresh-install', 'fresh-install', 'fresh-install'],
+    ['one recovery came from the settings', 'fresh-install', 'logged-in', 'logged-in'],
+    ['every recovery came from the settings', 'logged-in', 'logged-in', 'logged-in']
+  ] as const)('takes the chrome of its route where %s', async ([, first, second, chrome]) => {
+    await seedEntry(world.records, entryOf(first), ACCOUNT)
+    await seedSession(world.records, gatheringOf(MIXED_PATH, 1, ACCOUNT), ACCOUNT)
+    await seedEntry(world.records, entryOf(second), SECOND_ACCOUNT)
+    await seedSession(world.records, gatheringOf(MIXED_PATH, 1, SECOND_ACCOUNT), SECOND_ACCOUNT)
+    const onRoute = jest.fn()
+    view = await mountInProgress({ records: world.records, onRoute })
+
+    expect(onRoute).toHaveBeenLastCalledWith(chrome)
+  })
+
   it('sends the holder to the recovery entry where no live session is left', async () => {
     await seedEntry(world.records, undefined, THIRD_ACCOUNT)
     const wiped = await seedSession(
@@ -193,6 +210,9 @@ describe('the home band', () => {
     const id = idOf(ACCOUNT)
     expect(view.byTestId(`home-recovery-${id}-account`)?.textContent).toContain('Recovering')
     expect(view.byTestId(`home-recovery-${id}-progress`)?.textContent).toContain('2 of 3 done')
+    expect(view.byTestId(`home-recovery-${id}-chip`)?.textContent).toBe(
+      t('socialRecovery.status.attempt.notSubmitted')
+    )
     await view.press(`home-recovery-${id}-open`)
     expect(view.lastPath()).toBe(`/${WEB_ROUTES.socialRecoveryRecoveryInProgress}`)
   })

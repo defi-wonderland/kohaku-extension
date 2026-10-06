@@ -167,6 +167,18 @@ export interface TestStorage extends RecordStorage {
   refuse: string[]
 }
 
+/**
+ * Every hold still closed. The records queue each key's updates across every
+ * records object, so a hold a failed test never released would stall the
+ * tests after it: each test opens what it left closed.
+ */
+const openHolds = new Set<() => void>()
+
+afterEach(() => {
+  openHolds.forEach((release) => release())
+  openHolds.clear()
+})
+
 export const makeStorage = (): TestStorage => {
   const raw = new Map<string, string>()
   const held = new Map<string, Promise<void>>()
@@ -190,8 +202,10 @@ export const makeStorage = (): TestStorage => {
         new Promise<void>((resolve) => {
           release = () => {
             held.delete(name)
+            openHolds.delete(release)
             resolve()
           }
+          openHolds.add(release)
         })
       )
       return () => release()
@@ -472,6 +486,12 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
   }
 }
 
+/** The refusal an init throws where the configuration is not the one the chain commits. */
+export const commitmentMismatch = (): Error =>
+  Object.assign(new Error('The configuration does not match the setup commitment'), {
+    cause: { code: 'restore.commitment-mismatch', subject: 'setup', severity: 'error' }
+  })
+
 // ---------------------------------------------------------------------------
 // The records a test starts from
 // ---------------------------------------------------------------------------
@@ -688,9 +708,11 @@ export const mountInProgress = (input: {
   records: WalletRecords
   holdsPath?: (account: Address) => Promise<boolean>
   headline?: ChecklistHeadline | null
+  onRoute?: (route: RecoveryRoute) => void
 }): Promise<Mounted> =>
   mount((navigate) => (
     <InProgressView
+      onRoute={input.onRoute}
       records={input.records}
       chainId={CHAIN_ID}
       navigate={navigate}

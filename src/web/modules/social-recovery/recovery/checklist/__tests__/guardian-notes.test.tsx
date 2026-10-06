@@ -83,7 +83,7 @@ describe('the guardian row notes', () => {
     const cleared = await storedSession(world.records)
     expect(cleared?.value.state === 'live' && cleared.value.notes).toBeUndefined()
     expect(cleared?.revision).not.toBe(marked?.revision)
-    expect(mounted.byTestId('checklist-row-1-chip')?.textContent).toBe(chip('waiting'))
+    expect(mounted.byTestId('checklist-row-1-chip')?.textContent).toBe(chip('notAsked'))
     expect(mounted.byTestId('checklist-row-1-mark-declined')).not.toBeNull()
   })
 

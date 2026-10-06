@@ -15,11 +15,15 @@ import {
   ACCOUNT,
   CHAIN_ID,
   DAY_SECONDS,
+  commitmentMismatch,
+  configurationOf,
   depsOf,
   DESTINATION,
   each,
   fakeKit,
   gatheringOf,
+  GUARDIANS,
+  guardianCredential,
   MIXED_PATH,
   mountChecklist,
   outside,
@@ -202,22 +206,120 @@ describe('opening the checklist', () => {
   })
 
   each([
-    ['deadline-passed', 'expired'],
-    ['another-attempt-opened', 'void'],
-    ['setup-changed', 'setupChanged']
-  ] as const)('renders a session the %s wipe ended with its reason', async ([reason, slug]) => {
+    ['deadline-passed', 'expired', true],
+    ['another-attempt-opened', 'void', false],
+    ['setup-changed', 'setupChanged', true]
+  ] as const)(
+    'renders a session the %s wipe ended with its reason',
+    async ([reason, slug, offers]) => {
+      await seedCache(world.records, MIXED_PATH)
+      const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
+      await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, reason, seeded.revision)
+      const kit = fakeKit(MIXED_PATH)
+      view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
+
+      expect(kit.initRecoveryGathering).not.toHaveBeenCalled()
+      expect(view.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`socialRecovery.records.${slug}Title`)
+      )
+      expect(view.text()).toContain(t('socialRecovery.records.wipedNote'))
+      expect(view.byTestId('checklist-rows')).toBeNull()
+      expect(!!view.byTestId('checklist-gather-again')).toBe(offers)
+    }
+  )
+
+  it('opens over a session the recoverer abandoned as over no session, writing under its revision', async () => {
     await seedCache(world.records, MIXED_PATH)
     const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
-    await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, reason, seeded.revision)
+    await world.records.wipeRecoverySession(
+      CHAIN_ID,
+      ACCOUNT,
+      'recoverer-abandoned',
+      seeded.revision
+    )
     const kit = fakeKit(MIXED_PATH)
     view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
 
-    expect(kit.initRecoveryGathering).not.toHaveBeenCalled()
+    expect(view.byTestId('checklist-wiped')).toBeNull()
+    expect(kit.initRecoveryGathering).toHaveBeenCalledTimes(1)
+    expect((await storedSession(world.records))?.value).toEqual({
+      state: 'live',
+      gathering: gatheringOf(MIXED_PATH, 1)
+    })
+    expect(view.byTestId('checklist-row-0')).not.toBeNull()
+  })
+
+  it('gathers again in one write over the wiped line, clearing nothing first', async () => {
+    await seedCache(world.records, MIXED_PATH)
+    const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
+    await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', seeded.revision)
+    const kit = fakeKit(MIXED_PATH)
+    view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
+    const remove = jest.spyOn(world.storage, 'remove')
+    const setsBefore = world.storage.sets.length
+
+    await view.press('checklist-gather-again')
+
+    const sessionSets = world.storage.sets
+      .slice(setsBefore)
+      .filter((key) => key.includes('recoverySession'))
+    expect(sessionSets).toHaveLength(1)
+    expect(remove.mock.calls.filter(([key]) => String(key).includes('recoverySession'))).toEqual([])
+  })
+
+  it('keeps the wiped reason on screen and in the records where the new gathering cannot open', async () => {
+    await seedCache(world.records, MIXED_PATH)
+    const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
+    await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', seeded.revision)
+    const wiped = await storedSession(world.records)
+    const kit = fakeKit(MIXED_PATH)
+    kit.initRecoveryGathering.mockRejectedValueOnce(new Error('node unavailable'))
+    view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
+
+    await view.press('checklist-gather-again')
+
     expect(view.byTestId('checklist-wiped-title')?.textContent).toBe(
-      t(`socialRecovery.records.${slug}Title`)
+      t('socialRecovery.records.expiredTitle')
     )
-    expect(view.text()).toContain(t('socialRecovery.records.wipedNote'))
-    expect(view.byTestId('checklist-rows')).toBeNull()
+    expect(view.byTestId('checklist-gather-again-failed')).not.toBeNull()
+    expect(await storedSession(world.records)).toEqual(wiped)
+
+    await view.press('checklist-gather-again')
+    expect((await storedSession(world.records))?.value.state).toBe('live')
+  })
+
+  it('reads a stale cache again with the password held in memory and opens over the fresh setup', async () => {
+    const fresh = configurationOf([
+      ...MIXED_PATH.clauses,
+      { threshold: 1, credentials: [guardianCredential(GUARDIANS[3], 'Dana')] }
+    ])
+    await seedCache(world.records, MIXED_PATH)
+    const kit = fakeKit(fresh)
+    kit.initRecoveryGathering.mockRejectedValueOnce(commitmentMismatch())
+    view = await mountChecklist({
+      records: world.records,
+      client: kit.state,
+      deps: depsOf({ readPassword: () => PASSWORD })
+    })
+
+    expect(kit.getSetup).toHaveBeenCalledWith({ password: PASSWORD })
+    expect(kit.initRecoveryGathering).toHaveBeenCalledTimes(2)
+    expect(kit.initRecoveryGathering.mock.calls[0][0]).toEqual(MIXED_PATH)
+    expect(kit.initRecoveryGathering.mock.calls[1][0]).toEqual(fresh)
+    expect(view.byTestId('checklist-failed-setup')).toBeNull()
+    expect(view.byTestId('checklist-row-5')).not.toBeNull()
+    expect((await storedSession(world.records))?.value.state).toBe('live')
+  })
+
+  it('sends the holder to the readout over a stale cache with no password held', async () => {
+    await seedCache(world.records, MIXED_PATH)
+    const kit = fakeKit(MIXED_PATH)
+    kit.initRecoveryGathering.mockRejectedValueOnce(commitmentMismatch())
+    view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
+
+    expect(view.lastPath()).toBe(`/${WEB_ROUTES.socialRecoveryRecoveryReadout}?account=${ACCOUNT}`)
+    expect(kit.getSetup).not.toHaveBeenCalled()
+    expect(await storedSession(world.records)).toBeNull()
   })
 
   it('gathers again after a wipe: the reason goes and one new gathering is the live session', async () => {
