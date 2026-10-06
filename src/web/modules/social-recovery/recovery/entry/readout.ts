@@ -204,21 +204,31 @@ const clausesOfBody = (body: unknown): unknown[] | null => {
   return Array.isArray(clauses) && clauses.length > 0 ? clauses : null
 }
 
+const isShapeClause = (value: unknown): value is ShapeNote['clauses'][number] => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { threshold, methods } = value as { threshold?: unknown; methods?: unknown }
+  return isThreshold(threshold) && Array.isArray(methods) && methods.every(isMethod)
+}
+
+const isNoteClause = (value: unknown): value is Clause => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { threshold, credentials } = value as { threshold?: unknown; credentials?: unknown }
+  return isThreshold(threshold) && Array.isArray(credentials) && credentials.every(isNoteCredential)
+}
+
 /** The shape a public note carries, or null where the note holds no shape this build reads. */
 export const shapeOfNote = (note: Hex): ShapeNote | null => {
   const clauses = clausesOfBody(noteBodyOf(note))
-  if (!clauses) {
+  if (!clauses || !clauses.every(isShapeClause)) {
     return null
   }
-  const shape: ShapeNote = { clauses: [] }
-  for (const clause of clauses) {
-    const { threshold, methods } = (clause ?? {}) as { threshold?: unknown; methods?: unknown }
-    if (!isThreshold(threshold) || !Array.isArray(methods) || !methods.every(isMethod)) {
-      return null
-    }
-    shape.clauses.push({ threshold, methods: [...methods] })
+  return {
+    clauses: clauses.map(({ threshold, methods }) => ({ threshold, methods: [...methods] }))
   }
-  return shape
 }
 
 /**
@@ -229,34 +239,23 @@ export const shapeOfNote = (note: Hex): ShapeNote | null => {
 export const configurationOfNote = (note: Hex): Configuration | null => {
   const body = noteBodyOf(note)
   const clauses = clausesOfBody(body)
-  if (!clauses) {
+  if (!clauses || !clauses.every(isNoteClause)) {
     return null
   }
   const { wait, ignoresPause } = body as { wait?: unknown; ignoresPause?: unknown }
   if (typeof wait !== 'bigint' || typeof ignoresPause !== 'boolean') {
     return null
   }
-  const configuration: Configuration = { clauses: [], wait, ignoresPause }
-  for (const clause of clauses) {
-    const { threshold, credentials } = (clause ?? {}) as {
-      threshold?: unknown
-      credentials?: unknown
-    }
-    if (
-      !isThreshold(threshold) ||
-      !Array.isArray(credentials) ||
-      !credentials.every(isNoteCredential)
-    ) {
-      return null
-    }
-    configuration.clauses.push({
+  return {
+    wait,
+    ignoresPause,
+    clauses: clauses.map(({ threshold, credentials }) => ({
       threshold,
       credentials: credentials.map(({ method, config, salt }) =>
         salt ? { method, config, salt } : { method, config }
       )
-    })
+    }))
   }
-  return configuration
 }
 
 // ---------------------------------------------------------------------------
@@ -356,8 +355,7 @@ const kindNameOfMethod = (method: Address, context: ReadoutRowContext, t: Transl
 }
 
 /** Whether a clause reads as a required row: one credential at a threshold of one. */
-const isRequired = (threshold: number, members: number): boolean =>
-  threshold === 1 && members === 1
+const isRequired = (threshold: number, members: number): boolean => threshold === 1 && members === 1
 
 /** Whether some group lets the holder pick which of its members answer. */
 const hasChoice = (clauses: readonly ReadoutClause[]): boolean =>
