@@ -1118,7 +1118,7 @@ describe('the recovery session', () => {
 })
 
 describe('the countdown record after the submission lands', () => {
-  it('holds the account address alone and the session is gone', async () => {
+  it('holds the account and the landed attempt, and the live session is gone', async () => {
     const { records } = setup()
     await writeSession(records, GATHERING)
     await landSession(records)
@@ -1281,7 +1281,7 @@ describe('the session survives the submission as the countdown record, with no i
     expect(storage.calls.remove).toEqual([])
   })
 
-  it('the landed session record holds the account address alone, and the countdown reads back from it', async () => {
+  it('the landed session record holds the account and the landed attempt, and the countdown reads back from it', async () => {
     const { storage, records } = await landAndReset()
     // One record on this device: the session's own key.
     expect(storage.raw.size).toBe(1)
