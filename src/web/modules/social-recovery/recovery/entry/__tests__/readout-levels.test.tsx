@@ -53,6 +53,7 @@ const HIDDEN_CHIP = t('socialRecovery.display.hiddenChip')
 const WAIT_VALUE = t('socialRecovery.display.remainingHours', { count: 120 })
 const ORIGIN_MISMATCH = t('socialRecovery.ceremony.relyingPartyMismatch')
 const WRONG_PASSWORD = 'ember-harbor-quiet-17'
+const PASSWORD_WORKED = t('socialRecovery.readout.eventFailed.title', { network: NETWORK })
 
 let screen: Mounted | null = null
 const open = async () => {
@@ -190,6 +191,7 @@ describe('the readout at Private', () => {
     await unlockWith(page, CARD_PASSWORD)
     expect(page.has('readout-event-failed')).toBe(true)
     expect(page.text()).toContain(t('socialRecovery.readout.readFailedTitle', { network: NETWORK }))
+    expect(page.text()).not.toContain(PASSWORD_WORKED)
     expect(page.has('readout-wrong-password')).toBe(false)
     expect(page.has('readout-no-details')).toBe(false)
     expectNothingOfTheSetup(page)
@@ -200,6 +202,28 @@ describe('the readout at Private', () => {
     expectValues(page)
     expect(readRecoveryPassword(CHAIN_ID, LOST)).toBe(CARD_PASSWORD)
     expect(await storedCache()).not.toBeNull()
+  })
+  it('renders a failed setup event read after a wrong password under the neutral title, never as a password that worked', async () => {
+    const world = await commitLostSetup('private')
+    const page = await open()
+    world.chain.failRead('events.fetch')
+    await unlockWith(page, WRONG_PASSWORD)
+    expect(page.has('readout-event-failed')).toBe(true)
+    expect(page.text()).toContain(t('socialRecovery.readout.readFailedTitle', { network: NETWORK }))
+    expect(page.text()).toContain(
+      t('socialRecovery.readout.eventFailed.body', { network: NETWORK })
+    )
+    expect(page.text()).not.toContain(PASSWORD_WORKED)
+    expectNothingOfTheSetup(page)
+    expectConfigured(page)
+    expect(readRecoveryPassword(CHAIN_ID, LOST)).toBeUndefined()
+    expect(await storedCache()).toBeNull()
+
+    world.chain.restoreRead('events.fetch')
+    await page.press('readout-event-failed-retry')
+    expect(page.has('readout-wrong-password')).toBe(true)
+    expectNothingOfTheSetup(page)
+    expect(readRecoveryPassword(CHAIN_ID, LOST)).toBeUndefined()
   })
 })
 
@@ -244,6 +268,31 @@ describe('the readout at Shape visible', () => {
     GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
     expect(text).not.toContain(WAIT_VALUE)
     expectConfigured(page)
+  })
+
+  it('renders a failed setup event read after the password under the details title, and its retry opens the setup', async () => {
+    const world = await commitLostSetup('shape-visible')
+    const page = await open()
+    world.chain.failRead('events.fetch')
+    await unlockWith(page, CARD_PASSWORD)
+    expect(page.has('readout-event-failed')).toBe(true)
+    expect(page.textOf('readout-event-failed-alert')).toContain(
+      t('socialRecovery.readout.detailsFailed')
+    )
+    expect(page.text()).not.toContain(PASSWORD_WORKED)
+    expect(page.text()).not.toContain(
+      t('socialRecovery.readout.readFailedTitle', { network: NETWORK })
+    )
+    expect(page.has('readout-continue')).toBe(false)
+    const text = page.text()
+    GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+    expect(text).not.toContain(WAIT_VALUE)
+    expectConfigured(page)
+
+    world.chain.restoreRead('events.fetch')
+    await page.press('readout-event-failed-retry')
+    expect(page.has('readout-readable-shape-visible')).toBe(true)
+    expectValues(page)
   })
 })
 
