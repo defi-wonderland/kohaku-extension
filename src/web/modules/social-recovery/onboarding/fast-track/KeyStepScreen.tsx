@@ -6,8 +6,8 @@
  *
  * A wallet that already lists accounts when the step opens (a Back or a
  * reload after the add, or a logged-in wallet at this URL) makes no new
- * phrase: the holder goes on to the account step for the selected smart
- * account. Once the wallet lists the slot's accounts, the step closes the
+ * phrase: past the warning, the holder goes on to the account step for the
+ * selected smart account. Once the wallet lists the slot's accounts, the step closes the
  * wallet's picker session and its newly-added marks, as the wallet's own create
  * flow does, and the holder goes on to the account step on the fresh
  * install's route, with the slot's smart account as the account that receives
@@ -72,6 +72,7 @@ const KeyStep = () => {
         onAcknowledge={setAcknowledged}
         onContinue={proceed}
         onRetry={key.retry}
+        pending={key.pending}
         onBack={back}
       />
     </PlainChrome>
@@ -89,10 +90,10 @@ const KeyStepScreen = () => {
   const [alreadyListed] = useState(!!accounts?.length)
   const dropping = acknowledgedOf(location.state)
 
-  const away = alreadyListed
-    ? accountStepPathOf(selectedSmartAccountOf(selected))
-    : !acknowledged
+  const away = !acknowledged
     ? null
+    : alreadyListed
+    ? accountStepPathOf(selectedSmartAccountOf(selected))
     : !hasPasswordSecret
     ? WEB_ROUTES.socialRecoveryFastTrack
     : !isUnlocked
@@ -108,11 +109,11 @@ const KeyStepScreen = () => {
     }
   }, [away, dropping, navigate])
 
-  if (away) {
-    return null
-  }
   if (!acknowledged) {
     return <RecoverScreen />
+  }
+  if (away) {
+    return null
   }
   return <KeyStep />
 }

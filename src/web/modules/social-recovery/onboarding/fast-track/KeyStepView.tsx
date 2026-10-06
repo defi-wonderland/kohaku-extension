@@ -3,7 +3,8 @@
  * with the paper line and the only-backup warning; the key that will control
  * the account shows as an address, never as a field. Continue stays disabled
  * until the holder confirms the words are written down, and while the wallet
- * adds the accounts; Back is disabled while the add runs.
+ * adds the accounts; Back is disabled while the add runs, until its limit
+ * passes with no answer.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -44,6 +45,7 @@ const KeyStepView = ({
   onAcknowledge,
   onContinue,
   onRetry,
+  pending,
   onBack
 }: KeyStepViewProps) => {
   const { t } = useTranslation()
@@ -187,7 +189,7 @@ const KeyStepView = ({
             {adding && <ActivityIndicator style={spacings.mlTy} />}
           </Button>
         }
-        secondary={backButton(adding)}
+        secondary={backButton(adding && !pending)}
       />
     </View>
   )

@@ -65,6 +65,12 @@ export interface FastTrackKey {
   controllingKey: Address | null
   /** The slot's accounts once listed. */
   listed: ListedSlot | null
+  /**
+   * Whether the add passed its limit while the picker still runs it, or after
+   * it reported success with the slot not listed yet: nothing is sent again,
+   * and the holder may go back.
+   */
+  pending: boolean
   /** Adds the slot's accounts; runs only from `words` or `addFailed`. */
   add: () => void
   /** Starts the failed part again: the phrase from `createFailed`, the add from `addFailed`. */
@@ -79,7 +85,9 @@ export interface KeyStepViewProps {
   onAcknowledge: (acknowledged: boolean) => void
   onContinue: () => void
   onRetry: () => void
-  /** Goes back to the warning; disabled while the wallet adds the accounts. */
+  /** Whether the add passed its limit without an answer; Back is enabled again. */
+  pending: boolean
+  /** Goes back to the warning; disabled while the wallet adds the accounts, until the limit. */
   onBack: () => void
 }
 
