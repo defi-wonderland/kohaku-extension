@@ -237,3 +237,67 @@ describe('a read that answers after the readout moved on', () => {
     expect(page.has('readout-readable-public')).toBe(true)
   })
 })
+
+describe('a run of the reads that starts again', () => {
+  it('runs an unlock typed after the reads started again while the first check was still open, and renders its values', async () => {
+    await storeEntry('logged-in')
+    const world = await commitLostSetup('private')
+    const page = await open()
+    const held = deferred<void>()
+    const real = world.client.setup.getSetup.bind(world.client.setup)
+    jest.spyOn(world.client.setup, 'getSetup').mockImplementationOnce(async (source) => {
+      await held.promise
+      return real(source)
+    })
+    await page.type('readout-password-field', CARD_PASSWORD)
+    await page.press('readout-unlock')
+    expect(page.has('readout-unlock-checking')).toBe(true)
+
+    const rebuilt = await rebuildClient(world)
+    await settle()
+    expect(page.has('readout-locked-private')).toBe(true)
+    const getSetup = jest.spyOn(rebuilt.client.setup, 'getSetup')
+    await page.type('readout-password-field', CARD_PASSWORD)
+    await page.press('readout-unlock')
+    expect(getSetup).toHaveBeenCalledTimes(1)
+    expect(page.has('readout-readable-private')).toBe(true)
+    expect(page.has('readout-continue')).toBe(true)
+
+    await outside(() => held.resolve())
+    expect(page.has('readout-readable-private')).toBe(true)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('navigates nothing when the screen closes after continue was pressed', async () => {
+    await storeEntry('logged-in')
+    const hold = deferred<void>()
+    storage.hold = hold
+    await commitLostSetup('public')
+    const page = await open()
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    page.unmount()
+    screen = null
+    await outside(() => hold.resolve())
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('offers continue again once the reads start again after a press, and goes on once', async () => {
+    await storeEntry('logged-in')
+    const hold = deferred<void>()
+    storage.hold = hold
+    const world = await commitLostSetup('public')
+    const page = await open()
+    await page.press('readout-continue')
+    expect(page.isDisabled('readout-continue')).toBe(true)
+
+    await rebuildClient(world)
+    await settle()
+    expect(page.has('readout-readable-public')).toBe(true)
+    expect(page.isDisabled('readout-continue')).toBe(false)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    await outside(() => hold.resolve())
+    expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+})
