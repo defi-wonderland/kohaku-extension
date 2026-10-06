@@ -107,7 +107,8 @@ export const useReadout = ({
   // The password of an unlock whose setup event read failed, kept in memory for its retry.
   const typed = useRef<string | null>(null)
   const cacheWrite = useRef<Promise<unknown>>(Promise.resolve())
-  const checking = useRef(false)
+  // The run of the reads whose unlock is being checked; a later run checks its own.
+  const checking = useRef<number | null>(null)
 
   /** Keeps the opened setup on this device, then shows it or sends the holder on. */
   const opened = useCallback(
@@ -127,11 +128,13 @@ export const useReadout = ({
       if (resumes.current) {
         setStep({ kind: 'leaving' })
         const mine = generation.current
-        cacheWrite.current.then(() => {
-          if (generation.current === mine) {
-            go.current(checklistPathOf(account))
-          }
-        })
+        cacheWrite.current
+          .then(() => {
+            if (generation.current === mine) {
+              go.current(checklistPathOf(account))
+            }
+          })
+          .catch(() => undefined)
         return
       }
       setStep({ kind: 'readable', level, configuration })
@@ -146,6 +149,8 @@ export const useReadout = ({
     resumes.current = false
     typed.current = null
     state.current = null
+    checking.current = null
+    setContinuing(false)
     if (client.status === 'update-the-wallet') {
       setStep({ kind: 'update-the-wallet' })
       return undefined
@@ -213,11 +218,11 @@ export const useReadout = ({
   /** Opens the setup with the recovery password, at the hidden level the step shows. */
   const check = useCallback(
     (password: string, level: HiddenLevel, shape: ShapeNote | undefined) => {
-      if (!kit || checking.current) {
+      const mine = generation.current
+      if (!kit || checking.current === mine) {
         return
       }
-      const mine = generation.current
-      checking.current = true
+      checking.current = mine
       setStep({ kind: 'locked', level, shape, unlock: { status: 'checking' } })
       kit.setup
         .getSetup({ password })
@@ -245,7 +250,9 @@ export const useReadout = ({
           }
         )
         .finally(() => {
-          checking.current = false
+          if (checking.current === mine) {
+            checking.current = null
+          }
         })
     },
     [kit, opened]
@@ -284,9 +291,18 @@ export const useReadout = ({
       return
     }
     setContinuing(true)
+    // The effect's cleanup moves the generation on a re-run and on unmount, so a
+    // continue whose write settles after either navigates nothing.
+    const mine = generation.current
     // The checklist asks the password again where the cache write failed, so
     // continue waits for the write to settle and never for it to succeed.
-    cacheWrite.current.then(() => go.current(continuePathOf(route, account)))
+    cacheWrite.current
+      .then(() => {
+        if (generation.current === mine) {
+          go.current(continuePathOf(route, account))
+        }
+      })
+      .catch(() => undefined)
   }, [step, continuing, route, account])
 
   return { step, retry, unlock, askAgain, onContinue, continuing }
