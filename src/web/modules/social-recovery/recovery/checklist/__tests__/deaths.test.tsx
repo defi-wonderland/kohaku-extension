@@ -6,7 +6,8 @@
  * setup changes. Each is one wipe through the records with its reason, the
  * checklist renders the wiped state from that reason, and the wipe leaves no
  * reply, no attempt id and no ceremony request or report of the account in
- * storage.
+ * storage. The rows stay held while the wipe is being written, and no row's
+ * outcome of the dead request reaches the next gathering.
  */
 import type { Configuration, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -34,6 +35,8 @@ import {
   PASSWORD,
   recoveryStateOf,
   replyOf,
+  requestOf,
+  SECOND_ACCOUNT,
   seedCache,
   seedEntry,
   seedSession,
@@ -50,6 +53,7 @@ const {
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const {
   ceremonyResultKey,
+  failed,
   passed
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
 const {
@@ -390,6 +394,238 @@ describe('the request dies', () => {
       expect(await deps.reportStore.get(ceremonyResultKey(id), undefined)).toBeUndefined()
       expect(kit.addApproverReply).not.toHaveBeenCalled()
       await expectNoApprovalLeft(gathering)
+    })
+  })
+
+  describe('the setup is read again', () => {
+    it('keeps the wiped line and the password where the cache cannot be wiped, and a retry reads the setup again', async () => {
+      const forgetPassword = jest.fn()
+      await open(MIXED_PATH, withReplies(gatheringOf(MIXED_PATH), [1]), {
+        forgetPassword,
+        readPassword: () => PASSWORD
+      })
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+      await settle(CHECKLIST_POLL_MS)
+      expect(view?.byTestId('checklist-read-setup-again')).not.toBeNull()
+
+      const cacheOf = world.records.decryptedSetupCache
+      jest
+        .spyOn(world.records, 'decryptedSetupCache')
+        .mockImplementationOnce((chainId, account) => ({
+          ...cacheOf(chainId, account),
+          wipe: () => Promise.reject(new Error('storage unavailable'))
+        }))
+      await view?.press('checklist-read-setup-again')
+
+      expect(view?.byTestId('checklist-gather-again-failed')?.textContent).toContain(
+        t('socialRecovery.client.unavailableTitle')
+      )
+      expect(view?.byTestId('checklist-read-setup-again')).not.toBeNull()
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        state: 'wiped',
+        reason: 'setup-changed'
+      })
+      expect(forgetPassword).not.toHaveBeenCalled()
+      expect(view?.lastPath()).not.toBe(
+        `/${WEB_ROUTES.socialRecoveryRecoveryReadout}?account=${ACCOUNT}`
+      )
+
+      await view?.press('checklist-read-setup-again')
+
+      expect(forgetPassword).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT)
+      expect((await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).status).not.toBe(
+        'present'
+      )
+      expect(await storedSession(world.records)).toBeNull()
+      expect(view?.lastPath()).toBe(
+        `/${WEB_ROUTES.socialRecoveryRecoveryReadout}?account=${ACCOUNT}`
+      )
+    })
+  })
+
+  describe('the stored ceremonies of a dead request', () => {
+    /** A claim request another visit of the checklist stored, under an id this tab never held. */
+    const storedClaim = (attempt: number, account = ACCOUNT) => ({
+      call: 'createClaim' as const,
+      method: 'passkey',
+      account,
+      chainId: CHAIN_ID,
+      request: requestOf(gatheringOf(TWO_ROWS, attempt, account), 0),
+      params: { handOff: false }
+    })
+
+    it('removes every claim request of the dead request with its report, and keeps those of another request', async () => {
+      await open(TWO_ROWS, gatheringOf(TWO_ROWS), {
+        storedEntries: () => world.storage.getAll()
+      })
+      const claims = {
+        'dead-one': storedClaim(1),
+        'dead-two': storedClaim(1),
+        'other-attempt': storedClaim(7),
+        'other-account': storedClaim(1, SECOND_ACCOUNT)
+      }
+      await outside(() =>
+        Promise.all(
+          Object.entries(claims).map(async ([id, claim]) => {
+            await world.records.ceremonyRequest(id).write(claim)
+            await deps.channel.report(id, 'createClaim', failed('browser-error', 'NotAllowedError'))
+          })
+        )
+      )
+      const present = async (id: string) =>
+        (await world.records.ceremonyRequest(id).read()).status === 'present'
+      const reported = async (id: string) =>
+        (await deps.reportStore.get(ceremonyResultKey(id), undefined)) !== undefined
+
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+      await settle(CHECKLIST_POLL_MS)
+      await settle()
+
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.setupChangedTitle`)
+      )
+      expect(await present('dead-one')).toBe(false)
+      expect(await present('dead-two')).toBe(false)
+      expect(await reported('dead-one')).toBe(false)
+      expect(await reported('dead-two')).toBe(false)
+      expect(await present('other-attempt')).toBe(true)
+      expect(await reported('other-attempt')).toBe(true)
+      expect(await present('other-account')).toBe(true)
+      expect(await reported('other-account')).toBe(true)
+    })
+  })
+
+  describe('the rows while a death is being written', () => {
+    it('holds every launch and row action until the wipe returns', async () => {
+      await open(MIXED_PATH, gatheringOf(MIXED_PATH))
+      const actions = [
+        'checklist-row-0-answer-here',
+        'checklist-row-0-phone',
+        'checklist-row-1-mark-declined'
+      ]
+      actions.forEach((id) => expect(view?.isDisabled(id)).toBe(false))
+
+      const release = world.storage.hold('recoverySession')
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(view?.byTestId('checklist-rows')).not.toBeNull()
+      actions.forEach((id) => expect(view?.isDisabled(id)).toBe(true))
+
+      release()
+      await settle()
+
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.setupChangedTitle`)
+      )
+    })
+
+    it('holds continue on a satisfied path until the wipe returns', async () => {
+      await open(MIXED_PATH, withReplies(gatheringOf(MIXED_PATH), [0, 1, 2, 3]))
+      expect(view?.isDisabled('checklist-continue')).toBe(false)
+
+      const release = world.storage.hold('recoverySession')
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Waiting', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(view?.byTestId('checklist-satisfied')).not.toBeNull()
+      expect(view?.isDisabled('checklist-continue')).toBe(true)
+
+      release()
+      await settle()
+
+      expect(view?.byTestId('checklist-void-slot')).not.toBeNull()
+    })
+  })
+
+  describe('the outcomes of a dead request', () => {
+    const chipOf = (place: number) => view?.byTestId(`checklist-row-${place}-chip`)?.textContent
+    const chip = (name: string) => t(`socialRecovery.status.collection.${name}`)
+
+    /** The holder comes back from the ceremony tab under the claim's id. */
+    const returnTo = async (id: string) => {
+      view?.unmount()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps,
+        search: { account: ACCOUNT, ceremony: id }
+      })
+    }
+
+    /** A new request opens past the deadline that killed the last one. */
+    const gatherAgainPastDeadline = async () => {
+      const fresh = gatheringOf(TWO_ROWS, 2)
+      kit.initRecoveryGathering.mockResolvedValueOnce({
+        ...fresh,
+        request: {
+          ...fresh.request,
+          validUntil: String(Math.floor(PAST_DEADLINE / 1000) + DAY_SECONDS)
+        }
+      })
+      await view?.press('checklist-gather-again')
+      await settle()
+      expect(view?.byTestId('checklist-row-0')).not.toBeNull()
+    }
+
+    it('reads a required row that did not answer as not asked on the next gathering, with abandon', async () => {
+      await open(TWO_ROWS, gatheringOf(TWO_ROWS))
+      await view?.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+      await deps.channel.report(id, 'createClaim', failed('browser-error', 'NotAllowedError'))
+      await returnTo(id)
+      expect(chipOf(0)).toBe(chip('didNotAnswer'))
+      expect(view?.byTestId('checklist-cannot-complete')).toBeNull()
+
+      jest.setSystemTime(PAST_DEADLINE)
+      await settle(CHECKLIST_POLL_MS)
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.expiredTitle`)
+      )
+      await gatherAgainPastDeadline()
+
+      expect(chipOf(0)).toBe(chip('notAsked'))
+      expect(view?.byTestId('checklist-unsatisfied-didNotAnswer')).toBeNull()
+      expect(view?.byTestId('checklist-cannot-complete')).not.toBeNull()
+    })
+
+    it('keeps no outcome from a failed report that lands after the wipe', async () => {
+      await open(TWO_ROWS, gatheringOf(TWO_ROWS))
+      await view?.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+      await returnTo(id)
+      expect(view?.byTestId('checklist-undelivered')).not.toBeNull()
+
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Waiting', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      expect(view?.byTestId('checklist-void-slot')).not.toBeNull()
+
+      await outside(() =>
+        deps.channel.report(id, 'createClaim', failed('browser-error', 'NotAllowedError'))
+      )
+      await settle()
+      expect(await deps.reportStore.get(ceremonyResultKey(id), undefined)).toBeUndefined()
+
+      // The slot frees, and the next request names the attempt the account opens next.
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Cancelled', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      kit.initRecoveryGathering.mockResolvedValueOnce(gatheringOf(TWO_ROWS, 6))
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ nextAttemptId: BigInt(6) }))
+      await view?.press('checklist-gather-again')
+      await settle()
+      expect(view?.byTestId('checklist-row-0')).not.toBeNull()
+
+      expect(chipOf(0)).toBe(chip('notAsked'))
+      expect(view?.byTestId('checklist-unsatisfied-didNotAnswer')).toBeNull()
+      expect(view?.byTestId('checklist-cannot-complete')).not.toBeNull()
     })
   })
 })

@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  *
  * The request's deadline and the poll of the account's recovery state, on
- * Jest's fake clock: the deadline line ticks every minute and says every
+ * Jest's fake clock: the deadline line ticks every minute and once more the
+ * moment the deadline passes, which wipes the session at once, and says every
  * approval dies together unless one approval is the whole request; the poll
  * reads at once, on every period and when the tab returns to view; a poll
  * that throws or runs past its limit holds every add, launch and continue
@@ -19,6 +20,7 @@ import type {
   TestRecords
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
+  ACCOUNT,
   configurationOf,
   depsOf,
   fakeKit,
@@ -31,6 +33,7 @@ import {
   NOW_SECONDS,
   passkeyCredential,
   recoveryStateOf,
+  replyOf,
   seedCache,
   seedEntry,
   seedSession,
@@ -43,6 +46,9 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const {
+  passed
+}: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
 const {
   CHECKLIST_POLL_MS,
   POLL_LIMIT_MS
@@ -174,6 +180,35 @@ describe('the checklist deadline and poll', () => {
 
       await settle(MINUTE_MS)
       expect(mounted.byTestId('checklist-deadline')?.textContent).toContain(minutes(8))
+    })
+
+    it('wipes the session the moment the deadline passes, before the next poll and with no chain read', async () => {
+      const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
+      const mounted = await open(TWO_ROWS, closingIn(TWO_ROWS, 40))
+
+      await settle(CHECKLIST_POLL_MS + 1000)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(wipe).not.toHaveBeenCalled()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+
+      await settle(10_500)
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'deadline-passed',
+        expect.anything()
+      )
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(mounted.byTestId('checklist-rows')).toBeNull()
+      expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t('socialRecovery.records.expiredTitle')
+      )
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        state: 'wiped',
+        reason: 'deadline-passed'
+      })
     })
   })
 
@@ -369,6 +404,52 @@ describe('the checklist deadline and poll', () => {
       await settle(CHECKLIST_POLL_MS)
       expect(view.byTestId('checklist-dormant')).toBeNull()
       expect(view.isDisabled('checklist-continue')).toBe(false)
+    })
+  })
+
+  describe('a passed claim waiting to join the session', () => {
+    it('adds its reply only once a poll has answered on the return', async () => {
+      const gathering = gatheringOf(TWO_ROWS)
+      await seedCache(world.records, TWO_ROWS)
+      await seedSession(world.records, gathering)
+      kit = fakeKit(TWO_ROWS)
+      const deps = depsOf({ now: () => Date.now(), visibility })
+      view = await mountChecklist({ records: world.records, client: kit.state, deps })
+      await view.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+      await deps.channel.report(id, 'createClaim', passed({ reply: replyOf(gathering, 0) }))
+
+      // The holder returns while the account's recovery state has not answered.
+      let answer: (state: ReturnType<typeof recoveryStateOf>) => void = () => undefined
+      kit.recoveryState.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve
+          })
+      )
+      view.unmount()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps,
+        search: { account: ACCOUNT, ceremony: id }
+      })
+      await settle(1000)
+
+      expect(view.byTestId('checklist-loading')).not.toBeNull()
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      const before = await storedSession(world.records)
+      expect(before?.value.state === 'live' && before.value.gathering.replies).toEqual([])
+
+      answer(recoveryStateOf())
+      await settle()
+      await settle()
+
+      expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+      const after = await storedSession(world.records)
+      expect(after?.value.state === 'live' && after.value.gathering.replies).toEqual([
+        replyOf(gathering, 0)
+      ])
     })
   })
 })
