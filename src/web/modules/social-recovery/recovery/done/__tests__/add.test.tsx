@@ -1,11 +1,13 @@
 /**
  * @jest-environment jsdom
  *
- * On the fast track the done screen adds the recovered account to this wallet
+ * On both routes the done screen adds the recovered account to this wallet
  * through the wallet's own action, once, beside the key the recovery granted;
- * it renders the done text only once the wallet lists the account, renders
- * the add's failure with retry, and marks the wallet's setup complete once the
- * account is listed.
+ * it renders the done text only once the wallet lists the account with that
+ * key, renders the add's failure with retry, and on the fast track only marks
+ * the wallet's setup complete once the account is listed. An account the
+ * wallet lists without the granted key is added again; one it lists with the
+ * key is not.
  */
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
@@ -21,6 +23,7 @@ import {
   openWorld,
   ORIGINAL_PRIV,
   recoveryPrivileges,
+  RECEIVING_ADDR,
   REMOVED_KEY,
   setWallet,
   SETUP_COMPLETE_ACTION,
@@ -180,6 +183,106 @@ describe('the fast track adds the recovered account', () => {
     none.kit.chain.accountEvents = [attemptStarted(none.account, [0])]
     const screen = await mountDone(none.account)
     expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    screen.unmount()
+  })
+})
+
+describe('the logged-in route adds the recovered account with the receiving account key', () => {
+  it('dispatches the add once with the receiving account key, renders done only once listed, and never marks the setup complete', async () => {
+    const world = await openWorld({ route: 'logged-in' })
+    world.kit.chain.privilegeEvents = recoveryPrivileges(world.account, { granted: RECEIVING_ADDR })
+    const screen = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    const added = addedAccountOf()
+    expect(added.addr).toBe(world.account)
+    expect(added.associatedKeys).toEqual([RECEIVING_ADDR])
+    expect(screen.has('done-adding')).toBe(true)
+    expectNoDoneText(screen)
+
+    await walletAddsIt()
+    expect(screen.has('done')).toBe(true)
+    expect(screen.textOf('done-controlled-by')).toBe(renderFullAddress(RECEIVING_ADDR))
+    expect(screen.textOf('done-controlled-by-line-0')).toBe(
+      t(`${DONE}.sharedKey`, { account: 'Daily account' })
+    )
+    expect(screen.has('done-now-in-wallet')).toBe(false)
+    await tick(ADD_LIMIT_MS * 2)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(0)
+    screen.unmount()
+  })
+
+  it('renders the add failure with retry on the logged-in route too, and the retry adds again', async () => {
+    const world = await openWorld({ route: 'logged-in' })
+    const screen = await mountDone(world.account)
+    await setWallet({ statuses: { addAccounts: 'LOADING' } })
+    await setWallet({ statuses: { addAccounts: 'ERROR' } })
+    expect(screen.has('done-add-failed')).toBe(true)
+    expectNoDoneText(screen)
+    await screen.press('done-add-retry')
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    await walletAddsIt()
+    expect(screen.has('done')).toBe(true)
+    expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(0)
+    screen.unmount()
+  })
+})
+
+describe('an account the wallet already lists', () => {
+  const routes = ['fresh-install', 'logged-in'] as const
+  routes.forEach((route) => {
+    it(`on the ${route} route adds an account listed without the granted key, and renders done once the key is merged in`, async () => {
+      const world = await openWorld({ route, listed: 'without-key' })
+      const screen = await mountDone(world.account)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+      expect(addedAccountOf().addr).toBe(world.account)
+      expect(addedAccountOf().associatedKeys).toEqual([NEW_KEY])
+      expectNoDoneText(screen)
+      await setWallet({
+        accounts: (mockWallet.accounts ?? []).map((candidate) =>
+          candidate.addr === world.account
+            ? { ...candidate, associatedKeys: [...candidate.associatedKeys, NEW_KEY] }
+            : candidate
+        ),
+        statuses: { addAccounts: 'SUCCESS' }
+      })
+      expect(screen.has('done')).toBe(true)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+      expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(route === 'fresh-install' ? 1 : 0)
+      screen.unmount()
+    })
+
+    it(`on the ${route} route adds nothing for an account listed with the granted key, and renders done`, async () => {
+      const world = await openWorld({ route, listed: true })
+      const screen = await mountDone(world.account)
+      expect(screen.has('done')).toBe(true)
+      await tick(ADD_LIMIT_MS * 2)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+      expect(screen.has('done-add-failed')).toBe(false)
+      screen.unmount()
+    })
+  })
+})
+
+describe('the wallet account list going and coming back', () => {
+  it('dispatches no second add while one add runs, nor once it is done', async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    const screen = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    const before = mockWallet.accounts
+    await setWallet({ accounts: undefined })
+    await setWallet({ accounts: before })
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(screen.has('done-adding')).toBe(true)
+
+    await walletAddsIt()
+    expect(screen.has('done')).toBe(true)
+    const listed = mockWallet.accounts
+    await setWallet({ accounts: undefined })
+    await setWallet({ accounts: listed })
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(1)
+    expect(screen.has('done')).toBe(true)
     screen.unmount()
   })
 })

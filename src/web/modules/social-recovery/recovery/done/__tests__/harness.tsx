@@ -65,6 +65,12 @@ export interface MockWallet {
   statuses: { addAccounts: string }
   /** The wallet's selected account, as the last select dispatched it. */
   selected: string | null
+  /** While set, a dispatched select is recorded and the wallet reports no new selection until `reportSelected`. */
+  holdsSelection: boolean
+  /** The wallet lists each account an add dispatches at once, merging its keys into a listed one. */
+  walletAdds: boolean
+  /** The networks the networks controller pushes. */
+  networks: { chainId: bigint; name: string; nativeAssetSymbol: string }[]
   /** The block time the extension's provider answers, by block number. */
   blockTimes: Map<number, number>
   blockReads: number[]
@@ -82,6 +88,9 @@ export const mockWallet: MockWallet = {
   accounts: [],
   statuses: { addAccounts: 'INITIAL' },
   selected: null,
+  holdsSelection: false,
+  walletAdds: false,
+  networks: [],
   blockTimes: new Map(),
   blockReads: [],
   factsReads: [],
@@ -116,8 +125,27 @@ jest.mock('@web/hooks/useBackgroundService', () => {
   const dispatch = (action: unknown) => {
     mockWallet.dispatch(action)
     const { type, params } = action as Dispatched
-    if (type === 'MAIN_CONTROLLER_SELECT_ACCOUNT') {
+    if (type === 'MAIN_CONTROLLER_SELECT_ACCOUNT' && !mockWallet.holdsSelection) {
       mockWallet.selected = (params as { accountAddr: string }).accountAddr
+      mockWallet.version += 1
+      mockWallet.listeners.forEach((listener) => listener())
+    }
+    if (type === 'MAIN_CONTROLLER_ADD_VIEW_ONLY_ACCOUNTS' && mockWallet.walletAdds) {
+      const [added] = (params as { accounts: Account[] }).accounts
+      const existing = (mockWallet.accounts ?? []).find(
+        (candidate) => candidate.addr.toLowerCase() === added.addr.toLowerCase()
+      )
+      mockWallet.accounts = existing
+        ? (mockWallet.accounts ?? []).map((candidate) =>
+            candidate === existing
+              ? {
+                  ...existing,
+                  associatedKeys: [...existing.associatedKeys, ...added.associatedKeys]
+                }
+              : candidate
+          )
+        : [...(mockWallet.accounts ?? []), added]
+      mockWallet.statuses = { addAccounts: 'SUCCESS' }
       mockWallet.version += 1
       mockWallet.listeners.forEach((listener) => listener())
     }
@@ -139,10 +167,18 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => {
   }
 })
 jest.mock('@web/hooks/useNetworksControllerState', () => {
-  const state = {
-    networks: [{ chainId: 11155111n, name: 'Sepolia', nativeAssetSymbol: 'ETH' }]
+  const R = jest.requireActual('react')
+  const subscribe = (listener: () => void) => {
+    mockWallet.listeners.add(listener)
+    return () => mockWallet.listeners.delete(listener)
   }
-  return { __esModule: true, default: () => state }
+  return {
+    __esModule: true,
+    default: () => {
+      R.useSyncExternalStore(subscribe, () => mockWallet.version)
+      return { networks: mockWallet.networks }
+    }
+  }
 })
 jest.mock('@web/hooks/useKeystoreControllerState', () => {
   const state = { keys: [] }
@@ -467,7 +503,9 @@ export const useDoneClock = () => {
 // ---------------------------------------------------------------------------
 
 /** Changes what the wallet's accounts controller pushes, while the screen is mounted. */
-export const setWallet = async (change: Partial<Pick<MockWallet, 'accounts' | 'statuses'>>) => {
+export const setWallet = async (
+  change: Partial<Pick<MockWallet, 'accounts' | 'statuses' | 'networks'>>
+) => {
   await act(async () => {
     Object.assign(mockWallet, change)
     mockWallet.version += 1
@@ -476,11 +514,24 @@ export const setWallet = async (change: Partial<Pick<MockWallet, 'accounts' | 's
   await tick(0)
 }
 
-/** A listed account at `addr`, with a label. */
-export const listedAccount = (addr: Address, label: string): Account =>
+/** The wallet reports `addr` as its selected account, as the selected account controller pushes it. */
+export const reportSelected = async (addr: string | null) => {
+  await act(async () => {
+    mockWallet.selected = addr
+    mockWallet.version += 1
+    mockWallet.listeners.forEach((listener) => listener())
+  })
+  await tick(0)
+}
+
+/** The network the extension holds for the recovery chain. */
+export const SEPOLIA = { chainId: 11155111n, name: 'Sepolia', nativeAssetSymbol: 'ETH' }
+
+/** A listed account at `addr`, with a label, signed for by `keys` (its own address by default). */
+export const listedAccount = (addr: Address, label: string, keys: Address[] = [addr]): Account =>
   ({
     addr,
-    associatedKeys: [addr],
+    associatedKeys: keys,
     initialPrivileges: [],
     creation: null,
     preferences: { label, pfp: addr }
@@ -627,7 +678,9 @@ export const RECEIVING_ADDR: Address = '0x00000000000000000000000000000000005a00
  * countdown's record, the recovery password held in memory, the decrypted
  * setup cache when `cache` is set and the enrollments' passkey kinds when
  * `kinds` names them. The wallet does not list the recovered account unless
- * `listed` is set.
+ * `listed` is set: `true` lists it with the granted key, `'without-key'` with
+ * another key only. With `walletAdds` the wallet lists each account the
+ * screen adds as soon as the add is dispatched.
  */
 export const openWorld = async ({
   route = 'fresh-install',
@@ -636,7 +689,8 @@ export const openWorld = async ({
   kinds = [],
   countdown = true,
   entry = true,
-  listed = false
+  listed = false,
+  walletAdds = false
 }: {
   route?: RecoveryRoute
   configuration?: Configuration
@@ -645,7 +699,8 @@ export const openWorld = async ({
   kinds?: { credential: Credential; backup: PasskeyBackupKind }[]
   countdown?: boolean
   entry?: boolean
-  listed?: boolean
+  listed?: boolean | 'without-key'
+  walletAdds?: boolean
 } = {}): Promise<World> => {
   const account = freshAccount()
   const storage = makeStorage()
@@ -655,10 +710,21 @@ export const openWorld = async ({
   const slot = [listedAccount(SLOT_SMART, 'Account 1'), listedAccount(SLOT_BASIC, 'Account 2')]
   mockWallet.accounts = [
     ...(route === 'fresh-install' ? slot : [receiving]),
-    ...(listed ? [listedAccount(account, 'Recovered account')] : [])
+    ...(listed
+      ? [
+          listedAccount(
+            account,
+            'Recovered account',
+            listed === 'without-key' ? [SIGNER_STATE_KEY] : [NEW_KEY]
+          )
+        ]
+      : [])
   ]
+  mockWallet.walletAdds = walletAdds
+  mockWallet.networks = [SEPOLIA]
   mockWallet.statuses = { addAccounts: 'INITIAL' }
   mockWallet.selected = null
+  mockWallet.holdsSelection = false
   mockWallet.dispatch = jest.fn()
   mockWallet.blockTimes = new Map([[CONSUME_BLOCK, CONSUME_TIME]])
   mockWallet.blockReads = []

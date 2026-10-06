@@ -8,6 +8,7 @@
  * for each passkey of the path by its kind and the path's shape.
  */
 import {
+  addedAccountOf,
   attemptConsumed,
   attemptStarted,
   BOOK,
@@ -57,7 +58,7 @@ const mountOver = async (
   configuration: Configuration,
   options: Parameters<typeof openWorld>[0] = {}
 ): Promise<{ screen: Mounted; world: Awaited<ReturnType<typeof openWorld>> }> => {
-  const world = await openWorld({ route: 'logged-in', configuration, ...options })
+  const world = await openWorld({ route: 'logged-in', configuration, walletAdds: true, ...options })
   return { world, screen: await mountDone(world.account) }
 }
 
@@ -89,11 +90,16 @@ describe('the lines under the keys by route', () => {
     screen.unmount()
   })
 
-  it('shows the account with its wallet name where the wallet lists it, else its full address, with the set-up chip', async () => {
-    const unlisted = await mountOver(MIXED_PATH)
-    expect(unlisted.screen.textOf('done-account')).toBe(renderFullAddress(unlisted.world.account))
-    expect(unlisted.screen.textOf('done-chip')).toBe(renderChip('recovery', 'setUp', t))
-    unlisted.screen.unmount()
+  it('shows the account with the name the wallet gives it, with the set-up chip', async () => {
+    const added = await mountOver(MIXED_PATH)
+    expect(added.screen.textOf('done-account')).toBe(
+      t('socialRecovery.display.accountWithName', {
+        account: renderFullAddress(added.world.account),
+        name: addedAccountOf().preferences.label
+      })
+    )
+    expect(added.screen.textOf('done-chip')).toBe(renderChip('recovery', 'setUp', t))
+    added.screen.unmount()
 
     const listed = await mountOver(MIXED_PATH, { listed: true })
     expect(listed.screen.textOf('done-account')).toBe(
@@ -120,7 +126,7 @@ describe('what this recovery did', () => {
   })
 
   it('takes the used methods from the attempt record against the path where the events no longer name the opening', async () => {
-    const world = await openWorld({ route: 'logged-in' })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true })
     world.kit.chain.accountEvents = [attemptConsumed(world.account)]
     world.kit.chain.attempt = consumedAttempt([BOOK.methods.passkey])
     const screen = await mountDone(world.account)
@@ -129,7 +135,7 @@ describe('what this recovery did', () => {
   })
 
   it('ignores an opening of another attempt', async () => {
-    const world = await openWorld({ route: 'logged-in' })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true })
     world.kit.chain.accountEvents = [
       attemptStarted(world.account, [2, 3, 4], 7n),
       attemptConsumed(world.account)
@@ -141,7 +147,7 @@ describe('what this recovery did', () => {
   })
 
   it('opens the path with the recovery password held in memory where this device holds no cache', async () => {
-    const world = await openWorld({ route: 'logged-in', cache: false })
+    const world = await openWorld({ route: 'logged-in', cache: false, walletAdds: true })
     setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
     const screen = await mountDone(world.account)
     expect(world.kit.getSetup).toHaveBeenCalledWith({ password: PASSWORD })
@@ -152,7 +158,7 @@ describe('what this recovery did', () => {
   })
 
   it('names only the used kinds where this device holds no path', async () => {
-    const world = await openWorld({ route: 'logged-in', cache: false })
+    const world = await openWorld({ route: 'logged-in', cache: false, walletAdds: true })
     world.kit.chain.attempt = consumedAttempt([BOOK.methods.passkey, BOOK.methods.ecdsa])
     const screen = await mountDone(world.account)
     expect(world.kit.getSetup).not.toHaveBeenCalled()
@@ -174,7 +180,7 @@ describe('what this recovery did', () => {
     expect(withGuardian.screen.textOf('done-discoverable')).toBe(t(`${DONE}.discoverable`))
     withGuardian.screen.unmount()
 
-    const world = await openWorld({ route: 'logged-in' })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true })
     world.kit.chain.accountEvents = [
       attemptStarted(world.account, [0]),
       attemptConsumed(world.account)
@@ -198,7 +204,7 @@ describe('what this recovery did', () => {
     expect(used.screen.has('done-unused-stays')).toBe(false)
     used.screen.unmount()
 
-    const world = await openWorld({ route: 'logged-in' })
+    const world = await openWorld({ route: 'logged-in', walletAdds: true })
     world.kit.chain.accountEvents = [
       attemptStarted(world.account, [1, 2]),
       attemptConsumed(world.account)

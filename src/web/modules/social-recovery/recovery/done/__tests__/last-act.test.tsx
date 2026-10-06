@@ -16,10 +16,13 @@ import {
   NEW_KEY,
   openWorld,
   PASSWORD,
+  RECEIVING_ADDR,
   REMOVED_KEY,
+  reportSelected,
+  SIGNER_STATE_KEY,
+  SLOT_SMART,
   t,
-  useDoneClock,
-  walletAddsIt
+  useDoneClock
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { World } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
@@ -42,14 +45,11 @@ const recordsOf = async ({ records, account }: World) => ({
 const BEFORE = { countdown: 'present', entry: 'present', cache: 'present', password: PASSWORD }
 const AFTER = { countdown: 'absent', entry: 'absent', cache: 'present', password: undefined }
 
-/** A recovery on `route` with the recovery password held, mounted and done. */
+/** A recovery on `route` with the recovery password held, mounted and done once the wallet added the account. */
 const openDone = async (options: Parameters<typeof openWorld>[0] = {}) => {
-  const world = await openWorld(options)
+  const world = await openWorld({ walletAdds: true, ...options })
   setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
   const screen = await mountDone(world.account)
-  if (options.route !== 'logged-in' && !options.listed) {
-    await walletAddsIt()
-  }
   expect(screen.has('done')).toBe(true)
   return { world, screen }
 }
@@ -78,26 +78,6 @@ describe('the last act', () => {
     await screen.press('done-close')
     expect(await recordsOf(world)).toEqual(AFTER)
     expect(screen.paths()).toEqual(['/dashboard'])
-    screen.unmount()
-  })
-
-  it('on Edit runs the last act, selects the listed account and opens the editor', async () => {
-    const { world, screen } = await openDone({ route: 'fresh-install' })
-    await screen.press('done-edit')
-    expect(await recordsOf(world)).toEqual(AFTER)
-    expect(dispatchedOf('MAIN_CONTROLLER_SELECT_ACCOUNT')).toEqual([
-      { type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: world.account } }
-    ])
-    expect(screen.paths()).toEqual(['/social-recovery/setup/editor'])
-    screen.unmount()
-  })
-
-  it('on Edit for an account the wallet does not list opens the setup entry, selecting nothing', async () => {
-    const { world, screen } = await openDone({ route: 'logged-in' })
-    await screen.press('done-edit')
-    expect(await recordsOf(world)).toEqual(AFTER)
-    expect(dispatchedOf('MAIN_CONTROLLER_SELECT_ACCOUNT')).toEqual([])
-    expect(screen.paths()).toEqual(['/social-recovery/setup'])
     screen.unmount()
   })
 
@@ -148,6 +128,49 @@ describe('the last act', () => {
   })
 })
 
+describe('Edit selects the recovered account', () => {
+  const routes = ['fresh-install', 'logged-in'] as const
+  routes.forEach((route) => {
+    it(`on the ${route} route runs the last act, selects the recovered account, never the receiving one, and opens the editor`, async () => {
+      const { world, screen } = await openDone({ route })
+      await screen.press('done-edit')
+      expect(await recordsOf(world)).toEqual(AFTER)
+      expect(dispatchedOf('MAIN_CONTROLLER_SELECT_ACCOUNT')).toEqual([
+        { type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: world.account } }
+      ])
+      expect(screen.paths()).toEqual(['/social-recovery/setup/editor'])
+      screen.unmount()
+    })
+
+    it(`on the ${route} route opens the editor only once the wallet reports the recovered account selected`, async () => {
+      const { world, screen } = await openDone({ route })
+      mockWallet.holdsSelection = true
+      await reportSelected(route === 'logged-in' ? RECEIVING_ADDR : SLOT_SMART)
+      await screen.press('done-edit')
+      expect(dispatchedOf('MAIN_CONTROLLER_SELECT_ACCOUNT')).toHaveLength(1)
+      expect(await recordsOf(world)).toEqual(AFTER)
+      expect(screen.paths()).toEqual([])
+      expect(screen.byTestId('done-edit')?.getAttribute('aria-disabled')).toBe('true')
+      expect(screen.byTestId('done-close')?.getAttribute('aria-disabled')).toBe('true')
+
+      await reportSelected(SIGNER_STATE_KEY)
+      expect(screen.paths()).toEqual([])
+      await reportSelected(world.account)
+      expect(screen.paths()).toEqual(['/social-recovery/setup/editor'])
+      await reportSelected(world.account)
+      expect(screen.paths()).toEqual(['/social-recovery/setup/editor'])
+      screen.unmount()
+    })
+  })
+
+  it('does not open the editor for a recovered account selected before Edit was pressed', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in' })
+    await reportSelected(world.account)
+    expect(screen.paths()).toEqual([])
+    screen.unmount()
+  })
+})
+
 describe('a reload after the last act', () => {
   it('renders from the consume event alone where the wallet lists the account, adding nothing', async () => {
     const { world, screen } = await openDone({ route: 'fresh-install' })
@@ -168,14 +191,12 @@ describe('a reload after the last act', () => {
     reloaded.unmount()
   })
 
-  it('sends to the account step where the wallet does not list the account', async () => {
-    const { world, screen } = await openDone({ route: 'logged-in' })
-    await screen.press('done-close')
-    screen.unmount()
-
+  it('sends to the account step where no entry record is left and the wallet does not list the account', async () => {
+    const world = await openWorld({ route: 'logged-in', entry: false, countdown: false })
     const reloaded = await mountDone(world.account)
     expect(reloaded.paths()).toEqual(['/social-recovery/recovery/account'])
     expect(reloaded.has('done')).toBe(false)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
     reloaded.unmount()
   })
 })
