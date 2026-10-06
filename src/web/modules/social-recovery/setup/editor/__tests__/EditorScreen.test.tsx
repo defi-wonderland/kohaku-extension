@@ -245,7 +245,7 @@ describe('the editor screen', () => {
       })
 
   const expectOneRefusalInTheHeader = () => {
-    expect(byTestId('editor-picker')).toBeNull()
+    expect(byTestId('editor-add-required-menu')).toBeNull()
     const refusals = container.querySelectorAll('[data-testid="editor-refusal"]')
     expect(refusals).toHaveLength(1)
     expect(refusals[0].textContent).toBe(en.socialRecovery.editor.duplicate)
@@ -260,20 +260,20 @@ describe('the editor screen', () => {
     ])
   }
 
-  it('closes an open picker and refuses in the header when a row moves into a group that holds it', async () => {
+  it('closes an open kind menu and refuses in the header when a row moves into a group that holds it', async () => {
     await storeRowAlsoInGroup()
     await showAccount(ACCOUNT)
     await press('editor-add-required')
-    expect(byTestId('editor-picker')).not.toBeNull()
+    expect(byTestId('editor-add-required-menu')).not.toBeNull()
     await press('editor-row-0-move')
     expectOneRefusalInTheHeader()
   })
 
-  it('closes an open picker and refuses in the header when a group member a row holds is made required', async () => {
+  it('closes an open kind menu and refuses in the header when a group member a row holds is made required', async () => {
     await storeRowAlsoInGroup()
     await showAccount(ACCOUNT)
     await press('editor-add-required')
-    expect(byTestId('editor-picker')).not.toBeNull()
+    expect(byTestId('editor-add-required-menu')).not.toBeNull()
     await press('editor-member-1-0-required')
     expectOneRefusalInTheHeader()
   })

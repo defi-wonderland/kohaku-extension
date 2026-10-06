@@ -74,19 +74,29 @@ export const heldKeyOf = (keys: readonly HeldKey[], address: Address): HeldKey |
 /** The checks block's lines, in the order the row shows them. */
 export const checkLinesOf = (checks: GuardianChecks): CheckLine[] => {
   const lines: CheckLine[] = []
-  if (checks.checksum) {
-    lines.push({ key: `${GUARDIAN}.${checks.checksum === 'ok' ? 'checksumOk' : 'checksumFailed'}` })
+  if (checks.checksum === 'ok') {
+    lines.push({ key: `${GUARDIAN}.checksumOk`, tone: 'good' })
+  } else if (checks.checksum === 'failed') {
+    lines.push({ key: `${GUARDIAN}.checksumFailed`, tone: 'risk' })
   }
   if (checks.name?.status === 'resolved') {
-    lines.push({ key: `${GUARDIAN}.nameResolves`, values: { name: checks.name.name } })
+    lines.push({
+      key: `${GUARDIAN}.nameResolves`,
+      values: { name: checks.name.name },
+      tone: 'good'
+    })
   } else if (checks.name?.status === 'unresolved') {
-    lines.push({ key: `${GUARDIAN}.nameUnresolved` })
+    lines.push({ key: `${GUARDIAN}.nameUnresolved`, tone: 'risk' })
   }
-  if (checks.code) {
-    lines.push({ key: `${GUARDIAN}.${checks.code === 'none' ? 'noCode' : 'smartAccountDetected'}` })
+  if (checks.code === 'none') {
+    lines.push({ key: `${GUARDIAN}.noCode`, tone: 'good' })
+  } else if (checks.code === 'contract') {
+    lines.push({ key: `${GUARDIAN}.smartAccountDetected`, tone: 'warning' })
   }
-  if (checks.seed) {
-    lines.push({ key: `${GUARDIAN}.${checks.seed === 'same' ? 'sameSeed' : 'notSameSeed'}` })
+  if (checks.seed === 'not') {
+    lines.push({ key: `${GUARDIAN}.notSameSeed`, tone: 'good' })
+  } else if (checks.seed === 'same') {
+    lines.push({ key: `${GUARDIAN}.sameSeed`, tone: 'risk' })
   }
   return lines
 }
