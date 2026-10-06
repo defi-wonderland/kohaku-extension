@@ -17,7 +17,7 @@ import { TextDecoder, TextEncoder } from 'util'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
 import type { FitCheckReading, RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
@@ -39,11 +39,15 @@ export interface Deferred<T> {
   reject: (error: unknown) => void
 }
 
-/** The wallet the screens read: its accounts, its keystore keys and the URL's search. */
+/**
+ * The wallet the screens read: its accounts, its keystore keys, the URL's
+ * search and the router's navigation state.
+ */
 interface FakeWallet {
   accounts: Account[] | undefined
   keys: { addr: string; type: 'internal' }[] | undefined
   search: string
+  state: unknown
 }
 
 /** A double of the storage helper that keeps values as given and can hold or refuse its writes. */
@@ -54,6 +58,8 @@ interface StorageDouble extends RecordStorage {
   hold?: Deferred<void>
   /** While true, every write rejects and stores nothing. */
   refuse: boolean
+  /** While true, every removal rejects and removes nothing. */
+  refuseRemove: boolean
 }
 
 /** The looked-up account's reads, one mock each, so a test scripts each call. */
@@ -83,13 +89,15 @@ export interface Mounted {
 // The edges
 // ---------------------------------------------------------------------------
 
-const mockWallet: FakeWallet = { accounts: undefined, keys: undefined, search: '' }
+const mockWallet: FakeWallet = { accounts: undefined, keys: undefined, search: '', state: null }
+const mockDispatch = jest.fn()
 const mockNavigate = jest.fn()
 const mockResolveName = jest.fn<Promise<string>, [string]>()
 
 const mockStorage: StorageDouble = {
   raw: new Map(),
   refuse: false,
+  refuseRemove: false,
   get: async (key, defaultValue) =>
     key && mockStorage.raw.has(key) ? mockStorage.raw.get(key) : defaultValue,
   getAll: async () => Object.fromEntries(mockStorage.raw),
@@ -110,10 +118,16 @@ const mockStorage: StorageDouble = {
     Object.entries(entries).forEach(([key, value]) => mockStorage.raw.set(key, value))
   },
   remove: async (key) => {
+    if (mockStorage.refuseRemove) {
+      throw new Error('storage unavailable')
+    }
     mockStorage.raw.delete(key)
     return null
   },
   removeKeys: async (keys) => {
+    if (mockStorage.refuseRemove) {
+      throw new Error('storage unavailable')
+    }
     keys.forEach((key) => mockStorage.raw.delete(key))
   }
 }
@@ -155,7 +169,7 @@ jest.mock('@web/hooks/useNetworksControllerState', () => ({
 }))
 jest.mock('@web/hooks/useBackgroundService', () => ({
   __esModule: true,
-  default: () => ({ dispatch: () => {} })
+  default: () => ({ dispatch: mockDispatch })
 }))
 jest.mock('@web/services/provider', () => ({ getRpcProviderForUI: () => ({}) }))
 jest.mock('@ambire-common/services/ensDomains', () => ({
@@ -167,7 +181,12 @@ jest.mock('@common/hooks/useNavigation', () => ({
 }))
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
-  useLocation: () => ({ pathname: '/', search: mockWallet.search, hash: '', state: null })
+  useLocation: () => ({
+    pathname: '/',
+    search: mockWallet.search,
+    hash: '',
+    state: mockWallet.state
+  })
 }))
 jest.mock('@web/modules/social-recovery/shared/records', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/records'),
@@ -208,7 +227,12 @@ const {
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
-  createWalletRecords
+  chipKey,
+  renderValueLabel
+}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
+const {
+  createWalletRecords,
+  revisionOf
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const EntryScreen: typeof import('@web/modules/social-recovery/recovery/entry/EntryScreen').default =
   require('@web/modules/social-recovery/recovery/entry/EntryScreen').default
@@ -221,7 +245,7 @@ export const t = (key: string, values?: Record<string, unknown>): string => i18n
 export const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 export const DESCRIPTOR = deploymentDescriptor(WALLET_RECOVERY_CHAIN)
 /** The recovery module the no-setup sentence names, checksummed as the screens draw it. */
-export const MODULE: Address = getAddress(DESCRIPTOR.manager)
+export const MODULE: Address = getAddress(DESCRIPTOR.action)
 /** The network the screens name: the wallet lists no network record, so the chain's own name. */
 export const NETWORK = 'Sepolia'
 
@@ -270,6 +294,9 @@ export const setWallet = (wallet: Partial<FakeWallet>) => {
 }
 
 export const navigate = mockNavigate
+export const dispatch = mockDispatch
+export const chip = (name: 'notActive' | 'cannotRecover') => t(chipKey('recovery', name))
+export const valueLabel = renderValueLabel
 export const resolveName = mockResolveName
 export const storage = mockStorage
 export const records = () => createWalletRecords({ storage: mockStorage })
@@ -282,6 +309,58 @@ export const deferred = <T,>(): Deferred<T> => {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+// ---------------------------------------------------------------------------
+// The recovery session
+// ---------------------------------------------------------------------------
+
+/** An approval gathering for the account, the body of a live session. */
+export const gatheringFor = (account: Address): Gathering => ({
+  kind: 'gathering',
+  version: 1,
+  purpose: 'approval',
+  request: {
+    chainId: CHAIN_ID.toString(),
+    manager: DESCRIPTOR.manager,
+    digestVersion: '1',
+    account,
+    action: DESCRIPTOR.action,
+    attemptId: '7',
+    setupNonce: '1',
+    setupBody: '0x00',
+    validUntil: '1800086400',
+    block: { number: 1, timestamp: '1800000000', hash: '0x01' }
+  },
+  places: [],
+  replies: []
+})
+
+/** Stores a recovery entry for the account with a live session beside it. */
+export const storeLiveRecovery = async (
+  account: Address,
+  entry: { route: 'logged-in' | 'fresh-install'; receivingAccount: Address }
+) => {
+  const held = records()
+  await held.recoveryEntry(CHAIN_ID, account).write({ account, ...entry })
+  await held.recoverySession(CHAIN_ID, account).write(gatheringFor(account), null)
+}
+
+/** Stores a recovery entry for the account whose session a wipe ended. */
+export const storeEndedRecovery = async (
+  account: Address,
+  entry: { route: 'logged-in' | 'fresh-install'; receivingAccount: Address }
+) => {
+  await storeLiveRecovery(account, entry)
+  const held = records()
+  const read = await held.recoverySession(CHAIN_ID, account).read()
+  await held.wipeRecoverySession(CHAIN_ID, account, 'deadline-passed', revisionOf(read))
+}
+
+/** The stored recovery entry of the account, or null where none is stored. */
+export const storedEntry = async (account: Address) => {
+  const read = await records().recoveryEntry(CHAIN_ID, account).read()
+  return read.status === 'present' ? read.value : null
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +446,9 @@ export const refusedClient = (): ClientState =>
   ({
     status: 'update-the-wallet',
     refusal: {},
-    retry: () => {}
+    retry: () => {
+      throw new Error('a refused client is not retried')
+    }
   } as unknown as ClientState)
 
 /** Puts every edge back: the wallet with a basic and a smart account, empty storage, recoverable reads. */
@@ -375,15 +456,18 @@ export const resetEdges = () => {
   setWallet({
     accounts: [DAILY, VAULT, WATCHED],
     keys: [keyOf(BASIC), keyOf(SMART_KEY)],
-    search: ''
+    search: '',
+    state: null
   })
   mockNavigate.mockReset()
+  mockDispatch.mockReset()
   mockResolveName.mockReset()
   mockResolveName.mockImplementation(async () => '')
   mockStorage.raw.clear()
   mockStorage.set.mockClear()
   mockStorage.hold = undefined
   mockStorage.refuse = false
+  mockStorage.refuseRemove = false
   mockClients.byAccount.clear()
   mockClients.ready = readyState()
   answerAsRecoverable()
@@ -482,9 +566,16 @@ const mount = async (element: React.ReactElement): Promise<Mounted> => {
 /** The logged-in entry's route. */
 export const mountEntry = () => mount(<EntryScreen />)
 
-/** The account step's route, with the URL's search. */
-export const mountAccountStep = (search: string) => {
-  setWallet({ search })
+/** The navigation state a screen passes once the holder acknowledged the warning. */
+export const ACKNOWLEDGED = { acknowledged: true }
+
+/**
+ * The account step's route, with the URL's search and the navigation state;
+ * by default the holder arrives from a screen where they acknowledged the
+ * warning.
+ */
+export const mountAccountStep = (search: string, state: unknown = ACKNOWLEDGED) => {
+  setWallet({ search, state })
   return mount(<AccountStepScreen />)
 }
 
@@ -522,6 +613,16 @@ describeHarness('the recovery entry harness', () => {
     await settle()
     expect(screen.has('entry-lookup-read-failed')).toBe(true)
     screen.unmount()
+  })
+
+  it('stores a live recovery, and one whose session a wipe ended with its entry kept', async () => {
+    await storeLiveRecovery(LOST, { route: 'logged-in', receivingAccount: BASIC })
+    const live = await records().recoverySession(CHAIN_ID, LOST).read()
+    expect(live.status === 'present' && live.value.state).toBe('live')
+    await storeEndedRecovery(SMART, { route: 'logged-in', receivingAccount: BASIC })
+    const ended = await records().recoverySession(CHAIN_ID, SMART).read()
+    expect(ended.status === 'present' && ended.value.state).not.toBe('live')
+    expect(await storedEntry(SMART)).not.toBeNull()
   })
 
   it('holds a write until released, then stores it', async () => {

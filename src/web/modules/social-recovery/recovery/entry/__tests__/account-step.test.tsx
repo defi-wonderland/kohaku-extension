@@ -9,8 +9,10 @@ import type { Mounted } from './harness'
 import {
   BASIC,
   CHAIN_ID,
+  chip,
   confirmLost,
   deferred,
+  dispatch,
   failedClient,
   kit,
   LOST,
@@ -31,7 +33,11 @@ import {
   SMART,
   SMART_KEY,
   storage,
+  storedEntry,
+  storeEndedRecovery,
+  storeLiveRecovery,
   t,
+  valueLabel,
   VIEW_ONLY
 } from './harness'
 
@@ -41,8 +47,8 @@ const NO_SETUP_SENTENCE = t('socialRecovery.entry.noSetup.title', { network: NET
 const CANNOT_RECOVER = t('socialRecovery.review.blocked.cannotRecover.title')
 
 let screen: Mounted | null = null
-const open = async (search: string) => {
-  screen = await mountAccountStep(search)
+const open = async (search: string, state?: unknown) => {
+  screen = await (state === undefined ? mountAccountStep(search) : mountAccountStep(search, state))
   return screen
 }
 
@@ -214,11 +220,34 @@ describe('the lookup', () => {
     expect(page.has('entry-confirm')).toBe(false)
   })
 
+  it('offers the update action alone on update the wallet, and says nothing about a setup', async () => {
+    setClient(LOST, refusedClient())
+    const page = await open(LOGGED_IN)
+    await lookUp(page, LOST.toLowerCase())
+    const state = page.textOf('entry-lookup-update-the-wallet')
+    expect(state).not.toContain(t('socialRecovery.client.updateTheWalletBody'))
+    expect(state).not.toContain(t('socialRecovery.writes.tryAgain'))
+    expect(state).not.toContain(t('socialRecovery.entry.noSetup.tryAnother'))
+    expect(page.has('entry-lookup-refused-retry')).toBe(false)
+    expect(page.has('entry-lookup-another')).toBe(false)
+    expect(page.textOf('entry-lookup-update')).toBe(
+      t('socialRecovery.client.updateTheWalletAction')
+    )
+    await page.press('entry-lookup-update')
+    expect(dispatch).toHaveBeenCalledWith({ type: 'EXTENSION_UPDATE_CONTROLLER_APPLY_UPDATE' })
+    expect(kit.setupState).not.toHaveBeenCalled()
+  })
+
   it('renders the no-setup sentence with the network and the module only where the account carries no setup', async () => {
     kit.setupState.mockResolvedValueOnce(setupStateOf({ hasSetup: false }))
     const page = await open(LOGGED_IN)
     await lookUp(page, LOST.toLowerCase())
     expect(page.textOf('entry-no-setup-title')).toBe(NO_SETUP_SENTENCE)
+    expect(page.textOf('entry-no-setup-address')).toBe(LOST)
+    expect(page.textOf('entry-no-setup-network')).toBe(NETWORK)
+    expect(page.textOf('entry-no-setup-account')).toContain(
+      t('socialRecovery.entry.labels.accountLookedUp')
+    )
     expect(page.textOf('entry-no-setup-module')).toBe(
       t('socialRecovery.entry.noSetup.module', { module: MODULE })
     )
@@ -243,6 +272,51 @@ describe('the confirmation', () => {
     expect(page.textOf('entry-confirm-reads-only')).toBe(
       t('socialRecovery.entry.confirm.readsOnly')
     )
+  })
+
+  it('labels the account as the account being recovered', async () => {
+    const page = await open(LOGGED_IN)
+    await lookUp(page, LOST.toLowerCase())
+    const confirm = page.textOf('entry-confirm')
+    expect(confirm).toContain(valueLabel('accountBeingRecovered', t))
+    expect(confirm).not.toContain(t('socialRecovery.entry.labels.accountLookedUp'))
+  })
+
+  it("stores the wallet's own form of the receiving account, not the casing the URL carried", async () => {
+    const shouted = `0x${BASIC.slice(2).toUpperCase()}`
+    expect(shouted).not.toBe(BASIC)
+    const page = await open(searchOf('logged-in', shouted))
+    await confirmLost(page)
+    expect((await storedEntry(LOST))?.receivingAccount).toBe(BASIC)
+  })
+
+  it('resumes a recovery whose entry has a live session at the checklist, and writes nothing', async () => {
+    await storeLiveRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
+    storage.set.mockClear()
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    expect(navigate).toHaveBeenCalledWith(`/social-recovery/recovery/checklist?account=${LOST}`)
+    expect(storage.set).not.toHaveBeenCalled()
+    expect(await storedEntry(LOST)).toEqual({
+      account: LOST,
+      route: 'fresh-install',
+      receivingAccount: SMART
+    })
+    expect(kit.isAuthorized).not.toHaveBeenCalled()
+  })
+
+  it('overwrites an entry whose session is no longer live, and reads on', async () => {
+    await storeEndedRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(await storedEntry(LOST)).toEqual({
+      account: LOST,
+      route: 'logged-in',
+      receivingAccount: BASIC
+    })
+    expect(kit.isAuthorized).toHaveBeenCalledTimes(1)
+    expect(page.has('entry-continue')).toBe(true)
   })
 
   it('shows the name it resolved from with the caveat beside the full address', async () => {
@@ -315,6 +389,7 @@ describe('the authorization read', () => {
     const page = await open(LOGGED_IN)
     await confirmLost(page)
     expect(page.textOf('entry-dormant-title')).toBe(t('socialRecovery.entry.dormant.title'))
+    expect(page.textOf('entry-dormant-chip')).toBe(chip('notActive'))
     expect(page.has('entry-dormant-running')).toBe(false)
     expectNoContinue(page)
     expect(kit.supportsAccount).not.toHaveBeenCalled()
@@ -400,6 +475,20 @@ describe('the fit reads', () => {
     })
   })
 
+  it('renders a removed key with no creation record as the failed fit read with retry, never a refusal', async () => {
+    kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'no-creation-record' })
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    expect(page.has('entry-reads-fit-failed')).toBe(true)
+    expect(page.text()).toContain(t('socialRecovery.entry.confirm.fitReadFailedTitle'))
+    expect(page.has('entry-cannot-recover')).toBe(false)
+    expect(page.text()).not.toContain(CANNOT_RECOVER)
+    expectNoContinue(page)
+
+    await page.press('entry-reads-fit-failed-retry')
+    expect(page.has('entry-continue')).toBe(true)
+  })
+
   it('renders a failed fit read as its own failed state, not a refusal; the retry that answers goes on', async () => {
     kit.fitCheck.mockRejectedValueOnce(new Error('rpc down'))
     const page = await open(LOGGED_IN)
@@ -457,7 +546,7 @@ describe('the destination key', () => {
     expectNoContinue(page)
   })
 
-  it('gives the fresh-install route the refusal sentence without the way back', async () => {
+  it('gives the fresh-install route the refusal sentence without the way to another account', async () => {
     kit.holdsAnyPrivilege.mockResolvedValueOnce(true)
     const page = await open(FRESH_INSTALL)
     await confirmLost(page)
@@ -466,6 +555,7 @@ describe('the destination key', () => {
       t('socialRecovery.entry.destination.holdsPrivilege')
     )
     expect(page.has('entry-destination-choose-another')).toBe(false)
+    expect(page.has('entry-destination-back')).toBe(true)
     expectNoContinue(page)
   })
 
@@ -489,5 +579,127 @@ describe('the way on', () => {
     await confirmLost(page)
     await page.press('entry-continue')
     expect(navigate).toHaveBeenLastCalledWith(`/social-recovery/recovery/readout?account=${LOST}`)
+  })
+})
+
+describe('a direct open', () => {
+  const GATE_CONTINUE = 'entry-gate-continue'
+
+  it('shows the condensed warning before the field, with its own continue that waits for the acknowledgment', async () => {
+    const page = await open(LOGGED_IN, null)
+    expect(page.has('entry-gate')).toBe(true)
+    expect(page.has('recovery-warning')).toBe(true)
+    expect(page.has('entry-account-field')).toBe(false)
+    expect(page.isDisabled(GATE_CONTINUE)).toBe(true)
+    await page.press(GATE_CONTINUE)
+    expect(page.has('entry-account-field')).toBe(false)
+
+    await page.press('recovery-warning-acknowledge')
+    expect(page.isDisabled(GATE_CONTINUE)).toBe(false)
+    await page.press(GATE_CONTINUE)
+    expect(page.has('entry-gate')).toBe(false)
+    expect(page.has('entry-account-field')).toBe(true)
+    expect(page.textOf('recovery-stage')).toBe(
+      t('socialRecovery.entry.stageCounter', { step: 2, total: 5 })
+    )
+  })
+
+  it('shows the condensed warning on the fresh-install route too', async () => {
+    const page = await open(FRESH_INSTALL, null)
+    expect(page.has('entry-gate')).toBe(true)
+    expect(page.has('entry-account-field')).toBe(false)
+  })
+
+  it('shows the warning for a navigation state that does not say acknowledged', async () => {
+    const page = await open(LOGGED_IN, { acknowledged: 'true' })
+    expect(page.has('entry-gate')).toBe(true)
+    expect(page.has('entry-account-field')).toBe(false)
+  })
+
+  it('shows no warning where the screen before passed the acknowledgment', async () => {
+    const page = await open(LOGGED_IN)
+    expect(page.has('entry-gate')).toBe(false)
+    expect(page.has('entry-account-field')).toBe(true)
+  })
+
+  it('takes a new acknowledgment when the step mounts again', async () => {
+    const first = await open(LOGGED_IN, null)
+    await first.press('recovery-warning-acknowledge')
+    expect(first.isDisabled(GATE_CONTINUE)).toBe(false)
+    first.unmount()
+    screen = null
+
+    const second = await open(LOGGED_IN, null)
+    expect(second.isDisabled(GATE_CONTINUE)).toBe(true)
+    await second.press(GATE_CONTINUE)
+    expect(second.has('entry-account-field')).toBe(false)
+  })
+})
+
+describe('leaving a blocked state', () => {
+  const blockedBy: [string, () => void, string][] = [
+    [
+      'the dormant state',
+      () => kit.isAuthorized.mockResolvedValueOnce(false),
+      'entry-dormant-back'
+    ],
+    [
+      'cannot recover yet',
+      () => kit.supportsAccount.mockResolvedValueOnce(false),
+      'entry-cannot-recover-back'
+    ]
+  ]
+  blockedBy.forEach(([name, script, back]) => {
+    it(`goes back to the field from ${name} and clears the entry`, async () => {
+      script()
+      const page = await open(LOGGED_IN)
+      await confirmLost(page)
+      expect(await storedEntry(LOST)).not.toBeNull()
+      expect(page.textOf(back)).toBe(t('socialRecovery.ceremony.backAction'))
+      expectNoContinue(page)
+      await page.press(back)
+      expect(page.has('entry-account-field')).toBe(true)
+      expect(await storedEntry(LOST)).toBeNull()
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it(`still goes back to the field from ${name} when the clear fails`, async () => {
+      script()
+      const page = await open(LOGGED_IN)
+      await confirmLost(page)
+      storage.refuseRemove = true
+      await page.press(back)
+      expect(page.has('entry-account-field')).toBe(true)
+    })
+  })
+
+  it('goes back to the choice of another account from a destination refusal on the logged-in route, and clears the entry', async () => {
+    kit.holdsAnyPrivilege.mockResolvedValueOnce(true)
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    expect(page.has('entry-destination-back')).toBe(false)
+    await page.press('entry-destination-choose-another')
+    expect(navigate).toHaveBeenCalledWith('/social-recovery/recovery')
+    expect(await storedEntry(LOST)).toBeNull()
+  })
+
+  it('still leaves for another account when the clear fails', async () => {
+    kit.holdsAnyPrivilege.mockResolvedValueOnce(true)
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    storage.refuseRemove = true
+    await page.press('entry-destination-choose-another')
+    expect(navigate).toHaveBeenCalledWith('/social-recovery/recovery')
+  })
+
+  it('goes back to the field from a destination refusal on the fresh-install route, and clears the entry', async () => {
+    kit.holdsAnyPrivilege.mockResolvedValueOnce(true)
+    const page = await open(FRESH_INSTALL)
+    await confirmLost(page)
+    expect(page.textOf('entry-destination-back')).toBe(t('socialRecovery.ceremony.backAction'))
+    await page.press('entry-destination-back')
+    expect(page.has('entry-account-field')).toBe(true)
+    expect(await storedEntry(LOST)).toBeNull()
+    expect(navigate).not.toHaveBeenCalled()
   })
 })

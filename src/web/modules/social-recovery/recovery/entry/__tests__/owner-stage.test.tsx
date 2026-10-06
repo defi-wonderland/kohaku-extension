@@ -5,6 +5,7 @@
  * accounts receives control.
  */
 import {
+  ACKNOWLEDGED,
   BASIC,
   basicAccount,
   DAILY,
@@ -16,6 +17,7 @@ import {
   SMART,
   SMART_KEY,
   t,
+  valueLabel,
   VAULT,
   VIEW_ONLY,
   WATCHED
@@ -115,6 +117,22 @@ describe('the owner stage', () => {
     screen.unmount()
   })
 
+  it('shows the key the chosen account installs as its own value, above the installs sentence', async () => {
+    const screen = await mountEntry()
+    await screen.press(ACK)
+    expect(screen.has('entry-owner-new-key')).toBe(false)
+    await screen.press(choice(SMART))
+    expect(screen.textOf('entry-owner-new-key')).toBe(SMART_KEY)
+    const sentences = screen.textOf('entry-owner-sentences')
+    expect(sentences).toContain(valueLabel('newKey', t))
+    expect(sentences.indexOf(SMART_KEY)).toBeLessThan(
+      sentences.indexOf(t('socialRecovery.entry.owner.installs', { account: 'Vault' }))
+    )
+    await screen.press(choice(BASIC))
+    expect(screen.textOf('entry-owner-new-key')).toBe(BASIC)
+    screen.unmount()
+  })
+
   it('shows the one account a wallet holds as chosen, with the same sentences', async () => {
     setWallet({ accounts: [DAILY, WATCHED], keys: [keyOf(BASIC)] })
     const screen = await mountEntry()
@@ -126,7 +144,8 @@ describe('the owner stage', () => {
     await screen.press(ACK)
     await screen.press(CONTINUE)
     expect(navigate).toHaveBeenCalledWith(
-      `/social-recovery/recovery/account?route=logged-in&to=${BASIC}`
+      `/social-recovery/recovery/account?route=logged-in&to=${BASIC}`,
+      { state: ACKNOWLEDGED }
     )
     screen.unmount()
   })
@@ -151,8 +170,10 @@ describe('the owner stage', () => {
     await screen.press(choice(SMART))
     await screen.press(CONTINUE)
     expect(navigate).toHaveBeenCalledTimes(1)
+    // The account step learns the warning was acknowledged here.
     expect(navigate).toHaveBeenCalledWith(
-      `/social-recovery/recovery/account?route=logged-in&to=${VAULT.addr}`
+      `/social-recovery/recovery/account?route=logged-in&to=${VAULT.addr}`,
+      { state: ACKNOWLEDGED }
     )
     screen.unmount()
   })
