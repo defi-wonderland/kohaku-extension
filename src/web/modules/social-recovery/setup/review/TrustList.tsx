@@ -32,6 +32,10 @@ const TrustList = ({ rows, client, onRetry }: TrustListProps) => {
   )
 
   const headingText = (heading: TrustHeading, row: TrustRow): string => {
+    // A slot not enrolled yet has no name of its own: it shows its kind.
+    if (heading.kind && isEmptySlot(heading.credential)) {
+      return kindNameOf(heading.kind, t)
+    }
     if (heading.kind === 'ecdsa') {
       if (!heading.guardian) {
         return renderNoun('guardian', t)
