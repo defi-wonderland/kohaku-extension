@@ -119,6 +119,12 @@ export interface AttemptStory {
 
 export type CannotExecuteCause = typeof CANNOT_EXECUTE_CAUSES[number]
 
+/**
+ * Whether the attempt a poll read is the recovery's own, another one, or one
+ * under the recovery's id the wait cannot match as its own.
+ */
+export type AttemptMatch = 'ours' | 'other' | 'unmatched'
+
 /** Where the recovery stands after one poll. */
 export type WaitPhase =
   | { kind: 'waiting'; attempt: Attempt }
@@ -218,13 +224,15 @@ export interface ExecuteRun {
   start: () => void
   /** Reads the run's hashes once the attempt read disagrees with a send past the dropped age. */
   checkDropped: () => void
+  /** Drops the run once its attempt executed, so nothing of it is taken up again. */
+  release: () => void
 }
 
 // ---------------------------------------------------------------------------
 // The home surface
 // ---------------------------------------------------------------------------
 
-/** One landed recovery on the home surface, as one attempt read gives it. */
+/** One landed recovery on the home surface, as the latest attempt read gives it. */
 export type CountdownHeadline =
   | { kind: 'waiting'; anchor: CountdownAnchor }
   | { kind: 'executionDue' }
@@ -253,7 +261,10 @@ export interface WaitViewProps {
   poll: WaitPoll
   /** The time left from the last poll's anchor, by the view's own clock; null with no answered poll. */
   remainingMs: number | null
-  /** When the submission landed on this device, in ms since epoch. */
+  /**
+   * When the submission landed on this device, in ms since epoch: the start
+   * shown where this device holds no setup to take the chain's start from.
+   */
   startedAt: number
   timeZone: string
   /** The setup's configuration where this device holds it, for the path line and the cancel's threshold. */

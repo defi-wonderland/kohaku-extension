@@ -12,6 +12,12 @@ export const EXECUTE_BALANCE_POLL_MS = 5_000
  * account rather than from the attempt: the account no longer authorizes the
  * action, the account no longer fits the action, or a key on the account
  * moved a privilege the handover needs (the key being removed holds nothing,
- * or the new key already holds something).
+ * or the new key already holds something); or the attempt under the
+ * recovery's id cannot be matched as the one this recovery started.
  */
-export const CANNOT_EXECUTE_CAUSES = ['notAuthorized', 'upgradedAway', 'privilegeMoved'] as const
+export const CANNOT_EXECUTE_CAUSES = [
+  'notAuthorized',
+  'upgradedAway',
+  'privilegeMoved',
+  'unmatched'
+] as const

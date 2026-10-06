@@ -257,7 +257,18 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
       now
     })
   }, [kit, chainReads, receipts, due, payload, plan, network, port, now])
-  const run = useExecuteRun(steps, `${CHAIN_ID}:${account.toLowerCase()}`)
+  // The attempt the run belongs to, once the events name it; kept across a failed round.
+  const [runAttempt, setRunAttempt] = useState<bigint | null>(null)
+  const storyAttempt = answered?.story.attemptId
+  useEffect(() => {
+    if (storyAttempt !== undefined) {
+      setRunAttempt(storyAttempt)
+    }
+  }, [storyAttempt])
+  const run = useExecuteRun(
+    steps,
+    `${CHAIN_ID}:${account.toLowerCase()}:${runAttempt === null ? '' : runAttempt.toString()}`
+  )
 
   // A landed execution is read back at once; a send the attempt read still disagrees with is checked for a drop.
   const writeStatus = run.state.write.status
@@ -274,8 +285,11 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   }, [answered, writeStatus, checkDropped])
 
   const consumed = answered?.phase.kind === 'consumed'
+  const releaseRun = useRef(run.release)
+  releaseRun.current = run.release
   useEffect(() => {
     if (consumed) {
+      releaseRun.current()
       navigate(donePathOf(account), { replace: true })
     }
   }, [consumed, navigate, account])
@@ -291,11 +305,14 @@ const WaitBody = ({ records, account, entry, revision, savedAt }: WaitBodyProps)
   }, [records, account, revision, navigate, entry.route])
 
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
+  // The transfer screen sends from the selected account, so the account being recovered is selected first.
+  const listedAddress = ownFacts.status === 'ready' ? ownFacts.facts.account.addr : null
   const onMoveFunds = useCallback(() => {
-    if (holdsAccountKey) {
+    if (holdsAccountKey && listedAddress) {
+      dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: listedAddress } })
       navigate(`/${WEB_ROUTES.transfer}`)
     }
-  }, [holdsAccountKey, navigate])
+  }, [holdsAccountKey, listedAddress, dispatch, navigate])
 
   const chain = kit?.chain
   const onOpenExplorer = useCallback(

@@ -203,15 +203,12 @@ export const attachExecuteSteps = (store: ExecuteStore, steps: ExecuteSteps): vo
 
 /**
  * Starts the execution, from nothing or from a state that offers the retry:
- * the prepare, the gas check, then the deposit step or the send. Does nothing
- * while work is in flight, after a landing, or after a send that may still land.
+ * the prepare, the gas check, then the deposit step or the send. The write
+ * machine refuses the start while work is in flight, after a landing, and
+ * after a send that may still land; a refused start does nothing.
  */
 export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): Promise<void> => {
-  const state = store.state()
-  if (isExecuting(state) || state.write.status === 'landed' || mayStillLand(state.write)) {
-    return
-  }
-  const before = state.write.run
+  const before = store.state().write.run
   writeEvent(store)({ type: 'start' })
   const { run } = store.state().write
   if (run === before) {

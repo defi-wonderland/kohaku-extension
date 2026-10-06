@@ -4,7 +4,8 @@
  * answered poll renders its phase: the countdown with the notes that the page
  * can close, that the account's own key can still cancel and who finishes it;
  * execution due with execute now; the recovery that can no longer execute
- * with its cause; the cancelled terminal by its canceller. A consumed attempt
+ * with its cause alone, no countdown beside it; the cancelled terminal by its
+ * canceller. A consumed attempt
  * renders nothing of its own: the screen goes on to the done screen.
  */
 import React from 'react'
@@ -136,16 +137,18 @@ const WaitView = ({
   return (
     <View testID="wait">
       <PageTitle title={t(`${WAIT}.title`)} lead={t(`${WAIT}.lead`)} titleTestID="wait-title" />
-      <CountdownBlock
-        round={poll}
-        account={account}
-        newKey={keys.keys.newKey}
-        remainingMs={remainingMs}
-        startedAt={startedAt}
-        timeZone={timeZone}
-        configuration={configuration}
-        onOpenExplorer={onOpenExplorer}
-      />
+      {phase.kind !== 'cannotExecute' && (
+        <CountdownBlock
+          round={poll}
+          account={account}
+          newKey={keys.keys.newKey}
+          remainingMs={remainingMs}
+          startedAt={startedAt}
+          timeZone={timeZone}
+          configuration={configuration}
+          onOpenExplorer={onOpenExplorer}
+        />
+      )}
       {phase.kind === 'cannotExecute' && (
         <CannotExecuteBlock
           cause={phase.cause}

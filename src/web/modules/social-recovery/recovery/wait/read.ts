@@ -9,7 +9,14 @@ import { isAddressEqual, keccak256 } from 'viem'
 
 import type { Attempt } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { AttemptStory, HandoverKeys, StartedNotice, WaitFacts, WaitKitClient } from './types'
+import type {
+  AttemptStory,
+  CancelledNotice,
+  HandoverKeys,
+  StartedNotice,
+  WaitFacts,
+  WaitKitClient
+} from './types'
 
 /** The answer of `read`, or undefined where it throws or does not answer within `limitMs`. */
 export const within = <T>(read: () => Promise<T>, limitMs: number): Promise<T | undefined> =>
@@ -102,7 +109,7 @@ export const readAttemptStory = (
     }
     const started = [...opened].reverse().find((notification) => notification.attemptId === id)
     const cancelled = notifications.find(
-      (notification): notification is Extract<typeof notification, { kind: 'attempt-cancelled' }> =>
+      (notification): notification is CancelledNotice =>
         notification.kind === 'attempt-cancelled' && notification.attemptId === id
     )
     const consumed = notifications.some(

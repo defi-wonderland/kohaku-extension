@@ -1,8 +1,9 @@
 /**
- * Holds the execution's run for the wait, one per chain and account, outside
- * the screen, so a remount takes up the run in flight instead of sending a
- * second execution. When the screen leaves a run with nothing in flight, the
- * run is dropped. A move with no steps yet does nothing.
+ * Holds the execution's run for the wait, one per chain, account and attempt,
+ * outside the screen, so a remount takes up the run in flight instead of
+ * sending a second execution. When the screen leaves a run with nothing in
+ * flight, or releases it once the attempt executed, the run is dropped. A
+ * move with no steps yet does nothing.
  */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
@@ -64,7 +65,13 @@ const useExecuteRun = (steps: ExecuteSteps | null, runKey: string): ExecuteRun =
     }
   }, [store])
 
-  return { state, start, checkDropped: dropped }
+  const release = useCallback(() => {
+    if (RUNS.get(runKey) === store) {
+      RUNS.delete(runKey)
+    }
+  }, [store, runKey])
+
+  return { state, start, checkDropped: dropped, release }
 }
 
 export default useExecuteRun

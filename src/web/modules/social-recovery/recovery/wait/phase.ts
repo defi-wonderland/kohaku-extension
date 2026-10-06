@@ -9,6 +9,7 @@ import { CHECKLIST_SEARCH_KEYS } from '@web/modules/social-recovery/recovery/che
 
 import { isAttemptOf } from './read'
 import type {
+  AttemptMatch,
   AttemptStory,
   CannotExecuteCause,
   CountdownAnchor,
@@ -35,17 +36,31 @@ export const cannotExecuteCauseOf = (facts: WaitFacts): CannotExecuteCause | nul
   return null
 }
 
-/** Whether the attempt the manager reports is the recovery's own: by its opening event, else by its id. */
-const oursOf = (facts: WaitFacts, story: AttemptStory): boolean => {
+/**
+ * Whether the attempt the manager reports is the recovery's own: by its
+ * opening event where the events name one (the same id, setup number and
+ * payload). Without one, the same id makes a cancelled attempt ours, and a
+ * consumed one only with its consume event; any other attempt under that id
+ * cannot be matched, so nothing executes it.
+ */
+export const matchOf = (facts: WaitFacts, story: AttemptStory): AttemptMatch => {
   const { attempt } = facts
   if (story.started) {
-    return isAttemptOf(attempt, story.started)
+    return isAttemptOf(attempt, story.started) ? 'ours' : 'other'
   }
-  return attempt.state !== 'None' && story.attemptId === attempt.attemptId
+  if (attempt.state === 'None' || story.attemptId !== attempt.attemptId) {
+    return 'other'
+  }
+  if (attempt.state === 'Cancelled' || (attempt.state === 'Consumed' && story.consumed)) {
+    return 'ours'
+  }
+  return 'unmatched'
 }
 
 /**
  * The phase one poll reads:
+ * - an attempt under the recovery's id that cannot be matched as its own:
+ *   cannot execute, so nothing is sent for it;
  * - the recovery's own attempt consumed: executed; cancelled: cancelled, by
  *   the canceller its event names (none where no event names one); waiting:
  *   cannot execute where a check fails, else execution due once its
@@ -56,7 +71,11 @@ const oursOf = (facts: WaitFacts, story: AttemptStory): boolean => {
  */
 export const phaseOf = (facts: WaitFacts, story: AttemptStory): WaitPhase => {
   const { attempt, block } = facts
-  if (oursOf(facts, story)) {
+  const match = matchOf(facts, story)
+  if (match === 'unmatched') {
+    return { kind: 'cannotExecute', attempt, cause: 'unmatched' }
+  }
+  if (match === 'ours') {
     if (attempt.state === 'Consumed') {
       return { kind: 'consumed' }
     }
@@ -84,10 +103,13 @@ export const phaseOf = (facts: WaitFacts, story: AttemptStory): WaitPhase => {
 export const needsStory = (facts: WaitFacts, known: AttemptStory | null): boolean =>
   !known?.started || facts.attempt.state !== 'Waiting' || !isAttemptOf(facts.attempt, known.started)
 
-/** The countdown's anchor from a poll that read a running attempt; null for any other phase. */
+/**
+ * The countdown's anchor from a poll that read a running attempt the recovery
+ * can still execute; null for any other phase.
+ */
 export const anchorOf = (round: WaitRound): CountdownAnchor | null => {
   const { phase, facts } = round
-  if (phase.kind !== 'waiting' && phase.kind !== 'cannotExecute' && phase.kind !== 'executionDue') {
+  if (phase.kind !== 'waiting' && phase.kind !== 'executionDue') {
     return null
   }
   return {
