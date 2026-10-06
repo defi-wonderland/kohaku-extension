@@ -48,6 +48,8 @@ const UNAVAILABLE_ROWS = passkeyRows({
   moduleInfo: info(),
   paused: UNANSWERED
 })
+const UNTESTED = [{ credential: ALICE, clause: 0, member: 0 }]
+
 const PENDING_ROWS = passkeyRows({ trustedParties: declaration(), moduleInfo: info() })
 
 const TWO_AUTHORITIES = descriptionOf([
@@ -318,23 +320,27 @@ describe('the save gate', () => {
     })
 
     it('still warns of an untested method', () => {
-      expect(gateOf({ removedKey: { status: 'pending' }, untested: true })).toEqual({
+      expect(gateOf({ removedKey: { status: 'pending' }, untested: UNTESTED })).toEqual({
         canSave: false,
         blocked: null,
-        notTested: true
+        notTested: UNTESTED
       })
     })
   })
 
   it('warns of an untested method beside an enabled Save', () => {
-    expect(gateOf({ untested: true })).toEqual({ canSave: true, blocked: null, notTested: true })
+    expect(gateOf({ untested: UNTESTED })).toEqual({
+      canSave: true,
+      blocked: null,
+      notTested: UNTESTED
+    })
   })
 
   it('warns of an untested method beside whichever blocker applies', () => {
-    expect(gateOf({ untested: true, setupState: HAS_SETUP })).toEqual({
+    expect(gateOf({ untested: UNTESTED, setupState: HAS_SETUP })).toEqual({
       canSave: false,
       blocked: { kind: 'already-set-up' },
-      notTested: true
+      notTested: UNTESTED
     })
   })
 
@@ -485,18 +491,24 @@ describe('the blocks the setup records decide', () => {
 
 describe('whether a method of the path is untested', () => {
   it('holds where a credential skipped its test', () => {
-    expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'not-tested')])).toBe(true)
+    expect(untestedInPath([required(ALICE)], [enrolled(ALICE, 'not-tested')])).toEqual([
+      { credential: ALICE, clause: 0, member: 0 }
+    ])
   })
 
   it('holds where a credential has no enrollment', () => {
-    expect(untestedInPath([required(ALICE)], [])).toBe(true)
-    expect(untestedInPath([group(1, ALICE, PASSKEY)], [enrolled(ALICE)])).toBe(true)
+    expect(untestedInPath([required(ALICE)], [])).toEqual([
+      { credential: ALICE, clause: 0, member: 0 }
+    ])
+    expect(untestedInPath([group(1, ALICE, PASSKEY)], [enrolled(ALICE)])).toEqual([
+      { credential: PASSKEY, clause: 0, member: 1 }
+    ])
   })
 
   const RAN: Enrollment['test'][] = ['failed', 'unavailable', 'not-supported']
   RAN.forEach((test) => {
     it(`does not hold where a credential's test reads ${test}`, () => {
-      expect(untestedInPath([required(PASSKEY)], [enrolled(PASSKEY, test)])).toBe(false)
+      expect(untestedInPath([required(PASSKEY)], [enrolled(PASSKEY, test)])).toEqual([])
     })
   })
 
@@ -506,17 +518,17 @@ describe('whether a method of the path is untested', () => {
         [group(1, ALICE, PASSKEY)],
         [enrolled(ALICE, 'not-tested'), enrolled(PASSKEY, 'failed')]
       )
-    ).toBe(true)
+    ).toEqual([{ credential: ALICE, clause: 0, member: 0 }])
   })
 
   it('does not hold where every credential passed its test', () => {
-    expect(untestedInPath([group(1, ALICE, PASSKEY)], [enrolled(ALICE), enrolled(PASSKEY)])).toBe(
-      false
-    )
+    expect(
+      untestedInPath([group(1, ALICE, PASSKEY)], [enrolled(ALICE), enrolled(PASSKEY)])
+    ).toEqual([])
   })
 
   it('does not count an empty slot as an untested method', () => {
-    expect(untestedInPath([group(1, ALICE, emptySlot('passkey'))], [enrolled(ALICE)])).toBe(false)
+    expect(untestedInPath([group(1, ALICE, emptySlot('passkey'))], [enrolled(ALICE)])).toEqual([])
   })
 })
 
