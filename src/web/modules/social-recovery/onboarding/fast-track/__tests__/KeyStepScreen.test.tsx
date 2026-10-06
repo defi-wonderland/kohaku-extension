@@ -316,18 +316,40 @@ describe('the key step', () => {
       expect(where()).toBe(ACCOUNT_STEP)
     })
 
-    it('does not fail at the limit while the picker still runs the add', async () => {
+    it('frees Back at the limit while the picker still runs the add, and sends nothing again', async () => {
       jest.useFakeTimers()
       await atWords()
       await continueAfterAcknowledging()
       await setController('picker', { addAccountsStatus: 'LOADING' })
+      const sent = mockEdge.events.length
 
+      expect(isDisabled('fast-track-key-back')).toBe(true)
       await act(async () => {
         jest.advanceTimersByTime(LIMIT_MS + 1)
       })
 
       expect(byTestId('fast-track-key-add-failed')).toBeNull()
       expect(isDisabled('fast-track-key-continue')).toBe(true)
+      expect(isDisabled('fast-track-key-back')).toBe(false)
+      expect(mockEdge.events.length).toBe(sent)
+    })
+
+    it('frees Back at the limit after a success with the slot not listed yet, and sends nothing again', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+      const sent = mockEdge.events.length
+
+      expect(isDisabled('fast-track-key-back')).toBe(true)
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS + 1)
+      })
+
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+      expect(isDisabled('fast-track-key-back')).toBe(false)
+      expect(mockEdge.events.length).toBe(sent)
     })
 
     it('fails at the limit where the idle picker never started', async () => {
@@ -361,10 +383,24 @@ describe('the key step', () => {
       expect(where()).toBe(ACCOUNT_STEP)
     })
 
-    it('does the same for a signed-in wallet that types the URL', async () => {
+    it('meets a direct open with accounts listed with the warning, and sends nothing', async () => {
       await walletListsSlot()
 
       await mount(KEY_STEP)
+
+      expect(byTestId('recovery-warning')).not.toBeNull()
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(movesAway()).toEqual([])
+    })
+
+    it('goes on to the account step once the holder acknowledges that warning', async () => {
+      await walletListsSlot()
+      await mount(KEY_STEP)
+
+      await press('recovery-warning-acknowledge')
+      await press('recovery-warning-continue')
+      await flush()
 
       expect(mockEdge.made).toBe(0)
       expect(dispatched()).toEqual([])

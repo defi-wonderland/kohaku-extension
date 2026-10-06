@@ -23,6 +23,7 @@ import {
 } from '@web/modules/social-recovery/onboarding/fast-track'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
+import type { TempSeed } from '@web/modules/social-recovery/onboarding/fast-track'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import slot from '@web/modules/social-recovery/onboarding/fast-track/__tests__/slot.json'
 
@@ -51,7 +52,7 @@ beforeAll(async () => {
   slotAccounts = [basicAccount, smartAccount]
 })
 
-const SEED = {
+const SEED: TempSeed = {
   seed: TEST_PHRASE,
   seedPassphrase: null,
   hdPathTemplate: BIP44_STANDARD_DERIVATION_TEMPLATE
@@ -137,10 +138,7 @@ describe('the key that sends the recovery', () => {
 
   it('is none where the phrase gives more than one listed basic account', () => {
     const second = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
-    const keys = [
-      ...slotKeys,
-      { ...slotKeys[0], addr: second, meta: { createdAt: 1, fromSeedId: SEED_ID } }
-    ]
+    const keys: Key[] = [...slotKeys, internalKey(second, false)]
 
     expect(
       fastTrackSendingKeyOf(SMART_ACCOUNT, [...slotAccounts, getBasicAccount(second, [])], keys)

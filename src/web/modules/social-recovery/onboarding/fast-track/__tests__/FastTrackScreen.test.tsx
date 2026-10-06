@@ -153,6 +153,15 @@ describe('the fast track route', () => {
       expect(byTestId('fast-track-key-step')?.textContent).toBe('Set up this device · Step 3 of 3')
     })
 
+    it('skips the step on a device with a password and a locked keystore, on to the unlock', async () => {
+      await setController('keystore', { hasPasswordSecret: true, isUnlocked: false })
+
+      await mount(FAST_TRACK, ACKNOWLEDGED)
+
+      expect(byTestId('fast-track-password-field')).toBeNull()
+      expect(where()).toBe('/keystore-unlock')
+    })
+
     it('goes back to the warning', async () => {
       await mount(FAST_TRACK, ACKNOWLEDGED)
 

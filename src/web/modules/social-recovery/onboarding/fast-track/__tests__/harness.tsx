@@ -18,6 +18,7 @@ import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
+import type { BackgroundServiceContextReturnType } from '@web/contexts/backgroundServiceContext/types'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import mockSlot from './slot.json'
@@ -328,9 +329,10 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
-const BACKGROUND = {
-  dispatch: (action: { type: string; params?: Record<string, unknown> }) => {
-    mockEdge.events.push({ kind: 'dispatch', type: action.type, params: action.params })
+const BACKGROUND: BackgroundServiceContextReturnType = {
+  dispatch: (action) => {
+    const { type, params } = action as { type: string; params?: Record<string, unknown> }
+    mockEdge.events.push({ kind: 'dispatch', type, params })
   },
   windowId: undefined
 }
