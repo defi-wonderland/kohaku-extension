@@ -80,3 +80,33 @@ export interface MethodRowProps {
   style?: StyleProp<ViewStyle>
   testID?: string
 }
+
+/**
+ * How a path tree's line crosses one node: not at all, from the node's top
+ * down to its tick, from its tick down to its bottom, or its whole height.
+ */
+export type PathTreeSegment = 'none' | 'top' | 'bottom' | 'full'
+
+/**
+ * A node of a path tree: a branch the line ticks into, a node the line only
+ * passes beside, or a junction that shows the tree's label on the line.
+ */
+export type PathTreeNodeVariant = 'branch' | 'through' | 'junction'
+
+export interface PathTreeProps {
+  /** The tree's nodes, each a `PathTreeNode`, in the order the path reads. */
+  children: ReactNode
+  /** The word a junction node shows on the line. */
+  label?: string
+  style?: StyleProp<ViewStyle>
+  testID?: string
+}
+
+export interface PathTreeNodeProps {
+  /** A junction shows the tree's label and needs no children. */
+  children?: ReactNode
+  variant?: PathTreeNodeVariant
+  /** How far below the node's top the tick meets the line, for a branch. */
+  anchor?: number
+  testID?: string
+}

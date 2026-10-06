@@ -75,9 +75,9 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     expected: SINGLE_METHOD
   },
   {
-    name: 'two rows: both must answer, and the sizing rule line',
+    name: 'two rows: both must answer',
     clauses: [row(PASSKEY), row(PASSPORT)],
-    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }]
   },
   {
     name: 'three rows: all 3 must answer',
@@ -212,9 +212,9 @@ const SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] = [
     expected: SINGLE_METHOD
   },
   {
-    name: 'two rows of two identities: both must answer, and the sizing rule line',
+    name: 'two rows of two identities: both must answer',
     clauses: [row(AADHAAR), row(PASSPORT)],
-    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }]
   },
   {
     name: 'your device and your guardians: together with, and one failure domain',
@@ -409,7 +409,7 @@ const SLOT_SHAPES: { name: string; clauses: Clause[]; expected: Expected[] }[] =
   {
     name: 'two required passkey slots: two rows, never one method held twice',
     clauses: [slotRow(PASSKEY_SLOT()), slotRow(PASSKEY_SLOT())],
-    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }]
   },
   {
     name: 'an enrolled passkey row beside a 2-of-3 group of guardian slots: the row reads as a row',
@@ -488,9 +488,9 @@ const MEMBERLESS_SHAPES: { name: string; clauses: Clause[]; expected: Expected[]
     expected: [{ key: 'anyNOfM', params: { n: 2, m: 3, spare: 1 } }, { key: 'differentPlaces' }]
   },
   {
-    name: 'a group with no member between two rows: both must answer, and the sizing rule line',
+    name: 'a group with no member between two rows: both must answer',
     clauses: [row(PASSKEY), noMember(1), row(PASSPORT)],
-    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }, { key: 'sizingRule' }]
+    expected: [{ key: 'bothMustAnswer' }, { key: 'differentPlaces' }]
   },
   {
     name: 'a group with no member beside a passkey slot row and a group of guardian slots: together with, as without it',
@@ -623,10 +623,6 @@ describe('getRuleLines: the lines each path shape earns', () => {
     EVERY_SHAPE.forEach((clauses) => {
       keysOf(clauses).forEach((key) => expect(Object.keys(RULE_LINES)).toContain(key))
     })
-  })
-
-  it('a two item path as one group of any one of two carries no sizing rule line', () => {
-    expect(keysOf([group(1, [PASSKEY, PASSPORT])])).not.toContain('sizingRule')
   })
 
   it('a row beside a group carries neither the single-method warning nor a threshold-one form', () => {

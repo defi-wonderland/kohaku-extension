@@ -16,8 +16,9 @@ import type { CredentialRowProps } from './types'
 /**
  * One method of the path: a guardian's short address, its kind, the holder's
  * own label where an enrolled credential carries one, and its chip, with a
- * failed test's line under them. An empty slot shows no address and opens the
- * picker when pressed.
+ * failed test's line under them. An empty slot shows no address. A press opens
+ * the row's method: an empty slot's enrollment, or an enrolled credential's
+ * enrolled summary and its test, which needs its kind and its enrollment.
  */
 const CredentialRow = ({
   credential,
@@ -76,9 +77,15 @@ const CredentialRow = ({
     </View>
   )
 
-  if (empty && onPress) {
+  if (onPress && (empty || (!!kind && !!enrollment))) {
     return (
-      <Pressable testID={testID} onPress={onPress} disabled={disabled} style={flexbox.flex1}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        onPress={onPress}
+        disabled={disabled}
+        style={flexbox.flex1}
+      >
         {content}
       </Pressable>
     )

@@ -22,3 +22,11 @@ export type {
   StatusChipProps,
   StatusChipTone
 } from './types'
+export { default as PathTree } from './PathTree'
+export { default as PathTreeNode } from './PathTreeNode'
+export type {
+  PathTreeNodeProps,
+  PathTreeNodeVariant,
+  PathTreeProps,
+  PathTreeSegment
+} from './types'
