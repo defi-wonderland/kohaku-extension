@@ -22,3 +22,5 @@ export type {
   StatusChipProps,
   StatusChipTone
 } from './types'
+export { default as FieldInput } from './FieldInput'
+export type { FieldInputProps } from './types'
