@@ -3,8 +3,7 @@
  *
  * The review route mounted with the settings chrome, the real en.json and the
  * tab's real session storage. The wallet's controller states, the recovery
- * client, the provider, the privilege read, the sidebar and the logo are
- * stubs, and the view is a stub that records what the route gives it. jsdom
+ * client, the sidebar and the logo are stubs, and the view is a stub that records what the route gives it. jsdom
  * has no `TextEncoder`, which viem reads when it loads, so the test sets Node's
  * before it loads the modules.
  */
@@ -37,7 +36,6 @@ const mockAccounts = [
 ]
 // The client the wallet builds for the account the screen asks for.
 const mockClients = new Map<string, unknown>()
-const mockHolders = jest.fn()
 
 jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
   __esModule: true,
@@ -64,10 +62,7 @@ jest.mock('@common/hooks/useNavigation', () => ({
   default: () => ({ navigate: () => {} })
 }))
 jest.mock('@web/modules/social-recovery/shared/client', () => ({
-  ...jest.requireActual('@web/modules/social-recovery/shared/client'),
-  networkOf: () => ({ rpcProvider: 'rpc' }),
-  extensionProviderFor: () => ({ destroy: () => {} }),
-  createPrivilegeReads: () => ({ privilegeHoldersOf: mockHolders })
+  ...jest.requireActual('@web/modules/social-recovery/shared/client')
 }))
 jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
   useRecoveryClient: (account: string | undefined) =>
@@ -109,7 +104,6 @@ const ReviewScreen: typeof import('@web/modules/social-recovery/setup/review/Rev
 
 const ACCOUNT: Address = mockAccount
 const OTHER_ACCOUNT: Address = mockOtherAccount
-const HOLDERS = { holders: 'read' }
 
 const THEME = Object.fromEntries(
   Object.entries(themeConfig.default).map(([name, byType]) => [
@@ -133,8 +127,6 @@ describe('the review screen while the wallet selects another account', () => {
     sessionStorage.clear()
     mockViewRenders.length = 0
     mockViewMounts.count = 0
-    mockHolders.mockReset()
-    mockHolders.mockResolvedValue(HOLDERS)
     mockClients.clear()
     ;[ACCOUNT, OTHER_ACCOUNT].forEach((account) =>
       mockClients.set(account, { status: 'ready', client: { account }, retry: () => {} })
@@ -186,20 +178,6 @@ describe('the review screen while the wallet selects another account', () => {
     expect(lastProps().accountLabel).toBe('Account 1')
     expect(byTestId('setup-other-account')?.textContent).toContain(
       en.socialRecovery.chrome.otherAccount.title
-    )
-  })
-
-  it("reads the keys holding a privilege on the tab's account, not on the selected one", async () => {
-    await open(ACCOUNT)
-    await selectInWallet(OTHER_ACCOUNT)
-    const { client } = lastProps()
-    if (client.status !== 'ready') {
-      throw new Error(`the review was given a client that is ${client.status}`)
-    }
-    await expect(client.client.privilegeHolders()).resolves.toBe(HOLDERS)
-    expect(mockHolders).toHaveBeenCalledTimes(1)
-    expect(mockHolders.mock.calls[0][0]).toEqual(
-      expect.objectContaining({ addr: ACCOUNT, preferences: { label: 'Account 1' } })
     )
   })
 })

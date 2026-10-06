@@ -1,25 +1,15 @@
 /**
  * The review's route: the settings chrome around the review of the setup
- * records of the tab's account, with the recovery client that reads the trust list,
- * the wallet's read of the keys holding a privilege on the account over the
- * recovery chain's provider, and that network's provider kind.
+ * records of the tab's account, with the recovery client that reads the trust list.
  */
-import React, { useMemo, useRef } from 'react'
+import React, { useMemo } from 'react'
 import { isAddress, isAddressEqual } from 'viem'
 
 import useNavigation from '@common/hooks/useNavigation'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
-import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
-import {
-  CHAIN_IDS,
-  createPrivilegeReads,
-  extensionProviderFor,
-  networkOf,
-  WALLET_RECOVERY_CHAIN
-} from '@web/modules/social-recovery/shared/client'
-import type { PrivilegeHoldersReading } from '@web/modules/social-recovery/shared/client'
+import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
   createWalletRecords,
@@ -33,7 +23,6 @@ const ReviewScreen = () => {
   const { navigate } = useNavigation()
   const { account } = useSetupAccount()
   const { accounts } = useAccountsControllerState()
-  const { networks } = useNetworksControllerState()
 
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
 
@@ -44,42 +33,13 @@ const ReviewScreen = () => {
       )
     : undefined
   const accountLabel = listed?.preferences?.label || undefined
-  const network = networkOf(networks, WALLET_RECOVERY_CHAIN)
-  const providerKind = network?.rpcProvider
   const clientState = useRecoveryClient(account)
-  // The privilege read takes the account and the network as they are when it
-  // runs, so a state push does not start the review's reads over.
-  const listedRef = useRef(listed)
-  listedRef.current = listed
-  const networkRef = useRef(network)
-  networkRef.current = network
 
   const { status, retry } = clientState
   const kit = clientState.status === 'ready' ? clientState.client : null
   const client = useMemo<ReviewClient>(() => {
     if (kit) {
-      const privilegeHolders = async (): Promise<PrivilegeHoldersReading> => {
-        const held = listedRef.current
-        const heldNetwork = networkRef.current
-        if (
-          !held ||
-          !heldNetwork ||
-          !isAddress(held.addr) ||
-          !isAddressEqual(held.addr, kit.account)
-        ) {
-          throw new Error(`The wallet holds no account ${kit.account} on the recovery chain.`)
-        }
-        const provider = extensionProviderFor(heldNetwork)
-        try {
-          return await createPrivilegeReads(provider).privilegeHoldersOf(
-            held,
-            CHAIN_IDS[WALLET_RECOVERY_CHAIN]
-          )
-        } finally {
-          provider.destroy()
-        }
-      }
-      return { status: 'ready', client: { ...kit, privilegeHolders } }
+      return { status: 'ready', client: kit }
     }
     if (status === 'loading') {
       return { status: 'loading' }
@@ -99,7 +59,6 @@ const ReviewScreen = () => {
           chainId={CHAIN_IDS[WALLET_RECOVERY_CHAIN]}
           account={account}
           client={client}
-          providerKind={providerKind}
           accountLabel={accountLabel}
           navigate={navigate}
         />
