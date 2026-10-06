@@ -39,6 +39,7 @@ const KindMenuButton = ({
       disabled={disabled}
       hasBottomSpacing={false}
       accessibilityState={{ expanded: open }}
+      aria-haspopup="menu"
       childrenPosition="right"
     >
       {open ? <UpArrowIcon style={spacings.mlTy} /> : <DownArrowIcon style={spacings.mlTy} />}

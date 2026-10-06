@@ -2,8 +2,8 @@
  * The editor's words: each method kind's name, the chip a row carries with a
  * failed test's line, the line under a threshold that is not a whole number,
  * the sentence of each refusal this wallet applies, and the line a path check
- * finding renders as. Every setup error
- * renders a sentence; any other finding renders its code.
+ * finding renders as. Every setup error renders a sentence; any other finding
+ * renders its code.
  */
 import type {
   Credential,
@@ -87,11 +87,17 @@ const CLIENT_REFUSAL_KEYS: Record<ClientRefusal, { title: string; body: string }
  * A kind's name; a passkey its enrollment reports as device-bound reads as a
  * passkey on this device.
  */
-export const renderKindName = (
+export function renderKindName(kind: SlotKind, t: Translate, backup?: PasskeyBackupKind): string
+export function renderKindName(
   kind: SlotKind | undefined,
   t: Translate,
   backup?: PasskeyBackupKind
-): string | null => {
+): string | null
+export function renderKindName(
+  kind: SlotKind | undefined,
+  t: Translate,
+  backup?: PasskeyBackupKind
+): string | null {
   if (!kind) {
     return null
   }

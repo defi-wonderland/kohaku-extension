@@ -37,7 +37,7 @@ const KindMenu = ({ kinds, onPick, disabled, testID }: KindMenuProps) => {
       {kinds.map((kind) => (
         <KindMenuEntry
           key={kind}
-          label={renderKindName(kind, t) ?? kind}
+          label={renderKindName(kind, t)}
           onPress={() => onPick(kind)}
           disabled={disabled}
           testID={`${testID}-${kind}`}
