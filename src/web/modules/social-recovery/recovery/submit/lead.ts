@@ -52,20 +52,14 @@ export const newKeyLineOf = (
 }
 
 /**
- * Whether the request names no payment: no order, or an order of zero. The
- * first release names none; an order with an amount is no request this screen
- * can render, so the start stays locked.
+ * Whether the request names no payment: no order, or an order of zero, the
+ * records carrying the amount as a decimal string. The first release names
+ * none; an order with an amount is no request this screen can render, so the
+ * start stays locked.
  */
 export const namesNoPayment = (gathering: Gathering): boolean => {
   const { order } = gathering.request
-  if (!order) {
-    return true
-  }
-  try {
-    return BigInt(order.amount) === BigInt(0)
-  } catch {
-    return false
-  }
+  return !order || BigInt(order.amount) === 0n
 }
 
 /**

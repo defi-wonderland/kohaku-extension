@@ -42,6 +42,7 @@ describe('the deposit step', () => {
   const startEmpty = async (world: World) => {
     world.kit.reads.nativeBalance.mockResolvedValue(0n)
     view = await mountSubmit(world.account, { useTimers: true })
+    await view.press('submit-verify-details')
     await view.press('submit-action')
     return view
   }
@@ -106,6 +107,7 @@ describe('the deposit step', () => {
   it('sends at once, with no step, where the key already holds enough', async () => {
     const world = await openWorld()
     view = await mountSubmit(world.account, { useTimers: true })
+    await view.press('submit-verify-details')
     await view.press('submit-action')
     expect(view.byTestId('submit-gas-step')).toBeNull()
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)

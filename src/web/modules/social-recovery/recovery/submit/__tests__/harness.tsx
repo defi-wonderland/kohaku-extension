@@ -45,7 +45,8 @@ import type {
   ListedAccountFacts,
   ProviderTransactionReceipt,
   RecoveryKitClient,
-  SendPort
+  SendPort,
+  SendRequestPort
 } from '@web/modules/social-recovery/shared/client'
 import type {
   RecoveryEntryRecord,
@@ -571,6 +572,15 @@ export const rawStorage = async (storage: TestStorage): Promise<string> => {
 // The run over its steps
 // ---------------------------------------------------------------------------
 
+/** A request queue that holds nothing. */
+const NO_REQUESTS: SendRequestPort = {
+  dispatch: () => undefined,
+  subscribe: () => () => undefined,
+  accounts: () => [],
+  queue: () => ({}),
+  windowId: () => undefined
+}
+
 /** The submission's real steps over a kit, a port, and records on a storage. */
 export const stepsOf = (input: {
   kit: Kit
@@ -579,6 +589,7 @@ export const stepsOf = (input: {
   account: Address
   gathering: Gathering
   plan: SendingPlan
+  chosen: ReadonlySet<number>
   now?: () => number
 }): SubmitSteps =>
   submit.submitStepsOf({
@@ -586,12 +597,14 @@ export const stepsOf = (input: {
     reads: input.kit.reads,
     receipts: input.kit.receipts,
     port: input.port,
+    requests: NO_REQUESTS,
     records: input.records,
     chainId: CHAIN_ID,
     account: input.account,
     gathering: input.gathering,
     plan: input.plan,
     network: { name: SEPOLIA.name, nativeAssetSymbol: SEPOLIA.nativeAssetSymbol },
+    chosen: input.chosen,
     now: input.now ?? (() => Date.now())
   })
 
@@ -666,6 +679,7 @@ export const pageOn = (device: Device, now: () => number = () => CLAIM_NOW) => {
     account: device.account,
     gathering: device.gathering,
     plan: DEVICE_PLAN,
+    chosen: new Set([0, 1, 2, 3]),
     now
   })
   const store = pageOf(steps)

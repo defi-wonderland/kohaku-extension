@@ -48,6 +48,7 @@ describe('the submission', () => {
 
   const startOn = async (world: World) => {
     view = await mountSubmit(world.account)
+    await view.press('submit-verify-details')
     expect(view.isDisabled('submit-action')).toBe(false)
     await view.press('submit-action')
     return view
@@ -218,6 +219,7 @@ describe('the submission', () => {
       const world = await openWorld()
       const read = held<ReturnType<typeof recoveryStateOf>>()
       const mounted = await mountSubmit(world.account)
+      await mounted.press('submit-verify-details')
       view = mounted
       world.kit.recoveryState.mockImplementationOnce(async () =>
         recoveryStateOf(world.kit.chain.attempt)

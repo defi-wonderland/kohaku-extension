@@ -264,6 +264,7 @@ describe('the submission confirmation', () => {
     it('unlocks once the values rendered and every approval of the set verified', async () => {
       const world = await openWorld()
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.textOf('submit-check-line')).toBe(t(`${SUBMIT}.checkLine`))
       expect(mounted.isDisabled('submit-action')).toBe(false)
       expect(mounted.byTestId('submit-unlock-reason')).toBeNull()
@@ -289,6 +290,7 @@ describe('the submission confirmation', () => {
       const verdicts = held<'satisfied'>()
       world.kit.verifyReply.mockImplementation(() => verdicts.promise)
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.textOf('submit-checking')).toBe(t(`${SUBMIT}.checking`))
       expect(mounted.isDisabled('submit-action')).toBe(true)
       expect(mounted.textOf('submit-unlock-reason')).toBe(t(`${SUBMIT}.unlockReason`))
@@ -302,6 +304,7 @@ describe('the submission confirmation', () => {
       const removed = held<{ kind: 'named'; key: string }>()
       world.kit.removedKey.mockImplementation(() => removed.promise)
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.byTestId('submit-removed-key-loading')).not.toBeNull()
       expect(mounted.isDisabled('submit-action')).toBe(true)
       removed.release({ kind: 'named', key: REMOVED })
@@ -313,6 +316,7 @@ describe('the submission confirmation', () => {
       const world = await openWorld()
       world.kit.removedKey.mockRejectedValueOnce(new Error('node down'))
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.byTestId('submit-removed-key-failed')).not.toBeNull()
       expect(mounted.isDisabled('submit-action')).toBe(true)
       await mounted.press('submit-removed-key-retry')
@@ -323,6 +327,7 @@ describe('the submission confirmation', () => {
     it('stays locked for a request that names a payment', async () => {
       const world = await openWorld({ order: { amount: '5' } })
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.byTestId('submit-check-line')).not.toBeNull()
       expect(mounted.isDisabled('submit-action')).toBe(true)
     })
@@ -333,6 +338,7 @@ describe('the submission confirmation', () => {
         request.place === 0 ? 'rejected' : 'satisfied'
       )
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.textOf('submit-not-verified')).toContain(
         t(`${SUBMIT}.approvalNotVerified`, { row: 'Laptop passkey' })
       )
@@ -344,6 +350,7 @@ describe('the submission confirmation', () => {
       const world = await openWorld()
       world.kit.verifyReply.mockRejectedValueOnce(new Error('node down'))
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.textOf('submit-check-failed')).toContain(t(`${SUBMIT}.checkFailed`))
       expect(mounted.isDisabled('submit-action')).toBe(true)
       await mounted.press('submit-check-retry')
@@ -355,6 +362,7 @@ describe('the submission confirmation', () => {
       const world = await openWorld()
       world.kit.verifyReply.mockRejectedValue(notServed('walletReads.verifyReply'))
       const mounted = await open(world)
+      await openDetails(mounted)
       expect(mounted.isDisabled('submit-action')).toBe(false)
       expect(mounted.byTestId('submit-check-line')).toBeNull()
       expect(mounted.byTestId('submit-check-failed')).toBeNull()

@@ -31,8 +31,7 @@ import {
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 
-const { FOLLOW_REREAD_MS, SUBMISSION_CLAIM_AGE_MS, isLanded, lookForClaim, startSubmission } =
-  submit
+const { FOLLOW_REREAD_MS, KEY_SEND_CLAIM_AGE_MS, isLanded, lookForClaim, startSubmission } = submit
 
 describe('the claim of the submission', () => {
   const pages: { store: SubmitStore; steps: ReturnType<typeof stepsOf> }[] = []
@@ -135,7 +134,7 @@ describe('the claim of the submission', () => {
 
   it('waits on a claim with no hash younger than the claim’s age, and reads no events', async () => {
     const device = await openDevice()
-    await leaveClaim(device, NOW - SUBMISSION_CLAIM_AGE_MS + 60_000)
+    await leaveClaim(device, NOW - KEY_SEND_CLAIM_AGE_MS + 60_000)
     const page = track(pageOn(device))
     lookForClaim(page.store, page.steps).catch(() => undefined)
     await flush()
@@ -150,7 +149,7 @@ describe('the claim of the submission', () => {
 
   it('lands a claim with no hash older than the claim’s age where the manager’s events name its start', async () => {
     const device = await openDevice()
-    await leaveClaim(device, NOW - SUBMISSION_CLAIM_AGE_MS - 1)
+    await leaveClaim(device, NOW - KEY_SEND_CLAIM_AGE_MS - 1)
     // The node the first read reaches lags behind the start; the events hold it.
     device.kit.recoveryState.mockImplementationOnce(async () => {
       device.kit.chain.attempt = attemptOf(device.gathering)
@@ -175,7 +174,7 @@ describe('the claim of the submission', () => {
 
   it('releases a claim with no hash older than the claim’s age where no event names its start, and offers the start again', async () => {
     const device = await openDevice()
-    await leaveClaim(device, NOW - SUBMISSION_CLAIM_AGE_MS - 1)
+    await leaveClaim(device, NOW - KEY_SEND_CLAIM_AGE_MS - 1)
     device.kit.fetch.mockResolvedValue([])
     const page = track(pageOn(device))
     lookForClaim(page.store, page.steps).catch(() => undefined)
@@ -195,7 +194,7 @@ describe('the claim of the submission', () => {
 
   it('takes no rival’s start with the same id for its own: the claim is released, nothing lands', async () => {
     const device = await openDevice()
-    await leaveClaim(device, NOW - SUBMISSION_CLAIM_AGE_MS - 1)
+    await leaveClaim(device, NOW - KEY_SEND_CLAIM_AGE_MS - 1)
     device.kit.fetch.mockResolvedValue([attemptStarted(device.gathering, RIVAL_PAYLOAD)])
     const page = track(pageOn(device))
     lookForClaim(page.store, page.steps).catch(() => undefined)
