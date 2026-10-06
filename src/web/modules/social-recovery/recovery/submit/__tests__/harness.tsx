@@ -581,6 +581,74 @@ const NO_REQUESTS: SendRequestPort = {
   windowId: () => undefined
 }
 
+/** The request id of the claim a page that went away left behind. */
+export const LEFT_CLAIM = 'page-that-went'
+
+/** What a page that did not queue a request reads of it: still queued, sent under a hash, or neither. */
+export type QueueAnswer =
+  | { status: 'queued' }
+  | { status: 'broadcast'; hash: Hex }
+  | { status: 'gone' }
+
+/**
+ * The wallet's request queue and the account's activity as the send port
+ * reads them, answering for the requests under `ids` as `answer` says: a queued
+ * request sits in the queue; a broadcast one is listed in the activity under
+ * its hash; a gone one is in neither.
+ */
+export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM]) => {
+  const queue = { answer: initial, ids }
+  const listeners = new Set<
+    (update: Parameters<Parameters<SendRequestPort['subscribe']>[0]>[0]) => void
+  >()
+  const port: SendRequestPort = {
+    dispatch: (action) => {
+      if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
+        return
+      }
+      const { sessionId, pagination } = action.params as {
+        sessionId: string
+        pagination: { fromPage: number }
+      }
+      const { answer } = queue
+      const items =
+        answer.status === 'broadcast'
+          ? queue.ids.map((id) => ({
+              identifiedBy: { type: 'Transaction' },
+              status: 'pending',
+              txnId: answer.hash,
+              calls: [{ fromUserRequestId: id, txnId: answer.hash }]
+            }))
+          : []
+      queueMicrotask(() =>
+        listeners.forEach((listener) =>
+          listener({
+            controller: 'activity',
+            state: {
+              accountsOps: {
+                [sessionId]: { result: { currentPage: pagination.fromPage, items, maxPages: 1 } }
+              }
+            }
+          } as unknown as Parameters<typeof listener>[0])
+        )
+      )
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [],
+    queue: () =>
+      (queue.answer.status === 'queued'
+        ? { userRequests: queue.ids.map((id) => ({ id })) }
+        : {}) as ReturnType<SendRequestPort['queue']>,
+    windowId: () => undefined
+  }
+  return { port, queue }
+}
+
 /** The submission's real steps over a kit, a port, and records on a storage. */
 export const stepsOf = (input: {
   kit: Kit
@@ -591,13 +659,14 @@ export const stepsOf = (input: {
   plan: SendingPlan
   chosen: ReadonlySet<number>
   now?: () => number
+  requests?: SendRequestPort
 }): SubmitSteps =>
   submit.submitStepsOf({
     client: input.kit.client,
     reads: input.kit.reads,
     receipts: input.kit.receipts,
     port: input.port,
-    requests: NO_REQUESTS,
+    requests: input.requests ?? NO_REQUESTS,
     records: input.records,
     chainId: CHAIN_ID,
     account: input.account,
@@ -669,7 +738,11 @@ export const openDevice = async (): Promise<Device> => {
 }
 
 /** One page of a device: its own records, its own port, its store over its real steps. */
-export const pageOn = (device: Device, now: () => number = () => CLAIM_NOW) => {
+export const pageOn = (
+  device: Device,
+  now: () => number = () => CLAIM_NOW,
+  { plan = DEVICE_PLAN, requests }: { plan?: SendingPlan; requests?: SendRequestPort } = {}
+) => {
   const records = device.records()
   const port = sendPort()
   const steps = stepsOf({
@@ -678,26 +751,54 @@ export const pageOn = (device: Device, now: () => number = () => CLAIM_NOW) => {
     records,
     account: device.account,
     gathering: device.gathering,
-    plan: DEVICE_PLAN,
+    plan,
     chosen: new Set([0, 1, 2, 3]),
-    now
+    now,
+    ...(requests ? { requests } : {})
   })
   const store = pageOf(steps)
   return { records, port, steps, store }
 }
 
-/** Writes a claim with no hash, as a page that went away before its send answered leaves it. */
-export const leaveClaim = async (device: Device, claimedAt: number): Promise<void> => {
+/**
+ * Writes a claim with no hash, as a page that went away before its send
+ * answered leaves it; with `hash`, the hash that page stored after its send.
+ */
+export const leaveClaim = async (device: Device, claimedAt: number, hash?: Hex): Promise<void> => {
   const accessor = device.records().recoverySession(CHAIN_ID, device.account)
   const read = await accessor.read()
   if (read.status !== 'present') {
     throw new Error('no session stored')
   }
-  await accessor.claimSubmission(
-    { requestId: 'page-that-went', startBlock: START_BLOCK, claimedAt },
+  const claimed = await accessor.claimSubmission(
+    { requestId: LEFT_CLAIM, startBlock: START_BLOCK, claimedAt },
     read.revision
   )
+  if (hash && claimed.claimed) {
+    await accessor.setSubmissionHash(LEFT_CLAIM, hash, claimed.record.revision)
+  }
 }
+
+/** The claim the stored session carries now, or null where it carries none or is not live. */
+export const claimOf = async (device: Device) => {
+  const stored = await sessionOf(device.records(), device.account)
+  return stored?.state === 'live' ? stored.submission ?? null : null
+}
+
+/** The plan of a smart account that sends the start as its own batch, with its key as payer. */
+export const batchPlan = async (seed: number): Promise<SendingPlan> => {
+  const smart = await keyedAccount(seed)
+  return { kind: 'account-batch', key: smart.key, facts: factsOf(smart.account, smart.key) }
+}
+
+/** A decoded kit error the wallet read from a reverted start. */
+export const kitError = (name: string) => ({
+  kind: 'known' as const,
+  source: 'manager' as const,
+  name,
+  selector: '0x12345678' as Hex,
+  args: {}
+})
 
 // ---------------------------------------------------------------------------
 // The mount

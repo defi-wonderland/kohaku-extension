@@ -202,6 +202,65 @@ describe('the submission', () => {
     })
   })
 
+  describe('an attempt the manager already holds', () => {
+    const CLOSED = ['Cancelled', 'Consumed'] as const
+
+    CLOSED.forEach((state) => {
+      it(`lands an attempt of this request that is ${state.toLowerCase()} already, and sends nothing`, async () => {
+        const world = await openWorld()
+        world.kit.chain.attempt = attemptOf(world.gathering, { state })
+        await startOn(world)
+        expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+        expect(await sessionOf(world.records, world.account)).toEqual({
+          state: 'landed',
+          account: world.account
+        })
+        expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {
+          replace: true
+        })
+      })
+
+      it(`reads no attempt running where an earlier attempt under another id is ${state.toLowerCase()}, and sends`, async () => {
+        const world = await openWorld()
+        world.kit.chain.attempt = attemptOf(world.gathering, { attemptId: 7n, state })
+        const mounted = await startOn(world)
+        expect(mounted.byTestId('submit-already-running')).toBeNull()
+        expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+        expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {
+          replace: true
+        })
+      })
+    })
+  })
+
+  describe('the set the start carries', () => {
+    it('goes back to the checklist, with nothing sent, where the prepare picks another set than the one verified', async () => {
+      const world = await openWorld({ replied: [0, 1, 2, 3, 4], chosen: [0, 1, 2, 3] })
+      const mounted = await mountSubmit(world.account)
+      view = mounted
+      await mounted.press('submit-verify-details')
+      const picked = world.kit.complete.getMockImplementation()
+      if (!picked) {
+        throw new Error('the kit completes nothing')
+      }
+      world.kit.complete.mockImplementation((...args: Parameters<typeof picked>) => {
+        const request = picked(...args)
+        return {
+          ...request,
+          proofs: [...request.proofs.slice(0, 3), { ...request.proofs[3], place: 4n }]
+        }
+      })
+      await mounted.press('submit-action')
+      expect(world.kit.prepareStartAttempt).not.toHaveBeenCalled()
+      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+      const session = await sessionOf(world.records, world.account)
+      expect(session?.state === 'live' && session.submission).toBeFalsy()
+      expect(mockWallet.navigate).toHaveBeenLastCalledWith(checklistPathOf(world.account), {
+        replace: true
+      })
+    })
+  })
+
   describe('the landing', () => {
     it('lands the session, keeps no gathering in storage and goes on to the wait', async () => {
       const world = await openWorld()

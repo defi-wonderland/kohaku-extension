@@ -8,11 +8,17 @@
 import type { Mounted } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   CHAIN_ID,
+  held,
   mountSubmit,
-  openWorld
+  openWorld,
+  START_BLOCK,
+  TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const {
+  DROPPED_AFTER_MS
+}: typeof import('@web/modules/social-recovery/recovery/submit') = require('@web/modules/social-recovery/recovery/submit')
 const {
   accountStepPath,
   checklistPathOf,
@@ -80,6 +86,39 @@ describe('the confirmation’s arrival', () => {
     view = await mountSubmit(world.account)
     expect(view.paths()).toEqual([waitPathOf(world.account)])
     expect(view.byTestId('submit-action')).toBeNull()
+  })
+
+  it('offers Start recovery and Back again where the hash of a stored claim was dropped', async () => {
+    const world = await openWorld()
+    const accessor = world.records.recoverySession(CHAIN_ID, world.account)
+    const read = await accessor.read()
+    if (read.status !== 'present') {
+      throw new Error('no session seeded')
+    }
+    const claimed = await accessor.claimSubmission(
+      {
+        requestId: 'page-that-went',
+        startBlock: START_BLOCK,
+        claimedAt: Date.now() - DROPPED_AFTER_MS - 1
+      },
+      read.revision
+    )
+    if (!claimed.claimed) {
+      throw new Error('no claim written')
+    }
+    await accessor.setSubmissionHash('page-that-went', TX_HASH, claimed.record.revision)
+    world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+    world.kit.receipts.wait.mockImplementation(() => held<never>().promise)
+    view = await mountSubmit(world.account)
+    const session = await world.records.recoverySession(CHAIN_ID, world.account).read()
+    expect(
+      session.status === 'present' && session.value.state === 'live' && session.value.submission
+    ).toBeFalsy()
+    expect(view.byTestId('submit-action')).not.toBeNull()
+    expect(view.byTestId('submit-back')).not.toBeNull()
+    await view.press('submit-verify-details')
+    expect(view.isDisabled('submit-action')).toBe(false)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
   it('stays where the live session satisfies the rule', async () => {

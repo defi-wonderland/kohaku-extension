@@ -270,6 +270,19 @@ describe('the submission confirmation', () => {
       expect(mounted.byTestId('submit-unlock-reason')).toBeNull()
     })
 
+    it('stays locked with its reason until verify the details opened once, though every approval verified', async () => {
+      const world = await openWorld()
+      const mounted = await open(world)
+      expect(mounted.textOf('submit-check-line')).toBe(t(`${SUBMIT}.checkLine`))
+      expect(mounted.isDisabled('submit-action')).toBe(true)
+      expect(mounted.textOf('submit-unlock-reason')).toBe(t(`${SUBMIT}.unlockReason`))
+      await openDetails(mounted)
+      expect(mounted.isDisabled('submit-action')).toBe(false)
+      await openDetails(mounted)
+      expect(mounted.byTestId('submit-payment')).toBeNull()
+      expect(mounted.isDisabled('submit-action')).toBe(false)
+    })
+
     it('verifies the replies of the set the submission carries, each against its own request', async () => {
       const world = await openWorld({ replied: [0, 1, 2, 3, 4], chosen: [0, 1, 2, 3] })
       await open(world)

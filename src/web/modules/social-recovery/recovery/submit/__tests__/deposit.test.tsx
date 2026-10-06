@@ -7,6 +7,7 @@
  */
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
+  mockWallet,
   mountSubmit,
   openWorld,
   providerReadFailure,
@@ -19,6 +20,9 @@ const { getAddress }: typeof import('viem') = require('viem')
 const {
   BALANCE_POLL_MS
 }: typeof import('@web/modules/social-recovery/recovery/submit') = require('@web/modules/social-recovery/recovery/submit')
+const {
+  checklistPathOf
+}: typeof import('@web/modules/social-recovery/recovery/checklist') = require('@web/modules/social-recovery/recovery/checklist')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const GAS = 'socialRecovery.writes.gas'
@@ -56,6 +60,19 @@ describe('the deposit step', () => {
     expect(step).toContain('Transfer ')
     expect(step).toContain(`from ${world.receiving.preferences.label} to its key`)
     expect(world.kit.reads.nativeBalance).toHaveBeenCalledWith(world.sendingKey)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('says why above the step and that the approvals stay below it, with Back to the checklist', async () => {
+    const world = await openWorld()
+    const mounted = await startEmpty(world)
+    expect(mounted.textOf('submit-gas-lead')).toBe(t('socialRecovery.submit.gas.lead'))
+    expect(mounted.textOf('submit-gas-collected-stays')).toBe(
+      t('socialRecovery.submit.gas.collectedStays')
+    )
+    expect(mounted.byTestId('submit-gas-step')).not.toBeNull()
+    await mounted.press('submit-back')
+    expect(mockWallet.navigate).toHaveBeenLastCalledWith(checklistPathOf(world.account))
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
