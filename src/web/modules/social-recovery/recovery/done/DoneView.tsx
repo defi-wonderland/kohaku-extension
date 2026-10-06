@@ -1,8 +1,8 @@
 /**
  * The done screen over given props. Until the consume event's read answers it
  * renders loading; a failed read renders failed with retry; a read that found
- * no consume renders nothing of done (the screen goes back to the wait). On
- * the fast track the done text waits for the add of the recovered account and
+ * no consume renders nothing of done (the screen goes back to the wait). The
+ * done text waits for the add of the recovered account to this wallet and
  * renders its failure with retry.
  *
  * Then: the account is the holder's again since the consume's block time; the
@@ -186,7 +186,7 @@ const DoneView = ({
         <Text fontSize={14} appearance="secondaryText" testID="done-lead">
           {t(`${DONE}.lead`, { date: dateOf(event.time * 1000, timeZone) })}
         </Text>
-        {route === 'fresh-install' && add.status === 'done' && (
+        {route === 'fresh-install' && (
           <Text fontSize={14} style={spacings.mtTy} testID="done-now-in-wallet">
             {t(`${DONE}.nowInWallet`)}
           </Text>

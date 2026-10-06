@@ -4,16 +4,18 @@
  * the screen with its helpers: the recovery client of the recovered account
  * and the consume event read through it, the block time read on the
  * extension's own provider, the setup this device holds and the passkey kinds
- * its enrollments name, the add of the recovered account on the fast track,
- * and the last act.
+ * its enrollments name, the add of the recovered account to this wallet, and
+ * the last act.
  *
  * A search with no account goes to the account step. No entry record, as
  * after the last act: where the wallet lists the account the screen renders
  * from the consume event alone with no line by route, otherwise the account
- * step. A read that found no consume goes back to the wait. The last act ends
- * the countdown, clears the entry record and the recovery password held in
- * memory, and keeps the decrypted setup cache as this device's cache of the
- * setup.
+ * step. A read that found no consume goes back to the wait; a read of the
+ * setup or of the enrollments that fails renders failed with retry, never as
+ * a path this device does not hold. The last act ends the countdown, clears
+ * the entry record and the recovery password held in memory, and keeps the
+ * decrypted setup cache as this device's cache of the setup. Edit selects the
+ * recovered account and opens the editor once the wallet reports it selected.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -29,6 +31,7 @@ import spacings from '@common/styles/spacings'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
+import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import type {
   Address,
   Configuration,
@@ -57,22 +60,34 @@ import {
   parseChecklistSearch,
   waitPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
+import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
+import { within } from '@web/modules/social-recovery/recovery/wait'
 import { enrollmentOf } from '@web/modules/social-recovery/setup/review'
 
 import DoneChrome from './DoneChrome'
 import DoneView from './DoneView'
 import { summaryOf } from './summary'
-import type { BlockTimeRead, DoneBodyProps, DoneEntryReading, DoneRead, FinishState } from './types'
+import type {
+  BlockTimeRead,
+  DoneBodyProps,
+  DoneEntryReading,
+  DoneRead,
+  FinishState,
+  LocalRead
+} from './types'
 import useConsumeRead from './useConsumeRead'
 import useRecoveredAccountAdd from './useRecoveredAccountAdd'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
+
+const PENDING = { status: 'pending' } as const
 
 const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
   const { navigate } = useNavigation()
   const { dispatch } = useBackgroundService()
   const { accounts } = useAccountsControllerState()
   const { networks } = useNetworksControllerState()
+  const { account: selected } = useSelectedAccountControllerState()
   const clientState = useRecoveryClient(account)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const addressBook = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
@@ -117,70 +132,76 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
   }, [none, navigate, account])
 
   // The setup this device holds, and the passkey kinds its enrollments name.
-  const [configuration, setConfiguration] = useState<Configuration | null | undefined>(undefined)
+  const [localAttempt, setLocalAttempt] = useState(0)
+  const [configuration, setConfiguration] = useState<LocalRead<Configuration | null>>(PENDING)
   useEffect(() => {
     if (!kit) {
       return undefined
     }
     let live = true
-    configurationOf({
-      records,
-      chainId: CHAIN_ID,
-      account,
-      client: kit,
-      password: readRecoveryPassword(CHAIN_ID, account)
+    setConfiguration(PENDING)
+    within(
+      () =>
+        configurationOf({
+          records,
+          chainId: CHAIN_ID,
+          account,
+          client: kit,
+          password: readRecoveryPassword(CHAIN_ID, account)
+        }),
+      POLL_LIMIT_MS
+    ).then((reading) => {
+      if (!live) {
+        return
+      }
+      if (!reading) {
+        setConfiguration({ status: 'failed' })
+        return
+      }
+      setConfiguration({
+        status: 'answered',
+        value: reading.kind === 'configuration' ? reading.configuration : null
+      })
     })
-      .then((reading) => {
-        if (live) {
-          setConfiguration(reading.kind === 'configuration' ? reading.configuration : null)
-        }
-      })
-      .catch(() => {
-        if (live) {
-          setConfiguration(null)
-        }
-      })
     return () => {
       live = false
     }
-  }, [kit, records, account])
+  }, [kit, records, account, localAttempt])
 
-  const [enrollments, setEnrollments] = useState<readonly Enrollment[] | undefined>(undefined)
+  const [enrollments, setEnrollments] = useState<LocalRead<readonly Enrollment[]>>(PENDING)
   useEffect(() => {
     let live = true
+    setEnrollments(PENDING)
     records
       .setup(CHAIN_ID, account)
       .enrollments.read()
       .then((read) => {
         if (live) {
-          setEnrollments(read.status === 'present' ? read.value : [])
+          setEnrollments({ status: 'answered', value: read.status === 'present' ? read.value : [] })
         }
       })
       .catch(() => {
         if (live) {
-          setEnrollments([])
+          setEnrollments({ status: 'failed' })
         }
       })
     return () => {
       live = false
     }
-  }, [records, account])
+  }, [records, account, localAttempt])
 
-  const passkeyKindOf = useCallback(
-    (credential: Credential): PasskeyBackupKind =>
-      enrollmentOf(credential, enrollments ?? [])?.backup ?? 'synced',
-    [enrollments]
-  )
-  const summary = useMemo(
-    () =>
-      event && configuration !== undefined && enrollments !== undefined
-        ? summaryOf({ configuration, addressBook, event, passkeyKindOf })
-        : null,
-    [event, configuration, enrollments, addressBook, passkeyKindOf]
-  )
+  const summary = useMemo(() => {
+    if (!event || configuration.status !== 'answered' || enrollments.status !== 'answered') {
+      return null
+    }
+    const known = enrollments.value
+    const passkeyKindOf = (credential: Credential): PasskeyBackupKind =>
+      enrollmentOf(credential, known)?.backup ?? 'synced'
+    return summaryOf({ configuration: configuration.value, addressBook, event, passkeyKindOf })
+  }, [event, configuration, enrollments, addressBook])
 
   const { state: add, retry: retryAdd } = useRecoveredAccountAdd({
-    enabled: route === 'fresh-install',
+    completesSetup: route === 'fresh-install',
     account,
     event
   })
@@ -196,19 +217,31 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     ? receivingAccount?.preferences.label || renderShortAddress(receiving)
     : null
 
+  const localFailed = configuration.status === 'failed' || enrollments.status === 'failed'
   const read = useMemo<DoneRead>(() => {
     if (clientState.status === 'failed' || clientState.status === 'update-the-wallet') {
       return { status: 'failed' }
     }
-    return consumeRead
-  }, [clientState.status, consumeRead])
+    if (consumeRead.status !== 'answered' || consumeRead.reading.kind === 'none') {
+      return consumeRead
+    }
+    if (localFailed) {
+      return { status: 'failed' }
+    }
+    return summary ? consumeRead : PENDING
+  }, [clientState.status, consumeRead, localFailed, summary])
   const onRetryRead = useCallback(() => {
     if (clientState.status === 'failed' || clientState.status === 'update-the-wallet') {
       clientState.retry()
       return
     }
-    retryRead()
-  }, [clientState, retryRead])
+    if (consumeRead.status === 'failed') {
+      retryRead()
+    }
+    if (localFailed) {
+      setLocalAttempt((n) => n + 1)
+    }
+  }, [clientState, consumeRead.status, retryRead, localFailed])
 
   const [finish, setFinish] = useState<FinishState>('idle')
   const lastAct = useCallback(async () => {
@@ -232,18 +265,23 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     () => leaveTo(() => navigate(`/${WEB_ROUTES.dashboard}`, { replace: true })),
     [leaveTo, navigate]
   )
-  const isListed = !!listedAccount
+
+  // The editor works on the selected account: it opens once the wallet reports the recovered one selected.
+  const [toEditor, setToEditor] = useState(false)
+  const selectedAddr = selected?.addr
+  const isSelected = !!selectedAddr && isAddressEqual(selectedAddr as Address, account)
+  useEffect(() => {
+    if (toEditor && isSelected) {
+      navigate(`/${WEB_ROUTES.socialRecoverySetupEditor}`)
+    }
+  }, [toEditor, isSelected, navigate])
   const onEdit = useCallback(
     () =>
       leaveTo(() => {
-        if (isListed) {
-          dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: account } })
-          navigate(`/${WEB_ROUTES.socialRecoverySetupEditor}`)
-          return
-        }
-        navigate(`/${WEB_ROUTES.socialRecoverySetup}`)
+        dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: account } })
+        setToEditor(true)
       }),
-    [leaveTo, isListed, dispatch, navigate, account]
+    [leaveTo, dispatch, account]
   )
 
   return (
@@ -252,7 +290,7 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
       accountName={listedAccount?.preferences.label || null}
       route={route}
       receivingName={receivingName}
-      read={event && !summary ? { status: 'pending' } : read}
+      read={read}
       add={add}
       summary={summary}
       timeZone={timeZone}
@@ -278,13 +316,16 @@ const DoneScreen = () => {
   const accountsRef = useRef(accounts)
   accountsRef.current = accounts
   const accountsReady = !!accounts
+  // The entry read that answered: the wallet's accounts going and coming back do not read it again.
+  const answered = useRef<string | null>(null)
 
   useEffect(() => {
     if (!account) {
       navigate(accountStepPath(), { replace: true })
       return undefined
     }
-    if (!accountsReady) {
+    const readKey = `${account}:${attempt}`
+    if (!accountsReady || answered.current === readKey) {
       return undefined
     }
     let live = true
@@ -296,6 +337,7 @@ const DoneScreen = () => {
         if (!live) {
           return
         }
+        answered.current = readKey
         if (read.status === 'present') {
           setReading({ status: 'present', entry: read.value })
           return
@@ -311,6 +353,7 @@ const DoneScreen = () => {
       })
       .catch(() => {
         if (live) {
+          answered.current = readKey
           setReading({ status: 'failed' })
         }
       })

@@ -1,13 +1,16 @@
 /**
- * The add of the recovered account on the fast track, through the wallet's
- * own action for an account the screen builds. It dispatches once per run,
- * once the consume event names the granted key and the wallet pushed its
- * accounts; it reads done once the wallet lists the account, and failed where
- * the accounts controller reports an error after the add started, or where
- * the account is not listed within the limit. A retry runs the add again. An
- * account the wallet already lists is done with no dispatch. Once done, it
- * marks the wallet's setup complete, as the end of the create door's
- * onboarding does, since the fast track never reaches that screen.
+ * The add of the recovered account to this wallet, on both routes, through
+ * the wallet's own action for an account the screen builds, with the key the
+ * recovery granted as its signer. It dispatches once per run, once the
+ * consume event names the granted key and the wallet pushed its accounts; it
+ * reads done once the wallet lists the account with that key, and failed
+ * where the accounts controller reports an error after the add started, or
+ * where the account is not listed with the key within the limit. A retry runs
+ * the add again. An account the wallet already lists with the key is done
+ * with no dispatch; one it lists without the key is added again, and the
+ * wallet merges the key into it. On the fast track, once done, it marks the
+ * wallet's setup complete, as the end of the create door's onboarding does,
+ * since the fast track never reaches that screen.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isAddressEqual } from 'viem'
@@ -20,40 +23,40 @@ import { recoveredAccountOf } from './account'
 import { ADD_LIMIT_MS } from './constants'
 import type { AddHook, AddInput, AddState, CreationBasis } from './types'
 
-const useRecoveredAccountAdd = ({ enabled, account, event }: AddInput): AddHook => {
+const useRecoveredAccountAdd = ({ completesSetup, account, event }: AddInput): AddHook => {
   const { dispatch } = useBackgroundService()
   const { accounts, statuses } = useAccountsControllerState()
   const [run, setRun] = useState(0)
-  const [state, setState] = useState<AddState>(
-    enabled ? { status: 'adding' } : { status: 'skipped' }
-  )
+  const [state, setState] = useState<AddState>({ status: 'adding' })
   const dispatched = useRef<number | null>(null)
-  const sawLoading = useRef(false)
   const creation = useRef<CreationBasis | undefined>(undefined)
   const completed = useRef(false)
 
-  const listed = !!accounts?.some((candidate) => isAddressEqual(candidate.addr as Address, account))
+  const granted = event?.granted
+  const listed =
+    !!granted &&
+    !!accounts?.some(
+      (candidate) =>
+        isAddressEqual(candidate.addr as Address, account) &&
+        candidate.associatedKeys.some((key) => isAddressEqual(key as Address, granted))
+    )
   const accountsRef = useRef(accounts)
   accountsRef.current = accounts
   const accountsReady = !!accounts
 
   useEffect(() => {
-    if (!enabled) {
-      setState({ status: 'skipped' })
-      return
-    }
     if (listed) {
       setState({ status: 'done', ...(creation.current ? { creation: creation.current } : {}) })
     }
-  }, [enabled, listed])
+  }, [listed])
 
   useEffect(() => {
     const existing = accountsRef.current
-    if (!enabled || listed || !event || !existing || dispatched.current === run) {
+    // The wallet's accounts can go and come back while one add runs: that run is not sent again.
+    if (listed || !event || !existing || dispatched.current === run) {
       return undefined
     }
     dispatched.current = run
-    sawLoading.current = false
     setState({ status: 'adding' })
     // Once built, the account is added even where this screen has gone meanwhile.
     recoveredAccountOf({
@@ -74,9 +77,9 @@ const useRecoveredAccountAdd = ({ enabled, account, event }: AddInput): AddHook 
         setState((current) => (current.status === 'adding' ? { status: 'failed' } : current))
       })
     return undefined
-  }, [enabled, listed, event, run, account, dispatch, accountsReady])
+  }, [listed, event, run, account, dispatch, accountsReady])
 
-  const adding = state.status === 'adding' && enabled && !listed
+  const adding = state.status === 'adding' && !listed
   useEffect(() => {
     if (!adding) {
       return undefined
@@ -92,20 +95,17 @@ const useRecoveredAccountAdd = ({ enabled, account, event }: AddInput): AddHook 
     if (dispatched.current === null || listed) {
       return
     }
-    if (addStatus === 'LOADING') {
-      sawLoading.current = true
-    }
-    if (addStatus === 'ERROR' && sawLoading.current) {
+    if (addStatus === 'ERROR') {
       setState((current) => (current.status === 'adding' ? { status: 'failed' } : current))
     }
   }, [addStatus, listed])
 
   useEffect(() => {
-    if (state.status === 'done' && enabled && !completed.current) {
+    if (state.status === 'done' && completesSetup && !completed.current) {
       completed.current = true
       dispatch({ type: 'SET_IS_SETUP_COMPLETE', params: { isSetupComplete: true } })
     }
-  }, [state.status, enabled, dispatch])
+  }, [state.status, completesSetup, dispatch])
 
   const retry = useCallback(() => setRun((n) => n + 1), [])
 

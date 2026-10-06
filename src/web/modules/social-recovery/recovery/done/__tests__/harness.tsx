@@ -63,6 +63,8 @@ export interface MockWallet {
   /** The wallet's accounts, or undefined before the controller pushed them. */
   accounts: Account[] | undefined
   statuses: { addAccounts: string }
+  /** The wallet's selected account, as the last select dispatched it. */
+  selected: string | null
   /** The block time the extension's provider answers, by block number. */
   blockTimes: Map<number, number>
   blockReads: number[]
@@ -79,6 +81,7 @@ export const mockWallet: MockWallet = {
   clients: new Map(),
   accounts: [],
   statuses: { addAccounts: 'INITIAL' },
+  selected: null,
   blockTimes: new Map(),
   blockReads: [],
   factsReads: [],
@@ -110,8 +113,30 @@ jest.mock('@web/hooks/useAccountsControllerState', () => {
   }
 })
 jest.mock('@web/hooks/useBackgroundService', () => {
-  const dispatch = (action: unknown) => mockWallet.dispatch(action)
+  const dispatch = (action: unknown) => {
+    mockWallet.dispatch(action)
+    const { type, params } = action as Dispatched
+    if (type === 'MAIN_CONTROLLER_SELECT_ACCOUNT') {
+      mockWallet.selected = (params as { accountAddr: string }).accountAddr
+      mockWallet.version += 1
+      mockWallet.listeners.forEach((listener) => listener())
+    }
+  }
   return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
+})
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => {
+  const R = jest.requireActual('react')
+  const subscribe = (listener: () => void) => {
+    mockWallet.listeners.add(listener)
+    return () => mockWallet.listeners.delete(listener)
+  }
+  return {
+    __esModule: true,
+    default: () => {
+      R.useSyncExternalStore(subscribe, () => mockWallet.version)
+      return { account: mockWallet.selected ? { addr: mockWallet.selected } : null }
+    }
+  }
 })
 jest.mock('@web/hooks/useNetworksControllerState', () => {
   const state = {
@@ -633,6 +658,7 @@ export const openWorld = async ({
     ...(listed ? [listedAccount(account, 'Recovered account')] : [])
   ]
   mockWallet.statuses = { addAccounts: 'INITIAL' }
+  mockWallet.selected = null
   mockWallet.dispatch = jest.fn()
   mockWallet.blockTimes = new Map([[CONSUME_BLOCK, CONSUME_TIME]])
   mockWallet.blockReads = []

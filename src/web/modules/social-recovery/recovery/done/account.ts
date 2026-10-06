@@ -1,10 +1,15 @@
 /**
- * The recovered account as the wallet adds it on the fast track: its address,
- * the key the recovery granted as its associated key, and the creation the
- * wallet computes for a smart account from its original creation privilege,
- * the removed key at the value it held (where no privilege event names that
- * value, the one the wallet's picker gives a smart account's key). The
- * preferences are the ones the picker gives a new account.
+ * The recovered account as the wallet adds it: its address, the key the
+ * recovery granted as its associated key, and the creation the wallet
+ * computes for a smart account from the removed key, at the value of its
+ * latest earlier grant where a privilege event names one, else at the value
+ * the wallet's picker gives a smart account's key. An Ambire proxy writes its
+ * creation privilege in its deploy bytecode and emits no event for it, so an
+ * earlier event always names a later grant, never the creation. The computed
+ * creation therefore reproduces an account the create door made on its first
+ * recovery only; any other stands in for the account's creation record, which
+ * the recovery reads do not carry yet. The preferences are the ones the
+ * picker gives a new account.
  */
 import { getDefaultAccountPreferences, getSmartAccount } from '@ambire-common/libs/account/account'
 import { isAddressEqual } from 'viem'

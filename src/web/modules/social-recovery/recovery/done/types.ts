@@ -43,9 +43,9 @@ export interface ConsumeEvent {
   granted: Address
   /** The key the consume's transaction set to no privilege. */
   removed: Address
-  /** The privilege the removed key held before, where an earlier privilege event names it. */
+  /** The removed key's latest earlier grant, where a privilege event names one. */
   removedPrivilege?: Hex
-  /** The methods the attempt record names as used. */
+  /** The methods the consumed attempt's record names as used. */
   usedMethods: Address[]
   /** The consume's block time, in seconds since epoch. */
   time: number
@@ -141,13 +141,13 @@ export interface RecoveredAccount {
 }
 
 export type AddState =
-  | { status: 'skipped' }
   | { status: 'adding' }
   | { status: 'failed' }
   | { status: 'done'; creation?: CreationBasis }
 
 export interface AddInput {
-  enabled: boolean
+  /** The add also marks the wallet's onboarding complete, on the fast track. */
+  completesSetup: boolean
   account: Address
   event: ConsumeEvent | null
 }
@@ -166,6 +166,12 @@ export type DoneEntryReading =
   | { status: 'loading' }
   | { status: 'failed' }
   | { status: 'present'; entry: RecoveryEntryRecord | null }
+
+/** A read of this device's own state: the setup it holds, or the enrollments' passkey kinds. */
+export type LocalRead<T> =
+  | { status: 'pending' }
+  | { status: 'failed' }
+  | { status: 'answered'; value: T }
 
 /** The last act: the countdown ended, the entry cleared, the recovery password dropped. */
 export type FinishState = 'idle' | 'finishing' | 'failed'
