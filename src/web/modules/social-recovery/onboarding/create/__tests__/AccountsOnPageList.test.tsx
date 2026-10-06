@@ -111,6 +111,9 @@ jest.mock('@ambire-common/libs/accountState/accountState', () => ({
 // Jest's config transforms neither images nor these packages' ES modules; the
 // row's avatar, badge and copy button and the list's scroll wrapper load them.
 jest.mock('@common/components/Avatar', () => ({ __esModule: true, default: () => null }))
+// The list's spinner, drawn while the usage scan runs, plays a Lottie animation
+// jsdom cannot run.
+jest.mock('@common/components/Spinner', () => ({ __esModule: true, default: () => null }))
 jest.mock('nanoid', () => ({ nanoid: () => 'badge' }))
 jest.mock('@common/utils/clipboard', () => ({ setStringAsync: async () => true }))
 // The tooltip opens through a portal on hover, which jsdom does not lay out; the
@@ -154,9 +157,6 @@ const {
 }: typeof import('@ambire-common/consts/deploy') = require('@ambire-common/consts/deploy')
 const shortenAddress: typeof import('@ambire-common/utils/shortenAddress').default =
   require('@ambire-common/utils/shortenAddress').default
-const {
-  renderShortAddress
-}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const AccountsOnPageList: typeof import('@web/modules/account-picker/components/AccountsOnPageList/AccountsOnPageList').default =
   require('@web/modules/account-picker/components/AccountsOnPageList/AccountsOnPageList').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
@@ -242,13 +242,16 @@ const pickerState = ({
   } as unknown as AccountPickerController)
 
 const controllingKeyRow = (smart: Address) =>
-  en.socialRecovery.create.controllingKeyRow.replace('{{account}}', renderShortAddress(smart))
+  en.socialRecovery.create.controllingKeyRow.replace('{{account}}', shortenAddress(smart, 16))
 
 describe('the account picker page list', () => {
   let container: HTMLDivElement
   let root: Root
 
-  const mount = async (state: AccountPickerController) => {
+  const mount = async (
+    state: AccountPickerController,
+    { isScanComplete = true, onScanComplete = () => {} } = {}
+  ) => {
     await act(async () => {
       root.render(
         <ThemeContext.Provider value={THEME_CONTEXT}>
@@ -257,8 +260,8 @@ describe('the account picker page list', () => {
             setPage={() => {}}
             subType="seed"
             isLoading={false}
-            isScanComplete
-            onScanComplete={() => {}}
+            isScanComplete={isScanComplete}
+            onScanComplete={onScanComplete}
           />
         </ThemeContext.Provider>
       )
@@ -383,7 +386,9 @@ describe('the account picker page list', () => {
     it('draws the key the counterfactual account names as a row under it, captioned as its controlling key', async () => {
       await mount(createFlow(smartAccount([[HOLDER, PRIVILEGE_SIGNER]])))
 
-      expect(controllingKeyRow(SMART)).toContain(renderShortAddress(SMART))
+      const smartAddress = row(SMART)?.querySelector<HTMLElement>(`[data-tooltip-id="${SMART}"]`)
+      expect(smartAddress?.textContent).toBeTruthy()
+      expect(controllingKeyRow(SMART)).toContain(smartAddress?.textContent)
       expect(caption(HOLDER)?.textContent).toBe(controllingKeyRow(SMART))
       expect(comesBefore(row(SMART), row(HOLDER))).toBe(true)
       expect(comesBefore(row(HOLDER), row(BASIC))).toBe(true)
@@ -467,6 +472,16 @@ describe('the account picker page list', () => {
 
       expect(dispatchedSelections()).toEqual([])
       expect(isSwitchOn(BASIC)).toBe(false)
+    })
+
+    it('finishes the usage scan once without selecting anything', async () => {
+      mockChain.usedAddrs = [BASIC]
+      const onScanComplete = jest.fn()
+      const smart = smartAccount([[HOLDER, PRIVILEGE_SIGNER]])
+      await mount(createFlow(smart, [onPage(smart)]), { isScanComplete: false, onScanComplete })
+
+      expect(onScanComplete).toHaveBeenCalledTimes(1)
+      expect(dispatchedSelections()).toEqual([])
     })
 
     it('selects the basic account on a press, which stays selectable', async () => {

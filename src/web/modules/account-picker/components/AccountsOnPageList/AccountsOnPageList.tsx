@@ -22,6 +22,7 @@ import {
 import { Network } from '@ambire-common/interfaces/network'
 import { getBasicAccount, isSmartAccount } from '@ambire-common/libs/account/account'
 import { getAccountState } from '@ambire-common/libs/accountState/accountState'
+import shortenAddress from '@ambire-common/utils/shortenAddress'
 // import WarningFilledIcon from '@common/assets/svg/WarningFilledIcon'
 import Alert from '@common/components/Alert'
 // import Badge from '@common/components/Badge'
@@ -40,7 +41,6 @@ import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import Account from '@web/modules/account-picker/components/Account'
 import AnimatedDownArrow from '@web/modules/account-picker/components/AccountsOnPageList/AnimatedDownArrow/AnimatedDownArrow'
 import AccountsRetrieveError from '@web/modules/account-picker/components/AccountsRetrieveError'
-import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import { getRpcProviderForUI } from '@web/services/provider'
 
 import getStyles from './styles'
@@ -531,9 +531,7 @@ const AccountsOnPageList = ({
                             displayTypePill={false}
                             shouldBeDisplayedAsNew={false}
                             caption={t('socialRecovery.create.controllingKeyRow', {
-                              account: isAddress(acc.account.addr, { strict: false })
-                                ? renderShortAddress(acc.account.addr)
-                                : acc.account.addr
+                              account: shortenAddress(acc.account.addr, 16)
                             })}
                           />
                         )}
