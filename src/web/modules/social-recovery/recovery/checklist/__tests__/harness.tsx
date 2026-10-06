@@ -524,16 +524,21 @@ export interface ScriptedRecoveryState {
   attemptId?: bigint
   nextAttemptId?: bigint
   setupNonce?: bigint
+  payloadHash?: Hex
 }
 
-/** The account's recovery state as the manager answers it: no attempt, the first id next, setup nonce one. */
+/**
+ * The account's recovery state as the manager answers it: no attempt, the
+ * first id next, setup nonce one, and the attempt's payload hash empty.
+ */
 export const recoveryStateOf = ({
   state = 'None',
   attemptId = BigInt(0),
   nextAttemptId = BigInt(1),
-  setupNonce = BigInt(1)
+  setupNonce = BigInt(1),
+  payloadHash = zeroHash
 }: ScriptedRecoveryState = {}) => ({
-  attempt: { state, attemptId, setupNonce },
+  attempt: { state, attemptId, setupNonce, payloadHash },
   nextAttemptId,
   setupNonce
 })
