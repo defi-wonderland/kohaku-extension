@@ -372,6 +372,10 @@ const storedListKey = () => {
 const FROM_THE_DASHBOARD = { prevRoute: { pathname: '/dashboard' } }
 
 describe('a visit of the setup', () => {
+  beforeEach(() => {
+    freshPage()
+  })
+
   // An earlier visit latched the first account; the wallet now selects the other one.
   const afterAnEarlierVisit = () => {
     mockSelected.state = { account: { addr: ACCOUNT } }
@@ -441,11 +445,13 @@ describe('a visit of the setup', () => {
     mockSelected.state = { account: { addr: ACCOUNT } }
     mountOn(entry('arrival', state), 'screen')
     select(OTHER_ACCOUNT)
+    freshPage()
     mountOn(entry('arrival', state), 'screen')
     expect(rendered.screen).not.toContain(OTHER_ACCOUNT)
     expect(reads.screen.account).toBe(ACCOUNT)
     expect(reads.screen.differs).toBe(true)
     // A second reload decides the same way.
+    freshPage()
     mountOn(entry('arrival', state), 'screen')
     expect(reads.screen.account).toBe(ACCOUNT)
   })
@@ -456,6 +462,7 @@ describe('a visit of the setup', () => {
     select(OTHER_ACCOUNT)
     switchToSelected('screen')
     select(ACCOUNT)
+    freshPage()
     mountOn(entry('arrival', FROM_THE_DASHBOARD), 'screen')
     expect(reads.screen.account).toBe(OTHER_ACCOUNT)
     expect(reads.screen.differs).toBe(true)

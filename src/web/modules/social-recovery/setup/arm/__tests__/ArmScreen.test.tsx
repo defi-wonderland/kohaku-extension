@@ -652,16 +652,19 @@ describe('the start of the save', () => {
     expect(port.sendAccountBatch.mock.calls[0][0]).toBe(other.addr)
   })
 
-  const POPS: [string, SetupDraft['privacy']['backup'], () => Promise<void>][] = [
-    ['a reload', 'clear', reload],
-    ['a typed address', 'encrypted', openByAddress],
+  // An entry the router did not push is replaced in place with a keyed one; an
+  // entry with a key of its own stays as the history move left it.
+  const POPS: [string, SetupDraft['privacy']['backup'], () => Promise<void>, string][] = [
+    ['a reload', 'clear', reload, 'REPLACE'],
+    ['a typed address', 'encrypted', openByAddress, 'REPLACE'],
     [
       'forward',
       'encrypted',
       async () => {
         await mountAt([REVIEW_PATH, SAVE_PATH], 0)
         await go(1)
-      }
+      },
+      'POP'
     ],
     [
       'back',
@@ -669,19 +672,19 @@ describe('the start of the save', () => {
       async () => {
         await mountAt([SAVE_PATH, CARD_PATH], 1)
         await go(-1)
-      }
+      },
+      'REPLACE'
     ]
   ]
 
-  POPS.forEach(([named, backup, open]) =>
+  POPS.forEach(([named, backup, open, type]) =>
     it(`shows the summary with the Save button after ${named}, sends nothing by itself, and the button starts the save once`, async () => {
       await writeRecords(draftOf(backup))
       wireClient('ready')
       await open()
 
       expect(router.pathname).toBe(SAVE_PATH)
-      // An entry the router did not push is then replaced in place, never pushed.
-      expect(router.type).not.toBe('PUSH')
+      expect(router.type).toBe(type)
       expect(byTestId('arm-save')?.textContent).toBe(t('socialRecovery.review.save'))
       expect(byTestId('arm-removed-key')).not.toBeNull()
       expect(byTestId('arm-cost-line')).not.toBeNull()
