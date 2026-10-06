@@ -6,6 +6,7 @@
  */
 import i18n from '@common/config/localization'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import {
   pdfDrawnValues,
   pdfFileParts,
@@ -170,9 +171,9 @@ describe('the card file', () => {
   })
 
   it('writes the no-break space and the soft hyphen as their codes and says so', () => {
-    const file = cardFileOf(hidden('tide lan­tern'), t)
+    const file = cardFileOf(hidden('tide\u00a0lan\u00adtern'), t)
     expect(file.replacedCharacters).toBe(true)
-    expect(drawnPassword('tide lan­tern').text).toBe('tideU+00A0lanU+00ADtern')
+    expect(drawnPassword('tide\u00a0lan\u00adtern').text).toBe('tideU+00A0lanU+00ADtern')
   })
 
   it('writes the Latin-1 characters around those two as they are', () => {
@@ -262,6 +263,36 @@ describe('a card longer than one page', () => {
     expect(titled).toHaveLength(1)
     expect(titled[0].page).toBe(0)
   })
+
+  it.each([44, 45, 46, 47])(
+    'keeps the password’s label on the page of its first line, for a password of %i lines',
+    (count) => {
+      const password = 'y'.repeat(64 * count)
+      const bytes = cardFileOf(hidden(password), t).bytes
+      const label = renderPasswordName('recoveryPassword', t)
+      const blocks = pdfTextBlocks(bytes)
+      const labelAt = blocks.findIndex((block) => block.text === label)
+      expect(labelAt).toBeGreaterThan(-1)
+
+      const value = drawnPassword(password)
+      expect(value.lines).toHaveLength(count)
+      expect(value.lines[0].page).toBe(blocks[labelAt].page)
+      // The block right after the label draws the value's first line.
+      expect(blocks[labelAt + 1].page).toBe(blocks[labelAt].page)
+      expect(blocks[labelAt + 1].lines[0].text).toBe(value.lines[0].text)
+      expect(blocks[labelAt + 1].lines[0].y).toBe(value.lines[0].y)
+      expect(value.text).toBe(password)
+
+      const { file, entries } = pdfFileParts(bytes)
+      expect(entries.length).toBeGreaterThan(1)
+      entries.slice(1).forEach((entry, at) => {
+        const header = `${at + 1} ${entry.generation} obj`
+        expect(entry.inUse).toBe(true)
+        expect(file.slice(entry.offset, entry.offset + header.length)).toBe(header)
+        expect(file[entry.offset - 1]).toBe('\n')
+      })
+    }
+  )
 
   it('splits a value taller than a page between its lines, over more than one page', () => {
     const value = drawnPassword(TALLER_THAN_A_PAGE)
