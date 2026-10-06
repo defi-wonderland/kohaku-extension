@@ -3550,6 +3550,16 @@ describe('the row notes of a live session', () => {
     })
     const note = setup()
     await note.storage.set(SESSION_KEY, stored)
+    expect(await note.records.listRecoverySessions(CHAIN_ID)).toEqual([
+      {
+        account: ACCOUNT,
+        record: {
+          value: { state: 'live', gathering: NOTE_GATHERING, notes: { 1: 'declined' } },
+          savedAt: T0,
+          revision: 'a'.repeat(24)
+        }
+      }
+    ])
     await setNote(note.records, 1, 'unanswered')
     expect((await liveOf(note.records)).notes).toEqual({ 1: 'unanswered' })
     expect(storedSession(note.storage)).not.toContain('maybe')
@@ -3565,6 +3575,37 @@ describe('the row notes of a live session', () => {
     expect(await liveOf(records)).toEqual({ state: 'live', gathering: NOTE_GATHERING })
     await setNote(records, 1, 'declined')
     expect((await liveOf(records)).notes).toEqual({ 1: 'declined' })
+  })
+
+  it('a stored live session whose gathering has no list of replies reads, and an abandon or a new write replaces it', async () => {
+    const stored = {
+      value: {
+        state: 'live',
+        gathering: { ...NOTE_GATHERING, replies: undefined },
+        notes: { 0: 'declined' }
+      },
+      savedAt: T0,
+      revision: 'a'.repeat(24)
+    }
+    const abandon = setup()
+    await abandon.storage.set(SESSION_KEY, stored)
+    const read = present(await abandon.records.recoverySession(CHAIN_ID, ACCOUNT).read())
+    expect(read.value).toEqual({
+      state: 'live',
+      gathering: { ...NOTE_GATHERING, replies: undefined }
+    })
+    expect(await abandon.records.listRecoverySessions(CHAIN_ID)).toHaveLength(1)
+    expect(await wipeSession(abandon.records, 'recoverer-abandoned')).toBe(true)
+    expect(present(await abandon.records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual(
+      wipedLine('recoverer-abandoned')
+    )
+    const write = setup()
+    await write.storage.set(SESSION_KEY, stored)
+    await writeSession(write.records, gathering(ACCOUNT, [APPROVALS[0]]))
+    expect(await liveOf(write.records)).toEqual({
+      state: 'live',
+      gathering: gathering(ACCOUNT, [APPROVALS[0]])
+    })
   })
 
   it('a note on a wiped, a landed or an absent session is refused and writes nothing', async () => {

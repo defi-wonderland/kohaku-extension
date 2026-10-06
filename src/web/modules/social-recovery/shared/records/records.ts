@@ -278,6 +278,22 @@ const notesKept = (notes: RowNotes | undefined, gathering: Gathering): RowNotes 
 const liveSession = (gathering: Gathering, notes: RowNotes | undefined): LiveRecoverySession =>
   notes ? { state: 'live', gathering, notes } : { state: 'live', gathering }
 
+/**
+ * A stored session as a read hands it out: a live session keeps only the notes
+ * its gathering allows. A stored gathering whose places or replies are not
+ * lists keeps no notes and still reads, so a wipe or a new write can replace
+ * it.
+ */
+const sessionAsRead = (value: RecoverySessionRecord): RecoverySessionRecord => {
+  if (value.state !== 'live') {
+    return value
+  }
+  const { gathering } = value
+  return Array.isArray(gathering.places) && Array.isArray(gathering.replies)
+    ? liveSession(gathering, notesKept(value.notes, gathering))
+    : liveSession(gathering, undefined)
+}
+
 const newRevision = (): SessionRevision =>
   bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
 
@@ -510,13 +526,9 @@ export const createWalletRecords = ({
     if (!isStoredSession(stored)) {
       return ABSENT
     }
-    const { value } = stored
     return {
       status: 'present',
-      value:
-        value.state === 'live'
-          ? liveSession(value.gathering, notesKept(value.notes, value.gathering))
-          : value,
+      value: sessionAsRead(stored.value),
       savedAt: stored.savedAt,
       revision: stored.revision
     }
@@ -611,7 +623,9 @@ export const createWalletRecords = ({
             }
             // A later reply for the same place may displace a stored reply; no reply is dropped.
             const places = new Set(gathering.replies.map((reply) => reply.place))
-            const dropped = stored.replies.filter((reply) => !places.has(reply.place))
+            // Stored replies that are not a list hold no reply to keep.
+            const storedReplies = Array.isArray(stored.replies) ? stored.replies : []
+            const dropped = storedReplies.filter((reply) => !places.has(reply.place))
             if (dropped.length) {
               throw new Error(
                 `The write drops the reply at place ${dropped
@@ -666,7 +680,11 @@ export const createWalletRecords = ({
         ? [
             {
               account: sessionAccount(stored.value),
-              record: { value: stored.value, savedAt: stored.savedAt, revision: stored.revision }
+              record: {
+                value: sessionAsRead(stored.value),
+                savedAt: stored.savedAt,
+                revision: stored.revision
+              }
             }
           ]
         : []
