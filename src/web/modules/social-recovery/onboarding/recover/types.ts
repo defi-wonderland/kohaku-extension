@@ -21,29 +21,39 @@ export interface WarningCopy {
   lines: readonly string[]
   pointer: WarningPointer | null
   acknowledge: string
-  /** Whether the form offers a way off the screen beside continue. */
-  leave: boolean
+  /**
+   * Whether the form draws its own continue and leave; a form without them
+   * leaves both to the screen that hosts it.
+   */
+  actions: boolean
 }
 
 interface WarningGateBase {
-  /** Runs once the holder gave the acknowledgment and pressed continue. */
-  onContinue: () => void
   testID?: string
 }
 
-export interface RecoverWarningProps extends WarningGateBase {
-  form: 'recover'
+interface GatedWarningBase extends WarningGateBase {
+  /** Runs once the holder gave the acknowledgment and pressed continue. */
+  onContinue: () => void
   onLeave: () => void
+}
+
+export interface RecoverWarningProps extends GatedWarningBase {
+  form: 'recover'
   onImportInstead: () => void
 }
 
-export interface ResetWarningProps extends WarningGateBase {
+export interface ResetWarningProps extends GatedWarningBase {
   form: 'reset'
-  onLeave: () => void
 }
 
 export interface CondensedWarningProps extends WarningGateBase {
   form: 'condensed'
+  /**
+   * Reports every change of the acknowledgment; the host keeps its own
+   * continue and its inputs disabled until it reads true.
+   */
+  onAcknowledgedChange: (acknowledged: boolean) => void
 }
 
 export type WarningGateProps = RecoverWarningProps | ResetWarningProps | CondensedWarningProps

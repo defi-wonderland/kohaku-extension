@@ -5,7 +5,8 @@ const WARNING = 'socialRecovery.recover.warning'
 /**
  * The strings of one form of the warning. The pointer line and the step
  * counter belong to the recover door alone; the reset entries take the shorter
- * acknowledgment; the condensed form keeps the lead and one line.
+ * acknowledgment; the condensed form keeps the lead, one line and the
+ * acknowledgment, and leaves continue to the screen that hosts it.
  */
 export const warningCopyOf = (form: WarningForm): WarningCopy => {
   if (form === 'condensed') {
@@ -16,7 +17,7 @@ export const warningCopyOf = (form: WarningForm): WarningCopy => {
       lines: [`${WARNING}.condensed`],
       pointer: null,
       acknowledge: `${WARNING}.acknowledgeRecover`,
-      leave: false
+      actions: false
     }
   }
   const recover = form === 'recover'
@@ -34,6 +35,6 @@ export const warningCopyOf = (form: WarningForm): WarningCopy => {
       ? { line: `${WARNING}.importPointer`, action: `${WARNING}.importAction` }
       : null,
     acknowledge: recover ? `${WARNING}.acknowledgeRecover` : `${WARNING}.acknowledgeReset`,
-    leave: true
+    actions: true
   }
 }

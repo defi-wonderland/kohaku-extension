@@ -1,8 +1,9 @@
 /**
  * The warning every recovery entry shows before it takes any input: no
  * support agent ever asks a holder to start a recovery. Continue stays
- * disabled until the holder ticks the acknowledgment, and nothing remembers
- * it: every mount takes its own.
+ * disabled until the holder ticks the acknowledgment; the condensed form draws
+ * no continue and reports the acknowledgment to the screen that hosts it.
+ * Nothing remembers it: every mount takes its own.
  */
 import React, { useCallback, useState } from 'react'
 import { View } from 'react-native'
@@ -19,25 +20,31 @@ import { FAST_TRACK_STEP_COUNTER_KEY, FAST_TRACK_STEPS, WARNING_STEP } from './c
 import { warningCopyOf } from './copy'
 import type { WarningGateProps } from './types'
 
-const WarningGate = ({
-  form,
-  onContinue,
-  testID = 'recovery-warning',
-  ...exits
-}: WarningGateProps) => {
+const WarningGate = ({ form, testID = 'recovery-warning', ...handlers }: WarningGateProps) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
   const copy = warningCopyOf(form)
 
+  const onContinue = 'onContinue' in handlers ? handlers.onContinue : null
+  const onLeave = 'onLeave' in handlers ? handlers.onLeave : null
+  const onImportInstead = 'onImportInstead' in handlers ? handlers.onImportInstead : null
+  const onAcknowledgedChange =
+    'onAcknowledgedChange' in handlers ? handlers.onAcknowledgedChange : null
+
+  const acknowledge = useCallback(
+    (value: boolean) => {
+      setAcknowledged(value)
+      onAcknowledgedChange?.(value)
+    },
+    [onAcknowledgedChange]
+  )
+
   const proceed = useCallback(() => {
-    if (!acknowledged) {
+    if (!acknowledged || !onContinue) {
       return
     }
     onContinue()
   }, [acknowledged, onContinue])
-
-  const onLeave = 'onLeave' in exits ? exits.onLeave : null
-  const onImportInstead = 'onImportInstead' in exits ? exits.onImportInstead : null
 
   return (
     <View testID={testID}>
@@ -98,35 +105,38 @@ const WarningGate = ({
       <Checkbox
         testID={`${testID}-acknowledge`}
         value={acknowledged}
-        onValueChange={setAcknowledged}
+        onValueChange={acknowledge}
         label={t(copy.acknowledge)}
         labelProps={{ fontSize: 14, weight: 'medium' }}
         style={spacings.mtSm}
       />
 
-      <ActionsRow
-        primary={
-          <Button
-            testID={`${testID}-continue`}
-            type="primary"
-            text={t('socialRecovery.actions.continue')}
-            disabled={!acknowledged}
-            onPress={proceed}
-            hasBottomSpacing={false}
-          />
-        }
-        secondary={
-          copy.leave && onLeave ? (
+      {copy.actions && !!onContinue && (
+        <ActionsRow
+          testID={`${testID}-actions`}
+          primary={
             <Button
-              testID={`${testID}-leave`}
-              type="outline"
-              text={t('socialRecovery.recover.warning.leave')}
-              onPress={onLeave}
+              testID={`${testID}-continue`}
+              type="primary"
+              text={t('socialRecovery.actions.continue')}
+              disabled={!acknowledged}
+              onPress={proceed}
               hasBottomSpacing={false}
             />
-          ) : undefined
-        }
-      />
+          }
+          secondary={
+            onLeave ? (
+              <Button
+                testID={`${testID}-leave`}
+                type="outline"
+                text={t('socialRecovery.recover.warning.leave')}
+                onPress={onLeave}
+                hasBottomSpacing={false}
+              />
+            ) : undefined
+          }
+        />
+      )}
     </View>
   )
 }
