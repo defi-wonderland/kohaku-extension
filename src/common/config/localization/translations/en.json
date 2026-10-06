@@ -773,7 +773,8 @@
       "updateTheWalletBody": "This account has a recovery setup.",
       "unavailableTitle": "This wallet could not reach the recovery kit",
       "unavailableBody": "Nothing changed. Try again.",
-      "updateTheWalletAction": "Update the wallet"
+      "updateTheWalletAction": "Update the wallet",
+      "updateTheWalletHow": "Update Kohaku from your browser's extension store, then open this page again."
     },
     "recover": {
       "doorLine": "You lost the key to an account. Bring it back using the recovery path its owner set up.",
@@ -819,7 +820,8 @@
         "action": "Continue to recovery",
         "creating": "Creating your new key…",
         "createFailed": "This device could not create the key. Nothing was saved. Try again.",
-        "addFailed": "This wallet could not add the new key's accounts. The key may still be added in the background. Wait a moment, then try again."
+        "addFailed": "This wallet could not add the new key's accounts. The key may still be added in the background. Wait a moment, then try again.",
+        "addPending": "The wallet is still adding your key. Wait, or go back and continue again."
       },
       "gas": {
         "noSendingKey": "This wallet holds no key of the recovery phrase you created here, so nothing can send the recovery. Start the fast track again.",
