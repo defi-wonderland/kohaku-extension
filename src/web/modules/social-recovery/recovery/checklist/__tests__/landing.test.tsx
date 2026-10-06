@@ -5,11 +5,13 @@
  * attempt that carries the request's predicted id and the hash of its payload
  * lands the session and the holder goes on to the wait, whatever state that
  * attempt is in. An attempt that differs in either, the id or the payload
- * hash, is another holder's and voids the request.
+ * hash, is another holder's and voids the request. The landing leaves no
+ * claim request and no report of the request that landed.
  */
 import type { Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type {
+  FakeDeps,
   FakeKit,
   Mounted,
   ScriptedRecoveryState,
@@ -24,7 +26,9 @@ import {
   MIXED_PATH,
   mountChecklist,
   NOW,
+  outside,
   recoveryStateOf,
+  requestOf,
   seedCache,
   seedEntry,
   seedSession,
@@ -37,6 +41,13 @@ import {
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { keccak256 }: typeof import('viem') = require('viem')
+const {
+  ceremonyResultKey,
+  failed
+}: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
+const {
+  stringify
+}: typeof import('@ambire-common/libs/richJson/richJson') = require('@ambire-common/libs/richJson/richJson')
 const {
   WEB_ROUTES
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
@@ -60,18 +71,16 @@ describe('the request lands on the chain', () => {
   let view: Mounted | undefined
   let world: TestRecords
   let kit: FakeKit
+  let deps: FakeDeps
   let land: jest.SpyInstance
   let wipe: jest.SpyInstance
 
-  const open = async (gathering: Gathering) => {
+  const open = async (gathering: Gathering, overrides: Partial<FakeDeps> = {}) => {
     await seedCache(world.records, MIXED_PATH)
     const seeded = await seedSession(world.records, gathering)
     kit = fakeKit(MIXED_PATH)
-    view = await mountChecklist({
-      records: world.records,
-      client: kit.state,
-      deps: depsOf({ now: () => Date.now() })
-    })
+    deps = depsOf({ now: () => Date.now(), ...overrides })
+    view = await mountChecklist({ records: world.records, client: kit.state, deps })
     return seeded
   }
 
@@ -79,6 +88,24 @@ describe('the request lands on the chain', () => {
   const chainReads = (attempt: ScriptedRecoveryState) => {
     kit.recoveryState.mockResolvedValue(recoveryStateOf(attempt))
   }
+
+  /** The poll reads the request's own submission waiting on the chain. */
+  const ownAttemptLands = async () => {
+    chainReads({
+      state: 'Waiting',
+      attemptId: BigInt(1),
+      nextAttemptId: BigInt(2),
+      payloadHash: keccak256(PAYLOAD)
+    })
+    await settle(CHECKLIST_POLL_MS)
+    await settle()
+    expect(view?.navigate).toHaveBeenLastCalledWith(WAIT_PATH, { replace: true })
+  }
+
+  const present = async (id: string) =>
+    (await world.records.ceremonyRequest(id).read()).status === 'present'
+  const reported = async (id: string) =>
+    (await deps.reportStore.get(ceremonyResultKey(id), undefined)) !== undefined
 
   beforeEach(async () => {
     jest.useFakeTimers()
@@ -216,5 +243,70 @@ describe('the request lands on the chain', () => {
 
     expect(view?.navigate).toHaveBeenLastCalledWith(WAIT_PATH, { replace: true })
     expect((await storedSession(world.records))?.value.state).toBe('landed')
+  })
+
+  describe('the claims of the request that landed', () => {
+    /** A claim request another visit of the checklist stored, under an id this tab never held. */
+    const storedClaim = (attempt: number) => ({
+      call: 'createClaim' as const,
+      method: 'passkey',
+      account: ACCOUNT,
+      chainId: CHAIN_ID,
+      request: requestOf(withPayload(gatheringOf(MIXED_PATH, attempt)), 0),
+      params: { handOff: false }
+    })
+
+    it('leaves no claim request and no report of the landed request in storage, and keeps those of another request', async () => {
+      await open(withPayload(gatheringOf(MIXED_PATH)), {
+        storedEntries: () => world.storage.getAll()
+      })
+      const claims = {
+        'landed-one': storedClaim(1),
+        'landed-two': storedClaim(1),
+        'other-attempt': storedClaim(7)
+      }
+      await outside(() =>
+        Promise.all(
+          Object.entries(claims).map(async ([id, claim]) => {
+            await world.records.ceremonyRequest(id).write(claim)
+            await deps.channel.report(id, 'createClaim', failed('browser-error', 'NotAllowedError'))
+          })
+        )
+      )
+
+      await ownAttemptLands()
+
+      const raw = stringify(await world.storage.getAll())
+      expect(raw).not.toContain('landed-one')
+      expect(raw).not.toContain('landed-two')
+      expect(await present('landed-one')).toBe(false)
+      expect(await present('landed-two')).toBe(false)
+      expect(await reported('landed-one')).toBe(false)
+      expect(await reported('landed-two')).toBe(false)
+      expect(await present('other-attempt')).toBe(true)
+      expect(await reported('other-attempt')).toBe(true)
+    })
+
+    it('removes the claim request the holder came back from, where storage lists no claim', async () => {
+      await open(withPayload(gatheringOf(MIXED_PATH)))
+      await view?.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+      expect(await present(id)).toBe(true)
+
+      // The holder returns from the ceremony tab before its report is written.
+      view?.unmount()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps,
+        search: { account: ACCOUNT, ceremony: id }
+      })
+      expect(view.byTestId('checklist-undelivered')).not.toBeNull()
+
+      await ownAttemptLands()
+
+      expect(await present(id)).toBe(false)
+      expect(stringify(await world.storage.getAll())).not.toContain(id)
+    })
   })
 })

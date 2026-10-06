@@ -210,6 +210,36 @@ describe('the checklist deadline and poll', () => {
         reason: 'deadline-passed'
       })
     })
+
+    it('wipes the session on the return of a poll still reading when the deadline passes', async () => {
+      const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
+      const mounted = await open(TWO_ROWS, closingIn(TWO_ROWS, 35))
+      // The second round reads for ten seconds, across the deadline.
+      kit.recoveryState.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(recoveryStateOf()), 10_000)
+          })
+      )
+
+      await settle(CHECKLIST_POLL_MS + 6000)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(wipe).not.toHaveBeenCalled()
+
+      await settle(4500)
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'deadline-passed',
+        expect.anything()
+      )
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t('socialRecovery.records.expiredTitle')
+      )
+    })
   })
 
   describe('the poll', () => {

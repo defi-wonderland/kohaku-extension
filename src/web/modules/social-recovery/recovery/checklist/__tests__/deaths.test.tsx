@@ -7,7 +7,8 @@
  * checklist renders the wiped state from that reason, and the wipe leaves no
  * reply, no attempt id and no ceremony request or report of the account in
  * storage. The rows stay held while the wipe is being written, and no row's
- * outcome of the dead request reaches the next gathering.
+ * outcome and no undelivered claim of the dead request reaches the next
+ * gathering.
  */
 import type { Configuration, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -626,6 +627,39 @@ describe('the request dies', () => {
       expect(chipOf(0)).toBe(chip('notAsked'))
       expect(view?.byTestId('checklist-unsatisfied-didNotAnswer')).toBeNull()
       expect(view?.byTestId('checklist-cannot-complete')).not.toBeNull()
+    })
+
+    it('keeps no undelivered claim of the dead request on the next gathering, and launches none with it', async () => {
+      await open(TWO_ROWS, gatheringOf(TWO_ROWS))
+      await view?.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+      await returnTo(id)
+      expect(view?.byTestId('checklist-undelivered')).not.toBeNull()
+      expect(chipOf(0)).toBe(chip('waiting'))
+
+      // The report never comes, and the deadline ends the request.
+      jest.setSystemTime(PAST_DEADLINE)
+      await settle(CHECKLIST_POLL_MS)
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.expiredTitle`)
+      )
+      await gatherAgainPastDeadline()
+
+      expect(chipOf(0)).toBe(chip('notAsked'))
+      expect(view?.byTestId('checklist-undelivered')).toBeNull()
+      expect(view?.byTestId('checklist-undelivered-retry')).toBeNull()
+      expect(deps.requestIds).toEqual([id])
+      expect((await world.records.ceremonyRequest(id).read()).status).not.toBe('present')
+
+      // A claim on the new gathering asks for the new request.
+      await view?.press('checklist-row-0-phone')
+      expect(deps.requestIds).toHaveLength(2)
+      const launched = await world.records.ceremonyRequest(deps.requestIds[1]).read()
+      expect(
+        launched.status === 'present' &&
+          launched.value.call === 'createClaim' &&
+          launched.value.request.attemptId
+      ).toBe('2')
     })
   })
 })
