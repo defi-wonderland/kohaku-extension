@@ -763,7 +763,7 @@
     },
     "create": {
       "controlledBy": "Controlled by {{address}}",
-      "controllingKeyRow": "Controlling key of {{account}}. It is added together with that account and is not an account of its own.",
+      "controllingKeyRow": "Controlling key of {{account}}. The wallet adds it as an account of its own. Recovery does not cover funds held on it.",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
       "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
     },
