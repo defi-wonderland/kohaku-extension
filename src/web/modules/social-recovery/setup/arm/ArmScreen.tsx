@@ -27,11 +27,7 @@ import {
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
-import type {
-  HeldRequestQueue,
-  ListedAccount,
-  PrivilegeHoldersReading
-} from '@web/modules/social-recovery/shared/client'
+import type { HeldRequestQueue, ListedAccount } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { readRecoveryPassword } from '@web/modules/social-recovery/shared/records'
@@ -44,7 +40,6 @@ import {
   saveGateOf,
   trustRowsOf
 } from '@web/modules/social-recovery/setup/review'
-import type { ReviewKitClient } from '@web/modules/social-recovery/setup/review'
 import { useAccountReads } from '@web/modules/social-recovery/setup/review/useAccountReads'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 
@@ -54,12 +49,6 @@ import { saveStepsOf } from './steps'
 import type { SaveSteps } from './types'
 import { useArmRun } from './useArmRun'
 import { useSaveLoad } from './useSaveLoad'
-
-// The save shows no other doors of the account, so it reads none.
-const NO_DOORS_READ = async (): Promise<PrivilegeHoldersReading> => ({
-  kind: 'unreadable',
-  cause: 'not read on the save'
-})
 
 const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const { account: selected } = useSelectedAccountControllerState()
@@ -73,10 +62,6 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const kit = clientState.status === 'ready' ? clientState.client : null
   const chainReads = clientState.status === 'ready' ? clientState.reads : null
   const receipts = clientState.status === 'ready' ? clientState.receipts : null
-  const readsClient = useMemo<ReviewKitClient | null>(
-    () => (kit ? { ...kit, privilegeHolders: NO_DOORS_READ } : null),
-    [kit]
-  )
   const draft = load.status === 'loaded' ? load.draft : null
   const enrollments = useMemo(() => (load.status === 'loaded' ? load.enrollments : []), [load])
 
@@ -98,7 +83,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       }),
     [clauses, enrollments, trust.reads, kit, addressBook]
   )
-  const accountReads = useAccountReads(readsClient, draft)
+  const accountReads = useAccountReads(kit, draft)
   const gate = saveGateOf({
     recordsLoaded: load.status === 'loaded',
     clientReady: !!kit,
