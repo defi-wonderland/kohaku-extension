@@ -264,7 +264,8 @@ const useFastTrackKey = (): FastTrackKey => {
     words: seed && slotKeys ? seed.seed.split(' ') : [],
     controllingKey: slotKeys?.controllingKey ?? null,
     listed: listedAndSelected ? listed : null,
-    listedByEarlierAdd: waiting && !!accounts?.length && selected,
+    listedByEarlierAdd:
+      waiting && addAccountsStatus !== 'LOADING' && !!accounts?.length && selected,
     pending: phase === 'adding' && limitReached,
     add,
     retry
