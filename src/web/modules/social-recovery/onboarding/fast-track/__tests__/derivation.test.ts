@@ -25,7 +25,7 @@ import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { TempSeed } from '@web/modules/social-recovery/onboarding/fast-track'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-import slot from '@web/modules/social-recovery/onboarding/fast-track/__tests__/slot.json'
+import slot from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/slot.json'
 
 const TEST_PHRASE = slot.phrase
 const ORDINARY_KEY = slot.ordinaryKey as Address

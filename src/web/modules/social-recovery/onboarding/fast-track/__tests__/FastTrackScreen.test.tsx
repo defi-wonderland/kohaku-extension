@@ -20,7 +20,7 @@ import {
   unmount,
   visits,
   where
-} from '@web/modules/social-recovery/onboarding/fast-track/__tests__/harness'
+} from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/harness'
 
 const FAST_TRACK = '/social-recovery/fast-track'
 const KEY_STEP = '/social-recovery/fast-track/key'

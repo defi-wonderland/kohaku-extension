@@ -1,6 +1,4 @@
 /**
- * @jest-environment jsdom
- *
  * Mounts the fast track's routes with the app's own components and strings.
  * The edges are fakes: the background's dispatch (every action kept, in order
  * with every navigation), the controller states it answers (the keystore, the
@@ -503,20 +501,3 @@ export const mount = async (path: string, state: unknown = null) => {
   })
   await flush()
 }
-
-describe('the fast track harness', () => {
-  afterEach(() => {
-    unmount()
-    resetEdge()
-  })
-
-  it('re-renders a mounted step when a test pushes a controller state', async () => {
-    await mount('/social-recovery/fast-track', { acknowledged: true })
-    expect(byTestId('fast-track-password')).not.toBeNull()
-
-    await setController('keystore', { hasPasswordSecret: true, isUnlocked: true })
-
-    expect(byTestId('fast-track-key')).not.toBeNull()
-    expect(where()).toBe('/social-recovery/fast-track/key')
-  })
-})

@@ -27,7 +27,7 @@ import {
   walletListsSlot,
   where,
   writeEntry
-} from '@web/modules/social-recovery/onboarding/fast-track/__tests__/harness'
+} from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/harness'
 
 const GAS_STEP = `/social-recovery/fast-track/gas?account=${LOST_ACCOUNT}`
 const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST_ACCOUNT}`

@@ -31,7 +31,7 @@ import {
   visits,
   walletListsSlot,
   where
-} from '@web/modules/social-recovery/onboarding/fast-track/__tests__/harness'
+} from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/harness'
 
 const KEY_STEP = '/social-recovery/fast-track/key'
 const ACKNOWLEDGED = { acknowledged: true }
