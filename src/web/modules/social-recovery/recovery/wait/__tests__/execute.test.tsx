@@ -197,6 +197,22 @@ describe('execute now', () => {
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
   })
 
+  it('offers no retry of a refused send once a later poll reads the recovery cannot execute', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    world.refusing.refusing = true
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(true)
+
+    world.kit.chain.authorized = false
+    await tick(POLL_MS)
+    expect(view.byTestId('wait-cannot-execute-notAuthorized')).not.toBeNull()
+    expect(view.byTestId('wait-execute-failedNotSent')).not.toBeNull()
+    expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+  })
+
   it('reads the execution reverted with its cause and the attempt still ready, and offers the retry', async () => {
     const world = await openWorld()
     elapse(world.kit)
