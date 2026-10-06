@@ -39,6 +39,9 @@ const {
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
 const RecoveryCardView: typeof import('@web/modules/social-recovery/setup/card/RecoveryCardView').default =
   require('@web/modules/social-recovery/setup/card/RecoveryCardView').default
+const {
+  cardFileOf
+}: typeof import('@web/modules/social-recovery/setup/card/file') = require('@web/modules/social-recovery/setup/card/file')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 // Given in lower case; the card shows its checksummed form.
@@ -266,6 +269,31 @@ describe('the recovery card view', () => {
       expect(rows.lines).toEqual(LINES)
       expectNamesNothingToPhish(rows.text)
       expect(onCarried).toHaveBeenCalledTimes(1)
+    })
+
+    it('offers two carriers, download and print, and no hand-off to another device', async () => {
+      await mount()
+      const row = byTestId('card-download')?.parentElement
+      expect(Array.from(row?.children ?? [], (node) => node.getAttribute('data-testid'))).toEqual([
+        'card-download',
+        'card-print'
+      ])
+      expect(byTestId('card-download')?.textContent).toBe(S.card.downloadPdf)
+      expect(byTestId('card-print')?.textContent).toBe(S.card.print)
+      expect(byTestId('card-send')).toBeNull()
+      expect(container.querySelectorAll('[data-testid^="card-send"]')).toHaveLength(0)
+    })
+
+    it('hands the download carrier the card as a PDF file', async () => {
+      await mount()
+      await press('card-download')
+      expect(files).toHaveLength(1)
+      expect(files[0].type).toBe('application/pdf')
+      expect(files[0].name.endsWith('.pdf')).toBe(true)
+      expect(String.fromCharCode(...files[0].bytes.slice(0, 5))).toBe('%PDF-')
+      const expected = cardFileOf({ account: ACCOUNT, level: 'hidden', password: PASSWORD }, t)
+      expect(Array.from(files[0].bytes)).toEqual(Array.from(expected.bytes))
+      expect(files[0].replacedCharacters).toBe(false)
     })
 
     it('saves a password with inner and trailing spaces exactly as typed', async () => {
