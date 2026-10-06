@@ -348,6 +348,17 @@ export const readyClient = (): FakeClient => {
 // The mainnet name readers
 // ---------------------------------------------------------------------------
 
+/**
+ * One endpoint's answer: an address, null for no address, a throw, an answer
+ * that arrives after a delay, or `'never'` for an endpoint that never answers.
+ */
+export type FakeNameAnswer =
+  | string
+  | null
+  | Error
+  | 'never'
+  | { afterMs: number; address: string | null }
+
 /** A reader factory with no network, and what each endpoint's reader was asked. */
 export interface FakeNameReaders {
   readerOf: NameReaderFactory
@@ -357,6 +368,17 @@ export interface FakeNameReaders {
   names: string[]
   /** Every endpoint whose reader was destroyed, in order. */
   destroyed: string[]
+}
+
+/** A name read in progress: whether it has settled and the address it gave. */
+export interface NameReadOutcome {
+  settled: boolean
+  address?: string
+}
+
+/** Jest's fake clock as its runtime offers it, beyond the typings this repository carries. */
+export interface AsyncFakeTimers {
+  advanceTimersByTimeAsync(ms: number): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
