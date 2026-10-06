@@ -4,7 +4,8 @@
  * wallet's own name resolver, and the key a recovery installs, the receiving
  * account's own key. A search that names no route, no receiving account, or
  * an account whose key the wallet does not hold sends the holder back to the
- * route's entry.
+ * route's entry. A holder who did not acknowledge the warning on the screen
+ * before, as on a direct URL, meets the condensed warning first.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -29,10 +30,16 @@ import {
 import { getRpcProviderForUI } from '@web/services/provider'
 
 import AccountStepView from './AccountStepView'
+import CondensedGate from './CondensedGate'
 import { ACCOUNT_STAGE, CHAIN_NAMES } from './constants'
 import EntryChrome from './EntryChrome'
 import { choiceFor, receivingChoicesOf } from './receiving'
-import { parseAccountStepSearch, routeEntryPathOf, routeOfSearch } from './search'
+import {
+  acknowledgedInState,
+  parseAccountStepSearch,
+  routeEntryPathOf,
+  routeOfSearch
+} from './search'
 import type { EntryClient, LookupTarget } from './types'
 
 const AccountStepScreen = () => {
@@ -56,12 +63,24 @@ const AccountStepScreen = () => {
     [search, accounts, keys]
   )
   const unusable = !search || (loaded && !receiving)
+  // The record keeps the wallet's own form of the receiving account, not the
+  // casing the URL carried.
+  const stepSearch = useMemo(
+    () =>
+      search && receiving ? { route: search.route, receivingAccount: receiving.address } : null,
+    [search, receiving]
+  )
 
   useEffect(() => {
     if (unusable) {
       navigate(routeEntryPathOf(route))
     }
   }, [unusable, route, navigate])
+
+  // The acknowledgment travels in the navigation state alone, so a reload or
+  // a direct URL shows the warning again.
+  const [acknowledged, setAcknowledged] = useState(() => acknowledgedInState(location.state))
+  const pass = useCallback(() => setAcknowledged(true), [])
 
   const [target, setTarget] = useState<LookupTarget | null>(null)
   const clientState = useRecoveryClient(target?.address)
@@ -75,10 +94,13 @@ const AccountStepScreen = () => {
       return { status: 'loading' }
     }
     if (status === 'update-the-wallet') {
-      return { status: 'update-the-wallet', retry }
+      return {
+        status: 'update-the-wallet',
+        update: () => dispatch({ type: 'EXTENSION_UPDATE_CONTROLLER_APPLY_UPDATE' })
+      }
     }
     return { status: 'failed', retry }
-  }, [kit, status, retry])
+  }, [kit, status, retry, dispatch])
 
   const networkName =
     networkOf(networks, WALLET_RECOVERY_CHAIN)?.name ?? CHAIN_NAMES[WALLET_RECOVERY_CHAIN]
@@ -93,11 +115,12 @@ const AccountStepScreen = () => {
 
   return (
     <EntryChrome route={route} stage={ACCOUNT_STAGE} testID="recovery-account">
-      {!!search && !!receiving && (
+      {!!search && !!receiving && !acknowledged && <CondensedGate onPass={pass} />}
+      {!!stepSearch && !!receiving && acknowledged && (
         <AccountStepView
           records={records}
           chainId={CHAIN_IDS[WALLET_RECOVERY_CHAIN]}
-          search={search}
+          search={stepSearch}
           destination={receiving.key.addr}
           networkName={networkName}
           target={target}

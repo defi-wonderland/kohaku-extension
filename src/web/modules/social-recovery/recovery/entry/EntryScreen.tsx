@@ -1,7 +1,8 @@
 /**
  * The logged-in entry's route: the settings chrome at the first stage around
  * the owner stage, over the wallet's accounts and the keys its keystore holds.
- * Continue opens the account step with the route and the receiving account.
+ * Continue opens the account step with the route and the receiving account,
+ * and tells it the holder acknowledged the warning here.
  */
 import React, { useCallback, useMemo } from 'react'
 
@@ -10,7 +11,7 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { OWNER_STAGE } from './constants'
+import { ACKNOWLEDGED_STATE, OWNER_STAGE } from './constants'
 import EntryChrome from './EntryChrome'
 import OwnerStageView from './OwnerStageView'
 import { receivingChoicesOf } from './receiving'
@@ -28,7 +29,9 @@ const EntryScreen = () => {
   )
   const proceed = useCallback(
     (receivingAccount: Address) =>
-      navigate(accountStepPathOf({ route: 'logged-in', receivingAccount })),
+      navigate(accountStepPathOf({ route: 'logged-in', receivingAccount }), {
+        state: ACKNOWLEDGED_STATE
+      }),
     [navigate]
   )
 
