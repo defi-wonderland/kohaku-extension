@@ -399,10 +399,6 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-smart-account')?.textContent).toBe(
         t('socialRecovery.disclosures.smartAccount')
       )
-      expect(view!.byTestId('guardian-call-back')?.textContent).toBe(t(`${GUARDIAN}.callBack`))
-      expect(view!.byTestId('guardian-owner-answer')?.textContent).toBe(
-        t(`${GUARDIAN}.ownerAnswer`)
-      )
       expect(view!.text()).toContain(t(`${GUARDIAN}.howMany`))
       expect(view!.byTestId('guardian-test')?.textContent).toBe(t(`${GUARDIAN}.testThisKey`))
       expect(view!.byTestId('guardian-field')).toBeNull()
@@ -483,10 +479,6 @@ describe('the guardian row', () => {
     const expectLinesStay = () => {
       expect(view!.byTestId('guardian-smart-account')?.textContent).toBe(
         t('socialRecovery.disclosures.smartAccount')
-      )
-      expect(view!.byTestId('guardian-call-back')?.textContent).toBe(t(`${GUARDIAN}.callBack`))
-      expect(view!.byTestId('guardian-owner-answer')?.textContent).toBe(
-        t(`${GUARDIAN}.ownerAnswer`)
       )
     }
 
@@ -1171,7 +1163,7 @@ describe('the guardian row', () => {
   })
 
   describe('the lines of a guardian row', () => {
-    it('renders the three lines as soon as the field holds an address, before Add', async () => {
+    it('renders the smart-account line as soon as the field holds an address, before Add', async () => {
       await open()
       expect(view!.byTestId('guardian-lines')).toBeNull()
       await enter(HELD)
@@ -1179,13 +1171,29 @@ describe('the guardian row', () => {
       expect(view!.byTestId('guardian-smart-account')?.textContent).toBe(
         t('socialRecovery.disclosures.smartAccount')
       )
-      expect(view!.byTestId('guardian-call-back')?.textContent).toBe(t(`${GUARDIAN}.callBack`))
-      expect(view!.byTestId('guardian-owner-answer')?.textContent).toBe(
-        t(`${GUARDIAN}.ownerAnswer`)
-      )
       await view!.press('guardian-add')
       expect(view!.byTestId('guardian-enrolled')).not.toBeNull()
       expect(view!.allText('guardian-smart-account')).toHaveLength(1)
+    })
+
+    it('asks for no call back and no owner answer, before Add, after Add or after a test', async () => {
+      const absent = () => {
+        expect(view!.text()).not.toContain(t(`${GUARDIAN}.callBack`))
+        expect(view!.text()).not.toContain(t(`${GUARDIAN}.ownerAnswer`))
+      }
+      await open()
+      await enter(HELD)
+      expect(view!.byTestId('guardian-lines')?.textContent).toBe(
+        t('socialRecovery.disclosures.smartAccount')
+      )
+      absent()
+      await view!.press('guardian-add')
+      expect(view!.byTestId('guardian-lines')?.textContent).toBe(
+        t('socialRecovery.disclosures.smartAccount')
+      )
+      absent()
+      await view!.press('guardian-test')
+      absent()
     })
 
     it('renders the paste hint once', async () => {

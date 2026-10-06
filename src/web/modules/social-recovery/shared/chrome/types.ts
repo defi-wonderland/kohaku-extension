@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 
+import type { InputProps } from '@common/components/Input'
+
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
   children: ReactNode
@@ -80,3 +82,5 @@ export interface MethodRowProps {
   style?: StyleProp<ViewStyle>
   testID?: string
 }
+
+export type FieldInputProps = InputProps
