@@ -84,7 +84,8 @@ export type EntryKitClient = Pick<RecoveryKitClient, 'descriptor'> & {
 export type EntryClient =
   | { status: 'loading' }
   | { status: 'ready'; client: EntryKitClient }
-  | { status: 'update-the-wallet'; retry: () => void }
+  /** The wallet's version cannot read the setup; `update` applies a pending wallet update. */
+  | { status: 'update-the-wallet'; update: () => void }
   | { status: 'failed'; retry: () => void }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +174,7 @@ export interface ReceivingRowProps {
 }
 
 export interface AccountStepViewProps {
-  records: Pick<WalletRecords, 'recoveryEntry'>
+  records: Pick<WalletRecords, 'recoveryEntry' | 'recoverySession'>
   chainId: ChainId
   search: AccountStepSearch
   /** The key a recovery installs: the receiving account's own key. */
@@ -196,6 +197,7 @@ export interface LookupFieldProps {
 }
 
 export interface LookupStateProps {
+  target: LookupTarget
   networkName: string
   client: EntryClient
   setupState: EntryRead<SetupState>
@@ -222,8 +224,16 @@ export interface ConfirmedReadsViewProps {
   /** Whether the setup read reported an attempt running against the account. */
   attemptActive: boolean
   onRetry: () => void
+  /** Leaves a blocked state for the account field. */
+  onBack: () => void
+  /** Leaves a refusal about the installed key for the choice of another account. */
   onChooseAnother: () => void
   onContinue: () => void
+}
+
+export interface CondensedGateProps {
+  /** Runs once the holder ticked the acknowledgment and pressed continue. */
+  onPass: () => void
 }
 
 export interface ReadFailedBlockProps {

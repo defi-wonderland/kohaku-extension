@@ -5,6 +5,8 @@
  */
 export {
   ACCOUNT_STAGE,
+  ACKNOWLEDGED_STATE,
+  ACKNOWLEDGED_STATE_KEY,
   CHAIN_NAMES,
   CONFIRMED_STAGES,
   ENTRY_SEARCH_KEYS,
@@ -17,7 +19,9 @@ export { readDestination, readFit } from './reads'
 export { choiceFor, receivingChoiceOf, receivingChoicesOf } from './receiving'
 export { confirmedStepOf, destinationRefusalOf, recoverRefusalOf } from './refusal'
 export {
+  acknowledgedInState,
   accountStepPathOf,
+  checklistPathOf,
   parseAccountStepSearch,
   readoutPathOf,
   routeEntryPathOf,
@@ -25,6 +29,7 @@ export {
 } from './search'
 export type {
   AccountStepSearch,
+  CondensedGateProps,
   ConfirmedReads,
   ConfirmedStage,
   ConfirmedStep,

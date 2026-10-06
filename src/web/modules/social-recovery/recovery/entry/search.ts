@@ -10,7 +10,7 @@ import { RECOVERY_ROUTES } from '@web/modules/social-recovery/shared/records'
 import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
-import { ENTRY_SEARCH_KEYS } from './constants'
+import { ACKNOWLEDGED_STATE_KEY, ENTRY_SEARCH_KEYS } from './constants'
 import type { AccountStepSearch } from './types'
 
 const isRecoveryRoute = (value: string | null): value is RecoveryRoute =>
@@ -52,9 +52,26 @@ export const accountStepPathOf = ({ route, receivingAccount }: AccountStepSearch
 export const routeEntryPathOf = (route: RecoveryRoute): string =>
   `/${route === 'logged-in' ? WEB_ROUTES.socialRecoveryRecovery : WEB_ROUTES.socialRecoveryRecover}`
 
-/** The readout's path for the account being recovered. */
-export const readoutPathOf = (account: Address): string => {
+const accountPathOf = (route: string, account: Address): string => {
   const query = new URLSearchParams()
   query.set(ENTRY_SEARCH_KEYS.account, account)
-  return `/${WEB_ROUTES.socialRecoveryRecoveryReadout}?${query.toString()}`
+  return `/${route}?${query.toString()}`
 }
+
+/** The readout's path for the account being recovered. */
+export const readoutPathOf = (account: Address): string =>
+  accountPathOf(WEB_ROUTES.socialRecoveryRecoveryReadout, account)
+
+/** The checklist's path for the account being recovered. */
+export const checklistPathOf = (account: Address): string =>
+  accountPathOf(WEB_ROUTES.socialRecoveryRecoveryChecklist, account)
+
+/**
+ * Whether the router's navigation state says the holder acknowledged the
+ * warning on the screen before. The state reaches the page from the history
+ * entry, so it is read as unknown.
+ */
+export const acknowledgedInState = (state: unknown): boolean =>
+  typeof state === 'object' &&
+  state !== null &&
+  (state as Record<string, unknown>)[ACKNOWLEDGED_STATE_KEY] === true

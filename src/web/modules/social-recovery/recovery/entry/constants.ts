@@ -20,6 +20,15 @@ export const ENTRY_SEARCH_KEYS = {
   account: 'account'
 } as const
 
+/**
+ * The navigation state's key that says the holder acknowledged the warning on
+ * the screen before; the fast track's key step passes the same key.
+ */
+export const ACKNOWLEDGED_STATE_KEY = 'acknowledged'
+
+/** The navigation state a screen passes once the holder acknowledged the warning. */
+export const ACKNOWLEDGED_STATE = { [ACKNOWLEDGED_STATE_KEY]: true } as const
+
 /** The reads after the confirmation, in the order they run. */
 export const CONFIRMED_STAGES: readonly ConfirmedStage[] = ['authorization', 'fit', 'destination']
 
