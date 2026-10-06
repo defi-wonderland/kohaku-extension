@@ -80,3 +80,24 @@ export interface MethodRowProps {
   style?: StyleProp<ViewStyle>
   testID?: string
 }
+
+export interface PlainHeaderProps {
+  /** The words beside the extension's name; a header with none draws the name alone. */
+  title?: string
+  testID?: string
+}
+
+export interface PlainChromeProps {
+  /** The header's words, passed on to the plain header. */
+  title?: string
+  children: ReactNode
+  testID?: string
+}
+
+export interface StepCounterProps {
+  /** The string key of the counter line; the line takes the step and the total. */
+  labelKey: string
+  step: number
+  total: number
+  testID?: string
+}
