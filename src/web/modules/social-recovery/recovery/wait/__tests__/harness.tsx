@@ -62,6 +62,8 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 /** What the wallet's hooks answer the mounted screen. */
 export interface MockWallet {
   navigate: jest.Mock
+  /** The background service's dispatch, recording every action the screen sent. */
+  dispatch: jest.Mock
   storage: TestStorage | null
   /** The client state of each account being recovered, by lowercase address. */
   clients: Map<string, unknown>
@@ -74,6 +76,7 @@ export interface MockWallet {
 
 export const mockWallet: MockWallet = {
   navigate: jest.fn(),
+  dispatch: jest.fn(),
   storage: null,
   clients: new Map(),
   facts: new Map(),
@@ -99,10 +102,10 @@ jest.mock('@web/hooks/useKeystoreControllerState', () => ({
   __esModule: true,
   default: () => ({ keys: mockWallet.keys })
 }))
-jest.mock('@web/hooks/useBackgroundService', () => {
-  const dispatch = () => undefined
-  return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
-})
+jest.mock('@web/hooks/useBackgroundService', () => ({
+  __esModule: true,
+  default: () => ({ dispatch: mockWallet.dispatch, windowId: undefined })
+}))
 jest.mock('@web/hooks/useRequestsControllerState', () => {
   const queue = { userRequests: [] }
   return { __esModule: true, default: () => queue }
@@ -585,6 +588,20 @@ export const moveDeviceClock = (ms: number) => {
   jest.setSystemTime(Date.now() + ms)
 }
 
+/** Puts the tab out of view or back into it, as the browser does, then lets what the page started settle. */
+export const showTab = async (state: 'visible' | 'hidden') => {
+  await act(async () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await tick(0)
+}
+
+/** Gives the tab's visibility back to jsdom. */
+export const resetTab = () => {
+  Reflect.deleteProperty(document, 'visibilityState')
+}
+
 /** Fake timers with the device's clock far from the chain's. */
 export const useWaitClock = () => {
   beforeEach(() => {
@@ -633,6 +650,7 @@ export interface Mounted {
 
 const mountElement = async (element: ReturnType<typeof React.createElement>): Promise<Mounted> => {
   mockWallet.navigate = jest.fn()
+  mockWallet.dispatch = jest.fn()
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root: Root = createRoot(container)
@@ -742,7 +760,8 @@ export const openWorld = async ({
   receiving = 'basic',
   configuration = MIXED_PATH,
   cache = false,
-  countdown = true
+  countdown = true,
+  lettered = false
 }: {
   route?: RecoveryRoute
   receiving?: 'smart' | 'basic'
@@ -751,8 +770,10 @@ export const openWorld = async ({
   cache?: boolean
   /** Whether the submission landed; without it the storage holds no session. */
   countdown?: boolean
+  /** Whether the account's address has letters, so its checksummed and lowercase spellings differ. */
+  lettered?: boolean
 } = {}): Promise<World> => {
-  const account = freshAccount()
+  const account = lettered ? getAddress(`0xabcdef${freshAccount().slice(8)}`) : freshAccount()
   const storage = makeStorage()
   const records = recordsOn(storage)
   const kit = fakeKit(account)

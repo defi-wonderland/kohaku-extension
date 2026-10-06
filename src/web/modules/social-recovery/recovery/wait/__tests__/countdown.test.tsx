@@ -1,19 +1,27 @@
 /**
  * @jest-environment jsdom
  */
+import { Linking } from 'react-native'
+
 import {
   CHAIN_TIME,
   dateOf,
+  DEVICE_NOW,
   HOUR,
+  MIXED_PATH,
   moveDeviceClock,
   mountWait,
   openWorld,
+  resetTab,
+  showTab,
+  START_TX,
   t,
   tick,
   useWaitClock,
   waiting
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
 const POLL_MS = 30_000
 
@@ -71,6 +79,46 @@ describe('the countdown', () => {
     expect(view.byTestId('wait-who-finishes')).not.toBeNull()
   })
 
+  it("dates the start on chain, the attempt's end less the setup's waiting period, where this device holds the setup", async () => {
+    const world = await openWorld({ cache: true, configuration: MIXED_PATH })
+    view = await mountWait(world.account)
+
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const startMs = (CHAIN_TIME + HOUR - Number(MIXED_PATH.wait)) * 1000
+    expect(dateOf(startMs, zone)).not.toBe(dateOf(DEVICE_NOW, zone))
+    expect(view.textOf('wait-started')).toBe(
+      t('socialRecovery.wait.started', { date: dateOf(startMs, zone) })
+    )
+  })
+
+  it('dates the start by the day the submission landed here where this device holds no setup', async () => {
+    const world = await openWorld()
+    moveDeviceClock(400 * 24 * HOUR * 1000)
+    view = await mountWait(world.account)
+
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    expect(dateOf(Date.now(), zone)).not.toBe(dateOf(DEVICE_NOW, zone))
+    expect(view.textOf('wait-started')).toBe(
+      t('socialRecovery.wait.started', { date: dateOf(DEVICE_NOW, zone) })
+    )
+  })
+
+  it('opens the transaction that started the recovery on the chain explorer', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true)
+    try {
+      const world = await openWorld()
+      view = await mountWait(world.account)
+
+      await view.press('wait-explorer')
+      expect(openURL).toHaveBeenCalledTimes(1)
+      expect(openURL).toHaveBeenCalledWith(explorerTransactionUrlOf('sepolia', START_TX))
+      expect(openURL.mock.calls[0][0]).toContain(START_TX)
+      expect(view.paths()).toEqual([])
+    } finally {
+      openURL.mockRestore()
+    }
+  })
+
   it('names the path by its rule lines where this device holds the setup', async () => {
     const world = await openWorld({ cache: true })
     view = await mountWait(world.account)
@@ -112,6 +160,42 @@ describe('the countdown', () => {
     expect(view.byTestId('plain-chrome')).not.toBeNull()
     expect(view.byTestId('wait-stage')).toBeNull()
     expect(view.byTestId('wait-time-left')).not.toBeNull()
+  })
+})
+
+describe("the poll on the tab's return", () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+    resetTab()
+  })
+
+  it('asks the chain again when the tab comes back into view, and not while it is hidden', async () => {
+    const world = await openWorld()
+    view = await mountWait(world.account)
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+
+    await showTab('hidden')
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+
+    world.kit.chain.blockTime = CHAIN_TIME + 900
+    await showTab('visible')
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR - 900))
+  })
+
+  it('reads the cancel at once when the tab comes back into view', async () => {
+    const world = await openWorld()
+    view = await mountWait(world.account)
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
+
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, state: 'Cancelled' }
+    await showTab('visible')
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.byTestId('wait-cancelled-action')).not.toBeNull()
   })
 })
 

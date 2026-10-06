@@ -4,6 +4,8 @@
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import {
   attemptCancelled,
+  attemptConsumed,
+  attemptStarted,
   CHAIN_ID,
   consume,
   elapse,
@@ -275,6 +277,8 @@ describe('the recovery that can no longer execute', () => {
       expect(text).toContain(t('socialRecovery.wait.cannotExecute.exitsNeedKey'))
       expect(view.byTestId('wait-execute')).toBeNull()
       expect(view.byTestId('wait-execution-due')).toBeNull()
+      expect(view.byTestId('wait-countdown')).toBeNull()
+      expect(view.byTestId('wait-time-left')).toBeNull()
       expect(text).not.toContain(t('socialRecovery.writes.tryAgain'))
       expect(text).not.toContain(t('socialRecovery.wait.cancelled.startAgain'))
       expect(text).not.toContain(t('socialRecovery.wait.cancelled.startNew'))
@@ -315,6 +319,9 @@ describe('the recovery that can no longer execute', () => {
     view = await mountWait(world.account)
 
     expect(view.isDisabled('wait-move-funds')).toBe(true)
+    await view.press('wait-move-funds')
+    expect(mockWallet.dispatch).not.toHaveBeenCalled()
+    expect(view.paths()).toEqual([])
   })
 
   it('enables move funds where this wallet holds the account key', async () => {
@@ -329,6 +336,31 @@ describe('the recovery that can no longer execute', () => {
 
     expect(view.isDisabled('wait-move-funds')).toBe(false)
     await view.press('wait-move-funds')
+    expect(view.paths()).toEqual([`/${WEB_ROUTES.transfer}`])
+  })
+
+  it('selects the account being recovered, by the address the wallet lists, before it opens the transfer', async () => {
+    const world = await openWorld({ lettered: true })
+    world.kit.chain.supported = false
+    const listed = world.account.toLowerCase() as typeof world.account
+    expect(listed).not.toBe(world.account)
+    const own = basicAccount(listed)
+    mockWallet.facts.set(listed, readyFacts(factsOf(own, { addr: listed, type: 'internal' })))
+    view = await mountWait(world.account)
+
+    await view.press('wait-move-funds')
+    const selects = mockWallet.dispatch.mock.calls.filter(
+      ([action]) => action.type === 'MAIN_CONTROLLER_SELECT_ACCOUNT'
+    )
+    expect(selects).toEqual([
+      [{ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: listed } }]
+    ])
+    const selected = mockWallet.dispatch.mock.calls.findIndex(
+      ([action]) => action.type === 'MAIN_CONTROLLER_SELECT_ACCOUNT'
+    )
+    expect(mockWallet.dispatch.mock.invocationCallOrder[selected]).toBeLessThan(
+      mockWallet.navigate.mock.invocationCallOrder[0]
+    )
     expect(view.paths()).toEqual([`/${WEB_ROUTES.transfer}`])
   })
 })
@@ -354,6 +386,71 @@ describe('whose attempt the wait reads', () => {
     }
     await tick(POLL_MS)
     expect(view.paths()).not.toContain(donePath(world))
+  })
+
+  it('does not open the done screen for a consumed attempt under its id that no event names', async () => {
+    const world = await openWorld()
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, state: 'Consumed' }
+    world.kit.chain.events = []
+    view = await mountWait(world.account)
+
+    expect(view.paths()).toEqual([])
+    expect(view.byTestId('wait-cannot-execute-unmatched')).not.toBeNull()
+    expect(view.byTestId('wait-cancelled-action')).toBeNull()
+    expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
+    expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
+      'present'
+    )
+  })
+
+  it('opens the done screen for a consumed attempt under its id once its consume event shows, with no opening event', async () => {
+    const world = await openWorld()
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, state: 'Consumed' }
+    world.kit.chain.events = []
+    view = await mountWait(world.account)
+    expect(view.paths()).toEqual([])
+
+    world.kit.chain.events = [attemptConsumed(world.account)]
+    await tick(POLL_MS)
+    expect(view.paths()).toEqual([donePath(world)])
+  })
+
+  it('reads cannot execute for a running attempt under its id with no opening event: no execute, no countdown, and the poll goes on', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    world.kit.chain.events = []
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-cannot-execute-unmatched')).toBe(
+      t('socialRecovery.wait.cannotExecute.refused', {
+        read: t('socialRecovery.writes.causes.NotConsumable')
+      })
+    )
+    expect(view.text()).toContain(t('socialRecovery.wait.cannotExecute.slotClosed'))
+    expect(view.text()).toContain(t('socialRecovery.wait.cannotExecute.exitsNeedKey'))
+    expect(view.byTestId('wait-execute')).toBeNull()
+    expect(view.byTestId('wait-execution-due')).toBeNull()
+    expect(view.byTestId('wait-countdown')).toBeNull()
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.paths()).toEqual([])
+
+    const calls = world.kit.recoveryState.mock.calls.length
+    world.kit.chain.events = [attemptStarted(world.account)]
+    await tick(POLL_MS)
+    expect(world.kit.recoveryState.mock.calls.length).toBe(calls + 1)
+    expect(view.byTestId('wait-cannot-execute')).toBeNull()
+    expect(view.byTestId('wait-execute')).not.toBeNull()
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it('reads cannot execute for a waiting attempt under its id with no opening event, never a countdown', async () => {
+    const world = await openWorld()
+    world.kit.chain.events = []
+    view = await mountWait(world.account)
+
+    expect(view.byTestId('wait-cannot-execute-unmatched')).not.toBeNull()
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.byTestId('wait-can-close')).toBeNull()
   })
 
   it('renders the cancelled terminal with no canceller where no event names one', async () => {
