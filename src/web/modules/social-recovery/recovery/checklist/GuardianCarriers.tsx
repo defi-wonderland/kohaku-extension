@@ -1,11 +1,11 @@
 /**
  * A guardian row's one artifact, the link to the approval page, and what
- * carries it: the four values first, then open the approval page, copy the
- * link, copy a message with the link and show the QR code, all four locked
- * until every value rendered. The row tells the recoverer to ask for the call
- * rather than place it, and to send the message over a channel they already
- * use. The paste field takes the line the guardian sends back. A complete row
- * shows when this tab added its approval.
+ * carries it: the four values first, how the guardian answers, then open the
+ * approval page, copy the link, copy a message with the link and show the QR
+ * code, all four locked until every value rendered. The row tells the
+ * recoverer to ask for the call rather than place it, and to send the message
+ * over a channel they already use. The paste field takes the line the guardian
+ * sends back. A complete row shows when this tab added its approval.
  */
 import React, { useCallback, useMemo, useState } from 'react'
 import { View } from 'react-native'
@@ -101,6 +101,9 @@ const GuardianCarriers = ({
         removed={removed}
         retryRemoved={retryRemoved}
       />
+      <View style={spacings.mtSm}>
+        {line(`${GUARDIAN}.howTheyAnswer`, `checklist-row-${place}-how-they-answer`)}
+      </View>
       {unlocked && !!link && (
         <Text
           fontSize={12}
@@ -174,7 +177,6 @@ const GuardianCarriers = ({
         {line(`${GUARDIAN}.messageSays`)}
         {line(`${GUARDIAN}.ownKey`)}
         {line(`${GUARDIAN}.hardwareWallet`)}
-        {line(`${GUARDIAN}.howTheyAnswer`)}
       </View>
       <PasteField place={place} busy={busy} paste={paste} addReply={addReply} />
     </View>
