@@ -204,6 +204,38 @@ describe('the guardian row carriers', () => {
     expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(getAddress(REMOVED))
   })
 
+  it('names a removed key the wallet cannot read, keeps the carriers locked and offers no retry', async () => {
+    kit.removedKey.mockResolvedValue({ kind: 'unavailable', cause: 'several-key-entries' })
+    const mounted = await open()
+
+    expect(mounted.byTestId(id(1, 'removed-unavailable'))?.textContent).toBe(
+      t('socialRecovery.entry.refusal.removedUnknown')
+    )
+    expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+      t('socialRecovery.entry.refusal.removedUnknown')
+    )
+    expect(mounted.byTestId(id(1, 'removed-retry'))).toBeNull()
+    expect(locked(mounted, 1)).toEqual([true, true, true, true])
+    expect(mounted.byTestId(id(1, 'unlock-reason'))?.textContent).toBe(
+      t(`${GUARDIAN}.unlockReason`)
+    )
+    expect(mounted.byTestId(id(1, 'link'))).toBeNull()
+    await mounted.press(id(1, 'copy-link'))
+    await mounted.press(id(1, 'show-qr'))
+    await settle()
+    expect(clipboard.setStringAsync).not.toHaveBeenCalled()
+    expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
+    expect(kit.removedKey).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers the retry on a failed read of the removed key, not the line of an unreadable one', async () => {
+    kit.removedKey.mockRejectedValueOnce(new Error('rpc down'))
+    const mounted = await open()
+
+    expect(mounted.byTestId(id(1, 'removed-retry'))).not.toBeNull()
+    expect(mounted.byTestId(id(1, 'removed-unavailable'))).toBeNull()
+  })
+
   it('keeps the carriers locked while the new key is still read', async () => {
     const mounted = await open({ status: 'loading' })
 
@@ -220,6 +252,24 @@ describe('the guardian row carriers', () => {
     )
     expect(locked(mounted, 1)).toEqual([false, false, false, false])
     expect(mounted.byTestId(id(1, 'unlock-reason'))).toBeNull()
+  })
+
+  it('says how the guardian answers under the values, above the link line and the carriers', async () => {
+    const mounted = await open()
+    const expected = [id(1, 'values'), id(1, 'how-they-answer'), id(1, 'link'), id(1, 'open-page')]
+
+    const rendered = Array.from(
+      mounted.byTestId(id(1, 'carriers'))?.querySelectorAll('[data-testid]') ?? []
+    )
+      .map((node) => node.getAttribute('data-testid') ?? '')
+      .filter((testId) => expected.includes(testId))
+    expect(rendered).toEqual(expected)
+    expect(mounted.byTestId(id(1, 'how-they-answer'))?.textContent).toBe(
+      t(`${GUARDIAN}.howTheyAnswer`)
+    )
+    expect(
+      (mounted.byTestId(id(1, 'carriers'))?.textContent ?? '').split(t(`${GUARDIAN}.howTheyAnswer`))
+    ).toHaveLength(2)
   })
 
   it('writes the link to the clipboard, a link that reads back to the place request', async () => {
