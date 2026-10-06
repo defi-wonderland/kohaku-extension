@@ -18,7 +18,7 @@ const PathTreeHeader = ({ children, style, testID }: PathTreeHeaderProps) => {
       return
     }
     const node = findNodeHandle(target.node.current)
-    if (node === null) {
+    if (!node) {
       return
     }
     header.current.measureLayout(
