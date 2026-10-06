@@ -4,12 +4,15 @@
  * standard fonts every reader carries, Helvetica and Helvetica-Bold for the
  * text and Courier for the values, in their single-byte Windows encoding. A
  * character that encoding lacks is written as its `U+XXXX` code, so nothing is
- * dropped without a trace, and the result says that happened.
+ * dropped without a trace, and the result says that happened. Such a code
+ * cannot be told apart from the same letters typed, so a text that must read
+ * back exactly is checked with `carriesExactly` first.
  *
  * A value wraps anywhere, so each of its lines but the last ends with a grey
  * `¬` drawn in the cell right after the text: a space at the end of a line
  * shows as a gap before the mark, and the mark says the value goes on. The
- * mark is not part of the value.
+ * mark is a drawn line, not text, so it is not part of the value and a
+ * reader's text extraction gives the value alone.
  *
  * Text that does not fit on one page continues on the next, at the same size:
  * a block that does not fit in the room left starts a new page, a label moves
@@ -54,8 +57,15 @@ const TEXT_GREY = 0.07
 const LABEL_GREY = 0.35
 const BORDER_GREY = 0.6
 
-// The `¬` that ends every wrapped value line but the last, as its byte.
-const CONTINUATION_MARK = '\xac'
+// The `¬` that ends every wrapped value line but the last, drawn as a stroke
+// over Courier's own glyph: a bar from the left of the cell to near its right,
+// then a tick down at its right end, in shares of the font size from the cell's
+// left and the baseline, and a line about as thick as Courier's strokes.
+const MARK_LEFT = 0.09
+const MARK_RIGHT = 0.51
+const MARK_BAR = 0.37
+const MARK_TICK_END = 0.11
+const MARK_STROKE = 0.05
 
 // The characters the Windows encoding places between 0x80 and 0x9f; every other
 // byte it shares with Latin-1.
@@ -96,6 +106,11 @@ const winAnsiByteOf = (codePoint: number): number | undefined =>
   (codePoint >= 0xa1 && codePoint <= 0xff && codePoint !== 0xad)
     ? codePoint
     : WIN_ANSI_HIGH.get(codePoint)
+
+// True when every character of the text has its own byte in the encoding, so
+// the PDF gives the text back exactly; false when one would take its code.
+export const carriesExactly = (text: string): boolean =>
+  Array.from(text).every((char) => winAnsiByteOf(char.codePointAt(0) ?? 0) !== undefined)
 
 const codeOf = (codePoint: number): string =>
   `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`
@@ -272,9 +287,9 @@ const roomAskedBy = (block: PdfBlock, next: PdfBlock | undefined): number => {
 const newPage = (): PdfPage => ({ operators: [], cursor: TEXT_TOP, inkBottom: TEXT_TOP })
 
 // The operators that draw the block's lines `from` up to `to` below the
-// cursor, and the baseline of the last: the text in one text object, the
-// continuation marks in a second, so the strings of the first read back as the
-// value alone.
+// cursor, and the baseline of the last: the text in one text object, then the
+// continuation marks as stroked paths outside any text object, so the only
+// strings the page shows are the value's own lines.
 const drawingOf = (cursor: number, block: PdfBlock, from: number, to: number) => {
   const baselineOf = (at: number) => cursor - heightOf(block, at - from + 1)
   const font = `${FONT_NAMES[block.font]} ${num(block.size)} Tf`
@@ -288,12 +303,18 @@ const drawingOf = (cursor: number, block: PdfBlock, from: number, to: number) =>
     ? indexes.filter((at) => at < block.lines.length - 1)
     : []
   if (continued.length) {
-    const cell = block.size * ADVANCE[block.font]
+    const { size } = block
+    const cell = size * ADVANCE[block.font]
     const marks = continued.map((at) => {
       const x = TEXT_X + widthOf(block.lines[at]) * cell
-      return `1 0 0 1 ${num(x)} ${num(baselineOf(at))} Tm ${literalOf([CONTINUATION_MARK])} Tj`
+      const baseline = baselineOf(at)
+      const left = num(x + MARK_LEFT * size)
+      const right = num(x + MARK_RIGHT * size)
+      const bar = num(baseline + MARK_BAR * size)
+      const tickEnd = num(baseline + MARK_TICK_END * size)
+      return `${left} ${bar} m ${right} ${bar} l ${right} ${tickEnd} l S`
     })
-    operators.push(['BT', font, `${num(LABEL_GREY)} g`, ...marks, 'ET'].join('\n'))
+    operators.push([`${num(LABEL_GREY)} G ${num(MARK_STROKE * size)} w`, ...marks].join('\n'))
   }
   return { operators, lastBaseline: baselineOf(to - 1) }
 }

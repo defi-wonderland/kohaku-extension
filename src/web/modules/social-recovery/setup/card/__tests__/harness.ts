@@ -47,11 +47,31 @@ export interface PdfPlacedLine extends PdfDrawnLine {
   grey: number
 }
 
+/**
+ * One continuation mark as the page strokes it: a bar from `left` to `right`
+ * at the height `bar`, then a tick down at `right` to `tickEnd`.
+ */
+export interface PdfDrawnMark {
+  page: number
+  /** The stroke colour's grey. */
+  grey: number
+  lineWidth: number
+  left: number
+  right: number
+  bar: number
+  tickEnd: number
+}
+
+/** A text block or a stroked mark, as a page draws it. */
+export type PdfDrawnItem =
+  | { kind: 'text'; block: PdfTextBlock }
+  | { kind: 'mark'; mark: PdfDrawnMark }
+
 /** One value as the PDF draws it in the fixed-width font, over every page it spans. */
 export interface PdfDrawnValue {
   lines: PdfPlacedLine[]
-  /** The marks drawn beside the value's lines, in the grey of the value's label. */
-  marks: PdfPlacedLine[]
+  /** The marks stroked beside the value's lines. */
+  marks: PdfDrawnMark[]
   /** The value's lines joined, the marks left out. */
   text: string
   /** The grey of the label that names the value. */
@@ -245,12 +265,45 @@ export const pdfFileParts = (bytes: Uint8Array): PdfFileParts => {
   }
 }
 
+const TEXT_OBJECT = /(?:^|\n)BT\n([\s\S]*?)\nET/
+const MARK_GROUP =
+  /(?:^|\n)([\d.]+) G ([\d.]+) w((?:\n[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l [\d.]+ [\d.]+ l S)+)/
+const DRAWN_ITEM = new RegExp(`${TEXT_OBJECT.source}|${MARK_GROUP.source}`, 'g')
+
+const textBlockOf = (block: string, page: number): PdfTextBlock => {
+  const lines = Array.from(
+    block.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm \(((?:\\.|[^\\)])*)\) Tj/g),
+    ([, x, y, literal]) => ({ x: Number(x), y: Number(y), text: decodeLiteral(literal) })
+  )
+  const font = block.match(/(\/F\d+) ([\d.]+) Tf/)
+  return {
+    font: font?.[1] ?? '',
+    size: Number(font?.[2] ?? NaN),
+    grey: Number(block.match(/(?:^|\n)([\d.]+) g(?:\n|$)/)?.[1] ?? NaN),
+    page,
+    lines,
+    text: lines.map((line) => line.text).join('')
+  }
+}
+
+const marksOf = (grey: string, width: string, paths: string, page: number): PdfDrawnMark[] =>
+  Array.from(
+    paths.matchAll(/([\d.]+) ([\d.]+) m ([\d.]+) ([\d.]+) l ([\d.]+) ([\d.]+) l S/g),
+    (match) => {
+      const [left, bar, right, barEnd, tickX, tickEnd] = match.slice(1).map(Number)
+      if (barEnd !== bar || tickX !== right) {
+        throw new Error(`a mark that is not a bar and a tick: ${match[0]}`)
+      }
+      return { page, grey: Number(grey), lineWidth: Number(width), left, right, bar, tickEnd }
+    }
+  )
+
 /**
- * The PDF's text blocks in drawing order, page after page in the page tree's
- * order, each with its lines and their strings joined back into its text,
- * read in the Windows encoding the fonts declare.
+ * What each page draws, in drawing order, page after page in the page tree's
+ * order: its text blocks, read in the Windows encoding the fonts declare, and
+ * the continuation marks it strokes.
  */
-export const pdfTextBlocks = (bytes: Uint8Array): PdfTextBlock[] => {
+export const pdfDrawnItems = (bytes: Uint8Array): PdfDrawnItem[] => {
   const { kids, pages, streams } = pdfFileParts(bytes)
   return kids.flatMap((kid, page) => {
     const contents = pages.find(({ object }) => object === kid)?.contents
@@ -258,35 +311,39 @@ export const pdfTextBlocks = (bytes: Uint8Array): PdfTextBlock[] => {
     if (!stream) {
       throw new Error(`page ${kid} has no content stream`)
     }
-    return Array.from(stream.text.matchAll(/(?:^|\n)BT\n([\s\S]*?)\nET/g), ([, block]) => {
-      const lines = Array.from(
-        block.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm \(((?:\\.|[^\\)])*)\) Tj/g),
-        ([, x, y, literal]) => ({ x: Number(x), y: Number(y), text: decodeLiteral(literal) })
-      )
-      const font = block.match(/(\/F\d+) ([\d.]+) Tf/)
-      return {
-        font: font?.[1] ?? '',
-        size: Number(font?.[2] ?? NaN),
-        grey: Number(block.match(/(?:^|\n)([\d.]+) g(?:\n|$)/)?.[1] ?? NaN),
-        page,
-        lines,
-        text: lines.map((line) => line.text).join('')
-      }
-    })
+    return Array.from(stream.text.matchAll(DRAWN_ITEM), (match): PdfDrawnItem[] =>
+      match[1] !== undefined
+        ? [{ kind: 'text', block: textBlockOf(match[1], page) }]
+        : marksOf(match[2], match[3], match[4], page).map((mark) => ({ kind: 'mark', mark }))
+    ).flat()
   })
 }
 
 /**
+ * The PDF's text blocks in drawing order, page after page in the page tree's
+ * order, each with its lines and their strings joined back into its text.
+ */
+export const pdfTextBlocks = (bytes: Uint8Array): PdfTextBlock[] =>
+  pdfDrawnItems(bytes).flatMap((item) => (item.kind === 'text' ? [item.block] : []))
+
+/**
  * The values the PDF draws in its fixed-width font, each as one piece however
- * many blocks and pages it spans. A block in that font drawn in the grey of
- * the label before it holds marks beside the value; any other holds the
- * value's own lines. A block in another font ends the value.
+ * many blocks and pages it spans, with the marks stroked after its blocks. A
+ * block in another font ends the value.
  */
 export const pdfDrawnValues = (bytes: Uint8Array): PdfDrawnValue[] => {
   const values: PdfDrawnValue[] = []
   let current: PdfDrawnValue | undefined
   let labelGrey = NaN
-  pdfTextBlocks(bytes).forEach((block) => {
+  pdfDrawnItems(bytes).forEach((item) => {
+    if (item.kind === 'mark') {
+      if (!current) {
+        throw new Error('a mark drawn outside a value')
+      }
+      current.marks.push(item.mark)
+      return
+    }
+    const { block } = item
     if (block.font !== '/F3') {
       current = undefined
       labelGrey = block.grey
@@ -297,12 +354,7 @@ export const pdfDrawnValues = (bytes: Uint8Array): PdfDrawnValue[] => {
       values.push(current)
     }
     const { page, size, grey } = block
-    const placed = block.lines.map((line) => ({ ...line, page, size, grey }))
-    if (grey === labelGrey) {
-      current.marks.push(...placed)
-      return
-    }
-    current.lines.push(...placed)
+    current.lines.push(...block.lines.map((line) => ({ ...line, page, size, grey })))
     current.text += block.text
   })
   return values

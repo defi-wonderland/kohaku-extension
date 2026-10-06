@@ -59,9 +59,12 @@ const drawnPassword = (password: string) => {
   return values[1]
 }
 
-// The operators a page draws with: the border, then text objects that set a
-// font and a grey and show strings at a position.
+// The operators a page draws with: the border, text objects that set a font
+// and a grey and show strings at a position, and the continuation marks, a
+// stroke grey and width followed by one bar-and-tick path per mark.
 const OPERATOR_LINES = [
+  /^[\d.]+ G [\d.]+ w$/,
+  /^[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l [\d.]+ [\d.]+ l S$/,
   /^[\d.]+ G [\d.]+ w [\d.]+ [\d.]+ [\d.]+ [\d.]+ re S$/,
   /^BT$/,
   /^ET$/,
@@ -314,14 +317,22 @@ describe('the continuation mark', () => {
       expect(value.marks).toHaveLength(value.lines.length - 1)
 
       value.lines.forEach((line, at) => {
-        const beside = value.marks.filter((mark) => mark.page === line.page && mark.y === line.y)
+        const beside = value.marks.filter(
+          (mark) =>
+            mark.page === line.page && mark.tickEnd > line.y && mark.bar < line.y + line.size
+        )
         if (at === value.lines.length - 1) {
           expect(beside).toHaveLength(0)
           return
         }
         expect(beside).toHaveLength(1)
-        expect(beside[0].text).toBe(MARK)
-        expect(beside[0].x).toBeCloseTo(line.x + line.text.length * line.size * COURIER_ADVANCE, 1)
+        // A bar with a tick down at its right end, inside the cell after the text.
+        const [mark] = beside
+        const cellLeft = line.x + line.text.length * line.size * COURIER_ADVANCE
+        expect(mark.left).toBeGreaterThan(cellLeft)
+        expect(mark.right).toBeGreaterThan(mark.left)
+        expect(mark.right).toBeLessThan(cellLeft + line.size * COURIER_ADVANCE)
+        expect(mark.tickEnd).toBeLessThan(mark.bar)
       })
     }
   )
@@ -355,7 +366,8 @@ describe('the continuation mark', () => {
     expect(value.marks).toHaveLength(1)
     const { x, size } = value.lines[0]
     // The space takes its own cell, so the mark stands one cell clear of the last x.
-    expect(value.marks[0].x).toBeCloseTo(x + cells * size * COURIER_ADVANCE, 1)
+    expect(value.marks[0].left).toBeGreaterThan(x + cells * size * COURIER_ADVANCE)
+    expect(value.marks[0].right).toBeLessThan(x + (cells + 1) * size * COURIER_ADVANCE)
     expect(value.text).toBe(password)
   })
 

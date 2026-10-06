@@ -7,7 +7,10 @@
  * when a saved setup can check it, and otherwise says so and leads back to the
  * privacy step; nothing carries the card meanwhile, since a card without its
  * password cannot start a recovery. While the extension password ask shows,
- * its own answers stand in for the screen's back and continue.
+ * its own answers stand in for the screen's back and continue. A password with
+ * a character the PDF cannot carry exactly is never written to the file, since
+ * the file would not give it back: the download stays off and the print,
+ * which carries every character, stays on.
  */
 import React, { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, View } from 'react-native'
@@ -28,6 +31,7 @@ import { renderHiddenValue, renderPasswordName } from '@web/modules/social-recov
 
 import CardFace, { CARD_LABEL_COLUMN } from './CardFace'
 import { cardFileOf } from './file'
+import { carriesExactly } from './pdf'
 import PrintCardView from './PrintCardView'
 import RecoveryPasswordAsk from './RecoveryPasswordAsk'
 import type { CarrierAction, RecoveryCard, RecoveryCardViewProps } from './types'
@@ -58,11 +62,15 @@ const RecoveryCardView = ({
     [account, level, password]
   )
   const passwordMissing = level === 'hidden' && !password
+  const downloadUnavailable = level === 'hidden' && !!password && !carriesExactly(password)
   const hidden = renderHiddenValue(t)
 
   const run = useCallback(
     (action: CarrierAction) => {
       if (action === 'download') {
+        if (downloadUnavailable) {
+          return
+        }
         carriers.download(cardFileOf(card, t))
       } else {
         setPrinting(true)
@@ -70,7 +78,7 @@ const RecoveryCardView = ({
       setCarriedHere(true)
       onCarried()
     },
-    [carriers, card, t, onCarried]
+    [carriers, card, t, onCarried, downloadUnavailable]
   )
 
   const press = useCallback(
@@ -201,7 +209,7 @@ const RecoveryCardView = ({
                 type="primary"
                 hasBottomSpacing={false}
                 text={t('socialRecovery.card.downloadPdf')}
-                disabled={passwordMissing}
+                disabled={passwordMissing || downloadUnavailable}
                 onPress={() => press('download')}
                 style={spacings.mrSm}
               />
@@ -217,6 +225,16 @@ const RecoveryCardView = ({
             <Text fontSize={12} appearance="secondaryText" style={spacings.mtSm}>
               {t('socialRecovery.card.carrierAsks')}
             </Text>
+            {downloadUnavailable && (
+              <Text
+                testID="card-download-unavailable"
+                fontSize={12}
+                appearance="warningText"
+                style={spacings.mtSm}
+              >
+                {t('socialRecovery.card.downloadUnavailable')}
+              </Text>
+            )}
           </>
         )}
         <Pressable
