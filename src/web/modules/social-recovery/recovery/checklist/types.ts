@@ -23,6 +23,7 @@ import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/clie
 import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
 import type {
   ChainId,
+  DirectWipeEvent,
   LiveRecoverySession,
   RecoveryEntryRecord,
   RecoveryRoute,
@@ -144,6 +145,8 @@ export interface ChecklistDeps {
   forgetPassword: (chainId: ChainId, account: Address) => void
   /** The page's document, whose return to view polls the chain at once. */
   visibility?: VisibilitySource
+  /** Every entry the records' storage holds, by key. */
+  storedEntries: () => Promise<Record<string, unknown>>
 }
 
 /** The recovery entry record of the account being recovered, as the screen reads it. */
@@ -202,10 +205,18 @@ export type ChecklistLoad =
       revision: SessionRevision
       /** Whether the gathering held a reply when this tab wiped it; unknown for a wipe read from storage. */
       hadReplies?: boolean
+      /** The request this tab wiped; unknown for a wipe read from storage. */
+      died?: DeadRequest
     }
   | ({ phase: 'live' } & LiveChecklist)
   /** Another tab changed the session after this one read it. */
   | { phase: 'conflict' }
+
+/** The request a wipe ended, as its ceremony requests name it. */
+export interface DeadRequest {
+  attemptId: string
+  setupNonce: string
+}
 
 /** What opening the checklist found or made. */
 export type OpenResult =
@@ -290,6 +301,8 @@ export interface ChecklistState {
   retryPoll: () => void
   /** A death the poll read could not be wiped; the next poll tries again. */
   deathFailed: boolean
+  /** A death or a landing the poll read is being written; nothing goes on meanwhile. */
+  dying: boolean
   busy: boolean
 }
 
@@ -325,6 +338,9 @@ export type PollState =
   | { status: 'pending' }
   | { status: 'answered'; facts: PollFacts; clock: number }
   | { status: 'failed' }
+
+/** What a poll reads for a live request: one of its deaths, or its own submission landed. */
+export type PollOutcome = DirectWipeEvent | 'landed'
 
 /** Which session the poll reads for: the request of a live session, or a session another attempt voided. */
 export type PollTarget =
@@ -401,7 +417,10 @@ export interface PasskeyClaimInput {
   account: Address
   search: ChecklistSearch
   navigate: Navigate
-  deps: Pick<ChecklistDeps, 'reportStore' | 'reportSubscribe' | 'newRequestId' | 'now'>
+  deps: Pick<
+    ChecklistDeps,
+    'reportStore' | 'reportSubscribe' | 'newRequestId' | 'now' | 'storedEntries'
+  >
 }
 
 export interface PasskeyClaim {
@@ -418,8 +437,12 @@ export interface PasskeyClaim {
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
   /** The session was abandoned: the pending claim's request and report go. */
   forgetPending: () => void
-  /** The session was wiped: the request and the report of every claim this checklist knows of go. */
-  forgetAll: () => void
+  /**
+   * The session was wiped: the request and the report of every claim this
+   * checklist knows of go, and every stored claim request of this account
+   * for the request that died, or for any request where that is unknown.
+   */
+  forgetAll: (died?: DeadRequest) => void
   /** The places this tab asked: a claim launched, pending or undelivered. */
   asked: ReadonlySet<number>
   /** The place whose report never came back, with its retry. */
@@ -634,6 +657,8 @@ export interface DeadlineBlockProps {
   layout: ChecklistLayout
   now: () => number
   timeZone: string
+  /** Runs once the page's clock passes the deadline. */
+  onPassed: () => void
 }
 
 export interface UnsatisfiedBlockProps {

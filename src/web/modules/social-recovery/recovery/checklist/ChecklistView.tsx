@@ -190,22 +190,27 @@ const ChecklistView = ({
     }
   }, [pending, addReply, settle, deps])
   const isLive = load.phase === 'live'
+  // A failed poll, a death being written, or one the records could not wipe,
+  // holds every add, launch and continue until a poll succeeds.
+  const held = poll.status === 'failed' || checklist.deathFailed || checklist.dying
+  const addable = isLive && poll.status === 'answered' && !held
   useEffect(() => {
-    if (isLive && pending && !pendingFailed && !checklist.busy) {
+    if (addable && pending && !pendingFailed && !checklist.busy) {
       applyPending().catch(() => setPendingFailed(true))
     }
-  }, [isLive, pending, pendingFailed, checklist.busy, applyPending])
+  }, [addable, pending, pendingFailed, checklist.busy, applyPending])
 
-  // A wiped session keeps no claim: every request and report of this
-  // checklist's ceremonies goes, a report that lands later included.
+  // A wiped session keeps no claim and no outcome: every request and report
+  // of the request that died goes, a report that lands later included.
+  const died = load.phase === 'wiped' ? load.died : undefined
   const isWiped = load.phase === 'wiped'
   const { forgetAll } = claim
   const ceremonyId = search.ceremony
   useEffect(() => {
-    if (isWiped && (pending || ceremonyId)) {
-      forgetAll()
+    if (isWiped) {
+      forgetAll(died)
     }
-  }, [isWiped, pending, ceremonyId, forgetAll])
+  }, [isWiped, died, pending, ceremonyId, outcomes, forgetAll])
 
   const title = (
     <PageTitle
@@ -335,9 +340,6 @@ const ChecklistView = ({
   }
 
   const headline = headlineOf(layout, assessment)
-  // A failed poll, or a death the records could not wipe, holds every add,
-  // launch and continue until a poll succeeds.
-  const held = poll.status === 'failed' || checklist.deathFailed
   const dormant = poll.status === 'answered' && !poll.facts.authorized
   const busy = checklist.busy || claim.busy || held
   const satisfied = assessment.ruleSatisfied
@@ -397,6 +399,7 @@ const ChecklistView = ({
         layout={layout}
         now={deps.now}
         timeZone={deps.timeZone}
+        onPassed={checklist.retryPoll}
       />
       {poll.status === 'failed' && <PollAlert withRows onRetry={checklist.retryPoll} />}
       {checklist.deathFailed && (

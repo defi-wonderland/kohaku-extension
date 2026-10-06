@@ -8,7 +8,9 @@
  * its request, report and id kept, until the checklist adds its reply to the
  * live session or the session is abandoned. Once the session is wiped, every
  * claim this checklist knows of loses its request and its report, a report
- * that lands after the wipe included.
+ * that lands after the wipe included, and so does every claim of the account
+ * stored for the request that died, one this tab never saw included. No
+ * outcome outlives the wipe.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -26,10 +28,23 @@ import type {
   ReportIdentity
 } from '@web/modules/social-recovery/shared/ceremony'
 
-import { claimAskedOf, claimReplyOf, claimRequestRecordOf } from './claim'
+import {
+  ceremonyRequestIdOf,
+  claimAskedOf,
+  claimOfDeadRequest,
+  claimReplyOf,
+  claimRequestRecordOf
+} from './claim'
 import { PASSKEY_SLUG } from './constants'
 import { checklistPathOf } from './search'
-import type { ClaimAsked, ClaimOutcome, ClaimReply, PasskeyClaim, PasskeyClaimInput } from './types'
+import type {
+  ClaimAsked,
+  ClaimOutcome,
+  ClaimReply,
+  DeadRequest,
+  PasskeyClaim,
+  PasskeyClaimInput
+} from './types'
 
 const usePasskeyClaim = ({
   records,
@@ -192,15 +207,41 @@ const usePasskeyClaim = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending])
 
-  // A wiped session keeps no claim: the waiting one and the one the search
-  // names lose their request and report. The listener stays, so a report the
+  // The stored claims of the account for the request that died, those another
+  // visit of the checklist launched included.
+  const forgetStored = async (died?: DeadRequest) => {
+    const entries = await deps.storedEntries()
+    const ids = Object.keys(entries)
+      .map(ceremonyRequestIdOf)
+      .filter((id): id is string => id !== null)
+    await Promise.all(
+      ids.map(async (id) => {
+        const stored = await records.ceremonyRequest(id).read()
+        if (
+          stored.status === 'present' &&
+          claimOfDeadRequest(stored.value, { account, chainId }, died)
+        ) {
+          forget(id, true)
+        }
+      })
+    )
+  }
+
+  // A wiped session keeps no claim: the waiting one, the one the search names
+  // and every stored one of the request that died lose their request and
+  // report, and no outcome stays. The listener stays, so a report the
   // ceremony tab writes later is taken and removed in turn.
-  const forgetAll = useCallback(() => {
-    const ids = [pending?.id, ceremonyId].filter((id): id is string => typeof id === 'string')
-    new Set(ids).forEach((id) => forget(id, true))
-    setPending(null)
+  const forgetAll = useCallback(
+    (died?: DeadRequest) => {
+      const ids = [pending?.id, ceremonyId].filter((id): id is string => typeof id === 'string')
+      new Set(ids).forEach((id) => forget(id, true))
+      setPending(null)
+      setOutcomes((held) => (Object.keys(held).length > 0 ? {} : held))
+      forgetStored(died).catch(() => undefined)
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, ceremonyId])
+    [pending, ceremonyId]
+  )
 
   const asked = useMemo(
     () =>

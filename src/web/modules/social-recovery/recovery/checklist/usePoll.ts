@@ -55,8 +55,9 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
       setPoll({ status: 'failed' })
       return
     }
-    setPoll({ status: 'answered', facts, clock })
+    // A death the round reads holds the rows before the answer renders them.
     afterRef.current(facts, clock)
+    setPoll({ status: 'answered', facts, clock })
   }, [])
 
   const key = target?.key ?? null

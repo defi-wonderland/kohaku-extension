@@ -90,7 +90,8 @@ const ChecklistBody = ({ records, account, entry, search }: ChecklistBodyProps) 
       passkeysServed: pagePasskeysServed(),
       readPassword: readRecoveryPassword,
       forgetPassword: wipeRecoveryPassword,
-      visibility: document
+      visibility: document,
+      storedEntries: async () => (await extensionRecordStorage.getAll?.()) ?? {}
     }),
     []
   )

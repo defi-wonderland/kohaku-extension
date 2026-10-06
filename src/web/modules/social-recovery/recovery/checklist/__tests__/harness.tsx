@@ -653,6 +653,7 @@ export const depsOf = (overrides: Partial<ChecklistDeps> = {}): FakeDeps => {
     passkeysServed: true,
     readPassword: () => undefined,
     forgetPassword: () => undefined,
+    storedEntries: async () => ({}),
     ...overrides,
     channel,
     requestIds
