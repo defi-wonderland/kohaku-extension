@@ -1,7 +1,7 @@
 /**
  * One live recovery on the home surface: the account being recovered, its
- * not submitted chip, its headline with the day it started where the client can assess it, and the
- * way to open it.
+ * not submitted chip, its headline with the day it started where the client
+ * can assess it, and the way to open it.
  */
 import React from 'react'
 import { View } from 'react-native'
