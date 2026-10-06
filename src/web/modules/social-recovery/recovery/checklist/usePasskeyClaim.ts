@@ -1,18 +1,22 @@
 /**
  * The passkey rows' claim ceremony. A claim stores its request before the
  * tab leaves for the ceremony tab, and the return path carries the request's
- * id back. The report is taken once. A report that lands after the mount
- * arrives through the listener. A claim that did not pass loses its request
- * and its id at once; a passed claim waits as `pending`, its request and id
- * kept, until the checklist adds its reply to the live session.
+ * id back. The report is read and left in place, so a passed claim survives a
+ * reload until its reply is added. A report that lands after the mount
+ * arrives through the subscription. A claim that did not pass loses its
+ * request, its report and its id at once; a passed claim waits as `pending`,
+ * its request, report and id kept, until the checklist adds its reply to the
+ * live session or the session is abandoned.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   ceremonyPath,
-  listenForCeremonyReport,
-  takeCeremonyReport
+  ceremonyResultKey,
+  isCeremonyReport,
+  isReportFor,
+  readCeremonyReport
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   CeremonyOutcome,
@@ -72,13 +76,19 @@ const usePasskeyClaim = ({
     [deps, records, account, chainId, navigate]
   )
 
-  /** A taken claim's request goes, and the search drops its id. */
-  const forget = (id: string) => {
+  /**
+   * A settled claim's request and report go; the search drops its id unless
+   * the tab is leaving the checklist.
+   */
+  const forget = (id: string, leaving = false) => {
     records
       .ceremonyRequest(id)
       .wipe()
       .catch(() => undefined)
-    navigate(checklistPathOf(account), { replace: true })
+    deps.reportStore.remove(ceremonyResultKey(id)).catch(() => undefined)
+    if (!leaving) {
+      navigate(checklistPathOf(account), { replace: true })
+    }
   }
 
   const ceremonyId = search.ceremony
@@ -110,7 +120,7 @@ const usePasskeyClaim = ({
         return
       }
       const identity: ReportIdentity = { id: ceremonyId, call: 'createClaim', method: PASSKEY_SLUG }
-      const report = await takeCeremonyReport(identity, deps.reportStore, deps.now())
+      const report = await readCeremonyReport(identity, deps.reportStore, deps.now())
       if (report) {
         done(report, asked)
         return
@@ -119,13 +129,13 @@ const usePasskeyClaim = ({
       if (!live) {
         return
       }
-      stopListening.current = listenForCeremonyReport(
-        identity,
-        deps.reportSubscribe,
-        deps.reportStore,
-        (late) => done(late, asked),
-        deps.now
-      )
+      stopListening.current = deps.reportSubscribe(ceremonyResultKey(ceremonyId), (late) => {
+        if (isCeremonyReport(late) && isReportFor(late, identity, deps.now())) {
+          stopListening.current?.()
+          stopListening.current = undefined
+          done(late, asked)
+        }
+      })
     }
     take().catch(() => undefined)
     return () => {
@@ -171,6 +181,15 @@ const usePasskeyClaim = ({
     await launch(asked.request, asked.handOff)
   }, [undelivered, ceremonyId, records, launch])
 
+  // An abandoned session takes its waiting claim with it.
+  const forgetPending = useCallback(() => {
+    if (pending) {
+      forget(pending.id, true)
+    }
+    setPending(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending])
+
   const asked = useMemo(
     () =>
       new Set(
@@ -186,6 +205,7 @@ const usePasskeyClaim = ({
     outcomes,
     pending,
     settle,
+    forgetPending,
     asked,
     undelivered,
     retryUndelivered,

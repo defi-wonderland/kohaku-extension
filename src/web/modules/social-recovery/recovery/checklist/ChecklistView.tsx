@@ -286,6 +286,7 @@ const ChecklistView = ({
           served={deps.passkeysServed}
           busy={busy}
           timeZone={deps.timeZone}
+          route={entry.route}
           launch={(asked, handOff) => {
             claim.launch(asked, handOff).catch(() => undefined)
           }}
@@ -385,7 +386,7 @@ const ChecklistView = ({
         busy={busy}
         failed={checklist.abandonFailed}
         onAbandon={() => {
-          checklist.abandon().catch(() => undefined)
+          checklist.abandon(claim.forgetPending).catch(() => undefined)
         }}
       />
     </View>

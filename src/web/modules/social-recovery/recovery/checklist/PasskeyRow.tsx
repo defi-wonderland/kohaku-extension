@@ -2,9 +2,9 @@
  * A passkey row: answered on this device, or through the browser's hand-off
  * to a phone, in the ceremony's full tab. A passkey whose config commits
  * another origin's relying-party hash cannot answer here and offers no action.
- * A ceremony that did not pass leaves its note with a retry; one that found
- * no passkey on this device also leaves the lines for a device that holds
- * none, and the holder's own cancel does not.
+ * A ceremony that did not pass leaves its note with a retry. The lines for a
+ * device that holds no passkey show from the start on the fresh install, a
+ * new device, and on the logged-in wallet once a claim found none here.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -33,6 +33,7 @@ const PasskeyRow = ({
   served,
   busy,
   timeZone,
+  route,
   launch
 }: PasskeyRowProps) => {
   const { t } = useTranslation()
@@ -44,7 +45,8 @@ const PasskeyRow = ({
   const errorName = stopped ? browserErrorNameOf(outcome.outcome) : null
   const canRetry =
     !!stopped && (outcome.outcome.kind === 'dismissed' || outcome.outcome.retry === true)
-  const holdsNone = !!outcome && deviceHoldsNoPasskey(outcome.outcome)
+  const holdsNone =
+    route === 'fresh-install' || (!!outcome && deviceHoldsNoPasskey(outcome.outcome))
   const open = !state.replied && state.chip !== 'notNeeded'
 
   const line = (key: string, testID?: string) => (

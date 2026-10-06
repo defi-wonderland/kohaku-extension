@@ -268,27 +268,31 @@ const useChecklist = ({
     [records, chainId, account]
   )
 
-  const abandon = useCallback(async () => {
-    const current = currentLive()
-    if (!current) {
-      return
-    }
-    setBusy(true)
-    setAbandonFailed(false)
-    try {
-      await records.wipeRecoverySession(chainId, account, 'recoverer-abandoned', current.revision)
-      navigateRef.current(routeEntryPathOf(entry.route), { replace: true })
-    } catch (error: unknown) {
-      if (isSessionRevisionConflict(error)) {
-        conflict()
-      } else {
-        setAbandonFailed(true)
+  const abandon = useCallback(
+    async (onWiped?: () => void) => {
+      const current = currentLive()
+      if (!current) {
+        return
       }
-    } finally {
-      setBusy(false)
-    }
+      setBusy(true)
+      setAbandonFailed(false)
+      try {
+        await records.wipeRecoverySession(chainId, account, 'recoverer-abandoned', current.revision)
+        onWiped?.()
+        navigateRef.current(routeEntryPathOf(entry.route), { replace: true })
+      } catch (error: unknown) {
+        if (isSessionRevisionConflict(error)) {
+          conflict()
+        } else {
+          setAbandonFailed(true)
+        }
+      } finally {
+        setBusy(false)
+      }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, chainId, account, entry.route])
+    [records, chainId, account, entry.route]
+  )
 
   const gatherAgain = useCallback(async () => {
     const current = loadRef.current

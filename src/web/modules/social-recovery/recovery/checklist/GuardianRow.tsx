@@ -1,7 +1,8 @@
 /**
  * A guardian row: the guardian's short address, the chip, the verified line
- * once an approval is added, and the slot the row's carriers mount in. While the row is open the recoverer can note it declined
- * or unanswered, a note one tap clears.
+ * once an approval is added, and the slot the row's carriers mount in. While
+ * the row is open the recoverer can note it declined or unanswered, a note
+ * one tap clears.
  */
 import React from 'react'
 import { View } from 'react-native'
