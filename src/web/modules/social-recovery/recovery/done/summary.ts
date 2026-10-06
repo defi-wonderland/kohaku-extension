@@ -33,7 +33,7 @@ const isIdentity = (kind: SlotKind | undefined): boolean =>
   IDENTITY_KINDS.some((identity) => identity === kind)
 
 /** The path's credentials at their places, the flat position across the clauses. */
-export const pathRowsOf = (
+export const rowsOfPath = (
   configuration: Configuration,
   methods: Record<SlotKind, Address>
 ): PathRow[] =>
@@ -85,6 +85,7 @@ export const summaryOf = ({
   if (!configuration) {
     const usedKinds = Array.from(new Set(usedMethodKinds))
     return {
+      rows: [],
       used: [],
       usedKinds,
       discoverable: usedKinds.includes('ecdsa'),
@@ -96,7 +97,7 @@ export const summaryOf = ({
     }
   }
 
-  const rows = pathRowsOf(configuration, methods)
+  const rows = rowsOfPath(configuration, methods)
   const places = event.started?.usedPlaces.map(Number)
   const used = places
     ? rows.filter((row) => places.includes(row.place))
@@ -116,6 +117,7 @@ export const summaryOf = ({
     })
 
   return {
+    rows,
     used,
     usedKinds,
     discoverable: rows.some((row) => row.kind === 'ecdsa'),

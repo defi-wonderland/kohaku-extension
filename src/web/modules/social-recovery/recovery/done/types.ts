@@ -99,6 +99,8 @@ export type CleanupBlock =
   | { kind: 'device-bound'; place: number; shape: TwoRowShape | null; exit: RemovalExit }
 
 export interface RecoverySummary {
+  /** The path's rows, empty where this device holds no path. */
+  rows: PathRow[]
   /** The rows the accepted set used, or the used methods' kinds where the path is not on this device. */
   used: PathRow[]
   usedKinds: SlotKind[]
@@ -189,7 +191,6 @@ export interface DoneViewProps {
   receivingName: string | null
   read: DoneRead
   add: AddState
-  configuration: Configuration | null
   summary: RecoverySummary | null
   timeZone: string
   finish: FinishState
