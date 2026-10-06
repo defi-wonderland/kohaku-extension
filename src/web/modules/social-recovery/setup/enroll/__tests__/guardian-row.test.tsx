@@ -1176,6 +1176,26 @@ describe('the guardian row', () => {
       expect(view!.allText('guardian-smart-account')).toHaveLength(1)
     })
 
+    it('asks for no call back and no owner answer, before Add, after Add or after a test', async () => {
+      const absent = () => {
+        expect(view!.text()).not.toContain(t(`${GUARDIAN}.callBack`))
+        expect(view!.text()).not.toContain(t(`${GUARDIAN}.ownerAnswer`))
+      }
+      await open()
+      await enter(HELD)
+      expect(view!.byTestId('guardian-lines')?.textContent).toBe(
+        t('socialRecovery.disclosures.smartAccount')
+      )
+      absent()
+      await view!.press('guardian-add')
+      expect(view!.byTestId('guardian-lines')?.textContent).toBe(
+        t('socialRecovery.disclosures.smartAccount')
+      )
+      absent()
+      await view!.press('guardian-test')
+      absent()
+    })
+
     it('renders the paste hint once', async () => {
       deps = depsOf({ readClipboard: async () => HELD })
       await open()
