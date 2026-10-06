@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from 'react'
 import type { StyleProp, View, ViewStyle } from 'react-native'
+import type { Address } from 'viem'
 
 import type { InputProps } from '@common/components/Input'
 
@@ -83,6 +84,34 @@ export interface MethodRowProps {
   testID?: string
 }
 
+export type FieldInputProps = InputProps
+
+export interface SetupAccount {
+  /** The account the setup tab works on: the latched one, else the wallet's selected one. */
+  account: Address | undefined
+  /** Whether the wallet's selected account is now another account. */
+  differs: boolean
+  /** The wallet's selected account, only while it differs from the tab's account. */
+  selected: Address | undefined
+  /** Latches the wallet's selected account in place of the tab's account. */
+  switchToSelected: () => void
+}
+
+/** A location a setup visit settled, as the tab's session storage keeps it. */
+export interface VisitedLocation {
+  key: string
+  pathname: string
+}
+
+/** How a location stands to the setup visit: already in it, a new step in it, or the start of a new one. */
+export type VisitDecision = 'settled' | 'inside' | 'arrival'
+
+export interface OtherAccountNoticeProps {
+  /** The account the setup tab works on. */
+  account: Address
+  onSwitch: () => void
+  testID?: string
+}
 /**
  * How a path tree's line crosses one node: not at all, from the node's top
  * down to its tick, from its tick down to its bottom, or its whole height.
@@ -128,4 +157,3 @@ export interface PathTreeHeaderProps {
   style?: StyleProp<ViewStyle>
   testID?: string
 }
-export type FieldInputProps = InputProps

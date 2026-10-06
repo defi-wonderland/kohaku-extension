@@ -221,6 +221,8 @@ describe('the recovery card screen', () => {
   const originalPrint = window.print
 
   const select = async (account: Address | null) => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     await act(async () => {
       mockSelected.current = { account: account ? { addr: account } : null }
       mockSelected.listeners.forEach((listener) => listener())
@@ -229,6 +231,8 @@ describe('the recovery card screen', () => {
 
   // A fresh tab each time, so the router starts at the search given.
   const mount = async (account: Address, search = '') => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     act(() => root.unmount())
     root = createRoot(container)
     mockSelected.current = { account: { addr: account } }
@@ -1084,6 +1088,30 @@ describe('the recovery card screen', () => {
       expect(carriersDisabled()).toEqual([false, false])
       await press('card-reveal')
       expect(byTestId('card-password-value')?.textContent).toBe(TYPED)
+    })
+  })
+
+  describe('the wallet selecting another account while the tab is open', () => {
+    it("keeps the card on the tab's account with its level and password, and says so", async () => {
+      const first = newAccount()
+      const second = newAccount()
+      await writeDraft(first, 'encrypted')
+      await writeDraft(second, 'clear')
+      setRecoveryPassword(CHAIN_ID, first, PASSWORD)
+      await mount(first)
+      expect(byTestId('setup-other-account')).toBeNull()
+
+      // Unlike a fresh tab, the open tab keeps what it latched.
+      await act(async () => {
+        mockSelected.current = { account: { addr: second } }
+        mockSelected.listeners.forEach((listener) => listener())
+      })
+      await settle()
+      expect(byTestId('card-account')?.textContent?.toLowerCase()).toBe(first)
+      expect(level()).toBe('hidden')
+      await press('card-reveal')
+      expect(byTestId('card-password-value')?.textContent).toBe(PASSWORD)
+      expect(byTestId('setup-other-account')?.textContent).toContain(S.chrome.otherAccount.title)
     })
   })
 })
