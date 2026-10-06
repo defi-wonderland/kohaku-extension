@@ -3,11 +3,15 @@
  */
 import {
   CHAIN_ID,
+  CHAIN_TIME,
   elapse,
+  held,
   HOUR,
   mountBand,
   NO_ATTEMPT,
   openWorld,
+  resetTab,
+  showTab,
   t,
   tick,
   useWaitClock,
@@ -97,5 +101,112 @@ describe('the home band for a landed recovery', () => {
 
     expect(view.byTestId(`home-countdown-${world.account.toLowerCase()}`)).toBeNull()
     expect(view.text()).toBe('')
+  })
+})
+
+describe("the home band's countdown line keeps reading the chain", () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+    resetTab()
+  })
+
+  const POLL_MS = 30_000
+  const LIMIT_MS = 15_000
+
+  it('reads the attempt at once and again on every period, each round re-anchoring the number', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+    expect(view.textOf(`home-countdown-${id}-time`)).toBe(waiting(HOUR))
+
+    world.kit.chain.blockTime = CHAIN_TIME + 600
+    await tick(POLL_MS)
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(view.textOf(`home-countdown-${id}-time`)).toBe(waiting(HOUR - 600))
+  })
+
+  it('shows a cancel at the next period, never a counting number', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(view.byTestId(`home-countdown-${id}-time`)).not.toBeNull()
+
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, state: 'Cancelled' }
+    await tick(POLL_MS)
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
+    )
+    expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
+    expect(view.byTestId(`home-countdown-${id}-chip`)).toBeNull()
+  })
+
+  it('reads the attempt again when the tab comes back into view, and not while it is hidden', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+
+    await showTab('hidden')
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+
+    elapse(world.kit)
+    await showTab('visible')
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.executionDue', { account: renderShortAddress(world.account) })
+    )
+  })
+
+  it('starts no round while one is still out', async () => {
+    const world = await openWorld()
+    const answer = held<Awaited<ReturnType<typeof world.kit.client.recovery.recoveryState>>>()
+    world.kit.recoveryState.mockImplementation(() => answer.promise)
+    view = await mountBand(world.records)
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+
+    await tick(5_000)
+    await showTab('visible')
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the number once a later round fails, and a later round brings it back', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(view.byTestId(`home-countdown-${id}-time`)).not.toBeNull()
+
+    world.kit.chain.failing = true
+    await tick(POLL_MS)
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
+    )
+    expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
+    expect(view.byTestId(`home-countdown-${id}-chip`)).toBeNull()
+
+    world.kit.chain.failing = false
+    await tick(POLL_MS)
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.waitingRunning', { account: renderShortAddress(world.account) })
+    )
+    expect(view.byTestId(`home-countdown-${id}-time`)).not.toBeNull()
+  })
+
+  it('drops the number once a round runs past its limit', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(view.byTestId(`home-countdown-${id}-time`)).not.toBeNull()
+
+    world.kit.chain.hanging = true
+    await tick(POLL_MS)
+    await tick(LIMIT_MS)
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
+    )
+    expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
   })
 })

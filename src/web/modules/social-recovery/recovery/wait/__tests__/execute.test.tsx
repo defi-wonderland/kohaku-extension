@@ -4,11 +4,15 @@
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import {
   attemptOf,
+  attemptStarted,
+  CHAIN_ID,
   CHAIN_TIME,
   consume,
   elapse,
   held,
+  landCountdown,
   landedReceipt,
+  MIXED_PATH,
   minedAndReverted,
   moveDeviceClock,
   mountWait,
@@ -227,6 +231,69 @@ describe('execute now', () => {
     await tick(5_000)
     expect(world.port.send).toHaveBeenCalledTimes(1)
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+})
+
+describe('a later recovery of the same account in the same tab', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /** Ends the first recovery's countdown and lands a second one, whose attempt `2` reached its end. */
+  const secondRecovery = async (world: World) => {
+    const read = await world.records.countdown(CHAIN_ID, world.account).read()
+    if (read.status !== 'present') {
+      throw new Error('no countdown')
+    }
+    await world.records.endCountdown(CHAIN_ID, world.account, read.revision)
+    await landCountdown(world.records, world.account, MIXED_PATH)
+    const { chain } = world.kit
+    chain.attempt = attemptOf(world.account, { attemptId: 2n, consumableAfter: chain.blockTime })
+    chain.events = [attemptStarted(world.account, PAYLOAD, 2n)]
+  }
+
+  it('offers execute now again after the first execution reached the done screen', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    consume(world.kit, world.account)
+    await tick(POLL_MS)
+    expect(view.paths()).toEqual([donePath(world)])
+    view.unmount()
+
+    await secondRecovery(world)
+    view = await mountWait(world.account)
+    expect(view.byTestId('wait-execute-confirming')).toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(false)
+
+    holdReceipt(world)
+    await view.press('wait-execute')
+    expect(world.port.send).toHaveBeenCalledTimes(2)
+    expect(world.kit.prepareExecuteHandover).toHaveBeenLastCalledWith(
+      world.kit.chain.attempt,
+      PAYLOAD
+    )
+  })
+
+  it('offers execute now for the new attempt where the holder left the first one landed before it read consumed', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    expect(view.byTestId('wait-execute-confirming')).not.toBeNull()
+    view.unmount()
+
+    await secondRecovery(world)
+    view = await mountWait(world.account)
+    expect(view.byTestId('wait-execute-confirming')).toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(false)
+    await view.press('wait-execute')
+    expect(world.port.send).toHaveBeenCalledTimes(2)
   })
 })
 
