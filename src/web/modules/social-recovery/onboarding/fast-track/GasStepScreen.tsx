@@ -9,9 +9,9 @@
  *
  * With no entry for the account the holder goes back to the account step,
  * and so does Back where no key in this wallet can send the recovery; Back
- * elsewhere returns to the readout. An
- * entry on the logged-in route has no gas step here: its check runs at the
- * submission, so the holder goes straight on to the checklist.
+ * elsewhere returns to the readout. An entry on the logged-in route has no
+ * gas step here: its check runs at the submission, so the holder goes
+ * straight on to the checklist.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 
