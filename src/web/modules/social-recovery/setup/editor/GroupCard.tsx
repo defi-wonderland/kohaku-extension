@@ -7,7 +7,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import { MethodRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import { MethodRow, PathTreeHeader, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
 import { renderHeldThreshold } from './copy'
 import KindMenuButton from './KindMenuButton'
@@ -42,7 +42,7 @@ const GroupCard = ({
 
   return (
     <SectionCard spacing="item" testID={`editor-group-${index}`}>
-      <View
+      <PathTreeHeader
         style={[
           flexbox.directionRow,
           flexbox.alignCenter,
@@ -62,7 +62,7 @@ const GroupCard = ({
           disabled={checking}
           onChangeText={(text) => onThresholdText(index, text)}
         />
-      </View>
+      </PathTreeHeader>
       {heldText !== undefined && (
         <Alert
           type="error"

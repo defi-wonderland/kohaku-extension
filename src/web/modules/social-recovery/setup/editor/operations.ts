@@ -221,8 +221,8 @@ export const makeRequired = (
 
 /**
  * The required rows become one group any one of whose members recovers. The
- * group takes the first row's place. The roles say which clauses are rows; without them a clause reads as
- * its stored shape.
+ * group takes the first row's place. The roles say which clauses are rows;
+ * without them a clause reads as its stored shape.
  */
 export const makeItAGroup = (
   clauses: readonly Clause[],

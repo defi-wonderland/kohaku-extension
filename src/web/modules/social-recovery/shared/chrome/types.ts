@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import type { StyleProp, ViewStyle } from 'react-native'
+import type { ReactNode, RefObject } from 'react'
+import type { StyleProp, View, ViewStyle } from 'react-native'
 
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
@@ -106,7 +106,23 @@ export interface PathTreeNodeProps {
   /** A junction shows the tree's label and needs no children. */
   children?: ReactNode
   variant?: PathTreeNodeVariant
-  /** How far below the node's top the tick meets the line, for a branch. */
+  /**
+   * How far below the node's top the tick meets the line, for a branch, until
+   * a `PathTreeHeader` inside it has been laid out, and for a branch with none.
+   */
   anchor?: number
+  testID?: string
+}
+
+/** What a branch hands the header inside it: itself, and where to report the header's middle. */
+export interface PathTreeHeaderTarget {
+  node: RefObject<View>
+  onMiddle: (middle: number) => void
+}
+
+export interface PathTreeHeaderProps {
+  /** The part of a branch the tick points at, for example a group's title row. */
+  children: ReactNode
+  style?: StyleProp<ViewStyle>
   testID?: string
 }

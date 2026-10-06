@@ -13,7 +13,11 @@ import { addressBookOf } from '@web/modules/social-recovery/shared/client/addres
 import { emptySlot, SLOT_KINDS } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
-import { getRuleLines, renderRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
+import {
+  getRuleLines,
+  renderRuleLines,
+  RULE_LINE_KEYS
+} from '@web/modules/social-recovery/shared/rule-lines'
 import type { RuleLinesOptions, Translate } from '@web/modules/social-recovery/shared/rule-lines'
 import type { Expected } from '@web/modules/social-recovery/shared/rule-lines/__tests__/harness'
 
@@ -638,11 +642,10 @@ describe('getRuleLines: the lines each path shape earns', () => {
       methods.forEach((second) => {
         const keys = keysOf([row(first), row(second)])
         expect(keys[keys.length - 1]).toBe('differentPlaces')
-        expect(keys).not.toContain('sizingRule')
         expect(keysOfWith([row(first), noMember(1), row(second)], SKIP_MEMBERLESS)).toEqual(keys)
       })
     )
-    expect(keysOf([group(1, [PASSKEY, PASSPORT])])).not.toContain('sizingRule')
+    expect(Object.keys(RULE_LINE_KEYS)).not.toContain('sizingRule')
   })
 
   it('a group of passkeys alone is one failure domain; a passport beside a passkey is not', () => {
