@@ -38,6 +38,7 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const useSetupAccount: typeof import('@web/modules/social-recovery/shared/chrome/useSetupAccount').default =
   require('@web/modules/social-recovery/shared/chrome/useSetupAccount').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
@@ -62,14 +63,20 @@ const select = (addr: string | null) =>
     mockSelected.listeners.forEach((listener) => listener())
   })
 
+// The probes stand on a setup step reached from another setup step.
+const INSIDE_THE_SETUP = {
+  pathname: '/social-recovery/setup/editor',
+  state: { prevRoute: { pathname: '/social-recovery/setup' } }
+}
+
 const open = (...names: string[]) =>
   act(() => {
     root.render(
-      <>
+      <MemoryRouter initialEntries={[INSIDE_THE_SETUP]}>
         {names.map((name) => (
           <Probe key={name} name={name} />
         ))}
-      </>
+      </MemoryRouter>
     )
   })
 

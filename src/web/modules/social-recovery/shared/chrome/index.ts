@@ -11,6 +11,7 @@ export type {
   ActionsRowProps,
   MethodRowProps,
   NoteBoxProps,
+  OtherAccountNoticeProps,
   PageTitleProps,
   PillChoiceProps,
   RadioCardProps,
@@ -18,10 +19,10 @@ export type {
   SectionCardSpacing,
   SectionCardTone,
   SectionLabelProps,
+  SetupAccount,
   SetupChromeProps,
   StatusChipProps,
   StatusChipTone
 } from './types'
 export { default as FieldInput } from './FieldInput'
 export type { FieldInputProps } from './types'
-export type { OtherAccountNoticeProps, SetupAccount } from './types'

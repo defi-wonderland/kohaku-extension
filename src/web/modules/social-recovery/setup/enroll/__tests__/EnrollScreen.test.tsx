@@ -190,7 +190,7 @@ describe('the enroll screen while the wallet selects another account', () => {
     await act(async () => {
       byTestId('setup-other-account-switch')?.click()
     })
-    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup)
+    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup, { replace: true })
     expect(mockViewMounts.count).toBe(2)
     expect(lastProps().account).toBe(OTHER_ACCOUNT)
     expect(byTestId('setup-other-account')).toBeNull()

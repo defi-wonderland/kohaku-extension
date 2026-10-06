@@ -105,6 +105,7 @@ jest.mock('@web/modules/social-recovery/shared/records', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
   ThemeContext
@@ -182,9 +183,11 @@ describe('the editor screen', () => {
         mockSelected.listeners.forEach((listener) => listener())
       } else {
         root.render(
-          <ThemeContext.Provider value={THEME_CONTEXT}>
-            <EditorScreen />
-          </ThemeContext.Provider>
+          <MemoryRouter>
+            <ThemeContext.Provider value={THEME_CONTEXT}>
+              <EditorScreen />
+            </ThemeContext.Provider>
+          </MemoryRouter>
         )
       }
     })

@@ -53,6 +53,7 @@ jest.mock('@common/components/AmbireLogoHorizontal', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const { Text }: typeof import('react-native') = require('react-native')
 const { getAddress }: typeof import('viem') = require('viem')
 const i18n: typeof import('@common/config/localization').default =
@@ -113,7 +114,11 @@ afterEach(() => {
 
 const mount = (element: React.ReactElement) =>
   act(() => {
-    root.render(<ThemeContext.Provider value={THEME_CONTEXT}>{element}</ThemeContext.Provider>)
+    root.render(
+      <MemoryRouter>
+        <ThemeContext.Provider value={THEME_CONTEXT}>{element}</ThemeContext.Provider>
+      </MemoryRouter>
+    )
   })
 
 const select = (addr: string | null) =>
@@ -195,7 +200,7 @@ describe('the setup chrome while the wallet selects another account', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
     press(`${NOTICE}-switch`)
     expect(mockNavigate).toHaveBeenCalledTimes(1)
-    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup)
+    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup, { replace: true })
     expect(byTestId(NOTICE)).toBeNull()
     // The tab now keeps the account it switched to.
     select(ACCOUNT)

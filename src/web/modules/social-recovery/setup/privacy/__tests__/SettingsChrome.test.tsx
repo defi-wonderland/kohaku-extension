@@ -54,6 +54,7 @@ jest.mock('@common/components/AmbireLogoHorizontal', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const { View }: typeof import('react-native') = require('react-native')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
@@ -127,9 +128,11 @@ describe('the settings chrome around a step', () => {
         mockSelected.listeners.forEach((listener) => listener())
       } else {
         root.render(
-          <ThemeContext.Provider value={THEME_CONTEXT}>
-            <SettingsChrome step={Step} />
-          </ThemeContext.Provider>
+          <MemoryRouter>
+            <ThemeContext.Provider value={THEME_CONTEXT}>
+              <SettingsChrome step={Step} />
+            </ThemeContext.Provider>
+          </MemoryRouter>
         )
       }
     })
@@ -199,6 +202,6 @@ describe('the settings chrome around a step', () => {
     expect(stepMounts).toBe(2)
     expect(lastProps().account).toBe(OTHER_ACCOUNT)
     expect(byTestId('setup-other-account')).toBeNull()
-    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup)
+    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetup, { replace: true })
   })
 })

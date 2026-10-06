@@ -97,6 +97,7 @@ jest.mock('@web/modules/social-recovery/setup/review/ReviewView', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
   ThemeContext
@@ -152,9 +153,11 @@ describe('the review screen while the wallet selects another account', () => {
     mockSelected.state = { account: { addr: account } }
     await act(async () => {
       root.render(
-        <ThemeContext.Provider value={THEME_CONTEXT}>
-          <ReviewScreen />
-        </ThemeContext.Provider>
+        <MemoryRouter>
+          <ThemeContext.Provider value={THEME_CONTEXT}>
+            <ReviewScreen />
+          </ThemeContext.Provider>
+        </MemoryRouter>
       )
     })
   }

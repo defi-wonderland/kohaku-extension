@@ -35,10 +35,12 @@ const SetupChrome = ({ children, testID }: SetupChromeProps) => {
   const { navigate } = useNavigation()
   const { account, differs, switchToSelected } = useSetupAccount()
 
-  // The selected account's setup starts from its own records, at the entry.
+  // The selected account's setup starts from its own records, at the entry. The
+  // entry replaces the current step, so Back does not reopen that step's route
+  // for the new account.
   const switchAccount = useCallback(() => {
     switchToSelected()
-    navigate(WEB_ROUTES.socialRecoverySetup)
+    navigate(WEB_ROUTES.socialRecoverySetup, { replace: true })
   }, [switchToSelected, navigate])
 
   const isScreenXxl = maxWidthSize('xxl')
