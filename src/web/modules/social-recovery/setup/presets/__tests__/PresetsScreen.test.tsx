@@ -133,6 +133,8 @@ describe('the presets screen', () => {
   })
 
   const showAccount = async (account: Address | null) => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     mockSelected.state = { account: account && { addr: account } }
     await act(async () => {
       if (container.childElementCount) {

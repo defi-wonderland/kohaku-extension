@@ -1,5 +1,5 @@
 /**
- * The save's route: the settings chrome around the save of the selected
+ * The save's route: the settings chrome around the save of the setup tab's
  * account's setup. It reads the account's facts, the recovery client, the
  * setup records, the save in flight stored on this device and the recovery
  * password in memory, runs the review's reads and gate again, and builds the
@@ -14,11 +14,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Linking } from 'react-native'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { isAddress, isAddressEqual } from 'viem'
 
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
-import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import {
   addressBookOf,
   auditedActionOf,
@@ -62,7 +62,6 @@ const NO_DOORS_READ = async (): Promise<PrivilegeHoldersReading> => ({
 })
 
 const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
-  const { account: selected } = useSelectedAccountControllerState()
   const { accounts } = useAccountsControllerState()
   const { dispatch, windowId } = useBackgroundService()
   const queue = useRequestsControllerState()
@@ -136,6 +135,10 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   )
 
   const ready = facts.status === 'ready' ? facts.facts : null
+  // The wallet's own record of the account the step saves, for its name.
+  const listed = accounts?.find(
+    (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, account)
+  )
   const steps = useMemo<SaveSteps | null>(() => {
     if (!kit || !chainReads || !receipts || !ready?.key || !draft) {
       return null
@@ -247,7 +250,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       state={state}
       account={{
         address: account,
-        label: selected?.preferences?.label || undefined,
+        label: listed?.preferences?.label || undefined,
         removedKey,
         deployed: ready?.deployed
       }}

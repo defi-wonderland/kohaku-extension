@@ -466,6 +466,8 @@ const wireClient = (facts: 'ready' | 'loading' | 'view-only' | 'state-unread', d
 
 const select = (owner: string, label = 'Account 1') =>
   act(() => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     mockSelected.current = { addr: owner, preferences: { label } }
     mockSelected.listeners.forEach((listener) => listener())
   })
@@ -524,6 +526,7 @@ const switchAway = async () => {
 }
 
 beforeEach(async () => {
+  sessionStorage.clear()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)

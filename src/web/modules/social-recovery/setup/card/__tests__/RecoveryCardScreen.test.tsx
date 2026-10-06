@@ -221,6 +221,8 @@ describe('the recovery card screen', () => {
   const originalPrint = window.print
 
   const select = async (account: Address | null) => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     await act(async () => {
       mockSelected.current = { account: account ? { addr: account } : null }
       mockSelected.listeners.forEach((listener) => listener())
@@ -229,6 +231,8 @@ describe('the recovery card screen', () => {
 
   // A fresh tab each time, so the router starts at the search given.
   const mount = async (account: Address, search = '') => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     act(() => root.unmount())
     root = createRoot(container)
     mockSelected.current = { account: { addr: account } }

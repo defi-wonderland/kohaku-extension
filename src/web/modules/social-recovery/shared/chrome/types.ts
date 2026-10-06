@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
+import type { Address } from 'viem'
 
 import type { InputProps } from '@common/components/Input'
 
@@ -84,3 +85,21 @@ export interface MethodRowProps {
 }
 
 export type FieldInputProps = InputProps
+
+export interface SetupAccount {
+  /** The account the setup tab works on: the latched one, else the wallet's selected one. */
+  account: Address | undefined
+  /** Whether the wallet's selected account is now another account. */
+  differs: boolean
+  /** The wallet's selected account, only while it differs from the tab's account. */
+  selected: Address | undefined
+  /** Latches the wallet's selected account in place of the tab's account. */
+  switchToSelected: () => void
+}
+
+export interface OtherAccountNoticeProps {
+  /** The account the setup tab works on. */
+  account: Address
+  onSwitch: () => void
+  testID?: string
+}

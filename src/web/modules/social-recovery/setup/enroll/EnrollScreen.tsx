@@ -1,6 +1,6 @@
 /**
  * The enroll route: the settings chrome around the enroll view for the
- * selected account on the recovery chain, with the page's own helpers the
+ * setup tab's account on the recovery chain, with the page's own helpers the
  * view uses: the ceremony's report channel, the name resolution on mainnet,
  * the chain reads over the extension's provider, the keystore's keys and the
  * request queue that signs a guardian's test on this device.
@@ -14,7 +14,6 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
-import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import {
   browserReportStore,
   browserReportSubscribe,
@@ -22,6 +21,7 @@ import {
   pagePlatform
 } from '@web/modules/social-recovery/shared/ceremony/screen'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import {
   CHAIN_IDS,
   createSignerFacade,
@@ -51,14 +51,12 @@ const randomBytes = (length: number): Uint8Array =>
 const EnrollScreen = () => {
   const { navigate } = useNavigation()
   const location = useLocation()
-  const { account: selected } = useSelectedAccountControllerState()
+  const { account } = useSetupAccount()
   const { accounts } = useAccountsControllerState()
   const { keys } = useKeystoreControllerState()
   const { networks } = useNetworksControllerState()
   const { dispatch, windowId } = useBackgroundService()
 
-  // The selected account arrives from the background's state push.
-  const account = selected && isAddress(selected.addr) ? selected.addr : undefined
   const clientState = useRecoveryClient(account)
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const search = useMemo(() => parseEnrollSearch(location.search), [location.search])

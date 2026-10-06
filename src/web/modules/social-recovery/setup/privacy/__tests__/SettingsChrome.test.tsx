@@ -116,6 +116,8 @@ describe('the settings chrome around a step', () => {
   })
 
   const showAccount = async (addr: string | null) => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     mockSelected.state = { account: addr === null ? null : { addr } }
     await act(async () => {
       if (container.childElementCount) {
