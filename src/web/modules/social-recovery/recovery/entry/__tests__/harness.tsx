@@ -1,0 +1,536 @@
+/**
+ * @jest-environment jsdom
+ *
+ * Mounts the recovery entry's two screens with the app's own components, the
+ * real en.json and real records on an in-memory double of the extension's
+ * storage helper. The edges are fakes: the wallet's accounts and keystore
+ * keys, the URL's search, the navigation, the name resolver and the recovery
+ * client per looked-up account, whose reads each test scripts per call. The
+ * settings sidebar, the logo and the avatar are stubs. jsdom has no
+ * `TextEncoder`, which viem reads when it loads, so the harness sets Node's
+ * before it loads the modules.
+ */
+import { createRoot, Root } from 'react-dom/client'
+import { act } from 'react-dom/test-utils'
+import { TextDecoder, TextEncoder } from 'util'
+
+import type { Account } from '@ambire-common/interfaces/account'
+import type { ThemeContextReturnType } from '@common/contexts/themeContext'
+import type { ThemeProps } from '@common/styles/themeConfig'
+import type { Address, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { FitCheckReading, RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
+import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
+import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
+
+Object.assign(globalThis, { TextEncoder, TextDecoder })
+// React only runs effects and state updates inside act() when this flag is set.
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+// ---------------------------------------------------------------------------
+// Test-only types
+// ---------------------------------------------------------------------------
+
+/** The client state the screen's hook hands back, with its retry. */
+export type ClientState = RecoveryClientState & { retry: () => void }
+
+export interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
+/** The wallet the screens read: its accounts, its keystore keys and the URL's search. */
+interface FakeWallet {
+  accounts: Account[] | undefined
+  keys: { addr: string; type: 'internal' }[] | undefined
+  search: string
+}
+
+/** A double of the storage helper that keeps values as given and can hold or refuse its writes. */
+interface StorageDouble extends RecordStorage {
+  raw: Map<string, unknown>
+  set: jest.Mock<Promise<null>, [string, unknown]>
+  /** While set, every write waits for it. */
+  hold?: Deferred<void>
+  /** While true, every write rejects and stores nothing. */
+  refuse: boolean
+}
+
+/** The looked-up account's reads, one mock each, so a test scripts each call. */
+export interface KitReads {
+  setupState: jest.Mock<Promise<SetupState>, []>
+  isAuthorized: jest.Mock<Promise<boolean>, []>
+  supportsAccount: jest.Mock<Promise<boolean>, []>
+  isAuthority: jest.Mock<Promise<boolean>, [Address]>
+  holdsAnyPrivilege: jest.Mock<Promise<boolean>, [Address]>
+  removedKey: jest.Mock<Promise<RemovedKeyReading>, []>
+  fitCheck: jest.Mock<Promise<FitCheckReading>, []>
+}
+
+export interface Mounted {
+  unmount: () => void
+  byTestId: (id: string) => HTMLElement | null
+  has: (id: string) => boolean
+  textOf: (id: string) => string
+  text: () => string
+  press: (id: string) => Promise<void>
+  type: (id: string, value: string) => Promise<void>
+  isDisabled: (id: string) => boolean
+  isChecked: (id: string) => boolean
+}
+
+// ---------------------------------------------------------------------------
+// The edges
+// ---------------------------------------------------------------------------
+
+const mockWallet: FakeWallet = { accounts: undefined, keys: undefined, search: '' }
+const mockNavigate = jest.fn()
+const mockResolveName = jest.fn<Promise<string>, [string]>()
+
+const mockStorage: StorageDouble = {
+  raw: new Map(),
+  refuse: false,
+  get: async (key, defaultValue) =>
+    key && mockStorage.raw.has(key) ? mockStorage.raw.get(key) : defaultValue,
+  getAll: async () => Object.fromEntries(mockStorage.raw),
+  set: jest.fn(async (key: string, value: unknown) => {
+    if (mockStorage.hold) {
+      await mockStorage.hold.promise
+    }
+    if (mockStorage.refuse) {
+      throw new Error('storage full')
+    }
+    mockStorage.raw.set(key, value)
+    return null
+  }),
+  setEntries: async (entries) => {
+    if (mockStorage.refuse) {
+      throw new Error('storage full')
+    }
+    Object.entries(entries).forEach(([key, value]) => mockStorage.raw.set(key, value))
+  },
+  remove: async (key) => {
+    mockStorage.raw.delete(key)
+    return null
+  },
+  removeKeys: async (keys) => {
+    keys.forEach((key) => mockStorage.raw.delete(key))
+  }
+}
+
+// The recovery client per looked-up account, as an external store, so a test
+// can change one (a retry that answers) and the screen renders it.
+const mockClients: {
+  byAccount: Map<string, ClientState>
+  ready: ClientState | null
+  listeners: Set<() => void>
+} = { byAccount: new Map(), ready: null, listeners: new Set() }
+const mockLoading: ClientState = { status: 'loading', retry: () => {} }
+
+jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
+  useRecoveryClient: (account: string | undefined) =>
+    // eslint-disable-next-line global-require
+    require('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockClients.listeners.add(listener)
+        return () => mockClients.listeners.delete(listener)
+      },
+      () =>
+        account
+          ? mockClients.byAccount.get(account.toLowerCase()) ?? mockClients.ready
+          : mockLoading
+    )
+}))
+jest.mock('@web/hooks/useAccountsControllerState', () => ({
+  __esModule: true,
+  default: () => ({ accounts: mockWallet.accounts })
+}))
+jest.mock('@web/hooks/useKeystoreControllerState', () => ({
+  __esModule: true,
+  default: () => ({ keys: mockWallet.keys })
+}))
+jest.mock('@web/hooks/useNetworksControllerState', () => ({
+  __esModule: true,
+  default: () => ({ networks: [] })
+}))
+jest.mock('@web/hooks/useBackgroundService', () => ({
+  __esModule: true,
+  default: () => ({ dispatch: () => {} })
+}))
+jest.mock('@web/services/provider', () => ({ getRpcProviderForUI: () => ({}) }))
+jest.mock('@ambire-common/services/ensDomains', () => ({
+  resolveENSDomain: (name: string) => mockResolveName(name)
+}))
+jest.mock('@common/hooks/useNavigation', () => ({
+  __esModule: true,
+  default: () => ({ navigate: mockNavigate })
+}))
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useLocation: () => ({ pathname: '/', search: mockWallet.search, hash: '', state: null })
+}))
+jest.mock('@web/modules/social-recovery/shared/records', () => ({
+  ...jest.requireActual('@web/modules/social-recovery/shared/records'),
+  extensionRecordStorage: mockStorage
+}))
+jest.mock('@web/modules/settings/components/Sidebar', () => ({
+  __esModule: true,
+  default: () => null
+}))
+jest.mock('@common/components/AmbireLogoHorizontal', () => ({
+  __esModule: true,
+  default: () => null
+}))
+// The avatar loads its image files, which Jest cannot read; it is drawn as a
+// node that carries what it was drawn for.
+jest.mock('@common/components/Avatar', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { createElement } = require('react')
+  return {
+    __esModule: true,
+    default: ({ pfp }: { pfp: string }) =>
+      createElement('div', { 'data-testid': 'avatar', 'data-pfp': pfp })
+  }
+})
+
+/* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const React: typeof import('react') = require('react')
+const { getAddress }: typeof import('viem') = require('viem')
+const {
+  ThemeContext
+}: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
+const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
+const i18n: typeof import('@common/config/localization').default =
+  require('@common/config/localization').default
+const {
+  CHAIN_IDS,
+  deploymentDescriptor,
+  WALLET_RECOVERY_CHAIN
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  createWalletRecords
+}: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const EntryScreen: typeof import('@web/modules/social-recovery/recovery/entry/EntryScreen').default =
+  require('@web/modules/social-recovery/recovery/entry/EntryScreen').default
+const AccountStepScreen: typeof import('@web/modules/social-recovery/recovery/entry/AccountStepScreen').default =
+  require('@web/modules/social-recovery/recovery/entry/AccountStepScreen').default
+/* eslint-enable @typescript-eslint/no-var-requires, global-require */
+
+export const t = (key: string, values?: Record<string, unknown>): string => i18n.t(key, values)
+
+export const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
+export const DESCRIPTOR = deploymentDescriptor(WALLET_RECOVERY_CHAIN)
+/** The recovery module the no-setup sentence names, checksummed as the screens draw it. */
+export const MODULE: Address = getAddress(DESCRIPTOR.manager)
+/** The network the screens name: the wallet lists no network record, so the chain's own name. */
+export const NETWORK = 'Sepolia'
+
+/** A basic account of the wallet, whose key is the account itself. */
+export const BASIC: Address = getAddress('0xa11ce00000000000000000000000000000000001')
+/** A smart account of the wallet. */
+export const SMART: Address = getAddress('0x5a1a000000000000000000000000000000000002')
+/** The key the wallet holds for the smart account. */
+export const SMART_KEY: Address = getAddress('0xc0de000000000000000000000000000000000003')
+/** An account the wallet only watches: the keystore holds none of its keys. */
+export const VIEW_ONLY: Address = getAddress('0x7ee0000000000000000000000000000000000004')
+/** The account the holder recovers. */
+export const LOST: Address = getAddress('0x1057000000000000000000000000000000000005')
+/** The key a recovery of the lost account would remove. */
+export const LOST_KEY: Address = getAddress('0xdead000000000000000000000000000000000006')
+
+export const basicAccount = (addr: Address, label: string): Account => ({
+  addr,
+  associatedKeys: [addr],
+  initialPrivileges: [],
+  creation: null,
+  preferences: { label, pfp: addr }
+})
+
+export const smartAccount = (addr: Address, key: Address, label: string): Account => ({
+  addr,
+  associatedKeys: [key],
+  initialPrivileges: [[key, '0x01']],
+  creation: {
+    factoryAddr: getAddress('0xfac0000000000000000000000000000000000007'),
+    bytecode: '0x00',
+    salt: '0x00'
+  },
+  preferences: { label, pfp: addr }
+})
+
+export const DAILY = basicAccount(BASIC, 'Daily')
+export const VAULT = smartAccount(SMART, SMART_KEY, 'Vault')
+export const WATCHED = basicAccount(VIEW_ONLY, 'Watched')
+
+export const keyOf = (addr: Address) => ({ addr, type: 'internal' as const })
+
+/** The wallet a test runs against; the screen reads it when it renders. */
+export const setWallet = (wallet: Partial<FakeWallet>) => {
+  Object.assign(mockWallet, wallet)
+}
+
+export const navigate = mockNavigate
+export const resolveName = mockResolveName
+export const storage = mockStorage
+export const records = () => createWalletRecords({ storage: mockStorage })
+
+export const deferred = <T,>(): Deferred<T> => {
+  let resolve: (value: T) => void = () => {}
+  let reject: (error: unknown) => void = () => {}
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+// ---------------------------------------------------------------------------
+// The looked-up account's client
+// ---------------------------------------------------------------------------
+
+export const setupStateOf = (overrides: Partial<SetupState> = {}): SetupState => ({
+  isAuthorized: true,
+  hasSetup: true,
+  setupCommitment: `0x${'ab'.repeat(32)}`,
+  setupNonce: 1n,
+  setupCommittedAtBlock: 100,
+  attemptActive: false,
+  block: { number: 200, timestamp: 1_800_000_000, hash: `0x${'cd'.repeat(32)}` },
+  ...overrides
+})
+
+/** Every read answers the way a recoverable account does: a setup, authorized, fitting, one key. */
+export const kit: KitReads = {
+  setupState: jest.fn(),
+  isAuthorized: jest.fn(),
+  supportsAccount: jest.fn(),
+  isAuthority: jest.fn(),
+  holdsAnyPrivilege: jest.fn(),
+  removedKey: jest.fn(),
+  fitCheck: jest.fn()
+}
+
+const answerAsRecoverable = () => {
+  Object.values(kit).forEach((read) => read.mockReset())
+  kit.setupState.mockImplementation(async () => setupStateOf())
+  kit.isAuthorized.mockImplementation(async () => true)
+  kit.supportsAccount.mockImplementation(async () => true)
+  kit.isAuthority.mockImplementation(async (address) => address === LOST_KEY)
+  kit.holdsAnyPrivilege.mockImplementation(async () => false)
+  kit.removedKey.mockImplementation(async () => ({ kind: 'named', key: LOST_KEY }))
+  kit.fitCheck.mockImplementation(async () => ({ basis: 'deployed-code', fits: true }))
+}
+
+const readyState = (): ClientState =>
+  ({
+    status: 'ready',
+    client: {
+      descriptor: DESCRIPTOR,
+      setup: { setupState: () => kit.setupState() },
+      action: {
+        isAuthorized: () => kit.isAuthorized(),
+        supportsAccount: () => kit.supportsAccount(),
+        isAuthority: (address: Address) => kit.isAuthority(address),
+        holdsAnyPrivilege: (address: Address) => kit.holdsAnyPrivilege(address)
+      },
+      walletReads: {
+        removedKey: () => kit.removedKey(),
+        fitCheck: () => kit.fitCheck()
+      }
+    },
+    reads: {},
+    receipts: {},
+    retry: () => {}
+  } as unknown as ClientState)
+
+/** Sets the client state the screen gets for an account, and renders it. */
+export const setClient = (account: Address, state: ClientState | null) => {
+  act(() => {
+    if (state) {
+      mockClients.byAccount.set(account.toLowerCase(), state)
+    } else {
+      mockClients.byAccount.delete(account.toLowerCase())
+    }
+    mockClients.listeners.forEach((listener) => listener())
+  })
+}
+
+/** A client that failed for the account; its retry hands the ready client. */
+export const failedClient = (account: Address): ClientState => ({
+  status: 'failed',
+  error: new Error('rpc down'),
+  retry: () => setClient(account, null)
+})
+
+/** A client the digest version refused for the account. */
+export const refusedClient = (): ClientState =>
+  ({
+    status: 'update-the-wallet',
+    refusal: {},
+    retry: () => {}
+  } as unknown as ClientState)
+
+/** Puts every edge back: the wallet with a basic and a smart account, empty storage, recoverable reads. */
+export const resetEdges = () => {
+  setWallet({
+    accounts: [DAILY, VAULT, WATCHED],
+    keys: [keyOf(BASIC), keyOf(SMART_KEY)],
+    search: ''
+  })
+  mockNavigate.mockReset()
+  mockResolveName.mockReset()
+  mockResolveName.mockImplementation(async () => '')
+  mockStorage.raw.clear()
+  mockStorage.set.mockClear()
+  mockStorage.hold = undefined
+  mockStorage.refuse = false
+  mockClients.byAccount.clear()
+  mockClients.ready = readyState()
+  answerAsRecoverable()
+}
+
+// ---------------------------------------------------------------------------
+// The mount
+// ---------------------------------------------------------------------------
+
+const THEME = Object.fromEntries(
+  Object.entries(themeConfig.default).map(([name, byType]) => [
+    name,
+    byType[themeConfig.THEME_TYPES.LIGHT]
+  ])
+) as ThemeProps
+
+const THEME_CONTEXT: ThemeContextReturnType = {
+  theme: THEME,
+  themeType: themeConfig.THEME_TYPES.LIGHT,
+  selectedThemeType: themeConfig.THEME_TYPES.LIGHT,
+  setThemeType: () => {}
+}
+
+/**
+ * Lets the pending reads and writes settle, then renders what they changed.
+ * The fakes answer in microtasks, which all run before a timer fires.
+ */
+export const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+  })
+
+/** Runs a change from outside the screen, such as a held read that answers, and renders it. */
+export const outside = async (change: () => unknown) => {
+  await act(async () => {
+    change()
+  })
+  await settle()
+}
+
+const mount = async (element: React.ReactElement): Promise<Mounted> => {
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root: Root = createRoot(container)
+
+  const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  const inputOf = (id: string) => {
+    const node = byTestId(id)
+    if (!node) {
+      return null
+    }
+    return node instanceof HTMLInputElement ? node : node.querySelector('input')
+  }
+
+  await act(async () => {
+    root.render(<ThemeContext.Provider value={THEME_CONTEXT}>{element}</ThemeContext.Provider>)
+  })
+  await settle()
+
+  return {
+    unmount: () => {
+      act(() => root.unmount())
+      container.remove()
+    },
+    byTestId,
+    has: (id) => byTestId(id) !== null,
+    textOf: (id) => byTestId(id)?.textContent ?? '',
+    text: () => container.textContent ?? '',
+    press: async (id) => {
+      const node = byTestId(id)
+      if (!node) {
+        throw new Error(`nothing to press: ${id}`)
+      }
+      act(() => node.click())
+      await settle()
+    },
+    type: async (id, value) => {
+      const field = inputOf(id)
+      if (!field) {
+        throw new Error(`nothing to type into: ${id}`)
+      }
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      act(() => {
+        setValue?.call(field, value)
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await settle()
+    },
+    isDisabled: (id) => byTestId(id)?.getAttribute('aria-disabled') === 'true',
+    isChecked: (id) => byTestId(id)?.getAttribute('aria-checked') === 'true'
+  }
+}
+
+/** The logged-in entry's route. */
+export const mountEntry = () => mount(<EntryScreen />)
+
+/** The account step's route, with the URL's search. */
+export const mountAccountStep = (search: string) => {
+  setWallet({ search })
+  return mount(<AccountStepScreen />)
+}
+
+export const searchOf = (route: string, to: string) => `?route=${route}&to=${to}`
+
+/**
+ * Looks up an account on a mounted account step: types it, presses the
+ * lookup, and lets the reads settle.
+ */
+export const lookUp = async (screen: Mounted, value: string) => {
+  await screen.type('entry-account-input', value)
+  await screen.press('entry-account-look-up')
+}
+
+/** Looks up the lost account and confirms it as the holder's. */
+export const confirmLost = async (screen: Mounted) => {
+  await lookUp(screen, LOST.toLowerCase())
+  await screen.press('entry-confirm-mine')
+}
+
+// Registered only when Jest runs this file itself: a suite that imports the
+// harness does not run its checks again.
+const runningHarnessItself = expect.getState().testPath === __filename
+
+const describeHarness = runningHarnessItself ? describe : () => undefined
+
+describeHarness('the recovery entry harness', () => {
+  beforeEach(resetEdges)
+
+  it('hands the screen the ready client for an account until a test sets another', async () => {
+    const screen = await mountAccountStep(searchOf('logged-in', BASIC))
+    await lookUp(screen, LOST.toLowerCase())
+    expect(kit.setupState).toHaveBeenCalledTimes(1)
+    setClient(LOST, failedClient(LOST))
+    await settle()
+    expect(screen.has('entry-lookup-read-failed')).toBe(true)
+    screen.unmount()
+  })
+
+  it('holds a write until released, then stores it', async () => {
+    mockStorage.hold = deferred<void>()
+    const writing = mockStorage.set('key', 'value')
+    await Promise.resolve()
+    expect(mockStorage.raw.has('key')).toBe(false)
+    mockStorage.hold.resolve()
+    await writing
+    expect(mockStorage.raw.get('key')).toBe('value')
+  })
+})
