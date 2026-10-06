@@ -11,6 +11,7 @@ export type {
   ActionsRowProps,
   MethodRowProps,
   NoteBoxProps,
+  OtherAccountNoticeProps,
   PageTitleProps,
   PillChoiceProps,
   RadioCardProps,
@@ -18,6 +19,7 @@ export type {
   SectionCardSpacing,
   SectionCardTone,
   SectionLabelProps,
+  SetupAccount,
   SetupChromeProps,
   StatusChipProps,
   StatusChipTone

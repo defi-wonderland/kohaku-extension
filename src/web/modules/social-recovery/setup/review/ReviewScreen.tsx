@@ -1,13 +1,14 @@
 /**
- * The review's route: the settings chrome around the review of the selected
- * account's setup records, with the recovery client that reads the trust list.
+ * The review's route: the settings chrome around the review of the setup
+ * records of the tab's account, with the recovery client that reads the trust list.
  */
 import React, { useMemo } from 'react'
-import { isAddress } from 'viem'
+import { isAddress, isAddressEqual } from 'viem'
 
 import useNavigation from '@common/hooks/useNavigation'
-import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
+import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
@@ -20,13 +21,18 @@ import type { ReviewClient } from './types'
 
 const ReviewScreen = () => {
   const { navigate } = useNavigation()
-  const { account: selected } = useSelectedAccountControllerState()
+  const { account } = useSetupAccount()
+  const { accounts } = useAccountsControllerState()
 
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
 
-  // The selected account arrives from the background's state push.
-  const account = selected && isAddress(selected.addr) ? selected.addr : undefined
-  const accountLabel = selected?.preferences?.label || undefined
+  // The wallet's own record of the tab's account, from the background's state push.
+  const listed = account
+    ? accounts?.find(
+        (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, account)
+      )
+    : undefined
+  const accountLabel = listed?.preferences?.label || undefined
   const clientState = useRecoveryClient(account)
 
   const { status, retry } = clientState

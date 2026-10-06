@@ -105,6 +105,7 @@ jest.mock('@web/modules/social-recovery/shared/records', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
   ThemeContext
@@ -128,6 +129,7 @@ const {
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
+const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
 const BREADCRUMB = en.socialRecovery.chrome.breadcrumb
 
 const THEME = Object.fromEntries(
@@ -173,15 +175,19 @@ describe('the editor screen', () => {
     })
 
   const showAccount = async (account: Address | null) => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     mockSelected.state = { account: account && { addr: account } }
     await act(async () => {
       if (container.childElementCount) {
         mockSelected.listeners.forEach((listener) => listener())
       } else {
         root.render(
-          <ThemeContext.Provider value={THEME_CONTEXT}>
-            <EditorScreen />
-          </ThemeContext.Provider>
+          <MemoryRouter>
+            <ThemeContext.Provider value={THEME_CONTEXT}>
+              <EditorScreen />
+            </ThemeContext.Provider>
+          </MemoryRouter>
         )
       }
     })
@@ -284,5 +290,32 @@ describe('the editor screen', () => {
     await showAccount(null)
     expect(byTestId('editor')).toBeNull()
     expect(byTestId('screen-spinner')).not.toBeNull()
+  })
+
+  // The wallet selects another account while the tab stays open on its own.
+  const selectInWallet = async (account: Address) => {
+    mockSelected.state = { account: { addr: account } }
+    await act(async () => {
+      mockSelected.listeners.forEach((listener) => listener())
+    })
+    await settle()
+  }
+
+  it("keeps the tab's account and its rows when the wallet selects another account, and says so", async () => {
+    await storeRowAlsoInGroup()
+    await showAccount(ACCOUNT)
+    expect(byTestId('editor-row-0-move')).not.toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+    await selectInWallet(OTHER_ACCOUNT)
+    expect(byTestId('editor-row-0-move')).not.toBeNull()
+    expect(byTestId('editor-member-1-0-required')).not.toBeNull()
+    expect(byTestId('setup-other-account')?.textContent).toContain(
+      en.socialRecovery.chrome.otherAccount.title
+    )
+    // Switching takes the selected account, which has no rows of its own.
+    await press('setup-other-account-switch')
+    expect(byTestId('setup-other-account')).toBeNull()
+    expect(byTestId('editor')).not.toBeNull()
+    expect(byTestId('editor-row-0-move')).toBeNull()
   })
 })
