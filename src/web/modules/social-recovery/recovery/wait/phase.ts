@@ -1,7 +1,8 @@
 /**
  * Where the recovery stands after one poll, from the attempt the manager
- * reports, the events that tell its story and the account's four checks.
- * Pure: every decision takes the poll's own reads and nothing read later.
+ * reports, the events that tell its story, the attempt the submission landed
+ * and the account's four checks. Pure: every decision takes the poll's own
+ * reads and nothing read later.
  */
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import type { Address, Configuration } from '@web/modules/social-recovery/sdk-interfaces'
@@ -13,6 +14,7 @@ import type {
   AttemptStory,
   CannotExecuteCause,
   CountdownAnchor,
+  LandedAttempt,
   WaitFacts,
   WaitPhase,
   WaitRound
@@ -37,41 +39,58 @@ export const cannotExecuteCauseOf = (facts: WaitFacts): CannotExecuteCause | nul
 }
 
 /**
- * Whether the attempt the manager reports is the recovery's own: by its
- * opening event where the events name one (the same id, setup number and
- * payload). Without one, the same id makes a cancelled attempt ours, and a
- * consumed one only with its consume event; any other attempt under that id
- * cannot be matched, so nothing executes it.
+ * Whether the attempt the manager reports is the recovery's own: its id, setup
+ * number and payload hash are the landed attempt's. A countdown stored without
+ * the landed attempt, or events under its id that name a rival's opening,
+ * match nothing. Ours waiting needs its opening event (the payload the
+ * execution sends), and ours consumed needs its consume event; without them it
+ * cannot be matched. Another attempt under the same id is a rival's and cannot
+ * be matched either. Any other attempt, or none, is another.
  */
-export const matchOf = (facts: WaitFacts, story: AttemptStory): AttemptMatch => {
+export const matchOf = (
+  facts: WaitFacts,
+  story: AttemptStory,
+  landed: LandedAttempt | null
+): AttemptMatch => {
   const { attempt } = facts
-  if (story.started) {
-    return isAttemptOf(attempt, story.started) ? 'ours' : 'other'
+  if (!landed || story.rival) {
+    return 'unmatched'
   }
-  if (attempt.state === 'None' || story.attemptId !== attempt.attemptId) {
-    return 'other'
-  }
-  if (attempt.state === 'Cancelled' || (attempt.state === 'Consumed' && story.consumed)) {
+  if (isAttemptOf(attempt, landed)) {
+    if (attempt.state === 'Waiting' && !story.started) {
+      return 'unmatched'
+    }
+    if (attempt.state === 'Consumed' && !story.consumed) {
+      return 'unmatched'
+    }
     return 'ours'
   }
-  return 'unmatched'
+  if (attempt.state !== 'None' && attempt.attemptId === landed.attemptId) {
+    return 'unmatched'
+  }
+  return 'other'
 }
 
 /**
  * The phase one poll reads:
- * - an attempt under the recovery's id that cannot be matched as its own:
- *   cannot execute, so nothing is sent for it;
+ * - an attempt that cannot be matched as the recovery's own: cannot execute,
+ *   so nothing is sent for it and nothing is ended;
  * - the recovery's own attempt consumed: executed; cancelled: cancelled, by
  *   the canceller its event names (none where no event names one); waiting:
  *   cannot execute where a check fails, else execution due once its
  *   `consumableAfter` is at or before the pinned block's time, else waiting;
- * - no attempt of its own in the read: its consume or cancel event decides,
- *   and with neither the attempt is gone another way, which only a setup
+ * - no attempt of its own in the read: its consume event with its opening, or
+ *   its cancel event, decides; a consume event with no opening cannot be
+ *   matched; with neither the attempt is gone another way, which only a setup
  *   write does.
  */
-export const phaseOf = (facts: WaitFacts, story: AttemptStory): WaitPhase => {
+export const phaseOf = (
+  facts: WaitFacts,
+  story: AttemptStory,
+  landed: LandedAttempt | null
+): WaitPhase => {
   const { attempt, block } = facts
-  const match = matchOf(facts, story)
+  const match = matchOf(facts, story, landed)
   if (match === 'unmatched') {
     return { kind: 'cannotExecute', attempt, cause: 'unmatched' }
   }
@@ -91,7 +110,9 @@ export const phaseOf = (facts: WaitFacts, story: AttemptStory): WaitPhase => {
       : { kind: 'waiting', attempt }
   }
   if (story.consumed) {
-    return { kind: 'consumed' }
+    return story.started
+      ? { kind: 'consumed' }
+      : { kind: 'cannotExecute', attempt, cause: 'unmatched' }
   }
   if (story.cancelled) {
     return { kind: 'cancelled', by: story.cancelled.cancelledBy }
@@ -99,9 +120,17 @@ export const phaseOf = (facts: WaitFacts, story: AttemptStory): WaitPhase => {
   return { kind: 'cancelled', by: 'setupWrite' }
 }
 
-/** Whether a poll needs the events beside the attempt read: no opening known for a live attempt of its own, or the attempt ended. */
-export const needsStory = (facts: WaitFacts, known: AttemptStory | null): boolean =>
-  !known?.started || facts.attempt.state !== 'Waiting' || !isAttemptOf(facts.attempt, known.started)
+/**
+ * Whether a poll needs the events beside the attempt read: the landed
+ * attempt's opening is not known yet, or the attempt read no longer names that
+ * attempt waiting.
+ */
+export const needsStory = (
+  facts: WaitFacts,
+  known: AttemptStory | null,
+  landed: LandedAttempt
+): boolean =>
+  !known?.started || facts.attempt.state !== 'Waiting' || !isAttemptOf(facts.attempt, landed)
 
 /**
  * The countdown's anchor from a poll that read a running attempt the recovery

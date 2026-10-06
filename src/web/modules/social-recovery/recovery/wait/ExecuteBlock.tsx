@@ -95,11 +95,12 @@ const ExecuteBlock = ({
     } else if (plainNotSent) {
       lines = [t(`${DUE}.notSent`)]
     }
+    // Outside execution due nothing can run again, so no retry shows there: the poll is the way back.
     return (
       <WriteStateView
         state={write}
         body={lines}
-        onRetry={onExecute}
+        onRetry={ready ? onExecute : undefined}
         testID={`wait-execute-${write.status}`}
       />
     )

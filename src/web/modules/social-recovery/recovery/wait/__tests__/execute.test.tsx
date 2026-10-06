@@ -250,7 +250,7 @@ describe('a later recovery of the same account in the same tab', () => {
       throw new Error('no countdown')
     }
     await world.records.endCountdown(CHAIN_ID, world.account, read.revision)
-    await landCountdown(world.records, world.account, MIXED_PATH)
+    await landCountdown(world.records, world.account, MIXED_PATH, 2)
     const { chain } = world.kit
     chain.attempt = attemptOf(world.account, { attemptId: 2n, consumableAfter: chain.blockTime })
     chain.events = [attemptStarted(world.account, PAYLOAD, 2n)]

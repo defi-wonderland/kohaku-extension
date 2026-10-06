@@ -1,18 +1,20 @@
 /**
  * The wait's reads: one poll of the attempt the manager holds, pinned to one
  * block, with the account's four checks beside it, and the manager's events
- * that tell the attempt's story (its opening and how it ended). A read that
+ * that tell the landed attempt's story (its opening and how it ended). A read that
  * throws, or that does not answer within its limit, answers nothing, never
  * the last good reading.
  */
 import { isAddressEqual, keccak256 } from 'viem'
 
-import type { Attempt } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { CountdownRecord } from '@web/modules/social-recovery/shared/records'
 
 import type {
   AttemptStory,
   CancelledNotice,
   HandoverKeys,
+  LandedAttempt,
   StartedNotice,
   WaitFacts,
   WaitKitClient
@@ -67,27 +69,48 @@ export const readWaitFacts = (
     }
   }, limitMs)
 
-/**
- * Whether an attempt the manager reports is the one an opening event started:
- * the same id, the same setup number and the hash of that event's payload, in
- * any state but none. A rival under the same id carries another payload.
- */
-export const isAttemptOf = (attempt: Attempt, started: StartedNotice): boolean =>
-  attempt.state !== 'None' &&
-  attempt.attemptId === started.attemptId &&
-  attempt.setupNonce === started.setupNonce &&
-  attempt.payloadHash.toLowerCase() === keccak256(started.payload).toLowerCase()
+const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
 /**
- * The story of the recovery's attempt from the manager's events for the
- * account, from the manager's deployment block to the pinned block: the
- * opening of the attempt `attemptId` (or, where the wait knows no id yet, of
- * the latest attempt the events name), its cancel and its consume. Undefined
- * where the read fails or does not answer within `limitMs`.
+ * The attempt the countdown's record names, from the decimal strings the
+ * records keep; null where the record holds any of the three not at all.
+ */
+export const landedAttemptOf = (record: CountdownRecord): LandedAttempt | null => {
+  const { attemptId, setupNonce, payloadHash } = record
+  if (attemptId === undefined || setupNonce === undefined || payloadHash === undefined) {
+    return null
+  }
+  return { attemptId: BigInt(attemptId), setupNonce: BigInt(setupNonce), payloadHash }
+}
+
+/**
+ * Whether an attempt the manager reports is the one the submission landed:
+ * the same id, the same setup number and the same payload hash, in any state
+ * but none. A rival under the same id carries another payload.
+ */
+export const isAttemptOf = (attempt: Attempt, landed: LandedAttempt): boolean =>
+  attempt.state !== 'None' &&
+  attempt.attemptId === landed.attemptId &&
+  attempt.setupNonce === landed.setupNonce &&
+  sameHash(attempt.payloadHash, landed.payloadHash)
+
+/** Whether an opening event started the attempt the submission landed: its id, its setup number and its payload's hash. */
+export const isOpeningOf = (started: StartedNotice, landed: LandedAttempt): boolean =>
+  started.attemptId === landed.attemptId &&
+  started.setupNonce === landed.setupNonce &&
+  sameHash(keccak256(started.payload), landed.payloadHash)
+
+/**
+ * The story of the landed attempt from the manager's events for the account,
+ * from the manager's deployment block to the pinned block: its opening, its
+ * cancel and its consume, all under the landed attempt's id. An opening under
+ * that id that is not the landed one makes the story a rival's, and nothing
+ * else is taken from it. Undefined where the read fails or does not answer
+ * within `limitMs`.
  */
 export const readAttemptStory = (
   kit: Pick<WaitKitClient, 'recovery' | 'descriptor' | 'account'>,
-  attemptId: bigint | undefined,
+  landed: LandedAttempt,
   to: number,
   limitMs: number
 ): Promise<AttemptStory | undefined> =>
@@ -101,24 +124,25 @@ export const readAttemptStory = (
         isAddressEqual(notification.account, kit.account)
     )
     const opened = notifications.filter(
-      (notification): notification is StartedNotice => notification.kind === 'attempt-started'
+      (notification): notification is StartedNotice =>
+        notification.kind === 'attempt-started' && notification.attemptId === landed.attemptId
     )
-    const id = attemptId ?? opened[opened.length - 1]?.attemptId
-    if (id === undefined) {
-      return { consumed: false }
+    if (opened.some((notification) => !isOpeningOf(notification, landed))) {
+      return { consumed: false, rival: true }
     }
-    const started = [...opened].reverse().find((notification) => notification.attemptId === id)
+    const started = opened[opened.length - 1]
     const cancelled = notifications.find(
       (notification): notification is CancelledNotice =>
-        notification.kind === 'attempt-cancelled' && notification.attemptId === id
+        notification.kind === 'attempt-cancelled' && notification.attemptId === landed.attemptId
     )
     const consumed = notifications.some(
-      (notification) => notification.kind === 'attempt-consumed' && notification.attemptId === id
+      (notification) =>
+        notification.kind === 'attempt-consumed' && notification.attemptId === landed.attemptId
     )
     return {
-      attemptId: id,
       ...(started ? { started } : {}),
       ...(cancelled ? { cancelled } : {}),
-      consumed
+      consumed,
+      rival: false
     }
   }, limitMs)

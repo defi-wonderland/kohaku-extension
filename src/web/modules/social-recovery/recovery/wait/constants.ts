@@ -7,6 +7,9 @@ export const COUNTDOWN_TICK_MS = 1_000
 /** How often the deposit step at execution due reads the sending key's balance again, in ms. */
 export const EXECUTE_BALANCE_POLL_MS = 5_000
 
+/** How many times an update of the countdown is tried again after another page moved it. */
+export const COUNTDOWN_CONFLICT_RETRIES = 3
+
 /**
  * The causes for which a recovery can no longer execute, read from the
  * account rather than from the attempt: the account no longer authorizes the

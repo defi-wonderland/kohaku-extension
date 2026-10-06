@@ -19,9 +19,13 @@ import type {
   TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
+  ChainId,
+  CountdownRead,
+  ExecutionClaimResult,
+  ExecutionInFlightClaim,
+  ExecutionInFlightRecord,
   RecoveryEntryRecord,
   RecoveryRoute,
-  SessionRevision,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type {
@@ -57,11 +61,25 @@ export type WaitEntryReading =
   | { status: 'absent' }
   | { status: 'present'; entry: RecoveryEntryRecord }
 
-/** The countdown's record: the landed session, with its revision and when it landed. */
+/**
+ * The attempt the submission landed, as the countdown's record names it: its
+ * id, its setup number and the hash of the payload it carried. Only the
+ * attempt and the opening event with all three are the recovery's own.
+ */
+export interface LandedAttempt {
+  attemptId: bigint
+  setupNonce: bigint
+  payloadHash: Hex
+}
+
+/**
+ * The countdown's record: the landed session, when it was saved, and the
+ * attempt it landed, null where the record was stored without it.
+ */
 export type CountdownReading =
   | { status: 'loading' }
   | { status: 'failed' }
-  | { status: 'present'; revision: SessionRevision; savedAt: number }
+  | { status: 'present'; savedAt: number; landed: LandedAttempt | null }
 
 // ---------------------------------------------------------------------------
 // The poll
@@ -106,15 +124,17 @@ export type StartedNotice = Extract<Notification, { kind: 'attempt-started' }>
 export type CancelledNotice = Extract<Notification, { kind: 'attempt-cancelled' }>
 
 /**
- * What the manager's events tell of the recovery's attempt: its id, its
- * opening (the payload the execution sends, the transaction that started it),
- * and how it ended where it ended.
+ * What the manager's events tell of the recovery's attempt: its opening (the
+ * payload the execution sends, the transaction that started it) and how it
+ * ended where it ended. `rival` is set where an opening under the recovery's
+ * id is not its own: the events under that id are then another's, and neither
+ * an opening, a cancel nor a consume is taken from them.
  */
 export interface AttemptStory {
-  attemptId?: bigint
   started?: StartedNotice
   cancelled?: CancelledNotice
   consumed: boolean
+  rival: boolean
 }
 
 export type CannotExecuteCause = typeof CANNOT_EXECUTE_CAUSES[number]
@@ -150,6 +170,7 @@ export type WaitPoll =
 export interface WaitPollInput {
   kit: WaitKitClient | null
   keys: HandoverKeys | null
+  landed: LandedAttempt | null
   visibility?: VisibilitySource
 }
 
@@ -182,6 +203,12 @@ export interface ExecuteState {
   balance?: bigint
   /** When the run's first hash came back, in ms since epoch, for the dropped reading. */
   sentAt?: number
+  /** The request id of the claim this page wrote on the countdown and sends under. */
+  requestId?: string
+  /** The request id of a claim another page (or this page before a reload) wrote, which this run follows. */
+  followed?: string
+  /** The followed claim while it carries no hash yet. */
+  follow?: ExecutionInFlightClaim
 }
 
 export type ExecuteEvent =
@@ -189,6 +216,10 @@ export type ExecuteEvent =
   | { type: 'prepared'; run: number; prepared: PreparedCall }
   | { type: 'balance'; run: number; balance: bigint }
   | { type: 'sentAt'; run: number; at: number }
+  | { type: 'claimed'; run: number; requestId: string }
+  | { type: 'released'; run: number }
+  | { type: 'follow'; run: number; claim: ExecutionInFlightRecord }
+  | { type: 'voided'; run: number }
 
 export interface ExecuteStore {
   state(): ExecuteState
@@ -198,16 +229,46 @@ export interface ExecuteStore {
 
 /** The execution's steps over the wallet's seams. */
 export interface ExecuteSteps {
+  /** The countdown's record, with the execution in flight it carries. */
+  readCountdown(): Promise<CountdownRead>
   /** The execution call for the attempt and the payload that started it. */
   prepare(): Promise<PreparedCall>
   checkGas(prepared: PreparedCall): Promise<GasCheck>
-  send(prepared: PreparedCall, dispatch: (event: WriteEvent) => void, run: number): Promise<void>
+  /** The chain's latest block number, the earliest block the execution can land in. */
+  blockNumber(): Promise<number>
+  newRequestId(): string
+  /** Writes the execution in flight on the countdown, or answers the one already there. */
+  claim(claim: ExecutionInFlightClaim): Promise<ExecutionClaimResult>
+  /** Writes the hash on this page's claim, writing the claim back where another page released it. */
+  markSent(claim: ExecutionInFlightClaim, transactionHash: Hex): Promise<void>
+  release(requestId: string): Promise<void>
+  /** The send under this page's claim, its receipt waited on from the claim's block. */
+  send(
+    prepared: PreparedCall,
+    dispatch: (event: WriteEvent) => void,
+    run: number,
+    startBlock: number,
+    requestId: string
+  ): Promise<void>
+  /** Waits once more for the receipt of a hash the run follows. */
+  waitAgain(
+    transactionHash: Hex,
+    startBlock: number | undefined,
+    dispatch: (event: WriteEvent) => void,
+    run: number
+  ): Promise<void>
+  /** Whether the recovery's attempt executed since `startBlock`, by its consume event. */
+  consumedSince(startBlock: number): Promise<boolean>
   transactionKnown(transactionHash: Hex): Promise<TransactionKnown>
   /** Milliseconds since epoch. */
   now(): number
 }
 
 export interface ExecuteStepsInput {
+  records: WalletRecords
+  chainId: ChainId
+  account: Address
+  landed: LandedAttempt
   client: WaitKitClient
   reads: ChainReads
   receipts: ReceiptReads
@@ -294,11 +355,11 @@ export interface WaitBodyProps {
   records: WalletRecords
   account: Address
   entry: RecoveryEntryRecord
-  revision: SessionRevision
   savedAt: number
+  landed: LandedAttempt | null
 }
 
-export type WaitGateProps = Omit<WaitBodyProps, 'revision' | 'savedAt'>
+export type WaitGateProps = Omit<WaitBodyProps, 'savedAt' | 'landed'>
 
 export interface CountdownBlockProps {
   round: WaitRound
@@ -314,7 +375,7 @@ export interface CountdownBlockProps {
 export interface ExecuteBlockProps {
   execute: ExecuteState
   sending: SendingReading
-  /** Whether the events named the payload the execution sends. */
+  /** Whether execution is due and the events named the payload the execution sends. */
   ready: boolean
   onExecute: () => void
   onRetrySending: () => void

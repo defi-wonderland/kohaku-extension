@@ -6,8 +6,10 @@
  * attempt ended. A round that fails or runs past its limit reads failed,
  * never the last good reading.
  *
- * Once the events name the recovery's attempt, the wait keeps its id for the
- * mount, so a later attempt somebody else opens is never read as this one.
+ * The events are read for the attempt the countdown's record names alone, so
+ * a later attempt somebody else opens is never read as this one; once they
+ * name its opening, the wait keeps it for the mount. A countdown stored
+ * without its attempt reads no events: nothing can match it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -22,14 +24,17 @@ import { readAttemptStory, readWaitFacts } from './read'
 import type { AttemptStory, WaitPoll, WaitPollHook, WaitPollInput } from './types'
 
 const PENDING: WaitPoll = { status: 'pending' }
+const NO_STORY: AttemptStory = { consumed: false, rival: false }
 
-const useWaitPoll = ({ kit, keys, visibility }: WaitPollInput): WaitPollHook => {
+const useWaitPoll = ({ kit, keys, landed, visibility }: WaitPollInput): WaitPollHook => {
   const [poll, setPoll] = useState<WaitPoll>(PENDING)
 
   const kitRef = useRef(kit)
   kitRef.current = kit
   const keysRef = useRef(keys)
   keysRef.current = keys
+  const landedRef = useRef(landed)
+  landedRef.current = landed
 
   const known = useRef<AttemptStory | null>(null)
   const rounds = useRef(0)
@@ -57,27 +62,25 @@ const useWaitPoll = ({ kit, keys, visibility }: WaitPollInput): WaitPollHook => 
       settle({ status: 'failed' })
       return
     }
-    let story = known.current
-    if (!story || needsStory(facts, story)) {
-      const attemptId =
-        known.current?.attemptId ??
-        (facts.attempt.state === 'None' ? undefined : facts.attempt.attemptId)
-      const read = await readAttemptStory(current, attemptId, facts.block.number, POLL_LIMIT_MS)
+    const mark = landedRef.current
+    let story = known.current ?? NO_STORY
+    if (mark && needsStory(facts, known.current, mark)) {
+      const read = await readAttemptStory(current, mark, facts.block.number, POLL_LIMIT_MS)
       if (!read) {
         settle({ status: 'failed' })
         return
       }
       story = read
-    }
-    if (id === generation.current && story.attemptId !== undefined) {
-      known.current = story
+      if (id === generation.current && read.started) {
+        known.current = read
+      }
     }
     rounds.current += 1
     settle({
       status: 'answered',
       facts,
       story,
-      phase: phaseOf(facts, story),
+      phase: phaseOf(facts, story, mark),
       round: rounds.current
     })
   }, [])

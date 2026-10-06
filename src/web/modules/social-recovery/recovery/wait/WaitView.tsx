@@ -137,18 +137,16 @@ const WaitView = ({
   return (
     <View testID="wait">
       <PageTitle title={t(`${WAIT}.title`)} lead={t(`${WAIT}.lead`)} titleTestID="wait-title" />
-      {phase.kind !== 'cannotExecute' && (
-        <CountdownBlock
-          round={poll}
-          account={account}
-          newKey={keys.keys.newKey}
-          remainingMs={remainingMs}
-          startedAt={startedAt}
-          timeZone={timeZone}
-          configuration={configuration}
-          onOpenExplorer={onOpenExplorer}
-        />
-      )}
+      <CountdownBlock
+        round={poll}
+        account={account}
+        newKey={keys.keys.newKey}
+        remainingMs={remainingMs}
+        startedAt={startedAt}
+        timeZone={timeZone}
+        configuration={configuration}
+        onOpenExplorer={onOpenExplorer}
+      />
       {phase.kind === 'cannotExecute' && (
         <CannotExecuteBlock
           cause={phase.cause}

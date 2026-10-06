@@ -544,8 +544,12 @@ export const seedSlotKeys = (smartKey: Address, ordinaryKey: Address): Key[] =>
 export const recordsOn = (storage: TestStorage): WalletRecords => createWalletRecords({ storage })
 
 /** The gathering of `account` with this recovery's payload, as the submission held it. */
-export const submittedGathering = (account: Address, configuration: Configuration): Gathering => {
-  const opened = gatheringOf(configuration, 1, account)
+export const submittedGathering = (
+  account: Address,
+  configuration: Configuration,
+  attempt = 1
+): Gathering => {
+  const opened = gatheringOf(configuration, attempt, account)
   return { ...opened, request: { ...opened.request, payload: PAYLOAD } }
 }
 
@@ -553,11 +557,12 @@ export const submittedGathering = (account: Address, configuration: Configuratio
 export const landCountdown = async (
   records: WalletRecords,
   account: Address,
-  configuration: Configuration
+  configuration: Configuration,
+  attempt = 1
 ): Promise<void> => {
   const live = await records
     .recoverySession(CHAIN_ID, account)
-    .write(submittedGathering(account, configuration), null)
+    .write(submittedGathering(account, configuration, attempt), null)
   await records.landSubmission(CHAIN_ID, account, live.revision)
 }
 
