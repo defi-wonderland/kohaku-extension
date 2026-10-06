@@ -109,6 +109,7 @@ const select = (addr: string | null) =>
 // The probes stand on a setup step reached from another setup step.
 const INSIDE_THE_SETUP = {
   pathname: '/social-recovery/setup/editor',
+  key: 'opened',
   state: { prevRoute: { pathname: '/social-recovery/setup' } }
 }
 
@@ -347,6 +348,19 @@ const go = (to: string | number, state?: unknown) =>
     }
   })
 
+// The one session storage entry that holds a list, which is how the tab keeps the visit.
+const storedListKey = () => {
+  const keys = Object.keys(sessionStorage).filter((key) => {
+    try {
+      return Array.isArray(JSON.parse(sessionStorage.getItem(key) ?? ''))
+    } catch {
+      return false
+    }
+  })
+  expect(keys).toHaveLength(1)
+  return keys[0]
+}
+
 const FROM_THE_DASHBOARD = { prevRoute: { pathname: '/dashboard' } }
 
 describe('a visit of the setup', () => {
@@ -356,6 +370,8 @@ describe('a visit of the setup', () => {
     open('screen')
     expect(reads.screen.account).toBe(ACCOUNT)
     mockSelected.state = { account: { addr: OTHER_ACCOUNT } }
+    // The earlier visit left no location a new entry could follow.
+    sessionStorage.removeItem(storedListKey())
   }
 
   it.each([
@@ -527,19 +543,6 @@ const mountOnHistory = (entries: Partial<Location>[], index: number, ...names: s
   })
 }
 
-// The one session storage entry that holds a list, which is how the tab keeps the visit.
-const storedListKey = () => {
-  const keys = Object.keys(sessionStorage).filter((key) => {
-    try {
-      return Array.isArray(JSON.parse(sessionStorage.getItem(key) ?? ''))
-    } catch {
-      return false
-    }
-  })
-  expect(keys).toHaveLength(1)
-  return keys[0]
-}
-
 describe('the locations of a setup visit', () => {
   beforeEach(() => {
     freshPage()
@@ -565,7 +568,7 @@ describe('the locations of a setup visit', () => {
       expect(reads.screen.account).toBe(ACCOUNT)
       between()
       mountOn(UNPUSHED, 'screen')
-      expect(current.key).toBe('default')
+      expect(current.key).not.toBe('default')
       expect(rendered.screen).not.toContain(ACCOUNT)
       expect(reads.screen.account).toBe(OTHER_ACCOUNT)
       expect(reads.screen.differs).toBe(false)
@@ -656,10 +659,11 @@ describe('the locations of a setup visit', () => {
   )
 
   it('starts on the selected account when a new entry with no route state comes after no visited location', () => {
-    // A visit that starts on an unpushed entry has no location to return to.
     mockSelected.state = { account: { addr: ACCOUNT } }
     mountOn(UNPUSHED, 'screen')
     select(OTHER_ACCOUNT)
+    // The visit's stored locations are gone.
+    sessionStorage.removeItem(storedListKey())
     freshPage()
     mountOn({ pathname: '/social-recovery/setup/enroll', key: 'new' }, 'screen')
     expect(rendered.screen).not.toContain(ACCOUNT)

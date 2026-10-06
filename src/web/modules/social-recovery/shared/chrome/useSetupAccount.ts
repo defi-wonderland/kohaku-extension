@@ -3,10 +3,12 @@
  * the setup from outside it, and the tab latches the wallet's selected account
  * then. The latch holds across a selection change in the wallet, the navigation
  * inside the setup and a reload, so a draft stays with its account. The latch
- * and the visit's locations live in the tab's session storage.
+ * and the visit's locations live in the tab's session storage. An entry the
+ * router did not push carries no key of its own, so the hook replaces it once
+ * with a keyed entry for the same URL and state, which the visit can hold.
  */
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import { isAddress, isAddressEqual } from 'viem'
 import type { Address } from 'viem'
@@ -30,6 +32,10 @@ const listeners = new Set<() => void>()
 // The location this page already decided on, so the chrome and the screen that
 // both read it, and a view that remounts on it, decide once.
 let settledLocation: VisitedLocation | null = null
+
+// The unpushed entry this page already latched and replaced, so the replace
+// happens once for it, whichever reader runs first.
+let replacedLocation: Location | null = null
 
 const sessionStore = (): Storage | undefined => {
   try {
@@ -121,19 +127,20 @@ const prevPathnameOf = (state: unknown): string | undefined => {
   return typeof pathname === 'string' ? pathname : undefined
 }
 
-// A location the visit already settled keeps the latch: a later reader of the
-// same location, Back, Forward, or a reload of an entry the router pushed. An
-// entry the router did not push (a typed URL, the wallet opening the setup in
-// its reused tab, or a reload of such an entry) is an arrival. Any other new
-// entry stays in the visit when its previous route is a setup route, or, with
-// no previous route, when the visit's last location is a setup or ceremony
-// route; otherwise it is an arrival.
+// An entry the router did not push (a typed URL, the wallet opening the setup in
+// its reused tab, or a reload of such an entry) is an arrival, even at a path
+// the page already settled, until the page latches and replaces that entry. A
+// location the visit already settled keeps the latch: a later reader of the
+// same location, Back, Forward, or a reload of an entry the router pushed. Any
+// other new entry stays in the visit when its previous route is a setup route,
+// or, with no previous route, when the visit's last location is a setup or
+// ceremony route; otherwise it is an arrival.
 const decide = (location: Location): VisitDecision => {
+  if (location.key === UNPUSHED_KEY) {
+    return replacedLocation === location ? 'settled' : 'arrival'
+  }
   if (settledLocation?.key === location.key && settledLocation.pathname === location.pathname) {
     return 'settled'
-  }
-  if (location.key === UNPUSHED_KEY) {
-    return 'arrival'
   }
   const visit = readVisit()
   if (visit.some(({ key }) => key === location.key)) {
@@ -150,14 +157,12 @@ const decide = (location: Location): VisitDecision => {
 // The location joins the visit as its last location.
 const record = (location: Location) => {
   settledLocation = visitedOf(location)
-  if (location.key === UNPUSHED_KEY) {
-    return
-  }
   storeVisit([...readVisit().filter(({ key }) => key !== location.key), visitedOf(location)])
 }
 
 // A new visit starts at the location. An entry the router did not push cannot
-// be told apart later, so it starts the visit with no location in the list.
+// be told apart later, so it starts the visit with no location in the list, and
+// the keyed entry that replaces it then starts the visit again as an arrival.
 const startVisit = (location: Location) => {
   settledLocation = visitedOf(location)
   storeVisit(location.key === UNPUSHED_KEY ? [] : [visitedOf(location)])
@@ -165,6 +170,7 @@ const startVisit = (location: Location) => {
 
 const useSetupAccount = (): SetupAccount => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { account: selectedAccount } = useSelectedAccountControllerState()
   // The controller's account address is a plain string; only a real address counts.
   const selected =
@@ -178,6 +184,17 @@ const useSetupAccount = (): SetupAccount => {
     if (!selected) {
       return
     }
+    if (location.key === UNPUSHED_KEY) {
+      if (replacedLocation === location) {
+        return
+      }
+      replacedLocation = location
+      startVisit(location)
+      latch(selected)
+      const { pathname, search, hash, state } = location
+      navigate({ pathname, search, hash }, { replace: true, state })
+      return
+    }
     if (decide(location) === 'arrival') {
       startVisit(location)
       latch(selected)
@@ -187,7 +204,7 @@ const useSetupAccount = (): SetupAccount => {
     if (!stored) {
       latch(selected)
     }
-  }, [location, selected, stored])
+  }, [location, navigate, selected, stored])
 
   const account = latched ?? selected
   const differs = !!account && !!selected && !isAddressEqual(account, selected)

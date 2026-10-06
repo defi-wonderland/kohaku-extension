@@ -680,7 +680,8 @@ describe('the start of the save', () => {
       await open()
 
       expect(router.pathname).toBe(SAVE_PATH)
-      expect(router.type).toBe('POP')
+      // An entry the router did not push is then replaced in place, never pushed.
+      expect(router.type).not.toBe('PUSH')
       expect(byTestId('arm-save')?.textContent).toBe(t('socialRecovery.review.save'))
       expect(byTestId('arm-removed-key')).not.toBeNull()
       expect(byTestId('arm-cost-line')).not.toBeNull()
