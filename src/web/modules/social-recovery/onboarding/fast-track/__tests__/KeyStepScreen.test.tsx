@@ -1,0 +1,413 @@
+/**
+ * @jest-environment jsdom
+ *
+ * Step 3 of 3 mounted whole: the new phrase handed to the keystore, its words,
+ * the key that will control the account, the add through the wallet's picker,
+ * and the hand-over to the account step.
+ */
+import { act } from 'react-dom/test-utils'
+
+import {
+  basicAccount,
+  byTestId,
+  CONTROLLING_KEY,
+  dispatched,
+  flush,
+  isDisabled,
+  keystoreSends,
+  mockEdge,
+  mount,
+  movesAway,
+  ORDINARY_KEY,
+  PHRASE,
+  press,
+  resetEdge,
+  setController,
+  SMART_ACCOUNT,
+  slotKeys,
+  smartAccount,
+  text,
+  unmount,
+  visits,
+  walletListsSlot,
+  where
+} from '@web/modules/social-recovery/onboarding/fast-track/__tests__/harness'
+
+const KEY_STEP = '/social-recovery/fast-track/key'
+const ACKNOWLEDGED = { acknowledged: true }
+const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${SMART_ACCOUNT}`
+const PICKER_OPEN = 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT_PRIVATE_KEY_OR_SEED_PHRASE'
+const PICKER_INIT = 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT'
+const ADD_TEMP_SEED = 'KEYSTORE_CONTROLLER_ADD_TEMP_SEED'
+const SEND_TEMP_SEED = 'KEYSTORE_CONTROLLER_SEND_TEMP_SEED_TO_UI'
+const OTHER_PHRASE = 'legal winner thank year wave sausage worth useful legal winner thank yellow'
+const LIMIT_MS = 60_000
+
+const types = () => dispatched().map(({ type }) => type)
+
+const visibility = { current: 'visible' as DocumentVisibilityState }
+Object.defineProperty(document, 'visibilityState', {
+  configurable: true,
+  get: () => visibility.current
+})
+
+const tabShows = async (state: DocumentVisibilityState) => {
+  visibility.current = state
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+}
+
+const atWords = async () => {
+  await mount(KEY_STEP, ACKNOWLEDGED)
+  await keystoreSends(PHRASE)
+}
+
+const continueAfterAcknowledging = async () => {
+  await press('fast-track-key-acknowledge')
+  await press('fast-track-key-continue')
+}
+
+const addFails = async () => {
+  await setController('picker', { addAccountsStatus: 'LOADING' })
+  await setController('picker', { addAccountsStatus: 'INITIAL' })
+}
+
+describe('the key step', () => {
+  beforeEach(async () => {
+    resetEdge()
+    visibility.current = 'visible'
+    await setController('keystore', { hasPasswordSecret: true, isUnlocked: true })
+  })
+
+  afterEach(() => {
+    unmount()
+    jest.useRealTimers()
+  })
+
+  describe('the warning on a direct open', () => {
+    it('meets a direct open with the warning and makes no phrase', async () => {
+      await mount(KEY_STEP)
+
+      expect(byTestId('recovery-warning')).not.toBeNull()
+      expect(byTestId('fast-track-key')).toBeNull()
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+    })
+
+    it('drops the acknowledgment from the history entry, so a reload meets the warning', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(byTestId('fast-track-key')).not.toBeNull()
+      const reloaded = visits[visits.length - 1].state
+
+      await mount(KEY_STEP, reloaded)
+
+      expect(byTestId('recovery-warning')).not.toBeNull()
+      expect(byTestId('fast-track-key')).toBeNull()
+    })
+  })
+
+  describe('the new phrase', () => {
+    it('hands a phrase made here to the keystore and asks for it back', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(dispatched()).toEqual([
+        {
+          kind: 'dispatch',
+          type: ADD_TEMP_SEED,
+          params: { seed: PHRASE, hdPathTemplate: "m/44'/60'/0'/0/<account>" }
+        },
+        { kind: 'dispatch', type: SEND_TEMP_SEED, params: undefined }
+      ])
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+    })
+
+    it('shows the words in order, the counter at 3 of 3 and the key derived from that phrase', async () => {
+      await atWords()
+
+      const words = PHRASE.split(' ').map(
+        (_, index) => byTestId(`fast-track-key-word-${index}`)?.textContent
+      )
+      expect(words).toEqual(PHRASE.split(' '))
+      expect(byTestId('fast-track-key-step')?.textContent).toBe('Set up this device · Step 3 of 3')
+      expect(mockEdge.derived).toEqual([PHRASE])
+      expect(byTestId('fast-track-key-address')?.textContent).toBe(CONTROLLING_KEY)
+      expect(text()).not.toContain(ORDINARY_KEY)
+    })
+
+    it('ignores a phrase the keystore holds that this step did not make', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+      await keystoreSends(OTHER_PHRASE)
+
+      expect(byTestId('fast-track-key-words')).toBeNull()
+      expect(mockEdge.derived).toEqual([])
+    })
+
+    it('takes no pasted address: the step has no text field', async () => {
+      await atWords()
+
+      expect(document.querySelectorAll('input:not([type="checkbox"]), textarea')).toHaveLength(0)
+    })
+
+    it('calls the phrase a recovery phrase and never a seed', async () => {
+      await atWords()
+
+      expect(text()).toContain('recovery phrase')
+      expect(text()).not.toMatch(/seed/i)
+    })
+
+    it('hands the same phrase over again when the tab shows while it waits', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+      await tabShows('hidden')
+      await tabShows('visible')
+
+      expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED, ADD_TEMP_SEED, SEND_TEMP_SEED])
+      expect(dispatched(ADD_TEMP_SEED).map(({ params }) => params?.seed)).toEqual([PHRASE, PHRASE])
+      expect(mockEdge.made).toBe(1)
+
+      await keystoreSends(PHRASE)
+      await tabShows('hidden')
+      await tabShows('visible')
+
+      expect(types()).toHaveLength(4)
+    })
+
+    it('fails with retry when the keystore never confirms, and retry makes a new phrase', async () => {
+      jest.useFakeTimers()
+      mockEdge.phrases = [PHRASE, OTHER_PHRASE]
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS)
+      })
+
+      expect(byTestId('fast-track-key-create-failed')?.textContent).toContain(
+        'This device could not create the key. Nothing was saved.'
+      )
+
+      await press('fast-track-key-retry')
+      await keystoreSends(OTHER_PHRASE)
+
+      expect(dispatched(ADD_TEMP_SEED).map(({ params }) => params?.seed)).toEqual([
+        PHRASE,
+        OTHER_PHRASE
+      ])
+      expect(byTestId('fast-track-key-word-0')?.textContent).toBe('legal')
+    })
+  })
+
+  describe('the add', () => {
+    it('refuses continue until the holder confirms the words are written down', async () => {
+      await atWords()
+
+      expect(isDisabled('fast-track-key-continue')).toBe(true)
+      await press('fast-track-key-continue')
+
+      expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
+    })
+
+    it("opens the picker on the phrase with the smart account selected and lets the picker's init add", async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+
+      expect(dispatched(PICKER_OPEN).map(({ params }) => params)).toEqual([
+        {
+          privKeyOrSeed: PHRASE,
+          seedPassphrase: null,
+          hdPathTemplate: "m/44'/60'/0'/0/<account>",
+          shouldSelectSmartAccountAutomatically: true
+        }
+      ])
+      expect(types().slice(2)).toEqual([PICKER_OPEN, PICKER_INIT])
+      expect(isDisabled('fast-track-key-continue')).toBe(true)
+      expect(isDisabled('fast-track-key-back')).toBe(true)
+    })
+
+    it('closes the picker session and the newly-added marks, then replaces itself with the account step', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+      await walletListsSlot()
+
+      expect(mockEdge.events.slice(-3)).toEqual([
+        { kind: 'dispatch', type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET', params: undefined },
+        {
+          kind: 'dispatch',
+          type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE',
+          params: undefined
+        },
+        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: undefined }
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+      expect(dispatched('MAIN_CONTROLLER_ACCOUNT_PICKER_RESET')).toHaveLength(1)
+    })
+
+    it('waits for the wallet to be signed in before it leaves', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('keystore', { keys: slotKeys })
+      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+
+      expect(movesAway()).toEqual([])
+
+      await setController('auth', { authStatus: 'authenticated' })
+
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('shows a failed add with retry, and retry opens the picker again on the same phrase', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await addFails()
+
+      expect(byTestId('fast-track-key-add-failed')).not.toBeNull()
+
+      await press('fast-track-key-retry')
+
+      expect(dispatched(PICKER_OPEN).map(({ params }) => params?.privKeyOrSeed)).toEqual([
+        PHRASE,
+        PHRASE
+      ])
+      expect(dispatched(ADD_TEMP_SEED)).toHaveLength(1)
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+    })
+
+    it('sends no second add while the picker still runs one', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await addFails()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+
+      await press('fast-track-key-retry')
+
+      expect(dispatched(PICKER_OPEN)).toHaveLength(1)
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+    })
+
+    it('sends no second add where the wallet already lists the slot', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await addFails()
+      await setController('keystore', { keys: slotKeys })
+      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+
+      await press('fast-track-key-retry')
+
+      expect(dispatched(PICKER_OPEN)).toHaveLength(1)
+
+      await setController('auth', { authStatus: 'authenticated' })
+
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('reads a success that lands after the failure as listed, with no retry', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await addFails()
+      await walletListsSlot()
+
+      expect(dispatched(PICKER_OPEN)).toHaveLength(1)
+      expect(types().slice(-2)).toEqual([
+        'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET',
+        'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE'
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('does not fail at the limit while the picker still runs the add', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS + 1)
+      })
+
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+      expect(isDisabled('fast-track-key-continue')).toBe(true)
+    })
+
+    it('fails at the limit where the idle picker never started', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS - 1)
+      })
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+
+      await act(async () => {
+        jest.advanceTimersByTime(1)
+      })
+      expect(byTestId('fast-track-key-add-failed')).not.toBeNull()
+    })
+  })
+
+  describe('a return to the step', () => {
+    it('makes no phrase where the wallet already lists accounts and replaces itself with the account step', async () => {
+      await walletListsSlot()
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(movesAway()).toEqual([
+        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: undefined }
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('does the same for a signed-in wallet that types the URL', async () => {
+      await walletListsSlot()
+
+      await mount(KEY_STEP)
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+  })
+
+  describe('the guards and Back', () => {
+    it('sends a holder with no extension password back to step 2, still acknowledged', async () => {
+      await setController('keystore', { hasPasswordSecret: false, isUnlocked: false })
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(0)
+      expect(movesAway()[0]).toMatchObject({
+        to: 'social-recovery/fast-track',
+        replace: true,
+        state: ACKNOWLEDGED
+      })
+      expect(byTestId('fast-track-password')).not.toBeNull()
+    })
+
+    it('sends a holder with a locked keystore to the unlock', async () => {
+      await setController('keystore', { hasPasswordSecret: true, isUnlocked: false })
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(0)
+      expect(movesAway()).toMatchObject([{ to: 'keystore-unlock', replace: true }])
+    })
+
+    it('goes back to the warning, while the phrase is made and from the words', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(byTestId('fast-track-key-back')?.textContent).toBe('Back')
+      expect(isDisabled('fast-track-key-back')).toBe(false)
+
+      await keystoreSends(PHRASE)
+      await press('fast-track-key-back')
+      await flush()
+
+      expect(movesAway()).toMatchObject([{ to: 'social-recovery/recover', replace: false }])
+      expect(byTestId('recovery-warning')).not.toBeNull()
+    })
+  })
+})
