@@ -79,7 +79,7 @@ describe('the removed key of an account with no code', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual({ kind: 'named', key: KEY_A })
     expect(action.isAuthority).not.toHaveBeenCalled()
-    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT)
+    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT, undefined)
   })
 
   it('names none where every creation privilege is zero', async () => {
@@ -195,7 +195,7 @@ describe('the removed key of an account with code', () => {
       authorities: [KEY_A]
     })
     await reads.removedKey()
-    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT)
+    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT, undefined)
     expect(action.isAuthority).toHaveBeenCalledWith(ACCOUNT, KEY_A)
   })
 

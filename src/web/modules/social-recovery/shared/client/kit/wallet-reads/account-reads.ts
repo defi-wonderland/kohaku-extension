@@ -55,15 +55,14 @@ export const createKitWalletReads = ({
 }: KitWalletReadsInput): KitWalletReads => {
   // The wallet's account record holds its address as a string; a malformed one throws here.
   const addressOf = (): Address => getAddress(account.addr)
-  const hasCode = async (): Promise<boolean> => size(await codeRead.code(addressOf())) > 0
-  const hasCodeAt = async (block: BlockTag): Promise<boolean> =>
+  const hasCode = async (block?: BlockTag): Promise<boolean> =>
     size(await codeRead.code(addressOf(), block)) > 0
   const privilegeEvents = createPrivilegeEvents(provider)
   const accountReads = createAccountReads(provider)
 
   const removedKeyWithNoCreation = async (): Promise<RemovedKeyReading> => {
     const { number: block } = await pinnedBlockOf(provider, { blockTags })
-    if (!(await hasCodeAt(block))) {
+    if (!(await hasCode(block))) {
       return { kind: 'unavailable', cause: 'no-creation-record' }
     }
     const writes = await privilegeEvents.privilegeLogsOf(addressOf(), {
