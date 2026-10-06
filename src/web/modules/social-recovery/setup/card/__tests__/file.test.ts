@@ -64,6 +64,8 @@ const drawnPassword = (password: string) => {
 // and a grey and show strings at a position, and the continuation marks, a
 // stroke grey and width followed by one bar-and-tick path per mark.
 const OPERATOR_LINES = [
+  /^q$/,
+  /^Q$/,
   /^[\d.]+ G [\d.]+ w$/,
   /^[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l [\d.]+ [\d.]+ l S$/,
   /^[\d.]+ G [\d.]+ w [\d.]+ [\d.]+ [\d.]+ [\d.]+ re S$/,

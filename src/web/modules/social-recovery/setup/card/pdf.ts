@@ -314,7 +314,11 @@ const drawingOf = (cursor: number, block: PdfBlock, from: number, to: number) =>
       const tickEnd = num(baseline + MARK_TICK_END * size)
       return `${left} ${bar} m ${right} ${bar} l ${right} ${tickEnd} l S`
     })
-    operators.push([`${num(LABEL_GREY)} G ${num(MARK_STROKE * size)} w`, ...marks].join('\n'))
+    // Saved and restored around the marks, so their stroke colour and width
+    // reach no later stroke on the page.
+    operators.push(
+      ['q', `${num(LABEL_GREY)} G ${num(MARK_STROKE * size)} w`, ...marks, 'Q'].join('\n')
+    )
   }
   return { operators, lastBaseline: baselineOf(to - 1) }
 }

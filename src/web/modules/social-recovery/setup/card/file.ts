@@ -1,6 +1,7 @@
 /**
- * The card as a file: a one-page PDF with the card's rows and nothing else,
- * readable offline and printable from any reader.
+ * The card as a file: an A4 PDF with the card's rows and nothing else, on one
+ * page or, when a value is too long for one, continued over as many pages as
+ * it needs, readable offline and printable from any reader.
  */
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
