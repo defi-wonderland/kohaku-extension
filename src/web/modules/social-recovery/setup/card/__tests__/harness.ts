@@ -4,7 +4,8 @@
  * throws when a password does not open the saved backup, and the refusal a
  * client built against another digest version fails with, and readers of the
  * card's PDF: the text it draws, the values it draws over one page or several,
- * and the parts of its file.
+ * the parts of its file, and every string a page shows, read by a tokenizer of
+ * its own.
  */
 import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
 import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
@@ -76,6 +77,13 @@ export interface PdfDrawnValue {
   text: string
   /** The grey of the label that names the value. */
   labelGrey: number
+}
+
+/** A string a page shows with a text operator, decoded from its bytes in the Windows encoding. */
+export interface PdfShownString {
+  /** The page it is shown on, from 0, in the page tree's order. */
+  page: number
+  text: string
 }
 
 /** One entry of the PDF's cross-reference table, in table order from object 0. */
@@ -358,6 +366,101 @@ export const pdfDrawnValues = (bytes: Uint8Array): PdfDrawnValue[] => {
     current.text += block.text
   })
   return values
+}
+
+const ESCAPED_BYTES: Record<string, number> = { n: 10, r: 13, t: 9, b: 8, f: 12 }
+
+// The bytes of the literal string whose content starts at `start`, right after
+// its opening parenthesis, with every escape the PDF syntax allows and
+// balanced parentheses kept as they are; and the index after its closing one.
+const literalBytesAt = (stream: string, start: number): { bytes: number[]; end: number } => {
+  const bytes: number[] = []
+  let depth = 1
+  let at = start
+  while (at < stream.length) {
+    const char = stream[at]
+    if (char === '\\') {
+      const next = stream[at + 1]
+      const octal = stream.slice(at + 1).match(/^[0-7]{1,3}/)?.[0]
+      if (octal) {
+        // eslint-disable-next-line no-bitwise
+        bytes.push(parseInt(octal, 8) & 0xff)
+        at += 1 + octal.length
+      } else if (next === '\r' || next === '\n') {
+        at += next === '\r' && stream[at + 2] === '\n' ? 3 : 2
+      } else {
+        bytes.push(ESCAPED_BYTES[next] ?? next.charCodeAt(0))
+        at += 2
+      }
+    } else {
+      if (char === '(') {
+        depth += 1
+      }
+      if (char === ')') {
+        depth -= 1
+      }
+      if (depth === 0) {
+        return { bytes, end: at + 1 }
+      }
+      bytes.push(char.charCodeAt(0))
+      at += 1
+    }
+  }
+  throw new Error('a literal string that never closes')
+}
+
+const hexBytesOf = (hex: string): number[] => {
+  const digits = hex.replace(/\s/g, '')
+  const even = digits.length % 2 ? `${digits}0` : digits
+  return Array.from(even.match(/../g) ?? [], (pair) => parseInt(pair, 16))
+}
+
+const SHOWING_OPERATORS = new Set(['Tj', 'TJ', "'", '"'])
+
+/**
+ * Every string a page shows with a text operator, page after page in the page
+ * tree's order and in stream order within a page. Unlike the drawn-item reader
+ * above, it reads each content stream token by token and keeps every string
+ * operand of `Tj`, `TJ`, `'` and `"`, with nothing filtered out.
+ */
+export const pdfShownStrings = (bytes: Uint8Array): PdfShownString[] => {
+  const { kids, pages, streams } = pdfFileParts(bytes)
+  return kids.flatMap((kid, page) => {
+    const contents = pages.find(({ object }) => object === kid)?.contents
+    const stream = streams.find(({ object }) => object === contents)?.text
+    if (stream === undefined) {
+      throw new Error(`page ${kid} has no content stream`)
+    }
+    const shown: PdfShownString[] = []
+    let operands: number[][] = []
+    let at = 0
+    while (at < stream.length) {
+      const char = stream[at]
+      if (/\s/.test(char) || char === '[' || char === ']') {
+        at += 1
+      } else if (char === '(') {
+        const literal = literalBytesAt(stream, at + 1)
+        operands.push(literal.bytes)
+        at = literal.end
+      } else if (char === '<') {
+        const end = stream.indexOf('>', at)
+        operands.push(hexBytesOf(stream.slice(at + 1, end)))
+        at = end + 1
+      } else {
+        const token = stream.slice(at).match(/^[^\s()<>[\]]+/)?.[0] ?? char
+        at += token.length
+        const isOperand = /^[-+.\d]/.test(token) || token.startsWith('/')
+        if (!isOperand) {
+          if (SHOWING_OPERATORS.has(token)) {
+            const strings = operands.map((string) => string.map(winAnsiChar).join(''))
+            shown.push(...strings.map((text) => ({ page, text })))
+          }
+          operands = []
+        }
+      }
+    }
+    return shown
+  })
 }
 
 // Jest runs every file under __tests__, this one included; its own check runs

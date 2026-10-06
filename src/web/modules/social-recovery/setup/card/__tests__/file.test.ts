@@ -10,6 +10,7 @@ import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import {
   pdfDrawnValues,
   pdfFileParts,
+  pdfShownStrings,
   pdfTextBlocks,
   winAnsiHighEntries
 } from '@web/modules/social-recovery/setup/card/__tests__/harness'
@@ -374,4 +375,74 @@ describe('the continuation mark', () => {
   it('stays off a value that fits on one line', () => {
     expect(drawnPassword(PASSWORD).marks).toHaveLength(0)
   })
+})
+
+describe('the text a reader extracts from the file', () => {
+  // A value line holds 64 characters, so 65 wrap onto a second line.
+  const TWO_LINES = 'a'.repeat(65)
+
+  // Every string the file shows, split at the password's label: the strings
+  // before it, and the password's own strings, up to the first card line.
+  const shownAroundPassword = (password: string) => {
+    const shown = pdfShownStrings(cardFileOf(hidden(password), t).bytes)
+    const label = renderPasswordName('recoveryPassword', t)
+    const guide = t('socialRecovery.card.lines.guide')
+    const labelAt = shown.findIndex(({ text }) => text === label)
+    expect(labelAt).toBeGreaterThan(-1)
+    const after = shown.slice(labelAt + 1)
+    const guideAt = after.findIndex(({ text }) => text.length > 10 && guide.startsWith(text))
+    expect(guideAt).toBeGreaterThan(0)
+    return { shown, before: shown.slice(0, labelAt), password: after.slice(0, guideAt) }
+  }
+
+  const strokedPaths = (password: string): string[] =>
+    pdfFileParts(cardFileOf(hidden(password), t).bytes).streams.flatMap(({ text }) =>
+      Array.from(
+        text.matchAll(/-?[\d.]+ -?[\d.]+ m(?:\s+-?[\d.]+ -?[\d.]+ l)*\s+S/g),
+        ([path]) => path
+      )
+    )
+
+  it.each([
+    ['a password of 65 characters', TWO_LINES, 1],
+    ['a password that continues onto further pages', TALLER_THAN_A_PAGE, 2]
+  ])(
+    'gives the password alone, with no continuation mark in any shown string, for %s',
+    (_, password, leastPages) => {
+      const { shown, before, password: lines } = shownAroundPassword(password)
+      expect(before.map(({ text }) => text)).toEqual([
+        t('socialRecovery.card.cardTitle'),
+        t('socialRecovery.display.values.account'),
+        CHECKSUMMED
+      ])
+      expect(lines.length).toBeGreaterThan(1)
+      expect(lines.map(({ text }) => text).join('')).toBe(password)
+      expect(new Set(lines.map(({ page }) => page)).size).toBeGreaterThanOrEqual(leastPages)
+      shown.forEach(({ text }) => expect(text).not.toContain(MARK))
+    }
+  )
+
+  it('shows no byte of the continuation mark anywhere in the file’s streams', () => {
+    const { streams } = pdfFileParts(cardFileOf(hidden(TALLER_THAN_A_PAGE), t).bytes)
+    streams.forEach(({ text }) => {
+      expect(text).not.toContain('\\254')
+      expect(text).not.toContain('\xac')
+    })
+  })
+
+  it('strokes one bar-and-tick path for the one continued line of a 65-character password', () => {
+    const paths = strokedPaths(TWO_LINES)
+    expect(paths).toHaveLength(1)
+    expect(paths[0]).toMatch(/^[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l [\d.]+ [\d.]+ l S$/)
+  })
+
+  it.each([1, 2, 5, 46, 94])(
+    'strokes one path fewer than the password’s shown lines, for %i lines of 64 characters',
+    (count) => {
+      const password = 'a'.repeat(64 * count)
+      const { password: lines } = shownAroundPassword(password)
+      expect(lines).toHaveLength(count)
+      expect(strokedPaths(password)).toHaveLength(count - 1)
+    }
+  )
 })

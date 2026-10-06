@@ -317,6 +317,44 @@ describe('the recovery card view', () => {
     })
   })
 
+  describe('at the hidden level with a password the PDF cannot carry exactly', () => {
+    const OUTSIDE = '日本 🔑'
+    // The same letters the file would write for the password above.
+    const CODE_LETTERS = 'U+65E5U+672C U+1F511'
+
+    it('turns the download off, says why, and never hands over a file', async () => {
+      await mount({ password: OUTSIDE })
+      expect(byTestId('card-download-unavailable')?.textContent).toBe(S.card.downloadUnavailable)
+      expect(isDisabled('card-download')).toBe(true)
+      expect(isDisabled('card-print')).toBe(false)
+      await press('card-download')
+      expect(files).toHaveLength(0)
+      expect(onCarried).not.toHaveBeenCalled()
+    })
+
+    it('still prints the card with the password as typed', async () => {
+      await mount({ password: OUTSIDE })
+      await press('card-print')
+      expect(printed).toHaveLength(1)
+      expect(printed[0].printCardText).toContain(OUTSIDE)
+      expect(files).toHaveLength(0)
+      expect(onCarried).toHaveBeenCalledTimes(1)
+    })
+
+    it('downloads a password typed as those code letters and gives it back exactly', async () => {
+      await mount({ password: CODE_LETTERS })
+      expect(byTestId('card-download-unavailable')).toBeNull()
+      expect(isDisabled('card-download')).toBe(false)
+      await press('card-download')
+      expect(files).toHaveLength(1)
+      expect(files[0].replacedCharacters).toBe(false)
+      expect(fileRows(files[0]).values[1]).toEqual([
+        S.display.passwords.recoveryPassword,
+        CODE_LETTERS
+      ])
+    })
+  })
+
   describe('at the public level', () => {
     it('carries the account and the four lines, with no password row', async () => {
       await mount({ level: 'public' })
