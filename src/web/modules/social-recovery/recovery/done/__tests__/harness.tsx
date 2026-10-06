@@ -323,21 +323,23 @@ const logAt = (blockNumber: number, transactionHash: Hex, logIndex = 0) => ({
   removed: false
 })
 
+/** An opening of an attempt; `payload` and `setupNonce` name another party's opening where they differ from ours. */
 export const attemptStarted = (
   account: Address,
   usedPlaces: number[],
   attemptId = 1n,
-  blockNumber = START_BLOCK
+  blockNumber = START_BLOCK,
+  { payload = PAYLOAD, setupNonce = 1n }: { payload?: Hex; setupNonce?: bigint } = {}
 ): Notification => ({
   kind: 'attempt-started',
   account,
   action: BOOK.action,
   attemptId,
-  setupNonce: 1n,
+  setupNonce,
   setupBody: '0x01',
   usedPlaces: usedPlaces.map(BigInt),
   usedMethods: [],
-  payload: PAYLOAD,
+  payload,
   order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
   consumableAfter: CONSUME_TIME - 10,
   at: logAt(blockNumber, START_TX)
@@ -766,6 +768,18 @@ export const openWorld = async ({
   mockWallet.storage = storage
   mockWallet.clients = new Map([[account.toLowerCase(), readyClient(kit)]])
   return { account, storage, records, kit, configuration, receiving }
+}
+
+/**
+ * Lands a countdown whose record does not name the attempt it landed, as one
+ * stored before the record kept the attempt's id, setup number and payload
+ * hash: its request carries no payload. The world must open with no countdown.
+ */
+export const landRecordWithoutAttempt = async ({ records, account, configuration }: World) => {
+  const live = await records
+    .recoverySession(CHAIN_ID, account)
+    .write(gatheringOf(configuration, 1, account), null)
+  await records.landSubmission(CHAIN_ID, account, live.revision)
 }
 
 // Registered only when Jest runs this file itself: a suite that imports the
