@@ -3,13 +3,15 @@
  *
  * The request's deadline and the poll of the account's recovery state, on
  * Jest's fake clock: the deadline line ticks every minute and once more the
- * moment the deadline passes, which wipes the session at once, and says every
- * approval dies together unless one approval is the whole request; the poll
- * reads at once, on every period and when the tab returns to view; a poll
- * that throws or runs past its limit holds every add, launch and continue
- * under the failed read with a retry, and the rows never render from a poll
- * that has not returned since open. An account that no longer authorizes the
- * action reads as dormant and keeps every approval.
+ * moment the deadline passes, which wipes the session after one chain read,
+ * and says every approval dies together unless one approval is the whole
+ * request; the poll reads at once, on every period and when the tab returns
+ * to view; a poll that throws or runs past its limit holds every add, launch
+ * and continue under the failed read with a retry, and the rows never render
+ * from a poll that has not returned since open. A client rebuilt for the same
+ * session keeps the rows and reads with the new client; a new session starts
+ * from nothing returned. An account that no longer authorizes the action
+ * reads as dormant and keeps every approval.
  */
 import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -17,11 +19,13 @@ import type {
   FakeKit,
   FakeVisibility,
   Mounted,
+  SwappableChecklist,
   TestRecords
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
   ACCOUNT,
   configurationOf,
+  deferred,
   depsOf,
   fakeKit,
   gatheringOf,
@@ -29,8 +33,10 @@ import {
   guardianCredential,
   MIXED_PATH,
   mountChecklist,
+  mountSwappableChecklist,
   NOW,
   NOW_SECONDS,
+  outside,
   passkeyCredential,
   recoveryStateOf,
   replyOf,
@@ -404,6 +410,116 @@ describe('the checklist deadline and poll', () => {
     })
   })
 
+  describe('a client rebuilt while the checklist is open', () => {
+    const openSwappable = async (): Promise<SwappableChecklist> => {
+      await seedCache(world.records, MIXED_PATH)
+      await seedSession(world.records, gatheringOf(MIXED_PATH))
+      kit = fakeKit(MIXED_PATH)
+      const swappable = await mountSwappableChecklist({
+        records: world.records,
+        client: kit.state,
+        deps: depsOf({ now: () => Date.now(), visibility })
+      })
+      view = swappable
+      expect(swappable.byTestId('checklist-row-0')).not.toBeNull()
+      return swappable
+    }
+
+    it('keeps the poll answered and the rows mounted while the new client reads, and reads with it from then on', async () => {
+      const mounted = await openSwappable()
+      const row = mounted.byTestId('checklist-row-0')
+      const rebuilt = fakeKit(MIXED_PATH)
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
+      rebuilt.recoveryState.mockImplementationOnce(() => read.promise)
+
+      await mounted.swapClient(rebuilt.state)
+
+      expect(rebuilt.recoveryState).toHaveBeenCalledTimes(1)
+      expect(mounted.byTestId('checklist-loading')).toBeNull()
+      expect(mounted.byTestId('checklist-poll-failed')).toBeNull()
+      expect(mounted.byTestId('checklist-row-0')).toBe(row)
+
+      await outside(async () => read.resolve(recoveryStateOf()))
+      await settle()
+      expect(mounted.byTestId('checklist-row-0')).toBe(row)
+      expect(mounted.byTestId('checklist-poll-failed')).toBeNull()
+
+      kit.recoveryState.mockClear()
+      await settle(CHECKLIST_POLL_MS)
+      expect(rebuilt.recoveryState).toHaveBeenCalledTimes(2)
+      expect(kit.recoveryState).not.toHaveBeenCalled()
+    })
+
+    it('drops the answer of the round the old client still had in flight', async () => {
+      const mounted = await openSwappable()
+      const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
+      const late = deferred<ReturnType<typeof recoveryStateOf>>()
+      kit.recoveryState.mockImplementationOnce(() => late.promise)
+      await settle(CHECKLIST_POLL_MS)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+
+      const rebuilt = fakeKit(MIXED_PATH)
+      await mounted.swapClient(rebuilt.state)
+      expect(rebuilt.recoveryState).toHaveBeenCalledTimes(1)
+
+      await outside(async () => late.resolve(recoveryStateOf({ setupNonce: BigInt(2) })))
+      await settle()
+
+      expect(wipe).not.toHaveBeenCalled()
+      expect(mounted.byTestId('checklist-wiped')).toBeNull()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      expect((await storedSession(world.records))?.value.state).toBe('live')
+    })
+
+    it('starts again from nothing returned where the client goes away and comes back', async () => {
+      const mounted = await openSwappable()
+
+      await mounted.swapClient({ status: 'loading' })
+      expect(mounted.byTestId('checklist-rows')).toBeNull()
+      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
+
+      const rebuilt = fakeKit(MIXED_PATH)
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
+      rebuilt.recoveryState.mockImplementationOnce(() => read.promise)
+      await mounted.swapClient(rebuilt.state)
+      expect(rebuilt.recoveryState).toHaveBeenCalledTimes(1)
+      expect(mounted.byTestId('checklist-rows')).toBeNull()
+      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
+
+      await outside(async () => read.resolve(recoveryStateOf()))
+      await settle()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+    })
+
+    it('starts again from nothing returned for a new session', async () => {
+      const mounted = await open(MIXED_PATH)
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Waiting', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Cancelled', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      expect(mounted.byTestId('checklist-gather-again')).not.toBeNull()
+
+      // The new gathering's first round reads until the test answers it.
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
+      kit.recoveryState.mockImplementationOnce(() => read.promise)
+      kit.initRecoveryGathering.mockResolvedValueOnce(gatheringOf(MIXED_PATH, 6))
+      await mounted.press('checklist-gather-again')
+      await settle()
+
+      expect((await storedSession(world.records))?.value.state).toBe('live')
+      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
+      expect(mounted.byTestId('checklist-rows')).toBeNull()
+
+      await outside(async () => read.resolve(recoveryStateOf({ nextAttemptId: BigInt(6) })))
+      await settle()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+    })
+  })
+
   describe('an account that no longer authorizes the action', () => {
     it('reads as dormant, keeps every approval, holds continue and wipes nothing', async () => {
       const satisfied = withReplies(gatheringOf(TWO_ROWS), [0, 1])
@@ -421,6 +537,9 @@ describe('the checklist deadline and poll', () => {
 
       expect(view.byTestId('checklist-dormant')?.textContent).toContain(
         t('socialRecovery.checklist.dormant.title')
+      )
+      expect(view.byTestId('checklist-dormant')?.textContent).toContain(
+        t('socialRecovery.checklist.dormant.body')
       )
       expect(view.byTestId('checklist-satisfied')).not.toBeNull()
       expect(view.isDisabled('checklist-continue')).toBe(true)

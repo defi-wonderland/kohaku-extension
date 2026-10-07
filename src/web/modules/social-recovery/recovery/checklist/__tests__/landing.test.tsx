@@ -2,11 +2,12 @@
  * @jest-environment jsdom
  *
  * The request's own submission found on the chain, on Jest's fake clock: the
- * attempt that carries the request's predicted id and the hash of its payload
- * lands the session and the holder goes on to the wait, whatever state that
- * attempt is in. An attempt that differs in either, the id or the payload
- * hash, is another holder's and voids the request. The landing leaves no
- * claim request and no report of the request that landed.
+ * attempt that carries the request's predicted id, its setup nonce and the
+ * hash of its payload lands the session and the holder goes on to the wait,
+ * whatever state that attempt is in. An attempt that differs in the id or the
+ * payload hash is another holder's and voids the request; one opened under
+ * another setup is not this request's either. The landing leaves no claim
+ * request and no report of the request that landed.
  */
 import type { Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -66,6 +67,13 @@ const withPayload = (gathering: Gathering, payload: Hex = PAYLOAD): Gathering =>
 })
 
 const WAIT_PATH = `/${WEB_ROUTES.socialRecoveryRecoveryWait}?account=${ACCOUNT}`
+
+/**
+ * What the landed session keeps of the request that landed, each member where
+ * the records keep it: the attempt id and the setup nonce as the request
+ * carries them, and the hash of its payload. Nothing else of the gathering.
+ */
+const LANDED_REQUEST = { attemptId: '1', setupNonce: '1', payloadHash: keccak256(PAYLOAD) }
 
 describe('the request lands on the chain', () => {
   let view: Mounted | undefined
@@ -140,10 +148,11 @@ describe('the request lands on the chain', () => {
       expect(land).toHaveBeenCalledTimes(1)
       expect(land).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, seeded.revision)
       expect(wipe).not.toHaveBeenCalled()
-      expect((await storedSession(world.records))?.value).toEqual({
-        state: 'landed',
-        account: ACCOUNT
-      })
+      const landed = (await storedSession(world.records))?.value
+      const kept = Object.fromEntries(
+        Object.entries(LANDED_REQUEST).filter(([field]) => !!landed && field in landed)
+      )
+      expect(landed).toEqual({ state: 'landed', account: ACCOUNT, ...kept })
       expect(view?.navigate).toHaveBeenLastCalledWith(WAIT_PATH, { replace: true })
       expect(view?.byTestId('checklist-rows')).toBeNull()
       expect(view?.byTestId('checklist-wiped')).toBeNull()
@@ -217,6 +226,54 @@ describe('the request lands on the chain', () => {
       expect.anything()
     )
     expect(view?.byTestId('checklist-void-slot')).not.toBeNull()
+  })
+
+  const ended = ['Cancelled', 'Consumed'] as const
+  ended.forEach((state) => {
+    it(`wipes as setup changed and lands nothing where an attempt with its predicted id and payload reads ${state} under another setup`, async () => {
+      const seeded = await open(withPayload(withReplies(gatheringOf(MIXED_PATH), [0, 1, 2, 3])))
+
+      chainReads({
+        state,
+        attemptId: BigInt(1),
+        nextAttemptId: BigInt(2),
+        setupNonce: BigInt(2),
+        payloadHash: keccak256(PAYLOAD)
+      })
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(land).not.toHaveBeenCalled()
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'setup-changed', seeded.revision)
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        state: 'wiped',
+        reason: 'setup-changed'
+      })
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t('socialRecovery.records.setupChangedTitle')
+      )
+      expect(view?.byTestId('checklist-read-setup-again')).not.toBeNull()
+      expect(view?.navigate).not.toHaveBeenCalledWith(WAIT_PATH, expect.anything())
+    })
+  })
+
+  it('lands nothing where an attempt with its predicted id and payload waits under another setup, and names the slot it holds', async () => {
+    const seeded = await open(withPayload(gatheringOf(MIXED_PATH)))
+
+    chainReads({
+      state: 'Waiting',
+      attemptId: BigInt(1),
+      nextAttemptId: BigInt(2),
+      setupNonce: BigInt(2),
+      payloadHash: keccak256(PAYLOAD)
+    })
+    await settle(CHECKLIST_POLL_MS)
+
+    expect(land).not.toHaveBeenCalled()
+    expect(wipe).toHaveBeenCalledTimes(1)
+    expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'another-attempt-opened', seeded.revision)
+    expect(view?.byTestId('checklist-void-slot')).not.toBeNull()
+    expect(view?.navigate).not.toHaveBeenCalledWith(WAIT_PATH, expect.anything())
   })
 
   it('holds continue while the landing is being written, then goes on to the wait', async () => {
