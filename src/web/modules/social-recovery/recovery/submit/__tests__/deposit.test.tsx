@@ -172,7 +172,8 @@ describe('the deposit step', () => {
 
     await tick(1_000)
     expect(mounted.byTestId('submit-gas-step')).toBeNull()
-    expect(mounted.byTestId('submit-write-failedNotSent')).not.toBeNull()
+    expect(mounted.byTestId('submit-write-gasReadError')).not.toBeNull()
+    expect(mounted.text()).toContain(t('socialRecovery.writes.gasCheckFailed'))
     expect(hasButton(mounted, t('socialRecovery.writes.tryAgain'))).toBe(true)
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
 
@@ -190,7 +191,8 @@ describe('the deposit step', () => {
     await view.press('submit-verify-details')
     await view.press('submit-action')
     await tick(READ_LIMIT_MS)
-    expect(view.byTestId('submit-write-failedNotSent')).not.toBeNull()
+    expect(view.byTestId('submit-write-gasReadError')).not.toBeNull()
+    expect(view.text()).toContain(t('socialRecovery.writes.gasCheckFailed'))
     expect(hasButton(view, t('socialRecovery.writes.tryAgain'))).toBe(true)
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
 

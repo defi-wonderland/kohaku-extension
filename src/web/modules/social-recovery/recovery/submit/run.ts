@@ -43,6 +43,7 @@
  * run the holder left behind moves nothing.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import type { SubmissionInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
   initialWriteState,
@@ -354,10 +355,20 @@ export const isLanded = (state: SubmitState): boolean => state.after === 'landed
 const writeEvent = (store: SubmitStore) => (event: WriteEvent) =>
   store.dispatch({ type: 'write', event })
 
-/** The answer of `read`, rejected where it does not answer within `limitMs`. */
-const readWithin = <T>(read: () => Promise<T>, limitMs: number = READ_LIMIT_MS): Promise<T> =>
+/**
+ * The answer of `read`, rejected where it does not answer within `limitMs`;
+ * `onLimit` shapes that rejection where a caller reads it by its kind.
+ */
+const readWithin = <T>(
+  read: () => Promise<T>,
+  limitMs: number = READ_LIMIT_MS,
+  onLimit: (error: Error) => Error = (error) => error
+): Promise<T> =>
   new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`No answer in ${limitMs} ms.`)), limitMs)
+    const timer = setTimeout(
+      () => reject(onLimit(new Error(`No answer in ${limitMs} ms.`))),
+      limitMs
+    )
     read().then(
       (answer) => {
         clearTimeout(timer)
@@ -886,6 +897,10 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
   await settle(store, steps, run)
 }
 
+// A gas check that does not answer within the limit is the gas check's own
+// failure, with its retry, never a send refused.
+const gasCheckLimit = (error: Error): Error => providerReadFailure('estimateGas', error)
+
 /** The gas check of the run's prepared start; where the key holds enough, the claim and the send. */
 const checkAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number): Promise<void> => {
   const { prepared } = store.state()
@@ -893,7 +908,7 @@ const checkAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
     return
   }
   try {
-    const check = await readWithin(() => steps.checkGas(prepared))
+    const check = await readWithin(() => steps.checkGas(prepared), READ_LIMIT_MS, gasCheckLimit)
     writeEvent(store)({ type: 'gasChecked', run, check })
   } catch (error: unknown) {
     writeEvent(store)({ type: 'error', run, error })
@@ -934,7 +949,7 @@ const pollDeposit = async (store: SubmitStore): Promise<void> => {
       try {
         const { prepared } = state
         // eslint-disable-next-line no-await-in-loop
-        check = await readWithin(() => steps.checkGas(prepared))
+        check = await readWithin(() => steps.checkGas(prepared), READ_LIMIT_MS, gasCheckLimit)
       } catch (error: unknown) {
         if (inRun(store.state(), run) && store.state().write.status === 'needsDeposit') {
           writeEvent(store)({ type: 'recheck' })
