@@ -40,9 +40,16 @@ import {
 const {
   checklistPathOf
 }: typeof import('@web/modules/social-recovery/recovery/checklist') = require('@web/modules/social-recovery/recovery/checklist')
+const {
+  sendRefusal
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  mayStillLand
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
-const { BALANCE_POLL_MS, FOLLOW_REREAD_MS, isLanded, lookForClaim, startSubmission } = submit
+const { BALANCE_POLL_MS, checkAgain, FOLLOW_REREAD_MS, isLanded, lookForClaim, startSubmission } =
+  submit
 
 describe('a gathering another tab abandoned and opened again', () => {
   const pages: { store: SubmitStore; steps: ReturnType<typeof stepsOf> }[] = []
@@ -184,6 +191,43 @@ describe('a gathering another tab abandoned and opened again', () => {
     expect(page.store.state().toChecklist).toBe(true)
     expect(page.port.send).not.toHaveBeenCalled()
     expect(await claimOf(device)).toBeNull()
+  })
+
+  it('follows and lands nothing on check again from a send that may still land, after the other tab gathered again', async () => {
+    const device = await openDevice()
+    const page = track(pageOn(device))
+    page.port.send.mockImplementation(async (key) => {
+      throw sendRefusal('not-a-transaction', key)
+    })
+    await startSubmission(page.store, page.steps)
+    await flush()
+    expect(page.store.state().write.status).toBe('failedNotSent')
+    expect(mayStillLand(page.store.state().write)).toBe(true)
+
+    const next = regathered(device.gathering)
+    const records = device.records()
+    const written = await gatherAgain(records, device.account, next)
+    const claimed = await records
+      .recoverySession(CHAIN_ID, device.account)
+      .claimSubmission({ requestId: 'new-page', startBlock: 1, claimedAt: NOW }, written.revision)
+    if (!claimed.claimed) {
+      throw new Error('no claim written')
+    }
+    await records
+      .recoverySession(CHAIN_ID, device.account)
+      .setSubmissionHash('new-page', TX_HASH, claimed.record.revision)
+    device.kit.chain.attempt = attemptOf(device.gathering)
+    await checkAgain(page.store, page.steps)
+    await flush()
+    expect(isLanded(page.store.state())).toBe(false)
+    expect(page.store.state().follow).toBeUndefined()
+    expect(page.store.state().write.status).toBe('failedNotSent')
+    expect(device.kit.receipts.wait).not.toHaveBeenCalled()
+    const stored = await sessionOf(records, device.account)
+    expect(stored?.state).toBe('live')
+    expect(stored?.state === 'live' && stored.gathering.request).toEqual(next.request)
+    expect((await claimOf(device))?.requestId).toBe('new-page')
+    expect(page.port.send).toHaveBeenCalledTimes(1)
   })
 
   it('reads a session another request landed as not this one’s landing, and goes to the checklist', async () => {
