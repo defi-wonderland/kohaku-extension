@@ -10,7 +10,7 @@
  * outcome and no undelivered claim of the dead request reaches the next
  * gathering.
  */
-import type { Configuration, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type {
   FakeDeps,
@@ -23,7 +23,9 @@ import {
   CHAIN_ID,
   configurationOf,
   DAY_SECONDS,
+  deferred,
   depsOf,
+  each,
   fakeKit,
   gatheringOf,
   GUARDIANS,
@@ -49,6 +51,7 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const { keccak256 }: typeof import('viem') = require('viem')
 const {
   WEB_ROUTES
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
@@ -61,7 +64,8 @@ const {
   stringify
 }: typeof import('@ambire-common/libs/richJson/richJson') = require('@ambire-common/libs/richJson/richJson')
 const {
-  CHECKLIST_POLL_MS
+  CHECKLIST_POLL_MS,
+  POLL_LIMIT_MS
 }: typeof import('@web/modules/social-recovery/recovery/checklist/constants') = require('@web/modules/social-recovery/recovery/checklist/constants')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
@@ -200,6 +204,145 @@ describe('the request dies', () => {
         t(`${RECORDS}.expiredTitle`)
       )
     })
+
+    it('reads a new gathering that cannot open as the client being out of reach, not as the setup', async () => {
+      await open(MIXED_PATH, gatheringOf(MIXED_PATH))
+      jest.setSystemTime(PAST_DEADLINE)
+      await settle(CHECKLIST_POLL_MS)
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.expiredTitle`)
+      )
+
+      kit.initRecoveryGathering.mockRejectedValueOnce(new Error('node unavailable'))
+      await view?.press('checklist-gather-again')
+
+      const alert = view?.byTestId('checklist-gather-again-failed')?.textContent ?? ''
+      expect(alert).toContain(t('socialRecovery.client.unavailableTitle'))
+      expect(alert).toContain(t('socialRecovery.client.unavailableBody'))
+      expect(alert).not.toContain(t(`${DEATHS}.readSetupFailed`))
+      expect(view?.byTestId('checklist-gather-again')).not.toBeNull()
+    })
+
+    describe('with the clock already past it at the first poll', () => {
+      const PAYLOAD: Hex = '0xabcdef'
+      const WAIT_PATH = `/${WEB_ROUTES.socialRecoveryRecoveryWait}?account=${ACCOUNT}`
+      let land: jest.SpyInstance
+
+      /** The gathering with the payload its submission carries. */
+      const submitted = (gathering: Gathering): Gathering => ({
+        ...gathering,
+        request: { ...gathering.request, payload: PAYLOAD }
+      })
+
+      /** Opens the checklist past the deadline, the chain answering the first poll as scripted. */
+      const openPast = async (gathering: Gathering, chain: (scripted: FakeKit) => void) => {
+        await seedCache(world.records, MIXED_PATH)
+        const seeded = await seedSession(world.records, gathering)
+        kit = fakeKit(MIXED_PATH)
+        chain(kit)
+        deps = depsOf({ now: () => Date.now() })
+        jest.setSystemTime(PAST_DEADLINE)
+        view = await mountChecklist({ records: world.records, client: kit.state, deps })
+        return seeded
+      }
+
+      beforeEach(() => {
+        land = jest.spyOn(world.records, 'landSubmission')
+      })
+
+      it('lands a request another holder submitted before the deadline instead of expiring it', async () => {
+        const gathering = submitted(withReplies(gatheringOf(MIXED_PATH), [0, 1, 2, 3]))
+        const seeded = await openPast(gathering, (scripted) => {
+          scripted.recoveryState.mockResolvedValue(
+            recoveryStateOf({
+              state: 'Waiting',
+              attemptId: BigInt(1),
+              nextAttemptId: BigInt(2),
+              payloadHash: keccak256(PAYLOAD)
+            })
+          )
+        })
+        await settle()
+
+        expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+        expect(land).toHaveBeenCalledTimes(1)
+        expect(land).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, seeded.revision)
+        expect(wipe).not.toHaveBeenCalled()
+        expect((await storedSession(world.records))?.value.state).toBe('landed')
+        expect(view?.navigate).toHaveBeenLastCalledWith(WAIT_PATH, { replace: true })
+        expect(view?.byTestId('checklist-wiped')).toBeNull()
+      })
+
+      it('expires a request with no attempt on the chain, after one chain read', async () => {
+        const gathering = submitted(withReplies(gatheringOf(MIXED_PATH), [1]))
+        const seeded = await openPast(gathering, () => undefined)
+        await settle()
+
+        expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'deadline-passed', seeded.revision)
+        expect(kit.recoveryState.mock.invocationCallOrder[0]).toBeLessThan(
+          wipe.mock.invocationCallOrder[0]
+        )
+        expect(land).not.toHaveBeenCalled()
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.expiredTitle`)
+        )
+        expect(view?.byTestId('checklist-expired-regather')).not.toBeNull()
+        await expectNoApprovalLeft(gathering)
+      })
+
+      it('expires a request whose chain read fails', async () => {
+        await openPast(submitted(gatheringOf(MIXED_PATH)), (scripted) => {
+          scripted.recoveryState.mockRejectedValue(new Error('node unavailable'))
+        })
+        await settle()
+
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'deadline-passed', expect.anything())
+        expect(land).not.toHaveBeenCalled()
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.expiredTitle`)
+        )
+      })
+
+      it('expires a request whose chain read runs past its limit, once the limit is reached', async () => {
+        await openPast(submitted(gatheringOf(MIXED_PATH)), (scripted) => {
+          scripted.recoveryState.mockImplementation(() => new Promise(() => {}))
+        })
+
+        await settle(POLL_LIMIT_MS - 1)
+        expect(wipe).not.toHaveBeenCalled()
+        expect(view?.byTestId('checklist-loading')).not.toBeNull()
+
+        await settle(1)
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'deadline-passed', expect.anything())
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.expiredTitle`)
+        )
+      })
+
+      each([
+        [
+          'another holder waits with its own attempt',
+          recoveryStateOf({ state: 'Waiting', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+        ],
+        ['the setup changed', recoveryStateOf({ setupNonce: BigInt(2) })]
+      ] as const)('expires the request where %s', async ([, state]) => {
+        await openPast(submitted(gatheringOf(MIXED_PATH)), (scripted) => {
+          scripted.recoveryState.mockResolvedValue(state)
+        })
+        await settle()
+
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'deadline-passed', expect.anything())
+        expect(land).not.toHaveBeenCalled()
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.expiredTitle`)
+        )
+      })
+    })
   })
 
   describe('another attempt opens on the account', () => {
@@ -282,6 +425,36 @@ describe('the request dies', () => {
       expect(view?.byTestId('checklist-poll-failed')).not.toBeNull()
       expect(view?.byTestId('checklist-poll-retry')).not.toBeNull()
       expect(view?.byTestId('checklist-gather-again')).toBeNull()
+    })
+
+    it('reads a failed read over the voided request as whether that attempt still runs, and its retry reads the slot again', async () => {
+      await open(MIXED_PATH, gatheringOf(MIXED_PATH))
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Waiting', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      kit.recoveryState.mockRejectedValue(new Error('node unavailable'))
+      await settle(CHECKLIST_POLL_MS)
+
+      const alert = view?.byTestId('checklist-poll-failed')?.textContent ?? ''
+      expect(alert).toContain(t(`${DEATHS}.readFailed`))
+      expect(alert).not.toContain(t('socialRecovery.checklist.pollFailed.title'))
+      expect(alert).not.toContain(t('socialRecovery.checklist.pollFailed.body'))
+      expect(view?.byTestId('checklist-poll-held')).toBeNull()
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(t(`${RECORDS}.voidTitle`))
+
+      kit.recoveryState.mockClear()
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ state: 'Cancelled', attemptId: BigInt(5), nextAttemptId: BigInt(6) })
+      )
+      await view?.press('checklist-poll-retry')
+
+      expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+      expect(view?.byTestId('checklist-poll-failed')).toBeNull()
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${DEATHS}.slotFreeTitle`)
+      )
+      expect(view?.byTestId('checklist-gather-again')).not.toBeNull()
     })
 
     it('wipes where another attempt waits though the counter still names this request', async () => {
@@ -541,6 +714,74 @@ describe('the request dies', () => {
 
       expect(view?.byTestId('checklist-void-slot')).not.toBeNull()
     })
+
+    it('reads a death the records could not wipe as the request not recorded as ended, holds the rows, and its retry wipes it', async () => {
+      const seeded = await open(MIXED_PATH, withReplies(gatheringOf(MIXED_PATH), [1]))
+      world.storage.refuse.push('recoverySession')
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(view?.byTestId('checklist-death-failed')?.textContent).toContain(
+        t(`${DEATHS}.wipeFailed`)
+      )
+      expect(view?.byTestId('checklist-rows')).not.toBeNull()
+      expect(view?.isDisabled('checklist-row-0-answer-here')).toBe(true)
+      expect(view?.isDisabled('checklist-row-2-mark-declined')).toBe(true)
+      expect((await storedSession(world.records))?.revision).toBe(seeded.revision)
+
+      world.storage.refuse.splice(0)
+      await view?.press('checklist-death-failed-retry')
+      await settle()
+
+      expect(view?.byTestId('checklist-death-failed')).toBeNull()
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.setupChangedTitle`)
+      )
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        state: 'wiped',
+        reason: 'setup-changed'
+      })
+    })
+
+    each([
+      ['before the confirmation opens', false, 'checklist-cannot-complete'],
+      ['with the confirmation open', true, 'checklist-abandon-action']
+    ] as const)('holds the abandon %s until the wipe returns', async ([, confirming, control]) => {
+      await open(MIXED_PATH, gatheringOf(MIXED_PATH))
+      if (confirming) {
+        await view?.press('checklist-cannot-complete')
+        expect(view?.isDisabled('checklist-abandon-keep')).toBe(false)
+      }
+      expect(view?.isDisabled(control)).toBe(false)
+
+      const release = world.storage.hold('recoverySession')
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(view?.isDisabled(control)).toBe(true)
+      if (confirming) {
+        expect(view?.isDisabled('checklist-abandon-keep')).toBe(true)
+      }
+      await view?.press(control)
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'recoverer-abandoned',
+        expect.anything()
+      )
+
+      release()
+      await settle()
+
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.setupChangedTitle`)
+      )
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        reason: 'setup-changed'
+      })
+    })
   })
 
   describe('the outcomes of a dead request', () => {
@@ -660,6 +901,98 @@ describe('the request dies', () => {
           launched.value.call === 'createClaim' &&
           launched.value.request.attemptId
       ).toBe('2')
+    })
+
+    each([
+      ['a failed claim', failed('browser-error', 'NotAllowedError')],
+      ['a passed claim', passed({ reply: replyOf(gatheringOf(TWO_ROWS), 0) })]
+    ] as const)(
+      'forgets the report of %s of the dead request that lands after the new gathering opened',
+      async ([, outcome]) => {
+        await open(TWO_ROWS, gatheringOf(TWO_ROWS))
+        await view?.press('checklist-row-0-phone')
+        const [id] = deps.requestIds
+        await returnTo(id)
+        expect(view?.byTestId('checklist-undelivered')).not.toBeNull()
+
+        jest.setSystemTime(PAST_DEADLINE)
+        await settle(CHECKLIST_POLL_MS)
+        await gatherAgainPastDeadline()
+        expect(view?.byTestId('checklist-undelivered')).toBeNull()
+
+        // The ceremony tab writes the report now, past the deadline that killed the request.
+        await outside(() => deps.channel.report(id, 'createClaim', outcome, Date.now()))
+        await settle()
+
+        expect(await deps.reportStore.get(ceremonyResultKey(id), undefined)).toBeUndefined()
+        expect(kit.addApproverReply).not.toHaveBeenCalled()
+        expect(chipOf(0)).toBe(chip('notAsked'))
+        expect(view?.byTestId('checklist-row-0-note')).toBeNull()
+        expect(view?.byTestId('checklist-unsatisfied-didNotAnswer')).toBeNull()
+        expect(view?.byTestId('checklist-undelivered')).toBeNull()
+        expect(view?.byTestId('checklist-cannot-complete')).not.toBeNull()
+        const stored = await storedSession(world.records)
+        expect(stored?.value.state === 'live' && stored.value.gathering.replies).toEqual([])
+      }
+    )
+
+    it('never reads a claim the wipe removed as undelivered, where its report read returns after the wipe', async () => {
+      const gathering = gatheringOf(TWO_ROWS)
+      await seedCache(world.records, TWO_ROWS)
+      await seedSession(world.records, gathering)
+      const id = 'request-from-the-last-visit'
+      await world.records.ceremonyRequest(id).write({
+        call: 'createClaim',
+        method: 'passkey',
+        account: ACCOUNT,
+        chainId: CHAIN_ID,
+        request: requestOf(gathering, 0),
+        params: { handOff: true }
+      })
+      kit = fakeKit(TWO_ROWS)
+      const base = depsOf({ now: () => Date.now() })
+      // The report read waits until the test lets it answer.
+      const reportRead = deferred<void>()
+      deps = {
+        ...base,
+        reportStore: {
+          ...base.reportStore,
+          get: async (key: string, defaultValue: unknown) => {
+            await reportRead.promise
+            return base.reportStore.get(key, defaultValue)
+          }
+        } as FakeDeps['reportStore']
+      }
+      jest.setSystemTime(PAST_DEADLINE)
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps,
+        search: { account: ACCOUNT, ceremony: id }
+      })
+      await settle()
+      expect(view.byTestId('checklist-wiped-title')?.textContent).toBe(t(`${RECORDS}.expiredTitle`))
+      expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
+
+      await outside(async () => reportRead.resolve())
+      await settle()
+      await gatherAgainPastDeadline()
+
+      expect(view.byTestId('checklist-undelivered')).toBeNull()
+      expect(chipOf(0)).toBe(chip('notAsked'))
+
+      await outside(() =>
+        deps.channel.report(
+          id,
+          'createClaim',
+          failed('browser-error', 'NotAllowedError'),
+          Date.now()
+        )
+      )
+      await settle()
+      expect(await base.reportStore.get(ceremonyResultKey(id), undefined)).toBeUndefined()
+      expect(chipOf(0)).toBe(chip('notAsked'))
+      expect(view.byTestId('checklist-undelivered')).toBeNull()
     })
   })
 })

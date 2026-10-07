@@ -664,8 +664,16 @@ export const storedSession = async (
 export interface ReportChannel {
   store: ReportStore
   subscribe: ReportSubscribe
-  /** Writes the report the tab writes for the ceremony `id`, and tells the listeners. */
-  report: (id: string, call: CeremonyCall, outcome: CeremonyOutcome<unknown>) => Promise<void>
+  /**
+   * Writes the report the tab writes for the ceremony `id` at `at` (ms, the
+   * fixed clock by default), and tells the listeners.
+   */
+  report: (
+    id: string,
+    call: CeremonyCall,
+    outcome: CeremonyOutcome<unknown>,
+    at?: number
+  ) => Promise<void>
 }
 
 export const reportChannel = (): ReportChannel => {
@@ -691,9 +699,9 @@ export const reportChannel = (): ReportChannel => {
   return {
     store,
     subscribe,
-    report: async (id, call, outcome) => {
+    report: async (id, call, outcome, at = NOW) => {
       const key = ceremonyResultKey(id)
-      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, NOW)
+      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, at)
       values.set(key, value)
       listeners.get(key)?.forEach((listener) => listener(value))
     }
