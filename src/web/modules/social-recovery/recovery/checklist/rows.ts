@@ -123,7 +123,10 @@ export const headlineOfAssessment = (assessment: Assessment): ChecklistHeadline 
   }
 }
 
-/** This release asks a passkey and a guardian; an identity row, or a method it does not know, it asks nothing. */
+/**
+ * This release asks a passkey and a guardian; an identity row, or a method it
+ * does not know, it asks nothing.
+ */
 export const isAsked = (row: ChecklistRow): boolean =>
   row.kind === 'passkey' || row.kind === 'ecdsa'
 
@@ -171,7 +174,10 @@ export const rowStatesOf = (
     ])
   )
 
-/** The unlock line by the path's shape: required rows and groups, required rows only, or groups only. */
+/**
+ * The unlock line by the path's shape: required rows and groups, required
+ * rows only, or groups only.
+ */
 export const unlockLineKeyOf = (layout: ChecklistLayout): UnlockLineKey => {
   if (layout.groups.length === 0) {
     return 'socialRecovery.checklist.continueUnlockRequiredOnly'

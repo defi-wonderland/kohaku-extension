@@ -105,7 +105,9 @@ describe('opening the checklist', () => {
     world.storage.refuse.push('recoverySession')
     view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
 
-    expect(view.byTestId('checklist-failed-open')).not.toBeNull()
+    const failure = view.byTestId('checklist-failed-open')?.textContent
+    expect(failure).toContain(t('socialRecovery.checklist.openFailedTitle'))
+    expect(failure).toContain(t('socialRecovery.checklist.openFailedBody'))
     expect(view.byTestId('checklist-rows')).toBeNull()
 
     world.storage.refuse.length = 0

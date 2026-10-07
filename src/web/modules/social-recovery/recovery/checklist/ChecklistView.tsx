@@ -50,8 +50,8 @@ const FAILURE_KEYS: Record<ChecklistFailure, AlertKeys> = {
     body: 'socialRecovery.entry.confirm.setupReadFailedBody'
   },
   open: {
-    title: 'socialRecovery.client.unavailableTitle',
-    body: 'socialRecovery.client.unavailableBody'
+    title: `${CHECKLIST}.openFailedTitle`,
+    body: `${CHECKLIST}.openFailedBody`
   },
   destination: {
     title: 'socialRecovery.entry.confirm.readFailed',
@@ -126,11 +126,17 @@ const ChecklistView = ({
   })
 
   // A passed claim joins the session once it is live; a conflict keeps it
-  // waiting for the reload, and a refusal reads as the row's note.
+  // waiting for the reload, and a refusal reads as the row's note. A claim
+  // whose reply the session already holds, as after a reload between the
+  // write and the settle, settles with nothing added and nothing refused.
   const { pending, settle } = claim
   const applying = useRef(false)
   const applyPending = useCallback(async () => {
     if (!pending || applying.current) {
+      return
+    }
+    if (assessment?.filled.includes(pending.place)) {
+      settle(pending.place)
       return
     }
     applying.current = true
@@ -151,7 +157,7 @@ const ChecklistView = ({
     } finally {
       applying.current = false
     }
-  }, [pending, addReply, settle, deps])
+  }, [pending, assessment, addReply, settle, deps])
   const isLive = load.phase === 'live'
   useEffect(() => {
     if (isLive && pending && !pendingFailed && !checklist.busy) {
@@ -231,8 +237,8 @@ const ChecklistView = ({
         {title}
         {errorAlert(
           {
-            title: 'socialRecovery.client.unavailableBody',
-            body: `${CHECKLIST}.leavingKeeps`
+            title: `${CHECKLIST}.conflictTitle`,
+            body: `${CHECKLIST}.conflictBody`
           },
           'checklist-conflict',
           checklist.retry
@@ -351,7 +357,7 @@ const ChecklistView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          text={t('socialRecovery.records.writeFailed')}
+          text={t(`${CHECKLIST}.writeFailed`)}
         >
           {pendingFailed &&
             retryButton(() => setPendingFailed(false), 'checklist-write-failed-retry')}
