@@ -75,7 +75,8 @@
         "notSetUp": "Not set up",
         "pathLocked": "Path locked",
         "notActive": "Not active",
-        "cannotRecover": "Cannot recover"
+        "cannotRecover": "Cannot recover",
+        "cannotExecute": "Cannot execute"
       },
       "editor": {
         "stillNeeded": "Still needed"
