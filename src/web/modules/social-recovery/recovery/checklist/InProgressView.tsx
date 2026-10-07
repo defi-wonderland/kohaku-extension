@@ -153,7 +153,7 @@ const InProgressView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          text={t('socialRecovery.records.writeFailed')}
+          text={t('socialRecovery.checklist.writeFailed')}
         />
       )}
       {load.items.map((item) => (

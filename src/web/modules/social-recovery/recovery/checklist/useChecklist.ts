@@ -98,7 +98,8 @@ const useChecklist = ({
       switch (result.kind) {
         case 'live':
           setNeedsDestination(false)
-          // A stale cache read again with the password: the rows follow the setup the chain commits.
+          // A stale cache read again with the password: the rows follow the
+          // setup the chain commits.
           if (result.configuration) {
             configurationRef.current = { configuration: result.configuration, source: 'password' }
           }

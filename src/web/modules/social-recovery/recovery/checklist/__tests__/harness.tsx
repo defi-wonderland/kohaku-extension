@@ -74,15 +74,38 @@ jest.mock('@common/components/Avatar', () => {
   }
 })
 
+/**
+ * What the QR double drew, every render in order, and whether it fails to
+ * draw: a failing draw reports its error once mounted, as the library does
+ * where a value does not fit a code.
+ */
+const mockQr: { drawn: string[]; fails: boolean } = { drawn: [], fails: false }
+
 // The QR library ships untranspiled modules.
 jest.mock('react-native-qrcode-svg', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-  const { createElement } = require('react')
+  const { createElement, useEffect } = require('react')
   return {
     __esModule: true,
-    default: ({ value }: { value: string }) =>
-      createElement('div', { 'data-testid': 'challenge-qr', 'data-value': value })
+    default: ({ value, onError }: { value: string; onError?: (error: Error) => void }) => {
+      mockQr.drawn.push(value)
+      const fails = mockQr.fails
+      useEffect(() => {
+        if (fails) {
+          onError?.(new Error('the value does not fit a code'))
+        }
+      }, [fails, onError])
+      return createElement('div', { 'data-testid': 'challenge-qr', 'data-value': value })
+    }
   }
+})
+
+/** The QR double: the values it drew, and the switch that makes the next draws fail. */
+export const qrDouble = mockQr
+
+afterEach(() => {
+  mockQr.drawn.length = 0
+  mockQr.fails = false
 })
 
 // The clipboard module ships untranspiled modules.
@@ -160,6 +183,23 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   themeType: themeConfig.THEME_TYPES.LIGHT,
   selectedThemeType: themeConfig.THEME_TYPES.LIGHT,
   setThemeType: () => {}
+}
+
+/** A promise a test settles by hand. */
+export interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
+export const deferred = <T,>(): Deferred<T> => {
+  let resolve: (value: T) => void = () => {}
+  let reject: (error: unknown) => void = () => {}
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 // ---------------------------------------------------------------------------
@@ -843,6 +883,47 @@ export const mountChecklist = (input: {
       deps={input.deps}
     />
   ))
+
+export interface SwappableChecklist extends Mounted {
+  /** Hands the mounted checklist another client, as a rebuild of the kit does. */
+  swapClient: (client: ChecklistClient) => Promise<void>
+}
+
+/** The checklist with a client the test replaces while it stays mounted. */
+export const mountSwappableChecklist = async (input: {
+  records: WalletRecords
+  client: ChecklistClient
+  deps: ChecklistDeps
+}): Promise<SwappableChecklist> => {
+  let setClient: (client: ChecklistClient) => void = () => {}
+  const Host = ({ navigate }: { navigate: jest.Mock }) => {
+    const [client, set] = React.useState(input.client)
+    setClient = set
+    return (
+      <ChecklistView
+        records={input.records}
+        chainId={CHAIN_ID}
+        account={ACCOUNT}
+        entry={entryOf()}
+        client={client}
+        destination={{ status: 'ready', key: DESTINATION }}
+        search={{ account: ACCOUNT }}
+        navigate={navigate}
+        deps={input.deps}
+      />
+    )
+  }
+  const mounted = await mount((navigate) => <Host navigate={navigate} />)
+  return {
+    ...mounted,
+    swapClient: async (client) => {
+      await act(async () => {
+        setClient(client)
+      })
+      await settle()
+    }
+  }
+}
 
 /** A headline hook that answers the same count for every listed session. */
 export const headlineHook =

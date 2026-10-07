@@ -176,7 +176,7 @@ export const pasteErrorLinesOf = (error: PasteError, t: Translate): string[] => 
     case 'checkFailed':
       return [t(`${PASTE}.checkFailed`)]
     case 'writeFailed':
-      return [t('socialRecovery.records.writeFailed')]
+      return [t('socialRecovery.checklist.writeFailed')]
     case 'conflict':
     default:
       return []

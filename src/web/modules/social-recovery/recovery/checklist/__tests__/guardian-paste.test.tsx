@@ -17,6 +17,7 @@ import {
   CHAIN_ID,
   configurationOf,
   DAY_SECONDS,
+  deferred,
   depsOf,
   fakeKit,
   gatheringOf,
@@ -483,7 +484,7 @@ describe('the guardian paste', () => {
 
     await paste(1, line)
 
-    expect(errorLines(1)).toEqual([t('socialRecovery.records.writeFailed')])
+    expect(errorLines(1)).toEqual([t('socialRecovery.checklist.writeFailed')])
     expectSettled(1, line, 'error')
     world.storage.refuse.splice(0)
   })
@@ -511,5 +512,118 @@ describe('the guardian paste', () => {
     await step(lines[2])
     await step(lines[3])
     expect((await repliesHeld()).map((reply) => reply.place)).toEqual([1, 2])
+  })
+
+  describe('while a check runs', () => {
+    const input = (place: number) =>
+      view?.byTestId(id(place, 'paste-input'))?.querySelector('input') ??
+      (view?.byTestId(id(place, 'paste-input')) as HTMLInputElement | null)
+
+    const startPaste = async (line: string) => {
+      const verdict = deferred<'satisfied' | 'rejected'>()
+      kit.verifyReply.mockImplementation(() => verdict.promise)
+      const mounted = view as Mounted
+      await mounted.type(id(1, 'paste-input'), line)
+      await mounted.press(id(1, 'paste-add'))
+      return verdict
+    }
+
+    it('takes no input and offers no second add until the result, then clears on an add', async () => {
+      await open()
+      const line = lineOf(replyOf(gathering, 1))
+      const verdict = await startPaste(line)
+
+      expect(input(1)?.readOnly).toBe(true)
+      expect(view?.isDisabled(id(1, 'paste-add'))).toBe(true)
+      expect(view?.valueOf(id(1, 'paste-input'))).toBe(line)
+      await view?.press(id(1, 'paste-add'))
+      expect(kit.verifyReply).toHaveBeenCalledTimes(1)
+
+      verdict.resolve('satisfied')
+      await outside(() => verdict.promise)
+
+      expect(await repliesHeld()).toEqual([replyOf(gathering, 1)])
+      expectSettled(1, '', 'added')
+    })
+
+    it('is editable again after a failure, with the paste kept under its error', async () => {
+      await open()
+      const line = lineOf(replyOf(gathering, 1))
+      const verdict = await startPaste(line)
+      expect(input(1)?.readOnly).toBe(true)
+
+      verdict.resolve('rejected')
+      await outside(() => verdict.promise)
+
+      expect(input(1)?.readOnly).toBe(false)
+      expect(errorLines(1)).toEqual(NO_MATCH)
+      expectSettled(1, line, 'error')
+
+      await view?.type(id(1, 'paste-input'), 'edited')
+      expect(view?.valueOf(id(1, 'paste-input'))).toBe('edited')
+      expect(view?.byTestId(id(1, 'paste-error'))).toBeNull()
+    })
+
+    it('is editable again after a check that throws, with the paste kept', async () => {
+      await open()
+      const line = lineOf(replyOf(gathering, 1))
+      const verdict = await startPaste(line)
+
+      verdict.reject(new Error('rpc down'))
+      await outside(() => verdict.promise.catch(() => undefined))
+
+      expect(input(1)?.readOnly).toBe(false)
+      expect(errorLines(1)).toEqual([t(`${PASTE}.checkFailed`)])
+      expectSettled(1, line, 'error')
+    })
+  })
+
+  describe('the clock', () => {
+    const deadlineMs = () => Number(gathering.request.validUntil) * 1000
+
+    it('judges the deadline by the clock the checklist is given, not the machine clock', async () => {
+      await open()
+      jest.spyOn(Date, 'now').mockReturnValue(deadlineMs() + DAY_SECONDS * 1000)
+
+      await paste(1, lineOf(replyOf(gathering, 1)))
+
+      expect(await repliesHeld()).toEqual([replyOf(gathering, 1)])
+      expectSettled(1, '', 'added')
+      jest.restoreAllMocks()
+    })
+
+    it('reads a paste one second past the deadline as expired, and one a second before it as in time', async () => {
+      await open()
+      clock = deadlineMs() + 1000
+      const late = lineOf(replyOf(gathering, 1))
+
+      await paste(1, late)
+      expect(errorLines(1)).toEqual([t(`${PASTE}.expired`), t(`${PASTE}.expiredDetail`)])
+      expect(kit.verifyReply).not.toHaveBeenCalled()
+
+      clock = deadlineMs() - 1000
+      await paste(1, late)
+      expect(await repliesHeld()).toEqual([replyOf(gathering, 1)])
+      expectSettled(1, '', 'added')
+    })
+
+    it('reads the clock once, before the check: a check that ends past the deadline still adds', async () => {
+      await open()
+      const verdict = deferred<'satisfied'>()
+      kit.verifyReply.mockImplementation(() => verdict.promise)
+      const pastedAt = deadlineMs() - 60 * 1000
+      clock = pastedAt
+      await view?.type(id(1, 'paste-input'), lineOf(replyOf(gathering, 1)))
+      await view?.press(id(1, 'paste-add'))
+
+      clock = deadlineMs() + DAY_SECONDS * 1000
+      verdict.resolve('satisfied')
+      await outside(() => verdict.promise)
+
+      expect(await repliesHeld()).toEqual([replyOf(gathering, 1)])
+      expect(view?.byTestId(id(1, 'added'))?.textContent).toBe(
+        t(`${GUARDIAN}.added`, { date: renderDateTimeInZone(pastedAt, TIME_ZONE).date })
+      )
+    })
   })
 })

@@ -199,14 +199,22 @@ const usePasskeyClaim = ({
     await launch(asked.request, asked.handOff)
   }, [undelivered, ceremonyId, records, launch])
 
-  // An abandoned session takes its waiting claim with it.
+  // An abandoned session takes its waiting claim with it, and a claim whose
+  // report has not come back stops listening and loses its request and any
+  // report that already landed.
   const forgetPending = useCallback(() => {
     if (pending) {
       forget(pending.id, true)
     }
+    if (undelivered && ceremonyId) {
+      stopListening.current?.()
+      stopListening.current = undefined
+      forget(ceremonyId, true)
+    }
     setPending(null)
+    setUndelivered(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending])
+  }, [pending, undelivered, ceremonyId])
 
   // The stored claims of the account for the request that died, those another
   // visit of the checklist launched included.

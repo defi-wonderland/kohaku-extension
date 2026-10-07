@@ -46,7 +46,7 @@ const GuardianValues = ({ place, request, block, removed, retryRemoved }: Guardi
       return (
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
           <Text fontSize={12} appearance="errorText" style={spacings.mrSm}>
-            {t('socialRecovery.entry.confirm.readFailed')}
+            {t('socialRecovery.checklist.guardian.removedKeyReadFailed')}
           </Text>
           <Button
             testID={`checklist-row-${place}-removed-retry`}
@@ -66,7 +66,7 @@ const GuardianValues = ({ place, request, block, removed, retryRemoved }: Guardi
           appearance="errorText"
           testID={`checklist-row-${place}-removed-unavailable`}
         >
-          {t('socialRecovery.entry.refusal.removedUnknown')}
+          {t('socialRecovery.checklist.guardian.removedKeyUnavailable')}
         </Text>
       )
     }

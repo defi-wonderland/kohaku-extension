@@ -58,7 +58,10 @@ export interface ChecklistRow {
   gatheringPlace: GatheringPlace
 }
 
-/** One clause of more than one member: its header counts the filled members against the threshold. */
+/**
+ * One clause of more than one member: its header counts the filled members
+ * against the threshold.
+ */
 export interface ChecklistGroup {
   clause: number
   /** The group's number among the path's groups, from one. */
@@ -85,7 +88,10 @@ export type UnlockLineKey =
   | 'socialRecovery.checklist.continueUnlockRequiredOnly'
   | 'socialRecovery.checklist.continueUnlockGroupsOnly'
 
-/** What the checklist knows of a row beyond the gathering: its note, and how this tab answered it. */
+/**
+ * What the checklist knows of a row beyond the gathering: its note, and how
+ * this tab answered it.
+ */
 export interface RowState {
   chip: CollectionChip
   replied: boolean
@@ -193,7 +199,10 @@ export interface AlertKeys {
   body: string
 }
 
-/** Why the checklist could not open: the records, the setup, the gathering or the destination key. */
+/**
+ * Why the checklist could not open: the records, the setup, the gathering or
+ * the destination key.
+ */
 export type ChecklistFailure = 'records' | 'setup' | 'open' | 'destination'
 
 export type ChecklistLoad =
@@ -263,7 +272,10 @@ export interface ConfigurationInput {
   password: string | undefined
 }
 
-/** Where the setup's configuration comes from: the decrypted cache, or the password held in memory. */
+/**
+ * Where the setup's configuration comes from: the decrypted cache, or the
+ * password held in memory.
+ */
 export type ConfigurationReading =
   | { kind: 'configuration'; configuration: Configuration; source: ConfigurationSourceKind }
   | { kind: 'none' }
@@ -435,7 +447,10 @@ export interface PasskeyClaim {
    * ceremony id go, and a refusal reads as the place's note.
    */
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
-  /** The session was abandoned: the pending claim's request and report go. */
+  /**
+   * The session was abandoned: the pending or undelivered claim's request and
+   * report go.
+   */
   forgetPending: () => void
   /**
    * The session was wiped: the request and the report of every claim this
@@ -513,6 +528,13 @@ export type RemovedKeyRead =
   | { status: 'named'; key: Address }
   | { status: 'unavailable' }
   | { status: 'failed' }
+
+/** A removed-key reading with the kit and the read attempt that produced it. */
+export interface RemovedKeyStored {
+  kit: ChecklistKitClient | null
+  attempt: number
+  reading: RemovedKeyRead
+}
 
 export type GuardianValueName = 'account' | 'newKey' | 'keyBeingRemoved' | 'payment'
 
@@ -681,7 +703,10 @@ export interface ChecklistChromeProps {
 // The recovery in progress and the home band
 // ---------------------------------------------------------------------------
 
-/** One live session of the chain with its entry, as the in-progress screen and the home band list it. */
+/**
+ * One live session of the chain with its entry, as the in-progress screen and
+ * the home band list it.
+ */
 export interface InProgressItem {
   account: Address
   session: LiveRecoverySession

@@ -72,7 +72,10 @@ export const resultOfRead = (read: SessionRead): OpenResult | null => {
   return { kind: 'landed' }
 }
 
-/** A gathering opened over a configuration, for the destination key and the key the recovery removes. */
+/**
+ * A gathering opened over a configuration, for the destination key and the
+ * key the recovery removes.
+ */
 const initOver = async (
   input: OpenInput,
   destination: Address,
