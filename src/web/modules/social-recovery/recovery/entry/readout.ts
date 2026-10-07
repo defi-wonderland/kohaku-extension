@@ -25,11 +25,7 @@ import type {
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { REQUEST_WINDOW_SECONDS, sameAddress } from '@web/modules/social-recovery/shared/client'
-import {
-  renderFullAddress,
-  renderHiddenValue,
-  renderShortAddress
-} from '@web/modules/social-recovery/shared/display'
+import { renderFullAddress, renderHiddenValue } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 import {
@@ -47,6 +43,7 @@ import {
 import { ENTRY_SEARCH_KEYS } from './constants'
 import { checklistPathOf } from './search'
 import type {
+  ReadoutBlock,
   ReadoutClause,
   ReadoutKitClient,
   ReadoutPath,
@@ -378,7 +375,8 @@ const maskedRowOf = (method: Address, context: ReadoutRowContext, t: Translate):
     name: hidden.dots,
     aside: kindNameOfMethod(method, context, t),
     chip: hidden.chip,
-    lines: guardian ? [t(SMART_ACCOUNT_LINE)] : []
+    lines: guardian ? [t(SMART_ACCOUNT_LINE)] : [],
+    answerable: true
   }
 }
 
@@ -406,10 +404,11 @@ const readableRowOf = (
     const guardian = guardianAddressOf(credential)
     const kindName = kindNameOfMethod(credential.method, context, t)
     return {
-      name: guardian ? renderShortAddress(guardian) : kindName,
+      name: guardian ? renderFullAddress(guardian) : kindName,
       aside: guardian ? kindName : null,
       chip: null,
-      lines: [t(SMART_ACCOUNT_LINE)]
+      lines: [t(SMART_ACCOUNT_LINE)],
+      answerable: true
     }
   }
   if (sameAddress(credential.method, methods.passkey)) {
@@ -422,15 +421,47 @@ const readableRowOf = (
       name: credential.label?.trim() || kindNameOfMethod(credential.method, context, t),
       aside: null,
       chip: null,
-      lines: mismatch ? [t(ORIGIN_MISMATCH_LINE)] : []
+      lines: mismatch ? [t(ORIGIN_MISMATCH_LINE)] : [],
+      answerable: !mismatch
     }
   }
   return {
     name: kind ? kindNameOf(kind, t) : renderFullAddress(credential.method),
     aside: kind ? null : t(METHOD_NOUN),
     chip: null,
-    lines: []
+    lines: [],
+    answerable: !!kind
   }
+}
+
+/**
+ * Why the rows this device can answer leave the path incomplete, or null
+ * where they complete it: every clause needs as many answerable members as
+ * its threshold. A short clause with a passkey of another origin names the
+ * origin; any other short clause holds a method this build does not know.
+ */
+const blockOf = (
+  clauses: readonly ReadoutClause[],
+  configuration: Configuration,
+  context: ReadoutRowContext
+): ReadoutBlock | null => {
+  const short = clauses
+    .map((clause, index) => ({ clause, index }))
+    .filter(({ clause }) => clause.rows.filter((row) => row.answerable).length < clause.threshold)
+  if (short.length === 0) {
+    return null
+  }
+  const otherOrigin = short.some(({ clause, index }) =>
+    clause.rows.some(
+      (row, member) =>
+        !row.answerable &&
+        sameAddress(
+          configuration.clauses[index].credentials[member].method,
+          context.addressBook.methods.passkey
+        )
+    )
+  )
+  return otherOrigin ? 'origin' : 'unsupported'
 }
 
 /** The path a shape-visible setup publishes, with every value masked. */
@@ -457,11 +488,12 @@ export const previewPathOf = (
     ),
     wait: hidden.dots,
     waitChip: hidden.chip,
-    choice: hasChoice(clauses)
+    choice: hasChoice(clauses),
+    blocked: null
   }
 }
 
-/** The path of an opened configuration, with its values and the origin read of each passkey. */
+/** The path of an opened configuration, with its values, the origin read of each passkey and whether this device can complete it. */
 export const readablePathOf = (
   configuration: Configuration,
   context: ReadoutRowContext,
@@ -477,6 +509,7 @@ export const readablePathOf = (
     ruleLines: ruleLinesOf(configuration.clauses, context, t),
     wait: renderWait(configuration.wait, t),
     waitChip: null,
-    choice: hasChoice(clauses)
+    choice: hasChoice(clauses),
+    blocked: blockOf(clauses, configuration, context)
   }
 }

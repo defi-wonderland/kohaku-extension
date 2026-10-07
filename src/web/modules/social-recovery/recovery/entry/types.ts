@@ -334,6 +334,10 @@ export interface ReadoutState {
   askAgain: () => void
   onContinue: () => void
   continuing: boolean
+  /** The opened setup at Public could not be kept on this device, so the readout does not move on. */
+  writeFailed: boolean
+  /** Keeps the opened setup again, then moves on where the failed write stopped. */
+  retryWrite: () => void
 }
 
 export interface ReadoutOptions {
@@ -368,6 +372,8 @@ export interface ReadoutRow {
   chip: string | null
   /** The lines under the row, in order. */
   lines: string[]
+  /** Whether this device can answer the row: false for a passkey of another origin or a method this build does not know. */
+  answerable: boolean
 }
 
 /** One clause of the readout: a required row, or a group with its threshold. */
@@ -387,7 +393,12 @@ export interface ReadoutPath {
   waitChip: string | null
   /** Whether a group lets the holder pick which members answer. */
   choice: boolean
+  /** Why this device cannot complete the path, or null where it can or cannot tell yet. */
+  blocked: ReadoutBlock | null
 }
+
+/** Why the methods this device can answer do not complete the path: a passkey of another origin, or a method this build does not know. */
+export type ReadoutBlock = 'origin' | 'unsupported'
 
 /** The values the readout's rows read beside the configuration. */
 export interface ReadoutRowContext {

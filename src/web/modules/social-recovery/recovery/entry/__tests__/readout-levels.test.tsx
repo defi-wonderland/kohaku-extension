@@ -33,6 +33,7 @@ import {
   t
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import {
   readRecoveryPassword,
   wipeRecoveryPassword
@@ -92,7 +93,7 @@ const expectNothingOfTheSetup = (page: Mounted) => {
 const expectValues = (page: Mounted) => {
   expect(page.has('readout-path')).toBe(true)
   const text = page.text()
-  GUARDIANS.forEach((guardian) => expect(text).toContain(shortAddress(guardian)))
+  GUARDIANS.forEach((guardian) => expect(text).toContain(renderFullAddress(guardian)))
   expect(page.textOf('readout-row-0-0-name')).toBe(t('socialRecovery.methodNames.passkey'))
   expect(page.textOf('readout-wait-value')).toBe(WAIT_VALUE)
   expect(text).not.toContain(HIDDEN_DOTS)
@@ -395,7 +396,7 @@ describe('the reads that fail and the setups this build cannot read', () => {
     const page = await open()
     expect(page.has('readout-update-the-wallet')).toBe(true)
     expect(page.text()).toContain(t('socialRecovery.client.updateTheWalletTitle'))
-    expect(page.text()).toContain(t('socialRecovery.client.updateTheWalletAction'))
+    expect(page.text()).toContain(t('socialRecovery.client.updateTheWalletHow'))
     expect(page.has('readout-password-field')).toBe(false)
     expectConfigured(page)
   })

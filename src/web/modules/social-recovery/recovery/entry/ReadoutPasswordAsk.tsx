@@ -3,8 +3,10 @@
  * check running, the wrong password's blocker with the pointer to the card,
  * and the failed read of the setup event. The restore reads that event before
  * it can judge the password, so the failure never says the password worked.
- * Each state keeps the line that the account has a recovery setup. The field's
- * value lives in this component alone and is emptied once a check starts.
+ * Each state keeps the line that the account has a recovery setup, and a
+ * disabled continue with the reason under it: nothing goes on until the
+ * password opens the setup. The field's value lives in this component alone
+ * and is emptied once a check starts.
  */
 import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -22,7 +24,7 @@ import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import type { ReadoutPasswordAskProps } from './types'
 
 const READOUT = 'socialRecovery.readout'
-const CONFIGURED = 'socialRecovery.client.updateTheWalletBody'
+const CONFIGURED = `${READOUT}.configuredLine`
 
 const ReadoutPasswordAsk = ({
   level,
@@ -48,11 +50,22 @@ const ReadoutPasswordAsk = ({
     <Button
       testID="readout-back"
       type="outline"
-      text={t('socialRecovery.ceremony.backAction')}
+      text={t('socialRecovery.actions.back')}
       onPress={onBack}
       hasBottomSpacing={false}
     />
   )
+
+  const lockedContinue = (
+    <Button
+      testID="readout-continue-locked"
+      type="primary"
+      text={t('socialRecovery.actions.continue')}
+      disabled
+      hasBottomSpacing={false}
+    />
+  )
+  const reason = t(`${READOUT}.locked.cannotBegin`)
 
   const configured = (
     <Text fontSize={14} appearance="secondaryText" testID="readout-configured">
@@ -70,6 +83,7 @@ const ReadoutPasswordAsk = ({
             : t(`${READOUT}.readingDetails`)}
         </Text>
         {configured}
+        <ActionsRow primary={lockedContinue} note={reason} noteTestID="readout-continue-reason" />
       </View>
     )
   }
@@ -97,7 +111,12 @@ const ReadoutPasswordAsk = ({
           </View>
         </Alert>
         {configured}
-        <ActionsRow primary={back} />
+        <ActionsRow
+          primary={lockedContinue}
+          secondary={back}
+          note={reason}
+          noteTestID="readout-continue-reason"
+        />
       </View>
     )
   }
@@ -129,7 +148,12 @@ const ReadoutPasswordAsk = ({
           </View>
         </Alert>
         {configured}
-        <ActionsRow primary={back} />
+        <ActionsRow
+          primary={lockedContinue}
+          secondary={back}
+          note={reason}
+          noteTestID="readout-continue-reason"
+        />
       </View>
     )
   }
@@ -159,11 +183,6 @@ const ReadoutPasswordAsk = ({
         <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
           {t(`${READOUT}.locked.notExtensionPassword`)}
         </Text>
-        {level === 'private' && (
-          <Text fontSize={12} appearance="secondaryText" style={spacings.mtTy}>
-            {t(`${READOUT}.locked.cannotBegin`)}
-          </Text>
-        )}
       </SectionCard>
       <NoteBox testID="readout-two-passwords">{t(`${READOUT}.twoPasswords.body`)}</NoteBox>
       <ActionsRow
@@ -177,7 +196,14 @@ const ReadoutPasswordAsk = ({
             hasBottomSpacing={false}
           />
         }
-        secondary={back}
+        secondary={
+          <>
+            {lockedContinue}
+            <View style={spacings.mlSm}>{back}</View>
+          </>
+        }
+        note={reason}
+        noteTestID="readout-continue-reason"
       />
     </View>
   )

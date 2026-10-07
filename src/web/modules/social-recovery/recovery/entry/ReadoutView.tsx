@@ -27,10 +27,16 @@ import ReadFailedBlock from './ReadFailedBlock'
 import { previewPathOf, readablePathOf, REQUEST_HOURS } from './readout'
 import ReadoutPasswordAsk from './ReadoutPasswordAsk'
 import ReadoutPathBlock from './ReadoutPathBlock'
-import type { ReadoutStep, ReadoutViewProps } from './types'
+import type { ReadoutBlock, ReadoutStep, ReadoutViewProps } from './types'
 
 const READOUT = 'socialRecovery.readout'
-const CONFIGURED = 'socialRecovery.client.updateTheWalletBody'
+const CONFIGURED = `${READOUT}.configuredLine`
+
+/** The reason under a disabled continue, by why this device cannot complete the path. */
+const BLOCK_REASONS: Record<ReadoutBlock, string> = {
+  origin: 'socialRecovery.ceremony.relyingPartyMismatch',
+  unsupported: 'socialRecovery.review.blocked.cannotRecover.title'
+}
 
 /** The lead under the title: what the page shows of the setup, where the step knows it. */
 const leadKeyOf = (step: ReadoutStep): string | undefined => {
@@ -63,7 +69,7 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
     <Button
       testID="readout-back"
       type="outline"
-      text={t('socialRecovery.ceremony.backAction')}
+      text={t('socialRecovery.actions.back')}
       onPress={onBack}
       hasBottomSpacing={false}
     />
@@ -75,10 +81,36 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
     </Text>
   )
 
+  const writeFailure = (
+    <ReadFailedBlock
+      testID="readout-write-failed"
+      title={t('socialRecovery.checklist.writeFailed')}
+      body={t(CONFIGURED)}
+      onRetry={state.retryWrite}
+    />
+  )
+
   const renderBody = () => {
     switch (step.kind) {
-      case 'reading':
       case 'leaving':
+        if (state.writeFailed) {
+          return (
+            <View testID="readout-leave-failed">
+              {writeFailure}
+              <ActionsRow primary={back} />
+            </View>
+          )
+        }
+        return (
+          <View testID="readout-reading">
+            <ActivityIndicator style={spacings.mbSm} />
+            <Text fontSize={14} appearance="secondaryText" style={spacings.mbTy}>
+              {t(`${READOUT}.reading`, { network: networkName })}
+            </Text>
+            {configured}
+          </View>
+        )
+      case 'reading':
         return (
           <View testID="readout-reading">
             <ActivityIndicator style={spacings.mbSm} />
@@ -112,7 +144,7 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
               text={t(CONFIGURED)}
             />
             <Text fontSize={14} testID="readout-update-how">
-              {t('socialRecovery.client.updateTheWalletAction')}
+              {t('socialRecovery.client.updateTheWalletHow')}
             </Text>
           </View>
         )
@@ -187,20 +219,25 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
                 {t(`${READOUT}.answerWhichever`)}
               </Text>
             )}
+            {state.writeFailed && writeFailure}
             <ActionsRow
               primary={
                 <Button
                   testID="readout-continue"
                   type="primary"
                   text={t('socialRecovery.actions.continue')}
-                  disabled={state.continuing}
+                  disabled={state.continuing || state.writeFailed || !!path?.blocked}
                   onPress={state.onContinue}
                   hasBottomSpacing={false}
                 />
               }
               secondary={back}
-              note={t(`${READOUT}.continueLine`, { hours: REQUEST_HOURS })}
-              noteTestID="readout-continue-line"
+              note={
+                path?.blocked
+                  ? t(BLOCK_REASONS[path.blocked])
+                  : t(`${READOUT}.continueLine`, { hours: REQUEST_HOURS })
+              }
+              noteTestID={path?.blocked ? 'readout-continue-reason' : 'readout-continue-line'}
             />
           </View>
         )
@@ -210,7 +247,7 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
   return (
     <View testID="readout">
       <PageTitle
-        title={t('socialRecovery.review.pathHeader')}
+        title={t(`${READOUT}.title`)}
         lead={leadKey ? t(leadKey) : undefined}
         titleTestID="readout-title"
       />

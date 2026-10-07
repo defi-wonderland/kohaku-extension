@@ -8,7 +8,10 @@
  * in the decrypted setup cache under the account being recovered, and the
  * password in memory under the same account. Every read has its loading state
  * and its failed state with retry; a read that failed never renders as an
- * answer, and a wrong password never renders the setup.
+ * answer, and a wrong password never renders the setup. At Public no password
+ * is kept, so the cache is the only way the checklist opens the setup: the
+ * readout moves on there only once the cache write succeeded, and a refused
+ * write renders its failure with retry.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -91,6 +94,7 @@ export const useReadout = ({
   const [step, setStep] = useState<ReadoutStep>(READING)
   const [attempt, setAttempt] = useState(0)
   const [continuing, setContinuing] = useState(false)
+  const [writeFailed, setWriteFailed] = useState(false)
   const kit = client.status === 'ready' ? client.client : null
   const { route, receivingAccount } = entry
 
@@ -107,39 +111,73 @@ export const useReadout = ({
   // The password of an unlock whose setup event read failed, kept in memory for its retry.
   const typed = useRef<string | null>(null)
   const cacheWrite = useRef<Promise<unknown>>(Promise.resolve())
+  // The opened setup a public level keeps, for a retry of its refused write.
+  const kept = useRef<Configuration | null>(null)
+  // Where the readout moves on to once the cache write settles.
+  const target = useRef<string | null>(null)
   // The run of the reads whose unlock is being checked; a later run checks its own.
   const checking = useRef<number | null>(null)
 
-  /** Keeps the opened setup on this device, then shows it or sends the holder on. */
-  const opened = useCallback(
-    (configuration: Configuration, level: PrivacyLevel, password: string | null) => {
+  /** Writes the opened setup to the decrypted setup cache of the account being recovered. */
+  const writeCache = useCallback(
+    (configuration: Configuration): Promise<unknown> => {
       const read = state.current
-      if (password !== null) {
-        setRecoveryPassword(chainId, account, password)
-      }
-      const write = read
+      return read
         ? records.decryptedSetupCache(chainId, account).write({
             configuration,
             setupNonce: read.setupNonce,
             setupCommitment: read.setupCommitment
           })
         : Promise.resolve()
-      cacheWrite.current = write.catch(() => undefined)
+    },
+    [chainId, account, records]
+  )
+
+  /**
+   * Moves on to the path once the cache write settles. The effect's cleanup
+   * moves the generation on a re-run and on unmount, so a write that settles
+   * after either navigates nothing. A refused write at Public stops here with
+   * its failure; with a password in memory the write never refuses here.
+   */
+  const leave = useCallback((path: string) => {
+    target.current = path
+    const mine = generation.current
+    cacheWrite.current
+      .then(
+        () => {
+          if (generation.current === mine) {
+            go.current(path)
+          }
+        },
+        () => {
+          if (generation.current === mine) {
+            setContinuing(false)
+            setWriteFailed(true)
+          }
+        }
+      )
+      .catch(() => undefined)
+  }, [])
+
+  /** Keeps the opened setup on this device, then shows it or sends the holder on. */
+  const opened = useCallback(
+    (configuration: Configuration, level: PrivacyLevel, password: string | null) => {
+      if (password !== null) {
+        setRecoveryPassword(chainId, account, password)
+      }
+      const write = writeCache(configuration)
+      // With the password in memory the checklist opens the setup where the
+      // cache write failed; at Public the cache is its only way.
+      cacheWrite.current = password !== null ? write.catch(() => undefined) : write
+      kept.current = password !== null ? null : configuration
       if (resumes.current) {
         setStep({ kind: 'leaving' })
-        const mine = generation.current
-        cacheWrite.current
-          .then(() => {
-            if (generation.current === mine) {
-              go.current(checklistPathOf(account))
-            }
-          })
-          .catch(() => undefined)
+        leave(checklistPathOf(account))
         return
       }
       setStep({ kind: 'readable', level, configuration })
     },
-    [chainId, account, records]
+    [chainId, account, writeCache, leave]
   )
 
   useEffect(() => {
@@ -150,7 +188,10 @@ export const useReadout = ({
     typed.current = null
     state.current = null
     checking.current = null
+    kept.current = null
+    target.current = null
     setContinuing(false)
+    setWriteFailed(false)
     if (client.status === 'update-the-wallet') {
       setStep({ kind: 'update-the-wallet' })
       return undefined
@@ -287,23 +328,27 @@ export const useReadout = ({
   }, [step])
 
   const onContinue = useCallback(() => {
-    if (step.kind !== 'readable' || continuing) {
+    if (step.kind !== 'readable' || continuing || writeFailed) {
       return
     }
     setContinuing(true)
-    // The effect's cleanup moves the generation on a re-run and on unmount, so a
-    // continue whose write settles after either navigates nothing.
-    const mine = generation.current
-    // The checklist asks the password again where the cache write failed, so
-    // continue waits for the write to settle and never for it to succeed.
-    cacheWrite.current
-      .then(() => {
-        if (generation.current === mine) {
-          go.current(continuePathOf(route, account))
-        }
-      })
-      .catch(() => undefined)
-  }, [step, continuing, route, account])
+    // With a password in memory continue waits for the cache write to settle,
+    // never for it to succeed: the checklist opens the setup with the password.
+    // At Public no password is kept, so continue waits for the write to succeed.
+    leave(continuePathOf(route, account))
+  }, [step, continuing, writeFailed, route, account, leave])
 
-  return { step, retry, unlock, askAgain, onContinue, continuing }
+  const retryWrite = useCallback(() => {
+    const configuration = kept.current
+    const path = target.current
+    if (!writeFailed || !configuration || !path) {
+      return
+    }
+    setWriteFailed(false)
+    setContinuing(true)
+    cacheWrite.current = writeCache(configuration)
+    leave(path)
+  }, [writeFailed, writeCache, leave])
+
+  return { step, retry, unlock, askAgain, onContinue, continuing, writeFailed, retryWrite }
 }

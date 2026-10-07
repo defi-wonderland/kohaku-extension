@@ -124,7 +124,7 @@ const ReadoutScreen = () => {
       {!!account && read.status === 'failed' && (
         <ReadFailedBlock
           testID="readout-entry-read-failed"
-          title={t('socialRecovery.entry.confirm.readFailed')}
+          title={t('socialRecovery.readout.entryReadFailed')}
           body={t('socialRecovery.client.unavailableBody')}
           onRetry={retry}
         />
