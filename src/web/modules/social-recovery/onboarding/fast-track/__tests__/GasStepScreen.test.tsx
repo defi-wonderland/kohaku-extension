@@ -28,6 +28,7 @@ import {
   where,
   writeEntry
 } from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/harness'
+import { BALANCE_READ_LIMIT_MS } from '@web/modules/social-recovery/onboarding/fast-track'
 
 const GAS_STEP = `/social-recovery/fast-track/gas?account=${LOST_ACCOUNT}`
 const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST_ACCOUNT}`
@@ -35,6 +36,31 @@ const READOUT = `/social-recovery/recovery/readout?account=${LOST_ACCOUNT}`
 const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${SMART_ACCOUNT}`
 const POLL_MS = 5_000
 const ONE_ETHER = 10n ** 18n
+// The chain reads the harness answers for the client, as the step loads them.
+const client: typeof import('@web/modules/social-recovery/shared/client') = jest.requireMock(
+  '@web/modules/social-recovery/shared/client'
+)
+const DEPOSIT_LINE = 'Send at most 0.00096 ETH to this key for the submission.'
+
+// While `hold` is set, each balance read waits until the test answers it.
+const held = {
+  hold: false,
+  answers: [] as ((balance: bigint) => void)[]
+}
+
+const answerHeld = async (balance: bigint) => {
+  await act(async () => {
+    held.answers.splice(0).forEach((answer) => answer(balance))
+  })
+  await flush()
+}
+
+const passes = async (ms: number) => {
+  await act(async () => {
+    jest.advanceTimersByTime(ms)
+  })
+  await flush()
+}
 
 describe('the gas step', () => {
   beforeEach(async () => {
@@ -187,5 +213,142 @@ describe('the gas step', () => {
     await mount(GAS_STEP)
 
     expect(text()).not.toMatch(/seed/i)
+  })
+
+  describe('a balance read that does not answer', () => {
+    let reads: jest.SpyInstance
+
+    beforeEach(() => {
+      held.hold = false
+      held.answers = []
+      const answered = client.createChainReads
+      reads = jest.spyOn(client, 'createChainReads').mockImplementation((provider) => {
+        const chain = answered(provider)
+        return {
+          ...chain,
+          nativeBalance: (address) => {
+            if (!held.hold) {
+              return chain.nativeBalance(address)
+            }
+            mockChain.balanceReads.push(address)
+            return new Promise<bigint>((resolve) => {
+              held.answers.push(resolve)
+            })
+          }
+        }
+      })
+    })
+
+    afterEach(() => {
+      reads.mockRestore()
+    })
+
+    it('keeps the deposit step on screen while the next read runs, with no spinner', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+      held.hold = true
+
+      await passes(POLL_MS)
+
+      expect(mockChain.balanceReads).toHaveLength(2)
+      expect(byTestId('fast-track-gas')).not.toBeNull()
+      expect(byTestId('fast-track-gas-spinner')).toBeNull()
+      expect(text()).toContain(DEPOSIT_LINE)
+    })
+
+    it('keeps the deposit step across answered reads for longer than the limit', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+
+      for (let i = 0; i < 6; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await passes(POLL_MS)
+      }
+
+      expect(mockChain.balanceReads).toHaveLength(7)
+      expect(byTestId('fast-track-gas-failed')).toBeNull()
+      expect(text()).toContain(DEPOSIT_LINE)
+    })
+
+    it('shows the failed state with retry once a read runs past the limit, never the last deposit step', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+      held.hold = true
+      await passes(POLL_MS)
+
+      await passes(BALANCE_READ_LIMIT_MS - 1)
+      expect(byTestId('fast-track-gas')).not.toBeNull()
+
+      await passes(1)
+
+      expect(byTestId('fast-track-gas')).toBeNull()
+      expect(byTestId('fast-track-gas-failed')?.textContent).toContain(
+        'Could not finish the gas check. The node did not answer.'
+      )
+      expect(byTestId('fast-track-gas-retry')).not.toBeNull()
+      expect(text()).not.toContain(DEPOSIT_LINE)
+      expect(text()).not.toContain(ORDINARY_KEY)
+    })
+
+    it('fails a first read that never answers, rather than waiting on the spinner', async () => {
+      jest.useFakeTimers()
+      held.hold = true
+      await mount(GAS_STEP)
+
+      expect(byTestId('fast-track-gas-spinner')).not.toBeNull()
+
+      await passes(BALANCE_READ_LIMIT_MS)
+
+      expect(byTestId('fast-track-gas-spinner')).toBeNull()
+      expect(byTestId('fast-track-gas-failed')).not.toBeNull()
+    })
+
+    it('ignores the answer that lands after the limit and reads nothing more on its own', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+      held.hold = true
+      await passes(POLL_MS)
+      await passes(BALANCE_READ_LIMIT_MS)
+
+      await answerHeld(ONE_ETHER)
+      await passes(POLL_MS * 4)
+
+      expect(byTestId('fast-track-gas-failed')).not.toBeNull()
+      expect(where()).toBe(GAS_STEP)
+      expect(movesAway()).toEqual([])
+      expect(mockChain.balanceReads).toHaveLength(2)
+    })
+
+    it('reads again on retry and renders the new answer', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+      held.hold = true
+      await passes(POLL_MS)
+      await passes(BALANCE_READ_LIMIT_MS)
+
+      held.hold = false
+      mockChain.balance = ONE_ETHER
+      await press('fast-track-gas-retry')
+      await flush()
+
+      expect(mockChain.balanceReads).toEqual([ORDINARY_KEY, ORDINARY_KEY, ORDINARY_KEY])
+      expect(where()).toBe(CHECKLIST)
+    })
+
+    it('renders the deposit step again where the retried read still finds too little', async () => {
+      jest.useFakeTimers()
+      await mount(GAS_STEP)
+      held.hold = true
+      await passes(POLL_MS)
+      await passes(BALANCE_READ_LIMIT_MS)
+
+      held.hold = false
+      await press('fast-track-gas-retry')
+      await flush()
+
+      expect(byTestId('fast-track-gas-failed')).toBeNull()
+      expect(text()).toContain(DEPOSIT_LINE)
+      expect(mockChain.balanceReads).toHaveLength(3)
+    })
   })
 })
