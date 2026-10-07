@@ -15,6 +15,7 @@ import {
   checkAgain,
   createSubmitStore,
   detachSteps,
+  leaveDeposit,
   lookForClaim,
   outlivesScreen,
   rereadLanding,
@@ -76,7 +77,9 @@ const useSubmitRun = (steps: SubmitSteps | null, runKey: string): SubmitRun => {
     }
   }, [store])
 
-  return { state, start, checkAgain: again, reread }
+  const leave = useCallback(() => leaveDeposit(store), [store])
+
+  return { state, start, checkAgain: again, reread, leaveDeposit: leave }
 }
 
 export default useSubmitRun

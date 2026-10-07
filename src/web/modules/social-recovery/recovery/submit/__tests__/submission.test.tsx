@@ -179,7 +179,7 @@ describe('the submission', () => {
           t(`${SUBMIT}.failedTitle`),
           t(`${SUBMIT}.alreadyRunning.cannotHelp`),
           t(`${SUBMIT}.alreadyRunning.whatYouCanDo`),
-          t('socialRecovery.checklist.backToChecklist')
+          t(`${SUBMIT}.alreadyRunning.view`)
         ].join('')
       )
       expect(hasButton(mounted, TRY_AGAIN)).toBe(false)

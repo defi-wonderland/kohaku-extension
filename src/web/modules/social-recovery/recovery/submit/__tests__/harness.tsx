@@ -391,7 +391,7 @@ export const fakeKit = (
   )
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))
   const reads = {
-    nativeBalance: jest.fn(async () => 10n ** 18n),
+    nativeBalance: jest.fn(async () => 1_000_000_000_000_000_000n),
     estimateGas: jest.fn(async () => 300_000n),
     gasPrice: jest.fn(async () => 2n * GWEI)
   }
@@ -788,7 +788,12 @@ export const claimOf = async (device: Device) => {
 /** The plan of a smart account that sends the start as its own batch, with its key as payer. */
 export const batchPlan = async (seed: number): Promise<SendingPlan> => {
   const smart = await keyedAccount(seed)
-  return { kind: 'account-batch', key: smart.key, facts: factsOf(smart.account, smart.key) }
+  return {
+    kind: 'account-batch',
+    key: smart.key,
+    facts: factsOf(smart.account, smart.key),
+    account: getAddress(smart.account.addr)
+  }
 }
 
 /** A decoded kit error the wallet read from a reverted start. */

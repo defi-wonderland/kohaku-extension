@@ -98,7 +98,7 @@ describe('the deposit step', () => {
     expect(mounted.byTestId('submit-gas-step')).not.toBeNull()
     expect(world.port.send).not.toHaveBeenCalled()
 
-    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
     await tick(BALANCE_POLL_MS)
     expect(world.port.send).toHaveBeenCalledTimes(1)
     expect(world.port.send.mock.calls[0][0].addr).toBe(world.sendingKey)
@@ -116,7 +116,7 @@ describe('the deposit step', () => {
     expect(mounted.text()).toContain(t('socialRecovery.writes.gasCheckFailed'))
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
 
-    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
     await mounted.pressText(t('socialRecovery.writes.tryAgain'))
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })

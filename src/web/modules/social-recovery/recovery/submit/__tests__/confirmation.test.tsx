@@ -201,7 +201,7 @@ describe('the submission confirmation', () => {
       const mounted = await open(world)
       await openDetails(mounted)
       const items = t('socialRecovery.disclosures.items.pair', {
-        first: t('socialRecovery.disclosures.items.passkey'),
+        first: t(`${SUBMIT}.publication.items.passkey`),
         second: t(`${SUBMIT}.publication.items.guardianAddresses`)
       })
       expect(publication(mounted)).toEqual([
@@ -222,7 +222,7 @@ describe('the submission confirmation', () => {
       expect(publication(mounted)).toEqual([
         t(`${SUBMIT}.publication.whole`),
         t(`${SUBMIT}.publication.used`, {
-          items: t('socialRecovery.disclosures.items.passkey'),
+          items: t(`${SUBMIT}.publication.items.passkey`),
           count: 1
         }),
         t(`${SUBMIT}.publication.shared`)
@@ -236,7 +236,7 @@ describe('the submission confirmation', () => {
       await openDetails(mounted)
       expect(publication(mounted)[1]).toBe(
         t(`${SUBMIT}.publication.used`, {
-          items: t('socialRecovery.disclosures.items.passportIdentifier'),
+          items: t(`${SUBMIT}.publication.items.passport`),
           count: 1
         })
       )
