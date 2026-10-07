@@ -27,7 +27,7 @@ import GuardianRow from './GuardianRow'
 import IdentityRow from './IdentityRow'
 import PasskeyRow from './PasskeyRow'
 import PollAlert from './PollAlert'
-import { attemptLive } from './poll'
+import { attemptLive, deadlinePassed } from './poll'
 import {
   chosenPlacesOf,
   headlineOf,
@@ -217,9 +217,21 @@ const ChecklistView = ({
     }
   }, [pending, assessment, addReply, settle, deps])
   const isLive = load.phase === 'live'
+  // The view's own clock, read when the deadline line reports the pass. Past
+  // the request's deadline the chain read that lands or wipes it still runs.
+  const { retryPoll } = checklist
+  const { now } = deps
+  const [passedAt, setPassedAt] = useState<number | null>(null)
+  const onDeadlinePassed = useCallback(() => {
+    setPassedAt(now())
+    retryPoll()
+  }, [now, retryPoll])
+  const pastDeadline =
+    !!live && passedAt !== null && deadlinePassed(live.session.gathering, passedAt)
   // A failed poll, a death being written, or one the records could not wipe,
-  // holds every add, launch and continue until a poll succeeds.
-  const held = poll.status === 'failed' || checklist.deathFailed || checklist.dying
+  // holds every add, launch and continue until a poll succeeds; a request past
+  // its deadline holds them for good.
+  const held = poll.status === 'failed' || checklist.deathFailed || checklist.dying || pastDeadline
   const addable = isLive && poll.status === 'answered' && !held
   useEffect(() => {
     if (addable && pending && !pendingFailed && !checklist.busy) {
@@ -425,7 +437,7 @@ const ChecklistView = ({
         layout={layout}
         now={deps.now}
         timeZone={deps.timeZone}
-        onPassed={checklist.retryPoll}
+        onPassed={onDeadlinePassed}
       />
       {poll.status === 'failed' && <PollAlert withRows onRetry={checklist.retryPoll} />}
       {checklist.deathFailed && (
