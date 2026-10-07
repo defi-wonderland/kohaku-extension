@@ -29,10 +29,8 @@ export const usedMethodsOf = (summary: RecoverySummary, t: Translate): string[] 
   if (summary.used.length === 0) {
     return summary.usedKinds.map((kind) => kindNameOf(kind, t))
   }
-  const inClause = (rows: PathRow[], clause: number) =>
-    rows.filter((row) => row.clause === clause).length
   const pairOfGroup = (row: PathRow) =>
-    inClause(summary.rows, row.clause) > 1 && inClause(summary.used, row.clause) === 2
+    summary.used.filter((other) => other.clause === row.clause).length === 2
   return summary.used.flatMap((row, index) => {
     if (!pairOfGroup(row)) {
       return [rowNameOf(row, t)]
