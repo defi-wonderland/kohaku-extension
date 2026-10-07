@@ -118,10 +118,12 @@ const ChecklistView = ({
   const { load, assessment, addReply, poll } = checklist
   const kit = client.status === 'ready' ? client.client : null
   const live = load.phase === 'live' ? load : null
-  if (live) {
-    const { attemptId, setupNonce } = live.session.gathering.request
-    lastRequest.current = { attemptId, setupNonce }
-  }
+  useEffect(() => {
+    if (live) {
+      const { attemptId, setupNonce } = live.session.gathering.request
+      lastRequest.current = { attemptId, setupNonce }
+    }
+  }, [live])
   const pollClock = poll.status === 'answered' ? poll.clock : null
 
   const layout = useMemo(
@@ -432,7 +434,7 @@ const ChecklistView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          text={t('socialRecovery.records.writeFailed')}
+          text={t(`${CHECKLIST}.deaths.wipeFailed`)}
         >
           {retryButton(checklist.retryPoll, 'checklist-death-failed-retry')}
         </Alert>
@@ -443,8 +445,8 @@ const ChecklistView = ({
           type="warning"
           size="sm"
           style={spacings.mbSm}
-          title={t('socialRecovery.wait.cannotExecute.notAuthorized')}
-          text={t('socialRecovery.wait.cannotExecute.notAuthorizedRepair')}
+          title={t(`${CHECKLIST}.dormant.title`)}
+          text={t(`${CHECKLIST}.dormant.body`)}
         />
       )}
       {!!unsatisfied && <UnsatisfiedBlock reading={unsatisfied} />}
@@ -511,7 +513,7 @@ const ChecklistView = ({
       </Text>
       {unsatisfied?.kind !== 'didNotAnswer' && (
         <AbandonBlock
-          busy={checklist.busy || claim.busy}
+          busy={checklist.busy || claim.busy || checklist.dying}
           failed={checklist.abandonFailed}
           onAbandon={() => {
             checklist.abandon(claim.forgetAll).catch(() => undefined)

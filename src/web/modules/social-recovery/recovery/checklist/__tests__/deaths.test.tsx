@@ -419,7 +419,7 @@ describe('the request dies', () => {
       await view?.press('checklist-read-setup-again')
 
       expect(view?.byTestId('checklist-gather-again-failed')?.textContent).toContain(
-        t('socialRecovery.client.unavailableTitle')
+        t('socialRecovery.checklist.deaths.readSetupFailed')
       )
       expect(view?.byTestId('checklist-read-setup-again')).not.toBeNull()
       expect((await storedSession(world.records))?.value).toMatchObject({
