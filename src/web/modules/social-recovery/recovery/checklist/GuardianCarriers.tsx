@@ -102,7 +102,7 @@ const GuardianCarriers = ({
         retryRemoved={retryRemoved}
       />
       <View style={spacings.mtSm}>
-        {line(`${GUARDIAN}.howTheyAnswer`, `checklist-row-${place}-how-they-answer`)}
+        {line(`${GUARDIAN}.offlineBlock`, `checklist-row-${place}-how-they-answer`)}
       </View>
       {unlocked && !!link && (
         <Text
@@ -135,10 +135,14 @@ const GuardianCarriers = ({
             )
           }
         })}
-        {carrier(`${GUARDIAN}.showQr`, `checklist-row-${place}-show-qr`, () => {
-          setQrFailed(false)
-          setQrShown((shown) => !shown)
-        })}
+        {carrier(
+          qrShown ? `${GUARDIAN}.hideQr` : `${GUARDIAN}.showQr`,
+          `checklist-row-${place}-show-qr`,
+          () => {
+            setQrFailed(false)
+            setQrShown((shown) => !shown)
+          }
+        )}
       </View>
       {!unlocked && (
         <Text
@@ -172,6 +176,16 @@ const GuardianCarriers = ({
             onError={() => setQrFailed(true)}
           />
         </View>
+      )}
+      {unlocked && qrShown && qrFailed && (
+        <Text
+          fontSize={12}
+          appearance="errorText"
+          style={spacings.mbTy}
+          testID={`checklist-row-${place}-qr-failed`}
+        >
+          {t(`${GUARDIAN}.qrFailed`)}
+        </Text>
       )}
       <View style={spacings.mtTy}>
         {line(`${GUARDIAN}.messageSays`)}

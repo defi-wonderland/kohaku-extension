@@ -19,9 +19,11 @@ import {
   depsOf,
   fakeKit,
   gatheringOf,
+  HANDOVER,
   MIXED_PATH,
   mountChecklist,
   REMOVED,
+  requestOf,
   seedCache,
   seedEntry,
   seedSession,
@@ -194,7 +196,7 @@ describe('the guardian row carriers', () => {
 
     expect(locked(mounted, 1)).toEqual([true, true, true, true])
     expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toContain(
-      t('socialRecovery.entry.confirm.readFailed')
+      t('socialRecovery.checklist.guardian.removedKeyReadFailed')
     )
 
     await mounted.press(id(1, 'removed-retry'))
@@ -209,10 +211,10 @@ describe('the guardian row carriers', () => {
     const mounted = await open()
 
     expect(mounted.byTestId(id(1, 'removed-unavailable'))?.textContent).toBe(
-      t('socialRecovery.entry.refusal.removedUnknown')
+      t('socialRecovery.checklist.guardian.removedKeyUnavailable')
     )
     expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
-      t('socialRecovery.entry.refusal.removedUnknown')
+      t('socialRecovery.checklist.guardian.removedKeyUnavailable')
     )
     expect(mounted.byTestId(id(1, 'removed-retry'))).toBeNull()
     expect(locked(mounted, 1)).toEqual([true, true, true, true])
@@ -245,6 +247,9 @@ describe('the guardian row carriers', () => {
 
   it('reads no payment and unlocks the carriers where the request names no order', async () => {
     kit = fakeKit(MIXED_PATH)
+    kit.getApproverRequests.mockImplementation((of: Gathering) =>
+      of.places.map((place) => ({ ...requestOf(of, place.place), payload: HANDOVER }))
+    )
     const mounted = await open()
 
     expect(mounted.byTestId(id(1, 'value-payment'))?.textContent).toBe(
@@ -288,10 +293,10 @@ describe('the guardian row carriers', () => {
       .filter((testId) => expected.includes(testId))
     expect(rendered).toEqual(expected)
     expect(mounted.byTestId(id(1, 'how-they-answer'))?.textContent).toBe(
-      t(`${GUARDIAN}.howTheyAnswer`)
+      t(`${GUARDIAN}.offlineBlock`)
     )
     expect(
-      (mounted.byTestId(id(1, 'carriers'))?.textContent ?? '').split(t(`${GUARDIAN}.howTheyAnswer`))
+      (mounted.byTestId(id(1, 'carriers'))?.textContent ?? '').split(t(`${GUARDIAN}.offlineBlock`))
     ).toHaveLength(2)
   })
 

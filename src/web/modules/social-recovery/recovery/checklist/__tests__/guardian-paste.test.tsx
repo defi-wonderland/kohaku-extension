@@ -483,7 +483,7 @@ describe('the guardian paste', () => {
 
     await paste(1, line)
 
-    expect(errorLines(1)).toEqual([t('socialRecovery.records.writeFailed')])
+    expect(errorLines(1)).toEqual([t('socialRecovery.checklist.writeFailed')])
     expectSettled(1, line, 'error')
     world.storage.refuse.splice(0)
   })
