@@ -97,9 +97,10 @@ const initOver = async (
  * Opens a new gathering over the configuration, the handover naming the
  * destination key and the key the recovery removes, and writes it as the live
  * session under the revision the caller read: none, or the wiped session it
- * replaces. A cached setup the chain no longer commits is read again with the
- * recovery password held in memory; with none held, the holder unlocks it at
- * the readout. Where another tab wrote first, its session is the one this tab
+ * replaces. A setup the chain no longer commits, whether from the cache or
+ * from an earlier read with the password, is read again with the recovery
+ * password held in memory; with none held, the holder unlocks it at the
+ * readout. Where another tab wrote first, its session is the one this tab
  * reads.
  */
 const startGathering = async (
@@ -113,7 +114,7 @@ const startGathering = async (
   try {
     gathering = await initOver(input, destination, configuration)
   } catch (error: unknown) {
-    if (input.source !== 'cache' || restoreCauseOf(error) !== 'restore.commitment-mismatch') {
+    if (restoreCauseOf(error) !== 'restore.commitment-mismatch') {
       throw error
     }
     if (input.password === undefined) {
