@@ -33,7 +33,8 @@ const RecoveryDidBlock = ({ summary }: RecoveryDidBlockProps) => {
     <SectionCard testID="done-what">
       <SectionLabel>{t(`${DONE}.whatHeader`)}</SectionLabel>
       {line(t(`${DONE}.published`), 'done-published')}
-      {used.length > 0 && line(t(`${DONE}.used`, { methods: used.join(', ') }), 'done-used')}
+      {used.length > 0 &&
+        line(t(`${DONE}.used`, { methods: used.join(t(`${DONE}.listJoiner`)) }), 'done-used')}
       {used.length > 0 && line(t(`${DONE}.usedPublished`), 'done-used-published')}
       {summary.discoverable && line(t(`${DONE}.discoverable`), 'done-discoverable')}
       {summary.unusedPasskey && line(t(`${DONE}.unusedStays`), 'done-unused-stays')}

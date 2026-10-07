@@ -69,8 +69,8 @@ const DoneView = ({
       <Alert
         type="error"
         size="sm"
-        title={t('socialRecovery.client.unavailableTitle')}
-        text={t('socialRecovery.client.unavailableBody')}
+        title={t(`${DONE}.readFailedTitle`)}
+        text={t(`${DONE}.readFailedBody`)}
       >
         <Button
           testID={`${testID}-retry`}
@@ -110,7 +110,7 @@ const DoneView = ({
             testID="done-add-retry"
             type="secondary"
             size="small"
-            text={t('socialRecovery.writes.tryAgain')}
+            text={t(`${DONE}.addRetry`)}
             onPress={onRetryAdd}
             hasBottomSpacing={false}
             style={[flexbox.alignSelfStart, spacings.mtSm]}
@@ -162,7 +162,7 @@ const DoneView = ({
   }
   controlledLines.push(t(`${DONE}.keyLimit`))
   const accountLine = accountName
-    ? t('socialRecovery.display.accountWithName', {
+    ? t('socialRecovery.display.nameWithAccount', {
         account: renderFullAddress(account),
         name: accountName
       })
@@ -213,7 +213,7 @@ const DoneView = ({
 
       {summary.cleanup.map((block) => (
         <CleanupBlock
-          key={`${block.kind}-${block.place}`}
+          key={block.place}
           block={block}
           row={summary.rows.find((row) => row.place === block.place)}
           disabled={busy}
@@ -249,8 +249,7 @@ const DoneView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
+          text={t(`${DONE}.lastActFailed`)}
         />
       )}
       <ActionsRow

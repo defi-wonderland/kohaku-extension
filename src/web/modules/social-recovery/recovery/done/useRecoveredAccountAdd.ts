@@ -5,14 +5,18 @@
  * consume event names the granted key and the wallet pushed its accounts; it
  * reads done once the wallet lists the account with that key, and failed
  * where the accounts controller reports an error after the add started, or
- * where the account is not listed with the key within the limit. A retry runs
- * the add again. An account the wallet already lists with the key is done
- * with no dispatch; one it lists without the key is added again, and the
- * wallet merges the key into it. Where the add may not dispatch, it reads
- * done only once the wallet lists the account with the key, and adds
- * nothing. On the fast track, once done, it marks the
- * wallet's setup complete, as the end of the create door's onboarding does,
- * since the fast track never reaches that screen.
+ * where the account is not listed with the key within the limit. Where the
+ * wallet already runs an add when the hook mounts, as after a remount during
+ * the first add, the first run dispatches nothing and follows that add the
+ * same way. A remount after that add ended and before the wallet lists the
+ * account dispatches once more, and the wallet merges it into the listed
+ * account. A retry runs the add again. An account the wallet already lists
+ * with the key is done with no dispatch; one it lists without the key is
+ * added again, and the wallet merges the key into it. Where the add may not
+ * dispatch, it reads done only once the wallet lists the account with the
+ * key, and adds nothing. On the fast track, once done, it marks the wallet's
+ * setup complete, as the end of the create door's onboarding does, since the
+ * fast track never reaches that screen.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -33,7 +37,9 @@ const useRecoveredAccountAdd = ({
   const { accounts, statuses } = useAccountsControllerState()
   const [run, setRun] = useState(0)
   const [state, setState] = useState<AddState>({ status: 'adding' })
-  const dispatched = useRef<number | null>(null)
+  // An add the wallet already runs at mount, as one an earlier mount of this screen sent: followed, not sent again.
+  const [followsRunning] = useState(() => statuses?.addAccounts === 'LOADING')
+  const dispatched = useRef<number | null>(followsRunning ? 0 : null)
   const creation = useRef<CreationBasis | undefined>(undefined)
   const completed = useRef(false)
 
@@ -91,13 +97,13 @@ const useRecoveredAccountAdd = ({
 
   const addStatus = statuses?.addAccounts
   useEffect(() => {
-    if (dispatched.current === null || listed) {
+    if (!dispatches || dispatched.current === null || listed) {
       return
     }
     if (addStatus === 'ERROR') {
       setState((current) => (current.status === 'adding' ? { status: 'failed' } : current))
     }
-  }, [addStatus, listed])
+  }, [addStatus, listed, dispatches])
 
   useEffect(() => {
     if (state.status === 'done' && completesSetup && !completed.current) {
