@@ -140,6 +140,7 @@ describe('the guardian paste', () => {
   })
 
   afterEach(() => {
+    jest.restoreAllMocks()
     view?.unmount()
     view = undefined
   })

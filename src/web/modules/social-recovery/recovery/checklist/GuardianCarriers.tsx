@@ -7,7 +7,7 @@
  * over a channel they already use. The paste field takes the line the guardian
  * sends back. A complete row shows when this tab added its approval.
  */
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -44,6 +44,9 @@ const GuardianCarriers = ({
   const { tabUrl, newKey, removed, retryRemoved, timeZone, addedAt, paste } = support
 
   const link = useMemo(() => (request ? approvalLinkOf(request, tabUrl) : null), [request, tabUrl])
+  useEffect(() => {
+    setQrFailed(false)
+  }, [link])
   const block = useMemo(
     () => (request ? guardianValuesOf(request, newKey, removed, t) : null),
     [request, newKey, removed, t]
