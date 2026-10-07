@@ -2,7 +2,8 @@
  * The submission as it stands once it started: the gas check, the deposit
  * step that reads the balance again by itself, the shared submitting and
  * failed states in the submission's own words, the refusal for an attempt
- * already running with no retry, and the read after a landed receipt.
+ * already running with no retry, the read after a landed receipt, and a
+ * start the network dropped, offered again.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -48,8 +49,8 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
           <Alert
             type="error"
             size="sm"
-            title={t('socialRecovery.client.unavailableTitle')}
-            text={t('socialRecovery.client.unavailableBody')}
+            title={t(`${SUBMIT}.landingReadFailedTitle`)}
+            text={t(`${SUBMIT}.landingReadFailedBody`)}
           >
             {button('submit-reread', t('socialRecovery.writes.tryAgain'), onReread)}
           </Alert>
@@ -71,7 +72,7 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
         <Text fontSize={14} style={spacings.mbTy}>
           {t(`${SUBMIT}.alreadyRunning.whatYouCanDo`)}
         </Text>
-        {button('submit-back-to-checklist', t('socialRecovery.checklist.backToChecklist'), onBack)}
+        {button('submit-back-to-checklist', t(`${SUBMIT}.alreadyRunning.view`), onBack)}
       </SectionCard>
     )
   }
@@ -102,7 +103,16 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
   }
 
   if (write.status === 'idle') {
-    return null
+    return run.dropped ? (
+      <View testID="submit-dropped">
+        <Alert
+          type="warning"
+          size="sm"
+          title={t(`${SUBMIT}.droppedTitle`)}
+          text={t(`${SUBMIT}.droppedBody`)}
+        />
+      </View>
+    ) : null
   }
 
   // A refusal before the chain, neither replaced nor of a route this wallet
@@ -124,7 +134,7 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
       onRetry={onStart}
       testID={`submit-write-${write.status}`}
     >
-      {checks && button('submit-check-again', t('socialRecovery.arm.checkAgain'), onCheckAgain)}
+      {checks && button('submit-check-again', t(`${SUBMIT}.checkAgain`), onCheckAgain)}
     </WriteStateView>
   )
   return write.status === 'checkingGas' ? view : <SectionCard spacing="none">{view}</SectionCard>

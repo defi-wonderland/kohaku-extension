@@ -66,15 +66,16 @@ export const fastTrackSendingKeyOf = (
  * batch, paid by the controlling key the keystore holds for it; a basic
  * account sends it from its own key. A basic account has no account apart
  * from its key to transfer from, so its deposit step offers the deposit from
- * outside alone. Null where the keystore holds no key of the account.
+ * outside alone. `account` is the chosen account's address as the recovery
+ * entry holds it. Null where the keystore holds no key of the account.
  */
-export const loggedInPlanOf = (facts: ListedAccountFacts): SendingPlan | null => {
+export const loggedInPlanOf = (facts: ListedAccountFacts, account: Address): SendingPlan | null => {
   const { key } = facts
   if (!key) {
     return null
   }
   if (facts.creation) {
-    return { kind: 'account-batch', key, facts }
+    return { kind: 'account-batch', key, facts, account }
   }
   return { kind: 'key', key }
 }

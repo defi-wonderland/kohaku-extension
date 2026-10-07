@@ -4,7 +4,9 @@
  * A submission on its way to the chain, as the pages of one device read it:
  * a claim that takes its hash while a follower judges it, a hash the wallet
  * answers after another page released the claim, a claim whose request the
- * wallet still holds, a hash the node lost, a revert that names an attempt
+ * wallet still holds, a hash the node lost (dropped only on a second reading
+ * at a higher block or a minute later), the hash stored on the claim before
+ * the receipt wait, the deposit step left, a revert that names an attempt
  * already running, and a landing another page made first. Each page has its
  * own records over the device's one storage. The clock is Jest's.
  */
@@ -25,6 +27,7 @@ import {
   held,
   kitError,
   landedReceipt,
+  landedSession,
   leaveClaim,
   LEFT_CLAIM,
   minedAndReverted,
@@ -41,7 +44,9 @@ import {
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 
 const {
+  BALANCE_POLL_MS,
   DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
   KEY_SEND_CLAIM_AGE_MS,
   SUBMISSION_CLAIM_AGE_MS,
@@ -274,18 +279,24 @@ describe('a submission on its way to the chain', () => {
   })
 
   describe('a hash the node lost', () => {
-    it('releases the claim on arrival and offers the start again', async () => {
+    it('keeps the claim on the reading at arrival, releases it a minute later and offers the start again', async () => {
       const device = await openDevice()
       await leaveClaim(device, NOW - DROPPED_AFTER_MS - 1, TX_HASH)
       device.kit.receipts.transactionKnown.mockResolvedValue('unknown')
       device.kit.receipts.wait.mockImplementation(never)
-      const page = track(pageOn(device))
+      let clock = NOW
+      const page = track(pageOn(device, () => clock))
       lookForClaim(page.store, page.steps).catch(() => undefined)
       await flush()
       expect(device.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
+      expect((await claimOf(device))?.transactionHash).toBe(TX_HASH)
+      expect(page.store.state().write.status).toBe('submitting')
+
+      clock = NOW + DROPPED_RECHECK_MS
+      await advanceTimers(DROPPED_RECHECK_MS)
+      await flush()
       expect(await claimOf(device)).toBeNull()
       expect(page.store.state().write.status).toBe('idle')
-      expect(device.kit.receipts.wait).not.toHaveBeenCalled()
 
       device.kit.receipts.wait.mockImplementation(async (hash: Hex) => {
         device.kit.chain.attempt = attemptOf(device.gathering)
@@ -297,7 +308,7 @@ describe('a submission on its way to the chain', () => {
       expect(isLanded(page.store.state())).toBe(true)
     })
 
-    it('reads nothing as dropped until check again, and drops it then', async () => {
+    it('reads nothing as dropped until check again, and drops it on a second check at a higher block', async () => {
       const device = await openDevice()
       await leaveClaim(device, NOW - 1_000, TX_HASH)
       device.kit.receipts.wait.mockImplementation(never)
@@ -316,6 +327,12 @@ describe('a submission on its way to the chain', () => {
       )
       expect((await claimOf(device))?.transactionHash).toBe(TX_HASH)
 
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(page.store.state().write.status).toBe('submitting')
+      expect((await claimOf(device))?.transactionHash).toBe(TX_HASH)
+
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
       await checkAgain(page.store, page.steps)
       await flush()
       expect(page.store.state().write.status).toBe('idle')
@@ -347,7 +364,7 @@ describe('a submission on its way to the chain', () => {
       expect(page.store.state().write.status).toBe('submitting')
     })
 
-    it('lands the attempt the manager holds as this request’s own, with nothing released', async () => {
+    it('lands the attempt the manager holds as this request’s own on the second reading, with nothing released', async () => {
       const device = await openDevice()
       await leaveClaim(device, NOW - DROPPED_AFTER_MS - 1, TX_HASH)
       device.kit.receipts.transactionKnown.mockResolvedValue('unknown')
@@ -356,11 +373,15 @@ describe('a submission on its way to the chain', () => {
       const page = track(pageOn(device))
       lookForClaim(page.store, page.steps).catch(() => undefined)
       await flush()
+      expect(isLanded(page.store.state())).toBe(false)
+
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+      await checkAgain(page.store, page.steps)
+      await flush()
       expect(isLanded(page.store.state())).toBe(true)
-      expect(await sessionOf(device.records(), device.account)).toEqual({
-        state: 'landed',
-        account: device.account
-      })
+      expect(await sessionOf(device.records(), device.account)).toEqual(
+        landedSession(device.account, device.gathering)
+      )
     })
   })
 
@@ -401,10 +422,9 @@ describe('a submission on its way to the chain', () => {
       await startSubmission(store, steps)
       await flush()
       expect(isLanded(store.state())).toBe(true)
-      expect(await sessionOf(device.records(), device.account)).toEqual({
-        state: 'landed',
-        account: device.account
-      })
+      expect(await sessionOf(device.records(), device.account)).toEqual(
+        landedSession(device.account, device.gathering)
+      )
     })
 
     it('keeps the refusal where the attempt running is another one', async () => {
@@ -454,6 +474,196 @@ describe('a submission on its way to the chain', () => {
     })
   })
 
+  describe('the two readings before a hash reads as dropped', () => {
+    /** A page that arrives on an old claim whose hash the node does not know, waiting on its receipt. */
+    const arriveOnLostHash = async (clock: () => number = () => NOW) => {
+      const device = await openDevice()
+      await leaveClaim(device, NOW - DROPPED_AFTER_MS - 1, TX_HASH)
+      device.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+      device.kit.receipts.wait.mockImplementation(never)
+      const page = track(pageOn(device, clock))
+      lookForClaim(page.store, page.steps).catch(() => undefined)
+      await flush()
+      return { device, page }
+    }
+
+    /** Whether the stored claim still carries the lost hash and the page still waits on it. */
+    const stillWaits = async (device: Device, store: SubmitStore) =>
+      (await claimOf(device))?.transactionHash === TX_HASH &&
+      store.state().write.status === 'submitting'
+
+    const dropped = async (device: Device, store: SubmitStore) =>
+      (await claimOf(device)) === null && store.state().write.status === 'idle'
+
+    it('drops nothing on one reading, and waits on the receipt', async () => {
+      const { device, page } = await arriveOnLostHash()
+      expect(device.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
+      expect(await stillWaits(device, page.store)).toBe(true)
+      expect(device.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+      expect(page.port.send).not.toHaveBeenCalled()
+    })
+
+    it('drops nothing on a second reading at the same block within the minute, and drops at a higher block', async () => {
+      const { device, page } = await arriveOnLostHash()
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(await stillWaits(device, page.store)).toBe(true)
+
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(await dropped(device, page.store)).toBe(true)
+      expect(page.port.send).not.toHaveBeenCalled()
+    })
+
+    it('drops nothing on a lower block, which a lagging node reads', async () => {
+      const { device, page } = await arriveOnLostHash()
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK - 3)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(await stillWaits(device, page.store)).toBe(true)
+    })
+
+    it('takes the second reading by itself a minute later while a page is attached', async () => {
+      let clock = NOW
+      const { device, page } = await arriveOnLostHash(() => clock)
+      await advanceTimers(DROPPED_RECHECK_MS)
+      await flush()
+      expect(await stillWaits(device, page.store)).toBe(true)
+
+      clock = NOW + DROPPED_RECHECK_MS
+      await advanceTimers(DROPPED_RECHECK_MS)
+      await flush()
+      expect(await dropped(device, page.store)).toBe(true)
+    })
+
+    it('takes no second reading while no page is attached', async () => {
+      let clock = NOW
+      const { device, page } = await arriveOnLostHash(() => clock)
+      submit.detachSteps(page.store, page.steps)
+      clock = NOW + 2 * DROPPED_RECHECK_MS
+      await advanceTimers(2 * DROPPED_RECHECK_MS)
+      await flush()
+      expect(await stillWaits(device, page.store)).toBe(true)
+    })
+
+    /** After a first reading, one check at a higher block that `between` makes not a reading of a lost hash. */
+    const clearedBy = async (between: (device: Device) => Promise<void>) => {
+      const { device, page } = await arriveOnLostHash()
+      await between(device)
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      device.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 2)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      const keptAfterOne = await stillWaits(device, page.store)
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 3)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      return { keptAfterOne, droppedAfterTwo: await dropped(device, page.store) }
+    }
+
+    it('starts the count again after a reading where the node knows the hash', async () => {
+      const outcome = await clearedBy(async (device) => {
+        device.kit.receipts.transactionKnown.mockResolvedValue('known')
+      })
+      expect(outcome).toEqual({ keptAfterOne: true, droppedAfterTwo: true })
+    })
+
+    it('starts the count again after a reading that failed', async () => {
+      const outcome = await clearedBy(async (device) => {
+        device.kit.receipts.transactionKnown.mockRejectedValue(new Error('node down'))
+      })
+      expect(outcome).toEqual({ keptAfterOne: true, droppedAfterTwo: true })
+    })
+
+    it('starts the count again after a reading that found another page’s claim on the session', async () => {
+      const { device, page } = await arriveOnLostHash()
+      const away = await otherPage(device)
+      await away.accessor.releaseSubmission(LEFT_CLAIM, away.revision)
+      const free = await otherPage(device)
+      await free.accessor.claimSubmission(
+        { requestId: 'another-page', startBlock: START_BLOCK, claimedAt: NOW },
+        free.revision
+      )
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 1)
+      await checkAgain(page.store, page.steps)
+      await flush()
+
+      const back = await otherPage(device)
+      await back.accessor.releaseSubmission('another-page', back.revision)
+      await leaveClaim(device, NOW - DROPPED_AFTER_MS - 1, TX_HASH)
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 2)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(await stillWaits(device, page.store)).toBe(true)
+
+      device.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 3)
+      await checkAgain(page.store, page.steps)
+      await flush()
+      expect(await dropped(device, page.store)).toBe(true)
+    })
+  })
+
+  describe('the hash on the claim before the receipt', () => {
+    it('stores the hash on the claim before the receipt wait starts', async () => {
+      const device = await openDevice()
+      const page = track(pageOn(device))
+      const atWait: unknown[] = []
+      device.kit.receipts.wait.mockImplementation(async () => {
+        atWait.push(await claimOf(device))
+        return held<never>().promise
+      })
+      startSubmission(page.store, page.steps).catch(() => undefined)
+      await flush()
+      expect(atWait).toEqual([
+        expect.objectContaining({
+          requestId: page.store.state().requestId,
+          transactionHash: TX_HASH
+        })
+      ])
+    })
+
+    it('leaves no claim behind where the receipt answers reverted at once', async () => {
+      const device = await openDevice()
+      const page = track(pageOn(device))
+      device.kit.receipts.wait.mockRejectedValue(minedAndReverted())
+      startSubmission(page.store, page.steps).catch(() => undefined)
+      await flush()
+      expect(page.store.state().write.status).toBe('failedReverted')
+      expect(await claimOf(device)).toBeNull()
+      expect((await sessionOf(device.records(), device.account))?.state).toBe('live')
+    })
+  })
+
+  describe('leaving the deposit step', () => {
+    it('drops the prepared start, so a key funded later sends nothing, and a new start prepares again', async () => {
+      const device = await openDevice()
+      device.kit.reads.nativeBalance.mockResolvedValue(0n)
+      const page = track(pageOn(device))
+      startSubmission(page.store, page.steps).catch(() => undefined)
+      await flush()
+      expect(page.store.state().write.status).toBe('needsDeposit')
+
+      submit.leaveDeposit(page.store)
+      expect(page.store.state().write.status).toBe('idle')
+      device.kit.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
+      await advanceTimers(2 * BALANCE_POLL_MS)
+      await flush()
+      expect(page.port.send).not.toHaveBeenCalled()
+      expect(await claimOf(device)).toBeNull()
+      expect(device.kit.prepareStartAttempt).toHaveBeenCalledTimes(1)
+
+      await startSubmission(page.store, page.steps)
+      await flush()
+      expect(device.kit.prepareStartAttempt).toHaveBeenCalledTimes(2)
+      expect(page.port.send).toHaveBeenCalledTimes(1)
+      expect(isLanded(page.store.state())).toBe(true)
+    })
+  })
+
   describe('a landing another page made first', () => {
     it('reads landed where the retried landing finds the session landed', async () => {
       const device = await openDevice()
@@ -490,10 +700,9 @@ describe('a submission on its way to the chain', () => {
       expect(raced).toBe(1)
       expect(isLanded(store.state())).toBe(true)
       expect(store.state().after).toBe('landed')
-      expect(await sessionOf(device.records(), device.account)).toEqual({
-        state: 'landed',
-        account: device.account
-      })
+      expect(await sessionOf(device.records(), device.account)).toEqual(
+        landedSession(device.account, device.gathering)
+      )
     })
   })
 })

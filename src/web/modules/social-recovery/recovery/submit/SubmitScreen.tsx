@@ -142,14 +142,14 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
       return { status: 'loading' }
     }
     if (!receivingFacts) {
-      return { status: 'unavailable' }
+      return { status: 'failed' }
     }
     const network = {
       name: receivingFacts.network.name,
       nativeAssetSymbol: receivingFacts.network.nativeAssetSymbol
     }
     if (entry.route === 'logged-in') {
-      const plan = loggedInPlanOf(receivingFacts)
+      const plan = loggedInPlanOf(receivingFacts, entry.receivingAccount)
       return plan ? { status: 'ready', plan, network } : { status: 'unavailable' }
     }
     if (!accounts || !keys) {
@@ -262,7 +262,10 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
       onRetryLoad={retryAll}
       onRetryRemoved={() => setRemovedAttempt((n) => n + 1)}
       onRetrySending={facts.retry}
-      onBack={() => navigate(checklistPathOf(account))}
+      onBack={() => {
+        run.leaveDeposit()
+        navigate(checklistPathOf(account))
+      }}
     />
   )
 }

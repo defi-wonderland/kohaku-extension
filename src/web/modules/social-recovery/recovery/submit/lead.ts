@@ -147,13 +147,13 @@ export const publicationLinesOf = (
   const guardians = count('ecdsa')
   const items: string[] = []
   if (passkeys > 0) {
-    items.push(t(`${ITEMS}.${passkeys > 1 ? 'passkeys' : 'passkey'}`))
+    items.push(passkeys > 1 ? t(`${ITEMS}.passkeys`) : t(`${SUBMIT}.publication.items.passkey`))
   }
   if (count('zkpassport') > 0) {
-    items.push(t(`${ITEMS}.passportIdentifier`))
+    items.push(t(`${SUBMIT}.publication.items.passport`))
   }
   if (count('aadhaar') > 0) {
-    items.push(t(`${ITEMS}.aadhaar`))
+    items.push(t(`${SUBMIT}.publication.items.aadhaar`))
   }
   if (guardians > 0) {
     items.push(

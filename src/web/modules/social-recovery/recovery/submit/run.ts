@@ -21,8 +21,11 @@
  *                         offered again)
  *   followed, the session wiped or gone ──▶ back to the checklist
  *   submitting with a hash, on arrival or check again, the claim older than
- *   `DROPPED_AFTER_MS`, the node knowing none of its hashes and the manager
- *   no attempt ──▶ dropped: the claim released, the start offered again
+ *   `DROPPED_AFTER_MS`, two readings apart (a higher block, or
+ *   `DROPPED_RECHECK_MS` later) that the node knows none of its hashes, and
+ *   the manager no attempt ──▶ dropped: the claim released, the start offered again
+ *   needsDeposit ──Back──▶ idle: the prepared start dropped
+ *   a stored session of another request ──▶ back to the checklist, nothing claimed or landed
  *   reverted as already running ──▶ the attempt read: ours is the landing
  *   the prepare's set not the one verified ──▶ back to the checklist
  *   landed ──▶ confirming: the attempt read names this request's attempt ──▶ the session landed ──▶ landed
@@ -39,6 +42,8 @@
  * the request of this run. Every answer carries its run, so the answer of a
  * run the holder left behind moves nothing.
  */
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import type { SubmissionInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
   initialWriteState,
@@ -47,7 +52,13 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
 
-import { BALANCE_POLL_MS, DROPPED_AFTER_MS, FOLLOW_REREAD_MS, READ_LIMIT_MS } from './constants'
+import {
+  BALANCE_POLL_MS,
+  DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS,
+  FOLLOW_REREAD_MS,
+  READ_LIMIT_MS
+} from './constants'
 import { preparedRefusalRunning, revertedRunning } from './refusal'
 import type {
   FollowedClaim,
@@ -55,7 +66,8 @@ import type {
   SubmitEvent,
   SubmitState,
   SubmitSteps,
-  SubmitStore
+  SubmitStore,
+  UnknownReading
 } from './types'
 
 /** The submission before anything ran. */
@@ -106,6 +118,10 @@ export const submitReducer = (state: SubmitState, event: SubmitEvent): SubmitSta
       }
       if (write.status !== 'needsDeposit') {
         delete next.balance
+      }
+      // A kept reading of the run's transactions holds only while the run submits them.
+      if (write.status !== 'submitting') {
+        delete next.unknownReading
       }
       return next
     }
@@ -185,11 +201,37 @@ export const submitReducer = (state: SubmitState, event: SubmitEvent): SubmitSta
       if (!pendingHashIn(state, event.run)) {
         return state
       }
-      return { write: writeReducer(state.write, { type: 'reset' }), after: 'none', lookup: 'none' }
+      return {
+        write: writeReducer(state.write, { type: 'reset' }),
+        after: 'none',
+        lookup: 'none',
+        dropped: true
+      }
+    case 'unknownRead':
+      if (!pendingHashIn(state, event.run)) {
+        return state
+      }
+      return { ...state, unknownReading: event.reading }
+    case 'unknownCleared': {
+      if (!inRun(state, event.run) || !state.unknownReading) {
+        return state
+      }
+      const { unknownReading, ...rest } = state
+      return rest
+    }
+    case 'leftDeposit':
+      // Nothing was claimed or sent on the deposit step: the run starts over
+      // from the session read, the prepare and the verify the screen shows.
+      if (!inRun(state, event.run) || state.write.status !== 'needsDeposit') {
+        return state
+      }
+      return { write: writeReducer(state.write, { type: 'reset' }), after: 'none' }
     case 'toChecklist':
       if (
         !inRun(state, event.run) ||
-        (state.write.status !== 'checkingGas' && !awaitingHashIn(state, event.run))
+        (state.write.status !== 'checkingGas' &&
+          !awaitingHashIn(state, event.run) &&
+          !(landedOf(state) && state.after === 'confirming'))
       ) {
         return state
       }
@@ -299,10 +341,13 @@ export const isLive = (state: SubmitState): boolean => {
  * Whether the screen keeps the run when it leaves it, so the next arrival
  * takes it up: work in flight, a send that may still land, and a landing whose
  * attempt read did not answer. Every other ended run is dropped, and the next
- * arrival reads the session again.
+ * arrival reads the session again. The deposit step is dropped too: nothing
+ * was claimed on it, and a return prepares and verifies the start again.
  */
 export const outlivesScreen = (state: SubmitState): boolean =>
-  isLive(state) || state.after === 'unread' || (!landedOf(state) && mayStillLand(state.write))
+  (isLive(state) && state.write.status !== 'needsDeposit') ||
+  state.after === 'unread' ||
+  (!landedOf(state) && mayStillLand(state.write))
 
 /** Whether the screen reads the submission as landed: only after the attempt read agreed and the session landed. */
 export const isLanded = (state: SubmitState): boolean => state.after === 'landed'
@@ -310,10 +355,20 @@ export const isLanded = (state: SubmitState): boolean => state.after === 'landed
 const writeEvent = (store: SubmitStore) => (event: WriteEvent) =>
   store.dispatch({ type: 'write', event })
 
-/** The answer of `read`, rejected where it does not answer within `limitMs`. */
-const readWithin = <T>(read: () => Promise<T>, limitMs: number = READ_LIMIT_MS): Promise<T> =>
+/**
+ * The answer of `read`, rejected where it does not answer within `limitMs`;
+ * `onLimit` shapes that rejection where a caller reads it by its kind.
+ */
+const readWithin = <T>(
+  read: () => Promise<T>,
+  limitMs: number = READ_LIMIT_MS,
+  onLimit: (error: Error) => Error = (error) => error
+): Promise<T> =>
   new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`No answer in ${limitMs} ms.`)), limitMs)
+    const timer = setTimeout(
+      () => reject(onLimit(new Error(`No answer in ${limitMs} ms.`))),
+      limitMs
+    )
     read().then(
       (answer) => {
         clearTimeout(timer)
@@ -336,6 +391,7 @@ const WAKES = new WeakMap<SubmitStore, () => void>()
 const FOLLOWING = new WeakSet<SubmitStore>()
 const POLLING = new WeakSet<SubmitStore>()
 const DROPPING = new WeakSet<SubmitStore>()
+const RECHECKING = new WeakSet<SubmitStore>()
 
 // The run and hash whose receipt each store waits for now.
 const WAITING = new WeakMap<SubmitStore, string>()
@@ -402,10 +458,15 @@ const settle = async (store: SubmitStore, steps: SubmitSteps, run: number): Prom
     store.dispatch({ type: 'unread', run })
     return
   }
+  let landing
   try {
-    await steps.land()
+    landing = await steps.land()
   } catch {
     store.dispatch({ type: 'unread', run })
+    return
+  }
+  if (landing === 'other-request') {
+    store.dispatch({ type: 'toChecklist', run })
     return
   }
   store.dispatch({ type: 'landed', run })
@@ -429,14 +490,29 @@ const judgeRevert = async (store: SubmitStore, steps: SubmitSteps, run: number):
   }
 }
 
+/** Whether `hash` is one of `hashes`, in any case. */
+const hashIn = (hashes: readonly Hex[], hash: Hex): boolean =>
+  hashes.some((held) => held.toLowerCase() === hash.toLowerCase())
+
+/**
+ * Whether `reading` read a higher block number than `kept`, or came
+ * `DROPPED_RECHECK_MS` after it. A lower number is a node that lags.
+ */
+const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
+  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
+
 /**
  * Whether the hash the run waits on was dropped: the claim it sends or
  * follows is older than `DROPPED_AFTER_MS` by the clock read before the
- * reads, the node knows none of the run's hashes, and the attempt read finds
- * no attempt; the claim is then released, unless it carries a hash the run
- * does not know, and the start offered again. This request's attempt found
- * started is the landing. A read that fails, or a run that moved meanwhile,
- * reads nothing as dropped. Answers whether the check ended the wait.
+ * reads; the node knows none of the run's hashes, read with the chain's block
+ * number; an earlier check kept such a reading of every one of these hashes,
+ * and this one is `apartFrom` it; and the attempt read finds no attempt. A
+ * first reading is kept, and the check ends there, so one node that lags
+ * cannot let a second send out. The claim is then released, unless it
+ * carries a hash the run does not know, and the start offered again. This
+ * request's attempt found started is the landing. A known transaction, or a
+ * read that fails, drops the kept reading; a run that moved meanwhile moves
+ * nothing. Answers whether the check ended the wait.
  */
 const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boolean> => {
   const state = store.state()
@@ -449,37 +525,61 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
   }
   const hashes = write.sentHashes ?? [hash]
   const unmoved = () => pendingHashIn(store.state(), run) === hash
+  const notDropped = (): boolean => {
+    store.dispatch({ type: 'unknownCleared', run })
+    return false
+  }
   DROPPING.add(store)
   try {
     const clock = steps.now()
     const read = await readWithin(() => steps.readSession()).catch(() => undefined)
-    const held =
-      read?.status === 'present' && read.value.state === 'live' ? read.value.submission : undefined
-    if (
-      !unmoved() ||
-      !held ||
-      held.requestId !== requestId ||
-      clock - held.claimedAt < DROPPED_AFTER_MS
-    ) {
+    if (!unmoved()) {
       return false
     }
-    const known = await readWithin(() =>
-      Promise.all(hashes.map((one) => steps.transactionKnown(one)))
+    const held =
+      read?.status === 'present' && read.value.state === 'live' ? read.value.submission : undefined
+    if (!held || held.requestId !== requestId || clock - held.claimedAt < DROPPED_AFTER_MS) {
+      return notDropped()
+    }
+    const at = steps.now()
+    const answers = await readWithin(() =>
+      Promise.all([
+        steps.blockNumber(),
+        Promise.all(hashes.map((one) => steps.transactionKnown(one)))
+      ])
     ).catch(() => undefined)
-    if (!unmoved() || !known || known.some((answer) => answer !== 'unknown')) {
+    if (!unmoved()) {
+      return false
+    }
+    if (!answers || answers[1].some((answer) => answer !== 'unknown')) {
+      return notDropped()
+    }
+    const reading: UnknownReading = { at, block: answers[0], hashes }
+    // A reading too close to the kept one leaves the kept one as it is, so the
+    // wait counts from the first; one that asked for a hash the kept one did
+    // not read starts the count again.
+    const kept = store.state().unknownReading
+    if (!kept || !reading.hashes.every((one) => hashIn(kept.hashes, one))) {
+      store.dispatch({ type: 'unknownRead', run, reading })
+      return false
+    }
+    if (!apartFrom(kept, reading)) {
       return false
     }
     const attempt = await readWithin(() => steps.attemptRead()).then(
       (answer) => steps.attemptOf(answer),
       () => undefined
     )
-    if (!unmoved() || (attempt !== 'ours' && attempt !== 'none')) {
+    if (!unmoved()) {
       return false
     }
     if (attempt === 'ours') {
       store.dispatch({ type: 'landedUnseen', run })
       await settle(store, steps, run)
       return true
+    }
+    if (attempt !== 'none') {
+      return notDropped()
     }
     const released = await steps.releaseClaim(requestId, hashes).catch(() => undefined)
     if (!unmoved() || released?.status !== 'released') {
@@ -493,12 +593,43 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
 }
 
 /**
+ * While a first reading that the node knows none of the run's transactions
+ * is kept and a screen is attached: the check again after
+ * `DROPPED_RECHECK_MS`, so the second reading comes with no press.
+ */
+const recheckDropped = async (store: SubmitStore): Promise<void> => {
+  if (RECHECKING.has(store)) {
+    return
+  }
+  RECHECKING.add(store)
+  try {
+    while (store.state().unknownReading) {
+      // eslint-disable-next-line no-await-in-loop
+      await rest(store, DROPPED_RECHECK_MS)
+      const steps = ATTACHED.get(store)
+      if (!steps || !store.state().unknownReading) {
+        return
+      }
+      // eslint-disable-next-line no-await-in-loop
+      if (await checkDropped(store, steps)) {
+        return
+      }
+    }
+  } finally {
+    RECHECKING.delete(store)
+  }
+}
+
+/**
  * Waits for the receipt of the hash the run holds, after the check for a
  * dropped hash, then releases where it ended, then the landing.
  */
 const waitForReceipt = async (store: SubmitStore, steps: SubmitSteps): Promise<void> => {
   if (await checkDropped(store, steps)) {
     return
+  }
+  if (store.state().unknownReading) {
+    recheckDropped(store).catch(() => undefined)
   }
   const state = store.state()
   const { run } = state.write
@@ -554,12 +685,16 @@ const judgeOldClaim = async (
 /**
  * Reads the followed claim with no hash while a screen is attached: a hash
  * that arrives is waited on; a claim that went, or another page's claim in its
- * place, ends the follow (the latter is followed in turn); a landed session
- * lands here too. A claim older than `SUBMISSION_CLAIM_AGE_MS` by the clock
- * read before the session read is judged by the manager's events: an attempt
- * started under the request's attempt number is the landing, none means the
- * send never went out, and the claim is released and the start offered again.
- * A read that fails is read again after a rest, never taken as an answer.
+ * place, ends the follow (the latter is followed in turn); a session landed
+ * under this request's attempt lands here too, and a session of another
+ * request goes back to the checklist. A claim older than the steps' claim age
+ * by the clock read before the session read is judged: while the wallet's
+ * queue still holds its request it is waited on, and once the queue broadcast
+ * it, it is followed under that hash; else the manager's events decide, an
+ * attempt started under the request's attempt number being the landing, and
+ * none meaning the send never went out, so the claim is released and the
+ * start offered again. A read that fails is read again after a rest, never
+ * taken as an answer.
  */
 const readFollow = async (store: SubmitStore): Promise<void> => {
   if (FOLLOWING.has(store)) {
@@ -583,7 +718,11 @@ const readFollow = async (store: SubmitStore): Promise<void> => {
         // eslint-disable-next-line no-continue
         continue
       }
-      if (read?.status === 'present' && read.value.state === 'landed') {
+      if (
+        read?.status === 'present' &&
+        read.value.state === 'landed' &&
+        steps.ownsSession(read.value)
+      ) {
         store.dispatch({ type: 'landedUnseen', run })
         // eslint-disable-next-line no-await-in-loop
         await settle(store, steps, run)
@@ -591,7 +730,8 @@ const readFollow = async (store: SubmitStore): Promise<void> => {
       }
       if (
         read?.status === 'absent' ||
-        (read?.status === 'present' && read.value.state !== 'live')
+        (read?.status === 'present' &&
+          (read.value.state !== 'live' || !steps.ownsSession(read.value)))
       ) {
         store.dispatch({ type: 'toChecklist', run })
         return
@@ -720,7 +860,11 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
     dispatch({ type: 'error', run, error })
     return
   }
-  if (!claim.claimed) {
+  if (claim.status === 'other-request') {
+    store.dispatch({ type: 'toChecklist', run })
+    return
+  }
+  if (claim.status === 'followed') {
     await followClaim(store, steps, run, claim.submission)
     return
   }
@@ -729,6 +873,9 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
     await steps.release(requestId).catch(() => undefined)
     return
   }
+  // The hash is on the claim before the receipt wait starts, so a receipt
+  // that ends the run cannot be followed by a write of the claim it released.
+  let marked: Promise<void> = Promise.resolve()
   const sendDispatch = (event: WriteEvent) => {
     dispatch(event)
     // Only a hash the run took goes on the claim, never one of a run that ended.
@@ -737,11 +884,11 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
       event.run === run &&
       pendingHashIn(store.state(), run) === event.transactionHash
     ) {
-      steps.markSent(ours, event.transactionHash).catch(() => undefined)
+      marked = steps.markSent(ours, event.transactionHash).catch(() => undefined)
     }
   }
   try {
-    await steps.send(prepared, sendDispatch, run, startBlock, requestId)
+    await steps.send(prepared, sendDispatch, run, startBlock, requestId, () => marked)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
   }
@@ -750,6 +897,10 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
   await settle(store, steps, run)
 }
 
+// A gas check that does not answer within the limit is the gas check's own
+// failure, with its retry, never a send refused.
+const gasCheckLimit = (error: Error): Error => providerReadFailure('estimateGas', error)
+
 /** The gas check of the run's prepared start; where the key holds enough, the claim and the send. */
 const checkAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number): Promise<void> => {
   const { prepared } = store.state()
@@ -757,7 +908,7 @@ const checkAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
     return
   }
   try {
-    const check = await steps.checkGas(prepared)
+    const check = await readWithin(() => steps.checkGas(prepared), READ_LIMIT_MS, gasCheckLimit)
     writeEvent(store)({ type: 'gasChecked', run, check })
   } catch (error: unknown) {
     writeEvent(store)({ type: 'error', run, error })
@@ -775,7 +926,9 @@ const checkAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
  * While the deposit step shows and a screen is attached: the gas check again
  * every `BALANCE_POLL_MS` on the same prepared start. Enough goes on to the
  * claim and the send by itself; short keeps the step with the latest balance;
- * a read that fails reads as the gas check's failure, with its retry.
+ * a read that fails, or that does not answer within `READ_LIMIT_MS`, reads as
+ * the gas check's failure, with its retry. The step stays as it is between
+ * answered reads. A screen that went away during a read sends nothing.
  */
 const pollDeposit = async (store: SubmitStore): Promise<void> => {
   if (POLLING.has(store)) {
@@ -794,8 +947,9 @@ const pollDeposit = async (store: SubmitStore): Promise<void> => {
       }
       let check
       try {
+        const { prepared } = state
         // eslint-disable-next-line no-await-in-loop
-        check = await steps.checkGas(state.prepared)
+        check = await readWithin(() => steps.checkGas(prepared), READ_LIMIT_MS, gasCheckLimit)
       } catch (error: unknown) {
         if (inRun(store.state(), run) && store.state().write.status === 'needsDeposit') {
           writeEvent(store)({ type: 'recheck' })
@@ -805,6 +959,12 @@ const pollDeposit = async (store: SubmitStore): Promise<void> => {
       }
       if (!inRun(store.state(), run) || store.state().write.status !== 'needsDeposit') {
         return
+      }
+      // A screen that went away during the read, or another that took the
+      // run meanwhile, takes the next read; this answer sends nothing.
+      if (ATTACHED.get(store) !== steps) {
+        // eslint-disable-next-line no-continue
+        continue
       }
       if (check.kind === 'enough') {
         writeEvent(store)({ type: 'recheck' })
@@ -863,6 +1023,11 @@ export const startSubmission = async (store: SubmitStore, steps: SubmitSteps): P
   }
   if (read.status !== 'present' || read.value.state !== 'live') {
     fail(new Error('No live recovery session to submit.'))
+    return
+  }
+  // Another tab abandoned this request and gathered another: nothing is sent.
+  if (!steps.ownsSession(read.value)) {
+    store.dispatch({ type: 'toChecklist', run })
     return
   }
   if (read.value.submission) {
@@ -933,8 +1098,11 @@ export const lookForClaim = async (store: SubmitStore, steps: SubmitSteps): Prom
     store.dispatch({ type: 'lookup', run, reading: 'failed' })
     return
   }
+  // A claim of another request is not followed; Start then reads that session and goes back.
   const claim =
-    read.status === 'present' && read.value.state === 'live' ? read.value.submission : undefined
+    read.status === 'present' && read.value.state === 'live' && steps.ownsSession(read.value)
+      ? read.value.submission
+      : undefined
   if (!claim) {
     store.dispatch({ type: 'lookup', run, reading: 'none' })
     return
@@ -984,9 +1152,9 @@ export const checkAgain = async (store: SubmitStore, steps: SubmitSteps): Promis
     return
   }
   const read = await readWithin(() => steps.readSession()).catch(() => undefined)
-  const claim =
-    read?.status === 'present' && read.value.state === 'live' ? read.value.submission : undefined
-  if (read?.status === 'present' && read.value.state === 'landed') {
+  const owned = read?.status === 'present' && steps.ownsSession(read.value) ? read.value : undefined
+  const claim = owned?.state === 'live' ? owned.submission : undefined
+  if (owned?.state === 'landed') {
     store.dispatch({ type: 'landedUnseen', run })
     await settle(store, steps, run)
     return
@@ -994,6 +1162,11 @@ export const checkAgain = async (store: SubmitStore, steps: SubmitSteps): Promis
   if (claim && inRun(store.state(), run)) {
     await followClaim(store, steps, run, claim)
   }
+}
+
+/** Leaves the deposit step: the prepared start is dropped, and nothing was claimed or sent. */
+export const leaveDeposit = (store: SubmitStore): void => {
+  store.dispatch({ type: 'leftDeposit', run: store.state().write.run })
 }
 
 /** Reads the attempt again where the landing's read did not answer or disagreed. */
