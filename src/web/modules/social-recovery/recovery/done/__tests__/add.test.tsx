@@ -7,7 +7,8 @@
  * key, renders the add's failure with retry, and on the fast track only marks
  * the wallet's setup complete once the account is listed. An account the
  * wallet lists without the granted key is added again; one it lists with the
- * key is not.
+ * key is not. A mount again while the first add still runs follows that add
+ * and dispatches none of its own until a retry.
  */
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
@@ -283,6 +284,71 @@ describe('the wallet account list going and coming back', () => {
     expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
     expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(1)
     expect(screen.has('done')).toBe(true)
+    screen.unmount()
+  })
+})
+
+describe('a mount again while the first add runs', () => {
+  /** Mounts, lets the add start, and mounts again while the accounts controller still reads it loading. */
+  const remountDuringAdd = async (route: 'fresh-install' | 'logged-in' = 'fresh-install') => {
+    const world = await openWorld({ route })
+    const first = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    await setWallet({ statuses: { addAccounts: 'LOADING' } })
+    first.unmount()
+    const screen = await mountDone(world.account)
+    return { world, screen }
+  }
+
+  const routes = ['fresh-install', 'logged-in'] as const
+  routes.forEach((route) => {
+    it(`on the ${route} route dispatches no second add and reads done once the wallet lists the account with the key`, async () => {
+      const { screen } = await remountDuringAdd(route)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+      expect(screen.has('done-adding')).toBe(true)
+      expectNoDoneText(screen)
+      await tick(1000)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+
+      await setWallet({
+        accounts: [...(mockWallet.accounts ?? []), addedAccountOf()],
+        statuses: { addAccounts: 'SUCCESS' }
+      })
+      expect(screen.has('done')).toBe(true)
+      expect(screen.textOf('done-controlled-by')).toBe(renderFullAddress(NEW_KEY))
+      await tick(ADD_LIMIT_MS * 2)
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+      expect(screen.has('done-add-failed')).toBe(false)
+      expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(route === 'fresh-install' ? 1 : 0)
+      screen.unmount()
+    })
+  })
+
+  it('reads the followed add ending in an error as failed, and the retry dispatches once', async () => {
+    const { screen } = await remountDuringAdd()
+    await setWallet({ statuses: { addAccounts: 'ERROR' } })
+    expect(screen.has('done-add-failed')).toBe(true)
+    expect(screen.textOf('done-add-retry')).toBe(t(`${DONE}.addRetry`))
+    expectNoDoneText(screen)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+
+    await screen.press('done-add-retry')
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    expect(addedAccountOf(1).associatedKeys).toEqual([NEW_KEY])
+    expect(screen.has('done-adding')).toBe(true)
+    await walletAddsIt()
+    expect(screen.has('done-now-in-wallet')).toBe(true)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    screen.unmount()
+  })
+
+  it('reads the followed add as failed where the wallet does not list the account within the limit', async () => {
+    const { screen } = await remountDuringAdd()
+    await tick(ADD_LIMIT_MS + 1000)
+    expect(screen.has('done-add-failed')).toBe(true)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    await screen.press('done-add-retry')
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
     screen.unmount()
   })
 })

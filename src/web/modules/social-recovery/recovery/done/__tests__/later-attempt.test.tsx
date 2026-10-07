@@ -21,7 +21,7 @@ import {
   consumedAttempt,
   dispatchedOf,
   GRANT_PRIV,
-  GUARDIANS,
+  guardianName,
   mockWallet,
   mountDone,
   NEW_KEY,
@@ -34,7 +34,8 @@ import {
   REMOVED_KEY,
   t,
   tick,
-  useDoneClock
+  useDoneClock,
+  usedLine
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type {
   FakeChain,
@@ -45,7 +46,7 @@ import { ADD_LIMIT_MS } from '@web/modules/social-recovery/recovery/done'
 import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
 import { waitPathOf } from '@web/modules/social-recovery/recovery/checklist'
 import type { Address, Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { renderFullAddress, renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { kindNameOf } from '@web/modules/social-recovery/setup/review'
 import {
   readRecoveryPassword,
@@ -61,10 +62,6 @@ const RIVAL_PAYLOAD: Hex = '0xbad0'
 const RIVAL_KEY: Address = '0x00000000000000000000000000000000000bad01'
 const RIVAL_OPEN_BLOCK = CONSUME_BLOCK + 1
 const RIVAL_CONSUME_BLOCK = CONSUME_BLOCK + 2
-
-const guardianName = (index: number) =>
-  `${t('socialRecovery.display.nouns.guardian')} ${renderShortAddress(GUARDIANS[index])}`
-const usedLine = (names: string[]) => t(`${DONE}.used`, { methods: names.join(', ') })
 
 /** The attempt after ours, in `state`, opened with a rival's payload and naming `usedMethods`. */
 const laterAttempt = (state: Attempt['state'], usedMethods: Address[] = []): Attempt => ({

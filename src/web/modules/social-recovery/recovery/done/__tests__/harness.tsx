@@ -242,6 +242,9 @@ const {
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  renderShortAddress
+}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const checklist: typeof import('@web/modules/social-recovery/recovery/checklist/__tests__/harness') = require('@web/modules/social-recovery/recovery/checklist/__tests__/harness')
 const DoneScreen: typeof import('@web/modules/social-recovery/recovery/done/DoneScreen').default =
   require('@web/modules/social-recovery/recovery/done/DoneScreen').default
@@ -262,6 +265,14 @@ export const {
 } = checklist
 
 export const t = (key: string, values?: Record<string, unknown>): string => i18n.t(key, values)
+
+/** A guardian row's name on the done screen: its address after the guardian's words. */
+export const guardianName = (index: number): string =>
+  `${t('socialRecovery.done.guardianAddress')} ${renderShortAddress(GUARDIANS[index])}`
+
+/** The used-methods line over the names the screen lists, in order. */
+export const usedLine = (names: string[]): string =>
+  t('socialRecovery.done.used', { methods: names.join(t('socialRecovery.done.listJoiner')) })
 
 /** An aadhaar credential: the other identity method. */
 export const aadhaarCredential = (): Credential => ({
@@ -677,6 +688,44 @@ export interface World {
   receiving: Account
 }
 
+type RecordsOf = Pick<World, 'records' | 'account' | 'configuration'>
+
+/** What a gathering's request names: its attempt id, its setup number and its payload. */
+interface GatheringOptions {
+  attempt?: number
+  setupNonce?: number
+  payload?: Hex
+}
+
+/** Opens a live gathering of `attempt` under `setupNonce` with `payload`, as the checklist of a new recovery does. */
+export const openGathering = async (
+  { records, account, configuration }: RecordsOf,
+  { attempt = 1, setupNonce = 1, payload = PAYLOAD }: GatheringOptions = {}
+) => {
+  const opened = gatheringOf(configuration, attempt, account)
+  return records
+    .recoverySession(CHAIN_ID, account)
+    .write(
+      { ...opened, request: { ...opened.request, setupNonce: String(setupNonce), payload } },
+      null
+    )
+}
+
+/** Lands a countdown of the attempt `options` names, as the submission of that attempt does. */
+export const landCountdown = async (world: RecordsOf, options: GatheringOptions = {}) => {
+  const live = await openGathering(world, options)
+  await world.records.landSubmission(CHAIN_ID, world.account, live.revision)
+}
+
+/** Ends the stored countdown, as another tab's last act does. */
+export const endStoredCountdown = async ({ records, account }: RecordsOf) => {
+  const read = await records.countdown(CHAIN_ID, account).read()
+  if (read.status !== 'present') {
+    throw new Error('no countdown to end')
+  }
+  await records.endCountdown(CHAIN_ID, account, read.revision)
+}
+
 /** The fresh install's slot: its smart account and its basic account, neither the recovered one. */
 export const SLOT_SMART: Address = '0x00000000000000000000000000000000005a0001'
 export const SLOT_BASIC: Address = '0x00000000000000000000000000000000005a0002'
@@ -749,11 +798,7 @@ export const openWorld = async ({
     await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
   }
   if (countdown) {
-    const opened = gatheringOf(configuration, attempt, account)
-    const live = await records
-      .recoverySession(CHAIN_ID, account)
-      .write({ ...opened, request: { ...opened.request, payload: PAYLOAD } }, null)
-    await records.landSubmission(CHAIN_ID, account, live.revision)
+    await landCountdown({ records, account, configuration }, { attempt })
   }
   mockWallet.storage = storage
   mockWallet.clients = new Map([[account.toLowerCase(), readyClient(kit)]])

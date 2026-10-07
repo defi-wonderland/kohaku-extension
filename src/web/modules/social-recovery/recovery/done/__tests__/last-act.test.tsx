@@ -3,7 +3,10 @@
  *
  * The done screen's last act, on Close and on the edit actions: it ends the
  * countdown, clears the entry record and the recovery password held in
- * memory, keeps the decrypted setup cache, and only then leaves. A reload
+ * memory, keeps the decrypted setup cache, and only then leaves. A countdown
+ * of another attempt, stored since the mount, stays with its entry and its
+ * password. With no countdown, a live session of a new gathering keeps them
+ * too, and a session read that does not answer clears nothing. A reload
  * after it renders from the consume event alone where the wallet lists the
  * account, and sends to the account step where it does not.
  */
@@ -11,9 +14,12 @@ import {
   ADD_ACTION,
   CHAIN_ID,
   dispatchedOf,
+  endStoredCountdown,
+  landCountdown,
   mockWallet,
   mountDone,
   NEW_KEY,
+  openGathering,
   openWorld,
   PASSWORD,
   RECEIVING_ADDR,
@@ -22,9 +28,11 @@ import {
   SIGNER_STATE_KEY,
   SLOT_SMART,
   t,
+  tick,
   useDoneClock
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { World } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
+import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import {
   readRecoveryPassword,
@@ -41,6 +49,12 @@ const recordsOf = async ({ records, account }: World) => ({
   cache: (await records.decryptedSetupCache(CHAIN_ID, account).read()).status,
   password: readRecoveryPassword(CHAIN_ID, account)
 })
+
+/** The attempt id the stored countdown landed, if one is stored. */
+const landedIdOf = async ({ records, account }: World) => {
+  const read = await records.countdown(CHAIN_ID, account).read()
+  return read.status === 'present' ? read.value.attemptId : undefined
+}
 
 const BEFORE = { countdown: 'present', entry: 'present', cache: 'present', password: PASSWORD }
 const AFTER = { countdown: 'absent', entry: 'absent', cache: 'present', password: undefined }
@@ -67,14 +81,6 @@ describe('the last act', () => {
 
   it('runs the last act on the logged-in route too', async () => {
     const { world, screen } = await openDone({ route: 'logged-in' })
-    await screen.press('done-close')
-    expect(await recordsOf(world)).toEqual(AFTER)
-    expect(screen.paths()).toEqual(['/dashboard'])
-    screen.unmount()
-  })
-
-  it('clears the entry where the countdown record is already gone', async () => {
-    const { world, screen } = await openDone({ route: 'logged-in', countdown: false })
     await screen.press('done-close')
     expect(await recordsOf(world)).toEqual(AFTER)
     expect(screen.paths()).toEqual(['/dashboard'])
@@ -123,6 +129,169 @@ describe('the last act', () => {
     expect(screen.paths()).toEqual([])
     release()
     await screen.press('done-edit')
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+})
+
+describe('the last act ends only the countdown of the attempt this screen matched', () => {
+  const KEPT = { countdown: 'present', entry: 'present', cache: 'present', password: PASSWORD }
+
+  it('leaves a countdown another recovery landed since the mount, with its entry and password, and leaves for the dashboard', async () => {
+    const { world, screen } = await openDone({ route: 'fresh-install' })
+    await endStoredCountdown(world)
+    await landCountdown(world, { attempt: 2 })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(KEPT)
+    expect(await landedIdOf(world)).toBe('2')
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('leaves a countdown under the same attempt id with another payload', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in' })
+    await endStoredCountdown(world)
+    await landCountdown(world, { attempt: 1, payload: '0xbad0' })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(KEPT)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('leaves a countdown under the same attempt id and payload with another setup number', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in' })
+    await endStoredCountdown(world)
+    await landCountdown(world, { attempt: 1, setupNonce: 2 })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(KEPT)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('leaves a countdown landed after a mount that found none, and leaves the screen', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in', countdown: false, listed: true })
+    await landCountdown(world, { attempt: 2 })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(KEPT)
+    expect(await landedIdOf(world)).toBe('2')
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('on Edit leaves the other countdown too, and still opens the editor', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in' })
+    await endStoredCountdown(world)
+    await landCountdown(world, { attempt: 2 })
+    await screen.press('done-edit')
+    expect(await recordsOf(world)).toEqual(KEPT)
+    expect(screen.paths()).toEqual(['/social-recovery/setup/editor'])
+    screen.unmount()
+  })
+
+  it('ends a countdown of the same attempt stored again since the mount, and clears the entry', async () => {
+    const { world, screen } = await openDone({ route: 'logged-in' })
+    await endStoredCountdown(world)
+    await landCountdown(world, { attempt: 1 })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(AFTER)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+})
+
+describe('the last act with no countdown', () => {
+  /** A device that holds the entry and the password but no countdown, for an account listed with the granted key. */
+  const openWithoutCountdown = async () => {
+    const opened = await openDone({ route: 'logged-in', countdown: false, listed: true })
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    return opened
+  }
+  const NO_COUNTDOWN_KEPT = {
+    countdown: 'absent',
+    entry: 'present',
+    cache: 'present',
+    password: PASSWORD
+  }
+
+  it('clears the entry and the password where no session is stored, keeps the cache, and leaves', async () => {
+    const { world, screen } = await openWithoutCountdown()
+    expect((await world.records.recoverySession(CHAIN_ID, world.account).read()).status).toBe(
+      'absent'
+    )
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(AFTER)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('leaves the entry, the password and the live session of a new gathering, and leaves the screen', async () => {
+    const { world, screen } = await openWithoutCountdown()
+    await openGathering(world, { attempt: 2 })
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(NO_COUNTDOWN_KEPT)
+    const session = await world.records.recoverySession(CHAIN_ID, world.account).read()
+    expect(session.status === 'present' && session.value.state).toBe('live')
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('clears the entry and the password where the stored session is a wiped one', async () => {
+    const { world, screen } = await openWithoutCountdown()
+    const live = await openGathering(world, { attempt: 2 })
+    await world.records.wipeRecoverySession(
+      CHAIN_ID,
+      world.account,
+      'another-attempt-opened',
+      live.revision
+    )
+    await screen.press('done-close')
+    expect(await recordsOf(world)).toEqual(AFTER)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('clears nothing where the session read throws, and leaves the screen', async () => {
+    const { world, screen } = await openWithoutCountdown()
+    const { get } = world.storage
+    let sessionReads = 0
+    world.storage.get = async (...args: Parameters<typeof get>) => {
+      if (String(args[0]).includes('recoverySession')) {
+        sessionReads += 1
+        // The first read after Close is the countdown's; the second is the session's.
+        if (sessionReads === 2) {
+          throw new Error('storage unavailable')
+        }
+      }
+      return get(...args)
+    }
+    await screen.press('done-close')
+    world.storage.get = get
+    expect(sessionReads).toBe(2)
+    expect(await recordsOf(world)).toEqual(NO_COUNTDOWN_KEPT)
+    expect(screen.has('done-finish-failed')).toBe(false)
+    expect(screen.paths()).toEqual(['/dashboard'])
+    screen.unmount()
+  })
+
+  it('clears nothing where the session read does not answer within its limit, and leaves the screen then', async () => {
+    const { world, screen } = await openWithoutCountdown()
+    const { get } = world.storage
+    let sessionReads = 0
+    world.storage.get = async (...args: Parameters<typeof get>) => {
+      if (String(args[0]).includes('recoverySession')) {
+        sessionReads += 1
+        if (sessionReads === 2) {
+          return new Promise<never>(() => {})
+        }
+      }
+      return get(...args)
+    }
+    await screen.press('done-close')
+    await tick(POLL_LIMIT_MS - 1000)
+    expect(screen.paths()).toEqual([])
+    await tick(2000)
+    world.storage.get = get
+    expect(await recordsOf(world)).toEqual(NO_COUNTDOWN_KEPT)
     expect(screen.paths()).toEqual(['/dashboard'])
     screen.unmount()
   })

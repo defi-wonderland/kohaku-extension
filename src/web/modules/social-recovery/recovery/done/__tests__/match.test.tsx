@@ -7,9 +7,9 @@
  * opening under the id before the consume carries another: the manager hands
  * the next id to whoever opens next. A record that does not name its attempt,
  * or a countdown read that fails, renders failed with retry and reads no
- * consume. With neither the countdown nor the entry record the screen adds
- * nothing and renders only for an account the wallet lists with the granted
- * key.
+ * consume. With no countdown, whether or not the entry record is there,
+ * nothing names this device's attempt: the screen adds nothing and renders
+ * only for an account the wallet lists with the granted key.
  */
 import {
   ADD_ACTION,
@@ -25,6 +25,7 @@ import {
   openWorld,
   PASSWORD,
   PAYLOAD_HASH,
+  recoveryPrivileges,
   REMOVED_KEY,
   reportSelected,
   setWallet,
@@ -40,7 +41,7 @@ import type {
 import { ADD_LIMIT_MS } from '@web/modules/social-recovery/recovery/done'
 import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
 import { accountStepPath, waitPathOf } from '@web/modules/social-recovery/recovery/checklist'
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import {
   readRecoveryPassword,
@@ -51,6 +52,14 @@ import { keccak256 } from 'viem'
 useDoneClock()
 
 const RIVAL_PAYLOAD: Hex = '0xbad0'
+/** The key a rival's consume grants. */
+const RIVAL_KEY: Address = '0x00000000000000000000000000000000000bad01'
+
+/** The keys the wallet lists the account with, none where it does not list it. */
+const listedKeysOf = (account: string) =>
+  (mockWallet.accounts ?? [])
+    .filter((candidate) => candidate.addr.toLowerCase() === account.toLowerCase())
+    .flatMap((candidate) => candidate.associatedKeys)
 
 /** The records the last act clears, as they stand. */
 const recordsOf = async ({ records, account }: World) => ({
@@ -331,13 +340,78 @@ describe('neither the countdown nor the entry record', () => {
 })
 
 describe('an entry record with no countdown', () => {
-  it('keeps the add: one add with the granted key, and done once the wallet lists it', async () => {
-    const world = await openWorld({ route: 'fresh-install', countdown: false, walletAdds: true })
+  /** The wallet adds nothing, offers no add failure, and the screen goes to the wait. */
+  const expectToWait = async (screen: Mounted, account: Address) => {
+    expect(screen.paths()).toEqual([waitPathOf(account)])
+    expect(mockWallet.navigate.mock.calls[0][1]).toEqual({ replace: true })
+    expectNothingDone(screen)
+    await tick(ADD_LIMIT_MS + 1)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    expect(screen.has('done-add-failed')).toBe(false)
+    expect(screen.has('done')).toBe(false)
+  }
+
+  const routes = ['fresh-install', 'logged-in'] as const
+  routes.forEach((route) => {
+    it(`on the ${route} route adds nothing for an account the wallet does not list, and goes to the wait`, async () => {
+      const world = await openWorld({ route, countdown: false, walletAdds: true })
+      const screen = await mountDone(world.account)
+      await expectToWait(screen, world.account)
+      expect((await recordsOf(world)).entry.status).toBe('present')
+      screen.unmount()
+    })
+  })
+
+  it('adds nothing for an account the wallet lists without the granted key, and goes to the wait', async () => {
+    const world = await openWorld({
+      route: 'fresh-install',
+      countdown: false,
+      listed: 'without-key',
+      walletAdds: true
+    })
     const screen = await mountDone(world.account)
-    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    await expectToWait(screen, world.account)
+    screen.unmount()
+  })
+
+  it('renders done with no add for an account the wallet lists with the granted key', async () => {
+    const world = await openWorld({ route: 'fresh-install', countdown: false, listed: true })
+    const screen = await mountDone(world.account)
     expect(screen.has('done')).toBe(true)
-    expect(screen.has('done-now-in-wallet')).toBe(true)
+    expect(screen.textOf('done-controlled-by')).toBe(renderFullAddress(NEW_KEY))
+    await tick(ADD_LIMIT_MS + 1)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    expect(screen.has('done-add-failed')).toBe(false)
     expect(screen.paths()).toEqual([])
+    screen.unmount()
+  })
+
+  it('adds no rival key: a consume that grants another key goes to the wait where the wallet lists ours', async () => {
+    const world = await openWorld({
+      route: 'fresh-install',
+      countdown: false,
+      listed: true,
+      walletAdds: true
+    })
+    world.kit.chain.accountEvents = [
+      attemptStarted(world.account, [0], 1n, undefined, { payload: RIVAL_PAYLOAD }),
+      attemptConsumed(world.account)
+    ]
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, payloadHash: keccak256(RIVAL_PAYLOAD) }
+    world.kit.chain.privilegeEvents = recoveryPrivileges(world.account, { granted: RIVAL_KEY })
+    const screen = await mountDone(world.account)
+    await expectToWait(screen, world.account)
+    expect(screen.text()).not.toContain(renderFullAddress(RIVAL_KEY))
+    expect(listedKeysOf(world.account)).toEqual([NEW_KEY])
+    screen.unmount()
+  })
+
+  it('adds no rival key where the wallet does not list the account', async () => {
+    const world = await openWorld({ route: 'fresh-install', countdown: false, walletAdds: true })
+    world.kit.chain.privilegeEvents = recoveryPrivileges(world.account, { granted: RIVAL_KEY })
+    const screen = await mountDone(world.account)
+    await expectToWait(screen, world.account)
+    expect(listedKeysOf(world.account)).toEqual([])
     screen.unmount()
   })
 })
