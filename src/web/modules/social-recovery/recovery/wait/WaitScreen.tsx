@@ -203,7 +203,8 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
       return { status: 'loading' }
     }
     if (!receivingFacts) {
-      return { status: 'failed' }
+      // Facts that could not be read show as the keys' failure above this line.
+      return { status: 'loading' }
     }
     const network = {
       name: receivingFacts.network.name,
@@ -360,7 +361,6 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
       onRetryPoll={retryPoll}
       onRetryKeys={retryKeys}
       onRetryClient={retryClient}
-      onRetrySending={facts.retry}
       onLeave={onLeave}
       onMoveFunds={onMoveFunds}
       onOpenExplorer={onOpenExplorer}

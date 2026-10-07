@@ -46,7 +46,6 @@ const WaitView = ({
   onRetryPoll,
   onRetryKeys,
   onRetryClient,
-  onRetrySending,
   onLeave,
   onMoveFunds,
   onOpenExplorer
@@ -160,7 +159,6 @@ const WaitView = ({
           sending={sending}
           ready={phase.kind === 'executionDue' && !!poll.story.started}
           onExecute={onExecute}
-          onRetrySending={onRetrySending}
         />
       )}
       {phase.kind === 'waiting' &&
