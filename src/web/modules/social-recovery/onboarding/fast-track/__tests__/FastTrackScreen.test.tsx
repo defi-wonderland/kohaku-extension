@@ -5,6 +5,8 @@
  * open, the extension password stored through the wallet's keystore setup,
  * and the move to the key step.
  */
+import { act } from 'react-dom/test-utils'
+
 import {
   byTestId,
   dispatched,
@@ -26,6 +28,20 @@ const FAST_TRACK = '/social-recovery/fast-track'
 const KEY_STEP = '/social-recovery/fast-track/key'
 const ACKNOWLEDGED = { acknowledged: true }
 const PASSWORD = 'lantern-orchid-42'
+const MISMATCH = 'The two passwords you typed do not match.'
+
+const fieldOf = (testID: string) => byTestId(testID) as HTMLInputElement
+
+// The show/hide control sits beside the field, inside the field's own frame.
+const toggleOf = async (testID: string) => {
+  const toggle = fieldOf(testID).parentElement?.nextElementSibling as HTMLElement | null
+  if (!toggle) {
+    throw new Error(`no show/hide control: ${testID}`)
+  }
+  await act(async () => {
+    toggle.click()
+  })
+}
 
 const acknowledgeWarning = async () => {
   await press('recovery-warning-acknowledge')
@@ -113,6 +129,41 @@ describe('the fast track route', () => {
       await press('fast-track-password-continue')
       await flush()
       expect(dispatched('KEYSTORE_CONTROLLER_ADD_SECRET')).toEqual([])
+    })
+
+    it('says the passwords differ in its own line under the repeat field, and drops it once they agree', async () => {
+      await mount(FAST_TRACK, ACKNOWLEDGED)
+      await typePasswords(PASSWORD, `${PASSWORD}x`)
+
+      expect(byTestId('fast-track-password-mismatch')?.textContent).toBe(MISMATCH)
+      expect(text().split(MISMATCH)).toHaveLength(2)
+      expect(byTestId('fast-track-password-mismatch')?.style.fontSize).toBe(
+        byTestId('fast-track-password-rule')?.style.fontSize
+      )
+
+      await typeInto('fast-track-password-repeat', PASSWORD)
+      await flush()
+
+      expect(byTestId('fast-track-password-mismatch')).toBeNull()
+      expect(text()).not.toContain(MISMATCH)
+    })
+
+    it('hides both passwords and lets the holder show each one, the repeat as the first', async () => {
+      await mount(FAST_TRACK, ACKNOWLEDGED)
+      await typePasswords(PASSWORD, PASSWORD)
+
+      expect(fieldOf('fast-track-password-field').type).toBe('password')
+      expect(fieldOf('fast-track-password-repeat').type).toBe('password')
+
+      await toggleOf('fast-track-password-repeat')
+
+      expect(fieldOf('fast-track-password-repeat').type).toBe('text')
+      expect(fieldOf('fast-track-password-field').type).toBe('password')
+
+      await toggleOf('fast-track-password-repeat')
+
+      expect(fieldOf('fast-track-password-repeat').type).toBe('password')
+      expect(fieldOf('fast-track-password-repeat').value).toBe(PASSWORD)
     })
 
     it('moves on to the key step only once the secret is stored and the keystore unlocked', async () => {
