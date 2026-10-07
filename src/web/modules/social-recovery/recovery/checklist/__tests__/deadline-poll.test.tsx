@@ -3,8 +3,9 @@
  *
  * The request's deadline and the poll of the account's recovery state, on
  * Jest's fake clock: the deadline line ticks every minute and once more the
- * moment the deadline passes, which wipes the session after one chain read,
- * and says every approval dies together unless one approval is the whole
+ * moment the deadline passes, which wipes the session after one chain read
+ * and holds every add, launch and continue while that read runs; it says
+ * every approval dies together unless one approval is the whole
  * request; the poll reads at once, on every period and when the tab returns
  * to view; a poll that throws or runs past its limit holds every add, launch
  * and continue under the failed read with a retry, and the rows never render
@@ -52,6 +53,10 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const { keccak256 }: typeof import('viem') = require('viem')
+const {
+  WEB_ROUTES
+}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const {
   passed
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
@@ -245,6 +250,131 @@ describe('the checklist deadline and poll', () => {
       expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
         t('socialRecovery.records.expiredTitle')
       )
+    })
+  })
+
+  describe('past the deadline, while its one chain read runs', () => {
+    const ROW_ACTIONS = [
+      'checklist-row-0-answer-here',
+      'checklist-row-0-phone',
+      'checklist-row-1-mark-declined'
+    ]
+    const WAIT_PATH = `/${WEB_ROUTES.socialRecoveryRecoveryWait}?account=${ACCOUNT}`
+
+    /** Holds the next chain read, then moves the clock just past a deadline 40 s away. */
+    const holdReadAcrossDeadline = async () => {
+      await settle(CHECKLIST_POLL_MS + 1000)
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
+      kit.recoveryState.mockImplementationOnce(() => read.promise)
+      await settle(10_500)
+      return read
+    }
+
+    it('holds every row action from the moment the deadline passes, then renders the expired state', async () => {
+      const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
+      const mounted = await open(TWO_ROWS, closingIn(TWO_ROWS, 40))
+      ROW_ACTIONS.forEach((id) => expect(mounted.isDisabled(id)).toBe(false))
+
+      const read = await holdReadAcrossDeadline()
+
+      expect(kit.recoveryState).toHaveBeenCalledTimes(3)
+      expect(wipe).not.toHaveBeenCalled()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      ROW_ACTIONS.forEach((id) => expect(mounted.isDisabled(id)).toBe(true))
+
+      read.resolve(recoveryStateOf())
+      await settle()
+
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'deadline-passed',
+        expect.anything()
+      )
+      expect(mounted.byTestId('checklist-rows')).toBeNull()
+      expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t('socialRecovery.records.expiredTitle')
+      )
+    })
+
+    it('holds continue on a satisfied path, then lands the request another holder submitted', async () => {
+      const payload = '0xabcdef'
+      const closing = withReplies(closingIn(TWO_ROWS, 40), [0, 1])
+      const land = jest.spyOn(world.records, 'landSubmission')
+      const mounted = await open(TWO_ROWS, {
+        ...closing,
+        request: { ...closing.request, payload }
+      })
+      expect(mounted.isDisabled('checklist-continue')).toBe(false)
+
+      const read = await holdReadAcrossDeadline()
+
+      expect(mounted.byTestId('checklist-satisfied')).not.toBeNull()
+      expect(mounted.isDisabled('checklist-continue')).toBe(true)
+      await mounted.press('checklist-continue')
+      expect(mounted.navigate).not.toHaveBeenCalled()
+
+      read.resolve(
+        recoveryStateOf({
+          state: 'Waiting',
+          attemptId: BigInt(1),
+          nextAttemptId: BigInt(2),
+          payloadHash: keccak256(payload)
+        })
+      )
+      await settle()
+
+      expect(land).toHaveBeenCalledTimes(1)
+      expect(mounted.navigate).toHaveBeenCalledTimes(1)
+      expect(mounted.navigate).toHaveBeenLastCalledWith(WAIT_PATH, { replace: true })
+    })
+
+    it('adds no passed claim that reports while the read runs, and keeps no reply of it', async () => {
+      const gathering = closingIn(TWO_ROWS, 40)
+      await seedCache(world.records, TWO_ROWS)
+      await seedSession(world.records, gathering)
+      kit = fakeKit(TWO_ROWS)
+      const deps = depsOf({ now: () => Date.now(), visibility })
+      view = await mountChecklist({ records: world.records, client: kit.state, deps })
+      await view.press('checklist-row-0-phone')
+      const [id] = deps.requestIds
+
+      const read = await holdReadAcrossDeadline()
+      await deps.channel.report(
+        id,
+        'createClaim',
+        passed({ reply: replyOf(gathering, 0) }),
+        Date.now()
+      )
+      await settle()
+
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      const during = await storedSession(world.records)
+      expect(during?.value.state === 'live' && during.value.gathering.replies).toEqual([])
+
+      read.resolve(recoveryStateOf())
+      await settle()
+
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      expect((await storedSession(world.records))?.value).toMatchObject({
+        state: 'wiped',
+        reason: 'deadline-passed'
+      })
+    })
+
+    it('makes the rows live again for the new request once the holder gathers again', async () => {
+      const mounted = await open(TWO_ROWS, closingIn(TWO_ROWS, 40))
+      const read = await holdReadAcrossDeadline()
+      read.resolve(recoveryStateOf())
+      await settle()
+      expect(mounted.byTestId('checklist-wiped-title')).not.toBeNull()
+
+      await mounted.press('checklist-gather-again')
+      await settle()
+
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      ROW_ACTIONS.forEach((id) => expect(mounted.isDisabled(id)).toBe(false))
     })
   })
 
