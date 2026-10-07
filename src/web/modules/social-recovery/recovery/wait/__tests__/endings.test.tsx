@@ -178,15 +178,24 @@ describe('the cancelled terminals', () => {
     await leaves(world, SETTINGS_ENTRY)
   })
 
-  it('reads an attempt gone with no cancel event as a setup change', async () => {
+  it('reads an attempt gone with no cancel event as unmatched, and keeps the countdown and the entry', async () => {
     const world = await openWorld()
     view = await mountWait(world.account)
     expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
 
     world.kit.chain.attempt = NO_ATTEMPT
     await tick(POLL_MS)
-    expect(view.byTestId('wait-cancelled-setupWrite')).not.toBeNull()
-    expect(view.textOf('wait-cancelled-action')).toBe(t('socialRecovery.wait.cancelled.startNew'))
+    expect(view.textOf('wait-cannot-execute-unmatched')).toBe(
+      t('socialRecovery.wait.cannotExecute.unmatched')
+    )
+    expect(view.byTestId('wait-cancelled-setupWrite')).toBeNull()
+    expect(view.byTestId('wait-cancelled-action')).toBeNull()
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.paths()).toEqual([])
+    expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
+    expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
+      'present'
+    )
   })
 
   it('keeps the countdown and the entry where leaving the terminal fails, and lets the holder press again', async () => {
@@ -243,9 +252,7 @@ describe('the recovery that can no longer execute', () => {
         chain.removedHolds = false
       },
       'privilegeMoved',
-      t('socialRecovery.wait.cannotExecute.refused', {
-        read: t('socialRecovery.writes.causes.ReservedAuthority')
-      })
+      t('socialRecovery.wait.cannotExecute.movedPrivilege')
     ],
     [
       'the new key already holds a privilege',
@@ -254,9 +261,7 @@ describe('the recovery that can no longer execute', () => {
         chain.newKeyHolds = true
       },
       'privilegeMoved',
-      t('socialRecovery.wait.cannotExecute.refused', {
-        read: t('socialRecovery.writes.causes.ReservedAuthority')
-      })
+      t('socialRecovery.wait.cannotExecute.movedPrivilege')
     ]
   ]
 
@@ -268,6 +273,9 @@ describe('the recovery that can no longer execute', () => {
       view = await mountWait(world.account)
 
       expect(view.byTestId('wait-cannot-execute')).not.toBeNull()
+      expect(view.textOf('wait-cannot-execute-chip')).toBe(
+        t('socialRecovery.status.recovery.cannotExecute')
+      )
       expect(view.textOf(`wait-cannot-execute-${cause}`)).toBe(line)
       expect(view.byTestId('wait-cannot-execute-repair') !== null).toBe(cause === 'notAuthorized')
       const text = view.text()
@@ -422,9 +430,7 @@ describe('whose attempt the wait reads', () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-cannot-execute-unmatched')).toBe(
-      t('socialRecovery.wait.cannotExecute.refused', {
-        read: t('socialRecovery.writes.causes.NotConsumable')
-      })
+      t('socialRecovery.wait.cannotExecute.unmatched')
     )
     expect(view.text()).toContain(t('socialRecovery.wait.cannotExecute.slotClosed'))
     expect(view.text()).toContain(t('socialRecovery.wait.cannotExecute.exitsNeedKey'))

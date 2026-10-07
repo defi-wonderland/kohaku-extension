@@ -4,14 +4,21 @@
 import { Linking } from 'react-native'
 
 import {
+  BOOK,
   CHAIN_TIME,
+  configurationOf,
   dateOf,
   DEVICE_NOW,
+  GUARDIANS,
+  guardianCredential,
   HOUR,
   MIXED_PATH,
   moveDeviceClock,
   mountWait,
+  ONE_GUARDIAN,
   openWorld,
+  passkeyCredential,
+  passportCredential,
   resetTab,
   showTab,
   START_TX,
@@ -21,7 +28,9 @@ import {
   waiting
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
+import { ruleLinesOf } from '@web/modules/social-recovery/setup/review'
 
 const POLL_MS = 30_000
 
@@ -124,6 +133,14 @@ describe('the countdown', () => {
     view = await mountWait(world.account)
 
     expect(view.byTestId('wait-path')).not.toBeNull()
+  })
+
+  it('names no path where this device does not hold the setup', async () => {
+    const world = await openWorld()
+    view = await mountWait(world.account)
+
+    expect(view.byTestId('wait-path')).toBeNull()
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
   })
 
   it('resumes from the countdown record alone after a reload', async () => {
@@ -266,5 +283,138 @@ describe('a failed or hanging poll', () => {
 
     expect(view.byTestId('wait-poll-failed')).not.toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
+  })
+})
+
+describe('the path line by shape', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  const PATH = 'socialRecovery.wait.path'
+  const GUARDIAN = 'socialRecovery.display.nouns.guardian'
+  const PASSPORT = 'socialRecovery.methodNames.passport'
+
+  const ONE_LINE: [string, Configuration, () => string][] = [
+    [
+      'any two of three guardians',
+      configurationOf([
+        {
+          threshold: 2,
+          credentials: [
+            guardianCredential(GUARDIANS[0]),
+            guardianCredential(GUARDIANS[1]),
+            guardianCredential(GUARDIANS[2])
+          ]
+        }
+      ]),
+      () => t(`${PATH}.anyOf`, { threshold: 2, count: 3 })
+    ],
+    [
+      'any one of two guardians',
+      configurationOf([
+        {
+          threshold: 1,
+          credentials: [guardianCredential(GUARDIANS[0]), guardianCredential(GUARDIANS[1])]
+        }
+      ]),
+      () => t(`${PATH}.anyOf`, { threshold: 1, count: 2 })
+    ],
+    [
+      'both of two guardians in one group',
+      configurationOf([
+        {
+          threshold: 2,
+          credentials: [guardianCredential(GUARDIANS[0]), guardianCredential(GUARDIANS[1])]
+        }
+      ]),
+      () => t(`${PATH}.anyOf`, { threshold: 2, count: 2 })
+    ],
+    [
+      'a passkey and a guardian each required',
+      configurationOf([
+        { threshold: 1, credentials: [passkeyCredential('Laptop passkey')] },
+        { threshold: 1, credentials: [guardianCredential(GUARDIANS[0], 'Alice')] }
+      ]),
+      () => t(`${PATH}.bothRequired`, { first: 'Laptop passkey', second: t(GUARDIAN) })
+    ],
+    [
+      'one group of a passkey and a passport that needs both',
+      configurationOf([
+        { threshold: 2, credentials: [passkeyCredential('Laptop passkey'), passportCredential()] }
+      ]),
+      () => t(`${PATH}.bothRequired`, { first: 'Laptop passkey', second: t(PASSPORT) })
+    ],
+    [
+      'one group of a passport and a passkey that needs one',
+      configurationOf([
+        { threshold: 1, credentials: [passportCredential(), passkeyCredential('Phone passkey')] }
+      ]),
+      () => t(`${PATH}.eitherOne`, { first: t(PASSPORT), second: 'Phone passkey' })
+    ]
+  ]
+
+  ONE_LINE.forEach(([name, configuration, line]) => {
+    it(`names ${name} in one line`, async () => {
+      const world = await openWorld({ cache: true, configuration })
+      view = await mountWait(world.account)
+
+      expect(view.textOf('wait-path')).toBe(
+        `${t('socialRecovery.display.nouns.recoveryPath')}${line()}`
+      )
+    })
+  })
+
+  const RULE_LINES: [string, Configuration][] = [
+    ['two required methods and a group', MIXED_PATH],
+    ['one guardian alone', ONE_GUARDIAN],
+    [
+      'three required methods',
+      configurationOf([
+        { threshold: 1, credentials: [passkeyCredential('Laptop passkey')] },
+        { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] },
+        { threshold: 1, credentials: [passportCredential()] }
+      ])
+    ],
+    [
+      'a group of a passkey and two guardians that needs two',
+      configurationOf([
+        {
+          threshold: 2,
+          credentials: [
+            passkeyCredential('Laptop passkey'),
+            guardianCredential(GUARDIANS[0]),
+            guardianCredential(GUARDIANS[1])
+          ]
+        }
+      ])
+    ],
+    [
+      'a required passkey and a group of one of two guardians',
+      configurationOf([
+        { threshold: 1, credentials: [passkeyCredential('Laptop passkey')] },
+        {
+          threshold: 1,
+          credentials: [guardianCredential(GUARDIANS[0]), guardianCredential(GUARDIANS[1])]
+        }
+      ])
+    ]
+  ]
+
+  RULE_LINES.forEach(([name, configuration]) => {
+    it(`keeps the rule lines for ${name}`, async () => {
+      const world = await openWorld({ cache: true, configuration })
+      view = await mountWait(world.account)
+
+      const lines = ruleLinesOf(configuration, BOOK, t)
+      expect(lines.length).toBeGreaterThan(0)
+      expect(view.textOf('wait-path')).toBe(
+        `${t('socialRecovery.display.nouns.recoveryPath')}${lines.join('')}`
+      )
+    })
   })
 })

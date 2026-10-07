@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import {
+  attemptOf,
   CHAIN_ID,
   CHAIN_TIME,
   elapse,
@@ -12,13 +13,15 @@ import {
   openWorld,
   resetTab,
   showTab,
+  storeCountdownWithoutAttempt,
   t,
   tick,
   useWaitClock,
   waitPathOf,
   waiting
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
-import type { Mounted } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import type { Attempt } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
 describe('the home band for a landed recovery', () => {
@@ -208,5 +211,83 @@ describe("the home band's countdown line keeps reading the chain", () => {
       t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
     )
     expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
+  })
+})
+
+describe('the home band for an attempt that is not the landed one', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /** The line names the account alone: no number and no chip. */
+  const expectAccountAlone = (world: World) => {
+    if (!view) {
+      throw new Error('no view')
+    }
+    const id = world.account.toLowerCase()
+    expect(view.textOf(`home-countdown-${id}-line`)).toBe(
+      t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
+    )
+    expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
+    expect(view.byTestId(`home-countdown-${id}-chip`)).toBeNull()
+  }
+
+  const RIVALS: [string, Partial<Attempt>][] = [
+    ['a later attempt id', { attemptId: 2n }],
+    ['another setup number', { setupNonce: 2n }],
+    ['another payload hash', { payloadHash: `0x${'ab'.repeat(32)}` }]
+  ]
+
+  RIVALS.forEach(([name, rival]) => {
+    it(`shows no number for a waiting attempt under ${name}`, async () => {
+      const world = await openWorld()
+      world.kit.chain.attempt = attemptOf(world.account, rival)
+      view = await mountBand(world.records)
+
+      expectAccountAlone(world)
+      await tick(3_000)
+      expectAccountAlone(world)
+    })
+
+    it(`does not read execution due for an attempt at its end under ${name}`, async () => {
+      const world = await openWorld()
+      world.kit.chain.attempt = attemptOf(world.account, rival)
+      elapse(world.kit)
+      view = await mountBand(world.records)
+
+      expectAccountAlone(world)
+    })
+  })
+
+  it('drops the number once a later round reads a rival attempt', async () => {
+    const world = await openWorld()
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(view.textOf(`home-countdown-${id}-time`)).toBe(waiting(HOUR))
+
+    world.kit.chain.attempt = attemptOf(world.account, { setupNonce: 2n })
+    await tick(30_000)
+    expectAccountAlone(world)
+  })
+
+  it('shows no number for a countdown stored without the landed attempt', async () => {
+    const world = await openWorld()
+    await storeCountdownWithoutAttempt(world.storage, world.account)
+    view = await mountBand(world.records)
+
+    expectAccountAlone(world)
+  })
+
+  it('does not read execution due for a countdown stored without the landed attempt', async () => {
+    const world = await openWorld()
+    await storeCountdownWithoutAttempt(world.storage, world.account)
+    elapse(world.kit)
+    view = await mountBand(world.records)
+
+    expectAccountAlone(world)
   })
 })

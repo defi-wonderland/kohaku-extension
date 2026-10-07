@@ -33,9 +33,10 @@ const donePath = (world: World) =>
 /** The screen reads cannot execute for an attempt it cannot match, and nothing ends, executes or moves on. */
 const expectUnmatched = async (view: Mounted, world: World) => {
   expect(view.textOf('wait-cannot-execute-unmatched')).toBe(
-    t('socialRecovery.wait.cannotExecute.refused', {
-      read: t('socialRecovery.writes.causes.NotConsumable')
-    })
+    t('socialRecovery.wait.cannotExecute.unmatched')
+  )
+  expect(view.textOf('wait-cannot-execute-chip')).toBe(
+    t('socialRecovery.status.recovery.cannotExecute')
   )
   expect(view.byTestId('wait-execute')).toBeNull()
   expect(view.byTestId('wait-execution-due')).toBeNull()
@@ -171,8 +172,9 @@ describe('the recovery own attempt', () => {
     elapse(world.kit)
     view = await mountWait(world.account)
 
-    expect(view.byTestId('wait-execute')).toBeNull()
-    expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
+    await expectUnmatched(view, world)
+    await tick(POLL_MS)
+    await expectUnmatched(view, world)
   })
 })
 
