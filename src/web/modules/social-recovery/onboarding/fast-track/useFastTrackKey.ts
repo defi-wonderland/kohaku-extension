@@ -22,12 +22,13 @@
  * nothing, so nothing was saved; a retry keeps the phrase the holder wrote
  * down, and a success that lands after a failure still lists the slot.
  *
- * A mount that finds the picker still selecting or adding accounts (an earlier
- * mount's init, left through Back) makes no phrase and sends no add: a new phrase would
- * take the keystore's place of the one that add is saving. It waits for that
- * add to end; once the wallet lists the accounts, the step goes on as a
- * wallet that already lists accounts does. Where that add fails, the step
- * reads as failed, and its retry makes a new phrase, since nothing was saved.
+ * A mount that finds the picker still selecting or adding accounts (an
+ * earlier mount's init, left through Back) makes no phrase and sends no add:
+ * a new phrase would take the keystore's place of the one that add is saving.
+ * It waits for that selection and its add to end; once the wallet lists the
+ * accounts, the step goes on as a wallet that already lists accounts does.
+ * Where that add fails, the step reads as failed, and its retry makes a new
+ * phrase, since nothing was saved.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
