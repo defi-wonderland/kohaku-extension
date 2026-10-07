@@ -35,12 +35,7 @@ import type {
   RecoveryState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
-import type {
-  Enrollment,
-  PasskeyBackupKind,
-  RecoveryRoute,
-  WalletRecords
-} from '@web/modules/social-recovery/shared/records'
+import type { RecoveryRoute, WalletRecords } from '@web/modules/social-recovery/shared/records'
 import type { TestStorage } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
@@ -690,8 +685,7 @@ export const RECEIVING_ADDR: Address = '0x00000000000000000000000000000000005a00
 /**
  * A recovery whose attempt executed: its entry record on `route`, its
  * countdown's record, the recovery password held in memory, the decrypted
- * setup cache when `cache` is set and the enrollments' passkey kinds when
- * `kinds` names them. The wallet does not list the recovered account unless
+ * setup cache when `cache` is set. The wallet does not list the recovered account unless
  * `listed` is set: `true` lists it with the granted key, `'without-key'` with
  * another key only. With `walletAdds` the wallet lists each account the
  * screen adds as soon as the add is dispatched.
@@ -700,7 +694,6 @@ export const openWorld = async ({
   route = 'fresh-install',
   configuration = MIXED_PATH,
   cache = true,
-  kinds = [],
   countdown = true,
   entry = true,
   listed = false,
@@ -710,8 +703,6 @@ export const openWorld = async ({
   route?: RecoveryRoute
   configuration?: Configuration
   cache?: boolean
-  /** The passkey kind each passkey credential's enrollment names. */
-  kinds?: { credential: Credential; backup: PasskeyBackupKind }[]
   countdown?: boolean
   entry?: boolean
   listed?: boolean | 'without-key'
@@ -756,14 +747,6 @@ export const openWorld = async ({
   }
   if (cache) {
     await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
-  }
-  if (kinds.length > 0) {
-    const enrollments: Enrollment[] = kinds.map(({ credential, backup }) => ({
-      credential,
-      test: 'passed',
-      backup
-    }))
-    await records.setup(CHAIN_ID, account).enrollments.write(enrollments)
   }
   if (countdown) {
     const opened = gatheringOf(configuration, attempt, account)
