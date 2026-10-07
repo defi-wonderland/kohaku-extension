@@ -285,6 +285,8 @@ export interface ExecuteRun {
   start: () => void
   /** Reads the run's hashes once the attempt read disagrees with a send past the dropped age. */
   checkDropped: () => void
+  /** Waits on the run's hash again where its receipt wait ended in an error that kept the hash. */
+  checkReceiptAgain: () => void
   /** Drops the run once its attempt executed, so nothing of it is taken up again. */
   release: () => void
 }

@@ -45,10 +45,12 @@ import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
 import { DROPPED_AFTER_MS } from '@web/modules/social-recovery/setup/arm'
 import {
   FOLLOW_REREAD_MS,
+  READ_LIMIT_MS,
   SUBMISSION_CLAIM_AGE_MS
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
+import { within } from './read'
 import type { ExecuteEvent, ExecuteState, ExecuteSteps, ExecuteStore } from './types'
 
 /** The execution before anything ran. */
@@ -195,6 +197,7 @@ const POLLING = new WeakSet<ExecuteStore>()
 const DROP_CHECKS = new WeakSet<ExecuteStore>()
 const FOLLOWING = new WeakSet<ExecuteStore>()
 const WAITING = new WeakSet<ExecuteStore>()
+const SENDING = new WeakSet<ExecuteStore>()
 // The idle run whose countdown was read for a claim, so each idle run reads it once.
 const LOOKED = new WeakMap<ExecuteStore, number>()
 
@@ -256,8 +259,8 @@ const waitForReceipt = async (store: ExecuteStore, steps: ExecuteSteps): Promise
  * judged by the manager's events from the claim's block: the attempt consumed
  * leaves the done screen to the poll; none means the send never went out, and
  * where the claim still carries no hash it is released and execute offered
- * again. A read that fails is read again after a rest, never taken as an
- * answer.
+ * again. A read that fails, or that does not answer within `READ_LIMIT_MS`,
+ * is read again after a rest, never taken as an answer.
  */
 const readFollow = async (store: ExecuteStore): Promise<void> => {
   if (FOLLOWING.has(store)) {
@@ -310,7 +313,7 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
       }
       if (held && clock - held.claimedAt >= SUBMISSION_CLAIM_AGE_MS) {
         // eslint-disable-next-line no-await-in-loop
-        const consumed = await steps.consumedSince(follow.startBlock).catch(() => undefined)
+        const consumed = await within(() => steps.consumedSince(follow.startBlock), READ_LIMIT_MS)
         if (store.state().follow !== follow) {
           // eslint-disable-next-line no-continue
           continue
@@ -393,11 +396,14 @@ const claimAndSend = async (
     return
   }
   const dispatch = writeEvent(store)
-  let startBlock: number
-  try {
-    startBlock = await steps.blockNumber()
-  } catch (error: unknown) {
-    dispatch({ type: 'error', run, error })
+  // A block read that fails or does not answer in time ends the run as not sent, with its retry.
+  const startBlock = await within(() => steps.blockNumber(), READ_LIMIT_MS)
+  if (startBlock === undefined) {
+    dispatch({
+      type: 'error',
+      run,
+      error: new Error('The chain gave no block number to send from.')
+    })
     return
   }
   if (!awaitingHashIn(store.state(), run)) {
@@ -432,10 +438,13 @@ const claimAndSend = async (
       marking = steps.markSent(claim, event.transactionHash).catch(() => undefined)
     }
   }
+  SENDING.add(store)
   try {
     await steps.send(prepared, sendDispatch, run, startBlock, claim.requestId)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
+  } finally {
+    SENDING.delete(store)
   }
   await marking
   await releaseWhereEnded(store, steps)
@@ -591,6 +600,22 @@ export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): 
     return
   }
   await claimAndSend(store, steps, run)
+}
+
+/**
+ * Waits on the run's hash once more where its receipt wait ended in an error
+ * that kept the hash: the send may still land, so its receipt is asked for
+ * again rather than left unread. Nothing happens while the send itself, or
+ * another wait on the hash, is still running.
+ */
+export const checkReceiptAgain = async (
+  store: ExecuteStore,
+  steps: ExecuteSteps
+): Promise<void> => {
+  if (SENDING.has(store)) {
+    return
+  }
+  await waitForReceipt(store, steps)
 }
 
 /**
