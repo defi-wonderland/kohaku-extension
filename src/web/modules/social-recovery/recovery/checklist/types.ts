@@ -363,10 +363,11 @@ export interface PollInput {
   kit: ChecklistKitClient | null
   target: PollTarget | null
   deps: Pick<ChecklistDeps, 'now' | 'visibility'>
-  /** Runs before each round's read, with the clock read then; true stops the round. */
-  before: (clock: number) => boolean
-  /** Runs after each round that answered, with the clock read before its read. */
-  after: (facts: PollFacts, clock: number) => void
+  /**
+   * Runs after each round, with what it read (undefined where the read failed)
+   * and the clock read before its read.
+   */
+  after: (facts: PollFacts | undefined, clock: number) => void
 }
 
 export interface PollHook {

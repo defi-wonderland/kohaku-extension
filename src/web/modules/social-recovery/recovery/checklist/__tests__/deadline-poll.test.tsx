@@ -182,7 +182,7 @@ describe('the checklist deadline and poll', () => {
       expect(mounted.byTestId('checklist-deadline')?.textContent).toContain(minutes(8))
     })
 
-    it('wipes the session the moment the deadline passes, before the next poll and with no chain read', async () => {
+    it('wipes the session the moment the deadline passes, before the next poll and after one chain read', async () => {
       const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
       const mounted = await open(TWO_ROWS, closingIn(TWO_ROWS, 40))
 
@@ -200,7 +200,7 @@ describe('the checklist deadline and poll', () => {
         'deadline-passed',
         expect.anything()
       )
-      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(3)
       expect(mounted.byTestId('checklist-rows')).toBeNull()
       expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
         t('socialRecovery.records.expiredTitle')
@@ -235,7 +235,7 @@ describe('the checklist deadline and poll', () => {
         'deadline-passed',
         expect.anything()
       )
-      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(3)
       expect(mounted.byTestId('checklist-wiped-title')?.textContent).toBe(
         t('socialRecovery.records.expiredTitle')
       )

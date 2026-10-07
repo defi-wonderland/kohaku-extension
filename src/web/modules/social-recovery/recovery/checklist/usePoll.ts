@@ -17,7 +17,7 @@ import type { PollHook, PollInput, PollState } from './types'
 
 const PENDING: PollState = { status: 'pending' }
 
-const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
+const usePoll = ({ kit, target, deps, after }: PollInput): PollHook => {
   const [poll, setPoll] = useState<PollState>(PENDING)
 
   const kitRef = useRef(kit)
@@ -26,8 +26,6 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
   targetRef.current = target
   const depsRef = useRef(deps)
   depsRef.current = deps
-  const beforeRef = useRef(before)
-  beforeRef.current = before
   const afterRef = useRef(after)
   afterRef.current = after
 
@@ -47,9 +45,6 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
       return
     }
     const clock = depsRef.current.now()
-    if (beforeRef.current(clock)) {
-      return
-    }
     inFlight.current = id
     const facts = await readPollFacts(current, POLL_LIMIT_MS)
     if (inFlight.current === id) {
@@ -58,13 +53,9 @@ const usePoll = ({ kit, target, deps, before, after }: PollInput): PollHook => {
     if (id !== generation.current) {
       return
     }
-    if (!facts) {
-      setPoll({ status: 'failed' })
-    } else {
-      // A death the round reads holds the rows before the answer renders them.
-      afterRef.current(facts, clock)
-      setPoll({ status: 'answered', facts, clock })
-    }
+    // A death the round reads holds the rows before the answer renders them.
+    afterRef.current(facts, clock)
+    setPoll(facts ? { status: 'answered', facts, clock } : { status: 'failed' })
     if (again.current) {
       again.current = false
       await run()

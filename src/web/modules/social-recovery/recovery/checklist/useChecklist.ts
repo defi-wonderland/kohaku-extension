@@ -410,26 +410,23 @@ const useChecklist = ({
   )
 
   const target = useMemo(() => pollTargetOf(load), [load])
-  // The deadline is the clock's alone: it is read before every poll, and a
-  // passed one wipes the session without waiting for the chain.
-  const beforePoll = useCallback(
-    (clock: number): boolean => {
-      const current = currentLive()
-      if (!current || !deadlinePassed(current.session.gathering, clock)) {
-        return false
-      }
-      die('deadline-passed').catch(() => undefined)
-      return true
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [die]
-  )
+  // Past the deadline the round still reads the chain once within its limit:
+  // another holder can have submitted this request before the deadline, and
+  // then it lands. A read that fails, or shows no attempt of this request,
+  // wipes the session as expired. The deadline is judged on the clock read
+  // before the round's read.
   const afterPoll = useCallback(
-    (facts: PollFacts) => {
+    (facts: PollFacts | undefined, clock: number) => {
       const current = currentLive()
-      const outcome = current ? outcomeOf(current.session.gathering, facts) : null
+      if (!current) {
+        return
+      }
+      const { gathering } = current.session
+      const outcome = facts ? outcomeOf(gathering, facts) : null
       if (outcome === 'landed') {
         land().catch(() => undefined)
+      } else if (deadlinePassed(gathering, clock)) {
+        die('deadline-passed').catch(() => undefined)
       } else if (outcome) {
         die(outcome).catch(() => undefined)
       }
@@ -441,7 +438,6 @@ const useChecklist = ({
     kit,
     target,
     deps,
-    before: beforePoll,
     after: afterPoll
   })
 

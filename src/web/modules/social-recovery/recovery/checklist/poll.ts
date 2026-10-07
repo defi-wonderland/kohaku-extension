@@ -50,14 +50,17 @@ export const deadlinePassed = (gathering: Gathering, clock: number): boolean =>
 
 /**
  * Whether the account's attempt is this request's own submission: it carries
- * the request's predicted id and the hash of the request's payload. The id
- * alone names whoever opened next, so another holder's attempt can carry it.
+ * the request's predicted id, the setup nonce the request was built under and
+ * the hash of the request's payload. The id alone names whoever opened next,
+ * so another holder's attempt can carry it, and an attempt opened under a
+ * changed setup is not this request's.
  */
 const isOwnAttempt = (gathering: Gathering, attempt: Attempt): boolean => {
-  const { attemptId, payload } = gathering.request
+  const { attemptId, setupNonce, payload } = gathering.request
   return (
     attempt.state !== 'None' &&
     attempt.attemptId === BigInt(attemptId) &&
+    attempt.setupNonce === BigInt(setupNonce) &&
     payload !== undefined &&
     keccak256(payload) === attempt.payloadHash
   )
