@@ -13,10 +13,18 @@
  *                                     └─ its own ──▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   followed, a hash ──▶ its receipt, as after a send
  *   followed, no hash ──▶ the session read again until a hash arrives, the
- *                         claim goes, or the claim grows older than
- *                         `SUBMISSION_CLAIM_AGE_MS`: the manager's events then
- *                         name the attempt started (the landing) or not (the
- *                         claim released, the start offered again)
+ *                         claim goes, or the claim grows older than the
+ *                         steps' claim age: where the wallet no longer holds
+ *                         the request, the manager's events then name the
+ *                         attempt started (the landing) or not (the claim
+ *                         released where it still carries no hash, the start
+ *                         offered again)
+ *   followed, the session wiped or gone ──▶ back to the checklist
+ *   submitting with a hash, on arrival or check again, the claim older than
+ *   `DROPPED_AFTER_MS`, the node knowing none of its hashes and the manager
+ *   no attempt ──▶ dropped: the claim released, the start offered again
+ *   reverted as already running ──▶ the attempt read: ours is the landing
+ *   the prepare's set not the one verified ──▶ back to the checklist
  *   landed ──▶ confirming: the attempt read names this request's attempt ──▶ the session landed ──▶ landed
  *                         └──▶ unread ──reread──▶ confirming
  *
@@ -39,14 +47,16 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
 
-import {
-  BALANCE_POLL_MS,
-  FOLLOW_REREAD_MS,
-  READ_LIMIT_MS,
-  SUBMISSION_CLAIM_AGE_MS
-} from './constants'
-import { preparedRefusalRunning } from './refusal'
-import type { SubmitEvent, SubmitState, SubmitSteps, SubmitStore } from './types'
+import { BALANCE_POLL_MS, DROPPED_AFTER_MS, FOLLOW_REREAD_MS, READ_LIMIT_MS } from './constants'
+import { preparedRefusalRunning, revertedRunning } from './refusal'
+import type {
+  FollowedClaim,
+  OldClaimReading,
+  SubmitEvent,
+  SubmitState,
+  SubmitSteps,
+  SubmitStore
+} from './types'
 
 /** The submission before anything ran. */
 export const initialSubmitState = (): SubmitState => ({
@@ -170,6 +180,24 @@ export const submitReducer = (state: SubmitState, event: SubmitEvent): SubmitSta
         return state
       }
       return { write: writeReducer(state.write, { type: 'reset' }), after: 'none', lookup: 'none' }
+    case 'dropped':
+      // A hash the node lost, with no attempt on the chain: the start is offered again.
+      if (!pendingHashIn(state, event.run)) {
+        return state
+      }
+      return { write: writeReducer(state.write, { type: 'reset' }), after: 'none', lookup: 'none' }
+    case 'toChecklist':
+      if (
+        !inRun(state, event.run) ||
+        (state.write.status !== 'checkingGas' && !awaitingHashIn(state, event.run))
+      ) {
+        return state
+      }
+      return {
+        write: writeReducer(state.write, { type: 'reset' }),
+        after: 'none',
+        toChecklist: true
+      }
     case 'refused':
       if (
         !inRun(state, event.run) ||
@@ -197,7 +225,12 @@ export const submitReducer = (state: SubmitState, event: SubmitEvent): SubmitSta
         !inRun(state, event.run) ||
         state.landedUnseen ||
         state.after !== 'none' ||
-        !(write.status === 'checkingGas' || write.status === 'submitting' || mayStillLand(write))
+        !(
+          write.status === 'checkingGas' ||
+          write.status === 'submitting' ||
+          mayStillLand(write) ||
+          revertedRunning(write)
+        )
       ) {
         return state
       }
@@ -302,7 +335,10 @@ const WAKES = new WeakMap<SubmitStore, () => void>()
 // The stores whose followed claim is read now, and whose deposit step reads the balance now.
 const FOLLOWING = new WeakSet<SubmitStore>()
 const POLLING = new WeakSet<SubmitStore>()
-const WAITING = new WeakSet<SubmitStore>()
+const DROPPING = new WeakSet<SubmitStore>()
+
+// The run and hash whose receipt each store waits for now.
+const WAITING = new WeakMap<SubmitStore, string>()
 
 /** Rests for `ms`, or until the holder asks to check again or a screen attaches. */
 const rest = (store: SubmitStore, ms: number): Promise<void> =>
@@ -375,23 +411,144 @@ const settle = async (store: SubmitStore, steps: SubmitSteps, run: number): Prom
   store.dispatch({ type: 'landed', run })
 }
 
-/** Waits for the receipt of the hash the run holds, then releases where it ended, then the landing. */
+/**
+ * After a revert that names an attempt already running: the attempt read
+ * decides whose. This request's own (its number, setup number and payload)
+ * is the landing; another's, or a read that fails, keeps the refusal.
+ */
+const judgeRevert = async (store: SubmitStore, steps: SubmitSteps, run: number): Promise<void> => {
+  if (!inRun(store.state(), run) || !revertedRunning(store.state().write)) {
+    return
+  }
+  const attempt = await readWithin(() => steps.attemptRead()).then(
+    (read) => steps.attemptOf(read),
+    () => undefined
+  )
+  if (attempt === 'ours') {
+    store.dispatch({ type: 'landedUnseen', run })
+  }
+}
+
+/**
+ * Whether the hash the run waits on was dropped: the claim it sends or
+ * follows is older than `DROPPED_AFTER_MS` by the clock read before the
+ * reads, the node knows none of the run's hashes, and the attempt read finds
+ * no attempt; the claim is then released, unless it carries a hash the run
+ * does not know, and the start offered again. This request's attempt found
+ * started is the landing. A read that fails, or a run that moved meanwhile,
+ * reads nothing as dropped. Answers whether the check ended the wait.
+ */
+const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boolean> => {
+  const state = store.state()
+  const { write } = state
+  const { run } = write
+  const hash = pendingHashIn(state, run)
+  const requestId = state.requestId ?? state.followed
+  if (!hash || !requestId || write.status !== 'submitting' || DROPPING.has(store)) {
+    return false
+  }
+  const hashes = write.sentHashes ?? [hash]
+  const unmoved = () => pendingHashIn(store.state(), run) === hash
+  DROPPING.add(store)
+  try {
+    const clock = steps.now()
+    const read = await readWithin(() => steps.readSession()).catch(() => undefined)
+    const held =
+      read?.status === 'present' && read.value.state === 'live' ? read.value.submission : undefined
+    if (
+      !unmoved() ||
+      !held ||
+      held.requestId !== requestId ||
+      clock - held.claimedAt < DROPPED_AFTER_MS
+    ) {
+      return false
+    }
+    const known = await readWithin(() =>
+      Promise.all(hashes.map((one) => steps.transactionKnown(one)))
+    ).catch(() => undefined)
+    if (!unmoved() || !known || known.some((answer) => answer !== 'unknown')) {
+      return false
+    }
+    const attempt = await readWithin(() => steps.attemptRead()).then(
+      (answer) => steps.attemptOf(answer),
+      () => undefined
+    )
+    if (!unmoved() || (attempt !== 'ours' && attempt !== 'none')) {
+      return false
+    }
+    if (attempt === 'ours') {
+      store.dispatch({ type: 'landedUnseen', run })
+      await settle(store, steps, run)
+      return true
+    }
+    const released = await steps.releaseClaim(requestId, hashes).catch(() => undefined)
+    if (!unmoved() || released?.status !== 'released') {
+      return false
+    }
+    store.dispatch({ type: 'dropped', run })
+    return true
+  } finally {
+    DROPPING.delete(store)
+  }
+}
+
+/**
+ * Waits for the receipt of the hash the run holds, after the check for a
+ * dropped hash, then releases where it ended, then the landing.
+ */
 const waitForReceipt = async (store: SubmitStore, steps: SubmitSteps): Promise<void> => {
+  if (await checkDropped(store, steps)) {
+    return
+  }
   const state = store.state()
   const { run } = state.write
   const hash = pendingHashIn(state, run)
-  if (!hash || WAITING.has(store)) {
+  const waiting = `${run}:${hash?.toLowerCase()}`
+  if (!hash || WAITING.get(store) === waiting) {
     return
   }
-  WAITING.add(store)
+  WAITING.set(store, waiting)
   try {
     const startBlock = state.write.status === 'submitting' ? state.write.startBlock : undefined
     await steps.waitAgain(hash, startBlock, writeEvent(store), run)
   } finally {
-    WAITING.delete(store)
+    if (WAITING.get(store) === waiting) {
+      WAITING.delete(store)
+    }
   }
+  await judgeRevert(store, steps, run)
   await releaseWhereEnded(store, steps)
   await settle(store, steps, run)
+}
+
+/**
+ * The judgement of a followed claim with no hash older than the steps' claim
+ * age: where the wallet still holds its request, it is waited on; broadcast,
+ * the hash is written on the claim and followed; else the manager's events
+ * name the attempt started, or the claim is released where it still carries
+ * no hash. A claim that took a hash meanwhile is followed under it.
+ */
+const judgeOldClaim = async (
+  steps: SubmitSteps,
+  follow: FollowedClaim
+): Promise<OldClaimReading> => {
+  const hold = await readWithin(() => steps.requestHold(follow.requestId)).catch(() => undefined)
+  if (!hold || hold.status === 'held') {
+    return { status: 'wait' }
+  }
+  if (hold.status === 'broadcast') {
+    await steps.markSent(follow, hold.transactionHash).catch(() => undefined)
+    return { status: 'hashed', transactionHash: hold.transactionHash }
+  }
+  const started = await readWithin(() => steps.startedSince(follow)).catch(() => undefined)
+  if (started === undefined) {
+    return { status: 'wait' }
+  }
+  if (started) {
+    return { status: 'started' }
+  }
+  const released = await steps.releaseClaim(follow.requestId, []).catch(() => undefined)
+  return released ?? { status: 'wait' }
 }
 
 /**
@@ -436,7 +593,7 @@ const readFollow = async (store: SubmitStore): Promise<void> => {
         read?.status === 'absent' ||
         (read?.status === 'present' && read.value.state !== 'live')
       ) {
-        store.dispatch({ type: 'voided', run })
+        store.dispatch({ type: 'toChecklist', run })
         return
       }
       const held: SubmissionInFlightRecord | undefined =
@@ -467,29 +624,36 @@ const readFollow = async (store: SubmitStore): Promise<void> => {
         waitAfter = true
         return
       }
-      if (held && clock - held.claimedAt >= SUBMISSION_CLAIM_AGE_MS) {
+      if (held && clock - held.claimedAt >= steps.claimAgeMs) {
         // eslint-disable-next-line no-await-in-loop
-        const started = await readWithin(() => steps.startedSince(follow)).catch(() => undefined)
+        const judged = await judgeOldClaim(steps, follow)
         if (store.state().follow !== follow) {
           // eslint-disable-next-line no-continue
           continue
         }
-        if (started === true) {
+        if (judged.status === 'started') {
           store.dispatch({ type: 'landedUnseen', run })
           // eslint-disable-next-line no-await-in-loop
           await settle(store, steps, run)
           return
         }
-        if (started === false) {
-          // eslint-disable-next-line no-await-in-loop
-          const released = await steps.release(follow.requestId).then(
-            () => true,
-            () => false
-          )
-          if (released && store.state().follow === follow) {
-            store.dispatch({ type: 'voided', run })
-            return
-          }
+        if (judged.status === 'hashed') {
+          writeEvent(store)({
+            type: 'sent',
+            run,
+            transactionHash: judged.transactionHash,
+            startBlock: follow.startBlock
+          })
+          waitAfter = true
+          return
+        }
+        if (judged.status === 'released') {
+          store.dispatch({ type: 'voided', run })
+          return
+        }
+        if (judged.status === 'gone') {
+          // eslint-disable-next-line no-continue
+          continue
         }
       }
       // eslint-disable-next-line no-await-in-loop
@@ -548,9 +712,10 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
     return
   }
   const requestId = steps.newRequestId()
+  const ours = { requestId, startBlock, claimedAt: steps.now() }
   let claim
   try {
-    claim = await steps.claim({ requestId, startBlock, claimedAt: steps.now() })
+    claim = await steps.claim(ours)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     return
@@ -566,8 +731,13 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
   }
   const sendDispatch = (event: WriteEvent) => {
     dispatch(event)
-    if (event.type === 'sent' && event.run === run) {
-      steps.markSent(requestId, event.transactionHash).catch(() => undefined)
+    // Only a hash the run took goes on the claim, never one of a run that ended.
+    if (
+      event.type === 'sent' &&
+      event.run === run &&
+      pendingHashIn(store.state(), run) === event.transactionHash
+    ) {
+      steps.markSent(ours, event.transactionHash).catch(() => undefined)
     }
   }
   try {
@@ -575,6 +745,7 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
   }
+  await judgeRevert(store, steps, run)
   await releaseWhereEnded(store, steps)
   await settle(store, steps, run)
 }
@@ -720,9 +891,9 @@ export const startSubmission = async (store: SubmitStore, steps: SubmitSteps): P
     return
   }
 
+  let outcome
   try {
-    const prepared = await steps.prepare()
-    store.dispatch({ type: 'prepared', run, prepared })
+    outcome = await steps.prepare()
   } catch (error: unknown) {
     if (preparedRefusalRunning(error)) {
       store.dispatch({ type: 'refused', run })
@@ -731,6 +902,11 @@ export const startSubmission = async (store: SubmitStore, steps: SubmitSteps): P
     }
     return
   }
+  if (outcome.status === 'set-changed') {
+    store.dispatch({ type: 'toChecklist', run })
+    return
+  }
+  store.dispatch({ type: 'prepared', run, prepared: outcome.prepared })
   await checkAndSend(store, steps, run)
 }
 
@@ -788,9 +964,10 @@ export const detachSteps = (store: SubmitStore, steps: SubmitSteps): void => {
 }
 
 /**
- * From a stalled receipt wait: waits for the same hash once more. From a
- * followed claim with no hash: reads it again at once. From a send that may
- * still land: reads the session's claim and follows it.
+ * From a stalled receipt wait: checks for a dropped hash, then waits for the
+ * same hash once more. From a followed claim with no hash: reads it again at
+ * once. From a send that may still land: reads the session's claim and
+ * follows it.
  */
 export const checkAgain = async (store: SubmitStore, steps: SubmitSteps): Promise<void> => {
   const state = store.state()

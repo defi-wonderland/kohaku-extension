@@ -87,6 +87,19 @@ describe('the setup chrome', () => {
     expect(chrome?.contains(byTestId('view'))).toBe(true)
   })
 
+  it('adds a given tail after the breadcrumb, and nothing when none is given', () => {
+    mount(
+      <SetupChrome testID="chrome" breadcrumbTail="Recover an account">
+        {false}
+      </SetupChrome>
+    )
+    expect(byTestId('chrome')?.textContent).toBe(`${BREADCRUMB} › Recover an account`)
+
+    mount(<SetupChrome testID="chrome">{false}</SetupChrome>)
+    expect(byTestId('chrome')?.textContent).not.toContain('Recover an account')
+    expect(byTestId('chrome')?.textContent).toBe(BREADCRUMB)
+  })
+
   it('shows the breadcrumb when it holds no view', () => {
     mount(<SetupChrome testID="chrome">{false}</SetupChrome>)
     expect(byTestId('chrome')?.textContent).toBe(BREADCRUMB)

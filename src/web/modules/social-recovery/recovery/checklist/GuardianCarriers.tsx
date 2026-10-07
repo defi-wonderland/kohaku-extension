@@ -1,13 +1,13 @@
 /**
  * A guardian row's one artifact, the link to the approval page, and what
- * carries it: the four values first, then open the approval page, copy the
- * link, copy a message with the link and show the QR code, all four locked
- * until every value rendered. The row tells the recoverer to ask for the call
- * rather than place it, and to send the message over a channel they already
- * use. The paste field takes the line the guardian sends back. A complete row
- * shows when this tab added its approval.
+ * carries it: the four values first, how the guardian answers, then open the
+ * approval page, copy the link, copy a message with the link and show the QR
+ * code, all four locked until every value rendered. The row tells the
+ * recoverer to ask for the call rather than place it, and to send the message
+ * over a channel they already use. The paste field takes the line the guardian
+ * sends back. A complete row shows when this tab added its approval.
  */
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -44,6 +44,9 @@ const GuardianCarriers = ({
   const { tabUrl, newKey, removed, retryRemoved, timeZone, addedAt, paste } = support
 
   const link = useMemo(() => (request ? approvalLinkOf(request, tabUrl) : null), [request, tabUrl])
+  useEffect(() => {
+    setQrFailed(false)
+  }, [link])
   const block = useMemo(
     () => (request ? guardianValuesOf(request, newKey, removed, t) : null),
     [request, newKey, removed, t]
@@ -101,6 +104,9 @@ const GuardianCarriers = ({
         removed={removed}
         retryRemoved={retryRemoved}
       />
+      <View style={spacings.mtSm}>
+        {line(`${GUARDIAN}.offlineBlock`, `checklist-row-${place}-how-they-answer`)}
+      </View>
       {unlocked && !!link && (
         <Text
           fontSize={12}
@@ -132,10 +138,14 @@ const GuardianCarriers = ({
             )
           }
         })}
-        {carrier(`${GUARDIAN}.showQr`, `checklist-row-${place}-show-qr`, () => {
-          setQrFailed(false)
-          setQrShown((shown) => !shown)
-        })}
+        {carrier(
+          qrShown ? `${GUARDIAN}.hideQr` : `${GUARDIAN}.showQr`,
+          `checklist-row-${place}-show-qr`,
+          () => {
+            setQrFailed(false)
+            setQrShown((shown) => !shown)
+          }
+        )}
       </View>
       {!unlocked && (
         <Text
@@ -170,11 +180,20 @@ const GuardianCarriers = ({
           />
         </View>
       )}
+      {unlocked && qrShown && qrFailed && (
+        <Text
+          fontSize={12}
+          appearance="errorText"
+          style={spacings.mbTy}
+          testID={`checklist-row-${place}-qr-failed`}
+        >
+          {t(`${GUARDIAN}.qrFailed`)}
+        </Text>
+      )}
       <View style={spacings.mtTy}>
         {line(`${GUARDIAN}.messageSays`)}
         {line(`${GUARDIAN}.ownKey`)}
         {line(`${GUARDIAN}.hardwareWallet`)}
-        {line(`${GUARDIAN}.howTheyAnswer`)}
       </View>
       <PasteField place={place} busy={busy} paste={paste} addReply={addReply} />
     </View>

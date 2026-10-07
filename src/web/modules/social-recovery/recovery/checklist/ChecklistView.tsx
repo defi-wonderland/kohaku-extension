@@ -37,13 +37,15 @@ import {
   unlockLineKeyOf,
   unsatisfiedOf
 } from './rows'
-import { submitPathOf } from './search'
+import { submitPathOf, waitPathOf } from './search'
 import type {
   AlertKeys,
   AnsweredMemory,
   ChecklistFailure,
   ChecklistRow,
   ChecklistViewProps,
+  DeadRequest,
+  Navigate,
   SlotReading
 } from './types'
 import UnsatisfiedBlock from './UnsatisfiedBlock'
@@ -64,8 +66,8 @@ const FAILURE_KEYS: Record<ChecklistFailure, AlertKeys> = {
     body: 'socialRecovery.entry.confirm.setupReadFailedBody'
   },
   open: {
-    title: 'socialRecovery.client.unavailableTitle',
-    body: 'socialRecovery.client.unavailableBody'
+    title: `${CHECKLIST}.openFailedTitle`,
+    body: `${CHECKLIST}.openFailedBody`
   },
   destination: {
     title: 'socialRecovery.entry.confirm.readFailed',
@@ -86,6 +88,20 @@ const ChecklistView = ({
 }: ChecklistViewProps) => {
   const { t } = useTranslation()
   const book = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
+  const claim = usePasskeyClaim({ records, chainId, account, search, navigate, deps })
+  // A landed request keeps no claim either: the tab leaves for the wait only
+  // once the claims of the request that landed lose their requests and reports.
+  const lastRequest = useRef<DeadRequest | null>(null)
+  const { forgetAll } = claim
+  const leave = useCallback<Navigate>(
+    (to, options) => {
+      if (to === waitPathOf(account) && lastRequest.current) {
+        forgetAll(lastRequest.current)
+      }
+      navigate(to, options)
+    },
+    [account, forgetAll, navigate]
+  )
   const checklist = useChecklist({
     records,
     chainId,
@@ -93,16 +109,21 @@ const ChecklistView = ({
     entry,
     client,
     destination,
-    navigate,
+    navigate: leave,
     deps
   })
-  const claim = usePasskeyClaim({ records, chainId, account, search, navigate, deps })
   const [answered, setAnswered] = useState<Partial<Record<number, AnsweredMemory>>>({})
   const [pendingFailed, setPendingFailed] = useState(false)
 
   const { load, assessment, addReply, poll } = checklist
   const kit = client.status === 'ready' ? client.client : null
   const live = load.phase === 'live' ? load : null
+  useEffect(() => {
+    if (live) {
+      const { attemptId, setupNonce } = live.session.gathering.request
+      lastRequest.current = { attemptId, setupNonce }
+    }
+  }, [live])
   const pollClock = poll.status === 'answered' ? poll.clock : null
 
   const layout = useMemo(
@@ -163,11 +184,17 @@ const ChecklistView = ({
   })
 
   // A passed claim joins the session once it is live; a conflict keeps it
-  // waiting for the reload, and a refusal reads as the row's note.
+  // waiting for the reload, and a refusal reads as the row's note. A claim
+  // whose reply the session already holds, as after a reload between the
+  // write and the settle, settles with nothing added and nothing refused.
   const { pending, settle } = claim
   const applying = useRef(false)
   const applyPending = useCallback(async () => {
     if (!pending || applying.current) {
+      return
+    }
+    if (assessment?.filled.includes(pending.place)) {
+      settle(pending.place)
       return
     }
     applying.current = true
@@ -188,24 +215,28 @@ const ChecklistView = ({
     } finally {
       applying.current = false
     }
-  }, [pending, addReply, settle, deps])
+  }, [pending, assessment, addReply, settle, deps])
   const isLive = load.phase === 'live'
+  // A failed poll, a death being written, or one the records could not wipe,
+  // holds every add, launch and continue until a poll succeeds.
+  const held = poll.status === 'failed' || checklist.deathFailed || checklist.dying
+  const addable = isLive && poll.status === 'answered' && !held
   useEffect(() => {
-    if (isLive && pending && !pendingFailed && !checklist.busy) {
+    if (addable && pending && !pendingFailed && !checklist.busy) {
       applyPending().catch(() => setPendingFailed(true))
     }
-  }, [isLive, pending, pendingFailed, checklist.busy, applyPending])
+  }, [addable, pending, pendingFailed, checklist.busy, applyPending])
 
-  // A wiped session keeps no claim: every request and report of this
-  // checklist's ceremonies goes, a report that lands later included.
+  // A wiped session keeps no claim and no outcome: every request and report
+  // of the request that died goes, a report that lands later included.
+  const died = load.phase === 'wiped' ? load.died : undefined
   const isWiped = load.phase === 'wiped'
-  const { forgetAll } = claim
   const ceremonyId = search.ceremony
   useEffect(() => {
-    if (isWiped && (pending || ceremonyId)) {
-      forgetAll()
+    if (isWiped) {
+      forgetAll(died)
     }
-  }, [isWiped, pending, ceremonyId, forgetAll])
+  }, [isWiped, died, pending, ceremonyId, outcomes, forgetAll])
 
   const title = (
     <PageTitle
@@ -279,8 +310,8 @@ const ChecklistView = ({
         {title}
         {errorAlert(
           {
-            title: 'socialRecovery.client.unavailableBody',
-            body: `${CHECKLIST}.leavingKeeps`
+            title: `${CHECKLIST}.conflictTitle`,
+            body: `${CHECKLIST}.conflictBody`
           },
           'checklist-conflict',
           checklist.retry
@@ -335,9 +366,6 @@ const ChecklistView = ({
   }
 
   const headline = headlineOf(layout, assessment)
-  // A failed poll, or a death the records could not wipe, holds every add,
-  // launch and continue until a poll succeeds.
-  const held = poll.status === 'failed' || checklist.deathFailed
   const dormant = poll.status === 'answered' && !poll.facts.authorized
   const busy = checklist.busy || claim.busy || held
   const satisfied = assessment.ruleSatisfied
@@ -397,6 +425,7 @@ const ChecklistView = ({
         layout={layout}
         now={deps.now}
         timeZone={deps.timeZone}
+        onPassed={checklist.retryPoll}
       />
       {poll.status === 'failed' && <PollAlert withRows onRetry={checklist.retryPoll} />}
       {checklist.deathFailed && (
@@ -405,7 +434,7 @@ const ChecklistView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          text={t('socialRecovery.records.writeFailed')}
+          text={t(`${CHECKLIST}.deaths.wipeFailed`)}
         >
           {retryButton(checklist.retryPoll, 'checklist-death-failed-retry')}
         </Alert>
@@ -416,8 +445,8 @@ const ChecklistView = ({
           type="warning"
           size="sm"
           style={spacings.mbSm}
-          title={t('socialRecovery.wait.cannotExecute.notAuthorized')}
-          text={t('socialRecovery.wait.cannotExecute.notAuthorizedRepair')}
+          title={t(`${CHECKLIST}.dormant.title`)}
+          text={t(`${CHECKLIST}.dormant.body`)}
         />
       )}
       {!!unsatisfied && <UnsatisfiedBlock reading={unsatisfied} />}
@@ -440,7 +469,7 @@ const ChecklistView = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          text={t('socialRecovery.records.writeFailed')}
+          text={t(`${CHECKLIST}.writeFailed`)}
         >
           {pendingFailed &&
             retryButton(() => setPendingFailed(false), 'checklist-write-failed-retry')}
@@ -484,7 +513,7 @@ const ChecklistView = ({
       </Text>
       {unsatisfied?.kind !== 'didNotAnswer' && (
         <AbandonBlock
-          busy={checklist.busy || claim.busy}
+          busy={checklist.busy || claim.busy || checklist.dying}
           failed={checklist.abandonFailed}
           onAbandon={() => {
             checklist.abandon(claim.forgetAll).catch(() => undefined)

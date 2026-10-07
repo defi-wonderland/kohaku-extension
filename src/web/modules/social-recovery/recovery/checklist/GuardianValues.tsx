@@ -2,7 +2,9 @@
  * A guardian row's value block, two columns: the account, the new key, the
  * key being removed and the payment line, then the setup number and the
  * attempt number the paste check and the approval page read. A value still
- * being read shows a loader; a failed read of the removed key offers retry.
+ * being read shows a loader; a failed read of the removed key offers retry. A
+ * wallet that cannot name the removed key says so, with no retry: another read
+ * answers the same, and the carriers stay locked.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -44,7 +46,7 @@ const GuardianValues = ({ place, request, block, removed, retryRemoved }: Guardi
       return (
         <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
           <Text fontSize={12} appearance="errorText" style={spacings.mrSm}>
-            {t('socialRecovery.entry.confirm.readFailed')}
+            {t('socialRecovery.checklist.guardian.removedKeyReadFailed')}
           </Text>
           <Button
             testID={`checklist-row-${place}-removed-retry`}
@@ -55,6 +57,17 @@ const GuardianValues = ({ place, request, block, removed, retryRemoved }: Guardi
             hasBottomSpacing={false}
           />
         </View>
+      )
+    }
+    if (name === 'keyBeingRemoved' && removed.status === 'unavailable') {
+      return (
+        <Text
+          fontSize={12}
+          appearance="errorText"
+          testID={`checklist-row-${place}-removed-unavailable`}
+        >
+          {t('socialRecovery.checklist.guardian.removedKeyUnavailable')}
+        </Text>
       )
     }
     if (name === 'keyBeingRemoved' && removed.status === 'loading') {

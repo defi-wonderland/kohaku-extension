@@ -15,7 +15,9 @@ import type {
   ListedAccountFacts,
   ReceiptReads,
   RecoveryKitClient,
-  SendPort
+  SendPort,
+  SendRequestPort,
+  TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
@@ -181,6 +183,8 @@ export interface SubmitState {
   refusal?: 'already-running'
   /** The attempt this run would start was found started while no page followed its hash. */
   landedUnseen?: boolean
+  /** The run ended because the screen goes back to the checklist: the set changed, or the session went. */
+  toChecklist?: boolean
   after: AfterLanding
 }
 
@@ -192,6 +196,8 @@ export type SubmitEvent =
   | { type: 'released'; run: number }
   | { type: 'follow'; run: number; claim: SubmissionInFlightRecord }
   | { type: 'voided'; run: number }
+  | { type: 'dropped'; run: number }
+  | { type: 'toChecklist'; run: number }
   | { type: 'refused'; run: number }
   | { type: 'balance'; run: number; balance: bigint }
   | { type: 'landedUnseen'; run: number }
@@ -208,14 +214,47 @@ export interface SubmitStore {
 /** What the attempt read says of the attempt this request would start. */
 export type AttemptReading = 'ours' | 'other' | 'none'
 
+/** The judgement of a followed claim with no hash older than the claim's age. */
+export type OldClaimReading =
+  | { status: 'wait' }
+  | { status: 'started' }
+  | { status: 'hashed'; transactionHash: Hex }
+  | { status: 'released' }
+  | { status: 'gone' }
+
+/** The prepared start, or a set of approvals other than the one the screen verified and shows. */
+export type PrepareOutcome =
+  | { status: 'prepared'; prepared: PreparedCall }
+  | { status: 'set-changed' }
+
+/**
+ * The release of a claim that may not carry a hash the caller does not know:
+ * released; kept, since it now carries another hash; or gone already, or
+ * replaced by another claim.
+ */
+export type ClaimRelease =
+  | { status: 'released' }
+  | { status: 'hashed'; transactionHash: Hex }
+  | { status: 'gone' }
+
+/**
+ * Where the wallet holds the request a claim was queued under: still held
+ * (queued, or on a route it cannot follow), broadcast under a hash, or no
+ * longer held anywhere.
+ */
+export type RequestHold =
+  | { status: 'held' }
+  | { status: 'broadcast'; transactionHash: Hex }
+  | { status: 'free' }
+
 /** The submission's steps over the wallet's seams. */
 export interface SubmitSteps {
   readSession(): Promise<SessionRead>
   attemptRead(): Promise<RecoveryState>
   /** The attempt this request would start, as one attempt read names it. */
   attemptOf(state: RecoveryState): AttemptReading
-  /** The request from the smallest set, and the start call it prepares. */
-  prepare(): Promise<PreparedCall>
+  /** The request from the smallest set, and the start call it prepares, where its set is the one verified. */
+  prepare(): Promise<PrepareOutcome>
   checkGas(prepared: PreparedCall): Promise<GasCheck>
   blockNumber(): Promise<number>
   newRequestId(): string
@@ -223,8 +262,16 @@ export interface SubmitSteps {
   now(): number
   /** The claim on the live session, read again after another tab moved it. */
   claim(claim: SubmissionInFlightClaim): Promise<SubmissionClaimResult>
-  markSent(requestId: string, transactionHash: Hex): Promise<void>
+  /** The hash on the claim; where another tab released the claim meanwhile, the claim written back with it. */
+  markSent(claim: SubmissionInFlightClaim, transactionHash: Hex): Promise<void>
   release(requestId: string): Promise<void>
+  /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
+  releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ClaimRelease>
+  /** How old a claim with no hash grows before the manager's events judge it, in ms. */
+  claimAgeMs: number
+  /** Where the wallet holds the request a claim was queued under. */
+  requestHold(requestId: string): Promise<RequestHold>
+  transactionKnown(transactionHash: Hex): Promise<TransactionKnown>
   send(
     prepared: PreparedCall,
     dispatch: (event: WriteEvent) => void,
@@ -249,12 +296,15 @@ export interface SubmitStepsInput {
   reads: ChainReads
   receipts: ReceiptReads
   port: SendPort
+  requests: SendRequestPort
   records: WalletRecords
   chainId: ChainId
   account: Address
   gathering: Gathering
   plan: SendingPlan
   network: GasNetwork
+  /** The places of the set the screen verified and shows. */
+  chosen: ReadonlySet<number>
   now: () => number
 }
 
@@ -330,6 +380,8 @@ export interface DetailsBlockProps {
   route: RecoveryRoute
   ready: SubmitReady
   providerKind?: ProviderKind
+  /** Called each time the expander opens, so the lock knows the payment line rendered. */
+  onOpened: () => void
 }
 
 export interface RunBlockProps {

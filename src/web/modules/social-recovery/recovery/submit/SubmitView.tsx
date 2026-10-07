@@ -5,7 +5,7 @@
  * the run as it stands, and Start recovery, locked with its reason until the
  * three values and the payment line rendered and every approval verified.
  */
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -44,6 +44,9 @@ const SubmitView = ({
   onBack
 }: SubmitViewProps) => {
   const { t } = useTranslation()
+  // The payment line renders only inside the expander, so the lock waits until it opened once.
+  const [detailsOpened, setDetailsOpened] = useState(false)
+  const onDetailsOpened = useCallback(() => setDetailsOpened(true), [])
 
   const retryButton = (testID: string, onPress: () => void, text?: string) => (
     <Button
@@ -145,8 +148,7 @@ const SubmitView = ({
         testID="submit-sending-unavailable"
         type="error"
         size="sm"
-        title={t('socialRecovery.client.unavailableTitle')}
-        text={t('socialRecovery.arm.viewOnly')}
+        text={t('socialRecovery.client.unavailableBody')}
       >
         {retryButton('submit-sending-retry', onRetrySending)}
       </Alert>
@@ -154,12 +156,17 @@ const SubmitView = ({
   }
 
   const valuesRendered =
-    !!lead.newKey && lead.removed.status === 'named' && namesNoPayment(load.session.gathering)
+    !!lead.newKey &&
+    lead.removed.status === 'named' &&
+    detailsOpened &&
+    namesNoPayment(load.session.gathering)
   const unlocked = valuesRendered && verify.status === 'verified' && sending.status === 'ready'
   const idle = write.status === 'idle' && !run.refusal
   const canStart = unlocked && idle && run.lookup !== 'reading'
-  // Back wherever nothing is on its way to the chain.
-  const showsBack = !isLive(run) && !landedOf(run) && !mayStillLand(write) && !run.refusal
+  // Back wherever nothing is on its way to the chain, and on the deposit step.
+  const showsBack =
+    write.status === 'needsDeposit' ||
+    (!isLive(run) && !landedOf(run) && !mayStillLand(write) && !run.refusal)
 
   return (
     <View testID="submit">
@@ -180,7 +187,12 @@ const SubmitView = ({
         </View>
       )}
       <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
-      <DetailsBlock route={route} ready={load} providerKind={providerKind} />
+      <DetailsBlock
+        route={route}
+        ready={load}
+        providerKind={providerKind}
+        onOpened={onDetailsOpened}
+      />
       <SectionCard testID="submit-verify">{verifyBlock()}</SectionCard>
       {sendingBlock()}
       {!submitting && (

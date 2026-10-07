@@ -10,14 +10,20 @@ import { fromBase64Url, toBase64Url } from '@web/modules/social-recovery/shared/
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/
 
+/** The longest line a record travels in; a longer one is no record. */
+const MAX_LINE_LENGTH = 16 * 1024
+
 /** A record as one line: its JSON, base64url with no padding. */
 export const lineOfRecord = (record: object): string =>
   toBase64Url(stringToBytes(JSON.stringify(record)))
 
-/** The JSON value a line carries, or null where the line is not base64url of JSON. */
+/**
+ * The JSON value a line carries, or null where the line is longer than a
+ * record travels in or is not base64url of JSON.
+ */
 export const recordOfLine = (line: string): unknown => {
   const text = line.trim()
-  if (!BASE64URL.test(text)) {
+  if (text.length > MAX_LINE_LENGTH || !BASE64URL.test(text)) {
     return null
   }
   try {

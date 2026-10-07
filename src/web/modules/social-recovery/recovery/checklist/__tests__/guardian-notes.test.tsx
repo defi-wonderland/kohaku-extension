@@ -112,7 +112,9 @@ describe('the guardian row notes', () => {
 
     await mounted.press('checklist-row-1-mark-declined')
 
-    expect(mounted.byTestId('checklist-conflict')).not.toBeNull()
+    const conflict = mounted.byTestId('checklist-conflict')?.textContent
+    expect(conflict).toContain(t('socialRecovery.checklist.conflictTitle'))
+    expect(conflict).toContain(t('socialRecovery.checklist.conflictBody'))
     expect(mounted.byTestId('checklist-rows')).toBeNull()
     const afterConflict = await storedSession(world.records)
     expect(afterConflict?.value.state === 'live' && afterConflict.value.notes).toEqual({
@@ -165,6 +167,35 @@ describe('the guardian row notes', () => {
       expect(mounted.navigate).toHaveBeenLastCalledWith(path, { replace: true })
     }
   )
+
+  it('says the note was not kept where its write fails, and leaves the row as it was', async () => {
+    const mounted = await open()
+    world.storage.refuse.push('recoverySession')
+
+    await mounted.press('checklist-row-1-mark-declined')
+
+    expect(mounted.byTestId('checklist-write-failed')?.textContent).toContain(
+      t('socialRecovery.checklist.writeFailed')
+    )
+    const stored = await storedSession(world.records)
+    expect(stored?.value.state === 'live' && stored.value.notes).toBeUndefined()
+    expect(mounted.byTestId('checklist-row-1-chip')?.textContent).toBe(chip('notAsked'))
+  })
+
+  it('keeps the session and the entry where the abandon cannot be written, and says so', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-cannot-complete')
+    world.storage.refuse.push('recoverySession')
+
+    await mounted.press('checklist-abandon-action')
+
+    expect(mounted.byTestId('checklist-abandon-failed')?.textContent).toBe(
+      t('socialRecovery.checklist.writeFailed')
+    )
+    expect((await storedSession(world.records))?.value.state).toBe('live')
+    expect((await world.records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).status).toBe('present')
+    expect(mounted.navigate).not.toHaveBeenCalled()
+  })
 
   it('keeps the session when the holder steps back from the abandon', async () => {
     const mounted = await open()

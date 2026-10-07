@@ -68,6 +68,7 @@ const PasteField = ({ place, busy, paste, addReply }: PasteFieldProps) => {
         label={t(`${GUARDIAN}.pasteLabel`)}
         placeholder={t(`${GUARDIAN}.pasteHint`)}
         value={text}
+        disabled={checking}
         onChangeText={(next: string) => {
           setText(next)
           setError(null)

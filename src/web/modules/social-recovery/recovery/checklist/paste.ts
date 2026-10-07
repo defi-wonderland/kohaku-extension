@@ -105,9 +105,10 @@ const verifyNotServed = (error: unknown): boolean =>
   isObject(error) && error.name === 'NotServedRefusal' && error.member === VERIFY_MEMBER
 
 /**
- * The verify of one reply against its place's request. A client that serves
- * no check, or does not judge this reply, leaves the add's own digest match
- * to decide; any other thrown read is a failed check the holder retries.
+ * The verify of one reply against its place's request. Only a satisfied
+ * verdict passes; a verdict that judges nothing is a failed check the holder
+ * retries, as is any thrown read. A client that serves no check at all leaves
+ * the add's own digest match to decide.
  */
 export const verifyStepOf = async (
   verify: VerifyReply,
@@ -115,7 +116,11 @@ export const verifyStepOf = async (
   reply: ApproverReply
 ): Promise<VerifyStep> => {
   try {
-    return (await verify(request, reply)) === 'rejected' ? 'rejected' : 'pass'
+    const verdict = await verify(request, reply)
+    if (verdict === 'rejected') {
+      return 'rejected'
+    }
+    return verdict === 'satisfied' ? 'pass' : 'failed'
   } catch (error: unknown) {
     return verifyNotServed(error) ? 'pass' : 'failed'
   }
@@ -171,7 +176,7 @@ export const pasteErrorLinesOf = (error: PasteError, t: Translate): string[] => 
     case 'checkFailed':
       return [t(`${PASTE}.checkFailed`)]
     case 'writeFailed':
-      return [t('socialRecovery.records.writeFailed')]
+      return [t('socialRecovery.checklist.writeFailed')]
     case 'conflict':
     default:
       return []

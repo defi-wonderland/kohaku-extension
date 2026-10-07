@@ -75,7 +75,7 @@ export const creationPrivilegesOf = (
  * keys the keystore has an entry for, with that entry's type. Undefined where
  * it holds none.
  */
-const heldKeyOf = (
+export const heldKeyOf = (
   account: Pick<Account, 'associatedKeys'>,
   keys: NonNullable<AccountFactsSources['keys']>
 ): KeyHandle | undefined => {

@@ -15,10 +15,11 @@ import type { Address, Hex, RecoveryState } from '@web/modules/social-recovery/s
 import {
   accountBatchTransactionOf,
   newSendRequestId,
-  sameAddress
+  sameAddress,
+  sendRequestStateOf
 } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
-import type { SessionRevision } from '@web/modules/social-recovery/shared/records'
+import type { SessionRevision, StoredSession } from '@web/modules/social-recovery/shared/records'
 import {
   assertWriteDoor,
   checkGas,
@@ -29,8 +30,14 @@ import {
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 
-import { CONFLICT_RETRIES } from './constants'
-import type { AttemptReading, SubmitSteps, SubmitStepsInput } from './types'
+import { CONFLICT_RETRIES, KEY_SEND_CLAIM_AGE_MS, SUBMISSION_CLAIM_AGE_MS } from './constants'
+import type {
+  AttemptReading,
+  ClaimRelease,
+  RequestHold,
+  SubmitSteps,
+  SubmitStepsInput
+} from './types'
 
 export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
   const { client, records, chainId, account, gathering, plan, network, reads } = input
@@ -49,9 +56,10 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
     return block
   }
 
-  // An update over a fresh read of the session, read and tried again where another tab moved it.
+  // An update over a fresh read of the session, read and tried again where
+  // another tab moved it; each try judges the session as that read found it.
   const withFreshRevision = async <T>(
-    update: (revision: SessionRevision) => Promise<T>,
+    update: (revision: SessionRevision, read: StoredSession) => Promise<T>,
     tries = 0
   ): Promise<T> => {
     const read = await session.read()
@@ -59,7 +67,7 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
       throw new Error(`No recovery session for ${account}`)
     }
     try {
-      return await update(read.revision)
+      return await update(read.revision, read)
     } catch (error: unknown) {
       if (!isSessionRevisionConflict(error) || tries >= CONFLICT_RETRIES) {
         throw error
@@ -69,16 +77,20 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
   }
 
   /**
-   * This request's attempt: waiting under its attempt number, its setup
-   * number and the hash of its payload. A rival attempt under the same number
-   * carries another payload, so it reads as another attempt.
+   * This request's attempt: under its attempt number, its setup number and
+   * the hash of its payload, in any state but none, so one already cancelled
+   * or consumed is ours too. Under the same number with another setup number
+   * or payload it is a rival's. Under another number, a waiting attempt is
+   * another one running; a closed one is an earlier attempt and blocks nothing.
    */
   const attemptOf = ({ attempt }: RecoveryState): AttemptReading => {
-    if (attempt.state !== 'Waiting') {
+    if (attempt.state === 'None') {
       return 'none'
     }
+    if (attempt.attemptId !== attemptId) {
+      return attempt.state === 'Waiting' ? 'other' : 'none'
+    }
     const ours =
-      attempt.attemptId === attemptId &&
       attempt.setupNonce === setupNonce &&
       attempt.payloadHash.toLowerCase() === payloadHash.toLowerCase()
     return ours ? 'ours' : 'other'
@@ -100,9 +112,17 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
       if (!('payload' in request)) {
         throw new Error('The gathering completed to no start request.')
       }
+      // The start carries the set the screen verified and shows, or nothing is sent.
+      const places = new Set(request.proofs.map((proof) => Number(proof.place)))
+      if (
+        places.size !== input.chosen.size ||
+        [...places].some((place) => !input.chosen.has(place))
+      ) {
+        return { status: 'set-changed' }
+      }
       const prepared = await client.recovery.prepareStartAttempt(request, now)
       assertWriteDoor('submission', prepared)
-      return prepared
+      return { status: 'prepared', prepared }
     },
     checkGas: (prepared) =>
       plan.kind === 'key'
@@ -127,14 +147,67 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
     newRequestId: newSendRequestId,
     now: input.now,
     claim: (claim) => withFreshRevision((revision) => session.claimSubmission(claim, revision)),
-    async markSent(requestId, transactionHash) {
-      await withFreshRevision((revision) =>
-        session.setSubmissionHash(requestId, transactionHash, revision)
-      )
+    async markSent(claim, transactionHash) {
+      await withFreshRevision(async (revision, read) => {
+        if (read.value.state !== 'live') {
+          return
+        }
+        const held = read.value.submission
+        if (held && held.requestId !== claim.requestId) {
+          return
+        }
+        if (held) {
+          await session.setSubmissionHash(claim.requestId, transactionHash, revision)
+          return
+        }
+        // Another tab released the claim while the wallet held the send: the
+        // claim is written back with its hash, so every page follows it.
+        const written = await session.claimSubmission(claim, revision)
+        if (written.claimed) {
+          await session.setSubmissionHash(claim.requestId, transactionHash, written.record.revision)
+        }
+      })
     },
     async release(requestId) {
       await withFreshRevision((revision) => session.releaseSubmission(requestId, revision))
     },
+    releaseClaim: (requestId, hashes) =>
+      withFreshRevision(async (revision, read): Promise<ClaimRelease> => {
+        const held = read.value.state === 'live' ? read.value.submission : undefined
+        if (!held || held.requestId !== requestId) {
+          return { status: 'gone' }
+        }
+        const hash = held.transactionHash
+        if (hash && !hashes.some((known) => known.toLowerCase() === hash.toLowerCase())) {
+          return { status: 'hashed', transactionHash: hash }
+        }
+        await session.releaseSubmission(requestId, revision)
+        return { status: 'released' }
+      }),
+    claimAgeMs: plan.kind === 'key' ? KEY_SEND_CLAIM_AGE_MS : SUBMISSION_CLAIM_AGE_MS,
+    async requestHold(requestId): Promise<RequestHold> {
+      // A key's own send carries no request id the queue could be asked about.
+      if (plan.kind === 'key') {
+        return { status: 'free' }
+      }
+      const state = await sendRequestStateOf(
+        input.requests,
+        requestId,
+        plan.facts.account.addr as Address,
+        chainId
+      )
+      switch (state.status) {
+        case 'broadcast':
+          return { status: 'broadcast', transactionHash: state.transactionHash }
+        case 'gone':
+          return { status: 'free' }
+        case 'unread':
+          throw new Error(`The wallet did not answer where it holds request ${requestId}.`)
+        default:
+          return { status: 'held' }
+      }
+    },
+    transactionKnown: (transactionHash) => input.receipts.transactionKnown(transactionHash),
     send: (prepared, dispatch, run, startBlock, requestId) =>
       plan.kind === 'key'
         ? driveSend({
@@ -190,11 +263,13 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
       )
     },
     async land() {
-      const read = await session.read()
-      if (read.status === 'present' && read.value.state === 'landed') {
-        return
-      }
-      await withFreshRevision((revision) => records.landSubmission(chainId, account, revision))
+      // A session another page landed meanwhile, on any try, is this landing done.
+      await withFreshRevision(async (revision, read) => {
+        if (read.value.state === 'landed') {
+          return
+        }
+        await records.landSubmission(chainId, account, revision)
+      })
     }
   }
 }

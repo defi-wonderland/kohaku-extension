@@ -642,9 +642,10 @@ export const createWalletRecords = ({
 
   const writeSessionAt = async (
     key: string,
-    value: RecoverySessionRecord
+    value: RecoverySessionRecord,
+    savedAt: number = now()
   ): Promise<StoredSession> => {
-    const record: StoredSession = { value, savedAt: now(), revision: newRevision() }
+    const record: StoredSession = { value, savedAt, revision: newRevision() }
     await storage.set(key, record)
     return record
   }
@@ -764,6 +765,11 @@ export const createWalletRecords = ({
             )
           }
           const { gathering, notes = {}, submission } = current.value
+          if (!Array.isArray(gathering.places) || !Array.isArray(gathering.replies)) {
+            throw new Error(
+              'The stored gathering holds no list of places or replies: write a new gathering or wipe the session first'
+            )
+          }
           if (!gathering.places.some((entry) => entry.place === place)) {
             throw new Error(`The gathering has no place ${place}`)
           }
@@ -790,9 +796,6 @@ export const createWalletRecords = ({
             requestId: claim.requestId,
             startBlock: claim.startBlock,
             claimedAt: claim.claimedAt
-          }
-          if (!isSubmissionInFlight(submission)) {
-            throw new Error(`Invalid submission in flight, not written: ${key}`)
           }
           const record = await writeSessionAt(
             key,
@@ -982,12 +985,17 @@ export const createWalletRecords = ({
     })
   }
 
-  /** Writes a landed session and answers it as the stored countdown. */
+  /**
+   * Writes a landed session and answers it as the stored countdown. The landing
+   * itself stamps a new `savedAt`; a later write of the same countdown passes
+   * the landing's, so the countdown's start date stays the landing's time.
+   */
   const writeLandedAt = async (
     key: string,
-    landed: LandedRecoverySession
+    landed: LandedRecoverySession,
+    savedAt?: number
   ): Promise<StoredCountdown> => {
-    const written = await writeSessionAt(key, landed)
+    const written = await writeSessionAt(key, landed, savedAt)
     return { value: countdownOf(landed), savedAt: written.savedAt, revision: written.revision }
   }
 
@@ -1106,12 +1114,10 @@ export const createWalletRecords = ({
             startBlock: claim.startBlock,
             claimedAt: claim.claimedAt
           }
-          if (!isExecutionInFlight(execution)) {
-            throw new Error(`Invalid execution in flight, not written: ${key}`)
-          }
           const record = await writeLandedAt(
             key,
-            landedSession({ ...countdownOf(landed), execution })
+            landedSession({ ...countdownOf(landed), execution }),
+            stored.savedAt
           )
           return { claimed: true, execution, record }
         }),
@@ -1132,7 +1138,8 @@ export const createWalletRecords = ({
           }
           return writeLandedAt(
             key,
-            landedSession({ ...countdownOf(landed), execution: { ...execution, transactionHash } })
+            landedSession({ ...countdownOf(landed), execution: { ...execution, transactionHash } }),
+            stored.savedAt
           )
         }),
       releaseExecution: (requestId: string, expectedRevision: ExpectedRevision) =>
@@ -1147,7 +1154,8 @@ export const createWalletRecords = ({
           checkRevision(current, expectedRevision, key)
           const written = await writeLandedAt(
             key,
-            landedSession({ ...countdownOf(current.value), execution: undefined })
+            landedSession({ ...countdownOf(current.value), execution: undefined }),
+            current.savedAt
           )
           return { status: 'present' as const, ...written }
         }),

@@ -432,6 +432,33 @@ describe('the release of the execution in flight', () => {
   })
 })
 
+describe('the execution in flight keeps the time of the landing', () => {
+  it('after a claim, a hash and a release the countdown keeps the savedAt and the age the landing wrote', async () => {
+    const storage = makeStorage()
+    const clock = { t: T0 }
+    const records = createWalletRecords({ storage, now: () => clock.t })
+    await writeGathering(records, gathering(PAYLOAD))
+    clock.t = T0 + 1000
+    await land(records)
+    const landedAt = presentOf(await countdown(records).read()).savedAt
+    expect(landedAt).toBe(T0 + 1000)
+
+    clock.t = T0 + 60_000
+    const claimed = await claim(records)
+    expect(claimed.record.savedAt).toBe(landedAt)
+    clock.t = T0 + 120_000
+    expect((await setHash(records, CLAIM.requestId, HASH_A)).savedAt).toBe(landedAt)
+    clock.t = T0 + 180_000
+    const released = presentOf(await release(records, CLAIM.requestId))
+    expect(released.savedAt).toBe(landedAt)
+
+    const reopened = createWalletRecords({ storage, now: () => clock.t })
+    expect(presentOf(await countdown(reopened).read()).savedAt).toBe(landedAt)
+    expect((await reopened.listCountdowns(CHAIN_ID))[0].record.savedAt).toBe(landedAt)
+    expect(await countdown(reopened).age()).toBe(T0 + 180_000 - landedAt)
+  })
+})
+
 describe('the execution in flight ends with the countdown', () => {
   it('the end of the countdown removes the claim with the session, and a new gathering starts with none', async () => {
     const { storage, records } = await landedWithClaim()

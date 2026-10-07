@@ -3541,6 +3541,40 @@ describe('the row notes of a live session', () => {
     })
   })
 
+  it('a note on a stored live session whose gathering has no list of places or replies is refused and writes nothing', async () => {
+    const malformed: [string, unknown][] = [
+      ['replies', { ...NOTE_GATHERING, replies: undefined }],
+      ['places', { ...NOTE_GATHERING, places: undefined }]
+    ]
+    await Promise.all(
+      malformed.map(async ([list, stored]) => {
+        const { storage, records } = setup()
+        await storage.set(SESSION_KEY, {
+          value: { state: 'live', gathering: stored, notes: { 0: 'declined' } },
+          savedAt: T0,
+          revision: 'a'.repeat(24)
+        })
+        const before = dump(storage)
+        storage.calls.set.length = 0
+        const outcomes = await Promise.allSettled([
+          setNote(records, 1, 'declined'),
+          setNote(records, 0, null)
+        ])
+        expect([
+          list,
+          outcomes.map(
+            (o) =>
+              o.status === 'rejected' &&
+              !(o.reason instanceof TypeError) &&
+              /holds no list of places or replies/.test(String(o.reason))
+          )
+        ]).toEqual([list, [true, true]])
+        expect(storage.calls.set).toEqual([])
+        expect(dump(storage)).toBe(before)
+      })
+    )
+  })
+
   it('a note on a wiped, a landed or an absent session is refused and writes nothing', async () => {
     const states: [string, (records: WalletRecords) => Promise<unknown>][] = [
       ['none', async () => undefined],

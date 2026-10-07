@@ -5,10 +5,11 @@
  * that does not answer within its limit, is a failed poll, never the last
  * good reading. Every decision takes the clock read before the poll's read.
  */
-import type { Attempt, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
-import type { DirectWipeEvent } from '@web/modules/social-recovery/shared/records'
+import { keccak256 } from 'viem'
 
-import type { ChecklistKitClient, ChecklistLoad, PollFacts, PollTarget } from './types'
+import type { Attempt, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+
+import type { ChecklistKitClient, ChecklistLoad, PollFacts, PollOutcome, PollTarget } from './types'
 
 /**
  * One poll: the recovery state and the authorization read together. Resolves
@@ -48,27 +49,46 @@ export const deadlinePassed = (gathering: Gathering, clock: number): boolean =>
   Math.floor(clock / 1000) > Number(gathering.request.validUntil)
 
 /**
- * The death a poll reads for a live gathering, or null where the request
- * still lives:
- * - another attempt opened: an attempt other than the predicted one waits, or
- *   the attempt counter moved past the predicted id while the predicted
- *   attempt is not the one waiting;
+ * Whether the account's attempt is this request's own submission: it carries
+ * the request's predicted id, the setup nonce the request was built under and
+ * the hash of the request's payload. The id alone names whoever opened next,
+ * so another holder's attempt can carry it, and an attempt opened under a
+ * changed setup is not this request's.
+ */
+const isOwnAttempt = (gathering: Gathering, attempt: Attempt): boolean => {
+  const { attemptId, setupNonce, payload } = gathering.request
+  return (
+    attempt.state !== 'None' &&
+    attempt.attemptId === BigInt(attemptId) &&
+    attempt.setupNonce === BigInt(setupNonce) &&
+    payload !== undefined &&
+    keccak256(payload) === attempt.payloadHash
+  )
+}
+
+/**
+ * What a poll reads for a live gathering, or null where the request still
+ * lives:
+ * - landed: the account's attempt is this request's own submission, waiting
+ *   or already ended;
+ * - another attempt opened: another attempt waits, or the attempt counter
+ *   moved past the predicted id;
  * - the setup changed: the setup nonce is not the one the request was built
  *   under.
- * A waiting attempt is named first, since it holds the slot a new gathering
- * would need.
+ * A waiting attempt is named before the setup, since it holds the slot a new
+ * gathering would need.
  */
-export const deathOf = (gathering: Gathering, facts: PollFacts): DirectWipeEvent | null => {
-  const predicted = BigInt(gathering.request.attemptId)
-  const live = attemptLive(facts.attempt)
-  const ours = live && facts.attempt.attemptId === predicted
-  if (live && !ours) {
+export const outcomeOf = (gathering: Gathering, facts: PollFacts): PollOutcome | null => {
+  if (isOwnAttempt(gathering, facts.attempt)) {
+    return 'landed'
+  }
+  if (attemptLive(facts.attempt)) {
     return 'another-attempt-opened'
   }
   if (facts.setupNonce !== BigInt(gathering.request.setupNonce)) {
     return 'setup-changed'
   }
-  if (facts.nextAttemptId > predicted && !ours) {
+  if (facts.nextAttemptId > BigInt(gathering.request.attemptId)) {
     return 'another-attempt-opened'
   }
   return null

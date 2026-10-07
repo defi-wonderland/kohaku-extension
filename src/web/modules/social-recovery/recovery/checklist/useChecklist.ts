@@ -6,7 +6,8 @@
  * or note. While a session is open it polls the account's recovery state,
  * assesses the gathering again after every poll that answers, and wipes the
  * session with its reason once the request dies: the deadline passed, another
- * attempt opened or the setup changed.
+ * attempt opened or the setup changed. A poll that reads the request's own
+ * submission on the chain lands the session and goes on to the wait.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -22,7 +23,7 @@ import type {
   StoredSession
 } from '@web/modules/social-recovery/shared/records'
 
-import { deadlinePassed, deathOf, pollTargetOf } from './poll'
+import { deadlinePassed, outcomeOf, pollTargetOf } from './poll'
 import { readoutPathOf, routeEntryPathOf, waitPathOf } from './search'
 import {
   configurationOf,
@@ -74,6 +75,7 @@ const useChecklist = ({
   const [abandonFailed, setAbandonFailed] = useState(false)
   const [gatherFailed, setGatherFailed] = useState(false)
   const [deathFailed, setDeathFailed] = useState(false)
+  const [dying, setDying] = useState(false)
 
   const kit = client.status === 'ready' ? client.client : null
   const destinationKey = destination.status === 'ready' ? destination.key : undefined
@@ -96,7 +98,8 @@ const useChecklist = ({
       switch (result.kind) {
         case 'live':
           setNeedsDestination(false)
-          // A stale cache read again with the password: the rows follow the setup the chain commits.
+          // A stale cache read again with the password: the rows follow the
+          // setup the chain commits.
           if (result.configuration) {
             configurationRef.current = { configuration: result.configuration, source: 'password' }
           }
@@ -344,31 +347,20 @@ const useChecklist = ({
 
   // A request that died is wiped once, with its reason, under the revision
   // this tab holds; the wiped line it leaves is what the checklist renders.
-  const dying = useRef(false)
-  const die = useCallback(
-    async (event: DirectWipeEvent) => {
+  // A request whose own submission landed turns into its countdown and the
+  // holder goes on to the wait. Either write holds the rows until it returns.
+  const ending = useRef(false)
+  const end = useCallback(
+    async (write: (current: LiveChecklist) => Promise<void>) => {
       const current = currentLive()
-      if (!current || dying.current) {
+      if (!current || ending.current) {
         return
       }
-      dying.current = true
-      const hadReplies = current.session.gathering.replies.length > 0
+      ending.current = true
+      setDying(true)
       try {
-        await records.wipeRecoverySession(chainId, account, event, current.revision)
+        await write(current)
         setDeathFailed(false)
-        const found = resultOfRead(await records.recoverySession(chainId, account).read())
-        if (found?.kind === 'wiped') {
-          const next: ChecklistLoad = {
-            phase: 'wiped',
-            session: found.session,
-            revision: found.revision,
-            hadReplies
-          }
-          loadRef.current = next
-          setLoad(next)
-        } else if (found) {
-          apply(found, current.configuration)
-        }
       } catch (error: unknown) {
         if (isSessionRevisionConflict(error)) {
           conflict()
@@ -376,44 +368,76 @@ const useChecklist = ({
           setDeathFailed(true)
         }
       } finally {
-        dying.current = false
+        ending.current = false
+        setDying(false)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [records, chainId, account, apply]
+    []
+  )
+  const die = useCallback(
+    (event: DirectWipeEvent) =>
+      end(async (current) => {
+        const { request, replies } = current.session.gathering
+        await records.wipeRecoverySession(chainId, account, event, current.revision)
+        const found = resultOfRead(await records.recoverySession(chainId, account).read())
+        if (found?.kind === 'wiped') {
+          const next: ChecklistLoad = {
+            phase: 'wiped',
+            session: found.session,
+            revision: found.revision,
+            hadReplies: replies.length > 0,
+            died: { attemptId: request.attemptId, setupNonce: request.setupNonce }
+          }
+          loadRef.current = next
+          setLoad(next)
+        } else if (found) {
+          apply(found, current.configuration)
+        }
+      }),
+    [end, records, chainId, account, apply]
+  )
+  const land = useCallback(
+    () =>
+      end(async (current) => {
+        await records.landSubmission(chainId, account, current.revision)
+        // No live session is left to poll or to change.
+        loadRef.current = LOADING
+        setLoad(LOADING)
+        navigateRef.current(waitPathOf(account), { replace: true })
+      }),
+    [end, records, chainId, account]
   )
 
   const target = useMemo(() => pollTargetOf(load), [load])
-  // The deadline is the clock's alone: it is read before every poll, and a
-  // passed one wipes the session without waiting for the chain.
-  const beforePoll = useCallback(
-    (clock: number): boolean => {
-      const current = currentLive()
-      if (!current || !deadlinePassed(current.session.gathering, clock)) {
-        return false
-      }
-      die('deadline-passed').catch(() => undefined)
-      return true
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [die]
-  )
+  // Past the deadline the round still reads the chain once within its limit:
+  // another holder can have submitted this request before the deadline, and
+  // then it lands. A read that fails, or shows no attempt of this request,
+  // wipes the session as expired. The deadline is judged on the clock read
+  // before the round's read.
   const afterPoll = useCallback(
-    (facts: PollFacts) => {
+    (facts: PollFacts | undefined, clock: number) => {
       const current = currentLive()
-      const death = current ? deathOf(current.session.gathering, facts) : null
-      if (death) {
-        die(death).catch(() => undefined)
+      if (!current) {
+        return
+      }
+      const { gathering } = current.session
+      const outcome = facts ? outcomeOf(gathering, facts) : null
+      if (outcome === 'landed') {
+        land().catch(() => undefined)
+      } else if (deadlinePassed(gathering, clock)) {
+        die('deadline-passed').catch(() => undefined)
+      } else if (outcome) {
+        die(outcome).catch(() => undefined)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [die]
+    [die, land]
   )
   const { poll, retry: retryPoll } = usePoll({
     kit,
     target,
     deps,
-    before: beforePoll,
     after: afterPoll
   })
 
@@ -425,10 +449,12 @@ const useChecklist = ({
     setBusy(true)
     setGatherFailed(false)
     try {
-      await records.clearWipedSession(chainId, account, current.revision)
+      // The setup goes before the wiped line, so a failure leaves the line and
+      // its revision for a retry to clear.
       await records.decryptedSetupCache(chainId, account).wipe()
       depsRef.current.forgetPassword(chainId, account)
       configurationRef.current = null
+      await records.clearWipedSession(chainId, account, current.revision)
       navigateRef.current(readoutPathOf(account), { replace: true })
     } catch (error: unknown) {
       if (isSessionRevisionConflict(error)) {
@@ -474,6 +500,7 @@ const useChecklist = ({
     poll,
     retryPoll,
     deathFailed,
+    dying,
     busy
   }
 }
