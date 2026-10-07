@@ -50,6 +50,14 @@ interface FakeWallet {
   state: unknown
 }
 
+/** The router's location the screens read; a replace navigation swaps it, as a browser's history does. */
+interface FakeLocation {
+  pathname: string
+  search: string
+  hash: string
+  state: unknown
+}
+
 /** A double of the storage helper that keeps values as given and can hold or refuse its writes. */
 interface StorageDouble extends RecordStorage {
   raw: Map<string, unknown>
@@ -94,6 +102,29 @@ export interface Mounted {
 const mockWallet: FakeWallet = { accounts: undefined, keys: undefined, search: '', state: null }
 const mockDispatch = jest.fn()
 const mockNavigate = jest.fn()
+
+// The location is an external store, so a replace navigation renders the
+// screen again with the history entry it left behind.
+const mockLocation: { current: FakeLocation; listeners: Set<() => void> } = {
+  current: { pathname: '/', search: '', hash: '', state: null },
+  listeners: new Set()
+}
+const setMockLocation = (next: Partial<FakeLocation>) => {
+  mockLocation.current = { ...mockLocation.current, ...next }
+  mockLocation.listeners.forEach((listener) => listener())
+}
+/** A replace navigation swaps the history entry for the path it names, with the state it passes or none. */
+const replaceEntry = (to: unknown, options?: { replace?: boolean; state?: unknown }) => {
+  if (options?.replace !== true || typeof to !== 'string') {
+    return
+  }
+  const at = to.indexOf('?')
+  setMockLocation({
+    pathname: at === -1 ? to : to.slice(0, at),
+    search: at === -1 ? '' : to.slice(at),
+    state: options.state ?? null
+  })
+}
 const mockResolveName = jest.fn<Promise<string>, [string]>()
 
 const mockStorage: StorageDouble = {
@@ -188,12 +219,15 @@ jest.mock('@common/hooks/useNavigation', () => ({
 }))
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
-  useLocation: () => ({
-    pathname: '/',
-    search: mockWallet.search,
-    hash: '',
-    state: mockWallet.state
-  })
+  useLocation: () =>
+    // eslint-disable-next-line global-require
+    require('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockLocation.listeners.add(listener)
+        return () => mockLocation.listeners.delete(listener)
+      },
+      () => mockLocation.current
+    )
 }))
 jest.mock('@web/modules/social-recovery/shared/records', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/records'),
@@ -221,7 +255,8 @@ jest.mock('@common/components/Avatar', () => {
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
-const { getAddress }: typeof import('viem') = require('viem')
+const { encodeErrorResult, getAddress, parseAbi }: typeof import('viem') = require('viem')
+const { makeError }: typeof import('ethers') = require('ethers')
 const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
@@ -295,10 +330,95 @@ export const WATCHED = basicAccount(VIEW_ONLY, 'Watched')
 
 export const keyOf = (addr: Address) => ({ addr, type: 'internal' as const })
 
+// ---------------------------------------------------------------------------
+// The name resolver's failures
+// ---------------------------------------------------------------------------
+
+/** The custom errors the name service's universal resolver reverts with. */
+const RESOLVER_ERRORS = parseAbi([
+  'error ResolverNotFound(bytes name)',
+  'error ResolverNotContract(bytes name, address resolver)',
+  'error ResolverError(bytes errorData)',
+  'error UnsupportedResolverProfile(bytes4 selector)',
+  'error HttpError(uint16 status, string message)'
+])
+/** `lost.eth` as the resolver encodes a name. */
+const LOST_NAME_DNS = '0x046c6f73740365746800'
+
+/** The revert data of each resolver error. */
+export const REVERTS = {
+  resolverNotFound: encodeErrorResult({
+    abi: RESOLVER_ERRORS,
+    errorName: 'ResolverNotFound',
+    args: [LOST_NAME_DNS]
+  }),
+  resolverNotContract: encodeErrorResult({
+    abi: RESOLVER_ERRORS,
+    errorName: 'ResolverNotContract',
+    args: [LOST_NAME_DNS, LOST_KEY]
+  }),
+  resolverError: encodeErrorResult({
+    abi: RESOLVER_ERRORS,
+    errorName: 'ResolverError',
+    args: ['0x']
+  }),
+  unsupportedProfile: encodeErrorResult({
+    abi: RESOLVER_ERRORS,
+    errorName: 'UnsupportedResolverProfile',
+    args: ['0x3b3b57de']
+  }),
+  httpError: encodeErrorResult({
+    abi: RESOLVER_ERRORS,
+    errorName: 'HttpError',
+    args: [503, 'gateway down']
+  })
+}
+
+const RESOLVER_CALL = { to: LOST_KEY, data: '0x9061b923' }
+
+/** The error a provider that reads the chain itself throws for a call that reverted with the data. */
+export const revertedCall = (data: string): Error =>
+  makeError('execution reverted (unknown custom error)', 'CALL_EXCEPTION', {
+    action: 'call',
+    data,
+    reason: null,
+    transaction: RESOLVER_CALL,
+    invocation: null,
+    revert: null
+  })
+
+/**
+ * The error the page's provider throws: it forwards the call to the background
+ * and gets back only the background's error message, so the error carries no
+ * data of its own.
+ */
+export const forwardedCall = (message: string): Error =>
+  makeError('missing revert data', 'CALL_EXCEPTION', {
+    action: 'call',
+    data: null,
+    reason: null,
+    transaction: RESOLVER_CALL,
+    invocation: null,
+    revert: null,
+    info: { error: { code: -32603, message } }
+  })
+
+/** An off-chain lookup that failed. */
+export const offchainFault = (): Error =>
+  makeError('error encountered during CCIP fetch', 'OFFCHAIN_FAULT', { reason: '500_SERVER_ERROR' })
+
+/** A request the provider gave up on. */
+export const timedOut = (): Error =>
+  Object.assign(new Error('request timeout (code=TIMEOUT, version=6.17.0)'), { code: 'TIMEOUT' })
+
 /** The wallet a test runs against; the screen reads it when it renders. */
 export const setWallet = (wallet: Partial<FakeWallet>) => {
   Object.assign(mockWallet, wallet)
+  setMockLocation({ search: mockWallet.search, state: mockWallet.state })
 }
+
+/** The history entry the browser holds now: its path, its search and its navigation state. */
+export const historyEntry = () => mockLocation.current
 
 export const navigate = mockNavigate
 
@@ -467,6 +587,7 @@ export const refusedClient = (): ClientState =>
 
 /** Puts every edge back: the wallet with a basic and a smart account, empty storage, recoverable reads. */
 export const resetEdges = () => {
+  setMockLocation({ pathname: '/', hash: '' })
   setWallet({
     accounts: [DAILY, VAULT, WATCHED],
     keys: [keyOf(BASIC), keyOf(SMART_KEY)],
@@ -474,6 +595,7 @@ export const resetEdges = () => {
     state: null
   })
   mockNavigate.mockReset()
+  mockNavigate.mockImplementation(replaceEntry)
   mockDispatch.mockReset()
   mockResolveName.mockReset()
   mockResolveName.mockImplementation(async () => '')
@@ -581,6 +703,8 @@ const mount = async (element: React.ReactElement): Promise<Mounted> => {
 /** The logged-in entry's route. */
 export const mountEntry = () => mount(<EntryScreen />)
 
+const ACCOUNT_STEP_PATH = '/social-recovery/recovery/account'
+
 /** The navigation state a screen passes once the holder acknowledged the warning. */
 export const ACKNOWLEDGED = { acknowledged: true }
 
@@ -590,9 +714,13 @@ export const ACKNOWLEDGED = { acknowledged: true }
  * warning.
  */
 export const mountAccountStep = (search: string, state: unknown = ACKNOWLEDGED) => {
+  setMockLocation({ pathname: ACCOUNT_STEP_PATH })
   setWallet({ search, state })
   return mount(<AccountStepScreen />)
 }
+
+/** Mounts the account step again on the history entry the browser holds now, as a reload does. */
+export const reloadAccountStep = () => mount(<AccountStepScreen />)
 
 export const searchOf = (route: string, to: string) => `?route=${route}&to=${to}`
 
