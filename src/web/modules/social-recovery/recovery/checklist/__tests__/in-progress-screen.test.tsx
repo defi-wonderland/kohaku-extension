@@ -21,7 +21,9 @@ import {
   NOW,
   SECOND_ACCOUNT,
   seedEntry,
-  seedSession
+  seedSession,
+  settle,
+  t
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 const mockStorage: { current: RecordStorage | null } = { current: null }
@@ -110,4 +112,38 @@ describe('the recovery in progress route', () => {
       expect(mockViewMounts).toEqual(['mounted'])
     }
   )
+
+  it('renders a failed first read under the settings chrome with the failure and its retry', async () => {
+    const storage = makeStorage()
+    let unreadable = true
+    mockStorage.current = {
+      ...storage,
+      getAll: async () => {
+        if (unreadable) {
+          throw new Error('storage unreadable')
+        }
+        return storage.getAll?.() ?? {}
+      }
+    }
+    const records = createWalletRecords({ storage, now: () => NOW })
+    await seedEntry(records, entryOf('logged-in'), ACCOUNT)
+    await seedSession(records, gatheringOf(MIXED_PATH, 1, ACCOUNT), ACCOUNT)
+
+    view = await mount(() => <InProgressScreen />)
+    await settle()
+
+    const failure = view.byTestId('in-progress-failed')
+    expect(failure?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
+    expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableTitle'))
+    expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableBody'))
+    expect(view.byTestId('in-progress-route-loading')).toBeNull()
+    expect(view.byTestId(`in-progress-${ACCOUNT.toLowerCase()}`)).toBeNull()
+
+    unreadable = false
+    await view.press('in-progress-retry')
+
+    expect(view.byTestId('in-progress-failed')).toBeNull()
+    const row = view.byTestId(`in-progress-${ACCOUNT.toLowerCase()}`)
+    expect(row?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
+  })
 })
