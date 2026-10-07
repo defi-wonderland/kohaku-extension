@@ -77,10 +77,21 @@ const AccountStepScreen = () => {
     }
   }, [unusable, route, navigate])
 
-  // The acknowledgment travels in the history entry's navigation state alone,
-  // so a direct URL or a new tab shows the warning again; a reload keeps it.
-  const [acknowledged, setAcknowledged] = useState(() => acknowledgedInState(location.state))
+  // The acknowledgment travels in the navigation state of the step that
+  // brought the holder here, never in storage. This mount keeps it and the
+  // history entry drops it at once, so a reload, a direct URL or a new tab
+  // meets the warning again.
+  const fromState = acknowledgedInState(location.state)
+  const [acknowledged, setAcknowledged] = useState(fromState)
   const pass = useCallback(() => setAcknowledged(true), [])
+
+  useEffect(() => {
+    if (!fromState) {
+      return
+    }
+    setAcknowledged(true)
+    navigate(`${location.pathname}${location.search}`, { replace: true })
+  }, [fromState, location.pathname, location.search, navigate])
 
   const [target, setTarget] = useState<LookupTarget | null>(null)
   const clientState = useRecoveryClient(target?.address)

@@ -1,9 +1,9 @@
 /**
  * @jest-environment jsdom
  *
- * The setup chrome mounted with the app's own components and the real en.json.
- * The settings sidebar and the logo are stubs: the sidebar reads the wallet's
- * controllers, and Jest does not load the logo's image.
+ * The chrome of a surface outside settings, mounted with the app's own
+ * components and the real en.json. The logo is a stub: Jest does not load its
+ * image.
  */
 import React from 'react'
 import { createRoot, Root } from 'react-dom/client'
@@ -15,15 +15,11 @@ import { ThemeContext } from '@common/contexts/themeContext'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import themeConfig, { THEME_TYPES } from '@common/styles/themeConfig'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 
 // React only runs effects and state updates inside act() when this flag is set.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-jest.mock('@web/modules/settings/components/Sidebar', () => ({
-  __esModule: true,
-  default: () => null
-}))
 jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   __esModule: true,
   default: () => null
@@ -40,6 +36,7 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
+const TITLE = i18n.t('socialRecovery.routes.recover')
 const BREADCRUMB = i18n.t('socialRecovery.chrome.breadcrumb')
 
 let container: HTMLDivElement
@@ -63,45 +60,37 @@ const mount = (element: React.ReactElement) =>
 
 const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 
-describe('the setup chrome', () => {
-  it('shows the breadcrumb above the view it holds', () => {
+describe('the plain chrome', () => {
+  it('shows its title above the view it holds, and no breadcrumb', () => {
     mount(
-      <SetupChrome testID="chrome">
+      <PlainChrome testID="chrome" title={TITLE}>
         <Text testID="view">The view</Text>
-      </SetupChrome>
+      </PlainChrome>
     )
-    expect(BREADCRUMB).not.toBe('')
+    expect(TITLE).not.toBe('')
     expect(byTestId('view')).not.toBeNull()
-    // The breadcrumb comes first in the document, then the view.
-    expect(byTestId('chrome')?.textContent).toBe(`${BREADCRUMB}The view`)
+    // The title comes first in the document, then the view.
+    expect(byTestId('chrome')?.textContent).toBe(`${TITLE}The view`)
+    expect(byTestId('chrome')?.textContent).not.toContain(BREADCRUMB)
+  })
+
+  it('shows the view alone under a header with no title', () => {
+    mount(
+      <PlainChrome testID="chrome">
+        <Text>The view</Text>
+      </PlainChrome>
+    )
+    expect(byTestId('chrome')?.textContent).toBe('The view')
   })
 
   it('puts its test id on its outermost element, with the view inside it', () => {
     mount(
-      <SetupChrome testID="chrome">
+      <PlainChrome testID="chrome" title={TITLE}>
         <View testID="view" />
-      </SetupChrome>
+      </PlainChrome>
     )
     const chrome = byTestId('chrome')
     expect(container.firstElementChild).toBe(chrome)
     expect(chrome?.contains(byTestId('view'))).toBe(true)
-  })
-
-  it('adds a given tail after the breadcrumb, and nothing when none is given', () => {
-    mount(
-      <SetupChrome testID="chrome" breadcrumbTail="Recover an account">
-        {false}
-      </SetupChrome>
-    )
-    expect(byTestId('chrome')?.textContent).toBe(`${BREADCRUMB} › Recover an account`)
-
-    mount(<SetupChrome testID="chrome">{false}</SetupChrome>)
-    expect(byTestId('chrome')?.textContent).not.toContain('Recover an account')
-    expect(byTestId('chrome')?.textContent).toBe(BREADCRUMB)
-  })
-
-  it('shows the breadcrumb when it holds no view', () => {
-    mount(<SetupChrome testID="chrome">{false}</SetupChrome>)
-    expect(byTestId('chrome')?.textContent).toBe(BREADCRUMB)
   })
 })

@@ -171,6 +171,8 @@ export interface OwnerStageViewProps {
   /** False while the wallet has not pushed its accounts and keys yet. */
   loaded: boolean
   onContinue: (receivingAccount: Address) => void
+  /** Leaves the recovery. */
+  onCancel: () => void
 }
 
 export interface ReceivingRowProps {
@@ -201,6 +203,10 @@ export interface LookupFieldProps {
   networkName: string
   onTarget: (target: LookupTarget) => void
   resolveName: (name: string) => Promise<string>
+  /** Goes back to the step before; absent where the route has no step before to return to. */
+  onBack?: () => void
+  /** Leaves the recovery. */
+  onCancel: () => void
 }
 
 export interface LookupStateProps {
