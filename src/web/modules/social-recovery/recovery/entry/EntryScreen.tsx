@@ -7,6 +7,7 @@
 import React, { useCallback, useMemo } from 'react'
 
 import useNavigation from '@common/hooks/useNavigation'
+import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
@@ -34,10 +35,11 @@ const EntryScreen = () => {
       }),
     [navigate]
   )
+  const cancel = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetup), [navigate])
 
   return (
     <EntryChrome route="logged-in" stage={OWNER_STAGE} testID="recovery-entry">
-      <OwnerStageView choices={choices} loaded={loaded} onContinue={proceed} />
+      <OwnerStageView choices={choices} loaded={loaded} onContinue={proceed} onCancel={cancel} />
     </EntryChrome>
   )
 }

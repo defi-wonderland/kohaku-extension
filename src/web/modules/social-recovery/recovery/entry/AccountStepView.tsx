@@ -115,7 +115,17 @@ const AccountStepView = ({
   }, [target, writing, records, chainId, search, navigate])
 
   if (!target) {
-    return <LookupField networkName={networkName} onTarget={onTarget} resolveName={resolveName} />
+    return (
+      <LookupField
+        networkName={networkName}
+        onTarget={onTarget}
+        resolveName={resolveName}
+        onBack={
+          search.route === 'logged-in' ? () => navigate(routeEntryPathOf(search.route)) : undefined
+        }
+        onCancel={() => navigate(WEB_ROUTES.socialRecoverySetup)}
+      />
+    )
   }
 
   const found =

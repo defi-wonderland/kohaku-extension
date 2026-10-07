@@ -1,8 +1,9 @@
 /**
  * The account field: an address or a name, on the one network the wallet
  * reads. What is not a complete address or a name is refused before any read;
- * a name resolves through the wallet's own resolver, and one that resolves to
- * no address is refused with a retry.
+ * a name resolves through the wallet's own resolver, and one that does not
+ * exist or resolves to no address is refused with a retry, apart from a read
+ * that failed.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -15,13 +16,19 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { ActionsRow, PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
-import { lookupInputOf } from './lookup'
+import { lookupInputOf, nameLookupFailureOf } from './lookup'
 import ReadFailedBlock from './ReadFailedBlock'
 import type { FieldError, LookupFieldProps } from './types'
 
 const ACCOUNT = 'socialRecovery.entry.account'
 
-const LookupField = ({ networkName, onTarget, resolveName }: LookupFieldProps) => {
+const LookupField = ({
+  networkName,
+  onTarget,
+  resolveName,
+  onBack,
+  onCancel
+}: LookupFieldProps) => {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [error, setError] = useState<FieldError | null>(null)
@@ -69,10 +76,10 @@ const LookupField = ({ networkName, onTarget, resolveName }: LookupFieldProps) =
             setError('name')
           }
         },
-        () => {
+        (failure: unknown) => {
           if (live.current) {
             setResolving(false)
-            setError('read-failed')
+            setError(nameLookupFailureOf(failure))
           }
         }
       )
@@ -143,7 +150,30 @@ const LookupField = ({ networkName, onTarget, resolveName }: LookupFieldProps) =
             hasBottomSpacing={false}
           />
         }
-        secondary={resolving ? <ActivityIndicator testID="entry-account-resolving" /> : undefined}
+        secondary={
+          <>
+            {!!onBack && (
+              <Button
+                testID="entry-account-back"
+                type="outline"
+                text={t('socialRecovery.actions.back')}
+                onPress={onBack}
+                hasBottomSpacing={false}
+                style={spacings.mrSm}
+              />
+            )}
+            <Button
+              testID="entry-account-cancel"
+              type="ghost"
+              text={t('socialRecovery.actions.cancel')}
+              onPress={onCancel}
+              hasBottomSpacing={false}
+            />
+            {resolving && (
+              <ActivityIndicator testID="entry-account-resolving" style={spacings.mlSm} />
+            )}
+          </>
+        }
       />
 
       <SectionCard tone="muted" spacing="item" style={spacings.mtLg} testID="entry-account-where">

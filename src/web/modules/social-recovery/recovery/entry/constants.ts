@@ -1,5 +1,7 @@
+import { toFunctionSelector } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
 
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import type { RecoveryChain } from '@web/modules/social-recovery/shared/client'
 
 import type { ConfirmedStage } from './types'
@@ -37,3 +39,14 @@ export const CHAIN_NAMES: Record<RecoveryChain, string> = {
   sepolia: sepolia.name,
   mainnet: mainnet.name
 }
+
+/**
+ * The name resolver's reverts that mean the name has no resolver, a resolver
+ * that is no contract, a resolver that reverted, or no address record.
+ */
+export const NAME_ABSENT_REVERTS: readonly Hex[] = [
+  'ResolverNotFound(bytes)',
+  'ResolverNotContract(bytes,address)',
+  'ResolverError(bytes)',
+  'UnsupportedResolverProfile(bytes4)'
+].map((signature) => toFunctionSelector(signature))

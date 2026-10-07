@@ -32,7 +32,7 @@ import type { OwnerStageViewProps } from './types'
 
 const OWNER = 'socialRecovery.entry.owner'
 
-const OwnerStageView = ({ choices, loaded, onContinue }: OwnerStageViewProps) => {
+const OwnerStageView = ({ choices, loaded, onContinue, onCancel }: OwnerStageViewProps) => {
   const { t } = useTranslation()
   // The warning reports its acknowledgment but not its unmount; the flag lives
   // beside it in this component, so a new warning never meets a stale tick.
@@ -55,14 +55,27 @@ const OwnerStageView = ({ choices, loaded, onContinue }: OwnerStageViewProps) =>
     </Text>
   )
 
+  const cancel = (
+    <Button
+      testID="entry-owner-cancel"
+      type="ghost"
+      text={t('socialRecovery.actions.cancel')}
+      onPress={onCancel}
+      hasBottomSpacing={false}
+    />
+  )
+
   let body: React.ReactNode
   if (!loaded) {
     body = <ActivityIndicator testID="entry-owner-loading" />
   } else if (choices.length === 0) {
     body = (
-      <Text fontSize={14} appearance="errorText" testID="entry-owner-none">
-        {t(`${OWNER}.noEligibleAccount`)}
-      </Text>
+      <>
+        <Text fontSize={14} appearance="errorText" testID="entry-owner-none">
+          {t(`${OWNER}.noEligibleAccount`)}
+        </Text>
+        <ActionsRow primary={cancel} />
+      </>
     )
   } else {
     body = (
@@ -115,6 +128,7 @@ const OwnerStageView = ({ choices, loaded, onContinue }: OwnerStageViewProps) =>
               hasBottomSpacing={false}
             />
           }
+          secondary={cancel}
         />
       </>
     )
