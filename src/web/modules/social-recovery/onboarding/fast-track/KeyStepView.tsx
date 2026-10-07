@@ -86,6 +86,11 @@ const KeyStepView = ({
     />
   )
   const title = <PageTitle title={t(`${KEY}.title`)} titleTestID="fast-track-key-title" />
+  const pendingLine = pending && (
+    <View testID="fast-track-key-pending" style={spacings.mbLg}>
+      <Alert type="warning" size="sm" text={t(`${KEY}.addPending`)} />
+    </View>
+  )
 
   if (phase === 'creating' || phase === 'createFailed' || !words.length || !controllingKey) {
     return (
@@ -95,8 +100,21 @@ const KeyStepView = ({
         {phase === 'createFailed' && failure('fast-track-key-create-failed')}
         {phase === 'addFailed' && failure('fast-track-key-add-failed')}
         {phase !== 'createFailed' && phase !== 'addFailed' && (
-          <ActivityIndicator testID="fast-track-key-spinner" />
+          <View style={[flexbox.alignCenter, spacings.mbLg]}>
+            <ActivityIndicator testID="fast-track-key-spinner" />
+            {phase === 'creating' && (
+              <Text
+                fontSize={14}
+                appearance="secondaryText"
+                style={spacings.mtSm}
+                testID="fast-track-key-creating"
+              >
+                {t(`${KEY}.creating`)}
+              </Text>
+            )}
+          </View>
         )}
+        {pendingLine}
         <ActionsRow
           testID="fast-track-key-actions"
           primary={backButton(phase === 'adding' && !pending)}
@@ -177,6 +195,7 @@ const KeyStepView = ({
       />
 
       {phase === 'addFailed' && failure('fast-track-key-add-failed')}
+      {pendingLine}
 
       <ActionsRow
         testID="fast-track-key-actions"
