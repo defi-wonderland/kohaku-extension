@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'r
 import {
   attachExecuteSteps,
   checkDropped,
+  checkReceiptAgain,
   createExecuteStore,
   detachExecuteSteps,
   outlivesWait,
@@ -65,13 +66,19 @@ const useExecuteRun = (steps: ExecuteSteps | null, runKey: string): ExecuteRun =
     }
   }, [store])
 
+  const receiptAgain = useCallback(() => {
+    if (stepsRef.current) {
+      checkReceiptAgain(store, stepsRef.current).catch(() => undefined)
+    }
+  }, [store])
+
   const release = useCallback(() => {
     if (RUNS.get(runKey) === store) {
       RUNS.delete(runKey)
     }
   }, [store, runKey])
 
-  return { state, start, checkDropped: dropped, release }
+  return { state, start, checkDropped: dropped, checkReceiptAgain: receiptAgain, release }
 }
 
 export default useExecuteRun

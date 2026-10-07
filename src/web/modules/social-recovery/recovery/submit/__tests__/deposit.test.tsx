@@ -162,6 +162,21 @@ describe('the deposit step', () => {
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
+  it('sends nothing where the screen goes away while a balance read is out and the read then answers enough', async () => {
+    const world = await openWorld()
+    const mounted = await startEmpty(world)
+    const balance = held<bigint>()
+    world.kit.reads.nativeBalance.mockImplementation(() => balance.promise)
+    await tick(BALANCE_POLL_MS)
+    mounted.unmount()
+    view = undefined
+    balance.release(1_000_000_000_000_000_000n)
+    await tick(0)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    const session = await sessionOf(world.records, world.account)
+    expect(session?.state === 'live' && session.submission).toBeFalsy()
+  })
+
   it('keeps the step while a balance read is out, and reads failed with a retry once it passes the limit, sending nothing', async () => {
     const world = await openWorld()
     const mounted = await startEmpty(world)

@@ -4,6 +4,7 @@
  * the countdown's record.
  *
  *   idle ──start──▶ checkingGas: the countdown read, the prepare, the gas check
+ *                     (and where it reads enough, the block the claim starts from)
  *                     ├─ a claim on the countdown ─▶ followed (nothing sent)
  *                     ├─ deposit ──▶ needsDeposit ──the balance read again──▶ the claim
  *                     └─ enough ───▶ the claim
@@ -42,13 +43,16 @@ import {
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
+import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import { DROPPED_AFTER_MS } from '@web/modules/social-recovery/setup/arm'
 import {
   FOLLOW_REREAD_MS,
+  READ_LIMIT_MS,
   SUBMISSION_CLAIM_AGE_MS
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
+import { within } from './read'
 import type { ExecuteEvent, ExecuteState, ExecuteSteps, ExecuteStore } from './types'
 
 /** The execution before anything ran. */
@@ -195,6 +199,7 @@ const POLLING = new WeakSet<ExecuteStore>()
 const DROP_CHECKS = new WeakSet<ExecuteStore>()
 const FOLLOWING = new WeakSet<ExecuteStore>()
 const WAITING = new WeakSet<ExecuteStore>()
+const SENDING = new WeakSet<ExecuteStore>()
 // The idle run whose countdown was read for a claim, so each idle run reads it once.
 const LOOKED = new WeakMap<ExecuteStore, number>()
 
@@ -256,8 +261,8 @@ const waitForReceipt = async (store: ExecuteStore, steps: ExecuteSteps): Promise
  * judged by the manager's events from the claim's block: the attempt consumed
  * leaves the done screen to the poll; none means the send never went out, and
  * where the claim still carries no hash it is released and execute offered
- * again. A read that fails is read again after a rest, never taken as an
- * answer.
+ * again. A read that fails, or that does not answer within `READ_LIMIT_MS`,
+ * is read again after a rest, never taken as an answer.
  */
 const readFollow = async (store: ExecuteStore): Promise<void> => {
   if (FOLLOWING.has(store)) {
@@ -310,7 +315,7 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
       }
       if (held && clock - held.claimedAt >= SUBMISSION_CLAIM_AGE_MS) {
         // eslint-disable-next-line no-await-in-loop
-        const consumed = await steps.consumedSince(follow.startBlock).catch(() => undefined)
+        const consumed = await within(() => steps.consumedSince(follow.startBlock), READ_LIMIT_MS)
         if (store.state().follow !== follow) {
           // eslint-disable-next-line no-continue
           continue
@@ -377,6 +382,19 @@ const followClaim = async (
 }
 
 /**
+ * The chain's latest block, read while the gas check still runs: a read that
+ * fails, or that does not answer within `READ_LIMIT_MS`, is the gas check's
+ * read failure with its retry, never a send refused.
+ */
+const startBlockOf = async (steps: ExecuteSteps): Promise<number> => {
+  const block = await within(() => steps.blockNumber(), READ_LIMIT_MS)
+  if (block === undefined) {
+    throw providerReadFailure('block', new Error(`No usable answer in ${READ_LIMIT_MS} ms.`))
+  }
+  return block
+}
+
+/**
  * The claim of the execution on the countdown under a new request id, with
  * the block read before it, then the send under that claim; where the
  * countdown already carries a claim, it is followed and nothing is sent.
@@ -386,23 +404,14 @@ const followClaim = async (
 const claimAndSend = async (
   store: ExecuteStore,
   steps: ExecuteSteps,
-  run: number
+  run: number,
+  startBlock: number
 ): Promise<void> => {
   const { prepared } = store.state()
   if (!prepared || !awaitingHashIn(store.state(), run)) {
     return
   }
   const dispatch = writeEvent(store)
-  let startBlock: number
-  try {
-    startBlock = await steps.blockNumber()
-  } catch (error: unknown) {
-    dispatch({ type: 'error', run, error })
-    return
-  }
-  if (!awaitingHashIn(store.state(), run)) {
-    return
-  }
   const claim: ExecutionInFlightClaim = {
     requestId: steps.newRequestId(),
     startBlock,
@@ -432,10 +441,13 @@ const claimAndSend = async (
       marking = steps.markSent(claim, event.transactionHash).catch(() => undefined)
     }
   }
+  SENDING.add(store)
   try {
     await steps.send(prepared, sendDispatch, run, startBlock, claim.requestId)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
+  } finally {
+    SENDING.delete(store)
   }
   await marking
   await releaseWhereEnded(store, steps)
@@ -478,10 +490,21 @@ const pollDeposit = async (store: ExecuteStore): Promise<void> => {
       }
       if (check.kind === 'enough') {
         writeEvent(store)({ type: 'recheck' })
+        let startBlock: number
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          startBlock = await startBlockOf(steps)
+        } catch (error: unknown) {
+          writeEvent(store)({ type: 'error', run, error })
+          return
+        }
+        if (!inRun(store.state(), run) || store.state().write.status !== 'checkingGas') {
+          return
+        }
         writeEvent(store)({ type: 'gasChecked', run, check })
         POLLING.delete(store)
         // eslint-disable-next-line no-await-in-loop
-        await claimAndSend(store, steps, run)
+        await claimAndSend(store, steps, run, startBlock)
         return
       }
       store.dispatch({ type: 'balance', run, balance: check.step.balance })
@@ -580,17 +603,44 @@ export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): 
   if (!prepared || !stillChecking()) {
     return
   }
+  let check
+  let startBlock: number | undefined
   try {
-    writeEvent(store)({ type: 'gasChecked', run, check: await steps.checkGas(prepared) })
+    check = await steps.checkGas(prepared)
+    if (check.kind === 'enough' && stillChecking()) {
+      startBlock = await startBlockOf(steps)
+    }
   } catch (error: unknown) {
     fail(error)
     return
   }
+  if (!stillChecking()) {
+    return
+  }
+  writeEvent(store)({ type: 'gasChecked', run, check })
   if (store.state().write.status === 'needsDeposit') {
     pollDeposit(store).catch(() => undefined)
     return
   }
-  await claimAndSend(store, steps, run)
+  if (startBlock !== undefined) {
+    await claimAndSend(store, steps, run, startBlock)
+  }
+}
+
+/**
+ * Waits on the run's hash once more where its receipt wait ended in an error
+ * that kept the hash: the send may still land, so its receipt is asked for
+ * again rather than left unread. Nothing happens while the send itself, or
+ * another wait on the hash, is still running.
+ */
+export const checkReceiptAgain = async (
+  store: ExecuteStore,
+  steps: ExecuteSteps
+): Promise<void> => {
+  if (SENDING.has(store)) {
+    return
+  }
+  await waitForReceipt(store, steps)
 }
 
 /**

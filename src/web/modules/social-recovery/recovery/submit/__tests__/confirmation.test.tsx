@@ -404,6 +404,17 @@ describe('the submission confirmation', () => {
       expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
     })
 
+    it('says no key can send where the wallet does not list the receiving account, with no retry', async () => {
+      const world = await openWorld()
+      mockWallet.facts = { status: 'unavailable', cause: 'not-listed', retry: jest.fn() }
+      const mounted = await open(world)
+      await openDetails(mounted)
+      expect(mounted.textOf('submit-sending-unavailable')).toBe(t(`${SUBMIT}.noSendingKey`))
+      expect(mounted.byTestId('submit-sending-failed')).toBeNull()
+      expect(mounted.byTestId('submit-sending-retry')).toBeNull()
+      expect(mounted.isDisabled('submit-action')).toBe(true)
+    })
+
     it('says no key can send where the wallet holds no key of the receiving account, with no retry', async () => {
       const world = await openWorld()
       mockWallet.facts = readyFacts(factsOf(world.receiving))

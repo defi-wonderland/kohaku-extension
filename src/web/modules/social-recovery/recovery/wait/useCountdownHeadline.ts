@@ -1,28 +1,39 @@
 /**
  * The headline of one countdown on the home surface, from the attempt read of
- * its account on the checklist's poll period: one round at once, then on every
- * period and whenever the tab returns to view; rounds never overlap. Waiting
- * with the countdown's anchor, execution due, or any other reading, which the
- * wait itself names. Null while the client or the first read loads, and after
- * a round that fails or runs past its limit, so the home surface never shows a
- * number from a read that did not answer and a cancel never hides behind one.
+ * its account and its countdown's record on the checklist's poll period: one
+ * round at once, then on every period and whenever the tab returns to view;
+ * rounds never overlap. Waiting with the countdown's anchor or execution due
+ * only where the attempt read is the one the submission landed (its id, setup
+ * number and payload hash), so a rival's attempt never lends its number; any
+ * other reading, which the wait itself names, otherwise. Null while the client
+ * or the first read loads, and after a round that fails or runs past its
+ * limit, so the home surface never shows a number from a read that did not
+ * answer and a cancel never hides behind one.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { isVisible } from '@web/modules/social-recovery/shared/ceremony'
+import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
+import {
+  createWalletRecords,
+  extensionRecordStorage
+} from '@web/modules/social-recovery/shared/records'
 import {
   CHECKLIST_POLL_MS,
   POLL_LIMIT_MS
 } from '@web/modules/social-recovery/recovery/checklist/constants'
 
-import { within } from './read'
+import { isAttemptOf, landedAttemptOf, within } from './read'
 import type { CountdownHeadline } from './types'
+
+const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
 const useCountdownHeadline = (account: Address): CountdownHeadline | null => {
   const clientState = useRecoveryClient(account)
   const kit = clientState.status === 'ready' ? clientState.client : null
+  const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const [headline, setHeadline] = useState<CountdownHeadline | null>(null)
   const rounds = useRef(0)
 
@@ -38,18 +49,23 @@ const useCountdownHeadline = (account: Address): CountdownHeadline | null => {
         return
       }
       inFlight = true
-      const state = await within(() => kit.recovery.recoveryState(), POLL_LIMIT_MS)
+      const answer = await within(
+        () =>
+          Promise.all([kit.recovery.recoveryState(), records.countdown(CHAIN_ID, account).read()]),
+        POLL_LIMIT_MS
+      )
       inFlight = false
       if (!live) {
         return
       }
-      if (!state) {
+      if (!answer) {
         setHeadline(null)
         return
       }
-      const { attempt, block } = state
+      const [{ attempt, block }, countdown] = answer
+      const landed = countdown.status === 'present' ? landedAttemptOf(countdown.value) : null
       rounds.current += 1
-      if (attempt.state !== 'Waiting') {
+      if (attempt.state !== 'Waiting' || !landed || !isAttemptOf(attempt, landed)) {
         setHeadline({ kind: 'other' })
       } else if (attempt.consumableAfter <= block.timestamp) {
         setHeadline({ kind: 'executionDue' })
@@ -79,7 +95,7 @@ const useCountdownHeadline = (account: Address): CountdownHeadline | null => {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onChange)
     }
-  }, [kit])
+  }, [kit, records, account])
 
   return headline
 }

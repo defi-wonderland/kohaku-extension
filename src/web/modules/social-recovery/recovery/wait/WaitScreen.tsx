@@ -128,6 +128,9 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
 
   const receivingFacts = facts.status === 'ready' ? facts.facts : null
   const newKey = receivingFacts ? destinationKeyOf(receivingFacts) : null
+  // The new key comes from the wallet's facts of the account, so facts that
+  // could not be read, whatever the cause, leave the keys unread with their
+  // retry; the sending line below reads only once the keys are known.
   const keys = useMemo<HandoverKeysReading>(() => {
     if (removed.status === 'failed' || facts.status === 'unavailable') {
       return { status: 'failed' }
@@ -200,14 +203,14 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
       return { status: 'loading' }
     }
     if (!receivingFacts) {
-      return { status: 'unavailable' }
+      return { status: 'failed' }
     }
     const network = {
       name: receivingFacts.network.name,
       nativeAssetSymbol: receivingFacts.network.nativeAssetSymbol
     }
     if (entry.route === 'logged-in') {
-      const plan = loggedInPlanOf(receivingFacts)
+      const plan = loggedInPlanOf(receivingFacts, entry.receivingAccount)
       return plan ? { status: 'ready', plan, network } : { status: 'unavailable' }
     }
     if (!accounts || !keystoreKeys) {
@@ -268,19 +271,21 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
     `${CHAIN_ID}:${account.toLowerCase()}:${landed ? landed.attemptId.toString() : ''}`
   )
 
-  // A landed execution is read back at once; a send the attempt read still disagrees with is checked for a drop.
+  // A landed execution is read back at once; a send the attempt read still
+  // disagrees with has its receipt asked for again and is checked for a drop.
   const writeStatus = run.state.write.status
   useEffect(() => {
     if (writeStatus === 'landed') {
       retryPoll()
     }
   }, [writeStatus, retryPoll])
-  const { checkDropped } = run
+  const { checkDropped, checkReceiptAgain } = run
   useEffect(() => {
     if (answered && answered.phase.kind !== 'consumed' && writeStatus === 'submitting') {
+      checkReceiptAgain()
       checkDropped()
     }
-  }, [answered, writeStatus, checkDropped])
+  }, [answered, writeStatus, checkReceiptAgain, checkDropped])
 
   const consumed = answered?.phase.kind === 'consumed'
   const releaseRun = useRef(run.release)
@@ -422,8 +427,8 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         testID="wait-countdown-failed"
         type="error"
         size="sm"
-        title={t('socialRecovery.client.unavailableTitle')}
-        text={t('socialRecovery.client.unavailableBody')}
+        title={t('socialRecovery.wait.readFailedTitle')}
+        text={t('socialRecovery.wait.readFailedBody')}
       >
         <View style={spacings.mtTy}>
           <Button
@@ -497,8 +502,8 @@ const WaitScreen = () => {
           testID="wait-entry-failed"
           type="error"
           size="sm"
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
+          title={t('socialRecovery.wait.readFailedTitle')}
+          text={t('socialRecovery.wait.readFailedBody')}
         >
           <View style={spacings.mtTy}>
             <Button

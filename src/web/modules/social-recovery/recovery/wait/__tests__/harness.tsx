@@ -176,6 +176,7 @@ const HomeRecoveryBandView: typeof import('@web/modules/social-recovery/recovery
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 export const {
+  BOOK,
   CHAIN_ID,
   GUARDIANS,
   MIXED_PATH,
@@ -183,7 +184,9 @@ export const {
   configurationOf,
   gatheringOf,
   guardianCredential,
-  makeStorage
+  makeStorage,
+  passkeyCredential,
+  passportCredential
 } = checklist
 
 export { dateOf, waitPathOf }

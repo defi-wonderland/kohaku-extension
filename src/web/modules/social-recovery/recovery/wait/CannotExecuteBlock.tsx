@@ -1,7 +1,7 @@
 /**
- * The recovery can no longer execute, read from the account: the cause this
- * wallet read (with the repair where the account no longer authorizes the
- * action), that the approvals die with the attempt, that there is no retry,
+ * The recovery can no longer execute: its chip, the cause this wallet read
+ * (with the repair where the account no longer authorizes the action), that
+ * the approvals die with the attempt, that there is no retry,
  * who clears the account's one recovery slot, and that moving funds and a new
  * setup are the account's own writes. Move funds is enabled only where this
  * wallet holds the account's own key. No retry and no new recovery: the poll
@@ -14,8 +14,8 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
-import { causeKey } from '@web/modules/social-recovery/shared/writes'
+import { SectionCard, StatusChip } from '@web/modules/social-recovery/shared/chrome'
+import { renderChip } from '@web/modules/social-recovery/shared/display'
 
 import type { CannotExecuteBlockProps } from './types'
 
@@ -36,13 +36,19 @@ const CannotExecuteBlock = ({ cause, holdsAccountKey, onMoveFunds }: CannotExecu
   } else if (cause === 'upgradedAway') {
     causeLine = t(`${CANNOT}.upgradedAway`)
   } else if (cause === 'privilegeMoved') {
-    causeLine = t(`${CANNOT}.refused`, { read: t(causeKey('ReservedAuthority')) })
+    causeLine = t(`${CANNOT}.movedPrivilege`)
   } else {
-    causeLine = t(`${CANNOT}.refused`, { read: t(causeKey('NotConsumable')) })
+    causeLine = t(`${CANNOT}.unmatched`)
   }
 
   return (
     <SectionCard testID="wait-cannot-execute">
+      <StatusChip
+        testID="wait-cannot-execute-chip"
+        text={renderChip('recovery', 'cannotExecute', t)}
+        tone="error"
+        style={{ ...spacings.mbSm, ...flexbox.alignSelfStart }}
+      />
       <Text fontSize={16} weight="medium" style={spacings.mbTy} testID="wait-cannot-execute-title">
         {t(`${CANNOT}.title`)}
       </Text>

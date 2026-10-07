@@ -1,10 +1,11 @@
 /**
  * The running recovery as the last poll read it: its chip, the day it started
  * (on chain, the attempt's end less the setup's waiting period, where this
- * device holds the setup; else the day the submission landed here), the countdown against the pinned block's time, the end in
- * the reader's zone from the attempt the manager reports, the account and the
- * new key, the recovery path by its rule lines where this device holds the
- * setup, and the transaction that started it on chain.
+ * device holds the setup; else the day the submission landed here), the
+ * countdown against the pinned block's time, the end in the reader's zone
+ * from the attempt the manager reports, the account and the new key, the
+ * recovery path where this device holds the setup (one line by its shape,
+ * else its rule lines), and the transaction that started it on chain.
  */
 import React, { useMemo } from 'react'
 import { View } from 'react-native'
@@ -28,6 +29,7 @@ import {
 import { dateOf } from '@web/modules/social-recovery/recovery/checklist'
 import { ruleLinesOf } from '@web/modules/social-recovery/setup/review'
 
+import { pathLineOf } from './path'
 import type { CountdownBlockProps } from './types'
 
 const WAIT = 'socialRecovery.wait'
@@ -46,10 +48,13 @@ const CountdownBlock = ({
   const { theme } = useTheme()
   const { phase, story } = round
   const book = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
-  const pathLines = useMemo(
-    () => (configuration ? ruleLinesOf(configuration, book, t) : []),
-    [configuration, book, t]
-  )
+  const pathLines = useMemo(() => {
+    if (!configuration) {
+      return []
+    }
+    const line = pathLineOf(configuration, book, t)
+    return line ? [line] : ruleLinesOf(configuration, book, t)
+  }, [configuration, book, t])
 
   if (phase.kind !== 'waiting' && phase.kind !== 'executionDue') {
     return null
@@ -130,7 +135,7 @@ const CountdownBlock = ({
             testID="wait-explorer"
             type="ghost"
             size="small"
-            text={t('socialRecovery.arm.explorer')}
+            text={t(`${WAIT}.explorer`)}
             onPress={() => onOpenExplorer(transactionHash)}
             hasBottomSpacing={false}
             style={[flexbox.alignSelfStart, spacings.mtTy]}

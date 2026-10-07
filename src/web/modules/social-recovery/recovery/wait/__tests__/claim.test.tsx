@@ -35,6 +35,7 @@ import { recordKeys } from '@web/modules/social-recovery/shared/records'
 
 const POLL_MS = 30_000
 const REREAD_MS = 5_000
+const READ_LIMIT_MS = 20_000
 const CLAIM_AGE_MS = 10 * 60_000
 /** The block the execution's own claim reads before it, as the fake chain answers it. */
 const OWN_CLAIM_BLOCK = START_BLOCK + 8
@@ -104,6 +105,65 @@ describe('the claim of the execution', () => {
       claimedAt: pressedAt,
       transactionHash: TX_HASH
     })
+  })
+
+  it('sends once where the holder presses while the look for a claim still reads the countdown, and the late answer moves nothing', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    const key = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const { get } = world.storage
+    const lookup = held<void>()
+    let lookups = 0
+    world.storage.get = async (name, fallback) => {
+      if (name === key && /lookForClaim/.test(new Error().stack ?? '')) {
+        lookups += 1
+        await lookup.promise
+      }
+      return get(name, fallback)
+    }
+    const view = await mount(mountWait(world.account))
+    expect(lookups).toBe(1)
+    expect(view.isDisabled('wait-execute')).toBe(false)
+
+    await view.press('wait-execute')
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    const claim = await executionOf(world.records, world.account)
+    expect(claim?.transactionHash).toBe(TX_HASH)
+
+    lookup.release()
+    await tick(0)
+    await tick(POLL_MS)
+    expect(lookups).toBe(1)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    expect(world.kit.prepareExecuteHandover).toHaveBeenCalledTimes(1)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(await executionOf(world.records, world.account)).toEqual(claim)
+  })
+
+  it("follows another page's claim where the holder presses while the look for a claim still reads the countdown", async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    const key = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const { get } = world.storage
+    const lookup = held<void>()
+    world.storage.get = async (name, fallback) => {
+      if (name === key && /lookForClaim/.test(new Error().stack ?? '')) {
+        await lookup.promise
+      }
+      return get(name, fallback)
+    }
+    const view = await mount(mountWait(world.account))
+
+    await claimElsewhere(world.records, world.account)
+    await view.press('wait-execute')
+    lookup.release()
+    await tick(0)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
+    expect(world.port.send).not.toHaveBeenCalled()
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
   })
 
   it("sends a smart account's batch under the claim's own request id", async () => {
@@ -424,6 +484,31 @@ describe('a claim with no hash that grew old', () => {
     consume(world.kit, world.account)
     await tick(POLL_MS)
     expect(view.paths()).toEqual([donePath(world)])
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it('reads the events from its block again where that read does not answer within its limit, and keeps the claim meanwhile', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    await claimElsewhere(world.records, world.account, { claimedAt: Date.now() - CLAIM_AGE_MS })
+    let answer = () => new Promise<Notification[]>(() => {})
+    eventsFromClaim(world, () => answer())
+    view = await mountWait(world.account)
+    expect(claimRangeReads(world)).toHaveLength(1)
+
+    await tick(READ_LIMIT_MS)
+    await tick(REREAD_MS)
+    expect(claimRangeReads(world)).toHaveLength(2)
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(view.byTestId('wait-execute')).toBeNull()
+
+    answer = async () => world.kit.chain.events
+    await tick(READ_LIMIT_MS)
+    await tick(REREAD_MS)
+    expect(claimRangeReads(world)).toHaveLength(3)
+    expect(await executionOf(world.records, world.account)).toBeUndefined()
+    expect(view.isDisabled('wait-execute')).toBe(false)
     expect(world.port.send).not.toHaveBeenCalled()
   })
 

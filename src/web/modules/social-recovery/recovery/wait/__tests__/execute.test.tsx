@@ -5,19 +5,25 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import {
   attemptOf,
   attemptStarted,
+  basicAccount,
   CHAIN_ID,
   CHAIN_TIME,
   consume,
   elapse,
+  executionOf,
+  factsOf,
   held,
   landCountdown,
   landedReceipt,
   MIXED_PATH,
   minedAndReverted,
+  mockWallet,
   moveDeviceClock,
   mountWait,
   openWorld,
   PAYLOAD,
+  readyFacts,
+  START_BLOCK,
   t,
   tick,
   TX_HASH,
@@ -27,6 +33,10 @@ import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 
 const POLL_MS = 30_000
+const READ_LIMIT_MS = 20_000
+const DEPOSIT_POLL_MS = 5_000
+/** The block the execution reads before its claim, as the fake chain answers it. */
+const SEND_BLOCK = START_BLOCK + 8
 const DUE = 'socialRecovery.wait.executionDue'
 
 const donePath = (world: World) =>
@@ -362,5 +372,250 @@ describe('a send no node knows', () => {
     await tick(POLL_MS)
     expect(world.kit.receipts.transactionKnown).toHaveBeenCalled()
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+})
+
+describe("the execution's block read", () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /** The gas check's failed read with its retry, and nothing claimed or sent. */
+  const expectGasReadFailed = async (world: World) => {
+    if (!view) {
+      throw new Error('no view')
+    }
+    expect(view.byTestId('wait-execute-gasReadError')).not.toBeNull()
+    expect(view.text()).toContain(t('socialRecovery.writes.gasCheckFailed'))
+    expect(view.text()).not.toContain(t(`${DUE}.notSent`))
+    expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(true)
+    expect(view.byTestId('wait-execute-submitting')).toBeNull()
+    expect(world.port.send).not.toHaveBeenCalled()
+    expect(await executionOf(world.records, world.account)).toBeUndefined()
+  }
+
+  it('reads the gas check failed where the block read does not answer within its limit, and the retry reads it again', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.receipts.blockNumber.mockImplementation(() => new Promise<number>(() => {}))
+    view = await mountWait(world.account)
+
+    await view.press('wait-execute')
+    expect(view.byTestId('wait-execute-checkingGas')).not.toBeNull()
+    expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(1)
+    await tick(READ_LIMIT_MS)
+    await expectGasReadFailed(world)
+
+    world.kit.receipts.blockNumber.mockImplementation(async () => SEND_BLOCK)
+    await view.pressText(t('socialRecovery.writes.tryAgain'))
+    expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(2)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    expect((await executionOf(world.records, world.account))?.startBlock).toBe(SEND_BLOCK)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+
+  it('reads the gas check failed where the block read throws', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    world.kit.receipts.blockNumber.mockRejectedValue(new Error('the node did not answer'))
+    view = await mountWait(world.account)
+
+    await view.press('wait-execute')
+    await expectGasReadFailed(world)
+  })
+
+  it('reads the gas check failed where the block read from the deposit step does not answer, and the retry reads it again', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.reads.nativeBalance.mockResolvedValue(0n)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    expect(view.byTestId('wait-execute-blocker')).not.toBeNull()
+    expect(world.kit.receipts.blockNumber).not.toHaveBeenCalled()
+
+    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.receipts.blockNumber.mockImplementation(() => new Promise<number>(() => {}))
+    await tick(DEPOSIT_POLL_MS)
+    expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(1)
+    expect(world.port.send).not.toHaveBeenCalled()
+    await tick(READ_LIMIT_MS)
+    await expectGasReadFailed(world)
+
+    world.kit.receipts.blockNumber.mockImplementation(async () => SEND_BLOCK)
+    await view.pressText(t('socialRecovery.writes.tryAgain'))
+    expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(2)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the gas check failed where the block read from the deposit step throws', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    world.kit.reads.nativeBalance.mockResolvedValue(0n)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+
+    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.receipts.blockNumber.mockRejectedValue(new Error('the node did not answer'))
+    await tick(DEPOSIT_POLL_MS)
+    await expectGasReadFailed(world)
+  })
+})
+
+describe('the receipt asked for again', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /**
+   * Presses execute; the wallet's window holds the send until the screen
+   * rendered it, then answers its hash, and the receipt wait that follows ends
+   * in an error that keeps the hash. Later waits answer as `later` gives.
+   */
+  const sendThenFailFirstWait = async (
+    world: World,
+    later: () => Promise<ProviderTransactionReceipt>
+  ) => {
+    if (!view) {
+      throw new Error('no view')
+    }
+    world.kit.receipts.wait
+      .mockImplementationOnce(async () => {
+        throw new Error('the node dropped the connection')
+      })
+      .mockImplementation(later)
+    const hash = held<typeof TX_HASH>()
+    world.port.send.mockImplementation(() => hash.promise)
+    await view.press('wait-execute')
+    expect(world.kit.receipts.wait).not.toHaveBeenCalled()
+    hash.release(TX_HASH)
+    await tick(0)
+  }
+
+  it('waits on the kept hash again at the next answered poll, and reaches the done screen', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    const receipt = held<ProviderTransactionReceipt>()
+    view = await mountWait(world.account)
+
+    await sendThenFailFirstWait(world, () => receipt.promise)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
+
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
+    expect(world.kit.receipts.wait).toHaveBeenLastCalledWith(TX_HASH, SEND_BLOCK)
+
+    receipt.release(landedReceipt())
+    await tick(0)
+    expect(view.byTestId('wait-execute-confirming')).not.toBeNull()
+    consume(world.kit, world.account)
+    await tick(POLL_MS)
+    expect(view.paths()).toEqual([donePath(world)])
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not wait again on a poll that failed, and waits on the next one that answers', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    view = await mountWait(world.account)
+    await sendThenFailFirstWait(world, () => new Promise<ProviderTransactionReceipt>(() => {}))
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+
+    world.kit.chain.failing = true
+    await tick(POLL_MS)
+    expect(view.byTestId('wait-poll-failed')).not.toBeNull()
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+
+    world.kit.chain.failing = false
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
+  })
+
+  it('starts no second wait while the wait it started is still out', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    view = await mountWait(world.account)
+    await sendThenFailFirstWait(world, () => new Promise<ProviderTransactionReceipt>(() => {}))
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
+    await tick(POLL_MS)
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
+  })
+
+  it("starts no wait of its own while the send's own receipt wait is still out", async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+
+    await tick(POLL_MS)
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+
+  it('waits on nothing while the wallet still holds the send', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    world.port.send.mockImplementation(() => new Promise(() => {}))
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+
+    await tick(POLL_MS)
+    expect(world.kit.receipts.wait).not.toHaveBeenCalled()
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+})
+
+describe('the sending key', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it('says this wallet holds no key that can execute, with no retry, where the receiving account has no key here', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    const receiving = basicAccount(world.entry.receivingAccount)
+    mockWallet.facts.set(world.entry.receivingAccount.toLowerCase(), readyFacts(factsOf(receiving)))
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-sending-unavailable')).toBe(t('socialRecovery.wait.noSendingKey'))
+    expect(view.byTestId('wait-sending-failed')).toBeNull()
+    expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    expect(view.isDisabled('wait-execute')).toBe(true)
+    await view.press('wait-execute')
+    expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it("says this wallet holds no key that can execute where the fresh install's seed slot has no ordinary key", async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    elapse(world.kit)
+    mockWallet.keys = mockWallet.keys.filter((key) => key.dedicatedToOneSA)
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-sending-unavailable')).toBe(t('socialRecovery.wait.noSendingKey'))
+    expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
+    expect(view.isDisabled('wait-execute')).toBe(true)
   })
 })
