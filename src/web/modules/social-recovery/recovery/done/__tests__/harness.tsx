@@ -35,12 +35,7 @@ import type {
   RecoveryState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
-import type {
-  Enrollment,
-  PasskeyBackupKind,
-  RecoveryRoute,
-  WalletRecords
-} from '@web/modules/social-recovery/shared/records'
+import type { RecoveryRoute, WalletRecords } from '@web/modules/social-recovery/shared/records'
 import type { TestStorage } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
@@ -247,6 +242,9 @@ const {
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  renderShortAddress
+}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const checklist: typeof import('@web/modules/social-recovery/recovery/checklist/__tests__/harness') = require('@web/modules/social-recovery/recovery/checklist/__tests__/harness')
 const DoneScreen: typeof import('@web/modules/social-recovery/recovery/done/DoneScreen').default =
   require('@web/modules/social-recovery/recovery/done/DoneScreen').default
@@ -267,6 +265,14 @@ export const {
 } = checklist
 
 export const t = (key: string, values?: Record<string, unknown>): string => i18n.t(key, values)
+
+/** A guardian row's name on the done screen: its address after the guardian's words. */
+export const guardianName = (index: number): string =>
+  `${t('socialRecovery.done.guardianAddress')} ${renderShortAddress(GUARDIANS[index])}`
+
+/** The used-methods line over the names the screen lists, in order. */
+export const usedLine = (names: string[]): string =>
+  t('socialRecovery.done.used', { methods: names.join(t('socialRecovery.done.listJoiner')) })
 
 /** An aadhaar credential: the other identity method. */
 export const aadhaarCredential = (): Credential => ({
@@ -682,6 +688,44 @@ export interface World {
   receiving: Account
 }
 
+type RecordsOf = Pick<World, 'records' | 'account' | 'configuration'>
+
+/** What a gathering's request names: its attempt id, its setup number and its payload. */
+interface GatheringOptions {
+  attempt?: number
+  setupNonce?: number
+  payload?: Hex
+}
+
+/** Opens a live gathering of `attempt` under `setupNonce` with `payload`, as the checklist of a new recovery does. */
+export const openGathering = async (
+  { records, account, configuration }: RecordsOf,
+  { attempt = 1, setupNonce = 1, payload = PAYLOAD }: GatheringOptions = {}
+) => {
+  const opened = gatheringOf(configuration, attempt, account)
+  return records
+    .recoverySession(CHAIN_ID, account)
+    .write(
+      { ...opened, request: { ...opened.request, setupNonce: String(setupNonce), payload } },
+      null
+    )
+}
+
+/** Lands a countdown of the attempt `options` names, as the submission of that attempt does. */
+export const landCountdown = async (world: RecordsOf, options: GatheringOptions = {}) => {
+  const live = await openGathering(world, options)
+  await world.records.landSubmission(CHAIN_ID, world.account, live.revision)
+}
+
+/** Ends the stored countdown, as another tab's last act does. */
+export const endStoredCountdown = async ({ records, account }: RecordsOf) => {
+  const read = await records.countdown(CHAIN_ID, account).read()
+  if (read.status !== 'present') {
+    throw new Error('no countdown to end')
+  }
+  await records.endCountdown(CHAIN_ID, account, read.revision)
+}
+
 /** The fresh install's slot: its smart account and its basic account, neither the recovered one. */
 export const SLOT_SMART: Address = '0x00000000000000000000000000000000005a0001'
 export const SLOT_BASIC: Address = '0x00000000000000000000000000000000005a0002'
@@ -690,8 +734,7 @@ export const RECEIVING_ADDR: Address = '0x00000000000000000000000000000000005a00
 /**
  * A recovery whose attempt executed: its entry record on `route`, its
  * countdown's record, the recovery password held in memory, the decrypted
- * setup cache when `cache` is set and the enrollments' passkey kinds when
- * `kinds` names them. The wallet does not list the recovered account unless
+ * setup cache when `cache` is set. The wallet does not list the recovered account unless
  * `listed` is set: `true` lists it with the granted key, `'without-key'` with
  * another key only. With `walletAdds` the wallet lists each account the
  * screen adds as soon as the add is dispatched.
@@ -700,7 +743,6 @@ export const openWorld = async ({
   route = 'fresh-install',
   configuration = MIXED_PATH,
   cache = true,
-  kinds = [],
   countdown = true,
   entry = true,
   listed = false,
@@ -710,8 +752,6 @@ export const openWorld = async ({
   route?: RecoveryRoute
   configuration?: Configuration
   cache?: boolean
-  /** The passkey kind each passkey credential's enrollment names. */
-  kinds?: { credential: Credential; backup: PasskeyBackupKind }[]
   countdown?: boolean
   entry?: boolean
   listed?: boolean | 'without-key'
@@ -757,20 +797,8 @@ export const openWorld = async ({
   if (cache) {
     await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
   }
-  if (kinds.length > 0) {
-    const enrollments: Enrollment[] = kinds.map(({ credential, backup }) => ({
-      credential,
-      test: 'passed',
-      backup
-    }))
-    await records.setup(CHAIN_ID, account).enrollments.write(enrollments)
-  }
   if (countdown) {
-    const opened = gatheringOf(configuration, attempt, account)
-    const live = await records
-      .recoverySession(CHAIN_ID, account)
-      .write({ ...opened, request: { ...opened.request, payload: PAYLOAD } }, null)
-    await records.landSubmission(CHAIN_ID, account, live.revision)
+    await landCountdown({ records, account, configuration }, { attempt })
   }
   mockWallet.storage = storage
   mockWallet.clients = new Map([[account.toLowerCase(), readyClient(kit)]])

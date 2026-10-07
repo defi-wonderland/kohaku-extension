@@ -10,7 +10,6 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
 import type {
-  PasskeyBackupKind,
   RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
@@ -99,12 +98,11 @@ export type RemovalExit =
   | { kind: 'leavesWholeRule'; remaining: PathRow }
   | { kind: 'none' }
 
-/** The shape of a two-row path: two required rows, or one group of two members. */
-export type TwoRowShape = 'twoRequired' | 'groupOfTwo'
-
-export type CleanupBlock =
-  | { kind: 'synced'; place: number; exit: RemovalExit }
-  | { kind: 'device-bound'; place: number; shape: TwoRowShape | null; exit: RemovalExit }
+/** The repair of one passkey row at its place, with what removing that row leaves. */
+export interface CleanupBlock {
+  place: number
+  exit: RemovalExit
+}
 
 export interface RecoverySummary {
   /** The path's rows, empty where this device holds no path. */
@@ -125,7 +123,6 @@ export interface SummaryInput {
   configuration: Configuration | null
   addressBook: { methods: Record<SlotKind, Address> }
   event: ConsumeEvent
-  passkeyKindOf: (credential: Credential) => PasskeyBackupKind
 }
 
 // ---------------------------------------------------------------------------

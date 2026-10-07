@@ -185,7 +185,7 @@ describe('a read that found no consume, failed or has not answered', () => {
     world.kit.chain.failing = true
     const screen = await mountDone(world.account)
     expect(screen.has('done-read-failed')).toBe(true)
-    expect(screen.text()).toContain(t('socialRecovery.client.unavailableTitle'))
+    expect(screen.text()).toContain(t('socialRecovery.done.readFailedTitle'))
     expect(screen.has('done')).toBe(false)
     expect(screen.paths()).toEqual([])
     const reads = world.kit.recoveryState.mock.calls.length
@@ -250,6 +250,7 @@ describe('the route search and the entry record', () => {
     }
     const screen = await mountDone(world.account)
     expect(screen.has('done-entry-failed')).toBe(true)
+    expect(screen.textOf('done-entry-failed')).toContain(t('socialRecovery.done.readFailedTitle'))
     expect(screen.has('done')).toBe(false)
     world.storage.get = get
     await screen.press('done-entry-retry')

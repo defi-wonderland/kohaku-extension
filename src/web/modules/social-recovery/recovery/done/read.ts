@@ -5,11 +5,11 @@
  * attempt read pins, and the account's privilege events of that same
  * transaction, which name the key granted and the key removed. The screen
  * names the keys as these events report them and never as the account's
- * signer state reads. While the countdown's record names the attempt this
- * device landed, the consume is ours only where the manager's attempt and
- * every opening under its id carry that attempt's setup number and payload
- * hash: the manager hands the next id to whoever opens next, so the id alone
- * can be a rival's. A read that throws, or does not answer within its limit,
+ * signer state reads. Against the attempt this device landed, the consume is
+ * ours where it carries that attempt's id and every opening under that id
+ * before it carries the attempt's setup number and payload hash: the manager
+ * hands the next id to whoever opens next, so the id alone can be a rival's.
+ * A read that throws, or does not answer within its limit,
  * answers nothing.
  */
 import { hexToBigInt, isAddressEqual } from 'viem'
@@ -22,7 +22,7 @@ import {
   landedAttemptOf,
   within
 } from '@web/modules/social-recovery/recovery/wait'
-import type { StartedNotice } from '@web/modules/social-recovery/recovery/wait'
+import type { LandedAttempt, StartedNotice } from '@web/modules/social-recovery/recovery/wait'
 
 import type {
   BlockTimeRead,
@@ -47,6 +47,12 @@ export const consumeMatchOf = (countdown: CountdownRead): ConsumeMatch | null =>
   return landed ? { kind: 'landed', landed } : null
 }
 
+/** Whether two landed attempts are one: the same id, setup number and payload hash. */
+export const sameLanded = (a: LandedAttempt, b: LandedAttempt): boolean =>
+  a.attemptId === b.attemptId &&
+  a.setupNonce === b.setupNonce &&
+  a.payloadHash.toLowerCase() === b.payloadHash.toLowerCase()
+
 /** Whether a log sits before another one on the chain. */
 const before = (a: LogPosition, b: LogPosition): boolean =>
   a.blockNumber < b.blockNumber || (a.blockNumber === b.blockNumber && a.logIndex < b.logIndex)
@@ -57,18 +63,19 @@ const sameTransaction = (a: LogPosition, b: LogPosition): boolean =>
 const granting = (notice: PrivilegeNotice): boolean => hexToBigInt(notice.priv) !== 0n
 
 /**
- * The consume of the attempt the manager's record holds, where that record
- * reads consumed, with the opening of the same attempt, the two keys its
- * transaction moved, the removed key's latest earlier grant where an event
- * names one, and the consume's block time. An attempt that is not consumed,
- * or a consume of an earlier attempt only, answers none: the current attempt
- * may still run. Against a landed attempt, an opening under its id that is
- * not it answers none too. Where the manager already holds a later attempt,
- * the consume is the one under the landed attempt's id, it needs at least one
- * opening before it, and the used methods are that opening's; a manager's
- * attempt under the landed id that is not the landed one answers none. A
- * consume whose transaction names no granted or no removed key is a read that
- * has not caught up yet, and fails.
+ * The consume of the account, with its opening, the two keys its transaction
+ * moved, the removed key's latest earlier grant where an event names one, and
+ * the consume's block time. Where the countdown ended, the consume is the one
+ * of the manager's current attempt, which must read consumed. Against a
+ * landed attempt, the consume is the one under the landed attempt's id, and
+ * every opening under that id before it must be the landed one. Where the
+ * manager's attempt is the landed one, it must read consumed and the used
+ * methods are its record's. Where it is not (a later attempt, or none at
+ * all), the consume needs at least one opening before it, the used methods
+ * are that opening's, and a manager's attempt under the landed id that is not
+ * the landed one answers none. Anything else answers none: the attempt may
+ * still run. A consume whose transaction names no granted or no removed key
+ * is a read that has not caught up yet, and fails.
  */
 export const readConsume = (
   kit: DoneKitClient,

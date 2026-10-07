@@ -3,7 +3,8 @@
  * device holds and the consume event: the rows the accepted set used, whether
  * the path holds an address row (every guardian of it is now discoverable), a
  * passkey the recovery did not use, an identity method, and one cleanup block
- * for each passkey of the path by its kind.
+ * for each passkey of the path. Every passkey gets the synced passkey's
+ * repair: this release does not tell a device-bound passkey apart.
  *
  * The used rows come from the places the attempt's opening event publishes;
  * where the events no longer name the opening, from the methods the attempt
@@ -17,14 +18,7 @@ import { SLOT_KINDS } from '@web/modules/social-recovery/shared/records/types'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records/types'
 
 import { IDENTITY_KINDS } from './constants'
-import type {
-  CleanupBlock,
-  PathRow,
-  RecoverySummary,
-  RemovalExit,
-  SummaryInput,
-  TwoRowShape
-} from './types'
+import type { CleanupBlock, PathRow, RecoverySummary, RemovalExit, SummaryInput } from './types'
 
 const kindOfMethod = (method: Address, methods: Record<SlotKind, Address>): SlotKind | undefined =>
   SLOT_KINDS.find((kind) => isAddressEqual(methods[kind], method))
@@ -63,20 +57,7 @@ export const removalExitOf = (rows: PathRow[], place: number): RemovalExit => {
   return { kind: 'none' }
 }
 
-/** A two-row path as two required rows (two clauses) or one group of two members; null otherwise. */
-export const twoRowShapeOf = (rows: PathRow[]): TwoRowShape | null => {
-  if (rows.length !== 2) {
-    return null
-  }
-  return rows[0]?.clause === rows[1]?.clause ? 'groupOfTwo' : 'twoRequired'
-}
-
-export const summaryOf = ({
-  configuration,
-  addressBook,
-  event,
-  passkeyKindOf
-}: SummaryInput): RecoverySummary => {
+export const summaryOf = ({ configuration, addressBook, event }: SummaryInput): RecoverySummary => {
   const { methods } = addressBook
   const usedMethodKinds = event.usedMethods
     .map((method) => kindOfMethod(method, methods))
@@ -91,9 +72,7 @@ export const summaryOf = ({
       discoverable: usedKinds.includes('ecdsa'),
       unusedPasskey: false,
       identity: usedKinds.some(isIdentity),
-      cleanup: usedKinds.includes('passkey')
-        ? [{ kind: 'synced', place: -1, exit: { kind: 'none' } }]
-        : []
+      cleanup: usedKinds.includes('passkey') ? [{ place: -1, exit: { kind: 'none' } }] : []
     }
   }
 
@@ -109,12 +88,7 @@ export const summaryOf = ({
   )
   const cleanup = rows
     .filter((row) => row.kind === 'passkey')
-    .map((row): CleanupBlock => {
-      const exit = removalExitOf(rows, row.place)
-      return passkeyKindOf(row.credential) === 'device-bound'
-        ? { kind: 'device-bound', place: row.place, shape: twoRowShapeOf(rows), exit }
-        : { kind: 'synced', place: row.place, exit }
-    })
+    .map((row): CleanupBlock => ({ place: row.place, exit: removalExitOf(rows, row.place) }))
 
   return {
     rows,

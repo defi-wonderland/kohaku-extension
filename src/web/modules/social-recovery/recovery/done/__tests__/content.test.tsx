@@ -4,10 +4,13 @@
  * What the done screen says once the consume is read: the lines under the
  * keys by route, what the recovery published and the methods it used (from
  * the opening event's places, else the attempt record's methods against the
- * path), the discoverability and unlinkability lines, and one cleanup block
- * for each passkey of the path by its kind and the path's shape.
+ * path, two used members of one group as two members of the path), the
+ * discoverability and unlinkability lines, and one cleanup block for each
+ * passkey of the path: the synced repair for every passkey, with its exit by
+ * the path's shape, on a device with or without the countdown.
  */
 import {
+  ADD_ACTION,
   addedAccountOf,
   attemptConsumed,
   attemptStarted,
@@ -15,7 +18,9 @@ import {
   CHAIN_ID,
   configurationOf,
   consumedAttempt,
+  dispatchedOf,
   GUARDIANS,
+  guardianName,
   guardianCredential,
   MIXED_PATH,
   mountDone,
@@ -26,32 +31,55 @@ import {
   PASSWORD,
   t,
   useDoneClock,
+  usedLine,
   walletAddsIt
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { Configuration, Credential } from '@web/modules/social-recovery/sdk-interfaces'
-import {
-  renderChip,
-  renderFullAddress,
-  renderShortAddress
-} from '@web/modules/social-recovery/shared/display'
+import { renderChip, renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { kindNameOf } from '@web/modules/social-recovery/setup/review'
 import { setRecoveryPassword } from '@web/modules/social-recovery/shared/records'
 
 useDoneClock()
 
 const DONE = 'socialRecovery.done'
-const guardianName = (index: number) =>
-  `${t('socialRecovery.display.nouns.guardian')} ${renderShortAddress(GUARDIANS[index])}`
-const usedLine = (names: string[]) => t(`${DONE}.used`, { methods: names.join(', ') })
 
 const LAPTOP = passkeyCredential('Laptop passkey')
 
+const PHONE = passkeyCredential('Phone passkey')
+
 /** The cleanup blocks the screen renders, one card each. */
-const blocksOf = (screen: Mounted) => [
-  ...screen.allByTestIdPrefix('done-cleanup-synced-'),
-  ...screen.allByTestIdPrefix('done-cleanup-device-bound-')
-]
+const blocksOf = (screen: Mounted) => screen.allByTestIdPrefix('done-cleanup-synced-')
+
+/** The text of the element `id` inside one cleanup block, empty where it holds none. */
+const inBlock = (block: HTMLElement, id: string) =>
+  block.querySelector(`[data-testid="${id}"]`)?.textContent ?? ''
+
+const DEVICE_BOUND_KEYS = ['dead', 'twoRequired', 'groupOfTwo']
+
+/** Every block is the synced repair in its order, and no device-bound line renders. */
+const expectSyncedRepairOnly = (screen: Mounted) => {
+  blocksOf(screen).forEach((block) => {
+    expect(inBlock(block, 'done-synced-title')).toBe(t(`${DONE}.synced.title`))
+    expect(inBlock(block, 'done-synced-follows')).toBe(t(`${DONE}.synced.follows`))
+    expect(inBlock(block, 'done-synced-order')).toBe(t(`${DONE}.synced.order`))
+    expect(inBlock(block, 'done-cannot-reach')).toContain(t(`${DONE}.synced.cannotReachTitle`))
+    expect(inBlock(block, 'done-remove-in-editor')).toBe(t(`${DONE}.synced.removeInEditor`))
+  })
+  DEVICE_BOUND_KEYS.forEach((key) => {
+    expect(screen.text()).not.toContain(t(`${DONE}.deviceBound.${key}`))
+  })
+}
+
+/** Opens a logged-in recovery over `configuration` whose opening used `places`, and mounts it. */
+const mountUsing = async (configuration: Configuration, places: number[]) => {
+  const world = await openWorld({ route: 'logged-in', configuration, walletAdds: true })
+  world.kit.chain.accountEvents = [
+    attemptStarted(world.account, places),
+    attemptConsumed(world.account)
+  ]
+  return mountDone(world.account)
+}
 
 /** Opens a logged-in recovery over `configuration` and mounts it. */
 const mountOver = async (
@@ -93,7 +121,7 @@ describe('the lines under the keys by route', () => {
   it('shows the account with the name the wallet gives it, with the set-up chip', async () => {
     const added = await mountOver(MIXED_PATH)
     expect(added.screen.textOf('done-account')).toBe(
-      t('socialRecovery.display.accountWithName', {
+      t('socialRecovery.display.nameWithAccount', {
         account: renderFullAddress(added.world.account),
         name: addedAccountOf().preferences.label
       })
@@ -103,7 +131,7 @@ describe('the lines under the keys by route', () => {
 
     const listed = await mountOver(MIXED_PATH, { listed: true })
     expect(listed.screen.textOf('done-account')).toBe(
-      t('socialRecovery.display.accountWithName', {
+      t('socialRecovery.display.nameWithAccount', {
         account: renderFullAddress(listed.world.account),
         name: 'Recovered account'
       })
@@ -215,6 +243,86 @@ describe('what this recovery did', () => {
     screen.unmount()
   })
 
+  it('names exactly two used members of one group as two members of the path, at the place of the first', async () => {
+    const cases: { configuration: Configuration; places: number[]; names: string[] }[] = [
+      {
+        configuration: MIXED_PATH,
+        places: [0, 2, 3],
+        names: ['Laptop passkey', t(`${DONE}.twoMembers`)]
+      },
+      {
+        configuration: MIXED_PATH,
+        places: [1, 2, 4],
+        names: [guardianName(0), t(`${DONE}.twoMembers`)]
+      },
+      {
+        configuration: configurationOf([
+          { threshold: 1, credentials: [LAPTOP] },
+          {
+            threshold: 2,
+            credentials: [guardianCredential(GUARDIANS[0]), guardianCredential(GUARDIANS[1])]
+          }
+        ]),
+        places: [1, 2],
+        names: [t(`${DONE}.twoMembers`)]
+      }
+    ]
+    // eslint-disable-next-line no-restricted-syntax
+    for (const { configuration, places, names } of cases) {
+      // eslint-disable-next-line no-await-in-loop
+      const screen = await mountUsing(configuration, places)
+      expect(screen.textOf('done-used')).toBe(usedLine(names))
+      screen.unmount()
+    }
+  })
+
+  it('names a guardian row whose address does not decode as a guardian, with no address words', async () => {
+    const unreadable: Credential = { method: BOOK.methods.ecdsa, config: '0x01' }
+    const screen = await mountUsing(
+      configurationOf([
+        { threshold: 1, credentials: [LAPTOP] },
+        { threshold: 1, credentials: [unreadable] }
+      ]),
+      [0, 1]
+    )
+    expect(screen.textOf('done-used')).toBe(
+      usedLine(['Laptop passkey', t('socialRecovery.display.nouns.guardian')])
+    )
+    expect(screen.text()).not.toContain(t(`${DONE}.guardianAddress`))
+    screen.unmount()
+  })
+
+  it('names each used row where a group gives other than two of them, or the rows are single-member clauses', async () => {
+    const cases: { configuration: Configuration; places: number[]; names: string[] }[] = [
+      {
+        configuration: MIXED_PATH,
+        places: [2, 3, 4],
+        names: [guardianName(1), guardianName(2), guardianName(3)]
+      },
+      {
+        configuration: MIXED_PATH,
+        places: [0, 1, 4],
+        names: ['Laptop passkey', guardianName(0), guardianName(3)]
+      },
+      {
+        configuration: configurationOf([
+          { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] },
+          { threshold: 1, credentials: [guardianCredential(GUARDIANS[1])] }
+        ]),
+        places: [0, 1],
+        names: [guardianName(0), guardianName(1)]
+      }
+    ]
+    // eslint-disable-next-line no-restricted-syntax
+    for (const { configuration, places, names } of cases) {
+      // eslint-disable-next-line no-await-in-loop
+      const screen = await mountUsing(configuration, places)
+      expect(screen.textOf('done-used')).toBe(usedLine(names))
+      expect(screen.text()).not.toContain(t(`${DONE}.twoMembers`))
+      screen.unmount()
+    }
+  })
+
   it('says the later release never unlinks a passport only where the path holds an identity method', async () => {
     const plain = await mountOver(MIXED_PATH)
     expect(plain.screen.has('done-passport-never')).toBe(false)
@@ -251,7 +359,7 @@ describe('the cleanup block by the path passkeys', () => {
     expect(screen.before('done-synced-order', 'done-cannot-reach')).toBe(true)
     expect(screen.has('done-synced-add-first')).toBe(false)
     expect(screen.has('done-synced-whole-rule')).toBe(false)
-    expect(screen.has('done-device-bound-dead')).toBe(false)
+    expectSyncedRepairOnly(screen)
     screen.unmount()
   })
 
@@ -278,88 +386,41 @@ describe('the cleanup block by the path passkeys', () => {
     screen.unmount()
   })
 
-  it('reads a passkey whose enrollment names no kind as synced', async () => {
+  it('renders one block for each passkey, each naming its own row', async () => {
     const path = configurationOf([
       { threshold: 1, credentials: [LAPTOP] },
-      { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] }
+      { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] },
+      { threshold: 1, credentials: [PHONE] }
     ])
-    const { screen } = await mountOver(path, {
-      kinds: [{ credential: passkeyCredential('Another', undefined, 40), backup: 'device-bound' }]
-    })
+    const { screen } = await mountOver(path)
+    const blocks = blocksOf(screen)
+    expect(blocks).toHaveLength(2)
     expect(screen.has('done-cleanup-synced-0')).toBe(true)
-    expect(screen.has('done-device-bound-dead')).toBe(false)
+    expect(screen.has('done-cleanup-synced-2')).toBe(true)
+    expect(blocks.map((block) => inBlock(block, 'done-cleanup-row'))).toEqual([
+      'Laptop passkey',
+      'Phone passkey'
+    ])
+    expectSyncedRepairOnly(screen)
+    blocks.forEach((block) => {
+      expect(inBlock(block, 'done-synced-add-first')).toBe('')
+      expect(inBlock(block, 'done-synced-whole-rule')).toBe('')
+    })
     screen.unmount()
   })
 
-  it('renders a device-bound passkey as dead, with two required rows', async () => {
-    const path = configurationOf([
-      { threshold: 1, credentials: [LAPTOP] },
-      { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] }
-    ])
-    const { screen } = await mountOver(path, {
-      kinds: [{ credential: LAPTOP, backup: 'device-bound' }]
-    })
-    expect(screen.has('done-cleanup-device-bound-0')).toBe(true)
-    expect(screen.textOf('done-device-bound-dead')).toBe(t(`${DONE}.deviceBound.dead`))
-    expect(screen.textOf('done-twoRequired')).toBe(t(`${DONE}.deviceBound.twoRequired`))
-    expect(screen.textOf('done-device-bound-single-method')).toBe(
-      t('socialRecovery.ruleLines.singleMethod')
+  it('names the other passkey as the whole rule in each block where the path is two passkeys', async () => {
+    const { screen } = await mountOver(
+      configurationOf([
+        { threshold: 1, credentials: [LAPTOP] },
+        { threshold: 1, credentials: [PHONE] }
+      ])
     )
-    expect(screen.has('done-groupOfTwo')).toBe(false)
-    expect(screen.has('done-synced-title')).toBe(false)
-    expect(screen.has('done-synced-order')).toBe(false)
-    screen.unmount()
-  })
-
-  it('renders a device-bound passkey in a group of two members', async () => {
-    const path = configurationOf([
-      { threshold: 1, credentials: [LAPTOP, guardianCredential(GUARDIANS[0])] }
+    const blocks = blocksOf(screen)
+    expect(blocks.map((block) => inBlock(block, 'done-synced-whole-rule'))).toEqual([
+      t(`${DONE}.synced.leavesWholeRule`, { method: 'Phone passkey' }),
+      t(`${DONE}.synced.leavesWholeRule`, { method: 'Laptop passkey' })
     ])
-    const { screen } = await mountOver(path, {
-      kinds: [{ credential: LAPTOP, backup: 'device-bound' }]
-    })
-    expect(screen.textOf('done-groupOfTwo')).toBe(t(`${DONE}.deviceBound.groupOfTwo`))
-    expect(screen.has('done-twoRequired')).toBe(false)
-    screen.unmount()
-  })
-
-  it('asks for a method first where the device-bound passkey is the only row', async () => {
-    const path = configurationOf([{ threshold: 1, credentials: [LAPTOP] }])
-    const { screen } = await mountOver(path, {
-      kinds: [{ credential: LAPTOP, backup: 'device-bound' }]
-    })
-    expect(screen.has('done-device-bound-dead')).toBe(true)
-    expect(screen.textOf('done-device-bound-add-first')).toBe(t(`${DONE}.synced.addFirst`))
-    expect(screen.has('done-twoRequired')).toBe(false)
-    expect(screen.has('done-groupOfTwo')).toBe(false)
-    screen.unmount()
-  })
-
-  it('renders a device-bound passkey in a larger path as dead alone', async () => {
-    const { screen } = await mountOver(MIXED_PATH, {
-      kinds: [{ credential: LAPTOP, backup: 'device-bound' }]
-    })
-    expect(screen.has('done-device-bound-dead')).toBe(true)
-    expect(screen.has('done-twoRequired')).toBe(false)
-    expect(screen.has('done-groupOfTwo')).toBe(false)
-    expect(screen.has('done-device-bound-add-first')).toBe(false)
-    expect(screen.has('done-device-bound-single-method')).toBe(false)
-    screen.unmount()
-  })
-
-  it('renders one block for each passkey, each by its own kind', async () => {
-    const phone = passkeyCredential('Phone passkey', undefined, 20)
-    const path = configurationOf([
-      { threshold: 1, credentials: [LAPTOP] },
-      { threshold: 1, credentials: [phone] },
-      { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] }
-    ])
-    const { screen } = await mountOver(path, {
-      kinds: [{ credential: phone, backup: 'device-bound' }]
-    })
-    expect(screen.has('done-cleanup-synced-0')).toBe(true)
-    expect(screen.has('done-cleanup-device-bound-1')).toBe(true)
-    expect(blocksOf(screen)).toHaveLength(2)
     screen.unmount()
   })
 
@@ -373,7 +434,6 @@ describe('the cleanup block by the path passkeys', () => {
     const { screen } = await mountOver(path)
     expect(blocksOf(screen)).toHaveLength(0)
     expect(screen.has('done-synced-title')).toBe(false)
-    expect(screen.has('done-device-bound-dead')).toBe(false)
     screen.unmount()
   })
 })
@@ -386,6 +446,85 @@ describe('what comes next', () => {
     expect(screen.textOf('done-password-change')).toBe(t(`${DONE}.passwordChange`))
     expect(screen.textOf('done-edit')).toBe(t(`${DONE}.editOrReplace`))
     expect(screen.textOf('done-close')).toBe(t(`${DONE}.close`))
+    screen.unmount()
+  })
+})
+
+describe('a device that holds the entry record but no countdown', () => {
+  const shapes: {
+    name: string
+    configuration: Configuration
+    exits: ('add-first' | 'whole-rule' | 'none')[]
+  }[] = [
+    {
+      name: 'the only row',
+      configuration: configurationOf([{ threshold: 1, credentials: [LAPTOP] }]),
+      exits: ['add-first']
+    },
+    {
+      name: 'one of two required rows',
+      configuration: configurationOf([
+        { threshold: 1, credentials: [LAPTOP] },
+        { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] }
+      ]),
+      exits: ['whole-rule']
+    },
+    {
+      name: 'a member of a group of two',
+      configuration: configurationOf([
+        { threshold: 2, credentials: [LAPTOP, guardianCredential(GUARDIANS[0])] }
+      ]),
+      exits: ['whole-rule']
+    },
+    {
+      name: 'a member of a group of two beside another row',
+      configuration: configurationOf([
+        { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] },
+        { threshold: 2, credentials: [LAPTOP, guardianCredential(GUARDIANS[1])] }
+      ]),
+      exits: ['none']
+    },
+    { name: 'one row of a larger path', configuration: MIXED_PATH, exits: ['none'] },
+    {
+      name: 'two passkeys',
+      configuration: configurationOf([
+        { threshold: 1, credentials: [LAPTOP] },
+        { threshold: 1, credentials: [PHONE] }
+      ]),
+      exits: ['whole-rule', 'whole-rule']
+    }
+  ]
+
+  shapes.forEach(({ name, configuration, exits }) => {
+    it(`renders the synced repair for a passkey that is ${name}, and adds nothing`, async () => {
+      const { screen } = await mountOver(configuration, { countdown: false, listed: true })
+      expect(screen.has('done')).toBe(true)
+      const blocks = blocksOf(screen)
+      expect(blocks).toHaveLength(exits.length)
+      expectSyncedRepairOnly(screen)
+      blocks.forEach((block, index) => {
+        expect(!!inBlock(block, 'done-synced-add-first')).toBe(exits[index] === 'add-first')
+        expect(!!inBlock(block, 'done-synced-whole-rule')).toBe(exits[index] === 'whole-rule')
+      })
+      expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+      expect(screen.paths()).toEqual([])
+      screen.unmount()
+    })
+  })
+
+  it('renders the synced repair for a used passkey where this device holds no path', async () => {
+    const world = await openWorld({
+      route: 'logged-in',
+      cache: false,
+      countdown: false,
+      listed: true
+    })
+    world.kit.chain.attempt = consumedAttempt([BOOK.methods.passkey])
+    const screen = await mountDone(world.account)
+    expect(world.kit.getSetup).not.toHaveBeenCalled()
+    expect(blocksOf(screen)).toHaveLength(1)
+    expectSyncedRepairOnly(screen)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
     screen.unmount()
   })
 })

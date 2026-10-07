@@ -1,7 +1,8 @@
 /**
  * The done screen's words over the summary: a row's name (a guardian by its
  * address, a passkey by its own name where it carries one, any other method
- * by its kind's name) and the list of the methods the recovery used.
+ * by its kind's name) and the list of the methods the recovery used, where
+ * two used members of one group read as two members of the path.
  */
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import { ellipsizeName, renderShortAddress } from '@web/modules/social-recovery/shared/display'
@@ -13,8 +14,9 @@ import type { PathRow, RecoverySummary } from './types'
 export const rowNameOf = (row: PathRow, t: Translate): string => {
   if (row.kind === 'ecdsa') {
     const address = guardianAddressOf(row.credential)
-    const guardian = t('socialRecovery.display.nouns.guardian')
-    return address ? `${guardian} ${renderShortAddress(address)}` : guardian
+    return address
+      ? `${t('socialRecovery.done.guardianAddress')} ${renderShortAddress(address)}`
+      : t('socialRecovery.display.nouns.guardian')
   }
   if (row.kind === 'passkey' && row.credential.label) {
     return ellipsizeName(row.credential.label)
@@ -23,7 +25,19 @@ export const rowNameOf = (row: PathRow, t: Translate): string => {
 }
 
 /** The methods the recovery used, by row where the path is on this device, else by kind. */
-export const usedMethodsOf = (summary: RecoverySummary, t: Translate): string[] =>
-  summary.used.length > 0
-    ? summary.used.map((row) => rowNameOf(row, t))
-    : summary.usedKinds.map((kind) => kindNameOf(kind, t))
+export const usedMethodsOf = (summary: RecoverySummary, t: Translate): string[] => {
+  if (summary.used.length === 0) {
+    return summary.usedKinds.map((kind) => kindNameOf(kind, t))
+  }
+  const inClause = (rows: PathRow[], clause: number) =>
+    rows.filter((row) => row.clause === clause).length
+  const pairOfGroup = (row: PathRow) =>
+    inClause(summary.rows, row.clause) > 1 && inClause(summary.used, row.clause) === 2
+  return summary.used.flatMap((row, index) => {
+    if (!pairOfGroup(row)) {
+      return [rowNameOf(row, t)]
+    }
+    const first = summary.used.findIndex((other) => other.clause === row.clause)
+    return first === index ? [t('socialRecovery.done.twoMembers')] : []
+  })
+}

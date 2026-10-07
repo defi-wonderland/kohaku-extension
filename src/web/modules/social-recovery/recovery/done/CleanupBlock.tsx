@@ -1,15 +1,12 @@
 /**
- * What one passkey of the path implies after the recovery. A synced passkey
- * may still follow the account that syncs it, so the block states the repair
- * in its one order (sign the lost device out of that account, add a fresh
- * method that does not sync to it, then remove the old row) and points a
- * holder who cannot reach that account at removing the row in the editor:
- * with a method added first where removing it would leave none, and with
- * the method that would remain as the whole rule, and its single-method
- * warning, where one would. A device-bound passkey on the lost device is
- * dead: the block points at editing the path, says that removing one of two
- * rows leaves the other as the whole rule, and asks for a method first where
- * the passkey is the path's only row.
+ * What one passkey of the path implies after the recovery. A passkey may still
+ * follow the account that syncs it, so the block states the repair in its one
+ * order (sign the lost device out of that account, add a fresh method that
+ * does not sync to it, then remove the old row) and points a holder who
+ * cannot reach that account at removing the row in the editor: with a method
+ * added first where removing it would leave none, and with the method that
+ * would remain as the whole rule, and its single-method warning, where one
+ * would. Every passkey of the path gets this block.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -54,20 +51,6 @@ const CleanupBlock = ({ block, row, disabled, onEdit }: CleanupBlockProps) => {
       {rowNameOf(row, t)}
     </Text>
   ) : null
-
-  if (block.kind === 'device-bound') {
-    return (
-      <SectionCard testID={`done-cleanup-device-bound-${block.place}`}>
-        {name}
-        {line(t(`${DONE}.deviceBound.dead`), 'done-device-bound-dead')}
-        {!!block.shape && line(t(`${DONE}.deviceBound.${block.shape}`), `done-${block.shape}`)}
-        {!!block.shape &&
-          line(t('socialRecovery.ruleLines.singleMethod'), 'done-device-bound-single-method')}
-        {block.exit.kind === 'addFirst' &&
-          line(t(`${DONE}.synced.addFirst`), 'done-device-bound-add-first')}
-      </SectionCard>
-    )
-  }
 
   return (
     <SectionCard testID={`done-cleanup-synced-${block.place}`}>
