@@ -10,7 +10,6 @@ import { View } from 'react-native'
 
 import { isValidPassword } from '@ambire-common/services/validations'
 import Button from '@common/components/Button'
-import Input from '@common/components/Input'
 import InputPassword from '@common/components/InputPassword'
 import Text from '@common/components/Text'
 import { isWeb } from '@common/config/env'
@@ -46,6 +45,7 @@ const PasswordStepView = ({ setup, onBack }: PasswordStepViewProps) => {
   }, [disabled, handleKeystoreSetup])
 
   const strong = isValidPassword(password)
+  const mismatch = !!formState.errors.confirmPassword
 
   return (
     <View testID="fast-track-password">
@@ -93,21 +93,28 @@ const PasswordStepView = ({ setup, onBack }: PasswordStepViewProps) => {
         name="confirmPassword"
         rules={{ validate: (value) => password === value }}
         render={({ field: { onChange, onBlur, value } }) => (
-          <Input
+          <InputPassword
             label={t(`${PASSWORD}.repeatLabel`)}
             testID="fast-track-password-repeat"
             onBlur={onBlur}
             onChangeText={onChange}
             value={value}
             isValid={!!value && strong && password === value}
-            secureTextEntry
-            error={formState.errors.confirmPassword ? t(`${PASSWORD}.mismatch`) : undefined}
-            autoCorrect={false}
             onSubmitEditing={submit}
-            containerStyle={spacings.mbSm}
+            containerStyle={mismatch ? spacings.mbTy : spacings.mbSm}
           />
         )}
       />
+      {mismatch && (
+        <Text
+          fontSize={12}
+          appearance="errorText"
+          style={spacings.mbSm}
+          testID="fast-track-password-mismatch"
+        >
+          {t(`${PASSWORD}.mismatch`)}
+        </Text>
+      )}
 
       <SectionCard
         tone="muted"
