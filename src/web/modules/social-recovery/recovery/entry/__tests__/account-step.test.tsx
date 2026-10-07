@@ -14,7 +14,11 @@ import {
   deferred,
   dispatch,
   failedClient,
+  forwardedCall,
+  historyEntry,
+  offchainFault,
   readyClient,
+  reloadAccountStep,
   kit,
   LOST,
   LOST_KEY,
@@ -28,6 +32,8 @@ import {
   records,
   refusedClient,
   resetEdges,
+  REVERTS,
+  revertedCall,
   resolveName,
   searchOf,
   setClient,
@@ -39,6 +45,7 @@ import {
   storeEndedRecovery,
   storeLiveRecovery,
   t,
+  timedOut,
   valueLabel,
   VIEW_ONLY
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
@@ -59,6 +66,11 @@ afterEach(() => {
   screen?.unmount()
   screen = null
 })
+
+/** Nothing on the page offers a retry. */
+const expectNoRetry = () => {
+  expect(document.querySelector('[data-testid$="-retry"]')).toBeNull()
+}
 
 /** Nothing on the page says that the account has no setup. */
 const expectNoNoSetup = (page: Mounted) => {
@@ -165,6 +177,108 @@ describe('the account field', () => {
     expect(kit.setupState).not.toHaveBeenCalled()
     expectNoNoSetup(page)
   })
+
+  const absentNames: [string, () => Error][] = [
+    ['a name with no resolver', () => revertedCall(REVERTS.resolverNotFound)],
+    [
+      'a name with no resolver, read through the page provider',
+      () => forwardedCall(revertedCall(REVERTS.resolverNotFound).message)
+    ],
+    ['a name whose resolver is no contract', () => revertedCall(REVERTS.resolverNotContract)],
+    [
+      'a name whose resolver is no contract, read through the page provider',
+      () => forwardedCall(revertedCall(REVERTS.resolverNotContract).message)
+    ],
+    ['a name whose resolver reverted', () => revertedCall(REVERTS.resolverError)],
+    ['a name with no address record', () => revertedCall(REVERTS.unsupportedProfile)],
+    ['a name whose off-chain lookup failed', offchainFault]
+  ]
+  absentNames.forEach(([name, failure]) => {
+    it(`renders the name error with a retry, not a failed read, for ${name}`, async () => {
+      resolveName.mockImplementationOnce(async () => {
+        throw failure()
+      })
+      const page = await open(LOGGED_IN)
+      await lookUp(page, 'lost.eth')
+      expect(page.has('entry-account-name-error')).toBe(true)
+      expect(page.text()).toContain(t('socialRecovery.entry.account.errors.nameTitle'))
+      expect(page.has('entry-account-name-read-failed')).toBe(false)
+      expect(page.text()).not.toContain(
+        t('socialRecovery.entry.account.errors.readFailedTitle', { network: NETWORK })
+      )
+      expect(kit.setupState).not.toHaveBeenCalled()
+      expect(kit.fitCheck).not.toHaveBeenCalled()
+      expectNoNoSetup(page)
+
+      resolveName.mockImplementation(async () => LOST)
+      await page.press('entry-account-name-error-retry')
+      expect(page.textOf('entry-confirm-address')).toBe(LOST)
+    })
+  })
+
+  const failedReads: [string, () => Error][] = [
+    [
+      'a resolver call the page provider could not send',
+      () => forwardedCall('Provider not found for chainId 11155111')
+    ],
+    [
+      'a resolver call that timed out behind the page provider',
+      () => forwardedCall('request timeout (code=TIMEOUT, version=6.17.0)')
+    ],
+    ['a resolver call that reverted for another reason', () => revertedCall(REVERTS.httpError)],
+    [
+      'a resolver call that reverted for another reason, read through the page provider',
+      () => forwardedCall(revertedCall(REVERTS.httpError).message)
+    ],
+    ['a resolver call with no revert data', () => revertedCall('0x')],
+    ['a request that timed out', timedOut]
+  ]
+  failedReads.forEach(([name, failure]) => {
+    it(`renders the failed read with a retry, not the name error, for ${name}`, async () => {
+      resolveName.mockImplementationOnce(async () => {
+        throw failure()
+      })
+      const page = await open(LOGGED_IN)
+      await lookUp(page, 'lost.eth')
+      expect(page.has('entry-account-name-read-failed')).toBe(true)
+      expect(page.text()).toContain(
+        t('socialRecovery.entry.account.errors.readFailedTitle', { network: NETWORK })
+      )
+      expect(page.has('entry-account-name-error')).toBe(false)
+      expect(kit.setupState).not.toHaveBeenCalled()
+      expectNoNoSetup(page)
+
+      resolveName.mockImplementation(async () => LOST)
+      await page.press('entry-account-name-read-failed-retry')
+      expect(resolveName).toHaveBeenCalledTimes(2)
+      expect(page.textOf('entry-confirm-address')).toBe(LOST)
+    })
+  })
+
+  it('goes back to the choice of the receiving account on the logged-in route', async () => {
+    const page = await open(LOGGED_IN)
+    expect(page.textOf('entry-account-back')).toBe(t('socialRecovery.actions.back'))
+    await page.press('entry-account-back')
+    expect(navigationsAway()).toEqual([['/social-recovery/recovery']])
+    expect(storage.set).not.toHaveBeenCalled()
+  })
+
+  it('cancels to the recovery settings on the logged-in route, and reads and writes nothing', async () => {
+    const page = await open(LOGGED_IN)
+    expect(page.textOf('entry-account-cancel')).toBe(t('socialRecovery.actions.cancel'))
+    await page.press('entry-account-cancel')
+    expect(navigationsAway()).toEqual([['social-recovery/setup']])
+    expect(storage.set).not.toHaveBeenCalled()
+    expect(kit.setupState).not.toHaveBeenCalled()
+  })
+
+  it('offers only cancel on the fresh-install route, which has no step to go back to', async () => {
+    const page = await open(FRESH_INSTALL)
+    expect(page.has('entry-account-back')).toBe(false)
+    await page.press('entry-account-cancel')
+    expect(navigationsAway()).toEqual([['social-recovery/setup']])
+    expect(storage.set).not.toHaveBeenCalled()
+  })
 })
 
 describe('the lookup', () => {
@@ -233,6 +347,7 @@ describe('the lookup', () => {
     expect(page.textOf('entry-lookup-update-how')).toBe(
       t('socialRecovery.client.updateTheWalletHow')
     )
+    expect(state?.textContent).not.toContain(t('socialRecovery.client.updateTheWalletAction'))
     expect(state?.querySelector('[role="button"], button')).toBeNull()
     expect(page.has('entry-lookup-refused-retry')).toBe(false)
     expect(page.has('entry-lookup-another')).toBe(false)
@@ -259,6 +374,14 @@ describe('the lookup', () => {
       t('socialRecovery.entry.noSetup.otherWallet')
     )
     expect(page.has('entry-confirm')).toBe(false)
+
+    // The module line sits in the card beside the address and the network; the lead follows the card.
+    const card = page.byTestId('entry-no-setup-account')
+    const lead = page.byTestId('entry-no-setup-lead')
+    expect(card?.contains(page.byTestId('entry-no-setup-module'))).toBe(true)
+    expect(lead?.textContent).toBe(t('socialRecovery.entry.noSetup.lead'))
+    expect(card?.contains(lead)).toBe(false)
+    expect(lead && card?.compareDocumentPosition(lead)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
     await page.press('entry-lookup-another')
     expect(page.has('entry-account-field')).toBe(true)
@@ -496,8 +619,31 @@ describe('the fit reads', () => {
     const page = await open(LOGGED_IN)
     await confirmLost(page)
     expect(page.textOf('entry-cannot-recover-title')).toBe(CANNOT_RECOVER)
+    expect(page.textOf('entry-cannot-recover-reason')).toBe(
+      t('socialRecovery.entry.refusal.removedUnknown')
+    )
     expect(page.has('entry-reads-fit-failed')).toBe(false)
+    expectNoRetry()
     expectNoContinue(page)
+  })
+
+  it('refuses an account with no code and no creation record under its full address, with no retry', async () => {
+    kit.fitCheck.mockResolvedValueOnce({ basis: 'no-code', fits: false })
+    kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'no-creation-record' })
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    expect(page.textOf('entry-confirmed-address')).toBe(LOST)
+    expect(page.textOf('entry-cannot-recover-title')).toBe(CANNOT_RECOVER)
+    expect(page.textOf('entry-cannot-recover-reason')).toBe(
+      t('socialRecovery.review.blocked.cannotRecover.reasonNotSupported')
+    )
+    expect(page.has('entry-reads-fit-failed')).toBe(false)
+    expectNoRetry()
+    expectNoContinue(page)
+    expect(page.has('entry-cannot-recover-back')).toBe(true)
+    expect(kit.fitCheck).toHaveBeenCalledTimes(1)
+    expect(kit.removedKey).toHaveBeenCalledTimes(1)
+    expect(kit.holdsAnyPrivilege).not.toHaveBeenCalled()
   })
 
   it('renders a failed fit read as its own failed state, not a refusal; the retry that answers goes on', async () => {
@@ -631,6 +777,40 @@ describe('a direct open', () => {
     const page = await open(LOGGED_IN)
     expect(page.has('entry-gate')).toBe(false)
     expect(page.has('entry-account-field')).toBe(true)
+  })
+
+  it('keeps the acknowledgment it arrived with in this mount, and drops it from the history entry', async () => {
+    const page = await open(LOGGED_IN)
+    expect(page.has('entry-account-field')).toBe(true)
+    expect(historyEntry()).toEqual({
+      pathname: '/social-recovery/recovery/account',
+      search: LOGGED_IN,
+      hash: '',
+      state: null
+    })
+    expect(page.has('entry-gate')).toBe(false)
+
+    // The step goes on in this mount after the history entry lost the flag.
+    await confirmLost(page)
+    expect(page.has('entry-continue')).toBe(true)
+  })
+
+  it('shows the condensed warning again on a reload of an entry the holder arrived on acknowledged', async () => {
+    const first = await open(LOGGED_IN)
+    expect(first.has('entry-account-field')).toBe(true)
+    first.unmount()
+
+    screen = await reloadAccountStep()
+    expect(screen.has('entry-gate')).toBe(true)
+    expect(screen.has('recovery-warning')).toBe(true)
+    expect(screen.has('entry-account-field')).toBe(false)
+    expect(screen.isDisabled(GATE_CONTINUE)).toBe(true)
+  })
+
+  it('leaves a history entry that carries no acknowledgment as it is', async () => {
+    await open(LOGGED_IN, null)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(historyEntry().state).toBeNull()
   })
 
   it('takes a new acknowledgment when the step mounts again', async () => {

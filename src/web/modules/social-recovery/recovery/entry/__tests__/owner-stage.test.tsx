@@ -25,6 +25,7 @@ import {
 
 const ACK = 'recovery-warning-acknowledge'
 const CONTINUE = 'entry-owner-continue'
+const CANCEL = 'entry-owner-cancel'
 const choice = (address: string) => `entry-owner-choice-${address.toLowerCase()}`
 
 beforeEach(resetEdges)
@@ -160,6 +161,34 @@ describe('the owner stage', () => {
     expect(screen.has('entry-owner-choices')).toBe(false)
     await screen.press(ACK)
     expect(screen.has(CONTINUE)).toBe(false)
+    screen.unmount()
+  })
+
+  it('leaves for the recovery settings where no account can receive control, with cancel as the one action', async () => {
+    setWallet({ accounts: [WATCHED], keys: [] })
+    const screen = await mountEntry()
+    expect(screen.textOf(CANCEL)).toBe(t('socialRecovery.actions.cancel'))
+    expect(screen.has(CONTINUE)).toBe(false)
+    await screen.press(CANCEL)
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith('social-recovery/setup')
+    screen.unmount()
+  })
+
+  it('cancels to the recovery settings beside continue, before or after the acknowledgment', async () => {
+    const screen = await mountEntry()
+    expect(screen.textOf(CANCEL)).toBe(t('socialRecovery.actions.cancel'))
+    await screen.press(CANCEL)
+    expect(navigate).toHaveBeenLastCalledWith('social-recovery/setup')
+    await screen.press(ACK)
+    await screen.press(choice(SMART))
+    await screen.press(CANCEL)
+    expect(navigate).toHaveBeenCalledTimes(2)
+    expect(navigate).toHaveBeenLastCalledWith('social-recovery/setup')
+    expect(navigate).not.toHaveBeenCalledWith(
+      expect.stringContaining('/recovery/account'),
+      expect.anything()
+    )
     screen.unmount()
   })
 
