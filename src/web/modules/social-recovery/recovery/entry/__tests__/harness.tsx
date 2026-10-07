@@ -301,6 +301,10 @@ export const setWallet = (wallet: Partial<FakeWallet>) => {
 }
 
 export const navigate = mockNavigate
+
+/** The screen's navigations, leaving out the replace that drops the acknowledgment from the history entry. */
+export const navigationsAway = () =>
+  mockNavigate.mock.calls.filter(([, options]) => options?.replace !== true)
 export const dispatch = mockDispatch
 export const chip = (name: 'notActive' | 'cannotRecover') => t(chipKey('recovery', name))
 export const valueLabel = renderValueLabel
