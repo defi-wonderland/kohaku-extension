@@ -166,6 +166,9 @@ export const useReadout = ({
         setRecoveryPassword(chainId, account, password)
       }
       const write = writeCache(configuration)
+      // A refusal nobody awaits (Back, a new run, a blocked path) must not surface as an
+      // unhandled rejection; the raw promise still carries it to the leave that awaits it.
+      write.catch(() => undefined)
       // With the password in memory the checklist opens the setup where the
       // cache write failed; at Public the cache is its only way.
       cacheWrite.current = password !== null ? write.catch(() => undefined) : write

@@ -39,6 +39,7 @@ import {
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
+import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/types'
 import {
   readRecoveryPassword,
   wipeRecoveryPassword
@@ -480,7 +481,7 @@ const expectLockedContinue = async (page: Mounted) => {
 }
 
 describe('continue while the setup is locked', () => {
-  const levels: ('private' | 'shape-visible')[] = ['private', 'shape-visible']
+  const levels: HiddenLevel[] = ['private', 'shape-visible']
   levels.forEach((level) => {
     it(`is switched off with its reason under the actions before the password at ${level}`, async () => {
       await commitLostSetup(level)

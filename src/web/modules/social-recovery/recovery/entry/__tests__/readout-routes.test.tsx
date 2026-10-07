@@ -31,6 +31,7 @@ import {
   t
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/types'
 import { wipeRecoveryPassword } from '@web/modules/social-recovery/shared/records'
 
 const ACCOUNT_STEP = '/social-recovery/recovery/account'
@@ -341,7 +342,7 @@ describe('a public setup this device could not keep', () => {
     expect(await storedCache()).not.toBeNull()
   })
 
-  it('clears the failure while the retried write runs, writes once for a double press, and goes on once it is kept', async () => {
+  it('clears the failure while the retried write runs, and goes on once it is kept', async () => {
     await storeEntry('logged-in')
     await commitLostSetup('public')
     storage.refuse = true
@@ -432,7 +433,7 @@ describe('a public setup this device could not keep', () => {
 })
 
 describe('a setup opened with the card password that this device could not keep', () => {
-  const levels: ('private' | 'shape-visible')[] = ['private', 'shape-visible']
+  const levels: HiddenLevel[] = ['private', 'shape-visible']
   levels.forEach((level) => {
     it(`still goes on at ${level}, since the password in memory opens it on the next screen`, async () => {
       await storeEntry('logged-in')
