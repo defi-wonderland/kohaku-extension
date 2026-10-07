@@ -42,6 +42,8 @@ const ADD_TEMP_SEED = 'KEYSTORE_CONTROLLER_ADD_TEMP_SEED'
 const SEND_TEMP_SEED = 'KEYSTORE_CONTROLLER_SEND_TEMP_SEED_TO_UI'
 const OTHER_PHRASE = 'legal winner thank year wave sausage worth useful legal winner thank yellow'
 const LIMIT_MS = 60_000
+const CREATING = 'Creating your new key…'
+const ADD_PENDING = 'The wallet is still adding your key. Wait, or go back and continue again.'
 
 const types = () => dispatched().map(({ type }) => type)
 
@@ -121,6 +123,18 @@ describe('the key step', () => {
         { kind: 'dispatch', type: SEND_TEMP_SEED, params: undefined }
       ])
       expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+    })
+
+    it('says the key is being created under the spinner until the words show', async () => {
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(byTestId('fast-track-key-creating')?.textContent).toBe(CREATING)
+      expect(byTestId('fast-track-key-pending')).toBeNull()
+
+      await keystoreSends(PHRASE)
+
+      expect(byTestId('fast-track-key-creating')).toBeNull()
+      expect(text()).not.toContain(CREATING)
     })
 
     it('shows the words in order, the counter at 3 of 3 and the key derived from that phrase', async () => {
@@ -334,6 +348,64 @@ describe('the key step', () => {
       expect(mockEdge.events.length).toBe(sent)
     })
 
+    it('says the wallet is still adding once the limit passes, and not before', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS - 1)
+      })
+      expect(byTestId('fast-track-key-pending')).toBeNull()
+
+      await act(async () => {
+        jest.advanceTimersByTime(1)
+      })
+
+      expect(byTestId('fast-track-key-pending')?.textContent).toBe(ADD_PENDING)
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+      expect(byTestId('fast-track-key-creating')).toBeNull()
+      expect(text()).not.toContain('Try again')
+    })
+
+    it('drops the still-adding line once the slot is listed', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS)
+      })
+      expect(byTestId('fast-track-key-pending')).not.toBeNull()
+
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+      await walletListsSlot()
+
+      expect(where()).toBe(ACCOUNT_STEP)
+      expect(byTestId('fast-track-key-pending')).toBeNull()
+    })
+
+    it('leaves for the warning on Back while its own add is pending, and sends nothing', async () => {
+      jest.useFakeTimers()
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS)
+      })
+      const sent = dispatched().length
+
+      await press('fast-track-key-back')
+      await flush()
+
+      expect(movesAway()).toMatchObject([{ to: 'social-recovery/recover', replace: false }])
+      expect(byTestId('recovery-warning')).not.toBeNull()
+      expect(dispatched()).toHaveLength(sent)
+      expect(dispatched(PICKER_OPEN)).toHaveLength(1)
+      expect(dispatched('MAIN_CONTROLLER_ACCOUNT_PICKER_RESET')).toEqual([])
+    })
+
     it('frees Back at the limit after a success with the slot not listed yet, and sends nothing again', async () => {
       jest.useFakeTimers()
       await atWords()
@@ -423,6 +495,45 @@ describe('the key step', () => {
       expect(text()).not.toContain('junk')
       expect(byTestId('fast-track-key-spinner')).not.toBeNull()
       expect(isDisabled('fast-track-key-back')).toBe(true)
+    })
+
+    it('shows the spinner with no line saying a key is being created', async () => {
+      await atEarlierAdd()
+
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-creating')).toBeNull()
+      expect(text()).not.toContain(CREATING)
+      expect(byTestId('fast-track-key-pending')).toBeNull()
+    })
+
+    it('says the wallet is still adding once the limit passes while that add runs', async () => {
+      jest.useFakeTimers()
+      await atEarlierAdd()
+
+      await act(async () => {
+        jest.advanceTimersByTime(LIMIT_MS)
+      })
+
+      expect(byTestId('fast-track-key-pending')?.textContent).toBe(ADD_PENDING)
+      expect(byTestId('fast-track-key-creating')).toBeNull()
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(dispatched()).toEqual([])
+    })
+
+    it('still goes on to the account step where that add lists the slot after it read as failed', async () => {
+      await atEarlierAdd()
+      await setController('picker', { addAccountsStatus: 'INITIAL' })
+
+      expect(byTestId('fast-track-key-add-failed')).not.toBeNull()
+
+      await walletListsSlot()
+
+      expect(mockEdge.made).toBe(0)
+      expect(types()).toEqual([
+        'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET',
+        'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE'
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
     })
 
     it('goes on to the account step once that add lists the slot, closing the picker session', async () => {
@@ -547,6 +658,103 @@ describe('the key step', () => {
         expect(mockEdge.made).toBe(1)
         expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
       })
+    })
+  })
+
+  describe('a step that opens while the picker still selects the accounts of an earlier visit', () => {
+    const atEarlierSelection = async () => {
+      await setController('picker', { selectNextAccountStatus: 'LOADING' })
+      await mount(KEY_STEP, ACKNOWLEDGED)
+    }
+
+    it('makes no phrase and sends nothing while the selection runs', async () => {
+      await atEarlierSelection()
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(byTestId('fast-track-key-words')).toBeNull()
+      expect(byTestId('fast-track-key-creating')).toBeNull()
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(isDisabled('fast-track-key-back')).toBe(true)
+    })
+
+    it('waits through the add that follows and goes on once the slot is listed', async () => {
+      await atEarlierSelection()
+      await setController('picker', {
+        selectNextAccountStatus: 'SUCCESS',
+        addAccountsStatus: 'LOADING'
+      })
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+
+      await walletListsSlot()
+
+      expect(movesAway()).toEqual([])
+
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+
+      expect(mockEdge.made).toBe(0)
+      expect(types()).toEqual([
+        'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET',
+        'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE'
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('reads no failure where the selection ends before its add starts', async () => {
+      await atEarlierSelection()
+      await setController('picker', { selectNextAccountStatus: 'SUCCESS' })
+
+      expect(byTestId('fast-track-key-add-failed')).toBeNull()
+      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await walletListsSlot()
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+
+      expect(mockEdge.made).toBe(0)
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('does not move on while the selection still runs with accounts listed', async () => {
+      await atEarlierSelection()
+      await walletListsSlot()
+
+      expect(dispatched()).toEqual([])
+      expect(movesAway()).toEqual([])
+
+      await setController('picker', { selectNextAccountStatus: 'SUCCESS' })
+
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('fails with retry where the selection ends in a page error, and retry makes one new phrase', async () => {
+      await atEarlierSelection()
+      await setController('picker', { pageError: 'The page could not be derived' })
+
+      expect(byTestId('fast-track-key-add-failed')).not.toBeNull()
+      expect(dispatched()).toEqual([])
+
+      await press('fast-track-key-retry')
+      await keystoreSends(PHRASE)
+
+      expect(mockEdge.made).toBe(1)
+      expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
+      expect(byTestId('fast-track-key-word-0')).not.toBeNull()
+    })
+
+    it('makes one phrase at mount where a selection still marked loading stands beside a page error', async () => {
+      await setController('picker', {
+        selectNextAccountStatus: 'LOADING',
+        pageError: 'The page could not be derived'
+      })
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(1)
+      expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
     })
   })
 
