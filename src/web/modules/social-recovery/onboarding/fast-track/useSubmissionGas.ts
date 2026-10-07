@@ -2,9 +2,10 @@
  * The fast track's gas check for the submission, kept current while the step
  * shows. It reads over the extension's own provider for the one chain this
  * build reads, and reads again every few seconds while the key holds too
- * little, so the step moves on by itself once the funds arrive. A read that
- * fails stops the reads and shows as failed, never as the last deposit step;
- * retry starts them again.
+ * little, so the step moves on by itself once the funds arrive. The deposit
+ * step stays on screen between answered reads. A read that fails, or that
+ * does not answer within its limit, stops the reads and shows as failed,
+ * never as the last deposit step; retry starts them again.
  *
  * `key` and `network` are undefined while not known yet, which reads as
  * loading, and null where there is none, which reads as failed.
@@ -17,7 +18,7 @@ import type { ExtensionProvider } from '@web/modules/social-recovery/shared/clie
 import { createChainReads, extensionProviderFor } from '@web/modules/social-recovery/shared/client'
 import { providerKeyOf } from '@web/modules/social-recovery/shared/client/extension-provider'
 
-import { BALANCE_POLL_MS } from './constants'
+import { BALANCE_POLL_MS, BALANCE_READ_LIMIT_MS } from './constants'
 import { submissionCheckOf } from './gas'
 import type { GasStepState, SubmissionGas } from './types'
 
@@ -52,9 +53,17 @@ const useSubmissionGas = (
     const fundedOn = { name: current.name, nativeAssetSymbol: current.nativeAssetSymbol }
     let live = true
     let next: ReturnType<typeof setTimeout> | undefined
+    let bound: ReturnType<typeof setTimeout> | undefined
 
     const check = () => {
+      bound = setTimeout(() => {
+        if (live) {
+          live = false
+          setState({ kind: 'failed' })
+        }
+      }, BALANCE_READ_LIMIT_MS)
       submissionCheckOf({ reads, key, network: fundedOn })
+        .finally(() => clearTimeout(bound))
         .then((result) => {
           if (!live) {
             return
@@ -79,6 +88,9 @@ const useSubmissionGas = (
       live = false
       if (next) {
         clearTimeout(next)
+      }
+      if (bound) {
+        clearTimeout(bound)
       }
       provider.destroy()
     }

@@ -43,3 +43,6 @@ export const SUBMISSION_GAS_STAND_IN = 800_000n
 
 /** How often the gas step reads the sending key's balance again while it waits for funds. */
 export const BALANCE_POLL_MS = 5_000
+
+/** How long one balance check may take before the gas step reads it as failed. */
+export const BALANCE_READ_LIMIT_MS = 15_000
