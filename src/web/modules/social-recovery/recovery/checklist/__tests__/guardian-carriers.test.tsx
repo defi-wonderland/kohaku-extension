@@ -15,6 +15,7 @@ import type {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
   ACCOUNT,
+  deferred,
   DESTINATION,
   depsOf,
   fakeKit,
@@ -22,6 +23,8 @@ import {
   HANDOVER,
   MIXED_PATH,
   mountChecklist,
+  mountSwappableChecklist,
+  qrDouble,
   REMOVED,
   requestOf,
   seedCache,
@@ -35,7 +38,7 @@ import {
   withReplies
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import type { DestinationReading } from '@web/modules/social-recovery/recovery/checklist/types'
-import type { Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress }: typeof import('viem') = require('viem')
@@ -66,22 +69,6 @@ const BANNED: [string, RegExp][] = [
   ['full wallet password', /\bfull\s+wallet\s+passwords?\b/i],
   ['Protected', /\bProtected\b/]
 ]
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (error: unknown) => void
-}
-
-const deferred = <T,>(): Deferred<T> => {
-  let resolve: (value: T) => void = () => {}
-  let reject: (error: unknown) => void = () => {}
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
 
 describe('the guardian row carriers', () => {
   let view: Mounted | undefined
@@ -495,5 +482,210 @@ describe('the guardian row carriers', () => {
     expect(mounted.byTestId(id(4, 'chip'))?.textContent).toBe(
       t('socialRecovery.status.collection.notNeeded')
     )
+  })
+
+  it('names the toggle hide the QR code while the code shows, and show it once hidden', async () => {
+    const mounted = await open()
+    expect(mounted.byTestId(id(1, 'show-qr'))?.textContent).toBe(t(`${GUARDIAN}.showQr`))
+
+    await mounted.press(id(1, 'show-qr'))
+    expect(mounted.byTestId(id(1, 'show-qr'))?.textContent).toBe(t(`${GUARDIAN}.hideQr`))
+
+    await mounted.press(id(1, 'show-qr'))
+    expect(mounted.byTestId(id(1, 'show-qr'))?.textContent).toBe(t(`${GUARDIAN}.showQr`))
+  })
+
+  it('says the QR code could not be drawn where the code fails, and draws it again on a new toggle', async () => {
+    qrDouble.fails = true
+    const mounted = await open()
+
+    await mounted.press(id(1, 'show-qr'))
+
+    expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
+    expect(mounted.byTestId(id(1, 'qr-failed'))?.textContent).toBe(t(`${GUARDIAN}.qrFailed`))
+    expect(mounted.byTestId(id(1, 'link'))?.textContent).not.toBe('')
+
+    qrDouble.fails = false
+    await mounted.press(id(1, 'show-qr'))
+    expect(mounted.byTestId(id(1, 'qr-failed'))).toBeNull()
+    await mounted.press(id(1, 'show-qr'))
+    expect(mounted.byTestId(id(1, 'qr-failed'))).toBeNull()
+    expect(mounted.byTestId(id(1, 'qr'))).not.toBeNull()
+  })
+
+  it('keeps the carriers locked with the unlock reason where an approval request has no handover bytes', async () => {
+    kit.getApproverRequests.mockImplementation((of: Gathering) =>
+      of.places.map((place) => {
+        const request = servedRequestOf(of, place.place)
+        delete request.payload
+        return request
+      })
+    )
+    const mounted = await open()
+
+    expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(getAddress(REMOVED))
+    expect(locked(mounted, 1)).toEqual([true, true, true, true])
+    expect(mounted.byTestId(id(1, 'unlock-reason'))?.textContent).toBe(
+      t(`${GUARDIAN}.unlockReason`)
+    )
+    expect(mounted.byTestId(id(1, 'link'))).toBeNull()
+    await mounted.press(id(1, 'copy-link'))
+    await mounted.press(id(1, 'copy-message'))
+    await mounted.press(id(1, 'show-qr'))
+    expect(clipboard.setStringAsync).not.toHaveBeenCalled()
+    expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
+    expect(qrDouble.drawn).toEqual([])
+  })
+
+  it('keeps the carriers locked with the unlock reason where the order pays a token the row cannot name', async () => {
+    kit.getApproverRequests.mockImplementation((of: Gathering) =>
+      of.places.map((place) => ({
+        ...servedRequestOf(of, place.place),
+        order: {
+          token: '0x8000000000000000000000000000000000000001',
+          amount: '5000',
+          payee: '0x8000000000000000000000000000000000000002'
+        }
+      }))
+    )
+    const mounted = await open()
+
+    expect(mounted.byTestId(id(1, 'value-payment'))?.textContent).not.toBe(
+      t('socialRecovery.display.values.noPayment')
+    )
+    expect(locked(mounted, 1)).toEqual([true, true, true, true])
+    expect(mounted.byTestId(id(1, 'unlock-reason'))?.textContent).toBe(
+      t(`${GUARDIAN}.unlockReason`)
+    )
+    expect(mounted.byTestId(id(1, 'link'))).toBeNull()
+    await mounted.press(id(1, 'copy-link'))
+    expect(clipboard.setStringAsync).not.toHaveBeenCalled()
+  })
+
+  it('cuts a link without a field the client adds beside the declared ones', async () => {
+    kit.getApproverRequests.mockImplementation((of: Gathering) =>
+      of.places.map((place) => ({
+        ...servedRequestOf(of, place.place),
+        setupBody: of.request.setupBody
+      }))
+    )
+    const mounted = await open()
+
+    await mounted.press(id(1, 'copy-link'))
+
+    const [written] = clipboard.setStringAsync.mock.calls[0]
+    const carried = new URLSearchParams(written.slice(written.indexOf('?') + 1)).get('request') ?? ''
+    const json = JSON.parse(Buffer.from(carried, 'base64url').toString('utf8'))
+    expect(json).not.toHaveProperty('setupBody')
+    expect(json.setupBodyHash).toBe(servedRequestOf(gathering, 1).setupBodyHash)
+    expect(requestOfApprovalLink(written)).toEqual(servedRequestOf(gathering, 1))
+  })
+
+  describe('after the kit is rebuilt', () => {
+    const OTHER_REMOVED: Address = '0x6666666666666666666666666666666666666667'
+    const REBUILT_HANDOVER = '0x123456'
+
+    /** A second kit over the same path, whose requests carry other handover bytes. */
+    const rebuiltKit = () => {
+      const next = fakeKit(MIXED_PATH, { served: true })
+      next.getApproverRequests.mockImplementation((of: Gathering) =>
+        of.places.map((place) => ({
+          ...servedRequestOf(of, place.place),
+          payload: REBUILT_HANDOVER
+        }))
+      )
+      return next
+    }
+
+    const fromRebuilt = (value: string) =>
+      requestOfApprovalLink(value)?.payload === REBUILT_HANDOVER
+
+    const openSwappable = async () => {
+      const mounted = await mountSwappableChecklist({
+        records: world.records,
+        client: kit.state,
+        deps: depsOf()
+      })
+      view = mounted
+      return mounted
+    }
+
+    it('locks the carriers as loading until the new kit reads the removed key, then shows its reading', async () => {
+      const mounted = await openSwappable()
+      await mounted.press(id(1, 'show-qr'))
+      expect(locked(mounted, 1)).toEqual([false, false, false, false])
+      expect(mounted.byTestId(id(1, 'qr'))).not.toBeNull()
+
+      const next = rebuiltKit()
+      const read = deferred<{ kind: 'named'; key: Address }>()
+      next.removedKey.mockImplementation(() => read.promise)
+      await mounted.swapClient(next.state)
+
+      expect(next.removedKey).toHaveBeenCalledTimes(1)
+      expect(locked(mounted, 1)).toEqual([true, true, true, true])
+      expect(mounted.byTestId(id(1, 'unlock-reason'))?.textContent).toBe(
+        t(`${GUARDIAN}.unlockReason`)
+      )
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+      expect(mounted.byTestId(id(1, 'link'))).toBeNull()
+      expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
+      expect(qrDouble.drawn.filter(fromRebuilt)).toEqual([])
+
+      read.resolve({ kind: 'named', key: OTHER_REMOVED })
+      await settle()
+
+      expect(locked(mounted, 1)).toEqual([false, false, false, false])
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        getAddress(OTHER_REMOVED)
+      )
+      const qr = mounted.byTestId(id(1, 'qr'))?.querySelector('[data-testid="challenge-qr"]')
+      expect(fromRebuilt(qr?.getAttribute('data-value') ?? '')).toBe(true)
+    })
+
+    it('never shows the reading of the kit it replaced, even when that read answers late', async () => {
+      const first = deferred<{ kind: 'named'; key: Address }>()
+      kit.removedKey.mockImplementation(() => first.promise)
+      const mounted = await openSwappable()
+
+      const next = rebuiltKit()
+      const second = deferred<{ kind: 'named'; key: Address }>()
+      next.removedKey.mockImplementation(() => second.promise)
+      await mounted.swapClient(next.state)
+      first.resolve({ kind: 'named', key: REMOVED })
+      await settle()
+
+      expect(locked(mounted, 1)).toEqual([true, true, true, true])
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+
+      second.resolve({ kind: 'named', key: OTHER_REMOVED })
+      await settle()
+
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        getAddress(OTHER_REMOVED)
+      )
+      expect(locked(mounted, 1)).toEqual([false, false, false, false])
+    })
+
+    it('reads the removed key again for a kit it held before, not the reading kept from then', async () => {
+      const mounted = await openSwappable()
+      await mounted.swapClient(rebuiltKit().state)
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        getAddress(REMOVED)
+      )
+
+      const again = deferred<{ kind: 'named'; key: Address }>()
+      kit.removedKey.mockImplementation(() => again.promise)
+      await mounted.swapClient(kit.state)
+
+      expect(kit.removedKey).toHaveBeenCalledTimes(2)
+      expect(locked(mounted, 1)).toEqual([true, true, true, true])
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+
+      again.resolve({ kind: 'named', key: OTHER_REMOVED })
+      await settle()
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        getAddress(OTHER_REMOVED)
+      )
+    })
   })
 })
