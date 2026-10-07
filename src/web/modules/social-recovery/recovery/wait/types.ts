@@ -341,7 +341,6 @@ export interface WaitViewProps {
   onRetryPoll: () => void
   onRetryKeys: () => void
   onRetryClient: () => void
-  onRetrySending: () => void
   onLeave: () => void
   onMoveFunds: () => void
   onOpenExplorer: (transactionHash: Hex) => void
@@ -380,7 +379,6 @@ export interface ExecuteBlockProps {
   /** Whether execution is due and the events named the payload the execution sends. */
   ready: boolean
   onExecute: () => void
-  onRetrySending: () => void
 }
 
 export interface CannotExecuteBlockProps {

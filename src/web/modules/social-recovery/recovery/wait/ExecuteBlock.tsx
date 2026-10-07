@@ -22,13 +22,7 @@ import type { ExecuteBlockProps } from './types'
 
 const DUE = 'socialRecovery.wait.executionDue'
 
-const ExecuteBlock = ({
-  execute,
-  sending,
-  ready,
-  onExecute,
-  onRetrySending
-}: ExecuteBlockProps) => {
+const ExecuteBlock = ({ execute, sending, ready, onExecute }: ExecuteBlockProps) => {
   const { t } = useTranslation()
   const { write } = execute
 
@@ -58,26 +52,6 @@ const ExecuteBlock = ({
               style={spacings.mbSm}
               text={t('socialRecovery.wait.noSendingKey')}
             />
-          )}
-          {sending.status === 'failed' && (
-            <Alert
-              testID="wait-sending-failed"
-              type="error"
-              size="sm"
-              style={spacings.mbSm}
-              title={t('socialRecovery.client.unavailableTitle')}
-              text={t('socialRecovery.client.unavailableBody')}
-            >
-              <Button
-                testID="wait-sending-retry"
-                type="secondary"
-                size="small"
-                text={t('socialRecovery.writes.tryAgain')}
-                onPress={onRetrySending}
-                hasBottomSpacing={false}
-                style={[flexbox.alignSelfStart, spacings.mtSm]}
-              />
-            </Alert>
           )}
           <Button
             testID="wait-execute"

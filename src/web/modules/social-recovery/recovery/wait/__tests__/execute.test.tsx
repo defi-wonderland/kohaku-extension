@@ -592,6 +592,31 @@ describe('the sending key', () => {
     view = undefined
   })
 
+  it('reads the keys failed with a retry, and no countdown or execute, where the receiving account’s facts could not be read, whatever the cause', async () => {
+    const causes = ['not-listed', 'no-network', 'state-unread'] as const
+    await causes.reduce(async (previous, cause) => {
+      await previous
+      const world = await openWorld()
+      elapse(world.kit)
+      const retry = jest.fn()
+      mockWallet.facts.set(world.entry.receivingAccount.toLowerCase(), {
+        status: 'unavailable',
+        cause,
+        retry
+      })
+      view = await mountWait(world.account)
+      expect(view.byTestId('wait-keys-failed')).not.toBeNull()
+      expect(view.byTestId('wait-countdown')).toBeNull()
+      expect(view.byTestId('wait-execute')).toBeNull()
+      expect(view.byTestId('wait-sending-unavailable')).toBeNull()
+      await view.press('wait-keys-failed-retry')
+      expect(retry).toHaveBeenCalledTimes(1)
+      expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
+      view.unmount()
+      view = undefined
+    }, Promise.resolve())
+  })
+
   it('says this wallet holds no key that can execute, with no retry, where the receiving account has no key here', async () => {
     const world = await openWorld()
     elapse(world.kit)
@@ -600,7 +625,6 @@ describe('the sending key', () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-sending-unavailable')).toBe(t('socialRecovery.wait.noSendingKey'))
-    expect(view.byTestId('wait-sending-failed')).toBeNull()
     expect(view.hasButton(t('socialRecovery.writes.tryAgain'))).toBe(false)
     expect(view.isDisabled('wait-execute')).toBe(true)
     await view.press('wait-execute')
