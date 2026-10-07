@@ -64,6 +64,9 @@ const usePasskeyClaim = ({
 
   const taking = useRef<string | null>(null)
   const stopListening = useRef<(() => void) | undefined>()
+  // The claims a wipe or a landing removed: a report of one that arrives
+  // later is removed in turn and changes nothing on the checklist.
+  const forgotten = useRef(new Set<string>())
 
   const launch = useCallback(
     async (request: ApproverRequest, handOff: boolean) => {
@@ -117,6 +120,10 @@ const usePasskeyClaim = ({
     taking.current = ceremonyId
     let live = true
     const done = (report: CeremonyReport, asked: ClaimAsked) => {
+      if (forgotten.current.has(ceremonyId)) {
+        forget(ceremonyId, true)
+        return
+      }
       setUndelivered(null)
       const { outcome } = report
       setOutcomes((held) => ({ ...held, [asked.place]: { outcome, handOff: asked.handOff } }))
@@ -134,6 +141,11 @@ const usePasskeyClaim = ({
       const asked =
         stored.status === 'present' ? claimAskedOf(stored.value, { account, chainId }) : null
       if (!asked) {
+        // A request that is gone leaves no report behind; a request of another
+        // account or network keeps that one's report.
+        if (stored.status === 'absent') {
+          deps.reportStore.remove(ceremonyResultKey(ceremonyId)).catch(() => undefined)
+        }
         navigate(checklistPathOf(account), { replace: true })
         return
       }
@@ -143,7 +155,9 @@ const usePasskeyClaim = ({
         done(report, asked)
         return
       }
-      setUndelivered(asked)
+      if (!forgotten.current.has(ceremonyId)) {
+        setUndelivered(asked)
+      }
       if (!live) {
         return
       }
@@ -230,6 +244,7 @@ const usePasskeyClaim = ({
           stored.status === 'present' &&
           claimOfDeadRequest(stored.value, { account, chainId }, died)
         ) {
+          forgotten.current.add(id)
           forget(id, true)
         }
       })
@@ -244,7 +259,10 @@ const usePasskeyClaim = ({
   const forgetAll = useCallback(
     (died?: DeadRequest) => {
       const ids = [pending?.id, ceremonyId].filter((id): id is string => typeof id === 'string')
-      new Set(ids).forEach((id) => forget(id, true))
+      new Set(ids).forEach((id) => {
+        forgotten.current.add(id)
+        forget(id, true)
+      })
       setPending(null)
       setUndelivered(null)
       setOutcomes((held) => (Object.keys(held).length > 0 ? {} : held))
