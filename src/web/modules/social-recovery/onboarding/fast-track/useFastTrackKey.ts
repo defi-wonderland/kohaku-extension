@@ -22,8 +22,8 @@
  * nothing, so nothing was saved; a retry keeps the phrase the holder wrote
  * down, and a success that lands after a failure still lists the slot.
  *
- * A mount that finds the picker still adding accounts (an earlier mount's add,
- * left through Back) makes no phrase and sends no add: a new phrase would
+ * A mount that finds the picker still selecting or adding accounts (an earlier
+ * mount's init, left through Back) makes no phrase and sends no add: a new phrase would
  * take the keystore's place of the one that add is saving. It waits for that
  * add to end; once the wallet lists the accounts, the step goes on as a
  * wallet that already lists accounts does. Where that add fails, the step
@@ -61,15 +61,25 @@ const useFastTrackKey = (): FastTrackKey => {
   const { authStatus } = useAuth()
   const { getExtraEntropy } = useExtraEntropy()
 
-  // Whether an add the picker ran before this mount still runs.
-  const [waiting, setWaiting] = useState(picker.addAccountsStatus === 'LOADING')
+  const { addAccountsStatus, selectNextAccountStatus, pageError } = picker
+  // A page error ends the picker's selection where it stood, so a selection
+  // still marked loading beside one is not running any more.
+  const pickerBusy =
+    addAccountsStatus === 'LOADING' || (selectNextAccountStatus === 'LOADING' && !pageError)
+
+  // Whether a selection or an add the picker began before this mount still runs.
+  const [waiting, setWaiting] = useState(pickerBusy)
   const [seedRun, setSeedRun] = useState(0)
   const [seed, setSeed] = useState<TempSeed | null>(null)
   const [slotKeys, setSlotKeys] = useState<SlotKeys | null>(null)
   const [phase, setPhase] = useState<KeyStepPhase>(waiting ? 'adding' : 'creating')
   const made = useRef<MadePhrase | null>(null)
   // What the picker went through since the last add started.
-  const seen = useRef<AddProgress>({ started: waiting, loading: waiting, success: false })
+  const seen = useRef<AddProgress>({
+    started: waiting,
+    loading: addAccountsStatus === 'LOADING',
+    success: false
+  })
 
   // 1. Make the phrase and hand it to the keystore, once per run.
   useEffect(() => {
@@ -162,11 +172,6 @@ const useFastTrackKey = (): FastTrackKey => {
   const selected = authStatus === AUTH_STATUS.AUTHENTICATED
   const listedAndSelected = !!listed && selected
 
-  const { addAccountsStatus, selectNextAccountStatus, pageError } = picker
-  // A page error ends the picker's selection where it stood, so a selection
-  // still marked loading beside one is not running any more.
-  const pickerBusy =
-    addAccountsStatus === 'LOADING' || (selectNextAccountStatus === 'LOADING' && !pageError)
   const [limitReached, setLimitReached] = useState(false)
 
   // 3. Open the picker on the phrase; its init selects the slot's basic
@@ -264,8 +269,7 @@ const useFastTrackKey = (): FastTrackKey => {
     words: seed && slotKeys ? seed.seed.split(' ') : [],
     controllingKey: slotKeys?.controllingKey ?? null,
     listed: listedAndSelected ? listed : null,
-    listedByEarlierAdd:
-      waiting && addAccountsStatus !== 'LOADING' && !!accounts?.length && selected,
+    listedByEarlierAdd: waiting && !pickerBusy && !!accounts?.length && selected,
     pending: phase === 'adding' && limitReached,
     add,
     retry
