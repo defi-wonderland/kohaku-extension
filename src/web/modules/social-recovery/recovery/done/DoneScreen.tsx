@@ -19,16 +19,16 @@
  * it is not, since this device may never have landed the recovery. A read
  * that found no consume goes back to the wait; a read of the countdown or the
  * setup that fails renders failed with retry, never as a path this device
- * does not hold. The last act ends the countdown only where it still names
- * the attempt this screen matched, then clears the entry record and the
- * recovery password held in memory, and keeps the decrypted setup cache as
- * this device's cache of the setup; a countdown of another attempt, or one
- * stored since the screen found none, stays with its entry and its password,
- * and the screen leaves. With no countdown, the last act reads the account's
- * recovery session first: a live one belongs to a new recovery of the
- * account, so its entry and password stay; a read that does not answer
- * within its limit clears nothing either. Edit selects the recovered account and opens the
- * editor once the wallet reports it selected.
+ * does not hold. The last act reads the account's recovery session once,
+ * within its limit, and ends the countdown only where it still names the
+ * attempt this screen matched, then clears the entry record and the recovery
+ * password held in memory, and keeps the decrypted setup cache as this
+ * device's cache of the setup; a countdown of another attempt, or one stored
+ * since the screen found none, stays with its entry and its password, and the
+ * screen leaves; a live session belongs to a new recovery of the account, so
+ * its entry and password stay; a read that does not answer clears nothing
+ * either. Edit selects the recovered account and opens the editor once the
+ * wallet reports it selected.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -167,7 +167,7 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     }
   }, [none, navigate, account])
 
-  // The setup this device holds, and the passkey kinds its enrollments name.
+  // The setup this device holds.
   const [configuration, setConfiguration] = useState<LocalRead<Configuration | null>>(PENDING)
   useEffect(() => {
     if (!kit) {
@@ -273,23 +273,26 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
 
   const [finish, setFinish] = useState<FinishState>('idle')
   const lastAct = useCallback(async () => {
-    const countdown = await records.countdown(CHAIN_ID, account).read()
-    if (countdown.status === 'present') {
-      const stored = landedAttemptOf(countdown.value)
+    // The countdown and the session are one record, read once within its
+    // limit: nothing can land between two reads, and a read that does not
+    // answer clears nothing.
+    const session = await within(
+      () => records.recoverySession(CHAIN_ID, account).read(),
+      POLL_LIMIT_MS
+    )
+    if (!session) {
+      return
+    }
+    if (session.status === 'present' && session.value.state === 'landed') {
+      const stored = landedAttemptOf(session.value)
       // A countdown of another attempt, landed since this screen read its own, belongs to that recovery.
       if (match?.kind !== 'landed' || !stored || !sameLanded(stored, match.landed)) {
         return
       }
-      await records.endCountdown(CHAIN_ID, account, countdown.revision)
-    } else {
-      // With no countdown, a live session is a new recovery of this account: its entry and password stay.
-      const session = await within(
-        () => records.recoverySession(CHAIN_ID, account).read(),
-        POLL_LIMIT_MS
-      )
-      if (!session || (session.status === 'present' && session.value.state === 'live')) {
-        return
-      }
+      await records.endCountdown(CHAIN_ID, account, session.revision)
+    } else if (session.status === 'present' && session.value.state === 'live') {
+      // A live session is a new recovery of this account: its entry and password stay.
+      return
     }
     await records.recoveryEntry(CHAIN_ID, account).clear()
     wipeRecoveryPassword(CHAIN_ID, account)

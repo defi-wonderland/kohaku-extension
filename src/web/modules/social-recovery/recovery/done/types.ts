@@ -174,7 +174,7 @@ export type DoneEntryReading =
   | { status: 'failed' }
   | { status: 'present'; entry: RecoveryEntryRecord | null }
 
-/** A read of this device's own state: the setup it holds, or the enrollments' passkey kinds. */
+/** A read of this device's own state, the setup it holds. */
 export type LocalRead<T> =
   | { status: 'pending' }
   | { status: 'failed' }

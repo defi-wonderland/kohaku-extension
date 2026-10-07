@@ -8,9 +8,11 @@
  * where the account is not listed with the key within the limit. Where the
  * wallet already runs an add when the hook mounts, as after a remount during
  * the first add, the first run dispatches nothing and follows that add the
- * same way. A remount after that add ended and before the wallet lists the
- * account dispatches once more, and the wallet merges it into the listed
- * account. A retry runs the add again. An account the wallet already lists
+ * same way. A remount dispatches once more where the wallet does not yet run
+ * the add: while the first mount still builds the account, after its dispatch
+ * and before the wallet reports the add running, or after the add ended and
+ * before the wallet lists the account; the wallet merges that add into the
+ * listed account. A retry runs the add again. An account the wallet already lists
  * with the key is done with no dispatch; one it lists without the key is
  * added again, and the wallet merges the key into it. Where the add may not
  * dispatch, it reads done only once the wallet lists the account with the

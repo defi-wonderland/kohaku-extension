@@ -257,8 +257,8 @@ describe('the last act with no countdown', () => {
     world.storage.get = async (...args: Parameters<typeof get>) => {
       if (String(args[0]).includes('recoverySession')) {
         sessionReads += 1
-        // The first read after Close is the countdown's; the second is the session's.
-        if (sessionReads === 2) {
+        // The one read after Close is the session's.
+        if (sessionReads === 1) {
           throw new Error('storage unavailable')
         }
       }
@@ -266,7 +266,7 @@ describe('the last act with no countdown', () => {
     }
     await screen.press('done-close')
     world.storage.get = get
-    expect(sessionReads).toBe(2)
+    expect(sessionReads).toBe(1)
     expect(await recordsOf(world)).toEqual(NO_COUNTDOWN_KEPT)
     expect(screen.has('done-finish-failed')).toBe(false)
     expect(screen.paths()).toEqual(['/dashboard'])
@@ -280,7 +280,7 @@ describe('the last act with no countdown', () => {
     world.storage.get = async (...args: Parameters<typeof get>) => {
       if (String(args[0]).includes('recoverySession')) {
         sessionReads += 1
-        if (sessionReads === 2) {
+        if (sessionReads === 1) {
           return new Promise<never>(() => {})
         }
       }
