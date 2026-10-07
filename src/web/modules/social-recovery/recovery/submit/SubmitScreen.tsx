@@ -136,13 +136,16 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
   }, [kit, removedAttempt])
 
   const receivingFacts = facts.status === 'ready' ? facts.facts : null
+  // A wallet that does not list the account holds no key of it; the other
+  // causes are reads that can run again.
+  const notListed = facts.status === 'unavailable' && facts.cause === 'not-listed'
   const newKey = receivingFacts ? destinationKeyOf(receivingFacts) ?? undefined : undefined
   const sending = useMemo<SendingReading>(() => {
     if (facts.status === 'loading') {
       return { status: 'loading' }
     }
     if (!receivingFacts) {
-      return { status: 'failed' }
+      return notListed ? { status: 'unavailable' } : { status: 'failed' }
     }
     const network = {
       name: receivingFacts.network.name,
@@ -159,7 +162,7 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }
-  }, [facts.status, receivingFacts, entry, accounts, keys])
+  }, [facts.status, notListed, receivingFacts, entry, accounts, keys])
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
