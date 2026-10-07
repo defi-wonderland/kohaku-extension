@@ -12,12 +12,15 @@ import {
   mountSubmit,
   openWorld,
   START_BLOCK,
+  t,
+  tick,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
-  DROPPED_AFTER_MS
+  DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS
 }: typeof import('@web/modules/social-recovery/recovery/submit') = require('@web/modules/social-recovery/recovery/submit')
 const {
   accountStepPath,
@@ -32,6 +35,7 @@ describe('the confirmation’s arrival', () => {
   afterEach(() => {
     view?.unmount()
     view = undefined
+    jest.useRealTimers()
   })
 
   it('goes to the account step where the account has no entry record', async () => {
@@ -88,7 +92,8 @@ describe('the confirmation’s arrival', () => {
     expect(view.byTestId('submit-action')).toBeNull()
   })
 
-  it('offers Start recovery and Back again where the hash of a stored claim was dropped', async () => {
+  it('says the start was dropped and offers Start recovery and Back again once a second reading a minute later finds the hash unknown', async () => {
+    jest.useFakeTimers()
     const world = await openWorld()
     const accessor = world.records.recoverySession(CHAIN_ID, world.account)
     const read = await accessor.read()
@@ -109,13 +114,24 @@ describe('the confirmation’s arrival', () => {
     await accessor.setSubmissionHash('page-that-went', TX_HASH, claimed.record.revision)
     world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
     world.kit.receipts.wait.mockImplementation(() => held<never>().promise)
-    view = await mountSubmit(world.account)
-    const session = await world.records.recoverySession(CHAIN_ID, world.account).read()
-    expect(
-      session.status === 'present' && session.value.state === 'live' && session.value.submission
-    ).toBeFalsy()
+    view = await mountSubmit(world.account, { useTimers: true })
+    const claimNow = async () => {
+      const session = await world.records.recoverySession(CHAIN_ID, world.account).read()
+      return session.status === 'present' && session.value.state === 'live'
+        ? session.value.submission
+        : undefined
+    }
+    expect((await claimNow())?.transactionHash).toBe(TX_HASH)
+    expect(view.byTestId('submit-action')).toBeNull()
+    expect(view.byTestId('submit-dropped')).toBeNull()
+
+    await tick(DROPPED_RECHECK_MS)
+    expect(await claimNow()).toBeUndefined()
     expect(view.byTestId('submit-action')).not.toBeNull()
     expect(view.byTestId('submit-back')).not.toBeNull()
+    expect(view.textOf('submit-dropped')).toBe(
+      t('socialRecovery.submit.droppedTitle') + t('socialRecovery.submit.droppedBody')
+    )
     await view.press('submit-verify-details')
     expect(view.isDisabled('submit-action')).toBe(false)
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()

@@ -241,6 +241,18 @@ export const submitGathering = (
   }
 }
 
+/**
+ * The session as the records keep it once this gathering's submission landed:
+ * the account and the request's attempt id, setup nonce and payload hash.
+ */
+export const landedSession = (account: Address, gathering: Gathering) => ({
+  state: 'landed' as const,
+  account,
+  attemptId: gathering.request.attemptId,
+  setupNonce: gathering.request.setupNonce,
+  payloadHash: keccak256(gathering.request.payload ?? '0x')
+})
+
 /** The manager's attempt record of this gathering's start, under its id, nonce and payload hash. */
 export const attemptOf = (gathering: Gathering, overrides: Partial<Attempt> = {}): Attempt => ({
   state: 'Waiting',
@@ -551,6 +563,44 @@ export const seedRecovery = async (
 }
 
 export const recordsOn = (storage: TestStorage): WalletRecords => createWalletRecords({ storage })
+
+/**
+ * The gathering a recoverer opens again for the same account after abandoning
+ * `gathering`: the same attempt, a later deadline, and the payload `payload`
+ * (the same new key where it is left out).
+ */
+export const regathered = (gathering: Gathering, payload: Hex = PAYLOAD): Gathering => ({
+  ...gathering,
+  request: {
+    ...gathering.request,
+    validUntil: String(Number(gathering.request.validUntil) + 3_600),
+    payload
+  }
+})
+
+/**
+ * What another tab does on `records`: abandons the live session (which ends
+ * the entry record too), writes the entry again where one is given, and
+ * stores `next` as the new live session.
+ */
+export const gatherAgain = async (
+  records: WalletRecords,
+  account: Address,
+  next: Gathering,
+  entry?: RecoveryEntryRecord
+): Promise<StoredSession> => {
+  const accessor = records.recoverySession(CHAIN_ID, account)
+  const read = await accessor.read()
+  if (read.status !== 'present') {
+    throw new Error('no session stored')
+  }
+  await records.wipeRecoverySession(CHAIN_ID, account, 'recoverer-abandoned', read.revision)
+  if (entry) {
+    await records.recoveryEntry(CHAIN_ID, account).write(entry)
+  }
+  const wiped = await accessor.read()
+  return accessor.write(next, wiped.status === 'present' ? wiped.revision : null)
+}
 
 /** The stored session's record as the records read it, or null where none is stored. */
 export const sessionOf = async (records: WalletRecords, account: Address) => {

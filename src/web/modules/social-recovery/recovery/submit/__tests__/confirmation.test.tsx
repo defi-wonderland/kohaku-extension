@@ -9,6 +9,7 @@
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   configurationOf,
+  factsOf,
   GUARDIANS,
   guardianCredential,
   held,
@@ -19,6 +20,7 @@ import {
   openWorld,
   passkeyCredential,
   passportCredential,
+  readyFacts,
   REMOVED,
   settle,
   t
@@ -379,6 +381,41 @@ describe('the submission confirmation', () => {
       expect(mounted.isDisabled('submit-action')).toBe(false)
       expect(mounted.byTestId('submit-check-line')).toBeNull()
       expect(mounted.byTestId('submit-check-failed')).toBeNull()
+    })
+  })
+
+  describe('the sending key', () => {
+    it('reads the wallet unreachable with a retry where the receiving account’s facts could not be read', async () => {
+      const world = await openWorld()
+      const retry = jest.fn()
+      mockWallet.facts = { status: 'unavailable', cause: 'state-unread', retry }
+      const mounted = await open(world)
+      await openDetails(mounted)
+      expect(mounted.textOf('submit-sending-failed')).toContain(
+        t('socialRecovery.client.unavailableTitle')
+      )
+      expect(mounted.textOf('submit-sending-failed')).toContain(
+        t('socialRecovery.client.unavailableBody')
+      )
+      expect(mounted.text()).not.toContain(t(`${SUBMIT}.noSendingKey`))
+      expect(mounted.isDisabled('submit-action')).toBe(true)
+      await mounted.press('submit-sending-retry')
+      expect(retry).toHaveBeenCalledTimes(1)
+      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+
+    it('says no key can send where the wallet holds no key of the receiving account, with no retry', async () => {
+      const world = await openWorld()
+      mockWallet.facts = readyFacts(factsOf(world.receiving))
+      const mounted = await open(world)
+      await openDetails(mounted)
+      expect(mounted.textOf('submit-sending-unavailable')).toBe(t(`${SUBMIT}.noSendingKey`))
+      expect(mounted.byTestId('submit-sending-failed')).toBeNull()
+      expect(mounted.byTestId('submit-sending-retry')).toBeNull()
+      expect(mounted.isDisabled('submit-action')).toBe(true)
+      await mounted.press('submit-action')
+      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+      expect(world.port.send).not.toHaveBeenCalled()
     })
   })
 })
