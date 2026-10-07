@@ -764,6 +764,11 @@ export const createWalletRecords = ({
             )
           }
           const { gathering, notes = {}, submission } = current.value
+          if (!Array.isArray(gathering.places) || !Array.isArray(gathering.replies)) {
+            throw new Error(
+              'The stored gathering holds no list of places or replies: write a new gathering or wipe the session first'
+            )
+          }
           if (!gathering.places.some((entry) => entry.place === place)) {
             throw new Error(`The gathering has no place ${place}`)
           }
