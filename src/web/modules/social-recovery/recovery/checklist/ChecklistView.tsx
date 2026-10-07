@@ -217,8 +217,8 @@ const ChecklistView = ({
     }
   }, [pending, assessment, addReply, settle, deps])
   const isLive = load.phase === 'live'
-  // The page's clock the deadline line last read once it passed. Past the
-  // request's deadline the chain read that lands or wipes it is still running.
+  // The view's own clock, read when the deadline line reports the pass. Past
+  // the request's deadline the chain read that lands or wipes it still runs.
   const { retryPoll } = checklist
   const { now } = deps
   const [passedAt, setPassedAt] = useState<number | null>(null)
