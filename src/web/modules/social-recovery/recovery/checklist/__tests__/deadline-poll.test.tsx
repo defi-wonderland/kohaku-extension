@@ -339,13 +339,18 @@ describe('the checklist deadline and poll', () => {
       view = await mountChecklist({ records: world.records, client: kit.state, deps })
       await view.press('checklist-row-0-phone')
       const [id] = deps.requestIds
+      // The holder returns before the ceremony tab writes its report.
+      view.unmount()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps,
+        search: { account: ACCOUNT, ceremony: id }
+      })
 
       const read = await holdReadAcrossDeadline()
-      await deps.channel.report(
-        id,
-        'createClaim',
-        passed({ reply: replyOf(gathering, 0) }),
-        Date.now()
+      await outside(() =>
+        deps.channel.report(id, 'createClaim', passed({ reply: replyOf(gathering, 0) }), Date.now())
       )
       await settle()
 
