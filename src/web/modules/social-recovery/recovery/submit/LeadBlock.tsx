@@ -70,7 +70,7 @@ const LeadBlock = ({ route, lead, onRetryRemoved }: LeadBlockProps) => {
             testID="submit-removed-key-unavailable"
             type="error"
             size="sm"
-            text={t('socialRecovery.entry.refusal.removedUnknown')}
+            text={t('socialRecovery.submit.removedKeyUnavailable')}
           />
         )
       case 'failed':

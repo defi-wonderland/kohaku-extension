@@ -24,6 +24,13 @@ export const KEY_SEND_CLAIM_AGE_MS = 30 * 60 * 1000
  */
 export const DROPPED_AFTER_MS = 60 * 60 * 1000
 
+/**
+ * How long after a first reading that the node knows none of a submission's
+ * transactions a second such reading, at the same block number, reads it as
+ * dropped, in ms. A second reading at a higher block number needs no wait.
+ */
+export const DROPPED_RECHECK_MS = 60_000
+
 /** How often a page that follows a claim with no hash reads the session again, in ms. */
 export const FOLLOW_REREAD_MS = 5_000
 

@@ -12,6 +12,8 @@ import {
   attemptOf,
   hasButton,
   held,
+  landedSession,
+  PAYLOAD_HASH,
   minedAndReverted,
   mockWallet,
   mountSubmit,
@@ -179,7 +181,7 @@ describe('the submission', () => {
           t(`${SUBMIT}.failedTitle`),
           t(`${SUBMIT}.alreadyRunning.cannotHelp`),
           t(`${SUBMIT}.alreadyRunning.whatYouCanDo`),
-          t('socialRecovery.checklist.backToChecklist')
+          t(`${SUBMIT}.alreadyRunning.view`)
         ].join('')
       )
       expect(hasButton(mounted, TRY_AGAIN)).toBe(false)
@@ -211,10 +213,9 @@ describe('the submission', () => {
         world.kit.chain.attempt = attemptOf(world.gathering, { state })
         await startOn(world)
         expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
-        expect(await sessionOf(world.records, world.account)).toEqual({
-          state: 'landed',
-          account: world.account
-        })
+        expect(await sessionOf(world.records, world.account)).toEqual(
+          landedSession(world.account, world.gathering)
+        )
         expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {
           replace: true
         })
@@ -267,7 +268,13 @@ describe('the submission', () => {
       expect(await rawStorage(world.storage)).toContain('"gathering"')
       await startOn(world)
       const session = await sessionOf(world.records, world.account)
-      expect(session).toEqual({ state: 'landed', account: world.account })
+      expect(session).toEqual({
+        state: 'landed',
+        account: world.account,
+        attemptId: world.gathering.request.attemptId,
+        setupNonce: world.gathering.request.setupNonce,
+        payloadHash: PAYLOAD_HASH
+      })
       expect(await rawStorage(world.storage)).not.toContain('"gathering"')
       expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {
         replace: true

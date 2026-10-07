@@ -18,6 +18,7 @@ import {
   flushTimers as flush,
   held,
   landedReceipt,
+  landedSession,
   leaveClaim,
   NO_ATTEMPT,
   openDevice,
@@ -80,10 +81,9 @@ describe('the claim of the submission', () => {
     expect(isLanded(first.store.state())).toBe(true)
     expect(second.store.state().followed).toBe(first.store.state().requestId)
     expect(second.store.state().write.status).toBe('landed')
-    expect(await sessionOf(device.records(), device.account)).toEqual({
-      state: 'landed',
-      account: device.account
-    })
+    expect(await sessionOf(device.records(), device.account)).toEqual(
+      landedSession(device.account, device.gathering)
+    )
     expect(first.port.send).toHaveBeenCalledTimes(1)
     expect(second.port.send).not.toHaveBeenCalled()
   })
@@ -165,10 +165,9 @@ describe('the claim of the submission', () => {
       to: START_BLOCK + 9
     })
     expect(isLanded(page.store.state())).toBe(true)
-    expect(await sessionOf(device.records(), device.account)).toEqual({
-      state: 'landed',
-      account: device.account
-    })
+    expect(await sessionOf(device.records(), device.account)).toEqual(
+      landedSession(device.account, device.gathering)
+    )
     expect(page.port.send).not.toHaveBeenCalled()
   })
 

@@ -7,11 +7,14 @@
  *
  * Every update of the session reads it first and passes the revision it read;
  * where another tab moved it meanwhile (a reply poll, a note), the update is
- * tried again over a fresh read while the session is live.
+ * tried again over a fresh read while the session is live. Every update, and
+ * the landing, is bound to this run's request: a stored session of another
+ * request (a gathering abandoned and gathered again in another tab) is
+ * neither claimed, written nor landed.
  */
 import { keccak256 } from 'viem'
 
-import type { Address, Hex, RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Gathering, Hex, RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   accountBatchTransactionOf,
   newSendRequestId,
@@ -19,7 +22,11 @@ import {
   sendRequestStateOf
 } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
-import type { SessionRevision, StoredSession } from '@web/modules/social-recovery/shared/records'
+import type {
+  RecoverySessionRecord,
+  SessionRevision,
+  StoredSession
+} from '@web/modules/social-recovery/shared/records'
 import {
   assertWriteDoor,
   checkGas,
@@ -34,7 +41,9 @@ import { CONFLICT_RETRIES, KEY_SEND_CLAIM_AGE_MS, SUBMISSION_CLAIM_AGE_MS } from
 import type {
   AttemptReading,
   ClaimRelease,
+  LandOutcome,
   RequestHold,
+  SubmitClaim,
   SubmitSteps,
   SubmitStepsInput
 } from './types'
@@ -46,6 +55,34 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
   const setupNonce = BigInt(gathering.request.setupNonce)
   // The manager keeps the hash of the payload the start carried, the request's own.
   const payloadHash = keccak256(gathering.request.payload ?? '0x')
+  // The landed session keeps that hash only where the request carried a payload.
+  const landedPayloadHash =
+    gathering.request.payload === undefined ? undefined : keccak256(gathering.request.payload)
+
+  const sameHex = (a: Hex | undefined, b: Hex | undefined): boolean =>
+    a === undefined || b === undefined ? a === b : a.toLowerCase() === b.toLowerCase()
+
+  // The same request: its attempt number, setup number, deadline and payload.
+  const isThisRequest = (request: Gathering['request']): boolean =>
+    request.attemptId === gathering.request.attemptId &&
+    request.setupNonce === gathering.request.setupNonce &&
+    request.validUntil === gathering.request.validUntil &&
+    sameHex(request.payload, gathering.request.payload)
+
+  const ownsSession = (value: RecoverySessionRecord): boolean => {
+    switch (value.state) {
+      case 'live':
+        return isThisRequest(value.gathering.request)
+      case 'landed':
+        return (
+          value.attemptId === gathering.request.attemptId &&
+          value.setupNonce === gathering.request.setupNonce &&
+          sameHex(value.payloadHash, landedPayloadHash)
+        )
+      default:
+        return false
+    }
+  }
 
   // A block number that is not a safe integer of zero or more reads as a failed read.
   const blockNumber = async (): Promise<number> => {
@@ -96,15 +133,19 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
     return ours ? 'ours' : 'other'
   }
 
-  const receiptsFrom = (startBlock: number) => ({
+  const receiptsFrom = (startBlock: number, beforeReceipt: () => Promise<void>) => ({
     blockNumber: () => Promise.resolve(startBlock),
-    wait: (transactionHash: Hex, from: number) => input.receipts.wait(transactionHash, from)
+    wait: async (transactionHash: Hex, from: number) => {
+      await beforeReceipt()
+      return input.receipts.wait(transactionHash, from)
+    }
   })
 
   return {
     readSession: () => session.read(),
     attemptRead: () => client.recovery.recoveryState(),
     attemptOf,
+    ownsSession,
     async prepare() {
       const now = Math.floor(input.now() / 1000)
       // The client picks the smallest set of approvals that satisfies the rule.
@@ -146,10 +187,20 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
     blockNumber,
     newRequestId: newSendRequestId,
     now: input.now,
-    claim: (claim) => withFreshRevision((revision) => session.claimSubmission(claim, revision)),
+    claim: (claim) =>
+      withFreshRevision(async (revision, read): Promise<SubmitClaim> => {
+        if (read.value.state === 'live' && !ownsSession(read.value)) {
+          return { status: 'other-request' }
+        }
+        const written = await session.claimSubmission(claim, revision)
+        return written.claimed
+          ? { status: 'claimed' }
+          : { status: 'followed', submission: written.submission }
+      }),
     async markSent(claim, transactionHash) {
       await withFreshRevision(async (revision, read) => {
-        if (read.value.state !== 'live') {
+        // A session of another request takes no claim of this one, not even written back.
+        if (read.value.state !== 'live' || !ownsSession(read.value)) {
           return
         }
         const held = read.value.submission
@@ -190,12 +241,7 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
       if (plan.kind === 'key') {
         return { status: 'free' }
       }
-      const state = await sendRequestStateOf(
-        input.requests,
-        requestId,
-        plan.facts.account.addr as Address,
-        chainId
-      )
+      const state = await sendRequestStateOf(input.requests, requestId, plan.account, chainId)
       switch (state.status) {
         case 'broadcast':
           return { status: 'broadcast', transactionHash: state.transactionHash }
@@ -208,12 +254,12 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
       }
     },
     transactionKnown: (transactionHash) => input.receipts.transactionKnown(transactionHash),
-    send: (prepared, dispatch, run, startBlock, requestId) =>
+    send: (prepared, dispatch, run, startBlock, requestId, beforeReceipt) =>
       plan.kind === 'key'
         ? driveSend({
             dispatch,
             run,
-            receipts: receiptsFrom(startBlock),
+            receipts: receiptsFrom(startBlock, beforeReceipt),
             port: input.port,
             key: plan.key,
             transaction: gasTransactionOf({ prepared, key: plan.key })
@@ -221,9 +267,9 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
         : driveAccountBatch({
             dispatch,
             run,
-            receipts: receiptsFrom(startBlock),
+            receipts: receiptsFrom(startBlock, beforeReceipt),
             port: input.port,
-            account: plan.facts.account.addr as Address,
+            account: plan.account,
             calls: [prepared],
             requestId
           }),
@@ -262,14 +308,18 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
           keccak256(notification.payload).toLowerCase() === payloadHash.toLowerCase()
       )
     },
-    async land() {
-      // A session another page landed meanwhile, on any try, is this landing done.
-      await withFreshRevision(async (revision, read) => {
+    land: () =>
+      // A session another page landed meanwhile for this request, on any try,
+      // is this landing done; one of another request is not this run's to land.
+      withFreshRevision(async (revision, read): Promise<LandOutcome> => {
         if (read.value.state === 'landed') {
-          return
+          return ownsSession(read.value) ? 'landed' : 'other-request'
+        }
+        if (read.value.state === 'live' && !ownsSession(read.value)) {
+          return 'other-request'
         }
         await records.landSubmission(chainId, account, revision)
+        return 'landed'
       })
-    }
   }
 }

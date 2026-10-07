@@ -24,9 +24,9 @@ import type {
   LiveRecoverySession,
   RecoveryEntryRecord,
   RecoveryRoute,
+  RecoverySessionRecord,
   SessionRead,
   SessionRevision,
-  SubmissionClaimResult,
   SubmissionInFlightClaim,
   SubmissionInFlightRecord,
   WalletRecords
@@ -147,12 +147,17 @@ export interface VerifyHook {
  */
 export type SendingPlan =
   | { kind: 'key'; key: KeyHandle }
-  | { kind: 'account-batch'; key: KeyHandle; facts: ListedAccountFacts }
+  | { kind: 'account-batch'; key: KeyHandle; facts: ListedAccountFacts; account: Address }
 
+/**
+ * The sending key as the screen reads it: loading, ready, none the wallet
+ * holds, or the wallet's facts of the receiving account not read.
+ */
 export type SendingReading =
   | { status: 'loading' }
   | { status: 'ready'; plan: SendingPlan; network: GasNetwork }
   | { status: 'unavailable' }
+  | { status: 'failed' }
 
 // ---------------------------------------------------------------------------
 // The run
@@ -166,6 +171,17 @@ export type ClaimLookup = 'reading' | 'none' | 'failed'
 
 /** A claim with no hash that the run follows, sent from another page or before a reload. */
 export type FollowedClaim = Omit<SubmissionInFlightRecord, 'transactionHash'>
+
+/**
+ * One reading that the node knows none of the run's transactions: when it
+ * was taken (ms since epoch), the block number read with it, and the hashes
+ * it asked about.
+ */
+export interface UnknownReading {
+  at: number
+  block: number
+  hashes: readonly Hex[]
+}
 
 export interface SubmitState {
   write: WriteMachineState
@@ -183,8 +199,12 @@ export interface SubmitState {
   refusal?: 'already-running'
   /** The attempt this run would start was found started while no page followed its hash. */
   landedUnseen?: boolean
-  /** The run ended because the screen goes back to the checklist: the set changed, or the session went. */
+  /** The run ended because the screen goes back to the checklist: the set changed, the session went, or it is another request's. */
   toChecklist?: boolean
+  /** The first reading that the node knows none of the run's transactions, kept until a second one apart from it. */
+  unknownReading?: UnknownReading
+  /** The run's transactions read as dropped: the claim released and the start offered again. */
+  dropped?: true
   after: AfterLanding
 }
 
@@ -197,6 +217,9 @@ export type SubmitEvent =
   | { type: 'follow'; run: number; claim: SubmissionInFlightRecord }
   | { type: 'voided'; run: number }
   | { type: 'dropped'; run: number }
+  | { type: 'unknownRead'; run: number; reading: UnknownReading }
+  | { type: 'unknownCleared'; run: number }
+  | { type: 'leftDeposit'; run: number }
   | { type: 'toChecklist'; run: number }
   | { type: 'refused'; run: number }
   | { type: 'balance'; run: number; balance: bigint }
@@ -221,6 +244,19 @@ export type OldClaimReading =
   | { status: 'hashed'; transactionHash: Hex }
   | { status: 'released' }
   | { status: 'gone' }
+
+/**
+ * The claim of the submission: written under this run's request id; another
+ * page's claim found, which is followed; or a stored session that is another
+ * request's, on which nothing is claimed.
+ */
+export type SubmitClaim =
+  | { status: 'claimed' }
+  | { status: 'followed'; submission: SubmissionInFlightRecord }
+  | { status: 'other-request' }
+
+/** The landing of the session: done, or refused since the stored session is another request's. */
+export type LandOutcome = 'landed' | 'other-request'
 
 /** The prepared start, or a set of approvals other than the one the screen verified and shows. */
 export type PrepareOutcome =
@@ -253,6 +289,11 @@ export interface SubmitSteps {
   attemptRead(): Promise<RecoveryState>
   /** The attempt this request would start, as one attempt read names it. */
   attemptOf(state: RecoveryState): AttemptReading
+  /**
+   * Whether a stored session is this run's: a live one whose request is this
+   * run's, or a landed one under this request's attempt.
+   */
+  ownsSession(session: RecoverySessionRecord): boolean
   /** The request from the smallest set, and the start call it prepares, where its set is the one verified. */
   prepare(): Promise<PrepareOutcome>
   checkGas(prepared: PreparedCall): Promise<GasCheck>
@@ -261,7 +302,7 @@ export interface SubmitSteps {
   /** Milliseconds since epoch. */
   now(): number
   /** The claim on the live session, read again after another tab moved it. */
-  claim(claim: SubmissionInFlightClaim): Promise<SubmissionClaimResult>
+  claim(claim: SubmissionInFlightClaim): Promise<SubmitClaim>
   /** The hash on the claim; where another tab released the claim meanwhile, the claim written back with it. */
   markSent(claim: SubmissionInFlightClaim, transactionHash: Hex): Promise<void>
   release(requestId: string): Promise<void>
@@ -277,7 +318,9 @@ export interface SubmitSteps {
     dispatch: (event: WriteEvent) => void,
     run: number,
     startBlock: number,
-    requestId: string
+    requestId: string,
+    /** Awaited before the receipt wait, so the claim holds the hash before a receipt can end the run. */
+    beforeReceipt: () => Promise<void>
   ): Promise<void>
   waitAgain(
     transactionHash: Hex,
@@ -288,7 +331,7 @@ export interface SubmitSteps {
   /** Whether the manager's events name this request's attempt started since the claim's block. */
   startedSince(claim: FollowedClaim): Promise<boolean>
   /** The session landed as the countdown's record, read again after another tab moved it. */
-  land(): Promise<void>
+  land(): Promise<LandOutcome>
 }
 
 export interface SubmitStepsInput {
@@ -315,6 +358,8 @@ export interface SubmitRun {
   checkAgain: () => void
   /** Reads the attempt again after a landing it did not confirm. */
   reread: () => void
+  /** Leaves the deposit step: the prepared start is dropped, so a return prepares and verifies again. */
+  leaveDeposit: () => void
 }
 
 // ---------------------------------------------------------------------------

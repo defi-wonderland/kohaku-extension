@@ -140,14 +140,25 @@ const SubmitView = ({
   }
 
   const sendingBlock = () => {
-    if (sending.status !== 'unavailable') {
+    if (sending.status === 'unavailable') {
+      return (
+        <Alert
+          testID="submit-sending-unavailable"
+          type="error"
+          size="sm"
+          text={t(`${SUBMIT}.noSendingKey`)}
+        />
+      )
+    }
+    if (sending.status !== 'failed') {
       return null
     }
     return (
       <Alert
-        testID="submit-sending-unavailable"
+        testID="submit-sending-failed"
         type="error"
         size="sm"
+        title={t('socialRecovery.client.unavailableTitle')}
         text={t('socialRecovery.client.unavailableBody')}
       >
         {retryButton('submit-sending-retry', onRetrySending)}
@@ -224,7 +235,7 @@ const SubmitView = ({
               <Button
                 testID="submit-back"
                 type="outline"
-                text={t('socialRecovery.ceremony.backAction')}
+                text={t('socialRecovery.actions.back')}
                 onPress={onBack}
                 hasBottomSpacing={false}
               />
