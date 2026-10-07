@@ -81,8 +81,9 @@ export const matchOf = (
  *   `consumableAfter` is at or before the pinned block's time, else waiting;
  * - no attempt of its own in the read: its consume event with its opening, or
  *   its cancel event, decides; a consume event with no opening cannot be
- *   matched; with neither the attempt is gone another way, which only a setup
- *   write does.
+ *   matched. With neither, the events missed the attempt's end: every way an
+ *   attempt ends emits one of the two, a setup write included (it emits the
+ *   cancel), so nothing is ended and nothing is sent until a read names it.
  */
 export const phaseOf = (
   facts: WaitFacts,
@@ -117,7 +118,7 @@ export const phaseOf = (
   if (story.cancelled) {
     return { kind: 'cancelled', by: story.cancelled.cancelledBy }
   }
-  return { kind: 'cancelled', by: 'setupWrite' }
+  return { kind: 'cannotExecute', attempt, cause: 'unmatched' }
 }
 
 /**
