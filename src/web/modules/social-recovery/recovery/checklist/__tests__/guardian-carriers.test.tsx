@@ -574,7 +574,8 @@ describe('the guardian row carriers', () => {
     await mounted.press(id(1, 'copy-link'))
 
     const [written] = clipboard.setStringAsync.mock.calls[0]
-    const carried = new URLSearchParams(written.slice(written.indexOf('?') + 1)).get('request') ?? ''
+    const carried =
+      new URLSearchParams(written.slice(written.indexOf('?') + 1)).get('request') ?? ''
     const json = JSON.parse(Buffer.from(carried, 'base64url').toString('utf8'))
     expect(json).not.toHaveProperty('setupBody')
     expect(json.setupBodyHash).toBe(servedRequestOf(gathering, 1).setupBodyHash)
