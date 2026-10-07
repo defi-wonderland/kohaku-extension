@@ -47,9 +47,12 @@ beforeEach(() => {
   resetEdges()
   wipeRecoveryPassword(CHAIN_ID, LOST)
 })
-afterEach(() => {
+// A write a test held and never released would keep the next test's writes waiting.
+afterEach(async () => {
   screen?.unmount()
   screen = null
+  storage.hold?.resolve()
+  await settle()
 })
 
 const navigatedTo = () => navigate.mock.calls.map(([path]) => path)
@@ -299,5 +302,163 @@ describe('a run of the reads that starts again', () => {
     expect(navigate).not.toHaveBeenCalled()
     await outside(() => hold.resolve())
     expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+})
+
+describe('a public setup this device could not keep', () => {
+  const WRITE_FAILED = t('socialRecovery.checklist.writeFailed')
+
+  it('renders the failure with a retry on continue and goes nowhere, keeping continue off', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    storage.refuse = true
+    const page = await open()
+    expect(page.has('readout-readable-public')).toBe(true)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(page.textOf('readout-write-failed')).toContain(WRITE_FAILED)
+    expect(page.has('readout-write-failed-retry')).toBe(true)
+    expect(page.has('readout-path')).toBe(true)
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(await storedCache()).toBeNull()
+  })
+
+  it('stays on the failure when the retried write is refused again, and goes on once a retry is kept', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    storage.refuse = true
+    const page = await open()
+    await page.press('readout-continue')
+    await page.press('readout-write-failed-retry')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(page.has('readout-write-failed')).toBe(true)
+
+    storage.refuse = false
+    await page.press('readout-write-failed-retry')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(await storedCache()).not.toBeNull()
+  })
+
+  it('clears the failure while the retried write runs, writes once for a double press, and goes on once it is kept', async () => {
+    await storeEntry('logged-in')
+    await commitLostSetup('public')
+    storage.refuse = true
+    const page = await open()
+    await page.press('readout-continue')
+    expect(page.has('readout-write-failed')).toBe(true)
+
+    storage.refuse = false
+    const hold = deferred<void>()
+    storage.hold = hold
+    const writesBefore = storage.set.mock.calls.length
+    await page.press('readout-write-failed-retry')
+    expect(page.has('readout-write-failed')).toBe(false)
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    if (page.has('readout-write-failed-retry')) {
+      await page.press('readout-write-failed-retry')
+    }
+    expect(storage.set.mock.calls.length - writesBefore).toBe(1)
+    expect(navigate).not.toHaveBeenCalled()
+
+    await outside(() => hold.resolve())
+    expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+
+  it('drops the failure once the reads start again, and goes on from the new run', async () => {
+    await storeEntry('logged-in')
+    const world = await commitLostSetup('public')
+    storage.refuse = true
+    const page = await open()
+    await page.press('readout-continue')
+    expect(page.has('readout-write-failed')).toBe(true)
+
+    storage.refuse = false
+    await rebuildClient(world)
+    await settle()
+    expect(page.has('readout-readable-public')).toBe(true)
+    expect(page.has('readout-write-failed')).toBe(false)
+    expect(page.isDisabled('readout-continue')).toBe(false)
+    await page.press('readout-continue')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+  })
+
+  it('goes on to the gas step on the fresh-install route once a retry is kept', async () => {
+    await storeEntry('fresh-install', SMART)
+    await commitLostSetup('public')
+    storage.refuse = true
+    const page = await open()
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+    storage.refuse = false
+    await page.press('readout-write-failed-retry')
+    expect(navigatedTo()).toEqual([GAS_STEP])
+  })
+
+  it('renders the failure with a retry and Back on a resume, and does not send the holder to the checklist', async () => {
+    await commitLostSetup('public')
+    await storeLiveRecovery(LOST, { route: 'logged-in', receivingAccount: BASIC })
+    storage.refuse = true
+    const page = await open()
+    expect(navigate).not.toHaveBeenCalled()
+    expect(page.has('readout-leave-failed')).toBe(true)
+    expect(page.holds('readout-leave-failed', 'readout-write-failed')).toBe(true)
+    expect(page.holds('readout-leave-failed', 'readout-write-failed-retry')).toBe(true)
+    expect(page.holds('readout-leave-failed', 'readout-back')).toBe(true)
+    expect(page.textOf('readout-write-failed')).toContain(WRITE_FAILED)
+    expect(page.has('readout-reading')).toBe(false)
+    expect(await storedCache()).toBeNull()
+
+    await page.press('readout-back')
+    expect(navigatedTo()).toHaveLength(1)
+    expect(navigatedTo()[0]).toMatch(new RegExp(`^${ACCOUNT_STEP}\\?`))
+  })
+
+  it('sends the holder to the checklist from a resume once a retry is kept', async () => {
+    await commitLostSetup('public')
+    await storeLiveRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
+    storage.refuse = true
+    const page = await open()
+    await page.press('readout-write-failed-retry')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(page.has('readout-leave-failed')).toBe(true)
+
+    storage.refuse = false
+    await page.press('readout-write-failed-retry')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(await storedCache()).not.toBeNull()
+  })
+})
+
+describe('a setup opened with the card password that this device could not keep', () => {
+  const levels: ('private' | 'shape-visible')[] = ['private', 'shape-visible']
+  levels.forEach((level) => {
+    it(`still goes on at ${level}, since the password in memory opens it on the next screen`, async () => {
+      await storeEntry('logged-in')
+      await commitLostSetup(level)
+      storage.refuse = true
+      const page = await open()
+      await page.type('readout-password-field', CARD_PASSWORD)
+      await page.press('readout-unlock')
+      expect(page.has(`readout-readable-${level}`)).toBe(true)
+      expect(page.has('readout-write-failed')).toBe(false)
+      await page.press('readout-continue')
+      expect(navigatedTo()).toEqual([CHECKLIST])
+      expect(page.has('readout-write-failed')).toBe(false)
+      expect(await storedCache()).toBeNull()
+    })
+  })
+
+  it('still sends the holder to the checklist on a resume', async () => {
+    await commitLostSetup('private')
+    await storeLiveRecovery(LOST, { route: 'logged-in', receivingAccount: BASIC })
+    storage.refuse = true
+    const page = await open()
+    await page.type('readout-password-field', CARD_PASSWORD)
+    await page.press('readout-unlock')
+    expect(navigatedTo()).toEqual([CHECKLIST])
+    expect(page.has('readout-leave-failed')).toBe(false)
+    expect(await storedCache()).toBeNull()
   })
 })
