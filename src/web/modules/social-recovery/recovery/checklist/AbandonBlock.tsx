@@ -51,7 +51,7 @@ const AbandonBlock = ({ busy, failed, onAbandon }: AbandonBlockProps) => {
           style={spacings.mtSm}
           text={
             <Alert.Text size="sm" type="error" testID="checklist-abandon-failed">
-              {t('socialRecovery.records.writeFailed')}
+              {t('socialRecovery.checklist.writeFailed')}
             </Alert.Text>
           }
         />

@@ -23,6 +23,7 @@ import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/clie
 import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
 import type {
   ChainId,
+  DirectWipeEvent,
   LiveRecoverySession,
   RecoveryEntryRecord,
   RecoveryRoute,
@@ -57,7 +58,10 @@ export interface ChecklistRow {
   gatheringPlace: GatheringPlace
 }
 
-/** One clause of more than one member: its header counts the filled members against the threshold. */
+/**
+ * One clause of more than one member: its header counts the filled members
+ * against the threshold.
+ */
 export interface ChecklistGroup {
   clause: number
   /** The group's number among the path's groups, from one. */
@@ -84,7 +88,10 @@ export type UnlockLineKey =
   | 'socialRecovery.checklist.continueUnlockRequiredOnly'
   | 'socialRecovery.checklist.continueUnlockGroupsOnly'
 
-/** What the checklist knows of a row beyond the gathering: its note, and how this tab answered it. */
+/**
+ * What the checklist knows of a row beyond the gathering: its note, and how
+ * this tab answered it.
+ */
 export interface RowState {
   chip: CollectionChip
   replied: boolean
@@ -144,6 +151,8 @@ export interface ChecklistDeps {
   forgetPassword: (chainId: ChainId, account: Address) => void
   /** The page's document, whose return to view polls the chain at once. */
   visibility?: VisibilitySource
+  /** Every entry the records' storage holds, by key. */
+  storedEntries: () => Promise<Record<string, unknown>>
 }
 
 /** The recovery entry record of the account being recovered, as the screen reads it. */
@@ -190,7 +199,10 @@ export interface AlertKeys {
   body: string
 }
 
-/** Why the checklist could not open: the records, the setup, the gathering or the destination key. */
+/**
+ * Why the checklist could not open: the records, the setup, the gathering or
+ * the destination key.
+ */
 export type ChecklistFailure = 'records' | 'setup' | 'open' | 'destination'
 
 export type ChecklistLoad =
@@ -202,10 +214,18 @@ export type ChecklistLoad =
       revision: SessionRevision
       /** Whether the gathering held a reply when this tab wiped it; unknown for a wipe read from storage. */
       hadReplies?: boolean
+      /** The request this tab wiped; unknown for a wipe read from storage. */
+      died?: DeadRequest
     }
   | ({ phase: 'live' } & LiveChecklist)
   /** Another tab changed the session after this one read it. */
   | { phase: 'conflict' }
+
+/** The request a wipe ended, as its ceremony requests name it. */
+export interface DeadRequest {
+  attemptId: string
+  setupNonce: string
+}
 
 /** What opening the checklist found or made. */
 export type OpenResult =
@@ -252,7 +272,10 @@ export interface ConfigurationInput {
   password: string | undefined
 }
 
-/** Where the setup's configuration comes from: the decrypted cache, or the password held in memory. */
+/**
+ * Where the setup's configuration comes from: the decrypted cache, or the
+ * password held in memory.
+ */
 export type ConfigurationReading =
   | { kind: 'configuration'; configuration: Configuration; source: ConfigurationSourceKind }
   | { kind: 'none' }
@@ -290,6 +313,8 @@ export interface ChecklistState {
   retryPoll: () => void
   /** A death the poll read could not be wiped; the next poll tries again. */
   deathFailed: boolean
+  /** A death or a landing the poll read is being written; nothing goes on meanwhile. */
+  dying: boolean
   busy: boolean
 }
 
@@ -326,6 +351,9 @@ export type PollState =
   | { status: 'answered'; facts: PollFacts; clock: number }
   | { status: 'failed' }
 
+/** What a poll reads for a live request: one of its deaths, or its own submission landed. */
+export type PollOutcome = DirectWipeEvent | 'landed'
+
 /** Which session the poll reads for: the request of a live session, or a session another attempt voided. */
 export type PollTarget =
   | { kind: 'live'; key: string; gathering: Gathering }
@@ -335,10 +363,11 @@ export interface PollInput {
   kit: ChecklistKitClient | null
   target: PollTarget | null
   deps: Pick<ChecklistDeps, 'now' | 'visibility'>
-  /** Runs before each round's read, with the clock read then; true stops the round. */
-  before: (clock: number) => boolean
-  /** Runs after each round that answered, with the clock read before its read. */
-  after: (facts: PollFacts, clock: number) => void
+  /**
+   * Runs after each round, with what it read (undefined where the read failed)
+   * and the clock read before its read.
+   */
+  after: (facts: PollFacts | undefined, clock: number) => void
 }
 
 export interface PollHook {
@@ -401,7 +430,10 @@ export interface PasskeyClaimInput {
   account: Address
   search: ChecklistSearch
   navigate: Navigate
-  deps: Pick<ChecklistDeps, 'reportStore' | 'reportSubscribe' | 'newRequestId' | 'now'>
+  deps: Pick<
+    ChecklistDeps,
+    'reportStore' | 'reportSubscribe' | 'newRequestId' | 'now' | 'storedEntries'
+  >
 }
 
 export interface PasskeyClaim {
@@ -416,10 +448,17 @@ export interface PasskeyClaim {
    * ceremony id go, and a refusal reads as the place's note.
    */
   settle: (place: number, refusal?: CeremonyOutcome<unknown>) => void
-  /** The session was abandoned: the pending claim's request and report go. */
+  /**
+   * The session was abandoned: the pending or undelivered claim's request and
+   * report go.
+   */
   forgetPending: () => void
-  /** The session was wiped: the request and the report of every claim this checklist knows of go. */
-  forgetAll: () => void
+  /**
+   * The session was wiped: the request and the report of every claim this
+   * checklist knows of go, and every stored claim request of this account
+   * for the request that died, or for any request where that is unknown.
+   */
+  forgetAll: (died?: DeadRequest) => void
   /** The places this tab asked: a claim launched, pending or undelivered. */
   asked: ReadonlySet<number>
   /** The place whose report never came back, with its retry. */
@@ -490,6 +529,13 @@ export type RemovedKeyRead =
   | { status: 'named'; key: Address }
   | { status: 'unavailable' }
   | { status: 'failed' }
+
+/** A removed-key reading with the kit and the read attempt that produced it. */
+export interface RemovedKeyStored {
+  kit: ChecklistKitClient | null
+  attempt: number
+  reading: RemovedKeyRead
+}
 
 export type GuardianValueName = 'account' | 'newKey' | 'keyBeingRemoved' | 'payment'
 
@@ -634,6 +680,8 @@ export interface DeadlineBlockProps {
   layout: ChecklistLayout
   now: () => number
   timeZone: string
+  /** Runs once the page's clock passes the deadline. */
+  onPassed: () => void
 }
 
 export interface UnsatisfiedBlockProps {
@@ -656,7 +704,10 @@ export interface ChecklistChromeProps {
 // The recovery in progress and the home band
 // ---------------------------------------------------------------------------
 
-/** One live session of the chain with its entry, as the in-progress screen and the home band list it. */
+/**
+ * One live session of the chain with its entry, as the in-progress screen and
+ * the home band list it.
+ */
 export interface InProgressItem {
   account: Address
   session: LiveRecoverySession

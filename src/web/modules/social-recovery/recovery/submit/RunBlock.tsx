@@ -40,23 +40,7 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
     />
   )
 
-  if (run.refusal || revertedRunning(write)) {
-    return (
-      <SectionCard testID="submit-already-running">
-        <Text fontSize={16} weight="medium" style={spacings.mbTy}>
-          {t(`${SUBMIT}.failedTitle`)}
-        </Text>
-        <Text fontSize={14} style={spacings.mbTy}>
-          {t(`${SUBMIT}.alreadyRunning.cannotHelp`)}
-        </Text>
-        <Text fontSize={14} style={spacings.mbTy}>
-          {t(`${SUBMIT}.alreadyRunning.whatYouCanDo`)}
-        </Text>
-        {button('submit-back-to-checklist', t('socialRecovery.checklist.backToChecklist'), onBack)}
-      </SectionCard>
-    )
-  }
-
+  // A revert that names an attempt running reads as landed once the attempt is this request's own.
   if (landedOf(run)) {
     if (run.after === 'unread') {
       return (
@@ -75,9 +59,29 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
     return <ActivityIndicator testID="submit-confirming" />
   }
 
+  if (run.refusal || revertedRunning(write)) {
+    return (
+      <SectionCard testID="submit-already-running">
+        <Text fontSize={16} weight="medium" style={spacings.mbTy}>
+          {t(`${SUBMIT}.failedTitle`)}
+        </Text>
+        <Text fontSize={14} style={spacings.mbTy}>
+          {t(`${SUBMIT}.alreadyRunning.cannotHelp`)}
+        </Text>
+        <Text fontSize={14} style={spacings.mbTy}>
+          {t(`${SUBMIT}.alreadyRunning.whatYouCanDo`)}
+        </Text>
+        {button('submit-back-to-checklist', t('socialRecovery.checklist.backToChecklist'), onBack)}
+      </SectionCard>
+    )
+  }
+
   if (write.status === 'needsDeposit') {
     return (
       <SectionCard spacing="none">
+        <Text fontSize={14} style={spacings.mbSm} testID="submit-gas-lead">
+          {t(`${SUBMIT}.gas.lead`)}
+        </Text>
         <DepositStepView step={write.step} balance={run.balance} testID="submit-gas-step">
           <Button
             testID="submit-gas-continue"
@@ -90,6 +94,9 @@ const RunBlock = ({ run, onStart, onCheckAgain, onReread, onBack }: RunBlockProp
             style={flexbox.alignSelfStart}
           />
         </DepositStepView>
+        <Text fontSize={14} style={spacings.mtSm} testID="submit-gas-collected-stays">
+          {t(`${SUBMIT}.gas.collectedStays`)}
+        </Text>
       </SectionCard>
     )
   }

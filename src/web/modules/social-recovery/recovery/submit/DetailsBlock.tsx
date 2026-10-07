@@ -6,7 +6,7 @@
  * own key can cancel, what the submission publishes, and on the logged-in
  * route that the installed key then controls two accounts.
  */
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Pressable, View } from 'react-native'
 
 import DownArrowIcon from '@common/assets/svg/DownArrowIcon'
@@ -30,12 +30,18 @@ import type { DetailsBlockProps } from './types'
 const SUBMIT = 'socialRecovery.submit'
 const TRUST = 'socialRecovery.review.trust'
 
-const DetailsBlock = ({ route, ready, providerKind }: DetailsBlockProps) => {
+const DetailsBlock = ({ route, ready, providerKind, onOpened }: DetailsBlockProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const [expanded, setExpanded] = useState(false)
   const { layout, chosen, assessment, configuration } = ready
   const rows = pathRowsOf(layout, chosen, t)
+
+  useEffect(() => {
+    if (expanded) {
+      onOpened()
+    }
+  }, [expanded, onOpened])
 
   const line = (text: string, testID?: string) => (
     <Text key={text} fontSize={14} style={spacings.mbTy} testID={testID}>

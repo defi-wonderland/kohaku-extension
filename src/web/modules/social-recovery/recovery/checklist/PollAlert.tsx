@@ -1,7 +1,9 @@
 /**
  * A poll of the account's recovery state that failed or ran past its limit:
- * the rows may be out of date, the read says nothing about whether the
- * request lives, nothing goes on until a read succeeds, and the retry.
+ * over the rows, they may be out of date, the read says nothing about whether
+ * the request lives and nothing goes on until a read succeeds; over a request
+ * another attempt voided, the read could not tell whether that attempt still
+ * runs. Either way, the retry.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -25,12 +27,14 @@ const PollAlert = ({ withRows, onRetry }: PollAlertProps) => {
       type="error"
       size="sm"
       style={spacings.mbSm}
-      title={t(`${POLL_FAILED}.title`)}
+      title={withRows ? t(`${POLL_FAILED}.title`) : t('socialRecovery.checklist.deaths.readFailed')}
       text={withRows ? t(`${POLL_FAILED}.body`) : undefined}
     >
-      <Text fontSize={12} style={spacings.mtTy} testID="checklist-poll-held">
-        {t(`${POLL_FAILED}.held`)}
-      </Text>
+      {withRows && (
+        <Text fontSize={12} style={spacings.mtTy} testID="checklist-poll-held">
+          {t(`${POLL_FAILED}.held`)}
+        </Text>
+      )}
       <View style={spacings.mtTy}>
         <Button
           testID="checklist-poll-retry"

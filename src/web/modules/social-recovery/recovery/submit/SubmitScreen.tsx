@@ -184,7 +184,7 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
   const plan = sending.status === 'ready' ? sending.plan : null
   const network = sending.status === 'ready' ? sending.network : null
   const steps = useMemo<SubmitSteps | null>(() => {
-    if (!kit || !chainReads || !receipts || !gathering || !plan || !network) {
+    if (!kit || !chainReads || !receipts || !gathering || !chosen || !plan || !network) {
       return null
     }
     return submitStepsOf({
@@ -192,15 +192,30 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
       reads: chainReads,
       receipts,
       port,
+      requests,
       records,
       chainId: CHAIN_ID,
       account,
       gathering,
       plan,
       network,
+      chosen,
       now
     })
-  }, [kit, chainReads, receipts, gathering, plan, network, port, records, account, now])
+  }, [
+    kit,
+    chainReads,
+    receipts,
+    gathering,
+    chosen,
+    plan,
+    network,
+    port,
+    requests,
+    records,
+    account,
+    now
+  ])
 
   const run = useSubmitRun(steps, `${CHAIN_ID}:${account.toLowerCase()}`)
   const landed = isLanded(run.state)
@@ -209,6 +224,12 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
       navigate(waitPathOf(account), { replace: true })
     }
   }, [landed, navigate, account])
+  const toChecklist = !!run.state.toChecklist
+  useEffect(() => {
+    if (toChecklist) {
+      navigate(checklistPathOf(account), { replace: true })
+    }
+  }, [toChecklist, navigate, account])
 
   const retryAll = useCallback(() => {
     if (clientState.status === 'failed' || clientState.status === 'update-the-wallet') {

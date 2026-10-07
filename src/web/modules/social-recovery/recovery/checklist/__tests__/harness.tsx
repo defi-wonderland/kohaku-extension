@@ -23,17 +23,20 @@ import type {
   ApproverReply,
   ApproverRequest,
   Assessment,
+  AttemptRequest,
   Clause,
   Configuration,
   Credential,
   Gathering,
-  Hex
+  Hex,
+  SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   CeremonyCall,
   CeremonyOutcome,
   ReportStore,
-  ReportSubscribe
+  ReportSubscribe,
+  VisibilitySource
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   RecordStorage,
@@ -71,15 +74,38 @@ jest.mock('@common/components/Avatar', () => {
   }
 })
 
+/**
+ * What the QR double drew, every render in order, and whether it fails to
+ * draw: a failing draw reports its error once mounted, as the library does
+ * where a value does not fit a code.
+ */
+const mockQr: { drawn: string[]; fails: boolean } = { drawn: [], fails: false }
+
 // The QR library ships untranspiled modules.
 jest.mock('react-native-qrcode-svg', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-  const { createElement } = require('react')
+  const { createElement, useEffect } = require('react')
   return {
     __esModule: true,
-    default: ({ value }: { value: string }) =>
-      createElement('div', { 'data-testid': 'challenge-qr', 'data-value': value })
+    default: ({ value, onError }: { value: string; onError?: (error: Error) => void }) => {
+      mockQr.drawn.push(value)
+      const fails = mockQr.fails
+      useEffect(() => {
+        if (fails) {
+          onError?.(new Error('the value does not fit a code'))
+        }
+      }, [fails, onError])
+      return createElement('div', { 'data-testid': 'challenge-qr', 'data-value': value })
+    }
   }
+})
+
+/** The QR double: the values it drew, and the switch that makes the next draws fail. */
+export const qrDouble = mockQr
+
+afterEach(() => {
+  mockQr.drawn.length = 0
+  mockQr.fails = false
 })
 
 // The clipboard module ships untranspiled modules.
@@ -159,6 +185,23 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
+/** A promise a test settles by hand. */
+export interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
+export const deferred = <T,>(): Deferred<T> => {
+  let resolve: (value: T) => void = () => {}
+  let reject: (error: unknown) => void = () => {}
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 // ---------------------------------------------------------------------------
 // The storage double
 // ---------------------------------------------------------------------------
@@ -170,6 +213,8 @@ export interface TestStorage extends RecordStorage {
   hold: (name: string) => () => void
   /** Every write of a key that holds one of these names fails while listed. */
   refuse: string[]
+  /** Every stored value by key, as the extension's storage holds it. */
+  getAll: NonNullable<RecordStorage['getAll']>
 }
 
 /**
@@ -381,6 +426,23 @@ export const requestOf = (gathering: Gathering, place: number): ApproverRequest 
   }
 }
 
+/** The order of the first release, no payment, as the client serialises it on a request. */
+export const NO_PAYMENT: SerializedPaymentOrder = {
+  token: '0x0000000000000000000000000000000000000000',
+  amount: '0',
+  payee: '0x0000000000000000000000000000000000000000'
+}
+
+/** The handover bytes a served request carries. */
+export const HANDOVER: Hex = '0xabcdef'
+
+/** A place's request as the client serves it: with the order and the handover bytes. */
+export const servedRequestOf = (gathering: Gathering, place: number): ApproverRequest => ({
+  ...requestOf(gathering, place),
+  payload: HANDOVER,
+  order: NO_PAYMENT
+})
+
 export const replyOf = (gathering: Gathering, place: number): ApproverReply => {
   const at = gathering.places[place]
   const r = gathering.request
@@ -447,6 +509,13 @@ export interface FakeKit {
   removedKey: jest.Mock
   recoveryState: jest.Mock
   isAuthorized: jest.Mock
+  complete: jest.Mock
+  verifyReply: jest.Mock
+}
+
+export interface FakeKitOptions {
+  /** Requests carry the order and the handover bytes, as the client serves them. */
+  served?: boolean
 }
 
 /**
@@ -454,14 +523,16 @@ export interface FakeKit {
  * under the next attempt number; a reply the gathering does not name is
  * refused as the SDK refuses it.
  */
-export const fakeKit = (configuration: Configuration): FakeKit => {
+export const fakeKit = (configuration: Configuration, options: FakeKitOptions = {}): FakeKit => {
   let inits = 0
   const initRecoveryGathering = jest.fn(async () => {
     inits += 1
     return gatheringOf(configuration, inits)
   })
   const getApproverRequests = jest.fn((gathering: Gathering) =>
-    gathering.places.map((place) => requestOf(gathering, place.place))
+    gathering.places.map((place) =>
+      (options.served ? servedRequestOf : requestOf)(gathering, place.place)
+    )
   )
   const addApproverReply = jest.fn((gathering: Gathering, reply: ApproverReply): AddResult => {
     if (reply.attemptId !== gathering.request.attemptId) {
@@ -483,16 +554,22 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     setupNonce: 1n
   }))
   const isAuthorized = jest.fn(async () => true)
+  // The submission builder refuses until a test scripts the set it picks.
+  const complete = jest.fn((): AttemptRequest => {
+    throw new Error('no submission built')
+  })
+  const verifyReply = jest.fn(async () => 'satisfied')
   const client = {
     recovery: {
       initRecoveryGathering,
       getApproverRequests,
       addApproverReply,
       assess,
-      recoveryState
+      recoveryState,
+      complete
     },
     setup: { getSetup },
-    walletReads: { removedKey },
+    walletReads: { removedKey, verifyReply },
     action: { isAuthorized }
   } as unknown as ChecklistKitClient
   return {
@@ -504,9 +581,35 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     getSetup,
     removedKey,
     recoveryState,
-    isAuthorized
+    isAuthorized,
+    complete,
+    verifyReply
   }
 }
+
+export interface ScriptedRecoveryState {
+  state?: 'None' | 'Waiting' | 'Cancelled' | 'Consumed'
+  attemptId?: bigint
+  nextAttemptId?: bigint
+  setupNonce?: bigint
+  payloadHash?: Hex
+}
+
+/**
+ * The account's recovery state as the manager answers it: no attempt, the
+ * first id next, setup nonce one, and the attempt's payload hash empty.
+ */
+export const recoveryStateOf = ({
+  state = 'None',
+  attemptId = BigInt(0),
+  nextAttemptId = BigInt(1),
+  setupNonce = BigInt(1),
+  payloadHash = zeroHash
+}: ScriptedRecoveryState = {}) => ({
+  attempt: { state, attemptId, setupNonce, payloadHash },
+  nextAttemptId,
+  setupNonce
+})
 
 /** The refusal an init throws where the configuration is not the one the chain commits. */
 export const commitmentMismatch = (): Error =>
@@ -561,8 +664,16 @@ export const storedSession = async (
 export interface ReportChannel {
   store: ReportStore
   subscribe: ReportSubscribe
-  /** Writes the report the tab writes for the ceremony `id`, and tells the listeners. */
-  report: (id: string, call: CeremonyCall, outcome: CeremonyOutcome<unknown>) => Promise<void>
+  /**
+   * Writes the report the tab writes for the ceremony `id` at `at` (ms, the
+   * fixed clock by default), and tells the listeners.
+   */
+  report: (
+    id: string,
+    call: CeremonyCall,
+    outcome: CeremonyOutcome<unknown>,
+    at?: number
+  ) => Promise<void>
 }
 
 export const reportChannel = (): ReportChannel => {
@@ -588,9 +699,9 @@ export const reportChannel = (): ReportChannel => {
   return {
     store,
     subscribe,
-    report: async (id, call, outcome) => {
+    report: async (id, call, outcome, at = NOW) => {
       const key = ceremonyResultKey(id)
-      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, NOW)
+      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, at)
       values.set(key, value)
       listeners.get(key)?.forEach((listener) => listener(value))
     }
@@ -623,10 +734,36 @@ export const depsOf = (overrides: Partial<ChecklistDeps> = {}): FakeDeps => {
     passkeysServed: true,
     readPassword: () => undefined,
     forgetPassword: () => undefined,
+    storedEntries: async () => ({}),
     ...overrides,
     channel,
     requestIds
   }
+}
+
+export interface FakeVisibility extends VisibilitySource {
+  visibilityState: string
+  /** Hides or shows the tab and tells the listeners, as the page does. */
+  turn: (state: 'visible' | 'hidden') => void
+}
+
+/** The page's document as the checklist reads it: whether it is shown, and its change event. */
+export const visibilitySource = (): FakeVisibility => {
+  const listeners = new Set<() => void>()
+  const source: FakeVisibility = {
+    visibilityState: 'visible',
+    addEventListener: (_type, listener) => {
+      listeners.add(listener)
+    },
+    removeEventListener: (_type, listener) => {
+      listeners.delete(listener)
+    },
+    turn: (state) => {
+      source.visibilityState = state
+      listeners.forEach((listener) => listener())
+    }
+  }
+  return source
 }
 
 // ---------------------------------------------------------------------------
@@ -640,16 +777,33 @@ export interface Mounted {
   text: () => string
   press: (id: string) => Promise<void>
   isDisabled: (id: string) => boolean
+  /** Types into the text field at `id`, or the one inside it. */
+  type: (id: string, value: string) => Promise<void>
+  /** What the text field at `id`, or the one inside it, holds. */
+  valueOf: (id: string) => string | undefined
   /** The path of the last navigation. */
   lastPath: () => string | undefined
 }
 
+export interface AsyncFakeTimers {
+  advanceTimersByTimeAsync(ms: number): Promise<void>
+}
+
+/** Whether Jest's fake clock drives the timers: its timer functions carry their clock. */
+const timersFaked = (): boolean => 'clock' in setTimeout
+
 /**
  * Lets the pending storage reads and writes settle, then renders what they
  * changed. The fakes answer in microtasks, which all run before a timer fires.
+ * Under Jest's fake clock it advances that clock by `ms` instead, running the
+ * promises each timer settles before the next one.
  */
 export const settle = (ms = 0) =>
   act(async () => {
+    if (timersFaked()) {
+      await (jest as unknown as AsyncFakeTimers).advanceTimersByTimeAsync(ms)
+      return
+    }
     await new Promise((resolve) => {
       setTimeout(resolve, ms)
     })
@@ -668,6 +822,10 @@ export const mount = async (element: (navigate: jest.Mock) => ReactElement): Pro
   const root: Root = createRoot(container)
   const navigate = jest.fn()
   const byTestId = (id: string) => container.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+  const inputOf = (id: string) => {
+    const node = byTestId(id)
+    return node instanceof HTMLInputElement ? node : node?.querySelector('input') ?? null
+  }
 
   await act(async () => {
     root.render(
@@ -693,6 +851,18 @@ export const mount = async (element: (navigate: jest.Mock) => ReactElement): Pro
       await settle()
     },
     isDisabled: (id) => byTestId(id)?.getAttribute('aria-disabled') === 'true',
+    type: async (id, value) => {
+      const input = inputOf(id)
+      if (!input) {
+        throw new Error(`nothing to type into: ${id}`)
+      }
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      await act(async () => {
+        setValue?.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    },
+    valueOf: (id) => inputOf(id)?.value,
     lastPath: () => {
       const { calls } = navigate.mock
       return calls[calls.length - 1]?.[0]
@@ -721,6 +891,47 @@ export const mountChecklist = (input: {
       deps={input.deps}
     />
   ))
+
+export interface SwappableChecklist extends Mounted {
+  /** Hands the mounted checklist another client, as a rebuild of the kit does. */
+  swapClient: (client: ChecklistClient) => Promise<void>
+}
+
+/** The checklist with a client the test replaces while it stays mounted. */
+export const mountSwappableChecklist = async (input: {
+  records: WalletRecords
+  client: ChecklistClient
+  deps: ChecklistDeps
+}): Promise<SwappableChecklist> => {
+  let setClient: (client: ChecklistClient) => void = () => {}
+  const Host = ({ navigate }: { navigate: jest.Mock }) => {
+    const [client, set] = React.useState(input.client)
+    setClient = set
+    return (
+      <ChecklistView
+        records={input.records}
+        chainId={CHAIN_ID}
+        account={ACCOUNT}
+        entry={entryOf()}
+        client={client}
+        destination={{ status: 'ready', key: DESTINATION }}
+        search={{ account: ACCOUNT }}
+        navigate={navigate}
+        deps={input.deps}
+      />
+    )
+  }
+  const mounted = await mount((navigate) => <Host navigate={navigate} />)
+  return {
+    ...mounted,
+    swapClient: async (client) => {
+      await act(async () => {
+        setClient(client)
+      })
+      await settle()
+    }
+  }
+}
 
 /** A headline hook that answers the same count for every listed session. */
 export const headlineHook =

@@ -57,7 +57,10 @@ export const waitPathOf = (account: Address): string =>
 /** The account step, where a recovery with no entry record starts again. */
 export const accountStepPath = (): string => `/${WEB_ROUTES.socialRecoveryRecoveryAccount}`
 
-/** Where a route's recovery starts: the recover door on a fresh install, the settings entry otherwise. */
+/**
+ * Where a route's recovery starts: the recover door on a fresh install, the
+ * settings entry otherwise.
+ */
 export const routeEntryPathOf = (route: RecoveryRoute): string =>
   route === 'fresh-install'
     ? `/${WEB_ROUTES.socialRecoveryRecover}`

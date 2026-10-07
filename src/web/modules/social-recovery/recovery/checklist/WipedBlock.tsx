@@ -39,6 +39,9 @@ const WipedBlock = ({
   const deadline = session.deadline !== undefined ? Number(session.deadline) * 1000 : NaN
   const voided = session.reason === 'another-attempt-opened'
   const slotFree = voided && slot === 'free'
+  // A changed setup offers only to read the setup again, so a failure there
+  // is that read's; every other reason's failure is the new gathering's.
+  const readsSetupAgain = session.reason === 'setup-changed'
 
   const line = (key: string, testID: string) => (
     <Text fontSize={14} style={spacings.mbTy} testID={testID}>
@@ -122,8 +125,12 @@ const WipedBlock = ({
           type="error"
           size="sm"
           style={spacings.mbSm}
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
+          title={
+            readsSetupAgain
+              ? t(`${DEATHS}.readSetupFailed`)
+              : t('socialRecovery.client.unavailableTitle')
+          }
+          text={readsSetupAgain ? undefined : t('socialRecovery.client.unavailableBody')}
         />
       )}
       {way()}
