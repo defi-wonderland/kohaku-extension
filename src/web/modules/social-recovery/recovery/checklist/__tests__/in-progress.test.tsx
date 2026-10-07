@@ -152,6 +152,23 @@ describe('the recovery in progress', () => {
     expect((await storedSession(world.records, SECOND_ACCOUNT))?.value.state).toBe('live')
   })
 
+  it('keeps a recovery listed and says so where its abandon cannot be written', async () => {
+    await seedThree()
+    view = await mountInProgress({ records: world.records })
+    const first = idOf(ACCOUNT)
+    world.storage.refuse.push('recoverySession')
+
+    await view.press(`in-progress-${first}-abandon`)
+    await view.press(`in-progress-${first}-abandon-action`)
+
+    expect(view.byTestId('in-progress-abandon-failed')?.textContent).toBe(
+      t('socialRecovery.checklist.writeFailed')
+    )
+    expect((await storedSession(world.records, ACCOUNT))?.value.state).toBe('live')
+    expect((await world.records.recoveryEntry(CHAIN_ID, ACCOUNT).read()).status).toBe('present')
+    expect(view.byTestId(`in-progress-${first}`)).not.toBeNull()
+  })
+
   each([
     ['every recovery came by the fast track', 'fresh-install', 'fresh-install', 'fresh-install'],
     ['one recovery came from the settings', 'fresh-install', 'logged-in', 'logged-in'],

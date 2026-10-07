@@ -5,8 +5,6 @@
  * still unread leaves the block not ready, and the carriers stay locked.
  * Addresses render in full, since both ends compare them on the call. Pure.
  */
-import { isAddress } from 'viem'
-
 import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   renderFullAddress,
@@ -18,17 +16,18 @@ import type { Translate } from '@web/modules/social-recovery/shared/display'
 import type { GuardianValueBlock, GuardianValueLine, RemovedKeyRead } from './types'
 
 const fullAddressOf = (address: Address | undefined): string | null =>
-  address && isAddress(address, { strict: false }) ? renderFullAddress(address) : null
+  address ? renderFullAddress(address) : null
 
 /**
- * The payment line of the request's own order. A zero amount reads no
- * payment; an order this folder cannot name a token for renders nothing, so
- * the carriers stay locked rather than show a payment the guardian cannot read.
+ * The payment line of the request's own order. A request with no order, or a
+ * zero amount, reads no payment; an order this folder cannot name a token for
+ * renders nothing, so the carriers stay locked rather than show a payment the
+ * guardian cannot read.
  */
 const paymentOf = (request: ApproverRequest, t: Translate): string | null => {
   const { order } = request
   if (!order) {
-    return null
+    return renderPaymentOrder(null, null, t)
   }
   try {
     return renderPaymentOrder(
@@ -62,5 +61,8 @@ export const guardianValuesOf = (
     },
     { name: 'payment', label: renderValueLabel('payment', t), value: paymentOf(request, t) }
   ]
-  return { lines, ready: lines.every((line) => line.value !== null) }
+  // An approval request with no handover bytes has a link the approval page
+  // refuses, so the row does not hand it out.
+  const carriable = request.purpose !== 'approval' || request.payload !== undefined
+  return { lines, ready: carriable && lines.every((line) => line.value !== null) }
 }

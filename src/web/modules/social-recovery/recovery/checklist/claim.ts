@@ -7,10 +7,11 @@
 import type { ApproverReply } from '@web/modules/social-recovery/sdk-interfaces'
 import { AUTHENTICATOR_PLACES } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
+import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import type { CeremonyRequestRecord } from '@web/modules/social-recovery/shared/records'
 
 import { PASSKEY_SLUG } from './constants'
-import type { ClaimAsked, ClaimRequestInput, ClaimTarget, PassedClaim } from './types'
+import type { ClaimAsked, ClaimRequestInput, ClaimTarget, DeadRequest, PassedClaim } from './types'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -48,6 +49,38 @@ export const claimAskedOf = (
   }
   const handOff = isRecord(record.params) && record.params.handOff === true
   return { place: record.request.place, request: record.request, handOff }
+}
+
+/**
+ * The request id a stored key holds a ceremony request under, or null for any
+ * other key.
+ */
+export const ceremonyRequestIdOf = (key: string): string | null => {
+  const id = key.slice(key.lastIndexOf(':') + 1)
+  try {
+    return recordKeys.ceremonyRequest(id) === key ? id : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether a stored request is this checklist's claim for the request that
+ * died, or for any request of the account where the one that died is unknown.
+ */
+export const claimOfDeadRequest = (
+  record: CeremonyRequestRecord,
+  target: ClaimTarget,
+  died?: DeadRequest
+): boolean => {
+  const asked = claimAskedOf(record, target)
+  if (!asked) {
+    return false
+  }
+  return (
+    !died ||
+    (asked.request.attemptId === died.attemptId && asked.request.setupNonce === died.setupNonce)
+  )
 }
 
 /**
