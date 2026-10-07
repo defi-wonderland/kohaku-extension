@@ -19,7 +19,9 @@ import {
   LOST,
   LOST_SETUP,
   mountReadout,
+  navigate,
   NETWORK,
+  ONE_ANSWERABLE_SETUP,
   OTHER_ORIGIN_SETUP,
   outside,
   readoutSearchOf,
@@ -27,10 +29,13 @@ import {
   resetEdges,
   restoreRefusal,
   setClient,
+  SHORT_GROUP_SETUP,
   shortAddress,
+  storage,
   storedCache,
   storeEntry,
-  t
+  t,
+  UNKNOWN_METHOD_SETUP
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
@@ -44,7 +49,7 @@ const NO_SETUP_SENTENCES = [
   t('socialRecovery.writes.causes.NoSetup')
 ]
 const CONFIGURED_LINES = [
-  t('socialRecovery.client.updateTheWalletBody'),
+  t('socialRecovery.readout.configuredLine'),
   t('socialRecovery.readout.leadPrivate'),
   t('socialRecovery.readout.leadCommitted'),
   t('socialRecovery.readout.leadUnlocked')
@@ -55,6 +60,9 @@ const WAIT_VALUE = t('socialRecovery.display.remainingHours', { count: 120 })
 const ORIGIN_MISMATCH = t('socialRecovery.ceremony.relyingPartyMismatch')
 const WRONG_PASSWORD = 'ember-harbor-quiet-17'
 const PASSWORD_WORKED = t('socialRecovery.readout.eventFailed.title', { network: NETWORK })
+const CANNOT_BEGIN = t('socialRecovery.readout.locked.cannotBegin')
+const CANNOT_RECOVER = t('socialRecovery.review.blocked.cannotRecover.title')
+const CONTINUE_LINE = t('socialRecovery.readout.continueLine', { hours: 24 })
 
 let screen: Mounted | null = null
 const open = async () => {
@@ -80,13 +88,20 @@ const expectConfigured = (page: Mounted) => {
   NO_SETUP_SENTENCES.forEach((sentence) => expect(text).not.toContain(sentence))
 }
 
+/** No guardian's address renders, in full or shortened. */
+const expectNoGuardian = (text: string) =>
+  GUARDIANS.forEach((guardian) => {
+    expect(text).not.toContain(renderFullAddress(guardian))
+    expect(text).not.toContain(shortAddress(guardian))
+  })
+
 /** Nothing of the setup renders: no path, no masked row, no value. */
 const expectNothingOfTheSetup = (page: Mounted) => {
   expect(page.has('readout-path')).toBe(false)
   const text = page.text()
   expect(text).not.toContain(HIDDEN_DOTS)
   expect(text).not.toContain(WAIT_VALUE)
-  GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+  expectNoGuardian(text)
 }
 
 /** The setup's values render: the guardians, the passkey's kind and the wait. */
@@ -244,7 +259,7 @@ describe('the readout at Shape visible', () => {
     })
     expect(page.textOf('readout-wait-value')).toBe(HIDDEN_DOTS)
     const text = page.text()
-    GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+    expectNoGuardian(text)
     expect(text).not.toContain(WAIT_VALUE)
     expect(page.has('readout-password-field')).toBe(true)
     expect(page.has('readout-continue')).toBe(false)
@@ -266,7 +281,7 @@ describe('the readout at Shape visible', () => {
     expect(page.has('readout-wrong-password')).toBe(true)
     expect(page.has('readout-continue')).toBe(false)
     const text = page.text()
-    GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+    expectNoGuardian(text)
     expect(text).not.toContain(WAIT_VALUE)
     expectConfigured(page)
   })
@@ -286,7 +301,7 @@ describe('the readout at Shape visible', () => {
     )
     expect(page.has('readout-continue')).toBe(false)
     const text = page.text()
-    GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+    expectNoGuardian(text)
     expect(text).not.toContain(WAIT_VALUE)
     expectConfigured(page)
 
@@ -440,5 +455,195 @@ describe('the reads that fail and the setups this build cannot read', () => {
     expectNothingOfTheSetup(page)
     expectConfigured(page)
     expect(await storedCache()).toBeNull()
+  })
+})
+
+/** The actions a locked state can show, in the order a reader meets them. */
+const LOCKED_ACTIONS = ['readout-unlock', 'readout-continue-locked', 'readout-back']
+
+/**
+ * A locked state offers continue switched off, never the live one, with the
+ * reason under every action it shows, said once; pressing it goes nowhere.
+ */
+const expectLockedContinue = async (page: Mounted) => {
+  expect(page.has('readout-continue')).toBe(false)
+  expect(page.has('readout-continue-locked')).toBe(true)
+  expect(page.isDisabled('readout-continue-locked')).toBe(true)
+  expect(page.textOf('readout-continue-reason')).toBe(CANNOT_BEGIN)
+  LOCKED_ACTIONS.filter((action) => page.has(action)).forEach((action) =>
+    expect(page.comesAfter('readout-continue-reason', action)).toBe(true)
+  )
+  expect(page.text().split(CANNOT_BEGIN)).toHaveLength(2)
+  await page.press('readout-continue-locked')
+  expect(page.has('readout-continue-locked')).toBe(true)
+  expect(navigate).not.toHaveBeenCalled()
+}
+
+describe('continue while the setup is locked', () => {
+  const levels: ('private' | 'shape-visible')[] = ['private', 'shape-visible']
+  levels.forEach((level) => {
+    it(`is switched off with its reason under the actions before the password at ${level}`, async () => {
+      await commitLostSetup(level)
+      const page = await open()
+      expect(page.has(`readout-locked-${level}`)).toBe(true)
+      expect(page.has('readout-unlock')).toBe(true)
+      expect(page.has('readout-back')).toBe(true)
+      await expectLockedContinue(page)
+    })
+
+    it(`is switched off with its reason while the password is being checked at ${level}`, async () => {
+      const world = await commitLostSetup(level)
+      const page = await open()
+      const held = deferred<void>()
+      const real = world.client.setup.getSetup.bind(world.client.setup)
+      jest.spyOn(world.client.setup, 'getSetup').mockImplementationOnce(async (source) => {
+        await held.promise
+        return real(source)
+      })
+      await unlockWith(page, CARD_PASSWORD)
+      expect(page.has('readout-unlock-checking')).toBe(true)
+      await expectLockedContinue(page)
+      await outside(() => held.resolve())
+      expect(page.has(`readout-readable-${level}`)).toBe(true)
+      expect(page.has('readout-continue-locked')).toBe(false)
+      expect(page.isDisabled('readout-continue')).toBe(false)
+    })
+
+    it(`is switched off with its reason after a wrong password at ${level}`, async () => {
+      await commitLostSetup(level)
+      const page = await open()
+      await unlockWith(page, WRONG_PASSWORD)
+      expect(page.has('readout-wrong-password')).toBe(true)
+      expect(page.has('readout-back')).toBe(true)
+      await expectLockedContinue(page)
+    })
+
+    it(`is switched off with its reason after the setup event read failed at ${level}`, async () => {
+      const world = await commitLostSetup(level)
+      const page = await open()
+      world.chain.failRead('events.fetch')
+      await unlockWith(page, CARD_PASSWORD)
+      expect(page.has('readout-event-failed')).toBe(true)
+      expect(page.has('readout-back')).toBe(true)
+      await expectLockedContinue(page)
+    })
+  })
+
+  it('says the reason under the actions, not in the card with the field', async () => {
+    await commitLostSetup('private')
+    const page = await open()
+    expect(page.comesAfter('readout-continue-reason', 'readout-password-field')).toBe(true)
+    expect(page.comesAfter('readout-continue-reason', 'readout-two-passwords')).toBe(true)
+  })
+})
+
+describe('a path this device cannot complete', () => {
+  it('switches continue off with the origin reason where the only passkey was created under another origin', async () => {
+    await commitLostSetup('public', OTHER_ORIGIN_SETUP)
+    const page = await open()
+    expect(page.has('readout-readable-public')).toBe(true)
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    expect(page.textOf('readout-continue-reason')).toBe(ORIGIN_MISMATCH)
+    expect(page.comesAfter('readout-continue-reason', 'readout-continue')).toBe(true)
+    expect(page.comesAfter('readout-continue-reason', 'readout-back')).toBe(true)
+    expect(page.has('readout-continue-line')).toBe(false)
+    expect(page.text()).not.toContain(CONTINUE_LINE)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('switches continue off with the origin reason once the card password opens a private setup with such a passkey', async () => {
+    await commitLostSetup('private', OTHER_ORIGIN_SETUP)
+    const page = await open()
+    await unlockWith(page, CARD_PASSWORD)
+    expect(page.has('readout-readable-private')).toBe(true)
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    expect(page.textOf('readout-continue-reason')).toBe(ORIGIN_MISMATCH)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('names the origin where a group short of answers holds a passkey of another origin beside a guardian', async () => {
+    await commitLostSetup('public', SHORT_GROUP_SETUP)
+    const page = await open()
+    expect(page.textOf('readout-row-0-1-name')).toBe(renderFullAddress(GUARDIANS[0]))
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    expect(page.textOf('readout-continue-reason')).toBe(ORIGIN_MISMATCH)
+  })
+
+  it('switches continue off with the release reason for a method this build does not know', async () => {
+    await commitLostSetup('public', UNKNOWN_METHOD_SETUP)
+    const page = await open()
+    expect(page.has('readout-readable-public')).toBe(true)
+    expect(page.isDisabled('readout-continue')).toBe(true)
+    expect(page.textOf('readout-continue-reason')).toBe(CANNOT_RECOVER)
+    expect(page.text()).not.toContain(ORIGIN_MISMATCH)
+    expect(page.has('readout-continue-line')).toBe(false)
+    await page.press('readout-continue')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('keeps continue where one member this device can answer completes the group, with the mismatch on its row', async () => {
+    await commitLostSetup('public', ONE_ANSWERABLE_SETUP)
+    const page = await open()
+    expect(page.textOf('readout-row-0-0-line-0')).toBe(ORIGIN_MISMATCH)
+    expect(page.isDisabled('readout-continue')).toBe(false)
+    expect(page.has('readout-continue-reason')).toBe(false)
+    expect(page.textOf('readout-continue-line')).toBe(CONTINUE_LINE)
+    await page.press('readout-continue')
+    expect(navigate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the values the readout names', () => {
+  it('names every guardian by the full address, never a shortened one', async () => {
+    await commitLostSetup('public')
+    const page = await open()
+    GUARDIANS.forEach((guardian, member) => {
+      expect(page.textOf(`readout-row-1-${member}-name`)).toBe(renderFullAddress(guardian))
+    })
+    const text = page.text()
+    GUARDIANS.forEach((guardian) => expect(text).not.toContain(shortAddress(guardian)))
+  })
+
+  it('names the guardians in full once the card password opens a private setup', async () => {
+    await commitLostSetup('private')
+    const page = await open()
+    await unlockWith(page, CARD_PASSWORD)
+    GUARDIANS.forEach((guardian, member) => {
+      expect(page.textOf(`readout-row-1-${member}-name`)).toBe(renderFullAddress(guardian))
+    })
+  })
+
+  it("titles the page with what the account's recovery needs, and keeps the path's own label", async () => {
+    await commitLostSetup('public')
+    const page = await open()
+    expect(page.textOf('readout-title')).toBe(t('socialRecovery.readout.title'))
+    expect(page.textOf('readout-path')).toContain(t('socialRecovery.review.pathHeader'))
+  })
+
+  it('says the account has a recovery setup on a failed read, with Back beside it', async () => {
+    const world = await commitLostSetup('private')
+    world.chain.failRead('setup.setupState')
+    const page = await open()
+    expect(page.textOf('readout-read-failed-block')).toContain(
+      t('socialRecovery.readout.configuredLine')
+    )
+    expect(page.textOf('readout-back')).toBe(t('socialRecovery.actions.back'))
+  })
+
+  it('renders a failed read of the recovery entry with its own line and a retry that opens the readout', async () => {
+    await commitLostSetup('public')
+    storage.refuseGet = true
+    const page = await open()
+    expect(page.textOf('readout-entry-read-failed')).toContain(
+      t('socialRecovery.readout.entryReadFailed')
+    )
+    expect(page.has('readout')).toBe(false)
+    expect(navigate).not.toHaveBeenCalled()
+
+    storage.refuseGet = false
+    await page.press('readout-entry-read-failed-retry')
+    expect(page.has('readout-readable-public')).toBe(true)
   })
 })

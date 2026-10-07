@@ -104,6 +104,10 @@ export interface Mounted {
   type: (id: string, value: string) => Promise<void>
   isDisabled: (id: string) => boolean
   isChecked: (id: string) => boolean
+  /** Whether the first node comes after the second in the page, as a reader meets them. */
+  comesAfter: (later: string, earlier: string) => boolean
+  /** Whether the second node sits inside the first. */
+  holds: (outer: string, inner: string) => boolean
 }
 
 /** A setup committed on the stand-in's chain for the lost account, and the client built over it. */
@@ -737,7 +741,22 @@ const mount = async (element: React.ReactElement): Promise<Mounted> => {
       await settle()
     },
     isDisabled: (id) => byTestId(id)?.getAttribute('aria-disabled') === 'true',
-    isChecked: (id) => byTestId(id)?.getAttribute('aria-checked') === 'true'
+    isChecked: (id) => byTestId(id)?.getAttribute('aria-checked') === 'true',
+    comesAfter: (later, earlier) => {
+      const after = byTestId(later)
+      const before = byTestId(earlier)
+      return (
+        !!after &&
+        !!before &&
+        !before.contains(after) &&
+        // eslint-disable-next-line no-bitwise
+        (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      )
+    },
+    holds: (outer, inner) => {
+      const node = byTestId(inner)
+      return !!node && !!byTestId(outer)?.contains(node)
+    }
   }
 }
 
@@ -852,6 +871,46 @@ export const OTHER_ORIGIN_SETUP: Configuration = {
     {
       threshold: 1,
       credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') }]
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A method module this build does not know. */
+export const UNKNOWN_METHOD: Address = getAddress('0x0dd0000000000000000000000000000000000021')
+
+/** A setup whose one method is a module this build does not know. */
+export const UNKNOWN_METHOD_SETUP: Configuration = {
+  clauses: [{ threshold: 1, credentials: [{ method: UNKNOWN_METHOD, config: '0x01' }] }],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A setup whose group of two, needing both, holds a passkey of another origin and a guardian. */
+export const SHORT_GROUP_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 2,
+      credentials: [
+        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
+        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+      ]
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A setup whose group of two, needing one, holds a passkey of another origin and a guardian. */
+export const ONE_ANSWERABLE_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 1,
+      credentials: [
+        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
+        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+      ]
     }
   ],
   wait: 432_000n,
