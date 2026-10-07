@@ -106,6 +106,9 @@ const LookupState = ({
       <Text fontSize={20} weight="medium" style={spacings.mbSm} testID="entry-no-setup-title">
         {t(`${NO_SETUP}.title`, { network: networkName })}
       </Text>
+      <Text fontSize={14} style={spacings.mbTy}>
+        {t(`${NO_SETUP}.checkCard`)}
+      </Text>
       <SectionCard testID="entry-no-setup-account">
         <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
         <Text
@@ -127,9 +130,6 @@ const LookupState = ({
       </SectionCard>
       <Text fontSize={14} style={spacings.mbTy} testID="entry-no-setup-lead">
         {t(`${NO_SETUP}.lead`)}
-      </Text>
-      <Text fontSize={14} style={spacings.mbTy}>
-        {t(`${NO_SETUP}.checkCard`)}
       </Text>
       <Text fontSize={14} style={spacings.mbSm} testID="entry-no-setup-other-wallet">
         {t(`${NO_SETUP}.otherWallet`)}

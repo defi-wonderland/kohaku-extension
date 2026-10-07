@@ -786,7 +786,7 @@ describe('a direct open', () => {
       pathname: '/social-recovery/recovery/account',
       search: LOGGED_IN,
       hash: '',
-      state: null
+      state: { prevRoute: expect.objectContaining({ state: { acknowledged: true } }) }
     })
     expect(page.has('entry-gate')).toBe(false)
 

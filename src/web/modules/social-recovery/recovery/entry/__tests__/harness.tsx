@@ -113,8 +113,14 @@ const setMockLocation = (next: Partial<FakeLocation>) => {
   mockLocation.current = { ...mockLocation.current, ...next }
   mockLocation.listeners.forEach((listener) => listener())
 }
-/** A replace navigation swaps the history entry for the path it names, with the state it passes or none. */
-const replaceEntry = (to: unknown, options?: { replace?: boolean; state?: unknown }) => {
+/**
+ * A replace navigation swaps the history entry for the path it names; as the wallet's own hook does, the
+ * new entry's state carries the state it passes plus the location it left as `prevRoute`.
+ */
+const replaceEntry = (
+  to: unknown,
+  options?: { replace?: boolean; state?: Record<string, unknown> }
+) => {
   if (options?.replace !== true || typeof to !== 'string') {
     return
   }
@@ -122,7 +128,7 @@ const replaceEntry = (to: unknown, options?: { replace?: boolean; state?: unknow
   setMockLocation({
     pathname: at === -1 ? to : to.slice(0, at),
     search: at === -1 ? '' : to.slice(at),
-    state: options.state ?? null
+    state: { ...(options.state ?? {}), prevRoute: mockLocation.current }
   })
 }
 const mockResolveName = jest.fn<Promise<string>, [string]>()
