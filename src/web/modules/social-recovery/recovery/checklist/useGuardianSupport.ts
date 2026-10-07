@@ -4,7 +4,7 @@
  * states; the page the links open on; and the paste, which checks a pasted
  * approval against the live gathering and adds it to the place it names.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { ApproverReply } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -15,8 +15,11 @@ import type {
   GuardianSupport,
   GuardianSupportInput,
   Paste,
-  RemovedKeyRead
+  RemovedKeyRead,
+  RemovedKeyStored
 } from './types'
+
+const LOADING: RemovedKeyRead = { status: 'loading' }
 
 const useGuardianSupport = ({
   kit,
@@ -27,8 +30,12 @@ const useGuardianSupport = ({
   now,
   timeZone
 }: GuardianSupportInput): GuardianSupport => {
-  const [removed, setRemoved] = useState<RemovedKeyRead>({ status: 'loading' })
   const [readAttempt, setReadAttempt] = useState(0)
+  const [stored, setStored] = useState<RemovedKeyStored>({
+    kit,
+    attempt: readAttempt,
+    reading: LOADING
+  })
   const [addedAt, setAddedAt] = useState<Partial<Record<number, number>>>({})
   const tabUrl = useMemo(() => tabPageUrl(), [])
 
@@ -46,7 +53,9 @@ const useGuardianSupport = ({
       return undefined
     }
     let live = true
-    setRemoved({ status: 'loading' })
+    const setRemoved = (reading: RemovedKeyRead) =>
+      setStored({ kit, attempt: readAttempt, reading })
+    setRemoved(LOADING)
     kit.walletReads
       .removedKey()
       .then((reading) => {
@@ -70,8 +79,10 @@ const useGuardianSupport = ({
 
   const retryRemoved = useCallback(() => setReadAttempt((n) => n + 1), [])
 
-  const nowRef = useRef(now)
-  nowRef.current = now
+  // After the kit or the attempt changes, the render comes before the effect
+  // that starts the new read: a reading stored for another kit or attempt
+  // reads as loading, so no request pairs with another kit's key.
+  const removed = stored.kit === kit && stored.attempt === readAttempt ? stored.reading : LOADING
 
   const paste = useMemo<Paste | null>(() => {
     if (!kit || !gathering || !layout) {
@@ -86,7 +97,7 @@ const useGuardianSupport = ({
       }
     }
     return async (text: string, addReply: AddReply) => {
-      const at = nowRef.current()
+      const at = now()
       const outcome = await pasteApproval({
         text,
         gathering,
@@ -102,7 +113,7 @@ const useGuardianSupport = ({
       }
       return outcome
     }
-  }, [kit, gathering, requests, layout])
+  }, [kit, gathering, requests, layout, now])
 
   const newKey = destination.status === 'ready' ? destination.key : undefined
 

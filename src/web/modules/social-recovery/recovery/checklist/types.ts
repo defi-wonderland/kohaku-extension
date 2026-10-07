@@ -425,6 +425,13 @@ export type RemovedKeyRead =
   | { status: 'unavailable' }
   | { status: 'failed' }
 
+/** A removed-key reading with the kit and the read attempt that produced it. */
+export interface RemovedKeyStored {
+  kit: ChecklistKitClient | null
+  attempt: number
+  reading: RemovedKeyRead
+}
+
 export type GuardianValueName = 'account' | 'newKey' | 'keyBeingRemoved' | 'payment'
 
 /** One value of a guardian row's block: its label, and the value once it rendered. */
