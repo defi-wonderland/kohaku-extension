@@ -104,8 +104,7 @@ const CancelledBlock = ({ account, by, thresholdOne, leave, onLeave }: Cancelled
             type="error"
             size="sm"
             style={spacings.mbSm}
-            title={t('socialRecovery.client.unavailableTitle')}
-            text={t('socialRecovery.client.unavailableBody')}
+            text={t('socialRecovery.wait.leaveFailed')}
           />
         )}
         <Button

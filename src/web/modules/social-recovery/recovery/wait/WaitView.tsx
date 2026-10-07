@@ -58,8 +58,8 @@ const WaitView = ({
       <Alert
         type="error"
         size="sm"
-        title={t('socialRecovery.client.unavailableTitle')}
-        text={t('socialRecovery.client.unavailableBody')}
+        title={t('socialRecovery.wait.readFailedTitle')}
+        text={t('socialRecovery.wait.readFailedBody')}
       >
         <Button
           testID={`${testID}-retry`}

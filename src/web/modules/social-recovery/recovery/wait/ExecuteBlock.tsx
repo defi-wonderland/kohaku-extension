@@ -56,6 +56,15 @@ const ExecuteBlock = ({
               type="error"
               size="sm"
               style={spacings.mbSm}
+              text={t('socialRecovery.wait.noSendingKey')}
+            />
+          )}
+          {sending.status === 'failed' && (
+            <Alert
+              testID="wait-sending-failed"
+              type="error"
+              size="sm"
+              style={spacings.mbSm}
               title={t('socialRecovery.client.unavailableTitle')}
               text={t('socialRecovery.client.unavailableBody')}
             >
