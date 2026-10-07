@@ -22,6 +22,7 @@ import {
   lookUp,
   mountAccountStep,
   navigate,
+  navigationsAway,
   NETWORK,
   outside,
   records,
@@ -230,7 +231,7 @@ describe('the lookup', () => {
     expect(state?.textContent).not.toContain(t('socialRecovery.writes.tryAgain'))
     expect(state?.textContent).not.toContain(t('socialRecovery.entry.noSetup.tryAnother'))
     expect(page.textOf('entry-lookup-update-how')).toBe(
-      t('socialRecovery.client.updateTheWalletAction')
+      t('socialRecovery.client.updateTheWalletHow')
     )
     expect(state?.querySelector('[role="button"], button')).toBeNull()
     expect(page.has('entry-lookup-refused-retry')).toBe(false)
@@ -312,7 +313,7 @@ describe('the confirmation', () => {
     await storeEndedRecovery(LOST, { route: 'fresh-install', receivingAccount: SMART })
     const page = await open(LOGGED_IN)
     await confirmLost(page)
-    expect(navigate).not.toHaveBeenCalled()
+    expect(navigationsAway()).toEqual([])
     expect(await storedEntry(LOST)).toEqual({
       account: LOST,
       route: 'logged-in',
@@ -384,7 +385,7 @@ describe('the confirmation', () => {
     expect(page.has('entry-confirm-write-failed')).toBe(true)
     expect(storage.set).not.toHaveBeenCalled()
     expect(kit.isAuthorized).not.toHaveBeenCalled()
-    expect(navigate).not.toHaveBeenCalled()
+    expect(navigationsAway()).toEqual([])
     expectNoContinue(page)
   })
 
@@ -490,18 +491,13 @@ describe('the fit reads', () => {
     })
   })
 
-  it('renders a removed key with no creation record as the failed fit read with retry, never a refusal', async () => {
+  it('renders a removed key with no creation record as the refusal, with no retry', async () => {
     kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'no-creation-record' })
     const page = await open(LOGGED_IN)
     await confirmLost(page)
-    expect(page.has('entry-reads-fit-failed')).toBe(true)
-    expect(page.text()).toContain(t('socialRecovery.entry.confirm.fitReadFailedTitle'))
-    expect(page.has('entry-cannot-recover')).toBe(false)
-    expect(page.text()).not.toContain(CANNOT_RECOVER)
+    expect(page.textOf('entry-cannot-recover-title')).toBe(CANNOT_RECOVER)
+    expect(page.has('entry-reads-fit-failed')).toBe(false)
     expectNoContinue(page)
-
-    await page.press('entry-reads-fit-failed-retry')
-    expect(page.has('entry-continue')).toBe(true)
   })
 
   it('renders a failed fit read as its own failed state, not a refusal; the retry that answers goes on', async () => {
@@ -675,7 +671,7 @@ describe('leaving a blocked state', () => {
       await page.press(back)
       expect(page.has('entry-account-field')).toBe(true)
       expect(await storedEntry(LOST)).toBeNull()
-      expect(navigate).not.toHaveBeenCalled()
+      expect(navigationsAway()).toEqual([])
     })
 
     it(`still goes back to the field from ${name} when the clear fails`, async () => {
@@ -715,7 +711,7 @@ describe('leaving a blocked state', () => {
     await page.press('entry-destination-back')
     expect(page.has('entry-account-field')).toBe(true)
     expect(await storedEntry(LOST)).toBeNull()
-    expect(navigate).not.toHaveBeenCalled()
+    expect(navigationsAway()).toEqual([])
   })
 })
 

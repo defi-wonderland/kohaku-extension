@@ -56,7 +56,7 @@ const LookupState = ({
           title={t('socialRecovery.client.updateTheWalletTitle')}
         />
         <Text fontSize={14} testID="entry-lookup-update-how">
-          {t('socialRecovery.client.updateTheWalletAction')}
+          {t('socialRecovery.client.updateTheWalletHow')}
         </Text>
       </View>
     )
@@ -118,18 +118,15 @@ const LookupState = ({
           {renderFullAddress(target.address)}
         </Text>
         <SectionLabel>{t(`${LABELS}.network`)}</SectionLabel>
-        <Text fontSize={14} testID="entry-no-setup-network">
+        <Text fontSize={14} style={spacings.mbSm} testID="entry-no-setup-network">
           {networkName}
         </Text>
+        <Text fontSize={14} weight="number_medium" selectable testID="entry-no-setup-module">
+          {t(`${NO_SETUP}.module`, { module: renderFullAddress(client.client.descriptor.action) })}
+        </Text>
       </SectionCard>
-      <Text
-        fontSize={14}
-        weight="number_medium"
-        selectable
-        style={spacings.mbTy}
-        testID="entry-no-setup-module"
-      >
-        {t(`${NO_SETUP}.module`, { module: renderFullAddress(client.client.descriptor.action) })}
+      <Text fontSize={14} style={spacings.mbTy} testID="entry-no-setup-lead">
+        {t(`${NO_SETUP}.lead`)}
       </Text>
       <Text fontSize={14} style={spacings.mbTy}>
         {t(`${NO_SETUP}.checkCard`)}
