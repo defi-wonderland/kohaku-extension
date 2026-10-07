@@ -35,7 +35,7 @@ export {
   revertDataOf
 } from './provider-adapter'
 export { createChainReads, gasCallOf } from './chain-reads'
-export { networkOf, extensionProviderFor } from './extension-provider'
+export { networkOf, extensionProviderFor, providerKeyOf } from './extension-provider'
 export {
   MANAGER_DOMAIN_NAME,
   buildRecoveryClient,
@@ -89,6 +89,7 @@ export {
   clientFactsOf,
   creationPrivilegesOf,
   accountFactsOf,
+  heldKeyOf,
   stateRefreshOf,
   sameFactsReading
 } from './account-facts'

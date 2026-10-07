@@ -4,6 +4,8 @@ import type { StyleProp, ViewStyle } from 'react-native'
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
   children: ReactNode
+  /** A last breadcrumb step, shown after the settings breadcrumb. */
+  breadcrumbTail?: string
   testID?: string
 }
 
