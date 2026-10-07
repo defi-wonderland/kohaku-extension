@@ -4,6 +4,7 @@
  * the countdown's record.
  *
  *   idle ──start──▶ checkingGas: the countdown read, the prepare, the gas check
+ *                     (and where it reads enough, the block the claim starts from)
  *                     ├─ a claim on the countdown ─▶ followed (nothing sent)
  *                     ├─ deposit ──▶ needsDeposit ──the balance read again──▶ the claim
  *                     └─ enough ───▶ the claim
@@ -42,6 +43,7 @@ import {
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
+import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import { DROPPED_AFTER_MS } from '@web/modules/social-recovery/setup/arm'
 import {
   FOLLOW_REREAD_MS,
@@ -380,6 +382,19 @@ const followClaim = async (
 }
 
 /**
+ * The chain's latest block, read while the gas check still runs: a read that
+ * fails, or that does not answer within `READ_LIMIT_MS`, is the gas check's
+ * read failure with its retry, never a send refused.
+ */
+const startBlockOf = async (steps: ExecuteSteps): Promise<number> => {
+  const block = await within(() => steps.blockNumber(), READ_LIMIT_MS)
+  if (block === undefined) {
+    throw providerReadFailure('block', new Error(`No usable answer in ${READ_LIMIT_MS} ms.`))
+  }
+  return block
+}
+
+/**
  * The claim of the execution on the countdown under a new request id, with
  * the block read before it, then the send under that claim; where the
  * countdown already carries a claim, it is followed and nothing is sent.
@@ -389,26 +404,14 @@ const followClaim = async (
 const claimAndSend = async (
   store: ExecuteStore,
   steps: ExecuteSteps,
-  run: number
+  run: number,
+  startBlock: number
 ): Promise<void> => {
   const { prepared } = store.state()
   if (!prepared || !awaitingHashIn(store.state(), run)) {
     return
   }
   const dispatch = writeEvent(store)
-  // A block read that fails or does not answer in time ends the run as not sent, with its retry.
-  const startBlock = await within(() => steps.blockNumber(), READ_LIMIT_MS)
-  if (startBlock === undefined) {
-    dispatch({
-      type: 'error',
-      run,
-      error: new Error('The chain gave no block number to send from.')
-    })
-    return
-  }
-  if (!awaitingHashIn(store.state(), run)) {
-    return
-  }
   const claim: ExecutionInFlightClaim = {
     requestId: steps.newRequestId(),
     startBlock,
@@ -487,10 +490,21 @@ const pollDeposit = async (store: ExecuteStore): Promise<void> => {
       }
       if (check.kind === 'enough') {
         writeEvent(store)({ type: 'recheck' })
+        let startBlock: number
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          startBlock = await startBlockOf(steps)
+        } catch (error: unknown) {
+          writeEvent(store)({ type: 'error', run, error })
+          return
+        }
+        if (!inRun(store.state(), run) || store.state().write.status !== 'checkingGas') {
+          return
+        }
         writeEvent(store)({ type: 'gasChecked', run, check })
         POLLING.delete(store)
         // eslint-disable-next-line no-await-in-loop
-        await claimAndSend(store, steps, run)
+        await claimAndSend(store, steps, run, startBlock)
         return
       }
       store.dispatch({ type: 'balance', run, balance: check.step.balance })
@@ -589,17 +603,28 @@ export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): 
   if (!prepared || !stillChecking()) {
     return
   }
+  let check
+  let startBlock: number | undefined
   try {
-    writeEvent(store)({ type: 'gasChecked', run, check: await steps.checkGas(prepared) })
+    check = await steps.checkGas(prepared)
+    if (check.kind === 'enough' && stillChecking()) {
+      startBlock = await startBlockOf(steps)
+    }
   } catch (error: unknown) {
     fail(error)
     return
   }
+  if (!stillChecking()) {
+    return
+  }
+  writeEvent(store)({ type: 'gasChecked', run, check })
   if (store.state().write.status === 'needsDeposit') {
     pollDeposit(store).catch(() => undefined)
     return
   }
-  await claimAndSend(store, steps, run)
+  if (startBlock !== undefined) {
+    await claimAndSend(store, steps, run, startBlock)
+  }
 }
 
 /**

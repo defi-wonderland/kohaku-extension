@@ -127,6 +127,9 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
   }, [kit, removedAttempt])
 
   const receivingFacts = facts.status === 'ready' ? facts.facts : null
+  // A wallet that does not list the account holds no key of it; the other
+  // causes are reads that can run again.
+  const notListed = facts.status === 'unavailable' && facts.cause === 'not-listed'
   const newKey = receivingFacts ? destinationKeyOf(receivingFacts) : null
   const keys = useMemo<HandoverKeysReading>(() => {
     if (removed.status === 'failed' || facts.status === 'unavailable') {
@@ -200,7 +203,7 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
       return { status: 'loading' }
     }
     if (!receivingFacts) {
-      return { status: 'failed' }
+      return notListed ? { status: 'unavailable' } : { status: 'failed' }
     }
     const network = {
       name: receivingFacts.network.name,
@@ -217,7 +220,7 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }
-  }, [facts.status, receivingFacts, entry, accounts, keystoreKeys])
+  }, [facts.status, notListed, receivingFacts, entry, accounts, keystoreKeys])
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
