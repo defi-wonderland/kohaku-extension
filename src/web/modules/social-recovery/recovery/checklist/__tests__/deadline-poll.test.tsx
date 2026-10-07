@@ -420,7 +420,7 @@ describe('the checklist deadline and poll', () => {
       await settle(CHECKLIST_POLL_MS)
 
       expect(view.byTestId('checklist-dormant')?.textContent).toContain(
-        t('socialRecovery.wait.cannotExecute.notAuthorized')
+        t('socialRecovery.checklist.dormant.title')
       )
       expect(view.byTestId('checklist-satisfied')).not.toBeNull()
       expect(view.isDisabled('checklist-continue')).toBe(true)

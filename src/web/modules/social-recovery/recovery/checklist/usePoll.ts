@@ -5,7 +5,9 @@
  * that passes during a slow read wipes on its return. A round that has not
  * returned leaves the poll as it stood, and a session that changes starts
  * again from nothing returned, so no reading of an earlier session ever
- * stands for the new one.
+ * stands for the new one. A client rebuilt for the same session drops the
+ * round its predecessor had in flight and reads again at once; until that
+ * round returns, the poll stands as it was, as for any round in flight.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -64,11 +66,14 @@ const usePoll = ({ kit, target, deps, after }: PollInput): PollHook => {
 
   const key = target?.key ?? null
   const source = deps.visibility
+  const session = kit ? key : null
+  useEffect(() => {
+    setPoll(PENDING)
+  }, [session])
   useEffect(() => {
     generation.current += 1
     inFlight.current = null
     again.current = false
-    setPoll(PENDING)
     if (!kit || key === null) {
       return undefined
     }

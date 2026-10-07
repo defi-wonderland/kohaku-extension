@@ -188,7 +188,7 @@ describe('the request dies', () => {
       expect(view?.byTestId('checklist-row-0')).not.toBeNull()
     })
 
-    it('wipes on the clock alone, even where the chain read fails', async () => {
+    it('wipes as expired past the deadline where the chain read fails', async () => {
       await open(MIXED_PATH, gatheringOf(MIXED_PATH))
       kit.recoveryState.mockRejectedValue(new Error('node unavailable'))
 
