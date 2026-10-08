@@ -44,7 +44,6 @@ import {
   accountStepPath,
   checklistPathOf,
   configurationOf,
-  destinationKeyOf,
   parseChecklistSearch,
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
@@ -53,7 +52,7 @@ import type { SendingReading } from '@web/modules/social-recovery/recovery/submi
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
 import { anchorOf, donePathOf } from './phase'
-import { isCountdownOf, landedAttemptOf } from './read'
+import { isCountdownOf, landedAttemptOf, waitNewKeyOf } from './read'
 import { executeStepsOf } from './steps'
 import type {
   CountdownReading,
@@ -135,7 +134,7 @@ const WaitBody = ({
   }, [kit, removedAttempt])
 
   const receivingFacts = facts.status === 'ready' ? facts.facts : null
-  const newKey = receivingFacts ? destinationKeyOf(receivingFacts) : null
+  const newKey = receivingFacts ? waitNewKeyOf(receivingFacts) : null
   // The new key comes from the wallet's facts of the account, so facts that
   // could not be read, whatever the cause, leave the keys unread with their
   // retry; the sending line below reads only once the keys are known.

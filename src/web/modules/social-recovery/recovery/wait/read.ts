@@ -5,9 +5,11 @@
  * throws, or that does not answer within its limit, answers nothing, never
  * the last good reading.
  */
-import { isAddressEqual, keccak256 } from 'viem'
+import { isAddress, isAddressEqual, keccak256 } from 'viem'
 
-import type { Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import { destinationKeyOf } from '@web/modules/social-recovery/recovery/checklist'
+import type { Address, Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ListedAccountFacts } from '@web/modules/social-recovery/shared/client'
 import type { CountdownRecord } from '@web/modules/social-recovery/shared/records'
 
 import type {
@@ -96,6 +98,20 @@ export const readWaitFacts = (
       newKeyHolds
     }
   }, limitMs)
+
+/**
+ * The key the waiting recovery installs on the account: a smart account's
+ * controlling key as the keystore holds it, and a basic account's own address
+ * whether or not the keystore holds its key, since that key decides only who
+ * can send the execution, not which attempt the wait reads.
+ */
+export const waitNewKeyOf = (facts: ListedAccountFacts): Address | null => {
+  if (facts.creation) {
+    return destinationKeyOf(facts)
+  }
+  const own = facts.account.addr
+  return isAddress(own, { strict: false }) ? own : null
+}
 
 /** Whether two hashes are the same, in any case. */
 export const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
