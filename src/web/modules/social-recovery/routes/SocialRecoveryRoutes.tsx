@@ -16,6 +16,9 @@ import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/Recov
 import ChecklistScreen from '@web/modules/social-recovery/recovery/checklist/ChecklistScreen'
 import InProgressScreen from '@web/modules/social-recovery/recovery/checklist/InProgressScreen'
 import SubmitScreen from '@web/modules/social-recovery/recovery/submit/SubmitScreen'
+import FastTrackScreen from '@web/modules/social-recovery/onboarding/fast-track/FastTrackScreen'
+import KeyStepScreen from '@web/modules/social-recovery/onboarding/fast-track/KeyStepScreen'
+import GasStepScreen from '@web/modules/social-recovery/onboarding/fast-track/GasStepScreen'
 import EntryScreen from '@web/modules/social-recovery/recovery/entry/EntryScreen'
 import AccountStepScreen from '@web/modules/social-recovery/recovery/entry/AccountStepScreen'
 import ReadoutScreen from '@web/modules/social-recovery/recovery/entry/ReadoutScreen'
@@ -60,6 +63,7 @@ const SocialRecoveryRoutes = () => (
         <Route path="recovery/checklist" element={<ChecklistScreen />} />
         <Route path="recovery/in-progress" element={<InProgressScreen />} />
         <Route path="recovery/submit" element={<SubmitScreen />} />
+        <Route path="fast-track/gas" element={<GasStepScreen />} />
         <Route path="recovery" element={<EntryScreen />} />
         <Route path="recovery/account" element={<AccountStepScreen />} />
         <Route path="recovery/readout" element={<ReadoutScreen />} />
@@ -75,6 +79,8 @@ const SocialRecoveryRoutes = () => (
       {/* The passkey ceremony tab. It needs no guard, because a fresh install with no keystore also opens it. */}
       <Route path="ceremony" element={<CeremonyScreen />} />
       <Route path="recover" element={<RecoverScreen />} />
+      <Route path="fast-track" element={<FastTrackScreen />} />
+      <Route path="fast-track/key" element={<KeyStepScreen />} />
     </Route>
   </Routes>
 )
