@@ -146,6 +146,7 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
             <Text fontSize={14} testID="readout-update-how">
               {t('socialRecovery.client.updateTheWalletHow')}
             </Text>
+            <ActionsRow primary={back} />
           </View>
         )
       case 'no-details':

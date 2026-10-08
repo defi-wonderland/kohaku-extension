@@ -432,6 +432,18 @@ describe('the reads that fail and the setups this build cannot read', () => {
     expectConfigured(page)
   })
 
+  it('offers Back on update the wallet, and Back goes to the account step on the fresh-install route', async () => {
+    await storeEntry('fresh-install')
+    setClient(LOST, refusedClient())
+    const page = await open()
+    expect(page.holds('readout-update-the-wallet', 'readout-back')).toBe(true)
+    expect(page.textOf('readout-back')).toBe(t('socialRecovery.actions.back'))
+
+    await page.press('readout-back')
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate.mock.calls[0][0]).toMatch(/^\/social-recovery\/recovery\/account\?/)
+  })
+
   it('renders a setup with no backup this device can open as its own state, never as no setup', async () => {
     const world = await commitLostSetup('private')
     jest
