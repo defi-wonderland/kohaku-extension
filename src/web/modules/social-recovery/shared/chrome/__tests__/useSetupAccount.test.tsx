@@ -22,6 +22,7 @@ import type {
   RouterHistory,
   WatchedHistory
 } from '@web/modules/social-recovery/shared/chrome/__fixtures__/types'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__tests__/harness'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.
@@ -393,7 +394,7 @@ describe('a visit of the setup', () => {
     sessionStorage.removeItem(storedListKey())
   }
 
-  it.each([
+  eachIt([
     ['no route state', undefined],
     ['a route state with no previous route', {}],
     ['a previous route that is not a string', { prevRoute: { pathname: 7 } }],
@@ -445,7 +446,7 @@ describe('a visit of the setup', () => {
     expect(reads.screen.selected).toBe(OTHER_ACCOUNT)
   })
 
-  it.each([
+  eachIt([
     ['a previous route outside the setup', FROM_THE_DASHBOARD],
     ['no route state', undefined]
   ])('keeps the account across a reload of the arrival entry with %s', (_, state) => {
@@ -579,7 +580,7 @@ describe('the locations of a setup visit', () => {
     select(OTHER_ACCOUNT)
   }
 
-  it.each([
+  eachIt([
     ['in the same page', () => {}],
     ['after the page loads again', () => freshPage()]
   ])(
@@ -660,7 +661,7 @@ describe('the locations of a setup visit', () => {
     expect(reads.screen.differs).toBe(true)
   })
 
-  it.each([
+  eachIt([
     ['the enroll step', [] as string[]],
     ['the ceremony', ['/social-recovery/ceremony']]
   ])(
@@ -731,7 +732,7 @@ describe('the locations of a setup visit', () => {
     expect(reads.screen.differs).toBe(false)
   })
 
-  it.each([
+  eachIt([
     ['not JSON', '{not json'],
     ['not a list', JSON.stringify({ key: 'arrival', pathname: '/social-recovery/setup' })],
     ['a list of entries with no path', JSON.stringify([{ key: 'arrival' }])],
@@ -858,7 +859,7 @@ describe('an entry the router did not push', () => {
     freshPage()
   })
 
-  it.each([
+  eachIt([
     ['an unpushed entry', UNPUSHED],
     ['a pushed entry from the dashboard', entry('arrival', FROM_THE_DASHBOARD)]
   ])(
@@ -879,7 +880,7 @@ describe('an entry the router did not push', () => {
     }
   )
 
-  it.each([
+  eachIt([
     ['no route state', undefined],
     ['a previous route outside the setup', FROM_THE_DASHBOARD]
   ])(
@@ -908,7 +909,7 @@ describe('an entry the router did not push', () => {
     }
   )
 
-  it.each([
+  eachIt([
     ['no route state', undefined],
     ['a previous route outside the setup', FROM_THE_DASHBOARD]
   ])(
@@ -930,7 +931,7 @@ describe('an entry the router did not push', () => {
     }
   )
 
-  it.each([
+  eachIt([
     ['no route state', undefined],
     ['a previous route outside the setup', FROM_THE_DASHBOARD]
   ])(

@@ -8,6 +8,7 @@ import i18n from '@common/config/localization'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import {
+  eachIt,
   pdfDrawnValues,
   pdfFileParts,
   pdfShownStrings,
@@ -83,7 +84,7 @@ describe('the card file', () => {
     expect(file.type).toBe('application/pdf')
   })
 
-  it.each([
+  eachIt([
     ['the hidden level', hidden(PASSWORD)],
     ['the public level', PUBLIC]
   ])('starts with the PDF header and ends with the end-of-file marker at %s', (_, card) => {
@@ -98,7 +99,7 @@ describe('the card file', () => {
     expect(file.pages).toBe(1)
   })
 
-  it.each([
+  eachIt([
     ['the hidden level', hidden(PASSWORD)],
     ['the public level', PUBLIC],
     ['a password outside the encoding', hidden('日本 🔑')],
@@ -132,7 +133,7 @@ describe('the card file', () => {
     expect(file.slice(rootAt)).toMatch(/^\d+ 0 obj\s*<<\s*\/Type \/Catalog/)
   })
 
-  it.each([
+  eachIt([
     ['a short password', hidden(PASSWORD)],
     ['a password that wraps over several lines', hidden(ORCHIDS)],
     ['a password outside the encoding', hidden('日本 🔑')],
@@ -215,7 +216,7 @@ describe('the card file', () => {
 })
 
 describe('a card longer than one page', () => {
-  it.each([
+  eachIt([
     ['a 2,500-character ASCII password', LONG_ASCII, LONG_ASCII],
     ['a 400-character password outside the encoding', LONG_CJK, codesOf(LONG_CJK)],
     ['a password taller than a page', TALLER_THAN_A_PAGE, TALLER_THAN_A_PAGE]
@@ -233,7 +234,7 @@ describe('a card longer than one page', () => {
     expect(drawnPassword(password).text).toBe(expected)
   })
 
-  it.each([
+  eachIt([
     ['a 2,500-character ASCII password', LONG_ASCII],
     ['a 400-character password outside the encoding', LONG_CJK],
     ['a password taller than a page', TALLER_THAN_A_PAGE]
@@ -270,7 +271,7 @@ describe('a card longer than one page', () => {
     expect(titled[0].page).toBe(0)
   })
 
-  it.each([44, 45, 46, 47])(
+  eachIt([44, 45, 46, 47])(
     'keeps the password’s label on the page of its first line, for a password of %i lines',
     (count) => {
       const password = 'y'.repeat(64 * count)
@@ -307,7 +308,7 @@ describe('a card longer than one page', () => {
 })
 
 describe('the continuation mark', () => {
-  it.each([
+  eachIt([
     ['a password of words', ORCHIDS],
     ['a 2,500-character ASCII password', LONG_ASCII],
     ['a 400-character password outside the encoding', LONG_CJK],
@@ -340,7 +341,7 @@ describe('the continuation mark', () => {
     }
   )
 
-  it.each([
+  eachIt([
     ['a password of words', ORCHIDS],
     ['a 2,500-character ASCII password', LONG_ASCII],
     ['a 400-character password outside the encoding', LONG_CJK]
@@ -405,7 +406,7 @@ describe('the text a reader extracts from the file', () => {
       )
     )
 
-  it.each([
+  eachIt([
     ['a password of 65 characters', TWO_LINES, 1],
     ['a password that continues onto further pages', TALLER_THAN_A_PAGE, 2]
   ])(
@@ -438,7 +439,7 @@ describe('the text a reader extracts from the file', () => {
     expect(paths[0]).toMatch(/^[\d.]+ [\d.]+ m [\d.]+ [\d.]+ l [\d.]+ [\d.]+ l S$/)
   })
 
-  it.each([1, 2, 5, 46, 94])(
+  eachIt([1, 2, 5, 46, 94])(
     'strokes one path fewer than the password’s shown lines, for %i lines of 64 characters',
     (count) => {
       const password = 'a'.repeat(64 * count)
