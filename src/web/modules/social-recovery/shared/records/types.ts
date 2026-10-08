@@ -226,7 +226,6 @@ export type DirectWipeEvent = Exclude<RecoveryWipeEvent, 'submission-landed'>
  * name.
  */
 export type RowNote = Extract<CollectionChip, 'declined' | 'unanswered'>
-export const ROW_NOTES: readonly RowNote[] = ['declined', 'unanswered'] as const
 
 /** The row notes of a live session by place number; a place with no note has no member. */
 export type RowNotes = Partial<Record<number, RowNote>>
@@ -335,8 +334,7 @@ export interface ListedRecord<T> {
  * The two routes into a recovery: the fresh install's fast track, or the
  * logged-in wallet's settings.
  */
-export const RECOVERY_ROUTES = ['fresh-install', 'logged-in'] as const
-export type RecoveryRoute = typeof RECOVERY_ROUTES[number]
+export type RecoveryRoute = 'fresh-install' | 'logged-in'
 
 /**
  * The recovery entry: the account being recovered, the route the recoverer
