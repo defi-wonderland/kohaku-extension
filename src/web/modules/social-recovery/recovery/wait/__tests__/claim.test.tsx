@@ -572,7 +572,7 @@ describe('the claim age by the route that sends', () => {
 
   const keyRoutes = [
     { route: 'logged-in', name: "a basic account's own key" },
-    { route: 'fresh-install', name: "the seed slot's ordinary key" }
+    { route: 'fresh-install', name: "the receiving basic account's own key on the fresh install" }
   ] as const
   keyRoutes.forEach(({ route, name }) => {
     it(`follows a hashless claim ten minutes old where ${name} sends, and releases it once older than thirty`, async () => {

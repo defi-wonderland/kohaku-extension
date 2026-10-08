@@ -153,7 +153,7 @@ describe('execute now', () => {
     expect(world.port.send).not.toHaveBeenCalled()
   })
 
-  it("sends from the seed slot's ordinary key on the fresh install, never from the new key", async () => {
+  it("sends once from the receiving basic account's own key on the fresh install, the key the recovery installs", async () => {
     const world = await openWorld({ route: 'fresh-install' })
     elapse(world.kit)
     holdReceipt(world)
@@ -161,8 +161,9 @@ describe('execute now', () => {
 
     await view.press('wait-execute')
     expect(world.port.send).toHaveBeenCalledTimes(1)
-    expect(world.port.send.mock.calls[0][0].addr).toBe(world.sendingKey)
-    expect(world.sendingKey).not.toBe(world.newKey)
+    expect(world.port.send.mock.calls[0][0].addr).toBe(world.entry.receivingAccount)
+    expect(world.port.send.mock.calls[0][0].addr).toBe(world.newKey)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
   it('sends nothing more on a second press, a poll or a remount while the first send is on its way', async () => {
@@ -964,7 +965,7 @@ describe('the sending key', () => {
     expect(world.port.send).not.toHaveBeenCalled()
   })
 
-  it("says this wallet holds no key that can execute where the fresh install's seed slot has no ordinary key", async () => {
+  it('says this wallet holds no key that can execute where the keystore holds no ordinary key of the receiving basic account', async () => {
     const world = await openWorld({ route: 'fresh-install' })
     elapse(world.kit)
     mockWallet.keys = mockWallet.keys.filter((key) => key.dedicatedToOneSA)
