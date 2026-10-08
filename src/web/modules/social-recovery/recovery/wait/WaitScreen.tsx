@@ -7,7 +7,8 @@
  * A search with no account, or an account with no entry record, goes back to
  * the account step. No countdown: a live or wiped session goes to the
  * checklist, none to the route's entry. A consumed attempt goes on to the
- * done screen.
+ * done screen. A run that finds the countdown names another attempt is let go,
+ * and the countdown's record is read again.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
@@ -52,7 +53,7 @@ import type { SendingReading } from '@web/modules/social-recovery/recovery/submi
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
 import { anchorOf, donePathOf } from './phase'
-import { landedAttemptOf } from './read'
+import { isCountdownOf, landedAttemptOf } from './read'
 import { executeStepsOf } from './steps'
 import type {
   CountdownReading,
@@ -73,7 +74,14 @@ import WaitView from './WaitView'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
-const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) => {
+const WaitBody = ({
+  records,
+  account,
+  entry,
+  savedAt,
+  landed,
+  onCountdownReplaced
+}: WaitBodyProps) => {
   const { navigate } = useNavigation()
   const { accounts } = useAccountsControllerState()
   const { keys: keystoreKeys } = useKeystoreControllerState()
@@ -298,20 +306,40 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
     }
   }, [consumed, navigate, account])
 
+  const replaced = !!run.state.replaced
+  useEffect(() => {
+    if (replaced) {
+      releaseRun.current()
+      onCountdownReplaced()
+    }
+  }, [replaced, onCountdownReplaced])
+
   const [leave, setLeave] = useState<LeaveState>('idle')
   const onLeave = useCallback(() => {
     setLeave('leaving')
     // The countdown is read again first: an execution claim written since the open moved its revision.
-    records
-      .countdown(CHAIN_ID, account)
-      .read()
-      .then((read) =>
-        records.endCountdown(CHAIN_ID, account, read.status === 'present' ? read.revision : null)
+    // A countdown that names another attempt than this screen's is left as it is, and read again.
+    const leaveCountdown = async () => {
+      const read = await records.countdown(CHAIN_ID, account).read()
+      if (read.status === 'present') {
+        const ours = landed
+          ? isCountdownOf(read.value, landed)
+          : landedAttemptOf(read.value) === null
+        if (!ours) {
+          onCountdownReplaced()
+          return
+        }
+      }
+      await records.endCountdown(
+        CHAIN_ID,
+        account,
+        read.status === 'present' ? read.revision : null
       )
-      .then(() => records.recoveryEntry(CHAIN_ID, account).clear())
-      .then(() => navigate(routeEntryPathOf(entry.route), { replace: true }))
-      .catch(() => setLeave('failed'))
-  }, [records, account, navigate, entry.route])
+      await records.recoveryEntry(CHAIN_ID, account).clear()
+      navigate(routeEntryPathOf(entry.route), { replace: true })
+    }
+    leaveCountdown().catch(() => setLeave('failed'))
+  }, [records, account, navigate, entry.route, landed, onCountdownReplaced])
 
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
   // The transfer screen sends from the selected account, so the account being recovered is selected first.
@@ -374,6 +402,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
   const { navigate } = useNavigation()
   const [reading, setReading] = useState<CountdownReading>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const readAgain = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
     let live = true
@@ -418,6 +447,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         entry={entry}
         savedAt={reading.savedAt}
         landed={reading.landed}
+        onCountdownReplaced={readAgain}
       />
     )
   }
@@ -436,7 +466,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
             type="secondary"
             size="small"
             text={t('socialRecovery.writes.tryAgain')}
-            onPress={() => setAttempt((n) => n + 1)}
+            onPress={readAgain}
             hasBottomSpacing={false}
           />
         </View>

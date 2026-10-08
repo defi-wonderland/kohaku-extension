@@ -6,9 +6,15 @@
  * the request queue by route, the receipt wait, the manager's events for a
  * claim with no hash, and the node's read of a hash.
  *
- * Every update of the countdown reads it first and passes the revision it
- * read; where another page moved it meanwhile, the update is tried again over
- * a fresh read while the countdown is there.
+ * The run keeps its own countdown: the one that names the attempt the run
+ * was started for, by its id, its setup number and its payload hash. Every
+ * read of the countdown is matched on those three values, and a record of
+ * another attempt, or one with none of them, reads as `replaced`. Every update
+ * reads the countdown first, matches it the same way and passes the revision
+ * it read; a record of another attempt is refused, with nothing claimed,
+ * written or released on it. Where another page moved the run's own countdown
+ * meanwhile, the update is tried again over a fresh read while the countdown
+ * is there; a refused record is never tried again.
  */
 import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
@@ -18,7 +24,6 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
 import type {
-  CountdownRead,
   ExecutionInFlightRecord,
   SessionRevision
 } from '@web/modules/social-recovery/shared/records'
@@ -37,8 +42,15 @@ import {
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { COUNTDOWN_CONFLICT_RETRIES } from './constants'
-import { isAttemptOf, sameHash } from './read'
-import type { ExecuteSteps, ExecuteStepsInput, ExecutionRelease } from './types'
+import { isAttemptOf, isCountdownOf, sameHash } from './read'
+import type {
+  ExecuteSteps,
+  ExecuteStepsInput,
+  ExecutionRelease,
+  RunClaim,
+  RunCountdownRead,
+  RunWrite
+} from './types'
 
 export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
   const { records, chainId, account, landed, client, plan, network, reads, receipts, port } = input
@@ -54,15 +66,28 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
     return block
   }
 
-  // An update over a fresh read of the countdown, read and tried again where another page moved it.
+  const readOwn = async (): Promise<RunCountdownRead> => {
+    const read = await countdown.read()
+    if (read.status === 'present' && !isCountdownOf(read.value, landed)) {
+      return { status: 'replaced' }
+    }
+    return read
+  }
+
+  // An update over a fresh read of the run's own countdown, read and tried again
+  // where another page moved it; a countdown of another attempt answers `replaced`.
   const withFreshRevision = async <T>(
     update: (
       revision: SessionRevision,
       execution: ExecutionInFlightRecord | undefined
     ) => Promise<T>,
+    replaced: T,
     tries = 0
   ): Promise<T> => {
-    const read = await countdown.read()
+    const read = await readOwn()
+    if (read.status === 'replaced') {
+      return replaced
+    }
     if (read.status !== 'present') {
       throw new Error(`No countdown for ${account}`)
     }
@@ -72,7 +97,7 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
       if (!isSessionRevisionConflict(error) || tries >= COUNTDOWN_CONFLICT_RETRIES) {
         throw error
       }
-      return withFreshRevision(update, tries + 1)
+      return withFreshRevision(update, replaced, tries + 1)
     }
   }
 
@@ -82,7 +107,7 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
   })
 
   return {
-    readCountdown: (): Promise<CountdownRead> => countdown.read(),
+    readCountdown: readOwn,
     async prepare() {
       const prepared = await client.recovery.prepareExecuteHandover(attempt, payload)
       assertWriteDoor('execution', prepared)
@@ -109,12 +134,21 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
           }),
     blockNumber,
     newRequestId: newSendRequestId,
-    claim: (claim) => withFreshRevision((revision) => countdown.claimExecution(claim, revision)),
-    async markSent(claim, transactionHash) {
-      await withFreshRevision(async (revision, execution) => {
+    claim: (claim) =>
+      withFreshRevision<RunClaim>(
+        (revision) => countdown.claimExecution(claim, revision),
+        'replaced'
+      ),
+    /**
+     * Where the countdown names another attempt, the send already went out
+     * for the run's own attempt: its hash is written on no record, and the
+     * run keeps it in its own state for the receipt wait.
+     */
+    markSent: (claim, transactionHash) =>
+      withFreshRevision<RunWrite>(async (revision, execution) => {
         if (execution?.requestId === claim.requestId) {
           await countdown.setExecutionHash(claim.requestId, transactionHash, revision)
-          return
+          return 'written'
         }
         // Another page released the claim while the wallet still held the send: written back with its hash.
         if (!execution) {
@@ -127,23 +161,28 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
             )
           }
         }
-      })
-    },
-    async release(requestId) {
-      await withFreshRevision((revision) => countdown.releaseExecution(requestId, revision))
-    },
-    releaseClaim: (requestId, hashes) =>
-      withFreshRevision(async (revision, execution): Promise<ExecutionRelease> => {
-        if (!execution || execution.requestId !== requestId) {
-          return { status: 'gone' }
-        }
-        const hash = execution.transactionHash
-        if (hash && !hashes.some((known) => sameHash(known, hash))) {
-          return { status: 'hashed', transactionHash: hash }
-        }
+        return 'written'
+      }, 'replaced'),
+    release: (requestId) =>
+      withFreshRevision<RunWrite>(async (revision) => {
         await countdown.releaseExecution(requestId, revision)
-        return { status: 'released' }
-      }),
+        return 'written'
+      }, 'replaced'),
+    releaseClaim: (requestId, hashes) =>
+      withFreshRevision(
+        async (revision, execution): Promise<ExecutionRelease> => {
+          if (!execution || execution.requestId !== requestId) {
+            return { status: 'gone' }
+          }
+          const hash = execution.transactionHash
+          if (hash && !hashes.some((known) => sameHash(known, hash))) {
+            return { status: 'hashed', transactionHash: hash }
+          }
+          await countdown.releaseExecution(requestId, revision)
+          return { status: 'released' }
+        },
+        { status: 'replaced' }
+      ),
     claimAgeMs: plan.kind === 'key' ? KEY_SEND_CLAIM_AGE_MS : SUBMISSION_CLAIM_AGE_MS,
     send: (prepared, dispatch, run, startBlock, requestId) =>
       plan.kind === 'key'
