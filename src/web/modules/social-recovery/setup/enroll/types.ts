@@ -140,10 +140,23 @@ export interface GuardianChecks {
   seed?: 'same' | 'not'
 }
 
-/** One line of the checks block: its key and its values. */
+/** A provider that reads a name's address, destroyed after the read. */
+export interface NameReader {
+  resolveName: (name: string) => Promise<string | null>
+  destroy: () => void
+}
+
+/** Builds a name reader on one RPC endpoint. */
+export type NameReaderFactory = (rpcUrl: string) => NameReader
+
+/** How a check's result reads: as expected, worth a look, or a risk. */
+export type CheckTone = 'good' | 'warning' | 'risk'
+
+/** One line of the checks block: its key, its values and its tone. */
 export interface CheckLine {
   key: string
   values?: Record<string, string>
+  tone: CheckTone
 }
 
 /** A key the keystore holds, as the checks and the test read it. */
@@ -452,6 +465,10 @@ export interface GuardianEnrolledSummaryProps {
 
 export interface GuardianChecksBlockProps {
   lines: CheckLine[]
+}
+
+export interface CheckToneIconProps {
+  tone: CheckTone
 }
 
 export type GuardianTestBlockProps = Pick<

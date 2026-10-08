@@ -1,9 +1,9 @@
 /**
  * The review over the setup records: the lead that decides the holder's risk,
- * the trust list with its security stop block and the account's other doors
- * under its expander, the account the save writes to with the key a recovery
- * would remove, and Save behind its gate with the reason it cannot run on
- * screen.
+ * the trust list under its expander, the account the save writes to with the
+ * key a recovery would remove, and Save behind its gate with the reason it
+ * cannot run on screen. An untested method is named in the warning beside
+ * Save.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, View } from 'react-native'
@@ -41,17 +41,19 @@ import {
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records/types'
 
 import {
+  kindNameOf,
+  kindOf,
   needsHostileMinorityLine,
+  pathRowOf,
   privacyLinesOf,
   publicationSentenceOf,
   renderWait,
   ruleLinesOf
 } from './lead'
 import PathBlock from './PathBlock'
-import { codeEntriesOf, doorsOf } from './doors'
 import { accountReadsToRetry, saveGateOf, untestedInPath } from './gate'
 import SaveBlocker from './SaveBlocker'
-import { methodsOf, stopRowsOf, trustRowsOf } from './trust'
+import { methodsOf, trustRowsOf } from './trust'
 import TrustList from './TrustList'
 import type { RetryTarget, ReviewLoad, ReviewViewProps } from './types'
 import { useAccountReads } from './useAccountReads'
@@ -73,7 +75,6 @@ const ReviewView = ({
   chainId,
   account,
   client,
-  providerKind,
   accountLabel,
   navigate
 }: ReviewViewProps) => {
@@ -133,12 +134,7 @@ const ReviewView = ({
       }),
     [clauses, load, reads, ready, addressBook]
   )
-  const stopRows = useMemo(() => stopRowsOf(rows), [rows])
   const accountReads = useAccountReads(ready, load?.draft ?? null)
-  const doors = useMemo(
-    () => doorsOf(accountReads.privilegeHolders, codeEntriesOf(), accountReads.removedKey),
-    [accountReads.privilegeHolders, accountReads.removedKey]
-  )
 
   const line = (text: string, testID?: string) => (
     <Text fontSize={14} style={spacings.mbTy} testID={testID}>
@@ -319,7 +315,9 @@ const ReviewView = ({
       <Pressable
         testID="review-verify-details"
         accessibilityRole="button"
-        accessibilityState={{ expanded }}
+        // react-native-web renders this as aria-expanded; the React Native
+        // types do not declare it, so it travels in a spread
+        {...{ accessibilityExpanded: expanded }}
         onPress={() => setExpanded((open) => !open)}
         style={[
           flexbox.directionRow,
@@ -341,20 +339,14 @@ const ReviewView = ({
         </Text>
         {expanded ? <UpArrowIcon /> : <DownArrowIcon />}
       </Pressable>
-      {expanded && (!!ready || client.status === 'loading') && (
+      {expanded && !!ready && (
+        <View style={spacings.mbLg}>
+          <TrustList rows={rows} client={ready} onRetry={retry} />
+        </View>
+      )}
+      {expanded && client.status === 'loading' && (
         <SectionCard>
-          {ready ? (
-            <TrustList
-              rows={rows}
-              stopRows={stopRows}
-              doors={doors}
-              client={ready}
-              providerKind={providerKind}
-              onRetry={retry}
-            />
-          ) : (
-            <ActivityIndicator testID="review-trust-spinner" />
-          )}
+          <ActivityIndicator testID="review-trust-spinner" />
         </SectionCard>
       )}
 
@@ -431,9 +423,33 @@ const ReviewView = ({
               style={spacings.mrSm}
             />
             <Text fontSize={16} weight="medium">
-              {t(`${REVIEW}.blocked.notTested.title`)}
+              {t(`${REVIEW}.blocked.notTested.title`, { count: gate.notTested.length })}
             </Text>
           </View>
+          {gate.notTested.map(({ credential, clause, member }) => {
+            const testID = `review-not-tested-${clause}-${member}`
+            const rowName = pathRowOf(credential, load.enrollments, addressBook, t).name
+            const kind = kindOf(credential, addressBook)
+            // A row named by its kind alone, a passkey with no label or an
+            // identity method, does not repeat the kind beside the name.
+            const kindName = kind && kindNameOf(kind, t) !== rowName ? kindNameOf(kind, t) : null
+            return (
+              <View
+                key={testID}
+                testID={testID}
+                style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}
+              >
+                <Text fontSize={14} weight="medium" style={spacings.mrTy} testID={`${testID}-name`}>
+                  {rowName}
+                </Text>
+                {!!kindName && (
+                  <Text fontSize={14} appearance="secondaryText" testID={`${testID}-kind`}>
+                    {kindName}
+                  </Text>
+                )}
+              </View>
+            )
+          })}
           <Text fontSize={14} appearance="secondaryText">
             {t(`${REVIEW}.blocked.notTested.body`)}
           </Text>

@@ -466,6 +466,8 @@ const wireClient = (facts: 'ready' | 'loading' | 'view-only' | 'state-unread', d
 
 const select = (owner: string, label = 'Account 1') =>
   act(() => {
+    // Each selection here stands for a tab opened on that account, so no latched account carries over.
+    sessionStorage.clear()
     mockSelected.current = { addr: owner, preferences: { label } }
     mockSelected.listeners.forEach((listener) => listener())
   })
@@ -524,6 +526,7 @@ const switchAway = async () => {
 }
 
 beforeEach(async () => {
+  sessionStorage.clear()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -649,16 +652,19 @@ describe('the start of the save', () => {
     expect(port.sendAccountBatch.mock.calls[0][0]).toBe(other.addr)
   })
 
-  const POPS: [string, SetupDraft['privacy']['backup'], () => Promise<void>][] = [
-    ['a reload', 'clear', reload],
-    ['a typed address', 'encrypted', openByAddress],
+  // An entry the router did not push is replaced in place with a keyed one; an
+  // entry with a key of its own stays as the history move left it.
+  const POPS: [string, SetupDraft['privacy']['backup'], () => Promise<void>, string][] = [
+    ['a reload', 'clear', reload, 'REPLACE'],
+    ['a typed address', 'encrypted', openByAddress, 'REPLACE'],
     [
       'forward',
       'encrypted',
       async () => {
         await mountAt([REVIEW_PATH, SAVE_PATH], 0)
         await go(1)
-      }
+      },
+      'POP'
     ],
     [
       'back',
@@ -666,18 +672,19 @@ describe('the start of the save', () => {
       async () => {
         await mountAt([SAVE_PATH, CARD_PATH], 1)
         await go(-1)
-      }
+      },
+      'REPLACE'
     ]
   ]
 
-  POPS.forEach(([named, backup, open]) =>
+  POPS.forEach(([named, backup, open, type]) =>
     it(`shows the summary with the Save button after ${named}, sends nothing by itself, and the button starts the save once`, async () => {
       await writeRecords(draftOf(backup))
       wireClient('ready')
       await open()
 
       expect(router.pathname).toBe(SAVE_PATH)
-      expect(router.type).toBe('POP')
+      expect(router.type).toBe(type)
       expect(byTestId('arm-save')?.textContent).toBe(t('socialRecovery.review.save'))
       expect(byTestId('arm-removed-key')).not.toBeNull()
       expect(byTestId('arm-cost-line')).not.toBeNull()
@@ -2369,5 +2376,34 @@ describe('a save the network dropped', () => {
     expectDropped()
     expect(receipts.wait).toHaveBeenCalledTimes(1)
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('the wallet selecting another account while the tab is open', () => {
+  it("keeps the save on the tab's account, says so, and the Save button sends for the tab's account", async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+    expect(byTestId('arm-save')).not.toBeNull()
+    expect(byTestId('setup-other-account')).toBeNull()
+
+    // Unlike a fresh tab, the open tab keeps what it latched.
+    act(() => {
+      mockSelected.current = { addr: other.addr, preferences: { label: 'Account 2' } }
+      mockSelected.listeners.forEach((listener) => listener())
+    })
+    await settle()
+
+    expect(byTestId('setup-other-account')?.textContent).toContain(
+      t('socialRecovery.chrome.otherAccount.title')
+    )
+    expect(byTestId('arm-save')).not.toBeNull()
+    expect(byTestId('arm-removed-key')).not.toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await press('arm-save')
+
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(port.sendAccountBatch.mock.calls[0][0]).toBe(address)
   })
 })

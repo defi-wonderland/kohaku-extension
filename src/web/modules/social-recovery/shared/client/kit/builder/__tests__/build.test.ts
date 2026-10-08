@@ -4,11 +4,20 @@
  * wallet's reads over the chain, and the members it does not serve yet, each
  * refusing by name.
  */
-import { decodeFunctionData, getAddress, zeroHash } from 'viem'
+import {
+  decodeFunctionData,
+  encodeEventTopics,
+  encodeFunctionData,
+  encodeFunctionResult,
+  getAddress,
+  type Hex,
+  parseAbi,
+  zeroHash
+} from 'viem'
 
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
 import { defaultClientConfiguration } from '@web/modules/social-recovery/sdk-doubles'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ClientConfiguration } from '@web/modules/social-recovery/sdk-interfaces'
 import { buildKitClient } from '@web/modules/social-recovery/shared/client/kit/builder'
 import {
   DEPLOYED_ACTION,
@@ -23,6 +32,8 @@ import {
 import {
   ACCOUNT,
   ACCOUNT_ABI,
+  ACTION_ABI,
+  CONTRACT_CODE,
   DESCRIPTOR,
   fakeNode,
   HEAD,
@@ -34,9 +45,15 @@ import {
   METHOD_ZKPASSPORT,
   thrownBy
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
-import type { DeploymentFacts } from '@web/modules/social-recovery/shared/client/types'
+import type {
+  DeploymentFacts,
+  PrivilegeAccount
+} from '@web/modules/social-recovery/shared/client/types'
 
 const ARMED = '0x0000000000000000000000000000000000000000000000000000000000000001'
+
+const PRIVILEGE_EVENT = parseAbi(['event LogPrivilegeChanged(address indexed addr, bytes32 priv)'])
+const PRIVILEGES_VIEW = parseAbi(['function privileges(address) view returns (bytes32)'])
 
 const BOOK = {
   manager: MANAGER,
@@ -49,7 +66,20 @@ const BOOK = {
   action: DEPLOYED_ACTION
 }
 
-const clientOver = (facts: DeploymentFacts = FACTS) => {
+const LISTED_ACCOUNT: PrivilegeAccount = {
+  addr: ACCOUNT,
+  associatedKeys: [KEY_A],
+  initialPrivileges: [[KEY_A, ARMED]],
+  creation: { factoryAddr: MANAGER, bytecode: '0x00', salt: zeroHash }
+}
+
+const clientOver = (
+  facts: DeploymentFacts = FACTS,
+  {
+    privilegeAccount = LISTED_ACCOUNT,
+    blockTags
+  }: { privilegeAccount?: PrivilegeAccount; blockTags?: ClientConfiguration['blockTags'] } = {}
+) => {
   const node = fakeNode()
   scriptDeployment(node)
   const descriptor = { ...DESCRIPTOR, action: DEPLOYED_ACTION, auditedActions: [DEPLOYED_ACTION] }
@@ -59,7 +89,10 @@ const clientOver = (facts: DeploymentFacts = FACTS) => {
     descriptor,
     facts,
     addressBook: BOOK,
-    config: defaultClientConfiguration({ accountImplementation: PROXY_AMBIRE_ACCOUNT }),
+    config: defaultClientConfiguration({
+      accountImplementation: PROXY_AMBIRE_ACCOUNT,
+      ...(blockTags && { blockTags })
+    }),
     provider: node.provider,
     codeRead: node.codeRead,
     manager: createManagerReads(node.provider, MANAGER),
@@ -67,12 +100,7 @@ const clientOver = (facts: DeploymentFacts = FACTS) => {
       { provider: node.provider, codeRead: node.codeRead },
       DEPLOYED_ACTION
     ),
-    privilegeAccount: {
-      addr: ACCOUNT,
-      associatedKeys: [KEY_A],
-      initialPrivileges: [[KEY_A, ARMED]],
-      creation: { factoryAddr: MANAGER, bytecode: '0x00', salt: zeroHash }
-    }
+    privilegeAccount
   })
   return { node, client }
 }
@@ -134,6 +162,61 @@ describe("the wallet's reads", () => {
     const { client } = clientOver()
     await expect(client.walletReads.fitCheck()).resolves.toMatchObject({
       basis: 'code-to-be',
+      fits: true
+    })
+  })
+
+  it("names a deployed account's key from its privilege writes where the wallet holds no creation record", async () => {
+    const { node, client } = clientOver(FACTS, {
+      privilegeAccount: {
+        addr: ACCOUNT,
+        associatedKeys: [],
+        initialPrivileges: [],
+        creation: null
+      },
+      blockTags: { read: 'finalized', watch: 'finalized' }
+    })
+    node.setCode(ACCOUNT, CONTRACT_CODE)
+    node.addLog({
+      address: ACCOUNT,
+      topics: encodeEventTopics({
+        abi: PRIVILEGE_EVENT,
+        eventName: 'LogPrivilegeChanged',
+        args: { addr: KEY_A }
+      }) as Hex[],
+      data: ARMED,
+      blockNumber: HEAD - 5,
+      blockHash: zeroHash,
+      logIndex: 0,
+      transactionHash: zeroHash
+    })
+    node.answer(
+      ACCOUNT,
+      encodeFunctionData({ abi: PRIVILEGES_VIEW, functionName: 'privileges', args: [KEY_A] }),
+      ARMED
+    )
+    node.answer(
+      DEPLOYED_ACTION,
+      encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, KEY_A] }),
+      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'isAuthority', result: true })
+    )
+    await expect(client.walletReads.removedKey()).resolves.toEqual({
+      kind: 'named',
+      key: getAddress(KEY_A)
+    })
+    expect(node.provider.block).toHaveBeenCalledWith('finalized')
+    expect(node.provider.logs).toHaveBeenCalledTimes(Math.ceil((HEAD + 1) / 10_000))
+    expect(node.calls.map(({ to, block }) => [to, block])).toEqual([
+      [ACCOUNT, HEAD],
+      [DEPLOYED_ACTION, HEAD]
+    ])
+    node.answer(
+      DEPLOYED_ACTION,
+      encodeFunctionData({ abi: ACTION_ABI, functionName: 'supportsAccount', args: [ACCOUNT] }),
+      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'supportsAccount', result: true })
+    )
+    await expect(client.walletReads.fitCheck()).resolves.toEqual({
+      basis: 'deployed-code',
       fits: true
     })
   })

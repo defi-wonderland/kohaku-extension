@@ -17,12 +17,11 @@ import type {
   FilterSpec,
   Hex,
   IProvider,
-  LogPosition,
   RawLog
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { POLICY_MANAGER_ABI } from '../abi'
-import { logsInChunks } from './log-scan'
+import { logsInChunks, positionOf } from './log-scan'
 import type { CommitQuery, LogScan, SetupCommittedLog, SetupEvents, SetupLog } from './types'
 
 export const [SETUP_COMMITTED_TOPIC] = encodeEventTopics({
@@ -40,14 +39,6 @@ const SETUP_LOG_TOPICS = 3
 
 const addressTopic = (address: Address): Hex =>
   encodeAbiParameters([{ type: 'address' }], [address])
-
-const positionOf = (log: RawLog): LogPosition => ({
-  blockNumber: log.blockNumber,
-  blockHash: log.blockHash,
-  logIndex: log.logIndex,
-  transactionHash: log.transactionHash,
-  removed: log.removed ?? false
-})
 
 /**
  * One raw log as a setup commit or clear, or undefined for a log of another
