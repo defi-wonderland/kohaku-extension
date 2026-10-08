@@ -196,30 +196,52 @@ export interface CountdownTicks {
 // The execution
 // ---------------------------------------------------------------------------
 
+/**
+ * One reading that the node knows none of the run's transactions: when it
+ * was taken (ms since epoch), the block number read with it, and the hashes
+ * it asked about.
+ */
+export interface UnknownReading {
+  at: number
+  block: number
+  hashes: readonly Hex[]
+}
+
+/**
+ * The release of a claim that may not carry a hash the caller does not know:
+ * released; kept, since it now carries another hash; or gone already, or
+ * replaced by another claim.
+ */
+export type ExecutionRelease =
+  | { status: 'released' }
+  | { status: 'hashed'; transactionHash: Hex }
+  | { status: 'gone' }
+
 export interface ExecuteState {
   write: WriteMachineState
   prepared?: PreparedCall
   /** The sending key's latest balance while the deposit step shows. */
   balance?: bigint
-  /** When the run's first hash came back, in ms since epoch, for the dropped reading. */
-  sentAt?: number
   /** The request id of the claim this page wrote on the countdown and sends under. */
   requestId?: string
   /** The request id of a claim another page (or this page before a reload) wrote, which this run follows. */
   followed?: string
   /** The followed claim while it carries no hash yet. */
   follow?: ExecutionInFlightClaim
+  /** The first reading that the node knows none of the run's transactions, kept until a second one apart from it. */
+  unknownReading?: UnknownReading
 }
 
 export type ExecuteEvent =
   | { type: 'write'; event: WriteEvent }
   | { type: 'prepared'; run: number; prepared: PreparedCall }
   | { type: 'balance'; run: number; balance: bigint }
-  | { type: 'sentAt'; run: number; at: number }
   | { type: 'claimed'; run: number; requestId: string }
   | { type: 'released'; run: number }
   | { type: 'follow'; run: number; claim: ExecutionInFlightRecord }
   | { type: 'voided'; run: number }
+  | { type: 'unknownRead'; run: number; reading: UnknownReading }
+  | { type: 'unknownCleared'; run: number }
 
 export interface ExecuteStore {
   state(): ExecuteState
@@ -242,6 +264,10 @@ export interface ExecuteSteps {
   /** Writes the hash on this page's claim, writing the claim back where another page released it. */
   markSent(claim: ExecutionInFlightClaim, transactionHash: Hex): Promise<void>
   release(requestId: string): Promise<void>
+  /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
+  releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ExecutionRelease>
+  /** How old a claim with no hash grows before the manager's events judge it, in ms. */
+  claimAgeMs: number
   /** The send under this page's claim, its receipt waited on from the claim's block. */
   send(
     prepared: PreparedCall,
@@ -283,7 +309,7 @@ export interface ExecuteStepsInput {
 export interface ExecuteRun {
   state: ExecuteState
   start: () => void
-  /** Reads the run's hashes once the attempt read disagrees with a send past the dropped age. */
+  /** Reads the run's hashes where the attempt read disagrees with a send, for the dropped reading. */
   checkDropped: () => void
   /** Waits on the run's hash again where its receipt wait ended in an error that kept the hash. */
   checkReceiptAgain: () => void

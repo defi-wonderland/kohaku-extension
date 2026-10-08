@@ -12,8 +12,9 @@
  *                                     └─ its own ──▶ submitting ──▶ failedNotSent | failedReverted | landed
  *   followed, a hash ──▶ its receipt, as after a send
  *   followed, no hash ──▶ the countdown read again until a hash arrives, the
- *                         claim goes, or the claim grows older than
- *                         `SUBMISSION_CLAIM_AGE_MS`: the manager's events from
+ *                         claim goes, or the claim grows older than the
+ *                         plan's claim age (thirty minutes for a key's own
+ *                         send, ten for the account's batch): the manager's events from
  *                         the claim's block then name the attempt consumed
  *                         (the poll goes on to the done screen) or not (the
  *                         claim released, execute offered again)
@@ -24,8 +25,9 @@
  * under the claim it wrote itself, with nothing awaited between the claim and
  * the hand-over to the wallet. The claim is released where the run ended with
  * nothing on its way to the chain (a send the wallet refused, a replaced
- * transaction, a revert, a send no node knows past the dropped age). A send
- * that may still land, and a landed one, keep it until the countdown ends.
+ * transaction, a revert, a send no node knows at two readings apart past the
+ * dropped age). A send that may still land, and a landed one, keep it until
+ * the countdown ends.
  *
  * The store is kept per chain, account and attempt while work is in flight,
  * so a second press or a remount takes up the run instead of starting one. A
@@ -44,16 +46,23 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
+import type { Hex, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 import { DROPPED_AFTER_MS } from '@web/modules/social-recovery/setup/arm'
 import {
+  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
-  READ_LIMIT_MS,
-  SUBMISSION_CLAIM_AGE_MS
+  READ_LIMIT_MS
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
-import { within } from './read'
-import type { ExecuteEvent, ExecuteState, ExecuteSteps, ExecuteStore } from './types'
+import { readWithin, sameHash, within } from './read'
+import type {
+  ExecuteEvent,
+  ExecuteState,
+  ExecuteSteps,
+  ExecuteStore,
+  UnknownReading
+} from './types'
 
 /** The execution before anything ran. */
 export const initialExecuteState = (): ExecuteState => ({ write: initialWriteState('execution') })
@@ -63,6 +72,10 @@ const inRun = (state: ExecuteState, run: number): boolean => state.write.run ===
 /** Whether the run sends with no hash yet: the wallet's window waits, or a followed claim is read. */
 const awaitingHashIn = (state: ExecuteState, run: number): boolean =>
   inRun(state, run) && state.write.status === 'submitting' && !state.write.transactionHash
+
+/** The hash the run sends or follows and waits on, where it has one. */
+const pendingHashIn = (state: ExecuteState, run: number): Hex | undefined =>
+  inRun(state, run) && state.write.status === 'submitting' ? state.write.transactionHash : undefined
 
 /** The execution's reducer. Pure: an event a state does not take leaves it as it was (the same object). */
 export const executeReducer = (state: ExecuteState, event: ExecuteEvent): ExecuteState => {
@@ -82,6 +95,10 @@ export const executeReducer = (state: ExecuteState, event: ExecuteEvent): Execut
       if (write.status !== 'needsDeposit') {
         delete next.balance
       }
+      // A kept reading of the run's transactions holds only while the run submits them.
+      if (write.status !== 'submitting') {
+        delete next.unknownReading
+      }
       return next
     }
     case 'prepared':
@@ -98,11 +115,6 @@ export const executeReducer = (state: ExecuteState, event: ExecuteEvent): Execut
         return state
       }
       return { ...state, balance: event.balance }
-    case 'sentAt':
-      if (!inRun(state, event.run) || state.write.status !== 'submitting' || state.sentAt) {
-        return state
-      }
-      return { ...state, sentAt: event.at }
     case 'claimed':
       if (!awaitingHashIn(state, event.run) || state.requestId || state.followed) {
         return state
@@ -136,8 +148,6 @@ export const executeReducer = (state: ExecuteState, event: ExecuteEvent): Execut
             : {})
         },
         followed: claim.requestId,
-        // The claim's moment is the earliest its send went out, for the dropped reading.
-        ...(hash ? { sentAt: claim.claimedAt } : {}),
         ...(hash
           ? {}
           : {
@@ -156,6 +166,18 @@ export const executeReducer = (state: ExecuteState, event: ExecuteEvent): Execut
         return state
       }
       return { write: writeReducer(state.write, { type: 'reset' }) }
+    case 'unknownRead':
+      if (!pendingHashIn(state, event.run)) {
+        return state
+      }
+      return { ...state, unknownReading: event.reading }
+    case 'unknownCleared': {
+      if (!inRun(state, event.run) || !state.unknownReading) {
+        return state
+      }
+      const { unknownReading, ...rest } = state
+      return rest
+    }
     default:
       return state
   }
@@ -197,6 +219,7 @@ export const outlivesWait = (state: ExecuteState): boolean =>
 const ATTACHED = new WeakMap<ExecuteStore, ExecuteSteps>()
 const POLLING = new WeakSet<ExecuteStore>()
 const DROP_CHECKS = new WeakSet<ExecuteStore>()
+const RECHECKING = new WeakSet<ExecuteStore>()
 const FOLLOWING = new WeakSet<ExecuteStore>()
 const WAITING = new WeakSet<ExecuteStore>()
 const SENDING = new WeakSet<ExecuteStore>()
@@ -257,7 +280,7 @@ const waitForReceipt = async (store: ExecuteStore, steps: ExecuteSteps): Promise
  * Reads the followed claim with no hash while a screen is attached: a hash
  * that arrives is waited on; a claim that went, or another page's claim in its
  * place, ends the follow (the latter is followed in turn). A claim older than
- * `SUBMISSION_CLAIM_AGE_MS` by the clock read before the countdown read is
+ * the plan's claim age by the clock read before the countdown read is
  * judged by the manager's events from the claim's block: the attempt consumed
  * leaves the done screen to the poll; none means the send never went out, and
  * where the claim still carries no hash it is released and execute offered
@@ -309,11 +332,10 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
           transactionHash: held.transactionHash,
           startBlock: held.startBlock
         })
-        store.dispatch({ type: 'sentAt', run, at: held.claimedAt })
         waitAfter = true
         return
       }
-      if (held && clock - held.claimedAt >= SUBMISSION_CLAIM_AGE_MS) {
+      if (held && clock - held.claimedAt >= steps.claimAgeMs) {
         // eslint-disable-next-line no-await-in-loop
         const consumed = await within(() => steps.consumedSince(follow.startBlock), READ_LIMIT_MS)
         if (store.state().follow !== follow) {
@@ -381,6 +403,13 @@ const followClaim = async (
   await readFollow(store)
 }
 
+// A gas check that does not answer in time is the gas check's read failure, with its retry.
+const gasCheckLimit = (error: Error): Error => providerReadFailure('estimateGas', error)
+
+/** The gas check, rejected as a read failure where it does not answer within `READ_LIMIT_MS`. */
+const checkGasWithin = (steps: ExecuteSteps, prepared: PreparedCall) =>
+  readWithin(() => steps.checkGas(prepared), READ_LIMIT_MS, gasCheckLimit)
+
 /**
  * The chain's latest block, read while the gas check still runs: a read that
  * fails, or that does not answer within `READ_LIMIT_MS`, is the gas check's
@@ -437,7 +466,6 @@ const claimAndSend = async (
   const sendDispatch = (event: WriteEvent) => {
     dispatch(event)
     if (event.type === 'sent' && event.run === run) {
-      store.dispatch({ type: 'sentAt', run, at: steps.now() })
       marking = steps.markSent(claim, event.transactionHash).catch(() => undefined)
     }
   }
@@ -457,7 +485,8 @@ const claimAndSend = async (
  * While the deposit step shows and a screen is attached: the gas check again
  * every `EXECUTE_BALANCE_POLL_MS` on the same prepared call. Enough goes on to
  * the claim and the send by itself; short keeps the step with the latest
- * balance; a read that fails reads as the gas check's failure, with its retry.
+ * balance; a read that fails, or that does not answer within `READ_LIMIT_MS`,
+ * reads as the gas check's failure, with its retry.
  */
 const pollDeposit = async (store: ExecuteStore): Promise<void> => {
   if (POLLING.has(store)) {
@@ -477,7 +506,7 @@ const pollDeposit = async (store: ExecuteStore): Promise<void> => {
       let check
       try {
         // eslint-disable-next-line no-await-in-loop
-        check = await steps.checkGas(state.prepared)
+        check = await checkGasWithin(steps, state.prepared)
       } catch (error: unknown) {
         if (inRun(store.state(), run) && store.state().write.status === 'needsDeposit') {
           writeEvent(store)({ type: 'recheck' })
@@ -511,6 +540,127 @@ const pollDeposit = async (store: ExecuteStore): Promise<void> => {
     }
   } finally {
     POLLING.delete(store)
+  }
+}
+
+/**
+ * Whether `reading` read a higher block number than `kept`, or came
+ * `DROPPED_RECHECK_MS` after it. A lower number is a node that lags.
+ */
+const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
+  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
+
+/**
+ * Whether the hashes the run waits on were dropped: the claim the run sends
+ * or follows is older than `DROPPED_AFTER_MS` by the clock read before the
+ * reads; the node knows none of them, read with the chain's block number; an
+ * earlier check kept such a reading of every one of these hashes, and this
+ * one is `apartFrom` it; and the manager's events name no consume of the
+ * attempt since the claim's block. A first reading is kept, and the check
+ * ends there, so one node that lags cannot let a second execution out. The
+ * claim is then released, unless it carries a hash the run does not know,
+ * and execute is offered again. A claim that is not the run's or is younger
+ * than the age, a known transaction, a read that fails or does not answer
+ * within `READ_LIMIT_MS`, or a consumed attempt drops the kept reading; a run
+ * that moved meanwhile moves nothing. Answers whether the check released the
+ * run.
+ */
+const readDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<boolean> => {
+  const state = store.state()
+  const { write } = state
+  const { run } = write
+  const hash = pendingHashIn(state, run)
+  const requestId = state.requestId ?? state.followed
+  if (!hash || !requestId || write.status !== 'submitting' || DROP_CHECKS.has(store)) {
+    return false
+  }
+  const hashes = write.sentHashes ?? [hash]
+  const unmoved = () => store.state().write === write
+  const notDropped = (): boolean => {
+    store.dispatch({ type: 'unknownCleared', run })
+    return false
+  }
+  DROP_CHECKS.add(store)
+  try {
+    const clock = steps.now()
+    const read = await within(() => steps.readCountdown(), READ_LIMIT_MS)
+    if (!unmoved()) {
+      return false
+    }
+    const held = read?.status === 'present' ? read.value.execution : undefined
+    if (!held || held.requestId !== requestId || clock - held.claimedAt < DROPPED_AFTER_MS) {
+      return notDropped()
+    }
+    const at = steps.now()
+    const answers = await within(
+      () =>
+        Promise.all([
+          steps.blockNumber(),
+          Promise.all(hashes.map((one) => steps.transactionKnown(one)))
+        ]),
+      READ_LIMIT_MS
+    )
+    if (!unmoved()) {
+      return false
+    }
+    if (!answers || answers[1].some((answer) => answer !== 'unknown')) {
+      return notDropped()
+    }
+    const reading: UnknownReading = { at, block: answers[0], hashes }
+    // A reading too close to the kept one leaves the kept one as it is, so the
+    // wait counts from the first; one that asked for a hash the kept one did
+    // not read starts the count again.
+    const kept = store.state().unknownReading
+    if (!kept || !reading.hashes.every((one) => kept.hashes.some((seen) => sameHash(seen, one)))) {
+      store.dispatch({ type: 'unknownRead', run, reading })
+      return false
+    }
+    if (!apartFrom(kept, reading)) {
+      return false
+    }
+    const consumed = await within(() => steps.consumedSince(held.startBlock), READ_LIMIT_MS)
+    if (!unmoved()) {
+      return false
+    }
+    if (consumed !== false) {
+      return notDropped()
+    }
+    const released = await steps.releaseClaim(requestId, hashes).catch(() => undefined)
+    if (!unmoved() || released?.status !== 'released') {
+      return false
+    }
+    writeEvent(store)({ type: 'reset' })
+    return true
+  } finally {
+    DROP_CHECKS.delete(store)
+  }
+}
+
+/**
+ * While a first reading that the node knows none of the run's transactions
+ * is kept and a screen is attached: the check again after
+ * `DROPPED_RECHECK_MS`, so the second reading comes with no poll.
+ */
+const recheckDropped = async (store: ExecuteStore): Promise<void> => {
+  if (RECHECKING.has(store)) {
+    return
+  }
+  RECHECKING.add(store)
+  try {
+    while (store.state().unknownReading) {
+      // eslint-disable-next-line no-await-in-loop
+      await rest(DROPPED_RECHECK_MS)
+      const steps = ATTACHED.get(store)
+      if (!steps || !store.state().unknownReading) {
+        return
+      }
+      // eslint-disable-next-line no-await-in-loop
+      if (await readDropped(store, steps)) {
+        return
+      }
+    }
+  } finally {
+    RECHECKING.delete(store)
   }
 }
 
@@ -550,6 +700,9 @@ export const attachExecuteSteps = (store: ExecuteStore, steps: ExecuteSteps): vo
   readFollow(store).catch(() => undefined)
   if (store.state().write.status === 'needsDeposit') {
     pollDeposit(store).catch(() => undefined)
+  }
+  if (store.state().unknownReading) {
+    recheckDropped(store).catch(() => undefined)
   }
 }
 
@@ -606,7 +759,7 @@ export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): 
   let check
   let startBlock: number | undefined
   try {
-    check = await steps.checkGas(prepared)
+    check = await checkGasWithin(steps, prepared)
     if (check.kind === 'enough' && stillChecking()) {
       startBlock = await startBlockOf(steps)
     }
@@ -645,41 +798,15 @@ export const checkReceiptAgain = async (
 
 /**
  * The dropped reading, called where the attempt read still disagrees with a
- * send (the attempt is not consumed): past `DROPPED_AFTER_MS` since its first
- * hash, by the clock read before the reads, where the node knows none of the
- * run's hashes, the claim is released and execute is offered again. A read
- * that fails, or a release that fails, decides nothing.
+ * send (the attempt is not consumed): a first reading that the node knows
+ * none of the run's hashes is kept and read again by itself while a screen is
+ * attached; a second one apart from it releases the claim and offers execute
+ * again. Answers whether the check released the run.
  */
-export const checkDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<void> => {
-  const clock = steps.now()
-  const state = store.state()
-  const { write } = state
-  if (
-    DROP_CHECKS.has(store) ||
-    write.status !== 'submitting' ||
-    !write.transactionHash ||
-    state.sentAt === undefined ||
-    clock - state.sentAt < DROPPED_AFTER_MS
-  ) {
-    return
+export const checkDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<boolean> => {
+  const released = await readDropped(store, steps)
+  if (!released && store.state().unknownReading) {
+    recheckDropped(store).catch(() => undefined)
   }
-  DROP_CHECKS.add(store)
-  try {
-    const hashes = write.sentHashes ?? [write.transactionHash]
-    const known = await Promise.all(hashes.map((hash) => steps.transactionKnown(hash)))
-    if (!known.every((reading) => reading === 'unknown') || store.state().write !== write) {
-      return
-    }
-    const requestId = state.requestId ?? state.followed
-    if (requestId) {
-      await steps.release(requestId)
-    }
-    if (store.state().write === write) {
-      writeEvent(store)({ type: 'reset' })
-    }
-  } catch {
-    // A failed read is no answer; the next poll asks again.
-  } finally {
-    DROP_CHECKS.delete(store)
-  }
+  return released
 }

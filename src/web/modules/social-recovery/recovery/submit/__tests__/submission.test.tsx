@@ -104,14 +104,15 @@ describe('the submission', () => {
       expect(seen).toHaveLength(1)
     })
 
-    it('sends from the seed slot’s ordinary key on the fresh install, never from the new key', async () => {
+    it('sends from the receiving basic account’s own key on the fresh install, the key the recovery installs', async () => {
       const world = await openWorld({ route: 'fresh-install' })
       const seen = claimAtSend(world)
       await startOn(world)
       expect(world.port.send).toHaveBeenCalledTimes(1)
+      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
       const [key, transaction] = world.port.send.mock.calls[0]
-      expect(key.addr).toBe(world.sendingKey)
-      expect(key.addr).not.toBe(world.newKey)
+      expect(key.addr).toBe(world.receiving.addr)
+      expect(key.addr).toBe(world.newKey)
       expect(transaction).toEqual(
         expect.objectContaining({ to: START_CALL.target, data: START_CALL.data })
       )

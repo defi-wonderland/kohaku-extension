@@ -36,7 +36,10 @@ import { recordKeys } from '@web/modules/social-recovery/shared/records'
 const POLL_MS = 30_000
 const REREAD_MS = 5_000
 const READ_LIMIT_MS = 20_000
-const CLAIM_AGE_MS = 10 * 60_000
+/** The claim age of a send from a key's own address. */
+const CLAIM_AGE_MS = 30 * 60_000
+/** The claim age of a send as the account's own batch. */
+const BATCH_CLAIM_AGE_MS = 10 * 60_000
 /** The block the execution's own claim reads before it, as the fake chain answers it. */
 const OWN_CLAIM_BLOCK = START_BLOCK + 8
 
@@ -534,5 +537,64 @@ describe('a claim with no hash that grew old', () => {
     expect(world.kit.receipts.wait).toHaveBeenCalledWith(OTHER_TX_HASH, CLAIM_BLOCK)
     expect(view.byTestId('wait-execute')).toBeNull()
     expect(world.port.send).not.toHaveBeenCalled()
+  })
+})
+
+describe('the claim age by the route that sends', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it("follows a hashless claim younger than ten minutes on the account's batch route, and releases it once older", async () => {
+    const world = await openWorld({ receiving: 'smart' })
+    elapse(world.kit)
+    await claimElsewhere(world.records, world.account, {
+      claimedAt: Date.now() - BATCH_CLAIM_AGE_MS + 60_000
+    })
+    view = await mountWait(world.account)
+
+    await tick(REREAD_MS)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(claimRangeReads(world)).toEqual([])
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+
+    moveDeviceClock(60_000)
+    await tick(REREAD_MS)
+    expect(claimRangeReads(world)).toHaveLength(1)
+    expect(await executionOf(world.records, world.account)).toBeUndefined()
+    expect(view.isDisabled('wait-execute')).toBe(false)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  const keyRoutes = [
+    { route: 'logged-in', name: "a basic account's own key" },
+    { route: 'fresh-install', name: "the receiving basic account's own key on the fresh install" }
+  ] as const
+  keyRoutes.forEach(({ route, name }) => {
+    it(`follows a hashless claim ten minutes old where ${name} sends, and releases it once older than thirty`, async () => {
+      const world = await openWorld({ route })
+      elapse(world.kit)
+      await claimElsewhere(world.records, world.account, {
+        claimedAt: Date.now() - BATCH_CLAIM_AGE_MS
+      })
+      view = await mountWait(world.account)
+
+      await tick(REREAD_MS)
+      await tick(REREAD_MS)
+      expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+      expect(claimRangeReads(world)).toEqual([])
+      expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+
+      moveDeviceClock(CLAIM_AGE_MS - BATCH_CLAIM_AGE_MS)
+      await tick(REREAD_MS)
+      expect(claimRangeReads(world)).toHaveLength(1)
+      expect(await executionOf(world.records, world.account)).toBeUndefined()
+      expect(view.isDisabled('wait-execute')).toBe(false)
+      expect(world.port.send).not.toHaveBeenCalled()
+    })
   })
 })

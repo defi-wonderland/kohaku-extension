@@ -152,7 +152,13 @@ const {
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
 const i18n: typeof import('@common/config/localization').default =
   require('@common/config/localization').default
-const { getAddress, keccak256, zeroAddress, zeroHash }: typeof import('viem') = require('viem')
+const {
+  getAddress,
+  keccak256,
+  parseEther,
+  zeroAddress,
+  zeroHash
+}: typeof import('viem') = require('viem')
 const { dedicatedToOneSAPriv } = require('@ambire-common/interfaces/keystore')
 const {
   getSmartAccount
@@ -425,7 +431,7 @@ export const fakeKit = (account: Address): Kit => {
   const holdsAnyPrivilege = jest.fn(async () => chain.newKeyHolds)
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))
   const reads = {
-    nativeBalance: jest.fn(async () => 10n ** 18n),
+    nativeBalance: jest.fn(async () => parseEther('1')),
     estimateGas: jest.fn(async () => 300_000n),
     gasPrice: jest.fn(async () => 2n * GWEI)
   }
@@ -544,10 +550,12 @@ export const readyFacts = (facts: ListedAccountFacts): AccountFactsResult => ({
   retry: () => undefined
 })
 
-/** The keystore of a fresh install's seed slot: the smart account's key and the slot's ordinary key. */
-export const seedSlotKeys = (smartKey: Address, ordinaryKey: Address): Key[] =>
+/**
+ * The keystore of a fresh install: the receiving basic account's key as an
+ * ordinary key of the recovery phrase the fast track made.
+ */
+export const seedSlotKeys = (ordinaryKey: Address): Key[] =>
   [
-    { addr: smartKey, type: 'internal', dedicatedToOneSA: true, meta: { fromSeedId: 'seed-1' } },
     { addr: ordinaryKey, type: 'internal', dedicatedToOneSA: false, meta: { fromSeedId: 'seed-1' } }
   ] as unknown as Key[]
 
@@ -868,7 +876,8 @@ export const mountBand = (records: WalletRecords): Promise<Mounted> =>
  * fresh storage, its client over a fake chain and its receiving account's
  * facts. On the logged-in route the receiving account is a basic account whose
  * own key sends; `receiving: 'smart'` makes it a smart account that sends its
- * own batch. On the fresh install the seed slot's ordinary key sends.
+ * own batch. On the fresh install the receiving account is the basic account
+ * the fast track added, whose key the recovery installs and which sends.
  */
 export interface World {
   account: Address
@@ -916,23 +925,21 @@ export const openWorld = async ({
   let sendingKey: Address
   mockWallet.accounts = []
   mockWallet.keys = []
-  if (receiving === 'basic' && route === 'logged-in') {
+  if (receiving === 'basic' || route === 'fresh-install') {
     receivingAccount = basicAccount(getAddress(`0x${keySeed.toString(16).padStart(40, '0')}`))
     facts = factsOf(receivingAccount, { addr: receivingAccount.addr as Address, type: 'internal' })
     newKey = receivingAccount.addr as Address
     sendingKey = newKey
+    if (route === 'fresh-install') {
+      mockWallet.accounts = [receivingAccount]
+      mockWallet.keys = seedSlotKeys(newKey)
+    }
   } else {
     const smart = await keyedAccount(keySeed)
     receivingAccount = smart.account
     facts = factsOf(smart.account, smart.key)
     newKey = smart.key.addr
     sendingKey = smart.key.addr
-    if (route === 'fresh-install') {
-      const ordinary = getAddress(`0x${(keySeed + 1).toString(16).padStart(40, '0')}`)
-      mockWallet.accounts = [smart.account, basicAccount(ordinary)]
-      mockWallet.keys = seedSlotKeys(smart.key.addr, ordinary)
-      sendingKey = ordinary
-    }
   }
   const entry: RecoveryEntryRecord = {
     account,

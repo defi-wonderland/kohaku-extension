@@ -6,6 +6,7 @@
  * every approval the submission carries, and Start recovery locked until all
  * of them rendered.
  */
+import type { Key } from '@ambire-common/interfaces/keystore'
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   configurationOf,
@@ -427,6 +428,61 @@ describe('the submission confirmation', () => {
       await mounted.press('submit-action')
       expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
       expect(world.port.send).not.toHaveBeenCalled()
+    })
+
+    it('reads the receiving basic account’s own key ready on the fresh install and unlocks', async () => {
+      const world = await openWorld({ route: 'fresh-install' })
+      const mounted = await open(world)
+      await openDetails(mounted)
+      expect(mounted.byTestId('submit-sending-unavailable')).toBeNull()
+      expect(mounted.byTestId('submit-sending-failed')).toBeNull()
+      expect(mounted.isDisabled('submit-action')).toBe(false)
+    })
+
+    const unheldCases = [
+      { name: 'holds no key of it', keys: (): Key[] => [] },
+      {
+        name: 'holds its key only for one smart account',
+        keys: (world: World) =>
+          [
+            {
+              addr: world.receiving.addr,
+              type: 'internal',
+              dedicatedToOneSA: true,
+              meta: { fromSeedId: 'seed-1' }
+            }
+          ] as unknown as Key[]
+      },
+      {
+        name: 'holds its key from no recovery phrase',
+        keys: (world: World) =>
+          [
+            { addr: world.receiving.addr, type: 'internal', dedicatedToOneSA: false, meta: {} }
+          ] as unknown as Key[]
+      }
+    ]
+    unheldCases.forEach((unheld) => {
+      it(`says no key can send on the fresh install where the wallet lists the receiving account but ${unheld.name}`, async () => {
+        const world = await openWorld({ route: 'fresh-install' })
+        mockWallet.keys = unheld.keys(world)
+        const mounted = await open(world)
+        await openDetails(mounted)
+        expect(mounted.textOf('submit-sending-unavailable')).toBe(t(`${SUBMIT}.noSendingKey`))
+        expect(mounted.byTestId('submit-sending-retry')).toBeNull()
+        expect(mounted.isDisabled('submit-action')).toBe(true)
+        await mounted.press('submit-action')
+        expect(world.port.send).not.toHaveBeenCalled()
+        expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+      })
+    })
+
+    it('says no key can send on the fresh install where the wallet does not list the receiving account', async () => {
+      const world = await openWorld({ route: 'fresh-install' })
+      mockWallet.accounts = []
+      const mounted = await open(world)
+      await openDetails(mounted)
+      expect(mounted.textOf('submit-sending-unavailable')).toBe(t(`${SUBMIT}.noSendingKey`))
+      expect(mounted.isDisabled('submit-action')).toBe(true)
     })
   })
 })
