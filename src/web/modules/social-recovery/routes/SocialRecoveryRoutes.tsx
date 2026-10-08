@@ -18,6 +18,7 @@ import KeyStepScreen from '@web/modules/social-recovery/onboarding/fast-track/Ke
 import GasStepScreen from '@web/modules/social-recovery/onboarding/fast-track/GasStepScreen'
 import EntryScreen from '@web/modules/social-recovery/recovery/entry/EntryScreen'
 import AccountStepScreen from '@web/modules/social-recovery/recovery/entry/AccountStepScreen'
+import ReadoutScreen from '@web/modules/social-recovery/recovery/entry/ReadoutScreen'
 
 /**
  * The route registry of the account recovery module.
@@ -59,6 +60,7 @@ const SocialRecoveryRoutes = () => (
         <Route path="fast-track/gas" element={<GasStepScreen />} />
         <Route path="recovery" element={<EntryScreen />} />
         <Route path="recovery/account" element={<AccountStepScreen />} />
+        <Route path="recovery/readout" element={<ReadoutScreen />} />
       </Route>
     </Route>
 

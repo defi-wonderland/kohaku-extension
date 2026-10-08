@@ -4,11 +4,17 @@ import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
   Address,
+  Configuration,
+  Hex,
+  IEventManager,
   IRecoveryActionInteractor,
   ISetupClient,
+  PrivacyLevel,
+  RestoreCause,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
+  AddressBook,
   FitCheckReading,
   KeyHandle,
   RecoveryKitClient,
@@ -17,6 +23,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
+  RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
@@ -247,4 +254,187 @@ export interface ReadFailedBlockProps {
   body: string
   onRetry: () => void
   testID: string
+}
+
+// ---------------------------------------------------------------------------
+// The readout
+// ---------------------------------------------------------------------------
+
+/** The part of the recovery client the readout reads. */
+export interface ReadoutKitClient {
+  setup: Pick<ISetupClient, 'setupState' | 'getSetup'> & {
+    events: Pick<IEventManager, 'accountFilter' | 'fetch'>
+  }
+}
+
+/** The recovery client for the account being recovered, as the readout takes it. */
+export type ReadoutClient =
+  | { status: 'loading' }
+  | { status: 'ready'; client: ReadoutKitClient }
+  /** This wallet version cannot read the setup; only an update of the wallet helps. */
+  | { status: 'update-the-wallet' }
+  | { status: 'failed'; retry: () => void }
+
+/** The restore cause a thrown restore refusal carries, with the backup's refusal reason where it names one. */
+export interface RestoreRefusalReading {
+  cause: RestoreCause
+  reason?: unknown
+}
+
+/** The path's shape a shape-visible setup publishes: each clause's threshold and its methods, no value. */
+export interface ShapeNote {
+  clauses: { threshold: number; methods: Address[] }[]
+}
+
+/**
+ * What the setup read answers before the recovery password: sealed, the shape
+ * readable with the values withheld, or the whole configuration readable; or
+ * a setup this device cannot open at all: a backup this build cannot read, no
+ * backup, or a backup that does not match the commitment.
+ */
+export type SetupReading =
+  | { kind: 'sealed' }
+  | { kind: 'shape-readable'; shape: ShapeNote }
+  | { kind: 'readable'; configuration: Configuration }
+  | { kind: 'unreadable' }
+  | { kind: 'no-details' }
+  | { kind: 'mismatch' }
+
+/** Why the recovery password did not open the setup. */
+export type UnlockFailure = 'wrong' | 'event-failed' | 'unreadable' | 'no-details' | 'mismatch'
+
+/** The password ask at a hidden level. */
+export type UnlockState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'wrong' }
+  | { status: 'event-failed' }
+
+/** The two levels that hide the values until the recovery password. */
+export type HiddenLevel = Exclude<PrivacyLevel, 'public'>
+
+/** Where the readout stands. */
+export type ReadoutStep =
+  | { kind: 'reading' }
+  | { kind: 'read-failed' }
+  | { kind: 'update-the-wallet' }
+  | { kind: 'no-details' }
+  | { kind: 'mismatch' }
+  | { kind: 'locked'; level: HiddenLevel; shape?: ShapeNote; unlock: UnlockState }
+  | { kind: 'readable'; level: PrivacyLevel; configuration: Configuration }
+  /** The readout sends the holder on to another screen. */
+  | { kind: 'leaving' }
+
+export interface ReadoutState {
+  step: ReadoutStep
+  /** Runs again the read that failed. */
+  retry: () => void
+  unlock: (password: string) => void
+  /** Leaves the wrong password's blocker for the password field. */
+  askAgain: () => void
+  onContinue: () => void
+  continuing: boolean
+  /** The opened setup at Public could not be kept on this device, so the readout does not move on. */
+  writeFailed: boolean
+  /** Keeps the opened setup again, then moves on where the failed write stopped. */
+  retryWrite: () => void
+}
+
+export interface ReadoutOptions {
+  client: ReadoutClient
+  records: Pick<WalletRecords, 'recoverySession' | 'decryptedSetupCache'>
+  chainId: ChainId
+  /** The account being recovered. */
+  account: Address
+  entry: RecoveryEntryRecord
+  navigate: (to: string) => void
+}
+
+/** A read of the recovery entry record. */
+export type EntryRecordRead =
+  | { status: 'pending' }
+  | { status: 'present'; entry: RecoveryEntryRecord }
+  | { status: 'absent' }
+  | { status: 'failed' }
+
+export interface ReadoutEntryState {
+  read: EntryRecordRead
+  retry: () => void
+}
+
+/** One row of the readout's path. */
+export interface ReadoutRow {
+  /** The row's value: a guardian's address, a passkey's name, the kind's name, or the hidden value. */
+  name: string
+  /** The kind word beside the value, where the value is not the kind's name itself. */
+  aside: string | null
+  /** The hidden chip beside a masked value. */
+  chip: string | null
+  /** The lines under the row, in order. */
+  lines: string[]
+  /** Whether this device can answer the row: false for a passkey of another origin or a method this build does not know. */
+  answerable: boolean
+}
+
+/** One clause of the readout: a required row, or a group with its threshold. */
+export interface ReadoutClause {
+  threshold: number
+  required: boolean
+  rows: ReadoutRow[]
+}
+
+/** The path as the readout draws it: the clauses, the rule lines and the waiting period. */
+export interface ReadoutPath {
+  clauses: ReadoutClause[]
+  ruleLines: string[]
+  /** The waiting period, or the hidden value. */
+  wait: string
+  /** The hidden chip beside a masked waiting period. */
+  waitChip: string | null
+  /** Whether a group lets the holder pick which members answer. */
+  choice: boolean
+  /** Why this device cannot complete the path, or null where it can or cannot tell yet. */
+  blocked: ReadoutBlock | null
+}
+
+/** Why the methods this device can answer do not complete the path: a passkey of another origin, or a method this build does not know. */
+export type ReadoutBlock = 'origin' | 'unsupported'
+
+/** The values the readout's rows read beside the configuration. */
+export interface ReadoutRowContext {
+  addressBook: AddressBook
+  /** The relying-party hash of this build's origin. */
+  ownRpIdHash: Hex
+}
+
+export interface ReadoutStageProps {
+  records: ReadoutOptions['records']
+  chainId: ChainId
+  account: Address
+  entry: RecoveryEntryRecord
+  networkName: string
+  context: ReadoutRowContext
+  navigate: (to: string) => void
+}
+
+export interface ReadoutViewProps {
+  state: ReadoutState
+  account: Address
+  networkName: string
+  context: ReadoutRowContext
+  onBack: () => void
+}
+
+export interface ReadoutPasswordAskProps {
+  level: HiddenLevel
+  unlock: UnlockState
+  networkName: string
+  onUnlock: (password: string) => void
+  onAskAgain: () => void
+  onRetry: () => void
+  onBack: () => void
+}
+
+export interface ReadoutPathBlockProps {
+  path: ReadoutPath
 }
