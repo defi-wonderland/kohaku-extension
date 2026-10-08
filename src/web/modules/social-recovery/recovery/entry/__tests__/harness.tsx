@@ -17,8 +17,19 @@ import { TextDecoder, TextEncoder } from 'util'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, Gathering, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
-import type { FitCheckReading, RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
+import type {
+  Address,
+  Configuration,
+  Gathering,
+  PrivacyLevel,
+  SetupState
+} from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  FitCheckReading,
+  RecoveryKitClient,
+  RemovedKeyReading
+} from '@web/modules/social-recovery/shared/client'
+import type { sdkStandIn as StandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
 
@@ -93,6 +104,16 @@ export interface Mounted {
   type: (id: string, value: string) => Promise<void>
   isDisabled: (id: string) => boolean
   isChecked: (id: string) => boolean
+  /** Whether the first node comes after the second in the page, as a reader meets them. */
+  comesAfter: (later: string, earlier: string) => boolean
+  /** Whether the second node sits inside the first. */
+  holds: (outer: string, inner: string) => boolean
+}
+
+/** A setup committed on the stand-in's chain for the lost account, and the client built over it. */
+export interface CommittedWorld {
+  chain: ReturnType<typeof StandIn.chainFor>
+  client: RecoveryKitClient
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +291,13 @@ jest.mock('@common/components/Avatar', () => {
   }
 })
 
+// The stand-in's chain answers the readout's client; no deployment variable
+// from a developer's environment turns it into the deployed kit.
+jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
+  SEPOLIA_DEPLOYMENT_VARIABLE: 'SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT',
+  sepoliaDeploymentVariable: () => undefined
+}))
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
 const { encodeErrorResult, getAddress, parseAbi }: typeof import('viem') = require('viem')
@@ -281,12 +309,27 @@ const themeConfig: typeof import('@common/styles/themeConfig') = require('@commo
 const i18n: typeof import('@common/config/localization').default =
   require('@common/config/localization').default
 const {
+  addressBookOf,
+  buildRecoveryClient,
   CHAIN_IDS,
   deploymentDescriptor,
+  descriptorOf,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
+  sdkStandIn
+}: typeof import('@web/modules/social-recovery/shared/client/stand-in') = require('@web/modules/social-recovery/shared/client/stand-in')
+const {
+  ecdsaConfigOf,
+  passkeyConfigOf
+}: typeof import('@web/modules/social-recovery/shared/client/kit/formats/credentials') = require('@web/modules/social-recovery/shared/client/kit/formats/credentials')
+const {
+  relyingPartyOf,
+  rpIdHashOf
+}: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
+const {
   chipKey,
+  renderShortAddress,
   renderValueLabel
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const {
@@ -297,6 +340,8 @@ const EntryScreen: typeof import('@web/modules/social-recovery/recovery/entry/En
   require('@web/modules/social-recovery/recovery/entry/EntryScreen').default
 const AccountStepScreen: typeof import('@web/modules/social-recovery/recovery/entry/AccountStepScreen').default =
   require('@web/modules/social-recovery/recovery/entry/AccountStepScreen').default
+const ReadoutScreen: typeof import('@web/modules/social-recovery/recovery/entry/ReadoutScreen').default =
+  require('@web/modules/social-recovery/recovery/entry/ReadoutScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 export const t = (key: string, values?: Record<string, unknown>): string => i18n.t(key, values)
@@ -713,7 +758,22 @@ const mount = async (element: React.ReactElement): Promise<Mounted> => {
       await settle()
     },
     isDisabled: (id) => byTestId(id)?.getAttribute('aria-disabled') === 'true',
-    isChecked: (id) => byTestId(id)?.getAttribute('aria-checked') === 'true'
+    isChecked: (id) => byTestId(id)?.getAttribute('aria-checked') === 'true',
+    comesAfter: (later, earlier) => {
+      const after = byTestId(later)
+      const before = byTestId(earlier)
+      return (
+        !!after &&
+        !!before &&
+        !before.contains(after) &&
+        // eslint-disable-next-line no-bitwise
+        (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      )
+    },
+    holds: (outer, inner) => {
+      const node = byTestId(inner)
+      return !!node && !!byTestId(outer)?.contains(node)
+    }
   }
 }
 
@@ -754,6 +814,181 @@ export const lookUp = async (screen: Mounted, value: string) => {
 export const confirmLost = async (screen: Mounted) => {
   await lookUp(screen, LOST.toLowerCase())
   await screen.press('entry-confirm-mine')
+}
+
+// ---------------------------------------------------------------------------
+// The readout
+// ---------------------------------------------------------------------------
+
+/** The readout's route for an account. */
+export const readoutSearchOf = (account: string) => `?account=${account}`
+
+/** The readout's route, with the URL's search. */
+export const mountReadout = (search: string) => {
+  setWallet({ search, state: null })
+  return mount(<ReadoutScreen />)
+}
+
+/** Stores the recovery entry the account step writes for the lost account. */
+export const storeEntry = async (
+  route: 'logged-in' | 'fresh-install',
+  receivingAccount: Address = BASIC
+) => {
+  await records().recoveryEntry(CHAIN_ID, LOST).write({ account: LOST, route, receivingAccount })
+}
+
+/** The recovery password printed on the lost account's Recovery Card. */
+export const CARD_PASSWORD = 'ember-harbor-quiet-71'
+
+/** The guardians of the committed setup. */
+export const GUARDIANS: Address[] = [
+  getAddress('0x9a4d000000000000000000000000000000000011'),
+  getAddress('0x9b4d000000000000000000000000000000000012'),
+  getAddress('0x9c4d000000000000000000000000000000000013')
+]
+
+const ADDRESS_BOOK = addressBookOf(WALLET_RECOVERY_CHAIN)
+
+/** A passkey config whose committed origin hash is this page's own, or another origin's. */
+export const passkeyConfig = (origin: 'this' | 'other') =>
+  passkeyConfigOf({
+    x: `0x${'11'.repeat(32)}`,
+    y: `0x${'22'.repeat(32)}`,
+    rpIdHash:
+      origin === 'this'
+        ? relyingPartyOf(window.location).rpIdHash
+        : rpIdHashOf('chrome-extension://another-kohaku-build')
+  })
+
+/**
+ * The lost account's setup: a required passkey created under this origin and
+ * a group where two of three guardians answer, with a five-day wait.
+ */
+export const LOST_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 1,
+      credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('this') }]
+    },
+    {
+      threshold: 2,
+      credentials: GUARDIANS.map((guardian) => ({
+        method: ADDRESS_BOOK.methods.ecdsa,
+        config: ecdsaConfigOf(guardian)
+      }))
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A setup whose one passkey was created under another origin. */
+export const OTHER_ORIGIN_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 1,
+      credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') }]
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A method module this build does not know. */
+export const UNKNOWN_METHOD: Address = getAddress('0x0dd0000000000000000000000000000000000021')
+
+/** A setup whose one method is a module this build does not know. */
+export const UNKNOWN_METHOD_SETUP: Configuration = {
+  clauses: [{ threshold: 1, credentials: [{ method: UNKNOWN_METHOD, config: '0x01' }] }],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A setup whose group of two, needing both, holds a passkey of another origin and a guardian. */
+export const SHORT_GROUP_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 2,
+      credentials: [
+        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
+        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+      ]
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A setup whose group of two, needing one, holds a passkey of another origin and a guardian. */
+export const ONE_ANSWERABLE_SETUP: Configuration = {
+  clauses: [
+    {
+      threshold: 1,
+      credentials: [
+        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
+        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+      ]
+    }
+  ],
+  wait: 432_000n,
+  ignoresPause: false
+}
+
+/** A recovery client for the lost account built over a scripted chain. */
+const clientOver = (chain: CommittedWorld['chain']) =>
+  buildRecoveryClient({
+    chain: WALLET_RECOVERY_CHAIN,
+    account: LOST,
+    addressBook: ADDRESS_BOOK,
+    provider: sdkStandIn.providerFor(chain),
+    codeRead: { code: async () => '0x' }
+  })
+
+/** The ready state of the screen's hook over a built client. */
+export const readyOver = (client: RecoveryKitClient): ClientState =>
+  ({ status: 'ready', client, reads: {}, receipts: {}, retry: () => {} } as unknown as ClientState)
+
+/**
+ * Commits a setup for the lost account at a privacy level on the stand-in's
+ * chain, builds the recovery client over it, and hands it to the screen.
+ */
+export const commitLostSetup = async (
+  level: PrivacyLevel,
+  configuration: Configuration = LOST_SETUP
+): Promise<CommittedWorld> => {
+  sdkStandIn.reset()
+  const chain = sdkStandIn.chainFor(descriptorOf(WALLET_RECOVERY_CHAIN, ADDRESS_BOOK), LOST)
+  chain.commitSetup({
+    level,
+    configuration,
+    password: level === 'public' ? undefined : CARD_PASSWORD
+  })
+  const client = await clientOver(chain)
+  setClient(LOST, readyOver(client))
+  return { chain, client }
+}
+
+/** Builds a new client over the same chain and hands it to the screen, as a rebuilt client would. */
+export const rebuildClient = async (world: CommittedWorld): Promise<CommittedWorld> => {
+  const client = await clientOver(world.chain)
+  setClient(LOST, readyOver(client))
+  return { chain: world.chain, client }
+}
+
+/** The value a restore refuses with: a cause and the values the refusal carries. */
+export const restoreRefusal = (code: string, values: Record<string, unknown> = {}): Error =>
+  Object.assign(new Error(`The restore refused: ${code}`), {
+    name: 'RestoreRefusal',
+    cause: { code, subject: 'restore', values }
+  })
+
+/** A guardian's address as a row draws it. */
+export const shortAddress = (address: Address) => renderShortAddress(address)
+
+/** The opened setup this device keeps for the lost account, or null where none is kept. */
+export const storedCache = async (account: Address = LOST) => {
+  const read = await records().decryptedSetupCache(CHAIN_ID, account).read()
+  return read.status === 'present' ? read.value : null
 }
 
 // Registered only when Jest runs this file itself: a suite that imports the
