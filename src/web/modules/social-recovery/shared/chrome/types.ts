@@ -104,6 +104,9 @@ export interface StepCounterProps {
   labelKey: string
   step: number
   total: number
+  testID?: string
+}
+
 export type FieldInputProps = InputProps
 
 export interface SetupAccount {
