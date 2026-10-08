@@ -84,61 +84,65 @@ const asRendered = (colour: unknown): string => {
 const focus = () => act(() => field().focus())
 const blur = () => act(() => field().blur())
 
-describe.each([
-  ['light', THEME_TYPES.LIGHT],
-  ['dark', THEME_TYPES.DARK]
-] as const)('a field in the %s theme', (_name, type) => {
-  const theme = themeOf(type)
+;(
+  [
+    ['light', THEME_TYPES.LIGHT],
+    ['dark', THEME_TYPES.DARK]
+  ] as const
+).forEach(([name, type]) =>
+  describe(`a field in the ${name} theme`, () => {
+    const theme = themeOf(type)
 
-  it('draws its focus in the primary colour and a neutral ring, never the accent red', () => {
-    mount(type, <FieldInput testID="field" value="" onChangeText={() => {}} />)
-    const resting = borders()
-    focus()
-    const focused = borders()
-    expect(focused).toEqual({
-      inner: asRendered(theme.primary),
-      outer: asRendered(theme.primaryBorder)
+    it('draws its focus in the primary colour and a neutral ring, never the accent red', () => {
+      mount(type, <FieldInput testID="field" value="" onChangeText={() => {}} />)
+      const resting = borders()
+      focus()
+      const focused = borders()
+      expect(focused).toEqual({
+        inner: asRendered(theme.primary),
+        outer: asRendered(theme.primaryBorder)
+      })
+      expect([focused.inner, focused.outer]).not.toContain(asRendered(theme.linkText))
+      expect([focused.inner, focused.outer]).not.toContain(asRendered(theme.errorDecorative))
+      blur()
+      expect(borders()).toEqual(resting)
     })
-    expect([focused.inner, focused.outer]).not.toContain(asRendered(theme.linkText))
-    expect([focused.inner, focused.outer]).not.toContain(asRendered(theme.errorDecorative))
-    blur()
-    expect(borders()).toEqual(resting)
-  })
 
-  it('keeps the error colours of a field with an error, focused or not', () => {
-    mount(type, <FieldInput testID="field" value="" error="Wrong" onChangeText={() => {}} />)
-    const errorBorders = {
-      inner: asRendered(theme.errorDecorative),
-      outer: asRendered(theme.errorBackground)
-    }
-    expect(borders()).toEqual(errorBorders)
-    focus()
-    expect(borders()).toEqual(errorBorders)
-    expect(container.textContent).toContain('Wrong')
-  })
+    it('keeps the error colours of a field with an error, focused or not', () => {
+      mount(type, <FieldInput testID="field" value="" error="Wrong" onChangeText={() => {}} />)
+      const errorBorders = {
+        inner: asRendered(theme.errorDecorative),
+        outer: asRendered(theme.errorBackground)
+      }
+      expect(borders()).toEqual(errorBorders)
+      focus()
+      expect(borders()).toEqual(errorBorders)
+      expect(container.textContent).toContain('Wrong')
+    })
 
-  it('keeps the neutral focus colours when a focused field becomes disabled', () => {
-    mount(type, <FieldInput testID="field" value="" onChangeText={() => {}} />)
-    focus()
-    const neutral = {
-      inner: asRendered(theme.primary),
-      outer: asRendered(theme.primaryBorder)
-    }
-    expect(borders()).toEqual(neutral)
-    mount(type, <FieldInput testID="field" value="" disabled onChangeText={() => {}} />)
-    expect(borders()).toEqual(neutral)
-    expect([borders().inner, borders().outer]).not.toContain(asRendered(theme.linkText))
-  })
+    it('keeps the neutral focus colours when a focused field becomes disabled', () => {
+      mount(type, <FieldInput testID="field" value="" onChangeText={() => {}} />)
+      focus()
+      const neutral = {
+        inner: asRendered(theme.primary),
+        outer: asRendered(theme.primaryBorder)
+      }
+      expect(borders()).toEqual(neutral)
+      mount(type, <FieldInput testID="field" value="" disabled onChangeText={() => {}} />)
+      expect(borders()).toEqual(neutral)
+      expect([borders().inner, borders().outer]).not.toContain(asRendered(theme.linkText))
+    })
 
-  it('keeps the valid colours of a field marked valid while it is focused', () => {
-    mount(type, <FieldInput testID="field" value="" isValid onChangeText={() => {}} />)
-    focus()
-    expect(borders()).toEqual({
-      inner: asRendered(theme.successDecorative),
-      outer: asRendered(theme.successBackground)
+    it('keeps the valid colours of a field marked valid while it is focused', () => {
+      mount(type, <FieldInput testID="field" value="" isValid onChangeText={() => {}} />)
+      focus()
+      expect(borders()).toEqual({
+        inner: asRendered(theme.successDecorative),
+        outer: asRendered(theme.successBackground)
+      })
     })
   })
-})
+)
 
 describe('a field', () => {
   it('hands its focus and its blur to the handlers it is given', () => {

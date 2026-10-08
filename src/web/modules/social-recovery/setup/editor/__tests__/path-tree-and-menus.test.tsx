@@ -51,6 +51,7 @@ const {
   BOB,
   BOOK,
   CAROL,
+  eachIt,
   ENROLLED,
   enrolled,
   makeRecords,
@@ -207,7 +208,7 @@ const linePieces = () => {
 const ENROLLED_ALL = ENROLLED.map(enrolled)
 
 describe('a row of the path opens its method', () => {
-  it.each([
+  eachIt([
     ['a required passkey row', 'editor-slot-0-0', { kind: 'passkey', clause: '0', member: '0' }],
     [
       'a guardian member of a group',
@@ -232,7 +233,7 @@ describe('a row of the path opens its method', () => {
     expect(enrollOpened(navigate).slot).toEqual({ kind: 'ecdsa', clause: '2', member: '0' })
   })
 
-  it.each([
+  eachIt([
     'editor-row-0-move',
     'editor-row-0-remove',
     'editor-member-1-0-required',
@@ -265,7 +266,7 @@ describe('"Add a required method"', () => {
     )
   })
 
-  it.each(ALL_KINDS)(
+  eachIt(ALL_KINDS)(
     'places an empty required %s slot after the path and opens its enrollment',
     async (kind) => {
       const { navigate, storedClauses } = await mount(presetPath())
@@ -295,7 +296,7 @@ describe('a group\'s "Add member"', () => {
     )
   })
 
-  it.each(ALL_KINDS)(
+  eachIt(ALL_KINDS)(
     'places an empty %s slot at the end of that group only and opens its enrollment',
     async (kind) => {
       const { navigate, storedClauses } = await mount(twoGroupPath())
@@ -334,7 +335,7 @@ describe('"Add a second method"', () => {
     expect(menuEntries('editor-add-second-method-menu')).toEqual(['passkey', 'ecdsa'])
   })
 
-  it.each(['passkey', 'ecdsa'] as const)(
+  eachIt(['passkey', 'ecdsa'] as const)(
     'turns the lone method and a %s slot into one group of any one of two',
     async (kind) => {
       const { navigate, storedClauses } = await mount(ONE_METHOD)
@@ -459,7 +460,7 @@ describe('the path as one tree', () => {
     expect(linePieces()).toBeGreaterThan(0)
   })
 
-  it.each([
+  eachIt([
     ['one required row', [{ threshold: 1, credentials: [PASSKEY] }]],
     ['one group', [{ threshold: 1, credentials: [PASSKEY, ALICE] }]]
   ])('draws no line and no "and" on a path of %s', async (_name, clauses) => {
@@ -498,7 +499,7 @@ describe('"Make it a group" without the sizing sentence', () => {
     expect(byTestId('editor-make-it-a-group')).toBeNull()
   })
 
-  it.each([
+  eachIt([
     ['a row beside a group', presetPath()],
     ['one group of two', [{ threshold: 1, credentials: [PASSKEY, ALICE] }]]
   ])('does not offer it on %s', async (_name, clauses) => {
@@ -517,7 +518,7 @@ describe('an empty slot of a kind the wallet cannot read', () => {
     { threshold: 1, credentials: [ALICE, { ...UNREAD_SLOT, label: 'fingerprint' }] }
   ]
 
-  it.each([
+  eachIt([
     ['no label', NO_LABEL],
     ['a label that names no kind', UNKNOWN_LABEL]
   ])('with %s opens the four kinds under it, writing nothing', async (_name, clauses) => {
@@ -539,7 +540,7 @@ describe('an empty slot of a kind the wallet cannot read', () => {
     expect(byTestId('editor-slot-1-1-menu')).toBeNull()
   })
 
-  it.each(ALL_KINDS)(
+  eachIt(ALL_KINDS)(
     'becomes an empty %s slot in its place on a pick and opens that enrollment',
     async (kind) => {
       const { navigate, storedClauses } = await mount(NO_LABEL, ENROLLED_ALL)
@@ -681,7 +682,7 @@ describe('a kind menu and the keyboard', () => {
     expect(byTestId('editor-add-required-menu')).not.toBeNull()
   })
 
-  it.each(['editor-add-required', 'editor-group-1-add'])(
+  eachIt(['editor-add-required', 'editor-group-1-add'])(
     'announces %s as a control that opens a menu',
     async (id) => {
       await mount(presetPath())
@@ -691,7 +692,7 @@ describe('a kind menu and the keyboard', () => {
     }
   )
 
-  it.each(['editor-add-required', 'editor-group-1-add'])(
+  eachIt(['editor-add-required', 'editor-group-1-add'])(
     'announces whether the menu of %s is open',
     async (id) => {
       await mount(presetPath())

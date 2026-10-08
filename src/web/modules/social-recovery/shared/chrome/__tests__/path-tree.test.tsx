@@ -15,6 +15,7 @@ import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import themeConfig, { THEME_TYPES } from '@common/styles/themeConfig'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import { PathTree, PathTreeNode } from '@web/modules/social-recovery/shared/chrome'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__tests__/harness'
 
 // React only runs effects and state updates inside act() when this flag is set.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -175,7 +176,7 @@ describe('a path tree', () => {
     expect(tickTop('second')).toBe('9px')
   })
 
-  it.each([THEME_TYPES.LIGHT, THEME_TYPES.DARK] as const)(
+  eachIt([THEME_TYPES.LIGHT, THEME_TYPES.DARK] as const)(
     "draws every piece of line in the %s theme's border colour",
     (type) => {
       mount(
