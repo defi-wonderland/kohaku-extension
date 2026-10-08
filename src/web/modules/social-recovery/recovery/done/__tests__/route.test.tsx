@@ -31,6 +31,17 @@ const mockScreen = (name: string) => {
   return { __esModule: true, default: () => R.createElement('div', { 'data-testid': name }) }
 }
 
+// The chrome's account latch is the chrome's own, tested in its folder.
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
+  __esModule: true,
+  default: () => ({
+    account: undefined,
+    differs: false,
+    selected: undefined,
+    switchToSelected: () => {}
+  })
+}))
+
 jest.mock('@web/modules/router/components/KeystoreUnlockedRoute', () => mockGuard('unlocked'))
 jest.mock('@web/modules/router/components/AuthenticatedRoute', () => mockGuard('authenticated'))
 jest.mock('@web/modules/social-recovery/setup/arm/ArmScreen', () => mockScreen('arm'))
@@ -47,6 +58,11 @@ jest.mock('@web/modules/social-recovery/shared/ceremony/screen', () => mockScree
 jest.mock('@web/modules/social-recovery/onboarding/recover/RecoverScreen', () =>
   mockScreen('recover')
 )
+jest.mock('@web/modules/social-recovery/recovery/entry/EntryScreen', () => mockScreen('entry'))
+jest.mock('@web/modules/social-recovery/recovery/entry/AccountStepScreen', () =>
+  mockScreen('account-step')
+)
+jest.mock('@web/modules/social-recovery/recovery/entry/ReadoutScreen', () => mockScreen('readout'))
 jest.mock('@web/modules/social-recovery/recovery/checklist/ChecklistScreen', () =>
   mockScreen('checklist')
 )
