@@ -7,6 +7,7 @@ export { default as RadioCard } from './RadioCard'
 export { default as SectionCard } from './SectionCard'
 export { default as SectionLabel } from './SectionLabel'
 export { default as StatusChip } from './StatusChip'
+export { default as StepCounter } from './StepCounter'
 export type {
   ActionsRowProps,
   MethodRowProps,
@@ -14,6 +15,8 @@ export type {
   OtherAccountNoticeProps,
   PageTitleProps,
   PillChoiceProps,
+  PlainChromeProps,
+  PlainHeaderProps,
   RadioCardProps,
   SectionCardProps,
   SectionCardSpacing,
@@ -22,7 +25,8 @@ export type {
   SetupAccount,
   SetupChromeProps,
   StatusChipProps,
-  StatusChipTone
+  StatusChipTone,
+  StepCounterProps
 } from './types'
 export { default as PathTree } from './PathTree'
 export { default as PathTreeNode } from './PathTreeNode'
