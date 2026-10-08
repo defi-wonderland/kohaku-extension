@@ -1,8 +1,8 @@
 /**
  * The fast track's gas step, after the readout and with no step number. It
  * reads the recovery entry of the account in the URL for the account that
- * receives control, finds the key that sends the recovery (the ordinary key of
- * that smart account's seed slot, never the key the recovery installs), and
+ * receives control, finds the key that sends the recovery (that account
+ * itself, the slot's basic account, whose key the recovery installs), and
  * runs the submission's gas check on it. A key that holds enough skips the
  * step; otherwise the deposit step waits for the funds and moves on to the
  * checklist by itself once they arrive.
@@ -39,7 +39,7 @@ import {
   accountStepPathOf,
   checklistPathOf,
   readoutPathOf,
-  selectedSmartAccountOf
+  selectedBasicAccountOf
 } from './navigation'
 import { fastTrackSendingKeyOf } from './sendingKey'
 import type { EntryReading, GasStepState } from './types'
@@ -94,7 +94,7 @@ const GasStepScreen = () => {
 
   const away =
     !account || entry.status === 'absent'
-      ? accountStepPathOf(selectedSmartAccountOf(selected))
+      ? accountStepPathOf(selectedBasicAccountOf(selected))
       : present && (!freshInstall || gas.state.kind === 'enough')
       ? checklistPathOf(present.account)
       : null

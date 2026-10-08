@@ -1,9 +1,6 @@
 import { isAddress } from 'viem'
 
-import {
-  DERIVATION_OPTIONS,
-  SMART_ACCOUNT_SIGNER_KEY_DERIVATION_OFFSET
-} from '@ambire-common/consts/derivation'
+import { DERIVATION_OPTIONS } from '@ambire-common/consts/derivation'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import { isSmartAccount } from '@ambire-common/libs/account/account'
@@ -12,7 +9,7 @@ import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 
 import { SLOT_INDEX } from './constants'
-import type { ListedSlot, SlotKeys, TempSeed } from './types'
+import type { TempSeed } from './types'
 
 /**
  * The recovery phrase in a one-time message the keystore sent to the page;
@@ -40,58 +37,38 @@ export const tempSeedOf = (data: unknown): TempSeed | null => {
 }
 
 /**
- * The two keys of a slot, derived from the recovery phrase through the
- * library's key iterator: the ordinary key at the slot's index, and the key at
- * the index plus the smart-account offset, the one that controls the slot's
- * smart account and that a recovery installs.
+ * The slot's key, derived from the recovery phrase through the library's key
+ * iterator at the slot's index: the key of the slot's basic account, which
+ * the recovery installs on the recovered account and which pays its gas.
  */
-export const slotKeysOf = async (seed: TempSeed, index: number = SLOT_INDEX): Promise<SlotKeys> => {
+export const slotKeyOf = async (seed: TempSeed, index: number = SLOT_INDEX): Promise<Address> => {
   const iterator = new KeyIterator(seed.seed, seed.seedPassphrase)
-  const controlling = index + SMART_ACCOUNT_SIGNER_KEY_DERIVATION_OFFSET
-  const [ordinaryKey, controllingKey] = await iterator.retrieve(
-    [
-      { from: index, to: index },
-      { from: controlling, to: controlling }
-    ],
-    seed.hdPathTemplate
-  )
-  if (!ordinaryKey || !controllingKey || !isAddress(ordinaryKey) || !isAddress(controllingKey)) {
-    throw new Error(`The key iterator derived no keys for slot index ${index}.`)
+  const [key] = await iterator.retrieve([{ from: index, to: index }], seed.hdPathTemplate)
+  if (!key || !isAddress(key)) {
+    throw new Error(`The key iterator derived no key for slot index ${index}.`)
   }
-  return { ordinaryKey, controllingKey }
+  return key
 }
 
 /**
- * The slot's two accounts, once the wallet lists them and the keystore holds
- * both keys: the basic account at the ordinary key, and the smart account
- * whose associated keys name the controlling key. The picker's account and
- * the local derivation must agree on that key; null until both accounts are
- * listed that way.
+ * The slot's basic account, once the wallet lists it at the slot's key and
+ * the keystore holds that key as an ordinary key of a recovery phrase; null
+ * until then.
  */
 export const listedSlotOf = (
-  slot: SlotKeys,
+  slotKey: Address,
   accounts: readonly Account[],
   keys: readonly Key[]
-): ListedSlot | null => {
+): Address | null => {
   const basic = accounts.find(
-    (account) => !isSmartAccount(account) && sameAddress(account.addr, slot.ordinaryKey)
+    (account) => !isSmartAccount(account) && sameAddress(account.addr, slotKey)
   )
-  const smart = accounts.find(
-    (account) =>
-      isSmartAccount(account) &&
-      account.associatedKeys.some((key) => sameAddress(key, slot.controllingKey))
+  const held = keys.some(
+    (key) =>
+      key.type === 'internal' &&
+      !key.dedicatedToOneSA &&
+      typeof key.meta.fromSeedId === 'string' &&
+      sameAddress(key.addr, slotKey)
   )
-  const holds = (address: Address) =>
-    keys.some((key) => key.type === 'internal' && sameAddress(key.addr, address))
-  if (
-    !basic ||
-    !smart ||
-    !isAddress(basic.addr) ||
-    !isAddress(smart.addr) ||
-    !holds(slot.ordinaryKey) ||
-    !holds(slot.controllingKey)
-  ) {
-    return null
-  }
-  return { basicAccount: basic.addr, smartAccount: smart.addr }
+  return basic && held && isAddress(basic.addr) ? basic.addr : null
 }

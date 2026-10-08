@@ -7,12 +7,12 @@
  * A wallet that already lists accounts when the step opens (a Back or a
  * reload after the add, or a logged-in wallet at this URL) makes no new
  * phrase: past the warning, the holder goes on to the account step for the
- * selected smart account. So does a step that opens while the wallet still
- * adds the accounts of an earlier visit, once that add lists them. Once the
- * wallet lists the slot's accounts, the step closes the wallet's picker
+ * selected basic account. So does a step that opens while the wallet still
+ * adds the account of an earlier visit, once that add lists it. Once the
+ * wallet lists the slot's basic account, the step closes the wallet's picker
  * session and its newly-added marks, as the wallet's own create flow does,
  * and the holder goes on to the account step on the fresh install's route,
- * with the slot's smart account as the account that receives control. Every
+ * with that basic account as the account that receives control. Every
  * move replaces this step in the history, so Back never returns to it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -30,7 +30,7 @@ import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 
 import { ACKNOWLEDGED_STATE } from './constants'
 import KeyStepView from './KeyStepView'
-import { accountStepPathOf, acknowledgedOf, selectedSmartAccountOf } from './navigation'
+import { accountStepPathOf, acknowledgedOf, selectedBasicAccountOf } from './navigation'
 import useAcknowledgment from './useAcknowledgment'
 import useFastTrackKey from './useFastTrackKey'
 
@@ -53,9 +53,7 @@ const KeyStep = () => {
     closed.current = true
     dispatch({ type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_RESET' })
     dispatch({ type: 'ACCOUNTS_CONTROLLER_RESET_ACCOUNTS_NEWLY_ADDED_STATE' })
-    navigate(accountStepPathOf(listed ? listed.smartAccount : selectedSmartAccountOf(selected)), {
-      replace: true
-    })
+    navigate(accountStepPathOf(listed ?? selectedBasicAccountOf(selected)), { replace: true })
   }, [listed, listedByEarlierAdd, selected, dropping, dispatch, navigate])
 
   const proceed = useCallback(() => {
@@ -97,7 +95,7 @@ const KeyStepScreen = () => {
   const away = !acknowledged
     ? null
     : alreadyListed
-    ? accountStepPathOf(selectedSmartAccountOf(selected))
+    ? accountStepPathOf(selectedBasicAccountOf(selected))
     : !hasPasswordSecret
     ? WEB_ROUTES.socialRecoveryFastTrack
     : !isUnlocked

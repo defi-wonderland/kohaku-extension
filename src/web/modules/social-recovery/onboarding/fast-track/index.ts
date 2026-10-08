@@ -12,7 +12,7 @@ export {
   SLOT_INDEX,
   SUBMISSION_GAS_STAND_IN
 } from './constants'
-export { listedSlotOf, slotKeysOf, tempSeedOf } from './derivation'
+export { listedSlotOf, slotKeyOf, tempSeedOf } from './derivation'
 export { submissionCheckOf } from './gas'
 export {
   accountParamOf,
@@ -20,7 +20,7 @@ export {
   acknowledgedOf,
   checklistPathOf,
   readoutPathOf,
-  selectedSmartAccountOf
+  selectedBasicAccountOf
 } from './navigation'
 export { fastTrackSendingKeyOf } from './sendingKey'
 export type {
@@ -33,10 +33,8 @@ export type {
   KeyStepPhase,
   KeyStepViewProps,
   KeyStoreSetup,
-  ListedSlot,
   MadePhrase,
   PasswordStepViewProps,
-  SlotKeys,
   SubmissionCheckInput,
   SubmissionGas,
   TempSeed

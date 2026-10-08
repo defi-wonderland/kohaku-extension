@@ -7,14 +7,14 @@
  *    once the phrase it holds is the one made here. Every mount makes its own
  *    phrase, so no phrase left over from another flow is shown as this key.
  * 2. The key that will control the account, derived from that phrase through
- *    the library's key iterator at the slot's index plus the smart-account
- *    offset.
- * 3. On `add`, the wallet's picker opens on the phrase with the slot's smart
- *    account selected, and adds the slot's basic account and smart account
- *    with both keys (its own automatic add of the next slot).
- * 4. The step reads `listed` once the wallet lists both accounts, the smart
- *    account's key agrees with the derived one, the keystore holds both keys
- *    and the wallet has selected an account.
+ *    the library's key iterator at the slot's index: the key of the slot's
+ *    basic account. The recovered account is the only smart account this key
+ *    controls, so no smart account of the slot is derived or added.
+ * 3. On `add`, the wallet's picker opens on the phrase and adds the slot's
+ *    basic account with its key (its own automatic add of the next slot).
+ * 4. The step reads `listed` once the wallet lists that basic account at the
+ *    derived key, the keystore holds the key and the wallet has selected an
+ *    account.
  *
  * A phrase the keystore did not confirm within the limit reads as failed,
  * with retry; while it waits, a tab shown again hands the phrase over once
@@ -42,17 +42,11 @@ import useAccountPickerControllerState from '@web/hooks/useAccountPickerControll
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { KEY_STEP_LIMIT_MS, RECOVERY_PHRASE_WORDS } from './constants'
-import { listedSlotOf, slotKeysOf, tempSeedOf } from './derivation'
-import type {
-  AddProgress,
-  FastTrackKey,
-  KeyStepPhase,
-  MadePhrase,
-  SlotKeys,
-  TempSeed
-} from './types'
+import { listedSlotOf, slotKeyOf, tempSeedOf } from './derivation'
+import type { AddProgress, FastTrackKey, KeyStepPhase, MadePhrase, TempSeed } from './types'
 
 const useFastTrackKey = (): FastTrackKey => {
   const { dispatch } = useBackgroundService()
@@ -72,7 +66,7 @@ const useFastTrackKey = (): FastTrackKey => {
   const [waiting, setWaiting] = useState(pickerBusy)
   const [seedRun, setSeedRun] = useState(0)
   const [seed, setSeed] = useState<TempSeed | null>(null)
-  const [slotKeys, setSlotKeys] = useState<SlotKeys | null>(null)
+  const [slotKey, setSlotKey] = useState<Address | null>(null)
   const [phase, setPhase] = useState<KeyStepPhase>(waiting ? 'adding' : 'creating')
   const made = useRef<MadePhrase | null>(null)
   // What the picker went through since the last add started.
@@ -93,7 +87,7 @@ const useFastTrackKey = (): FastTrackKey => {
     )
     made.current = { run: seedRun, phrase }
     setSeed(null)
-    setSlotKeys(null)
+    setSlotKey(null)
     setPhase('creating')
     dispatch({
       type: 'KEYSTORE_CONTROLLER_ADD_TEMP_SEED',
@@ -146,16 +140,16 @@ const useFastTrackKey = (): FastTrackKey => {
     return () => eventBus.removeEventListener('receiveOneTimeData', onOneTimeData)
   }, [])
 
-  // 2. Derive the slot's keys from the confirmed phrase.
+  // 2. Derive the slot's key from the confirmed phrase.
   useEffect(() => {
     if (!seed) {
       return undefined
     }
     let live = true
-    slotKeysOf(seed)
+    slotKeyOf(seed)
       .then((derived) => {
         if (live) {
-          setSlotKeys(derived)
+          setSlotKey(derived)
           setPhase((current) => (current === 'creating' ? 'words' : current))
         }
       })
@@ -169,15 +163,15 @@ const useFastTrackKey = (): FastTrackKey => {
     }
   }, [seed])
 
-  const listed = slotKeys && accounts ? listedSlotOf(slotKeys, accounts, keys ?? []) : null
+  const listed = slotKey && accounts ? listedSlotOf(slotKey, accounts, keys ?? []) : null
   const selected = authStatus === AUTH_STATUS.AUTHENTICATED
   const listedAndSelected = !!listed && selected
 
   const [limitReached, setLimitReached] = useState(false)
 
   // 3. Open the picker on the phrase; its init selects the slot's basic
-  // account with its smart account and adds them. Nothing goes out where the
-  // slot is already listed, or while the picker still runs an add.
+  // account and adds it. Nothing goes out where the slot is already listed,
+  // or while the picker still runs an add.
   const add = useCallback(() => {
     if (!seed || (phase !== 'words' && phase !== 'addFailed')) {
       return
@@ -197,8 +191,7 @@ const useFastTrackKey = (): FastTrackKey => {
       params: {
         privKeyOrSeed: seed.seed,
         seedPassphrase: seed.seedPassphrase,
-        hdPathTemplate: seed.hdPathTemplate,
-        shouldSelectSmartAccountAutomatically: true
+        hdPathTemplate: seed.hdPathTemplate
       }
     })
     dispatch({ type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT' })
@@ -267,8 +260,8 @@ const useFastTrackKey = (): FastTrackKey => {
 
   return {
     phase,
-    words: seed && slotKeys ? seed.seed.split(' ') : [],
-    controllingKey: slotKeys?.controllingKey ?? null,
+    words: seed && slotKey ? seed.seed.split(' ') : [],
+    controllingKey: slotKey,
     listed: listedAndSelected ? listed : null,
     listedByEarlierAdd: waiting && !pickerBusy && !!accounts?.length && selected,
     pending: phase === 'adding' && limitReached,

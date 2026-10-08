@@ -44,9 +44,9 @@ export const accountParamOf = (search: URLSearchParams): Address | undefined => 
 }
 
 /**
- * The selected account where it is a smart account: on the fast track the
- * wallet selects the slot's smart account once it lists it, the account that
+ * The selected account where it is a basic account: on the fast track the
+ * wallet selects the slot's basic account once it lists it, the account that
  * receives control.
  */
-export const selectedSmartAccountOf = (selected: Account | null | undefined): Address | undefined =>
-  selected && isSmartAccount(selected) && isAddress(selected.addr) ? selected.addr : undefined
+export const selectedBasicAccountOf = (selected: Account | null | undefined): Address | undefined =>
+  selected && !isSmartAccount(selected) && isAddress(selected.addr) ? selected.addr : undefined

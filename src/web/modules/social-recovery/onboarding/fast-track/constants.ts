@@ -28,7 +28,7 @@ export const SLOT_INDEX = 0
 
 /**
  * How long the key step waits for the keystore to confirm the new phrase, or
- * for the wallet to list the slot's accounts, before it offers retry.
+ * for the wallet to list the slot's basic account, before it offers retry.
  */
 export const KEY_STEP_LIMIT_MS = 60_000
 

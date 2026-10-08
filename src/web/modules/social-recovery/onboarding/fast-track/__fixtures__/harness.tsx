@@ -216,9 +216,9 @@ jest.mock('@ambire-common/libs/entropyGenerator/entropyGenerator', () => ({
 // phrase through the library; every other part of the derivation is real.
 jest.mock('@web/modules/social-recovery/onboarding/fast-track/derivation', () => ({
   ...jest.requireActual('@web/modules/social-recovery/onboarding/fast-track/derivation'),
-  slotKeysOf: async ({ seed }: { seed: string }) => {
+  slotKeyOf: async ({ seed }: { seed: string }) => {
     mockEdge.derived.push(seed)
-    return { ordinaryKey: mockSlot.ordinaryKey, controllingKey: mockSlot.controllingKey }
+    return mockSlot.ordinaryKey
   }
 }))
 jest.mock('@web/constants/browserapi', () => ({
