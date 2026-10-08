@@ -16,6 +16,7 @@ import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/Recov
 import ChecklistScreen from '@web/modules/social-recovery/recovery/checklist/ChecklistScreen'
 import InProgressScreen from '@web/modules/social-recovery/recovery/checklist/InProgressScreen'
 import SubmitScreen from '@web/modules/social-recovery/recovery/submit/SubmitScreen'
+import WaitScreen from '@web/modules/social-recovery/recovery/wait/WaitScreen'
 import FastTrackScreen from '@web/modules/social-recovery/onboarding/fast-track/FastTrackScreen'
 import KeyStepScreen from '@web/modules/social-recovery/onboarding/fast-track/KeyStepScreen'
 import GasStepScreen from '@web/modules/social-recovery/onboarding/fast-track/GasStepScreen'
@@ -63,6 +64,7 @@ const SocialRecoveryRoutes = () => (
         <Route path="recovery/checklist" element={<ChecklistScreen />} />
         <Route path="recovery/in-progress" element={<InProgressScreen />} />
         <Route path="recovery/submit" element={<SubmitScreen />} />
+        <Route path="recovery/wait" element={<WaitScreen />} />
         <Route path="fast-track/gas" element={<GasStepScreen />} />
         <Route path="recovery" element={<EntryScreen />} />
         <Route path="recovery/account" element={<AccountStepScreen />} />
