@@ -138,6 +138,9 @@ const usePasskeyClaim = ({
     }
     const take = async () => {
       const stored = await records.ceremonyRequest(ceremonyId).read()
+      if (!live) {
+        return
+      }
       const asked =
         stored.status === 'present' ? claimAskedOf(stored.value, { account, chainId }) : null
       if (!asked) {
@@ -151,6 +154,9 @@ const usePasskeyClaim = ({
       }
       const identity: ReportIdentity = { id: ceremonyId, call: 'createClaim', method: PASSKEY_SLUG }
       const report = await readCeremonyReport(identity, deps.reportStore, deps.now())
+      if (!live) {
+        return
+      }
       if (report) {
         done(report, asked)
         return
@@ -172,6 +178,7 @@ const usePasskeyClaim = ({
     take().catch(() => undefined)
     return () => {
       live = false
+      taking.current = null
       stopListening.current?.()
       stopListening.current = undefined
     }
