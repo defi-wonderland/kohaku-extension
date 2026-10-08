@@ -39,6 +39,34 @@ export const within = <T>(read: () => Promise<T>, limitMs: number): Promise<T | 
   })
 
 /**
+ * The answer of `read`, rejected where it does not answer within `limitMs`;
+ * `onLimit` shapes that rejection where a caller reads it by its kind.
+ */
+export const readWithin = <T>(
+  read: () => Promise<T>,
+  limitMs: number,
+  onLimit: (error: Error) => Error = (error) => error
+): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(onLimit(new Error(`No answer in ${limitMs} ms.`))),
+      limitMs
+    )
+    Promise.resolve()
+      .then(read)
+      .then(
+        (answer) => {
+          clearTimeout(timer)
+          resolve(answer)
+        },
+        (error: unknown) => {
+          clearTimeout(timer)
+          reject(error)
+        }
+      )
+  })
+
+/**
  * One poll: the attempt read with its pinned block, whether the account still
  * authorizes the action, whether the action still fits the account, whether
  * the key being removed still holds a key value, and whether the new key
@@ -69,7 +97,8 @@ export const readWaitFacts = (
     }
   }, limitMs)
 
-const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
+/** Whether two hashes are the same, in any case. */
+export const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
 /**
  * The attempt the countdown's record names, from the decimal strings the

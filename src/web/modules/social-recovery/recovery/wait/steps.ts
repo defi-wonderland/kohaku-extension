@@ -31,10 +31,14 @@ import {
   receiptOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
+import {
+  KEY_SEND_CLAIM_AGE_MS,
+  SUBMISSION_CLAIM_AGE_MS
+} from '@web/modules/social-recovery/recovery/submit'
 
 import { COUNTDOWN_CONFLICT_RETRIES } from './constants'
-import { isAttemptOf } from './read'
-import type { ExecuteSteps, ExecuteStepsInput } from './types'
+import { isAttemptOf, sameHash } from './read'
+import type { ExecuteSteps, ExecuteStepsInput, ExecutionRelease } from './types'
 
 export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
   const { records, chainId, account, landed, client, plan, network, reads, receipts, port } = input
@@ -128,6 +132,19 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
     async release(requestId) {
       await withFreshRevision((revision) => countdown.releaseExecution(requestId, revision))
     },
+    releaseClaim: (requestId, hashes) =>
+      withFreshRevision(async (revision, execution): Promise<ExecutionRelease> => {
+        if (!execution || execution.requestId !== requestId) {
+          return { status: 'gone' }
+        }
+        const hash = execution.transactionHash
+        if (hash && !hashes.some((known) => sameHash(known, hash))) {
+          return { status: 'hashed', transactionHash: hash }
+        }
+        await countdown.releaseExecution(requestId, revision)
+        return { status: 'released' }
+      }),
+    claimAgeMs: plan.kind === 'key' ? KEY_SEND_CLAIM_AGE_MS : SUBMISSION_CLAIM_AGE_MS,
     send: (prepared, dispatch, run, startBlock, requestId) =>
       plan.kind === 'key'
         ? driveSend({
