@@ -155,8 +155,15 @@ export interface AddInput {
   completesSetup: boolean
   /** False where the add may only find the account listed with the key, never dispatch. */
   dispatches: boolean
+  chainId: number
   account: Address
   event: ConsumeEvent | null
+}
+
+/** An add this page started, kept past the screen that started it until the add ends. */
+export interface PendingAdd {
+  startedAt: number
+  creation?: CreationBasis
 }
 
 export interface AddHook {

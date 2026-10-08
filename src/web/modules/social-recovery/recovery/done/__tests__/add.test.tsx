@@ -7,8 +7,10 @@
  * key, renders the add's failure with retry, and on the fast track only marks
  * the wallet's setup complete once the account is listed. An account the
  * wallet lists without the granted key is added again; one it lists with the
- * key is not. A mount again while the first add still runs follows that add
- * and dispatches none of its own until a retry.
+ * key is not. A mount again before the first add ended follows that add and
+ * dispatches none of its own until a retry: while the first mount still builds
+ * the account, after its dispatch and before the wallet reads the add running,
+ * while it runs, and after it ended and before the wallet lists the account.
  */
 import { dedicatedToOneSAPriv } from '@ambire-common/interfaces/keystore'
 import { getSmartAccount } from '@ambire-common/libs/account/account'
@@ -35,6 +37,7 @@ import {
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import { ADD_LIMIT_MS } from '@web/modules/social-recovery/recovery/done'
+import * as accountModule from '@web/modules/social-recovery/recovery/done/account'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 useDoneClock()
@@ -300,28 +303,130 @@ describe('a mount again while the first add runs', () => {
     return { world, screen }
   }
 
+  /** The wallet lists the account the first add sent, with the granted key. */
+  const walletListsFirstAdd = () =>
+    setWallet({
+      accounts: [...(mockWallet.accounts ?? []), addedAccountOf()],
+      statuses: { addAccounts: 'SUCCESS' }
+    })
+
+  /** The second mount sends nothing, reads done once the wallet lists the account, and sends nothing after. */
+  const expectFollowedToDone = async (screen: Mounted) => {
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(screen.has('done-adding')).toBe(true)
+    expectNoDoneText(screen)
+    await tick(1000)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+
+    await walletListsFirstAdd()
+    expect(screen.has('done')).toBe(true)
+    expect(screen.textOf('done-controlled-by')).toBe(renderFullAddress(NEW_KEY))
+    await tick(ADD_LIMIT_MS * 2)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(screen.has('done-add-failed')).toBe(false)
+  }
+
   const routes = ['fresh-install', 'logged-in'] as const
   routes.forEach((route) => {
     it(`on the ${route} route dispatches no second add and reads done once the wallet lists the account with the key`, async () => {
       const { screen } = await remountDuringAdd(route)
-      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
-      expect(screen.has('done-adding')).toBe(true)
-      expectNoDoneText(screen)
-      await tick(1000)
-      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
-
-      await setWallet({
-        accounts: [...(mockWallet.accounts ?? []), addedAccountOf()],
-        statuses: { addAccounts: 'SUCCESS' }
-      })
-      expect(screen.has('done')).toBe(true)
-      expect(screen.textOf('done-controlled-by')).toBe(renderFullAddress(NEW_KEY))
-      await tick(ADD_LIMIT_MS * 2)
-      expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
-      expect(screen.has('done-add-failed')).toBe(false)
+      await expectFollowedToDone(screen)
       expect(dispatchedOf(SETUP_COMPLETE_ACTION)).toHaveLength(route === 'fresh-install' ? 1 : 0)
       screen.unmount()
     })
+  })
+
+  it('dispatches no second add where the first mount went while it still built the account', async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    const real = accountModule.recoveredAccountOf
+    const build = jest.spyOn(accountModule, 'recoveredAccountOf')
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    build.mockImplementationOnce(async (input) => {
+      await held
+      return real(input)
+    })
+    const first = await mountDone(world.account)
+    expect(build).toHaveBeenCalledTimes(1)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    first.unmount()
+
+    const screen = await mountDone(world.account)
+    expect(build).toHaveBeenCalledTimes(1)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(0)
+    expect(screen.has('done-adding')).toBe(true)
+    release()
+    await tick(0)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(addedAccountOf().associatedKeys).toEqual([NEW_KEY])
+    await expectFollowedToDone(screen)
+    build.mockRestore()
+    screen.unmount()
+  })
+
+  it('dispatches no second add where the first mount went after its dispatch and before the wallet reads the add running', async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    const first = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    expect(mockWallet.statuses?.addAccounts).toBe('INITIAL')
+    first.unmount()
+
+    const screen = await mountDone(world.account)
+    await setWallet({ statuses: { addAccounts: 'LOADING' } })
+    await expectFollowedToDone(screen)
+    screen.unmount()
+  })
+
+  it('dispatches no second add where the first mount went after the add ended and before the wallet lists the account', async () => {
+    const world = await openWorld({ route: 'logged-in' })
+    const first = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+    await setWallet({ statuses: { addAccounts: 'LOADING' } })
+    await setWallet({ statuses: { addAccounts: 'SUCCESS' } })
+    first.unmount()
+
+    const screen = await mountDone(world.account)
+    await expectFollowedToDone(screen)
+    screen.unmount()
+  })
+
+  it('follows the first add to failed where the wallet reports an error after a mount again that came before the add ran', async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    const first = await mountDone(world.account)
+    first.unmount()
+    const screen = await mountDone(world.account)
+    await setWallet({ statuses: { addAccounts: 'LOADING' } })
+    await setWallet({ statuses: { addAccounts: 'ERROR' } })
+    expect(screen.has('done-add-failed')).toBe(true)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(1)
+
+    await screen.press('done-add-retry')
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    await tick(1000)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    screen.unmount()
+
+    const again = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    await walletAddsIt()
+    expect(again.has('done-now-in-wallet')).toBe(true)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    again.unmount()
+  })
+
+  it('dispatches again on a mount after the followed add ended in failure', async () => {
+    const world = await openWorld({ route: 'fresh-install' })
+    const first = await mountDone(world.account)
+    await tick(ADD_LIMIT_MS + 1000)
+    expect(first.has('done-add-failed')).toBe(true)
+    first.unmount()
+
+    const screen = await mountDone(world.account)
+    expect(dispatchedOf(ADD_ACTION)).toHaveLength(2)
+    expect(screen.has('done-adding')).toBe(true)
+    screen.unmount()
   })
 
   it('reads the followed add ending in an error as failed, and the retry dispatches once', async () => {

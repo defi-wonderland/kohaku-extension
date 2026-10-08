@@ -217,6 +217,7 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
   const { state: add, retry: retryAdd } = useRecoveredAccountAdd({
     completesSetup: route === 'fresh-install',
     dispatches: !recordsGone,
+    chainId: CHAIN_ID,
     account,
     event
   })
