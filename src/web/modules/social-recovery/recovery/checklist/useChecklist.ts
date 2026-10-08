@@ -380,8 +380,17 @@ const useChecklist = ({
       end(async (current) => {
         const { request, replies } = current.session.gathering
         await records.wipeRecoverySession(chainId, account, event, current.revision)
-        const found = resultOfRead(await records.recoverySession(chainId, account).read())
-        if (found?.kind === 'wiped') {
+        // The wipe is written. A read after it that fails or finds nothing
+        // opens the checklist again from storage, so the old revision never
+        // stays live and the wipe is never written a second time.
+        const found = await records
+          .recoverySession(chainId, account)
+          .read()
+          .then(resultOfRead, () => null)
+        if (!found) {
+          loadRef.current = LOADING
+          retry()
+        } else if (found.kind === 'wiped') {
           const next: ChecklistLoad = {
             phase: 'wiped',
             session: found.session,
@@ -391,11 +400,11 @@ const useChecklist = ({
           }
           loadRef.current = next
           setLoad(next)
-        } else if (found) {
+        } else {
           apply(found, current.configuration)
         }
       }),
-    [end, records, chainId, account, apply]
+    [end, records, chainId, account, apply, retry]
   )
   const land = useCallback(
     () =>
