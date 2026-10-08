@@ -30,7 +30,7 @@ Checks:
 Judgments:
 
 - the fast track opens with three numbered steps, the warning, the extension password and the key with its seed backup kept in the flow, and the key that will control the recovered account is that entry's own basic-account key at the slot's index, shown as the address that will control it, and the fast track adds that basic account only (decided 2026-10-08)
-- the step takes no pasted address, the copy says the account stays at the same address and this new key will control it, and the sending key is the ordinary key of the seed entry and not the derived key the recovery installs
+- the step takes no pasted address, the copy says the account stays at the same address and this new key will control it, and the sending key is that same key, the ordinary key of the seed entry, which is the key the recovery installs (decided 2026-10-08)
 - the fresh-install route carries one plain header, the extension's name and recover an account, with no settings breadcrumb and no step counter from the account lookup through the done screen, and the gas step follows the readout with no step number and is skipped when the key already holds enough
 
 ## Body

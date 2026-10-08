@@ -482,7 +482,7 @@ The recoverer may never have installed the extension, so they set the extension 
 
 The destination key is always one the wallet holds, this key on the fast track or a key of the logged-in wallet on the route of D-306, D-312. A holder who wants a key of their own to control the account imports it through the import door first and recovers from settings. The step takes no pasted address, the owner's ruling of 2026-09-08. The copy at key creation says that the account stays at the same address and that this new key will control it. That is true on Kohaku's account, since a recovery rewrites one privileged key and never the address.
 
-The recovery is self-funded in the first release. The sending key is the ordinary key of the seed entry created here and not the derived key the recovery installs. It sends the request and, after the wait, the execution, and pays their gas.
+The recovery is self-funded in the first release. The sending key is the key the recovery installs, the ordinary key of the seed entry created here; the two are one key (decided 2026-10-08). It sends the request and, after the wait, the execution, and pays their gas.
 
 The gas step asks the holder to fund that key, names it as the sending key and shows its address and the amount the wallet estimates for the submission. It names the network the key must be funded on, the one chain the wallet reads. It says that the execution after the waiting period is a second funding, which the wallet asks for again at execution due at the fee of that day. It promises nowhere that one funding covers both. It says in plain words that the account cannot pay for itself until it is recovered.
 
