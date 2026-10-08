@@ -8,7 +8,7 @@
  * origin committed offers no action.
  */
 import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
-import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
+import type { CeremonyOutcome, ReportStore } from '@web/modules/social-recovery/shared/ceremony'
 
 import type { ChecklistSearch } from '@web/modules/social-recovery/recovery/checklist/types'
 
@@ -39,6 +39,7 @@ import {
   seedCache,
   seedEntry,
   seedSession,
+  settle,
   storedSession,
   t,
   testRecords,
@@ -542,6 +543,49 @@ describe('the passkey row', () => {
       expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
       expect(await reportHeld(id)).toBe(false)
       expect(back.navigate).toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+    }
+  )
+
+  /** Holds every read of `target` whose key names `id` until the returned release runs. */
+  const holdReads = (target: Pick<ReportStore, 'get'>, id: string) => {
+    const read = target.get.bind(target)
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    Object.assign(target, {
+      get: async (key: string, defaultValue?: unknown) => {
+        if (key.includes(id)) {
+          await gate
+        }
+        return read(key, defaultValue)
+      }
+    })
+    return () => release()
+  }
+
+  each([
+    ['the claim request', () => world.storage],
+    ['the ceremony report', () => deps.reportStore]
+  ] as const)(
+    'navigates nothing and wipes nothing where the checklist leaves during the read of %s',
+    async ([, target]) => {
+      const mounted = await open()
+      await mounted.press('checklist-row-0-answer-here')
+      const [id] = deps.requestIds
+      await deps.channel.report(id, 'createClaim', dismissed('refused'))
+      const release = holdReads(target(), id)
+
+      const back = await open({ account: ACCOUNT, ceremony: id })
+      const navigations = back.navigate.mock.calls.length
+      back.unmount()
+      view = undefined
+      release()
+      await settle()
+
+      expect(back.navigate).toHaveBeenCalledTimes(navigations)
+      expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+      expect(await reportHeld(id)).toBe(true)
     }
   )
 

@@ -1,6 +1,7 @@
 /**
  * The destination key a recovery installs: a smart account's controlling key
- * as the keystore holds it, and a basic account's own address.
+ * as the keystore holds it, and a basic account's own address where the
+ * keystore holds its key.
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ListedAccountFacts } from '@web/modules/social-recovery/shared/client'
@@ -24,8 +25,18 @@ describe('the destination key', () => {
   })
 
   it('is the own address of a basic account', () => {
-    const facts = factsOf({ key: { addr: KEY, type: 'internal' } })
+    const facts = factsOf({ key: { addr: ACCOUNT, type: 'internal' } })
 
     expect(destinationKeyOf(facts)).toBe(ACCOUNT)
+  })
+
+  it('is none for a basic account the keystore holds no key for', () => {
+    expect(destinationKeyOf(factsOf({}))).toBeNull()
+  })
+
+  it('is none for a basic account whose held key is at another address', () => {
+    const facts = factsOf({ key: { addr: KEY, type: 'internal' } })
+
+    expect(destinationKeyOf(facts)).toBeNull()
   })
 })

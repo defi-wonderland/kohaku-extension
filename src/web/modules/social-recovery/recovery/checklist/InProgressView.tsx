@@ -5,7 +5,7 @@
  * abandon wipes the session and its entry. With no live session left, the
  * holder goes to the recovery's entry.
  */
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -14,6 +14,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 
 import { inProgressItemsOf, routeOfItems } from './inProgress'
 import InProgressRow from './InProgressRow'
@@ -37,6 +38,7 @@ const InProgressView = ({
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [abandonFailed, setAbandonFailed] = useState(false)
+  const routeRef = useRef<RecoveryRoute>('logged-in')
 
   useEffect(() => {
     let live = true
@@ -48,11 +50,12 @@ const InProgressView = ({
           return
         }
         if (items.length === 0) {
-          navigate(routeEntryPathOf('logged-in'), { replace: true })
+          navigate(routeEntryPathOf(routeRef.current), { replace: true })
           return
         }
         setLoad({ status: 'ready', items })
-        onRoute?.(routeOfItems(items))
+        routeRef.current = routeOfItems(items)
+        onRoute?.(routeRef.current)
         const held = await Promise.all(
           items.map(
             async (item) => [item.account.toLowerCase(), await holdsPath(item.account)] as const
