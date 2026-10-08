@@ -8,6 +8,7 @@ export * from './inProgress'
 export * from './paste'
 export * from './message'
 export * from './values'
+export * from './poll'
 export { approvalLinkOf, requestOfApprovalLink, tabPageUrl } from './link'
 export { destinationKeyOf } from './destination'
 export {

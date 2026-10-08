@@ -12,13 +12,15 @@ export const dateOf = (at: number, timeZone: string): string =>
 
 /**
  * The deadline line from the request's own `validUntil`: the date and the
- * time left, or null once the deadline has passed.
+ * time left, then that every approval dies together unless one approval is
+ * the whole request; null once the deadline has passed.
  */
 export const deadlineLineOf = (
   gathering: Gathering,
   now: number,
   timeZone: string,
-  t: Translate
+  t: Translate,
+  oneApproval = false
 ): string | null => {
   const deadline = Number(gathering.request.validUntil) * 1000
   if (!Number.isFinite(deadline)) {
@@ -28,10 +30,11 @@ export const deadlineLineOf = (
   if (rendered.passed || rendered.remaining === null) {
     return null
   }
-  return t('socialRecovery.checklist.deadline.line', {
+  const line = t('socialRecovery.checklist.deadline.line', {
     date: rendered.date,
     remaining: rendered.remaining
   })
+  return oneApproval ? line : `${line} ${t('socialRecovery.checklist.deadline.diesTogether')}`
 }
 
 /** When the request was made, ms since epoch: the block it was pinned to. */

@@ -31,3 +31,15 @@ export const APPROVAL_REQUEST_KEY = 'request'
 
 /** The extension's page that opens in a full tab. */
 export const TAB_PAGE = 'tab.html'
+
+/** How often the open checklist reads the account's recovery state. */
+export const CHECKLIST_POLL_MS = 30_000
+
+/** How long one poll waits for its reads before it counts as failed. */
+export const POLL_LIMIT_MS = 15_000
+
+/** How often the deadline's time left renders again. */
+export const DEADLINE_TICK_MS = 60_000
+
+/** The longest delay a timer keeps; a longer one fires at once. */
+export const MAX_TIMER_MS = 2_147_483_647

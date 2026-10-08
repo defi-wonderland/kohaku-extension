@@ -23,6 +23,7 @@ import type {
   ApproverReply,
   ApproverRequest,
   Assessment,
+  AttemptRequest,
   Clause,
   Configuration,
   Credential,
@@ -34,7 +35,8 @@ import type {
   CeremonyCall,
   CeremonyOutcome,
   ReportStore,
-  ReportSubscribe
+  ReportSubscribe,
+  VisibilitySource
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   RecordStorage,
@@ -211,6 +213,8 @@ export interface TestStorage extends RecordStorage {
   hold: (name: string) => () => void
   /** Every write of a key that holds one of these names fails while listed. */
   refuse: string[]
+  /** Every stored value by key, as the extension's storage holds it. */
+  getAll: NonNullable<RecordStorage['getAll']>
 }
 
 /**
@@ -503,6 +507,9 @@ export interface FakeKit {
   assess: jest.Mock
   getSetup: jest.Mock
   removedKey: jest.Mock
+  recoveryState: jest.Mock
+  isAuthorized: jest.Mock
+  complete: jest.Mock
   verifyReply: jest.Mock
 }
 
@@ -541,11 +548,29 @@ export const fakeKit = (configuration: Configuration, options: FakeKitOptions = 
   const assess = jest.fn((gathering: Gathering) => assessmentOf(configuration, gathering))
   const getSetup = jest.fn(async () => configuration)
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))
+  const recoveryState = jest.fn(async () => ({
+    attempt: { state: 'None', attemptId: 0n, setupNonce: 1n },
+    nextAttemptId: 1n,
+    setupNonce: 1n
+  }))
+  const isAuthorized = jest.fn(async () => true)
+  // The submission builder refuses until a test scripts the set it picks.
+  const complete = jest.fn((): AttemptRequest => {
+    throw new Error('no submission built')
+  })
   const verifyReply = jest.fn(async () => 'satisfied')
   const client = {
-    recovery: { initRecoveryGathering, getApproverRequests, addApproverReply, assess },
+    recovery: {
+      initRecoveryGathering,
+      getApproverRequests,
+      addApproverReply,
+      assess,
+      recoveryState,
+      complete
+    },
     setup: { getSetup },
-    walletReads: { removedKey, verifyReply }
+    walletReads: { removedKey, verifyReply },
+    action: { isAuthorized }
   } as unknown as ChecklistKitClient
   return {
     state: { status: 'ready', client },
@@ -555,9 +580,36 @@ export const fakeKit = (configuration: Configuration, options: FakeKitOptions = 
     assess,
     getSetup,
     removedKey,
+    recoveryState,
+    isAuthorized,
+    complete,
     verifyReply
   }
 }
+
+export interface ScriptedRecoveryState {
+  state?: 'None' | 'Waiting' | 'Cancelled' | 'Consumed'
+  attemptId?: bigint
+  nextAttemptId?: bigint
+  setupNonce?: bigint
+  payloadHash?: Hex
+}
+
+/**
+ * The account's recovery state as the manager answers it: no attempt, the
+ * first id next, setup nonce one, and the attempt's payload hash empty.
+ */
+export const recoveryStateOf = ({
+  state = 'None',
+  attemptId = BigInt(0),
+  nextAttemptId = BigInt(1),
+  setupNonce = BigInt(1),
+  payloadHash = zeroHash
+}: ScriptedRecoveryState = {}) => ({
+  attempt: { state, attemptId, setupNonce, payloadHash },
+  nextAttemptId,
+  setupNonce
+})
 
 /** The refusal an init throws where the configuration is not the one the chain commits. */
 export const commitmentMismatch = (): Error =>
@@ -612,8 +664,16 @@ export const storedSession = async (
 export interface ReportChannel {
   store: ReportStore
   subscribe: ReportSubscribe
-  /** Writes the report the tab writes for the ceremony `id`, and tells the listeners. */
-  report: (id: string, call: CeremonyCall, outcome: CeremonyOutcome<unknown>) => Promise<void>
+  /**
+   * Writes the report the tab writes for the ceremony `id` at `at` (ms, the
+   * fixed clock by default), and tells the listeners.
+   */
+  report: (
+    id: string,
+    call: CeremonyCall,
+    outcome: CeremonyOutcome<unknown>,
+    at?: number
+  ) => Promise<void>
 }
 
 export const reportChannel = (): ReportChannel => {
@@ -639,9 +699,9 @@ export const reportChannel = (): ReportChannel => {
   return {
     store,
     subscribe,
-    report: async (id, call, outcome) => {
+    report: async (id, call, outcome, at = NOW) => {
       const key = ceremonyResultKey(id)
-      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, NOW)
+      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, at)
       values.set(key, value)
       listeners.get(key)?.forEach((listener) => listener(value))
     }
@@ -673,10 +733,37 @@ export const depsOf = (overrides: Partial<ChecklistDeps> = {}): FakeDeps => {
     rpIdHash: RP_HASH,
     passkeysServed: true,
     readPassword: () => undefined,
+    forgetPassword: () => undefined,
+    storedEntries: async () => ({}),
     ...overrides,
     channel,
     requestIds
   }
+}
+
+export interface FakeVisibility extends VisibilitySource {
+  visibilityState: string
+  /** Hides or shows the tab and tells the listeners, as the page does. */
+  turn: (state: 'visible' | 'hidden') => void
+}
+
+/** The page's document as the checklist reads it: whether it is shown, and its change event. */
+export const visibilitySource = (): FakeVisibility => {
+  const listeners = new Set<() => void>()
+  const source: FakeVisibility = {
+    visibilityState: 'visible',
+    addEventListener: (_type, listener) => {
+      listeners.add(listener)
+    },
+    removeEventListener: (_type, listener) => {
+      listeners.delete(listener)
+    },
+    turn: (state) => {
+      source.visibilityState = state
+      listeners.forEach((listener) => listener())
+    }
+  }
+  return source
 }
 
 // ---------------------------------------------------------------------------
@@ -698,12 +785,25 @@ export interface Mounted {
   lastPath: () => string | undefined
 }
 
+export interface AsyncFakeTimers {
+  advanceTimersByTimeAsync(ms: number): Promise<void>
+}
+
+/** Whether Jest's fake clock drives the timers: its timer functions carry their clock. */
+const timersFaked = (): boolean => 'clock' in setTimeout
+
 /**
  * Lets the pending storage reads and writes settle, then renders what they
  * changed. The fakes answer in microtasks, which all run before a timer fires.
+ * Under Jest's fake clock it advances that clock by `ms` instead, running the
+ * promises each timer settles before the next one.
  */
 export const settle = (ms = 0) =>
   act(async () => {
+    if (timersFaked()) {
+      await (jest as unknown as AsyncFakeTimers).advanceTimersByTimeAsync(ms)
+      return
+    }
     await new Promise((resolve) => {
       setTimeout(resolve, ms)
     })

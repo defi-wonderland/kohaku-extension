@@ -7,6 +7,8 @@
  * renders its reason and gathers again; and the holder sent to the readout
  * where this device cannot open the setup.
  */
+import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+
 import type {
   Mounted,
   TestRecords
@@ -210,7 +212,7 @@ describe('opening the checklist', () => {
   each([
     ['deadline-passed', 'expired', true],
     ['another-attempt-opened', 'void', false],
-    ['setup-changed', 'setupChanged', true]
+    ['setup-changed', 'setupChanged', false]
   ] as const)(
     'renders a session the %s wipe ended with its reason',
     async ([reason, slug, offers]) => {
@@ -218,6 +220,11 @@ describe('opening the checklist', () => {
       const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
       await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, reason, seeded.revision)
       const kit = fakeKit(MIXED_PATH)
+      kit.recoveryState.mockResolvedValue({
+        attempt: { state: 'Waiting', attemptId: 3n, setupNonce: 1n },
+        nextAttemptId: 4n,
+        setupNonce: 1n
+      })
       view = await mountChecklist({ records: world.records, client: kit.state, deps: depsOf() })
 
       expect(kit.initRecoveryGathering).not.toHaveBeenCalled()
@@ -311,6 +318,70 @@ describe('opening the checklist', () => {
     expect(view.byTestId('checklist-failed-setup')).toBeNull()
     expect(view.byTestId('checklist-row-5')).not.toBeNull()
     expect((await storedSession(world.records))?.value.state).toBe('live')
+  })
+
+  describe('a setup read with the password that the chain no longer commits', () => {
+    const fresh = configurationOf([
+      ...MIXED_PATH.clauses,
+      { threshold: 1, credentials: [guardianCredential(GUARDIANS[3], 'Dana')] }
+    ])
+
+    /** A client whose first setup read answers the stale setup, and whose init refuses it. */
+    const staleKit = () => {
+      const kit = fakeKit(fresh)
+      kit.getSetup.mockResolvedValueOnce(MIXED_PATH)
+      let inits = 0
+      kit.initRecoveryGathering.mockImplementation(async (configuration: Configuration) => {
+        if (configuration === MIXED_PATH) {
+          throw commitmentMismatch()
+        }
+        inits += 1
+        return gatheringOf(fresh, inits)
+      })
+      return kit
+    }
+
+    it('reads the setup again with the password and opens over the fresh setup', async () => {
+      const kit = staleKit()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps: depsOf({ readPassword: () => PASSWORD })
+      })
+
+      expect(kit.getSetup).toHaveBeenCalledTimes(2)
+      expect(kit.getSetup).toHaveBeenLastCalledWith({ password: PASSWORD })
+      expect(kit.initRecoveryGathering.mock.calls[1][0]).toEqual(fresh)
+      expect(view.byTestId('checklist-row-5')).not.toBeNull()
+      expect((await storedSession(world.records))?.value).toEqual({
+        state: 'live',
+        gathering: gatheringOf(fresh, 1)
+      })
+    })
+
+    it('gathers again after a wipe over the fresh setup, where it read the stale one first', async () => {
+      const seeded = await seedSession(world.records, gatheringOf(MIXED_PATH, 3))
+      await world.records.wipeRecoverySession(CHAIN_ID, ACCOUNT, 'deadline-passed', seeded.revision)
+      const kit = staleKit()
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps: depsOf({ readPassword: () => PASSWORD })
+      })
+      expect(kit.getSetup).toHaveBeenCalledTimes(1)
+
+      await view.press('checklist-gather-again')
+
+      expect(view.byTestId('checklist-gather-again-failed')).toBeNull()
+      expect(kit.getSetup).toHaveBeenCalledTimes(2)
+      expect(kit.getSetup).toHaveBeenLastCalledWith({ password: PASSWORD })
+      expect((await storedSession(world.records))?.value).toEqual({
+        state: 'live',
+        gathering: gatheringOf(fresh, 1)
+      })
+      expect(view.byTestId('checklist-wiped')).toBeNull()
+      expect(view.byTestId('checklist-row-5')).not.toBeNull()
+    })
   })
 
   it('sends the holder to the readout over a stale cache with no password held', async () => {

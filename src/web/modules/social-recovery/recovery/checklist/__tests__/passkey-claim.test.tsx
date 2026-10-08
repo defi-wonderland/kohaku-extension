@@ -9,6 +9,7 @@
  */
 import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CeremonyOutcome, ReportStore } from '@web/modules/social-recovery/shared/ceremony'
+import type { ChainId } from '@web/modules/social-recovery/shared/records'
 
 import type { ChecklistSearch } from '@web/modules/social-recovery/recovery/checklist/types'
 
@@ -36,6 +37,7 @@ import {
   passkeyCredential,
   replyOf,
   requestOf,
+  SECOND_ACCOUNT,
   seedCache,
   seedEntry,
   seedSession,
@@ -467,6 +469,79 @@ describe('the passkey row', () => {
       expect(back.navigate).toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
     }
   )
+
+  describe('a ceremony that returns to a request this checklist cannot take', () => {
+    /** A claim request stored for `account` on `chainId`. */
+    const claimOf = (account = ACCOUNT, chainId: ChainId = CHAIN_ID) => ({
+      call: 'createClaim' as const,
+      method: 'passkey',
+      account,
+      chainId,
+      request: requestOf(gatheringOf(PATH, 1, account), 0),
+      params: { handOff: false }
+    })
+    const passedReply = passed({ reply: replyOf(gathering, 0) })
+
+    it('removes the report of a request that is gone, and applies nothing', async () => {
+      const id = 'request-wiped'
+      await deps.channel.report(id, 'createClaim', passedReply)
+
+      const back = await open({ account: ACCOUNT, ceremony: id })
+
+      expect(await reportHeld(id)).toBe(false)
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      expect(await repliesOf()).toEqual([])
+      expect(back.byTestId('checklist-undelivered')).toBeNull()
+      expect(back.byTestId('checklist-row-0-chip')?.textContent).toBe(
+        t('socialRecovery.status.collection.notAsked')
+      )
+      expect(back.navigate).toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+    })
+
+    each([
+      ['another account', claimOf(SECOND_ACCOUNT)],
+      ['another network', claimOf(ACCOUNT, 1)]
+    ] as const)(
+      'keeps the request and the report of %s, and applies nothing',
+      async ([, claim]) => {
+        const id = 'request-of-another'
+        await world.records.ceremonyRequest(id).write(claim)
+        await deps.channel.report(id, 'createClaim', passedReply)
+
+        const back = await open({ account: ACCOUNT, ceremony: id })
+
+        expect(await reportHeld(id)).toBe(true)
+        expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+        expect(kit.addApproverReply).not.toHaveBeenCalled()
+        expect(await repliesOf()).toEqual([])
+        expect(back.byTestId('checklist-undelivered')).toBeNull()
+        expect(back.navigate).toHaveBeenCalledWith(checklistPathOf(ACCOUNT), { replace: true })
+      }
+    )
+
+    it('removes nothing where the request cannot be read', async () => {
+      const id = 'request-unread'
+      await world.records.ceremonyRequest(id).write(claimOf())
+      await deps.channel.report(id, 'createClaim', passedReply)
+      const get = world.storage.get
+      const unreadable = jest
+        .spyOn(world.storage, 'get')
+        .mockImplementation(async (key, defaultValue) => {
+          if (String(key).includes(id)) {
+            throw new Error('storage unavailable')
+          }
+          return get(key, defaultValue)
+        })
+
+      await open({ account: ACCOUNT, ceremony: id })
+      unreadable.mockRestore()
+
+      expect(await reportHeld(id)).toBe(true)
+      expect((await world.records.ceremonyRequest(id).read()).status).toBe('present')
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      expect(await repliesOf()).toEqual([])
+    })
+  })
 
   each([
     ['no report has landed', false],
