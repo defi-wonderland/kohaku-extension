@@ -43,7 +43,6 @@ import type {
   Navigate,
   RemovedKeyRead
 } from '@web/modules/social-recovery/recovery/checklist'
-import type { ProviderKind } from '@web/modules/social-recovery/setup/review'
 
 import type { ALREADY_RUNNING_CAUSES, ALREADY_RUNNING_FINDINGS } from './constants'
 
@@ -389,7 +388,6 @@ export interface SubmitViewProps {
   route: RecoveryRoute
   load: SubmitLoad
   lead: LeadInput
-  providerKind?: ProviderKind
   verify: VerifyReading
   run: SubmitState
   sending: SendingReading
@@ -424,7 +422,6 @@ export interface LeadBlockProps {
 export interface DetailsBlockProps {
   route: RecoveryRoute
   ready: SubmitReady
-  providerKind?: ProviderKind
   /** Called each time the expander opens, so the lock knows the payment line rendered. */
   onOpened: () => void
 }

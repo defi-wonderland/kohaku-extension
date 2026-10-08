@@ -22,15 +22,14 @@ import { renderNoun, renderValueLabel } from '@web/modules/social-recovery/share
 import ChecklistRows from '@web/modules/social-recovery/recovery/checklist/ChecklistRows'
 import RowFrame from '@web/modules/social-recovery/recovery/checklist/RowFrame'
 import type { ChecklistRow } from '@web/modules/social-recovery/recovery/checklist'
-import { nodeKindOf, renderWait } from '@web/modules/social-recovery/setup/review'
+import { renderWait } from '@web/modules/social-recovery/setup/review'
 
 import { pathLinesOf, pathRowsOf, publicationLinesOf } from './lead'
 import type { DetailsBlockProps } from './types'
 
 const SUBMIT = 'socialRecovery.submit'
-const TRUST = 'socialRecovery.review.trust'
 
-const DetailsBlock = ({ route, ready, providerKind, onOpened }: DetailsBlockProps) => {
+const DetailsBlock = ({ route, ready, onOpened }: DetailsBlockProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -96,14 +95,6 @@ const DetailsBlock = ({ route, ready, providerKind, onOpened }: DetailsBlockProp
           <SectionCard label={renderValueLabel('payment', t)} testID="submit-payment">
             {line(t(`${SUBMIT}.noPayment`), 'submit-no-payment')}
             {line(t(`${SUBMIT}.ownKeyPays`), 'submit-own-key-pays')}
-          </SectionCard>
-          <SectionCard testID="submit-node">
-            {line(
-              nodeKindOf(providerKind) === 'light-client'
-                ? t(`${TRUST}.nodeLightClient`)
-                : t(`${TRUST}.nodePlain`),
-              'submit-node-line'
-            )}
           </SectionCard>
           <SectionCard label={renderNoun('recoveryPath', t)} testID="submit-path">
             <ChecklistRows layout={layout} assessment={assessment} renderRow={renderRow} />

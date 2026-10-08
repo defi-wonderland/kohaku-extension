@@ -30,7 +30,6 @@ const SubmitView = ({
   route,
   load,
   lead,
-  providerKind,
   verify,
   run,
   sending,
@@ -198,12 +197,7 @@ const SubmitView = ({
         </View>
       )}
       <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
-      <DetailsBlock
-        route={route}
-        ready={load}
-        providerKind={providerKind}
-        onOpened={onDetailsOpened}
-      />
+      <DetailsBlock route={route} ready={load} onOpened={onDetailsOpened} />
       <SectionCard testID="submit-verify">{verifyBlock()}</SectionCard>
       {sendingBlock()}
       {!submitting && (
