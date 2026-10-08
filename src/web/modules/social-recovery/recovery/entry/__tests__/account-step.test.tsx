@@ -191,7 +191,10 @@ describe('the account field', () => {
     ],
     ['a name whose resolver reverted', () => revertedCall(REVERTS.resolverError)],
     ['a name with no address record', () => revertedCall(REVERTS.unsupportedProfile)],
-    ['a name whose off-chain lookup failed', offchainFault]
+    [
+      'a name whose off-chain gateway holds no record',
+      () => offchainFault('response not found during CCIP fetch', '404_MISSING_RESOURCE')
+    ]
   ]
   absentNames.forEach(([name, failure]) => {
     it(`renders the name error with a retry, not a failed read, for ${name}`, async () => {
@@ -231,7 +234,15 @@ describe('the account field', () => {
       () => forwardedCall(revertedCall(REVERTS.httpError).message)
     ],
     ['a resolver call with no revert data', () => revertedCall('0x')],
-    ['a request that timed out', timedOut]
+    ['a request that timed out', timedOut],
+    [
+      'an off-chain lookup whose gateways answered with a server error',
+      () => offchainFault('error encountered during CCIP fetch', '500_SERVER_ERROR')
+    ],
+    [
+      'an off-chain lookup that fetched no data',
+      () => offchainFault('CCIP Read failed to fetch data', 'FETCH_FAILED')
+    ]
   ]
   failedReads.forEach(([name, failure]) => {
     it(`renders the failed read with a retry, not the name error, for ${name}`, async () => {

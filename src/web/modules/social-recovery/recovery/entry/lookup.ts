@@ -7,7 +7,7 @@
 import { isError } from 'ethers'
 import { isAddress, isHex } from 'viem'
 
-import { NAME_ABSENT_REVERTS } from './constants'
+import { NAME_ABSENT_OFFCHAIN_REASON, NAME_ABSENT_REVERTS } from './constants'
 import type { FieldError, LookupInput } from './types'
 
 const HEX_PREFIX = /^0x/i
@@ -55,12 +55,13 @@ const revertDataOf = (error: unknown): string | null => {
 /**
  * Why a name lookup that threw failed: the name has no resolver, its resolver
  * is no contract or reverted, it holds no address record, or its off-chain
- * lookup failed, all of which mean the name does not resolve; anything else,
- * a transport failure among them, is a read that failed.
+ * gateway answered that it holds none, all of which mean the name does not
+ * resolve; anything else, a gateway error or a transport failure among them,
+ * is a read that failed.
  */
 export const nameLookupFailureOf = (error: unknown): FieldError => {
   if (isError(error, 'OFFCHAIN_FAULT')) {
-    return 'name'
+    return error.reason === NAME_ABSENT_OFFCHAIN_REASON ? 'name' : 'read-failed'
   }
   const data = revertDataOf(error)
   if (data === null) {
