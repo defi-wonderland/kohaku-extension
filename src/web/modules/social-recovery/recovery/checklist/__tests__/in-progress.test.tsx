@@ -203,6 +203,24 @@ describe('the recovery in progress', () => {
       replace: true
     })
   })
+
+  it('sends the holder to the recover door after abandoning the last fast-track recovery', async () => {
+    await seedEntry(world.records, entryOf('fresh-install'), ACCOUNT)
+    await seedSession(world.records, gatheringOf(MIXED_PATH, 1, ACCOUNT), ACCOUNT)
+    view = await mountInProgress({ records: world.records })
+    const first = idOf(ACCOUNT)
+
+    await view.press(`in-progress-${first}-abandon`)
+    await view.press(`in-progress-${first}-abandon-action`)
+
+    expect((await storedSession(world.records, ACCOUNT))?.value.state).toBe('wiped')
+    expect(view.navigate).toHaveBeenLastCalledWith(`/${WEB_ROUTES.socialRecoveryRecover}`, {
+      replace: true
+    })
+    expect(view.navigate).not.toHaveBeenCalledWith(`/${WEB_ROUTES.socialRecoveryRecovery}`, {
+      replace: true
+    })
+  })
 })
 
 describe('the home band', () => {

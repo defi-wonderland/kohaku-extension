@@ -16,6 +16,9 @@ import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/Recov
 import ChecklistScreen from '@web/modules/social-recovery/recovery/checklist/ChecklistScreen'
 import InProgressScreen from '@web/modules/social-recovery/recovery/checklist/InProgressScreen'
 import SubmitScreen from '@web/modules/social-recovery/recovery/submit/SubmitScreen'
+import EntryScreen from '@web/modules/social-recovery/recovery/entry/EntryScreen'
+import AccountStepScreen from '@web/modules/social-recovery/recovery/entry/AccountStepScreen'
+import ReadoutScreen from '@web/modules/social-recovery/recovery/entry/ReadoutScreen'
 
 /**
  * The route registry of the account recovery module.
@@ -57,6 +60,9 @@ const SocialRecoveryRoutes = () => (
         <Route path="recovery/checklist" element={<ChecklistScreen />} />
         <Route path="recovery/in-progress" element={<InProgressScreen />} />
         <Route path="recovery/submit" element={<SubmitScreen />} />
+        <Route path="recovery" element={<EntryScreen />} />
+        <Route path="recovery/account" element={<AccountStepScreen />} />
+        <Route path="recovery/readout" element={<ReadoutScreen />} />
       </Route>
     </Route>
 
