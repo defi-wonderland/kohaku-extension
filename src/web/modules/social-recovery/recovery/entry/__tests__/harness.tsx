@@ -454,9 +454,9 @@ export const forwardedCall = (message: string): Error =>
     info: { error: { code: -32603, message } }
   })
 
-/** An off-chain lookup that failed. */
-export const offchainFault = (): Error =>
-  makeError('error encountered during CCIP fetch', 'OFFCHAIN_FAULT', { reason: '500_SERVER_ERROR' })
+/** An off-chain lookup that failed for the reason ethers gives. */
+export const offchainFault = (message: string, reason: string): Error =>
+  makeError(message, 'OFFCHAIN_FAULT', { reason })
 
 /** A request the provider gave up on. */
 export const timedOut = (): Error =>

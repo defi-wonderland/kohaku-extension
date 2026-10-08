@@ -50,3 +50,9 @@ export const NAME_ABSENT_REVERTS: readonly Hex[] = [
   'ResolverError(bytes)',
   'UnsupportedResolverProfile(bytes4)'
 ].map((signature) => toFunctionSelector(signature))
+
+/**
+ * The off-chain lookup's reason when its gateway answered that the name holds
+ * no record. Every other off-chain fault is a gateway or transport failure.
+ */
+export const NAME_ABSENT_OFFCHAIN_REASON = '404_MISSING_RESOURCE'
