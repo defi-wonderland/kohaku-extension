@@ -1,5 +1,5 @@
 /**
- * The save's route: the settings chrome around the save of the selected
+ * The save's route: the settings chrome around the save of the setup tab's
  * account's setup. It reads the account's facts, the recovery client, the
  * setup records, the save in flight stored on this device and the recovery
  * password in memory, runs the review's reads and gate again, and builds the
@@ -14,11 +14,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Linking } from 'react-native'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { isAddress, isAddressEqual } from 'viem'
 
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
-import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import {
   addressBookOf,
   auditedActionOf,
@@ -27,11 +27,7 @@ import {
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
-import type {
-  HeldRequestQueue,
-  ListedAccount,
-  PrivilegeHoldersReading
-} from '@web/modules/social-recovery/shared/client'
+import type { HeldRequestQueue, ListedAccount } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { readRecoveryPassword } from '@web/modules/social-recovery/shared/records'
@@ -44,7 +40,6 @@ import {
   saveGateOf,
   trustRowsOf
 } from '@web/modules/social-recovery/setup/review'
-import type { ReviewKitClient } from '@web/modules/social-recovery/setup/review'
 import { useAccountReads } from '@web/modules/social-recovery/setup/review/useAccountReads'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 
@@ -55,14 +50,7 @@ import type { SaveSteps } from './types'
 import { useArmRun } from './useArmRun'
 import { useSaveLoad } from './useSaveLoad'
 
-// The save shows no other doors of the account, so it reads none.
-const NO_DOORS_READ = async (): Promise<PrivilegeHoldersReading> => ({
-  kind: 'unreadable',
-  cause: 'not read on the save'
-})
-
 const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
-  const { account: selected } = useSelectedAccountControllerState()
   const { accounts } = useAccountsControllerState()
   const { dispatch, windowId } = useBackgroundService()
   const queue = useRequestsControllerState()
@@ -73,10 +61,6 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   const kit = clientState.status === 'ready' ? clientState.client : null
   const chainReads = clientState.status === 'ready' ? clientState.reads : null
   const receipts = clientState.status === 'ready' ? clientState.receipts : null
-  const readsClient = useMemo<ReviewKitClient | null>(
-    () => (kit ? { ...kit, privilegeHolders: NO_DOORS_READ } : null),
-    [kit]
-  )
   const draft = load.status === 'loaded' ? load.draft : null
   const enrollments = useMemo(() => (load.status === 'loaded' ? load.enrollments : []), [load])
 
@@ -98,7 +82,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       }),
     [clauses, enrollments, trust.reads, kit, addressBook]
   )
-  const accountReads = useAccountReads(readsClient, draft)
+  const accountReads = useAccountReads(kit, draft)
   const gate = saveGateOf({
     recordsLoaded: load.status === 'loaded',
     clientReady: !!kit,
@@ -136,6 +120,10 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   )
 
   const ready = facts.status === 'ready' ? facts.facts : null
+  // The wallet's own record of the account the step saves, for its name.
+  const listed = accounts?.find(
+    (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, account)
+  )
   const steps = useMemo<SaveSteps | null>(() => {
     if (!kit || !chainReads || !receipts || !ready?.key || !draft) {
       return null
@@ -247,7 +235,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       state={state}
       account={{
         address: account,
-        label: selected?.preferences?.label || undefined,
+        label: listed?.preferences?.label || undefined,
         removedKey,
         deployed: ready?.deployed
       }}
