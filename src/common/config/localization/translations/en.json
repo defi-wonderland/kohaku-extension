@@ -149,7 +149,6 @@
       "everyMemberMustAnswer": "Every member must answer.",
       "oneFailureDomain": "One failure domain. These members fail together if their kind does.",
       "differentPlaces": "Keep the methods of your path in different places.",
-      "sizingRule": "A group of any one of two is the shape this wallet prefers at two methods.",
       "togetherWithGroups": "Together with enough members of each other group to meet its threshold, any {{n}} of these {{m}} recover this account. Losing more than {{spare}} locks you out.",
       "togetherWithRequiredEveryMember": "Together with your required methods, every member of this group must answer.",
       "togetherWithGroupsEveryMember": "Together with enough members of each other group to meet its threshold, every member of this group must answer.",
@@ -318,7 +317,12 @@
     },
     "chrome": {
       "settings": "Settings",
-      "breadcrumb": "Settings › Account recovery"
+      "breadcrumb": "Settings › Account recovery",
+      "otherAccount": {
+        "title": "The wallet now selects another account",
+        "body": "This setup belongs to {{account}}. Your work here stays with that account.",
+        "switchAction": "Set up recovery for the selected account instead"
+      }
     },
     "methodNames": {
       "passkey": "Passkey",
@@ -437,27 +441,6 @@
       "nothingRequired": "Nothing required yet",
       "noGroup": "No group yet. A group is any N of its members.",
       "duplicate": "This method is already in your path. This wallet allows each method once.",
-      "rules": {
-        "header": "This wallet's rules while you edit",
-        "requiredAnswers": "A required method must always answer.",
-        "enoughMembers": "A group needs at least as many members as its threshold.",
-        "thresholdAtLeastOne": "A group's threshold must be at least one.",
-        "thresholdCeiling": "A group's threshold cannot be above 255.",
-        "memberCeiling": "A group cannot hold more than 255 members.",
-        "oneRowPerMethod": "One enrolled method sits in one row.",
-        "atLeastOneMethod": "A path needs at least one method.",
-        "smallEnough": "A path must be small enough to check in one block.",
-        "zeroThresholdOwnRule": "On a path with a required method or a second group, only this wallet refuses a threshold of zero."
-      },
-      "picker": {
-        "title": "Add to your path",
-        "lead": "Pick something you already enrolled, or enroll something new.",
-        "passkeysHeader": "Passkeys",
-        "alreadyInPath": "Already in your path",
-        "newAddress": "New address",
-        "enrollNew": "Enroll something new",
-        "pickToContinue": "Pick one to continue."
-      },
       "saveChanges": "Save changes",
       "continueUnlock": "Continue unlocks when your path has at least one method.",
       "refusals": {
@@ -506,8 +489,6 @@
         "title": "Add your guardians",
         "lead": "A guardian approves your recovery by signing with their own wallet.",
         "pasteHint": "Paste the address, or type a name such as bluejay.eth.",
-        "callBack": "Before this guardian approves, they must call you back on a number they already hold. A guardian who can do that completes the check on the day.",
-        "ownerAnswer": "The only other honest answer is I am the owner, which holds for a key you keep yourself and for nobody else.",
         "checksHeader": "What the wallet checked",
         "checksumOk": "The checksum looks right.",
         "checksumFailed": "This address fails its checksum. Check it character by character.",
@@ -578,8 +559,7 @@
         "exposure": {
           "guardians": "Every guardian of your path is hidden from a stranger who cannot guess their address.",
           "unguessable": "{{items}} cannot be guessed at all and lose nothing before a recovery.",
-          "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery.",
-          "publication": "A recovery publishes the rule with its waiting period and every method in it, so every method of your path is exposed, the ones it used and the ones it did not."
+          "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery."
         },
         "requiredAtPrivate": "Required at Private and Shape visible.",
         "passwordLabel": "Password",
@@ -634,35 +614,8 @@
         "thirdPartyLine": "This method publishes no declaration of who it trusts.",
         "secondModuleRow": "Second recovery module · published by {{publisher}}",
         "perAccountTrust": "The trust a module carries is per account, not per module. Authorizing a second module trusts it with the whole account.",
-        "nodeLightClient": "Your node · a light client with its prover. It sees the request before the chain does.",
-        "nodePlain": "Your node · a plain node. It sees the request before the chain does.",
         "selfAttested": "Every declaration above is the contract's own statement about itself.",
         "deadProvider": "A method whose provider stops working is dead for good."
-      },
-      "stop": {
-        "methodNotStopped": "{{method}} method · not stopped",
-        "methodStopped": "{{method}} method · stopped",
-        "nobody": "Nobody can stop this method.",
-        "party": "{{party}} can stop this method and lift the stop.",
-        "bothRoles": "{{party}} holds both roles on this method: it can change the key this method trusts and it can stop this method. The same party decides both, so this stop is no answer to the risk the admin row names.",
-        "noPause": "The recovery registry and the recovery module carry no pause and no owner. The only stop in the kit is the one an identity method carries.",
-        "ignoresStops": "This release ignores every stop: a stop on a method will not stop your recoveries, and it will not stop a forged one against you either."
-      },
-      "doors": {
-        "none": "Other doors on this account · None this wallet can see. The wallet cannot see every door, and the account is only as safe as its weakest one.",
-        "unreadable": "Other doors on this account · This wallet could not read them. The wallet cannot see every door, and the account is only as safe as its weakest one.",
-        "line": "Other doors on this account · {{doors}}",
-        "pair": "{{codeEntries}} and {{keys}}",
-        "codeEntries": "{{count}} code entry",
-        "codeEntries_plural": "{{count}} code entries",
-        "keysBeside": "{{count}} key beside the one a recovery removes",
-        "keysBeside_plural": "{{count}} keys beside the one a recovery removes",
-        "marker": "The code entry is the entry point's marker, which this account installed itself rather than a door anyone chose.",
-        "validator": "Any code entry that is not the marker is a validator somebody bound to this account.",
-        "untouched": "A recovery leaves them untouched. The account is only as safe as its weakest door."
-      },
-      "otherDoors": {
-        "cannotSeeEveryDoor": "The wallet cannot see every door, and the account is only as safe as its weakest one."
       },
       "account": {
         "header": "The account this setup is for",
@@ -689,6 +642,7 @@
         },
         "notTested": {
           "title": "An untested method is in your path",
+          "title_plural": "{{count}} untested methods are in your path",
           "body": "An untested method may fail on the day it is needed. You can still save."
         },
         "alreadySetUp": {
@@ -741,7 +695,7 @@
     },
     "card": {
       "title": "Your Recovery Card",
-      "lead": "Save it, print it or send it to another device. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
+      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
       "cardTitle": "Kohaku · Recovery card",
       "reveal": "Reveal",
       "hide": "Hide",
@@ -753,7 +707,6 @@
       },
       "downloadPdf": "Download PDF",
       "print": "Print",
-      "sendToDevice": "Send to another device",
       "whyNotOnCard": "Why isn't my setup on the card?",
       "whyNotOnCardBody": "The card carries no method, no guardian address, no threshold and no waiting period, so a photograph of the card alone names nothing to phish.",
       "warnsHeader": "What warns you",
@@ -761,14 +714,15 @@
       "wrongPassword": "That is not your extension password. Try again.",
       "passwordGone": "Your recovery password is not on this device any more. Set it again on the privacy step to reveal it and carry the card.",
       "passwordGoneAction": "Set the recovery password again",
-      "carrierAsks": "A new download, print or hand-off asks your extension password.",
+      "carrierAsks": "A new download or print asks your extension password.",
       "passwordAsk": "Enter your recovery password to show your Recovery Card. This is not your extension password.",
       "passwordAskAction": "Show the card",
       "wrongRecoveryPassword": "That is not your recovery password. Try again.",
-      "passwordUnchecked": "This wallet could not check your recovery password. Try again."
+      "passwordUnchecked": "This wallet could not check your recovery password. Try again.",
+      "downloadUnavailable": "Your recovery password has characters a PDF cannot carry. Print the card instead."
     },
     "create": {
-      "controlledBy": "Controlled by {{address}}",
+      "controllingKeyRow": "Controlling key of {{account}}. The wallet adds it as an account of its own. Recovery does not cover funds held on it.",
       "coversSmartAccount": "Recovery covers the smart account, not the key that controls it.",
       "oneOrdinaryKey": "This wallet recovers one ordinary key in this release."
     },
