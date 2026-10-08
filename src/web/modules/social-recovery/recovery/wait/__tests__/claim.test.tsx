@@ -628,10 +628,7 @@ describe('a countdown another tab replaced with another attempt', () => {
    * with a copy of the claim the old countdown carries; the chain then holds
    * that attempt, opened and due.
    */
-  const replaceCountdown = async (
-    world: World,
-    { keepClaim = false }: { keepClaim?: boolean } = {}
-  ): Promise<void> => {
+  const replaceCountdown = async (world: World, keepClaim = false): Promise<void> => {
     const key = recordKeys.recoverySession(CHAIN_ID, world.account)
     const stored = await storedCountdown(world)
     const execution =
@@ -740,7 +737,7 @@ describe('a countdown another tab replaced with another attempt', () => {
     const view = await mount(mountWait(world.account))
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
 
-    await replaceCountdown(world, { keepClaim: true })
+    await replaceCountdown(world, true)
     const replaced = await storedCountdown(world)
     moveDeviceClock(CLAIM_AGE_MS)
     await tick(REREAD_MS)
@@ -782,7 +779,7 @@ describe('a countdown another tab replaced with another attempt', () => {
     await tick(POLL_MS)
     expect(world.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
 
-    await replaceCountdown(world, { keepClaim: true })
+    await replaceCountdown(world, true)
     const replaced = await storedCountdown(world)
     await tick(60_000)
     expect(await storedCountdown(world)).toEqual(replaced)
