@@ -3,10 +3,12 @@
  */
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import {
+  attemptConsumed,
   attemptOf,
   attemptStarted,
   basicAccount,
   CHAIN_ID,
+  claimElsewhere,
   CHAIN_TIME,
   consume,
   elapse,
@@ -21,8 +23,12 @@ import {
   moveDeviceClock,
   mountWait,
   openWorld,
+  OTHER_REQUEST,
+  OTHER_TX_HASH,
   PAYLOAD,
   readyFacts,
+  resetTab,
+  showTab,
   START_BLOCK,
   t,
   tick,
@@ -30,6 +36,7 @@ import {
   useWaitClock
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import type { Notification } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 
 // The harness sets up the text codecs viem needs before viem loads.
@@ -39,6 +46,9 @@ const { parseEther }: typeof import('viem') = require('viem')
 const POLL_MS = 30_000
 const READ_LIMIT_MS = 20_000
 const DEPOSIT_POLL_MS = 5_000
+const RECHECK_MS = 60_000
+/** Past the age after which a send no node knows may be read as dropped. */
+const PAST_DROPPED_AGE_MS = 61 * 60_000
 /** The block the execution reads before its claim, as the fake chain answers it. */
 const SEND_BLOCK = START_BLOCK + 8
 const DUE = 'socialRecovery.wait.executionDue'
@@ -380,7 +390,279 @@ describe('a send no node knows', () => {
   })
 })
 
-describe("the execution's block read", () => {
+describe('the two readings of a send no node knows', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+    resetTab()
+  })
+
+  /** Advances the clock in steps of five seconds, so the reads each poll starts settle at its own time. */
+  const pass = async (ms: number) => {
+    for (let left = ms; left > 0; left -= 5_000) {
+      // eslint-disable-next-line no-await-in-loop
+      await tick(Math.min(5_000, left))
+    }
+  }
+
+  /**
+   * Sends the execution, lets the claim grow past the dropped age, and takes
+   * the first reading that no node knows the hash ten seconds after the
+   * mount's poll, on the tab's return, so no poll falls a minute after it.
+   * The polls then run at thirty, sixty, ninety seconds after the mount.
+   * The send's receipt waits on `receipt`.
+   */
+  const firstUnknownReading = async (
+    world: World,
+    receipt = held<ProviderTransactionReceipt>()
+  ): Promise<Mounted> => {
+    elapse(world.kit)
+    world.kit.receipts.wait.mockImplementation(() => receipt.promise)
+    world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+    const mounted = await mountWait(world.account)
+    view = mounted
+    await mounted.press('wait-execute')
+    moveDeviceClock(PAST_DROPPED_AGE_MS)
+    await pass(10_000)
+    const reads = world.kit.receipts.transactionKnown.mock.calls.length
+    await showTab('visible')
+    expect(world.kit.receipts.transactionKnown).toHaveBeenCalledTimes(reads + 1)
+    return mounted
+  }
+
+  const expectKept = async (world: World, hash = TX_HASH) => {
+    expect(view?.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(view?.byTestId('wait-execute')).toBeNull()
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(hash)
+  }
+
+  const expectReleased = async (world: World) => {
+    expect(view?.byTestId('wait-execute-submitting')).toBeNull()
+    expect(view?.isDisabled('wait-execute')).toBe(false)
+    expect(await executionOf(world.records, world.account)).toBeUndefined()
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+  }
+
+  it('releases nothing on one reading, and releases the claim by itself at a second reading a minute later, with no poll', async () => {
+    const world = await openWorld()
+    await firstUnknownReading(world)
+    await expectKept(world)
+
+    // The polls at thirty and sixty seconds read the same block too soon after the first.
+    await pass(RECHECK_MS - 1_000)
+    await expectKept(world)
+
+    const reads = world.kit.recoveryState.mock.calls.length
+    await pass(1_000)
+    await expectReleased(world)
+    // The second reading reads the attempt once, for its consume; no poll ran.
+    expect(world.kit.recoveryState).toHaveBeenCalledTimes(reads + 1)
+  })
+
+  it('releases the claim at a second reading of a higher block, before a minute passed', async () => {
+    const world = await openWorld()
+    await firstUnknownReading(world)
+
+    world.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 9)
+    await pass(20_000)
+    await expectReleased(world)
+  })
+
+  it('keeps the first reading where a later one reads a lower block, and releases a minute after the first', async () => {
+    const world = await openWorld()
+    await firstUnknownReading(world)
+
+    world.kit.receipts.blockNumber.mockResolvedValue(START_BLOCK + 7)
+    await pass(20_000)
+    await expectKept(world)
+    await pass(40_000)
+    await expectReleased(world)
+  })
+
+  const restarts: { name: string; between: (world: World) => void }[] = [
+    {
+      name: 'the node knows the hash',
+      between: (world) => {
+        world.kit.receipts.transactionKnown.mockResolvedValueOnce('known')
+      }
+    },
+    {
+      name: "the node's read of the hash fails",
+      between: (world) => {
+        world.kit.receipts.transactionKnown.mockRejectedValueOnce(
+          new Error('the node did not answer')
+        )
+      }
+    },
+    {
+      name: "the node's read of the hash does not answer within its limit",
+      between: (world) => {
+        world.kit.receipts.transactionKnown.mockImplementationOnce(() => new Promise(() => {}))
+      }
+    },
+    {
+      name: 'the block read fails',
+      between: (world) => {
+        world.kit.receipts.blockNumber.mockRejectedValueOnce(new Error('the node did not answer'))
+      }
+    }
+  ]
+  restarts.forEach(({ name, between }) => {
+    it(`starts the count again where, between the readings, ${name}`, async () => {
+      const world = await openWorld()
+      await firstUnknownReading(world)
+
+      // The poll at thirty seconds meets it; the poll at sixty takes a new first reading.
+      between(world)
+      await pass(20_000)
+      await expectKept(world)
+      await pass(89_000)
+      await expectKept(world)
+
+      await pass(1_000)
+      await expectReleased(world)
+    })
+  })
+
+  it("starts the count again where another page's claim stood on the countdown between the readings", async () => {
+    const world = await openWorld()
+    await firstUnknownReading(world)
+    const own = await executionOf(world.records, world.account)
+    if (!own) {
+      throw new Error('no claim')
+    }
+    const countdown = world.records.countdown(CHAIN_ID, world.account)
+    const revisionOf = async () => {
+      const read = await countdown.read()
+      if (read.status !== 'present') {
+        throw new Error('no countdown')
+      }
+      return read.revision
+    }
+    await countdown.releaseExecution(own.requestId, await revisionOf())
+    await claimElsewhere(world.records, world.account, { claimedAt: own.claimedAt })
+
+    await pass(20_000)
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+    expect(view?.byTestId('wait-execute')).toBeNull()
+
+    // The own claim is back before the poll at sixty seconds, which takes a new first reading.
+    await countdown.releaseExecution(OTHER_REQUEST, await revisionOf())
+    const { transactionHash, ...claim } = own
+    const written = await countdown.claimExecution(claim, await revisionOf())
+    await countdown.setExecutionHash(own.requestId, TX_HASH, written.record.revision)
+    await pass(89_000)
+    await expectKept(world)
+
+    await pass(1_000)
+    await expectReleased(world)
+  })
+
+  it('keeps the claim where the manager names the attempt consumed at the second reading, and reaches the done screen', async () => {
+    const world = await openWorld()
+    world.kit.fetch.mockImplementation(async (_filter: unknown, range: { from: number }) =>
+      range.from === SEND_BLOCK
+        ? [...world.kit.chain.events, attemptConsumed(world.account)]
+        : world.kit.chain.events
+    )
+    await firstUnknownReading(world)
+
+    await pass(RECHECK_MS)
+    expect(world.kit.fetch.mock.calls.some(([, range]) => range.from === SEND_BLOCK)).toBe(true)
+    await expectKept(world)
+    await pass(RECHECK_MS * 3)
+    await expectKept(world)
+
+    consume(world.kit, world.account)
+    await pass(POLL_MS)
+    expect(view?.paths()).toEqual([donePath(world)])
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+  })
+
+  it("starts the count again where the manager's events cannot be read at the second reading", async () => {
+    const world = await openWorld()
+    let failNext = false
+    world.kit.fetch.mockImplementation(
+      async (_filter: unknown, range: { from: number }): Promise<Notification[]> => {
+        if (range.from === SEND_BLOCK && failNext) {
+          failNext = false
+          throw new Error('the node did not answer')
+        }
+        return world.kit.chain.events
+      }
+    )
+    await firstUnknownReading(world)
+
+    failNext = true
+    await pass(RECHECK_MS)
+    expect(failNext).toBe(false)
+    await expectKept(world)
+    // The poll at ninety seconds takes a new first reading; a minute after it falls at one hundred and fifty.
+    await pass(79_000)
+    await expectKept(world)
+
+    await pass(1_000)
+    await expectReleased(world)
+  })
+
+  it('starts the count again where the run learns a second hash of its call between the readings', async () => {
+    const world = await openWorld()
+    const receipt = held<ProviderTransactionReceipt>()
+    await firstUnknownReading(world, receipt)
+
+    // The receipt wait ends naming the call's hash at another fee; the next waits never answer.
+    world.kit.receipts.wait.mockImplementation(() => new Promise(() => {}))
+    receipt.fail(
+      Object.assign(new Error('the node dropped the connection'), { hash: OTHER_TX_HASH })
+    )
+    await pass(20_000)
+    expect(world.kit.receipts.transactionKnown).toHaveBeenCalledWith(OTHER_TX_HASH)
+    // The poll at thirty seconds read both hashes first: a minute after it falls at ninety.
+    await pass(59_000)
+    await expectKept(world)
+
+    await pass(1_000)
+    await expectReleased(world)
+  })
+
+  it('keeps the claim where it carries a hash the run does not know at the second reading', async () => {
+    const world = await openWorld()
+    await firstUnknownReading(world)
+    const own = await executionOf(world.records, world.account)
+    const countdown = world.records.countdown(CHAIN_ID, world.account)
+    const read = await countdown.read()
+    if (!own || read.status !== 'present') {
+      throw new Error('no claim')
+    }
+    await countdown.setExecutionHash(own.requestId, OTHER_TX_HASH, read.revision)
+
+    await pass(RECHECK_MS)
+    await expectKept(world, OTHER_TX_HASH)
+    await pass(RECHECK_MS * 3)
+    await expectKept(world, OTHER_TX_HASH)
+  })
+
+  it('takes no reading while no screen is attached, and releases once one is attached again', async () => {
+    const world = await openWorld()
+    const first = await firstUnknownReading(world)
+    first.unmount()
+    view = undefined
+    const reads = world.kit.receipts.transactionKnown.mock.calls.length
+
+    await pass(RECHECK_MS * 3)
+    expect(world.kit.receipts.transactionKnown).toHaveBeenCalledTimes(reads)
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
+
+    view = await mountWait(world.account)
+    await expectReleased(world)
+  })
+})
+
+describe("the execution's gas check and block read", () => {
   useWaitClock()
   let view: Mounted | undefined
 
@@ -469,6 +751,51 @@ describe("the execution's block read", () => {
     world.kit.receipts.blockNumber.mockRejectedValue(new Error('the node did not answer'))
     await tick(DEPOSIT_POLL_MS)
     await expectGasReadFailed(world)
+  })
+
+  it('reads the gas check failed where the gas check does not answer within its limit, and the retry checks again and sends once', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.reads.estimateGas.mockImplementation(() => new Promise<bigint>(() => {}))
+    view = await mountWait(world.account)
+
+    await view.press('wait-execute')
+    expect(view.byTestId('wait-execute-checkingGas')).not.toBeNull()
+    await tick(READ_LIMIT_MS - 1_000)
+    expect(view.byTestId('wait-execute-checkingGas')).not.toBeNull()
+    await tick(1_000)
+    await expectGasReadFailed(world)
+
+    world.kit.reads.estimateGas.mockImplementation(async () => 300_000n)
+    await view.pressText(t('socialRecovery.writes.tryAgain'))
+    expect(world.kit.reads.estimateGas).toHaveBeenCalledTimes(2)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+  })
+
+  it('reads the gas check failed where the deposit step checks again and gets no answer within its limit, and the retry checks again and sends once', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.reads.nativeBalance.mockResolvedValue(0n)
+    view = await mountWait(world.account)
+    await view.press('wait-execute')
+    expect(view.byTestId('wait-execute-blocker')).not.toBeNull()
+
+    world.kit.reads.nativeBalance.mockImplementation(() => new Promise<bigint>(() => {}))
+    await tick(DEPOSIT_POLL_MS)
+    expect(world.kit.reads.nativeBalance).toHaveBeenCalledTimes(2)
+    await tick(READ_LIMIT_MS)
+    await expectGasReadFailed(world)
+    // A check that never answered starts no other while the failure shows.
+    expect(world.kit.reads.nativeBalance).toHaveBeenCalledTimes(2)
+
+    world.kit.reads.nativeBalance.mockImplementation(async () => parseEther('1'))
+    await view.pressText(t('socialRecovery.writes.tryAgain'))
+    expect(world.kit.reads.nativeBalance).toHaveBeenCalledTimes(3)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
   })
 })
 
