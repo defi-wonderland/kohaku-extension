@@ -209,13 +209,27 @@ export interface UnknownReading {
 
 /**
  * The release of a claim that may not carry a hash the caller does not know:
- * released; kept, since it now carries another hash; or gone already, or
- * replaced by another claim.
+ * released; kept, since it now carries another hash; gone already, or
+ * replaced by another claim; or nothing done, since the countdown now names
+ * another attempt.
  */
 export type ExecutionRelease =
   | { status: 'released' }
   | { status: 'hashed'; transactionHash: Hex }
   | { status: 'gone' }
+  | { status: 'replaced' }
+
+/**
+ * A read of the countdown for a run: the countdown's own read, or `replaced`
+ * where the record names another attempt than the run's, or none.
+ */
+export type RunCountdownRead = CountdownRead | { status: 'replaced' }
+
+/** A claim on the run's countdown, or `replaced` where the countdown now names another attempt. */
+export type RunClaim = ExecutionClaimResult | 'replaced'
+
+/** Whether a write of the run went to its own countdown, or found it replaced and wrote nothing. */
+export type RunWrite = 'written' | 'replaced'
 
 export interface ExecuteState {
   write: WriteMachineState
@@ -230,6 +244,8 @@ export interface ExecuteState {
   follow?: ExecutionInFlightClaim
   /** The first reading that the node knows none of the run's transactions, kept until a second one apart from it. */
   unknownReading?: UnknownReading
+  /** The countdown now names another attempt: the run holds nothing on it, and the screen reads it again. */
+  replaced?: true
 }
 
 export type ExecuteEvent =
@@ -240,6 +256,7 @@ export type ExecuteEvent =
   | { type: 'released'; run: number }
   | { type: 'follow'; run: number; claim: ExecutionInFlightRecord }
   | { type: 'voided'; run: number }
+  | { type: 'replaced'; run: number }
   | { type: 'unknownRead'; run: number; reading: UnknownReading }
   | { type: 'unknownCleared'; run: number }
 
@@ -251,8 +268,8 @@ export interface ExecuteStore {
 
 /** The execution's steps over the wallet's seams. */
 export interface ExecuteSteps {
-  /** The countdown's record, with the execution in flight it carries. */
-  readCountdown(): Promise<CountdownRead>
+  /** The countdown's record, with the execution in flight it carries, or `replaced` where it names another attempt. */
+  readCountdown(): Promise<RunCountdownRead>
   /** The execution call for the attempt and the payload that started it. */
   prepare(): Promise<PreparedCall>
   checkGas(prepared: PreparedCall): Promise<GasCheck>
@@ -260,9 +277,12 @@ export interface ExecuteSteps {
   blockNumber(): Promise<number>
   newRequestId(): string
   /** Writes the execution in flight on the countdown, or answers the one already there. */
-  claim(claim: ExecutionInFlightClaim): Promise<ExecutionClaimResult>
-  /** Writes the hash on this page's claim, writing the claim back where another page released it. */
-  markSent(claim: ExecutionInFlightClaim, transactionHash: Hex): Promise<void>
+  claim(claim: ExecutionInFlightClaim): Promise<RunClaim>
+  /**
+   * Writes the hash on this page's claim, writing the claim back where another
+   * page released it; writes nothing where the countdown names another attempt.
+   */
+  markSent(claim: ExecutionInFlightClaim, transactionHash: Hex): Promise<RunWrite>
   release(requestId: string): Promise<void>
   /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
   releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ExecutionRelease>
@@ -384,9 +404,11 @@ export interface WaitBodyProps {
   entry: RecoveryEntryRecord
   savedAt: number
   landed: LandedAttempt | null
+  /** Reads the countdown's record again, where the run found it names another attempt. */
+  onCountdownReplaced: () => void
 }
 
-export type WaitGateProps = Omit<WaitBodyProps, 'savedAt' | 'landed'>
+export type WaitGateProps = Omit<WaitBodyProps, 'savedAt' | 'landed' | 'onCountdownReplaced'>
 
 export interface CountdownBlockProps {
   round: WaitRound

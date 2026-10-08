@@ -5,6 +5,7 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import {
   attemptCancelled,
   attemptConsumed,
+  attemptStarted,
   CHAIN_ID,
   CLAIM_BLOCK,
   claimElsewhere,
@@ -21,6 +22,8 @@ import {
   openWorld,
   OTHER_REQUEST,
   OTHER_TX_HASH,
+  PAYLOAD,
+  PAYLOAD_HASH,
   replacedByAnother,
   START_BLOCK,
   t,
@@ -32,6 +35,7 @@ import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/
 import type { Hex, Notification } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
+import type { StoredSession } from '@web/modules/social-recovery/shared/records'
 
 const POLL_MS = 30_000
 const REREAD_MS = 5_000
@@ -596,5 +600,169 @@ describe('the claim age by the route that sends', () => {
       expect(view.isDisabled('wait-execute')).toBe(false)
       expect(world.port.send).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('a countdown another tab replaced with another attempt', () => {
+  useWaitClock()
+  const views: Mounted[] = []
+  const mount = async (mounting: Promise<Mounted>) => {
+    const view = await mounting
+    views.push(view)
+    return view
+  }
+
+  afterEach(() => {
+    views.splice(0).forEach((view) => view.unmount())
+  })
+
+  const NEXT_ATTEMPT = 2n
+
+  /** The stored countdown, as the storage holds it. */
+  const storedCountdown = async (world: World): Promise<StoredSession> =>
+    (await world.storage.get(recordKeys.recoverySession(CHAIN_ID, world.account))) as StoredSession
+
+  /**
+   * Stores the countdown of a later submission for the same account, as another
+   * tab lands it: the next attempt id under a new revision, with no claim; the
+   * chain then holds that attempt, opened and due.
+   */
+  const replaceCountdown = async (world: World): Promise<void> => {
+    const key = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const stored = await storedCountdown(world)
+    await world.storage.set(key, {
+      ...stored,
+      revision: '0x0a0b0c0d0e0f0a0b0c0d0e0f',
+      value: {
+        state: 'landed',
+        account: world.account,
+        attemptId: NEXT_ATTEMPT.toString(),
+        setupNonce: '1',
+        payloadHash: PAYLOAD_HASH
+      }
+    })
+    const { chain } = world.kit
+    chain.attempt = { ...chain.attempt, attemptId: NEXT_ATTEMPT }
+    chain.events = [...chain.events, attemptStarted(world.account, PAYLOAD, NEXT_ATTEMPT)]
+  }
+
+  /** Presses execute on the screen of the later attempt and expects one send under a claim on its countdown. */
+  const expectExecuteOfNextAttempt = async (view: Mounted, world: World, sends: number) => {
+    expect(view.byTestId('wait-execute')).not.toBeNull()
+    await view.press('wait-execute')
+    expect(world.kit.prepareExecuteHandover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ attemptId: NEXT_ATTEMPT }),
+      PAYLOAD
+    )
+    expect(world.port.send).toHaveBeenCalledTimes(sends)
+    const stored = await storedCountdown(world)
+    expect(stored.value).toEqual(
+      expect.objectContaining({
+        attemptId: NEXT_ATTEMPT.toString(),
+        execution: expect.objectContaining({ transactionHash: TX_HASH })
+      })
+    )
+  }
+
+  it('claims nothing on the new countdown and sends nothing where it replaced the one the run checked the gas for, then offers execute for it', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    const estimate = held<bigint>()
+    world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+    expect(world.kit.prepareExecuteHandover).toHaveBeenCalledTimes(1)
+
+    await replaceCountdown(world)
+    const replaced = await storedCountdown(world)
+    estimate.release(300_000n)
+    await tick(0)
+    expect(world.port.send).not.toHaveBeenCalled()
+    expect(await storedCountdown(world)).toEqual(replaced)
+
+    await tick(0)
+    await expectExecuteOfNextAttempt(view, world, 1)
+  })
+
+  it('writes no hash on the new countdown where it replaced the run between the claim and the send, and waits on the receipt of its own hash', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    const hash = holdSend(world)
+    holdReceipt(world)
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+    expect((await executionOf(world.records, world.account))?.requestId).toEqual(expect.any(String))
+
+    await replaceCountdown(world)
+    const replaced = await storedCountdown(world)
+    hash.release(TX_HASH)
+    await tick(0)
+    expect(await storedCountdown(world)).toEqual(replaced)
+    expect(world.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, OWN_CLAIM_BLOCK)
+    expect(view.byTestId('wait-execute')).not.toBeNull()
+  })
+
+  it("stops following another page's claim where the countdown is replaced, releases nothing on the new one, and offers execute for it", async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    await claimElsewhere(world.records, world.account)
+    const view = await mount(mountWait(world.account))
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+
+    await replaceCountdown(world)
+    const replaced = await storedCountdown(world)
+    await tick(REREAD_MS)
+    expect(await storedCountdown(world)).toEqual(replaced)
+    expect(view.byTestId('wait-execute-submitting')).toBeNull()
+    expect(world.port.send).not.toHaveBeenCalled()
+
+    await expectExecuteOfNextAttempt(view, world, 1)
+  })
+
+  it('releases nothing on the new countdown where it replaced the run between the two readings of a send no node knows', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+
+    moveDeviceClock(61 * 60_000)
+    await tick(POLL_MS)
+    expect(world.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+
+    await replaceCountdown(world)
+    const replaced = await storedCountdown(world)
+    await tick(60_000)
+    expect(await storedCountdown(world)).toEqual(replaced)
+
+    await expectExecuteOfNextAttempt(view, world, 2)
+  })
+
+  it('claims and writes its hash on a countdown another page rewrote with the same attempt, its payload hash spelled in capitals', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    const estimate = held<bigint>()
+    world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+
+    const key = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const stored = await storedCountdown(world)
+    await world.storage.set(key, {
+      ...stored,
+      revision: '0x0f0e0d0c0b0a0f0e0d0c0b0a',
+      value: { ...stored.value, payloadHash: `0x${PAYLOAD_HASH.slice(2).toUpperCase()}` }
+    })
+    estimate.release(300_000n)
+    await tick(0)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
+    expect(await executionOf(world.records, world.account)).toEqual(
+      expect.objectContaining({ requestId: expect.any(String), transactionHash: TX_HASH })
+    )
   })
 })

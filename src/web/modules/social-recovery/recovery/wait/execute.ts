@@ -29,6 +29,15 @@
  * dropped age). A send that may still land, and a landed one, keep it until
  * the countdown ends.
  *
+ * The run keeps its own countdown, the one that names the attempt it was
+ * started for by its id, its setup number and its payload hash, matched on
+ * those three values on every read and before every write. A countdown of
+ * another attempt reads as gone for the run: nothing is claimed, written or
+ * released on it, the prepared execution is dropped (it cannot serve another
+ * attempt), a run with nothing on its way starts over, a send already out
+ * keeps its hash for its receipt wait, and the screen reads the countdown
+ * again.
+ *
  * The store is kept per chain, account and attempt while work is in flight,
  * so a second press or a remount takes up the run instead of starting one. A
  * landed receipt is not the screen's done: the wait's poll reads the attempt
@@ -166,6 +175,18 @@ export const executeReducer = (state: ExecuteState, event: ExecuteEvent): Execut
         return state
       }
       return { write: writeReducer(state.write, { type: 'reset' }) }
+    case 'replaced': {
+      if (!inRun(state, event.run) || state.replaced) {
+        return state
+      }
+      // A send already out keeps its hash for the receipt wait; anything else starts over.
+      const { write } = state
+      const out =
+        (write.status === 'submitting' && !!write.transactionHash) ||
+        write.status === 'landed' ||
+        mayStillLand(write)
+      return { write: out ? write : writeReducer(write, { type: 'reset' }), replaced: true }
+    }
     case 'unknownRead':
       if (!pendingHashIn(state, event.run)) {
         return state
@@ -309,6 +330,10 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
         // eslint-disable-next-line no-continue
         continue
       }
+      if (read?.status === 'replaced') {
+        store.dispatch({ type: 'replaced', run })
+        return
+      }
       const held: ExecutionInFlightRecord | undefined =
         read?.status === 'present' ? read.value.execution : undefined
       if (read && !held) {
@@ -353,6 +378,10 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
           if (store.state().follow !== follow) {
             // eslint-disable-next-line no-continue
             continue
+          }
+          if (again?.status === 'replaced') {
+            store.dispatch({ type: 'replaced', run })
+            return
           }
           if (now?.requestId === follow.requestId && !now.transactionHash) {
             // eslint-disable-next-line no-await-in-loop
@@ -453,6 +482,10 @@ const claimAndSend = async (
     dispatch({ type: 'error', run, error })
     return
   }
+  if (written === 'replaced') {
+    store.dispatch({ type: 'replaced', run })
+    return
+  }
   if (!written.claimed) {
     await followClaim(store, steps, run, written.execution)
     return
@@ -466,7 +499,14 @@ const claimAndSend = async (
   const sendDispatch = (event: WriteEvent) => {
     dispatch(event)
     if (event.type === 'sent' && event.run === run) {
-      marking = steps.markSent(claim, event.transactionHash).catch(() => undefined)
+      marking = steps.markSent(claim, event.transactionHash).then(
+        (answer) => {
+          if (answer === 'replaced') {
+            store.dispatch({ type: 'replaced', run })
+          }
+        },
+        () => undefined
+      )
     }
   }
   SENDING.add(store)
@@ -587,6 +627,10 @@ const readDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<bo
     if (!unmoved()) {
       return false
     }
+    if (read?.status === 'replaced') {
+      store.dispatch({ type: 'replaced', run })
+      return false
+    }
     const held = read?.status === 'present' ? read.value.execution : undefined
     if (!held || held.requestId !== requestId || clock - held.claimedAt < DROPPED_AFTER_MS) {
       return notDropped()
@@ -626,7 +670,14 @@ const readDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<bo
       return notDropped()
     }
     const released = await steps.releaseClaim(requestId, hashes).catch(() => undefined)
-    if (!unmoved() || released?.status !== 'released') {
+    if (!unmoved()) {
+      return false
+    }
+    if (released?.status === 'replaced') {
+      store.dispatch({ type: 'replaced', run })
+      return false
+    }
+    if (released?.status !== 'released') {
       return false
     }
     writeEvent(store)({ type: 'reset' })
@@ -683,6 +734,10 @@ const lookForClaim = async (store: ExecuteStore, steps: ExecuteSteps): Promise<v
     }
     return
   }
+  if (read.status === 'replaced') {
+    store.dispatch({ type: 'replaced', run })
+    return
+  }
   const claim = read.status === 'present' ? read.value.execution : undefined
   if (claim) {
     await followClaim(store, steps, run, claim)
@@ -733,6 +788,10 @@ export const startExecution = async (store: ExecuteStore, steps: ExecuteSteps): 
     return
   }
   if (!stillChecking()) {
+    return
+  }
+  if (read.status === 'replaced') {
+    store.dispatch({ type: 'replaced', run })
     return
   }
   if (read.status !== 'present') {

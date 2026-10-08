@@ -123,6 +123,22 @@ export const isAttemptOf = (attempt: Attempt, landed: LandedAttempt): boolean =>
   attempt.setupNonce === landed.setupNonce &&
   sameHash(attempt.payloadHash, landed.payloadHash)
 
+/**
+ * Whether a countdown's record names the attempt a run was started for: the
+ * record holds all three values, and its id, setup number and payload hash
+ * are the run's. A record of another attempt, or one with none of them, is
+ * not the run's countdown.
+ */
+export const isCountdownOf = (record: CountdownRecord, landed: LandedAttempt): boolean => {
+  const named = landedAttemptOf(record)
+  return (
+    !!named &&
+    named.attemptId === landed.attemptId &&
+    named.setupNonce === landed.setupNonce &&
+    sameHash(named.payloadHash, landed.payloadHash)
+  )
+}
+
 /** Whether an opening event started the attempt the submission landed: its id, its setup number and its payload's hash. */
 export const isOpeningOf = (started: StartedNotice, landed: LandedAttempt): boolean =>
   started.attemptId === landed.attemptId &&

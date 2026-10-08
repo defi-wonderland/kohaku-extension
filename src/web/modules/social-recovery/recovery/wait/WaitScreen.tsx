@@ -7,7 +7,8 @@
  * A search with no account, or an account with no entry record, goes back to
  * the account step. No countdown: a live or wiped session goes to the
  * checklist, none to the route's entry. A consumed attempt goes on to the
- * done screen.
+ * done screen. A run that finds the countdown names another attempt is let go,
+ * and the countdown's record is read again.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
@@ -73,7 +74,14 @@ import WaitView from './WaitView'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
-const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) => {
+const WaitBody = ({
+  records,
+  account,
+  entry,
+  savedAt,
+  landed,
+  onCountdownReplaced
+}: WaitBodyProps) => {
   const { navigate } = useNavigation()
   const { accounts } = useAccountsControllerState()
   const { keys: keystoreKeys } = useKeystoreControllerState()
@@ -298,6 +306,14 @@ const WaitBody = ({ records, account, entry, savedAt, landed }: WaitBodyProps) =
     }
   }, [consumed, navigate, account])
 
+  const replaced = !!run.state.replaced
+  useEffect(() => {
+    if (replaced) {
+      releaseRun.current()
+      onCountdownReplaced()
+    }
+  }, [replaced, onCountdownReplaced])
+
   const [leave, setLeave] = useState<LeaveState>('idle')
   const onLeave = useCallback(() => {
     setLeave('leaving')
@@ -374,6 +390,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
   const { navigate } = useNavigation()
   const [reading, setReading] = useState<CountdownReading>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const readAgain = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
     let live = true
@@ -418,6 +435,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         entry={entry}
         savedAt={reading.savedAt}
         landed={reading.landed}
+        onCountdownReplaced={readAgain}
       />
     )
   }
@@ -436,7 +454,7 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
             type="secondary"
             size="small"
             text={t('socialRecovery.writes.tryAgain')}
-            onPress={() => setAttempt((n) => n + 1)}
+            onPress={readAgain}
             hasBottomSpacing={false}
           />
         </View>
