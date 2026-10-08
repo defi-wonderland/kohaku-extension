@@ -185,6 +185,17 @@ const mockClients: {
 } = { byAccount: new Map(), ready: null, listeners: new Set() }
 const mockLoading: ClientState = { status: 'loading', retry: () => {} }
 
+// The chrome's account latch is the chrome's own, tested in its folder.
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
+  __esModule: true,
+  default: () => ({
+    account: undefined,
+    differs: false,
+    selected: undefined,
+    switchToSelected: () => {}
+  })
+}))
+
 jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
   useRecoveryClient: (account: string | undefined) =>
     // eslint-disable-next-line global-require
