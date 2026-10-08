@@ -36,7 +36,7 @@ import { recordKeys } from '@web/modules/social-recovery/shared/records'
 const POLL_MS = 30_000
 const REREAD_MS = 5_000
 const READ_LIMIT_MS = 20_000
-const CLAIM_AGE_MS = 10 * 60_000
+const CLAIM_AGE_MS = 30 * 60_000
 /** The block the execution's own claim reads before it, as the fake chain answers it. */
 const OWN_CLAIM_BLOCK = START_BLOCK + 8
 

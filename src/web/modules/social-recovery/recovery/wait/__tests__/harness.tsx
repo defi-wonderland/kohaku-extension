@@ -152,7 +152,13 @@ const {
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
 const i18n: typeof import('@common/config/localization').default =
   require('@common/config/localization').default
-const { getAddress, keccak256, zeroAddress, zeroHash }: typeof import('viem') = require('viem')
+const {
+  getAddress,
+  keccak256,
+  parseEther,
+  zeroAddress,
+  zeroHash
+}: typeof import('viem') = require('viem')
 const { dedicatedToOneSAPriv } = require('@ambire-common/interfaces/keystore')
 const {
   getSmartAccount
@@ -425,7 +431,7 @@ export const fakeKit = (account: Address): Kit => {
   const holdsAnyPrivilege = jest.fn(async () => chain.newKeyHolds)
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))
   const reads = {
-    nativeBalance: jest.fn(async () => 10n ** 18n),
+    nativeBalance: jest.fn(async () => parseEther('1')),
     estimateGas: jest.fn(async () => 300_000n),
     gasPrice: jest.fn(async () => 2n * GWEI)
   }

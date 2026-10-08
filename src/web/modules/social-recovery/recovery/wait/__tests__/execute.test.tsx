@@ -32,6 +32,10 @@ import {
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 
+// The harness sets up the text codecs viem needs before viem loads.
+// eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+const { parseEther }: typeof import('viem') = require('viem')
+
 const POLL_MS = 30_000
 const READ_LIMIT_MS = 20_000
 const DEPOSIT_POLL_MS = 5_000
@@ -253,7 +257,7 @@ describe('execute now', () => {
     expect(view.text()).toContain(world.sendingKey)
     expect(world.port.send).not.toHaveBeenCalled()
 
-    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.reads.nativeBalance.mockResolvedValue(parseEther('1'))
     await tick(5_000)
     expect(world.port.send).toHaveBeenCalledTimes(1)
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
@@ -357,6 +361,7 @@ describe('a send no node knows', () => {
     moveDeviceClock(61 * 60_000)
     await tick(POLL_MS)
     expect(world.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
+    await tick(60_000)
     expect(view.byTestId('wait-execute-submitting')).toBeNull()
     expect(view.byTestId('wait-execute')).not.toBeNull()
   })
@@ -439,7 +444,7 @@ describe("the execution's block read", () => {
     expect(view.byTestId('wait-execute-blocker')).not.toBeNull()
     expect(world.kit.receipts.blockNumber).not.toHaveBeenCalled()
 
-    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.reads.nativeBalance.mockResolvedValue(parseEther('1'))
     world.kit.receipts.blockNumber.mockImplementation(() => new Promise<number>(() => {}))
     await tick(DEPOSIT_POLL_MS)
     expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(1)
@@ -460,7 +465,7 @@ describe("the execution's block read", () => {
     view = await mountWait(world.account)
     await view.press('wait-execute')
 
-    world.kit.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    world.kit.reads.nativeBalance.mockResolvedValue(parseEther('1'))
     world.kit.receipts.blockNumber.mockRejectedValue(new Error('the node did not answer'))
     await tick(DEPOSIT_POLL_MS)
     await expectGasReadFailed(world)
