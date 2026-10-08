@@ -8,20 +8,29 @@
 import { act } from 'react-dom/test-utils'
 
 import {
+  basicAccount,
   byTestId,
-  CONTROLLING_KEY,
+  dispatched,
   flush,
+  internalKey,
   isDisabled,
+  keystoreSends,
   LOST_ACCOUNT,
   mockChain,
   mockStorage,
   mount,
   movesAway,
+  OFFSET_KEY,
+  offsetKey,
   ORDINARY_KEY,
+  PHRASE,
   press,
   resetEdge,
+  seedlessKey,
   setController,
+  slotKey,
   SMART_ACCOUNT,
+  smartAccount,
   text,
   unmount,
   walletListsSlot,
@@ -33,7 +42,7 @@ import { BALANCE_READ_LIMIT_MS } from '@web/modules/social-recovery/onboarding/f
 const GAS_STEP = `/social-recovery/fast-track/gas?account=${LOST_ACCOUNT}`
 const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST_ACCOUNT}`
 const READOUT = `/social-recovery/recovery/readout?account=${LOST_ACCOUNT}`
-const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${SMART_ACCOUNT}`
+const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${ORDINARY_KEY}`
 const POLL_MS = 5_000
 const ONE_ETHER = 10n ** 18n
 // The chain reads the harness answers for the client, as the step loads them.
@@ -92,14 +101,15 @@ describe('the gas step', () => {
     expect(text()).toContain('Fund the key that sends the recovery')
     expect(text()).toContain(ORDINARY_KEY)
     expect(text()).toContain('Send at most 0.00096 ETH to this key for the submission.')
-    expect(text()).not.toContain(CONTROLLING_KEY)
+    expect(text()).not.toContain(OFFSET_KEY)
     expect(movesAway()).toEqual([])
   })
 
-  it('never names the smart account as the payer and offers no transfer from it', async () => {
+  it("asks the receiving account's own key to pay, never the account being recovered, and offers no transfer from it", async () => {
     await mount(GAS_STEP)
 
-    expect(text()).not.toContain(SMART_ACCOUNT)
+    expect(mockChain.balanceReads).toEqual([ORDINARY_KEY])
+    expect(text()).toContain(ORDINARY_KEY)
     expect(text()).not.toContain(LOST_ACCOUNT)
     expect(text()).not.toMatch(/Transfer/)
     expect(text()).toContain('The account cannot pay for itself until it is recovered.')
@@ -206,6 +216,43 @@ describe('the gas step', () => {
     await mount(GAS_STEP)
 
     expect(where()).toBe(CHECKLIST)
+    expect(mockChain.balanceReads).toEqual([])
+  })
+
+  it('finds no sending key where the receiving account is a smart account, even with its dedicated key held', async () => {
+    mockStorage.entries.clear()
+    await writeEntry('fresh-install', SMART_ACCOUNT)
+    await setController('keystore', { keys: [slotKey, offsetKey] })
+    await setController('accounts', { accounts: [basicAccount, smartAccount] })
+
+    await mount(GAS_STEP)
+
+    expect(byTestId('fast-track-gas-no-key')).not.toBeNull()
+    expect(mockChain.balanceReads).toEqual([])
+    expect(text()).not.toContain(OFFSET_KEY)
+  })
+
+  const notOrdinary: { name: string; keys: ReturnType<typeof internalKey>[] }[] = [
+    { name: 'as a dedicated key', keys: [internalKey(ORDINARY_KEY, true)] },
+    { name: 'with no recovery phrase behind it', keys: [seedlessKey] }
+  ]
+  notOrdinary.forEach(({ name, keys }) => {
+    it(`finds no sending key where the keystore holds the receiving account's key ${name}`, async () => {
+      await setController('keystore', { keys })
+
+      await mount(GAS_STEP)
+
+      expect(byTestId('fast-track-gas-no-key')).not.toBeNull()
+      expect(mockChain.balanceReads).toEqual([])
+    })
+  })
+
+  it('finds no sending key where the wallet does not list the receiving account', async () => {
+    await setController('accounts', { accounts: [] })
+
+    await mount(GAS_STEP)
+
+    expect(byTestId('fast-track-gas-no-key')).not.toBeNull()
     expect(mockChain.balanceReads).toEqual([])
   })
 
@@ -349,6 +396,33 @@ describe('the gas step', () => {
       expect(byTestId('fast-track-gas-failed')).toBeNull()
       expect(text()).toContain(DEPOSIT_LINE)
       expect(mockChain.balanceReads).toHaveLength(3)
+    })
+  })
+
+  describe('after the key step', () => {
+    it('asks the key the key step showed to pay, the key of the account it handed on', async () => {
+      mockStorage.entries.clear()
+      resetEdge()
+      await setController('keystore', { hasPasswordSecret: true, isUnlocked: true })
+      await mount('/social-recovery/fast-track/key', { acknowledged: true })
+      await keystoreSends(PHRASE)
+      const shown = byTestId('fast-track-key-address')?.textContent
+      await press('fast-track-key-acknowledge')
+      await press('fast-track-key-continue')
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+      await walletListsSlot()
+      const handedOn = new URLSearchParams(where().split('?')[1]).get('to')
+
+      expect(dispatched('MAIN_CONTROLLER_ACCOUNT_PICKER_RESET')).toHaveLength(1)
+      expect(shown).toBe(ORDINARY_KEY)
+      expect(handedOn).toBe(shown)
+
+      await writeEntry('fresh-install', handedOn as typeof ORDINARY_KEY)
+      await mount(GAS_STEP)
+
+      expect(mockChain.balanceReads).toEqual([shown])
+      expect(byTestId('fast-track-gas')?.textContent).toContain(shown)
     })
   })
 })

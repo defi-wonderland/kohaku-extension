@@ -38,7 +38,8 @@ export interface Visit {
 
 export const PHRASE = mockSlot.phrase
 export const ORDINARY_KEY = mockSlot.ordinaryKey as Address
-export const CONTROLLING_KEY = mockSlot.controllingKey as Address
+/** The key the phrase gives at the slot's index plus the smart-account offset, which the fast track never uses. */
+export const OFFSET_KEY = mockSlot.offsetKey as Address
 export const SMART_ACCOUNT = mockSlot.smartAccount as Address
 export const LOST_ACCOUNT = mockSlot.lostAccount as Address
 
@@ -50,15 +51,16 @@ export const basicAccount: Account = {
   preferences: { label: 'Account 1', pfp: ORDINARY_KEY }
 }
 
+/** The smart account the wallet would build for the offset key. */
 export const smartAccount: Account = {
   addr: SMART_ACCOUNT,
-  associatedKeys: [CONTROLLING_KEY],
+  associatedKeys: [OFFSET_KEY],
   initialPrivileges: [],
   creation: { factoryAddr: '0x00', bytecode: '0x00', salt: '0x00' },
   preferences: { label: 'Account 2', pfp: SMART_ACCOUNT }
 }
 
-const internalKey = (addr: Address, dedicatedToOneSA: boolean): Key => ({
+export const internalKey = (addr: Address, dedicatedToOneSA: boolean): Key => ({
   addr,
   type: 'internal',
   label: addr,
@@ -67,10 +69,37 @@ const internalKey = (addr: Address, dedicatedToOneSA: boolean): Key => ({
   isExternallyStored: false
 })
 
-export const slotKeys: Key[] = [
-  internalKey(ORDINARY_KEY, false),
-  internalKey(CONTROLLING_KEY, true)
-]
+/** The ordinary key of the slot, as the keystore holds it once the picker added the basic account. */
+export const slotKey: Key = internalKey(ORDINARY_KEY, false)
+
+/** The offset key as the keystore holds a smart account's dedicated key. */
+export const offsetKey: Key = internalKey(OFFSET_KEY, true)
+
+/** The slot's key as an ordinary key the keystore holds with no recovery phrase behind it. */
+export const seedlessKey: Key = {
+  addr: ORDINARY_KEY,
+  type: 'internal',
+  label: ORDINARY_KEY,
+  dedicatedToOneSA: false,
+  meta: { createdAt: 1 },
+  isExternallyStored: false
+}
+
+/** A hardware wallet's key at the slot's address. */
+export const hardwareKey: Key = {
+  addr: ORDINARY_KEY,
+  type: 'trezor',
+  label: ORDINARY_KEY,
+  dedicatedToOneSA: false,
+  meta: {
+    deviceId: 'device',
+    deviceModel: 'model',
+    hdPathTemplate: "m/44'/60'/0'/0/<account>",
+    index: 0,
+    createdAt: 1
+  },
+  isExternallyStored: true
+}
 
 export const SEPOLIA = {
   chainId: 11155111n,
@@ -212,15 +241,24 @@ jest.mock('@ambire-common/libs/entropyGenerator/entropyGenerator', () => ({
   }
 }))
 // Under jsdom the key iterator's phrase check fails across realms, so the
-// step's derivation answers with the slot the node test derives from the same
-// phrase through the library; every other part of the derivation is real.
-jest.mock('@web/modules/social-recovery/onboarding/fast-track/derivation', () => ({
-  ...jest.requireActual('@web/modules/social-recovery/onboarding/fast-track/derivation'),
-  slotKeyOf: async ({ seed }: { seed: string }) => {
-    mockEdge.derived.push(seed)
-    return mockSlot.ordinaryKey
+// step's derivation answers with the slot's key the node test derives from
+// the same phrase through the library, and fails at any other index; every
+// other part of the derivation is real.
+jest.mock('@web/modules/social-recovery/onboarding/fast-track/derivation', () => {
+  const { SLOT_INDEX } = jest.requireActual(
+    '@web/modules/social-recovery/onboarding/fast-track/constants'
+  )
+  return {
+    ...jest.requireActual('@web/modules/social-recovery/onboarding/fast-track/derivation'),
+    slotKeyOf: async ({ seed }: { seed: string }, index: number = SLOT_INDEX) => {
+      mockEdge.derived.push(seed)
+      if (index !== SLOT_INDEX) {
+        throw new Error(`The harness derives no key at index ${index}.`)
+      }
+      return mockSlot.ordinaryKey
+    }
   }
-}))
+})
 jest.mock('@web/constants/browserapi', () => ({
   ...jest.requireActual('@web/constants/browserapi'),
   browser: {
@@ -428,18 +466,22 @@ export const keystoreSends = async (phrase: string) => {
   await flush()
 }
 
-/** The wallet lists the slot's two accounts and holds both keys, signed in. */
+/** The wallet lists the slot's basic account, holds its key and selects it, signed in. */
 export const walletListsSlot = async () => {
-  await setController('keystore', { keys: slotKeys })
-  await setController('accounts', { accounts: [basicAccount, smartAccount] })
-  await setController('selected', { account: smartAccount })
+  await setController('keystore', { keys: [slotKey] })
+  await setController('accounts', { accounts: [basicAccount] })
+  await setController('selected', { account: basicAccount })
   await setController('auth', { authStatus: 'authenticated' })
 }
 
-export const writeEntry = async (route: 'fresh-install' | 'logged-in' = 'fresh-install') => {
+/** The recovery entry the account step writes, with the slot's basic account receiving control by default. */
+export const writeEntry = async (
+  route: 'fresh-install' | 'logged-in' = 'fresh-install',
+  receivingAccount: Address = ORDINARY_KEY
+) => {
   await createWalletRecords({ storage: extensionRecordStorage })
     .recoveryEntry(CHAIN_IDS[WALLET_RECOVERY_CHAIN], LOST_ACCOUNT)
-    .write({ account: LOST_ACCOUNT, route, receivingAccount: SMART_ACCOUNT })
+    .write({ account: LOST_ACCOUNT, route, receivingAccount })
 }
 
 export const resetEdge = () => {

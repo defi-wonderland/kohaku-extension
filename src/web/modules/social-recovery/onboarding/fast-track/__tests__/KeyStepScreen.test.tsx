@@ -10,21 +10,24 @@ import { act } from 'react-dom/test-utils'
 import {
   basicAccount,
   byTestId,
-  CONTROLLING_KEY,
   dispatched,
   flush,
+  hardwareKey,
+  internalKey,
   isDisabled,
   keystoreSends,
   mockEdge,
   mount,
   movesAway,
+  OFFSET_KEY,
+  offsetKey,
   ORDINARY_KEY,
   PHRASE,
   press,
   resetEdge,
+  seedlessKey,
   setController,
-  SMART_ACCOUNT,
-  slotKeys,
+  slotKey,
   smartAccount,
   text,
   unmount,
@@ -35,7 +38,7 @@ import {
 
 const KEY_STEP = '/social-recovery/fast-track/key'
 const ACKNOWLEDGED = { acknowledged: true }
-const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${SMART_ACCOUNT}`
+const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${ORDINARY_KEY}`
 const PICKER_OPEN = 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT_PRIVATE_KEY_OR_SEED_PHRASE'
 const PICKER_INIT = 'MAIN_CONTROLLER_ACCOUNT_PICKER_INIT'
 const ADD_TEMP_SEED = 'KEYSTORE_CONTROLLER_ADD_TEMP_SEED'
@@ -46,6 +49,7 @@ const CREATING = 'Creating your new key…'
 const ADD_PENDING = 'The wallet is still adding your key. Wait, or go back and continue again.'
 
 const types = () => dispatched().map(({ type }) => type)
+const ACCOUNT_STEP_WITH_NO_ACCOUNT = '/social-recovery/recovery/account?route=fresh-install'
 
 const visibility = { current: 'visible' as DocumentVisibilityState }
 Object.defineProperty(document, 'visibilityState', {
@@ -137,7 +141,7 @@ describe('the key step', () => {
       expect(text()).not.toContain(CREATING)
     })
 
-    it('shows the words in order, the counter at 3 of 3 and the key derived from that phrase', async () => {
+    it("shows the words in order, the counter at 3 of 3 and the basic account's key derived from that phrase", async () => {
       await atWords()
 
       const words = PHRASE.split(' ').map(
@@ -146,8 +150,8 @@ describe('the key step', () => {
       expect(words).toEqual(PHRASE.split(' '))
       expect(byTestId('fast-track-key-step')?.textContent).toBe('Set up this device · Step 3 of 3')
       expect(mockEdge.derived).toEqual([PHRASE])
-      expect(byTestId('fast-track-key-address')?.textContent).toBe(CONTROLLING_KEY)
-      expect(text()).not.toContain(ORDINARY_KEY)
+      expect(byTestId('fast-track-key-address')?.textContent).toBe(ORDINARY_KEY)
+      expect(text()).not.toContain(OFFSET_KEY)
     })
 
     it('ignores a phrase the keystore holds that this step did not make', async () => {
@@ -221,7 +225,7 @@ describe('the key step', () => {
       expect(types()).toEqual([ADD_TEMP_SEED, SEND_TEMP_SEED])
     })
 
-    it("opens the picker on the phrase with the smart account selected and lets the picker's init add", async () => {
+    it("opens the picker on the phrase with no smart account selected and lets the picker's init add", async () => {
       await atWords()
       await continueAfterAcknowledging()
 
@@ -229,8 +233,7 @@ describe('the key step', () => {
         {
           privKeyOrSeed: PHRASE,
           seedPassphrase: null,
-          hdPathTemplate: "m/44'/60'/0'/0/<account>",
-          shouldSelectSmartAccountAutomatically: true
+          hdPathTemplate: "m/44'/60'/0'/0/<account>"
         }
       ])
       expect(types().slice(2)).toEqual([PICKER_OPEN, PICKER_INIT])
@@ -258,11 +261,58 @@ describe('the key step', () => {
       expect(dispatched('MAIN_CONTROLLER_ACCOUNT_PICKER_RESET')).toHaveLength(1)
     })
 
+    it('does not go on where the wallet lists a smart account with a dedicated key, only once it lists the basic account', async () => {
+      await atWords()
+      await continueAfterAcknowledging()
+      await setController('picker', { addAccountsStatus: 'LOADING' })
+      await setController('picker', { addAccountsStatus: 'SUCCESS' })
+      await setController('keystore', { keys: [offsetKey] })
+      await setController('accounts', { accounts: [smartAccount] })
+      await setController('selected', { account: smartAccount })
+      await setController('auth', { authStatus: 'authenticated' })
+
+      expect(movesAway()).toEqual([])
+      expect(dispatched('MAIN_CONTROLLER_ACCOUNT_PICKER_RESET')).toEqual([])
+      expect(byTestId('fast-track-key-address')?.textContent).toBe(ORDINARY_KEY)
+
+      await setController('keystore', { keys: [offsetKey, slotKey] })
+      await setController('accounts', { accounts: [smartAccount, basicAccount] })
+
+      expect(where()).toBe(ACCOUNT_STEP)
+      expect(dispatched(PICKER_OPEN)).toHaveLength(1)
+    })
+
+    const notOrdinary: { name: string; keys: ReturnType<typeof internalKey>[] }[] = [
+      { name: 'no key at all', keys: [] },
+      { name: 'the key as a dedicated key', keys: [internalKey(ORDINARY_KEY, true)] },
+      {
+        name: 'the key with no recovery phrase behind it',
+        keys: [seedlessKey]
+      },
+      { name: 'a key of another kind at that address', keys: [hardwareKey] }
+    ]
+    notOrdinary.forEach(({ name, keys }) => {
+      it(`does not go on where the basic account is listed but the keystore holds ${name}`, async () => {
+        await atWords()
+        await continueAfterAcknowledging()
+        await setController('keystore', { keys })
+        await setController('accounts', { accounts: [basicAccount] })
+        await setController('selected', { account: basicAccount })
+        await setController('auth', { authStatus: 'authenticated' })
+
+        expect(movesAway()).toEqual([])
+
+        await setController('keystore', { keys: [slotKey] })
+
+        expect(where()).toBe(ACCOUNT_STEP)
+      })
+    })
+
     it('waits for the wallet to be signed in before it leaves', async () => {
       await atWords()
       await continueAfterAcknowledging()
-      await setController('keystore', { keys: slotKeys })
-      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+      await setController('keystore', { keys: [slotKey] })
+      await setController('accounts', { accounts: [basicAccount] })
 
       expect(movesAway()).toEqual([])
 
@@ -304,8 +354,8 @@ describe('the key step', () => {
       await atWords()
       await continueAfterAcknowledging()
       await addFails()
-      await setController('keystore', { keys: slotKeys })
-      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+      await setController('keystore', { keys: [slotKey] })
+      await setController('accounts', { accounts: [basicAccount] })
 
       await press('fast-track-key-retry')
 
@@ -453,6 +503,18 @@ describe('the key step', () => {
         { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: undefined }
       ])
       expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('names no receiving account where the selected account is a smart account', async () => {
+      await setController('keystore', { keys: [slotKey, offsetKey] })
+      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+      await setController('selected', { account: smartAccount })
+      await setController('auth', { authStatus: 'authenticated' })
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(0)
+      expect(where()).toBe(ACCOUNT_STEP_WITH_NO_ACCOUNT)
     })
 
     it('meets a direct open with accounts listed with the warning, and sends nothing', async () => {
