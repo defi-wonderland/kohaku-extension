@@ -133,7 +133,7 @@ export type EntryReading =
   | { status: 'loading' }
   | { status: 'failed' }
   | { status: 'absent' }
-  | { status: 'present'; entry: RecoveryEntryRecord }
+  | { status: 'present'; account: Address; entry: RecoveryEntryRecord }
 
 export interface ChecklistBodyProps {
   records: WalletRecords

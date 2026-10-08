@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import { useLocation } from 'react-router-dom'
+import { isAddressEqual } from 'viem'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
@@ -136,7 +137,7 @@ const ChecklistScreen = () => {
           navigate(accountStepPath(), { replace: true })
           return
         }
-        setReading({ status: 'present', entry: read.value })
+        setReading({ status: 'present', account, entry: read.value })
       })
       .catch(() => {
         if (live) {
@@ -148,7 +149,7 @@ const ChecklistScreen = () => {
     }
   }, [records, account, attempt, navigate])
 
-  if (reading.status === 'present' && search) {
+  if (reading.status === 'present' && search && isAddressEqual(reading.account, search.account)) {
     return (
       <ChecklistChrome route={reading.entry.route} testID="checklist-screen">
         <ChecklistBody

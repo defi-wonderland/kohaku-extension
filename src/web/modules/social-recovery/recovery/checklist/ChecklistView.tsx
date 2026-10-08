@@ -13,6 +13,7 @@ import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
+import flexbox from '@common/styles/utils/flexbox'
 import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import { failed } from '@web/modules/social-recovery/shared/ceremony'
 import { ActionsRow, PageTitle } from '@web/modules/social-recovery/shared/chrome'
@@ -182,7 +183,7 @@ const ChecklistView = ({
         text={t('socialRecovery.writes.tryAgain')}
         onPress={onPress}
         hasBottomSpacing={false}
-        style={{ alignSelf: 'flex-start' }}
+        style={flexbox.alignSelfStart}
       />
     </View>
   )
@@ -364,11 +365,11 @@ const ChecklistView = ({
         </Alert>
       )}
       <ChecklistRows layout={layout} assessment={assessment} renderRow={renderRow} />
-      {satisfied ? (
+      {satisfied && (
         <Text fontSize={14} style={spacings.mtSm} testID="checklist-satisfied">
           {t(`${CHECKLIST}.satisfied`)}
         </Text>
-      ) : null}
+      )}
       <ActionsRow
         primary={
           <Button

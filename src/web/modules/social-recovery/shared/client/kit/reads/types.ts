@@ -54,6 +54,12 @@ export interface ActionReads {
   actionInfo(): Promise<ActionInfo>
 }
 
+/** The Ambire account's views, failing as the manager's do. */
+export interface AccountReads {
+  /** The privilege value the account holds for `key`: zero where it holds none. */
+  privileges(account: Address, key: Address, block?: BlockTag): Promise<Hex>
+}
+
 /** One method module's views, failing as the manager's do, except `paused`. */
 export interface MethodReads {
   name(module: Address): Promise<string>
