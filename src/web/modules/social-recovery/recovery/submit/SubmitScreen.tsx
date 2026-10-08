@@ -254,7 +254,6 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
           : {}),
         removed
       }}
-      providerKind={receivingFacts?.network.rpcProvider}
       verify={verify}
       run={run.state}
       sending={sending}
