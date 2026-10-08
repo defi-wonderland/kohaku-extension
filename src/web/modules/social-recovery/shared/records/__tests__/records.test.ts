@@ -10,7 +10,7 @@
  * default when the stored string is falsy and parses it otherwise. So a field
  * holding `undefined` loses its key and a `bigint` survives, as in the extension.
  */
-import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
+import { parse } from '@ambire-common/libs/richJson/richJson'
 import en from '@common/config/localization/translations/en.json'
 import type {
   Address,
@@ -63,6 +63,7 @@ import {
   WIPE_REASON_STRING_KEYS,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import { makeStorage } from '@web/modules/social-recovery/shared/records/__fixtures__/storage'
 import type {
   RichJsonStorageDouble,
   SessionUpdate
@@ -89,84 +90,6 @@ jest.mock('@web/constants/browserapi', () => {
     }
   }
 })
-
-// The helper's `formatValue`: parse a string, or return it as is when it is not JSON.
-const formatValue = (stored: string): unknown => {
-  try {
-    return parse(stored)
-  } catch (error) {
-    return stored
-  }
-}
-
-const makeStorage = (): RichJsonStorageDouble => {
-  const raw = new Map<string, string>()
-  const calls = {
-    set: [] as string[],
-    remove: [] as string[],
-    setEntries: [] as string[][],
-    removeKeys: [] as string[][]
-  }
-  const faults: RichJsonStorageDouble['faults'] = {}
-  // The helper's serialization: a string as is, anything else through richJson.
-  // `browser.storage.local.set({ [key]: undefined })` stores nothing.
-  const serialize = (value: unknown): string | undefined =>
-    typeof value === 'string' ? value : stringify(value)
-  const set = async (key: string, value: unknown): Promise<null> => {
-    calls.set.push(key)
-    const serialized = serialize(value)
-    if (serialized !== undefined) {
-      raw.set(key, serialized)
-    }
-    return null
-  }
-  const remove = async (key: string): Promise<null> => {
-    calls.remove.push(key)
-    raw.delete(key)
-    return null
-  }
-  // One `browser.storage.local` call over several keys lands whole or not at
-  // all: every value is serialized first, and an injected fault stores nothing.
-  const takeFault = (name: keyof RichJsonStorageDouble['faults']) => {
-    const fault = faults[name]
-    delete faults[name]
-    if (fault) {
-      throw fault
-    }
-  }
-  return {
-    raw,
-    calls,
-    faults,
-    // The helper's rule: `if (!res[key]) return defaultValue`, then `formatValue`.
-    get: async (key, defaultValue) => {
-      const stored = key && raw.get(key)
-      if (!stored) {
-        return defaultValue
-      }
-      return formatValue(stored)
-    },
-    getAll: async () =>
-      Object.fromEntries([...raw.entries()].map(([key, stored]) => [key, formatValue(stored)])),
-    set,
-    remove,
-    setEntries: async (entries) => {
-      calls.setEntries.push(Object.keys(entries))
-      takeFault('setEntries')
-      const serialized = Object.entries(entries).map(([key, value]) => [key, serialize(value)])
-      serialized.forEach(([key, value]) => {
-        if (value !== undefined) {
-          raw.set(key as string, value)
-        }
-      })
-    },
-    removeKeys: async (keys) => {
-      calls.removeKeys.push([...keys])
-      takeFault('removeKeys')
-      keys.forEach((key) => raw.delete(key))
-    }
-  }
-}
 
 // A record the platform keeps for the holder's credentials, which neither save
 // nor start over may touch.
@@ -378,12 +301,15 @@ const writeAllSetup = async (records: WalletRecords, account: Address = ACCOUNT)
   await six.passwordSet.write(SETUP_SAMPLES.passwordSet)
 }
 
+// The attempt the landed session keeps from the request of `GATHERING`.
+const LANDED_ATTEMPT = { attemptId: PREDICTED_ATTEMPT_ID.toString(), setupNonce: '3' }
+
 // The one line a wipe keeps for an event: the reason, the account and, for an
 // expired request, its deadline. The submission landing keeps the landed state,
-// the countdown's record, which holds the account address alone.
+// the countdown's record.
 const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
   event === 'submission-landed'
-    ? { state: 'landed', account: ACCOUNT }
+    ? { state: 'landed', account: ACCOUNT, ...LANDED_ATTEMPT }
     : {
         state: 'wiped',
         reason: event,
@@ -1072,7 +998,7 @@ describe('the recovery session', () => {
         expect(text).not.toContain(PROOF_B)
         expect(text).not.toContain('gathering')
         expect(text).not.toContain('replies')
-        expect(text).not.toContain('attemptId')
+        expect(text.includes('attemptId')).toBe(event === 'submission-landed')
         expect(text).not.toContain('setupBody')
         expect(text).not.toContain('digest')
       })
@@ -1132,7 +1058,8 @@ describe('the recovery session', () => {
       wipedLine('submission-landed')
     )
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
   })
 
@@ -1191,19 +1118,19 @@ describe('the recovery session', () => {
 })
 
 describe('the countdown record after the submission lands', () => {
-  it('holds the account address alone and the session is gone', async () => {
+  it('holds the account and the landed attempt, and the live session is gone', async () => {
     const { records } = setup()
     await writeSession(records, GATHERING)
     await landSession(records)
     const countdown = present(await records.countdown(CHAIN_ID, ACCOUNT).read())
-    expect(countdown.value).toEqual({ account: ACCOUNT })
+    expect(countdown.value).toEqual({ account: ACCOUNT, ...LANDED_ATTEMPT })
     expect(countdown.savedAt).toBe(T0)
     expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual(
       wipedLine('submission-landed')
     )
     const listed = await records.listCountdowns(CHAIN_ID)
     expect(listed).toHaveLength(1)
-    expect(listed[0].record.value).toEqual({ account: ACCOUNT })
+    expect(listed[0].record.value).toEqual({ account: ACCOUNT, ...LANDED_ATTEMPT })
   })
 
   it('takes the account from the live session', async () => {
@@ -1212,7 +1139,8 @@ describe('the countdown record after the submission lands', () => {
     await writeSession(records, gathering(checksummed, []), checksummed)
     await landSession(records, checksummed.toLowerCase() as Address)
     expect(present(await records.countdown(CHAIN_ID, checksummed).read()).value).toEqual({
-      account: checksummed
+      account: checksummed,
+      ...LANDED_ATTEMPT
     })
   })
 
@@ -1265,7 +1193,8 @@ describe('the countdown record after the submission lands', () => {
     )
     expect(dump(storage)).toBe(before)
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
   })
 
@@ -1352,7 +1281,7 @@ describe('the session survives the submission as the countdown record, with no i
     expect(storage.calls.remove).toEqual([])
   })
 
-  it('the landed session record holds the account address alone, and the countdown reads back from it', async () => {
+  it('the landed session record holds the account and the landed attempt, and the countdown reads back from it', async () => {
     const { storage, records } = await landAndReset()
     // One record on this device: the session's own key.
     expect(storage.raw.size).toBe(1)
@@ -1360,14 +1289,15 @@ describe('the session survives the submission as the countdown record, with no i
     expect(key).toBe(storage.calls.set[0])
     expect(present(await records.recoverySession(CHAIN_ID, ACCOUNT).read()).value).toEqual({
       state: 'landed',
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
     const text = dump(storage)
     expect(text).not.toContain(PROOF_A)
-    expect(text).not.toContain('attemptId')
   })
 
   it('listCountdowns and listRecoverySessions come from a prefix scan, with no index key present', async () => {
@@ -1473,7 +1403,7 @@ describe('the session survives the submission as the countdown record, with no i
     const restarted = createWalletRecords({ storage, now: () => T0 })
     const listed = await restarted.listCountdowns(CHAIN_ID)
     expect(listed).toHaveLength(1)
-    expect(listed[0].record.value).toEqual({ account: ACCOUNT })
+    expect(listed[0].record.value).toEqual({ account: ACCOUNT, ...LANDED_ATTEMPT })
   })
 })
 
@@ -1658,7 +1588,8 @@ describe('clearWipedSession removes only a wiped session', () => {
     expect(storage.calls.remove).toEqual([])
     expect(dump(storage)).toBe(before)
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
     expect(await records.listCountdowns(CHAIN_ID)).toHaveLength(1)
   })
@@ -1682,7 +1613,8 @@ describe('clearWipedSession removes only a wiped session', () => {
     expect(cleared.sort()).toEqual([false, true])
     expect(await records.recoverySession(CHAIN_ID, OTHER_ACCOUNT).read()).toBe(ABSENT)
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
     expect((await records.listCountdowns(CHAIN_ID)).map((c) => c.account)).toEqual([ACCOUNT])
     expect(present(await records.recoverySession(CHAIN_ID, third).read()).value).toEqual({
@@ -1860,7 +1792,7 @@ describe('a session update refuses when the session changed after its caller rea
     expect(dump(storage)).toBe(before)
     expect(before).not.toContain(PROOF_A)
     const countdown = await records.countdown(CHAIN_ID, ACCOUNT).read()
-    expect(present(countdown).value).toEqual({ account: ACCOUNT })
+    expect(present(countdown).value).toEqual({ account: ACCOUNT, ...LANDED_ATTEMPT })
     expect(revisionOf(countdown)).toBe(landed.revision)
   })
 
@@ -1878,7 +1810,8 @@ describe('a session update refuses when the session changed after its caller rea
     expect(landed).toMatchObject(CONFLICT)
     await landSession(records)
     expect(present(await records.countdown(CHAIN_ID, ACCOUNT).read()).value).toEqual({
-      account: ACCOUNT
+      account: ACCOUNT,
+      ...LANDED_ATTEMPT
     })
     expect(dump(storage)).not.toContain(PROOF_A)
     expect(dump(storage)).not.toContain(PROOF_B)
