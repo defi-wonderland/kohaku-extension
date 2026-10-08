@@ -42,7 +42,9 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     account: input.privilegeAccount,
     accountImplementation: config.accountImplementation,
     action: input.action,
-    codeRead
+    codeRead,
+    provider,
+    blockTags: config.blockTags
   })
   const walletReads: WalletReads = {
     removedKey: () => kitWalletReads.removedKey(),
