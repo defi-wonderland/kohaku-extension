@@ -1,4 +1,8 @@
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  ClientConfiguration,
+  IProvider
+} from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { CodeRead, PrivilegeAccount, WalletReads } from '../../types'
 import type { ActionReads } from '../reads/types'
@@ -13,6 +17,10 @@ export interface KitWalletReadsInput {
   accountImplementation?: Address
   action: Pick<ActionReads, 'isAuthority' | 'supportsAccount' | 'ambireImplementation'>
   codeRead: CodeRead
+  /** The provider the privilege writes and the `privileges` view of an account with no creation record are read through. */
+  provider: IProvider
+  /** The block tags the reads of an account with no creation record pin at. */
+  blockTags?: ClientConfiguration['blockTags']
 }
 
 /** The two account reads the kit serves of the wallet's own reads. */

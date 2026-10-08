@@ -8,17 +8,18 @@
 import React, { useCallback, useState } from 'react'
 import { View } from 'react-native'
 
-import Button from '@common/components/Button'
 import Checkbox from '@common/components/Checkbox'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
-import { ActionsRow, SectionCard, StepCounter } from '@web/modules/social-recovery/shared/chrome'
+import { SectionCard, StepCounter } from '@web/modules/social-recovery/shared/chrome'
 
 import { FAST_TRACK_STEP_COUNTER_KEY, FAST_TRACK_STEPS, WARNING_STEP } from './constants'
 import { warningCopyOf } from './copy'
 import type { WarningGateProps } from './types'
+import WarningActions from './WarningActions'
+import WarningHeader from './WarningHeader'
+import WarningImportPointer from './WarningImportPointer'
 
 const WarningGate = ({ form, testID = 'recovery-warning', ...handlers }: WarningGateProps) => {
   const { t } = useTranslation()
@@ -56,17 +57,7 @@ const WarningGate = ({ form, testID = 'recovery-warning', ...handlers }: Warning
           testID={`${testID}-step`}
         />
       )}
-      {!!copy.header && (
-        <Text
-          fontSize={20}
-          weight="medium"
-          appearance="errorText"
-          style={spacings.mbTy}
-          testID={`${testID}-header`}
-        >
-          {t(copy.header)}
-        </Text>
-      )}
+      {!!copy.header && <WarningHeader header={copy.header} testID={testID} />}
       <Text
         fontSize={16}
         weight="medium"
@@ -86,20 +77,11 @@ const WarningGate = ({ form, testID = 'recovery-warning', ...handlers }: Warning
       </SectionCard>
 
       {!!copy.pointer && !!onImportInstead && (
-        <SectionCard tone="muted" spacing="item" testID={`${testID}-pointer`}>
-          <Text fontSize={14} style={spacings.mbTy}>
-            {t(copy.pointer.line)}
-          </Text>
-          <Button
-            testID={`${testID}-import-instead`}
-            type="secondary"
-            size="small"
-            text={t(copy.pointer.action)}
-            onPress={onImportInstead}
-            hasBottomSpacing={false}
-            style={flexbox.alignSelfStart}
-          />
-        </SectionCard>
+        <WarningImportPointer
+          pointer={copy.pointer}
+          onImportInstead={onImportInstead}
+          testID={testID}
+        />
       )}
 
       <Checkbox
@@ -112,29 +94,11 @@ const WarningGate = ({ form, testID = 'recovery-warning', ...handlers }: Warning
       />
 
       {copy.actions && !!onContinue && (
-        <ActionsRow
-          testID={`${testID}-actions`}
-          primary={
-            <Button
-              testID={`${testID}-continue`}
-              type="primary"
-              text={t('socialRecovery.actions.continue')}
-              disabled={!acknowledged}
-              onPress={proceed}
-              hasBottomSpacing={false}
-            />
-          }
-          secondary={
-            onLeave ? (
-              <Button
-                testID={`${testID}-leave`}
-                type="outline"
-                text={t('socialRecovery.recover.warning.leave')}
-                onPress={onLeave}
-                hasBottomSpacing={false}
-              />
-            ) : undefined
-          }
+        <WarningActions
+          acknowledged={acknowledged}
+          onContinue={proceed}
+          onLeave={onLeave}
+          testID={testID}
         />
       )}
     </View>

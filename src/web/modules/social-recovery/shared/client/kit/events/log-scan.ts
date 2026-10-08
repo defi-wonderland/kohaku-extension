@@ -2,6 +2,7 @@ import type {
   BlockRange,
   FilterSpec,
   IProvider,
+  LogPosition,
   RawLog
 } from '@web/modules/social-recovery/sdk-interfaces'
 
@@ -9,6 +10,15 @@ import type { LogScan } from './types'
 
 /** The widest block range one log query asks for, since a node may cap the range. */
 export const LOG_CHUNK_BLOCKS = 10_000
+
+/** Where a raw log sits in the chain; a log with no removed flag reads as not removed. */
+export const positionOf = (log: RawLog): LogPosition => ({
+  blockNumber: log.blockNumber,
+  blockHash: log.blockHash,
+  logIndex: log.logIndex,
+  transactionHash: log.transactionHash,
+  removed: log.removed ?? false
+})
 
 /** The ranges of at most `LOG_CHUNK_BLOCKS` blocks that cover `from` to `to`, both included. */
 export const chunksOf = (from: number, to: number): BlockRange[] => {
