@@ -63,6 +63,15 @@ jest.mock('@web/modules/social-recovery/recovery/entry/AccountStepScreen', () =>
   mockScreen('account-step')
 )
 jest.mock('@web/modules/social-recovery/recovery/entry/ReadoutScreen', () => mockScreen('readout'))
+jest.mock('@web/modules/social-recovery/onboarding/fast-track/FastTrackScreen', () =>
+  mockScreen('fasttrack')
+)
+jest.mock('@web/modules/social-recovery/onboarding/fast-track/KeyStepScreen', () =>
+  mockScreen('keystep')
+)
+jest.mock('@web/modules/social-recovery/onboarding/fast-track/GasStepScreen', () =>
+  mockScreen('gasstep')
+)
 jest.mock('@web/modules/social-recovery/recovery/checklist/ChecklistScreen', () =>
   mockScreen('checklist')
 )
