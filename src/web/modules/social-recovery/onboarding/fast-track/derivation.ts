@@ -1,0 +1,74 @@
+import { isAddress } from 'viem'
+
+import { DERIVATION_OPTIONS } from '@ambire-common/consts/derivation'
+import type { Account } from '@ambire-common/interfaces/account'
+import type { Key } from '@ambire-common/interfaces/keystore'
+import { isSmartAccount } from '@ambire-common/libs/account/account'
+import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { sameAddress } from '@web/modules/social-recovery/shared/client'
+
+import { SLOT_INDEX } from './constants'
+import type { TempSeed } from './types'
+
+/**
+ * The recovery phrase in a one-time message the keystore sent to the page;
+ * null for any other message. The message crosses the event bus, so its shape
+ * is checked here.
+ */
+export const tempSeedOf = (data: unknown): TempSeed | null => {
+  if (typeof data !== 'object' || data === null) {
+    return null
+  }
+  const { tempSeed } = data as { tempSeed?: unknown }
+  if (typeof tempSeed !== 'object' || tempSeed === null) {
+    return null
+  }
+  const { seed, seedPassphrase, hdPathTemplate } = tempSeed as Record<string, unknown>
+  const template = DERIVATION_OPTIONS.find((option) => option.value === hdPathTemplate)
+  if (typeof seed !== 'string' || !seed || !template) {
+    return null
+  }
+  return {
+    seed,
+    seedPassphrase: typeof seedPassphrase === 'string' ? seedPassphrase : null,
+    hdPathTemplate: template.value
+  }
+}
+
+/**
+ * The slot's key, derived from the recovery phrase through the library's key
+ * iterator at the slot's index: the key of the slot's basic account, which
+ * the recovery installs on the recovered account and which pays its gas.
+ */
+export const slotKeyOf = async (seed: TempSeed, index: number = SLOT_INDEX): Promise<Address> => {
+  const iterator = new KeyIterator(seed.seed, seed.seedPassphrase)
+  const [key] = await iterator.retrieve([{ from: index, to: index }], seed.hdPathTemplate)
+  if (!key || !isAddress(key)) {
+    throw new Error(`The key iterator derived no key for slot index ${index}.`)
+  }
+  return key
+}
+
+/**
+ * The slot's basic account, once the wallet lists it at the slot's key and
+ * the keystore holds that key as an ordinary key of a recovery phrase; null
+ * until then.
+ */
+export const listedSlotOf = (
+  slotKey: Address,
+  accounts: readonly Account[],
+  keys: readonly Key[]
+): Address | null => {
+  const basic = accounts.find(
+    (account) => !isSmartAccount(account) && sameAddress(account.addr, slotKey)
+  )
+  const held = keys.some(
+    (key) =>
+      key.type === 'internal' &&
+      !key.dedicatedToOneSA &&
+      typeof key.meta.fromSeedId === 'string' &&
+      sameAddress(key.addr, slotKey)
+  )
+  return basic && held && isAddress(basic.addr) ? basic.addr : null
+}

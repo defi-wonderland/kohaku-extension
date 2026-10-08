@@ -182,7 +182,9 @@ describe('the recover door screen', () => {
     await press('recovery-warning-continue')
 
     expect(mockNavigate).toHaveBeenCalledTimes(1)
-    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryFastTrack)
+    expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryFastTrack, {
+      state: { acknowledged: true }
+    })
   })
 
   it('sends import instead where the welcome screen sends its import door', async () => {
