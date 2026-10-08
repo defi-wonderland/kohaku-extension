@@ -67,11 +67,8 @@ const NO_PASSWORD = ''
 /** The refusal reasons of a backup whose bytes this build cannot read. */
 const UNREADABLE_REASONS: readonly unknown[] = ['unknown-version', 'malformed']
 
-/** The rule lines the editor alone shows: the sizing advice and the offer to add a method. */
-const EDITOR_ONLY_LINES: readonly string[] = [
-  RULE_LINE_KEYS.sizingRule,
-  RULE_LINE_KEYS.secondMethodOffer
-]
+/** The rule line the editor alone shows: the offer to add a method. */
+const EDITOR_ONLY_LINES: readonly string[] = [RULE_LINE_KEYS.secondMethodOffer]
 
 const METHOD_NOUN = 'socialRecovery.display.nouns.method'
 const SMART_ACCOUNT_LINE = 'socialRecovery.disclosures.smartAccount'
