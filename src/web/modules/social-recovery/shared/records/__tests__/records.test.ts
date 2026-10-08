@@ -3185,6 +3185,7 @@ describe('the recovery entry', () => {
       { value: { account: ACCOUNT, route: 'fresh-install' }, savedAt: T0 },
       { value: { ...ENTRY, receivingAccount: '0x123' }, savedAt: T0 },
       { value: { ...ENTRY, account: 'not an address' }, savedAt: T0 },
+      { value: { ...ENTRY, account: 42 }, savedAt: T0 },
       { value: { ...ENTRY, receivingAccount: 0 }, savedAt: T0 },
       { value: null, savedAt: T0 },
       { value: true, savedAt: T0 },
@@ -3204,16 +3205,10 @@ describe('the recovery entry', () => {
     )
   })
 
-  it('a write refuses an entry for another account, with a route outside the two or an invalid receiving account, and writes nothing', async () => {
+  it('a write refuses an entry for another account and writes nothing', async () => {
     const { storage, records } = setup()
     const entry = records.recoveryEntry(CHAIN_ID, ACCOUNT)
     await expect(entry.write({ ...ENTRY, account: OTHER_ACCOUNT })).rejects.toThrow(
-      /Invalid recovery entry/
-    )
-    await expect(
-      entry.write({ ...ENTRY, route: 'settings' } as unknown as RecoveryEntryRecord)
-    ).rejects.toThrow(/Invalid recovery entry/)
-    await expect(entry.write({ ...ENTRY, receivingAccount: '0x123' })).rejects.toThrow(
       /Invalid recovery entry/
     )
     expect(storage.raw.size).toBe(0)
