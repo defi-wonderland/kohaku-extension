@@ -51,12 +51,19 @@ const worldOf = ({
     supportsAccount: jest.fn<Promise<boolean>, [Address]>(async () => supportsAccount),
     ambireImplementation: jest.fn(async () => IMPLEMENTATION)
   }
+  const provider = {
+    chainId: jest.fn(async () => 11155111),
+    call: jest.fn(async (): Promise<Hex> => zeroHash),
+    logs: jest.fn(async () => []),
+    block: jest.fn(async () => ({ number: 100, timestamp: 0, hash: zeroHash }))
+  }
   const reads = createKitWalletReads({
     account: { addr, associatedKeys, initialPrivileges, creation },
     knownKeys,
     accountImplementation,
     action,
-    codeRead
+    codeRead,
+    provider
   })
   return { reads, codeRead, action }
 }
@@ -72,7 +79,7 @@ describe('the removed key of an account with no code', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual({ kind: 'named', key: KEY_A })
     expect(action.isAuthority).not.toHaveBeenCalled()
-    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT)
+    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT, undefined)
   })
 
   it('names none where every creation privilege is zero', async () => {
@@ -188,7 +195,7 @@ describe('the removed key of an account with code', () => {
       authorities: [KEY_A]
     })
     await reads.removedKey()
-    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT)
+    expect(codeRead.code).toHaveBeenCalledWith(ACCOUNT, undefined)
     expect(action.isAuthority).toHaveBeenCalledWith(ACCOUNT, KEY_A)
   })
 
@@ -201,10 +208,9 @@ describe('the removed key of an account with code', () => {
 })
 
 describe('the removed key of an account with no creation record', () => {
-  it('is unavailable, with no read', async () => {
-    const { reads, action, codeRead } = worldOf({
+  it('is unavailable where the account has no code either, with no authority read', async () => {
+    const { reads, action } = worldOf({
       creation: null,
-      code: ACCOUNT_CODE,
       associatedKeys: [KEY_A],
       authorities: [KEY_A]
     })
@@ -213,7 +219,6 @@ describe('the removed key of an account with no creation record', () => {
       cause: 'no-creation-record'
     })
     expect(action.isAuthority).not.toHaveBeenCalled()
-    expect(codeRead.code).not.toHaveBeenCalled()
   })
 })
 

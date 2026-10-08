@@ -7,7 +7,9 @@
  * Called with no facts, the client takes the listed account's own
  * (`clientFactsOf`, `creationPrivilegesOf`): a smart account's creation
  * record, associated keys and creation privileges, so the removed-key read can
- * name the key; a basic account gives none.
+ * name the key; a basic account, and an account the wallet does not list,
+ * give none, and the removed-key read then reads a deployed account's keys
+ * from the chain.
  *
  * A refused digest version comes back as the `update-the-wallet` state the
  * account step draws; any other failure as `failed`, with `retry`, never as an
