@@ -70,7 +70,9 @@ const useRecoveredAccountAdd = ({
       return
     }
     const creation = pending?.creation ?? pendingAdds.get(key)?.creation
-    pendingAdds.delete(key)
+    if (pending) {
+      endPending(key, pending)
+    }
     setState({ status: 'done', ...(creation ? { creation } : {}) })
   }, [listed, key, pending])
 
