@@ -385,11 +385,12 @@ const readFollow = async (store: ExecuteStore): Promise<void> => {
           }
           if (now?.requestId === follow.requestId && !now.transactionHash) {
             // eslint-disable-next-line no-await-in-loop
-            const released = await steps.release(follow.requestId).then(
-              () => true,
-              () => false
-            )
-            if (released && store.state().follow === follow) {
+            const released = await steps.release(follow.requestId).catch(() => undefined)
+            if (released === 'replaced') {
+              store.dispatch({ type: 'replaced', run })
+              return
+            }
+            if (released === 'written' && store.state().follow === follow) {
               store.dispatch({ type: 'voided', run })
               return
             }

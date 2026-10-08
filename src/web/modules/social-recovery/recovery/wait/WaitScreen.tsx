@@ -53,7 +53,7 @@ import type { SendingReading } from '@web/modules/social-recovery/recovery/submi
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
 import { anchorOf, donePathOf } from './phase'
-import { landedAttemptOf } from './read'
+import { isCountdownOf, landedAttemptOf } from './read'
 import { executeStepsOf } from './steps'
 import type {
   CountdownReading,
@@ -318,16 +318,28 @@ const WaitBody = ({
   const onLeave = useCallback(() => {
     setLeave('leaving')
     // The countdown is read again first: an execution claim written since the open moved its revision.
-    records
-      .countdown(CHAIN_ID, account)
-      .read()
-      .then((read) =>
-        records.endCountdown(CHAIN_ID, account, read.status === 'present' ? read.revision : null)
+    // A countdown that names another attempt than this screen's is left as it is, and read again.
+    const leaveCountdown = async () => {
+      const read = await records.countdown(CHAIN_ID, account).read()
+      if (read.status === 'present') {
+        const ours = landed
+          ? isCountdownOf(read.value, landed)
+          : landedAttemptOf(read.value) === null
+        if (!ours) {
+          onCountdownReplaced()
+          return
+        }
+      }
+      await records.endCountdown(
+        CHAIN_ID,
+        account,
+        read.status === 'present' ? read.revision : null
       )
-      .then(() => records.recoveryEntry(CHAIN_ID, account).clear())
-      .then(() => navigate(routeEntryPathOf(entry.route), { replace: true }))
-      .catch(() => setLeave('failed'))
-  }, [records, account, navigate, entry.route])
+      await records.recoveryEntry(CHAIN_ID, account).clear()
+      navigate(routeEntryPathOf(entry.route), { replace: true })
+    }
+    leaveCountdown().catch(() => setLeave('failed'))
+  }, [records, account, navigate, entry.route, landed, onCountdownReplaced])
 
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
   // The transfer screen sends from the selected account, so the account being recovered is selected first.

@@ -624,12 +624,18 @@ describe('a countdown another tab replaced with another attempt', () => {
 
   /**
    * Stores the countdown of a later submission for the same account, as another
-   * tab lands it: the next attempt id under a new revision, with no claim; the
-   * chain then holds that attempt, opened and due.
+   * tab lands it: the next attempt id under a new revision, with no claim, or
+   * with a copy of the claim the old countdown carries; the chain then holds
+   * that attempt, opened and due.
    */
-  const replaceCountdown = async (world: World): Promise<void> => {
+  const replaceCountdown = async (
+    world: World,
+    { keepClaim = false }: { keepClaim?: boolean } = {}
+  ): Promise<void> => {
     const key = recordKeys.recoverySession(CHAIN_ID, world.account)
     const stored = await storedCountdown(world)
+    const execution =
+      keepClaim && stored.value.state === 'landed' ? stored.value.execution : undefined
     await world.storage.set(key, {
       ...stored,
       revision: '0x0a0b0c0d0e0f0a0b0c0d0e0f',
@@ -638,7 +644,8 @@ describe('a countdown another tab replaced with another attempt', () => {
         account: world.account,
         attemptId: NEXT_ATTEMPT.toString(),
         setupNonce: '1',
-        payloadHash: PAYLOAD_HASH
+        payloadHash: PAYLOAD_HASH,
+        ...(execution ? { execution } : {})
       }
     })
     const { chain } = world.kit
@@ -721,6 +728,27 @@ describe('a countdown another tab replaced with another attempt', () => {
     await expectExecuteOfNextAttempt(view, world, 1)
   })
 
+  it('releases nothing on the new countdown where it carries the same claim and the followed claim grew old', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    // From the claim's block the manager names the later attempt consumed, never the old one.
+    eventsFromClaim(world, async () => [
+      { ...attemptConsumed(world.account), attemptId: NEXT_ATTEMPT }
+    ])
+    await claimElsewhere(world.records, world.account)
+    const view = await mount(mountWait(world.account))
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+
+    await replaceCountdown(world, { keepClaim: true })
+    const replaced = await storedCountdown(world)
+    moveDeviceClock(CLAIM_AGE_MS)
+    await tick(REREAD_MS)
+    expect(await storedCountdown(world)).toEqual(replaced)
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
   it('releases nothing on the new countdown where it replaced the run between the two readings of a send no node knows', async () => {
     const world = await openWorld()
     elapse(world.kit)
@@ -740,6 +768,26 @@ describe('a countdown another tab replaced with another attempt', () => {
     expect(await storedCountdown(world)).toEqual(replaced)
 
     await expectExecuteOfNextAttempt(view, world, 2)
+  })
+
+  it('releases nothing on the new countdown where it carries the same claim between the two readings of a send no node knows', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdReceipt(world)
+    world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+
+    moveDeviceClock(61 * 60_000)
+    await tick(POLL_MS)
+    expect(world.kit.receipts.transactionKnown).toHaveBeenCalledWith(TX_HASH)
+
+    await replaceCountdown(world, { keepClaim: true })
+    const replaced = await storedCountdown(world)
+    await tick(60_000)
+    expect(await storedCountdown(world)).toEqual(replaced)
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
+    expect(world.port.send).toHaveBeenCalledTimes(1)
   })
 
   it('claims and writes its hash on a countdown another page rewrote with the same attempt, its payload hash spelled in capitals', async () => {

@@ -163,12 +163,11 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
         }
         return 'written'
       }, 'replaced'),
-    async release(requestId) {
-      await withFreshRevision<unknown>(
-        (revision) => countdown.releaseExecution(requestId, revision),
-        undefined
-      )
-    },
+    release: (requestId) =>
+      withFreshRevision<RunWrite>(async (revision) => {
+        await countdown.releaseExecution(requestId, revision)
+        return 'written'
+      }, 'replaced'),
     releaseClaim: (requestId, hashes) =>
       withFreshRevision(
         async (revision, execution): Promise<ExecutionRelease> => {

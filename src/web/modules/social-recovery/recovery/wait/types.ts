@@ -283,7 +283,8 @@ export interface ExecuteSteps {
    * page released it; writes nothing where the countdown names another attempt.
    */
   markSent(claim: ExecutionInFlightClaim, transactionHash: Hex): Promise<RunWrite>
-  release(requestId: string): Promise<void>
+  /** Releases the claim under `requestId`; releases nothing where the countdown names another attempt. */
+  release(requestId: string): Promise<RunWrite>
   /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
   releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ExecutionRelease>
   /** How old a claim with no hash grows before the manager's events judge it, in ms. */

@@ -16,6 +16,8 @@ import {
   NO_ATTEMPT,
   ONE_GUARDIAN,
   openWorld,
+  PAYLOAD,
+  PAYLOAD_HASH,
   readyFacts,
   factsOf,
   basicAccount,
@@ -27,6 +29,8 @@ import {
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { CancelledBy } from '@web/modules/social-recovery/sdk-interfaces'
+import { recordKeys } from '@web/modules/social-recovery/shared/records'
+import type { StoredSession } from '@web/modules/social-recovery/shared/records'
 
 const POLL_MS = 30_000
 const RECOVER_DOOR = `/${WEB_ROUTES.socialRecoveryRecover}`
@@ -214,6 +218,41 @@ describe('the cancelled terminals', () => {
 
     world.storage.remove = remove
     await leaves(world, SETTINGS_ENTRY)
+  })
+
+  it("ends nothing where another tab landed a later attempt's countdown meanwhile, and shows that countdown", async () => {
+    const world = await openWorld()
+    cancelBy(world, 'cancelByOwner')
+    view = await mountWait(world.account)
+    expect(view.byTestId('wait-cancelled-cancelByOwner')).not.toBeNull()
+
+    const key = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const stored = (await world.storage.get(key)) as StoredSession
+    const later: StoredSession = {
+      ...stored,
+      revision: '0x0a0b0c0d0e0f0a0b0c0d0e0f',
+      value: {
+        state: 'landed',
+        account: world.account,
+        attemptId: '2',
+        setupNonce: '1',
+        payloadHash: PAYLOAD_HASH
+      }
+    }
+    await world.storage.set(key, later)
+    const { chain } = world.kit
+    chain.attempt = { ...chain.attempt, state: 'Waiting', attemptId: 2n }
+    chain.events = [...chain.events, attemptStarted(world.account, PAYLOAD, 2n)]
+
+    await view.press('wait-cancelled-action')
+    await tick(0)
+    expect(view.paths()).toEqual([])
+    expect(await world.storage.get(key)).toEqual(later)
+    expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
+      'present'
+    )
+    expect(view.byTestId('wait-cancelled-cancelByOwner')).toBeNull()
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
   })
 })
 
