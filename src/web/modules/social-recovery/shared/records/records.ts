@@ -14,11 +14,12 @@
  * survives.
  */
 import isEqual from 'react-fast-compare'
-import { bytesToHex, isAddress, isAddressEqual } from 'viem'
+import { bytesToHex, isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
 import type {
@@ -29,13 +30,23 @@ import type {
   CountdownRecord,
   DecryptedSetupCacheRecord,
   DirectWipeEvent,
+  ExecutionInFlightClaim,
+  ExecutionInFlightRecord,
   ExpectedRevision,
+  LandedRecoverySession,
+  LandedStoredSession,
   ListedRecord,
+  ListedRecoveryEntry,
   LiveRecoverySession,
+  LiveStoredSession,
   RecordAccessor,
   RecordRead,
+  RecoveryEntryAccessor,
+  RecoveryEntryRecord,
   RecoverySessionAccessor,
   RecoverySessionRecord,
+  RowNote,
+  RowNotes,
   SaveInFlightAccessor,
   SaveInFlightClaim,
   SaveInFlightRecord,
@@ -44,8 +55,11 @@ import type {
   SetupDraftRecord,
   SetupRecordName,
   SetupRecords,
+  StoredCountdown,
   StoredRecord,
   StoredSession,
+  SubmissionInFlightClaim,
+  SubmissionInFlightRecord,
   WalletRecords,
   WalletRecordsOptions
 } from './types'
@@ -97,6 +111,10 @@ export const newCeremonyRequestId = (): string =>
 const recoverySessionPrefix = (chainId: ChainId): string =>
   `${RECORDS_KEY_PREFIX}:recoverySession:${chainPart(chainId)}:`
 
+/** The key prefix every recovery entry on one chain shares. */
+const recoveryEntryPrefix = (chainId: ChainId): string =>
+  `${RECORDS_KEY_PREFIX}:recoveryEntry:${chainPart(chainId)}:`
+
 /**
  * The storage keys, `socialRecovery:<record>:<chainId>:<account>` with the
  * account in lowercase, so a write for one account never touches another:
@@ -105,6 +123,7 @@ const recoverySessionPrefix = (chainId: ChainId): string =>
  *   `passwordSet`: the six setup records;
  * - `recoverySession`: the live gathering, the reason line a wipe leaves, or in
  *   its landed state the countdown's record;
+ * - `recoveryEntry`: the route and the receiving account of a recovery;
  * - `decryptedSetupCache`: the setup the recovery password unlocked;
  * - `saveInFlight`: the setup save sent to the wallet and not yet settled.
  *
@@ -117,6 +136,8 @@ export const recordKeys = {
     `${RECORDS_KEY_PREFIX}:${name}:${chainPart(chainId)}:${accountPart(account)}`,
   recoverySession: (chainId: ChainId, account: Address): string =>
     `${recoverySessionPrefix(chainId)}${accountPart(account)}`,
+  recoveryEntry: (chainId: ChainId, account: Address): string =>
+    `${recoveryEntryPrefix(chainId)}${accountPart(account)}`,
   decryptedSetupCache: (chainId: ChainId, account: Address): string =>
     `${RECORDS_KEY_PREFIX}:decryptedSetupCache:${chainPart(chainId)}:${accountPart(account)}`,
   saveInFlight: (chainId: ChainId, account: Address): string =>
@@ -146,6 +167,24 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
   }
   const { revision } = stored as { revision?: unknown }
   return typeof revision === 'string' && revision !== ''
+}
+
+/**
+ * Whether a stored value is a recovery entry: the account, one of the two
+ * routes and the receiving account.
+ */
+const isRecoveryEntry = (value: unknown): value is RecoveryEntryRecord => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.account === 'string' &&
+    isAddress(record.account, { strict: false }) &&
+    RECOVERY_ROUTES.some((route) => route === record.route) &&
+    typeof record.receivingAccount === 'string' &&
+    isAddress(record.receivingAccount, { strict: false })
+  )
 }
 
 /**
@@ -212,6 +251,34 @@ const isSaveInFlight = (value: unknown): value is SaveInFlightRecord => {
 }
 
 /**
+ * Whether a stored value is a submission in flight: the request id, the start
+ * block, the claim time and, where present, the hash.
+ */
+const isSubmissionInFlight = (value: unknown): value is SubmissionInFlightRecord => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.requestId === 'string' &&
+    record.requestId !== '' &&
+    Number.isSafeInteger(record.startBlock) &&
+    (record.startBlock as number) >= 0 &&
+    typeof record.claimedAt === 'number' &&
+    Number.isFinite(record.claimedAt) &&
+    (record.transactionHash === undefined || typeof record.transactionHash === 'string')
+  )
+}
+
+/** Whether a stored value is an execution in flight: the same shape as a submission in flight. */
+const isExecutionInFlight = (value: unknown): value is ExecutionInFlightRecord =>
+  isSubmissionInFlight(value)
+
+/** Whether a stored value is a decimal string, the form a request carries a bigint in. */
+const isDecimalString = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9]+$/.test(value)
+
+/**
  * Deep equality of a stored request and the request a write names, as the
  * storage keeps them: both pass through the rich JSON the storage writes, so a
  * key whose value is `undefined` counts as absent on both sides. The storage
@@ -222,6 +289,116 @@ const sameStoredValue = (
   stored: Gathering['request'] | undefined,
   named: Gathering['request']
 ): boolean => stored !== undefined && isEqual(parse(stringify(stored)), parse(stringify(named)))
+
+/**
+ * The notes a live session keeps for a gathering: the notes of the places the
+ * gathering has, less every place that holds a reply, since a reply answers
+ * the note. `undefined` where none is left, so the session stores no empty
+ * member.
+ */
+const notesKept = (notes: RowNotes | undefined, gathering: Gathering): RowNotes | undefined => {
+  if (!notes) {
+    return undefined
+  }
+  const replied = new Set(gathering.replies.map((reply) => reply.place))
+  const kept = gathering.places.flatMap(({ place }) => {
+    const note = notes[place]
+    return note !== undefined && ROW_NOTES.includes(note) && !replied.has(place)
+      ? [[place, note] as const]
+      : []
+  })
+  return kept.length ? Object.fromEntries(kept) : undefined
+}
+
+/**
+ * The live session of a gathering, with no `notes` member where it has none
+ * and no `submission` member where no submission is in flight.
+ */
+const liveSession = (
+  gathering: Gathering,
+  notes: RowNotes | undefined,
+  submission: SubmissionInFlightRecord | undefined
+): LiveRecoverySession => ({
+  state: 'live',
+  gathering,
+  ...(notes ? { notes } : {}),
+  ...(submission ? { submission } : {})
+})
+
+/** The landed session of a countdown, with no member where the countdown has none. */
+const landedSession = ({
+  account,
+  attemptId,
+  setupNonce,
+  payloadHash,
+  execution
+}: CountdownRecord): LandedRecoverySession => ({
+  state: 'landed',
+  account,
+  ...(attemptId === undefined ? {} : { attemptId }),
+  ...(setupNonce === undefined ? {} : { setupNonce }),
+  ...(payloadHash === undefined ? {} : { payloadHash }),
+  ...(execution === undefined ? {} : { execution })
+})
+
+/** The countdown a landed session holds: everything but its state. */
+const countdownOf = ({ state, ...countdown }: LandedRecoverySession): CountdownRecord => countdown
+
+/** A stored landed session as the stored countdown it holds. */
+const storedCountdownOf = ({ value, savedAt, revision }: LandedStoredSession): StoredCountdown => ({
+  value: countdownOf(value),
+  savedAt,
+  revision
+})
+
+/**
+ * A landed session as a read hands it out: the account, and the attempt's
+ * fields and the execution in flight only where each is well formed, so a
+ * session stored before they were kept, or a damaged member, reads without it.
+ */
+const landedAsRead = (value: LandedRecoverySession): LandedRecoverySession =>
+  landedSession({
+    account: value.account,
+    attemptId: isDecimalString(value.attemptId) ? value.attemptId : undefined,
+    setupNonce: isDecimalString(value.setupNonce) ? value.setupNonce : undefined,
+    payloadHash: typeof value.payloadHash === 'string' ? value.payloadHash : undefined,
+    execution: isExecutionInFlight(value.execution) ? value.execution : undefined
+  })
+
+/**
+ * The landed session a live session's request leaves: the account, its
+ * attempt id and setup nonce, and the keccak256 of its payload, each where
+ * the stored request holds it well formed.
+ */
+const landedFrom = (request: Gathering['request']): LandedRecoverySession =>
+  landedAsRead({
+    state: 'landed',
+    account: request.account,
+    attemptId: request.attemptId,
+    setupNonce: request.setupNonce,
+    payloadHash: isHex(request.payload) ? keccak256(request.payload) : undefined
+  })
+
+/**
+ * A stored session as a read hands it out: a live session keeps only the notes
+ * its gathering allows, and its submission in flight where that is one; a
+ * landed session keeps only its well-formed members. A stored gathering whose
+ * places or replies are not lists keeps no notes and still reads, so a wipe or
+ * a new write can replace it.
+ */
+const sessionAsRead = (value: RecoverySessionRecord): RecoverySessionRecord => {
+  if (value.state === 'landed') {
+    return landedAsRead(value)
+  }
+  if (value.state !== 'live') {
+    return value
+  }
+  const { gathering } = value
+  const submission = isSubmissionInFlight(value.submission) ? value.submission : undefined
+  return Array.isArray(gathering.places) && Array.isArray(gathering.replies)
+    ? liveSession(gathering, notesKept(value.notes, gathering), submission)
+    : liveSession(gathering, undefined, submission)
+}
 
 const newRevision = (): SessionRevision =>
   bytesToHex(globalThis.crypto.getRandomValues(new Uint8Array(12)))
@@ -268,10 +445,11 @@ const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
  * Runs one update that spans several keys while it holds the queue of each,
  * taken one after another in the order given, so no single-key update of any
  * of them interleaves with it. Every caller passes its setup keys in the order
- * of `SETUP_RECORD_NAMES` and the save in flight's key after them, and a
- * single-key update holds one key alone. An update can wait for another that
- * holds a key it needs, but never for one that waits for a key it holds, so
- * the waits never form a cycle.
+ * of `SETUP_RECORD_NAMES` and the save in flight's key after them, the
+ * recoverer's abandon passes the session's key and the recovery entry's key
+ * after it, and a single-key update holds one key alone. An update can wait
+ * for another that holds a key it needs, but never for one that waits for a
+ * key it holds, so the waits never form a cycle.
  */
 const inQueues = <R>(keys: readonly string[], task: () => Promise<R>): Promise<R> =>
   keys.reduceRight<() => Promise<R>>((inner, key) => () => inQueue(key, inner), task)()
@@ -456,7 +634,7 @@ export const createWalletRecords = ({
     }
     return {
       status: 'present',
-      value: stored.value,
+      value: sessionAsRead(stored.value),
       savedAt: stored.savedAt,
       revision: stored.revision
     }
@@ -464,15 +642,13 @@ export const createWalletRecords = ({
 
   const writeSessionAt = async (
     key: string,
-    value: RecoverySessionRecord
+    value: RecoverySessionRecord,
+    savedAt: number = now()
   ): Promise<StoredSession> => {
-    const record: StoredSession = { value, savedAt: now(), revision: newRevision() }
+    const record: StoredSession = { value, savedAt, revision: newRevision() }
     await storage.set(key, record)
     return record
   }
-
-  const readSession = (chainId: ChainId, account: Address) =>
-    readSessionAt(recordKeys.recoverySession(chainId, account))
 
   /** Runs `apply` on the stored session in its key's queue. */
   const inSessionQueue = async <R>(
@@ -488,6 +664,21 @@ export const createWalletRecords = ({
     if (revisionOf(current) !== expectedRevision) {
       throw new SessionRevisionConflict(key)
     }
+  }
+
+  /**
+   * The stored live session of a read, or the refusal of an update that needs
+   * one: an absent, wiped or landed session carries no gathering to act on.
+   */
+  const liveOrRefuse = (
+    current: SessionRead,
+    chainId: ChainId,
+    account: Address
+  ): LiveStoredSession => {
+    if (current.status !== 'present' || current.value.state !== 'live') {
+      throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
+    }
+    return { value: current.value, savedAt: current.savedAt, revision: current.revision }
   }
 
   /**
@@ -537,6 +728,11 @@ export const createWalletRecords = ({
               'A landed session holds the countdown: end it once its attempt ends, then gather again'
             )
           }
+          const live =
+            current.status === 'present' && current.value.state === 'live'
+              ? current.value
+              : undefined
+          const notes = live ? notesKept(live.notes, gathering) : undefined
           if (current.status === 'present' && current.value.state === 'live') {
             const stored = current.value.gathering
             // A new request would replace the gathering: that takes a wipe first.
@@ -547,7 +743,9 @@ export const createWalletRecords = ({
             }
             // A later reply for the same place may displace a stored reply; no reply is dropped.
             const places = new Set(gathering.replies.map((reply) => reply.place))
-            const dropped = stored.replies.filter((reply) => !places.has(reply.place))
+            // Stored replies that are not a list hold no reply to keep.
+            const storedReplies = Array.isArray(stored.replies) ? stored.replies : []
+            const dropped = storedReplies.filter((reply) => !places.has(reply.place))
             if (dropped.length) {
               throw new Error(
                 `The write drops the reply at place ${dropped
@@ -556,9 +754,89 @@ export const createWalletRecords = ({
               )
             }
           }
-          return writeSessionAt(key, { state: 'live', gathering })
+          return writeSessionAt(key, liveSession(gathering, notes, live?.submission))
         })
       },
+      setNote: (place: number, note: RowNote | null, expectedRevision: ExpectedRevision) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          if (current.status !== 'present' || current.value.state !== 'live') {
+            throw new Error(
+              `No live recovery session for ${account} on chain ${chainPart(chainId)}`
+            )
+          }
+          const { gathering, notes = {}, submission } = current.value
+          if (!Array.isArray(gathering.places) || !Array.isArray(gathering.replies)) {
+            throw new Error(
+              'The stored gathering holds no list of places or replies: write a new gathering or wipe the session first'
+            )
+          }
+          if (!gathering.places.some((entry) => entry.place === place)) {
+            throw new Error(`The gathering has no place ${place}`)
+          }
+          if (note !== null && gathering.replies.some((reply) => reply.place === place)) {
+            throw new Error(`The place ${place} holds a reply, which answers any note`)
+          }
+          if ((notes[place] ?? null) === note) {
+            return { value: current.value, savedAt: current.savedAt, revision: current.revision }
+          }
+          const others = Object.fromEntries(
+            Object.entries(notes).filter(([noted]) => Number(noted) !== place)
+          )
+          const next = notesKept(note === null ? others : { ...others, [place]: note }, gathering)
+          return writeSessionAt(key, liveSession(gathering, next, submission))
+        }),
+      claimSubmission: (claim: SubmissionInFlightClaim, expectedRevision: ExpectedRevision) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = liveOrRefuse(current, chainId, account)
+          const live = stored.value
+          if (live.submission) {
+            return { claimed: false, submission: live.submission, record: stored }
+          }
+          const submission: SubmissionInFlightRecord = {
+            requestId: claim.requestId,
+            startBlock: claim.startBlock,
+            claimedAt: claim.claimedAt
+          }
+          const record = await writeSessionAt(
+            key,
+            liveSession(live.gathering, live.notes, submission)
+          )
+          return { claimed: true, submission, record }
+        }),
+      setSubmissionHash: (
+        requestId: string,
+        transactionHash: Hex,
+        expectedRevision: ExpectedRevision
+      ) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = liveOrRefuse(current, chainId, account)
+          const live = stored.value
+          const { submission } = live
+          if (!submission || submission.requestId !== requestId) {
+            throw new Error(`No submission in flight under request ${requestId}: ${key}`)
+          }
+          if (submission.transactionHash === transactionHash) {
+            return stored
+          }
+          return writeSessionAt(
+            key,
+            liveSession(live.gathering, live.notes, { ...submission, transactionHash })
+          )
+        }),
+      releaseSubmission: (requestId: string, expectedRevision: ExpectedRevision) =>
+        inSessionQueue(chainId, account, async (current) => {
+          if (
+            current.status !== 'present' ||
+            current.value.state !== 'live' ||
+            current.value.submission?.requestId !== requestId
+          ) {
+            return current
+          }
+          checkRevision(current, expectedRevision, key)
+          const { gathering, notes } = current.value
+          const written = await writeSessionAt(key, liveSession(gathering, notes, undefined))
+          return { status: 'present' as const, ...written }
+        }),
       age: async (at?: number) => recordAge(await readSessionAt(key), at ?? now())
     }
   }
@@ -579,7 +857,11 @@ export const createWalletRecords = ({
         ? [
             {
               account: sessionAccount(stored.value),
-              record: { value: stored.value, savedAt: stored.savedAt, revision: stored.revision }
+              record: {
+                value: sessionAsRead(stored.value),
+                savedAt: stored.savedAt,
+                revision: stored.revision
+              }
             }
           ]
         : []
@@ -589,14 +871,77 @@ export const createWalletRecords = ({
   /** Every recovery session stored on a chain, live, wiped or landed, for the home surface. */
   const listRecoverySessions = (chainId: ChainId) => scanSessions(chainId)
 
+  // --- the recovery entry --------------------------------------------------
+
+  const readEntryAt = async (key: string): Promise<RecordRead<RecoveryEntryRecord>> => {
+    const stored: unknown = await storage.get(key, undefined)
+    if (!isStoredRecord(stored) || !isRecoveryEntry(stored.value)) {
+      return ABSENT
+    }
+    return { status: 'present', value: stored.value, savedAt: stored.savedAt }
+  }
+
+  /**
+   * The recovery entry of one account on one chain: the route the recoverer
+   * came by and the account whose key receives control. The session's wipes
+   * and its landing leave it, except the recoverer's abandon. A stored value
+   * that is not an entry reads absent.
+   */
+  const recoveryEntry = (chainId: ChainId, account: Address): RecoveryEntryAccessor => {
+    const key = recordKeys.recoveryEntry(chainId, account)
+    return {
+      read: () => readEntryAt(key),
+      write: async (value: RecoveryEntryRecord) => {
+        if (!isAddressEqual(value.account, account)) {
+          throw new Error(`Invalid recovery entry, not written: ${key}`)
+        }
+        const entry: RecoveryEntryRecord = {
+          account: value.account,
+          route: value.route,
+          receivingAccount: value.receivingAccount
+        }
+        return inQueue(key, () => writeKey<RecoveryEntryRecord>(key, entry))
+      },
+      clear: () => removeKey(key)
+    }
+  }
+
+  /** Every recovery entry stored on a chain, by a prefix scan over the storage's entries. */
+  const listRecoveryEntries = async (chainId: ChainId): Promise<ListedRecoveryEntry[]> => {
+    if (!storage.getAll) {
+      throw new Error('This storage cannot list its entries: it has no getAll')
+    }
+    const prefix = recoveryEntryPrefix(chainId)
+    return Object.entries(await storage.getAll())
+      .filter(
+        ([key]) => key.startsWith(prefix) && isAddress(key.slice(prefix.length), { strict: false })
+      )
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .flatMap(([, stored]) =>
+        isStoredRecord(stored) && isRecoveryEntry(stored.value)
+          ? [
+              {
+                account: stored.value.account,
+                record: { value: stored.value, savedAt: stored.savedAt }
+              }
+            ]
+          : []
+      )
+  }
+
   /**
    * One of four events wipes a live recovery session: the deadline passed,
    * another attempt opened, the setup changed or the recoverer abandoned. The
-   * gathering, with its replies and its attempt id, is deleted, and the session
-   * keeps the reason, the account and, for `deadline-passed`, the deadline.
-   * Returns whether it wiped anything: an absent, wiped or landed session is
-   * left unchanged. `submission-landed` runs through `landSubmission`, and a
-   * security stop or a pause is no wipe event. Throws `SessionRevisionConflict`
+   * gathering, with its replies, its row notes, its submission in flight and
+   * its attempt id, is deleted, and the session keeps the reason, the account
+   * and, for `deadline-passed`, the deadline. The recoverer's abandon ends the
+   * recovery, so it also removes the account's recovery entry; the other three
+   * events leave it. Returns whether it wiped anything: an absent, wiped or
+   * landed session is left unchanged, and so is the entry, except that an
+   * abandon of a session an abandon already wiped removes the entry that
+   * abandon left.
+   * `submission-landed` runs through `landSubmission`, and a security stop or a
+   * pause is no wipe event. Throws `SessionRevisionConflict`
    * when the session changed after the caller read `expectedRevision`.
    */
   const wipeRecoverySession = (
@@ -604,9 +949,23 @@ export const createWalletRecords = ({
     account: Address,
     event: DirectWipeEvent,
     expectedRevision: ExpectedRevision
-  ): Promise<boolean> =>
-    updateSession(chainId, account, expectedRevision, async (current, key) => {
+  ): Promise<boolean> => {
+    const key = recordKeys.recoverySession(chainId, account)
+    const entryKey = recordKeys.recoveryEntry(chainId, account)
+    const abandons = event === 'recoverer-abandoned'
+    return inQueues(abandons ? [key, entryKey] : [key], async () => {
+      const current = await readSessionAt(key)
+      checkRevision(current, expectedRevision, key)
       if (current.status !== 'present' || current.value.state !== 'live') {
+        // An abandon cut off between its two calls left the entry: this one ends it.
+        if (
+          abandons &&
+          current.status === 'present' &&
+          current.value.state === 'wiped' &&
+          current.value.reason === 'recoverer-abandoned'
+        ) {
+          await storage.remove(entryKey)
+        }
         return false
       }
       const { request } = current.value.gathering
@@ -616,16 +975,37 @@ export const createWalletRecords = ({
         account: request.account,
         ...(event === 'deadline-passed' ? { deadline: request.validUntil } : {})
       })
+      // The session is written first, so an interruption between the two calls
+      // leaves the state every other wipe leaves, never a live session without
+      // its entry.
+      if (abandons) {
+        await storage.remove(entryKey)
+      }
       return true
     })
+  }
+
+  /**
+   * Writes a landed session and answers it as the stored countdown. The landing
+   * itself stamps a new `savedAt`; a later write of the same countdown passes
+   * the landing's, so the countdown's start date stays the landing's time.
+   */
+  const writeLandedAt = async (
+    key: string,
+    landed: LandedRecoverySession,
+    savedAt?: number
+  ): Promise<StoredCountdown> => {
+    const written = await writeSessionAt(key, landed, savedAt)
+    return { value: countdownOf(landed), savedAt: written.savedAt, revision: written.revision }
+  }
 
   /**
    * The submission landed: the live session survives as the countdown's record,
-   * `{ state: 'landed', account }`, written in one set in place of the live
-   * session, so the gathering, its replies and its attempt id are gone in the
-   * same write. Refuses when no live session exists, and throws
-   * `SessionRevisionConflict` when the session changed after the caller read
-   * `expectedRevision`.
+   * the account with the landed request's attempt id, setup nonce and payload
+   * hash, written in one set in place of the live session, so the gathering,
+   * its replies and its submission in flight are gone in the same write.
+   * Refuses when no live session exists, and throws `SessionRevisionConflict`
+   * when the session changed after the caller read `expectedRevision`.
    */
   const landSubmission = async (
     chainId: ChainId,
@@ -636,13 +1016,7 @@ export const createWalletRecords = ({
       if (current.status !== 'present' || current.value.state !== 'live') {
         throw new Error(`No live recovery session for ${account} on chain ${chainPart(chainId)}`)
       }
-      const landedAccount = current.value.gathering.request.account
-      const written = await writeSessionAt(key, { state: 'landed', account: landedAccount })
-      return {
-        value: { account: landedAccount },
-        savedAt: written.savedAt,
-        revision: written.revision
-      }
+      return writeLandedAt(key, landedFrom(current.value.gathering.request))
     })
 
   // A session in another state, or no session, returns false with no revision
@@ -695,18 +1069,99 @@ export const createWalletRecords = ({
     read.status === 'present' && read.value.state === 'landed'
       ? {
           status: 'present',
-          value: { account: read.value.account },
+          value: countdownOf(read.value),
           savedAt: read.savedAt,
           revision: read.revision
         }
       : ABSENT
 
-  /** The countdown's record of one account: the session in its landed state, the account alone. */
-  const countdown = (chainId: ChainId, account: Address): CountdownAccessor => ({
-    read: async () => asCountdown(await readSession(chainId, account)),
-    age: async (at?: number) =>
-      recordAge(asCountdown(await readSession(chainId, account)), at ?? now())
-  })
+  /**
+   * The stored landed session of a read, or the refusal of an update that
+   * needs one: an absent, live or wiped session holds no countdown to act on.
+   */
+  const landedOrRefuse = (
+    current: SessionRead,
+    chainId: ChainId,
+    account: Address
+  ): LandedStoredSession => {
+    if (current.status !== 'present' || current.value.state !== 'landed') {
+      throw new Error(`No landed recovery session for ${account} on chain ${chainPart(chainId)}`)
+    }
+    return { value: current.value, savedAt: current.savedAt, revision: current.revision }
+  }
+
+  /**
+   * The countdown's record of one account: the session in its landed state,
+   * with the landed attempt's fields and the execution in flight it carries.
+   */
+  const countdown = (chainId: ChainId, account: Address): CountdownAccessor => {
+    const key = recordKeys.recoverySession(chainId, account)
+    return {
+      read: async () => asCountdown(await readSessionAt(key)),
+      claimExecution: (claim: ExecutionInFlightClaim, expectedRevision: ExpectedRevision) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = landedOrRefuse(current, chainId, account)
+          const landed = stored.value
+          if (landed.execution) {
+            return {
+              claimed: false,
+              execution: landed.execution,
+              record: storedCountdownOf(stored)
+            }
+          }
+          const execution: ExecutionInFlightRecord = {
+            requestId: claim.requestId,
+            startBlock: claim.startBlock,
+            claimedAt: claim.claimedAt
+          }
+          const record = await writeLandedAt(
+            key,
+            landedSession({ ...countdownOf(landed), execution }),
+            stored.savedAt
+          )
+          return { claimed: true, execution, record }
+        }),
+      setExecutionHash: (
+        requestId: string,
+        transactionHash: Hex,
+        expectedRevision: ExpectedRevision
+      ) =>
+        updateSession(chainId, account, expectedRevision, async (current) => {
+          const stored = landedOrRefuse(current, chainId, account)
+          const landed = stored.value
+          const { execution } = landed
+          if (!execution || execution.requestId !== requestId) {
+            throw new Error(`No execution in flight under request ${requestId}: ${key}`)
+          }
+          if (execution.transactionHash === transactionHash) {
+            return storedCountdownOf(stored)
+          }
+          return writeLandedAt(
+            key,
+            landedSession({ ...countdownOf(landed), execution: { ...execution, transactionHash } }),
+            stored.savedAt
+          )
+        }),
+      releaseExecution: (requestId: string, expectedRevision: ExpectedRevision) =>
+        inSessionQueue(chainId, account, async (current) => {
+          if (
+            current.status !== 'present' ||
+            current.value.state !== 'landed' ||
+            current.value.execution?.requestId !== requestId
+          ) {
+            return asCountdown(current)
+          }
+          checkRevision(current, expectedRevision, key)
+          const written = await writeLandedAt(
+            key,
+            landedSession({ ...countdownOf(current.value), execution: undefined }),
+            current.savedAt
+          )
+          return { status: 'present' as const, ...written }
+        }),
+      age: async (at?: number) => recordAge(asCountdown(await readSessionAt(key)), at ?? now())
+    }
+  }
 
   /** Every countdown on a chain, the landed sessions, for the home surface. */
   const listCountdowns = async (chainId: ChainId): Promise<ListedRecord<CountdownRecord>[]> =>
@@ -716,7 +1171,7 @@ export const createWalletRecords = ({
             {
               account: record.value.account,
               record: {
-                value: { account: record.value.account },
+                value: countdownOf(record.value),
                 savedAt: record.savedAt,
                 revision: record.revision
               }
@@ -829,6 +1284,8 @@ export const createWalletRecords = ({
     startOverSetup,
     recoverySession,
     listRecoverySessions,
+    recoveryEntry,
+    listRecoveryEntries,
     wipeRecoverySession,
     landSubmission,
     clearWipedSession,
