@@ -19,8 +19,9 @@ import { bytesToHex, isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
 import { wipeRecoveryPassword } from './recoveryPassword'
-import { ABSENT, RECOVERY_ROUTES, ROW_NOTES, SETUP_RECORD_NAMES } from './types'
+import { ABSENT, SETUP_RECORD_NAMES } from './types'
 import type {
   CeremonyRequestRecord,
   ChainId,
@@ -168,9 +169,6 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
   return typeof revision === 'string' && revision !== ''
 }
 
-const isAddressValue = (value: unknown): value is Address =>
-  typeof value === 'string' && isAddress(value, { strict: false })
-
 /**
  * Whether a stored value is a recovery entry: the account, one of the two
  * routes and the receiving account.
@@ -181,9 +179,11 @@ const isRecoveryEntry = (value: unknown): value is RecoveryEntryRecord => {
   }
   const record = value as Record<string, unknown>
   return (
-    isAddressValue(record.account) &&
+    typeof record.account === 'string' &&
+    isAddress(record.account, { strict: false }) &&
     RECOVERY_ROUTES.some((route) => route === record.route) &&
-    isAddressValue(record.receivingAccount)
+    typeof record.receivingAccount === 'string' &&
+    isAddress(record.receivingAccount, { strict: false })
   )
 }
 
@@ -892,7 +892,7 @@ export const createWalletRecords = ({
     return {
       read: () => readEntryAt(key),
       write: async (value: RecoveryEntryRecord) => {
-        if (!isRecoveryEntry(value) || !isAddressEqual(value.account, account)) {
+        if (!isAddressEqual(value.account, account)) {
           throw new Error(`Invalid recovery entry, not written: ${key}`)
         }
         const entry: RecoveryEntryRecord = {
