@@ -35,6 +35,7 @@ import type {
   ChecklistViewProps
 } from './types'
 import useChecklist from './useChecklist'
+import useGuardianSupport from './useGuardianSupport'
 import usePasskeyClaim from './usePasskeyClaim'
 import WipedBlock from './WipedBlock'
 
@@ -115,6 +116,15 @@ const ChecklistView = ({
         : null,
     [layout, assessment, live, claim.asked]
   )
+  const guardianSupport = useGuardianSupport({
+    kit,
+    gathering: live ? live.session.gathering : null,
+    requests,
+    layout,
+    destination,
+    now: deps.now,
+    timeZone: deps.timeZone
+  })
 
   // A passed claim joins the session once it is live; a conflict keeps it
   // waiting for the reload, and a refusal reads as the row's note. A claim
@@ -306,6 +316,7 @@ const ChecklistView = ({
           row={row}
           state={state}
           request={request}
+          support={guardianSupport}
           busy={busy}
           setNote={(place, note) => {
             checklist.setNote(place, note).catch(() => undefined)

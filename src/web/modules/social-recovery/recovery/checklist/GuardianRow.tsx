@@ -21,7 +21,15 @@ import type { GuardianRowProps } from './types'
 
 const GUARDIAN = 'socialRecovery.checklist.guardian'
 
-const GuardianRow = ({ row, state, request, busy, setNote, addReply }: GuardianRowProps) => {
+const GuardianRow = ({
+  row,
+  state,
+  request,
+  support,
+  busy,
+  setNote,
+  addReply
+}: GuardianRowProps) => {
   const { t } = useTranslation()
   const { place } = row
   const address = guardianAddressOf(row.gatheringPlace)
@@ -56,8 +64,10 @@ const GuardianRow = ({ row, state, request, busy, setNote, addReply }: GuardianR
         place={place}
         request={request}
         replied={state.replied}
+        open={open}
         busy={busy}
         addReply={addReply}
+        support={support}
       />
       {open && !state.note && (
         <View style={spacings.mtSm}>
