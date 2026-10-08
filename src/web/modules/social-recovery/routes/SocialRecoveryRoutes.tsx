@@ -15,6 +15,8 @@ import CeremonyScreen from '@web/modules/social-recovery/shared/ceremony/screen'
 import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/RecoverScreen'
 import ChecklistScreen from '@web/modules/social-recovery/recovery/checklist/ChecklistScreen'
 import InProgressScreen from '@web/modules/social-recovery/recovery/checklist/InProgressScreen'
+import EntryScreen from '@web/modules/social-recovery/recovery/entry/EntryScreen'
+import AccountStepScreen from '@web/modules/social-recovery/recovery/entry/AccountStepScreen'
 
 /**
  * The route registry of the account recovery module.
@@ -55,6 +57,8 @@ const SocialRecoveryRoutes = () => (
         <Route path="setup/save" element={<ArmScreen />} />
         <Route path="recovery/checklist" element={<ChecklistScreen />} />
         <Route path="recovery/in-progress" element={<InProgressScreen />} />
+        <Route path="recovery" element={<EntryScreen />} />
+        <Route path="recovery/account" element={<AccountStepScreen />} />
       </Route>
     </Route>
 

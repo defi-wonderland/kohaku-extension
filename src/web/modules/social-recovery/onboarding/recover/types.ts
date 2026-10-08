@@ -58,6 +58,26 @@ export interface CondensedWarningProps extends WarningGateBase {
 
 export type WarningGateProps = RecoverWarningProps | ResetWarningProps | CondensedWarningProps
 
+/** Each part of the warning takes the gate's own test id and appends its suffix. */
+export interface WarningHeaderProps {
+  header: string
+  testID: string
+}
+
+export interface WarningImportPointerProps {
+  pointer: WarningPointer
+  onImportInstead: () => void
+  testID: string
+}
+
+export interface WarningActionsProps {
+  acknowledged: boolean
+  onContinue: () => void
+  /** Drawn only when the form offers a way back. */
+  onLeave: (() => void) | null
+  testID: string
+}
+
 export interface ResetEntryGateProps {
   /** The entry's own screen, mounted only after the acknowledgment and continue. */
   children: ReactElement

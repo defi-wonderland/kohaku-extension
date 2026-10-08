@@ -3,6 +3,7 @@
  * hook belongs to the screen that needs it.
  */
 export * from './types'
+export * from './constants'
 export * from './records'
 export { emptySlot, isEmptySlot, slotKindOf } from './slots'
 export { extensionRecordStorage } from './extensionStorage'

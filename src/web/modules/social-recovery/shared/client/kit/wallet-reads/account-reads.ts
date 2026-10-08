@@ -5,18 +5,32 @@
  * associated keys and the keys the wallet holds for it. Where the account has
  * code, each is asked about with the action's `isAuthority`; where it has
  * none, the creation privileges are the account's keys. Exactly one key is
- * the removed key; none or several leave it unnamed, and so does an account
- * with no creation record.
+ * the removed key; none or several leave it unnamed.
+ *
+ * An account with no creation record, such as one the wallet does not list,
+ * is read at one pinned block: with no code it leaves the key unnamed for
+ * that reason; with code, the candidates are the addresses its
+ * `LogPrivilegeChanged` writes name, beside the keys the wallet knows, and a
+ * candidate counts where the account's `privileges` view still holds a value
+ * for it at that block and the action's `isAuthority` agrees. The writes are
+ * read in chunks of `LOG_CHUNK_BLOCKS` from the account's creation block,
+ * which the wallet does not know, so from `CREATION_BLOCK_STAND_IN`, to the
+ * pinned block. The privileges the creation code writes emit no log, so a key
+ * only the creation wrote is found only where the wallet knows it.
  */
 import { getAddress, isAddressEqual, size } from 'viem'
 
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, BlockTag } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   distinctKeys,
   holdsPrivilege
 } from '@web/modules/social-recovery/shared/client/wallet-reads'
 
+import { CREATION_BLOCK_STAND_IN } from '../../account-facts'
 import type { FitCheckReading, RemovedKeyReading } from '../../types'
+import { createPrivilegeEvents } from '../events'
+import { createAccountReads } from '../reads'
+import { pinnedBlockOf } from '../setup-client'
 import type { KitWalletReads, KitWalletReadsInput } from './types'
 
 const readingOf = (keys: readonly Address[]): RemovedKeyReading => {
@@ -35,16 +49,43 @@ export const createKitWalletReads = ({
   knownKeys = [],
   accountImplementation,
   action,
-  codeRead
+  codeRead,
+  provider,
+  blockTags
 }: KitWalletReadsInput): KitWalletReads => {
   // The wallet's account record holds its address as a string; a malformed one throws here.
   const addressOf = (): Address => getAddress(account.addr)
-  const hasCode = async (): Promise<boolean> => size(await codeRead.code(addressOf())) > 0
+  const hasCode = async (block?: BlockTag): Promise<boolean> =>
+    size(await codeRead.code(addressOf(), block)) > 0
+  const privilegeEvents = createPrivilegeEvents(provider)
+  const accountReads = createAccountReads(provider)
+
+  const removedKeyWithNoCreation = async (): Promise<RemovedKeyReading> => {
+    const { number: block } = await pinnedBlockOf(provider, { blockTags })
+    if (!(await hasCode(block))) {
+      return { kind: 'unavailable', cause: 'no-creation-record' }
+    }
+    const writes = await privilegeEvents.privilegeLogsOf(addressOf(), {
+      from: CREATION_BLOCK_STAND_IN,
+      to: block
+    })
+    const candidates = distinctKeys([
+      ...writes.map((write) => write.addr),
+      ...account.associatedKeys,
+      ...knownKeys
+    ])
+    const values = await Promise.all(
+      candidates.map((key) => accountReads.privileges(addressOf(), key, block))
+    )
+    const held = candidates.filter((_, index) => holdsPrivilege(values[index]))
+    const holds = await Promise.all(held.map((key) => action.isAuthority(addressOf(), key, block)))
+    return readingOf(held.filter((_, index) => holds[index]))
+  }
 
   return {
     async removedKey(): Promise<RemovedKeyReading> {
       if (!account.creation) {
-        return { kind: 'unavailable', cause: 'no-creation-record' }
+        return removedKeyWithNoCreation()
       }
       if (!(await hasCode())) {
         return readingOf(
