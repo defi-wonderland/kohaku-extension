@@ -141,9 +141,9 @@ export interface VerifyHook {
 // ---------------------------------------------------------------------------
 
 /**
- * How the submission is sent: from one key as its own transaction (the fast
- * track's ordinary key, or a basic account's own key), or as a smart
- * account's own batch, with its controlling key as the payer.
+ * How the submission is sent: from a basic account's own key as its own
+ * transaction (on the fast track, the key the recovery installs), or as a
+ * smart account's own batch, with its controlling key as the payer.
  */
 export type SendingPlan =
   | { kind: 'key'; key: KeyHandle }

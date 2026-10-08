@@ -1,9 +1,9 @@
 /**
  * The key that sends the submission and pays its gas, by route. On the fresh
- * install it is the ordinary key of the seed slot whose smart account receives
- * control, never the key the recovery installs; on the logged-in route it is
- * the chosen account's own key, a smart account sending the call as its own
- * batch with its controlling key as the payer.
+ * install it is the receiving basic account's own key, the key the recovery
+ * installs, so the key that receives control is the key that pays; on the
+ * logged-in route it is the chosen account's own key, a smart account sending
+ * the call as its own batch with its controlling key as the payer.
  */
 import { isAddress } from 'viem'
 
@@ -17,48 +17,27 @@ import type { ListedAccountFacts } from '@web/modules/social-recovery/shared/cli
 import type { SendingPlan } from './types'
 
 /**
- * The fast track's sending key. The keystore keeps no slot index with a key,
- * so the slot is found through the recovery phrase both keys came from: the
- * smart account's controlling key is the phrase's key held for that one smart
- * account, and the sending key is the phrase's other key, the one the wallet
- * lists as a basic account. Null where the receiving account is not a listed
- * smart account, where its controlling keys come from no single phrase, or
- * where that phrase gives other than one listed basic account.
+ * The fast track's sending key: the receiving account itself, where the
+ * wallet lists it as a basic account and the keystore holds its key as an
+ * ordinary key of a recovery phrase, not a key held for one smart account.
+ * Null where the receiving account is not such a basic account.
  */
 export const fastTrackSendingKeyOf = (
   receivingAccount: Address,
   accounts: readonly Account[],
   keys: readonly Key[]
 ): Address | null => {
-  const smart = accounts.find(
-    (account) => isSmartAccount(account) && sameAddress(account.addr, receivingAccount)
+  const basic = accounts.find(
+    (account) => !isSmartAccount(account) && sameAddress(account.addr, receivingAccount)
   )
-  if (!smart) {
-    return null
-  }
-  const seedIds = new Set(
-    keys
-      .filter(
-        (key) =>
-          key.type === 'internal' &&
-          key.dedicatedToOneSA &&
-          smart.associatedKeys.some((associated) => sameAddress(associated, key.addr))
-      )
-      .map((key) => key.meta.fromSeedId)
+  const held = keys.some(
+    (key) =>
+      key.type === 'internal' &&
+      !key.dedicatedToOneSA &&
+      typeof key.meta.fromSeedId === 'string' &&
+      sameAddress(key.addr, receivingAccount)
   )
-  const [seedId] = [...seedIds]
-  if (seedIds.size !== 1 || typeof seedId !== 'string') {
-    return null
-  }
-  const ordinaryKeys = keys.filter(
-    (key) => key.type === 'internal' && !key.dedicatedToOneSA && key.meta.fromSeedId === seedId
-  )
-  const basics = accounts.filter(
-    (account) =>
-      !isSmartAccount(account) && ordinaryKeys.some((key) => sameAddress(key.addr, account.addr))
-  )
-  const [basic] = basics
-  return basics.length === 1 && basic && isAddress(basic.addr) ? basic.addr : null
+  return basic && held && isAddress(basic.addr) ? basic.addr : null
 }
 
 /**

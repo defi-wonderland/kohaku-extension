@@ -11,6 +11,7 @@
  * gathering.
  */
 import type { Configuration, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { RecoverySessionAccessor } from '@web/modules/social-recovery/shared/records'
 
 import type {
   FakeDeps,
@@ -667,6 +668,88 @@ describe('the request dies', () => {
       expect(await present('other-account')).toBe(true)
       expect(await reported('other-account')).toBe(true)
     })
+  })
+
+  describe('the session read after a wipe', () => {
+    /** A claim request of the gathering at `attempt`, stored with a report. */
+    const storeClaim = async (id: string, attempt: number, account = ACCOUNT) => {
+      await world.records.ceremonyRequest(id).write({
+        call: 'createClaim' as const,
+        method: 'passkey',
+        account,
+        chainId: CHAIN_ID,
+        request: requestOf(gatheringOf(TWO_ROWS, attempt, account), 0),
+        params: { handOff: false }
+      })
+      await deps.channel.report(id, 'createClaim', failed('browser-error', 'NotAllowedError'))
+    }
+
+    /** The first read of the session that finds it wiped answers `answer` in its place. */
+    const failFirstWipedRead = (answer: () => ReturnType<RecoverySessionAccessor['read']>) => {
+      const accessorOf = world.records.recoverySession
+      let used = false
+      jest.spyOn(world.records, 'recoverySession').mockImplementation((chainId, account) => {
+        const accessor = accessorOf(chainId, account)
+        return {
+          ...accessor,
+          read: async () => {
+            const read = await accessor.read()
+            if (!used && read.status === 'present' && read.value.state === 'wiped') {
+              used = true
+              return answer()
+            }
+            return read
+          }
+        }
+      })
+    }
+
+    each([
+      ['throws', () => Promise.reject(new Error('storage unavailable'))],
+      ['finds nothing', () => Promise.resolve({ status: 'absent' as const })]
+    ] as const)(
+      'opens the wiped session from storage where that read %s, wipes once, and keeps no claim of the account',
+      async ([, answer]) => {
+        await open(TWO_ROWS, gatheringOf(TWO_ROWS), {
+          storedEntries: () => world.storage.getAll()
+        })
+        await outside(async () => {
+          await storeClaim('dead', 1)
+          await storeClaim('other-attempt', 7)
+          await storeClaim('other-account', 1, SECOND_ACCOUNT)
+        })
+        failFirstWipedRead(answer)
+        const present = async (id: string) =>
+          (await world.records.ceremonyRequest(id).read()).status === 'present'
+
+        kit.recoveryState.mockResolvedValue(recoveryStateOf({ setupNonce: BigInt(2) }))
+        await settle(CHECKLIST_POLL_MS)
+        await settle()
+
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(view?.byTestId('checklist-conflict')).toBeNull()
+        expect(view?.byTestId('checklist-death-failed')).toBeNull()
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.setupChangedTitle`)
+        )
+        expect(await present('dead')).toBe(false)
+        expect(await present('other-attempt')).toBe(false)
+        expect(await present('other-account')).toBe(true)
+
+        await settle(CHECKLIST_POLL_MS)
+        await settle(CHECKLIST_POLL_MS)
+
+        expect(wipe).toHaveBeenCalledTimes(1)
+        expect(view?.byTestId('checklist-conflict')).toBeNull()
+        expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+          t(`${RECORDS}.setupChangedTitle`)
+        )
+        expect((await storedSession(world.records))?.value).toMatchObject({
+          state: 'wiped',
+          reason: 'setup-changed'
+        })
+      }
+    )
   })
 
   describe('the rows while a death is being written', () => {
