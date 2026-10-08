@@ -28,7 +28,7 @@ import useSetupAccount from './useSetupAccount'
 
 const COLUMN = { maxWidth: 600, width: '100%' } as const
 
-const SetupChrome = ({ children, testID }: SetupChromeProps) => {
+const SetupChrome = ({ children, breadcrumbTail, testID }: SetupChromeProps) => {
   const { t } = useTranslation()
   const { styles } = useTheme(getStyles)
   const { maxWidthSize } = useWindowSize()
@@ -64,6 +64,7 @@ const SetupChrome = ({ children, testID }: SetupChromeProps) => {
             <ScrollView contentContainerStyle={getPanelPaddings(maxWidthSize, 'large')}>
               <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
                 {t('socialRecovery.chrome.breadcrumb')}
+                {breadcrumbTail ? ` › ${breadcrumbTail}` : null}
               </Text>
               <View style={COLUMN}>
                 {differs && !!account && (
