@@ -43,9 +43,10 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { seedBasicAccountOf } from '@web/modules/social-recovery/shared/client'
 
 import { KEY_STEP_LIMIT_MS, RECOVERY_PHRASE_WORDS } from './constants'
-import { listedSlotOf, slotKeyOf, tempSeedOf } from './derivation'
+import { slotKeyOf, tempSeedOf } from './derivation'
 import type { AddProgress, FastTrackKey, KeyStepPhase, MadePhrase, TempSeed } from './types'
 
 const useFastTrackKey = (): FastTrackKey => {
@@ -163,7 +164,7 @@ const useFastTrackKey = (): FastTrackKey => {
     }
   }, [seed])
 
-  const listed = slotKey && accounts ? listedSlotOf(slotKey, accounts, keys ?? []) : null
+  const listed = slotKey && accounts ? seedBasicAccountOf(slotKey, accounts, keys ?? []) : null
   const selected = authStatus === AUTH_STATUS.AUTHENTICATED
   const listedAndSelected = !!listed && selected
 

@@ -91,7 +91,8 @@ export {
   accountFactsOf,
   heldKeyOf,
   stateRefreshOf,
-  sameFactsReading
+  sameFactsReading,
+  seedBasicAccountOf
 } from './account-facts'
 export type {
   RecoveryChain,

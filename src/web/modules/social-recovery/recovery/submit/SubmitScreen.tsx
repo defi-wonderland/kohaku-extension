@@ -26,6 +26,7 @@ import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import {
   CHAIN_IDS,
   createSendPort,
+  seedBasicAccountOf,
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -47,7 +48,7 @@ import {
 import type { RemovedKeyRead } from '@web/modules/social-recovery/recovery/checklist'
 
 import { isLanded } from './run'
-import { fastTrackSendingKeyOf, loggedInPlanOf } from './sendingKey'
+import { loggedInPlanOf } from './sendingKey'
 import { submitStepsOf } from './steps'
 import SubmitChrome from './SubmitChrome'
 import SubmitView from './SubmitView'
@@ -158,7 +159,7 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
     if (!accounts || !keys) {
       return { status: 'loading' }
     }
-    const key = fastTrackSendingKeyOf(entry.receivingAccount, accounts, keys)
+    const key = seedBasicAccountOf(entry.receivingAccount, accounts, keys)
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }

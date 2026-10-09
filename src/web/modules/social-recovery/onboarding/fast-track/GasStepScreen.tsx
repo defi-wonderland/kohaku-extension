@@ -24,6 +24,7 @@ import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountCont
 import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 import {
   CHAIN_IDS,
+  seedBasicAccountOf,
   networkOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -41,7 +42,6 @@ import {
   readoutPathOf,
   selectedBasicAccountOf
 } from './navigation'
-import { fastTrackSendingKeyOf } from './sendingKey'
 import type { EntryReading, GasStepState } from './types'
 import useSubmissionGas from './useSubmissionGas'
 
@@ -88,7 +88,7 @@ const GasStepScreen = () => {
   const sendingKey =
     !present || !freshInstall || !accounts
       ? undefined
-      : fastTrackSendingKeyOf(present.receivingAccount, accounts, keys ?? [])
+      : seedBasicAccountOf(present.receivingAccount, accounts, keys ?? [])
   const network = networks ? networkOf(networks, WALLET_RECOVERY_CHAIN) ?? null : undefined
   const gas = useSubmissionGas(sendingKey, network)
 

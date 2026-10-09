@@ -29,6 +29,7 @@ import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import {
   CHAIN_IDS,
   createSendPort,
+  seedBasicAccountOf,
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -47,7 +48,7 @@ import {
   parseChecklistSearch,
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
-import { fastTrackSendingKeyOf, loggedInPlanOf } from '@web/modules/social-recovery/recovery/submit'
+import { loggedInPlanOf } from '@web/modules/social-recovery/recovery/submit'
 import type { SendingReading } from '@web/modules/social-recovery/recovery/submit'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
@@ -224,7 +225,7 @@ const WaitBody = ({
     if (!accounts || !keystoreKeys) {
       return { status: 'loading' }
     }
-    const key = fastTrackSendingKeyOf(entry.receivingAccount, accounts, keystoreKeys)
+    const key = seedBasicAccountOf(entry.receivingAccount, accounts, keystoreKeys)
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }
