@@ -17,7 +17,6 @@ import {
   CHAIN_ID,
   configurationOf,
   DAY_SECONDS,
-  deferred,
   depsOf,
   fakeKit,
   gatheringOf,
@@ -43,6 +42,7 @@ import type {
   Configuration,
   Gathering
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {

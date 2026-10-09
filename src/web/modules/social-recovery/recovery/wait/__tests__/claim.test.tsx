@@ -13,7 +13,6 @@ import {
   elapse,
   executionOf,
   hashElsewhere,
-  held,
   landedReceipt,
   minedAndReverted,
   mountWait,
@@ -36,6 +35,7 @@ import type { Hex, Notification } from '@web/modules/social-recovery/sdk-interfa
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import type { StoredSession } from '@web/modules/social-recovery/shared/records'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const POLL_MS = 30_000
 const REREAD_MS = 5_000
@@ -52,14 +52,14 @@ const donePath = (world: World) =>
 
 /** Holds the execution's receipt until the test releases or fails it. */
 const holdReceipt = (world: World) => {
-  const receipt = held<ProviderTransactionReceipt>()
+  const receipt = deferred<ProviderTransactionReceipt>()
   world.kit.receipts.wait.mockImplementation(() => receipt.promise)
   return receipt
 }
 
 /** Holds the wallet's window on the send until the test answers its hash or refuses it. */
 const holdSend = (world: World) => {
-  const hash = held<Hex>()
+  const hash = deferred<Hex>()
   world.port.send.mockImplementation(() => hash.promise)
   return hash
 }
@@ -120,7 +120,7 @@ describe('the claim of the execution', () => {
     holdReceipt(world)
     const key = recordKeys.recoverySession(CHAIN_ID, world.account)
     const { get } = world.storage
-    const lookup = held<void>()
+    const lookup = deferred<void>()
     let lookups = 0
     world.storage.get = async (name, fallback) => {
       if (name === key && /lookForClaim/.test(new Error().stack ?? '')) {
@@ -138,7 +138,7 @@ describe('the claim of the execution', () => {
     const claim = await executionOf(world.records, world.account)
     expect(claim?.transactionHash).toBe(TX_HASH)
 
-    lookup.release()
+    lookup.resolve()
     await tick(0)
     await tick(POLL_MS)
     expect(lookups).toBe(1)
@@ -154,7 +154,7 @@ describe('the claim of the execution', () => {
     elapse(world.kit)
     const key = recordKeys.recoverySession(CHAIN_ID, world.account)
     const { get } = world.storage
-    const lookup = held<void>()
+    const lookup = deferred<void>()
     world.storage.get = async (name, fallback) => {
       if (name === key && /lookForClaim/.test(new Error().stack ?? '')) {
         await lookup.promise
@@ -165,7 +165,7 @@ describe('the claim of the execution', () => {
 
     await claimElsewhere(world.records, world.account)
     await view.press('wait-execute')
-    lookup.release()
+    lookup.resolve()
     await tick(0)
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
     expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
@@ -228,14 +228,14 @@ describe('the claim of the execution', () => {
     expect(second.byTestId('wait-execute')).toBeNull()
     expect(second.text()).toContain(t('socialRecovery.wait.executionDue.executing'))
 
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await tick(0)
     expect(world.kit.receipts.wait).toHaveBeenCalledTimes(1)
     await tick(REREAD_MS)
     expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
     expect(world.kit.receipts.wait).toHaveBeenLastCalledWith(TX_HASH, OWN_CLAIM_BLOCK)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     consume(world.kit, world.account)
     await tick(POLL_MS)
     // Both pages navigate through the one wallet: each goes on to the done screen once.
@@ -260,13 +260,13 @@ describe('the claim of the execution', () => {
   it('follows the claim another page wrote while this page checked the gas, and sends nothing', async () => {
     const world = await openWorld()
     elapse(world.kit)
-    const estimate = held<bigint>()
+    const estimate = deferred<bigint>()
     world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
     const view = await mount(mountWait(world.account))
     await view.press('wait-execute')
 
     await claimElsewhere(world.records, world.account)
-    estimate.release(300_000n)
+    estimate.resolve(300_000n)
     await tick(0)
     expect(world.port.send).not.toHaveBeenCalled()
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
@@ -362,7 +362,7 @@ describe('the claim of the execution', () => {
     )
     expect(await executionOf(world.records, world.account)).toBeUndefined()
 
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await tick(0)
     expect(await executionOf(world.records, world.account)).toEqual({
       ...claim,
@@ -434,7 +434,7 @@ describe('a reloaded page', () => {
     expect(world.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, OWN_CLAIM_BLOCK)
     expect(after.byTestId('wait-execute')).toBeNull()
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     consume(world.kit, world.account)
     await tick(POLL_MS)
     expect(after.paths()).toEqual([donePath(world)])
@@ -672,7 +672,7 @@ describe('a countdown another tab replaced with another attempt', () => {
     const world = await openWorld()
     elapse(world.kit)
     holdReceipt(world)
-    const estimate = held<bigint>()
+    const estimate = deferred<bigint>()
     world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
     const view = await mount(mountWait(world.account))
     await view.press('wait-execute')
@@ -680,7 +680,7 @@ describe('a countdown another tab replaced with another attempt', () => {
 
     await replaceCountdown(world)
     const replaced = await storedCountdown(world)
-    estimate.release(300_000n)
+    estimate.resolve(300_000n)
     await tick(0)
     expect(world.port.send).not.toHaveBeenCalled()
     expect(await storedCountdown(world)).toEqual(replaced)
@@ -700,7 +700,7 @@ describe('a countdown another tab replaced with another attempt', () => {
 
     await replaceCountdown(world)
     const replaced = await storedCountdown(world)
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await tick(0)
     expect(await storedCountdown(world)).toEqual(replaced)
     expect(world.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, OWN_CLAIM_BLOCK)
@@ -791,7 +791,7 @@ describe('a countdown another tab replaced with another attempt', () => {
     const world = await openWorld()
     elapse(world.kit)
     holdReceipt(world)
-    const estimate = held<bigint>()
+    const estimate = deferred<bigint>()
     world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
     const view = await mount(mountWait(world.account))
     await view.press('wait-execute')
@@ -803,7 +803,7 @@ describe('a countdown another tab replaced with another attempt', () => {
       revision: '0x0f0e0d0c0b0a0f0e0d0c0b0a',
       value: { ...stored.value, payloadHash: `0x${PAYLOAD_HASH.slice(2).toUpperCase()}` }
     })
-    estimate.release(300_000n)
+    estimate.resolve(300_000n)
     await tick(0)
     expect(world.port.send).toHaveBeenCalledTimes(1)
     expect(await executionOf(world.records, world.account)).toEqual(

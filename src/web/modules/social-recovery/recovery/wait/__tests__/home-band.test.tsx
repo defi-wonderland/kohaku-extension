@@ -6,7 +6,6 @@ import {
   CHAIN_ID,
   CHAIN_TIME,
   elapse,
-  held,
   HOUR,
   mountBand,
   NO_ATTEMPT,
@@ -23,6 +22,7 @@ import {
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Attempt } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 describe('the home band for a landed recovery', () => {
   useWaitClock()
@@ -166,7 +166,7 @@ describe("the home band's countdown line keeps reading the chain", () => {
 
   it('starts no round while one is still out', async () => {
     const world = await openWorld()
-    const answer = held<Awaited<ReturnType<typeof world.kit.client.recovery.recoveryState>>>()
+    const answer = deferred<Awaited<ReturnType<typeof world.kit.client.recovery.recoveryState>>>()
     world.kit.recoveryState.mockImplementation(() => answer.promise)
     view = await mountBand(world.records)
     expect(world.kit.recoveryState).toHaveBeenCalledTimes(1)

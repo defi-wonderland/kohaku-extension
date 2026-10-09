@@ -15,7 +15,6 @@ import type {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
   ACCOUNT,
-  deferred,
   DESTINATION,
   depsOf,
   fakeKit,
@@ -39,6 +38,7 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import type { DestinationReading } from '@web/modules/social-recovery/recovery/checklist/types'
 import type { Address, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress }: typeof import('viem') = require('viem')

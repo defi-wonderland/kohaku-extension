@@ -10,7 +10,6 @@
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   hasButton,
-  held,
   mockWallet,
   mountSubmit,
   openWorld,
@@ -19,6 +18,7 @@ import {
   t,
   tick
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress }: typeof import('viem') = require('viem')
@@ -165,12 +165,12 @@ describe('the deposit step', () => {
   it('sends nothing where the screen goes away while a balance read is out and the read then answers enough', async () => {
     const world = await openWorld()
     const mounted = await startEmpty(world)
-    const balance = held<bigint>()
+    const balance = deferred<bigint>()
     world.kit.reads.nativeBalance.mockImplementation(() => balance.promise)
     await tick(BALANCE_POLL_MS)
     mounted.unmount()
     view = undefined
-    balance.release(1_000_000_000_000_000_000n)
+    balance.resolve(1_000_000_000_000_000_000n)
     await tick(0)
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
     const session = await sessionOf(world.records, world.account)
@@ -180,7 +180,7 @@ describe('the deposit step', () => {
   it('keeps the step while a balance read is out, and reads failed with a retry once it passes the limit, sending nothing', async () => {
     const world = await openWorld()
     const mounted = await startEmpty(world)
-    world.kit.reads.nativeBalance.mockImplementation(() => held<bigint>().promise)
+    world.kit.reads.nativeBalance.mockImplementation(() => deferred<bigint>().promise)
     await tick(BALANCE_POLL_MS)
     await tick(READ_LIMIT_MS - 1_000)
     expect(mounted.byTestId('submit-gas-step')).not.toBeNull()
@@ -201,7 +201,7 @@ describe('the deposit step', () => {
 
   it('reads failed with a retry where the first gas check passes the limit, sending nothing', async () => {
     const world = await openWorld()
-    world.kit.reads.nativeBalance.mockImplementation(() => held<bigint>().promise)
+    world.kit.reads.nativeBalance.mockImplementation(() => deferred<bigint>().promise)
     view = await mountSubmit(world.account, { useTimers: true })
     await view.press('submit-verify-details')
     await view.press('submit-action')

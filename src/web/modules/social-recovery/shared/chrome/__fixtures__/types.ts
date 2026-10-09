@@ -18,3 +18,10 @@ export type WatchedHistory = {
   pushes: jest.SpyInstance
   replaces: jest.SpyInstance
 }
+
+/** A promise a test settles by hand. */
+export interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}

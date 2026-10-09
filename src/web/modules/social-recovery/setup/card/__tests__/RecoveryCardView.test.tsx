@@ -18,11 +18,12 @@ import type {
   CardLevel,
   PasswordAskAnswer
 } from '@web/modules/social-recovery/setup/card'
-import { deferred, pdfTextBlocks } from '@web/modules/social-recovery/setup/card/__tests__/harness'
+import { pdfTextBlocks } from '@web/modules/social-recovery/setup/card/__tests__/harness'
 import type {
   MissingPasswordRow,
   RecoveryPasswordCheck
 } from '@web/modules/social-recovery/setup/card/types'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.

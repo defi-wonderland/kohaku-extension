@@ -336,17 +336,6 @@ export const attemptActiveRefusal = (): Error =>
 export const notServed = (member: string): Error =>
   Object.assign(new Error(`not served: ${member}`), { name: 'NotServedRefusal', member })
 
-/** A promise the test settles by hand, for an edge that must hold a run at one step. */
-export const held = <T,>() => {
-  let release: (value: T) => void = () => {}
-  let fail: (error: unknown) => void = () => {}
-  const promise = new Promise<T>((resolve, reject) => {
-    release = resolve
-    fail = reject
-  })
-  return { promise, release, fail }
-}
-
 // ---------------------------------------------------------------------------
 // The client
 // ---------------------------------------------------------------------------

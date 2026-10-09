@@ -11,7 +11,6 @@ import {
   CHAIN_ID,
   chip,
   confirmLost,
-  deferred,
   dispatch,
   failedClient,
   forwardedCall,
@@ -49,6 +48,7 @@ import {
   valueLabel,
   VIEW_ONLY
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const LOGGED_IN = searchOf('logged-in', BASIC)
 const FRESH_INSTALL = searchOf('fresh-install', SMART)

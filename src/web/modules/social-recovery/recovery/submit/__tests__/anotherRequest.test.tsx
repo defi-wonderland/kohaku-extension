@@ -19,7 +19,6 @@ import {
   claimOf,
   flushTimers as flush,
   gatherAgain,
-  held,
   landedReceipt,
   landedSession,
   leaveClaim,
@@ -35,6 +34,7 @@ import {
   submit,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
@@ -116,15 +116,15 @@ describe('a gathering another tab abandoned and opened again', () => {
   it('writes no hash on the new session where the wallet answers the send after the other tab gathered again', async () => {
     const device = await openDevice()
     const page = track(pageOn(device))
-    const hash = held<Hex>()
+    const hash = deferred<Hex>()
     page.port.send.mockImplementation(() => hash.promise)
-    device.kit.receipts.wait.mockImplementation(() => held<never>().promise)
+    device.kit.receipts.wait.mockImplementation(() => deferred<never>().promise)
     startSubmission(page.store, page.steps).catch(() => undefined)
     await flush()
     expect(page.port.send).toHaveBeenCalledTimes(1)
 
     await gatherAgain(device.records(), device.account, regathered(device.gathering))
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await flush()
     expect(await claimOf(device)).toBeNull()
     expect((await sessionOf(device.records(), device.account))?.state).toBe('live')
@@ -133,7 +133,7 @@ describe('a gathering another tab abandoned and opened again', () => {
   it('lands nothing on the new session where the first tab’s start lands after the other tab gathered again', async () => {
     const device = await openDevice()
     const page = track(pageOn(device))
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     device.kit.receipts.wait.mockImplementation(() => receipt.promise)
     startSubmission(page.store, page.steps).catch(() => undefined)
     await flush()
@@ -141,7 +141,7 @@ describe('a gathering another tab abandoned and opened again', () => {
     const next = regathered(device.gathering)
     await gatherAgain(device.records(), device.account, next)
     device.kit.chain.attempt = attemptOf(device.gathering)
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await flush()
     expect(isLanded(page.store.state())).toBe(false)
     expect(page.store.state().toChecklist).toBe(true)

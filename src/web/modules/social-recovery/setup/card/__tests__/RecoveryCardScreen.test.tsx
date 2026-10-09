@@ -16,7 +16,6 @@ import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
 import {
-  deferred,
   digestVersionRefusal,
   restoreRefusalOf
 } from '@web/modules/social-recovery/setup/card/__tests__/harness'
@@ -24,6 +23,7 @@ import type {
   FakeClientState,
   FakeSetupReads
 } from '@web/modules/social-recovery/setup/card/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true

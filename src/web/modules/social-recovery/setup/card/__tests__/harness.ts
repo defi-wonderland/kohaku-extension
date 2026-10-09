@@ -9,6 +9,7 @@
  */
 import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
 import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /** The two setup reads the card's password row calls on the client. */
 export interface FakeSetupReads {
@@ -123,23 +124,6 @@ export interface PdfFileParts {
   pages: PdfPageObject[]
   /** Every stream, in file order. */
   streams: PdfStream[]
-}
-
-/** A promise with its two ends in the test's hands. */
-export interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (reason: unknown) => void
-}
-
-export const deferred = <T>(): Deferred<T> => {
-  let resolve: (value: T) => void = () => {}
-  let reject: (reason: unknown) => void = () => {}
-  const promise = new Promise<T>((onResolve, onReject) => {
-    resolve = onResolve
-    reject = onReject
-  })
-  return { promise, resolve, reject }
 }
 
 export const restoreRefusalOf = (cause: RestoreCause): RestoreRefusal => {

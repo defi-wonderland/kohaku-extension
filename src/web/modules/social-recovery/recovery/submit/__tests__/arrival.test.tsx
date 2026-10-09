@@ -8,7 +8,6 @@
 import type { Mounted } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   CHAIN_ID,
-  held,
   mountSubmit,
   openWorld,
   START_BLOCK,
@@ -16,6 +15,7 @@ import {
   tick,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
@@ -113,7 +113,7 @@ describe('the confirmation’s arrival', () => {
     }
     await accessor.setSubmissionHash('page-that-went', TX_HASH, claimed.record.revision)
     world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
-    world.kit.receipts.wait.mockImplementation(() => held<never>().promise)
+    world.kit.receipts.wait.mockImplementation(() => deferred<never>().promise)
     view = await mountSubmit(world.account, { useTimers: true })
     const claimNow = async () => {
       const session = await world.records.recoverySession(CHAIN_ID, world.account).read()

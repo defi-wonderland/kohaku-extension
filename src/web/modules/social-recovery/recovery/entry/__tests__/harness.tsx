@@ -32,6 +32,8 @@ import type {
 import type { sdkStandIn as StandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
+import type { Deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/types'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.
@@ -43,12 +45,6 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 
 /** The client state the screen's hook hands back, with its retry. */
 export type ClientState = RecoveryClientState & { retry: () => void }
-
-export interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (error: unknown) => void
-}
 
 /**
  * The wallet the screens read: its accounts, its keystore keys, the URL's
@@ -493,16 +489,6 @@ export const valueLabel = renderValueLabel
 export const resolveName = mockResolveName
 export const storage = mockStorage
 export const records = () => createWalletRecords({ storage: mockStorage })
-
-export const deferred = <T,>(): Deferred<T> => {
-  let resolve: (value: T) => void = () => {}
-  let reject: (error: unknown) => void = () => {}
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
 
 // ---------------------------------------------------------------------------
 // The recovery session

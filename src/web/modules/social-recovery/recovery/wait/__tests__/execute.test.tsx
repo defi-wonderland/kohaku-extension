@@ -14,7 +14,6 @@ import {
   elapse,
   executionOf,
   factsOf,
-  held,
   landCountdown,
   landedReceipt,
   MIXED_PATH,
@@ -38,6 +37,7 @@ import {
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Notification } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 // The harness sets up the text codecs viem needs before viem loads.
 // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
@@ -58,7 +58,7 @@ const donePath = (world: World) =>
 
 /** Holds the execution's receipt until the test releases or fails it. */
 const holdReceipt = (world: World) => {
-  const receipt = held<ProviderTransactionReceipt>()
+  const receipt = deferred<ProviderTransactionReceipt>()
   world.kit.receipts.wait.mockImplementation(() => receipt.promise)
   return receipt
 }
@@ -137,7 +137,7 @@ describe('execute now', () => {
     expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
     expect(view.text()).toContain(t(`${DUE}.executing`))
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await tick(0)
   })
 
@@ -191,7 +191,7 @@ describe('execute now', () => {
     await view.press('wait-execute')
 
     const calls = world.kit.recoveryState.mock.calls.length
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await tick(0)
     // The landed receipt asks the chain at once; the attempt still waits there.
     expect(world.kit.recoveryState.mock.calls.length).toBe(calls + 1)
@@ -418,7 +418,7 @@ describe('the two readings of a send no node knows', () => {
    */
   const firstUnknownReading = async (
     world: World,
-    receipt = held<ProviderTransactionReceipt>()
+    receipt = deferred<ProviderTransactionReceipt>()
   ): Promise<Mounted> => {
     elapse(world.kit)
     world.kit.receipts.wait.mockImplementation(() => receipt.promise)
@@ -612,12 +612,12 @@ describe('the two readings of a send no node knows', () => {
 
   it('starts the count again where the run learns a second hash of its call between the readings', async () => {
     const world = await openWorld()
-    const receipt = held<ProviderTransactionReceipt>()
+    const receipt = deferred<ProviderTransactionReceipt>()
     await firstUnknownReading(world, receipt)
 
     // The receipt wait ends naming the call's hash at another fee; the next waits never answer.
     world.kit.receipts.wait.mockImplementation(() => new Promise(() => {}))
-    receipt.fail(
+    receipt.reject(
       Object.assign(new Error('the node dropped the connection'), { hash: OTHER_TX_HASH })
     )
     await pass(20_000)
@@ -826,18 +826,18 @@ describe('the receipt asked for again', () => {
         throw new Error('the node dropped the connection')
       })
       .mockImplementation(later)
-    const hash = held<typeof TX_HASH>()
+    const hash = deferred<typeof TX_HASH>()
     world.port.send.mockImplementation(() => hash.promise)
     await view.press('wait-execute')
     expect(world.kit.receipts.wait).not.toHaveBeenCalled()
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await tick(0)
   }
 
   it('waits on the kept hash again at the next answered poll, and reaches the done screen', async () => {
     const world = await openWorld()
     elapse(world.kit)
-    const receipt = held<ProviderTransactionReceipt>()
+    const receipt = deferred<ProviderTransactionReceipt>()
     view = await mountWait(world.account)
 
     await sendThenFailFirstWait(world, () => receipt.promise)
@@ -849,7 +849,7 @@ describe('the receipt asked for again', () => {
     expect(world.kit.receipts.wait).toHaveBeenCalledTimes(2)
     expect(world.kit.receipts.wait).toHaveBeenLastCalledWith(TX_HASH, SEND_BLOCK)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await tick(0)
     expect(view.byTestId('wait-execute-confirming')).not.toBeNull()
     consume(world.kit, world.account)
