@@ -134,7 +134,7 @@ const topicMatches = (expected: FilterSpec['topics'][number], actual: Hex | unde
 }
 
 export const fakeNode = (): FakeNode => {
-  const routes = new Map<string, Hex | Error>()
+  const routes = new Map<string, Hex | Error | ((data: Hex) => Hex | Error)>()
   const handlers = new Map<string, (data: Hex) => Hex | Error>()
   const codes = new Map<string, Hex>()
   const logs: RawLog[] = []
@@ -148,8 +148,11 @@ export const fakeNode = (): FakeNode => {
       if (!codes.has(to.toLowerCase())) {
         return '0x'
       }
+      const route = routes.get(keyOf(to, data))
       const answer =
-        routes.get(keyOf(to, data)) ?? handlers.get(keyOf(to, slice(data, 0, 4)))?.(data)
+        typeof route === 'function'
+          ? route(data)
+          : route ?? handlers.get(keyOf(to, slice(data, 0, 4)))?.(data)
       if (answer === undefined) {
         throw new Error(`The fake node has no answer for ${data} to ${to}.`)
       }

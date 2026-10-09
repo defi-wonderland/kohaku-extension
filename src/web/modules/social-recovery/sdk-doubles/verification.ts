@@ -30,7 +30,7 @@ import {
   setupCommitmentOf
 } from './encoding'
 import { kitError } from './scripts'
-import type { CountedClause, RuleEvaluation, RuleEvaluator } from './types'
+import type { CountedClause, RuleEvaluation, RuleEvaluator, SetupBodyReader } from './types'
 
 /**
  * The doubles' stand-in names for the account's own reverts at the execute: the
@@ -48,7 +48,7 @@ export const ACCOUNT_UNFIT = 'AccountUnfit'
  * clause sits at zero. Places number the credentials in body order across the
  * clauses.
  */
-export const evaluateClauses = (clauses: CountedClause[], filled: number[]): RuleEvaluation => {
+const evaluateClauses = (clauses: CountedClause[], filled: number[]): RuleEvaluation => {
   const set = new Set(filled)
   let next = 0
   const counted = clauses.map((c, clause) => {
@@ -74,7 +74,7 @@ export const evaluateClauses = (clauses: CountedClause[], filled: number[]): Rul
  * unsatisfied with no clauses.
  */
 export const evaluatorOf =
-  (read: (setupBody: Hex) => { clauses: CountedClause[] }): RuleEvaluator =>
+  (read: SetupBodyReader): RuleEvaluator =>
   (setupBody, filled) => {
     let clauses
     try {

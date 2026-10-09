@@ -41,14 +41,14 @@ export const refuseWith = (...rows: RequestRow[]): never => {
   throw validationRefusal({ errors: rowsToFindings(rows), warnings: [] })
 }
 
-export const readsGathering = (g: Gathering): boolean =>
+const readsGathering = (g: Gathering): boolean =>
   !!g && g.kind === 'gathering' && g.version === RECORD_VERSION
 
 const refuseUnread = (gathering: Gathering): never => {
   throw codedError('version-unread', { kind: gathering?.kind, version: gathering?.version })
 }
 
-export const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
+const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
   digestOf({
     chainId: g.request.chainId,
     manager: g.request.manager,
@@ -66,7 +66,7 @@ export const digestForPlace = (g: Gathering, place: GatheringPlace): Hex =>
   })
 
 /** Every way to pick `size` of `places`, each pick in the order given. */
-export const picksOf = (places: number[], size: number): number[][] => {
+const picksOf = (places: number[], size: number): number[][] => {
   if (size <= 0) {
     return [[]]
   }
@@ -77,7 +77,7 @@ export const picksOf = (places: number[], size: number): number[][] => {
   return [...picksOf(rest, size - 1).map((pick) => [first, ...pick]), ...picksOf(rest, size)]
 }
 
-export const compareRanks = (a: SetRank, b: SetRank): number => {
+const compareRanks = (a: SetRank, b: SetRank): number => {
   if (a.stopped !== b.stopped) {
     return a.stopped - b.stopped
   }

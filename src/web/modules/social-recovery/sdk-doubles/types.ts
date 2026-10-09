@@ -373,6 +373,9 @@ export interface CountedClause {
   credentials: readonly unknown[]
 }
 
+/** The reading of a setup body's bytes into its clauses, one per layout. */
+export type SetupBodyReader = (setupBody: Hex) => { clauses: CountedClause[] }
+
 /** The rule evaluation over a setup body's bytes, whichever layout they carry. */
 export type RuleEvaluator = (setupBody: Hex, filled: number[]) => RuleEvaluation
 
