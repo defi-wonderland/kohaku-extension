@@ -11,7 +11,7 @@
  * checked against the commitment before it renders. A client that does not
  * serve the events feed reads as sealed, never as readable.
  */
-import { decodeAbiParameters, hexToString, isAddress, isHex } from 'viem'
+import { hexToString, isAddress, isHex } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
@@ -25,7 +25,11 @@ import type {
   RestoreRefusal,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { REQUEST_WINDOW_SECONDS, sameAddress } from '@web/modules/social-recovery/shared/client'
+import {
+  passkeyConfigFieldsOf,
+  REQUEST_WINDOW_SECONDS,
+  sameAddress
+} from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress, renderHiddenValue } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import { isStoredAddress } from '@web/modules/social-recovery/shared/records'
@@ -376,17 +380,8 @@ const maskedRowOf = (method: Address, context: ReadoutRowContext, t: Translate):
 }
 
 /** The relying-party hash a passkey config commits, or null where the config is not a passkey's. */
-const passkeyRpIdHashOf = (config: Hex): Hex | null => {
-  try {
-    const [, , rpIdHash] = decodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'bytes32' }, { type: 'bytes32' }],
-      config
-    )
-    return rpIdHash
-  } catch {
-    return null
-  }
-}
+const passkeyRpIdHashOf = (config: Hex): Hex | null =>
+  passkeyConfigFieldsOf(config)?.rpIdHash ?? null
 
 const readableRowOf = (
   credential: Credential,
