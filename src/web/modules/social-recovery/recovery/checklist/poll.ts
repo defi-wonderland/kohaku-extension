@@ -8,6 +8,7 @@
 import { keccak256 } from 'viem'
 
 import type { Attempt, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import { within } from '@web/modules/social-recovery/shared/client'
 
 import type { ChecklistKitClient, ChecklistLoad, PollFacts, PollOutcome, PollTarget } from './types'
 
@@ -20,26 +21,18 @@ export const readPollFacts = (
   kit: Pick<ChecklistKitClient, 'recovery' | 'action'>,
   limitMs: number
 ): Promise<PollFacts | undefined> =>
-  new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), limitMs)
-    Promise.resolve()
-      .then(() => Promise.all([kit.recovery.recoveryState(), kit.action.isAuthorized()]))
-      .then(
-        ([state, authorized]) => {
-          clearTimeout(timer)
-          resolve({
-            attempt: state.attempt,
-            nextAttemptId: state.nextAttemptId,
-            setupNonce: state.setupNonce,
-            authorized
-          })
-        },
-        () => {
-          clearTimeout(timer)
-          resolve(undefined)
-        }
-      )
-  })
+  within(async () => {
+    const [state, authorized] = await Promise.all([
+      kit.recovery.recoveryState(),
+      kit.action.isAuthorized()
+    ])
+    return {
+      attempt: state.attempt,
+      nextAttemptId: state.nextAttemptId,
+      setupNonce: state.setupNonce,
+      authorized
+    }
+  }, limitMs)
 
 /** Whether an attempt holds the account's one slot: it waits out its period. */
 export const attemptLive = (attempt: Attempt): boolean => attempt.state === 'Waiting'

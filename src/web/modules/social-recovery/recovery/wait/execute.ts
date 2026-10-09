@@ -58,12 +58,11 @@ import {
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type { UnknownReading, WriteEvent } from '@web/modules/social-recovery/shared/writes'
-import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
+import { providerReadFailure, readWithin, within } from '@web/modules/social-recovery/shared/client'
 import type { Hex, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
 import { FOLLOW_REREAD_MS, READ_LIMIT_MS } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
-import { readWithin, within } from './read'
 import type { ExecuteEvent, ExecuteState, ExecuteSteps, ExecuteStore } from './types'
 
 /** The execution before anything ran. */

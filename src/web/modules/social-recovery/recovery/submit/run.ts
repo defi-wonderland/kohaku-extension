@@ -42,7 +42,7 @@
  * the request of this run. Every answer carries its run, so the answer of a
  * run the holder left behind moves nothing.
  */
-import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
+import { providerReadFailure, readWithin } from '@web/modules/social-recovery/shared/client'
 import type { SubmissionInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
   apartFrom,
@@ -351,32 +351,6 @@ export const isLanded = (state: SubmitState): boolean => state.after === 'landed
 const writeEvent = (store: SubmitStore) => (event: WriteEvent) =>
   store.dispatch({ type: 'write', event })
 
-/**
- * The answer of `read`, rejected where it does not answer within `limitMs`;
- * `onLimit` shapes that rejection where a caller reads it by its kind.
- */
-const readWithin = <T>(
-  read: () => Promise<T>,
-  limitMs: number = READ_LIMIT_MS,
-  onLimit: (error: Error) => Error = (error) => error
-): Promise<T> =>
-  new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(onLimit(new Error(`No answer in ${limitMs} ms.`))),
-      limitMs
-    )
-    read().then(
-      (answer) => {
-        clearTimeout(timer)
-        resolve(answer)
-      },
-      (error: unknown) => {
-        clearTimeout(timer)
-        reject(error)
-      }
-    )
-  })
-
 // The steps of the screen attached to each store, while one is.
 const ATTACHED = new WeakMap<SubmitStore, SubmitSteps>()
 
@@ -446,7 +420,7 @@ const settle = async (store: SubmitStore, steps: SubmitSteps, run: number): Prom
   }
   let agreed = false
   try {
-    agreed = steps.attemptOf(await readWithin(() => steps.attemptRead())) === 'ours'
+    agreed = steps.attemptOf(await readWithin(() => steps.attemptRead(), READ_LIMIT_MS)) === 'ours'
   } catch {
     agreed = false
   }
@@ -477,7 +451,7 @@ const judgeRevert = async (store: SubmitStore, steps: SubmitSteps, run: number):
   if (!inRun(store.state(), run) || !revertedRunning(store.state().write)) {
     return
   }
-  const attempt = await readWithin(() => steps.attemptRead()).then(
+  const attempt = await readWithin(() => steps.attemptRead(), READ_LIMIT_MS).then(
     (read) => steps.attemptOf(read),
     () => undefined
   )
@@ -517,7 +491,7 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
   DROPPING.add(store)
   try {
     const clock = steps.now()
-    const read = await readWithin(() => steps.readSession()).catch(() => undefined)
+    const read = await readWithin(() => steps.readSession(), READ_LIMIT_MS).catch(() => undefined)
     if (!unmoved()) {
       return false
     }
@@ -527,11 +501,13 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
       return notDropped()
     }
     const at = steps.now()
-    const answers = await readWithin(() =>
-      Promise.all([
-        steps.blockNumber(),
-        Promise.all(hashes.map((one) => steps.transactionKnown(one)))
-      ])
+    const answers = await readWithin(
+      () =>
+        Promise.all([
+          steps.blockNumber(),
+          Promise.all(hashes.map((one) => steps.transactionKnown(one)))
+        ]),
+      READ_LIMIT_MS
     ).catch(() => undefined)
     if (!unmoved()) {
       return false
@@ -551,7 +527,7 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
     if (!apartFrom(kept, reading)) {
       return false
     }
-    const attempt = await readWithin(() => steps.attemptRead()).then(
+    const attempt = await readWithin(() => steps.attemptRead(), READ_LIMIT_MS).then(
       (answer) => steps.attemptOf(answer),
       () => undefined
     )
@@ -648,7 +624,9 @@ const judgeOldClaim = async (
   steps: SubmitSteps,
   follow: FollowedClaim
 ): Promise<OldClaimReading> => {
-  const hold = await readWithin(() => steps.requestHold(follow.requestId)).catch(() => undefined)
+  const hold = await readWithin(() => steps.requestHold(follow.requestId), READ_LIMIT_MS).catch(
+    () => undefined
+  )
   if (!hold || hold.status === 'held') {
     return { status: 'wait' }
   }
@@ -656,7 +634,9 @@ const judgeOldClaim = async (
     await steps.markSent(follow, hold.transactionHash).catch(() => undefined)
     return { status: 'hashed', transactionHash: hold.transactionHash }
   }
-  const started = await readWithin(() => steps.startedSince(follow)).catch(() => undefined)
+  const started = await readWithin(() => steps.startedSince(follow), READ_LIMIT_MS).catch(
+    () => undefined
+  )
   if (started === undefined) {
     return { status: 'wait' }
   }
@@ -698,7 +678,7 @@ const readFollow = async (store: SubmitStore): Promise<void> => {
       }
       const clock = steps.now()
       // eslint-disable-next-line no-await-in-loop
-      const read = await readWithin(() => steps.readSession()).catch(() => undefined)
+      const read = await readWithin(() => steps.readSession(), READ_LIMIT_MS).catch(() => undefined)
       if (store.state().follow !== follow) {
         // eslint-disable-next-line no-continue
         continue
@@ -828,7 +808,7 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
   const dispatch = writeEvent(store)
   let startBlock: number
   try {
-    startBlock = await readWithin(() => steps.blockNumber())
+    startBlock = await readWithin(() => steps.blockNumber(), READ_LIMIT_MS)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     return
@@ -998,7 +978,7 @@ export const startSubmission = async (store: SubmitStore, steps: SubmitSteps): P
 
   let read
   try {
-    read = await readWithin(() => steps.readSession())
+    read = await readWithin(() => steps.readSession(), READ_LIMIT_MS)
   } catch (error: unknown) {
     fail(error)
     return
@@ -1023,7 +1003,7 @@ export const startSubmission = async (store: SubmitStore, steps: SubmitSteps): P
 
   let attempt
   try {
-    attempt = steps.attemptOf(await readWithin(() => steps.attemptRead()))
+    attempt = steps.attemptOf(await readWithin(() => steps.attemptRead(), READ_LIMIT_MS))
   } catch (error: unknown) {
     fail(error)
     return
@@ -1078,7 +1058,7 @@ export const lookForClaim = async (store: SubmitStore, steps: SubmitSteps): Prom
   store.dispatch({ type: 'lookup', run, reading: 'reading' })
   let read
   try {
-    read = await readWithin(() => steps.readSession())
+    read = await readWithin(() => steps.readSession(), READ_LIMIT_MS)
   } catch {
     store.dispatch({ type: 'lookup', run, reading: 'failed' })
     return
@@ -1136,7 +1116,7 @@ export const checkAgain = async (store: SubmitStore, steps: SubmitSteps): Promis
   if (!mayStillLand(state.write) || landedOf(state)) {
     return
   }
-  const read = await readWithin(() => steps.readSession()).catch(() => undefined)
+  const read = await readWithin(() => steps.readSession(), READ_LIMIT_MS).catch(() => undefined)
   const owned = read?.status === 'present' && steps.ownsSession(read.value) ? read.value : undefined
   const claim = owned?.state === 'live' ? owned.submission : undefined
   if (owned?.state === 'landed') {

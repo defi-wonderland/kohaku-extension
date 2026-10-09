@@ -52,7 +52,8 @@ import {
   createProviderAdapter,
   extensionProviderFor,
   networkOf,
-  WALLET_RECOVERY_CHAIN
+  WALLET_RECOVERY_CHAIN,
+  within
 } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
@@ -69,7 +70,7 @@ import {
   waitPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
 import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
-import { landedAttemptOf, within } from '@web/modules/social-recovery/recovery/wait'
+import { landedAttemptOf } from '@web/modules/social-recovery/recovery/wait'
 
 import { listsWithKey } from './account'
 import DoneChrome from './DoneChrome'

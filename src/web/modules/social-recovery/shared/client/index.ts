@@ -83,6 +83,7 @@ export { UNKNOWN_TRANSACTION_MS, createReceiptWait } from './receipts'
 export { SPONSOR_RAIL, RECOVERY_CALLS, sendingKeyOf } from './sending'
 export { shapeNoteOf, privacyLevelOf } from './setup-notes'
 export { recoveryKitMarkOf, accountBatchTransactionOf } from './account-batch'
+export { within, readWithin } from './limits'
 export {
   CREATION_BLOCK_STAND_IN,
   creationRecordOf,

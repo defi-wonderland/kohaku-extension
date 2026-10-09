@@ -19,9 +19,9 @@ import type { CountdownRead } from '@web/modules/social-recovery/shared/records'
 import {
   isAttemptOf,
   isOpeningOf,
-  landedAttemptOf,
-  within
+  landedAttemptOf
 } from '@web/modules/social-recovery/recovery/wait'
+import { within } from '@web/modules/social-recovery/shared/client'
 import type { LandedAttempt, StartedNotice } from '@web/modules/social-recovery/recovery/wait'
 
 import type {
