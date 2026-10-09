@@ -3,9 +3,9 @@
  * guardian: the record as JSON, encoded base64url with no padding. The field
  * checks read a decoded record whose sender this wallet does not control.
  */
-import { bytesToString, isAddress, isHex, stringToBytes } from 'viem'
+import { bytesToString, isAddress, stringToBytes } from 'viem'
 
-import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { fromBase64Url, toBase64Url } from '@web/modules/social-recovery/shared/ceremony'
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/
@@ -43,8 +43,6 @@ export const isDecimal = (value: unknown): value is string =>
 
 export const isAddressField = (value: unknown): value is Address =>
   isText(value) && isAddress(value, { strict: false })
-
-export const isHexField = (value: unknown): value is Hex => isHex(value)
 
 export const isIndex = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0

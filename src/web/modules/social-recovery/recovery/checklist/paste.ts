@@ -6,13 +6,14 @@
  * approval matches by its signer and its place, never by the row it was
  * pasted into.
  */
+import { isHex } from 'viem'
+
 import type { ApproverReply, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 import {
   isAddressField,
   isDecimal,
-  isHexField,
   isIndex,
   isObject,
   isPurpose,
@@ -52,10 +53,10 @@ export const replyOfLine = (text: string): ApproverReply | null => {
     !isPurpose(r.purpose) ||
     !isIndex(r.place) ||
     !isAddressField(r.method) ||
-    !isHexField(r.config) ||
-    !isHexField(r.salt) ||
-    !isHexField(r.digest) ||
-    !isHexField(r.proof)
+    !isHex(r.config) ||
+    !isHex(r.salt) ||
+    !isHex(r.digest) ||
+    !isHex(r.proof)
   ) {
     return null
   }

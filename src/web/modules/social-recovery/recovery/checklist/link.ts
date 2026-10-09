@@ -5,6 +5,8 @@
  * body, so the link shows a guardian that place's values and nothing else of
  * the path. The approval page reads the link back with the decoder.
  */
+import { isHex } from 'viem'
+
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { browser } from '@web/constants/browserapi'
 import type {
@@ -15,7 +17,6 @@ import type {
 import {
   isAddressField,
   isDecimal,
-  isHexField,
   isIndex,
   isObject,
   isPurpose,
@@ -137,14 +138,14 @@ export const requestOfApprovalLink = (search: string): ApproverRequest | null =>
     !isAddressField(r.action) ||
     !isDecimal(r.attemptId) ||
     !isDecimal(r.setupNonce) ||
-    !isHexField(r.setupBodyHash) ||
-    (r.payload !== undefined && !isHexField(r.payload)) ||
+    !isHex(r.setupBodyHash) ||
+    (r.payload !== undefined && !isHex(r.payload)) ||
     (r.purpose === 'approval' && r.payload === undefined) ||
     !isDecimal(r.validUntil) ||
     !isIndex(r.place) ||
     !isAddressField(r.method) ||
-    !isHexField(r.config) ||
-    !isHexField(r.salt)
+    !isHex(r.config) ||
+    !isHex(r.salt)
   ) {
     return null
   }
