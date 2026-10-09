@@ -342,6 +342,11 @@ const WaitBody = ({
     leaveCountdown().catch(() => setLeave('failed'))
   }, [records, account, navigate, entry.route, landed, onCountdownReplaced])
 
+  const onBack = useCallback(
+    () => navigate(routeEntryPathOf(entry.route)),
+    [navigate, entry.route]
+  )
+
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
   // The transfer screen sends from the selected account, so the account being recovered is selected first.
   const listedAddress = ownFacts.status === 'ready' ? ownFacts.facts.account.addr : null
@@ -391,6 +396,7 @@ const WaitBody = ({
       onRetryKeys={retryKeys}
       onRetryClient={retryClient}
       onLeave={onLeave}
+      onBack={onBack}
       onMoveFunds={onMoveFunds}
       onOpenExplorer={onOpenExplorer}
     />

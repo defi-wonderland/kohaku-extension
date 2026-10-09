@@ -370,6 +370,8 @@ export interface WaitViewProps {
   onRetryKeys: () => void
   onRetryClient: () => void
   onLeave: () => void
+  /** Leaves the wait for the route's entry and keeps every record. */
+  onBack: () => void
   onMoveFunds: () => void
   onOpenExplorer: (transactionHash: Hex) => void
 }
