@@ -5,7 +5,7 @@
  */
 import React from 'react'
 
-import Text from '@common/components/Text'
+import Alert from '@common/components/Alert'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
@@ -25,9 +25,9 @@ const PollFailedBlock = ({ onRetry }: PollFailedBlockProps) => {
       body={t(`${POLL_FAILED}.body`)}
       onRetry={onRetry}
     >
-      <Text fontSize={12} style={spacings.mtTy} testID="wait-poll-no-number">
+      <Alert.Text size="sm" type="error" style={spacings.mtTy} testID="wait-poll-no-number">
         {t(`${POLL_FAILED}.noLastNumber`)}
-      </Text>
+      </Alert.Text>
     </ReadFailedBlock>
   )
 }
