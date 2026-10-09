@@ -90,7 +90,11 @@ const InProgressScreen = () => {
       </PlainChrome>
     )
   }
-  return <SetupChrome testID="in-progress-screen">{view}</SetupChrome>
+  return (
+    <SetupChrome testID="in-progress-screen" skipAccountLatch>
+      {view}
+    </SetupChrome>
+  )
 }
 
 export default React.memo(InProgressScreen)
