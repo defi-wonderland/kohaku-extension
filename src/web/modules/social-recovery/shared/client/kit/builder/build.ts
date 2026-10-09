@@ -7,8 +7,9 @@
  * method module's own `verify` view, and the approving side. The approving
  * side reads no chain: it is the shipped method implementations and the
  * orchestrator over them, keyed by the deployment's method addresses, and it
- * serves only the methods the deployment names. The clear and the events feed
- * are not served yet and refuse.
+ * serves only the methods the deployment names. Both clients serve one events
+ * feed over the provider's logs of the manager and the account. The clear and
+ * the feed's method filter are not served yet and refuse.
  */
 import {
   ActionCodecDouble,
@@ -23,7 +24,7 @@ import type {
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
 import type { RecoveryKitClient, WalletReads } from '../../types'
-import { createSetupEvents } from '../events'
+import { createKitEventManager, createSetupEvents } from '../events'
 import { disarmingData } from '../formats'
 import { createMethodReads } from '../reads'
 import { createKitRecoveryClient } from '../recovery-client'
@@ -49,6 +50,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     fitCheck: (implementation) => kitWalletReads.fitCheck(implementation),
     verifyReply: (request, reply) => kitWalletReads.verifyReply(request, reply)
   }
+  const eventManager = createKitEventManager({ provider, descriptor, account })
   const setup = createKitSetupClient({
     account,
     descriptor,
@@ -59,6 +61,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     action: input.action,
     moduleReads,
     events: createSetupEvents(provider, descriptor.manager),
+    eventManager,
     walletReads,
     initialPrivileges: input.privilegeAccount.initialPrivileges
   })
@@ -71,7 +74,8 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     action: input.action,
     moduleReads,
     setup,
-    walletReads
+    walletReads,
+    eventManager
   })
   const action: IRecoveryActionInteractor = {
     supportsAccount: () => input.action.supportsAccount(account),
