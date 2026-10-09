@@ -517,3 +517,14 @@ export interface DepositStepRenderOptions {
   /** The key's latest balance for the waiting line, the step's own by default. */
   balance?: bigint
 }
+
+/**
+ * One reading that the node knows none of a run's transactions: when it was
+ * taken (ms since epoch), the block number read with it, and the hashes it
+ * asked about.
+ */
+export interface UnknownReading {
+  at: number
+  block: number
+  hashes: readonly Hex[]
+}

@@ -21,7 +21,7 @@ import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures_
 const {
   DROPPED_AFTER_MS,
   DROPPED_RECHECK_MS
-}: typeof import('@web/modules/social-recovery/recovery/submit') = require('@web/modules/social-recovery/recovery/submit')
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const {
   accountStepPath,
   checklistPathOf,

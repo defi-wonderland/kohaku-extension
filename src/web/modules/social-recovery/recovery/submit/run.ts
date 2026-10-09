@@ -45,20 +45,17 @@
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import type { SubmissionInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
-  initialWriteState,
-  mayStillLand,
-  sameHash,
-  writeReducer
-} from '@web/modules/social-recovery/shared/writes'
-import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
-
-import {
-  BALANCE_POLL_MS,
+  apartFrom,
+  coversHashes,
   DROPPED_AFTER_MS,
   DROPPED_RECHECK_MS,
-  FOLLOW_REREAD_MS,
-  READ_LIMIT_MS
-} from './constants'
+  initialWriteState,
+  mayStillLand,
+  writeReducer
+} from '@web/modules/social-recovery/shared/writes'
+import type { UnknownReading, WriteEvent } from '@web/modules/social-recovery/shared/writes'
+
+import { BALANCE_POLL_MS, FOLLOW_REREAD_MS, READ_LIMIT_MS } from './constants'
 import { preparedRefusalRunning, revertedRunning } from './refusal'
 import type {
   FollowedClaim,
@@ -66,8 +63,7 @@ import type {
   SubmitEvent,
   SubmitState,
   SubmitSteps,
-  SubmitStore,
-  UnknownReading
+  SubmitStore
 } from './types'
 
 /** The submission before anything ran. */
@@ -491,13 +487,6 @@ const judgeRevert = async (store: SubmitStore, steps: SubmitSteps, run: number):
 }
 
 /**
- * Whether `reading` read a higher block number than `kept`, or came
- * `DROPPED_RECHECK_MS` after it. A lower number is a node that lags.
- */
-const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
-
-/**
  * Whether the hash the run waits on was dropped: the claim it sends or
  * follows is older than `DROPPED_AFTER_MS` by the clock read before the
  * reads; the node knows none of the run's hashes, read with the chain's block
@@ -555,7 +544,7 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
     // wait counts from the first; one that asked for a hash the kept one did
     // not read starts the count again.
     const kept = store.state().unknownReading
-    if (!kept || !reading.hashes.every((one) => kept.hashes.some((seen) => sameHash(seen, one)))) {
+    if (!kept || !coversHashes(kept, reading)) {
       store.dispatch({ type: 'unknownRead', run, reading })
       return false
     }

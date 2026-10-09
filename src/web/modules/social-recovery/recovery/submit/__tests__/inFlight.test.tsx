@@ -45,8 +45,6 @@ import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures_
 
 const {
   BALANCE_POLL_MS,
-  DROPPED_AFTER_MS,
-  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
   KEY_SEND_CLAIM_AGE_MS,
   SUBMISSION_CLAIM_AGE_MS,
@@ -55,6 +53,10 @@ const {
   lookForClaim,
   startSubmission
 } = submit
+const {
+  DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 
 const OTHER_HASH: Hex = '0x1111111111111111111111111111111111111111111111111111111111111111'
 

@@ -18,9 +18,7 @@ import {
   armScreenOf,
   checkReceiptAgain,
   createArmStore,
-  DROPPED_AFTER_MS,
   DROPPED_READ_MS,
-  DROPPED_RECHECK_MS,
   isLive,
   isSaved,
   lookForSave,
@@ -31,6 +29,7 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmStore } from '@web/modules/social-recovery/setup/arm'
 import { attachSteps, detachSteps } from '@web/modules/social-recovery/setup/arm/run'
+import { DROPPED_AFTER_MS, DROPPED_RECHECK_MS } from '@web/modules/social-recovery/shared/writes'
 
 import {
   advanceTimers,

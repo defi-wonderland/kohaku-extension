@@ -60,19 +60,23 @@ import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
 import type { FeeReading, SendRequestState } from '@web/modules/social-recovery/shared/client'
 import type { RecordRead, SaveInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
-  sameHash,
+  apartFrom,
+  coversHashes,
+  DROPPED_AFTER_MS,
   initialWriteState,
   mayStillLand,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
-import type { WriteEvent, WriteMachineState } from '@web/modules/social-recovery/shared/writes'
+import type {
+  UnknownReading,
+  WriteEvent,
+  WriteMachineState
+} from '@web/modules/social-recovery/shared/writes'
 
 import {
   CLAIM_SEND_LIMIT_MS,
   CLAIMED_SETUP_READ_MS,
-  DROPPED_AFTER_MS,
   DROPPED_READ_MS,
-  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
@@ -88,8 +92,7 @@ import type {
   FollowHold,
   GoneCount,
   PreparedSave,
-  SaveSteps,
-  UnknownReading
+  SaveSteps
 } from './types'
 
 /** The save before anything ran. */
@@ -585,17 +588,6 @@ const sentHashesIn = (write: WriteMachineState, stored: Hex | undefined): Hex[] 
   )
 }
 
-/** Whether the kept reading read every hash `reading` asked for. */
-const coveredBy = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.hashes.every((hash) => kept.hashes.some((seen) => sameHash(seen, hash)))
-
-/**
- * Whether `reading` read a higher block number than `kept`, or came
- * `DROPPED_RECHECK_MS` after it. A lower number is a backend that lags.
- */
-const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
-
 /**
  * The check for a dropped save, through the steps `liveStepsOf` names, in
  * order: the stored save still names the run's request and holds a hash, and
@@ -688,7 +680,7 @@ const readDropped = async (
   // minute counts from the first; one that asked for a hash the kept one did
   // not read starts the count again.
   const kept = store.state().unknownReading
-  if (!kept || !coveredBy(kept, reading)) {
+  if (!kept || !coversHashes(kept, reading)) {
     store.dispatch({ type: 'unknownRead', run, reading })
     return false
   }

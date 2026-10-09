@@ -186,13 +186,15 @@ const {
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const {
   createArmStore,
-  DROPPED_AFTER_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
   saveStepsOf,
   startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
+const {
+  DROPPED_AFTER_MS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const eventBus: typeof import('@web/extension-services/event/eventBus').default =
   require('@web/extension-services/event/eventBus').default
 const ArmScreen: typeof import('@web/modules/social-recovery/setup/arm/ArmScreen').default =

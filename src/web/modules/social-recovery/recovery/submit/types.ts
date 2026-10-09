@@ -34,6 +34,7 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
@@ -170,17 +171,6 @@ export type ClaimLookup = 'reading' | 'none' | 'failed'
 
 /** A claim with no hash that the run follows, sent from another page or before a reload. */
 export type FollowedClaim = Omit<SubmissionInFlightRecord, 'transactionHash'>
-
-/**
- * One reading that the node knows none of the run's transactions: when it
- * was taken (ms since epoch), the block number read with it, and the hashes
- * it asked about.
- */
-export interface UnknownReading {
-  at: number
-  block: number
-  hashes: readonly Hex[]
-}
 
 export interface SubmitState {
   write: WriteMachineState

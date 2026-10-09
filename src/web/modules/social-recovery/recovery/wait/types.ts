@@ -31,6 +31,7 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
@@ -195,17 +196,6 @@ export interface CountdownTicks {
 // ---------------------------------------------------------------------------
 // The execution
 // ---------------------------------------------------------------------------
-
-/**
- * One reading that the node knows none of the run's transactions: when it
- * was taken (ms since epoch), the block number read with it, and the hashes
- * it asked about.
- */
-export interface UnknownReading {
-  at: number
-  block: number
-  hashes: readonly Hex[]
-}
 
 /**
  * The release of a claim that may not carry a hash the caller does not know:
