@@ -27,6 +27,7 @@ import type {
 import { REQUEST_WINDOW_SECONDS, sameAddress } from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress, renderHiddenValue } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
+import { isStoredAddress } from '@web/modules/social-recovery/shared/records'
 import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 import {
   getRuleLines,
@@ -174,16 +175,13 @@ const noteBodyOf = (note: Hex): unknown => {
 const isThreshold = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0
 
-const isMethod = (value: unknown): value is Address =>
-  typeof value === 'string' && isAddress(value, { strict: false })
-
 const isNoteCredential = (value: unknown): value is Credential => {
   if (typeof value !== 'object' || value === null) {
     return false
   }
   const { method, config, salt } = value as Record<string, unknown>
   return (
-    isMethod(method) &&
+    isStoredAddress(method) &&
     typeof config === 'string' &&
     isHex(config) &&
     (salt === undefined || (typeof salt === 'string' && isHex(salt)))
@@ -203,7 +201,7 @@ const isShapeClause = (value: unknown): value is ShapeNote['clauses'][number] =>
     return false
   }
   const { threshold, methods } = value as Record<string, unknown>
-  return isThreshold(threshold) && Array.isArray(methods) && methods.every(isMethod)
+  return isThreshold(threshold) && Array.isArray(methods) && methods.every(isStoredAddress)
 }
 
 const isNoteClause = (value: unknown): value is Clause => {

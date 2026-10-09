@@ -14,16 +14,9 @@ import type {
   SerializedPaymentOrder
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import {
-  isAddressField,
-  isDecimal,
-  isIndex,
-  isObject,
-  isPurpose,
-  isText,
-  lineOfRecord,
-  recordOfLine
-} from './codec'
+import { isDecimalString, isStoredAddress } from '@web/modules/social-recovery/shared/records'
+
+import { isIndex, isObject, isPurpose, isText, lineOfRecord, recordOfLine } from './codec'
 import { APPROVAL_REQUEST_KEY, TAB_PAGE } from './constants'
 
 /**
@@ -99,9 +92,9 @@ const orderOf = (value: unknown): SerializedPaymentOrder | null | undefined => {
   }
   if (
     !isObject(value) ||
-    !isAddressField(value.token) ||
-    !isDecimal(value.amount) ||
-    !isAddressField(value.payee)
+    !isStoredAddress(value.token) ||
+    !isDecimalString(value.amount) ||
+    !isStoredAddress(value.payee)
   ) {
     return null
   }
@@ -131,19 +124,19 @@ export const requestOfApprovalLink = (search: string): ApproverRequest | null =>
     r.kind !== 'recovery-proof-request' ||
     !isIndex(r.version) ||
     !isPurpose(r.purpose) ||
-    !isDecimal(r.chainId) ||
-    !isAddressField(r.manager) ||
+    !isDecimalString(r.chainId) ||
+    !isStoredAddress(r.manager) ||
     !isText(r.digestVersion) ||
-    !isAddressField(r.account) ||
-    !isAddressField(r.action) ||
-    !isDecimal(r.attemptId) ||
-    !isDecimal(r.setupNonce) ||
+    !isStoredAddress(r.account) ||
+    !isStoredAddress(r.action) ||
+    !isDecimalString(r.attemptId) ||
+    !isDecimalString(r.setupNonce) ||
     !isHex(r.setupBodyHash) ||
     (r.payload !== undefined && !isHex(r.payload)) ||
     (r.purpose === 'approval' && r.payload === undefined) ||
-    !isDecimal(r.validUntil) ||
+    !isDecimalString(r.validUntil) ||
     !isIndex(r.place) ||
-    !isAddressField(r.method) ||
+    !isStoredAddress(r.method) ||
     !isHex(r.config) ||
     !isHex(r.salt)
   ) {

@@ -20,6 +20,7 @@ import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
+import { isDecimalString, isStoredAddress } from './guards'
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
 import type {
@@ -179,11 +180,9 @@ const isRecoveryEntry = (value: unknown): value is RecoveryEntryRecord => {
   }
   const record = value as Record<string, unknown>
   return (
-    typeof record.account === 'string' &&
-    isAddress(record.account, { strict: false }) &&
+    isStoredAddress(record.account) &&
     RECOVERY_ROUTES.some((route) => route === record.route) &&
-    typeof record.receivingAccount === 'string' &&
-    isAddress(record.receivingAccount, { strict: false })
+    isStoredAddress(record.receivingAccount)
   )
 }
 
@@ -198,8 +197,7 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
   }
   const record = value as Record<string, unknown>
   if (
-    typeof record.account !== 'string' ||
-    !isAddress(record.account, { strict: false }) ||
+    !isStoredAddress(record.account) ||
     !isChainId(record.chainId) ||
     typeof record.method !== 'string'
   ) {
@@ -207,10 +205,7 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
   }
   switch (record.call) {
     case 'enroll':
-      return (
-        typeof record.methodAddress === 'string' &&
-        isAddress(record.methodAddress, { strict: false })
-      )
+      return isStoredAddress(record.methodAddress)
     case 'testAccess':
     case 'createClaim':
       return typeof record.request === 'object' && record.request !== null
@@ -273,10 +268,6 @@ const isSubmissionInFlight = (value: unknown): value is SubmissionInFlightRecord
 /** Whether a stored value is an execution in flight: the same shape as a submission in flight. */
 const isExecutionInFlight = (value: unknown): value is ExecutionInFlightRecord =>
   isSubmissionInFlight(value)
-
-/** Whether a stored value is a decimal string, the form a request carries a bigint in. */
-const isDecimalString = (value: unknown): value is string =>
-  typeof value === 'string' && /^[0-9]+$/.test(value)
 
 /**
  * Deep equality of a stored request and the request a write names, as the
