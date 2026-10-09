@@ -17,7 +17,6 @@ export { submissionCheckOf } from './gas'
 export {
   accountParamOf,
   accountStepPathOf,
-  acknowledgedOf,
   checklistPathOf,
   readoutPathOf,
   selectedBasicAccountOf

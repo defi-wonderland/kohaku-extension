@@ -19,10 +19,7 @@ export { confirmedStepOf, destinationRefusalOf, recoverRefusalOf } from './refus
 export {
   acknowledgedInState,
   accountStepPathOf,
-  checklistPathOf,
   parseAccountStepSearch,
-  readoutPathOf,
-  routeEntryPathOf,
   routeOfSearch
 } from './search'
 export type {

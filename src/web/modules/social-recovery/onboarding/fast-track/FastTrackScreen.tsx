@@ -19,10 +19,10 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useKeyStoreSetup from '@web/modules/keystore/components/KeyStoreSetupForm/hooks/useKeyStoreSetup'
 import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/RecoverScreen'
+import { acknowledgedInState } from '@web/modules/social-recovery/recovery/entry/search'
 import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 
 import { ACKNOWLEDGED_STATE } from './constants'
-import { acknowledgedOf } from './navigation'
 import PasswordStepView from './PasswordStepView'
 import useAcknowledgment from './useAcknowledgment'
 
@@ -39,7 +39,7 @@ const PasswordStep = () => {
   const done = hasPasswordSecret && (skipped || isUnlocked)
   // The history entry drops the acknowledgment first; moving on before that
   // would let the drop replace the next step's entry.
-  const dropping = acknowledgedOf(location.state)
+  const dropping = acknowledgedInState(location.state)
 
   const back = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecover), [navigate])
 

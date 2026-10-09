@@ -16,6 +16,11 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
+import {
+  checklistPathOf,
+  readoutPathOf,
+  routeEntryPathOf
+} from '@web/modules/social-recovery/recovery/checklist/search'
 import { SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
@@ -24,7 +29,6 @@ import ConfirmedReadsView from './ConfirmedReadsView'
 import LookupField from './LookupField'
 import LookupState from './LookupState'
 import { confirmedStepOf } from './refusal'
-import { checklistPathOf, readoutPathOf, routeEntryPathOf } from './search'
 import type { AccountStepViewProps } from './types'
 import { useConfirmedReads } from './useConfirmedReads'
 import { useSetupRead } from './useSetupRead'

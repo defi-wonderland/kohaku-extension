@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 import type {
   Address,
   Configuration,
@@ -25,7 +26,7 @@ import { setRecoveryPassword } from '@web/modules/social-recovery/shared/records
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
 import { continuePathOf, readSetupReading, unlockFailureOf } from './readout'
-import { accountStepPathOf, checklistPathOf } from './search'
+import { accountStepPathOf } from './search'
 import type {
   EntryRecordRead,
   HiddenLevel,

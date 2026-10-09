@@ -13,12 +13,12 @@ import { getBasicAccount, getSmartAccount } from '@ambire-common/libs/account/ac
 import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
 import {
   accountStepPathOf,
-  acknowledgedOf,
   SLOT_INDEX,
   slotKeyOf,
   submissionCheckOf,
   tempSeedOf
 } from '@web/modules/social-recovery/onboarding/fast-track'
+import { acknowledgedInState } from '@web/modules/social-recovery/recovery/entry/search'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { TempSeed } from '@web/modules/social-recovery/onboarding/fast-track'
@@ -274,10 +274,10 @@ describe("the fast track's hand-over", () => {
   })
 
   it('counts the warning as acknowledged only on the exact flag the warning hands over', () => {
-    expect(acknowledgedOf({ acknowledged: true, prevRoute: { pathname: '/' } })).toBe(true)
-    expect(acknowledgedOf({ acknowledged: 'true' })).toBe(false)
-    expect(acknowledgedOf({ prevRoute: { pathname: '/' } })).toBe(false)
-    expect(acknowledgedOf(null)).toBe(false)
-    expect(acknowledgedOf(undefined)).toBe(false)
+    expect(acknowledgedInState({ acknowledged: true, prevRoute: { pathname: '/' } })).toBe(true)
+    expect(acknowledgedInState({ acknowledged: 'true' })).toBe(false)
+    expect(acknowledgedInState({ prevRoute: { pathname: '/' } })).toBe(false)
+    expect(acknowledgedInState(null)).toBe(false)
+    expect(acknowledgedInState(undefined)).toBe(false)
   })
 })

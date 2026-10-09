@@ -1,14 +1,14 @@
 /**
- * The account step's search, `?route=<route>&to=<receiving account>`, and the
- * paths the entry leads to. A search is a URL the holder can edit, so it is
- * read here once and nowhere else.
+ * The account step's search, `?route=<route>&to=<receiving account>`, its
+ * path, and the acknowledgment a navigation state carries. A search is a URL
+ * the holder can edit, so it is read here once and nowhere else. The paths
+ * that take the account being recovered are the checklist's.
  */
 import { isAddress } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { RECOVERY_ROUTES } from '@web/modules/social-recovery/shared/records'
 import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { ACKNOWLEDGED_STATE_KEY, ENTRY_SEARCH_KEYS } from './constants'
 import type { AccountStepSearch } from './types'
@@ -44,27 +44,6 @@ export const accountStepPathOf = ({ route, receivingAccount }: AccountStepSearch
   query.set(ENTRY_SEARCH_KEYS.receivingAccount, receivingAccount)
   return `/${WEB_ROUTES.socialRecoveryRecoveryAccount}?${query.toString()}`
 }
-
-/**
- * Where a route begins: the logged-in entry for the logged-in route, the
- * recover door for the fresh install.
- */
-export const routeEntryPathOf = (route: RecoveryRoute): string =>
-  `/${route === 'logged-in' ? WEB_ROUTES.socialRecoveryRecovery : WEB_ROUTES.socialRecoveryRecover}`
-
-const accountPathOf = (route: string, account: Address): string => {
-  const query = new URLSearchParams()
-  query.set(ENTRY_SEARCH_KEYS.account, account)
-  return `/${route}?${query.toString()}`
-}
-
-/** The readout's path for the account being recovered. */
-export const readoutPathOf = (account: Address): string =>
-  accountPathOf(WEB_ROUTES.socialRecoveryRecoveryReadout, account)
-
-/** The checklist's path for the account being recovered. */
-export const checklistPathOf = (account: Address): string =>
-  accountPathOf(WEB_ROUTES.socialRecoveryRecoveryChecklist, account)
 
 /**
  * Whether the router's navigation state says the holder acknowledged the

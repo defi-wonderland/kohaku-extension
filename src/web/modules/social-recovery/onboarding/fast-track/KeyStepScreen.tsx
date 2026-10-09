@@ -26,11 +26,12 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import RecoverScreen from '@web/modules/social-recovery/onboarding/recover/RecoverScreen'
+import { acknowledgedInState } from '@web/modules/social-recovery/recovery/entry/search'
 import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 
 import { ACKNOWLEDGED_STATE } from './constants'
 import KeyStepView from './KeyStepView'
-import { accountStepPathOf, acknowledgedOf, selectedBasicAccountOf } from './navigation'
+import { accountStepPathOf, selectedBasicAccountOf } from './navigation'
 import useAcknowledgment from './useAcknowledgment'
 import useFastTrackKey from './useFastTrackKey'
 
@@ -42,7 +43,7 @@ const KeyStep = () => {
   const { account: selected } = useSelectedAccountControllerState()
   const key = useFastTrackKey()
   const [acknowledged, setAcknowledged] = useState(false)
-  const dropping = acknowledgedOf(location.state)
+  const dropping = acknowledgedInState(location.state)
   const closed = useRef(false)
   const { listed, listedByEarlierAdd } = key
 
@@ -90,7 +91,7 @@ const KeyStepScreen = () => {
   const { account: selected } = useSelectedAccountControllerState()
   // Whether the wallet listed accounts before this step opened.
   const [alreadyListed] = useState(!!accounts?.length)
-  const dropping = acknowledgedOf(location.state)
+  const dropping = acknowledgedInState(location.state)
 
   const away = !acknowledged
     ? null

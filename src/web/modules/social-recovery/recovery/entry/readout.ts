@@ -14,6 +14,7 @@
 import { decodeAbiParameters, hexToString, isAddress, isHex } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 import { RESTORE_CAUSES } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
   Address,
@@ -42,7 +43,6 @@ import {
 } from '@web/modules/social-recovery/setup/review/lead'
 
 import { ENTRY_SEARCH_KEYS } from './constants'
-import { checklistPathOf } from './search'
 import type {
   ReadoutBlock,
   ReadoutClause,
