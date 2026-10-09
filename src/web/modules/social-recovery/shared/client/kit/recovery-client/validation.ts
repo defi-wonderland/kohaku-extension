@@ -8,7 +8,6 @@
  * refusal the same way on either.
  */
 import {
-  ActionCodecDouble,
   evaluatorOf,
   rowsToFindings,
   unansweredRead
@@ -19,13 +18,12 @@ import type {
   BlockHeader,
   CancelRequest,
   Finding,
-  GatheringPurpose,
-  Handover
+  GatheringPurpose
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { sameAddress } from '../../addresses'
 import { readSetupBody, setupCommitmentOf } from '../formats'
-import { handoverRowsOf } from './handover'
+import { decodedHandoverOf, handoverRowsOf } from './handover'
 import type { KitRecoveryContext } from './types'
 
 /** The rule evaluation over the kit's ABI-encoded setup body. */
@@ -37,18 +35,6 @@ const ignoresPauseOf = (setupBody: AttemptRequest['setupBody']): boolean => {
     return readSetupBody(setupBody).ignoresPause
   } catch {
     return false
-  }
-}
-
-/** The handover an opening request's payload decodes to through the action's codec, if any. */
-const handoverOf = (ctx: KitRecoveryContext, request: AttemptRequest): Handover | undefined => {
-  if (!sameAddress(request.action, ctx.descriptor.action)) {
-    return undefined
-  }
-  try {
-    return new ActionCodecDouble([ctx.descriptor.action]).decode(request.payload)
-  } catch {
-    return undefined
   }
 }
 
@@ -139,7 +125,11 @@ export const requestFindingsOf = async (
   }
   if (purpose === 'approval') {
     const opening = request as AttemptRequest
-    const handover = handoverOf(ctx, opening)
+    // The codec serves the deployed action only; a request for another action
+    // carries a payload nothing here decodes.
+    const handover = sameAddress(opening.action, descriptor.action)
+      ? decodedHandoverOf(descriptor.action, opening.payload)
+      : undefined
     if (!handover) {
       rows.push(['handover.malformed', { payload: opening.payload, cause: 'undecodable' }])
     } else {

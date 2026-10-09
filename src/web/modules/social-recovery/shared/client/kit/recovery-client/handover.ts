@@ -1,15 +1,31 @@
 /**
- * The handover rows a recovery refuses on, over the two authorities: a zero
- * key, one address named twice, a removed key that is no authority on the
- * account, a new key that already holds a privilege there. The two action
- * reads are made at the block given.
+ * The handover a payload carries, decoded through the action's codec, and the
+ * handover rows a recovery refuses on, over the two authorities: a zero key,
+ * one address named twice, a removed key that is no authority on the account,
+ * a new key that already holds a privilege there. The two action reads are
+ * made at the block given.
  */
+import { ActionCodecDouble } from '@web/modules/social-recovery/sdk-doubles'
 import type { RequestRow } from '@web/modules/social-recovery/sdk-doubles/types'
-import type { BlockHeader, Handover } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  BlockHeader,
+  Handover,
+  Hex
+} from '@web/modules/social-recovery/sdk-interfaces'
 import { zeroAddress } from 'viem'
 
 import { sameAddress } from '../../addresses'
 import type { KitRecoveryContext } from './types'
+
+/** The handover `payload` decodes to for `action`, or none where it does not decode. */
+export const decodedHandoverOf = (action: Address, payload: Hex): Handover | undefined => {
+  try {
+    return new ActionCodecDouble([action]).decode(payload)
+  } catch {
+    return undefined
+  }
+}
 
 export const handoverRowsOf = async (
   { account, action }: Pick<KitRecoveryContext, 'account' | 'action'>,
