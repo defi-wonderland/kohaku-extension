@@ -37,7 +37,8 @@ export const [SETUP_CLEARED_TOPIC] = encodeEventTopics({
 // Both events carry the event's topic, the account and the action.
 const SETUP_LOG_TOPICS = 3
 
-const addressTopic = (address: Address): Hex =>
+/** An address as the 32-byte topic an indexed address parameter takes. */
+export const addressTopic = (address: Address): Hex =>
   encodeAbiParameters([{ type: 'address' }], [address])
 
 /**
