@@ -4,8 +4,9 @@
  * by route, and the wait with the page's own helpers: the recovery client of
  * the account being recovered, the handover's two keys, the setup this device
  * holds, the sending key by route and the send port over the request queue.
- * A search with no account, or an account with no entry record, goes back to
- * the account step. No countdown: a live or wiped session goes to the
+ * A search with no account, or an account with no entry record, goes to the
+ * account step with no search, which sends the holder on to the recovery
+ * entry's first step. No countdown: a live or wiped session goes to the
  * checklist, none to the route's entry. A consumed attempt goes on to the
  * done screen. A run that finds the countdown names another attempt is let go,
  * and the countdown's record is read again.
@@ -342,10 +343,7 @@ const WaitBody = ({
     leaveCountdown().catch(() => setLeave('failed'))
   }, [records, account, navigate, entry.route, landed, onCountdownReplaced])
 
-  const onBack = useCallback(
-    () => navigate(routeEntryPathOf(entry.route)),
-    [navigate, entry.route]
-  )
+  const onBack = useCallback(() => navigate(routeEntryPathOf(entry.route)), [navigate, entry.route])
 
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
   // The transfer screen sends from the selected account, so the account being recovered is selected first.

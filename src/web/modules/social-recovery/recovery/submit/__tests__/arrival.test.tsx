@@ -170,9 +170,7 @@ describe('the confirmation’s entry record read', () => {
       throw new Error('storage unavailable')
     }
     view = await mountSubmit(world.account)
-    expect(view.textOf('submit-entry-failed')).toContain(
-      t('socialRecovery.wait.readFailedTitle')
-    )
+    expect(view.textOf('submit-entry-failed')).toContain(t('socialRecovery.wait.readFailedTitle'))
     expect(view.byTestId('submit-action')).toBeNull()
     expect(view.paths()).toEqual([])
 
