@@ -367,7 +367,7 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
         // The calls the action will run, for a screen and never for signing:
         // the consume, the grant and the revoke the payload decodes to, and the
         // payment where the order carries an amount. An undecodable payload
-        // describes the consume alone; the chain refuses it at the estimate.
+        // describes no grant and no revoke; the chain refuses it at the estimate.
         const describes: DescribedCall[] = [
           describedCall(
             descriptor.manager,

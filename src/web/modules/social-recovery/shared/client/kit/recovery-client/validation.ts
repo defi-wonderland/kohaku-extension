@@ -89,7 +89,10 @@ export const requestFindingsOf = async (
     request.setupNonce,
     request.setupBody
   )
-  if (request.setupNonce !== state.setupNonce || recomputed !== state.setupCommitment) {
+  if (
+    request.setupNonce !== state.setupNonce ||
+    recomputed.toLowerCase() !== state.setupCommitment.toLowerCase()
+  ) {
     rows.push(['request.body-mismatch', { recomputed, committed: state.setupCommitment }])
   }
   for (let i = 1; i < request.proofs.length; i++) {
