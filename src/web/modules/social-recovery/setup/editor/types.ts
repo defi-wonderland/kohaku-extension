@@ -12,7 +12,8 @@ import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,
   SetupRecords,
-  SlotKind
+  SlotKind,
+  SlotPosition
 } from '@web/modules/social-recovery/shared/records'
 import type { RuleLine } from '@web/modules/social-recovery/shared/rule-lines'
 
@@ -35,12 +36,6 @@ export type RefusalKey =
 export interface Refusal {
   key: RefusalKey
   clause?: number
-}
-
-/** Where one credential sits in the path: its clause and its place among the clause's members. */
-export interface SlotPosition {
-  clause: number
-  member: number
 }
 
 /** The outcome of an operation that places a credential in the path. */
@@ -276,3 +271,5 @@ export interface EditorActionsProps {
   onContinue: () => void
   onBack: () => void
 }
+
+export type { SlotPosition }

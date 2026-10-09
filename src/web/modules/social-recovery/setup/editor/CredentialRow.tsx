@@ -12,8 +12,9 @@ import flexbox from '@common/styles/utils/flexbox'
 import { StatusChip } from '@web/modules/social-recovery/shared/chrome'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 
+import { enrollmentOf } from '@web/modules/social-recovery/shared/records'
 import { renderFailedTestLine, renderKindName, renderRowChip } from './copy'
-import { enrollmentOf, guardianAddressOf, isEmptySlot, kindOf } from './operations'
+import { guardianAddressOf, isEmptySlot, kindOf } from './operations'
 import type { CredentialRowProps } from './types'
 
 /**

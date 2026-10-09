@@ -11,7 +11,9 @@ import type {
   SetupRecords
 } from '@web/modules/social-recovery/shared/records'
 
-import { heldElsewhere, sameCredential, slotStateOf, withSlotFilled } from './slot'
+import { pathHolds, sameCredential } from '@web/modules/social-recovery/shared/records'
+
+import { slotStateOf, withSlotFilled } from './slot'
 import type { EnrollSearch, PassedTest, PlaceResult, SlotState } from './types'
 
 const enrollmentsOf = async (setup: SetupRecords): Promise<Enrollment[]> => {
@@ -62,7 +64,7 @@ export const placeEnrollment = async (
   if (slot.status === 'nothing') {
     return { status: 'slot-taken' }
   }
-  if (heldElsewhere(clauses, enrollment.credential, search.at)) {
+  if (pathHolds(clauses, enrollment.credential, search.at)) {
     return { status: 'duplicate' }
   }
 

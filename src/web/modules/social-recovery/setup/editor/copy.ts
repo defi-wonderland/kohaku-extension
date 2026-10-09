@@ -20,7 +20,8 @@ import type {
   SlotKind
 } from '@web/modules/social-recovery/shared/records'
 
-import { enrollmentOf, isEmptySlot } from './operations'
+import { enrollmentOf } from '@web/modules/social-recovery/shared/records'
+import { isEmptySlot } from './operations'
 import type { ClauseRole, ClientRefusal, Refusal, RefusalKey } from './types'
 
 const KIND_NAME_KEYS: Record<SlotKind, string> = {

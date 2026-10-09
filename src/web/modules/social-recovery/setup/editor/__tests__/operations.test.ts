@@ -27,15 +27,14 @@ import {
   makeItAGroup,
   makeRequired,
   moveToGroup,
-  pathHolds,
   placeAt,
   readThreshold,
   removeClause,
   removeMember,
-  sameCredential,
   setThreshold,
   withClauses
 } from '@web/modules/social-recovery/setup/editor/operations'
+import { pathHolds, sameCredential } from '@web/modules/social-recovery/shared/records'
 import {
   AADHAAR,
   ALICE,

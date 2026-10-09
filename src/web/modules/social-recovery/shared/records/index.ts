@@ -5,7 +5,14 @@
 export * from './types'
 export * from './constants'
 export * from './records'
-export { emptySlot, isEmptySlot, slotKindOf } from './slots'
+export {
+  emptySlot,
+  isEmptySlot,
+  slotKindOf,
+  sameCredential,
+  enrollmentOf,
+  pathHolds
+} from './slots'
 export { isStoredAddress, isDecimalString } from './guards'
 export { extensionRecordStorage } from './extensionStorage'
 export { readRecoveryPassword, setRecoveryPassword, wipeRecoveryPassword } from './recoveryPassword'
