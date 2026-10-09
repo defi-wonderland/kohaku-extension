@@ -11,10 +11,9 @@
  */
 import type { Address, Clause, SetupDescription } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
-import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
+import { enrollmentOf, isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
 import { ACCOUNT_READ_NAMES } from './constants'
-import { enrollmentOf } from './lead'
 import { trustReadsComplete } from './trust'
 import type {
   AccountReadName,
