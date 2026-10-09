@@ -145,24 +145,6 @@ describe('the key that will control the recovered account', () => {
   it('follows the index it is given', async () => {
     expect(await slotKeyOf(SEED, 1)).toBe(SECOND_KEY)
   })
-
-  it('finds the listed basic account at that key once the keystore holds it as an ordinary key', () => {
-    expect(seedBasicAccountOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(ORDINARY_KEY)
-    expect(
-      seedBasicAccountOf(ORDINARY_KEY, [smartAccount, basicAccount], [offsetKey, ordinaryKey])
-    ).toBe(ORDINARY_KEY)
-  })
-
-  it('never takes a listed smart account with its dedicated key for the slot', () => {
-    expect(seedBasicAccountOf(SMART_ACCOUNT, [smartAccount], [offsetKey])).toBeNull()
-    expect(seedBasicAccountOf(OFFSET_KEY, [smartAccount], [offsetKey])).toBeNull()
-  })
-
-  it('finds nothing where the wallet does not hold the basic account with an ordinary key', () => {
-    notHeld().forEach(({ name, accounts, keys }) => {
-      expect([name, seedBasicAccountOf(ORDINARY_KEY, accounts, keys)]).toEqual([name, null])
-    })
-  })
 })
 
 describe('the phrase the keystore sends to the page', () => {
@@ -183,8 +165,15 @@ describe('the phrase the keystore sends to the page', () => {
   })
 })
 
-describe('the key that sends the recovery', () => {
-  it('is the receiving basic account itself, the key the recovery installs', async () => {
+describe('the basic account at the slot, which receives control and sends the recovery', () => {
+  it('is the listed basic account at the key once the keystore holds it as an ordinary key', () => {
+    expect(seedBasicAccountOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(ORDINARY_KEY)
+    expect(
+      seedBasicAccountOf(ORDINARY_KEY, [smartAccount, basicAccount], [offsetKey, ordinaryKey])
+    ).toBe(ORDINARY_KEY)
+  })
+
+  it('is the key the recovery installs', async () => {
     expect(seedBasicAccountOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(
       await slotKeyOf(SEED)
     )
@@ -198,13 +187,15 @@ describe('the key that sends the recovery', () => {
     expect(seedBasicAccountOf(SECOND_KEY, accounts, keys)).toBe(SECOND_KEY)
   })
 
-  it('is none where the receiving account is a smart account, even with its dedicated key held', () => {
+  it('is never a listed smart account, even with its dedicated key held', () => {
+    expect(seedBasicAccountOf(SMART_ACCOUNT, [smartAccount], [offsetKey])).toBeNull()
+    expect(seedBasicAccountOf(OFFSET_KEY, [smartAccount], [offsetKey])).toBeNull()
     expect(
       seedBasicAccountOf(SMART_ACCOUNT, [basicAccount, smartAccount], [ordinaryKey, offsetKey])
     ).toBeNull()
   })
 
-  it('is none where the wallet does not hold the receiving account with an ordinary key', () => {
+  it('is none where the wallet does not hold the basic account with an ordinary key', () => {
     notHeld().forEach(({ name, accounts, keys }) => {
       expect([name, seedBasicAccountOf(ORDINARY_KEY, accounts, keys)]).toEqual([name, null])
     })
