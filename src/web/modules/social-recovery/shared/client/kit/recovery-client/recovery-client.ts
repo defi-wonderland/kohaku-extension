@@ -19,13 +19,11 @@ import {
   completeGathering,
   DEFAULT_REQUEST_WINDOW,
   digestOfSubmission,
-  evaluatorOf,
   RECORD_VERSION,
   refuseWith,
   unansweredRead
 } from '@web/modules/social-recovery/sdk-doubles'
 import { deserializeOrder, serializeOrder } from '@web/modules/social-recovery/sdk-doubles/encoding'
-import type { RequestRow } from '@web/modules/social-recovery/sdk-doubles/types'
 import type {
   Address,
   AttemptRequest,
@@ -47,15 +45,14 @@ import type {
 import { zeroAddress } from 'viem'
 
 import { sameAddress } from '../../addresses'
-import { placedCredentialsOf, readSetupBody, setupBodyOf } from '../formats'
+import { placedCredentialsOf, setupBodyOf } from '../formats'
 import { notServedEvents, notServedRefusal, pinnedBlockOf, withNamedRevert } from '../setup-client'
+import { handoverRowsOf } from './handover'
 import type { GatheringRequestFields, KitRecoveryContext } from './types'
-
-/** The rule evaluation over the kit's ABI-encoded setup body. */
-const evaluate = evaluatorOf(readSetupBody)
+import { evaluateBody } from './validation'
 
 export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClient => {
-  const { account, descriptor, config, provider, manager, action, moduleReads } = ctx
+  const { account, descriptor, config, provider, manager, moduleReads } = ctx
   const actionAddress = descriptor.action
   const pin = () => pinnedBlockOf(provider, config)
   const floor = config.requestWindow?.floor ?? DEFAULT_REQUEST_WINDOW.floor
@@ -100,29 +97,6 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
     action: actionAddress,
     block: { number: block.number, timestamp: String(block.timestamp), hash: block.hash }
   })
-
-  /** The handover rows over two authorities (zero keys, one address twice, the reads). */
-  const handoverRows = async (handover: Handover, block: BlockHeader): Promise<RequestRow[]> => {
-    const { newAuthority, removedAuthority } = handover
-    if (sameAddress(newAuthority, zeroAddress) || sameAddress(removedAuthority, zeroAddress)) {
-      return [['handover.malformed', { newAuthority, removedAuthority, cause: 'zero-key' }]]
-    }
-    if (sameAddress(newAuthority, removedAuthority)) {
-      return [['handover.same-authority', { newAuthority, removedAuthority }]]
-    }
-    const [isAuthority, holds] = await Promise.all([
-      action.isAuthority(account, removedAuthority, block.number),
-      action.holdsAnyPrivilege(account, newAuthority, block.number)
-    ])
-    const rows: RequestRow[] = []
-    if (!isAuthority) {
-      rows.push(['handover.removed-not-authority', { removedAuthority, isAuthority }])
-    }
-    if (holds) {
-      rows.push(['handover.new-holds-privilege', { newAuthority, holdsAnyPrivilege: holds }])
-    }
-    return rows
-  }
 
   /** The digest at place 0 of a gathering's request, derived here and by the manager, compared. */
   const crossCheck = async (gathering: Gathering): Promise<void> => {
@@ -231,7 +205,7 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
           newAuthority: handover.newAuthority,
           removedAuthority: removedAuthority as Address
         }
-        const rows = await handoverRows(performed, block)
+        const rows = await handoverRowsOf(ctx, performed, block)
         if (rows.length) {
           refuseWith(...rows)
         }
@@ -271,11 +245,11 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
     addApproverReply: addReplyTo,
 
     assess(gathering, now) {
-      return assessGathering(gathering, now, { floor, evaluate })
+      return assessGathering(gathering, now, { floor, evaluate: evaluateBody })
     },
 
     complete(gathering, selection, now) {
-      return completeGathering(gathering, selection, now, evaluate)
+      return completeGathering(gathering, selection, now, evaluateBody)
     },
 
     prepareStartAttempt: () => Promise.reject(notServedRefusal('recovery.prepareStartAttempt')),
