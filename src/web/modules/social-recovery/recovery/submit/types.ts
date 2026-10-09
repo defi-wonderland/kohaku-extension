@@ -112,8 +112,7 @@ export interface SubmitLoadHook {
 
 /**
  * The verify of every approval of the set before the confirmation: running,
- * every one satisfied (`checked` false where the client serves no verify),
- * one rejected, or a read that failed.
+ * every one satisfied, one rejected, or a read that failed.
  */
 export type VerifyReading =
   | { status: 'checking' }
@@ -121,7 +120,7 @@ export type VerifyReading =
   | { status: 'rejected'; place: number }
   | { status: 'failed' }
 
-export type VerifyStepResult = 'satisfied' | 'not-served' | 'rejected' | 'failed'
+export type VerifyStepResult = 'satisfied' | 'rejected' | 'failed'
 
 export interface VerifyHook {
   verify: VerifyReading
