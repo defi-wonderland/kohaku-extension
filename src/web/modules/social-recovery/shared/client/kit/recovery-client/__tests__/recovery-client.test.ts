@@ -58,6 +58,8 @@ import {
   scriptDigests,
   scriptMethod,
   scriptState,
+  stateAnswer,
+  stateOfCall,
   thrownBy,
   word
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
@@ -337,6 +339,35 @@ describe('the refusals of an approval gathering', () => {
       code: 'read.unanswered',
       values: { read: 'manager.paused', module: METHOD_PASSKEY, place: 1 }
     })
+  })
+
+  it('refuses a configuration whose commitment is not the one the init read', async () => {
+    // The restore pins a later block: a setup write landing between the two
+    // reads must not join this init's nonce to the next setup's body.
+    const later: Configuration = { ...CONFIG, wait: 500_000n }
+    const laterBody = setupBodyOf(ACCOUNT, later)
+    const world = kitWorld({ accountCode: ACCOUNT_CODE })
+    let reads = 0
+    world.node.answer(MANAGER, stateOfCall(), () =>
+      stateAnswer(
+        reads++ === 0
+          ? standing()
+          : standing({
+              setupNonce: NONCE + 1n,
+              setupCommitment: setupCommitmentOf(ACCOUNT, ACTION, NONCE + 1n, laterBody)
+            })
+      )
+    )
+    scriptAction(world.node, { supportsAccount: true, authorities: [KEY_A] })
+    scriptMethod(world.node, METHOD_ECDSA, { paused: word(1n) })
+    scriptMethod(world.node, METHOD_PASSKEY, { pauseHolder: KEY_A })
+    const thrown = await thrownBy(
+      world.recovery.initRecoveryGathering(later, { newAuthority: KEY_B }, ORDER, {
+        window: WINDOW
+      })
+    )
+    expect(thrown).toMatchObject({ cause: { code: 'restore.commitment-mismatch' } })
+    expect(digestCallsOf(world.node)).toHaveLength(0)
   })
 })
 

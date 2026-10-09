@@ -22,11 +22,13 @@ import {
   evaluatorOf,
   RECORD_VERSION,
   refuseWith,
+  restoreRefusal,
   unansweredRead
 } from '@web/modules/social-recovery/sdk-doubles'
 import { deserializeOrder, serializeOrder } from '@web/modules/social-recovery/sdk-doubles/encoding'
 import type { RequestRow } from '@web/modules/social-recovery/sdk-doubles/types'
 import type {
+  ActionState,
   Address,
   AttemptRequest,
   BlockHeader,
@@ -47,7 +49,7 @@ import type {
 import { zeroAddress } from 'viem'
 
 import { sameAddress } from '../../addresses'
-import { placedCredentialsOf, readSetupBody, setupBodyOf } from '../formats'
+import { placedCredentialsOf, readSetupBody, setupBodyOf, setupCommitmentOf } from '../formats'
 import { notServedEvents, notServedRefusal, pinnedBlockOf, withNamedRevert } from '../setup-client'
 import type { GatheringRequestFields, KitRecoveryContext } from './types'
 
@@ -58,6 +60,33 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
   const { account, descriptor, config, provider, manager, action, moduleReads } = ctx
   const actionAddress = descriptor.action
   const pin = () => pinnedBlockOf(provider, config)
+
+  /**
+   * The configuration the setup client restores, checked against the setup
+   * the init's own block holds. The restore pins a later block, so a setup
+   * write landing between the two reads would join this init's nonce to the
+   * next setup's body, and the manager would refuse every approval gathered
+   * for it; the init refuses instead.
+   */
+  const restoredAt = async (
+    source: ConfigurationSource,
+    state: ActionState
+  ): Promise<Configuration> => {
+    const configuration = await ctx.setup.getSetup(source)
+    const recomputed = setupCommitmentOf(
+      account,
+      actionAddress,
+      state.setupNonce,
+      setupBodyOf(account, configuration)
+    )
+    if (recomputed.toLowerCase() !== state.setupCommitment.toLowerCase()) {
+      throw restoreRefusal('restore.commitment-mismatch', {
+        committed: state.setupCommitment,
+        recomputed
+      })
+    }
+    return configuration
+  }
   const floor = config.requestWindow?.floor ?? DEFAULT_REQUEST_WINDOW.floor
 
   const placeMap = (configuration: Configuration): Promise<GatheringPlace[]> =>
@@ -213,7 +242,7 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
             }
           ])
         }
-        const configuration = await ctx.setup.getSetup(source)
+        const configuration = await restoredAt(source, state)
 
         let { removedAuthority } = handover
         if (!removedAuthority) {
@@ -256,7 +285,7 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
             { action: actionAddress, state: state.attempt.state }
           ])
         }
-        const configuration = await ctx.setup.getSetup(source)
+        const configuration = await restoredAt(source, state)
         return gatheringOf('cancellation', block, configuration, {
           attemptId: state.attempt.attemptId.toString(),
           setupNonce: state.setupNonce.toString(),

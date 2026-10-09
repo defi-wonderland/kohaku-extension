@@ -72,7 +72,6 @@ export {
   ACCOUNT_NOT_ARMED,
   ACCOUNT_UNFIT,
   acceptanceRevert,
-  evaluateClauses,
   evaluateRule,
   evaluatorOf,
   executeRevert
@@ -81,11 +80,7 @@ export {
   addReplyTo,
   approverRequestsOf,
   assessGathering,
-  compareRanks,
   completeGathering,
-  digestForPlace,
-  picksOf,
-  readsGathering,
   refuseWith,
   rowsToFindings
 } from './gathering'

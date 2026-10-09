@@ -35,7 +35,8 @@ export interface FakeNode {
   }
   codeRead: { code: jest.Mock<Promise<Hex>, [Address, BlockTag?]> }
   head: BlockHeader
-  answer(to: Address, data: Hex, answer: Hex | Error): void
+  /** Answers one exact call; a function answers it afresh on each call. */
+  answer(to: Address, data: Hex, answer: Hex | Error | ((data: Hex) => Hex | Error)): void
   /** Answers every call to `to` whose selector is `selector` and has no exact answer. */
   answerWith(to: Address, selector: Hex, answer: (data: Hex) => Hex | Error): void
   setCode(address: Address, code: Hex): void
