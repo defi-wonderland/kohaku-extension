@@ -11,14 +11,13 @@
 import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
-import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import InputPassword from '@common/components/InputPassword'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
 import { ActionsRow, NoteBox, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 
 import type { ReadoutPasswordAskProps } from './types'
@@ -91,25 +90,13 @@ const ReadoutPasswordAsk = ({
   if (unlock.status === 'wrong') {
     return (
       <View testID="readout-wrong-password">
-        <Alert
+        <ReadFailedBlock
           testID="readout-wrong-password-alert"
-          type="error"
-          size="sm"
-          style={spacings.mbSm}
+          retryTestID="readout-wrong-password-retry"
           title={t(`${READOUT}.wrongPassword.title`)}
-          text={t(`${READOUT}.wrongPassword.cardPointer`)}
-        >
-          <View style={[flexbox.directionRow, spacings.mtTy]}>
-            <Button
-              testID="readout-wrong-password-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={onAskAgain}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
+          body={t(`${READOUT}.wrongPassword.cardPointer`)}
+          onRetry={onAskAgain}
+        />
         {configured}
         <ActionsRow
           primary={lockedContinue}
@@ -124,29 +111,17 @@ const ReadoutPasswordAsk = ({
   if (unlock.status === 'event-failed') {
     return (
       <View testID="readout-event-failed">
-        <Alert
+        <ReadFailedBlock
           testID="readout-event-failed-alert"
-          type="error"
-          size="sm"
-          style={spacings.mbSm}
+          retryTestID="readout-event-failed-retry"
           title={
             level === 'private'
               ? t(`${READOUT}.readFailedTitle`, { network: networkName })
               : t(`${READOUT}.detailsFailed`)
           }
-          text={t(`${READOUT}.eventFailed.body`, { network: networkName })}
-        >
-          <View style={[flexbox.directionRow, spacings.mtTy]}>
-            <Button
-              testID="readout-event-failed-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={onRetry}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
+          body={t(`${READOUT}.eventFailed.body`, { network: networkName })}
+          onRetry={onRetry}
+        />
         {configured}
         <ActionsRow
           primary={lockedContinue}

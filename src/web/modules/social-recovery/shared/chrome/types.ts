@@ -35,6 +35,17 @@ export interface RecoveryChromeProps {
   testID?: string
 }
 
+export interface ReadFailedBlockProps {
+  title: string
+  body?: string
+  onRetry: () => void
+  testID: string
+  /** The retry's test id, where it is not the block's own with `-retry` after it. */
+  retryTestID?: string
+  /** Lines under the body, above the retry. */
+  children?: ReactNode
+}
+
 export interface PageTitleProps {
   title: string
   lead?: string

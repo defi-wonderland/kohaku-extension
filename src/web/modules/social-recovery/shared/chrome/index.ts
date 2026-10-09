@@ -18,6 +18,7 @@ export type {
   PlainChromeProps,
   PlainHeaderProps,
   RadioCardProps,
+  ReadFailedBlockProps,
   RecoveryChromeProps,
   RecoveryStage,
   SectionCardProps,

@@ -14,9 +14,9 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { ActionsRow, SectionCard, StatusChip } from '@web/modules/social-recovery/shared/chrome'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import { chipKey } from '@web/modules/social-recovery/shared/display'
 
-import ReadFailedBlock from './ReadFailedBlock'
 import type {
   ConfirmedReadsViewProps,
   ConfirmedStage,

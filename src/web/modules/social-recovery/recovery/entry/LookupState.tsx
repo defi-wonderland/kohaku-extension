@@ -14,9 +14,9 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { ActionsRow, SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
-import ReadFailedBlock from './ReadFailedBlock'
 import type { LookupStateProps } from './types'
 
 const ACCOUNT = 'socialRecovery.entry.account'

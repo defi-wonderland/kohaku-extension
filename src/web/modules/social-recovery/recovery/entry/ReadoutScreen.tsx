@@ -16,6 +16,7 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import { relyingPartyOf } from '@web/modules/social-recovery/shared/ceremony'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import {
   addressBookOf,
@@ -30,7 +31,6 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 
 import { CHAIN_NAMES } from './constants'
-import ReadFailedBlock from './ReadFailedBlock'
 import { READOUT_STAGE, readoutAccountOf } from './readout'
 import ReadoutView from './ReadoutView'
 import { accountStepPathOf } from './search'

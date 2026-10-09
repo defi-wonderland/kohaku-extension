@@ -239,13 +239,6 @@ export interface CondensedGateProps {
   onPass: () => void
 }
 
-export interface ReadFailedBlockProps {
-  title: string
-  body: string
-  onRetry: () => void
-  testID: string
-}
-
 // ---------------------------------------------------------------------------
 // The readout
 // ---------------------------------------------------------------------------
