@@ -10,18 +10,27 @@ import {
   encodeEventTopics,
   encodeFunctionData,
   encodeFunctionResult,
+  hashTypedData,
   type Hex,
+  keccak256,
   pad,
   parseAbi,
   parseAbiParameters,
+  slice,
   zeroAddress,
   zeroHash
 } from 'viem'
 
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
-import { defaultClientConfiguration } from '@web/modules/social-recovery/sdk-doubles'
+import {
+  defaultClientConfiguration,
+  digestOfRequest,
+  RECORD_VERSION
+} from '@web/modules/social-recovery/sdk-doubles'
 import type {
   Address,
+  ApproverReply,
+  ApproverRequest,
   BlockRange,
   BlockTag,
   Configuration,
@@ -35,12 +44,16 @@ import type {
   SetupDraft
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
-import { createSetupEvents } from '@web/modules/social-recovery/shared/client/kit/events'
+import {
+  createKitEventManager,
+  createSetupEvents
+} from '@web/modules/social-recovery/shared/client/kit/events'
 import {
   createActionReads,
   createManagerReads,
   createMethodReads
 } from '@web/modules/social-recovery/shared/client/kit/reads'
+import { createKitRecoveryClient } from '@web/modules/social-recovery/shared/client/kit/recovery-client'
 import {
   createKitSetupClient,
   moduleReadsOf
@@ -54,6 +67,7 @@ import type {
   KitWorldOptions,
   NodeCall,
   ScriptedAction,
+  ScriptedDigest,
   ScriptedMethod,
   ScriptedState
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__fixtures__/types'
@@ -69,6 +83,8 @@ export const OTHER_ACTION: Address = '0xa7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7
 export const THIRD_ACTION: Address = '0xa8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8'
 export const KEY_A: Address = '0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1'
 export const KEY_B: Address = '0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2'
+/** The privilege value the action grants a new key; a made-up word. */
+export const KEY_VALUE: Hex = `0x${'00'.repeat(31)}01`
 export const ACCOUNT_CODE: Hex = '0x6080604052'
 export const CONTRACT_CODE: Hex = '0x60806040'
 
@@ -83,6 +99,8 @@ export const MANAGER_ABI = parseAbi([
   'function clearSetup(address action, uint64 nonce)',
   'event SetupCommitted(address indexed account, address indexed action, uint64 nonce, bytes32 setupCommitment, bytes publicMetadata, bytes privateMetadata)',
   'event SetupCleared(address indexed account, address indexed action, uint64 nonce)',
+  'function hashApproval((address account, address action, uint64 attemptId, uint64 setupNonce, bytes setupBody, bytes payload, (address token, uint256 amount, address payee) order, uint48 validUntil, (uint256 place, address method, bytes config, bytes32 salt, bytes proof)[] proofs) request, uint256 place) view returns (bytes32)',
+  'function hashCancel((address account, address action, uint64 attemptId, uint64 setupNonce, bytes setupBody, uint48 validUntil, (uint256 place, address method, bytes config, bytes32 salt, bytes proof)[] proofs) request, uint256 place) view returns (bytes32)',
   'error PolicyManager_WrongSetupNonce(uint64 supplied, uint64 expected)',
   'error PolicyManager_InvalidCommitment(bytes32 supplied)'
 ])
@@ -92,8 +110,10 @@ export const ACTION_ABI = parseAbi([
   'function AMBIRE_IMPLEMENTATION() view returns (address)',
   'function KIT_SLOT() view returns (address)',
   'function BINDING() view returns (bytes32)',
+  'function KEY_VALUE() view returns (bytes32)',
   'function isAuthorized(address account) view returns (bool)',
   'function isAuthority(address account, address key) view returns (bool)',
+  'function holdsAnyPrivilege(address account, address candidate) view returns (bool)',
   'function supportsAccount(address account) view returns (bool)',
   'function name() view returns (string)',
   'function version() view returns (string)',
@@ -105,7 +125,8 @@ export const METHOD_ABI = parseAbi([
   'function version() view returns (string)',
   'function supportsInterface(bytes4 id) view returns (bool)',
   'function trustedParties() view returns (address, address, bytes32[], address, address)',
-  'function paused() view returns (bool)'
+  'function paused() view returns (bool)',
+  'function verify(bytes config, bytes32 digest, bytes proof) view returns (bytes4)'
 ])
 
 export const ACCOUNT_ABI = parseAbi(['function setAddrPrivilege(address addr, bytes32 priv)'])
@@ -113,6 +134,8 @@ export const ACCOUNT_ABI = parseAbi(['function setAddrPrivilege(address addr, by
 /** The interface the methods and the action declare, as the deployed contracts answer them. */
 export const METHOD_PROBE: Hex = '0xf057a368'
 export const ACTION_PROBE: Hex = '0x59cd148e'
+/** What a method's `verify` answers for a proof it accepts: the selector of `verify(bytes,bytes32,bytes)`. */
+export const VERIFY_MAGIC: Hex = '0x024ad318'
 
 const topicMatches = (expected: FilterSpec['topics'][number], actual: Hex | undefined): boolean => {
   if (expected === null || expected === undefined) {
@@ -123,7 +146,8 @@ const topicMatches = (expected: FilterSpec['topics'][number], actual: Hex | unde
 }
 
 export const fakeNode = (): FakeNode => {
-  const routes = new Map<string, Hex | Error>()
+  const routes = new Map<string, Hex | Error | ((data: Hex) => Hex | Error)>()
+  const handlers = new Map<string, (data: Hex) => Hex | Error>()
   const codes = new Map<string, Hex>()
   const logs: RawLog[] = []
   const calls: NodeCall[] = []
@@ -136,7 +160,11 @@ export const fakeNode = (): FakeNode => {
       if (!codes.has(to.toLowerCase())) {
         return '0x'
       }
-      const answer = routes.get(keyOf(to, data))
+      const route = routes.get(keyOf(to, data))
+      const answer =
+        typeof route === 'function'
+          ? route(data)
+          : route ?? handlers.get(keyOf(to, slice(data, 0, 4)))?.(data)
       if (answer === undefined) {
         throw new Error(`The fake node has no answer for ${data} to ${to}.`)
       }
@@ -164,6 +192,9 @@ export const fakeNode = (): FakeNode => {
     head,
     answer: (to, data, answer) => {
       routes.set(keyOf(to, data), answer)
+    },
+    answerWith: (to, selector, answer) => {
+      handlers.set(keyOf(to, selector), answer)
     },
     setCode: (address, code) => {
       codes.set(address.toLowerCase(), code)
@@ -198,14 +229,177 @@ export const stateAnswer = (state: ScriptedState): Hex =>
     result: [
       state.setupCommitment,
       state.setupNonce,
-      1n,
+      state.nextAttemptId ?? 1n,
       state.setupCommittedAtBlock,
-      [0n, 0n, 0, state.attemptState ?? 0, false, zeroHash, [zeroAddress, 0n, zeroAddress], []]
+      [
+        state.attemptId ?? 0n,
+        state.attemptId === undefined ? 0n : state.attemptSetupNonce ?? state.setupNonce,
+        state.consumableAfter ?? 0,
+        state.attemptState ?? 0,
+        false,
+        zeroHash,
+        [zeroAddress, 0n, zeroAddress],
+        []
+      ]
     ]
   })
 
 export const scriptState = (node: FakeNode, state: ScriptedState): void =>
   node.answer(MANAGER, stateOfCall(), stateAnswer(state))
+
+// ---------------------------------------------------------------------------
+// The manager's digest views
+// ---------------------------------------------------------------------------
+
+export const HASH_APPROVAL_SELECTOR: Hex = slice(
+  encodeFunctionData({
+    abi: MANAGER_ABI,
+    functionName: 'hashApproval',
+    args: [
+      {
+        account: zeroAddress,
+        action: zeroAddress,
+        attemptId: 0n,
+        setupNonce: 0n,
+        setupBody: '0x',
+        payload: '0x',
+        order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
+        validUntil: 0,
+        proofs: []
+      },
+      0n
+    ]
+  }),
+  0,
+  4
+)
+
+export const HASH_CANCEL_SELECTOR: Hex = slice(
+  encodeFunctionData({
+    abi: MANAGER_ABI,
+    functionName: 'hashCancel',
+    args: [
+      {
+        account: zeroAddress,
+        action: zeroAddress,
+        attemptId: 0n,
+        setupNonce: 0n,
+        setupBody: '0x',
+        validUntil: 0,
+        proofs: []
+      },
+      0n
+    ]
+  }),
+  0,
+  4
+)
+
+const ORDER_TYPE = [
+  { name: 'token', type: 'address' },
+  { name: 'amount', type: 'uint256' },
+  { name: 'payee', type: 'address' }
+] as const
+
+const PLACE_HEAD = [
+  { name: 'account', type: 'address' },
+  { name: 'action', type: 'address' },
+  { name: 'attemptId', type: 'uint64' },
+  { name: 'setupNonce', type: 'uint64' },
+  { name: 'setupBodyHash', type: 'bytes32' }
+] as const
+
+const PLACE_TAIL = [
+  { name: 'validUntil', type: 'uint48' },
+  { name: 'place', type: 'uint256' }
+] as const
+
+const MANAGER_DOMAIN = {
+  name: 'PolicyManager',
+  version: '1',
+  chainId: 11155111,
+  verifyingContract: MANAGER
+} as const
+
+/**
+ * The digest the deployed manager derives for one call of `hashApproval` or
+ * `hashCancel`: the EIP-712 hash of the place's message under the manager's
+ * domain, written out here apart from the client's own derivation.
+ */
+export const managerDigestOf = (data: Hex): Hex => {
+  const decoded = decodeFunctionData({ abi: MANAGER_ABI, data })
+  if (decoded.functionName === 'hashApproval') {
+    const [request, place] = decoded.args
+    return hashTypedData({
+      domain: MANAGER_DOMAIN,
+      types: {
+        Approval: [
+          ...PLACE_HEAD,
+          { name: 'payload', type: 'bytes' },
+          { name: 'order', type: 'PaymentOrder' },
+          ...PLACE_TAIL
+        ],
+        PaymentOrder: ORDER_TYPE
+      },
+      primaryType: 'Approval',
+      message: {
+        account: request.account,
+        action: request.action,
+        attemptId: request.attemptId,
+        setupNonce: request.setupNonce,
+        setupBodyHash: keccak256(request.setupBody),
+        payload: request.payload,
+        order: request.order,
+        validUntil: request.validUntil,
+        place
+      }
+    })
+  }
+  if (decoded.functionName === 'hashCancel') {
+    const [request, place] = decoded.args
+    return hashTypedData({
+      domain: MANAGER_DOMAIN,
+      types: { Cancellation: [...PLACE_HEAD, ...PLACE_TAIL] },
+      primaryType: 'Cancellation',
+      message: {
+        account: request.account,
+        action: request.action,
+        attemptId: request.attemptId,
+        setupNonce: request.setupNonce,
+        setupBodyHash: keccak256(request.setupBody),
+        validUntil: request.validUntil,
+        place
+      }
+    })
+  }
+  throw new Error(`Not a digest view: ${decoded.functionName}.`)
+}
+
+/** What the fake manager answers for both digest views: its own derivation by default. */
+export const scriptDigests = (
+  node: FakeNode,
+  {
+    approval = 'derived',
+    cancel = 'derived'
+  }: { approval?: ScriptedDigest; cancel?: ScriptedDigest } = {}
+): void => {
+  const answerOf =
+    (scripted: ScriptedDigest) =>
+    (data: Hex): Hex | Error =>
+      scripted === 'derived' ? managerDigestOf(data) : scripted
+  node.answerWith(MANAGER, HASH_APPROVAL_SELECTOR, answerOf(approval))
+  node.answerWith(MANAGER, HASH_CANCEL_SELECTOR, answerOf(cancel))
+}
+
+/** The digest views the fake manager was asked, decoded, in order. */
+export const digestCallsOf = (node: FakeNode) =>
+  node.calls
+    .filter(
+      ({ to, data }) =>
+        to.toLowerCase() === MANAGER.toLowerCase() &&
+        [HASH_APPROVAL_SELECTOR, HASH_CANCEL_SELECTOR].includes(slice(data, 0, 4))
+    )
+    .map(({ data }) => decodeFunctionData({ abi: MANAGER_ABI, data }))
 
 // ---------------------------------------------------------------------------
 // The methods and the action
@@ -217,6 +411,12 @@ const methodCall = (
   functionName === 'supportsInterface'
     ? encodeFunctionData({ abi: METHOD_ABI, functionName, args: [METHOD_PROBE] })
     : encodeFunctionData({ abi: METHOD_ABI, functionName })
+
+const VERIFY_SELECTOR: Hex = slice(
+  encodeFunctionData({ abi: METHOD_ABI, functionName: 'verify', args: ['0x', zeroHash, '0x'] }),
+  0,
+  4
+)
 
 export const METHOD_CALLS = {
   name: methodCall('name'),
@@ -277,16 +477,42 @@ export const scriptMethod = (
       encodeFunctionResult({
         abi: METHOD_ABI,
         functionName: 'trustedParties',
-        result: [zeroAddress, zeroAddress, [], zeroAddress, zeroAddress]
+        result: [zeroAddress, zeroAddress, [], script.pauseHolder ?? zeroAddress, zeroAddress]
       })
     )
   )
   // The deployed methods carry no stop: `paused()` reverts with no data.
   node.answer(method, METHOD_CALLS.paused, script.paused ?? reverting())
+  const { verify } = script
+  if (verify !== undefined) {
+    node.answerWith(method, VERIFY_SELECTOR, () =>
+      verify instanceof Error
+        ? verify
+        : encodeFunctionResult({ abi: METHOD_ABI, functionName: 'verify', result: verify })
+    )
+  }
 }
 
+/** The `verify` calls the fake node was asked, decoded, in order. */
+export const verifyCallsOf = (node: FakeNode) =>
+  node.calls
+    .filter(({ data }) => slice(data, 0, 4) === VERIFY_SELECTOR)
+    .map(({ to, data }) => {
+      const decoded = decodeFunctionData({ abi: METHOD_ABI, data })
+      if (decoded.functionName !== 'verify') {
+        throw new Error(`Not a verify call: ${decoded.functionName}.`)
+      }
+      const [config, digest, proof] = decoded.args
+      return { module: to, config, digest, proof }
+    })
+
 const boolOf = (
-  functionName: 'isAuthorized' | 'isAuthority' | 'supportsAccount' | 'supportsInterface',
+  functionName:
+    | 'isAuthorized'
+    | 'isAuthority'
+    | 'holdsAnyPrivilege'
+    | 'supportsAccount'
+    | 'supportsInterface',
   result: boolean
 ): Hex => encodeFunctionResult({ abi: ACTION_ABI, functionName, result })
 
@@ -302,7 +528,13 @@ export const ACTION_CALLS = {
     args: [ACCOUNT]
   }),
   isAuthority: (key: Address): Hex =>
-    encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, key] })
+    encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, key] }),
+  holdsAnyPrivilege: (key: Address): Hex =>
+    encodeFunctionData({
+      abi: ACTION_ABI,
+      functionName: 'holdsAnyPrivilege',
+      args: [ACCOUNT, key]
+    })
 }
 
 export const scriptAction = (node: FakeNode, script: ScriptedAction = {}): void => {
@@ -315,15 +547,30 @@ export const scriptAction = (node: FakeNode, script: ScriptedAction = {}): void 
     fits instanceof Error ? fits : boolOf('supportsAccount', fits)
   )
   node.answer(at, ACTION_CALLS.isAuthorized, boolOf('isAuthorized', script.authorized ?? false))
-  ;[KEY_A, KEY_B].forEach((key) =>
+  const listed = (keys: Address[] | undefined, key: Address): boolean =>
+    (keys ?? []).some((held) => held.toLowerCase() === key.toLowerCase())
+  ;[KEY_A, KEY_B].forEach((key) => {
     node.answer(
       at,
       ACTION_CALLS.isAuthority(key),
-      boolOf(
-        'isAuthority',
-        (script.authorities ?? []).some((held) => held.toLowerCase() === key.toLowerCase())
-      )
+      boolOf('isAuthority', listed(script.authorities, key))
     )
+    node.answer(
+      at,
+      ACTION_CALLS.holdsAnyPrivilege(key),
+      boolOf('holdsAnyPrivilege', listed(script.holders, key))
+    )
+  })
+  node.answer(
+    at,
+    encodeFunctionData({ abi: ACTION_ABI, functionName: 'KEY_VALUE' }),
+    script.keyValue instanceof Error
+      ? script.keyValue
+      : encodeFunctionResult({
+          abi: ACTION_ABI,
+          functionName: 'KEY_VALUE',
+          result: script.keyValue ?? KEY_VALUE
+        })
   )
   node.answer(
     at,
@@ -484,6 +731,55 @@ export const DESCRIPTOR: DeploymentDescriptor = {
   auditedActions: [ACTION]
 }
 
+/** The request an approver of `credential` at `place` answers, on an approval of the world's account. */
+export const approverRequestAt = (
+  credential: Credential,
+  place: number,
+  overrides: Partial<ApproverRequest> = {}
+): ApproverRequest => ({
+  kind: 'recovery-proof-request',
+  version: RECORD_VERSION,
+  purpose: 'approval',
+  chainId: String(DESCRIPTOR.chainId),
+  manager: MANAGER,
+  digestVersion: DESCRIPTOR.digestVersion,
+  account: ACCOUNT,
+  action: ACTION,
+  attemptId: '7',
+  setupNonce: '3',
+  setupBodyHash: keccak256('0x01'),
+  payload: '0x02',
+  order: { token: zeroAddress, amount: '0', payee: zeroAddress },
+  validUntil: String(HEAD_TIMESTAMP + 7200),
+  place,
+  method: credential.method,
+  config: credential.config,
+  salt: pad(`0x${(place + 1).toString(16)}`),
+  ...overrides
+})
+
+/** The reply to `request`, made against its own digest. */
+export const approverReplyTo = (
+  request: ApproverRequest,
+  overrides: Partial<ApproverReply> = {}
+): ApproverReply => ({
+  kind: 'recovery-proof-reply',
+  version: RECORD_VERSION,
+  chainId: request.chainId,
+  manager: request.manager,
+  account: request.account,
+  action: request.action,
+  attemptId: request.attemptId,
+  purpose: request.purpose,
+  place: request.place,
+  method: request.method,
+  config: request.config,
+  salt: request.salt,
+  digest: digestOfRequest(request),
+  proof: `0x${'0f'.repeat(65)}`,
+  ...overrides
+})
+
 /**
  * The world of a fresh account: no code, no setup, the action unarmed, the
  * two primary methods and the action deployed as the deployed ones answer.
@@ -504,23 +800,45 @@ export const kitWorld = (options: KitWorldOptions = {}): KitWorld => {
   scriptMethod(node, METHOD_ECDSA, { name: 'method-ecdsa' })
   scriptMethod(node, METHOD_PASSKEY, { name: 'method-passkey' })
   scriptAction(node, { supportsAccount: !!options.accountCode })
+  scriptDigests(node)
   const removedKey = jest.fn(
     async () => options.removedKey ?? ({ kind: 'named', key: KEY_A } as const)
   )
+  const manager = createManagerReads(node.provider, MANAGER)
+  const action = createActionReads({ provider: node.provider, codeRead: node.codeRead }, ACTION)
+  const moduleReads = moduleReadsOf(createMethodReads(node.provider))
+  const eventManager = createKitEventManager({
+    provider: node.provider,
+    descriptor,
+    account: ACCOUNT
+  })
   const setup = createKitSetupClient({
     account: ACCOUNT,
     descriptor,
     config,
     provider: node.provider,
     codeRead: node.codeRead,
-    manager: createManagerReads(node.provider, MANAGER),
-    action: createActionReads({ provider: node.provider, codeRead: node.codeRead }, ACTION),
-    moduleReads: moduleReadsOf(createMethodReads(node.provider)),
+    manager,
+    action,
+    moduleReads,
     events: createSetupEvents(node.provider, MANAGER),
+    eventManager,
     walletReads: { removedKey },
     initialPrivileges: options.initialPrivileges ?? []
   })
-  return { node, descriptor, config, setup, removedKey, draft: draftAt }
+  const recovery = createKitRecoveryClient({
+    account: ACCOUNT,
+    descriptor,
+    config,
+    provider: node.provider,
+    manager,
+    action,
+    moduleReads,
+    setup,
+    walletReads: { removedKey },
+    eventManager
+  })
+  return { node, descriptor, config, setup, recovery, removedKey, draft: draftAt }
 }
 
 /** Settles a promise into the value it threw; fails where it resolved. */

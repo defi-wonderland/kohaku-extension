@@ -8,10 +8,10 @@
  * a restore with no password opens only a backup kept in the clear, and the
  * setup event's public note carries the shape of a shape-visible setup or the
  * whole configuration of a public one. A configuration read from the note is
- * checked against the commitment before it renders. A client that does not
- * serve the events feed reads as sealed, never as readable.
+ * checked against the commitment before it renders. A failed read of the
+ * setup event fails the whole read; it never reads as sealed.
  */
-import { decodeAbiParameters, hexToString, isAddress, isHex } from 'viem'
+import { hexToString, isAddress, isHex } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
@@ -25,7 +25,11 @@ import type {
   RestoreRefusal,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { REQUEST_WINDOW_SECONDS, sameAddress } from '@web/modules/social-recovery/shared/client'
+import {
+  passkeyConfigFieldsOf,
+  REQUEST_WINDOW_SECONDS,
+  sameAddress
+} from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress, renderHiddenValue } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import { isStoredAddress } from '@web/modules/social-recovery/shared/records'
@@ -116,10 +120,6 @@ export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null =
   const reason = typeof values === 'object' && values !== null ? values.reason : undefined
   return { cause: known, reason }
 }
-
-/** Whether a thrown value is the client's refusal of a member it does not serve yet. */
-const isNotServed = (error: unknown): boolean =>
-  error instanceof Error && error.name === 'NotServedRefusal'
 
 /**
  * Why a restore with the recovery password failed. A backup the password does
@@ -256,32 +256,25 @@ export const configurationOfNote = (note: Hex): Configuration | null => {
 
 /**
  * The public note of the setup the state names, read from its setup event at
- * the block the state pins it to; null where the client does not serve the
- * events feed or the block holds no event of this setup.
+ * the block the state pins it to; null where the block holds no event of this
+ * setup. A failed read rejects.
  */
 const committedNoteOf = async (
   setup: ReadoutKitClient['setup'],
   state: SetupState
 ): Promise<Hex | null> => {
-  try {
-    const block = state.setupCommittedAtBlock
-    const found = await setup.events.fetch(setup.events.accountFilter(), {
-      from: block,
-      to: block
-    })
-    const commit = found.find(
-      (notification) =>
-        notification.kind === 'setup-committed' &&
-        notification.nonce === state.setupNonce &&
-        notification.setupCommitment.toLowerCase() === state.setupCommitment.toLowerCase()
-    )
-    return commit && commit.kind === 'setup-committed' ? commit.publicMetadata : null
-  } catch (error: unknown) {
-    if (isNotServed(error)) {
-      return null
-    }
-    throw error
-  }
+  const block = state.setupCommittedAtBlock
+  const found = await setup.events.fetch(setup.events.accountFilter(), {
+    from: block,
+    to: block
+  })
+  const commit = found.find(
+    (notification) =>
+      notification.kind === 'setup-committed' &&
+      notification.nonce === state.setupNonce &&
+      notification.setupCommitment.toLowerCase() === state.setupCommitment.toLowerCase()
+  )
+  return commit && commit.kind === 'setup-committed' ? commit.publicMetadata : null
 }
 
 /** What a refused restore says about the setup, or null where it only says the password is missing. */
@@ -376,17 +369,8 @@ const maskedRowOf = (method: Address, context: ReadoutRowContext, t: Translate):
 }
 
 /** The relying-party hash a passkey config commits, or null where the config is not a passkey's. */
-const passkeyRpIdHashOf = (config: Hex): Hex | null => {
-  try {
-    const [, , rpIdHash] = decodeAbiParameters(
-      [{ type: 'bytes32' }, { type: 'bytes32' }, { type: 'bytes32' }],
-      config
-    )
-    return rpIdHash
-  } catch {
-    return null
-  }
-}
+const passkeyRpIdHashOf = (config: Hex): Hex | null =>
+  passkeyConfigFieldsOf(config)?.rpIdHash ?? null
 
 const readableRowOf = (
   credential: Credential,

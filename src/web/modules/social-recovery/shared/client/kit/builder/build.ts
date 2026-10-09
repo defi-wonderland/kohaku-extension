@@ -1,12 +1,15 @@
 /**
  * The client of a deployed kit for one account, once its construction checks
- * passed: the setup client over the chain's reads, the action and the module
- * reads bound to the account, the wallet's removed-key and fit reads, and the
- * approving side. The approving side reads no chain: it is the shipped method
- * implementations and the orchestrator over them, keyed by the deployment's
- * method addresses, and it serves only the methods the deployment names. The
- * recovery side, the clear, the events feed and the verify of a pasted reply
- * are not served yet and refuse.
+ * passed: the setup client over the chain's reads, the recovery client's
+ * gathering and prepares over the same reads and the setup client's restore,
+ * the action and the module reads bound to the account, the wallet's
+ * removed-key and fit reads and its verify of a pasted reply through the
+ * method module's own `verify` view, and the approving side. The approving
+ * side reads no chain: it is the shipped method implementations and the
+ * orchestrator over them, keyed by the deployment's method addresses, and it
+ * serves only the methods the deployment names. Both clients serve one events
+ * feed over the provider's logs of the manager and the account. The clear and
+ * the feed's method filter are not served yet and refuse.
  */
 import {
   ActionCodecDouble,
@@ -21,27 +24,23 @@ import type {
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
 
 import type { RecoveryKitClient, WalletReads } from '../../types'
-import { createSetupEvents } from '../events'
+import { createKitEventManager, createSetupEvents } from '../events'
 import { disarmingData } from '../formats'
 import { createMethodReads } from '../reads'
-import {
-  accountCallOf,
-  createKitSetupClient,
-  moduleReadsOf,
-  notServedRecoveryClient,
-  notServedRefusal,
-  pinnedBlockOf
-} from '../setup-client'
+import { createKitRecoveryClient } from '../recovery-client'
+import { accountCallOf, createKitSetupClient, moduleReadsOf, pinnedBlockOf } from '../setup-client'
 import { createKitWalletReads } from '../wallet-reads'
 import type { KitClientInput } from './types'
 
 export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
   const { account, addressBook, codeRead, config, descriptor, facts, provider } = input
-  const moduleReads = moduleReadsOf(createMethodReads(provider))
+  const methodReads = createMethodReads(provider)
+  const moduleReads = moduleReadsOf(methodReads)
   const kitWalletReads = createKitWalletReads({
     account: input.privilegeAccount,
     accountImplementation: config.accountImplementation,
     action: input.action,
+    moduleReads: methodReads,
     codeRead,
     provider,
     blockTags: config.blockTags
@@ -49,8 +48,9 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
   const walletReads: WalletReads = {
     removedKey: () => kitWalletReads.removedKey(),
     fitCheck: (implementation) => kitWalletReads.fitCheck(implementation),
-    verifyReply: () => Promise.reject(notServedRefusal('walletReads.verifyReply'))
+    verifyReply: (request, reply) => kitWalletReads.verifyReply(request, reply)
   }
+  const eventManager = createKitEventManager({ provider, descriptor, account })
   const setup = createKitSetupClient({
     account,
     descriptor,
@@ -61,8 +61,21 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     action: input.action,
     moduleReads,
     events: createSetupEvents(provider, descriptor.manager),
+    eventManager,
     walletReads,
     initialPrivileges: input.privilegeAccount.initialPrivileges
+  })
+  const recovery = createKitRecoveryClient({
+    account,
+    descriptor,
+    config,
+    provider,
+    manager: input.manager,
+    action: input.action,
+    moduleReads,
+    setup,
+    walletReads,
+    eventManager
   })
   const action: IRecoveryActionInteractor = {
     supportsAccount: () => input.action.supportsAccount(account),
@@ -111,7 +124,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     account,
     descriptor,
     setup,
-    recovery: notServedRecoveryClient(),
+    recovery,
     action,
     moduleReads,
     approving: new MethodsOrchestratorDouble(registry, [
