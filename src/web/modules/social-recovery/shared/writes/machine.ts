@@ -29,6 +29,7 @@ import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { isProviderReadFailure, isSendRefusal } from '@web/modules/social-recovery/shared/client'
 
 import { classifyFailure, revertCauseOf, settleReceipt, writeFailureOf } from './classify'
+import { sameHash } from './hashes'
 import { canRetry } from './states'
 import type {
   FailedNotSentState,
@@ -40,8 +41,6 @@ import type {
   WriteMachineState,
   WriteRun
 } from './types'
-
-const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
 /** The hashes the run's call went out under; the stored hash where the state keeps no list. */
 const sentHashesOf = (state: SubmittingInRun): readonly Hex[] =>

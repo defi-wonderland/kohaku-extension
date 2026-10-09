@@ -51,6 +51,7 @@ import type {
 import {
   initialWriteState,
   mayStillLand,
+  sameHash,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
@@ -64,7 +65,7 @@ import {
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
-import { readWithin, sameHash, within } from './read'
+import { readWithin, within } from './read'
 import type {
   ExecuteEvent,
   ExecuteState,

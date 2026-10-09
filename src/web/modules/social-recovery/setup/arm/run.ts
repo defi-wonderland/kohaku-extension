@@ -60,6 +60,7 @@ import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
 import type { FeeReading, SendRequestState } from '@web/modules/social-recovery/shared/client'
 import type { RecordRead, SaveInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
+  sameHash,
   initialWriteState,
   mayStillLand,
   writeReducer
@@ -584,13 +585,9 @@ const sentHashesIn = (write: WriteMachineState, stored: Hex | undefined): Hex[] 
   )
 }
 
-/** Whether `hash` is one of `hashes`, in any case. */
-const hashIn = (hashes: readonly Hex[], hash: Hex): boolean =>
-  hashes.some((held) => held.toLowerCase() === hash.toLowerCase())
-
 /** Whether the kept reading read every hash `reading` asked for. */
 const coveredBy = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.hashes.every((hash) => hashIn(kept.hashes, hash))
+  reading.hashes.every((hash) => kept.hashes.some((seen) => sameHash(seen, hash)))
 
 /**
  * Whether `reading` read a higher block number than `kept`, or came

@@ -8,9 +8,10 @@
 import { isAddress, isAddressEqual, keccak256 } from 'viem'
 
 import { destinationKeyOf } from '@web/modules/social-recovery/recovery/checklist'
-import type { Address, Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Attempt } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ListedAccountFacts } from '@web/modules/social-recovery/shared/client'
 import type { CountdownRecord } from '@web/modules/social-recovery/shared/records'
+import { sameHash } from '@web/modules/social-recovery/shared/writes'
 
 import type {
   AttemptStory,
@@ -112,9 +113,6 @@ export const waitNewKeyOf = (facts: ListedAccountFacts): Address | null => {
   const own = facts.account.addr
   return isAddress(own, { strict: false }) ? own : null
 }
-
-/** Whether two hashes are the same, in any case. */
-export const sameHash = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
 /**
  * The attempt the countdown's record names, from the decimal strings the

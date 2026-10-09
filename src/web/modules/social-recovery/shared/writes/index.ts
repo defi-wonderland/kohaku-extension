@@ -44,6 +44,7 @@ export {
 } from './classify'
 export { WRITE_EVENT_TYPES, WRITE_ANSWER_TYPES, initialWriteState, writeReducer } from './machine'
 export { driveSend, driveAccountBatch } from './send'
+export { sameHash } from './hashes'
 export {
   FEE_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,

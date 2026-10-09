@@ -42,12 +42,12 @@
  * the request of this run. Every answer carries its run, so the answer of a
  * run the holder left behind moves nothing.
  */
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import type { SubmissionInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
   initialWriteState,
   mayStillLand,
+  sameHash,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
@@ -490,10 +490,6 @@ const judgeRevert = async (store: SubmitStore, steps: SubmitSteps, run: number):
   }
 }
 
-/** Whether `hash` is one of `hashes`, in any case. */
-const hashIn = (hashes: readonly Hex[], hash: Hex): boolean =>
-  hashes.some((held) => held.toLowerCase() === hash.toLowerCase())
-
 /**
  * Whether `reading` read a higher block number than `kept`, or came
  * `DROPPED_RECHECK_MS` after it. A lower number is a node that lags.
@@ -559,7 +555,7 @@ const checkDropped = async (store: SubmitStore, steps: SubmitSteps): Promise<boo
     // wait counts from the first; one that asked for a hash the kept one did
     // not read starts the count again.
     const kept = store.state().unknownReading
-    if (!kept || !reading.hashes.every((one) => hashIn(kept.hashes, one))) {
+    if (!kept || !reading.hashes.every((one) => kept.hashes.some((seen) => sameHash(seen, one)))) {
       store.dispatch({ type: 'unknownRead', run, reading })
       return false
     }
