@@ -4,6 +4,8 @@
  * credential's own method module through its `verify` view. Every address is
  * made up.
  */
+import { toFunctionSelector } from 'viem'
+
 import type { Hex } from 'viem'
 
 import { digestOfRequest } from '@web/modules/social-recovery/sdk-doubles'
@@ -97,6 +99,15 @@ describe("the module's judgement", () => {
     expect(await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))).toBe(
       failure
     )
+  })
+
+  it('rejects with a read failure where the module answers no word, as an address with no code does', async () => {
+    const { node, verify } = worldOf()
+    node.answerWith(METHOD_ECDSA, toFunctionSelector('verify(bytes,bytes32,bytes)'), () => '0x')
+
+    expect(
+      await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))
+    ).toMatchObject({ name: 'ProviderReadFailure', read: 'call' })
   })
 
   it('reads the module again on every verify', async () => {

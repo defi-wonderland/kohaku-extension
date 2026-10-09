@@ -116,7 +116,7 @@ export interface SubmitLoadHook {
  */
 export type VerifyReading =
   | { status: 'checking' }
-  | { status: 'verified'; checked: boolean }
+  | { status: 'verified' }
   | { status: 'rejected'; place: number }
   | { status: 'failed' }
 
