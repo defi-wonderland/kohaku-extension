@@ -31,7 +31,7 @@ import type { ReplyVerifyReads } from './types'
 
 const sameBytes = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
 
-// A request whose decimal fields do not parse makes no digest.
+// A request whose values do not encode makes no digest.
 const digestOf = (request: ApproverRequest): Hex | null => {
   try {
     return digestOfRequest(request)

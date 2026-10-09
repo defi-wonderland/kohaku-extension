@@ -60,5 +60,5 @@ export const verifyAgain = async (
   if (results.includes('failed')) {
     return { status: 'failed' }
   }
-  return { status: 'verified', checked: true }
+  return { status: 'verified' }
 }
