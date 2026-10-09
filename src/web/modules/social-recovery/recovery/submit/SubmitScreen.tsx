@@ -292,7 +292,7 @@ const SubmitScreen = () => {
   return (
     <EntryReadFallback
       testPrefix="submit"
-      titleKey="socialRecovery.client.unavailableTitle"
+      titleKey="socialRecovery.wait.readFailedTitle"
       bodyKey="socialRecovery.client.unavailableBody"
       failed={reading.status === 'failed'}
       onRetry={retry}

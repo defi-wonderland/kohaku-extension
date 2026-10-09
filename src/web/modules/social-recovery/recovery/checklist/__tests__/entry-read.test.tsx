@@ -131,7 +131,7 @@ describe('the checklist route’s entry record read', () => {
     view = await mountChecklistScreen()
 
     expect(view.byTestId('checklist-entry-failed')?.textContent).toContain(
-      t('socialRecovery.client.unavailableTitle')
+      t('socialRecovery.wait.readFailedTitle')
     )
     expect(view.byTestId('checklist-view')).toBeNull()
 

@@ -142,7 +142,7 @@ const ChecklistScreen = () => {
   return (
     <EntryReadFallback
       testPrefix="checklist"
-      titleKey="socialRecovery.client.unavailableTitle"
+      titleKey="socialRecovery.wait.readFailedTitle"
       bodyKey="socialRecovery.client.unavailableBody"
       failed={reading.status === 'failed'}
       onRetry={retry}

@@ -171,7 +171,7 @@ describe('the confirmation’s entry record read', () => {
     }
     view = await mountSubmit(world.account)
     expect(view.textOf('submit-entry-failed')).toContain(
-      t('socialRecovery.client.unavailableTitle')
+      t('socialRecovery.wait.readFailedTitle')
     )
     expect(view.byTestId('submit-action')).toBeNull()
     expect(view.paths()).toEqual([])
