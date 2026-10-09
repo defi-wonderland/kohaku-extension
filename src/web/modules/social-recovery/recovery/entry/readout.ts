@@ -8,8 +8,8 @@
  * a restore with no password opens only a backup kept in the clear, and the
  * setup event's public note carries the shape of a shape-visible setup or the
  * whole configuration of a public one. A configuration read from the note is
- * checked against the commitment before it renders. A client that does not
- * serve the events feed reads as sealed, never as readable.
+ * checked against the commitment before it renders. A failed read of the
+ * setup event fails the whole read; it never reads as sealed.
  */
 import { hexToString, isAddress, isHex } from 'viem'
 
