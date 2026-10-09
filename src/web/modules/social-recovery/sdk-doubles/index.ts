@@ -18,9 +18,11 @@ export type {
   Canceller,
   ChainEffect,
   ChainSeed,
+  AssessOptions,
   ClientContext,
   CodedError,
   CommittedSetup,
+  CountedClause,
   ConstructionRefusal,
   FitCheckReading,
   IWalletReadsDouble,
@@ -37,6 +39,7 @@ export type {
   RemovedKeyUnavailableCause,
   RevertedCall,
   RuleEvaluation,
+  RuleEvaluator,
   ScriptedFindings,
   ScriptedRead,
   ScriptedRefusalMember,
@@ -69,9 +72,23 @@ export {
   ACCOUNT_NOT_ARMED,
   ACCOUNT_UNFIT,
   acceptanceRevert,
+  evaluateClauses,
   evaluateRule,
+  evaluatorOf,
   executeRevert
 } from './verification'
+export {
+  addReplyTo,
+  approverRequestsOf,
+  assessGathering,
+  compareRanks,
+  completeGathering,
+  digestForPlace,
+  picksOf,
+  readsGathering,
+  refuseWith,
+  rowsToFindings
+} from './gathering'
 export { ProviderDouble, revertedCall } from './provider'
 export { EventManagerDouble, DEFAULT_LOG_CHUNK_WIDTH } from './event-manager'
 export { PolicyManagerDouble, narrowModuleReads, MODULE_READ_MEMBERS } from './policy-manager'
