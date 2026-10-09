@@ -3,19 +3,13 @@ import { isAddress } from 'viem'
 import type { Account } from '@ambire-common/interfaces/account'
 import { isSmartAccount } from '@ambire-common/libs/account/account'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import {
+  checklistPathOf as routedChecklistPathOf,
+  readoutPathOf as routedReadoutPathOf
+} from '@web/modules/social-recovery/recovery/checklist/search'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 
 import { FRESH_INSTALL_ROUTE } from './constants'
-
-/**
- * Whether the router state carries the warning's acknowledgment. The state
- * comes from the history entry, so anything may stand there: only the exact
- * flag counts.
- */
-export const acknowledgedOf = (state: unknown): boolean =>
-  typeof state === 'object' &&
-  state !== null &&
-  (state as { acknowledged?: unknown }).acknowledged === true
 
 /**
  * The account step on the fresh install's route, with the account that
@@ -29,13 +23,13 @@ export const accountStepPathOf = (receivingAccount?: Address): string => {
   return `${WEB_ROUTES.socialRecoveryRecoveryAccount}?${search.toString()}`
 }
 
+// The fast track navigates by paths with no leading slash, as its other paths are.
+
 /** The checklist of the account being recovered. */
-export const checklistPathOf = (account: Address): string =>
-  `${WEB_ROUTES.socialRecoveryRecoveryChecklist}?${new URLSearchParams({ account }).toString()}`
+export const checklistPathOf = (account: Address): string => routedChecklistPathOf(account).slice(1)
 
 /** The readout of the account being recovered. */
-export const readoutPathOf = (account: Address): string =>
-  `${WEB_ROUTES.socialRecoveryRecoveryReadout}?${new URLSearchParams({ account }).toString()}`
+export const readoutPathOf = (account: Address): string => routedReadoutPathOf(account).slice(1)
 
 /** The account being recovered, from the URL's `account` parameter; undefined where it is no address. */
 export const accountParamOf = (search: URLSearchParams): Address | undefined => {

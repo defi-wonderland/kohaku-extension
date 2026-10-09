@@ -17,8 +17,9 @@ import {
   StatusChip
 } from '@web/modules/social-recovery/shared/chrome'
 import { renderMemberList } from '@web/modules/social-recovery/shared/display'
+import { enrollmentOf } from '@web/modules/social-recovery/shared/records/slots'
 
-import { enrollmentOf, isRequiredRow, kindOf, pathRowOf } from './lead'
+import { isRequiredRow, kindOf, pathRowOf } from './lead'
 import type { PathBlockProps, RetryKind } from './types'
 
 // Where the line meets a row's first line.

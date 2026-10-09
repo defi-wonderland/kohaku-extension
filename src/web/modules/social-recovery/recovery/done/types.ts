@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type { Account } from '@ambire-common/interfaces/account'
 import type {
   Address,
@@ -194,12 +192,6 @@ export interface DoneBodyProps {
   records: WalletRecords
   account: Address
   entry: RecoveryEntryRecord | null
-}
-
-export interface DoneChromeProps {
-  route: RecoveryRoute | null
-  children: ReactNode
-  testID?: string
 }
 
 export interface DoneViewProps {

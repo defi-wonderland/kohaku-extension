@@ -4,8 +4,9 @@
  * by route, and the wait with the page's own helpers: the recovery client of
  * the account being recovered, the handover's two keys, the setup this device
  * holds, the sending key by route and the send port over the request queue.
- * A search with no account, or an account with no entry record, goes back to
- * the account step. No countdown: a live or wiped session goes to the
+ * A search with no account, or an account with no entry record, goes to the
+ * account step with no search, which sends the holder on to the recovery
+ * entry's first step. No countdown: a live or wiped session goes to the
  * checklist, none to the route's entry. A consumed attempt goes on to the
  * done screen. A run that finds the countdown names another attempt is let go,
  * and the countdown's record is read again.
@@ -25,10 +26,13 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import type { Configuration, Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import EntryReadFallback from '@web/modules/social-recovery/shared/chrome/EntryReadFallback'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
+import useRecoveryEntryRead from '@web/modules/social-recovery/shared/chrome/useRecoveryEntryRead'
 import {
   CHAIN_IDS,
   createSendPort,
+  seedBasicAccountOf,
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -47,10 +51,11 @@ import {
   parseChecklistSearch,
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
-import { fastTrackSendingKeyOf, loggedInPlanOf } from '@web/modules/social-recovery/recovery/submit'
+import { loggedInPlanOf } from '@web/modules/social-recovery/recovery/submit'
 import type { SendingReading } from '@web/modules/social-recovery/recovery/submit'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
+import { WAIT_STAGE } from './constants'
 import { anchorOf, donePathOf } from './phase'
 import { isCountdownOf, landedAttemptOf, waitNewKeyOf } from './read'
 import { executeStepsOf } from './steps'
@@ -62,13 +67,11 @@ import type {
   RemovedKeyReading,
   WaitBodyProps,
   WaitClient,
-  WaitEntryReading,
   WaitGateProps
 } from './types'
 import useCountdownClock from './useCountdownClock'
 import useExecuteRun from './useExecuteRun'
 import useWaitPoll from './useWaitPoll'
-import WaitChrome from './WaitChrome'
 import WaitView from './WaitView'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
@@ -224,7 +227,7 @@ const WaitBody = ({
     if (!accounts || !keystoreKeys) {
       return { status: 'loading' }
     }
-    const key = fastTrackSendingKeyOf(entry.receivingAccount, accounts, keystoreKeys)
+    const key = seedBasicAccountOf(entry.receivingAccount, accounts, keystoreKeys)
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }
@@ -340,6 +343,8 @@ const WaitBody = ({
     leaveCountdown().catch(() => setLeave('failed'))
   }, [records, account, navigate, entry.route, landed, onCountdownReplaced])
 
+  const onBack = useCallback(() => navigate(routeEntryPathOf(entry.route)), [navigate, entry.route])
+
   const holdsAccountKey = ownFacts.status === 'ready' && !!ownFacts.facts.key
   // The transfer screen sends from the selected account, so the account being recovered is selected first.
   const listedAddress = ownFacts.status === 'ready' ? ownFacts.facts.account.addr : null
@@ -389,6 +394,7 @@ const WaitBody = ({
       onRetryKeys={retryKeys}
       onRetryClient={retryClient}
       onLeave={onLeave}
+      onBack={onBack}
       onMoveFunds={onMoveFunds}
       onOpenExplorer={onOpenExplorer}
     />
@@ -476,79 +482,38 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
 }
 
 const WaitScreen = () => {
-  const { t } = useTranslation()
   const { navigate } = useNavigation()
   const location = useLocation()
   const search = useMemo(() => parseChecklistSearch(location.search), [location.search])
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const account = search?.account
-  const [reading, setReading] = useState<WaitEntryReading>({ status: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    if (!account) {
-      navigate(accountStepPath(), { replace: true })
-      return undefined
-    }
-    let live = true
-    setReading({ status: 'loading' })
-    records
-      .recoveryEntry(CHAIN_ID, account)
-      .read()
-      .then((read) => {
-        if (!live) {
-          return
-        }
-        if (read.status === 'absent') {
-          setReading({ status: 'absent' })
-          navigate(accountStepPath(), { replace: true })
-          return
-        }
-        setReading({ status: 'present', entry: read.value })
-      })
-      .catch(() => {
-        if (live) {
-          setReading({ status: 'failed' })
-        }
-      })
-    return () => {
-      live = false
-    }
-  }, [records, account, attempt, navigate])
+  const toAccountStep = useCallback(
+    () => navigate(accountStepPath(), { replace: true }),
+    [navigate]
+  )
+  const { reading, retry } = useRecoveryEntryRead(records, CHAIN_ID, account, toAccountStep)
 
   if (reading.status === 'present' && account) {
     return (
-      <WaitChrome route={reading.entry.route} testID="wait-screen">
+      <RecoveryChrome
+        route={reading.entry.route}
+        titleKey="socialRecovery.routes.recovery"
+        stage={{ step: WAIT_STAGE, testID: 'wait-stage' }}
+        testID="wait-screen"
+      >
         <WaitGate key={account} records={records} account={account} entry={reading.entry} />
-      </WaitChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <SetupChrome testID="wait-screen">
-      {reading.status === 'failed' ? (
-        <Alert
-          testID="wait-entry-failed"
-          type="error"
-          size="sm"
-          title={t('socialRecovery.wait.readFailedTitle')}
-          text={t('socialRecovery.wait.readFailedBody')}
-        >
-          <View style={spacings.mtTy}>
-            <Button
-              testID="wait-entry-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={() => setAttempt((n) => n + 1)}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
-      ) : (
-        <ActivityIndicator testID="wait-entry-loading" />
-      )}
-    </SetupChrome>
+    <EntryReadFallback
+      testPrefix="wait"
+      titleKey="socialRecovery.wait.readFailedTitle"
+      bodyKey="socialRecovery.wait.readFailedBody"
+      failed={reading.status === 'failed'}
+      onRetry={retry}
+    />
   )
 }
 

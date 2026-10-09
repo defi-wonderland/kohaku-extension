@@ -162,6 +162,12 @@ export interface Enrollment {
 /** 4. The enrollments. */
 export type EnrollmentsRecord = Enrollment[]
 
+/** Where one credential sits in the path: its clause and its place among the clause's members. */
+export interface SlotPosition {
+  clause: number
+  member: number
+}
+
 /** 5. The waiting period, in seconds, the type the setup draft's `wait` carries. */
 export type WaitingPeriodRecord = SetupDraft['wait']
 

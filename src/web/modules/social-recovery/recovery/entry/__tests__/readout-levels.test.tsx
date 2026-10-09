@@ -13,7 +13,6 @@ import {
   CARD_PASSWORD,
   CHAIN_ID,
   commitLostSetup,
-  deferred,
   failedClient,
   GUARDIANS,
   LOST,
@@ -44,6 +43,7 @@ import {
   readRecoveryPassword,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const NO_SETUP_SENTENCES = [
   t('socialRecovery.entry.noSetup.title', { network: NETWORK }),

@@ -14,6 +14,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { buildRecoveryClient } from '@web/modules/social-recovery/shared/client/build-client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 // The client build is stubbed: the SDK doubles need a TextEncoder that jsdom lacks,
 // and these tests look at the provider the hook builds, not at the client.
@@ -105,14 +106,6 @@ const providerMock = (index: number): ProviderMock => {
     off: jest.fn(async () => undefined),
     destroy: jest.fn()
   }
-}
-
-const deferred = <T>() => {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-  return { promise, resolve }
 }
 
 let built: ProviderMock[]

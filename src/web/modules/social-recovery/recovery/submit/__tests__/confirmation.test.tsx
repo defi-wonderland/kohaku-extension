@@ -13,7 +13,6 @@ import {
   factsOf,
   GUARDIANS,
   guardianCredential,
-  held,
   MIXED_PATH,
   mountSubmit,
   mockWallet,
@@ -26,6 +25,7 @@ import {
   settle,
   t
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress }: typeof import('viem') = require('viem')
@@ -303,27 +303,27 @@ describe('the submission confirmation', () => {
 
     it('stays locked with its reason while the verify runs', async () => {
       const world = await openWorld()
-      const verdicts = held<'satisfied'>()
+      const verdicts = deferred<'satisfied'>()
       world.kit.verifyReply.mockImplementation(() => verdicts.promise)
       const mounted = await open(world)
       await openDetails(mounted)
       expect(mounted.textOf('submit-checking')).toBe(t(`${SUBMIT}.checking`))
       expect(mounted.isDisabled('submit-action')).toBe(true)
       expect(mounted.textOf('submit-unlock-reason')).toBe(t(`${SUBMIT}.unlockReason`))
-      verdicts.release('satisfied')
+      verdicts.resolve('satisfied')
       await settle()
       expect(mounted.isDisabled('submit-action')).toBe(false)
     })
 
     it('stays locked while the key being removed is not read yet', async () => {
       const world = await openWorld()
-      const removed = held<{ kind: 'named'; key: string }>()
+      const removed = deferred<{ kind: 'named'; key: string }>()
       world.kit.removedKey.mockImplementation(() => removed.promise)
       const mounted = await open(world)
       await openDetails(mounted)
       expect(mounted.byTestId('submit-removed-key-loading')).not.toBeNull()
       expect(mounted.isDisabled('submit-action')).toBe(true)
-      removed.release({ kind: 'named', key: REMOVED })
+      removed.resolve({ kind: 'named', key: REMOVED })
       await settle()
       expect(mounted.isDisabled('submit-action')).toBe(false)
     })

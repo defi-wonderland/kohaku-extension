@@ -8,6 +8,7 @@
  */
 import type { Account } from '@ambire-common/interfaces/account'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
 import { canRetry, mayStillLand } from '@web/modules/social-recovery/shared/writes'
 
@@ -81,15 +82,6 @@ const script = (overrides: Partial<SaveScript> = {}): SaveScript => ({
   ...overrides
 })
 
-/** A promise the test settles by hand. */
-const held = <T>() => {
-  let release: (value: T) => void = () => {}
-  const promise = new Promise<T>((resolve) => {
-    release = resolve
-  })
-  return { promise, release }
-}
-
 const stored = async (wired: WiredSave) => {
   const read = await wired.inFlight.read()
   return read.status === 'present' ? read.value : undefined
@@ -141,7 +133,7 @@ const secondPage = (storage: MemoryStorage, requests: RequestsFake) => {
 describe('the claim before the send', () => {
   it('stores the prepared save under a new request id once the gas check reads enough, and sends under that id', async () => {
     const wired = wireSave(account, script())
-    const sign = held<typeof TX_HASH>()
+    const sign = deferred<typeof TX_HASH>()
     wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
     const writes = jest.spyOn(wired.storage, 'set')
     unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
@@ -157,12 +149,12 @@ describe('the claim before the send', () => {
     const claimedAt = writes.mock.invocationCallOrder[0]
     expect(Math.max(...wired.reads.nativeBalance.mock.invocationCallOrder)).toBeLessThan(claimedAt)
     expect(wired.port.sendAccountBatch.mock.invocationCallOrder[0]).toBeGreaterThan(claimedAt)
-    sign.release(TX_HASH)
+    sign.resolve(TX_HASH)
   })
 
   it('writes the hash and the start block into the stored save when the wallet answers the hash', async () => {
     const wired = wireSave(account, script())
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
     const store = createArmStore()
     const running = startSave(store, wired.steps, OPTIONS)
@@ -173,7 +165,7 @@ describe('the claim before the send', () => {
     expect(record?.startBlock).toBe(START_BLOCK)
     expect(store.state().requestId).toBe(record?.requestId)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
     expect(isSaved(store.state())).toBe(true)
@@ -204,7 +196,7 @@ describe('the claim before the send', () => {
     const one = wireSave(account, script(), { storage, requests })
     const two = wireSave(account, script(), { storage, requests })
     const signs = [one, two].map((page) => {
-      const sign = held<typeof TX_HASH>()
+      const sign = deferred<typeof TX_HASH>()
       page.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
       return sign
     })
@@ -228,7 +220,7 @@ describe('the claim before the send', () => {
     requests.queued = [record!.requestId]
     await advanceTimers(FOLLOW_REREAD_MS)
     expect(stores[loser].state().follow).toBe('queued')
-    signs[winner].release(TX_HASH)
+    signs[winner].resolve(TX_HASH)
     requests.queued = []
     requests.activity = [operationFor(record!.requestId, { hash: TX_HASH })]
     requests.pushQueue()
@@ -320,7 +312,7 @@ describe('a page that finds a save stored under its hash', () => {
     const requests = requestsFake()
     const { record, first } = await firstPageLeaves(storage, requests, { withHash: true })
     const page = secondPage(storage, requests)
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     page.wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
 
     const arriving = page.arrive()
@@ -331,7 +323,7 @@ describe('a page that finds a save stored under its hash', () => {
     expect(offersSave(page.store)).toBe(false)
     expect(page.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, record.startBlock)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
     await arriving
 
@@ -350,7 +342,7 @@ describe('a page that finds a save stored under its hash', () => {
     const requests = requestsFake()
     await firstPageLeaves(storage, requests, { withHash: true })
     const page = secondPage(storage, requests)
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     page.wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
 
     unawaited(page.arrive())
@@ -364,7 +356,7 @@ describe('a page that finds a save stored under its hash', () => {
     unawaited(checkReceiptAgain(page.store, page.wired.steps, OPTIONS))
     await advanceTimers(0)
     expect(page.wired.receipts.wait).toHaveBeenCalledTimes(1)
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
 
     expect(isSaved(page.store.state())).toBe(true)
@@ -452,7 +444,7 @@ describe('a page that finds a save stored with no hash', () => {
     requests.activity = [
       operationFor(record.requestId, { hash: TX_HASH, status: AccountOpStatus.BroadcastButStuck })
     ]
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
 
     const arriving = arrive()
@@ -462,7 +454,7 @@ describe('a page that finds a save stored with no hash', () => {
     expect(marked?.startBlock).toBe(START_BLOCK)
     expect(wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
     await arriving
     expect(isSaved(store.state())).toBe(true)
@@ -628,7 +620,7 @@ describe('the setup read after the claim', () => {
       onChain = true
       return landedReceipt(hash)
     })
-    const gas = held<bigint>()
+    const gas = deferred<bigint>()
     second.reads.nativeBalance.mockImplementationOnce(() => gas.promise)
 
     // The second page reads no stored save and no setup, and offers Save; Save starts its run.
@@ -650,7 +642,7 @@ describe('the setup read after the claim', () => {
     const writes = jest.spyOn(storage, 'set')
     const removals = jest.spyOn(storage, 'remove')
 
-    gas.release(10n ** 18n)
+    gas.resolve(10n ** 18n)
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
 
@@ -987,7 +979,7 @@ describe('the read of the stored save after a void', () => {
   it('offers no Save between the void and the read that answers none, then offers it', async () => {
     const { storage } = await followWithNoHash()
     const page = screenOver(storage, requestsFake())
-    const second = held<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
+    const second = deferred<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
     let readsMade = 0
     const steps: SaveSteps = {
       ...page.steps,
@@ -1007,7 +999,7 @@ describe('the read of the stored save after a void', () => {
     expect(offersSave(store)).toBe(false)
     expect(await stored(page)).toBeUndefined()
 
-    second.release(await page.steps.readInFlight())
+    second.resolve(await page.steps.readInFlight())
     await advanceTimers(0)
     expect(offersSave(store)).toBe(true)
   })
@@ -1076,7 +1068,7 @@ describe('the void of a followed save', () => {
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
     owner.port.sendAccountBatch.mockImplementation(() => pending())
-    const answer = held<void>()
+    const answer = deferred<void>()
     const readInFlight = owner.steps.readInFlight.bind(owner.steps)
     jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
       const capture = await readInFlight()
@@ -1091,20 +1083,20 @@ describe('the void of a followed save', () => {
 
     // The follower reads the request gone, then its setup read hangs.
     const follower = secondPage(storage, requests)
-    const setup = held<ReturnType<typeof setupStateOf>>()
+    const setup = deferred<ReturnType<typeof setupStateOf>>()
     follower.wired.setupState.mockImplementationOnce(() => setup.promise)
     unawaited(follower.arrive())
     await advanceTimers(0)
     expect(follower.wired.setupState).toHaveBeenCalledTimes(1)
 
     // Meanwhile the owner's page hands its request to the wallet, which queues it.
-    answer.release()
+    answer.resolve()
     await advanceTimers(0)
     expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     requests.queued = [claim!.requestId]
     await advanceTimers(GONE_GRACE_MS + 1_000)
 
-    setup.release(setupStateOf(false))
+    setup.resolve(setupStateOf(false))
     await advanceTimers(0)
     expect(await stored(owner)).toEqual(claim)
     expect(offersSave(follower.store)).toBe(false)
@@ -1121,7 +1113,7 @@ describe('the start block stored with the claim', () => {
   it('stores the block read just before the claim, and keeps it when the hash is written', async () => {
     const wired = wireSave(account, script())
     wired.receipts.blockNumber.mockResolvedValueOnce(START_BLOCK + 5)
-    const sign = held<typeof TX_HASH>()
+    const sign = deferred<typeof TX_HASH>()
     wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
     wired.receipts.wait.mockImplementation(() => pending())
     const writes = jest.spyOn(wired.storage, 'set')
@@ -1138,7 +1130,7 @@ describe('the start block stored with the claim', () => {
     expect(blockRead).toBeLessThan(writes.mock.invocationCallOrder[0])
 
     // The send starts from the claim's block, which the stored save keeps.
-    sign.release(TX_HASH)
+    sign.resolve(TX_HASH)
     await advanceTimers(0)
     const marked = await stored(wired)
     expect(marked?.transactionHash).toBe(TX_HASH)
@@ -1148,7 +1140,7 @@ describe('the start block stored with the claim', () => {
   it("stores a claim with no block where the block read fails, then the hash with the send's block", async () => {
     const wired = wireSave(account, script())
     wired.receipts.blockNumber.mockRejectedValueOnce(nodeError())
-    const sign = held<typeof TX_HASH>()
+    const sign = deferred<typeof TX_HASH>()
     wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
     wired.receipts.wait.mockImplementation(() => pending())
     unawaited(startSave(createArmStore(), wired.steps, OPTIONS))
@@ -1159,7 +1151,7 @@ describe('the start block stored with the claim', () => {
     expect(claimed?.startBlock).toBeUndefined()
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
 
-    sign.release(TX_HASH)
+    sign.resolve(TX_HASH)
     await advanceTimers(0)
     const marked = await stored(wired)
     expect(marked?.transactionHash).toBe(TX_HASH)
@@ -1179,7 +1171,7 @@ describe('the start block stored with the claim', () => {
 
     requests.activity = [operationFor(record!.requestId, { hash: TX_HASH })]
     const page = secondPage(storage, requests)
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     page.wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
     const arriving = page.arrive()
     await advanceTimers(0)
@@ -1189,7 +1181,7 @@ describe('the start block stored with the claim', () => {
     expect(marked?.startBlock).toBe(START_BLOCK - 7)
     expect(page.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK - 7)
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
     await arriving
     expect(isSaved(page.store.state())).toBe(true)
@@ -1225,7 +1217,7 @@ describe('the block numbers the chain answers', () => {
     it(`stores the claim with no block where the block read answers ${block}, and the save goes on to saved`, async () => {
       const wired = wireSave(account, script())
       wired.receipts.blockNumber.mockResolvedValueOnce(block)
-      const sign = held<typeof TX_HASH>()
+      const sign = deferred<typeof TX_HASH>()
       wired.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
       const store = createArmStore()
       const running = startSave(store, wired.steps, OPTIONS)
@@ -1236,7 +1228,7 @@ describe('the block numbers the chain answers', () => {
       expect(claimed?.startBlock).toBeUndefined()
       expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
 
-      sign.release(TX_HASH)
+      sign.resolve(TX_HASH)
       await advanceTimers(SHORT_TIMEOUT_MS)
       await running
       expect(isSaved(store.state())).toBe(true)
@@ -1377,7 +1369,7 @@ describe('the block the send starts from', () => {
 
   it('ends a block read past its limit with nothing sent, the claim released and the retry, and the retry sends once', async () => {
     const wired = wireSave(account, script())
-    const late = held<number>()
+    const late = deferred<number>()
     wired.receipts.blockNumber
       .mockRejectedValueOnce(nodeError())
       .mockImplementationOnce(() => late.promise)
@@ -1395,7 +1387,7 @@ describe('the block the send starts from', () => {
     await expectEndedNotSent(wired, store)
 
     const before = store.state()
-    late.release(START_BLOCK)
+    late.resolve(START_BLOCK)
     await advanceTimers(SHORT_TIMEOUT_MS)
     expect(store.state()).toBe(before)
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -1480,14 +1472,14 @@ describe('a hash write that fails', () => {
     it(`waits, as a follower whose hash write ${named}, from the block the stored save holds`, async () => {
       const page = await broadcastAfterLeaving()
       arrange(page.wired)
-      const receipt = held<ReturnType<typeof landedReceipt>>()
+      const receipt = deferred<ReturnType<typeof landedReceipt>>()
       page.wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
 
       const arriving = page.arrive()
       await advanceTimers(0)
       expect(page.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK - 7)
 
-      receipt.release(landedReceipt())
+      receipt.resolve(landedReceipt())
       await advanceTimers(SHORT_TIMEOUT_MS)
       await arriving
       expect(isSaved(page.store.state())).toBe(true)
@@ -1498,7 +1490,7 @@ describe('a hash write that fails', () => {
   it("keeps the hash and its receipt wait where the owner's own hash write fails, and never reads nothing sent", async () => {
     const wired = wireSave(account, script())
     jest.spyOn(wired.steps, 'markSent').mockRejectedValue(nodeError())
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     wired.receipts.wait.mockImplementationOnce(() => receipt.promise)
     const store = createArmStore()
     const running = startSave(store, wired.steps, OPTIONS)
@@ -1512,7 +1504,7 @@ describe('a hash write that fails', () => {
     expect(write.status === 'submitting' && write.transactionHash).toBe(TX_HASH)
     expect(await stored(wired)).toBeDefined()
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
     expect(isSaved(store.state())).toBe(true)
@@ -1553,7 +1545,7 @@ describe('the stored save read again before the send', () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
-    const late = held<ReturnType<typeof setupStateOf>>()
+    const late = deferred<ReturnType<typeof setupStateOf>>()
     owner.setupState
       .mockResolvedValueOnce(setupStateOf(false))
       .mockImplementationOnce(() => late.promise)
@@ -1566,7 +1558,7 @@ describe('the stored save read again before the send', () => {
 
     await meanwhile(claim!.requestId, storage, requests)
     const removals = jest.spyOn(storage, 'remove')
-    late.release(setupStateOf(false))
+    late.resolve(setupStateOf(false))
     await advanceTimers(0)
     return { owner, store, running, removals, requests }
   }
@@ -1629,7 +1621,7 @@ describe('the stored save read again before the send', () => {
 
   it('offers no Save between the read before the send that answers none and the second look, then offers it', async () => {
     const owner = wireSave(account, script())
-    const look = held<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
+    const look = deferred<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
     const readInFlight = owner.steps.readInFlight.bind(owner.steps)
     let reads = 0
     jest.spyOn(owner.steps, 'readInFlight').mockImplementation(async () => {
@@ -1652,7 +1644,7 @@ describe('the stored save read again before the send', () => {
     expect(store.state().lookup).toBe('reading')
     expect(offersSave(store)).toBe(false)
 
-    look.release(await readInFlight())
+    look.resolve(await readInFlight())
     await advanceTimers(0)
     expect(offersSave(store)).toBe(true)
     expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -1707,7 +1699,7 @@ describe('the stored save read again before the send', () => {
 describe('the time limit of the setup read after the claim', () => {
   it('releases the claim at the limit with nothing sent and the retry, takes nothing from a late answer, and the retry sends once', async () => {
     const wired = wireSave(account, script())
-    const late = held<ReturnType<typeof setupStateOf>>()
+    const late = deferred<ReturnType<typeof setupStateOf>>()
     wired.setupState
       .mockResolvedValueOnce(setupStateOf(false))
       .mockImplementationOnce(() => late.promise)
@@ -1729,7 +1721,7 @@ describe('the time limit of the setup read after the claim', () => {
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
 
     const before = store.state()
-    late.release(setupStateOf(false))
+    late.resolve(setupStateOf(false))
     await advanceTimers(SHORT_TIMEOUT_MS)
     expect(store.state()).toBe(before)
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -1765,7 +1757,7 @@ describe('the age of the claim when the stored save is read before the send', ()
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
-    const answer = held<void>()
+    const answer = deferred<void>()
     const readInFlight = owner.steps.readInFlight.bind(owner.steps)
     jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
       const capture = await readInFlight()
@@ -1797,7 +1789,7 @@ describe('the age of the claim when the stored save is read before the send', ()
     expect(follower.wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     const saved = follower.store.state()
 
-    answer.release()
+    answer.resolve()
     await advanceTimers(0)
     await running
     expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -1878,7 +1870,7 @@ describe('a follow that starts after its screen left', () => {
     it(`follows through the next screen a stored save with no hash whose read answers ${when}`, async () => {
       const { storage, record } = await followWithNoHash()
       const before = screenOver(storage, requestsFake())
-      const read = held<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
+      const read = deferred<Awaited<ReturnType<SaveSteps['readInFlight']>>>()
       jest.spyOn(before.steps, 'readInFlight').mockImplementationOnce(() => read.promise)
       const beforeReads = jest.spyOn(before.steps, 'requestState')
       const live = requestsFake()
@@ -1895,7 +1887,7 @@ describe('a follow that starts after its screen left', () => {
       detachSteps(before.steps)
       const removals = jest.spyOn(storage, 'remove')
       if (when === 'while no screen is attached') {
-        read.release(await before.inFlight.read())
+        read.resolve(await before.inFlight.read())
         await advanceTimers(10 * GONE_GRACE_MS)
         expect(store.state().requestId).toBe(record.requestId)
         expect(store.state().write.status).toBe('submitting')
@@ -1908,7 +1900,7 @@ describe('a follow that starts after its screen left', () => {
       unawaited(lookForSave(store, after.steps, OPTIONS))
       if (when === 'after the next screen attached') {
         await advanceTimers(0)
-        read.release(await before.inFlight.read())
+        read.resolve(await before.inFlight.read())
       }
       await advanceTimers(0)
 
@@ -1931,7 +1923,7 @@ describe('a follow that starts after its screen left', () => {
     it(`follows through the next screen the save that beat this run's claim ${when}`, async () => {
       const storage = memoryStorage()
       const owner = screenOver(storage, requestsFake())
-      const gas = held<bigint>()
+      const gas = deferred<bigint>()
       owner.reads.nativeBalance.mockImplementationOnce(() => gas.promise)
       const ownerReads = jest.spyOn(owner.steps, 'requestState')
       const store = createArmStore()
@@ -1950,7 +1942,7 @@ describe('a follow that starts after its screen left', () => {
       const removals = jest.spyOn(storage, 'remove')
 
       if (when === 'while no screen is attached') {
-        gas.release(10n ** 18n)
+        gas.resolve(10n ** 18n)
         await advanceTimers(10 * GONE_GRACE_MS)
         expect(store.state().requestId).toBe(record.requestId)
         expect(store.state().write.status).toBe('submitting')
@@ -1962,7 +1954,7 @@ describe('a follow that starts after its screen left', () => {
       unawaited(attachSteps(store, after.steps, OPTIONS))
       if (when === 'after the next screen attached') {
         await advanceTimers(0)
-        gas.release(10n ** 18n)
+        gas.resolve(10n ** 18n)
       }
       await advanceTimers(0)
 
@@ -2021,7 +2013,7 @@ describe('a follow that starts after its screen left', () => {
   it('drops the answer of a request read in flight through the steps of a screen that left, and reads again through the next', async () => {
     const { storage, record } = await followWithNoHash()
     const before = screenOver(storage, requestsFake())
-    const answer = held<Awaited<ReturnType<SaveSteps['requestState']>>>()
+    const answer = deferred<Awaited<ReturnType<SaveSteps['requestState']>>>()
     jest.spyOn(before.steps, 'requestState').mockImplementationOnce(() => answer.promise)
     const store = createArmStore()
     unawaited(attachSteps(store, before.steps, OPTIONS))
@@ -2038,7 +2030,7 @@ describe('a follow that starts after its screen left', () => {
     await advanceTimers(0)
 
     // The left screen's read answers broadcast; the next screen's queue still holds the request.
-    answer.release({ status: 'broadcast', transactionHash: TX_HASH })
+    answer.resolve({ status: 'broadcast', transactionHash: TX_HASH })
     await advanceTimers(0)
 
     expect(afterReads).toHaveBeenCalledTimes(1)

@@ -13,18 +13,17 @@ import { getBasicAccount, getSmartAccount } from '@ambire-common/libs/account/ac
 import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
 import {
   accountStepPathOf,
-  acknowledgedOf,
-  fastTrackSendingKeyOf,
-  listedSlotOf,
   SLOT_INDEX,
   slotKeyOf,
   submissionCheckOf,
   tempSeedOf
 } from '@web/modules/social-recovery/onboarding/fast-track'
+import { acknowledgedInState } from '@web/modules/social-recovery/recovery/entry/search'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { TempSeed } from '@web/modules/social-recovery/onboarding/fast-track'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { seedBasicAccountOf } from '@web/modules/social-recovery/shared/client'
 import slot from '@web/modules/social-recovery/onboarding/fast-track/__fixtures__/slot.json'
 
 const TEST_PHRASE = slot.phrase
@@ -146,24 +145,6 @@ describe('the key that will control the recovered account', () => {
   it('follows the index it is given', async () => {
     expect(await slotKeyOf(SEED, 1)).toBe(SECOND_KEY)
   })
-
-  it('finds the listed basic account at that key once the keystore holds it as an ordinary key', () => {
-    expect(listedSlotOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(ORDINARY_KEY)
-    expect(listedSlotOf(ORDINARY_KEY, [smartAccount, basicAccount], [offsetKey, ordinaryKey])).toBe(
-      ORDINARY_KEY
-    )
-  })
-
-  it('never takes a listed smart account with its dedicated key for the slot', () => {
-    expect(listedSlotOf(SMART_ACCOUNT, [smartAccount], [offsetKey])).toBeNull()
-    expect(listedSlotOf(OFFSET_KEY, [smartAccount], [offsetKey])).toBeNull()
-  })
-
-  it('finds nothing where the wallet does not hold the basic account with an ordinary key', () => {
-    notHeld().forEach(({ name, accounts, keys }) => {
-      expect([name, listedSlotOf(ORDINARY_KEY, accounts, keys)]).toEqual([name, null])
-    })
-  })
 })
 
 describe('the phrase the keystore sends to the page', () => {
@@ -184,9 +165,16 @@ describe('the phrase the keystore sends to the page', () => {
   })
 })
 
-describe('the key that sends the recovery', () => {
-  it('is the receiving basic account itself, the key the recovery installs', async () => {
-    expect(fastTrackSendingKeyOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(
+describe('the basic account at the slot, which receives control and sends the recovery', () => {
+  it('is the listed basic account at the key once the keystore holds it as an ordinary key', () => {
+    expect(seedBasicAccountOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(ORDINARY_KEY)
+    expect(
+      seedBasicAccountOf(ORDINARY_KEY, [smartAccount, basicAccount], [offsetKey, ordinaryKey])
+    ).toBe(ORDINARY_KEY)
+  })
+
+  it('is the key the recovery installs', async () => {
+    expect(seedBasicAccountOf(ORDINARY_KEY, [basicAccount], [ordinaryKey])).toBe(
       await slotKeyOf(SEED)
     )
   })
@@ -195,19 +183,21 @@ describe('the key that sends the recovery', () => {
     const keys: Key[] = [ordinaryKey, internalKey(SECOND_KEY, false)]
     const accounts = [basicAccount, getBasicAccount(SECOND_KEY, [])]
 
-    expect(fastTrackSendingKeyOf(ORDINARY_KEY, accounts, keys)).toBe(ORDINARY_KEY)
-    expect(fastTrackSendingKeyOf(SECOND_KEY, accounts, keys)).toBe(SECOND_KEY)
+    expect(seedBasicAccountOf(ORDINARY_KEY, accounts, keys)).toBe(ORDINARY_KEY)
+    expect(seedBasicAccountOf(SECOND_KEY, accounts, keys)).toBe(SECOND_KEY)
   })
 
-  it('is none where the receiving account is a smart account, even with its dedicated key held', () => {
+  it('is never a listed smart account, even with its dedicated key held', () => {
+    expect(seedBasicAccountOf(SMART_ACCOUNT, [smartAccount], [offsetKey])).toBeNull()
+    expect(seedBasicAccountOf(OFFSET_KEY, [smartAccount], [offsetKey])).toBeNull()
     expect(
-      fastTrackSendingKeyOf(SMART_ACCOUNT, [basicAccount, smartAccount], [ordinaryKey, offsetKey])
+      seedBasicAccountOf(SMART_ACCOUNT, [basicAccount, smartAccount], [ordinaryKey, offsetKey])
     ).toBeNull()
   })
 
-  it('is none where the wallet does not hold the receiving account with an ordinary key', () => {
+  it('is none where the wallet does not hold the basic account with an ordinary key', () => {
     notHeld().forEach(({ name, accounts, keys }) => {
-      expect([name, fastTrackSendingKeyOf(ORDINARY_KEY, accounts, keys)]).toEqual([name, null])
+      expect([name, seedBasicAccountOf(ORDINARY_KEY, accounts, keys)]).toEqual([name, null])
     })
   })
 })
@@ -275,10 +265,10 @@ describe("the fast track's hand-over", () => {
   })
 
   it('counts the warning as acknowledged only on the exact flag the warning hands over', () => {
-    expect(acknowledgedOf({ acknowledged: true, prevRoute: { pathname: '/' } })).toBe(true)
-    expect(acknowledgedOf({ acknowledged: 'true' })).toBe(false)
-    expect(acknowledgedOf({ prevRoute: { pathname: '/' } })).toBe(false)
-    expect(acknowledgedOf(null)).toBe(false)
-    expect(acknowledgedOf(undefined)).toBe(false)
+    expect(acknowledgedInState({ acknowledged: true, prevRoute: { pathname: '/' } })).toBe(true)
+    expect(acknowledgedInState({ acknowledged: 'true' })).toBe(false)
+    expect(acknowledgedInState({ prevRoute: { pathname: '/' } })).toBe(false)
+    expect(acknowledgedInState(null)).toBe(false)
+    expect(acknowledgedInState(undefined)).toBe(false)
   })
 })

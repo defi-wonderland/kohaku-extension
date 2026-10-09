@@ -49,29 +49,21 @@ import type {
   ExecutionInFlightRecord
 } from '@web/modules/social-recovery/shared/records'
 import {
+  apartFrom,
+  coversHashes,
+  DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS,
   initialWriteState,
   mayStillLand,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
-import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
-import { providerReadFailure } from '@web/modules/social-recovery/shared/client'
+import type { UnknownReading, WriteEvent } from '@web/modules/social-recovery/shared/writes'
+import { providerReadFailure, readWithin, within } from '@web/modules/social-recovery/shared/client'
 import type { Hex, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
-import { DROPPED_AFTER_MS } from '@web/modules/social-recovery/setup/arm'
-import {
-  DROPPED_RECHECK_MS,
-  FOLLOW_REREAD_MS,
-  READ_LIMIT_MS
-} from '@web/modules/social-recovery/recovery/submit'
+import { FOLLOW_REREAD_MS, READ_LIMIT_MS } from '@web/modules/social-recovery/recovery/submit'
 
 import { EXECUTE_BALANCE_POLL_MS } from './constants'
-import { readWithin, sameHash, within } from './read'
-import type {
-  ExecuteEvent,
-  ExecuteState,
-  ExecuteSteps,
-  ExecuteStore,
-  UnknownReading
-} from './types'
+import type { ExecuteEvent, ExecuteState, ExecuteSteps, ExecuteStore } from './types'
 
 /** The execution before anything ran. */
 export const initialExecuteState = (): ExecuteState => ({ write: initialWriteState('execution') })
@@ -585,13 +577,6 @@ const pollDeposit = async (store: ExecuteStore): Promise<void> => {
 }
 
 /**
- * Whether `reading` read a higher block number than `kept`, or came
- * `DROPPED_RECHECK_MS` after it. A lower number is a node that lags.
- */
-const apartFrom = (kept: UnknownReading, reading: UnknownReading): boolean =>
-  reading.block > kept.block || reading.at - kept.at >= DROPPED_RECHECK_MS
-
-/**
  * Whether the hashes the run waits on were dropped: the claim the run sends
  * or follows is older than `DROPPED_AFTER_MS` by the clock read before the
  * reads; the node knows none of them, read with the chain's block number; an
@@ -656,7 +641,7 @@ const readDropped = async (store: ExecuteStore, steps: ExecuteSteps): Promise<bo
     // wait counts from the first; one that asked for a hash the kept one did
     // not read starts the count again.
     const kept = store.state().unknownReading
-    if (!kept || !reading.hashes.every((one) => kept.hashes.some((seen) => sameHash(seen, one)))) {
+    if (!kept || !coversHashes(kept, reading)) {
       store.dispatch({ type: 'unknownRead', run, reading })
       return false
     }

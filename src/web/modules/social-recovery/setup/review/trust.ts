@@ -13,9 +13,9 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import { isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
+import { enrollmentOf, isEmptySlot } from '@web/modules/social-recovery/shared/records/slots'
 
-import { enrollmentOf, guardianAddressOf, isRequiredRow, kindOf } from './lead'
+import { guardianAddressOf, isRequiredRow, kindOf } from './lead'
 import { TRUST_READ_NAMES } from './constants'
 import type {
   AdminDeclaration,

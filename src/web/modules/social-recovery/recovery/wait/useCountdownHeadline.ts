@@ -14,7 +14,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { isVisible } from '@web/modules/social-recovery/shared/ceremony'
-import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
+import {
+  CHAIN_IDS,
+  WALLET_RECOVERY_CHAIN,
+  within
+} from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
   createWalletRecords,
@@ -25,7 +29,7 @@ import {
   POLL_LIMIT_MS
 } from '@web/modules/social-recovery/recovery/checklist/constants'
 
-import { isAttemptOf, landedAttemptOf, within } from './read'
+import { isAttemptOf, landedAttemptOf } from './read'
 import type { CountdownHeadline } from './types'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]

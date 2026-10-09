@@ -22,7 +22,7 @@ import type {
   RouterHistory,
   WatchedHistory
 } from '@web/modules/social-recovery/shared/chrome/__fixtures__/types'
-import { eachIt } from '@web/modules/social-recovery/shared/chrome/__tests__/harness'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 // React only runs effects and state updates inside act() when this flag is set.

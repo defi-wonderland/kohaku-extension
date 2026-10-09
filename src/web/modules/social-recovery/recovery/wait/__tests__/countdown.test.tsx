@@ -180,6 +180,46 @@ describe('the countdown', () => {
   })
 })
 
+describe('the entry record read', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it('shows a spinner and no countdown while the entry record read has not answered', async () => {
+    const world = await openWorld()
+    world.storage.get = () => new Promise<never>(() => {})
+    view = await mountWait(world.account)
+
+    expect(view.byTestId('wait-entry-loading')).not.toBeNull()
+    expect(view.byTestId('wait-entry-failed')).toBeNull()
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.paths()).toEqual([])
+  })
+
+  it('renders failed with a retry where the entry record read fails, and the countdown once the retry reads it', async () => {
+    const world = await openWorld()
+    const { get } = world.storage
+    world.storage.get = async () => {
+      throw new Error('storage unavailable')
+    }
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-entry-failed')).toContain(t('socialRecovery.wait.readFailedTitle'))
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.paths()).toEqual([])
+
+    world.storage.get = get
+    await view.press('wait-entry-retry')
+    expect(view.byTestId('wait-entry-failed')).toBeNull()
+    expect(view.byTestId('wait-time-left')).not.toBeNull()
+    expect(view.paths()).toEqual([])
+  })
+})
+
 describe("the poll on the tab's return", () => {
   useWaitClock()
   let view: Mounted | undefined

@@ -102,6 +102,46 @@ describe('where the wait sends the holder on open', () => {
   })
 })
 
+describe('Back from a failed poll', () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  const backs = async (world: World, to: string) => {
+    const { chain } = world.kit
+    chain.failing = true
+    view = await mountWait(world.account)
+    expect(view.textOf('wait-poll-back')).toBe(t('socialRecovery.actions.back'))
+    expect(view.paths()).toEqual([])
+
+    await view.press('wait-poll-back')
+    expect(view.paths()).toEqual([to])
+    expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
+    expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
+      'present'
+    )
+  }
+
+  it("goes to the logged-in route's entry and keeps the countdown and the entry record", async () => {
+    await backs(await openWorld(), SETTINGS_ENTRY)
+  })
+
+  it("goes to the fresh install's recover door and keeps the countdown and the entry record", async () => {
+    await backs(await openWorld({ route: 'fresh-install' }), RECOVER_DOOR)
+  })
+
+  it('offers no Back while the poll answers', async () => {
+    const world = await openWorld()
+    view = await mountWait(world.account)
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
+    expect(view.byTestId('wait-poll-back')).toBeNull()
+  })
+})
+
 describe('the cancelled terminals', () => {
   useWaitClock()
   let view: Mounted | undefined

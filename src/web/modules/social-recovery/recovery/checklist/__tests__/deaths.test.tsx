@@ -24,7 +24,6 @@ import {
   CHAIN_ID,
   configurationOf,
   DAY_SECONDS,
-  deferred,
   depsOf,
   each,
   fakeKit,
@@ -50,6 +49,7 @@ import {
   testRecords,
   withReplies
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { keccak256 }: typeof import('viem') = require('viem')

@@ -16,7 +16,6 @@ import {
   attemptStarted,
   CLAIM_NOW as NOW,
   flushTimers as flush,
-  held,
   landedReceipt,
   landedSession,
   leaveClaim,
@@ -31,6 +30,7 @@ import {
   submit,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const { FOLLOW_REREAD_MS, KEY_SEND_CLAIM_AGE_MS, isLanded, lookForClaim, startSubmission } = submit
 
@@ -54,7 +54,7 @@ describe('the claim of the submission', () => {
 
   it('lets a second tab follow the first tab’s hash and send nothing', async () => {
     const device = await openDevice()
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     device.kit.receipts.wait.mockImplementation(async () => {
       const landed = await receipt.promise
       device.kit.chain.attempt = attemptOf(device.gathering)
@@ -76,7 +76,7 @@ describe('the claim of the submission', () => {
       expect.objectContaining({ status: 'submitting', transactionHash: TX_HASH })
     )
 
-    receipt.release(landedReceipt())
+    receipt.resolve(landedReceipt())
     await flush()
     expect(isLanded(first.store.state())).toBe(true)
     expect(second.store.state().followed).toBe(first.store.state().requestId)
@@ -91,7 +91,7 @@ describe('the claim of the submission', () => {
   it('lets a second tab wait on a claim with no hash yet, then follow the hash once it is stored', async () => {
     const device = await openDevice()
     const first = track(pageOn(device))
-    const hash = held<`0x${string}`>()
+    const hash = deferred<`0x${string}`>()
     first.port.send.mockImplementation(() => hash.promise)
     startSubmission(first.store, first.steps).catch(() => undefined)
     await flush()
@@ -104,7 +104,7 @@ describe('the claim of the submission', () => {
     )
     expect(second.port.send).not.toHaveBeenCalled()
 
-    hash.release(TX_HASH)
+    hash.resolve(TX_HASH)
     await flush()
     await advanceTimers(FOLLOW_REREAD_MS)
     await flush()
@@ -116,7 +116,7 @@ describe('the claim of the submission', () => {
 
   it('lets a reloaded page follow its own earlier claim instead of sending again', async () => {
     const device = await openDevice()
-    const receipt = held<ReturnType<typeof landedReceipt>>()
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
     device.kit.receipts.wait.mockImplementation(() => receipt.promise)
     const before = track(pageOn(device))
     startSubmission(before.store, before.steps).catch(() => undefined)

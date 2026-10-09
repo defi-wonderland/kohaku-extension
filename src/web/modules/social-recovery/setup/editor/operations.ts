@@ -19,8 +19,13 @@ import type {
   ValidationResult
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { Enrollment, SlotKind } from '@web/modules/social-recovery/shared/records'
-import { isEmptySlot, SLOT_KINDS, slotKindOf } from '@web/modules/social-recovery/shared/records'
+import type { SlotKind } from '@web/modules/social-recovery/shared/records'
+import {
+  isEmptySlot,
+  pathHolds,
+  SLOT_KINDS,
+  slotKindOf
+} from '@web/modules/social-recovery/shared/records'
 
 import type { AddTarget, ClauseRole, EditResult, SlotPosition } from './types'
 
@@ -61,29 +66,6 @@ export const guardianAddressOf = (credential: Credential): Address | undefined =
     return undefined
   }
 }
-
-/**
- * Two credentials are one enrolled method when their method addresses and
- * their config bytes match. An empty slot is never the same as anything.
- */
-export const sameCredential = (a: Credential, b: Credential): boolean =>
-  !isEmptySlot(a) &&
-  !isEmptySlot(b) &&
-  isAddressEqual(a.method, b.method) &&
-  a.config.toLowerCase() === b.config.toLowerCase()
-
-/** Whether the path holds this enrolled credential anywhere, leaving out one position. */
-export const pathHolds = (
-  clauses: readonly Clause[],
-  credential: Credential,
-  except?: SlotPosition
-): boolean =>
-  clauses.some((clause, c) =>
-    clause.credentials.some(
-      (held, m) =>
-        !(except && except.clause === c && except.member === m) && sameCredential(held, credential)
-    )
-  )
 
 /**
  * The role a stored clause reads as: a threshold of one over one credential is
@@ -351,13 +333,6 @@ export const withClauses = (draft: SetupDraft, clauses: Clause[]): SetupDraft =>
   ...draft,
   clauses
 })
-
-/** The enrollment an enrolled credential came from, when the records hold it. */
-export const enrollmentOf = (
-  credential: Credential,
-  enrollments: readonly Enrollment[]
-): Enrollment | undefined =>
-  enrollments.find((enrollment) => sameCredential(enrollment.credential, credential))
 
 /** The search string the enroll screen reads: the kind and the slot it fills. */
 export const enrollSearchOf = (kind: SlotKind, at: SlotPosition): string =>

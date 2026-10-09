@@ -34,6 +34,7 @@ import {
   driveSend,
   gasTransactionOf,
   receiptOf,
+  sameHash,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 import {
@@ -42,7 +43,7 @@ import {
 } from '@web/modules/social-recovery/recovery/submit'
 
 import { COUNTDOWN_CONFLICT_RETRIES } from './constants'
-import { isAttemptOf, isCountdownOf, sameHash } from './read'
+import { isAttemptOf, isCountdownOf } from './read'
 import type {
   ExecuteSteps,
   ExecuteStepsInput,

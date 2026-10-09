@@ -1,4 +1,4 @@
-/** A read that did not answer: its title, its line and a retry. */
+/** A read that did not answer: its title, its line, any further lines and a retry. */
 import React from 'react'
 import { View } from 'react-native'
 
@@ -10,14 +10,22 @@ import flexbox from '@common/styles/utils/flexbox'
 
 import type { ReadFailedBlockProps } from './types'
 
-const ReadFailedBlock = ({ title, body, onRetry, testID }: ReadFailedBlockProps) => {
+const ReadFailedBlock = ({
+  title,
+  body,
+  onRetry,
+  testID,
+  retryTestID,
+  children
+}: ReadFailedBlockProps) => {
   const { t } = useTranslation()
 
   return (
     <Alert testID={testID} type="error" size="sm" style={spacings.mbSm} title={title} text={body}>
+      {children}
       <View style={[flexbox.directionRow, spacings.mtTy]}>
         <Button
-          testID={`${testID}-retry`}
+          testID={retryTestID ?? `${testID}-retry`}
           type="secondary"
           size="small"
           text={t('socialRecovery.writes.tryAgain')}

@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type {
   Address,
   Assessment,
@@ -34,6 +32,7 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
@@ -63,12 +62,6 @@ export type SubmitClient =
   | { status: 'failed' }
 
 /** The recovery entry record of the account being recovered, as the screen reads it. */
-export type SubmitEntryReading =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'absent' }
-  | { status: 'present'; entry: RecoveryEntryRecord }
-
 export type AlreadyRunningCause = typeof ALREADY_RUNNING_CAUSES[number]
 
 export type AlreadyRunningFinding = typeof ALREADY_RUNNING_FINDINGS[number]
@@ -170,17 +163,6 @@ export type ClaimLookup = 'reading' | 'none' | 'failed'
 
 /** A claim with no hash that the run follows, sent from another page or before a reload. */
 export type FollowedClaim = Omit<SubmissionInFlightRecord, 'transactionHash'>
-
-/**
- * One reading that the node knows none of the run's transactions: when it
- * was taken (ms since epoch), the block number read with it, and the hashes
- * it asked about.
- */
-export interface UnknownReading {
-  at: number
-  block: number
-  hashes: readonly Hex[]
-}
 
 export interface SubmitState {
   write: WriteMachineState
@@ -399,12 +381,6 @@ export interface SubmitViewProps {
   onRetryRemoved: () => void
   onRetrySending: () => void
   onBack: () => void
-}
-
-export interface SubmitChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
 }
 
 export interface SubmitBodyProps {

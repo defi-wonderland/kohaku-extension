@@ -1,12 +1,8 @@
 import { isAddress } from 'viem'
 
 import { DERIVATION_OPTIONS } from '@ambire-common/consts/derivation'
-import type { Account } from '@ambire-common/interfaces/account'
-import type { Key } from '@ambire-common/interfaces/keystore'
-import { isSmartAccount } from '@ambire-common/libs/account/account'
 import { KeyIterator } from '@ambire-common/libs/keyIterator/keyIterator'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-import { sameAddress } from '@web/modules/social-recovery/shared/client'
 
 import { SLOT_INDEX } from './constants'
 import type { TempSeed } from './types'
@@ -48,27 +44,4 @@ export const slotKeyOf = async (seed: TempSeed, index: number = SLOT_INDEX): Pro
     throw new Error(`The key iterator derived no key for slot index ${index}.`)
   }
   return key
-}
-
-/**
- * The slot's basic account, once the wallet lists it at the slot's key and
- * the keystore holds that key as an ordinary key of a recovery phrase; null
- * until then.
- */
-export const listedSlotOf = (
-  slotKey: Address,
-  accounts: readonly Account[],
-  keys: readonly Key[]
-): Address | null => {
-  const basic = accounts.find(
-    (account) => !isSmartAccount(account) && sameAddress(account.addr, slotKey)
-  )
-  const held = keys.some(
-    (key) =>
-      key.type === 'internal' &&
-      !key.dedicatedToOneSA &&
-      typeof key.meta.fromSeedId === 'string' &&
-      sameAddress(key.addr, slotKey)
-  )
-  return basic && held && isAddress(basic.addr) ? basic.addr : null
 }

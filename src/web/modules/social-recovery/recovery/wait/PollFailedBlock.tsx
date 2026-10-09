@@ -4,14 +4,11 @@
  * retry. The rows of facts stay hidden with it.
  */
 import React from 'react'
-import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
-import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 
 import type { PollFailedBlockProps } from './types'
 
@@ -21,29 +18,17 @@ const PollFailedBlock = ({ onRetry }: PollFailedBlockProps) => {
   const { t } = useTranslation()
 
   return (
-    <Alert
+    <ReadFailedBlock
       testID="wait-poll-failed"
-      type="error"
-      size="sm"
-      style={spacings.mbSm}
+      retryTestID="wait-poll-retry"
       title={t(`${POLL_FAILED}.title`)}
-      text={t(`${POLL_FAILED}.body`)}
+      body={t(`${POLL_FAILED}.body`)}
+      onRetry={onRetry}
     >
-      <Text fontSize={12} style={spacings.mtTy} testID="wait-poll-no-number">
+      <Alert.Text size="sm" type="error" style={spacings.mtTy} testID="wait-poll-no-number">
         {t(`${POLL_FAILED}.noLastNumber`)}
-      </Text>
-      <View style={spacings.mtTy}>
-        <Button
-          testID="wait-poll-retry"
-          type="secondary"
-          size="small"
-          text={t('socialRecovery.writes.tryAgain')}
-          onPress={onRetry}
-          hasBottomSpacing={false}
-          style={flexbox.alignSelfStart}
-        />
-      </View>
-    </Alert>
+      </Alert.Text>
+    </ReadFailedBlock>
   )
 }
 

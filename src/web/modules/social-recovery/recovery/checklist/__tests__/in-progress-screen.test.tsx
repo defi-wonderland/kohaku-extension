@@ -30,15 +30,7 @@ const mockStorage: { current: RecordStorage | null } = { current: null }
 const mockViewMounts: string[] = []
 
 // The chrome's account latch is the chrome's own, tested in its folder.
-jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
-  __esModule: true,
-  default: () => ({
-    account: undefined,
-    differs: false,
-    selected: undefined,
-    switchToSelected: () => {}
-  })
-}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount')
 
 jest.mock('@web/modules/social-recovery/shared/records/extensionStorage', () => ({
   get extensionRecordStorage() {
@@ -145,7 +137,7 @@ describe('the recovery in progress route', () => {
 
     const failure = view.byTestId('in-progress-failed')
     expect(failure?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
-    expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableTitle'))
+    expect(failure?.textContent).toContain(t('socialRecovery.wait.readFailedTitle'))
     expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableBody'))
     expect(view.byTestId('in-progress-route-loading')).toBeNull()
     expect(view.byTestId(`in-progress-${ACCOUNT.toLowerCase()}`)).toBeNull()

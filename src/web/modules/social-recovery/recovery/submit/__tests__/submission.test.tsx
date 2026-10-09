@@ -11,7 +11,6 @@ import {
   attemptActiveRefusal,
   attemptOf,
   hasButton,
-  held,
   landedSession,
   PAYLOAD_HASH,
   minedAndReverted,
@@ -28,6 +27,7 @@ import {
   t,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { keccak256 }: typeof import('viem') = require('viem')
@@ -121,12 +121,12 @@ describe('the submission', () => {
 
     it('does nothing on a second press while the first send waits for the wallet', async () => {
       const world = await openWorld()
-      const hash = held<`0x${string}`>()
+      const hash = deferred<`0x${string}`>()
       world.port.sendAccountBatch.mockImplementation(() => hash.promise)
       const mounted = await startOn(world)
       expect(mounted.byTestId('submit-action')).toBeNull()
       expect(mounted.text()).toContain(t('socialRecovery.writes.submittingRecovery'))
-      hash.release(TX_HASH)
+      hash.resolve(TX_HASH)
       await settle()
       expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     })
@@ -284,7 +284,7 @@ describe('the submission', () => {
 
     it('lands nothing until the attempt read after the receipt answers', async () => {
       const world = await openWorld()
-      const read = held<ReturnType<typeof recoveryStateOf>>()
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
       const mounted = await mountSubmit(world.account)
       await mounted.press('submit-verify-details')
       view = mounted
@@ -297,7 +297,7 @@ describe('the submission', () => {
       expect(mounted.byTestId('submit-confirming')).not.toBeNull()
       expect((await sessionOf(world.records, world.account))?.state).toBe('live')
       expect(mockWallet.navigate).not.toHaveBeenCalled()
-      read.release(recoveryStateOf(attemptOf(world.gathering)))
+      read.resolve(recoveryStateOf(attemptOf(world.gathering)))
       await settle()
       expect((await sessionOf(world.records, world.account))?.state).toBe('landed')
       expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {

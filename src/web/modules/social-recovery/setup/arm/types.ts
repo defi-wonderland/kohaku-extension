@@ -35,6 +35,7 @@ import type {
 } from '@web/modules/social-recovery/shared/records'
 import type {
   GasCheck,
+  UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
@@ -118,17 +119,6 @@ export type InFlightLookup = 'reading' | 'none' | 'failed'
  * request neither the queue nor the activity holds, read again for a while.
  */
 export type FollowReading = 'queued' | 'unread' | 'gone'
-
-/**
- * A check for a dropped save that read every transaction of the run unknown
- * to the node: when it read (ms since epoch), the chain's block number it read
- * with them, and the hashes it asked for.
- */
-export interface UnknownReading {
-  at: number
-  block: number
-  hashes: readonly Hex[]
-}
 
 /**
  * The save's state: the shared write's state, the prepared save of its run,

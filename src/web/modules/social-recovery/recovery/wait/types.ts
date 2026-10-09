@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type {
   Address,
   Attempt,
@@ -25,12 +23,12 @@ import type {
   ExecutionInFlightClaim,
   ExecutionInFlightRecord,
   RecoveryEntryRecord,
-  RecoveryRoute,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type {
   GasCheck,
   GasNetwork,
+  UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
@@ -55,12 +53,6 @@ export type WaitClient =
   | { status: 'failed' }
 
 /** The recovery entry record of the account being recovered, as the wait reads it. */
-export type WaitEntryReading =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'absent' }
-  | { status: 'present'; entry: RecoveryEntryRecord }
-
 /**
  * The attempt the submission landed, as the countdown's record names it: its
  * id, its setup number and the hash of the payload it carried. Only the
@@ -195,17 +187,6 @@ export interface CountdownTicks {
 // ---------------------------------------------------------------------------
 // The execution
 // ---------------------------------------------------------------------------
-
-/**
- * One reading that the node knows none of the run's transactions: when it
- * was taken (ms since epoch), the block number read with it, and the hashes
- * it asked about.
- */
-export interface UnknownReading {
-  at: number
-  block: number
-  hashes: readonly Hex[]
-}
 
 /**
  * The release of a claim that may not carry a hash the caller does not know:
@@ -389,14 +370,10 @@ export interface WaitViewProps {
   onRetryKeys: () => void
   onRetryClient: () => void
   onLeave: () => void
+  /** Leaves the wait for the route's entry and keeps every record. */
+  onBack: () => void
   onMoveFunds: () => void
   onOpenExplorer: (transactionHash: Hex) => void
-}
-
-export interface WaitChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
 }
 
 export interface WaitBodyProps {

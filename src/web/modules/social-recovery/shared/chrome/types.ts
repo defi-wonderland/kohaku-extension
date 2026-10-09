@@ -3,13 +3,73 @@ import type { StyleProp, View, ViewStyle } from 'react-native'
 import type { Address } from 'viem'
 
 import type { InputProps } from '@common/components/Input'
+import type {
+  RecoveryEntryRecord,
+  RecoveryRoute
+} from '@web/modules/social-recovery/shared/records'
 
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
   children: ReactNode
   /** A last breadcrumb step, shown after the settings breadcrumb. */
   breadcrumbTail?: string
+  /**
+   * Leaves the setup tab's account alone: no latch of the wallet's selected
+   * account and no notice when the selection changes.
+   */
+  skipAccountLatch?: boolean
   testID?: string
+}
+
+/** The stage a recovery screen shows on its counter, and the counter's test id. */
+export interface RecoveryStage {
+  step: number
+  testID: string
+}
+
+export interface RecoveryChromeProps {
+  /** The recovery's route; a screen that does not know it passes null. */
+  route: RecoveryRoute | null
+  /** The string key of the plain header's words on the fresh install. */
+  titleKey: string
+  /** The counter on the settings chrome; a screen with none passes nothing. */
+  stage?: RecoveryStage
+  children: ReactNode
+  testID?: string
+}
+
+/** A recovery screen's read of its entry record; a present one keeps the account it was read for. */
+export type RecoveryEntryReading =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'absent' }
+  | { status: 'present'; account: Address; entry: RecoveryEntryRecord }
+
+export interface RecoveryEntryRead {
+  reading: RecoveryEntryReading
+  /** Reads the entry record again. */
+  retry: () => void
+}
+
+export interface EntryReadFallbackProps {
+  /** The screen's test id prefix: the chrome is `<prefix>-screen`, the states `<prefix>-entry-*`. */
+  testPrefix: string
+  /** The string keys of the failed read's title and line. */
+  titleKey: string
+  bodyKey: string
+  failed: boolean
+  onRetry: () => void
+}
+
+export interface ReadFailedBlockProps {
+  title: string
+  body?: string
+  onRetry: () => void
+  testID: string
+  /** The retry's test id, where it is not the block's own with `-retry` after it. */
+  retryTestID?: string
+  /** Lines under the body, above the retry. */
+  children?: ReactNode
 }
 
 export interface PageTitleProps {

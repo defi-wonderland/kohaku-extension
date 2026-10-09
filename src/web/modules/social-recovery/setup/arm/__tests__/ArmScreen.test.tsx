@@ -38,6 +38,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type { ArmKitClient } from '@web/modules/social-recovery/setup/arm'
 import type { Chain } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -185,13 +186,15 @@ const {
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const {
   createArmStore,
-  DROPPED_AFTER_MS,
   FOLLOW_REREAD_MS,
   GONE_GRACE_MS,
   RECEIPT_WAIT_MS,
   saveStepsOf,
   startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
+const {
+  DROPPED_AFTER_MS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const eventBus: typeof import('@web/extension-services/event/eventBus').default =
   require('@web/extension-services/event/eventBus').default
 const ArmScreen: typeof import('@web/modules/social-recovery/setup/arm/ArmScreen').default =
@@ -384,15 +387,6 @@ const pressText = async (text: string) => {
     node.click()
   })
   await settle()
-}
-
-/** A promise the test settles by hand, for an edge that must hold a run at one step. */
-const held = <T,>() => {
-  let release: (value: T) => void = () => {}
-  const promise = new Promise<T>((resolve) => {
-    release = resolve
-  })
-  return { promise, release }
 }
 
 const writeRecords = async (draft: SetupDraft, passwordSet = true, owner: string = address) => {
@@ -754,27 +748,27 @@ describe('a save in progress across remounts', () => {
       'while the gas check runs',
       'arm-write-checkingGas',
       () => {
-        const gate = held<bigint>()
+        const gate = deferred<bigint>()
         reads.nativeBalance.mockImplementationOnce(() => gate.promise)
-        return () => gate.release(10n ** 18n)
+        return () => gate.resolve(10n ** 18n)
       }
     ],
     [
       'while the batch is submitting',
       'arm-write-submitting',
       () => {
-        const gate = held<`0x${string}`>()
+        const gate = deferred<`0x${string}`>()
         port.sendAccountBatch.mockImplementationOnce(() => gate.promise)
-        return () => gate.release(harness.TX_HASH)
+        return () => gate.resolve(harness.TX_HASH)
       }
     ],
     [
       'while the check after the landing runs',
       'arm-confirming',
       () => {
-        const gate = held<SetupConfirmation>()
+        const gate = deferred<SetupConfirmation>()
         confirmSetup.mockImplementationOnce(() => gate.promise)
-        return () => gate.release(confirmation(true, true))
+        return () => gate.resolve(confirmation(true, true))
       }
     ]
   ]
@@ -814,7 +808,7 @@ describe('a save in progress across remounts', () => {
     await writeRecords(draftOf('encrypted'))
     await writeRecords(draftOf('clear'), true, other.addr)
     wireClient('ready')
-    const gate = held<`0x${string}`>()
+    const gate = deferred<`0x${string}`>()
     port.sendAccountBatch.mockImplementationOnce(() => gate.promise)
     await openByPush()
     expect(byTestId('arm-write-submitting')).not.toBeNull()
@@ -831,7 +825,7 @@ describe('a save in progress across remounts', () => {
     await settle()
     expect(byTestId('arm-write-submitting')).not.toBeNull()
     await act(async () => {
-      gate.release(harness.TX_HASH)
+      gate.resolve(harness.TX_HASH)
     })
     await settle()
     expect(byTestId('arm-saved')).not.toBeNull()
@@ -1047,7 +1041,7 @@ describe('a receipt wait that failed after the batch was sent', () => {
     try {
       await writeRecords(draftOf('encrypted'))
       wireClient('ready')
-      const late = held<ReturnType<typeof landedReceipt>>()
+      const late = deferred<ReturnType<typeof landedReceipt>>()
       receipts.wait.mockRejectedValueOnce(nodeError()).mockImplementationOnce(() => late.promise)
       act(() => root.unmount())
       root = createRoot(container)
@@ -1071,7 +1065,7 @@ describe('a receipt wait that failed after the batch was sent', () => {
       expect(mockEntries.size).toBeGreaterThan(0)
 
       await act(async () => {
-        late.release(landedReceipt(harness.TX_HASH))
+        late.resolve(landedReceipt(harness.TX_HASH))
       })
       await tick(100)
 
@@ -1091,7 +1085,7 @@ describe('a first receipt wait that does not settle', () => {
     const tick = (ms: number) => act(() => harness.advanceTimers(ms))
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    const first = held<ReturnType<typeof landedReceipt>>()
+    const first = deferred<ReturnType<typeof landedReceipt>>()
     receipts.wait.mockImplementationOnce(() => first.promise)
     act(() => root.unmount())
     root = createRoot(container)
@@ -1123,7 +1117,7 @@ describe('a first receipt wait that does not settle', () => {
       expect(mockEntries.size).toBeGreaterThan(0)
 
       await act(async () => {
-        first.release(landedReceipt(harness.TX_HASH))
+        first.resolve(landedReceipt(harness.TX_HASH))
       })
       await tick(100)
 
@@ -1162,7 +1156,7 @@ describe('a first receipt wait that does not settle', () => {
       expect(receipts.wait).toHaveBeenCalledTimes(1)
 
       await act(async () => {
-        first.release(landedReceipt(harness.TX_HASH))
+        first.resolve(landedReceipt(harness.TX_HASH))
       })
       await tick(100)
 
@@ -1554,7 +1548,7 @@ describe("another page's save that lands during this page's gas check", () => {
     wireClient('ready')
     await openByAddress()
     expect(byTestId('arm-save')).not.toBeNull()
-    const gas = held<bigint>()
+    const gas = deferred<bigint>()
     reads.nativeBalance.mockImplementationOnce(() => gas.promise)
     await press('arm-save')
     expect(byTestId('arm-write-checkingGas')).not.toBeNull()
@@ -1584,7 +1578,7 @@ describe("another page's save that lands during this page's gas check", () => {
     const confirms = confirmSetup.mock.calls.length
 
     await act(async () => {
-      gas.release(10n ** 18n)
+      gas.resolve(10n ** 18n)
     })
     await settle()
 
@@ -1603,7 +1597,7 @@ describe("another page's save that lands during this page's gas check", () => {
     setupState.mockRejectedValueOnce(new Error('the node did not answer the setup read'))
 
     await act(async () => {
-      gas.release(10n ** 18n)
+      gas.resolve(10n ** 18n)
     })
     await settle()
 
@@ -1631,7 +1625,7 @@ describe('a save another page of this device sent', () => {
       wireClient('ready')
       const { firstPort, record } = await anotherPageLeaves(true, settle)
       const prepares = prepareCommitSetup.mock.calls.length
-      const receipt = held<ReturnType<typeof landedReceipt>>()
+      const receipt = deferred<ReturnType<typeof landedReceipt>>()
       receipts.wait.mockImplementationOnce(() => receipt.promise)
 
       await open()
@@ -1642,7 +1636,7 @@ describe('a save another page of this device sent', () => {
       expect(receipts.wait).toHaveBeenCalledWith(harness.TX_HASH, record.startBlock)
 
       await act(async () => {
-        receipt.release(landedReceipt(harness.TX_HASH))
+        receipt.resolve(landedReceipt(harness.TX_HASH))
       })
       await settle()
 
@@ -1992,7 +1986,7 @@ describe('a save another page of this device sent', () => {
         expect(byTestId('arm-save')).toBeNull()
 
         // The client reads ready: the screen's first read of the stored save waits.
-        const read = held<void>()
+        const read = deferred<void>()
         mockReadHold.current = read.promise
         mockClient.current = ready
         await select(address)
@@ -2002,7 +1996,7 @@ describe('a save another page of this device sent', () => {
         setQueue([record.requestId])
         await change()
         await act(async () => {
-          read.release()
+          read.resolve()
         })
         await tick(100)
 
@@ -2027,7 +2021,7 @@ describe('a save another page of this device sent', () => {
         await writeRecords(draftOf('clear'), true, other.addr)
         wireClient('ready')
         await arrive()
-        const gas = held<bigint>()
+        const gas = deferred<bigint>()
         reads.nativeBalance.mockImplementationOnce(() => gas.promise)
         await act(async () => {
           byTestId('arm-save')?.click()
@@ -2039,7 +2033,7 @@ describe('a save another page of this device sent', () => {
         const { firstPort, record } = await anotherPageLeaves(false, () => tick(100))
         const readsAway = activityReads()
         await act(async () => {
-          gas.release(10n ** 18n)
+          gas.resolve(10n ** 18n)
         })
         await tick(10 * GONE_GRACE_MS)
 

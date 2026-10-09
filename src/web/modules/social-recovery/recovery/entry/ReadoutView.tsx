@@ -21,9 +21,9 @@ import {
   SectionCard,
   SectionLabel
 } from '@web/modules/social-recovery/shared/chrome'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import { renderFullAddress, renderValueLabel } from '@web/modules/social-recovery/shared/display'
 
-import ReadFailedBlock from './ReadFailedBlock'
 import { previewPathOf, readablePathOf, REQUEST_HOURS } from './readout'
 import ReadoutPasswordAsk from './ReadoutPasswordAsk'
 import ReadoutPathBlock from './ReadoutPathBlock'

@@ -9,23 +9,21 @@
  * A submission that landed goes on to the wait.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, View } from 'react-native'
 import { useLocation } from 'react-router-dom'
 
-import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
-import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import useReverseLookup from '@common/hooks/useReverseLookup/useReverseLookup'
-import spacings from '@common/styles/spacings'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
-import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import EntryReadFallback from '@web/modules/social-recovery/shared/chrome/EntryReadFallback'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
+import useRecoveryEntryRead from '@web/modules/social-recovery/shared/chrome/useRecoveryEntryRead'
 import {
   CHAIN_IDS,
   createSendPort,
+  seedBasicAccountOf,
   sendRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
@@ -46,18 +44,12 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist'
 import type { RemovedKeyRead } from '@web/modules/social-recovery/recovery/checklist'
 
+import { SUBMIT_STAGE } from './constants'
 import { isLanded } from './run'
-import { fastTrackSendingKeyOf, loggedInPlanOf } from './sendingKey'
+import { loggedInPlanOf } from './sendingKey'
 import { submitStepsOf } from './steps'
-import SubmitChrome from './SubmitChrome'
 import SubmitView from './SubmitView'
-import type {
-  SendingReading,
-  SubmitBodyProps,
-  SubmitClient,
-  SubmitEntryReading,
-  SubmitSteps
-} from './types'
+import type { SendingReading, SubmitBodyProps, SubmitClient, SubmitSteps } from './types'
 import useSubmitLoad from './useSubmitLoad'
 import useSubmitRun from './useSubmitRun'
 import useVerifyAgain from './useVerifyAgain'
@@ -158,7 +150,7 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
     if (!accounts || !keys) {
       return { status: 'loading' }
     }
-    const key = fastTrackSendingKeyOf(entry.receivingAccount, accounts, keys)
+    const key = seedBasicAccountOf(entry.receivingAccount, accounts, keys)
     return key
       ? { status: 'ready', plan: { kind: 'key', key: { addr: key, type: 'internal' } }, network }
       : { status: 'unavailable' }
@@ -273,79 +265,38 @@ const SubmitBody = ({ records, account, entry }: SubmitBodyProps) => {
 }
 
 const SubmitScreen = () => {
-  const { t } = useTranslation()
   const { navigate } = useNavigation()
   const location = useLocation()
   const search = useMemo(() => parseChecklistSearch(location.search), [location.search])
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const account = search?.account
-  const [reading, setReading] = useState<SubmitEntryReading>({ status: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    if (!account) {
-      navigate(accountStepPath(), { replace: true })
-      return undefined
-    }
-    let live = true
-    setReading({ status: 'loading' })
-    records
-      .recoveryEntry(CHAIN_ID, account)
-      .read()
-      .then((read) => {
-        if (!live) {
-          return
-        }
-        if (read.status === 'absent') {
-          setReading({ status: 'absent' })
-          navigate(accountStepPath(), { replace: true })
-          return
-        }
-        setReading({ status: 'present', entry: read.value })
-      })
-      .catch(() => {
-        if (live) {
-          setReading({ status: 'failed' })
-        }
-      })
-    return () => {
-      live = false
-    }
-  }, [records, account, attempt, navigate])
+  const toAccountStep = useCallback(
+    () => navigate(accountStepPath(), { replace: true }),
+    [navigate]
+  )
+  const { reading, retry } = useRecoveryEntryRead(records, CHAIN_ID, account, toAccountStep)
 
   if (reading.status === 'present' && account) {
     return (
-      <SubmitChrome route={reading.entry.route} testID="submit-screen">
+      <RecoveryChrome
+        route={reading.entry.route}
+        titleKey="socialRecovery.routes.recovery"
+        stage={{ step: SUBMIT_STAGE, testID: 'submit-stage' }}
+        testID="submit-screen"
+      >
         <SubmitBody key={account} records={records} account={account} entry={reading.entry} />
-      </SubmitChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <SetupChrome testID="submit-screen">
-      {reading.status === 'failed' ? (
-        <Alert
-          testID="submit-entry-failed"
-          type="error"
-          size="sm"
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
-        >
-          <View style={spacings.mtTy}>
-            <Button
-              testID="submit-entry-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={() => setAttempt((n) => n + 1)}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
-      ) : (
-        <ActivityIndicator testID="submit-entry-loading" />
-      )}
-    </SetupChrome>
+    <EntryReadFallback
+      testPrefix="submit"
+      titleKey="socialRecovery.wait.readFailedTitle"
+      bodyKey="socialRecovery.client.unavailableBody"
+      failed={reading.status === 'failed'}
+      onRetry={retry}
+    />
   )
 }
 

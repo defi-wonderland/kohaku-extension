@@ -88,15 +88,7 @@ export const mockWallet: MockWallet = {
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
-jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
-  __esModule: true,
-  default: () => ({
-    account: undefined,
-    differs: false,
-    selected: undefined,
-    switchToSelected: () => {}
-  })
-}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount')
 
 jest.mock('@web/modules/social-recovery/shared/records/extensionStorage', () => ({
   get extensionRecordStorage() {
@@ -248,17 +240,6 @@ let accountSeed = 0x20000
 export const freshAccount = (): Address => {
   accountSeed += 1
   return getAddress(`0x${accountSeed.toString(16).padStart(40, '0')}`)
-}
-
-/** A promise the test settles by hand, for an edge that must hold a run at one step. */
-export const held = <T,>() => {
-  let release: (value: T) => void = () => {}
-  let fail: (error: unknown) => void = () => {}
-  const promise = new Promise<T>((resolve, reject) => {
-    release = resolve
-    fail = reject
-  })
-  return { promise, release, fail }
 }
 
 // ---------------------------------------------------------------------------

@@ -9,13 +9,12 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import useNavigation from '@common/hooks/useNavigation'
-
-import { acknowledgedOf } from './navigation'
+import { acknowledgedInState } from '@web/modules/social-recovery/recovery/entry/search'
 
 const useAcknowledgment = (): boolean => {
   const location = useLocation()
   const { navigate } = useNavigation()
-  const fromState = acknowledgedOf(location.state)
+  const fromState = acknowledgedInState(location.state)
   const [kept, setKept] = useState(fromState)
 
   useEffect(() => {

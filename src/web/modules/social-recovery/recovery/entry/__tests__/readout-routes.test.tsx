@@ -12,7 +12,6 @@ import {
   CARD_PASSWORD,
   CHAIN_ID,
   commitLostSetup,
-  deferred,
   LOST,
   LOST_SETUP,
   mountReadout,
@@ -33,6 +32,7 @@ import {
 import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
 import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/types'
 import { wipeRecoveryPassword } from '@web/modules/social-recovery/shared/records'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const ACCOUNT_STEP = '/social-recovery/recovery/account'
 const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST}`

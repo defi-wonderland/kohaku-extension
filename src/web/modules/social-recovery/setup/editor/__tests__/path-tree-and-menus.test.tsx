@@ -18,6 +18,7 @@ import type {
 import type { Enrollment, SlotKind } from '@web/modules/social-recovery/shared/records'
 
 import type { Root } from '@web/modules/social-recovery/setup/editor/__tests__/harness'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
@@ -51,7 +52,6 @@ const {
   BOB,
   BOOK,
   CAROL,
-  eachIt,
   ENROLLED,
   enrolled,
   makeRecords,

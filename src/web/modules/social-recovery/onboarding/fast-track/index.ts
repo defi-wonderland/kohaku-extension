@@ -12,17 +12,15 @@ export {
   SLOT_INDEX,
   SUBMISSION_GAS_STAND_IN
 } from './constants'
-export { listedSlotOf, slotKeyOf, tempSeedOf } from './derivation'
+export { slotKeyOf, tempSeedOf } from './derivation'
 export { submissionCheckOf } from './gas'
 export {
   accountParamOf,
   accountStepPathOf,
-  acknowledgedOf,
   checklistPathOf,
   readoutPathOf,
   selectedBasicAccountOf
 } from './navigation'
-export { fastTrackSendingKeyOf } from './sendingKey'
 export type {
   AddProgress,
   EntryReading,

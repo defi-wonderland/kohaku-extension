@@ -24,7 +24,6 @@ import {
   claimOf,
   DEVICE_PLAN,
   flushTimers as flush,
-  held,
   kitError,
   landedReceipt,
   landedSession,
@@ -42,11 +41,10 @@ import {
   submit,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const {
   BALANCE_POLL_MS,
-  DROPPED_AFTER_MS,
-  DROPPED_RECHECK_MS,
   FOLLOW_REREAD_MS,
   KEY_SEND_CLAIM_AGE_MS,
   SUBMISSION_CLAIM_AGE_MS,
@@ -55,11 +53,15 @@ const {
   lookForClaim,
   startSubmission
 } = submit
+const {
+  DROPPED_AFTER_MS,
+  DROPPED_RECHECK_MS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 
 const OTHER_HASH: Hex = '0x1111111111111111111111111111111111111111111111111111111111111111'
 
 /** A receipt wait that never answers, so a run keeps waiting on its hash. */
-const never = () => held<never>().promise
+const never = () => deferred<never>().promise
 
 /** The device's session accessor over a fresh read, for a write another page makes. */
 const otherPage = async (device: Device) => {
@@ -100,7 +102,7 @@ describe('a submission on its way to the chain', () => {
         await accessor.setSubmissionHash(LEFT_CLAIM, TX_HASH, revision)
         return []
       })
-      const receipt = held<ReturnType<typeof landedReceipt>>()
+      const receipt = deferred<ReturnType<typeof landedReceipt>>()
       device.kit.receipts.wait.mockImplementation(() => receipt.promise)
       const page = track(pageOn(device))
       lookForClaim(page.store, page.steps).catch(() => undefined)
@@ -115,7 +117,7 @@ describe('a submission on its way to the chain', () => {
       expect(device.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
 
       device.kit.chain.attempt = attemptOf(device.gathering)
-      receipt.release(landedReceipt())
+      receipt.resolve(landedReceipt())
       await flush()
       expect(isLanded(page.store.state())).toBe(true)
       expect(page.port.send).not.toHaveBeenCalled()
@@ -145,7 +147,7 @@ describe('a submission on its way to the chain', () => {
     it('writes the claim back with its hash, so every page follows it', async () => {
       const device = await openDevice()
       const page = track(pageOn(device))
-      const hash = held<Hex>()
+      const hash = deferred<Hex>()
       page.port.send.mockImplementation(() => hash.promise)
       device.kit.receipts.wait.mockImplementation(never)
       startSubmission(page.store, page.steps).catch(() => undefined)
@@ -157,7 +159,7 @@ describe('a submission on its way to the chain', () => {
       await accessor.releaseSubmission(requestId as string, revision)
       expect(await claimOf(device)).toBeNull()
 
-      hash.release(TX_HASH)
+      hash.resolve(TX_HASH)
       await flush()
       expect(await claimOf(device)).toEqual(
         expect.objectContaining({ requestId, transactionHash: TX_HASH, startBlock: START_BLOCK })
@@ -177,7 +179,7 @@ describe('a submission on its way to the chain', () => {
     it('leaves another page’s claim in its place untouched', async () => {
       const device = await openDevice()
       const page = track(pageOn(device))
-      const hash = held<Hex>()
+      const hash = deferred<Hex>()
       page.port.send.mockImplementation(() => hash.promise)
       device.kit.receipts.wait.mockImplementation(never)
       startSubmission(page.store, page.steps).catch(() => undefined)
@@ -186,7 +188,7 @@ describe('a submission on its way to the chain', () => {
       await accessor.releaseSubmission(page.store.state().requestId as string, revision)
       await leaveClaim(device, NOW)
 
-      hash.release(TX_HASH)
+      hash.resolve(TX_HASH)
       await flush()
       const claim = await claimOf(device)
       expect(claim?.requestId).toBe(LEFT_CLAIM)
@@ -614,7 +616,7 @@ describe('a submission on its way to the chain', () => {
       const atWait: unknown[] = []
       device.kit.receipts.wait.mockImplementation(async () => {
         atWait.push(await claimOf(device))
-        return held<never>().promise
+        return deferred<never>().promise
       })
       startSubmission(page.store, page.steps).catch(() => undefined)
       await flush()

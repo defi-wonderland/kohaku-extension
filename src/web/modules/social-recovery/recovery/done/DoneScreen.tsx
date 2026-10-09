@@ -46,13 +46,15 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import type { Address, Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import {
   addressBookOf,
   CHAIN_IDS,
   createProviderAdapter,
   extensionProviderFor,
   networkOf,
-  WALLET_RECOVERY_CHAIN
+  WALLET_RECOVERY_CHAIN,
+  within
 } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
@@ -69,10 +71,9 @@ import {
   waitPathOf
 } from '@web/modules/social-recovery/recovery/checklist'
 import { POLL_LIMIT_MS } from '@web/modules/social-recovery/recovery/checklist/constants'
-import { landedAttemptOf, within } from '@web/modules/social-recovery/recovery/wait'
+import { landedAttemptOf } from '@web/modules/social-recovery/recovery/wait'
 
 import { listsWithKey } from './account'
-import DoneChrome from './DoneChrome'
 import DoneView from './DoneView'
 import { consumeMatchOf, sameLanded } from './read'
 import { summaryOf } from './summary'
@@ -410,14 +411,18 @@ const DoneScreen = () => {
 
   if (reading.status === 'present' && account) {
     return (
-      <DoneChrome route={reading.entry?.route ?? null} testID="done-screen">
+      <RecoveryChrome
+        route={reading.entry?.route ?? null}
+        titleKey="socialRecovery.routes.recovery"
+        testID="done-screen"
+      >
         <DoneBody key={account} records={records} account={account} entry={reading.entry} />
-      </DoneChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <DoneChrome route={null} testID="done-screen">
+    <RecoveryChrome route={null} titleKey="socialRecovery.routes.recovery" testID="done-screen">
       {reading.status === 'failed' ? (
         <Alert
           testID="done-entry-failed"
@@ -440,7 +445,7 @@ const DoneScreen = () => {
       ) : (
         <ActivityIndicator testID="done-entry-loading" />
       )}
-    </DoneChrome>
+    </RecoveryChrome>
   )
 }
 

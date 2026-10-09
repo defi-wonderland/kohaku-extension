@@ -467,22 +467,6 @@ export const gasReadErrorFor = (write: WriteKind): WriteMachineState => {
   })
 }
 
-/** A promise a test settles by hand. */
-export interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (error: unknown) => void
-}
-
-export const deferred = <T>(): Deferred<T> => {
-  const settle = {} as Deferred<T>
-  settle.promise = new Promise<T>((resolve, reject) => {
-    settle.resolve = resolve
-    settle.reject = reject
-  })
-  return settle
-}
-
 /** The real machine behind a dispatch: every event it took, and the state it holds now. */
 export interface DrivenMachine {
   dispatch: (event: WriteEvent) => void

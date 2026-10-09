@@ -69,6 +69,8 @@ const OtherAccountNotice: typeof import('@web/modules/social-recovery/shared/chr
   require('@web/modules/social-recovery/shared/chrome/OtherAccountNotice').default
 const SetupChrome: typeof import('@web/modules/social-recovery/shared/chrome/SetupChrome').default =
   require('@web/modules/social-recovery/shared/chrome/SetupChrome').default
+const RecoveryChrome: typeof import('@web/modules/social-recovery/shared/chrome/RecoveryChrome').default =
+  require('@web/modules/social-recovery/shared/chrome/RecoveryChrome').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 // Lowercase on purpose: the notice shows the address in its checksummed form.
@@ -205,5 +207,48 @@ describe('the setup chrome while the wallet selects another account', () => {
     // The tab now keeps the account it switched to.
     select(ACCOUNT)
     expect(byTestId(NOTICE)?.textContent).toContain(bodyFor(OTHER_ACCOUNT))
+  })
+})
+
+describe('the setup chrome and the tab’s account latch', () => {
+  const LATCH_KEY = 'socialRecovery.setupAccount'
+
+  const openChrome = (skipAccountLatch?: boolean) => {
+    mockSelected.state = { account: { addr: ACCOUNT } }
+    mount(
+      <SetupChrome testID="chrome" skipAccountLatch={skipAccountLatch}>
+        <Text testID="view">The view</Text>
+      </SetupChrome>
+    )
+  }
+
+  it('latches the selected account by default and shows the notice when the selection changes', () => {
+    openChrome()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBe(ACCOUNT)
+    select(OTHER_ACCOUNT)
+    expect(byTestId(NOTICE)).not.toBeNull()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBe(ACCOUNT)
+  })
+
+  it('latches nothing and shows no notice when told to skip the latch', () => {
+    openChrome(true)
+    expect(sessionStorage.getItem(LATCH_KEY)).toBeNull()
+    select(OTHER_ACCOUNT)
+    expect(byTestId(NOTICE)).toBeNull()
+    expect(byTestId('view')).not.toBeNull()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBeNull()
+  })
+
+  it('latches nothing under a recovery screen on the logged-in route', () => {
+    mockSelected.state = { account: { addr: ACCOUNT } }
+    mount(
+      <RecoveryChrome route="logged-in" titleKey="socialRecovery.routes.recovery" testID="chrome">
+        <Text testID="view">The view</Text>
+      </RecoveryChrome>
+    )
+    expect(sessionStorage.getItem(LATCH_KEY)).toBeNull()
+    select(OTHER_ACCOUNT)
+    expect(byTestId(NOTICE)).toBeNull()
+    expect(byTestId('view')).not.toBeNull()
   })
 })

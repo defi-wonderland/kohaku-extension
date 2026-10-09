@@ -8,13 +8,13 @@ import i18n from '@common/config/localization'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderPasswordName } from '@web/modules/social-recovery/shared/display'
 import {
-  eachIt,
   pdfDrawnValues,
   pdfFileParts,
   pdfShownStrings,
   pdfTextBlocks,
   winAnsiHighEntries
 } from '@web/modules/social-recovery/setup/card/__tests__/harness'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 import { cardFileOf } from '@web/modules/social-recovery/setup/card/file'
 import type { RecoveryCard } from '@web/modules/social-recovery/setup/card/types'
 

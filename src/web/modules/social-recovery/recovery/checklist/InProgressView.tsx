@@ -120,7 +120,7 @@ const InProgressView = ({
           testID="in-progress-failed"
           type="error"
           size="sm"
-          title={t('socialRecovery.client.unavailableTitle')}
+          title={t('socialRecovery.wait.readFailedTitle')}
           text={t('socialRecovery.client.unavailableBody')}
         >
           <View style={spacings.mtTy}>

@@ -1,12 +1,12 @@
 /**
  * The wait over given props. Until a poll answers, and whenever one fails,
- * it renders the loading or the failed read with retry and no number. An
- * answered poll renders its phase: the countdown with the notes that the page
- * can close, that the account's own key can still cancel and who finishes it;
- * execution due with execute now; the recovery that can no longer execute
- * with its cause alone, no countdown beside it; the cancelled terminal by its
- * canceller. A consumed attempt
- * renders nothing of its own: the screen goes on to the done screen.
+ * it renders the loading or the failed read with retry and no number; a
+ * failed poll also offers Back to the route's entry. An answered poll renders
+ * its phase: the countdown with the notes that the page can close, that the
+ * account's own key can still cancel and who finishes it; execution due with
+ * execute now; the recovery that can no longer execute with its cause alone,
+ * no countdown beside it; the cancelled terminal by its canceller. A consumed
+ * attempt renders nothing of its own: the screen goes on to the done screen.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -47,6 +47,7 @@ const WaitView = ({
   onRetryKeys,
   onRetryClient,
   onLeave,
+  onBack,
   onMoveFunds,
   onOpenExplorer
 }: WaitViewProps) => {
@@ -96,6 +97,14 @@ const WaitView = ({
       <View testID="wait">
         <PageTitle title={t(`${WAIT}.title`)} titleTestID="wait-title" />
         <PollFailedBlock onRetry={onRetryPoll} />
+        <Button
+          testID="wait-poll-back"
+          type="outline"
+          text={t('socialRecovery.actions.back')}
+          onPress={onBack}
+          hasBottomSpacing={false}
+          style={flexbox.alignSelfStart}
+        />
       </View>
     )
   }

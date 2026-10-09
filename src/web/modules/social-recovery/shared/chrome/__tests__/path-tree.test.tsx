@@ -15,7 +15,7 @@ import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import themeConfig, { THEME_TYPES } from '@common/styles/themeConfig'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import { PathTree, PathTreeNode } from '@web/modules/social-recovery/shared/chrome'
-import { eachIt } from '@web/modules/social-recovery/shared/chrome/__tests__/harness'
+import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 
 // React only runs effects and state updates inside act() when this flag is set.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

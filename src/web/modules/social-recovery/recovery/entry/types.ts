@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
@@ -158,14 +156,6 @@ export type ConfirmedStep =
 // The views
 // ---------------------------------------------------------------------------
 
-export interface EntryChromeProps {
-  route: RecoveryRoute
-  /** The stage the counter shows on the logged-in route. */
-  stage: number
-  children: ReactNode
-  testID?: string
-}
-
 export interface OwnerStageViewProps {
   choices: readonly ReceivingChoice[]
   /** False while the wallet has not pushed its accounts and keys yet. */
@@ -247,13 +237,6 @@ export interface ConfirmedReadsViewProps {
 export interface CondensedGateProps {
   /** Runs once the holder ticked the acknowledgment and pressed continue. */
   onPass: () => void
-}
-
-export interface ReadFailedBlockProps {
-  title: string
-  body: string
-  onRetry: () => void
-  testID: string
 }
 
 // ---------------------------------------------------------------------------

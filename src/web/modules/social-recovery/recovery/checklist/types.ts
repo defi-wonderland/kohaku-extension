@@ -155,13 +155,6 @@ export interface ChecklistDeps {
   storedEntries: () => Promise<Record<string, unknown>>
 }
 
-/** The recovery entry record of the account being recovered, as the screen reads it. */
-export type EntryReading =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'absent' }
-  | { status: 'present'; account: Address; entry: RecoveryEntryRecord }
-
 export interface ChecklistBodyProps {
   records: WalletRecords
   account: Address
@@ -692,12 +685,6 @@ export interface PollAlertProps {
   /** Whether rows sit under the alert, so it says they may be out of date. */
   withRows: boolean
   onRetry: () => void
-}
-
-export interface ChecklistChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
 }
 
 // ---------------------------------------------------------------------------

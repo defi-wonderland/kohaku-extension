@@ -6,19 +6,14 @@
  * approval matches by its signer and its place, never by the row it was
  * pasted into.
  */
+import { isHex } from 'viem'
+
 import type { ApproverReply, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
-import {
-  isAddressField,
-  isDecimal,
-  isHexField,
-  isIndex,
-  isObject,
-  isPurpose,
-  lineOfRecord,
-  recordOfLine
-} from './codec'
+import { isDecimalString, isStoredAddress } from '@web/modules/social-recovery/shared/records'
+
+import { isIndex, isObject, isPurpose, lineOfRecord, recordOfLine } from './codec'
 import type {
   AddReplyResult,
   ChecklistLayout,
@@ -44,18 +39,18 @@ export const replyOfLine = (text: string): ApproverReply | null => {
     !isObject(r) ||
     r.kind !== 'recovery-proof-reply' ||
     !isIndex(r.version) ||
-    !isDecimal(r.chainId) ||
-    !isAddressField(r.manager) ||
-    !isAddressField(r.account) ||
-    !isAddressField(r.action) ||
-    !isDecimal(r.attemptId) ||
+    !isDecimalString(r.chainId) ||
+    !isStoredAddress(r.manager) ||
+    !isStoredAddress(r.account) ||
+    !isStoredAddress(r.action) ||
+    !isDecimalString(r.attemptId) ||
     !isPurpose(r.purpose) ||
     !isIndex(r.place) ||
-    !isAddressField(r.method) ||
-    !isHexField(r.config) ||
-    !isHexField(r.salt) ||
-    !isHexField(r.digest) ||
-    !isHexField(r.proof)
+    !isStoredAddress(r.method) ||
+    !isHex(r.config) ||
+    !isHex(r.salt) ||
+    !isHex(r.digest) ||
+    !isHex(r.proof)
   ) {
     return null
   }

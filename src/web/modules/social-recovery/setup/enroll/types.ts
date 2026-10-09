@@ -30,16 +30,11 @@ import type {
   EnrollmentTestVerdict,
   SetupRecords,
   SlotKind,
+  SlotPosition,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 
 import type { KEY_TEST_TYPES } from './testRequest'
-
-/** Where the enrollment lands: a clause of the path and a member of that clause. */
-export interface SlotPosition {
-  clause: number
-  member: number
-}
 
 /** The screen's search once read: the slot it fills, and the ceremony whose report is due. */
 export interface EnrollSearch {
@@ -478,3 +473,5 @@ export type GuardianTestBlockProps = Pick<
   enrollment: Enrollment
   canTestOffline: boolean
 }
+
+export type { SlotPosition }

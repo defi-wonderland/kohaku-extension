@@ -8,7 +8,6 @@
 import type { Mounted } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
   CHAIN_ID,
-  held,
   mountSubmit,
   openWorld,
   START_BLOCK,
@@ -16,12 +15,13 @@ import {
   tick,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
   DROPPED_AFTER_MS,
   DROPPED_RECHECK_MS
-}: typeof import('@web/modules/social-recovery/recovery/submit') = require('@web/modules/social-recovery/recovery/submit')
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const {
   accountStepPath,
   checklistPathOf,
@@ -113,7 +113,7 @@ describe('the confirmation’s arrival', () => {
     }
     await accessor.setSubmissionHash('page-that-went', TX_HASH, claimed.record.revision)
     world.kit.receipts.transactionKnown.mockResolvedValue('unknown')
-    world.kit.receipts.wait.mockImplementation(() => held<never>().promise)
+    world.kit.receipts.wait.mockImplementation(() => deferred<never>().promise)
     view = await mountSubmit(world.account, { useTimers: true })
     const claimNow = async () => {
       const session = await world.records.recoverySession(CHAIN_ID, world.account).read()
@@ -142,5 +142,42 @@ describe('the confirmation’s arrival', () => {
     view = await mountSubmit(world.account)
     expect(view.paths()).toEqual([])
     expect(view.byTestId('submit-action')).not.toBeNull()
+  })
+})
+
+describe('the confirmation’s entry record read', () => {
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it('shows a spinner and nothing else while the entry record read has not answered', async () => {
+    const world = await openWorld()
+    world.storage.get = () => new Promise<never>(() => {})
+    view = await mountSubmit(world.account)
+    expect(view.byTestId('submit-entry-loading')).not.toBeNull()
+    expect(view.byTestId('submit-entry-failed')).toBeNull()
+    expect(view.byTestId('submit-action')).toBeNull()
+    expect(view.paths()).toEqual([])
+  })
+
+  it('renders failed with a retry where the entry record read fails, and the confirmation once the retry reads it', async () => {
+    const world = await openWorld()
+    const { get } = world.storage
+    world.storage.get = async () => {
+      throw new Error('storage unavailable')
+    }
+    view = await mountSubmit(world.account)
+    expect(view.textOf('submit-entry-failed')).toContain(t('socialRecovery.wait.readFailedTitle'))
+    expect(view.byTestId('submit-action')).toBeNull()
+    expect(view.paths()).toEqual([])
+
+    world.storage.get = get
+    await view.press('submit-entry-retry')
+    expect(view.byTestId('submit-entry-failed')).toBeNull()
+    expect(view.byTestId('submit-action')).not.toBeNull()
+    expect(view.paths()).toEqual([])
   })
 })

@@ -9,6 +9,7 @@
  */
 import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
 import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /** The two setup reads the card's password row calls on the client. */
 export interface FakeSetupReads {
@@ -123,23 +124,6 @@ export interface PdfFileParts {
   pages: PdfPageObject[]
   /** Every stream, in file order. */
   streams: PdfStream[]
-}
-
-/** A promise with its two ends in the test's hands. */
-export interface Deferred<T> {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (reason: unknown) => void
-}
-
-export const deferred = <T>(): Deferred<T> => {
-  let resolve: (value: T) => void = () => {}
-  let reject: (reason: unknown) => void = () => {}
-  const promise = new Promise<T>((onResolve, onReject) => {
-    resolve = onResolve
-    reject = onReject
-  })
-  return { promise, resolve, reject }
 }
 
 export const restoreRefusalOf = (cause: RestoreCause): RestoreRefusal => {
@@ -484,24 +468,4 @@ if (expect.getState().testPath === __filename) {
       expect(refusal.cause.code).toBe('restore.backup-unopened')
     })
   })
-}
-
-/**
- * `it.each` without its typings: the repository's type roots declare the
- * mocha globals over Jest's, so tsc knows no `.each`. A row of a table of
- * tuples spreads into the test, and the title's `%s` or `%i` names a row by
- * its first member.
- */
-export function eachIt<T extends readonly unknown[] | [unknown]>(
-  cases: readonly T[]
-): (title: string, fn: (...row: T) => unknown) => void
-export function eachIt<T extends string | number>(
-  cases: readonly T[]
-): (title: string, fn: (value: T) => unknown) => void
-export function eachIt(cases: readonly unknown[]) {
-  return (title: string, fn: (...row: unknown[]) => unknown) =>
-    cases.forEach((value) => {
-      const row: readonly unknown[] = Array.isArray(value) ? value : [value]
-      it(title.replace(/%[si]/, String(row[0])), () => fn(...row))
-    })
 }

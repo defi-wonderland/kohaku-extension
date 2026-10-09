@@ -6,13 +6,11 @@
  * runs. Either way, the retry.
  */
 import React from 'react'
-import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
-import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 
 import type { PollAlertProps } from './types'
 
@@ -22,31 +20,19 @@ const PollAlert = ({ withRows, onRetry }: PollAlertProps) => {
   const { t } = useTranslation()
 
   return (
-    <Alert
+    <ReadFailedBlock
       testID="checklist-poll-failed"
-      type="error"
-      size="sm"
-      style={spacings.mbSm}
+      retryTestID="checklist-poll-retry"
       title={withRows ? t(`${POLL_FAILED}.title`) : t('socialRecovery.checklist.deaths.readFailed')}
-      text={withRows ? t(`${POLL_FAILED}.body`) : undefined}
+      body={withRows ? t(`${POLL_FAILED}.body`) : undefined}
+      onRetry={onRetry}
     >
       {withRows && (
-        <Text fontSize={12} style={spacings.mtTy} testID="checklist-poll-held">
+        <Alert.Text size="sm" type="error" style={spacings.mtTy} testID="checklist-poll-held">
           {t(`${POLL_FAILED}.held`)}
-        </Text>
+        </Alert.Text>
       )}
-      <View style={spacings.mtTy}>
-        <Button
-          testID="checklist-poll-retry"
-          type="secondary"
-          size="small"
-          text={t('socialRecovery.writes.tryAgain')}
-          onPress={onRetry}
-          hasBottomSpacing={false}
-          style={{ alignSelf: 'flex-start' }}
-        />
-      </View>
-    </Alert>
+    </ReadFailedBlock>
   )
 }
 

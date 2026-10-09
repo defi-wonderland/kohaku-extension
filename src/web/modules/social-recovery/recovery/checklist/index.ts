@@ -17,8 +17,6 @@ export {
   CHECKLIST_STAGE,
   NO_PAYMENT_ORDER,
   PASSKEY_SLUG,
-  RECOVERY_STAGES,
-  STAGE_COUNTER_KEY,
   TAB_PAGE
 } from './constants'
 export * from './types'
