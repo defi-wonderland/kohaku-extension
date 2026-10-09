@@ -137,7 +137,7 @@ describe('the recovery in progress route', () => {
 
     const failure = view.byTestId('in-progress-failed')
     expect(failure?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
-    expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableTitle'))
+    expect(failure?.textContent).toContain(t('socialRecovery.wait.readFailedTitle'))
     expect(failure?.textContent).toContain(t('socialRecovery.client.unavailableBody'))
     expect(view.byTestId('in-progress-route-loading')).toBeNull()
     expect(view.byTestId(`in-progress-${ACCOUNT.toLowerCase()}`)).toBeNull()
