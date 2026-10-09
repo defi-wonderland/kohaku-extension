@@ -90,15 +90,7 @@ export const mockWallet: MockWallet = {
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
-jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
-  __esModule: true,
-  default: () => ({
-    account: undefined,
-    differs: false,
-    selected: undefined,
-    switchToSelected: () => {}
-  })
-}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount')
 
 jest.mock('@web/modules/social-recovery/shared/records/extensionStorage', () => ({
   get extensionRecordStorage() {

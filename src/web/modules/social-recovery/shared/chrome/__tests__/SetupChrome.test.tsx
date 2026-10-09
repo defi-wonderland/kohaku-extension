@@ -29,15 +29,7 @@ jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   default: () => null
 }))
 // The wallet selects the account the tab sets up, so no notice shows.
-jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
-  __esModule: true,
-  default: () => ({
-    account: undefined,
-    differs: false,
-    selected: undefined,
-    switchToSelected: () => {}
-  })
-}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount')
 jest.mock('@web/modules/social-recovery/shared/chrome/OtherAccountNotice', () => ({
   __esModule: true,
   default: () => null
