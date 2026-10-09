@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type {
   Address,
   Assessment,
@@ -389,12 +387,6 @@ export interface SubmitViewProps {
   onRetryRemoved: () => void
   onRetrySending: () => void
   onBack: () => void
-}
-
-export interface SubmitChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
 }
 
 export interface SubmitBodyProps {

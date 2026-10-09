@@ -9,10 +9,8 @@ export const NO_PAYMENT_ORDER: PaymentOrder = {
   payee: zeroAddress
 }
 
-/** The logged-in route's five stages; the checklist is the fourth. */
-export const RECOVERY_STAGES = 5
+/** The checklist is the fourth of the logged-in route's five stages. */
 export const CHECKLIST_STAGE = 4
-export const STAGE_COUNTER_KEY = 'socialRecovery.entry.stageCounter'
 
 /** The slug the ceremony tab's route and the ceremony request carry for a passkey. */
 export const PASSKEY_SLUG = 'passkey'

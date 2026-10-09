@@ -11,9 +11,9 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 
 import { ACKNOWLEDGED_STATE, OWNER_STAGE } from './constants'
-import EntryChrome from './EntryChrome'
 import OwnerStageView from './OwnerStageView'
 import { receivingChoicesOf } from './receiving'
 import { accountStepPathOf } from './search'
@@ -38,9 +38,14 @@ const EntryScreen = () => {
   const cancel = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetup), [navigate])
 
   return (
-    <EntryChrome route="logged-in" stage={OWNER_STAGE} testID="recovery-entry">
+    <RecoveryChrome
+      route="logged-in"
+      titleKey="socialRecovery.routes.recover"
+      stage={{ step: OWNER_STAGE, testID: 'recovery-stage' }}
+      testID="recovery-entry"
+    >
       <OwnerStageView choices={choices} loaded={loaded} onContinue={proceed} onCancel={cancel} />
-    </EntryChrome>
+    </RecoveryChrome>
   )
 }
 

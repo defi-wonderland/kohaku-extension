@@ -16,6 +16,7 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import { relyingPartyOf } from '@web/modules/social-recovery/shared/ceremony'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import {
   addressBookOf,
   CHAIN_IDS,
@@ -29,7 +30,6 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 
 import { CHAIN_NAMES } from './constants'
-import EntryChrome from './EntryChrome'
 import ReadFailedBlock from './ReadFailedBlock'
 import { READOUT_STAGE, readoutAccountOf } from './readout'
 import ReadoutView from './ReadoutView'
@@ -111,9 +111,10 @@ const ReadoutScreen = () => {
   const entry = read.status === 'present' ? read.entry : null
 
   return (
-    <EntryChrome
+    <RecoveryChrome
       route={entry?.route ?? 'fresh-install'}
-      stage={READOUT_STAGE}
+      titleKey="socialRecovery.routes.recover"
+      stage={{ step: READOUT_STAGE, testID: 'recovery-stage' }}
       testID="recovery-readout"
     >
       {!!account && read.status === 'pending' && (
@@ -140,7 +141,7 @@ const ReadoutScreen = () => {
           navigate={navigate}
         />
       )}
-    </EntryChrome>
+    </RecoveryChrome>
   )
 }
 

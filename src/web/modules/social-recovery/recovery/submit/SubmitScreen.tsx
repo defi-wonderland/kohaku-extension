@@ -22,6 +22,7 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import {
   CHAIN_IDS,
@@ -47,10 +48,10 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist'
 import type { RemovedKeyRead } from '@web/modules/social-recovery/recovery/checklist'
 
+import { SUBMIT_STAGE } from './constants'
 import { isLanded } from './run'
 import { loggedInPlanOf } from './sendingKey'
 import { submitStepsOf } from './steps'
-import SubmitChrome from './SubmitChrome'
 import SubmitView from './SubmitView'
 import type {
   SendingReading,
@@ -316,14 +317,19 @@ const SubmitScreen = () => {
 
   if (reading.status === 'present' && account) {
     return (
-      <SubmitChrome route={reading.entry.route} testID="submit-screen">
+      <RecoveryChrome
+        route={reading.entry.route}
+        titleKey="socialRecovery.routes.recovery"
+        stage={{ step: SUBMIT_STAGE, testID: 'submit-stage' }}
+        testID="submit-screen"
+      >
         <SubmitBody key={account} records={records} account={account} entry={reading.entry} />
-      </SubmitChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <SetupChrome testID="submit-screen">
+    <SetupChrome testID="submit-screen" skipAccountLatch>
       {reading.status === 'failed' ? (
         <Alert
           testID="submit-entry-failed"

@@ -694,12 +694,6 @@ export interface PollAlertProps {
   onRetry: () => void
 }
 
-export interface ChecklistChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
-}
-
 // ---------------------------------------------------------------------------
 // The recovery in progress and the home band
 // ---------------------------------------------------------------------------

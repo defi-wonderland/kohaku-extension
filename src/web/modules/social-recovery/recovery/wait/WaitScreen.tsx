@@ -25,6 +25,7 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import type { Configuration, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import {
   CHAIN_IDS,
@@ -52,6 +53,7 @@ import { loggedInPlanOf } from '@web/modules/social-recovery/recovery/submit'
 import type { SendingReading } from '@web/modules/social-recovery/recovery/submit'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 
+import { WAIT_STAGE } from './constants'
 import { anchorOf, donePathOf } from './phase'
 import { isCountdownOf, landedAttemptOf, waitNewKeyOf } from './read'
 import { executeStepsOf } from './steps'
@@ -69,7 +71,6 @@ import type {
 import useCountdownClock from './useCountdownClock'
 import useExecuteRun from './useExecuteRun'
 import useWaitPoll from './useWaitPoll'
-import WaitChrome from './WaitChrome'
 import WaitView from './WaitView'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
@@ -519,14 +520,19 @@ const WaitScreen = () => {
 
   if (reading.status === 'present' && account) {
     return (
-      <WaitChrome route={reading.entry.route} testID="wait-screen">
+      <RecoveryChrome
+        route={reading.entry.route}
+        titleKey="socialRecovery.routes.recovery"
+        stage={{ step: WAIT_STAGE, testID: 'wait-stage' }}
+        testID="wait-screen"
+      >
         <WaitGate key={account} records={records} account={account} entry={reading.entry} />
-      </WaitChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <SetupChrome testID="wait-screen">
+    <SetupChrome testID="wait-screen" skipAccountLatch>
       {reading.status === 'failed' ? (
         <Alert
           testID="wait-entry-failed"

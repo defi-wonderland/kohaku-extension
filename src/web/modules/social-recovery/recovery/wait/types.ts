@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type {
   Address,
   Attempt,
@@ -25,7 +23,6 @@ import type {
   ExecutionInFlightClaim,
   ExecutionInFlightRecord,
   RecoveryEntryRecord,
-  RecoveryRoute,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type {
@@ -381,12 +378,6 @@ export interface WaitViewProps {
   onLeave: () => void
   onMoveFunds: () => void
   onOpenExplorer: (transactionHash: Hex) => void
-}
-
-export interface WaitChromeProps {
-  route: RecoveryRoute
-  children: ReactNode
-  testID?: string
 }
 
 export interface WaitBodyProps {

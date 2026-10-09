@@ -18,6 +18,8 @@ export type {
   PlainChromeProps,
   PlainHeaderProps,
   RadioCardProps,
+  RecoveryChromeProps,
+  RecoveryStage,
   SectionCardProps,
   SectionCardSpacing,
   SectionCardTone,

@@ -22,6 +22,7 @@ import {
   browserReportSubscribe,
   pagePasskeysServed
 } from '@web/modules/social-recovery/shared/ceremony/screen'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
@@ -34,8 +35,8 @@ import {
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 
-import ChecklistChrome from './ChecklistChrome'
 import ChecklistView from './ChecklistView'
+import { CHECKLIST_STAGE } from './constants'
 import { destinationKeyOf } from './destination'
 import { accountStepPath, parseChecklistSearch } from './search'
 import type {
@@ -155,7 +156,12 @@ const ChecklistScreen = () => {
 
   if (reading.status === 'present' && search && isAddressEqual(reading.account, search.account)) {
     return (
-      <ChecklistChrome route={reading.entry.route} testID="checklist-screen">
+      <RecoveryChrome
+        route={reading.entry.route}
+        titleKey="socialRecovery.routes.recovery"
+        stage={{ step: CHECKLIST_STAGE, testID: 'checklist-stage' }}
+        testID="checklist-screen"
+      >
         <ChecklistBody
           key={search.account}
           records={records}
@@ -163,12 +169,12 @@ const ChecklistScreen = () => {
           entry={reading.entry}
           search={search}
         />
-      </ChecklistChrome>
+      </RecoveryChrome>
     )
   }
 
   return (
-    <SetupChrome testID="checklist-screen">
+    <SetupChrome testID="checklist-screen" skipAccountLatch>
       {reading.status === 'failed' ? (
         <Alert
           testID="checklist-entry-failed"

@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
@@ -157,14 +155,6 @@ export type ConfirmedStep =
 // ---------------------------------------------------------------------------
 // The views
 // ---------------------------------------------------------------------------
-
-export interface EntryChromeProps {
-  route: RecoveryRoute
-  /** The stage the counter shows on the logged-in route. */
-  stage: number
-  children: ReactNode
-  testID?: string
-}
 
 export interface OwnerStageViewProps {
   choices: readonly ReceivingChoice[]

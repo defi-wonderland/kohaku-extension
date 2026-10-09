@@ -3,6 +3,7 @@ import type { StyleProp, View, ViewStyle } from 'react-native'
 import type { Address } from 'viem'
 
 import type { InputProps } from '@common/components/Input'
+import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
 
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
@@ -14,6 +15,23 @@ export interface SetupChromeProps {
    * account and no notice when the selection changes.
    */
   skipAccountLatch?: boolean
+  testID?: string
+}
+
+/** The stage a recovery screen shows on its counter, and the counter's test id. */
+export interface RecoveryStage {
+  step: number
+  testID: string
+}
+
+export interface RecoveryChromeProps {
+  /** The recovery's route; a screen that does not know it passes null. */
+  route: RecoveryRoute | null
+  /** The string key of the plain header's words on the fresh install. */
+  titleKey: string
+  /** The counter on the settings chrome; a screen with none passes nothing. */
+  stage?: RecoveryStage
+  children: ReactNode
   testID?: string
 }
 

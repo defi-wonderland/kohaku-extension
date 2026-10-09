@@ -17,6 +17,7 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
+import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import {
   CHAIN_IDS,
   networkOf,
@@ -32,7 +33,6 @@ import { getRpcProviderForUI } from '@web/services/provider'
 import AccountStepView from './AccountStepView'
 import CondensedGate from './CondensedGate'
 import { ACCOUNT_STAGE, CHAIN_NAMES } from './constants'
-import EntryChrome from './EntryChrome'
 import { choiceFor, receivingChoicesOf } from './receiving'
 import {
   acknowledgedInState,
@@ -122,7 +122,12 @@ const AccountStepScreen = () => {
   )
 
   return (
-    <EntryChrome route={route} stage={ACCOUNT_STAGE} testID="recovery-account">
+    <RecoveryChrome
+      route={route}
+      titleKey="socialRecovery.routes.recover"
+      stage={{ step: ACCOUNT_STAGE, testID: 'recovery-stage' }}
+      testID="recovery-account"
+    >
       {!!search && !!receiving && !acknowledged && <CondensedGate onPass={pass} />}
       {!!stepSearch && !!receiving && acknowledged && (
         <AccountStepView
@@ -138,7 +143,7 @@ const AccountStepScreen = () => {
           navigate={navigate}
         />
       )}
-    </EntryChrome>
+    </RecoveryChrome>
   )
 }
 
