@@ -121,10 +121,6 @@ export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null =
   return { cause: known, reason }
 }
 
-/** Whether a thrown value is the client's refusal of a member it does not serve yet. */
-const isNotServed = (error: unknown): boolean =>
-  error instanceof Error && error.name === 'NotServedRefusal'
-
 /**
  * Why a restore with the recovery password failed. A backup the password does
  * not open is a wrong password; a failure that is no refusal is a failed read
@@ -260,32 +256,25 @@ export const configurationOfNote = (note: Hex): Configuration | null => {
 
 /**
  * The public note of the setup the state names, read from its setup event at
- * the block the state pins it to; null where the client does not serve the
- * events feed or the block holds no event of this setup.
+ * the block the state pins it to; null where the block holds no event of this
+ * setup. A failed read rejects.
  */
 const committedNoteOf = async (
   setup: ReadoutKitClient['setup'],
   state: SetupState
 ): Promise<Hex | null> => {
-  try {
-    const block = state.setupCommittedAtBlock
-    const found = await setup.events.fetch(setup.events.accountFilter(), {
-      from: block,
-      to: block
-    })
-    const commit = found.find(
-      (notification) =>
-        notification.kind === 'setup-committed' &&
-        notification.nonce === state.setupNonce &&
-        notification.setupCommitment.toLowerCase() === state.setupCommitment.toLowerCase()
-    )
-    return commit && commit.kind === 'setup-committed' ? commit.publicMetadata : null
-  } catch (error: unknown) {
-    if (isNotServed(error)) {
-      return null
-    }
-    throw error
-  }
+  const block = state.setupCommittedAtBlock
+  const found = await setup.events.fetch(setup.events.accountFilter(), {
+    from: block,
+    to: block
+  })
+  const commit = found.find(
+    (notification) =>
+      notification.kind === 'setup-committed' &&
+      notification.nonce === state.setupNonce &&
+      notification.setupCommitment.toLowerCase() === state.setupCommitment.toLowerCase()
+  )
+  return commit && commit.kind === 'setup-committed' ? commit.publicMetadata : null
 }
 
 /** What a refused restore says about the setup, or null where it only says the password is missing. */
