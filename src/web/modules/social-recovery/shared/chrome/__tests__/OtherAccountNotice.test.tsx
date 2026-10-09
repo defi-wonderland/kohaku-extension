@@ -207,3 +207,33 @@ describe('the setup chrome while the wallet selects another account', () => {
     expect(byTestId(NOTICE)?.textContent).toContain(bodyFor(OTHER_ACCOUNT))
   })
 })
+
+describe('the setup chrome and the tab’s account latch', () => {
+  const LATCH_KEY = 'socialRecovery.setupAccount'
+
+  const openChrome = (skipAccountLatch?: boolean) => {
+    mockSelected.state = { account: { addr: ACCOUNT } }
+    mount(
+      <SetupChrome testID="chrome" skipAccountLatch={skipAccountLatch}>
+        <Text testID="view">The view</Text>
+      </SetupChrome>
+    )
+  }
+
+  it('latches the selected account by default and shows the notice when the selection changes', () => {
+    openChrome()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBe(ACCOUNT)
+    select(OTHER_ACCOUNT)
+    expect(byTestId(NOTICE)).not.toBeNull()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBe(ACCOUNT)
+  })
+
+  it('latches nothing and shows no notice when told to skip the latch', () => {
+    openChrome(true)
+    expect(sessionStorage.getItem(LATCH_KEY)).toBeNull()
+    select(OTHER_ACCOUNT)
+    expect(byTestId(NOTICE)).toBeNull()
+    expect(byTestId('view')).not.toBeNull()
+    expect(sessionStorage.getItem(LATCH_KEY)).toBeNull()
+  })
+})

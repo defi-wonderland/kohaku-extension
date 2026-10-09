@@ -9,6 +9,11 @@ export interface SetupChromeProps {
   children: ReactNode
   /** A last breadcrumb step, shown after the settings breadcrumb. */
   breadcrumbTail?: string
+  /**
+   * Leaves the setup tab's account alone: no latch of the wallet's selected
+   * account and no notice when the selection changes.
+   */
+  skipAccountLatch?: boolean
   testID?: string
 }
 
