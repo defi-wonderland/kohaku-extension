@@ -6,24 +6,20 @@
  * ceremony's report channel and this page's relying party. A search with no
  * account, or an account with no entry record, goes back to the account step.
  */
-import React, { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import React, { useCallback, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { isAddressEqual } from 'viem'
 
-import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
-import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
-import spacings from '@common/styles/spacings'
 import { relyingPartyOf } from '@web/modules/social-recovery/shared/ceremony'
 import {
   browserReportStore,
   browserReportSubscribe,
   pagePasskeysServed
 } from '@web/modules/social-recovery/shared/ceremony/screen'
+import EntryReadFallback from '@web/modules/social-recovery/shared/chrome/EntryReadFallback'
 import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
-import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import useRecoveryEntryRead from '@web/modules/social-recovery/shared/chrome/useRecoveryEntryRead'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
@@ -43,8 +39,7 @@ import type {
   ChecklistBodyProps,
   ChecklistClient,
   ChecklistDeps,
-  DestinationReading,
-  EntryReading
+  DestinationReading
 } from './types'
 
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
@@ -114,45 +109,16 @@ const ChecklistBody = ({ records, account, entry, search }: ChecklistBodyProps) 
 }
 
 const ChecklistScreen = () => {
-  const { t } = useTranslation()
   const { navigate } = useNavigation()
   const location = useLocation()
   const search = useMemo(() => parseChecklistSearch(location.search), [location.search])
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const account = search?.account
-  const [reading, setReading] = useState<EntryReading>({ status: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    if (!account) {
-      navigate(accountStepPath(), { replace: true })
-      return undefined
-    }
-    let live = true
-    setReading({ status: 'loading' })
-    records
-      .recoveryEntry(CHAIN_ID, account)
-      .read()
-      .then((read) => {
-        if (!live) {
-          return
-        }
-        if (read.status === 'absent') {
-          setReading({ status: 'absent' })
-          navigate(accountStepPath(), { replace: true })
-          return
-        }
-        setReading({ status: 'present', account, entry: read.value })
-      })
-      .catch(() => {
-        if (live) {
-          setReading({ status: 'failed' })
-        }
-      })
-    return () => {
-      live = false
-    }
-  }, [records, account, attempt, navigate])
+  const toAccountStep = useCallback(
+    () => navigate(accountStepPath(), { replace: true }),
+    [navigate]
+  )
+  const { reading, retry } = useRecoveryEntryRead(records, CHAIN_ID, account, toAccountStep)
 
   if (reading.status === 'present' && search && isAddressEqual(reading.account, search.account)) {
     return (
@@ -174,30 +140,13 @@ const ChecklistScreen = () => {
   }
 
   return (
-    <SetupChrome testID="checklist-screen" skipAccountLatch>
-      {reading.status === 'failed' ? (
-        <Alert
-          testID="checklist-entry-failed"
-          type="error"
-          size="sm"
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
-        >
-          <View style={spacings.mtTy}>
-            <Button
-              testID="checklist-entry-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={() => setAttempt((n) => n + 1)}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
-      ) : (
-        <ActivityIndicator testID="checklist-entry-loading" />
-      )}
-    </SetupChrome>
+    <EntryReadFallback
+      testPrefix="checklist"
+      titleKey="socialRecovery.client.unavailableTitle"
+      bodyKey="socialRecovery.client.unavailableBody"
+      failed={reading.status === 'failed'}
+      onRetry={retry}
+    />
   )
 }
 

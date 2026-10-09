@@ -10,6 +10,7 @@ export { default as StatusChip } from './StatusChip'
 export { default as StepCounter } from './StepCounter'
 export type {
   ActionsRowProps,
+  EntryReadFallbackProps,
   MethodRowProps,
   NoteBoxProps,
   OtherAccountNoticeProps,
@@ -20,6 +21,8 @@ export type {
   RadioCardProps,
   ReadFailedBlockProps,
   RecoveryChromeProps,
+  RecoveryEntryRead,
+  RecoveryEntryReading,
   RecoveryStage,
   SectionCardProps,
   SectionCardSpacing,

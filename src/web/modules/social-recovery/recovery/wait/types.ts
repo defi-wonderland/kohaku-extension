@@ -53,12 +53,6 @@ export type WaitClient =
   | { status: 'failed' }
 
 /** The recovery entry record of the account being recovered, as the wait reads it. */
-export type WaitEntryReading =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'absent' }
-  | { status: 'present'; entry: RecoveryEntryRecord }
-
 /**
  * The attempt the submission landed, as the countdown's record names it: its
  * id, its setup number and the hash of the payload it carried. Only the

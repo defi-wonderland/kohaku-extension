@@ -25,8 +25,9 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import type { Configuration, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import EntryReadFallback from '@web/modules/social-recovery/shared/chrome/EntryReadFallback'
 import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
-import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
+import useRecoveryEntryRead from '@web/modules/social-recovery/shared/chrome/useRecoveryEntryRead'
 import {
   CHAIN_IDS,
   createSendPort,
@@ -65,7 +66,6 @@ import type {
   RemovedKeyReading,
   WaitBodyProps,
   WaitClient,
-  WaitEntryReading,
   WaitGateProps
 } from './types'
 import useCountdownClock from './useCountdownClock'
@@ -478,45 +478,16 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
 }
 
 const WaitScreen = () => {
-  const { t } = useTranslation()
   const { navigate } = useNavigation()
   const location = useLocation()
   const search = useMemo(() => parseChecklistSearch(location.search), [location.search])
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const account = search?.account
-  const [reading, setReading] = useState<WaitEntryReading>({ status: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    if (!account) {
-      navigate(accountStepPath(), { replace: true })
-      return undefined
-    }
-    let live = true
-    setReading({ status: 'loading' })
-    records
-      .recoveryEntry(CHAIN_ID, account)
-      .read()
-      .then((read) => {
-        if (!live) {
-          return
-        }
-        if (read.status === 'absent') {
-          setReading({ status: 'absent' })
-          navigate(accountStepPath(), { replace: true })
-          return
-        }
-        setReading({ status: 'present', entry: read.value })
-      })
-      .catch(() => {
-        if (live) {
-          setReading({ status: 'failed' })
-        }
-      })
-    return () => {
-      live = false
-    }
-  }, [records, account, attempt, navigate])
+  const toAccountStep = useCallback(
+    () => navigate(accountStepPath(), { replace: true }),
+    [navigate]
+  )
+  const { reading, retry } = useRecoveryEntryRead(records, CHAIN_ID, account, toAccountStep)
 
   if (reading.status === 'present' && account) {
     return (
@@ -532,30 +503,13 @@ const WaitScreen = () => {
   }
 
   return (
-    <SetupChrome testID="wait-screen" skipAccountLatch>
-      {reading.status === 'failed' ? (
-        <Alert
-          testID="wait-entry-failed"
-          type="error"
-          size="sm"
-          title={t('socialRecovery.wait.readFailedTitle')}
-          text={t('socialRecovery.wait.readFailedBody')}
-        >
-          <View style={spacings.mtTy}>
-            <Button
-              testID="wait-entry-retry"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={() => setAttempt((n) => n + 1)}
-              hasBottomSpacing={false}
-            />
-          </View>
-        </Alert>
-      ) : (
-        <ActivityIndicator testID="wait-entry-loading" />
-      )}
-    </SetupChrome>
+    <EntryReadFallback
+      testPrefix="wait"
+      titleKey="socialRecovery.wait.readFailedTitle"
+      bodyKey="socialRecovery.wait.readFailedBody"
+      failed={reading.status === 'failed'}
+      onRetry={retry}
+    />
   )
 }
 

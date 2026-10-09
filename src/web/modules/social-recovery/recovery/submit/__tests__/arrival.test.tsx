@@ -144,3 +144,42 @@ describe('the confirmation’s arrival', () => {
     expect(view.byTestId('submit-action')).not.toBeNull()
   })
 })
+
+describe('the confirmation’s entry record read', () => {
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it('shows a spinner and nothing else while the entry record read has not answered', async () => {
+    const world = await openWorld()
+    world.storage.get = () => new Promise<never>(() => {})
+    view = await mountSubmit(world.account)
+    expect(view.byTestId('submit-entry-loading')).not.toBeNull()
+    expect(view.byTestId('submit-entry-failed')).toBeNull()
+    expect(view.byTestId('submit-action')).toBeNull()
+    expect(view.paths()).toEqual([])
+  })
+
+  it('renders failed with a retry where the entry record read fails, and the confirmation once the retry reads it', async () => {
+    const world = await openWorld()
+    const { get } = world.storage
+    world.storage.get = async () => {
+      throw new Error('storage unavailable')
+    }
+    view = await mountSubmit(world.account)
+    expect(view.textOf('submit-entry-failed')).toContain(
+      t('socialRecovery.client.unavailableTitle')
+    )
+    expect(view.byTestId('submit-action')).toBeNull()
+    expect(view.paths()).toEqual([])
+
+    world.storage.get = get
+    await view.press('submit-entry-retry')
+    expect(view.byTestId('submit-entry-failed')).toBeNull()
+    expect(view.byTestId('submit-action')).not.toBeNull()
+    expect(view.paths()).toEqual([])
+  })
+})

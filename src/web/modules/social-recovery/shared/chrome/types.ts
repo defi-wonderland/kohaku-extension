@@ -3,7 +3,10 @@ import type { StyleProp, View, ViewStyle } from 'react-native'
 import type { Address } from 'viem'
 
 import type { InputProps } from '@common/components/Input'
-import type { RecoveryRoute } from '@web/modules/social-recovery/shared/records'
+import type {
+  RecoveryEntryRecord,
+  RecoveryRoute
+} from '@web/modules/social-recovery/shared/records'
 
 export interface SetupChromeProps {
   /** The screen's view, already keyed and given its props. */
@@ -33,6 +36,29 @@ export interface RecoveryChromeProps {
   stage?: RecoveryStage
   children: ReactNode
   testID?: string
+}
+
+/** A recovery screen's read of its entry record; a present one keeps the account it was read for. */
+export type RecoveryEntryReading =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | { status: 'absent' }
+  | { status: 'present'; account: Address; entry: RecoveryEntryRecord }
+
+export interface RecoveryEntryRead {
+  reading: RecoveryEntryReading
+  /** Reads the entry record again. */
+  retry: () => void
+}
+
+export interface EntryReadFallbackProps {
+  /** The screen's test id prefix: the chrome is `<prefix>-screen`, the states `<prefix>-entry-*`. */
+  testPrefix: string
+  /** The string keys of the failed read's title and line. */
+  titleKey: string
+  bodyKey: string
+  failed: boolean
+  onRetry: () => void
 }
 
 export interface ReadFailedBlockProps {

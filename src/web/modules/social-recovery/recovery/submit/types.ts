@@ -62,12 +62,6 @@ export type SubmitClient =
   | { status: 'failed' }
 
 /** The recovery entry record of the account being recovered, as the screen reads it. */
-export type SubmitEntryReading =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'absent' }
-  | { status: 'present'; entry: RecoveryEntryRecord }
-
 export type AlreadyRunningCause = typeof ALREADY_RUNNING_CAUSES[number]
 
 export type AlreadyRunningFinding = typeof ALREADY_RUNNING_FINDINGS[number]
