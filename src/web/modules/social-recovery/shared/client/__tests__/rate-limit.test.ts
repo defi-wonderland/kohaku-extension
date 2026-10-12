@@ -234,6 +234,17 @@ describe('the other reads the node refuses for its rate limit', () => {
 describe('what reads as the rate limit', () => {
   const RATE_LIMITED: [string, unknown][] = [
     ['the node error a provider that bypasses ethers throws', { ...TOO_MANY }],
+    [
+      'a request-limit code in a batch item',
+      nodeAnswered('eth_getLogs', { code: -32007, message: 'request limit reached' })
+    ],
+    [
+      'an HTTP status carried as the item code',
+      nodeAnswered('eth_call', {
+        code: 429,
+        message: 'exceeded its compute units per second capacity'
+      })
+    ],
     ["ethers' coalesced JSON-RPC error of a log query", nodeAnswered('eth_getLogs', TOO_MANY)],
     ["ethers' call exception carrying the node error", nodeAnswered('eth_call', TOO_MANY)],
     [

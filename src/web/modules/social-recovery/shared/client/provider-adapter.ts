@@ -177,7 +177,8 @@ export const callFailureOf = (read: 'call' | 'estimateGas', thrown: unknown): Er
 export const RATE_LIMIT_RETRIES = 3
 export const RATE_LIMIT_RETRY_MS = 1_000
 
-const RATE_LIMIT_CODE = -32005
+/** The JSON-RPC codes a node refuses a read with for its rate limit: the usual one, the request-limit one and an HTTP 429 carried as a code. */
+const RATE_LIMIT_CODES: readonly unknown[] = [-32005, -32007, 429]
 const RATE_LIMIT_STATUS = 429
 /** An HTTP 429 as ethers reports it, also inside the 599 it escalates to once its throttle gives up. */
 const RATE_LIMIT_RESPONSE_STATUS = /(^|\()429\b/
@@ -187,8 +188,8 @@ const fieldOf = (value: unknown, key: string): unknown =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined
 
 /**
- * Whether a thrown value is the node refusing a read for its rate limit: the
- * JSON-RPC code -32005 on the error itself (a provider that bypasses ethers),
+ * Whether a thrown value is the node refusing a read for its rate limit: a
+ * rate-limit JSON-RPC code on the error itself (a provider that bypasses ethers),
  * on ethers' `error` (a coalesced JSON-RPC error) or on ethers' `info.error`
  * (a call or an estimate), an HTTP 429, or a message that names the rate
  * limit. A revert is never rate-limited.
@@ -201,7 +202,7 @@ export const rateLimited = (thrown: unknown): boolean => {
     return false
   }
   const nodeErrors = [thrown, fieldOf(thrown, 'error'), fieldOf(fieldOf(thrown, 'info'), 'error')]
-  if (nodeErrors.some((error) => fieldOf(error, 'code') === RATE_LIMIT_CODE)) {
+  if (nodeErrors.some((error) => RATE_LIMIT_CODES.includes(fieldOf(error, 'code')))) {
     return true
   }
   const status = fieldOf(fieldOf(thrown, 'info'), 'responseStatus')
