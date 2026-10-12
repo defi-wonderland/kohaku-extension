@@ -150,6 +150,7 @@ export const fakeNode = (): FakeNode => {
   const handlers = new Map<string, (data: Hex) => Hex | Error>()
   const codes = new Map<string, Hex>()
   const logs: RawLog[] = []
+  const senders = new Map<string, Address | Error>()
   const calls: NodeCall[] = []
   const head = { number: HEAD, timestamp: HEAD_TIMESTAMP, hash: pad(`0x${HEAD.toString(16)}`) }
   const keyOf = (to: Address, data: Hex) => `${to.toLowerCase()}:${data.toLowerCase()}`
@@ -189,6 +190,13 @@ export const fakeNode = (): FakeNode => {
     codeRead: {
       code: jest.fn(async (address: Address) => codes.get(address.toLowerCase()) ?? '0x')
     },
+    transactionRead: jest.fn(async (hash: Hex) => {
+      const sender = senders.get(hash.toLowerCase())
+      if (sender instanceof Error) {
+        throw sender
+      }
+      return sender ?? null
+    }),
     head,
     answer: (to, data, answer) => {
       routes.set(keyOf(to, data), answer)
@@ -201,6 +209,9 @@ export const fakeNode = (): FakeNode => {
     },
     addLog: (log) => {
       logs.push(log)
+    },
+    setSender: (hash, sender) => {
+      senders.set(hash.toLowerCase(), sender)
     },
     calls
   }

@@ -115,6 +115,7 @@ const clientOver = (
     }),
     provider: node.provider,
     codeRead: node.codeRead,
+    transactionRead: node.transactionRead,
     manager: createManagerReads(node.provider, MANAGER),
     action: createActionReads(
       { provider: node.provider, codeRead: node.codeRead },

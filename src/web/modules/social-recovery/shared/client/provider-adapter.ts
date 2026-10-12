@@ -13,7 +13,7 @@
  * (`RevertedCall`), and a read the provider could not make rejects
  * (`ProviderReadFailure`), never answering empty.
  */
-import { hexToBigInt, isHex } from 'viem'
+import { getAddress, hexToBigInt, isHex } from 'viem'
 
 import type {
   Address,
@@ -33,7 +33,9 @@ import type {
   ProviderLog,
   ProviderRead,
   ProviderReadFailure,
-  RevertedCall
+  RevertedCall,
+  TransactionRead,
+  TransactionReadProvider
 } from './types'
 
 /** Every read this folder makes through the extension's provider. */
@@ -45,7 +47,8 @@ export const PROVIDER_READS = [
   'nativeBalance',
   'estimateGas',
   'gasPrice',
-  'code'
+  'code',
+  'transaction'
 ] as const
 
 export const revertedCall = (read: RevertedCall['read'], data: Hex): RevertedCall => {
@@ -254,3 +257,17 @@ export const createCodeRead = (provider: CodeReadProvider): CodeRead => ({
     return attemptRead('code', async () => hexOf('code', await provider.getCode(address, block)))
   }
 })
+
+/**
+ * The transaction read over the extension's provider: `getTransaction` of the
+ * hash, its sender checksummed, or null where the node knows no such
+ * transaction. A read the provider could not make, or a sender that is not
+ * an address, rejects with a `ProviderReadFailure`.
+ */
+export const createTransactionRead =
+  (provider: TransactionReadProvider): TransactionRead =>
+  (hash: Hex): Promise<Address | null> =>
+    attemptRead('transaction', async () => {
+      const transaction = await provider.getTransaction(hash)
+      return transaction ? getAddress(transaction.from) : null
+    })
