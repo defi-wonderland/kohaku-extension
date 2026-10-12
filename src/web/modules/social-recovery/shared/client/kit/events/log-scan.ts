@@ -7,6 +7,7 @@ import type {
   RawLog
 } from '@web/modules/social-recovery/sdk-interfaces'
 
+import { rateLimited } from '../../provider-adapter'
 import type { LogScan } from './types'
 
 /** The widest block range one log query asks for, since a node may cap the range. */
@@ -14,9 +15,11 @@ export const LOG_CHUNK_BLOCKS = 10_000
 
 /**
  * A chunk whose read fails is read again, up to this many more times, after
- * a pause that starts at `LOG_CHUNK_RETRY_MS` and doubles each time: a node's
- * rate limit or a transient failure on one chunk must not fail a read that
- * would pass a second later.
+ * a pause that starts at `LOG_CHUNK_RETRY_MS` and doubles each time: a
+ * transient failure on one chunk must not fail a read that would pass a
+ * second later. A failure the node's rate limit caused is not read again
+ * here, since the provider adapter already made that read again with its own
+ * pauses.
  */
 export const LOG_CHUNK_RETRIES = 3
 export const LOG_CHUNK_RETRY_MS = 1_000
@@ -50,7 +53,7 @@ const chunkLogs = async (
   try {
     return await provider.logs(filter, range)
   } catch (failure) {
-    if (retriesLeft === 0) {
+    if (retriesLeft === 0 || rateLimited(failure)) {
       throw failure
     }
     await delayPromise(pauseMs)

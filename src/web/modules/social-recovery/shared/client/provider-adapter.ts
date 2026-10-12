@@ -11,10 +11,12 @@
  * honouring `from` and a block tag, one log query over a filter and two
  * blocks, and `block(tag)`. A reverted call rejects with its raw revert data
  * (`RevertedCall`), and a read the provider could not make rejects
- * (`ProviderReadFailure`), never answering empty.
+ * (`ProviderReadFailure`), never answering empty. A read the node refused for
+ * its rate limit is made again after a pause before it fails.
  */
 import { getAddress, hexToBigInt, isHex } from 'viem'
 
+import { delayPromise } from '@common/utils/promises'
 import type {
   Address,
   BlockHeader,
@@ -162,10 +164,83 @@ export const callFailureOf = (read: 'call' | 'estimateGas', thrown: unknown): Er
   return data === undefined ? providerReadFailure(read, thrown) : revertedCall(read, data)
 }
 
-/** Runs one read; a rejection becomes a `ProviderReadFailure` naming the read. */
-export const attemptRead = async <T>(read: ProviderRead, run: () => Promise<T>): Promise<T> => {
+// ---------------------------------------------------------------------------
+// Rate limits
+// ---------------------------------------------------------------------------
+
+/**
+ * A read the node refused for its rate limit is made again, up to this many
+ * more times, after a pause that starts at `RATE_LIMIT_RETRY_MS` and doubles
+ * each time. A read that answered is never made again, and any other failure
+ * fails at once.
+ */
+export const RATE_LIMIT_RETRIES = 3
+export const RATE_LIMIT_RETRY_MS = 1_000
+
+const RATE_LIMIT_CODE = -32005
+const RATE_LIMIT_STATUS = 429
+/** An HTTP 429 as ethers reports it, also inside the 599 it escalates to once its throttle gives up. */
+const RATE_LIMIT_RESPONSE_STATUS = /(^|\()429\b/
+const RATE_LIMIT_MESSAGE = /too many requests|rate limit/i
+
+const fieldOf = (value: unknown, key: string): unknown =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined
+
+/**
+ * Whether a thrown value is the node refusing a read for its rate limit: the
+ * JSON-RPC code -32005 on the error itself (a provider that bypasses ethers),
+ * on ethers' `error` (a coalesced JSON-RPC error) or on ethers' `info.error`
+ * (a call or an estimate), an HTTP 429, or a message that names the rate
+ * limit. A revert is never rate-limited.
+ */
+export const rateLimited = (thrown: unknown): boolean => {
+  if (isProviderReadFailure(thrown)) {
+    return rateLimited(thrown.cause)
+  }
+  if (isRevertedCall(thrown) || revertDataOf(thrown) !== undefined) {
+    return false
+  }
+  const nodeErrors = [thrown, fieldOf(thrown, 'error'), fieldOf(fieldOf(thrown, 'info'), 'error')]
+  if (nodeErrors.some((error) => fieldOf(error, 'code') === RATE_LIMIT_CODE)) {
+    return true
+  }
+  const status = fieldOf(fieldOf(thrown, 'info'), 'responseStatus')
+  if (
+    (typeof status === 'string' && RATE_LIMIT_RESPONSE_STATUS.test(status)) ||
+    fieldOf(fieldOf(thrown, 'response'), 'statusCode') === RATE_LIMIT_STATUS
+  ) {
+    return true
+  }
+  return nodeErrors.some((error) => {
+    const message = fieldOf(error, 'message')
+    return typeof message === 'string' && RATE_LIMIT_MESSAGE.test(message)
+  })
+}
+
+/** Runs `run`, again after each doubling pause while it fails for the node's rate limit. */
+export const retryWhileRateLimited = async <T>(
+  run: () => Promise<T>,
+  retriesLeft = RATE_LIMIT_RETRIES,
+  pauseMs = RATE_LIMIT_RETRY_MS
+): Promise<T> => {
   try {
     return await run()
+  } catch (thrown) {
+    if (retriesLeft === 0 || !rateLimited(thrown)) {
+      throw thrown
+    }
+    await delayPromise(pauseMs)
+    return retryWhileRateLimited(run, retriesLeft - 1, pauseMs * 2)
+  }
+}
+
+/**
+ * Runs one read, again while the node refuses it for its rate limit; a
+ * rejection becomes a `ProviderReadFailure` naming the read.
+ */
+export const attemptRead = async <T>(read: ProviderRead, run: () => Promise<T>): Promise<T> => {
+  try {
+    return await retryWhileRateLimited(run)
   } catch (thrown) {
     throw isProviderReadFailure(thrown) ? thrown : providerReadFailure(read, thrown)
   }
@@ -215,7 +290,7 @@ export const createProviderAdapter = (provider: AdapterProvider): IProvider => (
   async call(to: Address, data: Hex, from: Address | undefined, block: BlockTag): Promise<Hex> {
     let answer: string
     try {
-      answer = await provider.call({ to, data, from, blockTag: block })
+      answer = await retryWhileRateLimited(() => provider.call({ to, data, from, blockTag: block }))
     } catch (thrown) {
       throw callFailureOf('call', thrown)
     }

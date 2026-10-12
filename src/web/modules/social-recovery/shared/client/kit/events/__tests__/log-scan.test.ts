@@ -2,7 +2,9 @@
  * A chunked log scan over a node that refuses some chunk reads: a refused
  * chunk is read again after a pause that doubles from one second, a chunk
  * that answered is never read again, and the scan fails with the last
- * refusal only once the retries are spent. Jest's fake clock runs the pauses.
+ * refusal only once the retries are spent. A refusal for the node's rate
+ * limit, which the provider adapter already read again, fails the scan at
+ * once. Jest's fake clock runs the pauses.
  */
 import { pad, zeroHash } from 'viem'
 
@@ -53,8 +55,8 @@ const nodeOf = () => {
   return { provider, logs, ranges }
 }
 
-const rateLimited = (attempt: number) =>
-  providerReadFailure('logs', new Error(`Too Many Requests (${attempt})`))
+const refused = (attempt: number) =>
+  providerReadFailure('logs', new Error(`bad gateway (${attempt})`))
 
 beforeEach(() => {
   jest.useFakeTimers()
@@ -67,7 +69,7 @@ afterEach(() => {
 describe('a chunk the node refuses', () => {
   it('is read again after a second, and the scan answers every log in chain order with no gap', async () => {
     const { provider, logs, ranges } = nodeOf()
-    logs.mockResolvedValueOnce([LOGS[0]]).mockRejectedValueOnce(rateLimited(1))
+    logs.mockResolvedValueOnce([LOGS[0]]).mockRejectedValueOnce(refused(1))
     const read = logsInChunks(provider, FILTER, SCAN)
     await advanceClock(LOG_CHUNK_RETRY_MS - 1)
     expect(ranges()).toEqual([
@@ -87,9 +89,9 @@ describe('a chunk the node refuses', () => {
   it('waits a pause that doubles each time: one second, then two, then four', async () => {
     const { provider, logs } = nodeOf()
     logs
-      .mockRejectedValueOnce(rateLimited(1))
-      .mockRejectedValueOnce(rateLimited(2))
-      .mockRejectedValueOnce(rateLimited(3))
+      .mockRejectedValueOnce(refused(1))
+      .mockRejectedValueOnce(refused(2))
+      .mockRejectedValueOnce(refused(3))
     const read = logsInChunks(provider, FILTER, SCAN)
     const triesAfter = async (ms: number) => {
       await advanceClock(ms)
@@ -107,15 +109,26 @@ describe('a chunk the node refuses', () => {
 
   it('fails the scan with its last refusal after the fourth try, reading no later chunk', async () => {
     const { provider, logs, ranges } = nodeOf()
-    const last = rateLimited(4)
+    const last = refused(4)
     logs
-      .mockRejectedValueOnce(rateLimited(1))
-      .mockRejectedValueOnce(rateLimited(2))
-      .mockRejectedValueOnce(rateLimited(3))
+      .mockRejectedValueOnce(refused(1))
+      .mockRejectedValueOnce(refused(2))
+      .mockRejectedValueOnce(refused(3))
       .mockRejectedValueOnce(last)
     const read = logsInChunks(provider, FILTER, SCAN)
     await expect(pastRetryPauses(read)).rejects.toBe(last)
     expect(ranges()).toEqual(Array(4).fill({ from: 100, to: 10_099 }))
+  })
+})
+
+describe('a chunk the node refuses for its rate limit', () => {
+  it('fails the scan with that refusal, with no read of its own again', async () => {
+    const { provider, logs, ranges } = nodeOf()
+    const refusal = providerReadFailure('logs', { code: -32005, message: 'Too Many Requests' })
+    logs.mockRejectedValueOnce(refusal)
+    const read = logsInChunks(provider, FILTER, SCAN)
+    await expect(pastRetryPauses(read)).rejects.toBe(refusal)
+    expect(ranges()).toEqual([{ from: 100, to: 10_099 }])
   })
 })
 
