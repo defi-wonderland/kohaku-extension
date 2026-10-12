@@ -33,6 +33,7 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 import { createKitEventManager } from '@web/modules/social-recovery/shared/client/kit/events'
+import { pastRetryPauses } from '@web/modules/social-recovery/shared/client/kit/events/__fixtures__/retries'
 import {
   createActionReads,
   createMethodReads
@@ -555,7 +556,7 @@ describe('a failed read of an account with no creation record', () => {
   eachIt<[string, (world: ReturnType<typeof worldOf>) => void]>([
     ['the pinned block', ({ node }) => node.provider.block.mockRejectedValueOnce(failure)],
     ['the code', ({ node }) => node.codeRead.code.mockRejectedValueOnce(failure)],
-    ['a log chunk', ({ node }) => node.provider.logs.mockRejectedValueOnce(failure)],
+    ['a log chunk, on every try,', ({ node }) => node.provider.logs.mockRejectedValue(failure)],
     [
       'a privileges view',
       ({ node }) =>
@@ -573,6 +574,11 @@ describe('a failed read of an account with no creation record', () => {
       authorities: [KEY_A]
     })
     fail(world)
-    await expect(world.reads.removedKey()).rejects.toBe(failure)
+    jest.useFakeTimers()
+    await expect(pastRetryPauses(world.reads.removedKey())).rejects.toBe(failure)
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
   })
 })
