@@ -22,7 +22,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/kit/events/__fixtures__/retries'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
 
-const MANAGER: Address = '0x734B9Aa580d4A184Ea129E791C4C9Fb8734B3aC6'
+const MANAGER: Address = '0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d'
 const FILTER: FilterSpec = { addresses: [MANAGER], topics: [] }
 const SCAN = { from: 100, to: 20_200 }
 
