@@ -9,28 +9,51 @@
  * the removed key; none or several leave it unnamed.
  *
  * An account with no creation record, such as one the wallet does not list,
- * is read at one pinned block: with no code it leaves the key unnamed for
- * that reason; with code, the candidates are the addresses its
- * `LogPrivilegeChanged` writes name, beside the keys the wallet knows, and a
- * candidate counts where the account's `privileges` view still holds a value
- * for it at that block and the action's `isAuthority` agrees. The writes are
- * read in chunks of `LOG_CHUNK_BLOCKS` from the account's creation block,
- * which the wallet does not know, so from `CREATION_BLOCK_STAND_IN`, to the
- * pinned block. The privileges the creation code writes emit no log, so a key
- * only the creation wrote is found only where the wallet knows it.
+ * is read at one pinned block. With no code there, it leaves the key unnamed
+ * for that reason. With code, the candidates come from four sources, in this
+ * order of trust:
+ *
+ * 1. the keys the wallet knows for the account;
+ * 2. the sender of the transaction that carried the account's latest setup
+ *    commit at the action, since a setup is saved by the key that controls
+ *    the account (a save a relayer sent names the relayer, which the checks
+ *    below drop);
+ * 3. the new key of the account's latest handover the manager consumed, its
+ *    attempt's payload decoded through the action's codec;
+ * 4. the addresses the account's `LogPrivilegeChanged` writes name.
+ *
+ * A candidate counts where the account's `privileges` view holds a value for
+ * it at the pinned block and the action's `isAuthority` agrees; each distinct
+ * key is read once. The first source with a key that counts answers: one key
+ * is the removed key, several leave it unnamed. Where no source has one, the
+ * key is unnamed for want of a key.
+ *
+ * Every log scan reads in chunks from the block the manager was deployed at
+ * to the pinned block. A key written before the manager existed and never
+ * named by a setup or a handover since is not one a recovery through this
+ * manager acts on, and a scan from the chain's first block costs more reads
+ * than a rate-limited node answers in a screen's time. The privileges the
+ * creation code writes emit no log; such a key is found through the setup it
+ * saved.
  */
 import { getAddress, isAddressEqual, size } from 'viem'
 
-import type { Address, BlockTag } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  BlockRange,
+  BlockTag,
+  Hex
+} from '@web/modules/social-recovery/sdk-interfaces'
 import {
   distinctKeys,
   holdsPrivilege
 } from '@web/modules/social-recovery/shared/client/wallet-reads'
 
-import { CREATION_BLOCK_STAND_IN } from '../../account-facts'
 import type { FitCheckReading, RemovedKeyReading } from '../../types'
 import { createPrivilegeEvents } from '../events'
+import type { SetupCommittedLog } from '../events/types'
 import { createAccountReads } from '../reads'
+import { decodedHandoverOf } from '../recovery-client/handover'
 import { pinnedBlockOf } from '../setup-client'
 import type { KitWalletReads, KitWalletReadsInput } from './types'
 import { createReplyVerify } from './verify-reply'
@@ -54,7 +77,11 @@ export const createKitWalletReads = ({
   moduleReads,
   codeRead,
   provider,
-  blockTags
+  blockTags,
+  descriptor,
+  setupEvents,
+  events,
+  transactionRead
 }: KitWalletReadsInput): KitWalletReads => {
   // The wallet's account record holds its address as a string; a malformed one throws here.
   const addressOf = (): Address => getAddress(account.addr)
@@ -62,27 +89,74 @@ export const createKitWalletReads = ({
     size(await codeRead.code(addressOf(), block)) > 0
   const privilegeEvents = createPrivilegeEvents(provider)
   const accountReads = createAccountReads(provider)
+  const atAction = (log: Pick<SetupCommittedLog, 'account' | 'action'>): boolean =>
+    isAddressEqual(log.account, addressOf()) && isAddressEqual(log.action, descriptor.action)
+
+  const committerOf = async (scan: BlockRange): Promise<Address[]> => {
+    const logs = await setupEvents.setupLogsOf(addressOf(), scan)
+    const commit = logs.reduce<SetupCommittedLog | undefined>(
+      (latest, log) => (log.kind === 'setup-committed' && atAction(log) ? log : latest),
+      undefined
+    )
+    if (!commit) {
+      return []
+    }
+    const sender = await transactionRead(commit.at.transactionHash)
+    return sender ? [sender] : []
+  }
+
+  const handedToOf = async (scan: BlockRange): Promise<Address[]> => {
+    const notifications = await events.fetch(events.accountFilter(), scan)
+    const consumed = notifications.reduce<bigint | undefined>(
+      (latest, log) => (log.kind === 'attempt-consumed' && atAction(log) ? log.attemptId : latest),
+      undefined
+    )
+    if (consumed === undefined) {
+      return []
+    }
+    const payload = notifications.reduce<Hex | undefined>(
+      (found, log) =>
+        log.kind === 'attempt-started' && atAction(log) && log.attemptId === consumed
+          ? log.payload
+          : found,
+      undefined
+    )
+    const handover =
+      payload === undefined ? undefined : decodedHandoverOf(descriptor.action, payload)
+    return handover ? [handover.newAuthority] : []
+  }
+
+  const signersOf = async (keys: readonly Address[], block: number): Promise<Address[]> => {
+    const values = await Promise.all(
+      keys.map((key) => accountReads.privileges(addressOf(), key, block))
+    )
+    const held = keys.filter((_, index) => holdsPrivilege(values[index]))
+    const holds = await Promise.all(held.map((key) => action.isAuthority(addressOf(), key, block)))
+    return held.filter((_, index) => holds[index])
+  }
 
   const removedKeyWithNoCreation = async (): Promise<RemovedKeyReading> => {
     const { number: block } = await pinnedBlockOf(provider, { blockTags })
     if (!(await hasCode(block))) {
       return { kind: 'unavailable', cause: 'no-creation-record' }
     }
-    const writes = await privilegeEvents.privilegeLogsOf(addressOf(), {
-      from: CREATION_BLOCK_STAND_IN,
-      to: block
-    })
-    const candidates = distinctKeys([
-      ...writes.map((write) => write.addr),
-      ...account.associatedKeys,
-      ...knownKeys
+    const scan = { from: descriptor.deployedAt, to: block }
+    const [committer, handedTo, writes] = await Promise.all([
+      committerOf(scan),
+      handedToOf(scan),
+      privilegeEvents.privilegeLogsOf(addressOf(), scan)
     ])
-    const values = await Promise.all(
-      candidates.map((key) => accountReads.privileges(addressOf(), key, block))
+    const sources = [
+      distinctKeys([...account.associatedKeys, ...knownKeys]),
+      distinctKeys(committer),
+      distinctKeys(handedTo),
+      distinctKeys(writes.map((write) => write.addr))
+    ]
+    const signers = await signersOf(distinctKeys(sources.flat()), block)
+    const counted = sources.map((keys) =>
+      keys.filter((key) => signers.some((signer) => isAddressEqual(signer, key)))
     )
-    const held = candidates.filter((_, index) => holdsPrivilege(values[index]))
-    const holds = await Promise.all(held.map((key) => action.isAuthority(addressOf(), key, block)))
-    return readingOf(held.filter((_, index) => holds[index]))
+    return readingOf(counted.find((keys) => keys.length > 0) ?? [])
   }
 
   return {

@@ -64,7 +64,11 @@ const worldOf = ({
     action,
     moduleReads: { verify: jest.fn() },
     codeRead,
-    provider
+    provider,
+    descriptor: { manager: OTHER_IMPLEMENTATION, action: OTHER_IMPLEMENTATION, deployedAt: 0 },
+    setupEvents: { setupLogsOf: jest.fn(async () => []) },
+    events: { accountFilter: jest.fn(), fetch: jest.fn(async () => []) },
+    transactionRead: jest.fn(async () => null)
   })
   return { reads, codeRead, action }
 }

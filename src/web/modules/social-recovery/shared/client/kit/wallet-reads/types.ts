@@ -1,10 +1,13 @@
 import type {
   Address,
   ClientConfiguration,
+  DeploymentDescriptor,
+  IEventManager,
   IProvider
 } from '@web/modules/social-recovery/sdk-interfaces'
 
-import type { CodeRead, PrivilegeAccount, WalletReads } from '../../types'
+import type { CodeRead, PrivilegeAccount, TransactionRead, WalletReads } from '../../types'
+import type { SetupEvents } from '../events/types'
 import type { ActionReads, MethodReads } from '../reads/types'
 
 /** What the wallet's two account reads take. */
@@ -23,6 +26,14 @@ export interface KitWalletReadsInput {
   provider: IProvider
   /** The block tags the reads of an account with no creation record pin at. */
   blockTags?: ClientConfiguration['blockTags']
+  /** The deployment whose manager and action name the account's keys, and the block its scans start at. */
+  descriptor: Pick<DeploymentDescriptor, 'manager' | 'action' | 'deployedAt'>
+  /** The manager's setup logs, for the account's latest setup commit at the action. */
+  setupEvents: Pick<SetupEvents, 'setupLogsOf'>
+  /** The account's events feed, for its attempts at the action. */
+  events: Pick<IEventManager, 'accountFilter' | 'fetch'>
+  /** The sender of the transaction that carried a setup commit. */
+  transactionRead: TransactionRead
 }
 
 /** The one module view the verify of a pasted reply reads. */

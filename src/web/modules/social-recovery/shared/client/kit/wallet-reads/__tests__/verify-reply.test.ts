@@ -12,6 +12,10 @@ import { digestOfRequest } from '@web/modules/social-recovery/sdk-doubles'
 import type { ApproverReply, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 import {
+  createKitEventManager,
+  createSetupEvents
+} from '@web/modules/social-recovery/shared/client/kit/events'
+import {
   createActionReads,
   createMethodReads
 } from '@web/modules/social-recovery/shared/client/kit/reads'
@@ -21,6 +25,7 @@ import {
   ACTION,
   approverReplyTo,
   approverRequestAt,
+  DESCRIPTOR,
   fakeNode,
   guardianAt,
   MANAGER,
@@ -49,7 +54,15 @@ const worldOf = (scripts: { ecdsa?: ScriptedMethod; passkey?: ScriptedMethod } =
     action: createActionReads({ provider: node.provider, codeRead: node.codeRead }, ACTION),
     moduleReads: createMethodReads(node.provider),
     codeRead: node.codeRead,
-    provider: node.provider
+    provider: node.provider,
+    descriptor: DESCRIPTOR,
+    setupEvents: createSetupEvents(node.provider, MANAGER),
+    events: createKitEventManager({
+      provider: node.provider,
+      descriptor: DESCRIPTOR,
+      account: ACCOUNT
+    }),
+    transactionRead: node.transactionRead
   })
   return { node, verify: reads.verifyReply }
 }

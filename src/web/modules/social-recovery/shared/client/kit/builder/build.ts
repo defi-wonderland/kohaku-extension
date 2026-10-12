@@ -3,8 +3,9 @@
  * passed: the setup client over the chain's reads, the recovery client's
  * gathering and prepares over the same reads and the setup client's restore,
  * the action and the module reads bound to the account, the wallet's
- * removed-key and fit reads and its verify of a pasted reply through the
- * method module's own `verify` view, and the approving side. The approving
+ * removed-key and fit reads over the same setup logs, events feed and
+ * transaction read, its verify of a pasted reply through the method module's
+ * own `verify` view, and the approving side. The approving
  * side reads no chain: it is the shipped method implementations and the
  * orchestrator over them, keyed by the deployment's method addresses, and it
  * serves only the methods the deployment names. Both clients serve one events
@@ -36,6 +37,8 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
   const { account, addressBook, codeRead, config, descriptor, facts, provider } = input
   const methodReads = createMethodReads(provider)
   const moduleReads = moduleReadsOf(methodReads)
+  const setupEvents = createSetupEvents(provider, descriptor.manager)
+  const eventManager = createKitEventManager({ provider, descriptor, account })
   const kitWalletReads = createKitWalletReads({
     account: input.privilegeAccount,
     accountImplementation: config.accountImplementation,
@@ -43,14 +46,17 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     moduleReads: methodReads,
     codeRead,
     provider,
-    blockTags: config.blockTags
+    blockTags: config.blockTags,
+    descriptor,
+    setupEvents,
+    events: eventManager,
+    transactionRead: input.transactionRead
   })
   const walletReads: WalletReads = {
     removedKey: () => kitWalletReads.removedKey(),
     fitCheck: (implementation) => kitWalletReads.fitCheck(implementation),
     verifyReply: (request, reply) => kitWalletReads.verifyReply(request, reply)
   }
-  const eventManager = createKitEventManager({ provider, descriptor, account })
   const setup = createKitSetupClient({
     account,
     descriptor,
@@ -60,7 +66,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     manager: input.manager,
     action: input.action,
     moduleReads,
-    events: createSetupEvents(provider, descriptor.manager),
+    events: setupEvents,
     eventManager,
     walletReads,
     initialPrivileges: input.privilegeAccount.initialPrivileges
