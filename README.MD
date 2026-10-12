@@ -74,10 +74,11 @@ What you can test this way: the whole setup flow, up to a real save transaction 
    ```
    SEPOLIA_RPC_URL="<a Sepolia RPC URL, for example https://ethereum-sepolia-rpc.publicnode.com>"
    RPC_PROVIDER="rpc"
-   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"<the manager address>","methodEcdsa":"<the ECDSA method address>","methodPasskey":"<the passkey method address>","action":"<the recovery action address>","explorerUrl":"https://sepolia.etherscan.io"}'
+   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"<the manager address>","methodEcdsa":"<the ECDSA method address>","methodPasskey":"<the passkey method address>","action":"<the recovery action address>","deployedAt":<the block the manager was deployed at>,"digestVersion":"1","managerVersion":"1.0.0","auditedActions":[{"action":"<the recovery action address>","publisher":"ethereumFoundation"}],"explorerUrl":"https://sepolia.etherscan.io"}'
    ```
 
    - `RPC_PROVIDER` must be `rpc`: the manual test runs with the plain provider.
+   - `deployedAt` is the block number the manager was deployed at: the wallet reads the manager's events from that block on, so a lower number only makes those reads longer. `digestVersion` and `managerVersion` are what the manager publishes through `eip712Domain()` and `version()`; the wallet refuses a manager whose digest version is not the one it carries. `auditedActions` lists the actions the wallet offers, each with its publisher.
    - `explorerUrl` is optional. It is the base that `/tx/<hash>` is appended to, so "View on explorer" opens the transaction's page; for Sepolia it is `https://sepolia.etherscan.io`.
    - Write the addresses with their checksum capitals as above, or all in lower case.
    - With `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` empty, the wallet builds its built-in stand-in client, which exists for development and for the unit tests: against a real node the setup does not complete. With a malformed value (a missing or unknown field, a bad address) most recovery screens fall to the wallet's "Something went wrong, but your funds are safe!" page. If you see that page on a recovery screen, check this value first.
