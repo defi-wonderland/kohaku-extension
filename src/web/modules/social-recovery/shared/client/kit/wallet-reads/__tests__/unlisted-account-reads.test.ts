@@ -24,7 +24,12 @@ import {
   zeroHash
 } from 'viem'
 
-import type { Address, BlockRange, FilterSpec } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  BlockRange,
+  FilterSpec,
+  RawLog
+} from '@web/modules/social-recovery/sdk-interfaces'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 import { createKitEventManager } from '@web/modules/social-recovery/shared/client/kit/events'
 import {
@@ -56,6 +61,7 @@ const KEY_C: Address = '0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3'
 const CONTROLLER: Address = '0xc4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4'
 const NEW_KEY: Address = '0xc5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5'
 const RELAYER: Address = '0xc6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6'
+const STRANGER: Address = '0xc7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7'
 const ACTION_HOLDER: Address = '0x6666666666666666666666666666666666666666'
 const ENTRY_POINT: Address = '0x0000000071727De22E5E9d8BAf0edAc6f37da032'
 const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
@@ -278,6 +284,65 @@ describe("the new key of the account's latest consumed handover", () => {
       authorities: [KEY_A]
     })
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
+  })
+
+  it('is no candidate where the consumed attempt started before the scanned range', async () => {
+    const { reads, askedPrivileges } = worldOf({
+      logs: [
+        attemptStartedLog(7n, handoverTo(NEW_KEY), DEPLOYED_AT - 5),
+        attemptStartedLog(6n, handoverTo(KEY_B), DEPLOYED_AT + 10),
+        attemptConsumedLog(7n, DEPLOYED_AT + 20)
+      ],
+      holders: [KEY_B, NEW_KEY],
+      authorities: [KEY_B, NEW_KEY]
+    })
+    await expect(reads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'no-key-entry'
+    })
+    expect(askedPrivileges()).toEqual([])
+  })
+})
+
+describe('the logs a node answers beyond the filter', () => {
+  /** Answers the manager's and the account's one-chunk scans with the same logs, whichever comes first. */
+  const answerBothScans = (world: ReturnType<typeof worldOf>, logs: RawLog[]) => {
+    world.node.provider.logs.mockResolvedValueOnce(logs).mockResolvedValueOnce(logs)
+  }
+
+  it('leave out a privilege write another address emitted', async () => {
+    const world = worldOf({ holders: [KEY_A, KEY_B], authorities: [KEY_A, KEY_B] })
+    answerBothScans(world, [
+      { ...privilegeLog(KEY_B, HOLDS, DEPLOYED_AT + 5), address: STRANGER },
+      privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 10)
+    ])
+    await expect(world.reads.removedKey()).resolves.toEqual(named(KEY_A))
+    expect(world.askedPrivileges()).toEqual([KEY_A])
+  })
+
+  it('leave out a manager log another address emitted, and a commit at another action', async () => {
+    const commit = commitAt(DEPLOYED_AT + 10)
+    const foreign = { ...commitAt(DEPLOYED_AT + 20), address: STRANGER }
+    const elsewhere = commitAt(DEPLOYED_AT + 30, OTHER_ACTION)
+    const world = worldOf({
+      senders: [
+        [commit.transactionHash, KEY_A],
+        [foreign.transactionHash, KEY_B],
+        [elsewhere.transactionHash, KEY_C]
+      ],
+      holders: [KEY_A, KEY_B, KEY_C, NEW_KEY],
+      authorities: [KEY_A, KEY_B, KEY_C, NEW_KEY]
+    })
+    answerBothScans(world, [
+      commit,
+      foreign,
+      elsewhere,
+      { ...attemptStartedLog(9n, handoverTo(NEW_KEY), DEPLOYED_AT + 40), address: STRANGER },
+      { ...attemptConsumedLog(9n, DEPLOYED_AT + 50), address: STRANGER }
+    ])
+    await expect(world.reads.removedKey()).resolves.toEqual(named(KEY_A))
+    expect(world.node.transactionRead.mock.calls).toEqual([[commit.transactionHash]])
+    expect(world.askedPrivileges()).toEqual([KEY_A])
   })
 })
 
