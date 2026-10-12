@@ -45,7 +45,9 @@ import {
   ACTION_ABI,
   approverReplyTo,
   approverRequestAt,
+  committedLog,
   CONTRACT_CODE,
+  DEPLOYED_AT,
   DESCRIPTOR,
   fakeNode,
   guardianAt,
@@ -226,7 +228,11 @@ describe("the wallet's reads", () => {
       key: getAddress(KEY_A)
     })
     expect(node.provider.block).toHaveBeenCalledWith('finalized')
-    expect(node.provider.logs).toHaveBeenCalledTimes(Math.ceil((HEAD + 1) / 10_000))
+    expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
+      { from: DEPLOYED_AT, to: HEAD },
+      { from: DEPLOYED_AT, to: HEAD },
+      { from: DEPLOYED_AT, to: HEAD }
+    ])
     expect(node.calls.map(({ to, block }) => [to, block])).toEqual([
       [ACCOUNT, HEAD],
       [DEPLOYED_ACTION, HEAD]
@@ -240,6 +246,34 @@ describe("the wallet's reads", () => {
       basis: 'deployed-code',
       fits: true
     })
+  })
+
+  it("names the sender of an unlisted account's latest setup commit through the transaction read", async () => {
+    const { node, client } = clientOver(FACTS, {
+      privilegeAccount: { addr: ACCOUNT, associatedKeys: [], initialPrivileges: [], creation: null }
+    })
+    node.setCode(ACCOUNT, CONTRACT_CODE)
+    const commit = committedLog(
+      { action: DEPLOYED_ACTION, nonce: 1n, setupCommitment: ARMED },
+      HEAD - 5
+    )
+    node.addLog(commit)
+    node.setSender(commit.transactionHash, getAddress(KEY_A))
+    node.answer(
+      ACCOUNT,
+      encodeFunctionData({ abi: PRIVILEGES_VIEW, functionName: 'privileges', args: [KEY_A] }),
+      ARMED
+    )
+    node.answer(
+      DEPLOYED_ACTION,
+      encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, KEY_A] }),
+      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'isAuthority', result: true })
+    )
+    await expect(client.walletReads.removedKey()).resolves.toEqual({
+      kind: 'named',
+      key: getAddress(KEY_A)
+    })
+    expect(node.transactionRead.mock.calls).toEqual([[commit.transactionHash]])
   })
 
   it("verifies a pasted reply through the guardian method's own verify view", async () => {
