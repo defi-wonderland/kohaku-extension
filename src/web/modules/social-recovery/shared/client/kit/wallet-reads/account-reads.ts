@@ -30,21 +30,22 @@
  * unnamed, as for an account the wallet lists, and none leave it unnamed for
  * want of a key.
  *
- * Every log scan reads in chunks from the block the manager was deployed at
- * to the pinned block. A key written before the manager existed and never
- * named by a setup or a handover since is not one a recovery through this
- * manager acts on, and a scan from the chain's first block costs more reads
- * than a rate-limited node answers in a screen's time. The privileges the
- * creation code writes emit no log; such a key is found through the setup it
- * saved.
+ * The manager's logs of the account are read once, for both the setup commit
+ * and the handover, and the account's privilege writes once. Each scan reads
+ * in chunks from the block the manager was deployed at to the pinned block.
+ * A key written before the manager existed and never named by a setup or a
+ * handover since is not one a recovery through this manager acts on, and a
+ * scan from the chain's first block costs more reads than a rate-limited
+ * node answers in a screen's time. The privileges the creation code writes
+ * emit no log; such a key is found through the setup it saved.
  */
 import { getAddress, isAddressEqual, size } from 'viem'
 
 import type {
   Address,
-  BlockRange,
   BlockTag,
-  Hex
+  Hex,
+  Notification
 } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   distinctKeys,
@@ -81,7 +82,6 @@ export const createKitWalletReads = ({
   provider,
   blockTags,
   descriptor,
-  setupEvents,
   events,
   transactionRead
 }: KitWalletReadsInput): KitWalletReads => {
@@ -94,9 +94,8 @@ export const createKitWalletReads = ({
   const atAction = (log: Pick<SetupCommittedLog, 'account' | 'action'>): boolean =>
     isAddressEqual(log.account, addressOf()) && isAddressEqual(log.action, descriptor.action)
 
-  const committerOf = async (scan: BlockRange): Promise<Address[]> => {
-    const logs = await setupEvents.setupLogsOf(addressOf(), scan)
-    const commit = logs.reduce<SetupCommittedLog | undefined>(
+  const committerOf = async (notifications: readonly Notification[]): Promise<Address[]> => {
+    const commit = notifications.reduce<SetupCommittedLog | undefined>(
       (latest, log) => (log.kind === 'setup-committed' && atAction(log) ? log : latest),
       undefined
     )
@@ -107,8 +106,7 @@ export const createKitWalletReads = ({
     return sender ? [sender] : []
   }
 
-  const handedToOf = async (scan: BlockRange): Promise<Address[]> => {
-    const notifications = await events.fetch(events.accountFilter(), scan)
+  const handedToOf = (notifications: readonly Notification[]): Address[] => {
     const consumed = notifications.reduce<bigint | undefined>(
       (latest, log) => (log.kind === 'attempt-consumed' && atAction(log) ? log.attemptId : latest),
       undefined
@@ -143,11 +141,12 @@ export const createKitWalletReads = ({
       return { kind: 'unavailable', cause: 'no-creation-record' }
     }
     const scan = { from: descriptor.deployedAt, to: block }
-    const [committer, handedTo, writes] = await Promise.all([
-      committerOf(scan),
-      handedToOf(scan),
+    const [notifications, writes] = await Promise.all([
+      events.fetch(events.accountFilter(), scan),
       privilegeEvents.privilegeLogsOf(addressOf(), scan)
     ])
+    const committer = await committerOf(notifications)
+    const handedTo = handedToOf(notifications)
     const candidates = distinctKeys([
       ...account.associatedKeys,
       ...knownKeys,

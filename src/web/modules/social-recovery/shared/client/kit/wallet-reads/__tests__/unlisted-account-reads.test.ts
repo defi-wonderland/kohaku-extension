@@ -26,10 +26,7 @@ import {
 
 import type { Address, BlockRange, FilterSpec } from '@web/modules/social-recovery/sdk-interfaces'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
-import {
-  createKitEventManager,
-  createSetupEvents
-} from '@web/modules/social-recovery/shared/client/kit/events'
+import { createKitEventManager } from '@web/modules/social-recovery/shared/client/kit/events'
 import {
   createActionReads,
   createMethodReads
@@ -156,7 +153,6 @@ const worldOf = ({
     provider: node.provider,
     blockTags,
     descriptor,
-    setupEvents: createSetupEvents(node.provider, MANAGER),
     events: createKitEventManager({ provider: node.provider, descriptor, account: ACCOUNT }),
     transactionRead: node.transactionRead
   })
@@ -365,18 +361,22 @@ describe('the scans of an account with no creation record', () => {
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
     expect(askedPrivileges()).toEqual([KEY_A])
     expect(Math.min(...scans().map(({ range }) => range.from))).toBe(deployedAt)
+    const chunks = [
+      { from: deployedAt, to: deployedAt + 9_999 },
+      { from: deployedAt + 10_000, to: deployedAt + 19_999 },
+      { from: deployedAt + 20_000, to: HEAD }
+    ]
     expect(
       scans()
         .filter(({ filter }) => same(filter.addresses[0], ACCOUNT))
         .map(({ filter, range }) => [filter, range])
-    ).toEqual(
-      [
-        { from: deployedAt, to: deployedAt + 9_999 },
-        { from: deployedAt + 10_000, to: deployedAt + 19_999 },
-        { from: deployedAt + 20_000, to: HEAD }
-      ].map((range) => [{ addresses: [ACCOUNT], topics: [PRIVILEGE_TOPIC] }, range])
-    )
-    expect(scans().filter(({ filter }) => same(filter.addresses[0], MANAGER))).toHaveLength(6)
+    ).toEqual(chunks.map((range) => [{ addresses: [ACCOUNT], topics: [PRIVILEGE_TOPIC] }, range]))
+    expect(
+      scans()
+        .filter(({ filter }) => same(filter.addresses[0], MANAGER))
+        .map(({ range }) => range)
+    ).toEqual(chunks)
+    expect(scans()).toHaveLength(chunks.length * 2)
   })
 
   it('pin every read at the block of the configured read tag', async () => {

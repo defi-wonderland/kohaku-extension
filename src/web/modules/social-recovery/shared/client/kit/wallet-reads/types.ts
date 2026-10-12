@@ -7,7 +7,6 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { CodeRead, PrivilegeAccount, TransactionRead, WalletReads } from '../../types'
-import type { SetupEvents } from '../events/types'
 import type { ActionReads, MethodReads } from '../reads/types'
 
 /** What the wallet's two account reads take. */
@@ -28,9 +27,7 @@ export interface KitWalletReadsInput {
   blockTags?: ClientConfiguration['blockTags']
   /** The deployment whose manager and action name the account's keys, and the block its scans start at. */
   descriptor: Pick<DeploymentDescriptor, 'manager' | 'action' | 'deployedAt'>
-  /** The manager's setup logs, for the account's latest setup commit at the action. */
-  setupEvents: Pick<SetupEvents, 'setupLogsOf'>
-  /** The account's events feed, for its attempts at the action. */
+  /** The account's events feed, for its latest setup commit and its attempts at the action. */
   events: Pick<IEventManager, 'accountFilter' | 'fetch'>
   /** The sender of the transaction that carried a setup commit. */
   transactionRead: TransactionRead

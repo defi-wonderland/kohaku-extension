@@ -3,8 +3,8 @@
  * passed: the setup client over the chain's reads, the recovery client's
  * gathering and prepares over the same reads and the setup client's restore,
  * the action and the module reads bound to the account, the wallet's
- * removed-key and fit reads over the same setup logs, events feed and
- * transaction read, its verify of a pasted reply through the method module's
+ * removed-key and fit reads over the same events feed and the transaction
+ * read, its verify of a pasted reply through the method module's
  * own `verify` view, and the approving side. The approving
  * side reads no chain: it is the shipped method implementations and the
  * orchestrator over them, keyed by the deployment's method addresses, and it
@@ -48,7 +48,6 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     provider,
     blockTags: config.blockTags,
     descriptor,
-    setupEvents,
     events: eventManager,
     transactionRead: input.transactionRead
   })

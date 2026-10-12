@@ -11,10 +11,7 @@ import type { Hex } from 'viem'
 import { digestOfRequest } from '@web/modules/social-recovery/sdk-doubles'
 import type { ApproverReply, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
-import {
-  createKitEventManager,
-  createSetupEvents
-} from '@web/modules/social-recovery/shared/client/kit/events'
+import { createKitEventManager } from '@web/modules/social-recovery/shared/client/kit/events'
 import {
   createActionReads,
   createMethodReads
@@ -56,7 +53,6 @@ const worldOf = (scripts: { ecdsa?: ScriptedMethod; passkey?: ScriptedMethod } =
     codeRead: node.codeRead,
     provider: node.provider,
     descriptor: DESCRIPTOR,
-    setupEvents: createSetupEvents(node.provider, MANAGER),
     events: createKitEventManager({
       provider: node.provider,
       descriptor: DESCRIPTOR,

@@ -230,7 +230,6 @@ describe("the wallet's reads", () => {
     expect(node.provider.block).toHaveBeenCalledWith('finalized')
     expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
       { from: DEPLOYED_AT, to: HEAD },
-      { from: DEPLOYED_AT, to: HEAD },
       { from: DEPLOYED_AT, to: HEAD }
     ])
     expect(node.calls.map(({ to, block }) => [to, block])).toEqual([
