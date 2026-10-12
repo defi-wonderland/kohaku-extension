@@ -10,23 +10,25 @@
  *
  * An account with no creation record, such as one the wallet does not list,
  * is read at one pinned block. With no code there, it leaves the key unnamed
- * for that reason. With code, the candidates come from four sources, in this
- * order of trust:
+ * for that reason. With code, the removed key is among the keys that hold
+ * authority on the account, found through four sources that rank none above
+ * another:
  *
- * 1. the keys the wallet knows for the account;
- * 2. the sender of the transaction that carried the account's latest setup
- *    commit at the action, since a setup is saved by the key that controls
- *    the account (a save a relayer sent names the relayer, which the checks
- *    below drop);
- * 3. the new key of the account's latest handover the manager consumed, its
- *    attempt's payload decoded through the action's codec;
- * 4. the addresses the account's `LogPrivilegeChanged` writes name.
+ * - the keys the wallet knows for the account;
+ * - the sender of the transaction that carried the account's latest setup
+ *   commit at the action, since a setup is saved by the key that controls
+ *   the account (a save a relayer sent names the relayer, which the checks
+ *   below drop);
+ * - the new key of the account's latest handover the manager consumed, its
+ *   attempt's payload decoded through the action's codec;
+ * - the addresses the account's `LogPrivilegeChanged` writes name.
  *
- * A candidate counts where the account's `privileges` view holds a value for
- * it at the pinned block and the action's `isAuthority` agrees; each distinct
- * key is read once. The first source with a key that counts answers: one key
- * is the removed key, several leave it unnamed. Where no source has one, the
- * key is unnamed for want of a key.
+ * The candidates of all four are gathered and judged once: a key holds
+ * authority where the account's `privileges` view holds a value for it at
+ * the pinned block and the action's `isAuthority` agrees, each distinct key
+ * read once. Exactly one such key is the removed key; several leave it
+ * unnamed, as for an account the wallet lists, and none leave it unnamed for
+ * want of a key.
  *
  * Every log scan reads in chunks from the block the manager was deployed at
  * to the pinned block. A key written before the manager existed and never
@@ -146,17 +148,14 @@ export const createKitWalletReads = ({
       handedToOf(scan),
       privilegeEvents.privilegeLogsOf(addressOf(), scan)
     ])
-    const sources = [
-      distinctKeys([...account.associatedKeys, ...knownKeys]),
-      distinctKeys(committer),
-      distinctKeys(handedTo),
-      distinctKeys(writes.map((write) => write.addr))
-    ]
-    const signers = await signersOf(distinctKeys(sources.flat()), block)
-    const counted = sources.map((keys) =>
-      keys.filter((key) => signers.some((signer) => isAddressEqual(signer, key)))
-    )
-    return readingOf(counted.find((keys) => keys.length > 0) ?? [])
+    const candidates = distinctKeys([
+      ...account.associatedKeys,
+      ...knownKeys,
+      ...committer,
+      ...handedTo,
+      ...writes.map((write) => write.addr)
+    ])
+    return readingOf(await signersOf(candidates, block))
   }
 
   return {

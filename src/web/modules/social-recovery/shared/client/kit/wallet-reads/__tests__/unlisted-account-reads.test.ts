@@ -4,9 +4,10 @@
  * candidates come from the keys the wallet knows, the sender of the
  * account's latest setup commit at the action, the new key of its latest
  * consumed handover and the addresses its privilege writes name, each scan
- * read from the manager's deployment block. Every candidate is asked about
- * once with the account's `privileges` view and then with the action's
- * `isAuthority`, and the first source with a key that passes both answers.
+ * read from the manager's deployment block. The candidates of every source
+ * are judged together, each asked about once with the account's `privileges`
+ * view and then with the action's `isAuthority`, and every key that passes
+ * both counts, whichever source named it.
  * The logs and the view answers are encoded here from hand-written
  * signatures.
  */
@@ -224,6 +225,20 @@ describe("the sender of the account's latest setup commit", () => {
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
   })
 
+  it('leaves the key unnamed where a later privilege write gave a second key authority', async () => {
+    const commit = commitAt(DEPLOYED_AT + 10)
+    const { reads } = worldOf({
+      logs: [commit, privilegeLog(KEY_C, HOLDS, DEPLOYED_AT + 20)],
+      senders: [[commit.transactionHash, CONTROLLER]],
+      holders: [CONTROLLER, KEY_C],
+      authorities: [CONTROLLER, KEY_C]
+    })
+    await expect(reads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'several-key-entries'
+    })
+  })
+
   it('rejects where the transaction read fails, never answering a refusal', async () => {
     const commit = commitAt(DEPLOYED_AT + 10)
     const failure = providerReadFailure('transaction', new Error('timeout'))
@@ -238,7 +253,7 @@ describe("the sender of the account's latest setup commit", () => {
 })
 
 describe("the new key of the account's latest consumed handover", () => {
-  it('is the removed key where the setup commit names none, before any privilege write', async () => {
+  it('is the removed key where the setup commit names none, never an earlier consumed or a later unconsumed one', async () => {
     const commit = commitAt(DEPLOYED_AT + 1)
     const { reads } = worldOf({
       logs: [
@@ -247,12 +262,11 @@ describe("the new key of the account's latest consumed handover", () => {
         attemptConsumedLog(5n, DEPLOYED_AT + 20),
         attemptStartedLog(7n, handoverTo(NEW_KEY), DEPLOYED_AT + 30),
         attemptConsumedLog(7n, DEPLOYED_AT + 40),
-        attemptStartedLog(8n, handoverTo(KEY_C), DEPLOYED_AT + 50),
-        privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 60)
+        attemptStartedLog(8n, handoverTo(KEY_C), DEPLOYED_AT + 50)
       ],
       senders: [[commit.transactionHash, RELAYER]],
-      holders: [KEY_A, KEY_B, KEY_C, NEW_KEY],
-      authorities: [KEY_A, KEY_B, KEY_C, NEW_KEY]
+      holders: [KEY_B, KEY_C, NEW_KEY],
+      authorities: [KEY_B, KEY_C, NEW_KEY]
     })
     await expect(reads.removedKey()).resolves.toEqual(named(NEW_KEY))
   })
@@ -272,7 +286,7 @@ describe("the new key of the account's latest consumed handover", () => {
 })
 
 describe('the keys the wallet knows', () => {
-  it('answer before the setup commit, whose sender is still judged once', async () => {
+  it('rank no higher than the setup commit: a wallet key and another commit sender, both signers, leave the key unnamed', async () => {
     const commit = commitAt(DEPLOYED_AT + 10)
     const { reads, askedPrivileges } = worldOf({
       knownKeys: [KEY_A],
@@ -281,8 +295,23 @@ describe('the keys the wallet knows', () => {
       holders: [KEY_A, KEY_B],
       authorities: [KEY_A, KEY_B]
     })
-    await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
+    await expect(reads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'several-key-entries'
+    })
     expect(askedPrivileges()).toEqual([KEY_A, KEY_B])
+  })
+
+  it('name a wallet key where the commit sender is no signer', async () => {
+    const commit = commitAt(DEPLOYED_AT + 10)
+    const { reads } = worldOf({
+      knownKeys: [KEY_A],
+      logs: [commit],
+      senders: [[commit.transactionHash, RELAYER]],
+      holders: [KEY_A, RELAYER],
+      authorities: [KEY_A]
+    })
+    await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
   })
 
   it('leave the key unnamed where two of them are signers', async () => {
