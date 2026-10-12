@@ -24,6 +24,7 @@ import {
   zeroHash
 } from 'viem'
 
+import { ERC_4337_ENTRYPOINT } from '@ambire-common/consts/deploy'
 import type {
   Address,
   BlockRange,
@@ -63,7 +64,7 @@ const NEW_KEY: Address = '0xc5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5'
 const RELAYER: Address = '0xc6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6'
 const STRANGER: Address = '0xc7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7'
 const ACTION_HOLDER: Address = '0x6666666666666666666666666666666666666666'
-const ENTRY_POINT: Address = '0x0000000071727De22E5E9d8BAf0edAc6f37da032'
+const ENTRY_POINT = getAddress(ERC_4337_ENTRYPOINT)
 const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
 const HOLDS: Hex = pad('0x01')
 
