@@ -58,7 +58,7 @@ Make sure your `SEPOLIA_RPC_URL` is a strong RPC that can handle heavy load. If 
 
 The account recovery setup (choose a recovery path, enroll guardians and passkeys, pick a privacy level, review, save on chain, download the Recovery Card) runs end to end against deployed recovery contracts. The contracts are deployed on public Sepolia (chain id 11155111) since 2026-10-08. Their addresses are not in this repository: the project gives them to you, and the build reads them from `.env`.
 
-What you can test this way: the whole setup flow, up to a real save transaction and the Recovery Card. What you cannot test yet: recovering an account, approving or cancelling a recovery as a guardian, and viewing or editing a saved setup. Those screens belong to later milestones; the wallet's client refuses them as "not served" against real contracts.
+What you can test this way: the whole setup flow, up to a real save transaction and the Recovery Card; recovering an account from the "Recover an account" entry, from gathering the guardians' replies to the recovery's execution; and a guardian approving or cancelling a recovery. What you cannot test yet: viewing or editing a saved setup, and clearing a setup. Those screens belong to later milestones.
 
 ### What you need
 
@@ -74,13 +74,16 @@ What you can test this way: the whole setup flow, up to a real save transaction 
    ```
    SEPOLIA_RPC_URL="<a Sepolia RPC URL, for example https://ethereum-sepolia-rpc.publicnode.com>"
    RPC_PROVIDER="rpc"
-   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"<the manager address>","methodEcdsa":"<the ECDSA method address>","methodPasskey":"<the passkey method address>","action":"<the recovery action address>","explorerUrl":"https://sepolia.etherscan.io"}'
+   SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"<the manager address>","methodEcdsa":"<the ECDSA method address>","methodPasskey":"<the passkey method address>","action":"<the recovery action address>","deployedAt":<the block the manager was deployed at>,"digestVersion":"1","managerVersion":"1.0.0","auditedActions":[{"action":"<the recovery action address>","publisher":"ethereumFoundation"}],"explorerUrl":"https://sepolia.etherscan.io"}'
    ```
 
    - `RPC_PROVIDER` must be `rpc`: the manual test runs with the plain provider.
+   - `deployedAt` is the block number the manager was deployed at: the wallet reads the manager's events from that block on, so a lower number only makes those reads longer. `digestVersion` and `managerVersion` are what the manager publishes through `eip712Domain()` and `version()`; the wallet refuses a manager whose digest version is not the one it carries. `auditedActions` lists the actions the wallet offers, each with its publisher.
    - `explorerUrl` is optional. It is the base that `/tx/<hash>` is appended to, so "View on explorer" opens the transaction's page; for Sepolia it is `https://sepolia.etherscan.io`.
    - Write the addresses with their checksum capitals as above, or all in lower case.
    - With `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` empty, the wallet builds its built-in stand-in client, which exists for development and for the unit tests: against a real node the setup does not complete. With a malformed value (a missing or unknown field, a bad address) most recovery screens fall to the wallet's "Something went wrong, but your funds are safe!" page. If you see that page on a recovery screen, check this value first.
+
+   A test build may also set `SOCIAL_RECOVERY_WAIT_FLOOR_MINUTES` in `.env` to a whole number of minutes below 1440. It lowers the shortest waiting period the wallet accepts to that many minutes, so a test does not wait a day, and the custom waiting period then counts minutes. The wallet ignores any other value. A release build leaves it unset.
 3. Build: `yarn build:web:webkit` (about two minutes). The extension is in `build/webkit-prod`.
 
 The build inlines the `.env` values. After any change to `.env`, build again and reload the extension.
@@ -151,7 +154,7 @@ A reference run on 2026-10-05, on the Tenderly fork used before the Sepolia depl
 - **Only a created wallet works.** An imported recovery phrase gets basic accounts only (see step 3).
 - **Sepolia is a public test network.** Use a throwaway wallet, never a wallet you care about.
 - **The wallet's dashboard fails now and then** with "Something went wrong, but your funds are safe!" (an animation error, seen in the full tab and in the popup). It is outside the recovery module and does not depend on the network; see step 3 for the ways around it.
-- **Guardians do not act yet.** Enrolling a guardian by address needs nothing from the guardian. The screens where a guardian approves, and the "Recover an account" entry, are not connected to the real contracts in this milestone.
+- **Guardians act only in a recovery.** Enrolling a guardian by address needs nothing from the guardian. A guardian approves or cancels a recovery from the guardian's screens, and the "Recover an account" entry runs the recovery against the real contracts.
 - **A passkey stored by a password manager** (Google Password Manager, iCloud Keychain) shows as synced, not as bound to this device. Both work for the setup.
 - **The sign window's fee estimate is high** (about a third above the fee that was paid in testing).
 - **The Recovery Card shows your recovery password** when you press Reveal or download it. Treat a card from a test like any secret you would not paste in a chat.

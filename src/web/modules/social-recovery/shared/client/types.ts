@@ -164,6 +164,8 @@ export interface RecoveryClientConfiguration extends AccountFacts {
   provider: IProvider
   /** The code read beside the provider adapter (`createCodeRead`), which a deployed kit needs. */
   codeRead: CodeRead
+  /** The transaction read beside the provider adapter (`createTransactionRead`), which a deployed kit needs. */
+  transactionRead: TransactionRead
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +205,15 @@ export interface CodeRead {
   code(address: Address, block?: BlockTag): Promise<Hex>
 }
 
+/** The member of the extension's provider the transaction read uses. */
+export type TransactionReadProvider = Pick<RPCProvider, 'getTransaction'>
+
+/**
+ * The sender of a transaction, beside the provider adapter, which makes no
+ * transaction read: null where the node knows no transaction of that hash.
+ */
+export type TransactionRead = (hash: Hex) => Promise<Address | null>
+
 /** The members of the extension's provider the balance and gas reads use. */
 export type ChainReadsProvider = Pick<RPCProvider, 'getBalance' | 'estimateGas' | 'send'>
 
@@ -219,7 +230,7 @@ export interface ChainReads {
   nativeBalance(address: Address, block?: BlockTag): Promise<bigint>
   /** The gas one transaction would use. A call that would revert rejects with its revert data. */
   estimateGas(call: GasEstimateCall): Promise<bigint>
-  /** The node's gas price, in wei per gas. */
+  /** The fee per gas a send from the wallet pays, in wei per gas: the latest block's base fee twice plus a priority fee with a floor. */
   gasPrice(): Promise<bigint>
 }
 

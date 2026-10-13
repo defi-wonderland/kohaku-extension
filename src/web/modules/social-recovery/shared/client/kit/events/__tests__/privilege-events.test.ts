@@ -18,6 +18,7 @@ import {
   decodePrivilegeLog,
   PRIVILEGE_CHANGED_TOPIC
 } from '@web/modules/social-recovery/shared/client/kit/events'
+import { pastRetryPauses } from '@web/modules/social-recovery/shared/client/kit/events/__fixtures__/retries'
 
 const ACCOUNT: Address = '0xabCDeF0123456789AbcdEf0123456789aBCDEF01'
 const OTHER_ACCOUNT: Address = '0x2222222222222222222222222222222222222222'
@@ -149,12 +150,27 @@ describe('the privilege writes of an account', () => {
     expect(logsRead).toHaveBeenCalledTimes(3)
   })
 
-  it('rejects where a chunk read fails', async () => {
+  it('reads in chunks of the width it is given', async () => {
+    const { provider, logsRead } = chainWithLogs([])
+    await createPrivilegeEvents(provider, 2).privilegeLogsOf(ACCOUNT, { from: 100, to: 104 })
+    expect(logsRead.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 100, to: 101 },
+      { from: 102, to: 103 },
+      { from: 104, to: 104 }
+    ])
+  })
+
+  it('rejects where a chunk read fails on every try', async () => {
+    jest.useFakeTimers()
     const failure = providerReadFailure('logs', new Error('range too wide'))
     const { provider, logsRead } = chainWithLogs([])
-    logsRead.mockRejectedValueOnce(failure)
+    logsRead.mockRejectedValue(failure)
     await expect(
-      createPrivilegeEvents(provider).privilegeLogsOf(ACCOUNT, { from: 0, to: 5 })
+      pastRetryPauses(createPrivilegeEvents(provider).privilegeLogsOf(ACCOUNT, { from: 0, to: 5 }))
     ).rejects.toBe(failure)
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
   })
 })

@@ -279,12 +279,13 @@ export interface HeldConfiguration {
   source: ConfigurationSourceKind
 }
 
-/** What adding a reply came to. */
+/** What adding a reply came to; `held` where a failed poll held every add. */
 export type AddReplyResult =
   | { kind: 'added' }
   | { kind: 'refused'; cause: string }
   | { kind: 'conflict' }
   | { kind: 'write-failed' }
+  | { kind: 'held' }
 
 export interface ChecklistState {
   load: ChecklistLoad
@@ -553,6 +554,8 @@ export type PasteError =
   | { kind: 'noMatch' }
   | { kind: 'checkFailed' }
   | { kind: 'writeFailed' }
+  /** A failed poll holds every add until a poll succeeds. */
+  | { kind: 'held' }
   /** Another tab changed the session; the checklist renders the reload. */
   | { kind: 'conflict' }
 
@@ -564,7 +567,7 @@ export type PasteJudgement =
 /** What a paste came to: the reply added to its place, or one written error. */
 export type PasteOutcome = { kind: 'added'; place: number } | { kind: 'error'; error: PasteError }
 
-/** What the verify of one reply came to; a check the client does not serve passes the reply on to the add. */
+/** What the verify of one reply came to: passed on to the add, rejected, or a check that failed. */
 export type VerifyStep = 'pass' | 'rejected' | 'failed'
 
 export type VerifyReply = (request: ApproverRequest, reply: ApproverReply) => Promise<Verdict>

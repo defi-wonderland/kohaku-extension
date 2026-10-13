@@ -26,9 +26,6 @@ import type {
   VerifyStep
 } from './types'
 
-/** The member the deployed kit refuses as not served for the verify of a pasted reply. */
-const VERIFY_MEMBER = 'walletReads.verifyReply'
-
 /** An approval as the one line the guardian sends back. */
 export const replyLineOf = (reply: ApproverReply): string => lineOfRecord(reply)
 
@@ -95,15 +92,10 @@ export const judgePaste = (input: PasteJudgeInput): PasteJudgement => {
   return { kind: 'verify', reply, request: input.requests.get(reply.place) }
 }
 
-/** Whether a thrown value is the deployed kit's refusal of the verify as not served yet. */
-const verifyNotServed = (error: unknown): boolean =>
-  isObject(error) && error.name === 'NotServedRefusal' && error.member === VERIFY_MEMBER
-
 /**
  * The verify of one reply against its place's request. Only a satisfied
  * verdict passes; a verdict that judges nothing is a failed check the holder
- * retries, as is any thrown read. A client that serves no check at all leaves
- * the add's own digest match to decide.
+ * retries, as is any thrown read.
  */
 export const verifyStepOf = async (
   verify: VerifyReply,
@@ -116,8 +108,8 @@ export const verifyStepOf = async (
       return 'rejected'
     }
     return verdict === 'satisfied' ? 'pass' : 'failed'
-  } catch (error: unknown) {
-    return verifyNotServed(error) ? 'pass' : 'failed'
+  } catch {
+    return 'failed'
   }
 }
 
@@ -135,6 +127,9 @@ export const errorOfAdd = (result: Exclude<AddReplyResult, { kind: 'added' }>): 
   }
   if (result.kind === 'write-failed') {
     return { kind: 'writeFailed' }
+  }
+  if (result.kind === 'held') {
+    return { kind: 'held' }
   }
   if (result.cause === 'version-unread') {
     return { kind: 'notAnApproval' }
@@ -172,6 +167,8 @@ export const pasteErrorLinesOf = (error: PasteError, t: Translate): string[] => 
       return [t(`${PASTE}.checkFailed`)]
     case 'writeFailed':
       return [t('socialRecovery.checklist.writeFailed')]
+    case 'held':
+      return [t('socialRecovery.checklist.pollFailed.held')]
     case 'conflict':
     default:
       return []
