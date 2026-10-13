@@ -336,7 +336,7 @@ export class RecoveryClientDouble implements IRecoveryClient {
       }
     }
     const recomputed = setupCommitmentOf(
-      chain.account,
+      request.account,
       request.action,
       request.setupNonce,
       request.setupBody

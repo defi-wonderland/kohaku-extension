@@ -68,6 +68,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
 
 const TOKEN: Address = '0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1'
+const OTHER_ACCOUNT: Address = '0xd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2'
 
 const RECOVERY_WRITES = parseAbi([
   'function startAttempt((address account, address action, uint64 attemptId, uint64 setupNonce, bytes setupBody, bytes payload, (address token, uint256 amount, address payee) order, uint48 validUntil, (uint256 place, address method, bytes config, bytes32 salt, bytes proof)[] proofs) request)',
@@ -320,6 +321,21 @@ describe('preparing the start of an attempt', () => {
     ])
   })
 
+  it("refuses a request for another account carrying this account's body and nonce", async () => {
+    const world = worldWith()
+    const request = opening({ account: OTHER_ACCOUNT })
+    expect(await refusalOf(world.recovery.prepareStartAttempt(request, NOW))).toEqual([
+      {
+        code: 'request.body-mismatch',
+        subject: 'request',
+        values: {
+          recomputed: setupCommitmentOf(OTHER_ACCOUNT, ACTION, NONCE, BODY),
+          committed: setupCommitmentOf(ACCOUNT, ACTION, NONCE, BODY)
+        }
+      }
+    ])
+  })
+
   it('refuses proofs out of place order, naming the first place out of order', async () => {
     const world = worldWith()
     const request = opening({ proofs: [proofAt(2), proofAt(0)] })
@@ -481,6 +497,21 @@ describe('preparing the cancellation by proofs', () => {
         code: 'request.attempt-id',
         subject: 'request',
         values: { attemptId: WAITING_ATTEMPT - 1n, expected: WAITING_ATTEMPT }
+      }
+    ])
+  })
+
+  it("refuses a request for another account carrying this account's body and nonce", async () => {
+    const world = worldWith({ state: WAITING })
+    const request = cancellation({ account: OTHER_ACCOUNT })
+    expect(await refusalOf(world.recovery.prepareCancelByProofs(request, NOW))).toEqual([
+      {
+        code: 'request.body-mismatch',
+        subject: 'request',
+        values: {
+          recomputed: setupCommitmentOf(OTHER_ACCOUNT, ACTION, NONCE, BODY),
+          committed: setupCommitmentOf(ACCOUNT, ACTION, NONCE, BODY)
+        }
       }
     ])
   })
