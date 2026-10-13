@@ -196,7 +196,9 @@ describe('the gas step', () => {
 
     await press('fast-track-gas-back')
 
-    expect(movesAway()).toMatchObject([{ to: ACCOUNT_STEP.slice(1), replace: true }])
+    expect(movesAway()).toMatchObject([
+      { to: ACCOUNT_STEP.slice(1), replace: true, state: { acknowledged: true } }
+    ])
     expect(where()).toBe(ACCOUNT_STEP)
   })
 
@@ -330,7 +332,7 @@ describe('the gas step', () => {
 
       expect(byTestId('fast-track-gas')).toBeNull()
       expect(byTestId('fast-track-gas-failed')?.textContent).toContain(
-        'Could not finish the gas check. The node did not answer.'
+        'Could not finish the checks before sending. The node did not answer. Nothing was sent.'
       )
       expect(byTestId('fast-track-gas-retry')).not.toBeNull()
       expect(text()).not.toContain(DEPOSIT_LINE)
