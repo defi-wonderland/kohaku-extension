@@ -616,6 +616,20 @@ describe('preparing the execute', () => {
     })
   })
 
+  it('describes a native payment as the amount sent to the payee with no data', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: KEY_B } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    expect(call.describes?.[3]).toEqual({ to: KEY_B, value: 5n, data: '0x' })
+  })
+
+  it('describes a native payment to an open payee as sent to the zero address', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: zeroAddress } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    expect(call.describes?.[3]).toEqual({ to: zeroAddress, value: 5n, data: '0x' })
+  })
+
   it('describes the consume and the payment alone for a payload that does not decode, and refuses nothing', async () => {
     const world = worldWith({ state: WAITING })
     const call = await world.recovery.prepareExecuteHandover(attemptOf(), '0x1234')

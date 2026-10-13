@@ -384,11 +384,12 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
         }
         if (attempt.order.amount > 0n) {
           // An open payee stays the zero address here: whoever executes is paid.
+          // The zero token is the native coin, sent as value with no data.
+          const { token, payee, amount } = attempt.order
           describes.push(
-            describedCall(
-              attempt.order.token,
-              transferData(attempt.order.payee, attempt.order.amount)
-            )
+            sameAddress(token, zeroAddress)
+              ? { to: payee, value: amount, data: '0x' }
+              : describedCall(token, transferData(payee, amount))
           )
         }
         return {
