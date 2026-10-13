@@ -117,6 +117,15 @@ describe("the module's judgement", () => {
     )
   })
 
+  it('rejects with the failure where every view of the module fails, whatever its verify would answer', async () => {
+    const failure = providerReadFailure('call', new Error('node down'))
+    const { verify } = worldOf({ ecdsa: { views: failure, verify: VERIFY_MAGIC } })
+
+    expect(await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))).toBe(
+      failure
+    )
+  })
+
   it('rejects with a read failure where the module answers no word, as an address with no code does', async () => {
     const { node, verify } = worldOf()
     node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => '0x')

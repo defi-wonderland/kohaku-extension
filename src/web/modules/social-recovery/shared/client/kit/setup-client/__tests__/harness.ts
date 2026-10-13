@@ -488,7 +488,7 @@ export const scriptMethod = (
     node.answerWith(method, VERIFY_SELECTOR, () =>
       verify instanceof Error
         ? verify
-        : encodeFunctionResult({ abi: METHOD_ABI, functionName: 'verify', result: verify })
+        : view(encodeFunctionResult({ abi: METHOD_ABI, functionName: 'verify', result: verify }))
     )
   }
 }
