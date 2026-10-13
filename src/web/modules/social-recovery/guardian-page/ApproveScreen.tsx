@@ -4,9 +4,10 @@
  * refuses one aimed at another deployment before any read, builds the
  * recovery client for the request's account, describes the request through
  * the client's approving side and reads the chain through the client. It
- * holds nothing of the recoverer's.
+ * holds nothing of the recoverer's. Once described, the request's lead stays
+ * on the page while the client is built again or a read runs or fails.
  */
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import Text from '@common/components/Text'
@@ -27,7 +28,7 @@ import DeclinedBlock from './DeclinedBlock'
 import { domainAgrees, readingOf } from './reading'
 import { approvalRequestOf, describedRequestOf } from './request'
 import StatusBlock from './StatusBlock'
-import type { ApprovalClient } from './types'
+import type { ApprovalClient, DescribedRequest } from './types'
 import useApprovalReads from './useApprovalReads'
 import useDeadlineClock from './useDeadlineClock'
 
@@ -59,13 +60,24 @@ const ApproveScreen = () => {
     if (clientState.status === 'loading') {
       return { status: 'loading' }
     }
+    if (clientState.status === 'update-the-wallet') {
+      return { status: 'refused' }
+    }
     return { status: 'failed', retry: clientState.retry }
   }, [kit, clientState.status, clientState.retry])
 
-  const described = useMemo(
-    () => (kit ? describedRequestOf(request, (r) => kit.approving.describeRequest(r)) : null),
+  // Undefined while no client stands; null where the client cannot describe the request.
+  const fresh = useMemo(
+    () => (kit ? describedRequestOf(request, (r) => kit.approving.describeRequest(r)) : undefined),
     [kit, request]
   )
+  const [kept, setKept] = useState<DescribedRequest | null>(null)
+  useEffect(() => {
+    if (fresh !== undefined) {
+      setKept(fresh)
+    }
+  }, [fresh])
+  const described = fresh !== undefined ? fresh : kept?.request === request ? kept : null
   const { reads, retry } = useApprovalReads({ client: kit, enabled: readable && !declined })
   const clock = useDeadlineClock(request ? Number(request.validUntil) : null)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
@@ -93,12 +105,7 @@ const ApproveScreen = () => {
       return <DeclinedBlock onClose={closePage} />
     }
     const reading = readingOf(request, kit?.descriptor ?? build, client, reads, clock)
-    if (
-      !described ||
-      reading.kind === 'other-deployment' ||
-      reading.kind === 'reading' ||
-      reading.kind === 'failed'
-    ) {
+    if (!described || reading.kind === 'other-deployment') {
       return <StatusBlock reading={reading} onRetry={onRetry} />
     }
     return (
@@ -110,6 +117,7 @@ const ApproveScreen = () => {
         timeZone={timeZone}
         onClose={closePage}
         onDecline={onDecline}
+        onRetry={onRetry}
       />
     )
   }

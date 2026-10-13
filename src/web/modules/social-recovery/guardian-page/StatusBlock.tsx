@@ -1,7 +1,8 @@
 /**
- * What the page draws while it cannot show a reading: the reads not answered
- * yet, a client or a read that failed, with a retry, and a request aimed at
- * another deployment, with none. The sign action beneath stays disabled.
+ * What the page draws while no answered reading stands: the reads not
+ * answered yet, a client or a read that failed, with a retry, and a request
+ * aimed at another deployment, with none. The sign action beneath stays
+ * disabled.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -32,9 +33,15 @@ const StatusBlock = ({ reading, onRetry }: StatusBlockProps) => {
 
   if (reading.kind === 'reading') {
     return (
-      <View testID="guardian-reading" style={[flexbox.directionRow, flexbox.alignCenter]}>
-        <ActivityIndicator style={spacings.mrTy} />
-        <Text fontSize={14}>{t(`${PAGE}.reading`)}</Text>
+      <View>
+        <View
+          testID="guardian-reading"
+          style={[flexbox.directionRow, flexbox.alignCenter, spacings.mbSm]}
+        >
+          <ActivityIndicator style={spacings.mrTy} />
+          <Text fontSize={14}>{t(`${PAGE}.reading`)}</Text>
+        </View>
+        {disabledSign}
       </View>
     )
   }
