@@ -497,7 +497,7 @@
         "nameUnresolved": "This name does not resolve to any address.",
         "noCode": "No contract code at this address today.",
         "smartAccountDetected": "This address is a smart account.",
-        "notSameSeed": "Not a key this wallet holds.",
+        "notSameSeed": "Not derived from your account's recovery phrase.",
         "sameSeed": "This address comes from the same seed as your key, so losing the seed loses both.",
         "heldHere": "This wallet holds this key too, apart from your account's recovery phrase. Losing this device loses both.",
         "advisory": "These checks are advisory. None of them stops you from saving.",
