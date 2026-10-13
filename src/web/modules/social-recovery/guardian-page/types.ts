@@ -283,6 +283,15 @@ export interface GuardianSigningInput {
   signTypedData: (key: KeyHandle, typedData: TypedDataToSign, options?: SignOptions) => Promise<Hex>
 }
 
+/** The signing's state, kept for the one request it belongs to. */
+export interface SigningState {
+  request: ApproverRequest | null
+  busy: boolean
+  failure: SigningFailure | null
+  offlineFailure: OfflineFailure | null
+  approval: SignedApproval | null
+}
+
 export interface GuardianSigning {
   busy: boolean
   failure: SigningFailure | null

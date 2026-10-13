@@ -8,8 +8,8 @@
  * on the page while the client is built again or a read runs or fails. The
  * signature is made in the wallet's own sign window through the request
  * queue, for the key the request names where this wallet holds it; a locked
- * wallet goes to its unlock first. Once the approval exists the page reads
- * the chain no more.
+ * wallet goes to its unlock first and comes back here with the request. Once
+ * the approval exists the page reads the chain no more.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -33,6 +33,7 @@ import {
   signRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
+import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ListedAccount } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 
@@ -59,12 +60,15 @@ const ApproveScreen = () => {
   const { accounts } = useAccountsControllerState()
   const { keys, isUnlocked, hasPasswordSecret } = useKeystoreControllerState()
   const { dispatch, windowId } = useBackgroundService()
-  const [declined, setDeclined] = useState(false)
 
   const request = useMemo(
     () => approvalRequestOf(location.search, window.location.hash),
     [location.search]
   )
+  // Decline belongs to the request it was pressed for: another link opened in
+  // the same tab is not declined.
+  const [declinedFor, setDeclinedFor] = useState<ApproverRequest | null>(null)
+  const declined = !!request && declinedFor === request
   const build = useMemo(
     () => descriptorOf(WALLET_RECOVERY_CHAIN, addressBookOf(WALLET_RECOVERY_CHAIN)),
     []
@@ -143,17 +147,22 @@ const ApproveScreen = () => {
     }
     retry()
   }, [client, retry])
-  const onDecline = useCallback(() => setDeclined(true), [])
-  // A locked wallet goes to its unlock; a held key signs in the wallet's sign window.
+  const onDecline = useCallback(() => setDeclinedFor(request), [request])
+  // A locked wallet goes to its unlock and comes back to this page with its
+  // request; a held key signs in the wallet's sign window.
   const onSign = useCallback(() => {
     if (keyReading.kind === 'locked') {
-      navigate(WEB_ROUTES.keyStoreUnlock)
+      navigate(WEB_ROUTES.keyStoreUnlock, {
+        state: {
+          returnTo: { pathname: location.pathname, search: location.search, hash: location.hash }
+        }
+      })
       return
     }
     if (keyReading.kind === 'held' && typedData) {
       signing.sign(keyReading.key, typedData)
     }
-  }, [keyReading, typedData, signing, navigate])
+  }, [keyReading, typedData, signing, navigate, location])
 
   const body = () => {
     if (!request || (kit && !described)) {

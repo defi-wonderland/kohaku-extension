@@ -4,11 +4,13 @@
  * either way the approving side packages it into the reply and judges it
  * before the page keeps the approval line. One signing runs at a time, so a
  * second press while one runs does nothing, and nothing runs once the
- * approval exists. Nothing here holds a key.
+ * approval exists. The state belongs to the request the page shows: another
+ * link opened in the same tab starts with none, and an answer for the
+ * request it replaced is dropped. Nothing here holds a key.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { replyLineOf } from '@web/modules/social-recovery/recovery/checklist'
 import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
@@ -24,20 +26,30 @@ import type {
   GuardianSigningInput,
   OfflineFailure,
   SignedApproval,
-  SigningFailure
+  SigningFailure,
+  SigningState
 } from './types'
+
+const idleFor = (request: ApproverRequest | null): SigningState => ({
+  request,
+  busy: false,
+  failure: null,
+  offlineFailure: null,
+  approval: null
+})
 
 const useGuardianSigning = ({
   approving,
   request,
   signTypedData
 }: GuardianSigningInput): GuardianSigning => {
-  const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState<SigningFailure | null>(null)
-  const [offlineFailure, setOfflineFailure] = useState<OfflineFailure | null>(null)
-  const [approval, setApproval] = useState<SignedApproval | null>(null)
-  const running = useRef(false)
-  const approved = useRef(false)
+  const [state, setState] = useState<SigningState>(() => idleFor(request))
+  const current = state.request === request ? state : idleFor(request)
+  const requestRef = useRef(request)
+  requestRef.current = request
+  // The request whose signing runs, and the request that has its approval.
+  const running = useRef<ApproverRequest | null>(null)
+  const approved = useRef<ApproverRequest | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -46,103 +58,136 @@ const useGuardianSigning = ({
     }
   }, [])
 
+  // A signing's answer counts only while the page still shows its request.
+  const update = useCallback((owner: ApproverRequest, change: Partial<SigningState>) => {
+    if (!mounted.current || requestRef.current !== owner) {
+      return
+    }
+    setState((prev) => ({ ...(prev.request === owner ? prev : idleFor(owner)), ...change }))
+  }, [])
+
   // The reply the approving side packages from a signature, judged for the
   // request's own place.
   const outcomeOf = useCallback(
-    async (typedData: TypedDataToSign, signature: Hex): Promise<ApprovalOutcome> => {
-      if (!approving || !request) {
+    async (
+      owner: ApproverRequest,
+      typedData: TypedDataToSign,
+      signature: Hex
+    ): Promise<ApprovalOutcome> => {
+      if (!approving) {
         return 'unpackaged'
       }
-      const reply = await approving.replyFrom(request, typedData, { signature })
+      const reply = await approving.replyFrom(owner, typedData, { signature })
       if (reply.kind === 'reply-failure') {
         return 'unpackaged'
       }
-      const verdict = await approving.verify(request, request.place, reply.proof)
+      const verdict = await approving.verify(owner, owner.place, reply.proof)
       return { approval: { line: replyLineOf(reply), proof: reply.proof }, verdict }
     },
-    [approving, request]
+    [approving]
   )
 
   // Runs one signing to its end: the approval is kept, a failure is shown.
   const runOnce = useCallback(
-    <F extends string>(work: () => Promise<F | SignedApproval>, onFailure: (f: F) => void) => {
-      running.current = true
-      setBusy(true)
+    <F extends string>(
+      owner: ApproverRequest,
+      work: () => Promise<F | SignedApproval>,
+      failureOf: (f: F) => Partial<SigningState>
+    ) => {
+      running.current = owner
+      update(owner, { busy: true })
       work()
         .then((result) => {
-          if (!mounted.current) {
+          if (requestRef.current !== owner) {
             return
           }
           if (typeof result === 'string') {
-            onFailure(result)
+            update(owner, failureOf(result))
           } else {
-            approved.current = true
-            setApproval(result)
+            approved.current = owner
+            update(owner, { approval: result })
           }
         })
         .finally(() => {
-          running.current = false
-          if (mounted.current) {
-            setBusy(false)
+          if (running.current === owner) {
+            running.current = null
           }
+          update(owner, { busy: false })
         })
     },
+    [update]
+  )
+
+  const idle = useCallback(
+    (owner: ApproverRequest | null): owner is ApproverRequest =>
+      !!owner && running.current !== owner && approved.current !== owner,
     []
   )
 
   const sign = useCallback(
     (key: KeyHandle, typedData: TypedDataToSign) => {
-      if (running.current || approved.current) {
+      const owner = requestRef.current
+      if (!idle(owner)) {
         return
       }
-      setFailure(null)
-      runOnce<SigningFailure>(async () => {
-        let signature: Hex
-        try {
-          signature = await signTypedData(key, typedData)
-        } catch (error: unknown) {
-          return signingFailureOf(error)
-        }
-        try {
-          const outcome = await outcomeOf(typedData, signature)
-          if (outcome === 'unpackaged') {
+      update(owner, { failure: null })
+      runOnce<SigningFailure>(
+        owner,
+        async () => {
+          let signature: Hex
+          try {
+            signature = await signTypedData(key, typedData)
+          } catch (error: unknown) {
+            return signingFailureOf(error)
+          }
+          try {
+            const outcome = await outcomeOf(owner, typedData, signature)
+            if (outcome === 'unpackaged') {
+              return 'failed'
+            }
+            return walletVerdictFailure(outcome.verdict) ?? outcome.approval
+          } catch {
             return 'failed'
           }
-          return walletVerdictFailure(outcome.verdict) ?? outcome.approval
-        } catch {
-          return 'failed'
-        }
-      }, setFailure)
+        },
+        (failure) => ({ failure })
+      )
     },
-    [signTypedData, outcomeOf, runOnce]
+    [idle, update, signTypedData, outcomeOf, runOnce]
   )
 
   const addSignature = useCallback(
     (typedData: TypedDataToSign, text: string) => {
-      if (running.current || approved.current) {
+      const owner = requestRef.current
+      if (!idle(owner)) {
         return
       }
       const signature = pastedSignatureOf(text)
       if (!signature) {
-        setOfflineFailure('notASignature')
+        update(owner, { offlineFailure: 'notASignature' })
         return
       }
-      setOfflineFailure(null)
-      runOnce<OfflineFailure>(async () => {
-        try {
-          const outcome = await outcomeOf(typedData, signature)
-          if (outcome === 'unpackaged') {
+      update(owner, { offlineFailure: null })
+      runOnce<OfflineFailure>(
+        owner,
+        async () => {
+          try {
+            const outcome = await outcomeOf(owner, typedData, signature)
+            if (outcome === 'unpackaged') {
+              return 'notASignature'
+            }
+            return offlineVerdictFailure(outcome.verdict) ?? outcome.approval
+          } catch {
             return 'notASignature'
           }
-          return offlineVerdictFailure(outcome.verdict) ?? outcome.approval
-        } catch {
-          return 'notASignature'
-        }
-      }, setOfflineFailure)
+        },
+        (offlineFailure) => ({ offlineFailure })
+      )
     },
-    [outcomeOf, runOnce]
+    [idle, update, outcomeOf, runOnce]
   )
 
+  const { busy, failure, offlineFailure, approval } = current
   return { busy, failure, offlineFailure, approval, sign, addSignature }
 }
 
