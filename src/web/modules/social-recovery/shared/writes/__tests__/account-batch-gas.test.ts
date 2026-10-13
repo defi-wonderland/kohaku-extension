@@ -129,7 +129,8 @@ const spoofOriginNode = ({
       }
       return gas
     },
-    send: async () => `0x${(2n * GWEI).toString(16)}`
+    send: async (method: string) =>
+      method === 'eth_getBlockByNumber' ? { number: '0x1' } : `0x${(2n * GWEI).toString(16)}`
   } as unknown as ChainReadsProvider
   return { reads: createChainReads(provider), asked, balanceOf }
 }

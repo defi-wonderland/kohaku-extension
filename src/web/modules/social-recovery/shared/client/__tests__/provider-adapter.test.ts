@@ -300,46 +300,78 @@ describe('the balance and gas reads beside the adapter', () => {
     expect(isProviderReadFailure(caught)).toBe(true)
   })
 
-  it('prices a send at twice the next base fee plus the median priority fee, from one fee history', async () => {
+  it('prices a send at twice the latest base fee plus the node priority fee', async () => {
     const w = world()
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
     expect(underlyingCalls(w.ethers)).toEqual([
-      ['send', ['eth_feeHistory', ['0x1', 'latest', [50]]]]
+      ['send', ['eth_getBlockByNumber', ['latest', false]]],
+      ['send', ['eth_maxPriorityFeePerGas', []]]
     ])
   })
 
+  it('still prices a send on a node that does not serve eth_feeHistory, as the light client', async () => {
+    const w = world()
+    const answer = w.ethers.send.getMockImplementation()
+    w.ethers.send.mockImplementation(async (method: string, params: unknown[]) => {
+      if (method === 'eth_feeHistory') {
+        throw new Error(`method not supported: ${method}`)
+      }
+      return answer?.(method, params)
+    })
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
+    expect(underlyingCalls(w.ethers).map(([, args]) => args[0])).not.toContain('eth_feeHistory')
+  })
+
+  /** A node whose latest block and priority fee answer as given; any other read fails. */
+  const feeNode = (w: ReturnType<typeof world>, block: unknown, priorityFee: unknown) =>
+    w.ethers.send.mockImplementation(async (method: string) => {
+      if (method === 'eth_getBlockByNumber') {
+        return block
+      }
+      if (method === 'eth_maxPriorityFeePerGas') {
+        return priorityFee
+      }
+      throw new Error(`method not supported: ${method}`)
+    })
+
   it('prices the priority fee at 1 gwei at least, as on a quiet network', async () => {
     const w = world()
-    w.ethers.send.mockResolvedValue({
-      baseFeePerGas: ['0x10', '0x8'],
-      reward: [['0x1']]
-    })
+    feeNode(w, { number: '0x1', baseFeePerGas: '0x8' }, '0x1')
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(16n + GWEI)
   })
 
-  it('prices the priority fee at 1 gwei where the last block carried no tips', async () => {
+  it('prices the priority fee at 1 gwei where the node answers no tip at all', async () => {
     const w = world()
-    w.ethers.send.mockResolvedValue({ baseFeePerGas: ['0x0', '0x5'], reward: [] })
+    feeNode(w, { number: '0x1', baseFeePerGas: '0x5' }, '0x0')
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(10n + GWEI)
   })
 
-  it('takes the node gas price where the node runs no fee market', async () => {
+  it('takes the node gas price where the latest block carries no base fee', async () => {
     const w = world()
     w.ethers.send.mockImplementation(async (method: string) =>
-      method === 'eth_feeHistory' ? { oldestBlock: '0x1' } : '0x3b9aca07'
+      method === 'eth_getBlockByNumber' ? { number: '0x1' } : '0x3b9aca07'
     )
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(GWEI + 7n)
     expect(underlyingCalls(w.ethers).map(([, args]) => args[0])).toEqual([
-      'eth_feeHistory',
+      'eth_getBlockByNumber',
       'eth_gasPrice'
     ])
   })
 
-  it('surfaces a fee history that is not a quantity as a failed read', async () => {
-    const w = world()
-    w.ethers.send.mockResolvedValue({ baseFeePerGas: ['0x1', 'soon'], reward: [['0x1']] })
-    expect(isProviderReadFailure(await thrownBy(createChainReads(w.ethers).gasPrice()))).toBe(true)
-  })
+  const NOT_FEE_ANSWERS: [string, unknown, unknown][] = [
+    ['a base fee that is not a quantity', { number: '0x1', baseFeePerGas: 'soon' }, '0x1'],
+    ['no block at all', null, '0x1'],
+    ['a priority fee that is not a quantity', { number: '0x1', baseFeePerGas: '0x1' }, 'soon']
+  ]
+  NOT_FEE_ANSWERS.forEach(([title, block, priorityFee]) =>
+    it(`surfaces ${title} as a failed gasPrice read, never a price`, async () => {
+      const w = world()
+      feeNode(w, block, priorityFee)
+      const caught = await thrownBy(createChainReads(w.ethers).gasPrice())
+      expect(isProviderReadFailure(caught)).toBe(true)
+      expect(readOf(caught)).toBe('gasPrice')
+    })
+  )
 
   it('estimates the gas of the transaction it was given, the sender included', async () => {
     const w = world()
@@ -613,9 +645,15 @@ describe('the balance and gas reads on the typed members of the ethers provider'
     expect(readOf(caught)).toBe('nativeBalance')
   })
 
+  /** A node with no fee market: its latest block carries no base fee, and `eth_gasPrice` answers as given. */
+  const gasPriceNode = (w: ReturnType<typeof world>, answer: unknown) =>
+    w.ethers.send.mockImplementation(async (method: string) =>
+      method === 'eth_getBlockByNumber' ? { number: '0x1' } : answer
+    )
+
   it('reads a gas price the node answers without a leading zero, as nodes answer quantities', async () => {
     const w = world()
-    w.ethers.send.mockResolvedValue(`0x${NODE_ANSWERS.gasPrice.toString(16)}`)
+    gasPriceNode(w, `0x${NODE_ANSWERS.gasPrice.toString(16)}`)
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
   })
 
@@ -628,7 +666,7 @@ describe('the balance and gas reads on the typed members of the ethers provider'
   NOT_PRICES.forEach(([title, answer]) =>
     it(`surfaces ${title} as a failed gasPrice read, never a price`, async () => {
       const w = world()
-      w.ethers.send.mockResolvedValue(answer)
+      gasPriceNode(w, answer)
       const caught = await thrownBy(createChainReads(w.ethers).gasPrice())
       expect(isProviderReadFailure(caught)).toBe(true)
       expect(readOf(caught)).toBe('gasPrice')

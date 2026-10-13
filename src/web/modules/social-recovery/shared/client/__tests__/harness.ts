@@ -168,7 +168,7 @@ const tagOf = (tag: unknown): BlockTag =>
 export const NODE_ANSWERS = {
   balance: 1_000_000_000_000_000_000n,
   gas: 21_000n,
-  nextBaseFee: 2_000_000_000n,
+  baseFee: 2_000_000_000n,
   priorityFee: 3_000_000_000n,
   gasPrice: 7_000_000_000n
 }
@@ -249,17 +249,19 @@ export const ethersOver = (chain: ScriptedChain): EthersMock => {
         return []
       case 'eth_getBlockByNumber': {
         const b = blockOf(params[0])
-        return { number: toBeHex(b.number), timestamp: toBeHex(b.timestamp), hash: b.hash }
+        return {
+          number: toBeHex(b.number),
+          timestamp: toBeHex(b.timestamp),
+          hash: b.hash,
+          baseFeePerGas: toBeHex(NODE_ANSWERS.baseFee)
+        }
       }
       case 'eth_getBalance':
         return toBeHex(NODE_ANSWERS.balance)
       case 'eth_estimateGas':
         return toBeHex(NODE_ANSWERS.gas)
-      case 'eth_feeHistory':
-        return {
-          baseFeePerGas: [toBeHex(NODE_ANSWERS.nextBaseFee), toBeHex(NODE_ANSWERS.nextBaseFee)],
-          reward: [[toBeHex(NODE_ANSWERS.priorityFee)]]
-        }
+      case 'eth_maxPriorityFeePerGas':
+        return toBeHex(NODE_ANSWERS.priorityFee)
       default:
         throw new Error(`The ethers mock does not answer ${method}.`)
     }

@@ -93,8 +93,11 @@ const providerMock = (index: number): ProviderMock => {
       if (method === 'eth_chainId') {
         return `0x${SEPOLIA.toString(16)}`
       }
-      if (method === 'eth_feeHistory') {
-        return { baseFeePerGas: ['0x0', '0x0'], reward: [[`0x${GAS_PRICE.toString(16)}`]] }
+      if (method === 'eth_getBlockByNumber') {
+        return { number: `0x${blockOf(index).toString(16)}`, baseFeePerGas: '0x0' }
+      }
+      if (method === 'eth_maxPriorityFeePerGas') {
+        return `0x${GAS_PRICE.toString(16)}`
       }
       throw new Error(`The provider mock does not answer ${method}.`)
     }),
@@ -216,7 +219,8 @@ describe('useRecoveryClient over the network record', () => {
     expect(second.send).toHaveBeenCalledWith('eth_chainId', [])
 
     await expect(readsOf(latest).gasPrice()).resolves.toBe(GAS_PRICE)
-    expect(second.send).toHaveBeenCalledWith('eth_feeHistory', ['0x1', 'latest', [50]])
+    expect(second.send).toHaveBeenCalledWith('eth_getBlockByNumber', ['latest', false])
+    expect(second.send).toHaveBeenCalledWith('eth_maxPriorityFeePerGas', [])
     expect(first.send).not.toHaveBeenCalled()
   })
 

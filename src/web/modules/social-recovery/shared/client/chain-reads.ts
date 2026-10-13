@@ -13,37 +13,29 @@ import type { Address, BlockTag, PreparedCall } from '@web/modules/social-recove
 import { attemptRead, callFailureOf, quantityOf, retryWhileRateLimited } from './provider-adapter'
 import type { ChainReads, ChainReadsProvider, GasEstimateCall } from './types'
 
-/** The percentile of the last block's priority fees the fee read takes. */
-const PRIORITY_FEE_PERCENTILE = 50
-
 /**
  * The least priority fee the fee read prices, so a quiet test network, whose
  * blocks carry almost no tips, still prices like the wallet's send.
  */
 const PRIORITY_FEE_FLOOR = parseGwei('1')
 
-/** The base fee the node expects for the next block: the last entry of `baseFeePerGas`. */
-const nextBaseFeeOf = (history: unknown): bigint | undefined => {
-  if (typeof history !== 'object' || history === null || !('baseFeePerGas' in history)) {
+/**
+ * The base fee of a block as the node answers it, undefined where the block
+ * carries none. An answer that is no block, or a base fee that is no
+ * quantity, throws.
+ */
+const baseFeeOf = (block: unknown): bigint | undefined => {
+  if (typeof block !== 'object' || block === null) {
+    throw new Error(`not a block: ${JSON.stringify(block)}`)
+  }
+  if (
+    !('baseFeePerGas' in block) ||
+    block.baseFeePerGas === undefined ||
+    block.baseFeePerGas === null
+  ) {
     return undefined
   }
-  const { baseFeePerGas } = history
-  if (!Array.isArray(baseFeePerGas) || baseFeePerGas.length === 0) {
-    return undefined
-  }
-  return quantityOf(baseFeePerGas[baseFeePerGas.length - 1])
-}
-
-/** The last block's priority fee at the asked percentile, zero where the block had none. */
-const priorityFeeOf = (history: unknown): bigint => {
-  if (typeof history !== 'object' || history === null || !('reward' in history)) {
-    return 0n
-  }
-  const { reward } = history
-  if (!Array.isArray(reward) || !Array.isArray(reward[0]) || reward[0].length === 0) {
-    return 0n
-  }
-  return quantityOf(reward[0][0])
+  return quantityOf(block.baseFeePerGas)
 }
 
 /**
@@ -73,26 +65,24 @@ export const createChainReads = (provider: ChainReadsProvider): ChainReads => ({
   },
 
   /**
-   * The most a send pays per gas, by ethers' `maxFeePerGas` rule over one
-   * `eth_feeHistory` request: the next block's base fee twice, plus the last
-   * block's median priority fee, at least 1 gwei. `eth_gasPrice` is not
-   * enough: nodes answer it near the bare base fee, far below the fee the
-   * wallet's sign window pays, so a check priced with it passes a key that
-   * then cannot pay. A node that answers no base fee runs no fee market, and
-   * its `eth_gasPrice` is the price.
+   * The most a send pays per gas, by ethers' `maxFeePerGas` rule: the latest
+   * block's base fee twice, plus the node's `eth_maxPriorityFeePerGas`, at
+   * least 1 gwei. The rule takes the latest block's base fee, not a
+   * projection for the next block: that projection comes only from
+   * `eth_feeHistory`, which the Helios light client does not serve, and the
+   * doubled base fee already covers the rise to the next block. `eth_gasPrice`
+   * alone is not enough: nodes answer it near the bare base fee, far below
+   * the fee the wallet's sign window pays, so a check priced with it passes a
+   * key that then cannot pay. A node whose block carries no base fee runs no
+   * fee market, and its `eth_gasPrice` is the price.
    */
   gasPrice(): Promise<bigint> {
     return attemptRead('gasPrice', async () => {
-      const history: unknown = await provider.send('eth_feeHistory', [
-        '0x1',
-        'latest',
-        [PRIORITY_FEE_PERCENTILE]
-      ])
-      const baseFee = nextBaseFeeOf(history)
+      const baseFee = baseFeeOf(await provider.send('eth_getBlockByNumber', ['latest', false]))
       if (baseFee === undefined) {
         return quantityOf(await provider.send('eth_gasPrice', []))
       }
-      const priorityFee = priorityFeeOf(history)
+      const priorityFee = quantityOf(await provider.send('eth_maxPriorityFeePerGas', []))
       return baseFee * 2n + (priorityFee > PRIORITY_FEE_FLOOR ? priorityFee : PRIORITY_FEE_FLOOR)
     })
   }
