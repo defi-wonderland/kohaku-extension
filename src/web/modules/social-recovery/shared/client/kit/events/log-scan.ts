@@ -33,11 +33,11 @@ export const positionOf = (log: RawLog): LogPosition => ({
   removed: log.removed ?? false
 })
 
-/** The ranges of at most `LOG_CHUNK_BLOCKS` blocks that cover `from` to `to`, both included. */
-export const chunksOf = (from: number, to: number): BlockRange[] => {
+/** The ranges of at most `width` blocks that cover `from` to `to`, both included. */
+export const chunksOf = (from: number, to: number, width = LOG_CHUNK_BLOCKS): BlockRange[] => {
   const chunks: BlockRange[] = []
-  for (let first = from; first <= to; first += LOG_CHUNK_BLOCKS) {
-    chunks.push({ from: first, to: Math.min(first + LOG_CHUNK_BLOCKS - 1, to) })
+  for (let first = from; first <= to; first += width) {
+    chunks.push({ from: first, to: Math.min(first + width - 1, to) })
   }
   return chunks
 }
@@ -62,17 +62,18 @@ const chunkLogs = async (
 }
 
 /**
- * The logs of a filter over a scan, one chunk after the other, in chain
- * order. A scan with no last block reads `latest` first. A failed chunk is
- * read again before the scan fails.
+ * The logs of a filter over a scan, one chunk of at most `width` blocks after
+ * the other, in chain order. A scan with no last block reads `latest` first.
+ * A failed chunk is read again before the scan fails.
  */
 export const logsInChunks = async (
   provider: IProvider,
   filter: FilterSpec,
-  scan: LogScan
+  scan: LogScan,
+  width = LOG_CHUNK_BLOCKS
 ): Promise<RawLog[]> => {
   const last = scan.to ?? (await provider.block('latest')).number
-  return chunksOf(scan.from, last).reduce<Promise<RawLog[]>>(async (earlier, range) => {
+  return chunksOf(scan.from, last, width).reduce<Promise<RawLog[]>>(async (earlier, range) => {
     const logs = await earlier
     return [...logs, ...(await chunkLogs(provider, filter, range))]
   }, Promise.resolve([]))

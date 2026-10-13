@@ -25,6 +25,8 @@ export interface KitWalletReadsInput {
   provider: IProvider
   /** The block tags the reads of an account with no creation record pin at. */
   blockTags?: ClientConfiguration['blockTags']
+  /** The widest block range one privilege log query asks for. */
+  logChunkWidth?: ClientConfiguration['logChunkWidth']
   /** The deployment whose manager and action name the account's keys, and the block its scans start at. */
   descriptor: Pick<DeploymentDescriptor, 'manager' | 'action' | 'deployedAt'>
   /** The account's events feed, for its latest setup commit and its attempts at the action. */

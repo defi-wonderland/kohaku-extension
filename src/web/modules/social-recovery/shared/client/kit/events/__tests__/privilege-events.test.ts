@@ -150,6 +150,16 @@ describe('the privilege writes of an account', () => {
     expect(logsRead).toHaveBeenCalledTimes(3)
   })
 
+  it('reads in chunks of the width it is given', async () => {
+    const { provider, logsRead } = chainWithLogs([])
+    await createPrivilegeEvents(provider, 2).privilegeLogsOf(ACCOUNT, { from: 100, to: 104 })
+    expect(logsRead.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 100, to: 101 },
+      { from: 102, to: 103 },
+      { from: 104, to: 104 }
+    ])
+  })
+
   it('rejects where a chunk read fails on every try', async () => {
     jest.useFakeTimers()
     const failure = providerReadFailure('logs', new Error('range too wide'))

@@ -82,6 +82,8 @@ What you can test this way: the whole setup flow, up to a real save transaction 
    - `explorerUrl` is optional. It is the base that `/tx/<hash>` is appended to, so "View on explorer" opens the transaction's page; for Sepolia it is `https://sepolia.etherscan.io`.
    - Write the addresses with their checksum capitals as above, or all in lower case.
    - With `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` empty, the wallet builds its built-in stand-in client, which exists for development and for the unit tests: against a real node the setup does not complete. With a malformed value (a missing or unknown field, a bad address) most recovery screens fall to the wallet's "Something went wrong, but your funds are safe!" page. If you see that page on a recovery screen, check this value first.
+
+   A test build may also set `SOCIAL_RECOVERY_WAIT_FLOOR_MINUTES` in `.env` to a whole number of minutes below 1440. It lowers the shortest waiting period the wallet accepts to that many minutes, so a test does not wait a day, and the custom waiting period then counts minutes. The wallet ignores any other value. A release build leaves it unset.
 3. Build: `yarn build:web:webkit` (about two minutes). The extension is in `build/webkit-prod`.
 
 The build inlines the `.env` values. After any change to `.env`, build again and reload the extension.

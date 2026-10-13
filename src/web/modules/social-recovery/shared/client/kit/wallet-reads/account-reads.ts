@@ -32,13 +32,14 @@
  *
  * The manager's logs of the account are read once, for both the setup commit
  * and the handover, and the account's privilege writes once, each in chunks
- * up to the pinned block. The manager's logs start at the block the manager
- * was deployed at, since none exists before it. The privilege writes cover
- * the account's whole life, since a key written at any time may still hold:
- * they start at the first block at which the account has code, found by a
- * binary search over the code read at past blocks, which needs a node that
- * answers reads at old blocks. The privileges the creation code writes emit
- * no log; such a key is found through the setup it saved.
+ * of the configured width up to the pinned block. The manager's logs start
+ * at the block the manager was deployed at, since none exists before it. The
+ * privilege writes cover the account's whole life, since a key written at
+ * any time may still hold: they start at the first block at which the
+ * account has code, found by a binary search over the code read at past
+ * blocks, which needs a node that answers reads at old blocks. The
+ * privileges the creation code writes emit no log; such a key is found
+ * through the setup it saved.
  */
 import { getAddress, isAddressEqual, size } from 'viem'
 
@@ -82,6 +83,7 @@ export const createKitWalletReads = ({
   codeRead,
   provider,
   blockTags,
+  logChunkWidth,
   descriptor,
   events,
   transactionRead
@@ -90,7 +92,7 @@ export const createKitWalletReads = ({
   const addressOf = (): Address => getAddress(account.addr)
   const hasCode = async (block?: BlockTag): Promise<boolean> =>
     size(await codeRead.code(addressOf(), block)) > 0
-  const privilegeEvents = createPrivilegeEvents(provider)
+  const privilegeEvents = createPrivilegeEvents(provider, logChunkWidth)
   const accountReads = createAccountReads(provider)
   const atAction = (log: Pick<SetupCommittedLog, 'account' | 'action'>): boolean =>
     isAddressEqual(log.account, addressOf()) && isAddressEqual(log.action, descriptor.action)
