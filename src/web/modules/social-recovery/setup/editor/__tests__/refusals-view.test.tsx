@@ -181,11 +181,12 @@ describe("a group's threshold above its members, on the group's card", () => {
 })
 
 describe('continue with a shape this wallet refuses', () => {
-  it('renders the refusal, stays, and never runs the path check', async () => {
+  it("keeps a group's threshold above its members on its card alone, stays, and never runs the path check", async () => {
     const { validateSetup, navigate } = await mount({ clauses: presetPath() })
     await typeThreshold('editor-group-1-threshold', '4')
     await press('editor-continue')
-    expect(allByTestId('editor-wallet-refusal')).toEqual([refusals.thresholdAboveMembers])
+    expect(byTestId('editor-wallet-refusals')).toBeNull()
+    expect(allByTestId('editor-group-1-above-members')).toEqual([refusals.thresholdAboveMembers])
     expect(validateSetup).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
     expect(byTestId('editor-findings')).toBeNull()
@@ -201,9 +202,9 @@ describe('continue with a shape this wallet refuses', () => {
     await press('editor-continue')
     expect(allByTestId('editor-wallet-refusal')).toEqual([
       refusals.emptyGroup,
-      refusals.thresholdBelowOneOwnRule,
-      refusals.thresholdAboveMembers
+      refusals.thresholdBelowOneOwnRule
     ])
+    expect(allByTestId('editor-group-1-above-members')).toEqual([refusals.thresholdAboveMembers])
     expect(validateSetup).not.toHaveBeenCalled()
   })
 
