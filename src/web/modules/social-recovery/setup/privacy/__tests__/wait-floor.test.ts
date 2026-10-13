@@ -45,10 +45,14 @@ describe('the waiting period floor of a test build', () => {
     expect(renderWaitLength(wait.DEFAULT_WAIT_SECONDS, t)).toBe('48 hours')
   })
 
-  it('ignores a floor that is not a whole positive number of minutes', () => {
-    const wait = helpersWithFloor('0')
-    expect(wait.readCustomWait('1', 720)).toEqual({ status: 'belowMinimum' })
-    expect(wait.secondsOfHours(1)).toBe(3600n)
+  const NOT_A_FLOOR: readonly string[] = ['0', '', 'abc', '1.5', '-5']
+  NOT_A_FLOOR.forEach((value) => {
+    it(`ignores a floor of "${value}", which is no whole positive number of minutes`, () => {
+      const wait = helpersWithFloor(value)
+      expect(wait.readCustomWait('1', 720)).toEqual({ status: 'belowMinimum' })
+      expect(wait.secondsOfHours(1)).toBe(3600n)
+      expect(wait.CUSTOM_UNIT_IS_MINUTES).toBe(false)
+    })
   })
 
   it('ignores a floor above the release floor, keeping a day and hours', () => {
