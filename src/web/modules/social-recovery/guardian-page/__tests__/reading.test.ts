@@ -178,11 +178,18 @@ describe('what the page reads of the request', () => {
     })
   })
 
-  it('reads expired once the page clock passes the deadline', () => {
-    expect(readingOfFacts(requestOf(), factsOf(), VALID_UNTIL * 1000)).toEqual({
+  it('reads expired from the deadline second on, as the deadline line reads it ended', () => {
+    const lastLiveMs = VALID_UNTIL * 1000 - 1
+    expect(readingOfFacts(requestOf(), factsOf(), lastLiveMs)).toEqual({
       kind: 'live',
       authorized: true
     })
+    expect(deadlineViewOf(VALID_UNTIL, lastLiveMs, 'UTC', t)?.passed).toBe(false)
+    expect(readingOfFacts(requestOf(), factsOf(), VALID_UNTIL * 1000)).toEqual({
+      kind: 'dead',
+      death: 'expired'
+    })
+    expect(deadlineViewOf(VALID_UNTIL, VALID_UNTIL * 1000, 'UTC', t)?.passed).toBe(true)
     expect(readingOfFacts(requestOf(), factsOf(), AFTER_DEADLINE)).toEqual({
       kind: 'dead',
       death: 'expired'
@@ -194,7 +201,7 @@ describe('what the page reads of the request', () => {
       factsOf({ attempt: { ...SUBMITTED, payloadHash: keccak256('0x01') }, nextAttemptId: 4n }),
       factsOf({ attempt: { ...SUBMITTED, attemptId: 2n }, nextAttemptId: 3n }),
       factsOf({ nextAttemptId: 4n }),
-      factsOf({ attempt: { ...SUBMITTED, state: 'Cancelled' }, nextAttemptId: 4n })
+      factsOf({ attempt: { ...SUBMITTED, state: 'Cancelled', attemptId: 2n }, nextAttemptId: 4n })
     ]
     others.forEach((facts) => {
       expect(readingOfFacts(requestOf(), facts, BEFORE_DEADLINE)).toEqual({
@@ -222,13 +229,45 @@ describe('what the page reads of the request', () => {
     })
   })
 
-  it('names expired before void and void before setup changed where several hold', () => {
-    const all = factsOf({ nextAttemptId: 4n, setupNonce: 3n })
-    expect(readingOfFacts(requestOf(), all, AFTER_DEADLINE)).toEqual({
+  it('reads the request the recoverer submitted as used once its recovery ended, never as void', () => {
+    const ended: Attempt[] = [
+      { ...SUBMITTED, state: 'Cancelled' },
+      { ...SUBMITTED, state: 'Consumed' }
+    ]
+    ended.forEach((attempt) => {
+      const facts = [
+        factsOf({ attempt, nextAttemptId: 4n }),
+        factsOf({ attempt, nextAttemptId: 4n, setupNonce: 3n })
+      ]
+      facts.forEach((roundFacts) => {
+        const clocks = [BEFORE_DEADLINE, AFTER_DEADLINE]
+        clocks.forEach((clock) => {
+          expect({
+            state: attempt.state,
+            clock,
+            reading: readingOfFacts(requestOf(), roundFacts, clock)
+          }).toEqual({ state: attempt.state, clock, reading: { kind: 'dead', death: 'used' } })
+        })
+      })
+    })
+  })
+
+  it('names expired first, then another attempt waiting, then setup changed, then a moved counter', () => {
+    const changedAndMoved = factsOf({ nextAttemptId: 4n, setupNonce: 3n })
+    expect(readingOfFacts(requestOf(), changedAndMoved, AFTER_DEADLINE)).toEqual({
       kind: 'dead',
       death: 'expired'
     })
-    expect(readingOfFacts(requestOf(), all, BEFORE_DEADLINE)).toEqual({
+    expect(readingOfFacts(requestOf(), changedAndMoved, BEFORE_DEADLINE)).toEqual({
+      kind: 'dead',
+      death: 'setup-changed'
+    })
+    const otherWaitingAndChanged = factsOf({
+      attempt: { ...SUBMITTED, payloadHash: keccak256('0x01') },
+      nextAttemptId: 4n,
+      setupNonce: 3n
+    })
+    expect(readingOfFacts(requestOf(), otherWaitingAndChanged, BEFORE_DEADLINE)).toEqual({
       kind: 'dead',
       death: 'void'
     })
@@ -248,6 +287,12 @@ describe('what the page reads of the request', () => {
     expect(readingOf(requestOf(), BUILD, ready, { status: 'failed' }, AFTER_DEADLINE)).toEqual({
       kind: 'failed'
     })
+  })
+
+  it('reads a client refused for the digest version the manager publishes as another deployment', () => {
+    expect(
+      readingOf(requestOf(), BUILD, { status: 'refused' }, { status: 'pending' }, BEFORE_DEADLINE)
+    ).toEqual({ kind: 'other-deployment' })
   })
 
   it('reads a client or a read that has not answered as reading', () => {

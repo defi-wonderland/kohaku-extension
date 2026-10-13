@@ -5,6 +5,8 @@
  * full, verify the details, the states drawn in place of the sign action, the
  * gates of the sign action, the re-read every minute and the decline.
  */
+import type { RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
+
 import {
   ACCOUNT,
   advance,
@@ -18,6 +20,7 @@ import {
   mountLive,
   mountPage,
   NEW_KEY,
+  PAYEE,
   readyClient,
   recoveryStateOf,
   REMOVED_KEY,
@@ -102,8 +105,21 @@ describe('the lead of a live request', () => {
     )
     const page = await mountLive()
     expect(page.has('guardian-value-newKey')).toBe(false)
-    expect(page.has('guardian-value-newKey-unreadable')).toBe(true)
-    expect(page.has('guardian-value-keyBeingRemoved-unreadable')).toBe(true)
+    expect(page.textOf('guardian-value-newKey-unreadable')).toBe(t(`${PAGE}.notReadable`))
+    expect(page.textOf('guardian-value-keyBeingRemoved-unreadable')).toBe(t(`${PAGE}.notReadable`))
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    page.unmount()
+  })
+
+  it('renders a payment with an amount as not readable and keeps the sign action disabled', async () => {
+    kit.describeRequest.mockImplementation((request) =>
+      descriptionOf(request, { order: { token: PAYEE, amount: 5_000_000n, payee: PAYEE } })
+    )
+    const page = await mountLive()
+    expect(page.has('guardian-value-payment')).toBe(false)
+    expect(page.textOf('guardian-value-payment-unreadable')).toBe(t(`${PAGE}.notReadable`))
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
     await page.press('guardian-acknowledge')
     expect(page.isDisabled('guardian-sign')).toBe(true)
     page.unmount()
@@ -150,6 +166,24 @@ describe('the sign action', () => {
     expect(page.isDisabled('guardian-sign')).toBe(true)
     page.unmount()
   })
+
+  it('keeps the values and the tick through a failed re-read, and opens again once a read answers', async () => {
+    const page = await mountLive()
+    await page.press('guardian-acknowledge')
+    kit.recoveryState.mockImplementation(async () => {
+      throw new Error('rpc down')
+    })
+    await advance(MINUTE)
+    expect(page.has('guardian-read-failed')).toBe(true)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(page.has('guardian-acknowledge')).toBe(false)
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf())
+    await page.press('guardian-read-retry')
+    expect(page.has('guardian-read-failed')).toBe(false)
+    expect(page.has('guardian-tick-first')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    page.unmount()
+  })
 })
 
 describe('the states in place of the sign action', () => {
@@ -180,6 +214,26 @@ describe('the states in place of the sign action', () => {
       page.unmount()
     })
   )
+
+  it('draws the request the recoverer submitted as used once its recovery ended, never as void', async () => {
+    const ended = ['Cancelled', 'Consumed'] as const
+    // eslint-disable-next-line no-restricted-syntax
+    for (const state of ended) {
+      kit.recoveryState.mockImplementation(async () =>
+        recoveryStateOf({ attempt: { ...SUBMITTED, state }, nextAttemptId: 4n, setupNonce: 3n })
+      )
+      // eslint-disable-next-line no-await-in-loop
+      const page = await mountLive()
+      expect({ state, used: page.has('guardian-dead-used') }).toEqual({ state, used: true })
+      expect(page.textOf('guardian-dead-title')).toBe(t(`${PAGE}.dead.usedTitle`))
+      expect(page.textOf('guardian-dead-body')).toBe(t(`${PAGE}.dead.usedBody`))
+      expect(page.textOf('guardian-tell-owner')).toBe(t(`${PAGE}.dead.tellOwner`))
+      expect(page.has('guardian-close')).toBe(true)
+      expect(page.has('guardian-dead-void')).toBe(false)
+      expect(page.has('guardian-sign')).toBe(false)
+      page.unmount()
+    }
+  })
 
   it('draws expired once the deadline passes on the open page', async () => {
     const page = await mountLive(requestOf({ validUntil: String(CREATED_AT + 90) }))
@@ -212,7 +266,43 @@ describe('the states in place of the sign action', () => {
     page.unmount()
   })
 
-  it('draws a failed read with a retry, never a death and never the values', async () => {
+  it('draws a submitted request whose waiting period is over with the date it ended', async () => {
+    const endedAt = CREATED_AT - 60
+    kit.recoveryState.mockImplementation(async () =>
+      recoveryStateOf({ attempt: { ...SUBMITTED, consumableAfter: endedAt }, nextAttemptId: 4n })
+    )
+    const page = await mountLive()
+    expect(page.textOf('guardian-waiting-headline')).toBe(t(`${PAGE}.waiting.headline`))
+    expect(page.textOf('guardian-waiting-body')).toBe(
+      t(`${PAGE}.waiting.bodyEnded`, { date: dateOf(endedAt * 1000) })
+    )
+    expect(page.has('guardian-sign')).toBe(false)
+    page.unmount()
+  })
+
+  it('draws the reading state in place of the sign action, below the link values, with sign disabled', async () => {
+    kit.recoveryState.mockImplementation(() => new Promise(() => {}))
+    const page = await mountLive()
+    expect(page.textOf('guardian-reading')).toBe(t(`${PAGE}.reading`))
+    expect(page.has('guardian-lead')).toBe(true)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(page.has('guardian-details')).toBe(true)
+    expect(page.has('guardian-acknowledge')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    expect(page.has('guardian-dead-expired')).toBe(false)
+    page.unmount()
+  })
+
+  it('keeps the link values while the client is built again', async () => {
+    const page = await mountLive()
+    setClient({ status: 'loading', retry: () => {} })
+    expect(page.has('guardian-reading')).toBe(true)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws a failed read with a retry below the link values, never a death', async () => {
     kit.isAuthorized.mockImplementation(async () => {
       throw new Error('rpc down')
     })
@@ -221,7 +311,9 @@ describe('the states in place of the sign action', () => {
     expect(page.textOf('guardian-read-retry')).toBe(t(`${PAGE}.actions.tryAgain`))
     expect(page.isDisabled('guardian-sign')).toBe(true)
     expect(page.has('guardian-dead-expired')).toBe(false)
-    expect(page.has('guardian-lead')).toBe(false)
+    expect(page.has('guardian-lead')).toBe(true)
+    expect(page.textOf('guardian-value-accountBeingRecovered')).toBe(ACCOUNT)
+    expect(page.has('guardian-acknowledge')).toBe(false)
     kit.isAuthorized.mockImplementation(async () => true)
     await page.press('guardian-read-retry')
     expect(page.has('guardian-read-failed')).toBe(false)
@@ -239,16 +331,24 @@ describe('the states in place of the sign action', () => {
     page.unmount()
   })
 
-  it('draws a client that failed or was refused as a failed read, whose retry builds it again', async () => {
+  it('draws a client that failed as a failed read, whose retry builds it again', async () => {
     const retry = jest.fn()
     setClient({ status: 'failed', error: new Error('rpc down'), retry })
     const page = await mountLive()
     expect(page.textOf('guardian-read-failed')).toContain(t(`${PAGE}.readFailed`))
+    expect(page.isDisabled('guardian-sign')).toBe(true)
     await page.press('guardian-read-retry')
     expect(retry).toHaveBeenCalledTimes(1)
-    setClient({ status: 'update-the-wallet', refusal: {} as never, retry })
-    expect(page.has('guardian-read-failed')).toBe(true)
-    expect(page.has('guardian-sign')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws a client refused for the digest version the manager publishes as another deployment, with no retry', async () => {
+    setClient({ status: 'update-the-wallet', refusal: {} as never, retry: () => {} })
+    const page = await mountLive()
+    expect(page.textOf('guardian-other-deployment')).toContain(t(`${PAGE}.otherDeployment`))
+    expect(page.has('guardian-read-failed')).toBe(false)
+    expect(page.has('guardian-read-retry')).toBe(false)
+    expect(page.has('guardian-lead')).toBe(false)
     expect(page.isDisabled('guardian-sign')).toBe(true)
     page.unmount()
   })
@@ -267,6 +367,7 @@ describe('the states in place of the sign action', () => {
     setClient(readyClient({ ...DESCRIPTOR, digestVersion: '9' }))
     const page = await mountLive()
     expect(page.has('guardian-other-deployment')).toBe(true)
+    expect(page.has('guardian-lead')).toBe(false)
     page.unmount()
   })
 
@@ -299,6 +400,27 @@ describe('the re-read', () => {
     kit.recoveryState.mockImplementation(async () => recoveryStateOf({ setupNonce: 3n }))
     await advance(MINUTE)
     expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it("drops a round of an earlier client that answers after the newer client's round", async () => {
+    let answerLate: (state: RecoveryState) => void = () => {}
+    kit.recoveryState.mockImplementationOnce(
+      () =>
+        new Promise<RecoveryState>((resolve) => {
+          answerLate = resolve
+        })
+    )
+    const page = await mountLive()
+    expect(page.has('guardian-reading')).toBe(true)
+    setClient(readyClient())
+    await settle()
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    answerLate(recoveryStateOf({ setupNonce: 3n }))
+    await settle()
+    expect(page.has('guardian-dead-setup-changed')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
     page.unmount()
   })
 

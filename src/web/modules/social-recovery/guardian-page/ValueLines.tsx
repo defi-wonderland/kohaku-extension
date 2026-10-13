@@ -39,7 +39,7 @@ const ValueLines = ({ values, testID }: ValueLinesProps) => {
             </Text>
           ) : (
             <Text fontSize={14} appearance="errorText" testID={`${testID}-${name}-unreadable`}>
-              {t('socialRecovery.display.noneThisWalletCanSee')}
+              {t('socialRecovery.guardianPage.notReadable')}
             </Text>
           )}
         </View>

@@ -4,12 +4,14 @@
  * refuses one aimed at another deployment before any read, builds the
  * recovery client for the request's account, describes the request through
  * the client's approving side and reads the chain through the client. It
- * holds nothing of the recoverer's. The signature is made in the wallet's own
- * sign window through the request queue, for the key the request names
- * where this wallet holds it; a locked wallet goes to its unlock first. Once
- * the approval exists the page reads the chain no more.
+ * holds nothing of the recoverer's. Once described, the request's lead stays
+ * on the page while the client is built again or a read runs or fails. The
+ * signature is made in the wallet's own sign window through the request
+ * queue, for the key the request names where this wallet holds it; a locked
+ * wallet goes to its unlock first. Once the approval exists the page reads
+ * the chain no more.
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import Text from '@common/components/Text'
@@ -41,7 +43,7 @@ import { approvalRequestOf, describedRequestOf } from './request'
 import SignedBlock from './SignedBlock'
 import { keyReadingOf, requestKeyOf, typedDataOf } from './signing'
 import StatusBlock from './StatusBlock'
-import type { ApprovalClient } from './types'
+import type { ApprovalClient, DescribedRequest } from './types'
 import useApprovalReads from './useApprovalReads'
 import useDeadlineClock from './useDeadlineClock'
 import useGuardianSigning from './useGuardianSigning'
@@ -79,11 +81,15 @@ const ApproveScreen = () => {
     if (clientState.status === 'loading') {
       return { status: 'loading' }
     }
+    if (clientState.status === 'update-the-wallet') {
+      return { status: 'refused' }
+    }
     return { status: 'failed', retry: clientState.retry }
   }, [kit, clientState.status, clientState.retry])
 
-  const described = useMemo(
-    () => (kit ? describedRequestOf(request, (r) => kit.approving.describeRequest(r)) : null),
+  // Undefined while no client stands; null where the client cannot describe the request.
+  const fresh = useMemo(
+    () => (kit ? describedRequestOf(request, (r) => kit.approving.describeRequest(r)) : undefined),
     [kit, request]
   )
 
@@ -114,6 +120,13 @@ const ApproveScreen = () => {
     signTypedData: signer.signTypedData
   })
 
+  const [kept, setKept] = useState<DescribedRequest | null>(null)
+  useEffect(() => {
+    if (fresh !== undefined) {
+      setKept(fresh)
+    }
+  }, [fresh])
+  const described = fresh !== undefined ? fresh : kept?.request === request ? kept : null
   const { reads, retry } = useApprovalReads({
     client: kit,
     enabled: readable && !declined && !signing.approval
@@ -161,12 +174,7 @@ const ApproveScreen = () => {
       return <DeclinedBlock account={request.account} newKey={newKey} onClose={closePage} />
     }
     const reading = readingOf(request, kit?.descriptor ?? build, client, reads, clock)
-    if (
-      !described ||
-      reading.kind === 'other-deployment' ||
-      reading.kind === 'reading' ||
-      reading.kind === 'failed'
-    ) {
+    if (!described || reading.kind === 'other-deployment') {
       return <StatusBlock reading={reading} onRetry={onRetry} />
     }
     return (
@@ -182,6 +190,7 @@ const ApproveScreen = () => {
         onSign={onSign}
         onClose={closePage}
         onDecline={onDecline}
+        onRetry={onRetry}
       />
     )
   }

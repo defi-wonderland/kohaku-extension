@@ -7,6 +7,7 @@
 import { isAddressEqual, keccak256 } from 'viem'
 
 import type { ApproverRequest, Attempt } from '@web/modules/social-recovery/sdk-interfaces'
+import { attemptLive } from '@web/modules/social-recovery/recovery/checklist'
 import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
 
 import type {
@@ -28,62 +29,65 @@ export const domainAgrees = (request: ApproverRequest, build: DomainOfBuild): bo
   isAddressEqual(request.manager, build.manager) &&
   request.digestVersion === build.digestVersion
 
-/** Whether the clock, in ms, is past the request's deadline. */
+/**
+ * Whether the clock, in ms, has reached the request's deadline: no time left
+ * reads as expired, as the deadline's own line reads it.
+ */
 const requestExpired = (request: ApproverRequest, clock: number): boolean =>
-  Math.floor(clock / 1000) > Number(request.validUntil)
+  clock >= Number(request.validUntil) * 1000
 
 /**
- * Whether the account's attempt is this request's own submission, still
- * waiting: it carries the request's attempt id, the setup nonce the request
- * was built under and the hash of the request's handover. The id alone names
- * whoever opened next, so another holder's attempt can carry it.
+ * Whether the account's attempt is this request's own submission, waiting or
+ * already ended: it carries the request's attempt id, the setup nonce the
+ * request was built under and the hash of the request's handover. The id
+ * alone names whoever opened next, so another holder's attempt can carry it.
  */
-const submittedAndWaiting = (request: ApproverRequest, attempt: Attempt): boolean =>
-  attempt.state === 'Waiting' &&
+const isOwnAttempt = (request: ApproverRequest, attempt: Attempt): boolean =>
+  attempt.state !== 'None' &&
   attempt.attemptId === BigInt(request.attemptId) &&
   attempt.setupNonce === BigInt(request.setupNonce) &&
   request.payload !== undefined &&
   keccak256(request.payload) === attempt.payloadHash
 
 /**
- * Whether an attempt other than this request's own was opened: another
- * attempt waits, or the attempt counter moved past the request's id.
- */
-const anotherAttemptOpened = (request: ApproverRequest, facts: PollFacts): boolean =>
-  facts.attempt.state === 'Waiting' || facts.nextAttemptId > BigInt(request.attemptId)
-
-/**
  * The reading of an answered round. A request the recoverer submitted reads
- * as waiting until its end, never as dead. Otherwise the deaths in this
- * order: expired, another attempt opened, the setup changed. A request with
- * none of them is live, the account authorizing the action or not.
+ * as waiting until its recovery ends and as used after that, never as void.
+ * Otherwise the deaths in this order: expired, another attempt waiting, the
+ * setup changed, the attempt counter moved past the request's id. A request
+ * with none of them is live, the account authorizing the action or not.
  */
 export const readingOfFacts = (
   request: ApproverRequest,
   facts: PollFacts,
   clock: number
 ): ApprovalReading => {
-  if (submittedAndWaiting(request, facts.attempt)) {
-    return {
-      kind: 'waiting',
-      endsAt: facts.attempt.consumableAfter * 1000,
-      authorized: facts.authorized
-    }
+  if (isOwnAttempt(request, facts.attempt)) {
+    return attemptLive(facts.attempt)
+      ? {
+          kind: 'waiting',
+          endsAt: facts.attempt.consumableAfter * 1000,
+          authorized: facts.authorized
+        }
+      : { kind: 'dead', death: 'used' }
   }
   if (requestExpired(request, clock)) {
     return { kind: 'dead', death: 'expired' }
   }
-  if (anotherAttemptOpened(request, facts)) {
+  if (attemptLive(facts.attempt)) {
     return { kind: 'dead', death: 'void' }
   }
   if (facts.setupNonce !== BigInt(request.setupNonce)) {
     return { kind: 'dead', death: 'setup-changed' }
   }
+  if (facts.nextAttemptId > BigInt(request.attemptId)) {
+    return { kind: 'dead', death: 'void' }
+  }
   return { kind: 'live', authorized: facts.authorized }
 }
 
 /**
- * The reading of the page: another deployment before any read, then the
+ * The reading of the page: another deployment before any read and where the
+ * manager publishes a digest version this build does not sign, then the
  * client and the reads, where nothing answered yet reads as reading and a
  * failure as failed, never as a death and never as live.
  */
@@ -94,7 +98,7 @@ export const readingOf = (
   reads: ApprovalReads,
   clock: number
 ): ApprovalReading => {
-  if (!domainAgrees(request, build)) {
+  if (!domainAgrees(request, build) || client.status === 'refused') {
     return { kind: 'other-deployment' }
   }
   if (client.status === 'failed') {
