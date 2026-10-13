@@ -581,11 +581,11 @@ describe('the setup read at the start of every run', () => {
     expect(wired.saveSetup).not.toHaveBeenCalled()
   })
 
-  it('reads a setup read that throws as never sent, with the retry, and sends nothing', async () => {
+  it('reads a setup read the node refused as a failed read, with the retry, and sends nothing', async () => {
     const wired = wireSave(account, script({ setup: 'throws' }))
     const store = await runSave(wired.steps)
 
-    expect(store.state().write.status).toBe('failedNotSent')
+    expect(store.state().write.status).toBe('gasReadError')
     expect(canRetry(store.state().write)).toBe(true)
     expect(mayStillLand(store.state().write)).toBe(false)
     expect(store.state().stop).toBeUndefined()

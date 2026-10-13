@@ -632,7 +632,7 @@ export const wireSave = (
   })
   const setupState = jest.fn(async () => {
     if (script.setup === 'throws') {
-      throw new Error('the node did not answer the setup read')
+      throw providerReadFailure('call', new Error('the node did not answer the setup read'))
     }
     return setupStateOf(script.setup === 'set-up')
   })

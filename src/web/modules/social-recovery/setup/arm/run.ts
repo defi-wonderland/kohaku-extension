@@ -401,8 +401,8 @@ const writeEvent = (store: ArmStore) => (event: WriteEvent) =>
 /**
  * Whether the run ended with nothing on its way to the chain, so its stored
  * save in flight goes: a save never sent that cannot still land (refused,
- * replaced, refused for another request), a revert, or a landing whose check
- * disagreed. A send that may still land, a receipt wait in flight or stalled,
+ * replaced, refused for another request), a read refused before the send, a
+ * revert, or a landing whose check disagreed. A send that may still land, a receipt wait in flight or stalled,
  * and a check that did not answer keep it.
  */
 const endedWithNothingInFlight = (state: ArmState): boolean => {
@@ -414,7 +414,9 @@ const endedWithNothingInFlight = (state: ArmState): boolean => {
     return false
   }
   return (
-    write.status === 'failedReverted' || (write.status === 'failedNotSent' && !mayStillLand(write))
+    write.status === 'failedReverted' ||
+    write.status === 'gasReadError' ||
+    (write.status === 'failedNotSent' && !mayStillLand(write))
   )
 }
 
