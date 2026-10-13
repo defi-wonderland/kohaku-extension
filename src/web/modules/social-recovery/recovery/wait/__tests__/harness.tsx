@@ -46,6 +46,7 @@ import type {
   ProviderTransactionReceipt,
   RecoveryKitClient,
   SendPort,
+  SendRequestPort,
   TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
@@ -74,6 +75,10 @@ export interface MockWallet {
   accounts: Account[]
   keys: Key[]
   port: SendPort | null
+  /** The account the wallet has selected. */
+  selected: Address | null
+  /** The request port the screen built the send port over. */
+  requests: SendRequestPort | null
 }
 
 export const mockWallet: MockWallet = {
@@ -84,7 +89,9 @@ export const mockWallet: MockWallet = {
   facts: new Map(),
   accounts: [],
   keys: [],
-  port: null
+  port: null,
+  selected: null,
+  requests: null
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
@@ -111,6 +118,10 @@ jest.mock('@web/hooks/useBackgroundService', () => ({
   __esModule: true,
   default: () => ({ dispatch: mockWallet.dispatch, windowId: undefined })
 }))
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
+  __esModule: true,
+  default: () => ({ account: mockWallet.selected ? { addr: mockWallet.selected } : null })
+}))
 jest.mock('@web/hooks/useRequestsControllerState', () => {
   const queue = { userRequests: [] }
   return { __esModule: true, default: () => queue }
@@ -129,7 +140,10 @@ jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => {
 })
 jest.mock('@web/modules/social-recovery/shared/client', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client'),
-  createSendPort: () => mockWallet.port
+  createSendPort: (requests: SendRequestPort) => {
+    mockWallet.requests = requests
+    return mockWallet.port
+  }
 }))
 const mockFrame = (name: string) => {
   const R = jest.requireActual('react')
@@ -949,6 +963,8 @@ export const openWorld = async ({
   mockWallet.clients = new Map([[account.toLowerCase(), readyClient(kit)]])
   mockWallet.facts = new Map([[receivingAccount.addr.toLowerCase(), readyFacts(facts)]])
   mockWallet.port = port
+  mockWallet.selected = null
+  mockWallet.requests = null
   return {
     account,
     storage,

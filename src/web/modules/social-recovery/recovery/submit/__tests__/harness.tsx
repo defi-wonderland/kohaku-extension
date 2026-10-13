@@ -76,6 +76,10 @@ export interface MockWallet {
   keys: Key[]
   ens: string | null
   port: SendPort | null
+  /** The account the wallet has selected. */
+  selected: Address | null
+  /** The request port the screen built the send port over. */
+  requests: SendRequestPort | null
 }
 
 export const mockWallet: MockWallet = {
@@ -86,7 +90,9 @@ export const mockWallet: MockWallet = {
   accounts: [],
   keys: [],
   ens: null,
-  port: null
+  port: null,
+  selected: null,
+  requests: null
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
@@ -113,6 +119,10 @@ jest.mock('@web/hooks/useBackgroundService', () => {
   const dispatch = () => undefined
   return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
 })
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
+  __esModule: true,
+  default: () => ({ account: mockWallet.selected ? { addr: mockWallet.selected } : null })
+}))
 jest.mock('@web/hooks/useRequestsControllerState', () => {
   const queue = { userRequests: [] }
   return { __esModule: true, default: () => queue }
@@ -129,7 +139,10 @@ jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
 }))
 jest.mock('@web/modules/social-recovery/shared/client', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client'),
-  createSendPort: () => mockWallet.port
+  createSendPort: (requests: SendRequestPort) => {
+    mockWallet.requests = requests
+    return mockWallet.port
+  }
 }))
 const mockFrame = (name: string) => {
   const R = jest.requireActual('react')
@@ -619,6 +632,7 @@ const NO_REQUESTS: SendRequestPort = {
   subscribe: () => () => undefined,
   accounts: () => [],
   queue: () => ({}),
+  selectedAccount: () => undefined,
   windowId: () => undefined
 }
 
@@ -685,6 +699,7 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
       (queue.answer.status === 'queued'
         ? { userRequests: queue.ids.map((id) => ({ id })) }
         : {}) as ReturnType<SendRequestPort['queue']>,
+    selectedAccount: () => undefined,
     windowId: () => undefined
   }
   return { port, queue }
@@ -1049,6 +1064,8 @@ export const openWorld = async ({
   mockWallet.facts = readyFacts(facts)
   mockWallet.ens = null
   mockWallet.port = port
+  mockWallet.selected = null
+  mockWallet.requests = null
   return {
     account,
     storage,
