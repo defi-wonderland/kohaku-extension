@@ -136,7 +136,7 @@ describe('the key the request names', () => {
   it('reads as not readable where the request names another method, and keeps sign disabled', async () => {
     const page = await mountLive(requestOf({ method: STRANGER_ACCOUNT.address }))
     await page.press('guardian-acknowledge')
-    expect(page.has('guardian-key-unreadable')).toBe(true)
+    expect(page.textOf('guardian-key-unreadable')).toBe(t(`${PAGE}.notReadable`))
     expect(page.isDisabled('guardian-sign')).toBe(true)
     page.unmount()
   })

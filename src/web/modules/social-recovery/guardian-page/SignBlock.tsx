@@ -46,7 +46,7 @@ const SignBlock = ({
     if (reading.kind === 'unreadable') {
       return (
         <Text fontSize={14} appearance="errorText" testID="guardian-key-unreadable">
-          {t('socialRecovery.display.noneThisWalletCanSee')}
+          {t('socialRecovery.guardianPage.notReadable')}
         </Text>
       )
     }
