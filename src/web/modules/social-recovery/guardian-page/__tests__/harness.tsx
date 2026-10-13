@@ -55,7 +55,10 @@ export interface Mounted {
 // The edges
 // ---------------------------------------------------------------------------
 
-const mockLocation: { search: string } = { search: '' }
+const mockLocation: {
+  current: { pathname: string; search: string }
+  listeners: Set<() => void>
+} = { current: { pathname: '/social-recovery/approve', search: '' }, listeners: new Set() }
 const mockClient: {
   state: ClientState | null
   accounts: (string | undefined)[]
@@ -82,7 +85,16 @@ jest.mock('@web/hooks/useNetworksControllerState', () => ({
 }))
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
-  useLocation: () => ({ pathname: '/social-recovery/approve', search: mockLocation.search })
+  // The router renders the same page again when the link in the tab changes.
+  useLocation: () =>
+    // eslint-disable-next-line global-require
+    require('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockLocation.listeners.add(listener)
+        return () => mockLocation.listeners.delete(listener)
+      },
+      () => mockLocation.current
+    )
 }))
 jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   __esModule: true,
@@ -263,7 +275,8 @@ export const clientAccounts = () => mockClient.accounts
 
 /** The search string the router hands the page. */
 export const setSearch = (search: string) => {
-  mockLocation.search = search
+  mockLocation.current = { ...mockLocation.current, search }
+  mockLocation.listeners.forEach((listener) => listener())
 }
 
 /** Puts every edge back: the page's clock at the request's creation and a live request on chain. */
@@ -271,7 +284,7 @@ export const resetEdges = () => {
   jest.useFakeTimers('modern')
   jest.setSystemTime(CREATED_AT * 1000)
   window.location.hash = ''
-  mockLocation.search = ''
+  mockLocation.current = { ...mockLocation.current, search: '' }
   mockClient.accounts = []
   mockClient.state = readyClient()
   kit.describeRequest.mockReset()
@@ -314,6 +327,12 @@ export const advance = async (ms: number) => {
   act(() => {
     jest.advanceTimersByTime(ms)
   })
+  await settle()
+}
+
+/** Opens another link in the same tab: the router hands the mounted page the new search. */
+export const navigate = async (search: string) => {
+  act(() => setSearch(search))
   await settle()
 }
 
