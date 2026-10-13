@@ -8,8 +8,9 @@
  * client the page builds for the request's account, whose description, chain
  * reads and approving side each test scripts. The approving side's default
  * script is the wallet method's: it hands over the request's typed data,
- * packages a signature as the reply's proof and judges it by the address it
- * recovers to. The guardian's key is a throwaway key that signs in the test.
+ * packages a signature as the reply's proof and judges it as the deployed
+ * method does: satisfied for a signature by the named key, not judged for
+ * any other well-formed signature, rejected for bytes that are none. The guardian's key is a throwaway key that signs in the test.
  * The logo is a stub. jsdom has no `TextEncoder`, which viem reads when it
  * loads, so the harness sets Node's before it loads the modules.
  */
@@ -35,6 +36,7 @@ import type {
 import type {
   KeyHandle,
   SignFlowFailureReason,
+  SignOptions,
   TypedDataToSign
 } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
@@ -78,7 +80,7 @@ export interface SavedFile {
 export interface WalletScript {
   keystore: KeystoreScript
   navigate: jest.Mock<void, [string, NavigateOptions?]>
-  signTypedData: jest.Mock<Promise<Hex>, [KeyHandle, TypedDataToSign]>
+  signTypedData: jest.Mock<Promise<Hex>, [KeyHandle, TypedDataToSign, SignOptions?]>
   copied: jest.Mock<Promise<boolean>, [string]>
   saved: jest.Mock<void, [SavedFile]>
   qr: string[]
@@ -157,8 +159,8 @@ jest.mock('@common/hooks/useNavigation', () => {
 jest.mock('@web/modules/social-recovery/shared/client', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client'),
   createSignerFacade: () => ({
-    signTypedData: (key: KeyHandle, typedData: TypedDataToSign) =>
-      mockWallet.signTypedData(key, typedData),
+    signTypedData: (key: KeyHandle, typedData: TypedDataToSign, options?: SignOptions) =>
+      mockWallet.signTypedData(key, typedData, options),
     signBytes: () => Promise.reject(new Error('no bytes are signed here'))
   })
 }))
@@ -210,6 +212,7 @@ const {
   isAddressEqual,
   keccak256,
   recoverTypedDataAddress,
+  size,
   zeroAddress
 }: typeof import('viem') = require('viem')
 const {
@@ -231,9 +234,6 @@ const {
   signFlowFailure,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
-const {
-  renderApproval
-}: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 const {
   digestOfRequest,
   membersOfRequest,
@@ -405,8 +405,8 @@ export const lineOf = (reply: ApproverReply): string => replyLineOf(reply)
 export const hashOf = (typedData: TypedDataToSign): Hex =>
   hashTypedData(typedData as unknown as Parameters<typeof hashTypedData>[0])
 
-/** An approval as the signed page shows it. */
-export const approvalOf = (proof: Hex): string => renderApproval(proof)
+/** An approval as the signed page shows it: its first twelve and last eight digits. */
+export const approvalOf = (proof: Hex): string => `${proof.slice(0, 14)}…${proof.slice(-8)}`
 
 /** The signer facade's refusal for a reason. */
 export const signRefusal = (reason: SignFlowFailureReason) =>
@@ -415,15 +415,35 @@ export const signRefusal = (reason: SignFlowFailureReason) =>
 /** Where the page sends a locked wallet. */
 export const UNLOCK_ROUTE = WEB_ROUTES.keyStoreUnlock
 
-/** The wallet method's verdict: satisfied where the signature recovers to the address the config names. */
+/** A signature that has the shape of hex bytes. */
+const hexBytes = (value: unknown): value is Hex =>
+  typeof value === 'string' && /^0x([0-9a-fA-F]{2})+$/.test(value)
+
+const SIGNATURE_BYTES = 65
+
+/** Bytes that are 65 long but no signature: a recovery byte of neither parity. */
+export const malformedSignature = (signature: Hex): Hex => `${signature.slice(0, -2)}05` as Hex
+
+/**
+ * The wallet method's verdict: satisfied where a 65-byte signature recovers to
+ * the address the config names, not judged for any other well-formed bytes,
+ * since the address may hold code, and rejected for bytes that are no
+ * signature.
+ */
 const walletVerdict = async (request: ApproverRequest, proof: Hex): Promise<Verdict> => {
+  if (!hexBytes(proof)) {
+    return 'rejected'
+  }
+  if (size(proof) !== SIGNATURE_BYTES) {
+    return 'not-judged'
+  }
   try {
     const [named] = decodeAbiParameters([{ type: 'address' }], request.config)
     const signer = await recoverTypedDataAddress({
       ...(typedDataFor(request) as unknown as Parameters<typeof recoverTypedDataAddress>[0]),
       signature: proof
     })
-    return isAddressEqual(signer, named) ? 'satisfied' : 'rejected'
+    return isAddressEqual(signer, named) ? 'satisfied' : 'not-judged'
   } catch {
     return 'rejected'
   }
@@ -491,10 +511,6 @@ export const setSearch = (search: string) => {
   mockLocation.current = { ...mockLocation.current, search }
   mockLocation.listeners.forEach((listener) => listener())
 }
-
-/** A signature that has the shape of hex bytes. */
-const hexBytes = (value: unknown): value is Hex =>
-  typeof value === 'string' && /^0x([0-9a-fA-F]{2})+$/.test(value)
 
 /**
  * Puts every edge back: the page's clock at the request's creation, a live
@@ -656,12 +672,17 @@ describeHarness('the approval page harness', () => {
     page.unmount()
   })
 
-  it('judges a signature by the guardian key as satisfied and one by another key as rejected', async () => {
+  it('judges the guardian key satisfied, another key or length not judged, and no signature rejected', async () => {
     const request = requestOf()
     const typedData = typedDataFor(request)
     const own = await signatureBy(GUARDIAN_ACCOUNT, typedData)
     const other = await signatureBy(STRANGER_ACCOUNT, typedData)
     await expect(kit.verify(request, request.place, own)).resolves.toBe('satisfied')
-    await expect(kit.verify(request, request.place, other)).resolves.toBe('rejected')
+    await expect(kit.verify(request, request.place, other)).resolves.toBe('not-judged')
+    await expect(kit.verify(request, request.place, `${own}00`)).resolves.toBe('not-judged')
+    await expect(kit.verify(request, request.place, malformedSignature(own))).resolves.toBe(
+      'rejected'
+    )
+    await expect(kit.verify(request, request.place, '0xabc')).resolves.toBe('rejected')
   })
 })

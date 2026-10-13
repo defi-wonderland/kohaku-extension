@@ -8,7 +8,8 @@
  * pasted signature, the copy actions, the reads stopping once an approval
  * exists, and the decline's message.
  */
-import type { TypedDataToSign } from '@web/modules/social-recovery/shared/client'
+import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SignOptions, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
 import {
   ACCOUNT,
@@ -16,13 +17,16 @@ import {
   approvalOf,
   GUARDIAN,
   GUARDIAN_ACCOUNT,
+  CREATED_AT,
   hashOf,
   kit,
   lineOf,
   linkOf,
+  malformedSignature,
   mountLive,
   navigate,
   NEW_KEY,
+  recoveryStateOf,
   replyOf,
   requestOf,
   resetEdges,
@@ -34,6 +38,7 @@ import {
   t,
   typedDataFor,
   UNLOCK_ROUTE,
+  VALID_UNTIL,
   wallet
 } from './harness'
 import type { Mounted } from './harness'
@@ -42,6 +47,23 @@ const PAGE = 'socialRecovery.guardianPage'
 const SIGNING = `${PAGE}.signing`
 const OFFLINE = `${PAGE}.offline`
 const MINUTE = 60_000
+const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+const dateOf = (ms: number) =>
+  new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+    timeZoneName: 'short'
+  }).format(new Date(ms))
+/** The deadline line of a request open for another 24 hours. */
+const deadlineLine = () =>
+  t(`${PAGE}.details.validUntil`, {
+    date: dateOf(VALID_UNTIL * 1000),
+    remaining: t('socialRecovery.display.remainingHours', { count: 24 })
+  })
 
 beforeEach(resetEdges)
 afterEach(() => jest.useRealTimers())
@@ -59,6 +81,20 @@ const finish = async () => {
     // eslint-disable-next-line no-await-in-loop
     await settle()
   }
+}
+
+/** A sign window that stays open until the test answers it, and the signal of each request. */
+const heldSignWindow = () => {
+  const answers: ((signature: Hex) => void)[] = []
+  const signals: (AbortSignal | undefined)[] = []
+  wallet.signTypedData.mockImplementation(
+    (_key, _typedData, options?: SignOptions) =>
+      new Promise((resolve) => {
+        answers.push(resolve)
+        signals.push(options?.signal)
+      })
+  )
+  return { answers, signals }
 }
 
 /** The typed data an offline device reads back from the carried payload. */
@@ -159,7 +195,7 @@ describe('the signing step', () => {
     expect(page.textOf('guardian-signing-title')).toBe(t(`${SIGNING}.title`))
     expect(page.textOf('guardian-signing-values-value-accountBeingRecovered')).toBe(ACCOUNT)
     expect(page.textOf('guardian-signing-values-value-newKey')).toBe(NEW_KEY)
-    expect(page.has('guardian-signing-values-deadline')).toBe(true)
+    expect(page.textOf('guardian-signing-values-deadline')).toBe(deadlineLine())
     expect(page.textOf('guardian-signing-values-submittable')).toBe(
       t('socialRecovery.checklist.submittable')
     )
@@ -178,7 +214,8 @@ describe('the signing step', () => {
     expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
     expect(wallet.signTypedData).toHaveBeenCalledWith(
       { addr: GUARDIAN, type: 'internal' },
-      typedData
+      typedData,
+      { signal: expect.any(AbortSignal) }
     )
     expect(kit.replyFrom).toHaveBeenCalledWith(request, typedData, { signature })
     expect(kit.verify).toHaveBeenCalledWith(request, request.place, signature)
@@ -200,8 +237,23 @@ describe('the signing step', () => {
     page.unmount()
   })
 
-  it('passes a signature the approving side could not judge', async () => {
-    kit.verify.mockImplementation(async () => 'not-judged')
+  it('says so where the clipboard refuses the approval line', async () => {
+    wallet.copied.mockImplementation(async () => false)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    await page.press('guardian-signed-copy')
+    expect(page.textOf('guardian-signed-copy-approval-failed')).toBe(
+      t('socialRecovery.checklist.guardian.copyFailed')
+    )
+    expect(page.has('guardian-signed-copy-approval-copied')).toBe(false)
+    page.unmount()
+  })
+
+  it('passes a signature by another key, which the approving side cannot judge', async () => {
+    wallet.signTypedData.mockImplementation((_key, typedData) =>
+      signatureBy(STRANGER_ACCOUNT, typedData)
+    )
     const page = await mountTicked()
     await page.press('guardian-sign')
     await finish()
@@ -209,9 +261,9 @@ describe('the signing step', () => {
     page.unmount()
   })
 
-  it('keeps nothing for a signature by another key and reads that the key is wrong', async () => {
-    wallet.signTypedData.mockImplementation((_key, typedData) =>
-      signatureBy(STRANGER_ACCOUNT, typedData)
+  it('keeps nothing for bytes the approving side rejects and reads that the key is wrong', async () => {
+    wallet.signTypedData.mockImplementation(async (_key, typedData) =>
+      malformedSignature(await signatureBy(GUARDIAN_ACCOUNT, typedData))
     )
     const page = await mountTicked()
     await page.press('guardian-sign')
@@ -284,6 +336,45 @@ describe('the signing step', () => {
     page.unmount()
   })
 
+  it('drops an approval confirmed after the deadline passed, and shows the request expired', async () => {
+    const request = requestOf({ validUntil: String(CREATED_AT + 90) })
+    const { answers } = heldSignWindow()
+    const page = await mountLive(request)
+    await page.press('guardian-acknowledge')
+    await page.press('guardian-sign')
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    await advance(MINUTE)
+    await advance(31_000)
+    answers[0](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(request)))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-dead-expired')).toBe(true)
+    page.unmount()
+  })
+
+  it('drops an approval confirmed after a read found the setup changed', async () => {
+    const { answers } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ setupNonce: 3n }))
+    await advance(MINUTE)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    answers[0](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf())))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it('withdraws the sign request when the page goes away', async () => {
+    const { signals } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(signals[0]?.aborted).toBe(false)
+    page.unmount()
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
   it('stops reading the chain once the approval exists', async () => {
     const page = await mountTicked()
     expect(kit.recoveryState).toHaveBeenCalledTimes(1)
@@ -309,7 +400,7 @@ describe('the offline block', () => {
     const page = await openOffline()
     expect(page.textOf('guardian-offline-title')).toBe(t(`${OFFLINE}.title`))
     expect(page.textOf('guardian-offline-values-value-newKey')).toBe(NEW_KEY)
-    expect(page.has('guardian-offline-values-deadline')).toBe(true)
+    expect(page.textOf('guardian-offline-values-deadline')).toBe(deadlineLine())
     expect(page.textOf('guardian-offline-values-submittable')).toBe(
       t('socialRecovery.checklist.submittable')
     )
@@ -356,20 +447,7 @@ describe('the offline block', () => {
     page.unmount()
   })
 
-  it('reads a signature by another key the approving side rejects as not a signature', async () => {
-    const page = await openOffline()
-    const signature = await signatureBy(STRANGER_ACCOUNT, typedDataFor(requestOf()))
-    await page.press('guardian-acknowledge')
-    await page.type('guardian-offline-signature', signature)
-    await page.press('guardian-offline-add')
-    await finish()
-    expect(page.textOf('guardian-offline-notASignature')).toBe(t(`${OFFLINE}.notASignature`))
-    expect(page.has('guardian-signed')).toBe(false)
-    page.unmount()
-  })
-
-  it('reads a signature the approving side could not judge as the wrong signer', async () => {
-    kit.verify.mockImplementation(async () => 'not-judged')
+  it('reads a signature by another key as the wrong signer', async () => {
     const page = await openOffline()
     const signature = await signatureBy(STRANGER_ACCOUNT, typedDataFor(requestOf()))
     await page.press('guardian-acknowledge')
@@ -378,6 +456,65 @@ describe('the offline block', () => {
     await finish()
     expect(page.textOf('guardian-offline-wrongSigner')).toBe(t(`${OFFLINE}.wrongSigner`))
     expect(page.has('guardian-signed')).toBe(false)
+    page.unmount()
+  })
+
+  it('reads bytes the approving side rejects as not a signature', async () => {
+    const page = await openOffline()
+    const signature = await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf()))
+    await page.press('guardian-acknowledge')
+    await page.type('guardian-offline-signature', malformedSignature(signature))
+    await page.press('guardian-offline-add')
+    await finish()
+    expect(kit.verify).toHaveBeenCalled()
+    expect(page.textOf('guardian-offline-notASignature')).toBe(t(`${OFFLINE}.notASignature`))
+    expect(page.has('guardian-signed')).toBe(false)
+    page.unmount()
+  })
+
+  it('keeps the add action disabled while the account does not authorize the action', async () => {
+    kit.isAuthorized.mockImplementation(async () => false)
+    const page = await openOffline()
+    await page.press('guardian-acknowledge')
+    await page.type('guardian-offline-signature', '0x1234')
+    expect(page.isDisabled('guardian-offline-add')).toBe(true)
+    await page.press('guardian-offline-add')
+    expect(kit.replyFrom).not.toHaveBeenCalled()
+    page.unmount()
+  })
+
+  it('gives way to the expired request once the deadline passes, with no add action', async () => {
+    const page = await mountLive(requestOf({ validUntil: String(CREATED_AT + 90) }))
+    await page.press('guardian-offline-open')
+    await page.press('guardian-acknowledge')
+    await page.type('guardian-offline-signature', '0x1234')
+    expect(page.isDisabled('guardian-offline-add')).toBe(false)
+    await advance(MINUTE)
+    await advance(31_000)
+    expect(page.has('guardian-offline-add')).toBe(false)
+    expect(page.has('guardian-dead-expired')).toBe(true)
+    page.unmount()
+  })
+
+  it('is busy while the approving side packages the signature, and a second add asks nothing more', async () => {
+    let packaged: () => void = () => {}
+    kit.replyFrom.mockImplementation(
+      (request, _input, material) =>
+        new Promise((resolve) => {
+          packaged = () => resolve(replyOf(request, (material as { signature: Hex }).signature))
+        })
+    )
+    const page = await openOffline()
+    const signature = await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf()))
+    await page.press('guardian-acknowledge')
+    await page.type('guardian-offline-signature', signature)
+    await page.press('guardian-offline-add')
+    expect(page.isDisabled('guardian-offline-add')).toBe(true)
+    await page.press('guardian-offline-add')
+    expect(kit.replyFrom).toHaveBeenCalledTimes(1)
+    packaged()
+    await finish()
+    expect(page.has('guardian-signed')).toBe(true)
     page.unmount()
   })
 
@@ -472,6 +609,24 @@ describe('another link opened in the same tab', () => {
     await finish()
     expect(kit.replyFrom).toHaveBeenCalledTimes(1)
     expect(kit.replyFrom.mock.calls[0][0]).toEqual(other)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it("withdraws the replaced request's sign request before the new request signs", async () => {
+    const { answers, signals } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(signals[0]?.aborted).toBe(false)
+    await openOther()
+    expect(signals[0]?.aborted).toBe(true)
+    await page.press('guardian-acknowledge')
+    await page.press('guardian-sign')
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(2)
+    expect(wallet.signTypedData.mock.calls[1][1]).toEqual(typedDataFor(other))
+    expect(signals[1]?.aborted).toBe(false)
+    answers[1](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(other)))
+    await finish()
     expect(page.has('guardian-signed')).toBe(true)
     page.unmount()
   })
