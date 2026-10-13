@@ -165,6 +165,13 @@ describe('the chunks of a log scan', () => {
   it('covers nothing where the first block is after the last', () => {
     expect(chunksOf(8, 7)).toEqual([])
   })
+
+  it('refuses a width that is not a whole number of blocks above zero', () => {
+    const NOT_A_WIDTH = [0, -1, 1.5, Number.NaN]
+    NOT_A_WIDTH.forEach((width) => {
+      expect(() => chunksOf(0, 10, width)).toThrow(RangeError)
+    })
+  })
 })
 
 describe('a chunked log scan', () => {
