@@ -19,8 +19,15 @@ import {
   zeroHash
 } from 'viem'
 
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
 import { defaultClientConfiguration } from '@web/modules/social-recovery/sdk-doubles'
+import {
+  digestOfRequest,
+  membersOfRequest,
+  typedDataOf
+} from '@web/modules/social-recovery/sdk-doubles/encoding'
 import type { Address, ClientConfiguration } from '@web/modules/social-recovery/sdk-interfaces'
 import { buildKitClient } from '@web/modules/social-recovery/shared/client/kit/builder'
 import {
@@ -30,6 +37,7 @@ import {
   SETUP_CLEARED_TOPIC,
   SETUP_COMMITTED_TOPIC
 } from '@web/modules/social-recovery/shared/client/kit/events'
+import { ecdsaConfigOf } from '@web/modules/social-recovery/shared/client/kit/formats'
 import {
   DEPLOYED_ACTION,
   DEPLOYED_KIT_SLOT,
@@ -156,6 +164,23 @@ describe('methodFor', () => {
     })
     expect(modulesOf(client, 'aadhaar')).toContain(getAddress(METHOD_AADHAAR))
     expect(modulesOf(client, 'zkpassport')).toContain(getAddress(METHOD_ZKPASSPORT))
+  })
+
+  it("judges a guardian's real signature by the config's key as satisfied, on the method and the approving side", async () => {
+    const { client } = clientOver()
+    const guardian = privateKeyToAccount(generatePrivateKey())
+    const request = approverRequestAt(guardianAt(0, { config: ecdsaConfigOf(guardian.address) }), 0)
+    const digest = digestOfRequest(request)
+    const ctx = {
+      request,
+      place: request.place,
+      digest,
+      typedData: typedDataOf(membersOfRequest(request))
+    }
+    const signature = await guardian.sign({ hash: digest })
+
+    expect(await client.methodFor('ecdsa')?.verify(ctx, signature)).toBe('satisfied')
+    expect(await client.approving.verify(request, request.place, signature)).toBe('satisfied')
   })
 })
 
