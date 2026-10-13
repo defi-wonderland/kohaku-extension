@@ -281,6 +281,12 @@ export interface GuardianSigningInput {
   approving: ApprovingCalls | null
   request: ApproverRequest | null
   signTypedData: (key: KeyHandle, typedData: TypedDataToSign, options?: SignOptions) => Promise<Hex>
+  /**
+   * Whether the request no longer takes an approval as the page reads it at
+   * the call: its deadline passed on the page's clock, or a read found it
+   * dead or submitted.
+   */
+  ended: () => boolean
 }
 
 /** The signing's state, kept for the one request it belongs to. */

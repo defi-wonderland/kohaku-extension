@@ -8,8 +8,9 @@
  * on the page while the client is built again or a read runs or fails. The
  * signature is made in the wallet's own sign window through the request
  * queue, for the key the request names where this wallet holds it; a locked
- * wallet goes to its unlock first and comes back here with the request. Once
- * the approval exists the page reads the chain no more.
+ * wallet goes to its unlock first and comes back here with the request. An
+ * approval that arrives once the request no longer takes one is not shown.
+ * Once the approval exists the page reads the chain no more.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -39,7 +40,7 @@ import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/us
 
 import ApproveView from './ApproveView'
 import DeclinedBlock from './DeclinedBlock'
-import { domainAgrees, readingOf } from './reading'
+import { approvalEnded, domainAgrees, readingOf } from './reading'
 import { approvalRequestOf, describedRequestOf } from './request'
 import SignedBlock from './SignedBlock'
 import { keyReadingOf, requestKeyOf, typedDataOf } from './signing'
@@ -118,10 +119,14 @@ const ApproveScreen = () => {
     [kit, request]
   )
   const keyReading = keyReadingOf(requestKey, { keys, isUnlocked, hasPasswordSecret })
+  // Read when an approval arrives: whether the request still takes it.
+  const endedRef = useRef(false)
+  const ended = useCallback(() => endedRef.current, [])
   const signing = useGuardianSigning({
     approving: kit?.approving ?? null,
     request,
-    signTypedData: signer.signTypedData
+    signTypedData: signer.signTypedData,
+    ended
   })
 
   const [kept, setKept] = useState<DescribedRequest | null>(null)
@@ -137,6 +142,10 @@ const ApproveScreen = () => {
   })
   const clock = useDeadlineClock(request ? Number(request.validUntil) : null)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
+  const reading = request
+    ? readingOf(request, kit?.descriptor ?? build, client, reads, clock)
+    : null
+  endedRef.current = !!request && !!reading && approvalEnded(request, reading, clock)
   const networkName =
     networkOf(networks, WALLET_RECOVERY_CHAIN)?.name ?? CHAIN_NAMES[WALLET_RECOVERY_CHAIN]
 
@@ -165,7 +174,7 @@ const ApproveScreen = () => {
   }, [keyReading, typedData, signing, navigate, location])
 
   const body = () => {
-    if (!request || (kit && !described)) {
+    if (!request || !reading || (kit && !described)) {
       return (
         <Text fontSize={14} testID="guardian-no-request">
           {t('socialRecovery.guardianPage.noRequest')}
@@ -182,7 +191,6 @@ const ApproveScreen = () => {
         : null
       return <DeclinedBlock account={request.account} newKey={newKey} onClose={closePage} />
     }
-    const reading = readingOf(request, kit?.descriptor ?? build, client, reads, clock)
     if (!described || reading.kind === 'other-deployment') {
       return <StatusBlock reading={reading} onRetry={onRetry} />
     }

@@ -5,8 +5,11 @@
  * before the page keeps the approval line. One signing runs at a time, so a
  * second press while one runs does nothing, and nothing runs once the
  * approval exists. The state belongs to the request the page shows: another
- * link opened in the same tab starts with none, and an answer for the
- * request it replaced is dropped. Nothing here holds a key.
+ * link opened in the same tab starts with none, the sign request of the
+ * request it replaced is withdrawn from the request queue, as it is when the
+ * page goes away, and an answer for a replaced request is dropped. An
+ * approval that arrives once the request no longer takes one is dropped too,
+ * and the page shows why. Nothing here holds a key.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -41,7 +44,8 @@ const idleFor = (request: ApproverRequest | null): SigningState => ({
 const useGuardianSigning = ({
   approving,
   request,
-  signTypedData
+  signTypedData,
+  ended
 }: GuardianSigningInput): GuardianSigning => {
   const [state, setState] = useState<SigningState>(() => idleFor(request))
   const current = state.request === request ? state : idleFor(request)
@@ -57,6 +61,17 @@ const useGuardianSigning = ({
       mounted.current = false
     }
   }, [])
+
+  // The running sign request, withdrawn once the page no longer shows its
+  // request: another link in the same tab, or the page going away.
+  const withdrawal = useRef<AbortController | null>(null)
+  useEffect(
+    () => () => {
+      withdrawal.current?.abort()
+      withdrawal.current = null
+    },
+    [request]
+  )
 
   // A signing's answer counts only while the page still shows its request.
   const update = useCallback((owner: ApproverRequest, change: Partial<SigningState>) => {
@@ -101,9 +116,11 @@ const useGuardianSigning = ({
           if (requestRef.current !== owner) {
             return
           }
+          // An approval the request no longer takes is dropped, and the page
+          // shows the reading that ended it.
           if (typeof result === 'string') {
             update(owner, failureOf(result))
-          } else {
+          } else if (!ended()) {
             approved.current = owner
             update(owner, { approval: result })
           }
@@ -115,7 +132,7 @@ const useGuardianSigning = ({
           update(owner, { busy: false })
         })
     },
-    [update]
+    [update, ended]
   )
 
   const idle = useCallback(
@@ -131,14 +148,20 @@ const useGuardianSigning = ({
         return
       }
       update(owner, { failure: null })
+      const controller = new AbortController()
+      withdrawal.current = controller
       runOnce<SigningFailure>(
         owner,
         async () => {
           let signature: Hex
           try {
-            signature = await signTypedData(key, typedData)
+            signature = await signTypedData(key, typedData, { signal: controller.signal })
           } catch (error: unknown) {
             return signingFailureOf(error)
+          } finally {
+            if (withdrawal.current === controller) {
+              withdrawal.current = null
+            }
           }
           try {
             const outcome = await outcomeOf(owner, typedData, signature)
