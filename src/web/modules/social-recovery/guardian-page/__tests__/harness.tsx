@@ -17,6 +17,8 @@ import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { TextDecoder, TextEncoder } from 'util'
 
+import type { NavigateOptions } from 'react-router-dom'
+
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
@@ -75,7 +77,7 @@ export interface SavedFile {
 /** The wallet's edges the signing half reads. */
 export interface WalletScript {
   keystore: KeystoreScript
-  navigate: jest.Mock<void, [string]>
+  navigate: jest.Mock<void, [string, NavigateOptions?]>
   signTypedData: jest.Mock<Promise<Hex>, [KeyHandle, TypedDataToSign]>
   copied: jest.Mock<Promise<boolean>, [string]>
   saved: jest.Mock<void, [SavedFile]>
@@ -98,9 +100,12 @@ export interface Mounted {
 // ---------------------------------------------------------------------------
 
 const mockLocation: {
-  current: { pathname: string; search: string }
+  current: { pathname: string; search: string; hash: string }
   listeners: Set<() => void>
-} = { current: { pathname: '/social-recovery/approve', search: '' }, listeners: new Set() }
+} = {
+  current: { pathname: '/social-recovery/approve', search: '', hash: '' },
+  listeners: new Set()
+}
 const mockClient: {
   state: ClientState | null
   accounts: (string | undefined)[]
@@ -146,7 +151,7 @@ jest.mock('@web/hooks/useBackgroundService', () => {
   return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
 })
 jest.mock('@common/hooks/useNavigation', () => {
-  const navigate = (to: string) => mockWallet.navigate(to)
+  const navigate = (...args: [string, NavigateOptions?]) => mockWallet.navigate(...args)
   return { __esModule: true, default: () => ({ navigate }) }
 })
 jest.mock('@web/modules/social-recovery/shared/client', () => ({

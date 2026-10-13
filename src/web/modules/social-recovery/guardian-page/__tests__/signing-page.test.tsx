@@ -19,11 +19,14 @@ import {
   hashOf,
   kit,
   lineOf,
+  linkOf,
   mountLive,
+  navigate,
   NEW_KEY,
   replyOf,
   requestOf,
   resetEdges,
+  searchOf,
   settle,
   signatureBy,
   signRefusal,
@@ -119,7 +122,7 @@ describe('the key the request names', () => {
     page.unmount()
   })
 
-  it('reads as locked, and the sign action goes to the unlock without asking for a signature', async () => {
+  it('reads as locked, and the sign action goes to the unlock with this page as its return', async () => {
     wallet.keystore.isUnlocked = false
     const page = await mountLive()
     expect(page.textOf('guardian-key-locked')).toBe(t(`${SIGNING}.unlock`))
@@ -128,7 +131,15 @@ describe('the key the request names', () => {
     await page.press('guardian-acknowledge')
     expect(page.isDisabled('guardian-sign')).toBe(false)
     await page.press('guardian-sign')
-    expect(wallet.navigate).toHaveBeenCalledWith(UNLOCK_ROUTE)
+    expect(wallet.navigate).toHaveBeenCalledWith(UNLOCK_ROUTE, {
+      state: {
+        returnTo: {
+          pathname: '/social-recovery/approve',
+          search: searchOf(linkOf(requestOf())),
+          hash: ''
+        }
+      }
+    })
     expect(wallet.signTypedData).not.toHaveBeenCalled()
     page.unmount()
   })
@@ -426,6 +437,79 @@ describe('the decline message', () => {
     await page.press('guardian-decline')
     await page.press('guardian-declined-copy-message')
     expect(page.has('guardian-declined-copy-message-failed')).toBe(true)
+    page.unmount()
+  })
+})
+
+describe('another link opened in the same tab', () => {
+  const other = requestOf({ payload: '0x123456', salt: '0x03' })
+  const openOther = () => navigate(searchOf(linkOf(other)))
+
+  it('drops the answer of a signature asked for the request it replaced', async () => {
+    let answer: (signature: `0x${string}`) => void = () => {}
+    wallet.signTypedData.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    await openOther()
+    expect(page.has('guardian-sign-busy')).toBe(false)
+    answer(await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf())))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    kit.replyFrom.mockClear()
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    wallet.signTypedData.mockImplementation((_key, typedData) =>
+      signatureBy(GUARDIAN_ACCOUNT, typedData)
+    )
+    await page.press('guardian-sign')
+    await finish()
+    expect(kit.replyFrom).toHaveBeenCalledTimes(1)
+    expect(kit.replyFrom.mock.calls[0][0]).toEqual(other)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it('opens the new request unsigned, and reads the chain again, after an approval', async () => {
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(page.has('guardian-signed')).toBe(true)
+    const reads = kit.recoveryState.mock.calls.length
+    await openOther()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    await advance(3 * MINUTE)
+    expect(kit.recoveryState.mock.calls.length).toBeGreaterThan(reads)
+    page.unmount()
+  })
+
+  it('shows no failure of the request it replaced', async () => {
+    wallet.signTypedData.mockImplementation(async () => {
+      throw signRefusal('refused')
+    })
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(page.has('guardian-sign-refused')).toBe(true)
+    await openOther()
+    expect(page.has('guardian-sign-refused')).toBe(false)
+    page.unmount()
+  })
+
+  it('opens the new request undeclined', async () => {
+    const page = await mountLive()
+    await page.press('guardian-decline')
+    expect(page.has('guardian-declined-copy-message')).toBe(true)
+    await openOther()
+    expect(page.has('guardian-declined-copy-message')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
     page.unmount()
   })
 })
