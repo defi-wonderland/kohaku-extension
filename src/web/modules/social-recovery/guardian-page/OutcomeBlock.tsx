@@ -1,7 +1,7 @@
 /**
  * What the page draws in place of the sign action once the request is not
- * live: the recovery the recoverer submitted, waiting until its end, or the
- * death that ended the request. Each asks the guardian to tell the owner if
+ * live: the recovery the recoverer submitted, waiting until its end or with
+ * its waiting period over, or the death that ended the request. Each asks the guardian to tell the owner if
  * anyone still asks for an approval, and closes the page.
  */
 import React from 'react'
@@ -21,10 +21,11 @@ const PAGE = 'socialRecovery.guardianPage'
 const DEATH_KEYS: Record<ApprovalDeath, { title: string; body: string }> = {
   expired: { title: `${PAGE}.dead.expiredTitle`, body: `${PAGE}.dead.expiredBody` },
   void: { title: `${PAGE}.dead.voidTitle`, body: `${PAGE}.dead.voidBody` },
-  'setup-changed': { title: `${PAGE}.dead.changedTitle`, body: `${PAGE}.dead.changedBody` }
+  'setup-changed': { title: `${PAGE}.dead.changedTitle`, body: `${PAGE}.dead.changedBody` },
+  used: { title: `${PAGE}.dead.usedTitle`, body: `${PAGE}.dead.usedBody` }
 }
 
-const OutcomeBlock = ({ reading, timeZone, onClose }: OutcomeBlockProps) => {
+const OutcomeBlock = ({ reading, now, timeZone, onClose }: OutcomeBlockProps) => {
   const { t } = useTranslation()
 
   const closing = (
@@ -57,7 +58,9 @@ const OutcomeBlock = ({ reading, timeZone, onClose }: OutcomeBlockProps) => {
           {t(`${PAGE}.waiting.headline`)}
         </Text>
         <Text fontSize={14} style={spacings.mbSm} testID="guardian-waiting-body">
-          {t(`${PAGE}.waiting.body`, { date: dateOf(reading.endsAt, timeZone) })}
+          {t(reading.endsAt <= now ? `${PAGE}.waiting.bodyEnded` : `${PAGE}.waiting.body`, {
+            date: dateOf(reading.endsAt, timeZone)
+          })}
         </Text>
         {!reading.authorized && (
           <Alert

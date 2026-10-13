@@ -47,14 +47,19 @@ export type ApprovalReads =
   | { status: 'answered'; facts: PollFacts }
   | { status: 'failed' }
 
-/** The client the page reads through, as the screen hands it to the view. */
+/**
+ * The client the page reads through, as the screen hands it to the view:
+ * refused where the manager publishes a digest version this build does not
+ * sign, which no retry changes.
+ */
 export type ApprovalClient =
   | { status: 'loading' }
   | { status: 'ready'; client: ApprovalKitClient }
+  | { status: 'refused' }
   | { status: 'failed'; retry: () => void }
 
-/** Why a request cannot be used any more. */
-export type ApprovalDeath = 'expired' | 'void' | 'setup-changed'
+/** Why a request cannot be used any more: used where its own recovery ended, cancelled or executed. */
+export type ApprovalDeath = 'expired' | 'void' | 'setup-changed' | 'used'
 
 /**
  * What the page reads of the request in the place of the sign action:
@@ -94,7 +99,7 @@ export interface ApprovalReadsHook {
 
 export interface ApproveViewProps {
   described: DescribedRequest
-  /** The reading of an answered round: waiting, dead or live. */
+  /** Any reading but another deployment. */
   reading: ApprovalReading
   networkName: string
   /** Milliseconds since epoch, the page's clock as it last ticked. */
@@ -102,6 +107,7 @@ export interface ApproveViewProps {
   timeZone: string
   onClose: () => void
   onDecline: () => void
+  onRetry: () => void
 }
 
 export interface LeadBlockProps {
@@ -121,7 +127,10 @@ export interface SignBlockProps {
   onDecline: () => void
 }
 
-/** The states drawn in place of the whole page: reading, failed and another deployment. */
+/**
+ * The states drawn while no answered reading stands: reading and failed in
+ * place of the sign action, another deployment in place of the whole page.
+ */
 export interface StatusBlockProps {
   reading: ApprovalReading
   onRetry: () => void
@@ -130,6 +139,8 @@ export interface StatusBlockProps {
 /** The states drawn in place of the sign action: waiting and the deaths. */
 export interface OutcomeBlockProps {
   reading: ApprovalReading
+  /** Milliseconds since epoch, the page's clock as it last ticked. */
+  now: number
   timeZone: string
   onClose: () => void
 }

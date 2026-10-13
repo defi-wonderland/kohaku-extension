@@ -63,7 +63,7 @@ const LeadBlock = ({ values }: LeadBlockProps) => {
                 appearance="errorText"
                 testID={`guardian-value-${name}-unreadable`}
               >
-                {t('socialRecovery.display.noneThisWalletCanSee')}
+                {t('socialRecovery.guardianPage.notReadable')}
               </Text>
             )}
           </View>
