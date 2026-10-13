@@ -1,8 +1,9 @@
 /**
  * What the page draws in place of the sign action once the request is not
  * live: the recovery the recoverer submitted, waiting until its end or with
- * its waiting period over, or the death that ended the request. Each asks the guardian to tell the owner if
- * anyone still asks for an approval, and closes the page.
+ * its waiting period over, or the death that ended the request. Each asks the
+ * guardian to tell the owner if anyone still asks for an approval, and closes
+ * the page.
  */
 import React from 'react'
 import { View } from 'react-native'

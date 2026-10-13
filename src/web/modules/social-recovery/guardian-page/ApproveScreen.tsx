@@ -177,8 +177,10 @@ const ApproveScreen = () => {
     if (!described || reading.kind === 'other-deployment') {
       return <StatusBlock reading={reading} onRetry={onRetry} />
     }
+    // The tick belongs to one request: another link opened in the same tab starts unticked.
     return (
       <ApproveView
+        key={location.search}
         described={described}
         reading={reading}
         networkName={networkName}

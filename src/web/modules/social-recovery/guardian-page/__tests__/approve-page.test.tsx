@@ -19,13 +19,16 @@ import {
   MANAGER,
   mountLive,
   mountPage,
+  navigate,
   NEW_KEY,
   PAYEE,
+  PAYLOAD,
   readyClient,
   recoveryStateOf,
   REMOVED_KEY,
   requestOf,
   resetEdges,
+  searchOf,
   setClient,
   settle,
   SUBMITTED,
@@ -181,6 +184,29 @@ describe('the sign action', () => {
     await page.press('guardian-read-retry')
     expect(page.has('guardian-read-failed')).toBe(false)
     expect(page.has('guardian-tick-first')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    page.unmount()
+  })
+  it('drops the tick when another request for the same account opens in the same tab', async () => {
+    const otherKey = '0x5000000000000000000000000000000000000042'
+    kit.describeRequest.mockImplementation((request) =>
+      request.payload === PAYLOAD
+        ? descriptionOf(request)
+        : descriptionOf(request, {
+            handover: {
+              decoded: true,
+              value: { newAuthority: otherKey, removedAuthority: REMOVED_KEY }
+            }
+          })
+    )
+    const page = await mountLive()
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    await navigate(searchOf(linkOf(requestOf({ payload: '0x123456', salt: '0x03' }))))
+    expect(page.textOf('guardian-value-newKey')).toBe(otherKey)
+    expect(page.has('guardian-tick-first')).toBe(true)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    await page.press('guardian-acknowledge')
     expect(page.isDisabled('guardian-sign')).toBe(false)
     page.unmount()
   })
