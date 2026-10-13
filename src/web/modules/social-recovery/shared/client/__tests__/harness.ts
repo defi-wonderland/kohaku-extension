@@ -165,7 +165,13 @@ const tagOf = (tag: unknown): BlockTag =>
   typeof tag === 'string' && tag.startsWith('0x') ? Number(tag) : (tag as BlockTag)
 
 /** The balance, estimate and price the mock node answers. */
-export const NODE_ANSWERS = { balance: 10n ** 18n, gas: 21_000n, gasPrice: 7n * 10n ** 9n }
+export const NODE_ANSWERS = {
+  balance: 10n ** 18n,
+  gas: 21_000n,
+  nextBaseFee: 2n * 10n ** 9n,
+  priorityFee: 3n * 10n ** 9n,
+  gasPrice: 7n * 10n ** 9n
+}
 
 export interface EthersMock {
   getNetwork: jest.Mock
@@ -249,8 +255,11 @@ export const ethersOver = (chain: ScriptedChain): EthersMock => {
         return toBeHex(NODE_ANSWERS.balance)
       case 'eth_estimateGas':
         return toBeHex(NODE_ANSWERS.gas)
-      case 'eth_gasPrice':
-        return toBeHex(NODE_ANSWERS.gasPrice)
+      case 'eth_feeHistory':
+        return {
+          baseFeePerGas: [toBeHex(NODE_ANSWERS.nextBaseFee), toBeHex(NODE_ANSWERS.nextBaseFee)],
+          reward: [[toBeHex(NODE_ANSWERS.priorityFee)]]
+        }
       default:
         throw new Error(`The ethers mock does not answer ${method}.`)
     }

@@ -50,6 +50,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 
 const TO = '0x1111111111111111111111111111111111111111' as Address
+const GWEI = 1_000_000_000n
 const FROM = '0x2222222222222222222222222222222222222222' as Address
 const DATA = '0xdeadbeef00000000000000000000000000000000000000000000000000000001' as Hex
 const TOPIC = `0x${'ab'.repeat(32)}` as Hex
@@ -299,10 +300,45 @@ describe('the balance and gas reads beside the adapter', () => {
     expect(isProviderReadFailure(caught)).toBe(true)
   })
 
-  it('reads the gas price with one eth_gasPrice and answers it in wei', async () => {
+  it('prices a send at twice the next base fee plus the median priority fee, from one fee history', async () => {
     const w = world()
     await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(NODE_ANSWERS.gasPrice)
-    expect(underlyingCalls(w.ethers)).toEqual([['send', ['eth_gasPrice', []]]])
+    expect(underlyingCalls(w.ethers)).toEqual([
+      ['send', ['eth_feeHistory', ['0x1', 'latest', [50]]]]
+    ])
+  })
+
+  it('prices the priority fee at 1 gwei at least, as on a quiet network', async () => {
+    const w = world()
+    w.ethers.send.mockResolvedValue({
+      baseFeePerGas: ['0x10', '0x8'],
+      reward: [['0x1']]
+    })
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(16n + GWEI)
+  })
+
+  it('prices the priority fee at 1 gwei where the last block carried no tips', async () => {
+    const w = world()
+    w.ethers.send.mockResolvedValue({ baseFeePerGas: ['0x0', '0x5'], reward: [] })
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(10n + GWEI)
+  })
+
+  it('takes the node gas price where the node runs no fee market', async () => {
+    const w = world()
+    w.ethers.send.mockImplementation(async (method: string) =>
+      method === 'eth_feeHistory' ? { oldestBlock: '0x1' } : '0x3b9aca07'
+    )
+    await expect(createChainReads(w.ethers).gasPrice()).resolves.toBe(GWEI + 7n)
+    expect(underlyingCalls(w.ethers).map(([, args]) => args[0])).toEqual([
+      'eth_feeHistory',
+      'eth_gasPrice'
+    ])
+  })
+
+  it('surfaces a fee history that is not a quantity as a failed read', async () => {
+    const w = world()
+    w.ethers.send.mockResolvedValue({ baseFeePerGas: ['0x1', 'soon'], reward: [['0x1']] })
+    expect(isProviderReadFailure(await thrownBy(createChainReads(w.ethers).gasPrice()))).toBe(true)
   })
 
   it('estimates the gas of the transaction it was given, the sender included', async () => {

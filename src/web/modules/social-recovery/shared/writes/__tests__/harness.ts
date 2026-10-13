@@ -229,7 +229,8 @@ export const runGasCheck = (args: {
 /**
  * The client's own chain reads over a double of the provider: `getBalance` and
  * `estimateGas` answer a bigint or throw the Error given, and `send` answers
- * `eth_gasPrice` as a quantity.
+ * a fee history whose fee is the price given (a zero base fee and the price as
+ * the tip).
  */
 export const rpcReads = (answers: {
   balance: bigint | Error
@@ -246,8 +247,11 @@ export const rpcReads = (answers: {
     getBalance: () => answer(answers.balance),
     estimateGas: () => answer(answers.gas),
     send: async (method: string) => {
-      if (method === 'eth_gasPrice') {
-        return numberToHex(answers.price ?? 2n * GWEI)
+      if (method === 'eth_feeHistory') {
+        return {
+          baseFeePerGas: ['0x0', '0x0'],
+          reward: [[numberToHex(answers.price ?? 2n * GWEI)]]
+        }
       }
       throw new Error(`unexpected request ${method}`)
     }
