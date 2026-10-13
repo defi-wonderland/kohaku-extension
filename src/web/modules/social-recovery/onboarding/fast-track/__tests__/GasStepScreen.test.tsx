@@ -44,7 +44,7 @@ const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST_ACCOUNT}`
 const READOUT = `/social-recovery/recovery/readout?account=${LOST_ACCOUNT}`
 const ACCOUNT_STEP = `/social-recovery/recovery/account?route=fresh-install&to=${ORDINARY_KEY}`
 const POLL_MS = 5_000
-const ONE_ETHER = 10n ** 18n
+const ONE_ETHER = 1_000_000_000_000_000_000n
 // The chain reads the harness answers for the client, as the step loads them.
 const client: typeof import('@web/modules/social-recovery/shared/client') = jest.requireMock(
   '@web/modules/social-recovery/shared/client'

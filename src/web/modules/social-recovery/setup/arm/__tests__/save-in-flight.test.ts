@@ -642,7 +642,7 @@ describe('the setup read after the claim', () => {
     const writes = jest.spyOn(storage, 'set')
     const removals = jest.spyOn(storage, 'remove')
 
-    gas.resolve(10n ** 18n)
+    gas.resolve(1_000_000_000_000_000_000n)
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
 
@@ -1949,7 +1949,7 @@ describe('a follow that starts after its screen left', () => {
       const removals = jest.spyOn(storage, 'remove')
 
       if (when === 'while no screen is attached') {
-        gas.resolve(10n ** 18n)
+        gas.resolve(1_000_000_000_000_000_000n)
         await advanceTimers(10 * GONE_GRACE_MS)
         expect(store.state().requestId).toBe(record.requestId)
         expect(store.state().write.status).toBe('submitting')
@@ -1961,7 +1961,7 @@ describe('a follow that starts after its screen left', () => {
       unawaited(attachSteps(store, after.steps, OPTIONS))
       if (when === 'after the next screen attached') {
         await advanceTimers(0)
-        gas.resolve(10n ** 18n)
+        gas.resolve(1_000_000_000_000_000_000n)
       }
       await advanceTimers(0)
 

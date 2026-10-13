@@ -396,7 +396,7 @@ describe('the four reads on the typed members of the ethers provider', () => {
       ['the empty quantity 0x', '0x'],
       ['a name', 'sepolia'],
       ['a number, not a quantity', SEPOLIA],
-      ['a chain id beyond 2^53', `0x${(2n ** 53n).toString(16)}`]
+      ['a chain id beyond 2^53', `0x${9_007_199_254_740_992n.toString(16)}`]
     ]
     NOT_CHAIN_IDS.forEach(([title, answer]) =>
       it(`surfaces ${title} as a failed chainId read, never a chain id`, async () => {
@@ -715,7 +715,7 @@ describe('through the ethers provider the extension builds for a network', () =>
   it('sends one eth_getBalance of the address at the block number as a quantity', async () => {
     const node = nodeAnswering({ eth_getBalance: '0xde0b6b3a7640000' })
     await expect(createChainReads(node.provider).nativeBalance(FROM, 1234)).resolves.toBe(
-      10n ** 18n
+      1_000_000_000_000_000_000n
     )
     expect(lowerCased(node.requests())).toEqual([['eth_getBalance', [FROM, '0x4d2']]])
   })

@@ -166,11 +166,11 @@ const tagOf = (tag: unknown): BlockTag =>
 
 /** The balance, estimate and price the mock node answers. */
 export const NODE_ANSWERS = {
-  balance: 10n ** 18n,
+  balance: 1_000_000_000_000_000_000n,
   gas: 21_000n,
-  nextBaseFee: 2n * 10n ** 9n,
-  priorityFee: 3n * 10n ** 9n,
-  gasPrice: 7n * 10n ** 9n
+  nextBaseFee: 2_000_000_000n,
+  priorityFee: 3_000_000_000n,
+  gasPrice: 7_000_000_000n
 }
 
 export interface EthersMock {
@@ -955,8 +955,8 @@ const transactionJson = (tx: NodeTransaction) => ({
   input: tx.data,
   value: toQuantity(tx.value),
   gas: toQuantity(90_000),
-  maxFeePerGas: toQuantity(3n * 10n ** 9n),
-  maxPriorityFeePerGas: toQuantity(10n ** 9n),
+  maxFeePerGas: toQuantity(3_000_000_000n),
+  maxPriorityFeePerGas: toQuantity(1_000_000_000n),
   chainId: toQuantity(SEPOLIA),
   accessList: [],
   blockHash: tx.blockNumber === undefined ? null : blockHashOf(tx.blockNumber),

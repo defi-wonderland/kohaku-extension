@@ -753,7 +753,7 @@ describe('a save in progress across remounts', () => {
       () => {
         const gate = deferred<bigint>()
         reads.nativeBalance.mockImplementationOnce(() => gate.promise)
-        return () => gate.resolve(10n ** 18n)
+        return () => gate.resolve(1_000_000_000_000_000_000n)
       }
     ],
     [
@@ -1263,7 +1263,7 @@ describe('a save the wallet did not send', () => {
     chain.estimation = feeReading({ error: true })
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+    reads.nativeBalance.mockResolvedValueOnce(1_000_000_000_000_000_000n).mockResolvedValueOnce(0n)
     await openByPush()
 
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
@@ -1581,7 +1581,7 @@ describe("another page's save that lands during this page's gas check", () => {
     const confirms = confirmSetup.mock.calls.length
 
     await act(async () => {
-      gas.resolve(10n ** 18n)
+      gas.resolve(1_000_000_000_000_000_000n)
     })
     await settle()
 
@@ -1602,7 +1602,7 @@ describe("another page's save that lands during this page's gas check", () => {
     )
 
     await act(async () => {
-      gas.resolve(10n ** 18n)
+      gas.resolve(1_000_000_000_000_000_000n)
     })
     await settle()
 
@@ -2039,7 +2039,7 @@ describe('a save another page of this device sent', () => {
         const { firstPort, record } = await anotherPageLeaves(false, () => tick(100))
         const readsAway = activityReads()
         await act(async () => {
-          gas.resolve(10n ** 18n)
+          gas.resolve(1_000_000_000_000_000_000n)
         })
         await tick(10 * GONE_GRACE_MS)
 

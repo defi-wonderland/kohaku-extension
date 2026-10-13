@@ -166,7 +166,7 @@ describe('the gas check before the send', () => {
   it('checks the gas again from the deposit step on the same prepared save, and sends once the key holds enough', async () => {
     const wired = wireSave(account, script({ gas: 'deposit' }))
     const store = await runSave(wired.steps)
-    wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    wired.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
 
     await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
@@ -644,7 +644,7 @@ describe('the setup read at the start of every run', () => {
     [
       'a gas check that could not read',
       { gas: 'read-fails' },
-      (wired) => wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+      (wired) => wired.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
     ],
     [
       'a refusal of the port',
@@ -877,7 +877,7 @@ describe("the deposit step's Continue", () => {
     expect(store.state().write.status).toBe('needsDeposit')
     const balances = wired.reads.nativeBalance.mock.calls.length
     const estimates = wired.reads.estimateGas.mock.calls.length
-    wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    wired.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
     wired.setupState.mockResolvedValue(setupStateOf(true))
 
     await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
@@ -896,7 +896,7 @@ describe("the deposit step's Continue", () => {
     const store = await runSave(wired.steps)
     const balances = wired.reads.nativeBalance.mock.calls.length
     const setupReads = wired.setupState.mock.calls.length
-    wired.reads.nativeBalance.mockResolvedValue(10n ** 18n)
+    wired.reads.nativeBalance.mockResolvedValue(1_000_000_000_000_000_000n)
 
     await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
 
@@ -1389,7 +1389,9 @@ describe("the sign screen's estimation before a save never sent", () => {
   SHORT_READINGS.forEach(([named, estimation]) => {
     it(`runs the gas check again after a reading with ${named}, and shows the deposit step in a new run that read the setup`, async () => {
       const wired = wireSave(account, script({ send: 'refused', estimation }))
-      wired.reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+      wired.reads.nativeBalance
+        .mockResolvedValueOnce(1_000_000_000_000_000_000n)
+        .mockResolvedValueOnce(0n)
       const store = await runSave(wired.steps)
       const { write } = store.state()
 
@@ -1439,7 +1441,7 @@ describe("the sign screen's estimation before a save never sent", () => {
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
     wired.reads.nativeBalance
-      .mockResolvedValueOnce(10n ** 18n)
+      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
       .mockRejectedValueOnce(new Error('node down'))
     const store = await runSave(wired.steps)
 
@@ -1453,7 +1455,9 @@ describe("the sign screen's estimation before a save never sent", () => {
       account,
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
-    wired.reads.nativeBalance.mockResolvedValueOnce(10n ** 18n).mockResolvedValueOnce(0n)
+    wired.reads.nativeBalance
+      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
+      .mockResolvedValueOnce(0n)
     // No setup before the prepare nor after the claim; the new run's read finds one.
     wired.setupState
       .mockResolvedValueOnce(setupStateOf(false))

@@ -63,7 +63,7 @@ const act: typeof React.act =
 
 const SEPOLIA = 11155111
 const ACCOUNT = '0x00000000000000000000000000000000000a11ce' as Address
-const GAS_PRICE = 7n * 10n ** 9n
+const GAS_PRICE = 7_000_000_000n
 const ACCOUNT_CODE = '0x6080604052'
 const KEY = '0x00000000000000000000000000000000000000c1' as Address
 const ARMED = `0x${'00'.repeat(31)}01`
