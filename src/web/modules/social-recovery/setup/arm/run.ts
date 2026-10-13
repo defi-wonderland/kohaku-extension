@@ -1335,7 +1335,8 @@ const checkAndSend = async (
   // voided it, and the holder saved there under another claim: the run sends
   // only while the stored save is still its own, and else goes on as a page
   // that arrives, with nothing sent and nothing released. A read past its
-  // limit ends the run as a failed setup read does.
+  // limit ends the run as never sent, with the retry: the record is this
+  // device's, not the node's, so it is no failed chain read.
   let stored: RecordRead<SaveInFlightRecord>
   try {
     stored = await storedSaveWithin(() => steps.readInFlight(), SEND_BLOCK_READ_MS)
