@@ -9,6 +9,8 @@ import type {
 export interface UnlistedWorldOptions {
   /** The account's code; deployed code by default. */
   code?: Hex
+  /** The first block at which the account has code; the manager's deployment block by default. */
+  createdAt?: number
   /** The block the manager was deployed at; the harness's by default. */
   deployedAt?: number
   logs?: RawLog[]

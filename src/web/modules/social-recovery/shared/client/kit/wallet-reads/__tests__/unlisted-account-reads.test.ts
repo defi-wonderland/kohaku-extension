@@ -3,8 +3,9 @@
  * creation record for, read over a fake node at one pinned block. The
  * candidates come from the keys the wallet knows, the sender of the
  * account's latest setup commit at the action, the new key of its latest
- * consumed handover and the addresses its privilege writes name, each scan
- * read from the manager's deployment block. The candidates of every source
+ * consumed handover and the addresses its privilege writes name. The
+ * manager's logs are read from its deployment block, the privilege writes
+ * from the first block at which the account has code. The candidates of every source
  * are judged together, each asked about once with the account's `privileges`
  * view and then with the action's `isAuthority`, and every key that passes
  * both counts, whichever source named it.
@@ -120,6 +121,7 @@ const handoverTo = (newAuthority: Address): Hex =>
 const worldOf = ({
   code = ACCOUNT_CODE,
   deployedAt = DEPLOYED_AT,
+  createdAt = deployedAt,
   logs = [],
   senders = [],
   holders = [],
@@ -129,7 +131,7 @@ const worldOf = ({
   blockTags
 }: UnlistedWorldOptions = {}) => {
   const node = fakeNode()
-  node.setCode(ACCOUNT, code)
+  node.setCode(ACCOUNT, code, createdAt)
   node.setCode(ACTION, CONTRACT_CODE)
   logs.forEach((log) => node.addLog(log))
   senders.forEach(([hash, sender]) =>
@@ -180,7 +182,11 @@ const worldOf = ({
       filter,
       range
     }))
-  return { node, reads, askedPrivileges, askedAuthority, scans }
+  const scansOf = (address: Address) =>
+    scans()
+      .filter(({ filter }) => same(filter.addresses[0], address))
+      .map(({ range }) => range)
+  return { node, reads, askedPrivileges, askedAuthority, scans, scansOf }
 }
 
 describe("the sender of the account's latest setup commit", () => {
@@ -416,35 +422,106 @@ describe('the candidates of every source', () => {
   })
 })
 
+/** The ranges a scan from `from` to the pinned head reads, in chunks of ten thousand blocks. */
+const chunksFrom = (from: number) => {
+  const chunks: BlockRange[] = []
+  for (let start = from; start <= HEAD; start += 10_000) {
+    chunks.push({ from: start, to: Math.min(start + 9_999, HEAD) })
+  }
+  return chunks
+}
+
 describe('the scans of an account with no creation record', () => {
-  it("read in chunks from the manager's deployment block to the pinned head, never below it", async () => {
+  it("read the privilege writes from the account's first block with code, the manager's logs from its deployment block", async () => {
     const deployedAt = HEAD - 25_000
-    const { reads, scans, askedPrivileges } = worldOf({
+    const createdAt = deployedAt - 10_000
+    const { reads, scans, scansOf } = worldOf({
       deployedAt,
+      createdAt,
       logs: [privilegeLog(KEY_B, HOLDS, deployedAt - 1), privilegeLog(KEY_A, HOLDS, deployedAt)],
       holders: [KEY_A, KEY_B],
       authorities: [KEY_A, KEY_B]
     })
-    await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
-    expect(askedPrivileges()).toEqual([KEY_A])
-    expect(Math.min(...scans().map(({ range }) => range.from))).toBe(deployedAt)
-    const chunks = [
-      { from: deployedAt, to: deployedAt + 9_999 },
-      { from: deployedAt + 10_000, to: deployedAt + 19_999 },
-      { from: deployedAt + 20_000, to: HEAD }
-    ]
+    await expect(reads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'several-key-entries'
+    })
     expect(
       scans()
         .filter(({ filter }) => same(filter.addresses[0], ACCOUNT))
         .map(({ filter, range }) => [filter, range])
-    ).toEqual(chunks.map((range) => [{ addresses: [ACCOUNT], topics: [PRIVILEGE_TOPIC] }, range]))
-    expect(
-      scans()
-        .filter(({ filter }) => same(filter.addresses[0], MANAGER))
-        .map(({ range }) => range)
-    ).toEqual(chunks)
-    expect(scans()).toHaveLength(chunks.length * 2)
+    ).toEqual(
+      chunksFrom(createdAt).map((range) => [
+        { addresses: [ACCOUNT], topics: [PRIVILEGE_TOPIC] },
+        range
+      ])
+    )
+    expect(scansOf(MANAGER)).toEqual(chunksFrom(deployedAt))
+    expect(scans()).toHaveLength(chunksFrom(createdAt).length + chunksFrom(deployedAt).length)
   })
+
+  it('name a key written before the manager existed, where it is the one signer', async () => {
+    const createdAt = DEPLOYED_AT - 3_000
+    const { reads, scansOf } = worldOf({
+      createdAt,
+      logs: [privilegeLog(KEY_B, HOLDS, createdAt)],
+      holders: [KEY_B],
+      authorities: [KEY_B]
+    })
+    await expect(reads.removedKey()).resolves.toEqual(named(KEY_B))
+    expect(Math.min(...scansOf(ACCOUNT).map(({ from }) => from))).toBe(createdAt)
+  })
+
+  it('find the first block with code by the search, and never ask for logs below it', async () => {
+    const createdAt = DEPLOYED_AT - 123_457
+    const { node, reads, scansOf } = worldOf({
+      createdAt,
+      logs: [privilegeLog(KEY_A, HOLDS, createdAt - 1), privilegeLog(KEY_B, HOLDS, createdAt + 1)],
+      holders: [KEY_A, KEY_B],
+      authorities: [KEY_A, KEY_B]
+    })
+    await expect(reads.removedKey()).resolves.toEqual(named(KEY_B))
+    expect(scansOf(ACCOUNT)[0].from).toBe(createdAt)
+    expect(Math.min(...scansOf(ACCOUNT).map(({ from }) => from))).toBe(createdAt)
+    const searched = node.codeRead.code.mock.calls.map(([, block]) => block)
+    expect(searched).toContain(createdAt)
+    expect(searched).toContain(createdAt - 1)
+  })
+
+  it("read the privilege writes from the account's creation where the account came after the manager", async () => {
+    const createdAt = DEPLOYED_AT + 50
+    const { reads, scansOf } = worldOf({
+      createdAt,
+      logs: [privilegeLog(KEY_A, HOLDS, createdAt)],
+      holders: [KEY_A],
+      authorities: [KEY_A]
+    })
+    await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
+    expect(scansOf(ACCOUNT)).toEqual(chunksFrom(createdAt))
+    expect(scansOf(MANAGER)).toEqual(chunksFrom(DEPLOYED_AT))
+  })
+
+  eachIt<[string, number]>([
+    ['the first block', 0],
+    ['the second block', 1],
+    ['a block long before the manager', DEPLOYED_AT - 123_457],
+    ["the manager's deployment block", DEPLOYED_AT],
+    ['the block before the pinned head', HEAD - 1],
+    ['the pinned head', HEAD]
+  ])(
+    'search for an account created at %s with at most one code read per halving of the blocks up to the pinned head',
+    async (_, createdAt) => {
+      const { node, reads, scansOf } = worldOf({ createdAt })
+      await expect(reads.removedKey()).resolves.toEqual({
+        kind: 'unavailable',
+        cause: 'no-key-entry'
+      })
+      const blocks = node.codeRead.code.mock.calls.map(([, block]) => block)
+      expect(blocks[0]).toBe(HEAD)
+      expect(blocks.length - 1).toBeLessThanOrEqual(Math.floor(Math.log2(HEAD)) + 1)
+      expect(scansOf(ACCOUNT)[0].from).toBe(createdAt)
+    }
+  )
 
   it('pin every read at the block of the configured read tag', async () => {
     const commit = commitAt(DEPLOYED_AT + 10)
@@ -457,9 +534,9 @@ describe('the scans of an account with no creation record', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
     expect(node.provider.block.mock.calls).toEqual([['finalized']])
-    expect(new Set(node.codeRead.code.mock.calls.map(([, block]) => block))).toEqual(
-      new Set([HEAD])
-    )
+    const codeBlocks = node.codeRead.code.mock.calls.map(([, block]) => block)
+    expect(codeBlocks[0]).toBe(HEAD)
+    expect(codeBlocks.every((block) => typeof block === 'number' && block <= HEAD)).toBe(true)
     expect(new Set(scans().map(({ range }) => range.to))).toEqual(new Set([HEAD]))
     expect(new Set(node.calls.map(({ block }) => block))).toEqual(new Set([HEAD]))
   })
@@ -556,6 +633,11 @@ describe('a failed read of an account with no creation record', () => {
   eachIt<[string, (world: ReturnType<typeof worldOf>) => void]>([
     ['the pinned block', ({ node }) => node.provider.block.mockRejectedValueOnce(failure)],
     ['the code', ({ node }) => node.codeRead.code.mockRejectedValueOnce(failure)],
+    [
+      'the code at a past block',
+      ({ node }) =>
+        node.codeRead.code.mockResolvedValueOnce(ACCOUNT_CODE).mockRejectedValueOnce(failure)
+    ],
     ['a log chunk, on every try,', ({ node }) => node.provider.logs.mockRejectedValue(failure)],
     [
       'a privileges view',

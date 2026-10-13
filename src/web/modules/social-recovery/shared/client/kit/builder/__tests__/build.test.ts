@@ -199,7 +199,7 @@ describe("the wallet's reads", () => {
       },
       blockTags: { read: 'finalized', watch: 'finalized' }
     })
-    node.setCode(ACCOUNT, CONTRACT_CODE)
+    node.setCode(ACCOUNT, CONTRACT_CODE, DEPLOYED_AT)
     node.addLog({
       address: ACCOUNT,
       topics: encodeEventTopics({
@@ -251,7 +251,7 @@ describe("the wallet's reads", () => {
     const { node, client } = clientOver(FACTS, {
       privilegeAccount: { addr: ACCOUNT, associatedKeys: [], initialPrivileges: [], creation: null }
     })
-    node.setCode(ACCOUNT, CONTRACT_CODE)
+    node.setCode(ACCOUNT, CONTRACT_CODE, DEPLOYED_AT)
     const commit = committedLog(
       { action: DEPLOYED_ACTION, nonce: 1n, setupCommitment: ARMED },
       HEAD - 5
