@@ -12,9 +12,13 @@ import {
   encodeFunctionResult,
   getAddress,
   type Hex,
+  hexToBigInt,
   isAddressEqual,
+  numberToHex,
   pad,
   parseAbi,
+  parseSignature,
+  serializeSignature,
   zeroAddress,
   zeroHash
 } from 'viem'
@@ -28,7 +32,11 @@ import {
   membersOfRequest,
   typedDataOf
 } from '@web/modules/social-recovery/sdk-doubles/encoding'
-import type { Address, ClientConfiguration } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  ApproverReply,
+  ClientConfiguration
+} from '@web/modules/social-recovery/sdk-interfaces'
 import { buildKitClient } from '@web/modules/social-recovery/shared/client/kit/builder'
 import {
   ATTEMPT_CANCELLED_TOPIC,
@@ -81,6 +89,8 @@ import type {
 } from '@web/modules/social-recovery/shared/client/types'
 
 const ARMED = '0x0000000000000000000000000000000000000000000000000000000000000001'
+
+const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
 
 const PRIVILEGE_EVENT = parseAbi(['event LogPrivilegeChanged(address indexed addr, bytes32 priv)'])
 const PRIVILEGES_VIEW = parseAbi(['function privileges(address) view returns (bytes32)'])
@@ -181,6 +191,27 @@ describe('methodFor', () => {
 
     expect(await client.methodFor('ecdsa')?.verify(ctx, signature)).toBe('satisfied')
     expect(await client.approving.verify(request, request.place, signature)).toBe('satisfied')
+  })
+
+  it("gives the guardian's typed data to sign and turns a high-s signature into the low form in the reply", async () => {
+    const { client } = clientOver()
+    const guardian = privateKeyToAccount(generatePrivateKey())
+    const request = approverRequestAt(guardianAt(0, { config: ecdsaConfigOf(guardian.address) }), 0)
+    const digest = digestOfRequest(request)
+    const signature = await guardian.sign({ hash: digest })
+    const { r, s, yParity } = parseSignature(signature)
+    const highS = serializeSignature({
+      r,
+      s: numberToHex(SECP256K1_N - hexToBigInt(s), { size: 32 }),
+      yParity: yParity === 0 ? 1 : 0
+    })
+
+    expect(client.approving.signingInput(request)).toEqual(typedDataOf(membersOfRequest(request)))
+    const reply = (await client.approving.replyFrom(request, undefined, {
+      signature: highS
+    })) as ApproverReply
+    expect(reply.kind).toBe('recovery-proof-reply')
+    expect(reply.proof).toBe(signature)
   })
 })
 
