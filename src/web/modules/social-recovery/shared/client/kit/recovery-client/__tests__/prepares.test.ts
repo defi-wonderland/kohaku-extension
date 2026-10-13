@@ -68,6 +68,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
 
 const TOKEN: Address = '0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1'
+const OTHER_ACCOUNT: Address = '0xd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2'
 
 const RECOVERY_WRITES = parseAbi([
   'function startAttempt((address account, address action, uint64 attemptId, uint64 setupNonce, bytes setupBody, bytes payload, (address token, uint256 amount, address payee) order, uint48 validUntil, (uint256 place, address method, bytes config, bytes32 salt, bytes proof)[] proofs) request)',
@@ -320,6 +321,21 @@ describe('preparing the start of an attempt', () => {
     ])
   })
 
+  it("refuses a request for another account carrying this account's body and nonce", async () => {
+    const world = worldWith()
+    const request = opening({ account: OTHER_ACCOUNT })
+    expect(await refusalOf(world.recovery.prepareStartAttempt(request, NOW))).toEqual([
+      {
+        code: 'request.body-mismatch',
+        subject: 'request',
+        values: {
+          recomputed: setupCommitmentOf(OTHER_ACCOUNT, ACTION, NONCE, BODY),
+          committed: setupCommitmentOf(ACCOUNT, ACTION, NONCE, BODY)
+        }
+      }
+    ])
+  })
+
   it('refuses proofs out of place order, naming the first place out of order', async () => {
     const world = worldWith()
     const request = opening({ proofs: [proofAt(2), proofAt(0)] })
@@ -485,6 +501,21 @@ describe('preparing the cancellation by proofs', () => {
     ])
   })
 
+  it("refuses a request for another account carrying this account's body and nonce", async () => {
+    const world = worldWith({ state: WAITING })
+    const request = cancellation({ account: OTHER_ACCOUNT })
+    expect(await refusalOf(world.recovery.prepareCancelByProofs(request, NOW))).toEqual([
+      {
+        code: 'request.body-mismatch',
+        subject: 'request',
+        values: {
+          recomputed: setupCommitmentOf(OTHER_ACCOUNT, ACTION, NONCE, BODY),
+          committed: setupCommitmentOf(ACCOUNT, ACTION, NONCE, BODY)
+        }
+      }
+    ])
+  })
+
   it('refuses an attempt judged under an earlier setup, with both nonces', async () => {
     const world = worldWith({ state: { ...WAITING, attemptSetupNonce: NONCE - 1n } })
     expect(await refusalOf(world.recovery.prepareCancelByProofs(cancellation(), NOW))).toEqual([
@@ -614,6 +645,20 @@ describe('preparing the execute', () => {
       functionName: 'transfer',
       args: [zeroAddress, 5n]
     })
+  })
+
+  it('describes a native payment as the amount sent to the payee with no data', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: KEY_B } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    expect(call.describes?.[3]).toEqual({ to: KEY_B, value: 5n, data: '0x' })
+  })
+
+  it('describes a native payment to an open payee as sent to the zero address', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: zeroAddress } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    expect(call.describes?.[3]).toEqual({ to: zeroAddress, value: 5n, data: '0x' })
   })
 
   it('describes the consume and the payment alone for a payload that does not decode, and refuses nothing', async () => {
