@@ -154,6 +154,32 @@ const mount = async ({
   return { validateSetup, navigate, storage }
 }
 
+describe("a group's threshold above its members, on the group's card", () => {
+  it('reads the refusal on the card as soon as the threshold passes the members, before Continue', async () => {
+    const { validateSetup } = await mount({ clauses: presetPath() })
+    expect(byTestId('editor-group-1-above-members')).toBeNull()
+    await typeThreshold('editor-group-1-threshold', '4')
+    expect(byTestId('editor-group-1-above-members')?.textContent).toBe(
+      refusals.thresholdAboveMembers
+    )
+    expect(validateSetup).not.toHaveBeenCalled()
+    await typeThreshold('editor-group-1-threshold', '2')
+    expect(byTestId('editor-group-1-above-members')).toBeNull()
+  })
+
+  it('reads nothing on a new group with no member, and the refusal once it holds one at its default of two', async () => {
+    await mount({ clauses: presetPath() })
+    await press('editor-add-group')
+    expect(byTestId('editor-group-2')).not.toBeNull()
+    expect(byTestId('editor-group-2-above-members')).toBeNull()
+    await press('editor-group-2-add')
+    await press('editor-group-2-add-menu-passkey')
+    expect(byTestId('editor-group-2-above-members')?.textContent).toBe(
+      refusals.thresholdAboveMembers
+    )
+  })
+})
+
 describe('continue with a shape this wallet refuses', () => {
   it('renders the refusal, stays, and never runs the path check', async () => {
     const { validateSetup, navigate } = await mount({ clauses: presetPath() })
