@@ -37,8 +37,13 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
   const { account, addressBook, codeRead, config, descriptor, facts, provider } = input
   const methodReads = createMethodReads(provider)
   const moduleReads = moduleReadsOf(methodReads)
-  const setupEvents = createSetupEvents(provider, descriptor.manager)
-  const eventManager = createKitEventManager({ provider, descriptor, account })
+  const setupEvents = createSetupEvents(provider, descriptor.manager, config.logChunkWidth)
+  const eventManager = createKitEventManager({
+    provider,
+    descriptor,
+    account,
+    chunkWidth: config.logChunkWidth
+  })
   const kitWalletReads = createKitWalletReads({
     account: input.privilegeAccount,
     accountImplementation: config.accountImplementation,
@@ -47,6 +52,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     codeRead,
     provider,
     blockTags: config.blockTags,
+    logChunkWidth: config.logChunkWidth,
     descriptor,
     events: eventManager,
     transactionRead: input.transactionRead

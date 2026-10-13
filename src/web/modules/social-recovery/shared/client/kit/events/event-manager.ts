@@ -45,7 +45,8 @@ const MANAGER_TOPICS = [
 export const createKitEventManager = ({
   provider,
   descriptor,
-  account
+  account,
+  chunkWidth
 }: KitEventManagerInput): IEventManager => {
   const events: IEventManager = {
     accountFilter(options?: AccountFilterOptions): FilterSpec {
@@ -77,7 +78,7 @@ export const createKitEventManager = ({
       if (range.to < range.from) {
         return []
       }
-      const logs = await logsInChunks(provider, filter, range)
+      const logs = await logsInChunks(provider, filter, range, chunkWidth)
       return logs
         .filter((log) => !log.removed)
         .map((log) => events.decodeLog(log))

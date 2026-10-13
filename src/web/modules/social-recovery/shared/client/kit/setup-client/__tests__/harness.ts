@@ -150,7 +150,7 @@ const topicMatches = (expected: FilterSpec['topics'][number], actual: Hex | unde
 export const fakeNode = (): FakeNode => {
   const routes = new Map<string, Hex | Error | ((data: Hex) => Hex | Error)>()
   const handlers = new Map<string, (data: Hex) => Hex | Error>()
-  const codes = new Map<string, Hex>()
+  const codes = new Map<string, { code: Hex; from: number }>()
   const logs: RawLog[] = []
   const senders = new Map<string, Address | Error>()
   const calls: NodeCall[] = []
@@ -190,7 +190,10 @@ export const fakeNode = (): FakeNode => {
   return {
     provider,
     codeRead: {
-      code: jest.fn(async (address: Address) => codes.get(address.toLowerCase()) ?? '0x')
+      code: jest.fn(async (address: Address, block?: BlockTag) => {
+        const held = codes.get(address.toLowerCase())
+        return held && (typeof block !== 'number' || block >= held.from) ? held.code : '0x'
+      })
     },
     transactionRead: jest.fn(async (hash: Hex) => {
       const sender = senders.get(hash.toLowerCase())
@@ -206,8 +209,8 @@ export const fakeNode = (): FakeNode => {
     answerWith: (to, selector, answer) => {
       handlers.set(keyOf(to, selector), answer)
     },
-    setCode: (address, code) => {
-      codes.set(address.toLowerCase(), code)
+    setCode: (address, code, from = 0) => {
+      codes.set(address.toLowerCase(), { code, from })
     },
     addLog: (log) => {
       logs.push(log)

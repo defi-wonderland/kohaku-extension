@@ -168,7 +168,7 @@ const privilegeLog = (blockNumber: number, extra: Partial<RawLog> = {}): RawLog 
     { address: ACCOUNT, ...extra }
   )
 
-const nodeWithLogs = (logs: RawLog[]) => {
+const nodeWithLogs = (logs: RawLog[], chunkWidth?: number) => {
   const logsRead = jest.fn(
     async (_filter: FilterSpec, range: BlockRange): Promise<RawLog[]> =>
       logs.filter((log) => log.blockNumber >= range.from && log.blockNumber <= range.to)
@@ -178,7 +178,8 @@ const nodeWithLogs = (logs: RawLog[]) => {
   const events = createKitEventManager({
     provider,
     descriptor: { manager: MANAGER, action: ACTION },
-    account: ACCOUNT
+    account: ACCOUNT,
+    chunkWidth
   })
   return { events, logsRead, block }
 }
@@ -244,6 +245,27 @@ describe('a fetch of the events feed', () => {
     expect(logsRead.mock.calls).toEqual([
       [filter, { from: 100, to: 10_099 }],
       [filter, { from: 10_100, to: 10_200 }]
+    ])
+  })
+
+  it('reads in chunks of 10,000 blocks where no width is given', async () => {
+    const { events, logsRead } = nodeWithLogs([])
+    await events.fetch(events.accountFilter(), { from: 0, to: 25_000 })
+    expect(logsRead.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 0, to: 9_999 },
+      { from: 10_000, to: 19_999 },
+      { from: 20_000, to: 25_000 }
+    ])
+  })
+
+  it('reads in chunks of the width it is given', async () => {
+    const { events, logsRead } = nodeWithLogs([committedLog(103)], 2)
+    const found = await events.fetch(events.accountFilter(), { from: 100, to: 104 })
+    expect(found.map((notice) => notice.at.blockNumber)).toEqual([103])
+    expect(logsRead.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 100, to: 101 },
+      { from: 102, to: 103 },
+      { from: 104, to: 104 }
     ])
   })
 

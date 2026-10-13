@@ -200,6 +200,16 @@ describe('a chunked log scan', () => {
     await expect(logsInChunks(provider, filter, { from: 100 })).resolves.toEqual([])
     expect(logsRead).not.toHaveBeenCalled()
   })
+
+  it("reads a manager's setup logs in chunks of the width it is given", async () => {
+    const { provider, logsRead } = chainWithLogs([])
+    await createSetupEvents(provider, MANAGER, 2).setupLogsOf(ACCOUNT, { from: 100, to: 104 })
+    expect(logsRead.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 100, to: 101 },
+      { from: 102, to: 103 },
+      { from: 104, to: 104 }
+    ])
+  })
 })
 
 describe('decoding one setup log', () => {

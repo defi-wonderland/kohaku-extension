@@ -41,7 +41,8 @@ export interface FakeNode {
   answer(to: Address, data: Hex, answer: Hex | Error | ((data: Hex) => Hex | Error)): void
   /** Answers every call to `to` whose selector is `selector` and has no exact answer. */
   answerWith(to: Address, selector: Hex, answer: (data: Hex) => Hex | Error): void
-  setCode(address: Address, code: Hex): void
+  /** Gives `address` its code from block `from` on (block 0 by default); a read at no block number sees it. */
+  setCode(address: Address, code: Hex, from?: number): void
   addLog(log: RawLog): void
   /** Scripts the sender of one transaction, or the error its read rejects with. */
   setSender(hash: Hex, sender: Address | Error): void

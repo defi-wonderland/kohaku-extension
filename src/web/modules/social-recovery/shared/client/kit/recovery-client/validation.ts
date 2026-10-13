@@ -84,7 +84,7 @@ export const requestFindingsOf = async (
     }
   }
   const recomputed = setupCommitmentOf(
-    account,
+    request.account,
     request.action,
     request.setupNonce,
     request.setupBody

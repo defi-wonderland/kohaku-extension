@@ -26,6 +26,8 @@ export interface KitEventManagerInput {
   provider: IProvider
   descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
   account: Address
+  /** The widest block range one log query asks for; the kit's own default where none is given. */
+  chunkWidth?: number
 }
 
 /** The blocks a log scan covers: from a first block to a last one, or to `latest` where none is given. */

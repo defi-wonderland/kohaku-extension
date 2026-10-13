@@ -31,13 +31,15 @@
  * want of a key.
  *
  * The manager's logs of the account are read once, for both the setup commit
- * and the handover, and the account's privilege writes once. Each scan reads
- * in chunks from the block the manager was deployed at to the pinned block.
- * A key written before the manager existed and never named by a setup or a
- * handover since is not one a recovery through this manager acts on, and a
- * scan from the chain's first block costs more reads than a rate-limited
- * node answers in a screen's time. The privileges the creation code writes
- * emit no log; such a key is found through the setup it saved.
+ * and the handover, and the account's privilege writes once, each in chunks
+ * of the configured width up to the pinned block. The manager's logs start
+ * at the block the manager was deployed at, since none exists before it. The
+ * privilege writes cover the account's whole life, since a key written at
+ * any time may still hold: they start at the first block at which the
+ * account has code, found by a binary search over the code read at past
+ * blocks, which needs a node that answers reads at old blocks. The
+ * privileges the creation code writes emit no log; such a key is found
+ * through the setup it saved.
  */
 import { getAddress, isAddressEqual, size } from 'viem'
 
@@ -81,6 +83,7 @@ export const createKitWalletReads = ({
   codeRead,
   provider,
   blockTags,
+  logChunkWidth,
   descriptor,
   events,
   transactionRead
@@ -89,7 +92,7 @@ export const createKitWalletReads = ({
   const addressOf = (): Address => getAddress(account.addr)
   const hasCode = async (block?: BlockTag): Promise<boolean> =>
     size(await codeRead.code(addressOf(), block)) > 0
-  const privilegeEvents = createPrivilegeEvents(provider)
+  const privilegeEvents = createPrivilegeEvents(provider, logChunkWidth)
   const accountReads = createAccountReads(provider)
   const atAction = (log: Pick<SetupCommittedLog, 'account' | 'action'>): boolean =>
     isAddressEqual(log.account, addressOf()) && isAddressEqual(log.action, descriptor.action)
@@ -126,6 +129,16 @@ export const createKitWalletReads = ({
     return handover ? [handover.newAuthority] : []
   }
 
+  const firstBlockWithCode = async (low: number, high: number): Promise<number> => {
+    if (low >= high) {
+      return high
+    }
+    const middle = low + Math.floor((high - low) / 2)
+    return (await hasCode(middle))
+      ? firstBlockWithCode(low, middle)
+      : firstBlockWithCode(middle + 1, high)
+  }
+
   const signersOf = async (keys: readonly Address[], block: number): Promise<Address[]> => {
     const values = await Promise.all(
       keys.map((key) => accountReads.privileges(addressOf(), key, block))
@@ -140,10 +153,10 @@ export const createKitWalletReads = ({
     if (!(await hasCode(block))) {
       return { kind: 'unavailable', cause: 'no-creation-record' }
     }
-    const scan = { from: descriptor.deployedAt, to: block }
+    const createdAt = await firstBlockWithCode(0, block)
     const [notifications, writes] = await Promise.all([
-      events.fetch(events.accountFilter(), scan),
-      privilegeEvents.privilegeLogsOf(addressOf(), scan)
+      events.fetch(events.accountFilter(), { from: descriptor.deployedAt, to: block }),
+      privilegeEvents.privilegeLogsOf(addressOf(), { from: createdAt, to: block })
     ])
     const committer = await committerOf(notifications)
     const handedTo = handedToOf(notifications)

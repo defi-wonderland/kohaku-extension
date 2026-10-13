@@ -5,11 +5,15 @@ import type { CustomWait, WaitChip, WaitChoice } from './types'
 /**
  * A test build sets `SOCIAL_RECOVERY_WAIT_FLOOR_MINUTES` in its `.env` to try a
  * recovery without a day's wait: the floor drops to that many minutes and the
- * custom entry counts minutes instead of hours. A release build leaves it
- * unset, so the floor is a day and the entry counts hours.
+ * custom entry counts minutes instead of hours. The switch only lowers the
+ * floor: a value that is not a whole number of minutes above zero and below a
+ * day is ignored, and the day's floor stands. A release build leaves it unset,
+ * so the floor is a day and the entry counts hours.
  */
+const RELEASE_FLOOR_HOURS = 24
 const FLOOR_MINUTES = Number(process.env.SOCIAL_RECOVERY_WAIT_FLOOR_MINUTES)
-const MINUTES_MODE = Number.isInteger(FLOOR_MINUTES) && FLOOR_MINUTES > 0
+const MINUTES_MODE =
+  Number.isInteger(FLOOR_MINUTES) && FLOOR_MINUTES > 0 && FLOOR_MINUTES < RELEASE_FLOOR_HOURS * 60
 
 /** Whether the custom entry counts minutes, as in a test build, rather than hours. */
 export const CUSTOM_UNIT_IS_MINUTES = MINUTES_MODE
@@ -18,7 +22,7 @@ export const CUSTOM_UNIT_IS_MINUTES = MINUTES_MODE
 export const CUSTOM_UNIT_SECONDS = MINUTES_MODE ? 60 : 3600
 
 /** The shortest waiting period this wallet saves, in hours. The chain enforces no minimum. */
-export const WAIT_FLOOR_HOURS = MINUTES_MODE ? FLOOR_MINUTES / 60 : 24
+export const WAIT_FLOOR_HOURS = MINUTES_MODE ? FLOOR_MINUTES / 60 : RELEASE_FLOOR_HOURS
 
 /**
  * The longest waiting period the picker accepts where the client names no
