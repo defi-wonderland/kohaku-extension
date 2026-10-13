@@ -56,8 +56,16 @@
  * behind moves nothing.
  */
 import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
-import { accountBatchRefusal, readWithin } from '@web/modules/social-recovery/shared/client'
-import type { FeeReading, SendRequestState } from '@web/modules/social-recovery/shared/client'
+import {
+  accountBatchRefusal,
+  providerReadFailure,
+  readWithin
+} from '@web/modules/social-recovery/shared/client'
+import type {
+  FeeReading,
+  ProviderRead,
+  SendRequestState
+} from '@web/modules/social-recovery/shared/client'
 import type { RecordRead, SaveInFlightRecord } from '@web/modules/social-recovery/shared/records'
 import {
   apartFrom,
@@ -480,9 +488,21 @@ const rest = (store: ArmStore, ms: number, moved?: Promise<void>): Promise<void>
     moved?.then(wake, wake)
   })
 
-/** The answer of `read`, rejected with the read's name where it does not answer within `limitMs`; a later answer moves nothing. */
-const readNamed = <T>(read: () => Promise<T>, named: string, limitMs: number): Promise<T> =>
-  readWithin(read, limitMs, () => new Error(`The ${named} did not answer in ${limitMs} ms.`))
+/**
+ * The answer of a chain read, rejected where it does not answer within
+ * `limitMs` as a read the provider could not make, so a node too slow to
+ * answer ends the run as one that refused; a later answer moves nothing.
+ */
+const readNamed = <T>(read: () => Promise<T>, named: ProviderRead, limitMs: number): Promise<T> =>
+  readWithin(read, limitMs, (error) => providerReadFailure(named, error))
+
+/** The stored save in flight, rejected where it does not answer within `limitMs`; a later answer moves nothing. */
+const storedSaveWithin = <T>(read: () => Promise<T>, limitMs: number): Promise<T> =>
+  readWithin(
+    read,
+    limitMs,
+    () => new Error(`The stored save read did not answer in ${limitMs} ms.`)
+  )
 
 /** Reads the account's setup at the start of a run; a setup found ends the run with nothing prepared. */
 const noSetupYet = async (store: ArmStore, steps: SaveSteps, run: number): Promise<boolean> => {
@@ -649,10 +669,10 @@ const readDropped = async (
   const hashes = sentHashesIn(store.state().write, record.transactionHash)
   const at = Date.now()
   const answers = await Promise.all([
-    readNamed(() => through.blockNumber(), 'block read', DROPPED_READ_MS),
+    readNamed(() => through.blockNumber(), 'block', DROPPED_READ_MS),
     Promise.all(
       hashes.map((hash) =>
-        readNamed(() => through.transactionKnown(hash), 'transaction read', DROPPED_READ_MS)
+        readNamed(() => through.transactionKnown(hash), 'transaction', DROPPED_READ_MS)
       )
     )
   ]).catch(() => undefined)
@@ -674,7 +694,7 @@ const readDropped = async (
   if (!apartFrom(kept, reading)) {
     return false
   }
-  const found = await readNamed(() => through.hasSetup(), 'setup read', DROPPED_READ_MS).catch(
+  const found = await readNamed(() => through.hasSetup(), 'call', DROPPED_READ_MS).catch(
     () => undefined
   )
   if (!unmoved()) {
@@ -1283,7 +1303,7 @@ const checkAndSend = async (
   // threw, so a page that follows this claim does not wait on it for long.
   let landedMeanwhile: boolean
   try {
-    landedMeanwhile = await readNamed(() => steps.hasSetup(), 'setup read', CLAIMED_SETUP_READ_MS)
+    landedMeanwhile = await readNamed(() => steps.hasSetup(), 'call', CLAIMED_SETUP_READ_MS)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     await releaseWhereEnded(store, steps)
@@ -1304,7 +1324,7 @@ const checkAndSend = async (
     sendBlock = claimBlock
   } else {
     try {
-      sendBlock = await readNamed(() => steps.blockNumber(), 'block read', SEND_BLOCK_READ_MS)
+      sendBlock = await readNamed(() => steps.blockNumber(), 'block', SEND_BLOCK_READ_MS)
     } catch (error: unknown) {
       dispatch({ type: 'error', run, error })
       await releaseWhereEnded(store, steps)
@@ -1318,7 +1338,7 @@ const checkAndSend = async (
   // limit ends the run as a failed setup read does.
   let stored: RecordRead<SaveInFlightRecord>
   try {
-    stored = await readNamed(() => steps.readInFlight(), 'stored save read', SEND_BLOCK_READ_MS)
+    stored = await storedSaveWithin(() => steps.readInFlight(), SEND_BLOCK_READ_MS)
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
     await releaseWhereEnded(store, steps)

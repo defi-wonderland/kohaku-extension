@@ -42,6 +42,7 @@ import {
   startSave
 } from '@web/modules/social-recovery/setup/arm'
 import type { ArmStore } from '@web/modules/social-recovery/setup/arm'
+import { CLAIMED_SETUP_READ_MS } from '@web/modules/social-recovery/setup/arm/constants'
 
 import {
   advanceTimers,
@@ -59,6 +60,7 @@ import {
   minedAndReverted,
   nodeError,
   PASSWORD,
+  pending,
   replacedTransaction,
   runSave,
   setupStateOf,
@@ -179,6 +181,40 @@ describe('the gas check before the send', () => {
 
     expect(store.state().write.status).toBe('gasReadError')
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('the setup read after the claim', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it('reads a setup read after the claim that never answers within its limit as a failed read, with the retry, sends nothing and releases the claim', async () => {
+    const wired = wireSave(account, script())
+    wired.setupState
+      .mockResolvedValueOnce(setupStateOf(false))
+      .mockImplementationOnce(() => pending())
+    const store = createArmStore()
+    const running = startSave(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    await advanceTimers(0)
+    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect((await wired.inFlight.read()).status).toBe('present')
+
+    await advanceTimers(CLAIMED_SETUP_READ_MS - 1)
+    expect(store.state().write.status).toBe('submitting')
+
+    await advanceTimers(1)
+    await running
+
+    expect(store.state().write.status).toBe('gasReadError')
+    expect(canRetry(store.state().write)).toBe(true)
+    expect(mayStillLand(store.state().write)).toBe(false)
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect((await wired.inFlight.read()).status).toBe('absent')
   })
 })
 
