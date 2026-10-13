@@ -66,6 +66,7 @@ const worldOf = ({
   })
   return { reads, codeRead, action, provider, events }
 }
+
 describe('the removed key of an account with no code', () => {
   it('is the one key whose creation privilege is not zero, with no authority read and no scan', async () => {
     const { reads, action, codeRead, provider, events } = worldOf({

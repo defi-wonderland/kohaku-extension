@@ -33,6 +33,7 @@ import {
   NEW_KEY,
   privilegeLog,
   RELAYER,
+  ENTRY_POINT,
   worldOf
 } from '@web/modules/social-recovery/shared/client/kit/wallet-reads/__fixtures__/world'
 
@@ -126,6 +127,20 @@ describe('a deployed listed account its creation key still controls', () => {
       authorities: [KEY_C]
     })
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_C))
+  })
+
+  it('asks about each key once whatever its spelling, and never about the entry point', async () => {
+    const { reads, askedPrivileges } = listedWorldOf({
+      initialPrivileges: [
+        [ENTRY_POINT, HOLDS],
+        [KEY_A, HOLDS]
+      ],
+      associatedKeys: [KEY_A.toLowerCase() as Address],
+      holders: [KEY_A],
+      authorities: [KEY_A]
+    })
+    await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
+    expect(askedPrivileges()).toEqual([KEY_A.toLowerCase()])
   })
 
   it('names a relayer-saved account by its creation key, the relayer dropped', async () => {
