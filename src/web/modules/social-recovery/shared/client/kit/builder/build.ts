@@ -43,14 +43,20 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     moduleReads: methodReads,
     codeRead,
     provider,
-    blockTags: config.blockTags
+    blockTags: config.blockTags,
+    logChunkWidth: config.logChunkWidth
   })
   const walletReads: WalletReads = {
     removedKey: () => kitWalletReads.removedKey(),
     fitCheck: (implementation) => kitWalletReads.fitCheck(implementation),
     verifyReply: (request, reply) => kitWalletReads.verifyReply(request, reply)
   }
-  const eventManager = createKitEventManager({ provider, descriptor, account })
+  const eventManager = createKitEventManager({
+    provider,
+    descriptor,
+    account,
+    chunkWidth: config.logChunkWidth
+  })
   const setup = createKitSetupClient({
     account,
     descriptor,
@@ -60,7 +66,7 @@ export const buildKitClient = (input: KitClientInput): RecoveryKitClient => {
     manager: input.manager,
     action: input.action,
     moduleReads,
-    events: createSetupEvents(provider, descriptor.manager),
+    events: createSetupEvents(provider, descriptor.manager, config.logChunkWidth),
     eventManager,
     walletReads,
     initialPrivileges: input.privilegeAccount.initialPrivileges

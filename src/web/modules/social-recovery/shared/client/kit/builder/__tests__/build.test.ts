@@ -97,8 +97,13 @@ const clientOver = (
   facts: DeploymentFacts = FACTS,
   {
     privilegeAccount = LISTED_ACCOUNT,
-    blockTags
-  }: { privilegeAccount?: PrivilegeAccount; blockTags?: ClientConfiguration['blockTags'] } = {}
+    blockTags,
+    logChunkWidth
+  }: {
+    privilegeAccount?: PrivilegeAccount
+    blockTags?: ClientConfiguration['blockTags']
+    logChunkWidth?: number
+  } = {}
 ) => {
   const node = fakeNode()
   scriptDeployment(node)
@@ -111,7 +116,8 @@ const clientOver = (
     addressBook: BOOK,
     config: defaultClientConfiguration({
       accountImplementation: PROXY_AMBIRE_ACCOUNT,
-      ...(blockTags && { blockTags })
+      ...(blockTags && { blockTags }),
+      ...(logChunkWidth !== undefined && { logChunkWidth })
     }),
     provider: node.provider,
     codeRead: node.codeRead,
@@ -241,6 +247,28 @@ describe("the wallet's reads", () => {
     })
   })
 
+  it("reads an unlisted account's privilege writes in chunks of the configured width", async () => {
+    const { node, client } = clientOver(FACTS, {
+      privilegeAccount: {
+        addr: ACCOUNT,
+        associatedKeys: [],
+        initialPrivileges: [],
+        creation: null
+      },
+      logChunkWidth: 400_000
+    })
+    node.setCode(ACCOUNT, CONTRACT_CODE)
+    await expect(client.walletReads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'no-key-entry'
+    })
+    expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 0, to: 399_999 },
+      { from: 400_000, to: 799_999 },
+      { from: 800_000, to: HEAD }
+    ])
+  })
+
   it("verifies a pasted reply through the guardian method's own verify view", async () => {
     const { node, client } = clientOver()
     scriptMethod(node, METHOD_ECDSA, { verify: VERIFY_MAGIC })
@@ -319,6 +347,24 @@ describe('the events feed', () => {
       { from: HEAD - 10, to: HEAD }
     )
     expect(client.recovery.events).toBe(events)
+  })
+
+  it('reads in chunks of the configured width, which a node with a narrow ceiling serves', async () => {
+    const { node, client } = clientOver(FACTS, { logChunkWidth: 2 })
+    const read = node.provider.logs.getMockImplementation()!
+    node.provider.logs.mockImplementation(async (filter, range) => {
+      if (range.to - range.from + 1 > 2) {
+        throw new Error('range too wide')
+      }
+      return read(filter, range)
+    })
+    const { events } = client.setup
+    await expect(events.fetch(events.accountFilter(), { from: 100, to: 104 })).resolves.toEqual([])
+    expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
+      { from: 100, to: 101 },
+      { from: 102, to: 103 },
+      { from: 104, to: 104 }
+    ])
   })
 })
 

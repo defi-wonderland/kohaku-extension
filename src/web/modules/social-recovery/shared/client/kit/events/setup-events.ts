@@ -85,10 +85,17 @@ export const decodeSetupLog = (log: RawLog): SetupLog | undefined => {
   }
 }
 
-/** The setup logs of the manager at `manager`, read through the provider adapter. */
-export const createSetupEvents = (provider: IProvider, manager: Address): SetupEvents => {
+/**
+ * The setup logs of the manager at `manager`, read through the provider
+ * adapter in chunks of at most `chunkWidth` blocks.
+ */
+export const createSetupEvents = (
+  provider: IProvider,
+  manager: Address,
+  chunkWidth?: number
+): SetupEvents => {
   const setupLogsIn = async (filter: FilterSpec, scan: LogScan): Promise<SetupLog[]> => {
-    const logs = await logsInChunks(provider, filter, scan)
+    const logs = await logsInChunks(provider, filter, scan, chunkWidth)
     return logs
       .filter(
         (log) =>
