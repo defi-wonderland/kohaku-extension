@@ -4,39 +4,59 @@
  * refuses one aimed at another deployment before any read, builds the
  * recovery client for the request's account, describes the request through
  * the client's approving side and reads the chain through the client. It
- * holds nothing of the recoverer's.
+ * holds nothing of the recoverer's. The signature is made in the wallet's own
+ * sign window through the request queue, for the key the request names
+ * where this wallet holds it; a locked wallet goes to its unlock first. Once
+ * the approval exists the page reads the chain no more.
  */
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useNavigation from '@common/hooks/useNavigation'
+import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
+import useBackgroundService from '@web/hooks/useBackgroundService'
+import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import { CHAIN_NAMES } from '@web/modules/social-recovery/recovery/entry'
 import PlainChrome from '@web/modules/social-recovery/shared/chrome/PlainChrome'
 import {
   addressBookOf,
+  CHAIN_IDS,
+  createSignerFacade,
   descriptorOf,
   networkOf,
+  signRequestPort,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
+import type { ListedAccount } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 
 import ApproveView from './ApproveView'
 import DeclinedBlock from './DeclinedBlock'
 import { domainAgrees, readingOf } from './reading'
 import { approvalRequestOf, describedRequestOf } from './request'
+import SignedBlock from './SignedBlock'
+import { keyReadingOf, requestKeyOf, typedDataOf } from './signing'
 import StatusBlock from './StatusBlock'
 import type { ApprovalClient } from './types'
 import useApprovalReads from './useApprovalReads'
 import useDeadlineClock from './useDeadlineClock'
+import useGuardianSigning from './useGuardianSigning'
+import { approvalValuesOf } from './values'
 
 const closePage = () => window.close()
 
 const ApproveScreen = () => {
   const { t } = useTranslation()
   const location = useLocation()
+  const { navigate } = useNavigation()
   const { networks } = useNetworksControllerState()
+  const { accounts } = useAccountsControllerState()
+  const { keys, isUnlocked, hasPasswordSecret } = useKeystoreControllerState()
+  const { dispatch, windowId } = useBackgroundService()
   const [declined, setDeclined] = useState(false)
 
   const request = useMemo(
@@ -66,7 +86,38 @@ const ApproveScreen = () => {
     () => (kit ? describedRequestOf(request, (r) => kit.approving.describeRequest(r)) : null),
     [kit, request]
   )
-  const { reads, retry } = useApprovalReads({ client: kit, enabled: readable && !declined })
+
+  const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
+  accountsRef.current = accounts
+  const signer = useMemo(
+    () =>
+      createSignerFacade(
+        signRequestPort(dispatch, () => accountsRef.current, windowId),
+        {
+          chainId: CHAIN_IDS[WALLET_RECOVERY_CHAIN]
+        }
+      ),
+    [dispatch, windowId]
+  )
+  const typedData = useMemo(
+    () => (kit && request ? typedDataOf((r) => kit.approving.signingInput(r), request) : null),
+    [kit, request]
+  )
+  const requestKey = useMemo(
+    () => (kit && request ? requestKeyOf(kit, request) : null),
+    [kit, request]
+  )
+  const keyReading = keyReadingOf(requestKey, { keys, isUnlocked, hasPasswordSecret })
+  const signing = useGuardianSigning({
+    approving: kit?.approving ?? null,
+    request,
+    signTypedData: signer.signTypedData
+  })
+
+  const { reads, retry } = useApprovalReads({
+    client: kit,
+    enabled: readable && !declined && !signing.approval
+  })
   const clock = useDeadlineClock(request ? Number(request.validUntil) : null)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const networkName =
@@ -80,6 +131,16 @@ const ApproveScreen = () => {
     retry()
   }, [client, retry])
   const onDecline = useCallback(() => setDeclined(true), [])
+  // A locked wallet goes to its unlock; a held key signs in the wallet's sign window.
+  const onSign = useCallback(() => {
+    if (keyReading.kind === 'locked') {
+      navigate(WEB_ROUTES.keyStoreUnlock)
+      return
+    }
+    if (keyReading.kind === 'held' && typedData) {
+      signing.sign(keyReading.key, typedData)
+    }
+  }, [keyReading, typedData, signing, navigate])
 
   const body = () => {
     if (!request || (kit && !described)) {
@@ -89,8 +150,15 @@ const ApproveScreen = () => {
         </Text>
       )
     }
+    if (signing.approval) {
+      return <SignedBlock approval={signing.approval} account={request.account} />
+    }
     if (declined) {
-      return <DeclinedBlock onClose={closePage} />
+      const newKey = described
+        ? approvalValuesOf(described.description, t).lines.find((line) => line.name === 'newKey')
+            ?.value ?? null
+        : null
+      return <DeclinedBlock account={request.account} newKey={newKey} onClose={closePage} />
     }
     const reading = readingOf(request, kit?.descriptor ?? build, client, reads, clock)
     if (
@@ -108,6 +176,10 @@ const ApproveScreen = () => {
         networkName={networkName}
         now={clock}
         timeZone={timeZone}
+        keyReading={keyReading}
+        signing={signing}
+        typedData={typedData}
+        onSign={onSign}
         onClose={closePage}
         onDecline={onDecline}
       />

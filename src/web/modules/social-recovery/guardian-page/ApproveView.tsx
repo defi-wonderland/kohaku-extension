@@ -1,12 +1,13 @@
 /**
  * The approval page over an answered reading: the notice that the page shows
  * what its link says, the lead, verify the details, then in the sign
- * action's place the acknowledgment and the actions while the request lives,
- * or the waiting recovery or the death that ended the request. A live
- * request the account no longer authorizes reads as dormant beside its
- * values, and its sign action stays disabled.
+ * action's place the signing step while the request lives, or the waiting
+ * recovery or the death that ended the request. A live request the account
+ * no longer authorizes reads as dormant beside its values, and its sign
+ * action stays disabled. The offline block takes the place of the whole
+ * page until the guardian goes back; the acknowledgment carries across both.
  */
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -16,9 +17,11 @@ import spacings from '@common/styles/spacings'
 
 import DetailsBlock from './DetailsBlock'
 import LeadBlock from './LeadBlock'
+import OfflineBlock from './OfflineBlock'
 import OutcomeBlock from './OutcomeBlock'
 import { signEnabled } from './reading'
 import SignBlock from './SignBlock'
+import { keyAllowsSign } from './signing'
 import type { ApproveViewProps } from './types'
 import { approvalValuesOf, deadlineViewOf } from './values'
 
@@ -30,25 +33,77 @@ const ApproveView = ({
   networkName,
   now,
   timeZone,
+  keyReading,
+  signing,
+  typedData,
+  onSign,
   onClose,
   onDecline
 }: ApproveViewProps) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
+  const [offline, setOffline] = useState(false)
   const { description } = described
 
   const values = useMemo(() => approvalValuesOf(description, t), [description, t])
   const deadline = deadlineViewOf(description.validUntil, now, timeZone, t)
-  const enabled = signEnabled({ values, deadline, reading, acknowledged })
+  // Every gate but the key: the values, the deadline, a live reading the
+  // account authorizes, the tick, and typed data to sign.
+  const gatesHold = signEnabled({ values, deadline, reading, acknowledged }) && typedData !== null
+  const enabled = gatesHold && keyAllowsSign(keyReading)
 
-  return (
-    <View testID="guardian-page">
+  const sign = useCallback(() => {
+    if (enabled) {
+      onSign()
+    }
+  }, [enabled, onSign])
+  const add = useCallback(
+    (text: string) => {
+      if (gatesHold && typedData) {
+        signing.addSignature(typedData, text)
+      }
+    },
+    [gatesHold, typedData, signing]
+  )
+  const openOffline = useCallback(() => setOffline(true), [])
+  const back = useCallback(() => setOffline(false), [])
+
+  const header = (
+    <>
       <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy}>
         {t(`${PAGE}.brand`)}
       </Text>
       <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg} testID="guardian-notice">
         {t(`${PAGE}.notice`)}
       </Text>
+    </>
+  )
+
+  if (reading.kind === 'live' && offline) {
+    return (
+      <View testID="guardian-page">
+        {header}
+        <OfflineBlock
+          described={described}
+          values={values}
+          deadline={deadline}
+          typedData={typedData}
+          acknowledged={acknowledged}
+          onAcknowledged={setAcknowledged}
+          enabled={gatesHold}
+          busy={signing.busy}
+          failure={signing.offlineFailure}
+          onAdd={add}
+          onBack={back}
+          onDecline={onDecline}
+        />
+      </View>
+    )
+  }
+
+  return (
+    <View testID="guardian-page">
+      {header}
       <LeadBlock values={values} />
       <DetailsBlock described={described} deadline={deadline} networkName={networkName} />
       {reading.kind === 'live' ? (
@@ -66,6 +121,13 @@ const ApproveView = ({
             acknowledged={acknowledged}
             onAcknowledged={setAcknowledged}
             enabled={enabled}
+            values={values}
+            deadline={deadline}
+            keyReading={keyReading}
+            busy={signing.busy}
+            failure={signing.failure}
+            onSign={sign}
+            onOpenOffline={openOffline}
             onDecline={onDecline}
           />
         </>
