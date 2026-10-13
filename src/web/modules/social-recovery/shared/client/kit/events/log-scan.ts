@@ -20,8 +20,17 @@ export const positionOf = (log: RawLog): LogPosition => ({
   removed: log.removed ?? false
 })
 
-/** The ranges of at most `width` blocks that cover `from` to `to`, both included. */
+/**
+ * The ranges of at most `width` blocks that cover `from` to `to`, both
+ * included. A width below one block would never advance, so it is refused
+ * before the loop rather than looped on.
+ */
 export const chunksOf = (from: number, to: number, width = LOG_CHUNK_BLOCKS): BlockRange[] => {
+  if (!Number.isInteger(width) || width < 1) {
+    throw new RangeError(
+      `a log chunk width must be a whole number of blocks above zero, not ${width}`
+    )
+  }
   const chunks: BlockRange[] = []
   for (let first = from; first <= to; first += width) {
     chunks.push({ from: first, to: Math.min(first + width - 1, to) })
