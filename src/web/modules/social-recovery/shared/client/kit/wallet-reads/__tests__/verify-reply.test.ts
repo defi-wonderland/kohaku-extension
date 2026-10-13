@@ -4,7 +4,7 @@
  * credential's own method module through its `verify` view. Every address is
  * made up.
  */
-import { toFunctionSelector } from 'viem'
+import { concat, pad, toFunctionSelector } from 'viem'
 
 import type { Hex } from 'viem'
 
@@ -39,6 +39,8 @@ import { providerReadFailure } from '@web/modules/social-recovery/shared/client/
 const GUARDIAN_REQUEST = approverRequestAt(guardianAt(0), 0)
 const PASSKEY_REQUEST = approverRequestAt(passkeyAt(1), 1)
 const OTHER_WORD: Hex = '0xffffffff'
+const VERIFY_SELECTOR = toFunctionSelector('verify(bytes,bytes32,bytes)')
+const MAGIC_WORD = pad(VERIFY_MAGIC, { dir: 'right', size: 32 })
 
 const worldOf = (scripts: { ecdsa?: ScriptedMethod; passkey?: ScriptedMethod } = {}) => {
   const node = fakeNode()
@@ -86,6 +88,20 @@ describe("the module's judgement", () => {
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
+  it('is rejected where the magic value comes with non-zero padding, as the manager refuses it', async () => {
+    const { node, verify } = worldOf()
+    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => `${MAGIC_WORD.slice(0, -2)}01` as Hex)
+
+    expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
+  })
+
+  it('is rejected where the magic word is followed by a trailing word, as the manager refuses it', async () => {
+    const { node, verify } = worldOf()
+    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => concat([MAGIC_WORD, MAGIC_WORD]))
+
+    expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
+  })
+
   it('is rejected where the module reverts on the proof', async () => {
     const { verify } = worldOf({ ecdsa: { verify: reverting('0x08c379a0') } })
 
@@ -103,7 +119,7 @@ describe("the module's judgement", () => {
 
   it('rejects with a read failure where the module answers no word, as an address with no code does', async () => {
     const { node, verify } = worldOf()
-    node.answerWith(METHOD_ECDSA, toFunctionSelector('verify(bytes,bytes32,bytes)'), () => '0x')
+    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => '0x')
 
     expect(
       await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))
