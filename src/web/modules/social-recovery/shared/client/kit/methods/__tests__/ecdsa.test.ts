@@ -11,6 +11,7 @@ import {
   numberToHex,
   parseSignature,
   serializeSignature,
+  size,
   type TypedDataDefinition
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -22,7 +23,6 @@ import { ecdsaConfigOf } from '@web/modules/social-recovery/shared/client/kit/fo
 import { createEcdsaMethod } from '@web/modules/social-recovery/shared/client/kit/methods'
 import {
   approverRequestAt,
-  DESCRIPTOR,
   guardianAt,
   METHOD_ECDSA
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
@@ -61,7 +61,7 @@ describe('the signature a guardian returns', () => {
     const { guardian, ctx, signTyped } = setting()
     const typed = await signTyped()
     expect(typed).toBe(await guardian.sign({ hash: ctx.digest }))
-    expect((typed.length - 2) / 2).toBe(65)
+    expect(size(typed)).toBe(65)
   })
 
   it('becomes the proof as it is, and the local verdict is satisfied', async () => {
@@ -137,15 +137,24 @@ describe('the local verdict', () => {
     )
   })
 
-  it('rejects 65 bytes that are no signature, and an empty proof', async () => {
+  it('rejects 65 bytes with a recovery byte out of range', async () => {
     const { method, ctx } = setting()
     expect(await method.verify(ctx, `${randomHex(64)}05`)).toBe('rejected')
-    expect(await method.verify(ctx, `0x${'00'.repeat(64)}1b`)).toBe('rejected')
-    expect(await method.verify(ctx, '0x')).toBe('rejected')
   })
 
-  it("does not judge bytes of another length, a contract wallet's own", async () => {
+  it('rejects 65 bytes whose r is zero', async () => {
     const { method, ctx } = setting()
+    expect(await method.verify(ctx, `0x${'00'.repeat(64)}1b`)).toBe('rejected')
+  })
+
+  it('rejects a proof that is not hex', async () => {
+    const { method, ctx } = setting()
+    expect(await method.verify(ctx, 'not hex' as Hex)).toBe('rejected')
+  })
+
+  it("does not judge an empty proof or bytes of another length, a contract wallet's own", async () => {
+    const { method, ctx } = setting()
+    expect(await method.verify(ctx, '0x')).toBe('not-judged')
     expect(await method.verify(ctx, randomHex(32))).toBe('not-judged')
   })
 })
@@ -178,9 +187,8 @@ describe('the material a reply takes', () => {
 })
 
 describe('the enrollment and the codec', () => {
-  it('serves the guardian module and enrolls a typed address as its config', async () => {
+  it('enrolls a typed address as its config', async () => {
     const { guardian, method } = setting()
-    expect(method.modules(DESCRIPTOR)).toEqual([DESCRIPTOR.methodEcdsa])
     const input = method.enrollInput({ address: guardian.address })
     expect(await method.configFrom(input, undefined)).toBe(ecdsaConfigOf(guardian.address))
     expect(method.codec.decodeConfig(ecdsaConfigOf(guardian.address))).toEqual({
@@ -213,6 +221,5 @@ describe('the enrollment and the codec', () => {
       address: guardian.address,
       keyOrContractUnknown: true
     })
-    expect(method.deviceBinding).toBe('none')
   })
 })

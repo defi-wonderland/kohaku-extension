@@ -66,11 +66,7 @@ const canonicalSignatureOf = (signature: Hex): Hex | null => {
   } catch {
     return null
   }
-  const r = hexToBigInt(parsed.r)
   const s = hexToBigInt(parsed.s)
-  if (r === 0n || r >= SECP256K1_N || s === 0n || s >= SECP256K1_N) {
-    return null
-  }
   return s > HALF_N
     ? serializeSignature({
         r: parsed.r,
@@ -106,7 +102,7 @@ const describe = (ctx: MethodContext): DeviceFacts => {
 
 const verify = async (ctx: MethodContext, proof: Hex): Promise<Verdict> => {
   try {
-    if (!isByteHex(proof) || proof === '0x') {
+    if (!isByteHex(proof)) {
       return 'rejected'
     }
     if (size(proof) !== SIGNATURE_BYTES) {
