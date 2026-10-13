@@ -6,12 +6,15 @@
  *
  * A reply or a request without the record's shape, a reply whose place, method
  * or config differ from the request's, or whose digest is not the request's,
- * answers `rejected` with no read. The module's magic value is `satisfied`;
- * any other word, or a revert of the call, is `rejected`, since the module
- * refuses the proof. A read the provider could not make rejects, so the
+ * answers `rejected` with no read. An answer of exactly one 32-byte word that
+ * holds the module's magic value left-aligned, zeros after it, is `satisfied`,
+ * as the manager reads it; any other answer, or a revert of the call, is
+ * `rejected`, since the manager refuses the proof. A read the provider could not make rejects, so the
  * caller reads a failed check and tries again. One read per verify; nothing
  * is cached.
  */
+import { pad, size } from 'viem'
+
 import {
   digestOfRequest,
   replyReadable,
@@ -30,6 +33,8 @@ import { VERIFY_MAGIC_VALUE } from '../reads'
 import type { KitWalletReads, ReplyVerifyReads } from './types'
 
 const sameBytes = (a: Hex, b: Hex): boolean => a.toLowerCase() === b.toLowerCase()
+
+const MAGIC_WORD = pad(VERIFY_MAGIC_VALUE, { dir: 'right', size: 32 })
 
 // A request whose values do not encode makes no digest.
 const digestOf = (request: ApproverRequest): Hex | null => {
@@ -59,7 +64,7 @@ export const createReplyVerify =
     }
     try {
       const answer = await moduleReads.verify(reply.method, reply.config, digest, reply.proof)
-      return sameBytes(answer, VERIFY_MAGIC_VALUE) ? 'satisfied' : 'rejected'
+      return size(answer) === 32 && sameBytes(answer, MAGIC_WORD) ? 'satisfied' : 'rejected'
     } catch (thrown: unknown) {
       if (isRevertedCall(thrown)) {
         return 'rejected'
