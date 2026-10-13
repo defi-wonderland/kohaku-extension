@@ -1,4 +1,8 @@
+import i18n from '@common/config/localization'
+import { renderWaitLength } from '@web/modules/social-recovery/shared/display'
 import type { WaitHelpers } from '@web/modules/social-recovery/setup/privacy/__fixtures__/types'
+
+const t = (key: string, params?: Record<string, unknown>): string => String(i18n.t(key, params))
 
 const helpersWithFloor = (minutes: string | undefined): WaitHelpers => {
   let helpers: WaitHelpers | undefined
@@ -22,6 +26,9 @@ describe('the waiting period floor of a test build', () => {
     expect(wait.readCustomWait('24', 720)).toEqual({ status: 'accepted', hours: 24 })
     expect(wait.secondsOfHours(24)).toBe(86_400n)
     expect(wait.choiceOfSeconds(30n * 3600n)).toEqual({ kind: 'custom', text: '30' })
+    expect(wait.CUSTOM_UNIT_IS_MINUTES).toBe(false)
+    expect(renderWaitLength(wait.WAIT_FLOOR_SECONDS, t)).toBe('24 hours')
+    expect(renderWaitLength(wait.DEFAULT_WAIT_SECONDS, t)).toBe('48 hours')
   })
 
   it('drops the floor to the minutes set and counts the custom entry in minutes', () => {
@@ -33,6 +40,9 @@ describe('the waiting period floor of a test build', () => {
     expect(wait.choiceOfSeconds(300n)).toEqual({ kind: 'custom', text: '5' })
     expect(wait.choiceOfSeconds(48n * 3600n)).toEqual({ kind: 'chip', id: 'hours48' })
     expect(wait.readCustomWait('43201', 720)).toEqual({ status: 'pastCeiling' })
+    expect(wait.CUSTOM_UNIT_IS_MINUTES).toBe(true)
+    expect(renderWaitLength(wait.WAIT_FLOOR_SECONDS, t)).toBe('5 minutes')
+    expect(renderWaitLength(wait.DEFAULT_WAIT_SECONDS, t)).toBe('48 hours')
   })
 
   it('ignores a floor that is not a whole positive number of minutes', () => {
