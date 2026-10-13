@@ -40,4 +40,12 @@ describe('the waiting period floor of a test build', () => {
     expect(wait.readCustomWait('1', 720)).toEqual({ status: 'belowMinimum' })
     expect(wait.secondsOfHours(1)).toBe(3600n)
   })
+
+  it('ignores a floor above the release floor, keeping a day and hours', () => {
+    const wait = helpersWithFloor('2880')
+    expect(wait.readCustomWait('23', 720)).toEqual({ status: 'belowMinimum' })
+    expect(wait.readCustomWait('24', 720)).toEqual({ status: 'accepted', hours: 24 })
+    expect(wait.secondsOfHours(24)).toBe(86_400n)
+    expect(wait.choiceOfSeconds(30n * 3600n)).toEqual({ kind: 'custom', text: '30' })
+  })
 })
