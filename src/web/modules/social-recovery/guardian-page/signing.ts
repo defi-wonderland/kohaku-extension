@@ -12,6 +12,7 @@ import type {
   Hex,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { isObject } from '@web/modules/social-recovery/recovery/checklist/codec'
 import {
   isSignFlowFailure,
   sameAddress,
@@ -29,9 +30,6 @@ import type {
   SigningFailure
 } from './types'
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /**
  * The address the request's credential names: the wallet method's own codec
  * decodes the config, for a request whose method is the one the wallet
@@ -48,7 +46,7 @@ export const requestKeyOf = (
   }
   try {
     const fields: unknown = method.codec.decodeConfig(request.config)
-    return isRecord(fields) && typeof fields.address === 'string' && isAddress(fields.address)
+    return isObject(fields) && typeof fields.address === 'string' && isAddress(fields.address)
       ? fields.address
       : null
   } catch {
@@ -72,8 +70,8 @@ export const keyReadingOf = (address: Address | null, keystore: KeystoreFacts): 
     return { kind: 'locked', address }
   }
   const held = (keystore.keys ?? []).find((key) => sameAddress(key.addr, address))
-  return held && isAddress(held.addr)
-    ? { kind: 'held', key: { addr: held.addr, type: held.type } }
+  return held
+    ? { kind: 'held', key: { addr: address, type: held.type } }
     : { kind: 'missing', address }
 }
 
@@ -96,11 +94,11 @@ export const typedDataOf = (
     return null
   }
   if (
-    !isRecord(input) ||
-    !isRecord(input.domain) ||
-    !isRecord(input.types) ||
+    !isObject(input) ||
+    !isObject(input.domain) ||
+    !isObject(input.types) ||
     typeof input.primaryType !== 'string' ||
-    !isRecord(input.message)
+    !isObject(input.message)
   ) {
     return null
   }
