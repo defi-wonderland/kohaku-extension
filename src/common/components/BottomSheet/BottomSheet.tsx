@@ -188,7 +188,7 @@ const BottomSheet: React.FC<Props> = ({
           modalTopOffset={modalTopOffset}
           modalHeight={modalHeight}
           threshold={90}
-          adjustToContentHeight={adjustToContentHeight}
+          adjustToContentHeight={modalHeight === undefined ? adjustToContentHeight : false}
           disableScrollIfPossible={false}
           withOverlay={false}
           onBackButtonPress={() => true}
