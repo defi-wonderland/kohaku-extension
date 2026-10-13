@@ -1,5 +1,6 @@
 import i18n from '@common/config/localization'
-import { renderWaitLength, Translate } from '@web/modules/social-recovery/shared/display'
+import { renderWaitLength } from '@web/modules/social-recovery/shared/display'
+import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 describe('a waiting period length', () => {
   const recorded = () => {
