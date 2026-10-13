@@ -62,6 +62,16 @@
  * The port sets it only where the caller passes it, and never on a key's own
  * transaction.
  *
+ * The queue opens the sign window only for a request of the account the
+ * wallet has selected: one for any other account waits behind an account
+ * switch screen that names no request of a dapp and cannot carry it. So the
+ * port queues each request for the account that sends it, a key's own basic
+ * account for a key's transaction and the account for its batch, whichever
+ * account the wallet has selected. Where that account is not the selected
+ * one, the port first selects it with `MAIN_CONTROLLER_SELECT_ACCOUNT`, as the
+ * holder's own account switch does, and adds the request only once the
+ * wallet pushes the selection; the request is still added once, never again.
+ *
  * The queue joins every `calls` request of one account and chain into one
  * operation. So the port queues nothing where another `calls` request of the
  * account and chain is already in the queue, and except while the sign screen
@@ -558,6 +568,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let windowClosed = false
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
+      let selecting = false
+      let added = false
       let unsubscribe: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
       let closed: ReturnType<typeof setTimeout> | undefined
@@ -566,6 +578,23 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
 
       const remove = () =>
         port.dispatch({ type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST', params: { id } })
+      // The wallet compares the request's account with the selected one with
+      // exact case, so both are its own addresses.
+      const isSelected = (selected: string | undefined): boolean => selected === account
+      const add = () => {
+        if (added) {
+          return
+        }
+        added = true
+        selecting = false
+        port.dispatch({
+          type: 'REQUESTS_CONTROLLER_ADD_USER_REQUEST',
+          params: {
+            userRequest: callsRequestOf(request, chainId, port.windowId()),
+            allowAccountSwitch: true
+          }
+        })
+      }
 
       const clearWaits = () => {
         if (timer !== undefined) {
@@ -657,6 +686,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         if (!seen) {
           listed = isQueued(port, id)
         }
+        // A request still waiting for its account's selection is never added.
+        selecting = false
         const confirmed = !withdraw || (!listed && !held)
         settling = { reason, withdrawn: withdraw, confirmed }
         if (timer !== undefined) {
@@ -690,12 +721,20 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         timer = undefined
         timedOut = true
         if (!waiting && !signing) {
-          settle('timeout', true)
+          // A request still waiting for its account's selection was never
+          // added, so there is nothing to withdraw.
+          settle('timeout', added)
         }
       }, timeoutMs)
 
       unsubscribe = port.subscribe((update) => {
         if (done) {
+          return
+        }
+        if (update.controller === 'selectedAccount') {
+          if (selecting && settling === undefined && isSelected(update.state.account?.addr)) {
+            add()
+          }
           return
         }
         if (update.controller === 'signAccountOp') {
@@ -849,13 +888,12 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         type: 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS',
         params: { sessionId: id, filters: { account, chainId }, pagination: { ...ACTIVITY_PAGE } }
       })
-      port.dispatch({
-        type: 'REQUESTS_CONTROLLER_ADD_USER_REQUEST',
-        params: {
-          userRequest: callsRequestOf(request, chainId, port.windowId()),
-          allowAccountSwitch: true
-        }
-      })
+      if (isSelected(port.selectedAccount())) {
+        add()
+      } else {
+        selecting = true
+        port.dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: account } })
+      }
     })
   }
 

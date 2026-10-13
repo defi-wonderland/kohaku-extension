@@ -943,6 +943,7 @@ describe("the UI's own port over the event bus", () => {
         dispatch,
         () => [basicAccount(KEY)],
         () => undefined,
+        () => KEY,
         WINDOW_ID
       ),
       { chainId: SEPOLIA }
@@ -970,6 +971,7 @@ describe("the UI's own port over the event bus", () => {
     const sender = createSendPort(
       sendRequestPort(
         dispatch,
+        () => undefined,
         () => undefined,
         () => undefined
       ),

@@ -632,14 +632,15 @@ export interface SignerFacadeOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * The four background actions the send port dispatches: add its request and
- * withdraw it, and open and close the activity session it reads the broadcast
- * operation from.
+ * The background actions the send port dispatches: select the sending
+ * account, add its request and withdraw it, and open and close the activity
+ * session it reads the broadcast operation from.
  */
 export type SendRequestAction = Extract<
   Action,
   {
     type:
+      | 'MAIN_CONTROLLER_SELECT_ACCOUNT'
       | 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
       | 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
       | 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS'
@@ -726,8 +727,14 @@ export type SignAccountOpState = Partial<
   estimation?: Partial<Pick<EstimationController, 'status' | 'availableFeeOptions' | 'error'>>
 }
 
+/** The part of the `selectedAccount` controller state the send port reads: the account the wallet selected. */
+export interface SelectedAccountState {
+  account?: Pick<Account, 'addr'> | null
+}
+
 /** One controller state the background pushed, by controller. */
 export type SendRequestUpdate =
+  | { controller: 'selectedAccount'; state: SelectedAccountState }
   | { controller: 'requests'; state: SendQueueState }
   | { controller: 'activity'; state: ActivityState }
   | { controller: 'main'; state: MainStatusState }
@@ -735,9 +742,10 @@ export type SendRequestUpdate =
 
 /**
  * How the send port reaches the background: the dispatch of
- * `useBackgroundService`, the `requests`, `activity`, `main` and
- * `signAccountOp` controller states the background pushes, the accounts the
- * wallet lists, the request queue as the wallet holds it now, and the window
+ * `useBackgroundService`, the `selectedAccount`, `requests`, `activity`,
+ * `main` and `signAccountOp` controller states the background pushes, the
+ * accounts the wallet lists, the request queue and the selected account as
+ * the wallet holds them now, and the window
  * the request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's
  * own.
  */
@@ -748,6 +756,8 @@ export interface SendRequestPort {
   accounts(): readonly ListedAccount[]
   /** The `requests` controller state the wallet holds now. */
   queue(): HeldRequestQueue
+  /** The address of the account the wallet has selected now, as the wallet holds it. */
+  selectedAccount(): string | undefined
   windowId(): number | undefined
 }
 

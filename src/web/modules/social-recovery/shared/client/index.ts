@@ -159,6 +159,7 @@ export type {
   SendRequestAction,
   ActionWindowState,
   QueuedRequest,
+  SelectedAccountState,
   SendQueueState,
   HeldRequestQueue,
   SendRequestState,
