@@ -66,8 +66,14 @@ describe('the tone of each check line', () => {
     ['a name that does not resolve', { name: { status: 'unresolved' } }, 'nameUnresolved', 'risk'],
     ['an address with no code', { code: 'none' }, 'noCode', 'good'],
     ['an address with code', { code: 'contract' }, 'smartAccountDetected', 'warning'],
-    ['a key from another seed', { seed: 'not' }, 'notSameSeed', 'good'],
-    ['a key from the same seed', { seed: 'same' }, 'sameSeed', 'risk']
+    ['a key this wallet does not hold', { seed: 'not' }, 'notSameSeed', 'good'],
+    ['a key from the same seed', { seed: 'same' }, 'sameSeed', 'risk'],
+    [
+      "a key this wallet holds apart from the account's seed",
+      { seed: 'held' },
+      'heldHere',
+      'warning'
+    ]
   ])('reads %s in its tone', ([, checks, key, tone]) => {
     expect(checkLinesOf(checks).map((line) => [line.key, line.tone])).toEqual([
       [`${GUARDIAN}.${key}`, tone]
@@ -158,7 +164,7 @@ describe('the enrollment fields and checks', () => {
     })
 
     it('draws a risk or a warning icon beside each line of the worst address, and still adds it', async () => {
-      deps = depsOf({ chain: contractCode, keys: sameSeed })
+      deps = depsOf({ chain: contractCode, keys: sameSeed, ownSeedIds: ['seed-1'] })
       await open(GUARDIAN_PATH, GUARDIAN_SEARCH)
       await enter(WRONG_CASE)
       expect(drawnLines()).toEqual([
