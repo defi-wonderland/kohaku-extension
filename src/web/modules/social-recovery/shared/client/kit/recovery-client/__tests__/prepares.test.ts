@@ -29,6 +29,7 @@ import type {
   PreparedCall,
   ProofPlace
 } from '@web/modules/social-recovery/sdk-interfaces'
+import { ARBITRARY_SENDER } from '@web/modules/social-recovery/sdk-doubles/prepared'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
 import {
   defaultSaltOf,
@@ -635,16 +636,38 @@ describe('preparing the execute', () => {
     ])
   })
 
-  it('describes an open payee as the zero address', async () => {
+  it('describes a token payment to an open payee as paid to the executing sender', async () => {
     const world = worldWith({ state: WAITING })
     const attempt = attemptOf({ order: { token: TOKEN, amount: 5n, payee: zeroAddress } })
-    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD, {
+      from: OTHER_ACCOUNT
+    })
     expect(describedOf(call)[3]).toEqual({
       to: TOKEN,
       value: 0n,
       functionName: 'transfer',
-      args: [zeroAddress, 5n]
+      args: [getAddress(OTHER_ACCOUNT), 5n]
     })
+  })
+
+  it('describes a token payment to an open payee as paid to the arbitrary sender where no sender is given', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: TOKEN, amount: 5n, payee: zeroAddress } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
+    expect(describedOf(call)[3].args).toEqual([getAddress(ARBITRARY_SENDER), 5n])
+  })
+
+  it('keeps a fixed payee whatever sender executes', async () => {
+    const world = worldWith({ state: WAITING })
+    const token = await world.recovery.prepareExecuteHandover(attemptOf(), PAYLOAD, {
+      from: OTHER_ACCOUNT
+    })
+    expect(describedOf(token)[3].args).toEqual([getAddress(KEY_B), 5n])
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: KEY_B } })
+    const native = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD, {
+      from: OTHER_ACCOUNT
+    })
+    expect(native.describes?.[3]).toEqual({ to: KEY_B, value: 5n, data: '0x' })
   })
 
   it('describes a native payment as the amount sent to the payee with no data', async () => {
@@ -654,11 +677,20 @@ describe('preparing the execute', () => {
     expect(call.describes?.[3]).toEqual({ to: KEY_B, value: 5n, data: '0x' })
   })
 
-  it('describes a native payment to an open payee as sent to the zero address', async () => {
+  it('describes a native payment to an open payee as sent to the executing sender', async () => {
+    const world = worldWith({ state: WAITING })
+    const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: zeroAddress } })
+    const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD, {
+      from: OTHER_ACCOUNT
+    })
+    expect(call.describes?.[3]).toEqual({ to: OTHER_ACCOUNT, value: 5n, data: '0x' })
+  })
+
+  it('describes a native payment to an open payee as sent to the arbitrary sender where no sender is given', async () => {
     const world = worldWith({ state: WAITING })
     const attempt = attemptOf({ order: { token: zeroAddress, amount: 5n, payee: zeroAddress } })
     const call = await world.recovery.prepareExecuteHandover(attempt, PAYLOAD)
-    expect(call.describes?.[3]).toEqual({ to: zeroAddress, value: 5n, data: '0x' })
+    expect(call.describes?.[3]).toEqual({ to: ARBITRARY_SENDER, value: 5n, data: '0x' })
   })
 
   it('describes the consume and the payment alone for a payload that does not decode, and refuses nothing', async () => {

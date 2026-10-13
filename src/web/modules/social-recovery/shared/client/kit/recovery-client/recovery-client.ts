@@ -11,9 +11,9 @@
  *
  * Each prepare pins one block, makes its reads at it and carries it. The start
  * and the cancellation by proofs refuse while the request validation names an
- * error. No prepare runs a simulation, so the options a prepare takes are not
- * read: a revert surfaces at the gas estimate the sending step makes before
- * any send.
+ * error. No prepare runs a simulation, so `simulate` is not read: a revert
+ * surfaces at the gas estimate the sending step makes before any send. The
+ * execute prepare reads `from` only to name the executor an open payee pays.
  */
 import {
   ActionCodecDouble,
@@ -31,6 +31,7 @@ import {
   validationRefusal
 } from '@web/modules/social-recovery/sdk-doubles'
 import { deserializeOrder, serializeOrder } from '@web/modules/social-recovery/sdk-doubles/encoding'
+import { ARBITRARY_SENDER } from '@web/modules/social-recovery/sdk-doubles/prepared'
 import type {
   ActionState,
   Address,
@@ -50,6 +51,7 @@ import type {
   Hex,
   IRecoveryClient,
   PaymentOrder,
+  PrepareOptions,
   PreparedCall,
   RecoveryState
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -360,7 +362,11 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
       })
     },
 
-    prepareExecuteHandover(attempt: Attempt, payload: Hex): Promise<PreparedCall> {
+    prepareExecuteHandover(
+      attempt: Attempt,
+      payload: Hex,
+      options?: PrepareOptions
+    ): Promise<PreparedCall> {
       return withNamedRevert(async () => {
         const block = await pin()
         // The calls the action will run, for a screen and never for signing:
@@ -382,9 +388,13 @@ export const createKitRecoveryClient = (ctx: KitRecoveryContext): IRecoveryClien
           )
         }
         if (attempt.order.amount > 0n) {
-          // An open payee stays the zero address here: whoever executes is paid.
+          // An open payee is described as paid to the executor: the sender the
+          // call simulates as, the given `from` or else the arbitrary sender.
           // The zero token is the native coin, sent as value with no data.
-          const { token, payee, amount } = attempt.order
+          const { token, amount } = attempt.order
+          const payee = sameAddress(attempt.order.payee, zeroAddress)
+            ? options?.from ?? ARBITRARY_SENDER
+            : attempt.order.payee
           describes.push(
             sameAddress(token, zeroAddress)
               ? { to: payee, value: amount, data: '0x' }
