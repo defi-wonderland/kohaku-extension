@@ -745,9 +745,8 @@ export type SendRequestUpdate =
  * `useBackgroundService`, the `selectedAccount`, `requests`, `activity`,
  * `main` and `signAccountOp` controller states the background pushes, the
  * accounts the wallet lists, the request queue and the selected account as
- * the wallet holds them now, and the window
- * the request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's
- * own.
+ * the wallet holds them now, and the window the request opens beside.
+ * `sendRequestPort` (sender-port.ts) wires the UI's own.
  */
 export interface SendRequestPort {
   dispatch(action: SendRequestAction): void

@@ -6,10 +6,9 @@
  * the wallet lists (`useAccountsControllerState().accounts`), the request
  * queue the wallet holds now (`useRequestsControllerState()`) and the account
  * it has selected now (`useSelectedAccountControllerState().account`). Each
- * getter reads the latest
- * value the screen holds. When the sign screen closes, the background pushes
- * the reset `signAccountOp` state, its estimation back at initial; a null push
- * is read as an empty state.
+ * getter reads the latest value the screen holds. When the sign screen
+ * closes, the background pushes the reset `signAccountOp` state, its
+ * estimation back at initial; a null push is read as an empty state.
  */
 import eventBus from '@web/extension-services/event/eventBus'
 

@@ -143,7 +143,8 @@ export const MISSING_SEND_ACTION = 'KEYSTORE_CONTROLLER_SEND_WITH_KEY' as const
  *   not the call's; that operation may still reach the chain;
  * - `timeout`: no answer came in time; the port withdraws the request, or
  *   waits until the queue drops one that waited for an account switch, or
- *   until the sign screen stops signing or pausing on it;
+ *   until the sign screen stops signing or pausing on it, or never added it,
+ *   where the wallet did not push the sending account's selection in time;
  * - `other-request-pending`: another `calls` request of the same account and
  *   chain waits in the queue, which would join it to this one; the port
  *   queued nothing, or withdrew its request before the wallet signed it.
