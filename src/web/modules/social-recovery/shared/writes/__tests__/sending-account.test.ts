@@ -1,0 +1,216 @@
+/**
+ * The account a send is queued against. The wallet opens the sign window only
+ * for a request of the account it has selected, so the drives run the client's
+ * real send port over a fake wallet and read what it dispatched: a key's
+ * transaction is queued against the key's own basic account and a batch
+ * against its account, whichever account the wallet had selected; where that
+ * account is not the selected one, the port selects it first and adds its
+ * request once the wallet pushes the selection, and only once.
+ */
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import {
+  createSendPort,
+  type ListedAccount,
+  type SendRequestAction,
+  type SendRequestPort,
+  type SendRequestUpdate
+} from '@web/modules/social-recovery/shared/client'
+
+import {
+  ACCOUNT,
+  advanceTimersAsync,
+  driveAccountBatch,
+  driveSend,
+  drivenMachine,
+  fakeReceiptWait,
+  KEY,
+  ownerTransaction,
+  providerReceipt,
+  SAVE,
+  submittingFor,
+  TX_HASH
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
+
+const CHAIN_ID = 11155111
+const SELECT = 'MAIN_CONTROLLER_SELECT_ACCOUNT'
+const ADD = 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
+const REMOVE = 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
+const REQUEST_ID = 'social-recovery-sender:the-batch'
+
+const KEY_ACCOUNT: ListedAccount = { addr: KEY.addr, associatedKeys: [KEY.addr], creation: null }
+const SMART_ACCOUNT: ListedAccount = {
+  addr: ACCOUNT,
+  associatedKeys: ['0x2b0f5e98ee98adc9865745e98802f333f72f6ef5'],
+  creation: {
+    factoryAddr: '0x0000000000000000000000000000000000000fac',
+    bytecode: '0x00',
+    salt: `0x${'00'.repeat(32)}`
+  }
+}
+const OTHER: Address = '0x3333333333333333333333333333333333333333'
+
+/** A wallet that lists the key's basic account and the smart account, with `selected` selected. */
+const walletWith = (selected: string | undefined) => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  const wallet = {
+    selected,
+    dispatch: jest.fn<void, [SendRequestAction]>(),
+    push: (update: SendRequestUpdate) => [...listeners].forEach((listener) => listener(update)),
+    /** The wallet selects `addr` and pushes its selection. */
+    select: (addr: string) => {
+      wallet.selected = addr
+      wallet.push({ controller: 'selectedAccount', state: { account: { addr } } })
+    }
+  }
+  const port: SendRequestPort = {
+    dispatch: wallet.dispatch,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    accounts: () => [KEY_ACCOUNT, SMART_ACCOUNT],
+    queue: () => ({}),
+    selectedAccount: () => wallet.selected,
+    windowId: () => undefined
+  }
+  return { wallet, sender: createSendPort(port, { chainId: CHAIN_ID }) }
+}
+
+const actionsOf = (dispatch: jest.Mock): SendRequestAction[] =>
+  dispatch.mock.calls.map((call) => call[0] as SendRequestAction)
+
+const typesOf = (dispatch: jest.Mock) => actionsOf(dispatch).map((action) => action.type)
+
+/** The account of every request the port added to the queue. */
+const queuedAccountsOf = (dispatch: jest.Mock) =>
+  actionsOf(dispatch).flatMap((action) =>
+    action.type === ADD ? [action.params.userRequest.meta.accountAddr] : []
+  )
+
+const requestIdOf = (dispatch: jest.Mock): string => {
+  const add = actionsOf(dispatch).find((action) => action.type === ADD)
+  if (!add || add.type !== ADD) {
+    throw new Error('The port added no request.')
+  }
+  return String(add.params.userRequest.id)
+}
+
+/** The wallet broadcasts the request's call and lists it in the activity. */
+const broadcast = (wallet: ReturnType<typeof walletWith>['wallet'], id: string) =>
+  wallet.push({
+    controller: 'activity',
+    state: {
+      accountsOps: {
+        [id]: {
+          result: {
+            items: [
+              {
+                identifiedBy: { type: 'Transaction' },
+                status: 'pending',
+                txnId: TX_HASH,
+                calls: [{ fromUserRequestId: id, txnId: TX_HASH }]
+              } as never
+            ]
+          }
+        }
+      }
+    }
+  })
+
+const SENDS = [
+  {
+    title: "a key's own transaction",
+    account: KEY_ACCOUNT.addr,
+    other: SMART_ACCOUNT.addr,
+    drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+      const machine = drivenMachine(submittingFor('submission'))
+      const done = driveSend({
+        dispatch: machine.dispatch,
+        run: machine.state().run,
+        receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+        port: sender,
+        key: KEY,
+        transaction: ownerTransaction('submission')
+      })
+      return { machine, done }
+    }
+  },
+  {
+    title: "an account's batch",
+    account: SMART_ACCOUNT.addr,
+    other: KEY_ACCOUNT.addr,
+    drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+      const machine = drivenMachine(submittingFor('save'))
+      const done = driveAccountBatch({
+        dispatch: machine.dispatch,
+        run: machine.state().run,
+        receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+        port: sender,
+        account: ACCOUNT,
+        calls: SAVE.calls,
+        requestId: REQUEST_ID
+      })
+      return { machine, done }
+    }
+  }
+]
+
+beforeEach(() => {
+  jest.useFakeTimers()
+})
+
+afterEach(() => {
+  jest.useRealTimers()
+})
+
+SENDS.forEach(({ title, account, other, drive }) =>
+  describe(`the send of ${title}`, () => {
+    it('is queued against its sending account at once where the wallet selected that account', async () => {
+      const { wallet, sender } = walletWith(account)
+      const { machine, done } = drive(sender)
+      await advanceTimersAsync(0)
+      expect(typesOf(wallet.dispatch)).not.toContain(SELECT)
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+      broadcast(wallet, requestIdOf(wallet.dispatch))
+      await done
+      expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+    })
+
+    it('selects its sending account first where the wallet selected another, and queues it once the selection lands', async () => {
+      const { wallet, sender } = walletWith(other)
+      const { machine, done } = drive(sender)
+      await advanceTimersAsync(0)
+      expect(actionsOf(wallet.dispatch).filter((action) => action.type === SELECT)).toEqual([
+        { type: SELECT, params: { accountAddr: account } }
+      ])
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+      // A push that still names another account adds nothing.
+      wallet.push({ controller: 'selectedAccount', state: { account: { addr: OTHER } } })
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+      wallet.select(account)
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+      // Another push of the same selection never adds the request a second time.
+      wallet.select(account)
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+
+      broadcast(wallet, requestIdOf(wallet.dispatch))
+      await done
+      expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+      expect(typesOf(wallet.dispatch).filter((type) => type === SELECT)).toHaveLength(1)
+    })
+
+    it('reads that nothing was sent where the selection never lands, and adds nothing later', async () => {
+      const { wallet, sender } = walletWith(undefined)
+      const { machine, done } = drive(sender)
+      await advanceTimersAsync(11 * 60 * 1000)
+      await done
+      expect(machine.events.map((event) => event.type)).toEqual(['error'])
+      expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
+
+      wallet.select(account)
+      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    })
+  })
+)
