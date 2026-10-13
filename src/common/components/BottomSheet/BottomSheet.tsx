@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BackHandler, useWindowDimensions, View, ViewStyle } from 'react-native'
+import { BackHandler, View, ViewStyle } from 'react-native'
 import { Modalize, ModalizeProps } from 'react-native-modalize'
 
 import { isWeb } from '@common/config/env'
@@ -14,7 +14,6 @@ import useIsScrollable from '@web/hooks/useIsScrollable'
 import { getUiType } from '@web/utils/uiType'
 
 import Backdrop from './Backdrop'
-import { getModalHeight } from './helpers'
 import getStyles from './styles'
 
 interface Props {
@@ -74,7 +73,6 @@ const BottomSheet: React.FC<Props> = ({
   const prevIsOpen = usePrevious(isOpen)
   const [isBackdropVisible, setIsBackdropVisible] = useState(false)
   const { isScrollable, checkIsScrollable, scrollViewRef } = useIsScrollable()
-  const { height: windowHeight } = useWindowDimensions()
 
   // Ensures ID is unique per component to avoid duplicates when multiple bottom sheets are rendered
   const id = useMemo(() => `${_id || 'bottom-sheet'}-${nanoid(6)}`, [_id])
@@ -130,8 +128,6 @@ const BottomSheet: React.FC<Props> = ({
     return HEADER_HEIGHT + 10
   }, [isModal])
 
-  const modalHeight = getModalHeight(windowHeight, modalTopOffset)
-
   return (
     <Portal hostName="global">
       {/* Wrapping the content in a View with a stable `key` prevents Portal */}
@@ -186,9 +182,8 @@ const BottomSheet: React.FC<Props> = ({
           useNativeDriver={!isWeb}
           avoidKeyboardLikeIOS
           modalTopOffset={modalTopOffset}
-          modalHeight={modalHeight}
           threshold={90}
-          adjustToContentHeight={modalHeight === undefined ? adjustToContentHeight : false}
+          adjustToContentHeight={adjustToContentHeight}
           disableScrollIfPossible={false}
           withOverlay={false}
           onBackButtonPress={() => true}
