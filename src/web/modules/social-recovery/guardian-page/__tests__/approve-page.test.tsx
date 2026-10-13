@@ -321,14 +321,21 @@ describe('the decline', () => {
     expect(page.textOf('guardian-declined-headline')).toBe(t(`${PAGE}.declined.headline`))
     expect(page.textOf('guardian-declined-body')).toBe(t(`${PAGE}.declined.body`))
     const text = page.text()
-    const keys = ['tellTitle', 'tellBody', 'cancelLine', 'close', 'sentNothing', 'stillPublishes']
+    const keys = [
+      'tellTitle',
+      'tellBody',
+      'cancelLine',
+      'copyMessage',
+      'close',
+      'sentNothing',
+      'stillPublishes'
+    ]
     keys.forEach((key) => {
       expect({ key, shown: text.includes(t(`${PAGE}.declined.${key}`)) }).toEqual({
         key,
         shown: true
       })
     })
-    expect(text).not.toContain(t(`${PAGE}.declined.copyMessage`))
     await page.press('guardian-declined-close')
     expect(close).toHaveBeenCalledTimes(1)
     close.mockRestore()
