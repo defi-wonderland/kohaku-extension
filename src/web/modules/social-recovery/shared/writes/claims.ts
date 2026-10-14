@@ -7,8 +7,8 @@
  * the page follows that hash to its receipt, reads it dropped only where the
  * node forgets it, and never sends again for it. A claim with no hash is
  * judged by where the wallet holds the request it was queued under, with no
- * age: while the wallet's queue still holds it (a sign window open on it), it
- * is a send in flight and the page waits on it; once the wallet broadcast it,
+ * age: while the wallet's queue or its sign screen still holds it (a sign
+ * window open on it), it is a send in flight and the page waits on it; once the wallet broadcast it,
  * the page writes that hash on the claim and follows it; where the wallet
  * holds it nowhere (a request queued and then dropped, a window the browser
  * closed), the send did not go out, never that it may still land, so the page
@@ -31,7 +31,7 @@
  * first one still waits in the wallet, is refused by the request queue.
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-import { sendRequestStateOf } from '@web/modules/social-recovery/shared/client'
+import { heldRequestStateOf, sendRequestStateOf } from '@web/modules/social-recovery/shared/client'
 import type { SendRequestPort } from '@web/modules/social-recovery/shared/client'
 
 import type { ClaimReading, RequestHold, StoredClaim } from './types'
@@ -42,8 +42,11 @@ export const claimReadingOf = ({ transactionHash }: StoredClaim): ClaimReading =
 
 /**
  * Where the wallet holds the request `requestId` that `account` queued. With
- * no account, nothing the wallet lists could have queued it, so it is held
- * nowhere. Throws where the wallet does not answer, so the caller reads again.
+ * no account, the wallet no longer lists the key that queued it, but its
+ * queue or its sign screen may still hold the request, which then reads
+ * held; held nowhere, it reads free, since the wallet can neither follow that
+ * request's activity nor send again for a key it does not list. Throws where
+ * the wallet does not answer, so the caller reads again.
  */
 export const requestHoldOf = async (
   requests: SendRequestPort,
@@ -51,10 +54,9 @@ export const requestHoldOf = async (
   account: Address | undefined,
   chainId: number | bigint
 ): Promise<RequestHold> => {
-  if (!account) {
-    return { status: 'free' }
-  }
-  const state = await sendRequestStateOf(requests, requestId, account, chainId)
+  const state = account
+    ? await sendRequestStateOf(requests, requestId, account, chainId)
+    : await heldRequestStateOf(requests, requestId)
   switch (state.status) {
     case 'broadcast':
       return { status: 'broadcast', transactionHash: state.transactionHash }

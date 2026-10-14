@@ -251,6 +251,10 @@ const activity: { current: SubmittedOperation[] | null } = { current: [] }
  * asks for over the event bus, as the background pushes it.
  */
 const backgroundDispatch = jest.fn((action: SendRequestAction) => {
+  if (action.type === 'INIT_CONTROLLER_STATE') {
+    harness.unawaited(Promise.resolve().then(() => eventBus.emit('signAccountOp', null)))
+    return
+  }
   const items = activity.current
   if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS' || items === null) {
     return

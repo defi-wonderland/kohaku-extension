@@ -73,6 +73,7 @@ export {
   createSendPort,
   REQUEST_STATE_READ_MS,
   newSendRequestId,
+  heldRequestStateOf,
   sendRequestStateOf,
   sendRefusal,
   accountBatchRefusal,

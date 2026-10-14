@@ -633,8 +633,9 @@ export interface SignerFacadeOptions {
 
 /**
  * The background actions the send port dispatches: select the sending
- * account, add its request and withdraw it, and open and close the activity
- * session it reads the broadcast operation from.
+ * account, add its request and withdraw it, open and close the activity
+ * session it reads the broadcast operation from, and ask for the sign
+ * screen's state.
  */
 export type SendRequestAction = Extract<
   Action,
@@ -645,6 +646,7 @@ export type SendRequestAction = Extract<
       | 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
       | 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS'
       | 'MAIN_CONTROLLER_ACTIVITY_RESET_ACC_OPS_FILTERS'
+      | 'INIT_CONTROLLER_STATE'
   }
 >
 
@@ -765,16 +767,18 @@ export interface SendRequestPort {
  * queue it:
  *
  * - `queued`: the wallet's queue holds it, or holds it until an account
- *   switch, or the account's activity lists its transaction with no hash yet
- *   and not rejected;
+ *   switch, or the sign screen holds an operation that carries it, or the
+ *   account's activity lists its transaction with no hash yet and not
+ *   rejected;
  * - `broadcast`: the account's activity lists it as a transaction of the
  *   sender under `transactionHash`, whatever its status there (pending, stuck,
  *   confirmed or failed); the receipt of that hash decides;
  * - `untracked`: the wallet submitted it as an operation another party sends,
  *   which this wallet cannot follow; it may still reach the chain;
- * - `gone`: neither the queue nor the account's activity holds it, or the
- *   activity lists its transaction as rejected with no hash;
- * - `unread`: the activity did not answer in time, so nothing is known.
+ * - `gone`: neither the queue, the sign screen nor the account's activity
+ *   holds it, or the activity lists its transaction as rejected with no hash;
+ * - `unread`: the activity or the sign screen did not answer in time, so
+ *   nothing is known.
  */
 export type SendRequestState =
   | { status: 'queued' }

@@ -628,14 +628,30 @@ export const rawStorage = async (storage: TestStorage): Promise<string> => {
 // The run over its steps
 // ---------------------------------------------------------------------------
 
-/** A request queue that holds nothing. */
-const NO_REQUESTS: SendRequestPort = {
-  dispatch: () => undefined,
-  subscribe: () => () => undefined,
-  accounts: () => [],
-  queue: () => ({}),
-  selectedAccount: () => undefined,
-  windowId: () => undefined
+/** A request queue that holds nothing, beside a wallet with no sign screen open. */
+const noRequests = (): SendRequestPort => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  return {
+    dispatch: (action) => {
+      if (action.type === 'INIT_CONTROLLER_STATE') {
+        Promise.resolve()
+          .then(() =>
+            listeners.forEach((listener) => listener({ controller: 'signAccountOp', state: {} }))
+          )
+          .catch(() => undefined)
+      }
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [],
+    queue: () => ({}),
+    selectedAccount: () => undefined,
+    windowId: () => undefined
+  }
 }
 
 /** The key the pages of a device send from. */
@@ -666,6 +682,12 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
   >()
   const port: SendRequestPort = {
     dispatch: (action) => {
+      if (action.type === 'INIT_CONTROLLER_STATE') {
+        queueMicrotask(() =>
+          listeners.forEach((listener) => listener({ controller: 'signAccountOp', state: {} }))
+        )
+        return
+      }
       if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
         return
       }
@@ -730,6 +752,10 @@ export const selectionWallet = (listed: Account) => {
     push: (update: SendRequestUpdate) => listeners.forEach((listener) => listener(update))
   }
   wallet.dispatch.mockImplementation((action) => {
+    if (action.type === 'INIT_CONTROLLER_STATE') {
+      queueMicrotask(() => wallet.push({ controller: 'signAccountOp', state: {} }))
+      return
+    }
     if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
       return
     }
@@ -797,7 +823,7 @@ export const stepsOf = (input: {
     reads: input.kit.reads,
     receipts: input.kit.receipts,
     port: input.port,
-    requests: input.requests ?? NO_REQUESTS,
+    requests: input.requests ?? noRequests(),
     records: input.records,
     chainId: CHAIN_ID,
     account: input.account,

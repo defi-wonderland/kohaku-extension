@@ -765,9 +765,16 @@ export interface Mounted {
 /**
  * The background the screen dispatches to: it answers each read of the
  * account's activity with `mockWallet.activity` over the event bus, as the
- * background pushes it, and nothing where that is null.
+ * background pushes it, and nothing where that is null, and each ask for the
+ * sign screen's state with none open.
  */
 const background = (action: { type: string; params?: unknown }) => {
+  if (action.type === 'INIT_CONTROLLER_STATE') {
+    Promise.resolve()
+      .then(() => eventBus.emit('signAccountOp', null))
+      .catch(() => undefined)
+    return
+  }
   const items = mockWallet.activity
   if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS' || items === null) {
     return
