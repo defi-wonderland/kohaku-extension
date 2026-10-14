@@ -5,7 +5,8 @@
  * and on a retry. Rounds never overlap. A round that throws or runs past its
  * limit reads as failed, never as the last answer; a new client or a new link
  * starts again from nothing answered. Once the last answer is final no round
- * runs, and that answer stays.
+ * runs, and that answer stays, through a new client too, until another link
+ * opens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -30,6 +31,8 @@ const useApprovalReads = ({
   // Reads answered for another link read as pending, from the first render
   // of the new link on.
   const [linked, setLinked] = useState<LinkedApprovalReads>({ link, reads: PENDING })
+  const linkedRef = useRef(linked)
+  linkedRef.current = linked
   const clientRef = useRef(client)
   clientRef.current = client
   const linkRef = useRef(link)
@@ -64,6 +67,11 @@ const useApprovalReads = ({
   useEffect(() => {
     generation.current += 1
     inFlight.current = false
+    // A final answer for this link outlives a new client: a round of the old
+    // client is dropped, and nothing reads again.
+    if (stoppedRef.current && linkedRef.current.link === link) {
+      return undefined
+    }
     setLinked({ link, reads: PENDING })
     if (!active) {
       return undefined
