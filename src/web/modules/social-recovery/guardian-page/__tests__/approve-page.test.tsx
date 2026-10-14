@@ -35,7 +35,7 @@ import {
   t,
   VALID_UNTIL,
   WAIT_ENDS_AT
-} from './harness'
+} from '@web/modules/social-recovery/guardian-page/__tests__/harness'
 
 const PAGE = 'socialRecovery.guardianPage'
 const MINUTE = 60_000
