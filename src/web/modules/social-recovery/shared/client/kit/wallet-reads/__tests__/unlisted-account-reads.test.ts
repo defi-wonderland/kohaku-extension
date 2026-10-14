@@ -492,10 +492,14 @@ describe('a node that refuses code reads at past blocks for its pruned history',
     ['a plain error naming the pruned history', new Error('pruned history unavailable')]
   ]
 
-  const prunedWorld = (refusal: Error, refuseHead = false) => {
+  const prunedWorld = (
+    refusal: Error,
+    refuseHead = false,
+    logs = [privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 10)]
+  ) => {
     const world = worldOf({
       createdAt: DEPLOYED_AT - 3_000,
-      logs: [privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 10)],
+      logs,
       holders: [KEY_A],
       authorities: [KEY_A]
     })
@@ -526,6 +530,15 @@ describe('a node that refuses code reads at past blocks for its pruned history',
     const { reads, scans } = prunedWorld(refusal, true)
     await expect(reads.removedKey()).rejects.toBe(refusal)
     expect(scans()).toEqual([])
+  })
+
+  it("rejects with the node's refusal, never answering, where the bounded scan finds no key", async () => {
+    const [[, refusal]] = refusals
+    const { reads, scansOf } = prunedWorld(refusal, false, [
+      privilegeLog(KEY_A, HOLDS, DEPLOYED_AT - 100)
+    ])
+    await expect(reads.removedKey()).rejects.toBe(refusal)
+    expect(scansOf(ACCOUNT)).toEqual(chunksFrom(DEPLOYED_AT))
   })
 
   it('names no bound where the node answers every past block', async () => {

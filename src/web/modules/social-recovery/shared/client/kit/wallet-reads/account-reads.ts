@@ -165,7 +165,7 @@ export const createKitWalletReads = ({
       if (!historyRefused(thrown)) {
         throw thrown
       }
-      return { from: descriptor.deployedAt, bounded: true }
+      return { from: descriptor.deployedAt, bounded: true, refusal: thrown }
     }
   }
 
@@ -186,7 +186,13 @@ export const createKitWalletReads = ({
       ...writes.map((write) => write.addr)
     ])
     const reading = readingOf(await signersOf(candidates, block))
-    return scan.bounded ? { ...reading, privilegeScanBoundedAt: scan.from } : reading
+    if (!scan.bounded) {
+      return reading
+    }
+    if (reading.kind === 'unavailable' && reading.cause === 'no-key-entry') {
+      throw scan.refusal
+    }
+    return { ...reading, privilegeScanBoundedAt: scan.from }
   }
 
   return {
