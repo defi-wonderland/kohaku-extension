@@ -3,8 +3,9 @@
  * shape: the countdown and its execution in flight in the records, the
  * execution call the client prepares for the attempt and the payload that
  * started it, the shared gas check on the same sending key, the send through
- * the request queue by route, the receipt wait, the manager's events for a
- * claim with no hash, and the node's read of a hash.
+ * the request queue by route, the receipt wait, where the wallet holds the
+ * request of a claim with no hash, the manager's events for a hash the node no
+ * longer knows, and the node's read of a hash.
  *
  * The run keeps its own countdown: the one that names the attempt the run
  * was started for, by its id, its setup number and its payload hash. Every
@@ -20,7 +21,8 @@ import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   accountBatchTransactionOf,
   newSendRequestId,
-  sameAddress
+  sameAddress,
+  sendRequestStateOf
 } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
 import type {
@@ -37,10 +39,7 @@ import {
   sameHash,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
-import {
-  KEY_SEND_CLAIM_AGE_MS,
-  SUBMISSION_CLAIM_AGE_MS
-} from '@web/modules/social-recovery/recovery/submit'
+import type { RequestHold } from '@web/modules/social-recovery/recovery/submit'
 
 import { COUNTDOWN_CONFLICT_RETRIES } from './constants'
 import { isAttemptOf, isCountdownOf } from './read'
@@ -186,7 +185,23 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
         },
         { status: 'replaced' }
       ),
-    claimAgeMs: plan.kind === 'key' ? KEY_SEND_CLAIM_AGE_MS : SUBMISSION_CLAIM_AGE_MS,
+    async requestHold(requestId): Promise<RequestHold> {
+      // A key's own send carries no request id the queue could be asked about.
+      if (plan.kind === 'key') {
+        return { status: 'free' }
+      }
+      const state = await sendRequestStateOf(input.requests, requestId, plan.account, chainId)
+      switch (state.status) {
+        case 'broadcast':
+          return { status: 'broadcast', transactionHash: state.transactionHash }
+        case 'gone':
+          return { status: 'free' }
+        case 'unread':
+          throw new Error(`The wallet did not answer where it holds request ${requestId}.`)
+        default:
+          return { status: 'held' }
+      }
+    },
     send: (prepared, dispatch, run, startBlock, requestId) =>
       plan.kind === 'key'
         ? driveSend({

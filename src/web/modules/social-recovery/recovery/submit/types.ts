@@ -217,10 +217,9 @@ export interface SubmitStore {
 /** What the attempt read says of the attempt this request would start. */
 export type AttemptReading = 'ours' | 'other' | 'none'
 
-/** The judgement of a followed claim with no hash older than the claim's age. */
-export type OldClaimReading =
+/** The judgement of a followed claim with no hash, by where the wallet holds its request. */
+export type ClaimJudgement =
   | { status: 'wait' }
-  | { status: 'started' }
   | { status: 'hashed'; transactionHash: Hex }
   | { status: 'released' }
   | { status: 'gone' }
@@ -288,8 +287,6 @@ export interface SubmitSteps {
   release(requestId: string): Promise<void>
   /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
   releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ClaimRelease>
-  /** How old a claim with no hash grows before the manager's events judge it, in ms. */
-  claimAgeMs: number
   /** Where the wallet holds the request a claim was queued under. */
   requestHold(requestId: string): Promise<RequestHold>
   transactionKnown(transactionHash: Hex): Promise<TransactionKnown>
@@ -308,8 +305,6 @@ export interface SubmitSteps {
     dispatch: (event: WriteEvent) => void,
     run: number
   ): Promise<void>
-  /** Whether the manager's events name this request's attempt started since the claim's block. */
-  startedSince(claim: FollowedClaim): Promise<boolean>
   /** The session landed as the countdown's record, read again after another tab moved it. */
   land(): Promise<LandOutcome>
 }

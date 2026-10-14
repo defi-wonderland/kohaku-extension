@@ -528,3 +528,11 @@ export interface UnknownReading {
   block: number
   hashes: readonly Hex[]
 }
+
+/** A claim of a write as a page finds it stored: the hash, once the wallet answered one. */
+export interface StoredClaim {
+  transactionHash?: Hex
+}
+
+/** A stored claim as a page that did not write it first reads it: in flight under its hash, or with no hash, for the wallet's queue to decide. */
+export type ClaimReading = { kind: 'inFlight'; transactionHash: Hex } | { kind: 'noHash' }

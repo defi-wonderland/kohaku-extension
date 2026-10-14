@@ -14,6 +14,7 @@ import type {
   ReceiptReads,
   RecoveryKitClient,
   SendPort,
+  SendRequestPort,
   TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
@@ -32,7 +33,11 @@ import type {
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
-import type { SendingPlan, SendingReading } from '@web/modules/social-recovery/recovery/submit'
+import type {
+  RequestHold,
+  SendingPlan,
+  SendingReading
+} from '@web/modules/social-recovery/recovery/submit'
 
 import type { CANNOT_EXECUTE_CAUSES } from './constants'
 
@@ -268,8 +273,8 @@ export interface ExecuteSteps {
   release(requestId: string): Promise<RunWrite>
   /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
   releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ExecutionRelease>
-  /** How old a claim with no hash grows before the manager's events judge it, in ms. */
-  claimAgeMs: number
+  /** Where the wallet holds the request a claim was queued under. */
+  requestHold(requestId: string): Promise<RequestHold>
   /** The send under this page's claim, its receipt waited on from the claim's block. */
   send(
     prepared: PreparedCall,
@@ -301,6 +306,8 @@ export interface ExecuteStepsInput {
   reads: ChainReads
   receipts: ReceiptReads
   port: SendPort
+  /** The wallet's queue and activity, read for the request of a claim with no hash. */
+  requests: SendRequestPort
   plan: SendingPlan
   network: GasNetwork
   attempt: Attempt

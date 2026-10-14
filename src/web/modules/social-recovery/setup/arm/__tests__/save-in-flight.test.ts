@@ -19,7 +19,6 @@ import {
   committedDraftOf,
   createArmStore,
   FOLLOW_REREAD_MS,
-  GONE_GRACE_MS,
   isSaved,
   lookForSave,
   RECEIPT_WAIT_MS,
@@ -60,6 +59,9 @@ import type {
 } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
 const OPTIONS = { timeoutMs: SHORT_TIMEOUT_MS }
+
+/** Ten minutes: far past any wait of a follow. */
+const FAR_MS = 10 * 60_000
 
 let account: Account
 
@@ -190,49 +192,24 @@ describe('the claim before the send', () => {
     expect(isSaved(store.state())).toBe(true)
   })
 
-  it('sends once where two pages press Save together over one storage; the other follows the first to saved', async () => {
+  it('sends once where two pages press Save together over one storage: the first reaches saved, and the other reads the claim, whose request the wallet does not hold yet, as not sent and offers Save', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const one = wireSave(account, script(), { storage, requests })
     const two = wireSave(account, script(), { storage, requests })
-    const signs = [one, two].map((page) => {
-      const sign = deferred<typeof TX_HASH>()
-      page.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
-      return sign
-    })
     const stores = [createArmStore(), createArmStore()]
     const runs = [
       startSave(stores[0], one.steps, OPTIONS),
       startSave(stores[1], two.steps, OPTIONS)
     ]
-    await advanceTimers(0)
-
-    const sends =
-      one.port.sendAccountBatch.mock.calls.length + two.port.sendAccountBatch.mock.calls.length
-    expect(sends).toBe(1)
-    const winner = one.port.sendAccountBatch.mock.calls.length === 1 ? 0 : 1
-    const loser = 1 - winner
-    const record = await stored(one)
-    expect(stores[loser].state().requestId).toBe(record?.requestId)
-    expect(stores[loser].state().write.status).toBe('submitting')
-
-    // The winner's request waits in the wallet's window, then the wallet broadcasts it.
-    requests.queued = [record!.requestId]
-    await advanceTimers(FOLLOW_REREAD_MS)
-    expect(stores[loser].state().follow).toBe('queued')
-    signs[winner].resolve(TX_HASH)
-    requests.queued = []
-    requests.activity = [operationFor(record!.requestId, { hash: TX_HASH })]
-    requests.pushQueue()
     await advanceTimers(SHORT_TIMEOUT_MS)
     await Promise.all(runs)
 
-    expect(stores.map((store) => isSaved(store.state()))).toEqual([true, true])
-    expect(
-      one.port.sendAccountBatch.mock.calls.length + two.port.sendAccountBatch.mock.calls.length
-    ).toBe(1)
-    expect([one, two][loser].prepareCommitSetup).toHaveBeenCalledTimes(1)
-    expect(await stored(one)).toBeUndefined()
+    expect(one.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(two.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(isSaved(stores[0].state())).toBe(true)
+    expect(offersSave(stores[1])).toBe(true)
+    expect(two.prepareCommitSetup).toHaveBeenCalledTimes(1)
   })
 
   it('sends nothing on a start that loses the claim to a save another page stored, and follows that save under its hash', async () => {
@@ -494,7 +471,7 @@ describe('a page that finds a save stored with no hash', () => {
     await advanceTimers(10_000)
     expect(store.state().follow).toBe('unread')
 
-    await advanceTimers(10 * GONE_GRACE_MS)
+    await advanceTimers(FAR_MS)
     expect(store.state().follow).toBe('unread')
     expect(store.state().write.status).toBe('submitting')
     expect(offersSave(store)).toBe(false)
@@ -526,17 +503,11 @@ describe('a page that finds a save stored with no hash', () => {
     expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('keeps reading a gone request with no setup until the grace period, then releases it and offers Save again', async () => {
+  it('reads a request the wallet neither queues nor broadcast, with no setup, as never sent at once: it releases the stored save and offers Save again', async () => {
     const { store, wired, arrive } = await arriveWithNoHash()
 
     const arriving = arrive()
-    await advanceTimers(GONE_GRACE_MS - 1)
-    expect(store.state().follow).toBe('gone')
-    expect(store.state().write.status).toBe('submitting')
-    expect(offersSave(store)).toBe(false)
-    expect(await stored(wired)).toBeDefined()
-
-    await advanceTimers(1)
+    await advanceTimers(0)
     await arriving
     expect(offersSave(store)).toBe(true)
     expect(armScreenOf(store.state())).toBe('arrival')
@@ -551,46 +522,54 @@ describe('a page that finds a save stored with no hash', () => {
     expect(isSaved(store.state())).toBe(true)
   })
 
-  it('counts the grace from the first gone reading again after the queue held the request between two', async () => {
+  it('follows a request the queue holds, and releases it at once with Save offered once the queue lets it go with nothing broadcast', async () => {
     const { store, wired, arrive, requests, record } = await arriveWithNoHash()
+    requests.queued = [record.requestId]
 
     unawaited(arrive())
-    await advanceTimers(0)
-    expect(store.state().follow).toBe('gone')
-    requests.queued = [record.requestId]
-    await advanceTimers(GONE_GRACE_MS + FOLLOW_REREAD_MS)
+    await advanceTimers(FAR_MS)
     expect(store.state().follow).toBe('queued')
+    expect(offersSave(store)).toBe(false)
+    expect(await stored(wired)).toBeDefined()
 
     requests.queued = []
     requests.pushQueue()
     await advanceTimers(0)
-    expect(store.state().follow).toBe('gone')
-    await advanceTimers(GONE_GRACE_MS - FOLLOW_REREAD_MS)
-    expect(store.state().follow).toBe('gone')
-    expect(await stored(wired)).toBeDefined()
-
-    await advanceTimers(FOLLOW_REREAD_MS)
     expect(offersSave(store)).toBe(true)
     expect(await stored(wired)).toBeUndefined()
+    expect(wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('does not void on a gone reading between two readings that did not answer', async () => {
-    const { store, wired, arrive, requests } = await arriveWithNoHash()
-    requests.activity = null
-    unawaited(arrive())
-    await advanceTimers(10_000)
-    expect(store.state().follow).toBe('unread')
+  it('leaves the page whose send runs in its own state: a second page follows its queued request, and the first reaches saved with one send', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const first = wireSave(account, script(), { storage, requests })
+    const sign = deferred<typeof TX_HASH>()
+    first.port.sendAccountBatch.mockImplementationOnce(() => sign.promise)
+    const own = createArmStore()
+    const running = startSave(own, first.steps, OPTIONS)
+    await advanceTimers(0)
+    const { requestId } = own.state()
+    requests.queued = [requestId!]
 
-    requests.activity = []
-    await advanceTimers(FOLLOW_REREAD_MS)
-    expect(store.state().follow).toBe('gone')
-    requests.activity = null
-    await advanceTimers(FOLLOW_REREAD_MS + 10_000)
-    expect(store.state().follow).toBe('unread')
+    const second = secondPage(storage, requests)
+    unawaited(second.arrive())
+    await advanceTimers(0)
+    expect(second.store.state().follow).toBe('queued')
+    expect(offersSave(second.store)).toBe(false)
+    expect((await stored(second.wired))?.requestId).toBe(requestId)
+    expect(own.state().write.status).toBe('submitting')
+    expect(own.state().requestId).toBe(requestId)
 
-    await advanceTimers(GONE_GRACE_MS)
-    expect(offersSave(store)).toBe(false)
-    expect(await stored(wired)).toBeDefined()
+    sign.resolve(TX_HASH)
+    requests.queued = []
+    requests.activity = [operationFor(requestId!, { hash: TX_HASH })]
+    requests.pushQueue()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+    expect(isSaved(own.state())).toBe(true)
+    expect(first.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(second.wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
   it('keeps the record where the setup read of a gone request fails, and never voids on it', async () => {
@@ -598,7 +577,7 @@ describe('a page that finds a save stored with no hash', () => {
     wired.setupState.mockRejectedValue(nodeError())
 
     unawaited(arrive())
-    await advanceTimers(3 * GONE_GRACE_MS)
+    await advanceTimers(FAR_MS)
 
     expect(offersSave(store)).toBe(false)
     expect(store.state().write.status).toBe('submitting')
@@ -721,7 +700,7 @@ const openSubscriptions = (requests: RequestsFake) => {
 }
 
 describe('a follow with no hash whose screen went away', () => {
-  it('pauses while the request was queued at the unmount, reads, voids and releases nothing far past the grace, and on the next screen reads the live queue to saved', async () => {
+  it('pauses while the request was queued at the unmount, reads, voids and releases nothing long after, and on the next screen reads the live queue to saved', async () => {
     const { storage, record } = await followWithNoHash()
     const gone = requestsFake()
     gone.queued = [record.requestId]
@@ -737,7 +716,7 @@ describe('a follow with no hash whose screen went away', () => {
     detachSteps(before.steps)
     const readsAtUnmount = reads.mock.calls.length
     const removals = jest.spyOn(storage, 'remove')
-    await advanceTimers(10 * GONE_GRACE_MS)
+    await advanceTimers(FAR_MS)
 
     expect(reads).toHaveBeenCalledTimes(readsAtUnmount)
     expect(store.state().write.status).toBe('submitting')
@@ -767,76 +746,6 @@ describe('a follow with no hash whose screen went away', () => {
     expect(await stored(after)).toBeUndefined()
     expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(before.port.sendAccountBatch).not.toHaveBeenCalled()
-  })
-
-  it('pauses while the request was not yet queued at the unmount, voids nothing far past the grace, and on the next screen follows it queued, then broadcast, to saved', async () => {
-    const { storage, record } = await followWithNoHash()
-    const gone = requestsFake()
-    const subscriptions = openSubscriptions(gone)
-    const before = screenOver(storage, gone)
-    const reads = jest.spyOn(before.steps, 'requestState')
-    const store = createArmStore()
-    unawaited(lookForSave(store, before.steps, OPTIONS))
-    await advanceTimers(0)
-    expect(store.state().follow).toBe('gone')
-
-    detachSteps(before.steps)
-    const readsAtUnmount = reads.mock.calls.length
-    const setupReadsAtUnmount = before.setupState.mock.calls.length
-    const removals = jest.spyOn(storage, 'remove')
-    await advanceTimers(10 * GONE_GRACE_MS)
-
-    expect(reads).toHaveBeenCalledTimes(readsAtUnmount)
-    expect(before.setupState).toHaveBeenCalledTimes(setupReadsAtUnmount)
-    expect(store.state().write.status).toBe('submitting')
-    expect(store.state().requestId).toBe(record.requestId)
-    expect(offersSave(store)).toBe(false)
-    expect(removals).not.toHaveBeenCalled()
-    expect(await stored(before)).toBeDefined()
-    expect(jest.getTimerCount()).toBe(0)
-    expect(subscriptions()).toBe(0)
-
-    // The wallet took the request in late; the next screen finds it queued, then broadcast.
-    const live = requestsFake()
-    live.queued = [record.requestId]
-    const after = screenOver(storage, live)
-    unawaited(attachSteps(store, after.steps, OPTIONS))
-    await advanceTimers(0)
-    expect(store.state().follow).toBe('queued')
-
-    live.queued = []
-    live.activity = [operationFor(record.requestId, { hash: TX_HASH })]
-    live.pushQueue()
-    await advanceTimers(SHORT_TIMEOUT_MS)
-
-    expect(isSaved(store.state())).toBe(true)
-    expect(after.confirmSetup).toHaveBeenCalledTimes(1)
-    expect(after.saveSetup).toHaveBeenCalledTimes(1)
-    expect(before.confirmSetup).not.toHaveBeenCalled()
-    expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
-  })
-
-  it('counts the grace again from the first gone reading after the next screen took the follow up', async () => {
-    const { storage, record } = await followWithNoHash()
-    const before = screenOver(storage, requestsFake())
-    const store = createArmStore()
-    unawaited(lookForSave(store, before.steps, OPTIONS))
-    await advanceTimers(0)
-    expect(store.state().follow).toBe('gone')
-    detachSteps(before.steps)
-    await advanceTimers(10 * GONE_GRACE_MS)
-
-    const after = screenOver(storage, requestsFake())
-    unawaited(attachSteps(store, after.steps, OPTIONS))
-    await advanceTimers(GONE_GRACE_MS - 1)
-    expect(store.state().follow).toBe('gone')
-    expect(store.state().requestId).toBe(record.requestId)
-    expect(await stored(after)).toBeDefined()
-
-    await advanceTimers(1)
-    expect(offersSave(store)).toBe(true)
-    expect(await stored(after)).toBeUndefined()
-    expect(after.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 })
 
@@ -964,7 +873,7 @@ describe('the read of the stored save after a void', () => {
     }
 
     unawaited(lookForSave(store, steps, OPTIONS))
-    await advanceTimers(GONE_GRACE_MS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
 
     expect(seen).toEqual(['read', 'release while idle, lookup undefined, claim undefined', 'read'])
     expect(store.state().requestId).toBe('claimed meanwhile')
@@ -991,7 +900,7 @@ describe('the read of the stored save after a void', () => {
     const store = createArmStore()
 
     unawaited(lookForSave(store, steps, OPTIONS))
-    await advanceTimers(GONE_GRACE_MS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
 
     expect(readsMade).toBe(2)
     expect(store.state().write.status).toBe('idle')
@@ -1006,7 +915,7 @@ describe('the read of the stored save after a void', () => {
 })
 
 describe('the void of a followed save', () => {
-  it('decides on the gone readings alone, whatever time the claim holds', async () => {
+  it('releases at once a request the wallet does not hold, whatever time the claim holds', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = screenOver(storage, requests)
@@ -1015,55 +924,19 @@ describe('the void of a followed save', () => {
       draft: owner.draft,
       prepared: owner.prepared,
       requestId: 'later claim',
-      claimedAt: Date.now() + 2 * GONE_GRACE_MS
+      claimedAt: Date.now() + FAR_MS
     })
     const page = secondPage(storage, requests)
 
     const arriving = page.arrive()
-    await advanceTimers(GONE_GRACE_MS - 1)
-    expect(page.store.state().requestId).toBe('later claim')
-    expect(await stored(page.wired)).toBeDefined()
-
-    await advanceTimers(1)
+    await advanceTimers(0)
     expect(offersSave(page.store)).toBe(true)
     expect(await stored(page.wired)).toBeUndefined()
     await arriving
     expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('counts the grace again from the first gone reading after a reading that did not answer', async () => {
-    const { storage } = await followWithNoHash()
-    const requests = requestsFake()
-    const page = secondPage(storage, requests)
-    unawaited(page.arrive())
-    await advanceTimers(0)
-    expect(page.store.state().follow).toBe('gone')
-
-    // Gone for most of the grace, then one reading that does not answer.
-    await advanceTimers(GONE_GRACE_MS - 2 * FOLLOW_REREAD_MS)
-    requests.activity = null
-    while (page.store.state().follow !== 'unread') {
-      // eslint-disable-next-line no-await-in-loop
-      await advanceTimers(1_000)
-    }
-    requests.activity = []
-    while (page.store.state().follow !== 'gone') {
-      // eslint-disable-next-line no-await-in-loop
-      await advanceTimers(1_000)
-    }
-    const countFrom = Date.now()
-
-    await advanceTimers(GONE_GRACE_MS - 1_000)
-    expect(page.store.state().follow).toBe('gone')
-    expect(offersSave(page.store)).toBe(false)
-    expect(await stored(page.wired)).toBeDefined()
-
-    await advanceTimers(countFrom + GONE_GRACE_MS + FOLLOW_REREAD_MS - Date.now())
-    expect(offersSave(page.store)).toBe(true)
-    expect(await stored(page.wired)).toBeUndefined()
-  })
-
-  it('keeps the claim where a slow setup read answers none past the grace after a gone reading taken before the request was queued', async () => {
+  it('keeps the claim where a slow setup read answers none after a gone reading taken before the request was queued, and follows the queued request', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
@@ -1094,7 +967,7 @@ describe('the void of a followed save', () => {
     await advanceTimers(0)
     expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     requests.queued = [claim!.requestId]
-    await advanceTimers(GONE_GRACE_MS + 1_000)
+    await advanceTimers(1_000)
 
     setup.resolve(setupStateOf(false))
     await advanceTimers(0)
@@ -1760,7 +1633,7 @@ describe('the age of the claim when the stored save is read before the send', ()
     })
   }
 
-  it('sends nothing on an answer of its own claim that arrives after a follower voided it and the holder saved on that page', async () => {
+  it('sends nothing on an answer of its own claim that arrives after an arriving page released it and the holder saved on that page', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
@@ -1783,10 +1656,8 @@ describe('the age of the claim when the stored save is read before the send', ()
     const follower = secondPage(storage, requests)
     unawaited(follower.arrive())
     await advanceTimers(0)
-    expect(follower.store.state().follow).toBe('gone')
-    jest.setSystemTime(Date.now() + GONE_GRACE_MS)
-    await advanceTimers(FOLLOW_REREAD_MS)
     expect(offersSave(follower.store)).toBe(true)
+    jest.setSystemTime(Date.now() + CLAIM_SEND_LIMIT_MS)
     expect(await stored(owner)).toBeUndefined()
 
     const saving = startSave(follower.store, follower.wired.steps, OPTIONS)
@@ -1895,7 +1766,7 @@ describe('a follow that starts after its screen left', () => {
       const removals = jest.spyOn(storage, 'remove')
       if (when === 'while no screen is attached') {
         read.resolve(await before.inFlight.read())
-        await advanceTimers(10 * GONE_GRACE_MS)
+        await advanceTimers(FAR_MS)
         expect(store.state().requestId).toBe(record.requestId)
         expect(store.state().write.status).toBe('submitting')
         expect(beforeReads).not.toHaveBeenCalled()
@@ -1950,7 +1821,7 @@ describe('a follow that starts after its screen left', () => {
 
       if (when === 'while no screen is attached') {
         gas.resolve(1_000_000_000_000_000_000n)
-        await advanceTimers(10 * GONE_GRACE_MS)
+        await advanceTimers(FAR_MS)
         expect(store.state().requestId).toBe(record.requestId)
         expect(store.state().write.status).toBe('submitting')
         expect(ownerReads).not.toHaveBeenCalled()
@@ -1988,8 +1859,7 @@ describe('a follow that starts after its screen left', () => {
         // eslint-disable-next-line no-param-reassign
         requests.queued = [requestId]
       }
-    ],
-    ['gone', () => {}]
+    ]
   ]
 
   RESTS.forEach(([reading, arrange]) =>
@@ -2054,16 +1924,16 @@ describe('a follow that starts after its screen left', () => {
     const page = screenOver(storage, requests)
     const reads = jest.spyOn(page.steps, 'requestState')
     const store = createArmStore()
+    requests.queued = [record.requestId]
     unawaited(attachSteps(store, page.steps, OPTIONS))
     unawaited(lookForSave(store, page.steps, OPTIONS))
     await advanceTimers(0)
-    expect(store.state().follow).toBe('gone')
+    expect(store.state().follow).toBe('queued')
 
     detachSteps(page.steps)
     unawaited(attachSteps(store, page.steps, OPTIONS))
     unawaited(lookForSave(store, page.steps, OPTIONS))
     const readsAtAttach = reads.mock.calls.length
-    requests.queued = [record.requestId]
     await advanceTimers(FOLLOW_REREAD_MS)
 
     expect(reads.mock.calls.length).toBeGreaterThan(readsAtAttach)

@@ -302,14 +302,6 @@ export interface FollowAt {
   steps: SaveSteps
 }
 
-/**
- * The gone readings of a follow since its last other reading: the hold and
- * the steps they were read through, and the time of the first (ms since epoch).
- */
-export interface GoneCount extends FollowAt {
-  since: number
-}
-
 /** The part of the recovery client the save runs on. */
 export type ArmKitClient = Pick<RecoveryKitClient, 'descriptor'> & {
   setup: Pick<ISetupClient, 'setupState' | 'prepareCommitSetup' | 'confirmSetup'>

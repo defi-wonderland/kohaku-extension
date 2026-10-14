@@ -74,6 +74,10 @@ export interface MockWallet {
   accounts: Account[]
   keys: Key[]
   port: SendPort | null
+  /** The ids of the requests the wallet's queue holds. */
+  queued: string[]
+  /** The operations the account's activity lists for a read of it; null where it does not answer. */
+  activity: unknown[] | null
 }
 
 export const mockWallet: MockWallet = {
@@ -84,7 +88,9 @@ export const mockWallet: MockWallet = {
   facts: new Map(),
   accounts: [],
   keys: [],
-  port: null
+  port: null,
+  queued: [],
+  activity: null
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
@@ -111,10 +117,10 @@ jest.mock('@web/hooks/useBackgroundService', () => ({
   __esModule: true,
   default: () => ({ dispatch: mockWallet.dispatch, windowId: undefined })
 }))
-jest.mock('@web/hooks/useRequestsControllerState', () => {
-  const queue = { userRequests: [] }
-  return { __esModule: true, default: () => queue }
-})
+jest.mock('@web/hooks/useRequestsControllerState', () => ({
+  __esModule: true,
+  default: () => ({ userRequests: mockWallet.queued.map((id) => ({ id })) })
+}))
 jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => {
   const loading = { status: 'loading' }
   return {
@@ -148,6 +154,8 @@ jest.mock('@common/components/Avatar', () => ({ __esModule: true, default: () =>
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const eventBus: typeof import('@web/extension-services/event/eventBus').default =
+  require('@web/extension-services/event/eventBus').default
 const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const {
   ThemeContext
@@ -739,9 +747,34 @@ export interface Mounted {
   paths: () => string[]
 }
 
+/**
+ * The background the screen dispatches to: it answers each read of the
+ * account's activity with `mockWallet.activity` over the event bus, as the
+ * background pushes it, and nothing where that is null.
+ */
+const background = (action: { type: string; params?: unknown }) => {
+  const items = mockWallet.activity
+  if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS' || items === null) {
+    return
+  }
+  const { sessionId, pagination } = action.params as {
+    sessionId: string
+    pagination?: { fromPage: number }
+  }
+  Promise.resolve()
+    .then(() =>
+      eventBus.emit('activity', {
+        accountsOps: {
+          [sessionId]: { result: { items, currentPage: pagination?.fromPage ?? 0, maxPages: 1 } }
+        }
+      })
+    )
+    .catch(() => undefined)
+}
+
 const mountElement = async (element: ReturnType<typeof React.createElement>): Promise<Mounted> => {
   mockWallet.navigate = jest.fn()
-  mockWallet.dispatch = jest.fn()
+  mockWallet.dispatch = jest.fn(background)
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root: Root = createRoot(container)
@@ -916,6 +949,8 @@ export const openWorld = async ({
   let newKey: Address
   let sendingKey: Address
   mockWallet.accounts = []
+  mockWallet.queued = []
+  mockWallet.activity = null
   mockWallet.keys = []
   if (receiving === 'basic' || route === 'fresh-install') {
     receivingAccount = basicAccount(getAddress(`0x${keySeed.toString(16).padStart(40, '0')}`))
