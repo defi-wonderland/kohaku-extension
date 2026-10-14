@@ -202,7 +202,7 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
           return { status: 'held' }
       }
     },
-    send: (prepared, dispatch, run, startBlock, requestId) =>
+    send: (prepared, dispatch, run, startBlock, requestId, canAdd) =>
       plan.kind === 'key'
         ? driveSend({
             dispatch,
@@ -210,7 +210,8 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
             receipts: receiptsFrom(startBlock),
             port,
             key: plan.key,
-            transaction: gasTransactionOf({ prepared, key: plan.key })
+            transaction: gasTransactionOf({ prepared, key: plan.key }),
+            canAdd
           })
         : driveAccountBatch({
             dispatch,
@@ -219,7 +220,8 @@ export const executeStepsOf = (input: ExecuteStepsInput): ExecuteSteps => {
             port,
             account: plan.facts.account.addr as Address,
             calls: [prepared],
-            requestId
+            requestId,
+            canAdd
           }),
     async waitAgain(transactionHash, startBlock, dispatch, run) {
       try {

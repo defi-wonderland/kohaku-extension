@@ -12,21 +12,28 @@
 import type { SubmitStore } from '@web/modules/social-recovery/recovery/submit'
 
 import {
+  advanceTimers,
   attemptOf,
+  batchPlanOf,
+  claimOf,
   CLAIM_NOW as NOW,
   flushTimers as flush,
+  keyedAccount,
   landedReceipt,
   landedSession,
   leaveClaim,
   LEFT_CLAIM,
   openDevice,
   pageOn,
+  pageOf,
+  selectionWallet,
   sessionOf,
   START_BLOCK,
   stepsOf,
   submit,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { SEND_SETTLE_MS } from '@web/modules/social-recovery/shared/client'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const { isLanded, lookForClaim, startSubmission } = submit
@@ -213,5 +220,91 @@ describe('the claim of the submission', () => {
     await flush()
     expect(page.port.send).toHaveBeenCalledTimes(1)
     expect(isLanded(page.store.state())).toBe(true)
+  })
+
+  it('adds nothing for a claim another page released and took while the wallet selected the account, and adds that page’s start once', async () => {
+    jest.setSystemTime(NOW)
+    const device = await openDevice()
+    const smart = await keyedAccount(901)
+    const shared = selectionWallet(smart.account)
+    const base = {
+      kit: device.kit,
+      account: device.account,
+      gathering: device.gathering,
+      plan: batchPlanOf(smart),
+      chosen: new Set([0, 1, 2, 3]),
+      requests: shared.port,
+      now: () => Date.now()
+    }
+    const steps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const first = track({ store: pageOf(steps), steps })
+    startSubmission(first.store, steps).catch(() => undefined)
+    await flush()
+    const firstId = first.store.state().requestId
+    expect((await claimOf(device))?.requestId).toBe(firstId)
+    expect(shared.adds()).toEqual([])
+
+    const secondSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const second = track({ store: pageOf(secondSteps), steps: secondSteps })
+    lookForClaim(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    expect(await claimOf(device)).toBeNull()
+    expect(second.store.state().write.status).toBe('idle')
+
+    startSubmission(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    const secondId = second.store.state().requestId
+    expect(secondId).not.toBe(firstId)
+    expect((await claimOf(device))?.requestId).toBe(secondId)
+
+    shared.selectListed()
+    await flush()
+    expect(shared.adds()).toEqual([secondId])
+    await advanceTimers(SEND_SETTLE_MS + 1)
+    await flush()
+    expect(first.store.state().write).toMatchObject({
+      status: 'failedNotSent',
+      error: { reason: 'timeout' }
+    })
+    expect(shared.adds()).toEqual([secondId])
+  })
+
+  it('adds nothing where another page released the claim while the wallet selected the account, and offers the retry', async () => {
+    jest.setSystemTime(NOW)
+    const device = await openDevice()
+    const smart = await keyedAccount(902)
+    const shared = selectionWallet(smart.account)
+    const base = {
+      kit: device.kit,
+      account: device.account,
+      gathering: device.gathering,
+      plan: batchPlanOf(smart),
+      chosen: new Set([0, 1, 2, 3]),
+      requests: shared.port,
+      now: () => Date.now()
+    }
+    const steps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const page = track({ store: pageOf(steps), steps })
+    startSubmission(page.store, steps).catch(() => undefined)
+    await flush()
+    const requestId = page.store.state().requestId
+    expect((await claimOf(device))?.requestId).toBe(requestId)
+
+    const secondSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const second = track({ store: pageOf(secondSteps), steps: secondSteps })
+    lookForClaim(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    expect(await claimOf(device)).toBeNull()
+
+    shared.selectListed()
+    await flush()
+    expect(shared.adds()).toEqual([])
+    await advanceTimers(SEND_SETTLE_MS + 1)
+    await flush()
+    expect(page.store.state().write).toMatchObject({
+      status: 'failedNotSent',
+      error: { reason: 'timeout' }
+    })
+    expect(shared.adds()).toEqual([])
   })
 })
