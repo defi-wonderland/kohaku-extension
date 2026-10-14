@@ -22,6 +22,7 @@ import { namesNoPayment, rowNameOf } from './lead'
 import LeadBlock from './LeadBlock'
 import { isLive, landedOf } from './run'
 import RunBlock from './RunBlock'
+import { sendingAddressOf } from './sendingKey'
 import type { SubmitViewProps } from './types'
 
 const SUBMIT = 'socialRecovery.submit'
@@ -197,7 +198,12 @@ const SubmitView = ({
         </View>
       )}
       <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
-      <DetailsBlock route={route} ready={load} onOpened={onDetailsOpened} />
+      <DetailsBlock
+        route={route}
+        ready={load}
+        sendingKey={sending.status === 'ready' ? sendingAddressOf(sending.plan) : undefined}
+        onOpened={onDetailsOpened}
+      />
       <SectionCard testID="submit-verify">{verifyBlock()}</SectionCard>
       {sendingBlock()}
       {!submitting && (

@@ -1,6 +1,7 @@
 /**
  * Verify the details, the confirmation's expander: the words no payment and
- * that the recoverer's own key sends and pays, the node by kind as the review
+ * the key that sends and pays, by its address once the sending key is read,
+ * the node by kind as the review
  * names it, the recovery path with the rows the submission carries and the
  * rows not needed, the waiting period as a duration, that only the account's
  * own key can cancel, what the submission publishes, and on the logged-in
@@ -18,7 +19,12 @@ import spacings from '@common/styles/spacings'
 import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
-import { renderNoun, renderValueLabel } from '@web/modules/social-recovery/shared/display'
+import {
+  renderFullAddress,
+  renderNoun,
+  renderShortAddress,
+  renderValueLabel
+} from '@web/modules/social-recovery/shared/display'
 import ChecklistRows from '@web/modules/social-recovery/recovery/checklist/ChecklistRows'
 import RowFrame from '@web/modules/social-recovery/recovery/checklist/RowFrame'
 import type { ChecklistRow } from '@web/modules/social-recovery/recovery/checklist'
@@ -29,7 +35,7 @@ import type { DetailsBlockProps } from './types'
 
 const SUBMIT = 'socialRecovery.submit'
 
-const DetailsBlock = ({ route, ready, onOpened }: DetailsBlockProps) => {
+const DetailsBlock = ({ route, ready, sendingKey, onOpened }: DetailsBlockProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -94,7 +100,17 @@ const DetailsBlock = ({ route, ready, onOpened }: DetailsBlockProps) => {
         <>
           <SectionCard label={renderValueLabel('payment', t)} testID="submit-payment">
             {line(t(`${SUBMIT}.noPayment`), 'submit-no-payment')}
-            {line(t(`${SUBMIT}.ownKeyPays`), 'submit-own-key-pays')}
+            {!!sendingKey && (
+              <>
+                {line(
+                  t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sendingKey) }),
+                  'submit-own-key-pays'
+                )}
+                <Text fontSize={14} weight="number_medium" selectable testID="submit-sending-key">
+                  {renderFullAddress(sendingKey)}
+                </Text>
+              </>
+            )}
           </SectionCard>
           <SectionCard label={renderNoun('recoveryPath', t)} testID="submit-path">
             <ChecklistRows layout={layout} assessment={assessment} renderRow={renderRow} />
