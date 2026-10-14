@@ -35,13 +35,14 @@ import {
   signatureBy,
   signRefusal,
   STRANGER_ACCOUNT,
+  SUBMITTED,
   t,
   typedDataFor,
   UNLOCK_ROUTE,
   VALID_UNTIL,
   wallet
-} from './harness'
-import type { Mounted } from './harness'
+} from '@web/modules/social-recovery/guardian-page/__tests__/harness'
+import type { Mounted } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
 
 const PAGE = 'socialRecovery.guardianPage'
 const SIGNING = `${PAGE}.signing`
@@ -219,6 +220,7 @@ describe('the signing step', () => {
     )
     expect(kit.replyFrom).toHaveBeenCalledWith(request, typedData, { signature })
     expect(kit.verify).toHaveBeenCalledWith(request, request.place, signature)
+    expect(page.textOf('guardian-brand')).toBe(t(`${PAGE}.brand`))
     expect(page.textOf('guardian-signed-title')).toBe(t(`${PAGE}.signed.title`))
     expect(page.textOf('guardian-signed-line')).toBe(approvalOf(signature))
     expect(page.textOf('guardian-signed-regret')).toBe(t(`${PAGE}.signed.regret`))
@@ -363,6 +365,81 @@ describe('the signing step', () => {
     await finish()
     expect(page.has('guardian-signed')).toBe(false)
     expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it('keeps the recovery waiting through a later failed read, and drops the approval that arrives then', async () => {
+    const { answers } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    kit.recoveryState.mockImplementation(async () =>
+      recoveryStateOf({ attempt: SUBMITTED, nextAttemptId: 4n })
+    )
+    await advance(MINUTE)
+    expect(page.has('guardian-waiting')).toBe(true)
+    kit.recoveryState.mockImplementation(async () => {
+      throw new Error('rpc down')
+    })
+    await advance(MINUTE)
+    expect(page.has('guardian-read-failed')).toBe(true)
+    answers[0](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf())))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-read-failed')).toBe(true)
+    page.unmount()
+  })
+
+  it('keeps a changed setup through a read that would fail, and drops the approval that arrives then', async () => {
+    const { answers } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ setupNonce: 3n }))
+    await advance(MINUTE)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    kit.recoveryState.mockImplementation(async () => {
+      throw new Error('rpc down')
+    })
+    await advance(MINUTE)
+    answers[0](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf())))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it('withdraws the sign request once a read finds the request ended, with the window open', async () => {
+    const { signals } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(signals[0]?.aborted).toBe(false)
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ nextAttemptId: 4n }))
+    await advance(MINUTE)
+    expect(signals[0]?.aborted).toBe(true)
+    page.unmount()
+  })
+
+  it('reads the chain no more once a read found the request dead', async () => {
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ setupNonce: 3n }))
+    const page = await mountLive()
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    await advance(3 * MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it('withdraws the sign request on a decline, and drops the signature that arrives after it', async () => {
+    const { answers, signals } = heldSignWindow()
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(page.isDisabled('guardian-decline')).toBe(false)
+    await page.press('guardian-decline')
+    expect(signals[0]?.aborted).toBe(true)
+    expect(page.has('guardian-declined')).toBe(true)
+    answers[0](await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf())))
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-declined')).toBe(true)
     page.unmount()
   })
 
@@ -518,6 +595,29 @@ describe('the offline block', () => {
     page.unmount()
   })
 
+  it('drops a pasted signature still being packaged when the guardian declines', async () => {
+    let packaged: () => void = () => {}
+    kit.replyFrom.mockImplementation(
+      (request, _input, material) =>
+        new Promise((resolve) => {
+          packaged = () => resolve(replyOf(request, (material as { signature: Hex }).signature))
+        })
+    )
+    const page = await openOffline()
+    const signature = await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(requestOf()))
+    await page.press('guardian-acknowledge')
+    await page.type('guardian-offline-signature', signature)
+    await page.press('guardian-offline-add')
+    expect(kit.replyFrom).toHaveBeenCalledTimes(1)
+    await page.press('guardian-decline')
+    expect(page.has('guardian-declined')).toBe(true)
+    packaged()
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-declined')).toBe(true)
+    page.unmount()
+  })
+
   it('reads garbage as not a signature and asks the approving side nothing', async () => {
     const page = await openOffline()
     await page.press('guardian-acknowledge')
@@ -558,6 +658,7 @@ describe('the decline message', () => {
   it('copies the message naming the account and the new key', async () => {
     const page = await mountLive()
     await page.press('guardian-decline')
+    expect(page.textOf('guardian-brand')).toBe(t(`${PAGE}.brand`))
     await page.press('guardian-declined-copy-message')
     expect(wallet.copied).toHaveBeenLastCalledWith(
       t(`${PAGE}.declined.message`, { account: ACCOUNT, newKey: NEW_KEY })
