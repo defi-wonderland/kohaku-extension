@@ -18,6 +18,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 
+import BrandLine from './BrandLine'
 import DetailsBlock from './DetailsBlock'
 import LeadBlock from './LeadBlock'
 import OfflineBlock from './OfflineBlock'
@@ -75,9 +76,7 @@ const ApproveView = ({
 
   const header = (
     <>
-      <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy}>
-        {t(`${PAGE}.brand`)}
-      </Text>
+      <BrandLine />
       <Text fontSize={12} appearance="secondaryText" style={spacings.mbLg} testID="guardian-notice">
         {t(`${PAGE}.notice`)}
       </Text>

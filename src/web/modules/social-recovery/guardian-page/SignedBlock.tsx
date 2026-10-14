@@ -15,6 +15,7 @@ import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
 import { renderApproval } from '@web/modules/social-recovery/shared/display'
 
+import BrandLine from './BrandLine'
 import CopyFeedbackLine from './CopyFeedbackLine'
 import { approvalMessageOf } from './signing'
 import type { SignedBlockProps } from './types'
@@ -29,6 +30,7 @@ const SignedBlock = ({ approval, account }: SignedBlockProps) => {
 
   return (
     <View testID="guardian-signed">
+      <BrandLine />
       <Text fontSize={20} weight="medium" style={spacings.mbTy} testID="guardian-signed-title">
         {t(`${SIGNED}.title`)}
       </Text>

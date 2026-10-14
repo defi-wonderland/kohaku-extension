@@ -14,6 +14,7 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
+import BrandLine from './BrandLine'
 import CopyFeedbackLine from './CopyFeedbackLine'
 import { declineMessageOf } from './signing'
 import type { DeclinedBlockProps } from './types'
@@ -28,6 +29,7 @@ const DeclinedBlock = ({ account, newKey, onClose }: DeclinedBlockProps) => {
 
   return (
     <View testID="guardian-declined">
+      <BrandLine />
       <Text fontSize={12} appearance="secondaryText" testID="guardian-declined-title">
         {t(`${DECLINED}.title`)}
       </Text>
