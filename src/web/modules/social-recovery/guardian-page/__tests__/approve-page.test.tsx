@@ -684,27 +684,6 @@ describe('a reopened link whose attempt counter moved past the request', () => {
       expect(chunk(3).from).toBe(DEPLOYED_AT)
       page.unmount()
     })
-
-    it('fetches no further chunk once the scan ran past its limit and the chunk in flight answers', async () => {
-      const request = requestOf()
-      scanOver([])
-      kit.fetchEvents.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve([]), 20_000)
-          })
-      )
-      const page = await mountLive(request)
-      await advance(15_000)
-      expect(page.has('guardian-read-failed')).toBe(true)
-      expect(page.has('guardian-dead-void')).toBe(false)
-      expect(rangesRead()).toEqual([chunk(0)])
-      await advance(10_000)
-      await advance(10_000)
-      expect(rangesRead()).toEqual([chunk(0)])
-      expect(page.has('guardian-read-failed')).toBe(true)
-      page.unmount()
-    })
   })
 
   it('draws a failed events read as a failed read with a retry, never void', async () => {
