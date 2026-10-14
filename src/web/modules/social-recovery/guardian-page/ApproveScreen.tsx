@@ -146,6 +146,7 @@ const ApproveScreen = () => {
   const [diedFor, setDiedFor] = useState<ApproverRequest | null>(null)
   const { reads, retry } = useApprovalReads({
     client: kit,
+    link: location.search,
     enabled: readable && !declined && !signing.approval,
     stopped: !!request && diedFor === request
   })

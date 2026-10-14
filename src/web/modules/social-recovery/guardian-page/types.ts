@@ -97,6 +97,8 @@ export interface SignGates {
 
 export interface ApprovalReadsInput {
   client: ApprovalKitClient | null
+  /** The link of the request the page shows: another link starts its own round. */
+  link: string
   /** False once nothing is read any more, as after a decline. */
   enabled: boolean
   /** True once the last answer is final, as a death: it stays drawn and no round runs after it. */

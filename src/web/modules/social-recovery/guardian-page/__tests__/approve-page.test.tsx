@@ -35,7 +35,7 @@ import {
   t,
   VALID_UNTIL,
   WAIT_ENDS_AT
-} from './harness'
+} from '@web/modules/social-recovery/guardian-page/__tests__/harness'
 
 const PAGE = 'socialRecovery.guardianPage'
 const MINUTE = 60_000
@@ -202,7 +202,10 @@ describe('the sign action', () => {
     const page = await mountLive()
     await page.press('guardian-acknowledge')
     expect(page.isDisabled('guardian-sign')).toBe(false)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     await navigate(searchOf(linkOf(requestOf({ payload: '0x123456', salt: '0x03' }))))
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(kit.isAuthorized).toHaveBeenCalledTimes(2)
     expect(page.textOf('guardian-value-newKey')).toBe(otherKey)
     expect(page.has('guardian-tick-first')).toBe(true)
     expect(page.isDisabled('guardian-sign')).toBe(true)
@@ -450,6 +453,26 @@ describe('the re-read', () => {
     page.unmount()
   })
 
+  it("drops a round of an earlier link that answers after the new link's round", async () => {
+    let answerLate: (state: RecoveryState) => void = () => {}
+    kit.recoveryState.mockImplementationOnce(
+      () =>
+        new Promise<RecoveryState>((resolve) => {
+          answerLate = resolve
+        })
+    )
+    const page = await mountLive()
+    expect(page.has('guardian-reading')).toBe(true)
+    await navigate(searchOf(linkOf(requestOf({ salt: '0x03' }))))
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    answerLate(recoveryStateOf({ setupNonce: 3n }))
+    await settle()
+    expect(page.has('guardian-dead-setup-changed')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    page.unmount()
+  })
+
   it('stops reading once the guardian declines', async () => {
     const page = await mountLive()
     await page.press('guardian-decline')
@@ -487,6 +510,22 @@ describe('the decline', () => {
     await page.press('guardian-declined-close')
     expect(close).toHaveBeenCalledTimes(1)
     close.mockRestore()
+    page.unmount()
+  })
+
+  it('leaves another link opened in the same tab undeclined, and reads it', async () => {
+    const page = await mountLive()
+    await page.press('guardian-decline')
+    expect(page.has('guardian-declined-title')).toBe(true)
+    await navigate(searchOf(linkOf(requestOf({ salt: '0x03' }))))
+    expect(page.has('guardian-declined-title')).toBe(false)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(kit.isAuthorized).toHaveBeenCalledTimes(2)
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    await advance(MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(3)
     page.unmount()
   })
 

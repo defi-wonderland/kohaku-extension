@@ -39,7 +39,9 @@ type ReturnTo = string | Partial<Path>
 
 const getReturnPath = (state: unknown): string | null => {
   const returnTo = (state as { returnTo?: ReturnTo } | null)?.returnTo
-  if (typeof returnTo === 'string' && returnTo) return returnTo
+  if (typeof returnTo === 'string' && returnTo) {
+    return returnTo
+  }
   if (returnTo && typeof returnTo === 'object' && typeof returnTo.pathname === 'string') {
     return createPath(returnTo)
   }
@@ -81,11 +83,16 @@ const KeyStoreUnlockScreen = () => {
   }, [keystoreState.errorMessage, setError])
 
   useEffect(() => {
-    if (!keystoreState.isUnlocked) return
+    if (!keystoreState.isUnlocked) {
+      return
+    }
 
     const returnPath = getReturnPath(location.state)
-    if (returnPath) navigate(returnPath, { replace: true })
-    else navigate('/')
+    if (returnPath) {
+      navigate(returnPath, { replace: true })
+    } else {
+      navigate('/')
+    }
   }, [navigate, keystoreState, location.state])
 
   const disableSubmit = useMemo(
