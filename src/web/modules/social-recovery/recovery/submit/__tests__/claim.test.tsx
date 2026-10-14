@@ -30,6 +30,7 @@ import {
   RIVAL_PAYLOAD,
   selectionWallet,
   sessionOf,
+  slowClaim,
   START_BLOCK,
   stepsOf,
   submit,
@@ -231,17 +232,11 @@ describe('the claim of the submission', () => {
       requests: shared.port,
       now: () => Date.now()
     }
-    const firstSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
     // The claim's write answers one second late, so the port's time limit ends after the claim's age.
-    const steps = {
-      ...firstSteps,
-      claim: async (claim: Parameters<typeof firstSteps.claim>[0]) => {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 1000)
-        })
-        return firstSteps.claim(claim)
-      }
-    }
+    const steps = slowClaim(
+      stepsOf({ ...base, port: shared.realSendPort(), records: device.records() }),
+      1000
+    )
     const first = track({ store: pageOf(steps), steps })
     startSubmission(first.store, steps).catch(() => undefined)
     await flush()
@@ -279,5 +274,50 @@ describe('the claim of the submission', () => {
       error: { reason: 'timeout' }
     })
     expect(shared.adds()).toEqual([secondId])
+  })
+
+  it('adds nothing where the wallet selects the account after the claim’s age while the claim is still its own, and offers the retry', async () => {
+    jest.setSystemTime(NOW)
+    const device = await openDevice()
+    const smart = await keyedAccount(902)
+    const shared = selectionWallet(smart.account)
+    // The claim's write answers one second late, so the port's time limit ends after the claim's age.
+    const steps = slowClaim(
+      stepsOf({
+        kit: device.kit,
+        account: device.account,
+        gathering: device.gathering,
+        plan: batchPlanOf(smart),
+        chosen: new Set([0, 1, 2, 3]),
+        requests: shared.port,
+        now: () => Date.now(),
+        port: shared.realSendPort(),
+        records: device.records()
+      }),
+      1000
+    )
+    const page = track({ store: pageOf(steps), steps })
+    startSubmission(page.store, steps).catch(() => undefined)
+    await flush()
+    await advanceTimers(1000)
+    await flush()
+    const requestId = page.store.state().requestId
+    expect((await claimOf(device))?.requestId).toBe(requestId)
+
+    await advanceTimers(SUBMISSION_CLAIM_AGE_MS - 1000 + 300)
+    await flush()
+    expect((await claimOf(device))?.requestId).toBe(requestId)
+    expect(page.store.state().write.status).not.toBe('failedNotSent')
+
+    shared.selectListed()
+    await flush()
+    expect(shared.adds()).toEqual([])
+    await advanceTimers(SEND_SETTLE_MS + 1)
+    await flush()
+    expect(page.store.state().write).toMatchObject({
+      status: 'failedNotSent',
+      error: { reason: 'timeout' }
+    })
+    expect(shared.adds()).toEqual([])
   })
 })

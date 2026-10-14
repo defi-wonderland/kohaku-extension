@@ -799,6 +799,17 @@ export const stepsOf = (input: {
     now: input.now ?? (() => Date.now())
   })
 
+/** The steps with a claim whose write answers `ms` late, so the claim's age runs from after the send's start. */
+export const slowClaim = (steps: SubmitSteps, ms: number): SubmitSteps => ({
+  ...steps,
+  claim: async (claim) => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, ms)
+    })
+    return steps.claim(claim)
+  }
+})
+
 /** Lets every pending answer settle: the fakes answer in microtasks, which run before a timer. */
 export const drain = async (rounds = 12): Promise<void> => {
   for (let round = 0; round < rounds; round += 1) {

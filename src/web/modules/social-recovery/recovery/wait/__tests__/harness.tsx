@@ -181,6 +181,7 @@ const {
   getSmartAccount
 }: typeof import('@ambire-common/libs/account/account') = require('@ambire-common/libs/account/account')
 const {
+  accountBatchRefusal,
   sendRefusal
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
@@ -976,6 +977,38 @@ export const openWorld = async ({
     sendingKey,
     entry
   }
+}
+
+/**
+ * Holds the account's batch while the wallet selects another account, as the
+ * send port does. Once the test lands the selection, the port asks the run's
+ * gate: where it allows the add, the request is added and the batch answers
+ * `TX_HASH`; otherwise nothing is added and the batch ends with the port's
+ * timeout.
+ */
+export const batchAwaitingSelection = (world: World) => {
+  const added: string[] = []
+  const held: { land?: () => Promise<void> } = {}
+  world.port.sendAccountBatch.mockImplementation(
+    (...[account, , , , requestId, options]: Parameters<SendPort['sendAccountBatch']>) =>
+      new Promise<Hex>((resolve, reject) => {
+        held.land = async () => {
+          if (options?.canAdd && (await options.canAdd())) {
+            added.push(String(requestId))
+            resolve(TX_HASH)
+            return
+          }
+          reject(accountBatchRefusal('timeout', account))
+        }
+      })
+  )
+  const selectAccount = async () => {
+    if (!held.land) {
+      throw new Error('no batch waits for the selection')
+    }
+    await held.land()
+  }
+  return { selectAccount, added: () => [...added] }
 }
 
 /** Puts the pinned block at the attempt's end, so the wait reads elapsed. */
