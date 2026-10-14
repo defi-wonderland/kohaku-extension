@@ -1,9 +1,10 @@
 /**
  * The page's chain reads: the account's recovery state, with the attempt and
  * the setup number, and whether the account authorizes the action. One round
- * runs when the client is ready, then one every minute and on a retry. Rounds
- * never overlap. A round that throws or runs past its limit reads as failed,
- * never as the last answer; a new client starts again from nothing answered.
+ * runs when the client is ready or another link opens, then one every minute
+ * and on a retry. Rounds never overlap. A round that throws or runs past its
+ * limit reads as failed, never as the last answer; a new client or a new link
+ * starts again from nothing answered.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -14,11 +15,12 @@ import type { ApprovalReads, ApprovalReadsHook, ApprovalReadsInput } from './typ
 
 const PENDING: ApprovalReads = { status: 'pending' }
 
-const useApprovalReads = ({ client, enabled }: ApprovalReadsInput): ApprovalReadsHook => {
+const useApprovalReads = ({ client, link, enabled }: ApprovalReadsInput): ApprovalReadsHook => {
   const [reads, setReads] = useState<ApprovalReads>(PENDING)
   const clientRef = useRef(client)
   clientRef.current = client
-  // Each client's rounds carry its number; a round of an earlier one is dropped.
+  // Each client's and each link's rounds carry their number; a round of an
+  // earlier one is dropped.
   const generation = useRef(0)
   const inFlight = useRef(false)
 
@@ -53,7 +55,7 @@ const useApprovalReads = ({ client, enabled }: ApprovalReadsInput): ApprovalRead
       generation.current += 1
       clearInterval(timer)
     }
-  }, [active, run])
+  }, [active, link, run])
 
   // A retry after a failed round reads as reading until its round answers.
   const retry = useCallback(() => {

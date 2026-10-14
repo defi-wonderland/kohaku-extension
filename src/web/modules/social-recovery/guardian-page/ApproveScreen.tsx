@@ -82,7 +82,11 @@ const ApproveScreen = () => {
     }
   }, [fresh])
   const described = fresh !== undefined ? fresh : kept?.request === request ? kept : null
-  const { reads, retry } = useApprovalReads({ client: kit, enabled: readable && !declined })
+  const { reads, retry } = useApprovalReads({
+    client: kit,
+    link: location.search,
+    enabled: readable && !declined
+  })
   const clock = useDeadlineClock(request ? Number(request.validUntil) : null)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const networkName =

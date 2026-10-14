@@ -202,7 +202,10 @@ describe('the sign action', () => {
     const page = await mountLive()
     await page.press('guardian-acknowledge')
     expect(page.isDisabled('guardian-sign')).toBe(false)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     await navigate(searchOf(linkOf(requestOf({ payload: '0x123456', salt: '0x03' }))))
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(kit.isAuthorized).toHaveBeenCalledTimes(2)
     expect(page.textOf('guardian-value-newKey')).toBe(otherKey)
     expect(page.has('guardian-tick-first')).toBe(true)
     expect(page.isDisabled('guardian-sign')).toBe(true)
@@ -441,6 +444,26 @@ describe('the re-read', () => {
     expect(page.has('guardian-reading')).toBe(true)
     setClient(readyClient())
     await settle()
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    answerLate(recoveryStateOf({ setupNonce: 3n }))
+    await settle()
+    expect(page.has('guardian-dead-setup-changed')).toBe(false)
+    expect(page.has('guardian-sign-block')).toBe(true)
+    page.unmount()
+  })
+
+  it("drops a round of an earlier link that answers after the new link's round", async () => {
+    let answerLate: (state: RecoveryState) => void = () => {}
+    kit.recoveryState.mockImplementationOnce(
+      () =>
+        new Promise<RecoveryState>((resolve) => {
+          answerLate = resolve
+        })
+    )
+    const page = await mountLive()
+    expect(page.has('guardian-reading')).toBe(true)
+    await navigate(searchOf(linkOf(requestOf({ salt: '0x03' }))))
     expect(kit.recoveryState).toHaveBeenCalledTimes(2)
     expect(page.has('guardian-sign-block')).toBe(true)
     answerLate(recoveryStateOf({ setupNonce: 3n }))
