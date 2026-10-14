@@ -49,7 +49,7 @@ export const requestHoldOf = async (
   requests: SendRequestPort,
   requestId: string,
   account: Address | undefined,
-  chainId: number
+  chainId: number | bigint
 ): Promise<RequestHold> => {
   if (!account) {
     return { status: 'free' }
