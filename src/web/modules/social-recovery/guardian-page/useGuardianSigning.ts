@@ -7,22 +7,21 @@
  * approval exists. The state belongs to the request the page shows: another
  * link opened in the same tab starts with none, the sign request of the
  * request it replaced is withdrawn from the request queue, as it is when the
- * page goes away, and an answer for a replaced request is dropped. An
- * approval that arrives once the request no longer takes one is dropped too,
- * and the page shows why. Nothing here holds a key.
+ * page goes away, and an answer for a replaced request is dropped. The page
+ * withdraws the signing of a request the guardian declined or that ended:
+ * its sign request leaves the queue, any later answer of the wallet or of
+ * the approving side is dropped, and nothing signs for that request again.
+ * An approval that arrives once the request no longer takes one is dropped
+ * too, and the page shows why. Nothing here holds a key.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { ApproverRequest, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import { replyLineOf } from '@web/modules/social-recovery/recovery/checklist'
+import { signatureOf } from '@web/modules/social-recovery/setup/enroll/guardian'
 import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
-import {
-  offlineVerdictFailure,
-  pastedSignatureOf,
-  signingFailureOf,
-  walletVerdictFailure
-} from './signing'
+import { offlineVerdictFailure, signingFailureOf, walletVerdictFailure } from './signing'
 import type {
   ApprovalOutcome,
   GuardianSigning,
@@ -51,9 +50,11 @@ const useGuardianSigning = ({
   const current = state.request === request ? state : idleFor(request)
   const requestRef = useRef(request)
   requestRef.current = request
-  // The request whose signing runs, and the request that has its approval.
+  // The request whose signing runs, the request that has its approval, and
+  // the request whose signing was withdrawn for good.
   const running = useRef<ApproverRequest | null>(null)
   const approved = useRef<ApproverRequest | null>(null)
+  const withdrawn = useRef<ApproverRequest | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -113,7 +114,7 @@ const useGuardianSigning = ({
       update(owner, { busy: true })
       work()
         .then((result) => {
-          if (requestRef.current !== owner) {
+          if (requestRef.current !== owner || withdrawn.current === owner) {
             return
           }
           // An approval the request no longer takes is dropped, and the page
@@ -137,9 +138,23 @@ const useGuardianSigning = ({
 
   const idle = useCallback(
     (owner: ApproverRequest | null): owner is ApproverRequest =>
-      !!owner && running.current !== owner && approved.current !== owner,
+      !!owner &&
+      running.current !== owner &&
+      approved.current !== owner &&
+      withdrawn.current !== owner,
     []
   )
+
+  const withdraw = useCallback(() => {
+    const owner = requestRef.current
+    if (!owner) {
+      return
+    }
+    withdrawn.current = owner
+    withdrawal.current?.abort()
+    withdrawal.current = null
+    update(owner, { busy: false })
+  }, [update])
 
   const sign = useCallback(
     (key: KeyHandle, typedData: TypedDataToSign) => {
@@ -185,7 +200,7 @@ const useGuardianSigning = ({
       if (!idle(owner)) {
         return
       }
-      const signature = pastedSignatureOf(text)
+      const signature = signatureOf(text)
       if (!signature) {
         update(owner, { offlineFailure: 'notASignature' })
         return
@@ -211,7 +226,7 @@ const useGuardianSigning = ({
   )
 
   const { busy, failure, offlineFailure, approval } = current
-  return { busy, failure, offlineFailure, approval, sign, addSignature }
+  return { busy, failure, offlineFailure, approval, sign, addSignature, withdraw }
 }
 
 export default useGuardianSigning

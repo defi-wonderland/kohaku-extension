@@ -99,6 +99,8 @@ export interface ApprovalReadsInput {
   client: ApprovalKitClient | null
   /** False once nothing is read any more, as after a decline. */
   enabled: boolean
+  /** True once the last answer is final, as a death: it stays drawn and no round runs after it. */
+  stopped: boolean
 }
 
 export interface ApprovalReadsHook {
@@ -307,4 +309,9 @@ export interface GuardianSigning {
   sign: (key: KeyHandle, typedData: TypedDataToSign) => void
   /** Turns a signature made off this device into the approval. */
   addSignature: (typedData: TypedDataToSign, text: string) => void
+  /**
+   * Withdraws the signing of the request shown: its sign request leaves the
+   * queue, a later answer is dropped, and the request signs no more.
+   */
+  withdraw: () => void
 }

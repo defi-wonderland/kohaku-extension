@@ -4,6 +4,7 @@
  * runs when the client is ready, then one every minute and on a retry. Rounds
  * never overlap. A round that throws or runs past its limit reads as failed,
  * never as the last answer; a new client starts again from nothing answered.
+ * Once the last answer is final no round runs, and that answer stays.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -14,13 +15,15 @@ import type { ApprovalReads, ApprovalReadsHook, ApprovalReadsInput } from './typ
 
 const PENDING: ApprovalReads = { status: 'pending' }
 
-const useApprovalReads = ({ client, enabled }: ApprovalReadsInput): ApprovalReadsHook => {
+const useApprovalReads = ({ client, enabled, stopped }: ApprovalReadsInput): ApprovalReadsHook => {
   const [reads, setReads] = useState<ApprovalReads>(PENDING)
   const clientRef = useRef(client)
   clientRef.current = client
   // Each client's rounds carry its number; a round of an earlier one is dropped.
   const generation = useRef(0)
   const inFlight = useRef(false)
+  const stoppedRef = useRef(stopped)
+  stoppedRef.current = stopped
 
   const run = useCallback(async () => {
     const current = clientRef.current
@@ -46,18 +49,32 @@ const useApprovalReads = ({ client, enabled }: ApprovalReadsInput): ApprovalRead
       return undefined
     }
     run().catch(() => undefined)
-    const timer = setInterval(() => {
-      run().catch(() => undefined)
-    }, APPROVAL_READ_MS)
     return () => {
       generation.current += 1
-      clearInterval(timer)
     }
   }, [active, run])
 
+  // Rounds start again at once where a final answer stopped them, as for
+  // another request opened in the same tab.
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (!active || stopped) {
+      resumed.current = !!active && stopped
+      return undefined
+    }
+    if (resumed.current) {
+      resumed.current = false
+      run().catch(() => undefined)
+    }
+    const timer = setInterval(() => {
+      run().catch(() => undefined)
+    }, APPROVAL_READ_MS)
+    return () => clearInterval(timer)
+  }, [active, stopped, run])
+
   // A retry after a failed round reads as reading until its round answers.
   const retry = useCallback(() => {
-    if (!clientRef.current || inFlight.current) {
+    if (!clientRef.current || inFlight.current || stoppedRef.current) {
       return
     }
     setReads((last) => (last.status === 'failed' ? PENDING : last))

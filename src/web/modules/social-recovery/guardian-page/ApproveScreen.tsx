@@ -8,9 +8,12 @@
  * on the page while the client is built again or a read runs or fails. The
  * signature is made in the wallet's own sign window through the request
  * queue, for the key the request names where this wallet holds it; a locked
- * wallet goes to its unlock first and comes back here with the request. An
- * approval that arrives once the request no longer takes one is not shown.
- * Once the approval exists the page reads the chain no more.
+ * wallet goes to its unlock first and comes back here with the request. A
+ * request ends for good once a read found it dead or the recovery waiting,
+ * once its deadline passed, or once the guardian declined it: a later failed
+ * or pending read does not open it again. Its sign request is then withdrawn
+ * and an approval that arrives for it is not shown. Once the approval
+ * exists, after a decline and after a death the page reads the chain no more.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -119,9 +122,12 @@ const ApproveScreen = () => {
     [kit, request]
   )
   const keyReading = keyReadingOf(requestKey, { keys, isUnlocked, hasPasswordSecret })
-  // Read when an approval arrives: whether the request still takes it.
-  const endedRef = useRef(false)
-  const ended = useCallback(() => endedRef.current, [])
+  // The request that ended, read when an approval arrives: an ending holds
+  // for its request whatever later reads say, and a new request starts with none.
+  const shownRef = useRef(request)
+  shownRef.current = request
+  const endedFor = useRef<ApproverRequest | null>(null)
+  const ended = useCallback(() => !!shownRef.current && endedFor.current === shownRef.current, [])
   const signing = useGuardianSigning({
     approving: kit?.approving ?? null,
     request,
@@ -136,16 +142,34 @@ const ApproveScreen = () => {
     }
   }, [fresh])
   const described = fresh !== undefined ? fresh : kept?.request === request ? kept : null
+  // A death is final on chain: once a read found one, no round runs after it.
+  const [diedFor, setDiedFor] = useState<ApproverRequest | null>(null)
   const { reads, retry } = useApprovalReads({
     client: kit,
-    enabled: readable && !declined && !signing.approval
+    enabled: readable && !declined && !signing.approval,
+    stopped: !!request && diedFor === request
   })
   const clock = useDeadlineClock(request ? Number(request.validUntil) : null)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const reading = request
     ? readingOf(request, kit?.descriptor ?? build, client, reads, clock)
     : null
-  endedRef.current = !!request && !!reading && approvalEnded(request, reading, clock)
+  if (request && (declined || (reading && approvalEnded(request, reading, clock)))) {
+    endedFor.current = request
+  }
+  const requestEnded = !!request && endedFor.current === request
+  const { withdraw } = signing
+  useEffect(() => {
+    if (requestEnded) {
+      withdraw()
+    }
+  }, [requestEnded, withdraw])
+  const dead = reading?.kind === 'dead'
+  useEffect(() => {
+    if (dead) {
+      setDiedFor(request)
+    }
+  }, [dead, request])
   const networkName =
     networkOf(networks, WALLET_RECOVERY_CHAIN)?.name ?? CHAIN_NAMES[WALLET_RECOVERY_CHAIN]
 
@@ -156,7 +180,11 @@ const ApproveScreen = () => {
     }
     retry()
   }, [client, retry])
-  const onDecline = useCallback(() => setDeclinedFor(request), [request])
+  const onDecline = useCallback(() => {
+    endedFor.current = request
+    withdraw()
+    setDeclinedFor(request)
+  }, [request, withdraw])
   // A locked wallet goes to its unlock and comes back to this page with its
   // request; a held key signs in the wallet's sign window.
   const onSign = useCallback(() => {

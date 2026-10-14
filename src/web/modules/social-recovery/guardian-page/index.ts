@@ -11,7 +11,6 @@ export {
   typedDataOf,
   payloadTextOf,
   payloadFileOf,
-  pastedSignatureOf,
   signingFailureOf,
   walletVerdictFailure,
   offlineVerdictFailure,

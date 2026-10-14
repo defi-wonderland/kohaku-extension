@@ -4,14 +4,9 @@
  * side hands over, the payload the offline block carries out, and how an
  * answer of the signer or of the approving side reads.
  */
-import { isAddress, isHex } from 'viem'
+import { isAddress } from 'viem'
 
-import type {
-  Address,
-  ApproverRequest,
-  Hex,
-  Verdict
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ApproverRequest, Verdict } from '@web/modules/social-recovery/sdk-interfaces'
 import { isObject } from '@web/modules/social-recovery/recovery/checklist/codec'
 import {
   isSignFlowFailure,
@@ -123,12 +118,6 @@ export const payloadFileOf = (typedData: TypedDataToSign): PayloadFile => ({
   text: payloadTextOf(typedData),
   type: 'application/json'
 })
-
-/** A pasted signature: hex bytes with whitespace around them ignored, or null for anything else. */
-export const pastedSignatureOf = (text: string): Hex | null => {
-  const trimmed = text.trim()
-  return isHex(trimmed, { strict: true }) && trimmed.length > 2 ? trimmed : null
-}
 
 /**
  * Why the wallet's sign request brought no signature: the guardian refused
