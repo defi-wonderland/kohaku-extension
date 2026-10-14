@@ -7,6 +7,7 @@
 import eventBus from '@web/extension-services/event/eventBus'
 import { SigningStatus } from '@ambire-common/controllers/signAccountOp/signAccountOp'
 import {
+  advance,
   basicAccount,
   CONTROLLING_KEY,
   dispatched,
@@ -15,6 +16,7 @@ import {
   newSendRequestId,
   queuedRequest,
   queueHolding,
+  REQUEST_STATE_READ_MS,
   SendRequestAction,
   sendRequestPort,
   SEPOLIA,
@@ -114,6 +116,18 @@ describe("a claim's request, read where the wallet no longer lists the key that 
     const hold = track(requestHoldOf(port, id, undefined, SEPOLIA))
     await flush()
     expect(hold).toEqual({ status: 'resolved', value: { status: 'free' } })
+    expect(actions().map((a) => a.type)).toEqual([INIT])
+  })
+
+  it('throws, with no activity read, where the queue does not hold the request and the sign screen never answers', async () => {
+    const id = newSendRequestId()
+    const { held, port, actions } = wallet()
+    held.signer = 'silent'
+    const hold = track(requestHoldOf(port, id, undefined, SEPOLIA))
+    await flush()
+    expect(hold.status).toBe('pending')
+    await advance(REQUEST_STATE_READ_MS)
+    expect(hold.status).toBe('rejected')
     expect(actions().map((a) => a.type)).toEqual([INIT])
   })
 })
