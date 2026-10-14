@@ -27,6 +27,7 @@ import {
   navigate,
   NEW_KEY,
   notListedRefusal,
+  readyClient,
   recoveryStateOf,
   replyOf,
   requestOf,
@@ -34,6 +35,7 @@ import {
   searchOf,
   selectAccount,
   selections,
+  setClient,
   settle,
   signatureBy,
   signRefusal,
@@ -436,6 +438,28 @@ describe('the signing step', () => {
     page.unmount()
   })
 
+  it('keeps a found death through a client built again, directly or through loading, and reads no more', async () => {
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ setupNonce: 3n }))
+    const page = await mountLive()
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    kit.recoveryState.mockImplementation(async () => {
+      throw new Error('rpc down')
+    })
+    setClient(readyClient())
+    await settle()
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    expect(page.has('guardian-read-failed')).toBe(false)
+    setClient({ status: 'loading', retry: () => {} })
+    setClient(readyClient())
+    await settle()
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    expect(page.has('guardian-read-failed')).toBe(false)
+    await advance(3 * MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
   it('reads, signs and keeps reading a later request opened where an earlier one read void', async () => {
     const othersAttempt = { ...SUBMITTED, payloadHash: `0x${'ee'.repeat(32)}` as Hex }
     kit.recoveryState.mockImplementation(async () =>
@@ -497,6 +521,35 @@ describe('the signing step', () => {
     await advance(3 * MINUTE)
     expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it('reads the chain no more through a client built again after the approval', async () => {
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(page.has('guardian-signed')).toBe(true)
+    setClient({ status: 'loading', retry: () => {} })
+    setClient(readyClient())
+    await settle()
+    setClient(readyClient())
+    await settle()
+    await advance(3 * MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it('reads the chain no more through a client built again after a decline', async () => {
+    const page = await mountLive()
+    await page.press('guardian-decline')
+    setClient({ status: 'loading', retry: () => {} })
+    setClient(readyClient())
+    await settle()
+    setClient(readyClient())
+    await settle()
+    await advance(3 * MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     page.unmount()
   })
 })
