@@ -120,43 +120,42 @@ const broadcast = (wallet: ReturnType<typeof walletWith>['wallet'], id: string) 
     }
   })
 
-const SENDS = [
-  {
-    title: "a key's own transaction",
-    account: KEY_ACCOUNT.addr,
-    other: SMART_ACCOUNT.addr,
-    drive: (sender: ReturnType<typeof walletWith>['sender']) => {
-      const machine = drivenMachine(submittingFor('submission'))
-      const done = driveSend({
-        dispatch: machine.dispatch,
-        run: machine.state().run,
-        receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
-        port: sender,
-        key: KEY,
-        transaction: ownerTransaction('submission')
-      })
-      return { machine, done }
-    }
-  },
-  {
-    title: "an account's batch",
-    account: SMART_ACCOUNT.addr,
-    other: KEY_ACCOUNT.addr,
-    drive: (sender: ReturnType<typeof walletWith>['sender']) => {
-      const machine = drivenMachine(submittingFor('save'))
-      const done = driveAccountBatch({
-        dispatch: machine.dispatch,
-        run: machine.state().run,
-        receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
-        port: sender,
-        account: ACCOUNT,
-        calls: SAVE.calls,
-        requestId: REQUEST_ID
-      })
-      return { machine, done }
-    }
+/** A key's own transaction, which the wallet queues against the key's basic account. */
+const KEY_SEND = {
+  account: KEY_ACCOUNT.addr,
+  other: SMART_ACCOUNT.addr,
+  drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+    const machine = drivenMachine(submittingFor('submission'))
+    const done = driveSend({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      port: sender,
+      key: KEY,
+      transaction: ownerTransaction('submission')
+    })
+    return { machine, done }
   }
-]
+}
+
+/** An account's batch, which the wallet queues against the account. */
+const BATCH_SEND = {
+  account: SMART_ACCOUNT.addr,
+  other: KEY_ACCOUNT.addr,
+  drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+    const machine = drivenMachine(submittingFor('save'))
+    const done = driveAccountBatch({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      port: sender,
+      account: ACCOUNT,
+      calls: SAVE.calls,
+      requestId: REQUEST_ID
+    })
+    return { machine, done }
+  }
+}
 
 beforeEach(() => {
   jest.useFakeTimers()
@@ -166,57 +165,64 @@ afterEach(() => {
   jest.useRealTimers()
 })
 
-SENDS.forEach(({ title, account, other, drive }) =>
-  describe(`the send of ${title}`, () => {
-    it('is queued against its sending account at once where the wallet selected that account', async () => {
-      const { wallet, sender } = walletWith(account)
-      const { machine, done } = drive(sender)
-      await advanceTimersAsync(0)
-      expect(typesOf(wallet.dispatch)).not.toContain(SELECT)
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
-      broadcast(wallet, requestIdOf(wallet.dispatch))
-      await done
-      expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
-    })
-
-    it('selects its sending account first where the wallet selected another, and queues it once the selection lands', async () => {
-      const { wallet, sender } = walletWith(other)
-      const { machine, done } = drive(sender)
-      await advanceTimersAsync(0)
-      expect(actionsOf(wallet.dispatch).filter((action) => action.type === SELECT)).toEqual([
-        { type: SELECT, params: { accountAddr: account } }
-      ])
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
-
-      // A push that still names another account adds nothing.
-      wallet.push({ controller: 'selectedAccount', state: { account: { addr: OTHER } } })
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
-
-      wallet.select(account)
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
-      // Another push of the same selection never adds the request a second time.
-      wallet.select(account)
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
-
-      broadcast(wallet, requestIdOf(wallet.dispatch))
-      await done
-      expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
-      expect(typesOf(wallet.dispatch).filter((type) => type === SELECT)).toHaveLength(1)
-    })
-
-    it('reads that nothing was sent where the selection never lands, and adds nothing later', async () => {
-      const { wallet, sender } = walletWith(undefined)
-      const { machine, done } = drive(sender)
-      await advanceTimersAsync(11 * 60 * 1000)
-      await done
-      expect(machine.events.map((event) => event.type)).toEqual(['error'])
-      expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
-
-      wallet.select(account)
-      expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
-    })
+/** The cases every send kind runs: where it is queued, and when it selects its account first. */
+const sendingAccountCases = ({ account, other, drive }: typeof KEY_SEND) => {
+  it('is queued against its sending account at once where the wallet selected that account', async () => {
+    const { wallet, sender } = walletWith(account)
+    const { machine, done } = drive(sender)
+    await advanceTimersAsync(0)
+    expect(typesOf(wallet.dispatch)).not.toContain(SELECT)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+    broadcast(wallet, requestIdOf(wallet.dispatch))
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
   })
-)
+
+  it('selects its sending account first where the wallet selected another, and queues it once the selection lands', async () => {
+    const { wallet, sender } = walletWith(other)
+    const { machine, done } = drive(sender)
+    await advanceTimersAsync(0)
+    expect(actionsOf(wallet.dispatch).filter((action) => action.type === SELECT)).toEqual([
+      { type: SELECT, params: { accountAddr: account } }
+    ])
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+    // A push that still names another account adds nothing.
+    wallet.push({ controller: 'selectedAccount', state: { account: { addr: OTHER } } })
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+    wallet.select(account)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+    // Another push of the same selection never adds the request a second time.
+    wallet.select(account)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([account])
+
+    broadcast(wallet, requestIdOf(wallet.dispatch))
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+    expect(typesOf(wallet.dispatch).filter((type) => type === SELECT)).toHaveLength(1)
+  })
+
+  it('reads that nothing was sent where the selection never lands, and adds nothing later', async () => {
+    const { wallet, sender } = walletWith(undefined)
+    const { machine, done } = drive(sender)
+    await advanceTimersAsync(11 * 60 * 1000)
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['error'])
+    expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
+
+    wallet.select(account)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+  })
+}
+
+describe("the send of a key's own transaction", () => {
+  sendingAccountCases(KEY_SEND)
+})
+
+describe("the send of an account's batch", () => {
+  sendingAccountCases(BATCH_SEND)
+})
 
 describe('a selection that never lands while the wallet signs another operation', () => {
   it('reads a timeout at its limit and the settle period, with nothing added and nothing removed', async () => {
