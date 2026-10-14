@@ -828,7 +828,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
             settle('timeout', false)
           }
         }
-        canAdd().then(answer, () => answer(false))
+        // A gate that throws, even before it hands back a promise, refuses.
+        Promise.resolve()
+          .then(canAdd)
+          .then(answer, () => answer(false))
       }
 
       // The queue withdraws a request only from its own list, never one that
