@@ -16,10 +16,10 @@
  * again. The setup's save is the one exception: its page reads the setup and
  * the stored save between its claim and its send, so a save held nowhere
  * reads as in flight while the claim is younger than the limit past which
- * that page never sends, and is judged again once it is older. A send from a
- * key's own address carries no request the queue could be asked about, so
- * its claim with no hash reads as not sent at once. A read of the queue that
- * does not answer is read again, never taken as an answer.
+ * that page never sends, and is judged again once it is older. A key's own
+ * send is queued under the claim's request id as the key's listed basic
+ * account, so its claim reads exactly as an account's batch does. A read of
+ * the queue that does not answer is read again, never taken as an answer.
  *
  * The page whose live run wrote the claim is no arrival: it keeps its own
  * in-flight state while its send runs and follows its own hash to the
@@ -30,8 +30,39 @@
  * arrival released it. A second request of the same account, sent while the
  * first one still waits in the wallet, is refused by the request queue.
  */
-import type { ClaimReading, StoredClaim } from './types'
+import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import { sendRequestStateOf } from '@web/modules/social-recovery/shared/client'
+import type { SendRequestPort } from '@web/modules/social-recovery/shared/client'
+
+import type { ClaimReading, RequestHold, StoredClaim } from './types'
 
 /** The first reading of a stored claim: in flight under its hash, or one whose request the wallet's queue decides. */
 export const claimReadingOf = ({ transactionHash }: StoredClaim): ClaimReading =>
   transactionHash ? { kind: 'inFlight', transactionHash } : { kind: 'noHash' }
+
+/**
+ * Where the wallet holds the request `requestId` that `account` queued. With
+ * no account, nothing the wallet lists could have queued it, so it is held
+ * nowhere. Throws where the wallet does not answer, so the caller reads again.
+ */
+export const requestHoldOf = async (
+  requests: SendRequestPort,
+  requestId: string,
+  account: Address | undefined,
+  chainId: number
+): Promise<RequestHold> => {
+  if (!account) {
+    return { status: 'free' }
+  }
+  const state = await sendRequestStateOf(requests, requestId, account, chainId)
+  switch (state.status) {
+    case 'broadcast':
+      return { status: 'broadcast', transactionHash: state.transactionHash }
+    case 'gone':
+      return { status: 'free' }
+    case 'unread':
+      throw new Error(`The wallet did not answer where it holds request ${requestId}.`)
+    default:
+      return { status: 'held' }
+  }
+}

@@ -547,36 +547,73 @@ describe('a claim with no hash found on arrival', () => {
     view = undefined
   })
 
-  const cases = [
-    { route: 'logged-in', receiving: 'smart', ageMs: 60_000 },
-    { route: 'logged-in', receiving: 'basic', ageMs: 31 * 60_000 },
-    { route: 'fresh-install', receiving: 'basic', ageMs: 3 * 60 * 60_000 }
-  ] as const
+  /** A claim `ageMs` old whose request the wallet holds nowhere is released and execute offered, with no events read. */
+  const releasedOnArrival = async (world: World, ageMs: number) => {
+    elapse(world.kit)
+    await claimElsewhere(world.records, world.account, { claimedAt: Date.now() - ageMs })
+    // The wallet's queue holds no request under the claim, and its activity lists none.
+    mockWallet.activity = []
+    view = await mountWait(world.account)
+    await tick(REREAD_MS)
+    expect(await executionOf(world.records, world.account)).toBeUndefined()
+    expect(view.byTestId('wait-execute-submitting')).toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(false)
+    expect(claimRangeReads(world)).toEqual([])
+    expect(world.port.send).not.toHaveBeenCalled()
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+  }
 
-  it('is released and execute offered whatever its age and the route that sends, with no events read', async () => {
-    for (let at = 0; at < cases.length; at += 1) {
-      const { route, receiving, ageMs } = cases[at]
-      // eslint-disable-next-line no-await-in-loop
-      const world = await openWorld({ route, receiving })
-      elapse(world.kit)
-      // eslint-disable-next-line no-await-in-loop
-      await claimElsewhere(world.records, world.account, { claimedAt: Date.now() - ageMs })
-      // The wallet's queue holds no request under the claim, and its activity lists none.
-      mockWallet.activity = []
-      // eslint-disable-next-line no-await-in-loop
-      view = await mountWait(world.account)
-      // eslint-disable-next-line no-await-in-loop
-      await tick(REREAD_MS)
-      // eslint-disable-next-line no-await-in-loop
-      expect(await executionOf(world.records, world.account)).toBeUndefined()
-      expect(view.byTestId('wait-execute-submitting')).toBeNull()
-      expect(view.isDisabled('wait-execute')).toBe(false)
-      expect(claimRangeReads(world)).toEqual([])
-      expect(world.port.send).not.toHaveBeenCalled()
-      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
-      view.unmount()
-      view = undefined
-    }
+  it('is released and execute offered a minute after its claim where the smart account sends', async () => {
+    await releasedOnArrival(await openWorld({ route: 'logged-in', receiving: 'smart' }), 60_000)
+  })
+
+  it('is released and execute offered long after its claim where the key sends', async () => {
+    await releasedOnArrival(
+      await openWorld({ route: 'logged-in', receiving: 'basic' }),
+      31 * 60_000
+    )
+  })
+
+  it('is released and execute offered hours after its claim on a fresh install', async () => {
+    await releasedOnArrival(
+      await openWorld({ route: 'fresh-install', receiving: 'basic' }),
+      3 * 60 * 60_000
+    )
+  })
+
+  it("is read in flight on a reload while the wallet's queue holds the key's own send, and offers no execute", async () => {
+    const world = await openWorld({ route: 'fresh-install', receiving: 'basic' })
+    elapse(world.kit)
+    await claimElsewhere(world.records, world.account)
+    mockWallet.queued = [OTHER_REQUEST]
+    view = await mountWait(world.account)
+    await tick(REREAD_MS)
+    await tick(REREAD_MS)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(view.byTestId('wait-execute')).toBeNull()
+    expect((await executionOf(world.records, world.account))?.requestId).toBe(OTHER_REQUEST)
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it('is followed under the hash the wallet broadcast the key’s own send with before the page wrote it', async () => {
+    const world = await openWorld({ route: 'fresh-install', receiving: 'basic' })
+    elapse(world.kit)
+    holdReceipt(world)
+    await claimElsewhere(world.records, world.account)
+    mockWallet.activity = [
+      {
+        status: 'broadcasted-but-not-confirmed',
+        identifiedBy: { type: 'Transaction' },
+        txnId: OTHER_TX_HASH,
+        calls: [{ fromUserRequestId: OTHER_REQUEST }]
+      }
+    ]
+    view = await mountWait(world.account)
+    await tick(REREAD_MS)
+    expect(world.kit.receipts.wait).toHaveBeenCalledWith(OTHER_TX_HASH, CLAIM_BLOCK)
+    expect((await executionOf(world.records, world.account))?.transactionHash).toBe(OTHER_TX_HASH)
+    expect(view.byTestId('wait-execute-submitting')).not.toBeNull()
+    expect(world.port.send).not.toHaveBeenCalled()
   })
 
   it("is read in flight while the wallet's queue holds its request, offers no execute, and is released once the queue lets the request go", async () => {

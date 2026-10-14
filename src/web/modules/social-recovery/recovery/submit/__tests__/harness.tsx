@@ -696,7 +696,10 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
         listeners.delete(listener)
       }
     },
-    accounts: () => [],
+    // The device's key is itself a basic account the wallet lists, as its own send needs.
+    accounts: () => [
+      { addr: DEVICE_PLAN.key.addr, associatedKeys: [DEVICE_PLAN.key.addr], creation: null }
+    ],
     queue: () =>
       (queue.answer.status === 'queued'
         ? { userRequests: queue.ids.map((id) => ({ id })) }

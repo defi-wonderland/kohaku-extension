@@ -218,6 +218,25 @@ const sendingAccountCases = ({ account, other, drive }: typeof KEY_SEND) => {
 
 describe("the send of a key's own transaction", () => {
   sendingAccountCases(KEY_SEND)
+
+  it('is queued under the request id it is given', async () => {
+    const { wallet, sender } = walletWith(KEY_ACCOUNT.addr)
+    const machine = drivenMachine(submittingFor('submission'))
+    const done = driveSend({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      port: sender,
+      key: KEY,
+      transaction: ownerTransaction('submission'),
+      requestId: REQUEST_ID
+    })
+    await advanceTimersAsync(0)
+    expect(requestIdOf(wallet.dispatch)).toBe(REQUEST_ID)
+    broadcast(wallet, REQUEST_ID)
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+  })
 })
 
 describe("the send of an account's batch", () => {

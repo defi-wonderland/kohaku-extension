@@ -33,6 +33,7 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  RequestHold,
   UnknownReading,
   WriteEvent,
   WriteMachineState
@@ -252,16 +253,6 @@ export type ClaimRelease =
   | { status: 'released' }
   | { status: 'hashed'; transactionHash: Hex }
   | { status: 'gone' }
-
-/**
- * Where the wallet holds the request a claim was queued under: still held
- * (queued, or on a route it cannot follow), broadcast under a hash, or no
- * longer held anywhere.
- */
-export type RequestHold =
-  | { status: 'held' }
-  | { status: 'broadcast'; transactionHash: Hex }
-  | { status: 'free' }
 
 /** The submission's steps over the wallet's seams. */
 export interface SubmitSteps {

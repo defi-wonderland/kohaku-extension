@@ -3,7 +3,8 @@
  *
  * A submission on its way to the chain, as the pages of one device read it:
  * a claim with no hash found on arrival, released whatever its age where the
- * wallet holds no request for it and followed while its queue holds one, a hash the wallet answers after another page
+ * wallet holds no request for it and followed while its queue holds one, on a
+ * batch's route and on a key's own send alike, a hash the wallet answers after another page
  * released the claim, a hash the node lost (dropped only on a second reading
  * at a higher block or a minute later), the hash stored on the claim before
  * the receipt wait, the deposit step left, a revert that names an attempt
@@ -12,7 +13,7 @@
  */
 import type { Attempt, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import type { WriteEvent } from '@web/modules/social-recovery/shared/writes'
-import type { SubmitStore } from '@web/modules/social-recovery/recovery/submit'
+import type { SendingPlan, SubmitStore } from '@web/modules/social-recovery/recovery/submit'
 
 import type { Device } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
 import {
@@ -86,30 +87,82 @@ describe('a submission on its way to the chain', () => {
   }
 
   describe('a claim with no hash found on arrival', () => {
-    it('is released and the start offered whatever its age, on a batch’s route and on a key’s own send', async () => {
-      const ages = [1_000, 31 * 60 * 1000, 2 * DROPPED_AFTER_MS]
-      for (let at = 0; at < ages.length; at += 1) {
-        const age = ages[at]
-        // eslint-disable-next-line no-await-in-loop
-        const plan = age === ages[1] ? DEVICE_PLAN : await batchPlan((planSeed += 1))
-        // eslint-disable-next-line no-await-in-loop
-        const device = await openDevice()
-        // eslint-disable-next-line no-await-in-loop
-        await leaveClaim(device, NOW - age)
-        // The wallet's queue holds no request under the claim, and never broadcast one.
-        const { port: requests } = requestQueue({ status: 'gone' })
-        const page = track(pageOn(device, () => NOW, { plan, requests }))
-        lookForClaim(page.store, page.steps).catch(() => undefined)
-        // eslint-disable-next-line no-await-in-loop
-        await flush()
-        // eslint-disable-next-line no-await-in-loop
-        expect(await claimOf(device)).toBeNull()
-        expect(page.store.state().write.status).toBe('idle')
-        expect(page.store.state().lookup).toBe('none')
-        expect(device.kit.fetch).not.toHaveBeenCalled()
-        expect(page.port.send).not.toHaveBeenCalled()
-        expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
-      }
+    /** A claim `age` ms old whose request the wallet's queue holds nowhere and never broadcast is released, and the start offered. */
+    const releasedOnArrival = async (age: number, plan: SendingPlan) => {
+      const device = await openDevice()
+      await leaveClaim(device, NOW - age)
+      const { port: requests } = requestQueue({ status: 'gone' })
+      const page = track(pageOn(device, () => NOW, { plan, requests }))
+      lookForClaim(page.store, page.steps).catch(() => undefined)
+      await flush()
+      expect(await claimOf(device)).toBeNull()
+      expect(page.store.state().write.status).toBe('idle')
+      expect(page.store.state().lookup).toBe('none')
+      expect(device.kit.fetch).not.toHaveBeenCalled()
+      expect(page.port.send).not.toHaveBeenCalled()
+      expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+    }
+
+    it('is released and the start offered a second after its claim, on a batch’s route', async () => {
+      await releasedOnArrival(1_000, await batchPlan((planSeed += 1)))
+    })
+
+    it('is released and the start offered long after its claim, on a batch’s route', async () => {
+      await releasedOnArrival(2 * DROPPED_AFTER_MS, await batchPlan((planSeed += 1)))
+    })
+
+    it('is released and the start offered where the wallet holds a key’s own send nowhere', async () => {
+      await releasedOnArrival(1_000, DEVICE_PLAN)
+    })
+
+    it('queues a key’s own send under the claim’s request id', async () => {
+      const device = await openDevice()
+      const page = track(pageOn(device))
+      startSubmission(page.store, page.steps).catch(() => undefined)
+      await flush()
+      const { requestId } = page.store.state()
+      expect(requestId).toEqual(expect.any(String))
+      expect(page.port.send).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ requestId })
+      )
+    })
+
+    it('reads a claim whose key’s own send the wallet still queues as in flight on a reload, and offers no start', async () => {
+      const device = await openDevice()
+      const { port: requests } = requestQueue({ status: 'queued' })
+      await leaveClaim(device, NOW - 1_000)
+      const page = track(pageOn(device, () => NOW, { plan: DEVICE_PLAN, requests }))
+      lookForClaim(page.store, page.steps).catch(() => undefined)
+      await flush()
+      await advanceTimers(FOLLOW_REREAD_MS)
+      await flush()
+      expect(page.store.state().write.status).toBe('submitting')
+      expect(page.store.state().follow?.requestId).toBe(LEFT_CLAIM)
+      expect((await claimOf(device))?.requestId).toBe(LEFT_CLAIM)
+      expect(page.port.send).not.toHaveBeenCalled()
+    })
+
+    it('writes the hash of a key’s own send the wallet broadcast before the page wrote it, and follows it to the landing', async () => {
+      const device = await openDevice()
+      const { port: requests } = requestQueue({ status: 'broadcast', hash: TX_HASH })
+      await leaveClaim(device, NOW - 1_000)
+      const receipt = deferred<ReturnType<typeof landedReceipt>>()
+      device.kit.receipts.wait.mockImplementation(() => receipt.promise)
+      const page = track(pageOn(device, () => NOW, { plan: DEVICE_PLAN, requests }))
+      lookForClaim(page.store, page.steps).catch(() => undefined)
+      await flush()
+      expect(await claimOf(device)).toEqual(
+        expect.objectContaining({ requestId: LEFT_CLAIM, transactionHash: TX_HASH })
+      )
+      expect(device.kit.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+
+      device.kit.chain.attempt = attemptOf(device.gathering)
+      receipt.resolve(landedReceipt())
+      await flush()
+      expect(isLanded(page.store.state())).toBe(true)
+      expect(page.port.send).not.toHaveBeenCalled()
     })
 
     it('reads a claim whose request the wallet still queues as in flight, offers no start, and releases it once the queue lets the request go', async () => {

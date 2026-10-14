@@ -30,15 +30,12 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  RequestHold,
   UnknownReading,
   WriteEvent,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
-import type {
-  RequestHold,
-  SendingPlan,
-  SendingReading
-} from '@web/modules/social-recovery/recovery/submit'
+import type { SendingPlan, SendingReading } from '@web/modules/social-recovery/recovery/submit'
 
 import type { CANNOT_EXECUTE_CAUSES } from './constants'
 

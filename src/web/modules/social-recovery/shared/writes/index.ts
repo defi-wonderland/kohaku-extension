@@ -47,7 +47,7 @@ export { driveSend, driveAccountBatch } from './send'
 export { sameHash } from './hashes'
 export { DROPPED_AFTER_MS, DROPPED_RECHECK_MS } from './constants'
 export { apartFrom, coversHashes } from './dropped'
-export { claimReadingOf } from './claims'
+export { claimReadingOf, requestHoldOf } from './claims'
 export {
   FEE_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,
@@ -125,5 +125,6 @@ export type {
   RenderedDepositStep,
   UnknownReading,
   StoredClaim,
-  ClaimReading
+  ClaimReading,
+  RequestHold
 } from './types'

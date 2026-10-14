@@ -14,11 +14,16 @@
  */
 import { keccak256 } from 'viem'
 
-import type { Gathering, Hex, RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
+import type {
+  Address,
+  Gathering,
+  Hex,
+  RecoveryState
+} from '@web/modules/social-recovery/sdk-interfaces'
 import {
   accountBatchTransactionOf,
-  newSendRequestId,
-  sendRequestStateOf
+  listedBasicAccountOf,
+  newSendRequestId
 } from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
 import type {
@@ -33,6 +38,7 @@ import {
   driveSend,
   gasTransactionOf,
   receiptOf,
+  requestHoldOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 
@@ -41,7 +47,6 @@ import type {
   AttemptReading,
   ClaimRelease,
   LandOutcome,
-  RequestHold,
   SubmitClaim,
   SubmitSteps,
   SubmitStepsInput
@@ -234,23 +239,15 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
         await session.releaseSubmission(requestId, revision)
         return { status: 'released' }
       }),
-    async requestHold(requestId): Promise<RequestHold> {
-      // A key's own send carries no request id the queue could be asked about.
-      if (plan.kind === 'key') {
-        return { status: 'free' }
-      }
-      const state = await sendRequestStateOf(input.requests, requestId, plan.account, chainId)
-      switch (state.status) {
-        case 'broadcast':
-          return { status: 'broadcast', transactionHash: state.transactionHash }
-        case 'gone':
-          return { status: 'free' }
-        case 'unread':
-          throw new Error(`The wallet did not answer where it holds request ${requestId}.`)
-        default:
-          return { status: 'held' }
-      }
-    },
+    requestHold: (requestId) =>
+      requestHoldOf(
+        input.requests,
+        requestId,
+        plan.kind === 'key'
+          ? (listedBasicAccountOf(input.requests.accounts(), plan.key)?.addr as Address | undefined)
+          : plan.account,
+        chainId
+      ),
     transactionKnown: (transactionHash) => input.receipts.transactionKnown(transactionHash),
     send: (prepared, dispatch, run, startBlock, requestId, beforeReceipt, canAdd) =>
       plan.kind === 'key'
@@ -261,6 +258,7 @@ export const submitStepsOf = (input: SubmitStepsInput): SubmitSteps => {
             port: input.port,
             key: plan.key,
             transaction: gasTransactionOf({ prepared, key: plan.key }),
+            requestId,
             canAdd
           })
         : driveAccountBatch({
