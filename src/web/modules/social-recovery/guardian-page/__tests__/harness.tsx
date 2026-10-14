@@ -262,6 +262,7 @@ const {
   addressBookOf,
   descriptorOf,
   signFlowFailure,
+  signerNotWired,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
@@ -441,6 +442,9 @@ export const approvalOf = (proof: Hex): string => `${proof.slice(0, 14)}…${pro
 /** The signer facade's refusal for a reason. */
 export const signRefusal = (reason: SignFlowFailureReason) =>
   signFlowFailure('signTypedData', reason)
+
+/** The signer facade's refusal of a key the wallet does not list as a basic account. */
+export const notListedRefusal = (key: KeyHandle) => signerNotWired('signTypedData', key)
 
 /** Where the page sends a locked wallet. */
 export const UNLOCK_ROUTE = WEB_ROUTES.keyStoreUnlock

@@ -26,6 +26,7 @@ import {
   mountLive,
   navigate,
   NEW_KEY,
+  notListedRefusal,
   recoveryStateOf,
   replyOf,
   requestOf,
@@ -578,6 +579,39 @@ describe('the account the wallet signs for', () => {
     selectAccount(GUARDIAN)
     await finish()
     expect(wallet.signTypedData).not.toHaveBeenCalled()
+  })
+
+  it('queues no sign request for another link opened during the selection, even once the selection lands', async () => {
+    selectAccount(STRANGER_ACCOUNT.address)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    await navigate(searchOf(linkOf(requestOf({ salt: '0x03' }))))
+    expect(page.has('guardian-sign-busy')).toBe(false)
+    selectAccount(GUARDIAN)
+    await advance(SELECT_ACCOUNT_LIMIT_MS + 1_000)
+    await finish()
+    expect(wallet.signTypedData).not.toHaveBeenCalled()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.text()).not.toContain(t(`${SIGNING}.failed`))
+    page.unmount()
+  })
+
+  it('selects nothing for a held key the wallet does not list as a basic account, and reads the refusal as failed', async () => {
+    wallet.accounts = [
+      { addr: STRANGER_ACCOUNT.address, associatedKeys: [STRANGER_ACCOUNT.address], creation: null }
+    ]
+    selectAccount(STRANGER_ACCOUNT.address)
+    wallet.signTypedData.mockImplementation((key) => Promise.reject(notListedRefusal(key)))
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(selections()).toEqual([])
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
+    expect(page.text()).toContain(t(`${SIGNING}.failed`))
+    expect(page.has('guardian-sign-retry')).toBe(true)
+    expect(page.has('guardian-signed')).toBe(false)
+    page.unmount()
   })
 })
 
