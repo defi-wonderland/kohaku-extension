@@ -9,6 +9,7 @@ import type { RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
   ACCOUNT,
+  ACCOUNT_FILTER,
   advance,
   clientAccounts,
   CREATED_AT,
@@ -31,6 +32,7 @@ import {
   searchOf,
   setClient,
   settle,
+  startedLogOf,
   SUBMITTED,
   t,
   unmountPages,
@@ -543,5 +545,120 @@ describe('the decline', () => {
     close.mockRestore()
     await settle()
     page.unmount()
+  })
+})
+
+describe('a reopened link whose attempt counter moved past the request', () => {
+  const MOVED = () => recoveryStateOf({ nextAttemptId: 5n })
+
+  it("reads the account's attempt-started events once and draws used where one is the request's own", async () => {
+    const request = requestOf()
+    kit.recoveryState.mockImplementation(async () => MOVED())
+    kit.fetchEvents.mockImplementation(async () => [startedLogOf(request)])
+    const page = await mountLive(request)
+    expect(page.has('guardian-dead-used')).toBe(true)
+    expect(page.textOf('guardian-dead-title')).toBe(t(`${PAGE}.dead.usedTitle`))
+    expect(page.has('guardian-dead-void')).toBe(false)
+    expect(kit.fetchEvents.mock.calls).toEqual([
+      [ACCOUNT_FILTER, { from: DESCRIPTOR.deployedAt, to: recoveryStateOf().block.number }]
+    ])
+    await advance(MINUTE)
+    expect(kit.fetchEvents).toHaveBeenCalledTimes(1)
+    page.unmount()
+  })
+
+  it("draws used where the request's own attempt was replaced by another one now waiting", async () => {
+    const request = requestOf()
+    kit.recoveryState.mockImplementation(async () =>
+      recoveryStateOf({
+        attempt: { ...SUBMITTED, attemptId: 4n, payloadHash: `0x${'77'.repeat(32)}` },
+        nextAttemptId: 5n
+      })
+    )
+    kit.fetchEvents.mockImplementation(async () => [startedLogOf(request)])
+    const page = await mountLive(request)
+    expect(page.has('guardian-dead-used')).toBe(true)
+    page.unmount()
+  })
+
+  it("draws void where no started event is the request's own", async () => {
+    const request = requestOf()
+    const others = [
+      [],
+      [startedLogOf(request, { payload: '0x123456' })],
+      [startedLogOf(request, { setupNonce: 1n })],
+      [startedLogOf(request, { attemptId: 4n })]
+    ]
+    // eslint-disable-next-line no-restricted-syntax
+    for (const logs of others) {
+      kit.recoveryState.mockImplementation(async () => MOVED())
+      kit.fetchEvents.mockImplementation(async () => logs)
+      // eslint-disable-next-line no-await-in-loop
+      const page = await mountLive(request)
+      expect({ logs, void: page.has('guardian-dead-void') }).toEqual({ logs, void: true })
+      expect(page.has('guardian-dead-used')).toBe(false)
+      page.unmount()
+    }
+  })
+
+  it('draws a failed events read as a failed read with a retry, never void', async () => {
+    const request = requestOf()
+    kit.recoveryState.mockImplementation(async () => MOVED())
+    kit.fetchEvents.mockImplementation(async () => {
+      throw new Error('logs refused')
+    })
+    const page = await mountLive(request)
+    expect(page.has('guardian-read-failed')).toBe(true)
+    expect(page.has('guardian-dead-void')).toBe(false)
+    kit.fetchEvents.mockImplementation(async () => [startedLogOf(request)])
+    await page.press('guardian-read-retry')
+    expect(page.has('guardian-read-failed')).toBe(false)
+    expect(page.has('guardian-dead-used')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws an events read that ran past its limit as failed', async () => {
+    kit.recoveryState.mockImplementation(async () => MOVED())
+    kit.fetchEvents.mockImplementation(() => new Promise(() => {}))
+    const page = await mountLive()
+    expect(page.has('guardian-reading')).toBe(true)
+    await advance(15_000)
+    expect(page.has('guardian-read-failed')).toBe(true)
+    expect(page.has('guardian-dead-void')).toBe(false)
+    page.unmount()
+  })
+
+  it('reads no events for a live, waiting, ended, changed or expired request', async () => {
+    const cases: [string, () => RecoveryState, string][] = [
+      ['live', () => recoveryStateOf(), 'guardian-sign'],
+      [
+        'waiting',
+        () => recoveryStateOf({ attempt: SUBMITTED, nextAttemptId: 4n }),
+        'guardian-waiting-title'
+      ],
+      [
+        'used',
+        () => recoveryStateOf({ attempt: { ...SUBMITTED, state: 'Cancelled' }, nextAttemptId: 4n }),
+        'guardian-dead-used'
+      ],
+      [
+        'setup-changed',
+        () => recoveryStateOf({ setupNonce: 3n, nextAttemptId: 5n }),
+        'guardian-dead-setup-changed'
+      ]
+    ]
+    // eslint-disable-next-line no-restricted-syntax
+    for (const [name, state, drawn] of cases) {
+      kit.recoveryState.mockImplementation(async () => state())
+      // eslint-disable-next-line no-await-in-loop
+      const page = await mountLive()
+      expect({ name, drawn: page.has(drawn) }).toEqual({ name, drawn: true })
+      page.unmount()
+    }
+    kit.recoveryState.mockImplementation(async () => MOVED())
+    const expired = await mountLive(requestOf({ validUntil: String(CREATED_AT - 1) }))
+    expect(expired.has('guardian-dead-expired')).toBe(true)
+    expired.unmount()
+    expect(kit.fetchEvents).not.toHaveBeenCalled()
   })
 })

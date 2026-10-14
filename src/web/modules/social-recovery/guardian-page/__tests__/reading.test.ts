@@ -211,6 +211,26 @@ describe('what the page reads of the request', () => {
     })
   })
 
+  it('reads used, not void, where the round found the request submitted before its attempt left the slot', () => {
+    const replaced = [
+      factsOf({ nextAttemptId: 4n }),
+      factsOf({
+        attempt: { ...SUBMITTED, attemptId: 4n, payloadHash: keccak256('0x01') },
+        nextAttemptId: 5n
+      })
+    ]
+    replaced.forEach((facts) => {
+      expect(readingOfFacts(requestOf(), { ...facts, submitted: true }, BEFORE_DEADLINE)).toEqual({
+        kind: 'dead',
+        death: 'used'
+      })
+      expect(readingOfFacts(requestOf(), { ...facts, submitted: false }, BEFORE_DEADLINE)).toEqual({
+        kind: 'dead',
+        death: 'void'
+      })
+    })
+  })
+
   it('reads setup changed where the setup number is not the request one', () => {
     expect(readingOfFacts(requestOf(), factsOf({ setupNonce: 3n }), BEFORE_DEADLINE)).toEqual({
       kind: 'dead',
