@@ -12,10 +12,10 @@
  */
 import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
 
 import type {
   FakeKit,
+  MockWorld,
   Mounted,
   ReportChannel,
   TestRecords
@@ -41,11 +41,7 @@ import {
   testRecords
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
-const mockWorld: {
-  storage: RecordStorage | null
-  channel: ReportChannel | null
-  kit: FakeKit | null
-} = { storage: null, channel: null, kit: null }
+const mockWorld: MockWorld = { storage: null, channel: null, kit: null }
 
 jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount')
 
