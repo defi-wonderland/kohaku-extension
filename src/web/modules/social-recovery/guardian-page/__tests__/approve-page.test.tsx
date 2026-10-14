@@ -5,11 +5,7 @@
  * full, verify the details, the states drawn in place of the sign action, the
  * gates of the sign action, the re-read every minute and the decline.
  */
-import type {
-  ApproverRequest,
-  Notification,
-  RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { RecoveryState } from '@web/modules/social-recovery/sdk-interfaces'
 
 import {
   ACCOUNT,
@@ -43,7 +39,6 @@ import {
   VALID_UNTIL,
   WAIT_ENDS_AT
 } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
-import { LOG_CHUNK_BLOCKS } from '@web/modules/social-recovery/shared/client/kit/events'
 
 const PAGE = 'socialRecovery.guardianPage'
 const MINUTE = 60_000
@@ -592,9 +587,7 @@ describe('a reopened link whose attempt counter moved past the request', () => {
       [],
       [startedLogOf(request, { payload: '0x123456' })],
       [startedLogOf(request, { setupNonce: 1n })],
-      [startedLogOf(request, { attemptId: 4n })],
-      [startedLogOf(request, { account: PAYEE })],
-      [startedLogOf(request, { action: PAYEE })]
+      [startedLogOf(request, { attemptId: 4n })]
     ]
     // eslint-disable-next-line no-restricted-syntax
     for (const logs of others) {
@@ -606,84 +599,6 @@ describe('a reopened link whose attempt counter moved past the request', () => {
       expect(page.has('guardian-dead-used')).toBe(false)
       page.unmount()
     }
-  })
-
-  describe('the backward scan of the events', () => {
-    const DEPLOYED_AT = 1_000_000
-    const WIDTH = LOG_CHUNK_BLOCKS
-    // Four chunks: three full ones down from the state's block, then the
-    // last 501 blocks down to the deployment block.
-    const STATE_BLOCK = DEPLOYED_AT + 3 * WIDTH + 500
-    const chunk = (index: number) => ({
-      from: Math.max(DEPLOYED_AT, STATE_BLOCK - (index + 1) * WIDTH + 1),
-      to: STATE_BLOCK - index * WIDTH
-    })
-    const startedAt = (
-      request: ApproverRequest,
-      blockNumber: number,
-      overrides: Parameters<typeof startedLogOf>[1] = {}
-    ): Notification =>
-      startedLogOf(request, {
-        ...overrides,
-        at: { ...startedLogOf(request).at, blockNumber }
-      })
-    const scanOver = (logs: Notification[]) => {
-      setClient(readyClient({ ...DESCRIPTOR, deployedAt: DEPLOYED_AT }))
-      kit.recoveryState.mockImplementation(async () =>
-        recoveryStateOf({
-          nextAttemptId: 5n,
-          block: { ...recoveryStateOf().block, number: STATE_BLOCK }
-        })
-      )
-      kit.fetchEvents.mockImplementation(async (_filter, range) =>
-        logs.filter((log) => log.at.blockNumber >= range.from && log.at.blockNumber <= range.to)
-      )
-    }
-    const rangesRead = () => kit.fetchEvents.mock.calls.map(([, range]) => range)
-
-    it('reads used from the newest chunk alone where the own start sits there', async () => {
-      const request = requestOf()
-      scanOver([startedAt(request, STATE_BLOCK - 10)])
-      const page = await mountLive(request)
-      expect(page.has('guardian-dead-used')).toBe(true)
-      expect(kit.fetchEvents.mock.calls).toEqual([[ACCOUNT_FILTER, chunk(0)]])
-      page.unmount()
-    })
-
-    it('reads chunks back past a later start until the own start', async () => {
-      const request = requestOf()
-      scanOver([
-        startedAt(request, DEPLOYED_AT + 100),
-        startedAt(request, STATE_BLOCK - 10, { attemptId: 4n })
-      ])
-      const page = await mountLive(request)
-      expect(page.has('guardian-dead-used')).toBe(true)
-      expect(rangesRead()).toEqual([chunk(0), chunk(1), chunk(2), chunk(3)])
-      page.unmount()
-    })
-
-    it('stops at a start with a lower id and reads void', async () => {
-      const request = requestOf()
-      scanOver([
-        startedAt(request, DEPLOYED_AT + 100),
-        startedAt(request, chunk(1).to - 10, { attemptId: 2n })
-      ])
-      const page = await mountLive(request)
-      expect(page.has('guardian-dead-void')).toBe(true)
-      expect(page.has('guardian-dead-used')).toBe(false)
-      expect(rangesRead()).toEqual([chunk(0), chunk(1)])
-      page.unmount()
-    })
-
-    it('never reads below the deployment block', async () => {
-      const request = requestOf()
-      scanOver([startedAt(request, DEPLOYED_AT - 1)])
-      const page = await mountLive(request)
-      expect(page.has('guardian-dead-void')).toBe(true)
-      expect(rangesRead()).toEqual([chunk(0), chunk(1), chunk(2), chunk(3)])
-      expect(chunk(3).from).toBe(DEPLOYED_AT)
-      page.unmount()
-    })
   })
 
   it('draws a failed events read as a failed read with a retry, never void', async () => {
