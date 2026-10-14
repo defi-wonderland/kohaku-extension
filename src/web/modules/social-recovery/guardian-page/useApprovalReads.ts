@@ -11,8 +11,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { LOG_CHUNK_BLOCKS } from '@web/modules/social-recovery/shared/client/kit/events'
-
 import { readApprovalFacts } from './approval-facts'
 import { APPROVAL_READ_LIMIT_MS, APPROVAL_READ_MS } from './constants'
 import type {
@@ -57,12 +55,7 @@ const useApprovalReads = ({
       return
     }
     inFlight.current = true
-    const facts = await readApprovalFacts(
-      current,
-      requestRef.current,
-      APPROVAL_READ_LIMIT_MS,
-      LOG_CHUNK_BLOCKS
-    )
+    const facts = await readApprovalFacts(current, requestRef.current, APPROVAL_READ_LIMIT_MS)
     if (id !== generation.current) {
       return
     }

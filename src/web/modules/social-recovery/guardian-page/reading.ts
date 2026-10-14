@@ -54,25 +54,14 @@ const isOwnAttempt = (request: ApproverRequest, attempt: Attempt): boolean =>
   keccak256(request.payload) === attempt.payloadHash
 
 /**
- * Whether an event is an attempt start of the request's account and action
- * whose attempt id is at or below the request's: the request's own start, or
- * one that opened before it. A backward scan of the events stops at the first
- * such start, since attempt ids only grow.
- */
-export const startedAtOrBelow = (request: ApproverRequest, log: Notification): boolean =>
-  log.kind === 'attempt-started' &&
-  isAddressEqual(log.account, request.account) &&
-  isAddressEqual(log.action, request.action) &&
-  log.attemptId <= BigInt(request.attemptId)
-
-/**
  * Whether an attempt-started event is this request's own submission: the
  * request's account and action, its attempt id, the setup nonce it was built
  * under and the hash of its handover.
  */
 export const isOwnStart = (request: ApproverRequest, log: Notification): boolean =>
-  startedAtOrBelow(request, log) &&
   log.kind === 'attempt-started' &&
+  isAddressEqual(log.account, request.account) &&
+  isAddressEqual(log.action, request.action) &&
   log.attemptId === BigInt(request.attemptId) &&
   log.setupNonce === BigInt(request.setupNonce) &&
   request.payload !== undefined &&
