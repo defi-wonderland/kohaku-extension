@@ -9,12 +9,12 @@
  * signature is made in the wallet's own sign window through the request
  * queue, for the key the request names where this wallet holds it, once the
  * wallet has selected that key's account; a locked wallet goes to its unlock
- * first and comes back here with the request. A
- * request ends for good once a read found it dead or the recovery waiting,
- * once its deadline passed, or once the guardian declined it: a later failed
- * or pending read does not open it again. Its sign request is then withdrawn
- * and an approval that arrives for it is not shown. Once the approval
- * exists, after a decline and after a death the page reads the chain no more.
+ * first and comes back here with the request. A request ends for good once a
+ * read found it dead or the recovery waiting, once its deadline passed, or
+ * once the guardian declined it: a later failed or pending read does not open
+ * it again. Its sign request is then withdrawn and an approval that arrives
+ * for it is not shown. Once the approval exists, after a decline and after a
+ * death the page reads the chain no more.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
