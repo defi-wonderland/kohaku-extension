@@ -849,9 +849,7 @@ const claimAndSend = async (store: SubmitStore, steps: SubmitSteps, run: number)
       return false
     }
     const held = read.value.submission
-    return (
-      held?.requestId === requestId && held.transactionHash === undefined
-    )
+    return held?.requestId === requestId && held.transactionHash === undefined
   }
   try {
     await steps.send(prepared, sendDispatch, run, startBlock, requestId, () => marked, canAdd)

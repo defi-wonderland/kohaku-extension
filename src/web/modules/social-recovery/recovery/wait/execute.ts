@@ -526,9 +526,7 @@ const claimAndSend = async (
     }
     const read = await within(() => steps.readCountdown(), READ_LIMIT_MS)
     const held = read?.status === 'present' ? read.value.execution : undefined
-    return (
-      held?.requestId === claim.requestId && held.transactionHash === undefined
-    )
+    return held?.requestId === claim.requestId && held.transactionHash === undefined
   }
   SENDING.add(store)
   try {

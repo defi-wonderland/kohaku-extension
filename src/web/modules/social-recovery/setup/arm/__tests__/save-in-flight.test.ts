@@ -1034,16 +1034,16 @@ describe('the void of a followed save', () => {
   })
 
   /**
-   * The owner's page claims and then holds before its send; the follower
-   * arrives meanwhile. Once `proceed` lets the owner go on, its send reaches
-   * the wallet, which queues the request and then broadcasts it.
+   * The owner's page claims and then holds where `hold` makes it hold, before
+   * its send; the follower arrives meanwhile. Once the answer `hold` returns
+   * lets the owner go on, its send reaches the wallet, which queues the
+   * request and then broadcasts it.
    */
-  const followDuringOwnersReads = async (
-    owner: WiredSave,
-    proceed: () => void,
-    requests: RequestsFake,
-    storage: MemoryStorage
-  ) => {
+  const followDuringOwnersReads = async (hold: (owner: WiredSave) => () => void) => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = wireSave(account, script(), { storage, requests })
+    const proceed = hold(owner)
     owner.port.sendAccountBatch.mockImplementation(() => pending())
     unawaited(startSave(createArmStore(), owner.steps, OPTIONS))
     await advanceTimers(0)
@@ -1079,28 +1079,26 @@ describe('the void of a followed save', () => {
   }
 
   it('waits on a claim whose page still reads its stored save and follows its hash, with one send in all', async () => {
-    const storage = memoryStorage()
-    const requests = requestsFake()
-    const owner = wireSave(account, script(), { storage, requests })
-    const answer = deferred<void>()
-    const readInFlight = owner.steps.readInFlight.bind(owner.steps)
-    jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
-      const capture = await readInFlight()
-      await answer.promise
-      return capture
+    await followDuringOwnersReads((owner) => {
+      const answer = deferred<void>()
+      const readInFlight = owner.steps.readInFlight.bind(owner.steps)
+      jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
+        const capture = await readInFlight()
+        await answer.promise
+        return capture
+      })
+      return () => answer.resolve()
     })
-    await followDuringOwnersReads(owner, () => answer.resolve(), requests, storage)
   })
 
   it('waits on a claim whose page still reads the setup after its claim and follows its hash, with one send in all', async () => {
-    const storage = memoryStorage()
-    const requests = requestsFake()
-    const owner = wireSave(account, script(), { storage, requests })
-    const setup = deferred<ReturnType<typeof setupStateOf>>()
-    owner.setupState
-      .mockResolvedValueOnce(setupStateOf(false))
-      .mockImplementationOnce(() => setup.promise)
-    await followDuringOwnersReads(owner, () => setup.resolve(setupStateOf(false)), requests, storage)
+    await followDuringOwnersReads((owner) => {
+      const setup = deferred<ReturnType<typeof setupStateOf>>()
+      owner.setupState
+        .mockResolvedValueOnce(setupStateOf(false))
+        .mockImplementationOnce(() => setup.promise)
+      return () => setup.resolve(setupStateOf(false))
+    })
   })
 })
 
