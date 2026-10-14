@@ -489,7 +489,11 @@ describe('a node that refuses code reads at past blocks for its pruned history',
       )
     ],
     ['the node error itself', providerReadFailure('code', PRUNED)],
-    ['a plain error naming the pruned history', new Error('pruned history unavailable')]
+    ['a plain error naming the pruned history', new Error('pruned history unavailable')],
+    [
+      "a geth node's missing trie node",
+      providerReadFailure('code', new Error('missing trie node 5a3c9e1f (path ) <nil>'))
+    ]
   ]
 
   const prunedWorld = (
@@ -539,6 +543,13 @@ describe('a node that refuses code reads at past blocks for its pruned history',
     ])
     await expect(reads.removedKey()).rejects.toBe(refusal)
     expect(scansOf(ACCOUNT)).toEqual(chunksFrom(DEPLOYED_AT))
+  })
+
+  it('rejects with no scan where a past-block failure says pruned in another sense', async () => {
+    const failure = providerReadFailure('code', new Error('request pruned by the gateway queue'))
+    const { reads, scans } = prunedWorld(failure)
+    await expect(reads.removedKey()).rejects.toBe(failure)
+    expect(scans()).toEqual([])
   })
 
   it('names no bound where the node answers every past block', async () => {
