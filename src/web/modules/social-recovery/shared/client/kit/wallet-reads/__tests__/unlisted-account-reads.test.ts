@@ -478,6 +478,71 @@ describe('an account with no creation record and no code', () => {
   })
 })
 
+describe('a node that refuses code reads at past blocks for its pruned history', () => {
+  const PRUNED = { code: 4444, message: 'pruned history unavailable' }
+  const refusals: [string, Error][] = [
+    [
+      'the node error ethers keeps',
+      providerReadFailure(
+        'code',
+        Object.assign(new Error('could not coalesce error'), { error: PRUNED })
+      )
+    ],
+    ['the node error itself', providerReadFailure('code', PRUNED)],
+    ['a plain error naming the pruned history', new Error('pruned history unavailable')]
+  ]
+
+  const prunedWorld = (refusal: Error, refuseHead = false) => {
+    const world = worldOf({
+      createdAt: DEPLOYED_AT - 3_000,
+      logs: [privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 10)],
+      holders: [KEY_A],
+      authorities: [KEY_A]
+    })
+    const answer = world.node.codeRead.code.getMockImplementation()
+    world.node.codeRead.code.mockImplementation(async (address, block) => {
+      if (refuseHead || (typeof block === 'number' && block < HEAD)) {
+        throw refusal
+      }
+      return answer!(address, block)
+    })
+    return world
+  }
+
+  refusals.forEach(([name, refusal]) => {
+    it(`reads the privilege writes from the manager's deployment block and names the bound, where ${name} refuses`, async () => {
+      const { reads, scansOf } = prunedWorld(refusal)
+      await expect(reads.removedKey()).resolves.toEqual({
+        ...named(KEY_A),
+        privilegeScanBoundedAt: DEPLOYED_AT
+      })
+      expect(scansOf(ACCOUNT)).toEqual(chunksFrom(DEPLOYED_AT))
+      expect(scansOf(MANAGER)).toEqual(chunksFrom(DEPLOYED_AT))
+    })
+  })
+
+  it('rejects where the node refuses the code read at the pinned block too', async () => {
+    const [[, refusal]] = refusals
+    const { reads, scans } = prunedWorld(refusal, true)
+    await expect(reads.removedKey()).rejects.toBe(refusal)
+    expect(scans()).toEqual([])
+  })
+
+  it('names no bound where the node answers every past block', async () => {
+    const createdAt = DEPLOYED_AT - 3_000
+    const { reads, scansOf } = worldOf({
+      createdAt,
+      logs: [privilegeLog(KEY_A, HOLDS, DEPLOYED_AT + 10)],
+      holders: [KEY_A],
+      authorities: [KEY_A]
+    })
+    const reading = await reads.removedKey()
+    expect(reading).toEqual(named(KEY_A))
+    expect(reading).not.toHaveProperty('privilegeScanBoundedAt')
+    expect(scansOf(ACCOUNT)).toEqual(chunksFrom(createdAt))
+  })
+})
+
 describe('a failed read of an account with no creation record', () => {
   const failure = providerReadFailure('call', new Error('timeout'))
   eachIt<[string, (world: ReturnType<typeof worldOf>) => void]>([
