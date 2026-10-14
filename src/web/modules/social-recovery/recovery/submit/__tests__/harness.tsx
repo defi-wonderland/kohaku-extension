@@ -46,7 +46,9 @@ import type {
   ProviderTransactionReceipt,
   RecoveryKitClient,
   SendPort,
-  SendRequestPort
+  SendRequestAction,
+  SendRequestPort,
+  SendRequestUpdate
 } from '@web/modules/social-recovery/shared/client'
 import type {
   RecoveryEntryRecord,
@@ -76,6 +78,10 @@ export interface MockWallet {
   keys: Key[]
   ens: string | null
   port: SendPort | null
+  /** The account the wallet has selected. */
+  selected: Address | null
+  /** The request port the screen built the send port over. */
+  requests: SendRequestPort | null
 }
 
 export const mockWallet: MockWallet = {
@@ -86,7 +92,9 @@ export const mockWallet: MockWallet = {
   accounts: [],
   keys: [],
   ens: null,
-  port: null
+  port: null,
+  selected: null,
+  requests: null
 }
 
 // The chrome's account latch is the chrome's own, tested in its folder.
@@ -113,6 +121,10 @@ jest.mock('@web/hooks/useBackgroundService', () => {
   const dispatch = () => undefined
   return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
 })
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
+  __esModule: true,
+  default: () => ({ account: mockWallet.selected ? { addr: mockWallet.selected } : null })
+}))
 jest.mock('@web/hooks/useRequestsControllerState', () => {
   const queue = { userRequests: [] }
   return { __esModule: true, default: () => queue }
@@ -129,7 +141,10 @@ jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
 }))
 jest.mock('@web/modules/social-recovery/shared/client', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client'),
-  createSendPort: () => mockWallet.port
+  createSendPort: (requests: SendRequestPort) => {
+    mockWallet.requests = requests
+    return mockWallet.port
+  }
 }))
 const mockFrame = (name: string) => {
   const R = jest.requireActual('react')
@@ -613,13 +628,36 @@ export const rawStorage = async (storage: TestStorage): Promise<string> => {
 // The run over its steps
 // ---------------------------------------------------------------------------
 
-/** A request queue that holds nothing. */
-const NO_REQUESTS: SendRequestPort = {
-  dispatch: () => undefined,
-  subscribe: () => () => undefined,
-  accounts: () => [],
-  queue: () => ({}),
-  windowId: () => undefined
+/** A request queue that holds nothing, beside a wallet with no sign screen open. */
+const noRequests = (): SendRequestPort => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  return {
+    dispatch: (action) => {
+      if (action.type === 'INIT_CONTROLLER_STATE') {
+        Promise.resolve()
+          .then(() =>
+            listeners.forEach((listener) => listener({ controller: 'signAccountOp', state: {} }))
+          )
+          .catch(() => undefined)
+      }
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [],
+    queue: () => ({}),
+    selectedAccount: () => undefined,
+    windowId: () => undefined
+  }
+}
+
+/** The key the pages of a device send from. */
+export const DEVICE_PLAN: SendingPlan = {
+  kind: 'key',
+  key: { addr: '0x00000000000000000000000000000000000b0b01', type: 'internal' }
 }
 
 /** The request id of the claim a page that went away left behind. */
@@ -644,6 +682,12 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
   >()
   const port: SendRequestPort = {
     dispatch: (action) => {
+      if (action.type === 'INIT_CONTROLLER_STATE') {
+        queueMicrotask(() =>
+          listeners.forEach((listener) => listener({ controller: 'signAccountOp', state: {} }))
+        )
+        return
+      }
       if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
         return
       }
@@ -680,14 +724,86 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
         listeners.delete(listener)
       }
     },
-    accounts: () => [],
+    // The device's key is itself a basic account the wallet lists, as its own send needs.
+    accounts: () => [
+      { addr: DEVICE_PLAN.key.addr, associatedKeys: [DEVICE_PLAN.key.addr], creation: null }
+    ],
     queue: () =>
       (queue.answer.status === 'queued'
         ? { userRequests: queue.ids.map((id) => ({ id })) }
         : {}) as ReturnType<SendRequestPort['queue']>,
+    selectedAccount: () => undefined,
     windowId: () => undefined
   }
   return { port, queue }
+}
+
+/**
+ * One wallet several pages share: it lists `listed`, selects another account
+ * until a test moves the selection, answers every activity read empty and
+ * pushes what a test hands it to every page's listeners. `realSendPort` is the
+ * client's own send port, which the screens' mock replaces.
+ */
+export const selectionWallet = (listed: Account) => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  const wallet = {
+    selected: '0x3333333333333333333333333333333333333333',
+    dispatch: jest.fn<void, [SendRequestAction]>(),
+    push: (update: SendRequestUpdate) => listeners.forEach((listener) => listener(update))
+  }
+  wallet.dispatch.mockImplementation((action) => {
+    if (action.type === 'INIT_CONTROLLER_STATE') {
+      queueMicrotask(() => wallet.push({ controller: 'signAccountOp', state: {} }))
+      return
+    }
+    if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
+      return
+    }
+    const { sessionId, pagination } = action.params as {
+      sessionId: string
+      pagination: { fromPage: number }
+    }
+    queueMicrotask(() =>
+      wallet.push({
+        controller: 'activity',
+        state: {
+          accountsOps: {
+            [sessionId]: { result: { currentPage: pagination.fromPage, items: [], maxPages: 1 } }
+          }
+        }
+      } as unknown as SendRequestUpdate)
+    )
+  })
+  const port: SendRequestPort = {
+    dispatch: wallet.dispatch,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [listed],
+    queue: () => ({}),
+    selectedAccount: () => wallet.selected,
+    windowId: () => undefined
+  }
+  const selectListed = () => {
+    wallet.selected = listed.addr
+    wallet.push({ controller: 'selectedAccount', state: { account: { addr: listed.addr } } })
+  }
+  /** The ids of the requests the pages added, in order. */
+  const adds = (): string[] =>
+    wallet.dispatch.mock.calls.flatMap(([action]) =>
+      action.type === 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
+        ? [String((action.params as { userRequest: { id: string } }).userRequest.id)]
+        : []
+    )
+  const realSendPort = (): SendPort => {
+    const { createSendPort }: typeof import('@web/modules/social-recovery/shared/client') =
+      jest.requireActual('@web/modules/social-recovery/shared/client')
+    return createSendPort(port, { chainId: CHAIN_ID })
+  }
+  return { wallet, port, selectListed, adds, realSendPort }
 }
 
 /** The submission's real steps over a kit, a port, and records on a storage. */
@@ -707,7 +823,7 @@ export const stepsOf = (input: {
     reads: input.kit.reads,
     receipts: input.kit.receipts,
     port: input.port,
-    requests: input.requests ?? NO_REQUESTS,
+    requests: input.requests ?? noRequests(),
     records: input.records,
     chainId: CHAIN_ID,
     account: input.account,
@@ -717,6 +833,35 @@ export const stepsOf = (input: {
     chosen: input.chosen,
     now: input.now ?? (() => Date.now())
   })
+
+/**
+ * The steps of a page the browser froze once its claim was written: its reads
+ * of the session hold until `thaw`.
+ */
+export const frozenAfterClaim = (steps: SubmitSteps): { steps: SubmitSteps; thaw: () => void } => {
+  let thaw: () => void = () => undefined
+  const thawed = new Promise<void>((resolve) => {
+    thaw = resolve
+  })
+  let claimed = false
+  return {
+    steps: {
+      ...steps,
+      claim: async (claim) => {
+        const answer = await steps.claim(claim)
+        claimed = true
+        return answer
+      },
+      readSession: async () => {
+        if (claimed) {
+          await thawed
+        }
+        return steps.readSession()
+      }
+    },
+    thaw: () => thaw()
+  }
+}
 
 /** Lets every pending answer settle: the fakes answer in microtasks, which run before a timer. */
 export const drain = async (rounds = 12): Promise<void> => {
@@ -753,12 +898,6 @@ export const flushTimers = async (): Promise<void> => {
 
 /** The clock every page of a device reads, in ms. */
 export const CLAIM_NOW = 1_800_000_000_000
-
-/** The key the pages of a device send from. */
-export const DEVICE_PLAN: SendingPlan = {
-  kind: 'key',
-  key: { addr: '0x00000000000000000000000000000000000b0b01', type: 'internal' }
-}
 
 /** One device: a recovery's live session on one storage, the chain's kit, and the records each page opens. */
 export interface Device {
@@ -827,15 +966,16 @@ export const claimOf = async (device: Device) => {
 }
 
 /** The plan of a smart account that sends the start as its own batch, with its key as payer. */
-export const batchPlan = async (seed: number): Promise<SendingPlan> => {
-  const smart = await keyedAccount(seed)
-  return {
-    kind: 'account-batch',
-    key: smart.key,
-    facts: factsOf(smart.account, smart.key),
-    account: getAddress(smart.account.addr)
-  }
-}
+export const batchPlanOf = (smart: { account: Account; key: KeyHandle }): SendingPlan => ({
+  kind: 'account-batch',
+  key: smart.key,
+  facts: factsOf(smart.account, smart.key),
+  account: getAddress(smart.account.addr)
+})
+
+/** The plan of a fresh smart account, one per seed, that sends the start as its own batch. */
+export const batchPlan = async (seed: number): Promise<SendingPlan> =>
+  batchPlanOf(await keyedAccount(seed))
 
 /** A decoded kit error the wallet read from a reverted start. */
 export const kitError = (name: string) => ({
@@ -1049,6 +1189,8 @@ export const openWorld = async ({
   mockWallet.facts = readyFacts(facts)
   mockWallet.ens = null
   mockWallet.port = port
+  mockWallet.selected = null
+  mockWallet.requests = null
   return {
     account,
     storage,
