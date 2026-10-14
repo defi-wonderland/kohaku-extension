@@ -39,6 +39,7 @@ import {
   t,
   typedDataFor,
   UNLOCK_ROUTE,
+  unmountPages,
   VALID_UNTIL,
   wallet
 } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
@@ -67,7 +68,10 @@ const deadlineLine = () =>
   })
 
 beforeEach(resetEdges)
-afterEach(() => jest.useRealTimers())
+afterEach(() => {
+  unmountPages()
+  jest.useRealTimers()
+})
 
 /** The page with the acknowledgment ticked. */
 const mountTicked = async (): Promise<Mounted> => {
@@ -425,6 +429,34 @@ describe('the signing step', () => {
     await advance(3 * MINUTE)
     expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     expect(page.has('guardian-dead-setup-changed')).toBe(true)
+    page.unmount()
+  })
+
+  it('reads, signs and keeps reading a later request opened where an earlier one read void', async () => {
+    const othersAttempt = { ...SUBMITTED, payloadHash: `0x${'ee'.repeat(32)}` as Hex }
+    kit.recoveryState.mockImplementation(async () =>
+      recoveryStateOf({ attempt: othersAttempt, nextAttemptId: 4n })
+    )
+    const page = await mountLive()
+    expect(page.has('guardian-dead-void')).toBe(true)
+
+    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ nextAttemptId: 4n }))
+    const later = requestOf({ attemptId: '4' })
+    await navigate(searchOf(linkOf(later)))
+    expect(page.has('guardian-dead-void')).toBe(false)
+    expect(page.has('guardian-lead')).toBe(true)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    await advance(MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(3)
+    expect(page.has('guardian-lead')).toBe(true)
+
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    await page.press('guardian-sign')
+    await finish()
+    const signature = await signatureBy(GUARDIAN_ACCOUNT, typedDataFor(later))
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
+    expect(page.textOf('guardian-signed-line')).toBe(approvalOf(signature))
     page.unmount()
   })
 

@@ -598,6 +598,15 @@ export const navigate = async (search: string) => {
   await settle()
 }
 
+// The pages still mounted, so a test that fails before its own unmount
+// leaves no timer running into the next test.
+const mountedPages = new Set<() => void>()
+
+/** Unmounts every page a test left mounted. */
+export const unmountPages = () => {
+  mountedPages.forEach((unmount) => unmount())
+}
+
 /** Mounts the approval page on the search string the router hands it. */
 export const mountPage = async (search: string): Promise<Mounted> => {
   setSearch(search)
@@ -615,11 +624,17 @@ export const mountPage = async (search: string): Promise<Mounted> => {
   })
   await settle()
 
+  const unmount = () => {
+    if (!mountedPages.delete(unmount)) {
+      return
+    }
+    act(() => root.unmount())
+    container.remove()
+  }
+  mountedPages.add(unmount)
+
   return {
-    unmount: () => {
-      act(() => root.unmount())
-      container.remove()
-    },
+    unmount,
     has: (id) => byTestId(id) !== null,
     textOf: (id) => byTestId(id)?.textContent ?? '',
     text: () => container.textContent ?? '',
@@ -661,7 +676,10 @@ const describeHarness = runningHarnessItself ? describe : () => undefined
 
 describeHarness('the approval page harness', () => {
   beforeEach(resetEdges)
-  afterEach(() => jest.useRealTimers())
+  afterEach(() => {
+    unmountPages()
+    jest.useRealTimers()
+  })
 
   it('hands the page the scripted client for the request account and reads through it', async () => {
     const page = await mountLive()
