@@ -638,6 +638,12 @@ const NO_REQUESTS: SendRequestPort = {
   windowId: () => undefined
 }
 
+/** The key the pages of a device send from. */
+export const DEVICE_PLAN: SendingPlan = {
+  kind: 'key',
+  key: { addr: '0x00000000000000000000000000000000000b0b01', type: 'internal' }
+}
+
 /** The request id of the claim a page that went away left behind. */
 export const LEFT_CLAIM = 'page-that-went'
 
@@ -866,12 +872,6 @@ export const flushTimers = async (): Promise<void> => {
 
 /** The clock every page of a device reads, in ms. */
 export const CLAIM_NOW = 1_800_000_000_000
-
-/** The key the pages of a device send from. */
-export const DEVICE_PLAN: SendingPlan = {
-  kind: 'key',
-  key: { addr: '0x00000000000000000000000000000000000b0b01', type: 'internal' }
-}
 
 /** One device: a recovery's live session on one storage, the chain's kit, and the records each page opens. */
 export interface Device {
