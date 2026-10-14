@@ -31,6 +31,8 @@ import {
   requestOf,
   resetEdges,
   searchOf,
+  selectAccount,
+  selections,
   settle,
   signatureBy,
   signRefusal,
@@ -44,6 +46,7 @@ import {
   wallet
 } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
+import { SELECT_ACCOUNT_LIMIT_MS } from '@web/modules/social-recovery/guardian-page/constants'
 
 const PAGE = 'socialRecovery.guardianPage'
 const SIGNING = `${PAGE}.signing`
@@ -494,6 +497,87 @@ describe('the signing step', () => {
     expect(kit.recoveryState).toHaveBeenCalledTimes(1)
     expect(page.has('guardian-signed')).toBe(true)
     page.unmount()
+  })
+})
+
+describe('the account the wallet signs for', () => {
+  const SELECT_GUARDIAN = {
+    type: 'MAIN_CONTROLLER_SELECT_ACCOUNT',
+    params: { accountAddr: GUARDIAN }
+  }
+
+  it("selects nothing where the key's account is already selected, and signs once", async () => {
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(selections()).toEqual([])
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it("selects the key's account where another is selected, and signs once the wallet reports it", async () => {
+    selectAccount(STRANGER_ACCOUNT.address)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    expect(selections()).toEqual([SELECT_GUARDIAN])
+    expect(wallet.signTypedData).not.toHaveBeenCalled()
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    await page.press('guardian-sign')
+    expect(selections()).toHaveLength(1)
+
+    selectAccount(GUARDIAN)
+    await finish()
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
+    expect(wallet.signTypedData.mock.calls[0][0].addr).toBe(GUARDIAN)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it('reads a selection that never lands as failed, queues no sign request, and Try again selects again', async () => {
+    selectAccount(STRANGER_ACCOUNT.address)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await advance(SELECT_ACCOUNT_LIMIT_MS - 1)
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    await advance(1)
+    await finish()
+    expect(page.text()).toContain(t(`${SIGNING}.failed`))
+    expect(page.has('guardian-sign-retry')).toBe(true)
+    expect(page.has('guardian-sign-busy')).toBe(false)
+    expect(wallet.signTypedData).not.toHaveBeenCalled()
+
+    await page.press('guardian-sign-retry')
+    expect(selections()).toEqual([SELECT_GUARDIAN, SELECT_GUARDIAN])
+    selectAccount(GUARDIAN)
+    await finish()
+    expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-signed')).toBe(true)
+    page.unmount()
+  })
+
+  it('queues no sign request for a decline during the selection, even once the selection lands', async () => {
+    selectAccount(STRANGER_ACCOUNT.address)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await page.press('guardian-decline')
+    expect(page.has('guardian-declined')).toBe(true)
+    selectAccount(GUARDIAN)
+    await advance(SELECT_ACCOUNT_LIMIT_MS)
+    await finish()
+    expect(wallet.signTypedData).not.toHaveBeenCalled()
+    expect(page.has('guardian-declined')).toBe(true)
+    page.unmount()
+  })
+
+  it('queues no sign request once the page goes away during the selection', async () => {
+    selectAccount(STRANGER_ACCOUNT.address)
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    page.unmount()
+    selectAccount(GUARDIAN)
+    await finish()
+    expect(wallet.signTypedData).not.toHaveBeenCalled()
   })
 })
 

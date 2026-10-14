@@ -3,8 +3,8 @@
  *
  * Mounts the approval page with the app's own components and the real
  * en.json. The edges are fakes: the router's search, the window's hash, the
- * wallet's networks, keystore, accounts and navigation, the request queue's
- * signer facade, the clipboard, the file save, the QR code, and the recovery
+ * wallet's networks, keystore, accounts, selected account, dispatch and
+ * navigation, the request queue's signer facade, the clipboard, the file save, the QR code, and the recovery
  * client the page builds for the request's account, whose description, chain
  * reads and approving side each test scripts. The approving side's default
  * script is the wallet method's: it hands over the request's typed data,
@@ -76,9 +76,21 @@ export interface SavedFile {
   type: string
 }
 
+/** An account the wallet lists, as the page reads it. */
+export interface ListedAccountScript {
+  addr: string
+  associatedKeys: string[]
+  creation: null
+}
+
 /** The wallet's edges the signing half reads. */
 export interface WalletScript {
   keystore: KeystoreScript
+  accounts: ListedAccountScript[]
+  /** The address the wallet's selected-account state reports. */
+  selected: string | undefined
+  selectedListeners: Set<() => void>
+  dispatch: jest.Mock<void, [{ type: string; params?: unknown }]>
   navigate: jest.Mock<void, [string, NavigateOptions?]>
   signTypedData: jest.Mock<Promise<Hex>, [KeyHandle, TypedDataToSign, SignOptions?]>
   copied: jest.Mock<Promise<boolean>, [string]>
@@ -116,6 +128,10 @@ const mockClient: {
 const mockLoading: ClientState = { status: 'loading', retry: () => {} }
 const mockWallet: WalletScript = {
   keystore: { keys: [], isUnlocked: true, hasPasswordSecret: true },
+  accounts: [],
+  selected: undefined,
+  selectedListeners: new Set(),
+  dispatch: jest.fn(),
   navigate: jest.fn(),
   signTypedData: jest.fn(),
   copied: jest.fn(),
@@ -146,10 +162,24 @@ jest.mock('@web/hooks/useKeystoreControllerState', () => ({
 }))
 jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
-  default: () => ({ accounts: [] })
+  default: () => ({ accounts: mockWallet.accounts })
+}))
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
+  __esModule: true,
+  default: () => {
+    // eslint-disable-next-line global-require
+    const addr: string | undefined = require('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockWallet.selectedListeners.add(listener)
+        return () => mockWallet.selectedListeners.delete(listener)
+      },
+      () => mockWallet.selected
+    )
+    return { account: addr ? { addr } : null }
+  }
 }))
 jest.mock('@web/hooks/useBackgroundService', () => {
-  const dispatch = () => undefined
+  const dispatch = (action: { type: string; params?: unknown }) => mockWallet.dispatch(action)
   return { __esModule: true, default: () => ({ dispatch, windowId: undefined }) }
 })
 jest.mock('@common/hooks/useNavigation', () => {
@@ -506,6 +536,20 @@ export const setClient = (state: ClientState | null) => {
 /** The accounts the page asked a client for, in order, undefined where it asked for none. */
 export const clientAccounts = () => mockClient.accounts
 
+/** The wallet's selected-account state reports another address, and the page renders it. */
+export const selectAccount = (addr: string | undefined) => {
+  act(() => {
+    mockWallet.selected = addr
+    mockWallet.selectedListeners.forEach((listener) => listener())
+  })
+}
+
+/** The account selections the page asked the wallet for, in order. */
+export const selections = () =>
+  mockWallet.dispatch.mock.calls
+    .map(([action]) => action)
+    .filter((action) => action.type === 'MAIN_CONTROLLER_SELECT_ACCOUNT')
+
 /** The search string the router hands the page. */
 export const setSearch = (search: string) => {
   mockLocation.current = { ...mockLocation.current, search }
@@ -515,7 +559,8 @@ export const setSearch = (search: string) => {
 /**
  * Puts every edge back: the page's clock at the request's creation, a live
  * request on chain, the wallet method's approving side, and an unlocked
- * wallet that holds the guardian's key.
+ * wallet that holds the guardian's key, lists it as a basic account and has
+ * it selected.
  */
 export const resetEdges = () => {
   jest.useFakeTimers('modern')
@@ -546,6 +591,9 @@ export const resetEdges = () => {
     isUnlocked: true,
     hasPasswordSecret: true
   }
+  mockWallet.accounts = [{ addr: GUARDIAN, associatedKeys: [GUARDIAN], creation: null }]
+  mockWallet.selected = GUARDIAN
+  mockWallet.dispatch.mockReset()
   mockWallet.navigate.mockReset()
   mockWallet.signTypedData.mockReset()
   mockWallet.signTypedData.mockImplementation((_key, typedData) =>
