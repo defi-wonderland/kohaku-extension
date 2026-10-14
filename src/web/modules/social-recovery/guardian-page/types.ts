@@ -27,7 +27,7 @@ export interface DescribedRequest {
 }
 
 /** The part of the recovery client the page reads the chain through. */
-export type ApprovalKitClient = Pick<RecoveryKitClient, 'recovery' | 'action' | 'descriptor'>
+export type ApprovalKitClient = Pick<RecoveryKitClient, 'recovery' | 'action'>
 
 /** One of the four values the lead shows: its label, and its text or null where it cannot be read. */
 export interface ApprovalValueLine {
@@ -53,19 +53,9 @@ export interface DeadlineView {
  * client was built, the last round's answer, or a round that failed or ran
  * past its limit.
  */
-/**
- * One round's reading of the account. `submitted` is read only where the
- * attempt counter moved past the request with no attempt of its own in the
- * slot: true where the account's attempt-started events hold the request's
- * own submission.
- */
-export interface ApprovalFacts extends PollFacts {
-  submitted?: boolean
-}
-
 export type ApprovalReads =
   | { status: 'pending' }
-  | { status: 'answered'; facts: ApprovalFacts }
+  | { status: 'answered'; facts: PollFacts }
   | { status: 'failed' }
 
 /**
@@ -109,8 +99,6 @@ export interface SignGates {
 
 export interface ApprovalReadsInput {
   client: ApprovalKitClient | null
-  /** The request the link carries, whose own submission a round may look up. */
-  request: ApproverRequest | null
   /** The link of the request the page shows: another link starts its own round. */
   link: string
   /** False once nothing is read any more, as after a decline. */

@@ -1,7 +1,6 @@
 /**
  * The page's chain reads: the account's recovery state, with the attempt and
- * the setup number, and whether the account authorizes the action, and where
- * the request would read void, whether it was submitted. One round
+ * the setup number, and whether the account authorizes the action. One round
  * runs when the client is ready or another link opens, then one every minute
  * and on a retry. Rounds never overlap. A round that throws or runs past its
  * limit reads as failed, never as the last answer; a new client or a new link
@@ -11,7 +10,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { readApprovalFacts } from './approval-facts'
+import { readPollFacts } from '@web/modules/social-recovery/recovery/checklist'
+
 import { APPROVAL_READ_LIMIT_MS, APPROVAL_READ_MS } from './constants'
 import type {
   ApprovalReads,
@@ -24,7 +24,6 @@ const PENDING: ApprovalReads = { status: 'pending' }
 
 const useApprovalReads = ({
   client,
-  request,
   link,
   enabled,
   stopped
@@ -38,8 +37,6 @@ const useApprovalReads = ({
   clientRef.current = client
   const linkRef = useRef(link)
   linkRef.current = link
-  const requestRef = useRef(request)
-  requestRef.current = request
   // Each client's and each link's rounds carry their number; a round of an
   // earlier one is dropped.
   const generation = useRef(0)
@@ -55,7 +52,7 @@ const useApprovalReads = ({
       return
     }
     inFlight.current = true
-    const facts = await readApprovalFacts(current, requestRef.current, APPROVAL_READ_LIMIT_MS)
+    const facts = await readPollFacts(current, APPROVAL_READ_LIMIT_MS)
     if (id !== generation.current) {
       return
     }

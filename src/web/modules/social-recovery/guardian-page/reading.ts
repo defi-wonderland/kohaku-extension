@@ -6,16 +6,12 @@
  */
 import { isAddressEqual, keccak256 } from 'viem'
 
-import type {
-  ApproverRequest,
-  Attempt,
-  Notification
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Attempt } from '@web/modules/social-recovery/sdk-interfaces'
 import { attemptLive } from '@web/modules/social-recovery/recovery/checklist'
+import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
 
 import type {
   ApprovalClient,
-  ApprovalFacts,
   ApprovalReading,
   ApprovalReads,
   DomainOfBuild,
@@ -54,30 +50,15 @@ const isOwnAttempt = (request: ApproverRequest, attempt: Attempt): boolean =>
   keccak256(request.payload) === attempt.payloadHash
 
 /**
- * Whether an attempt-started event is this request's own submission: the
- * request's account and action, its attempt id, the setup nonce it was built
- * under and the hash of its handover.
- */
-export const isOwnStart = (request: ApproverRequest, log: Notification): boolean =>
-  log.kind === 'attempt-started' &&
-  isAddressEqual(log.account, request.account) &&
-  isAddressEqual(log.action, request.action) &&
-  log.attemptId === BigInt(request.attemptId) &&
-  log.setupNonce === BigInt(request.setupNonce) &&
-  request.payload !== undefined &&
-  keccak256(log.payload) === keccak256(request.payload)
-
-/**
  * The reading of an answered round. A request the recoverer submitted reads
- * as waiting until its recovery ends and as used after that, never as void:
- * where its attempt left the slot, the round's `submitted` tells it apart.
+ * as waiting until its recovery ends and as used after that, never as void.
  * Otherwise the deaths in this order: expired, another attempt waiting, the
  * setup changed, the attempt counter moved past the request's id. A request
  * with none of them is live, the account authorizing the action or not.
  */
 export const readingOfFacts = (
   request: ApproverRequest,
-  facts: ApprovalFacts,
+  facts: PollFacts,
   clock: number
 ): ApprovalReading => {
   if (isOwnAttempt(request, facts.attempt)) {
@@ -92,36 +73,16 @@ export const readingOfFacts = (
   if (requestExpired(request, clock)) {
     return { kind: 'dead', death: 'expired' }
   }
-  const replaced: ApprovalReading = { kind: 'dead', death: facts.submitted ? 'used' : 'void' }
   if (attemptLive(facts.attempt)) {
-    return replaced
+    return { kind: 'dead', death: 'void' }
   }
   if (facts.setupNonce !== BigInt(request.setupNonce)) {
     return { kind: 'dead', death: 'setup-changed' }
   }
   if (facts.nextAttemptId > BigInt(request.attemptId)) {
-    return replaced
+    return { kind: 'dead', death: 'void' }
   }
   return { kind: 'live', authorized: facts.authorized }
-}
-
-/**
- * Whether a round must look up the request's own submission: the round reads
- * void, the attempt counter moved past the request's id and no attempt in
- * the slot is the request's own, so the request may have been submitted and
- * its attempt replaced since.
- */
-export const submissionInQuestion = (
-  request: ApproverRequest,
-  facts: ApprovalFacts,
-  clock: number
-): boolean => {
-  const reading = readingOfFacts(request, facts, clock)
-  return (
-    reading.kind === 'dead' &&
-    reading.death === 'void' &&
-    facts.nextAttemptId > BigInt(request.attemptId)
-  )
 }
 
 /**

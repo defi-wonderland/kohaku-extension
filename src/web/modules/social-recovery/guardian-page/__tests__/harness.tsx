@@ -27,10 +27,7 @@ import type {
   ApproverReply,
   ApproverRequest,
   Attempt,
-  BlockRange,
-  FilterSpec,
   Hex,
-  Notification,
   RecoveryState,
   ReplyFailure,
   RequestDescription,
@@ -59,8 +56,6 @@ export type ClientState = RecoveryClientState & { retry: () => void }
 export interface KitScript {
   describeRequest: jest.Mock<RequestDescription, [ApproverRequest]>
   recoveryState: jest.Mock<Promise<RecoveryState>, []>
-  /** The account's events feed, read for the request's own attempt-started event. */
-  fetchEvents: jest.Mock<Promise<Notification[]>, [FilterSpec, BlockRange]>
   isAuthorized: jest.Mock<Promise<boolean>, []>
   signingInput: jest.Mock<unknown, [ApproverRequest]>
   replyFrom: jest.Mock<Promise<ApproverReply | ReplyFailure>, [ApproverRequest, unknown, unknown]>
@@ -406,35 +401,6 @@ export const recoveryStateOf = (overrides: Partial<RecoveryState> = {}): Recover
   ...overrides
 })
 
-/** The filter the account's events feed answers for its attempts. */
-export const ACCOUNT_FILTER: FilterSpec = { addresses: [MANAGER], topics: [] }
-
-/** The attempt-started event of the request's own submission, as the events feed decodes it. */
-export const startedLogOf = (
-  request: ApproverRequest,
-  overrides: Partial<Extract<Notification, { kind: 'attempt-started' }>> = {}
-): Notification => ({
-  kind: 'attempt-started',
-  account: request.account,
-  action: request.action,
-  attemptId: BigInt(request.attemptId),
-  setupNonce: BigInt(request.setupNonce),
-  setupBody: '0x',
-  usedPlaces: [BigInt(request.place)],
-  usedMethods: [request.method],
-  payload: request.payload ?? '0x',
-  order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
-  consumableAfter: WAIT_ENDS_AT,
-  at: {
-    blockNumber: 150,
-    blockHash: `0x${'ef'.repeat(32)}`,
-    logIndex: 0,
-    transactionHash: `0x${'aa'.repeat(32)}`,
-    removed: false
-  },
-  ...overrides
-})
-
 /** The typed data the wallet method hands over for a request. */
 export const typedDataFor = (request: ApproverRequest): TypedDataToSign =>
   typedDataOf(membersOfRequest(request)) as unknown as TypedDataToSign
@@ -531,7 +497,6 @@ const walletMethod = {
 export const kit: KitScript = {
   describeRequest: jest.fn(),
   recoveryState: jest.fn(),
-  fetchEvents: jest.fn(),
   isAuthorized: jest.fn(),
   signingInput: jest.fn(),
   replyFrom: jest.fn(),
@@ -556,13 +521,7 @@ export const readyClient = (descriptor = DESCRIPTOR): ClientState =>
           kit.verify(request, place, proof)
       },
       methodFor: (slug: string) => (slug === 'ecdsa' ? walletMethod : undefined),
-      recovery: {
-        recoveryState: () => kit.recoveryState(),
-        events: {
-          accountFilter: () => ACCOUNT_FILTER,
-          fetch: (filter: FilterSpec, range: BlockRange) => kit.fetchEvents(filter, range)
-        }
-      },
+      recovery: { recoveryState: () => kit.recoveryState() },
       action: { isAuthorized: () => kit.isAuthorized() }
     },
     reads: {},
@@ -618,8 +577,6 @@ export const resetEdges = () => {
   kit.describeRequest.mockImplementation((request) => descriptionOf(request))
   kit.recoveryState.mockReset()
   kit.recoveryState.mockImplementation(async () => recoveryStateOf())
-  kit.fetchEvents.mockReset()
-  kit.fetchEvents.mockImplementation(async () => [])
   kit.isAuthorized.mockReset()
   kit.isAuthorized.mockImplementation(async () => true)
   kit.signingInput.mockReset()
