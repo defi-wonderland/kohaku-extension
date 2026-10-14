@@ -290,7 +290,7 @@ export interface SubmitSteps {
     requestId: string,
     /** Awaited before the receipt wait, so the claim holds the hash before a receipt can end the run. */
     beforeReceipt: () => Promise<void>,
-    /** Whether the run still holds its claim, asked before an add that waited for the account's selection. */
+    /** Whether the run still holds its claim, asked right before the add. */
     canAdd: AddGate
   ): Promise<void>
   waitAgain(

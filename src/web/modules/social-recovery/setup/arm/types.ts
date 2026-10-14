@@ -266,7 +266,7 @@ export interface SaveSteps {
     requestId: string,
     startBlock: number,
     onEstimation: EstimationListener,
-    /** Whether the run still holds its claim, asked before an add that waited for the account's selection. */
+    /** Whether the run still holds its claim, asked right before the add. */
     canAdd: AddGate
   ): Promise<void>
   /**

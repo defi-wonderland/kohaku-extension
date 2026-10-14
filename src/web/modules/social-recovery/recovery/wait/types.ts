@@ -280,7 +280,7 @@ export interface ExecuteSteps {
     run: number,
     startBlock: number,
     requestId: string,
-    /** Whether the run still holds its claim, asked before an add that waited for the account's selection. */
+    /** Whether the run still holds its claim, asked right before the add. */
     canAdd: AddGate
   ): Promise<void>
   /** Waits once more for the receipt of a hash the run follows. */
