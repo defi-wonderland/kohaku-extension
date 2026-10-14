@@ -25,6 +25,7 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useKeystoreControllerState from '@web/hooks/useKeystoreControllerState'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
+import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import type { Configuration, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import EntryReadFallback from '@web/modules/social-recovery/shared/chrome/EntryReadFallback'
 import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
@@ -89,6 +90,7 @@ const WaitBody = ({
   const { keys: keystoreKeys } = useKeystoreControllerState()
   const { dispatch, windowId } = useBackgroundService()
   const queue = useRequestsControllerState()
+  const { account: selectedAccount } = useSelectedAccountControllerState()
   const clientState = useRecoveryClient(account)
   const facts = useAccountFacts(entry.receivingAccount)
   const ownFacts = useAccountFacts(account)
@@ -237,12 +239,15 @@ const WaitBody = ({
   accountsRef.current = accounts
   const queueRef = useRef<HeldRequestQueue | undefined>(queue)
   queueRef.current = queue
+  const selectedRef = useRef<string | undefined>(selectedAccount?.addr)
+  selectedRef.current = selectedAccount?.addr
   const requests = useMemo(
     () =>
       sendRequestPort(
         dispatch,
         () => accountsRef.current,
         () => queueRef.current,
+        () => selectedRef.current,
         windowId
       ),
     [dispatch, windowId]
@@ -270,13 +275,28 @@ const WaitBody = ({
       reads: chainReads,
       receipts,
       port,
+      requests,
       plan,
       network,
       attempt: due,
       payload,
       now
     })
-  }, [kit, chainReads, receipts, landed, due, payload, plan, network, port, now, records, account])
+  }, [
+    kit,
+    chainReads,
+    receipts,
+    landed,
+    due,
+    payload,
+    plan,
+    network,
+    port,
+    requests,
+    now,
+    records,
+    account
+  ])
   const run = useExecuteRun(
     steps,
     `${CHAIN_ID}:${account.toLowerCase()}:${landed ? landed.attemptId.toString() : ''}`

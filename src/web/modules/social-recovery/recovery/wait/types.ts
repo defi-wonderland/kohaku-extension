@@ -10,10 +10,12 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
+  AddGate,
   ChainReads,
   ReceiptReads,
   RecoveryKitClient,
   SendPort,
+  SendRequestPort,
   TransactionKnown
 } from '@web/modules/social-recovery/shared/client'
 import type {
@@ -28,6 +30,7 @@ import type {
 import type {
   GasCheck,
   GasNetwork,
+  RequestHold,
   UnknownReading,
   WriteEvent,
   WriteMachineState
@@ -268,15 +271,17 @@ export interface ExecuteSteps {
   release(requestId: string): Promise<RunWrite>
   /** Releases the claim under `requestId` where it carries no hash or one of `hashes`. */
   releaseClaim(requestId: string, hashes: readonly Hex[]): Promise<ExecutionRelease>
-  /** How old a claim with no hash grows before the manager's events judge it, in ms. */
-  claimAgeMs: number
+  /** Where the wallet holds the request a claim was queued under. */
+  requestHold(requestId: string): Promise<RequestHold>
   /** The send under this page's claim, its receipt waited on from the claim's block. */
   send(
     prepared: PreparedCall,
     dispatch: (event: WriteEvent) => void,
     run: number,
     startBlock: number,
-    requestId: string
+    requestId: string,
+    /** Whether the run still holds its claim, asked right before the add. */
+    canAdd: AddGate
   ): Promise<void>
   /** Waits once more for the receipt of a hash the run follows. */
   waitAgain(
@@ -301,6 +306,8 @@ export interface ExecuteStepsInput {
   reads: ChainReads
   receipts: ReceiptReads
   port: SendPort
+  /** The wallet's queue and activity, read for the request of a claim with no hash. */
+  requests: SendRequestPort
   plan: SendingPlan
   network: GasNetwork
   attempt: Attempt

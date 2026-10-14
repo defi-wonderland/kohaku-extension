@@ -632,18 +632,21 @@ export interface SignerFacadeOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * The four background actions the send port dispatches: add its request and
- * withdraw it, and open and close the activity session it reads the broadcast
- * operation from.
+ * The background actions the send port dispatches: select the sending
+ * account, add its request and withdraw it, open and close the activity
+ * session it reads the broadcast operation from, and ask for the sign
+ * screen's state.
  */
 export type SendRequestAction = Extract<
   Action,
   {
     type:
+      | 'MAIN_CONTROLLER_SELECT_ACCOUNT'
       | 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
       | 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST'
       | 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS'
       | 'MAIN_CONTROLLER_ACTIVITY_RESET_ACC_OPS_FILTERS'
+      | 'INIT_CONTROLLER_STATE'
   }
 >
 
@@ -726,8 +729,14 @@ export type SignAccountOpState = Partial<
   estimation?: Partial<Pick<EstimationController, 'status' | 'availableFeeOptions' | 'error'>>
 }
 
+/** The part of the `selectedAccount` controller state the send port reads: the account the wallet selected. */
+export interface SelectedAccountState {
+  account?: Pick<Account, 'addr'> | null
+}
+
 /** One controller state the background pushed, by controller. */
 export type SendRequestUpdate =
+  | { controller: 'selectedAccount'; state: SelectedAccountState }
   | { controller: 'requests'; state: SendQueueState }
   | { controller: 'activity'; state: ActivityState }
   | { controller: 'main'; state: MainStatusState }
@@ -735,11 +744,11 @@ export type SendRequestUpdate =
 
 /**
  * How the send port reaches the background: the dispatch of
- * `useBackgroundService`, the `requests`, `activity`, `main` and
- * `signAccountOp` controller states the background pushes, the accounts the
- * wallet lists, the request queue as the wallet holds it now, and the window
- * the request opens beside. `sendRequestPort` (sender-port.ts) wires the UI's
- * own.
+ * `useBackgroundService`, the `selectedAccount`, `requests`, `activity`,
+ * `main` and `signAccountOp` controller states the background pushes, the
+ * accounts the wallet lists, the request queue and the selected account as
+ * the wallet holds them now, and the window the request opens beside.
+ * `sendRequestPort` (sender-port.ts) wires the UI's own.
  */
 export interface SendRequestPort {
   dispatch(action: SendRequestAction): void
@@ -748,6 +757,8 @@ export interface SendRequestPort {
   accounts(): readonly ListedAccount[]
   /** The `requests` controller state the wallet holds now. */
   queue(): HeldRequestQueue
+  /** The address of the account the wallet has selected now, as the wallet holds it. */
+  selectedAccount(): string | undefined
   windowId(): number | undefined
 }
 
@@ -756,16 +767,18 @@ export interface SendRequestPort {
  * queue it:
  *
  * - `queued`: the wallet's queue holds it, or holds it until an account
- *   switch, or the account's activity lists its transaction with no hash yet
- *   and not rejected;
+ *   switch, or the sign screen holds an operation that carries it, or the
+ *   account's activity lists its transaction with no hash yet and not
+ *   rejected;
  * - `broadcast`: the account's activity lists it as a transaction of the
  *   sender under `transactionHash`, whatever its status there (pending, stuck,
  *   confirmed or failed); the receipt of that hash decides;
  * - `untracked`: the wallet submitted it as an operation another party sends,
  *   which this wallet cannot follow; it may still reach the chain;
- * - `gone`: neither the queue nor the account's activity holds it, or the
- *   activity lists its transaction as rejected with no hash;
- * - `unread`: the activity did not answer in time, so nothing is known.
+ * - `gone`: neither the queue, the sign screen nor the account's activity
+ *   holds it, or the activity lists its transaction as rejected with no hash;
+ * - `unread`: the activity or the sign screen did not answer in time, so
+ *   nothing is known.
  */
 export type SendRequestState =
   | { status: 'queued' }
@@ -809,6 +822,31 @@ export interface FeeReading {
 export type EstimationListener = (reading: FeeReading) => void
 
 /**
+ * Answers whether the caller still holds the claim its request is sent under.
+ * A false answer or a throw tells the port to add nothing.
+ */
+export type AddGate = () => Promise<boolean>
+
+/** What a send takes beside the transaction or the batch. */
+export interface SendOptions {
+  /**
+   * Asked right before the port adds the request, whether the account was
+   * selected already or the port waited for its selection; a false answer or
+   * a throw ends the send as a timeout with nothing added.
+   */
+  canAdd?: AddGate
+}
+
+/** What a key's own send takes beside the transaction. */
+export interface KeySendOptions extends SendOptions {
+  /**
+   * The id the request is queued under (`newSendRequestId`), so the caller
+   * knows it before the send; the port makes one where none is given.
+   */
+  requestId?: string
+}
+
+/**
  * Sends through the request queue: one transaction from a key the wallet
  * holds, or one batch of calls a smart account the wallet lists runs. Each
  * answers the transaction hash once the wallet broadcast it, and rejects with
@@ -816,7 +854,7 @@ export type EstimationListener = (reading: FeeReading) => void
  */
 export interface SendPort {
   /** The transaction the gas check estimated, from that key. */
-  send(key: KeyHandle, transaction: GasEstimateCall): Promise<Hex>
+  send(key: KeyHandle, transaction: GasEstimateCall, options?: KeySendOptions): Promise<Hex>
   /**
    * The calls, in order, as one operation of the account. The sign screen
    * estimates it and offers the fee options; `onEstimation` hears each
@@ -831,7 +869,8 @@ export interface SendPort {
     calls: readonly PreparedCall[],
     onEstimation?: EstimationListener,
     recoveryKit?: RecoveryKitMark,
-    requestId?: string
+    requestId?: string,
+    options?: SendOptions
   ): Promise<Hex>
 }
 
@@ -847,6 +886,8 @@ export interface FollowedRequest {
   onEstimation?: EstimationListener
   /** The recovery kit's mark, for an account's batch that arms the kit. */
   recoveryKit?: RecoveryKitMark
+  /** Asked right before the add. */
+  canAdd?: AddGate
 }
 
 export interface SendPortOptions {
