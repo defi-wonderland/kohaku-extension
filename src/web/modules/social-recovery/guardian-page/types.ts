@@ -49,11 +49,6 @@ export interface DeadlineView {
 }
 
 /**
- * The chain reads as the page holds them: nothing answered yet since the
- * client was built, the last round's answer, or a round that failed or ran
- * past its limit.
- */
-/**
  * One round's reading of the account. `submitted` is read only where the
  * attempt counter moved past the request with no attempt of its own in the
  * slot: true where the account's attempt-started events hold the request's
@@ -63,6 +58,11 @@ export interface ApprovalFacts extends PollFacts {
   submitted?: boolean
 }
 
+/**
+ * The chain reads as the page holds them: nothing answered yet since the
+ * client was built, the last round's answer, or a round that failed or ran
+ * past its limit.
+ */
 export type ApprovalReads =
   | { status: 'pending' }
   | { status: 'answered'; facts: ApprovalFacts }

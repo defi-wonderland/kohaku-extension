@@ -1,7 +1,7 @@
 /** How often the open page reads the request on chain again. */
 export const APPROVAL_READ_MS = 60_000
 
-/** How long one round of reads waits for its answers before it counts as failed. */
+/** How long each read of a round waits for its answer before the round counts as failed. */
 export const APPROVAL_READ_LIMIT_MS = 15_000
 
 /** How often the deadline's time left renders again. */
