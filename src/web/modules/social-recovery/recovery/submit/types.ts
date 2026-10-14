@@ -386,8 +386,8 @@ export interface LeadBlockProps {
 export interface DetailsBlockProps {
   route: RecoveryRoute
   ready: SubmitReady
-  /** The address that sends the submission and pays its gas, once the sending key is read. */
-  sendingKey?: Address
+  /** How the submission is sent and who pays its gas, once the sending key is read. */
+  sendingPlan?: SendingPlan
   /** Called each time the expander opens, so the lock knows the payment line rendered. */
   onOpened: () => void
 }

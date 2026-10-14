@@ -31,11 +31,12 @@ import type { ChecklistRow } from '@web/modules/social-recovery/recovery/checkli
 import { renderWait } from '@web/modules/social-recovery/setup/review'
 
 import { pathLinesOf, pathRowsOf, publicationLinesOf } from './lead'
+import { sendingAddressOf } from './sendingKey'
 import type { DetailsBlockProps } from './types'
 
 const SUBMIT = 'socialRecovery.submit'
 
-const DetailsBlock = ({ route, ready, sendingKey, onOpened }: DetailsBlockProps) => {
+const DetailsBlock = ({ route, ready, sendingPlan, onOpened }: DetailsBlockProps) => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const [expanded, setExpanded] = useState(false)
@@ -100,14 +101,21 @@ const DetailsBlock = ({ route, ready, sendingKey, onOpened }: DetailsBlockProps)
         <>
           <SectionCard label={renderValueLabel('payment', t)} testID="submit-payment">
             {line(t(`${SUBMIT}.noPayment`), 'submit-no-payment')}
-            {!!sendingKey && (
+            {!!sendingPlan && (
               <>
-                {line(
-                  t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sendingKey) }),
-                  'submit-own-key-pays'
-                )}
+                {sendingPlan.kind === 'key'
+                  ? line(
+                      t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sendingPlan.key.addr) }),
+                      'submit-own-key-pays'
+                    )
+                  : line(
+                      t(`${SUBMIT}.accountPays`, {
+                        account: renderShortAddress(sendingPlan.account)
+                      }),
+                      'submit-account-pays'
+                    )}
                 <Text fontSize={14} weight="number_medium" selectable testID="submit-sending-key">
-                  {renderFullAddress(sendingKey)}
+                  {renderFullAddress(sendingAddressOf(sendingPlan))}
                 </Text>
               </>
             )}

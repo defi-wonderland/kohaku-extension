@@ -131,31 +131,33 @@ describe('the submission confirmation', () => {
       await openDetails(mounted)
       const sender = getAddress(world.receiving.addr)
       expect(mounted.textOf('submit-no-payment')).toBe(t(`${SUBMIT}.noPayment`))
-      expect(mounted.textOf('submit-own-key-pays')).toBe(
-        t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sender) })
+      expect(mounted.textOf('submit-account-pays')).toBe(
+        t(`${SUBMIT}.accountPays`, { account: renderShortAddress(sender) })
       )
+      expect(mounted.byTestId('submit-own-key-pays')).toBeNull()
       expect(mounted.textOf('submit-sending-key')).toBe(sender)
       expect(mounted.textOf('submit-payment')).not.toContain(getAddress(world.sendingKey))
     })
 
-    it('names the key that sends where a key sends the start as its own transaction', async () => {
-      const routes = ['fresh-install', 'logged-in'] as const
-      for (let at = 0; at < routes.length; at += 1) {
-        const route = routes[at]
-        // eslint-disable-next-line no-await-in-loop
-        const world = await openWorld({ route, receiving: 'basic' })
-        // eslint-disable-next-line no-await-in-loop
-        const mounted = await open(world)
-        // eslint-disable-next-line no-await-in-loop
-        await openDetails(mounted)
-        const sender = getAddress(world.sendingKey)
-        expect(mounted.textOf('submit-own-key-pays')).toBe(
-          t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sender) })
-        )
-        expect(mounted.textOf('submit-sending-key')).toBe(sender)
-        mounted.unmount()
-        view = undefined
-      }
+    /** The payment block names the key that sends the start as its own transaction. */
+    const namesTheSendingKey = async (route: 'fresh-install' | 'logged-in') => {
+      const world = await openWorld({ route, receiving: 'basic' })
+      const mounted = await open(world)
+      await openDetails(mounted)
+      const sender = getAddress(world.sendingKey)
+      expect(mounted.textOf('submit-own-key-pays')).toBe(
+        t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sender) })
+      )
+      expect(mounted.byTestId('submit-account-pays')).toBeNull()
+      expect(mounted.textOf('submit-sending-key')).toBe(sender)
+    }
+
+    it('names the key that sends its own transaction on the fresh install', async () => {
+      await namesTheSendingKey('fresh-install')
+    })
+
+    it('names the key that sends its own transaction on the logged-in route', async () => {
+      await namesTheSendingKey('logged-in')
     })
 
     it('names no sender where the wallet holds no key that can send', async () => {
@@ -165,6 +167,7 @@ describe('the submission confirmation', () => {
       await openDetails(mounted)
       expect(mounted.byTestId('submit-no-payment')).not.toBeNull()
       expect(mounted.byTestId('submit-own-key-pays')).toBeNull()
+      expect(mounted.byTestId('submit-account-pays')).toBeNull()
       expect(mounted.byTestId('submit-sending-key')).toBeNull()
     })
 
