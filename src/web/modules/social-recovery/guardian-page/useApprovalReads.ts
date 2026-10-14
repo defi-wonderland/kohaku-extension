@@ -12,7 +12,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { readPollFacts } from '@web/modules/social-recovery/recovery/checklist'
 
 import { APPROVAL_READ_LIMIT_MS, APPROVAL_READ_MS } from './constants'
-import type { ApprovalReads, ApprovalReadsHook, ApprovalReadsInput } from './types'
+import type {
+  ApprovalReads,
+  ApprovalReadsHook,
+  ApprovalReadsInput,
+  LinkedApprovalReads
+} from './types'
 
 const PENDING: ApprovalReads = { status: 'pending' }
 
@@ -22,9 +27,13 @@ const useApprovalReads = ({
   enabled,
   stopped
 }: ApprovalReadsInput): ApprovalReadsHook => {
-  const [reads, setReads] = useState<ApprovalReads>(PENDING)
+  // Reads answered for another link read as pending, from the first render
+  // of the new link on.
+  const [linked, setLinked] = useState<LinkedApprovalReads>({ link, reads: PENDING })
   const clientRef = useRef(client)
   clientRef.current = client
+  const linkRef = useRef(link)
+  linkRef.current = link
   // Each client's and each link's rounds carry their number; a round of an
   // earlier one is dropped.
   const generation = useRef(0)
@@ -34,6 +43,7 @@ const useApprovalReads = ({
 
   const run = useCallback(async () => {
     const current = clientRef.current
+    const forLink = linkRef.current
     const id = generation.current
     if (!current || inFlight.current) {
       return
@@ -44,14 +54,17 @@ const useApprovalReads = ({
       return
     }
     inFlight.current = false
-    setReads(facts ? { status: 'answered', facts } : { status: 'failed' })
+    setLinked({
+      link: forLink,
+      reads: facts ? { status: 'answered', facts } : { status: 'failed' }
+    })
   }, [])
 
   const active = enabled ? client : null
   useEffect(() => {
     generation.current += 1
     inFlight.current = false
-    setReads(PENDING)
+    setLinked({ link, reads: PENDING })
     if (!active) {
       return undefined
     }
@@ -61,17 +74,9 @@ const useApprovalReads = ({
     }
   }, [active, link, run])
 
-  // Rounds start again at once where a final answer stopped them, as for
-  // another request opened in the same tab.
-  const resumed = useRef(false)
   useEffect(() => {
     if (!active || stopped) {
-      resumed.current = !!active && stopped
       return undefined
-    }
-    if (resumed.current) {
-      resumed.current = false
-      run().catch(() => undefined)
     }
     const timer = setInterval(() => {
       run().catch(() => undefined)
@@ -84,11 +89,11 @@ const useApprovalReads = ({
     if (!clientRef.current || inFlight.current || stoppedRef.current) {
       return
     }
-    setReads((last) => (last.status === 'failed' ? PENDING : last))
+    setLinked((last) => (last.reads.status === 'failed' ? { ...last, reads: PENDING } : last))
     run().catch(() => undefined)
   }, [run])
 
-  return { reads, retry }
+  return { reads: linked.link === link ? linked.reads : PENDING, retry }
 }
 
 export default useApprovalReads

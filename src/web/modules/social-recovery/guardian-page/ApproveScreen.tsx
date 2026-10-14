@@ -164,7 +164,7 @@ const ApproveScreen = () => {
     if (requestEnded) {
       withdraw()
     }
-  }, [requestEnded, withdraw])
+  }, [requestEnded, request, withdraw])
   const dead = reading?.kind === 'dead'
   useEffect(() => {
     if (dead) {

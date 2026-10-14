@@ -105,6 +105,12 @@ export interface ApprovalReadsInput {
   stopped: boolean
 }
 
+/** The reads with the link of the request they belong to. */
+export interface LinkedApprovalReads {
+  link: string
+  reads: ApprovalReads
+}
+
 export interface ApprovalReadsHook {
   reads: ApprovalReads
   retry: () => void
