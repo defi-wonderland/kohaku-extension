@@ -639,15 +639,16 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           reject(refusal(reason))
         }
       }
-      // A refusal waits while the wallet signs or broadcasts, and while the
-      // queue or the sign screen still holds a request the port withdrew, and
-      // then for a full settle period after all of them stopped.
+      // A refusal of a request the port added waits while the wallet signs or
+      // broadcasts, and while the queue or the sign screen still holds a
+      // request the port withdrew, and then for a full settle period after all
+      // of them stopped. A request never added cannot be what the wallet signs.
       const armSettle = () => {
         if (settleTimer !== undefined) {
           clearTimeout(settleTimer)
         }
         settleTimer = undefined
-        if (settling === undefined || busy || !settling.confirmed) {
+        if (settling === undefined || (busy && added) || !settling.confirmed) {
           return
         }
         const { reason } = settling

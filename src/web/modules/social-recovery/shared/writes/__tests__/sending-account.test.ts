@@ -11,6 +11,7 @@ import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   type AddGate,
   createSendPort,
+  DEFAULT_SEND_TIMEOUT_MS,
   type ListedAccount,
   SEND_SETTLE_MS,
   type SendRequestAction,
@@ -216,6 +217,38 @@ SENDS.forEach(({ title, account, other, drive }) =>
     })
   })
 )
+
+describe('a selection that never lands while the wallet signs another operation', () => {
+  it('reads a timeout at its limit and the settle period, with nothing added and nothing removed', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const machine = drivenMachine(submittingFor('save'))
+    const done = driveAccountBatch({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      port: sender,
+      account: ACCOUNT,
+      calls: SAVE.calls,
+      requestId: REQUEST_ID
+    })
+    await advanceTimersAsync(0)
+    wallet.push({
+      controller: 'main',
+      state: { statuses: { signAndBroadcastAccountOp: 'SIGNING' } }
+    })
+
+    await advanceTimersAsync(DEFAULT_SEND_TIMEOUT_MS + SEND_SETTLE_MS + 1)
+    await done
+    expect(machine.events).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ reason: 'timeout' })
+      })
+    ])
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
+  })
+})
 
 describe('the gate of an add that waited for the selection', () => {
   const driveGated = (sender: ReturnType<typeof walletWith>['sender'], canAdd: AddGate) => {
