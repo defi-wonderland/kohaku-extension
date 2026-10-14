@@ -342,6 +342,28 @@ describe('the claim of the execution', () => {
     expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
   })
 
+  it('lets the send add its request while the countdown holds its claim, and never once another page released it', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    holdSend(world)
+    const view = await mount(mountWait(world.account))
+    await view.press('wait-execute')
+    const claim = await executionOf(world.records, world.account)
+    if (!claim) {
+      throw new Error('no claim')
+    }
+    const [, , options] = world.port.send.mock.calls[0]
+    expect(await options.canAdd()).toBe(true)
+
+    const countdown = world.records.countdown(CHAIN_ID, world.account)
+    const read = await countdown.read()
+    await countdown.releaseExecution(
+      claim.requestId,
+      read.status === 'present' ? read.revision : null
+    )
+    expect(await options.canAdd()).toBe(false)
+  })
+
   it('writes the claim back with its hash where another page released it while the wallet held the send', async () => {
     const world = await openWorld()
     elapse(world.kit)

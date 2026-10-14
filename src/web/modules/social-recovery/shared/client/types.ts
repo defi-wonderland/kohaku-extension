@@ -818,6 +818,22 @@ export interface FeeReading {
 export type EstimationListener = (reading: FeeReading) => void
 
 /**
+ * Answers whether the caller still holds the claim its request is sent under.
+ * A false answer or a throw tells the port to add nothing.
+ */
+export type AddGate = () => Promise<boolean>
+
+/** What a send takes beside the transaction or the batch. */
+export interface SendOptions {
+  /**
+   * Asked right before the port adds a request that waited for its account's
+   * selection; a false answer or a throw ends the send as a timeout with
+   * nothing added. An add with no wait is not asked.
+   */
+  canAdd?: AddGate
+}
+
+/**
  * Sends through the request queue: one transaction from a key the wallet
  * holds, or one batch of calls a smart account the wallet lists runs. Each
  * answers the transaction hash once the wallet broadcast it, and rejects with
@@ -825,7 +841,7 @@ export type EstimationListener = (reading: FeeReading) => void
  */
 export interface SendPort {
   /** The transaction the gas check estimated, from that key. */
-  send(key: KeyHandle, transaction: GasEstimateCall): Promise<Hex>
+  send(key: KeyHandle, transaction: GasEstimateCall, options?: SendOptions): Promise<Hex>
   /**
    * The calls, in order, as one operation of the account. The sign screen
    * estimates it and offers the fee options; `onEstimation` hears each
@@ -840,7 +856,8 @@ export interface SendPort {
     calls: readonly PreparedCall[],
     onEstimation?: EstimationListener,
     recoveryKit?: RecoveryKitMark,
-    requestId?: string
+    requestId?: string,
+    options?: SendOptions
   ): Promise<Hex>
 }
 
@@ -856,6 +873,8 @@ export interface FollowedRequest {
   onEstimation?: EstimationListener
   /** The recovery kit's mark, for an account's batch that arms the kit. */
   recoveryKit?: RecoveryKitMark
+  /** Asked before an add that waited for the account's selection. */
+  canAdd?: AddGate
 }
 
 export interface SendPortOptions {

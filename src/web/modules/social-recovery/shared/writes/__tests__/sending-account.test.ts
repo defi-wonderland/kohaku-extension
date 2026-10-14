@@ -9,8 +9,10 @@
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import {
+  type AddGate,
   createSendPort,
   type ListedAccount,
+  SEND_SETTLE_MS,
   type SendRequestAction,
   type SendRequestPort,
   type SendRequestUpdate
@@ -214,3 +216,85 @@ SENDS.forEach(({ title, account, other, drive }) =>
     })
   })
 )
+
+describe('the gate of an add that waited for the selection', () => {
+  const driveGated = (sender: ReturnType<typeof walletWith>['sender'], canAdd: AddGate) => {
+    const machine = drivenMachine(submittingFor('save'))
+    const done = driveAccountBatch({
+      dispatch: machine.dispatch,
+      run: machine.state().run,
+      receipts: fakeReceiptWait({ value: providerReceipt(TX_HASH, 1) }),
+      port: sender,
+      account: ACCOUNT,
+      calls: SAVE.calls,
+      requestId: REQUEST_ID,
+      canAdd
+    })
+    return { machine, done }
+  }
+
+  it('is not asked where the wallet selected the sending account already', async () => {
+    const { wallet, sender } = walletWith(SMART_ACCOUNT.addr)
+    const canAdd = jest.fn(async () => false)
+    const { done } = driveGated(sender, canAdd)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
+    expect(canAdd).not.toHaveBeenCalled()
+    broadcast(wallet, REQUEST_ID)
+    await done
+  })
+
+  it('adds nothing and reads a timeout where it answers that the claim is gone', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const canAdd = jest.fn(async () => false)
+    const { machine, done } = driveGated(sender, canAdd)
+    await advanceTimersAsync(0)
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(canAdd).toHaveBeenCalledTimes(1)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+    await advanceTimersAsync(SEND_SETTLE_MS + 1)
+    await done
+    expect(machine.events).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ reason: 'timeout' })
+      })
+    ])
+    expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
+    wallet.select(SMART_ACCOUNT.addr)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+  })
+
+  it('adds nothing where it throws', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const { machine, done } = driveGated(sender, async () => {
+      throw new Error('The storage did not answer.')
+    })
+    await advanceTimersAsync(0)
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(SEND_SETTLE_MS + 1)
+    await done
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    expect(machine.events.map((event) => event.type)).toEqual(['error'])
+  })
+
+  it('adds the request once where it answers that the claim still holds', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const canAdd = jest.fn(async () => true)
+    const { machine, done } = driveGated(sender, canAdd)
+    await advanceTimersAsync(0)
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
+    expect(canAdd).toHaveBeenCalledTimes(1)
+
+    broadcast(wallet, REQUEST_ID)
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+  })
+})

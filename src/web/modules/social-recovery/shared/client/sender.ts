@@ -110,6 +110,7 @@ import type {
   QueueLists,
   RecoveryKitMark,
   SendPort,
+  SendOptions,
   SendPortOptions,
   SendRefusal,
   SendRefusalReason,
@@ -713,6 +714,29 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         armSettle()
       }
 
+      // While the port waited for the account's selection, another page may
+      // have released the caller's claim and sent again, so the caller is
+      // asked first. A page that sends between the caller's read and this add
+      // still meets this request in the queue, and both are withdrawn.
+      const addWhereHeld = () => {
+        const { canAdd } = request
+        if (!canAdd) {
+          add()
+          return
+        }
+        const answer = (holds: boolean) => {
+          if (done || settling !== undefined) {
+            return
+          }
+          if (holds) {
+            add()
+          } else {
+            settle('timeout', false)
+          }
+        }
+        canAdd().then(answer, () => answer(false))
+      }
+
       // The queue withdraws a request only from its own list, never one that
       // waits for an account switch, so the timeout waits until the queue
       // takes it in or drops it. A withdrawal cannot stop a signature either,
@@ -734,7 +758,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         }
         if (update.controller === 'selectedAccount') {
           if (selecting && settling === undefined && isSelected(update.state.account?.addr)) {
-            add()
+            selecting = false
+            addWhereHeld()
           }
           return
         }
@@ -899,7 +924,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
   }
 
   return Object.freeze({
-    send(key: KeyHandle, transaction: GasEstimateCall): Promise<Hex> {
+    send(key: KeyHandle, transaction: GasEstimateCall, sendOptions?: SendOptions): Promise<Hex> {
       if (!sameAddress(transaction.from, key.addr)) {
         return Promise.reject(
           new TypeError(
@@ -918,7 +943,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         account: listed.addr as Address,
         calls: [{ to: transaction.to, value: transaction.value ?? 0n, data: transaction.data }],
         keyType: key.type,
-        refusal: (reason) => sendRefusal(reason, key)
+        refusal: (reason) => sendRefusal(reason, key),
+        canAdd: sendOptions?.canAdd
       })
     },
 
@@ -927,7 +953,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       calls: readonly PreparedCall[],
       onEstimation?: EstimationListener,
       recoveryKit?: RecoveryKitMark,
-      requestId?: string
+      requestId?: string,
+      sendOptions?: SendOptions
     ): Promise<Hex> {
       const listed = port.accounts().find((candidate) => sameAddress(candidate.addr, account))
       if (!listed) {
@@ -944,7 +971,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         calls: calls.map((call) => ({ to: call.target, value: call.value, data: call.data })),
         refusal: (reason) => accountBatchRefusal(reason, account),
         onEstimation,
-        recoveryKit
+        recoveryKit,
+        canAdd: sendOptions?.canAdd
       })
     }
   })

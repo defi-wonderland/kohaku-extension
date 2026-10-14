@@ -46,7 +46,9 @@ import type {
   ProviderTransactionReceipt,
   RecoveryKitClient,
   SendPort,
-  SendRequestPort
+  SendRequestAction,
+  SendRequestPort,
+  SendRequestUpdate
 } from '@web/modules/social-recovery/shared/client'
 import type {
   RecoveryEntryRecord,
@@ -705,6 +707,70 @@ export const requestQueue = (initial: QueueAnswer, ids: string[] = [LEFT_CLAIM])
   return { port, queue }
 }
 
+/**
+ * One wallet several pages share: it lists `listed`, selects another account
+ * until a test moves the selection, answers every activity read empty and
+ * pushes what a test hands it to every page's listeners. `realSendPort` is the
+ * client's own send port, which the screens' mock replaces.
+ */
+export const selectionWallet = (listed: Account) => {
+  const listeners = new Set<(update: SendRequestUpdate) => void>()
+  const wallet = {
+    selected: '0x3333333333333333333333333333333333333333',
+    dispatch: jest.fn<void, [SendRequestAction]>(),
+    push: (update: SendRequestUpdate) => listeners.forEach((listener) => listener(update))
+  }
+  wallet.dispatch.mockImplementation((action) => {
+    if (action.type !== 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS') {
+      return
+    }
+    const { sessionId, pagination } = action.params as {
+      sessionId: string
+      pagination: { fromPage: number }
+    }
+    queueMicrotask(() =>
+      wallet.push({
+        controller: 'activity',
+        state: {
+          accountsOps: {
+            [sessionId]: { result: { currentPage: pagination.fromPage, items: [], maxPages: 1 } }
+          }
+        }
+      } as unknown as SendRequestUpdate)
+    )
+  })
+  const port: SendRequestPort = {
+    dispatch: wallet.dispatch,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    accounts: () => [listed],
+    queue: () => ({}),
+    selectedAccount: () => wallet.selected,
+    windowId: () => undefined
+  }
+  const selectListed = () => {
+    wallet.selected = listed.addr
+    wallet.push({ controller: 'selectedAccount', state: { account: { addr: listed.addr } } })
+  }
+  /** The ids of the requests the pages added, in order. */
+  const adds = (): string[] =>
+    wallet.dispatch.mock.calls.flatMap(([action]) =>
+      action.type === 'REQUESTS_CONTROLLER_ADD_USER_REQUEST'
+        ? [String((action.params as { userRequest: { id: string } }).userRequest.id)]
+        : []
+    )
+  const realSendPort = (): SendPort => {
+    const { createSendPort }: typeof import('@web/modules/social-recovery/shared/client') =
+      jest.requireActual('@web/modules/social-recovery/shared/client')
+    return createSendPort(port, { chainId: CHAIN_ID })
+  }
+  return { wallet, port, selectListed, adds, realSendPort }
+}
+
 /** The submission's real steps over a kit, a port, and records on a storage. */
 export const stepsOf = (input: {
   kit: Kit
@@ -842,15 +908,16 @@ export const claimOf = async (device: Device) => {
 }
 
 /** The plan of a smart account that sends the start as its own batch, with its key as payer. */
-export const batchPlan = async (seed: number): Promise<SendingPlan> => {
-  const smart = await keyedAccount(seed)
-  return {
-    kind: 'account-batch',
-    key: smart.key,
-    facts: factsOf(smart.account, smart.key),
-    account: getAddress(smart.account.addr)
-  }
-}
+export const batchPlanOf = (smart: { account: Account; key: KeyHandle }): SendingPlan => ({
+  kind: 'account-batch',
+  key: smart.key,
+  facts: factsOf(smart.account, smart.key),
+  account: getAddress(smart.account.addr)
+})
+
+/** The plan of a fresh smart account, one per seed, that sends the start as its own batch. */
+export const batchPlan = async (seed: number): Promise<SendingPlan> =>
+  batchPlanOf(await keyedAccount(seed))
 
 /** A decoded kit error the wallet read from a reverted start. */
 export const kitError = (name: string) => ({

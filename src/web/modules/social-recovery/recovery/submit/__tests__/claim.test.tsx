@@ -13,26 +13,39 @@ import type { SubmitStore } from '@web/modules/social-recovery/recovery/submit'
 import {
   advanceTimers,
   attemptOf,
+  batchPlanOf,
+  claimOf,
   attemptStarted,
   CLAIM_NOW as NOW,
   flushTimers as flush,
+  keyedAccount,
   landedReceipt,
   landedSession,
   leaveClaim,
   NO_ATTEMPT,
   openDevice,
   pageOn,
+  pageOf,
   recoveryStateOf,
   RIVAL_PAYLOAD,
+  selectionWallet,
   sessionOf,
   START_BLOCK,
   stepsOf,
   submit,
   TX_HASH
 } from '@web/modules/social-recovery/recovery/submit/__tests__/harness'
+import { SEND_SETTLE_MS } from '@web/modules/social-recovery/shared/client'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
-const { FOLLOW_REREAD_MS, KEY_SEND_CLAIM_AGE_MS, isLanded, lookForClaim, startSubmission } = submit
+const {
+  FOLLOW_REREAD_MS,
+  KEY_SEND_CLAIM_AGE_MS,
+  SUBMISSION_CLAIM_AGE_MS,
+  isLanded,
+  lookForClaim,
+  startSubmission
+} = submit
 
 describe('the claim of the submission', () => {
   const pages: { store: SubmitStore; steps: ReturnType<typeof stepsOf> }[] = []
@@ -202,5 +215,69 @@ describe('the claim of the submission', () => {
     const stored = await sessionOf(device.records(), device.account)
     expect(stored?.state).toBe('live')
     expect(stored?.state === 'live' && stored.submission).toBeFalsy()
+  })
+  it('adds nothing for a claim another page released while the wallet selected the account, and adds that page’s start once', async () => {
+    jest.setSystemTime(NOW)
+    const device = await openDevice()
+    const smart = await keyedAccount(901)
+    const plan = batchPlanOf(smart)
+    const shared = selectionWallet(smart.account)
+    const base = {
+      kit: device.kit,
+      account: device.account,
+      gathering: device.gathering,
+      plan,
+      chosen: new Set([0, 1, 2, 3]),
+      requests: shared.port,
+      now: () => Date.now()
+    }
+    const firstSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    // The claim's write answers one second late, so the port's time limit ends after the claim's age.
+    const steps = {
+      ...firstSteps,
+      claim: async (claim: Parameters<typeof firstSteps.claim>[0]) => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1000)
+        })
+        return firstSteps.claim(claim)
+      }
+    }
+    const first = track({ store: pageOf(steps), steps })
+    startSubmission(first.store, steps).catch(() => undefined)
+    await flush()
+    await advanceTimers(1000)
+    await flush()
+    const firstId = first.store.state().requestId
+    expect((await claimOf(device))?.requestId).toBe(firstId)
+    expect(shared.adds()).toEqual([])
+
+    await advanceTimers(4200)
+    await flush()
+    const secondSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const second = track({ store: pageOf(secondSteps), steps: secondSteps })
+    lookForClaim(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    expect(second.store.state().follow?.requestId).toBe(firstId)
+
+    await advanceTimers(SUBMISSION_CLAIM_AGE_MS - 5200 + 300)
+    await flush()
+    expect(await claimOf(device)).toBeNull()
+    expect(second.store.state().write.status).toBe('idle')
+
+    startSubmission(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    const secondId = second.store.state().requestId
+    expect(secondId).not.toBe(firstId)
+
+    shared.selectListed()
+    await flush()
+    expect(shared.adds()).toEqual([secondId])
+    await advanceTimers(SEND_SETTLE_MS + 1)
+    await flush()
+    expect(first.store.state().write).toMatchObject({
+      status: 'failedNotSent',
+      error: { reason: 'timeout' }
+    })
+    expect(shared.adds()).toEqual([secondId])
   })
 })

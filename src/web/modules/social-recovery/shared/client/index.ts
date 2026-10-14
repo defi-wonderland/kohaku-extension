@@ -173,6 +173,8 @@ export type {
   FeeOption,
   FeeReading,
   EstimationListener,
+  AddGate,
+  SendOptions,
   SendPortOptions,
   SendRefusal,
   SendRefusalReason,
