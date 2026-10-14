@@ -1050,11 +1050,9 @@ describe('save again', () => {
       ? pages
       : [pages[1], pages[0]]
     expect(isSaved(sender.store.state())).toBe(true)
-    // The other page lost the claim to one whose request the wallet did not hold yet:
-    // it reads it as not sent, sends nothing and offers Save.
-    expect(other.store.state().requestId).toBeUndefined()
-    expect(other.store.state().write.status).toBe('idle')
-    expect(other.store.state().lookup).toBe('none')
+    // The other page lost the claim to one under its send limit: it waits on it and sends nothing.
+    expect(other.store.state().requestId).toBe(sentRequest)
+    expect(other.store.state().write.status).toBe('submitting')
     expect(other.wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 

@@ -799,6 +799,35 @@ export const stepsOf = (input: {
     now: input.now ?? (() => Date.now())
   })
 
+/**
+ * The steps of a page the browser froze once its claim was written: its reads
+ * of the session hold until `thaw`.
+ */
+export const frozenAfterClaim = (steps: SubmitSteps): { steps: SubmitSteps; thaw: () => void } => {
+  let thaw: () => void = () => undefined
+  const thawed = new Promise<void>((resolve) => {
+    thaw = resolve
+  })
+  let claimed = false
+  return {
+    steps: {
+      ...steps,
+      claim: async (claim) => {
+        const answer = await steps.claim(claim)
+        claimed = true
+        return answer
+      },
+      readSession: async () => {
+        if (claimed) {
+          await thawed
+        }
+        return steps.readSession()
+      }
+    },
+    thaw: () => thaw()
+  }
+}
+
 /** Lets every pending answer settle: the fakes answer in microtasks, which run before a timer. */
 export const drain = async (rounds = 12): Promise<void> => {
   for (let round = 0; round < rounds; round += 1) {

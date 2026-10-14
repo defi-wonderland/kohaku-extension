@@ -174,6 +174,7 @@ export type {
   FeeReading,
   EstimationListener,
   AddGate,
+  KeySendOptions,
   SendOptions,
   SendPortOptions,
   SendRefusal,

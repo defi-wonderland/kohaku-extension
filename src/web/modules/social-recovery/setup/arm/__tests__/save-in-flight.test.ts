@@ -103,7 +103,8 @@ const offersSave = (store: ArmStore) => {
 /**
  * The first page: it claims and sends, then goes away, before the wallet
  * answered the hash or after the hash was written. Its run is never driven
- * again. Answers the record it left.
+ * again, and the clock moves past the claim's send limit, so the page could
+ * no longer send under it. Answers the record it left.
  */
 const firstPageLeaves = async (
   storage: MemoryStorage,
@@ -122,6 +123,7 @@ const firstPageLeaves = async (
   expect(record).toBeDefined()
   expect(record?.transactionHash).toBe(withHash ? TX_HASH : undefined)
   expect(first.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  jest.setSystemTime(Date.now() + CLAIM_SEND_LIMIT_MS)
   return { first, record: record! }
 }
 
@@ -223,7 +225,7 @@ describe('the claim before the send', () => {
     expect(isSaved(store.state())).toBe(true)
   })
 
-  it('sends once where two pages press Save together over one storage: the first reaches saved, and the other reads the claim, whose request the wallet does not hold yet, as not sent and offers Save', async () => {
+  it('sends once where two pages press Save together over one storage: the first reaches saved, and the other waits on the claim and follows its hash to saved', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const one = wireSave(account, script(), { storage, requests })
@@ -234,12 +236,21 @@ describe('the claim before the send', () => {
       startSave(stores[1], two.steps, OPTIONS)
     ]
     await advanceTimers(SHORT_TIMEOUT_MS)
-    await Promise.all(runs)
+    await runs[0]
 
     expect(one.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(two.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(isSaved(stores[0].state())).toBe(true)
-    expect(offersSave(stores[1])).toBe(true)
+    const sent = one.port.sendAccountBatch.mock.calls[0][4]
+    expect(stores[1].state().requestId).toBe(sent)
+    expect(stores[1].state().write.status).toBe('submitting')
+    expect(offersSave(stores[1])).toBe(false)
+
+    requests.activity = [operationFor(sent, { hash: TX_HASH })]
+    await advanceTimers(FOLLOW_REREAD_MS)
+    await runs[1]
+    expect(isSaved(stores[1].state())).toBe(true)
+    expect(two.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(two.prepareCommitSetup).toHaveBeenCalledTimes(1)
   })
 
@@ -889,10 +900,10 @@ describe('the read of the stored save after a void', () => {
         seen.push('read')
         return page.steps.readInFlight()
       },
-      release: async (requestId) => {
+      releaseUnsent: async (requestId) => {
         const { write, lookup, requestId: claim } = store.state()
         seen.push(`release while ${write.status}, lookup ${lookup}, claim ${claim}`)
-        await page.steps.release(requestId)
+        await page.steps.releaseUnsent(requestId)
         // Another page claims under a new id between the release and the next read.
         requests.queued = ['claimed meanwhile']
         await other.steps.claim(
@@ -946,16 +957,15 @@ describe('the read of the stored save after a void', () => {
 })
 
 describe('the void of a followed save', () => {
-  it('releases at once a request the wallet does not hold, whatever time the claim holds', async () => {
+  it('releases at once a request the wallet does not hold where the claim is past its send limit', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = screenOver(storage, requests)
-    // A claim whose time reads later than this page's first gone reading.
     await owner.inFlight.claim({
       draft: owner.draft,
       prepared: owner.prepared,
-      requestId: 'later claim',
-      claimedAt: Date.now() + FAR_MS
+      requestId: 'old claim',
+      claimedAt: Date.now() - CLAIM_SEND_LIMIT_MS
     })
     const page = secondPage(storage, requests)
 
@@ -967,11 +977,111 @@ describe('the void of a followed save', () => {
     expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('keeps the claim where a slow setup read answers none after a gone reading taken before the request was queued, and follows the queued request', async () => {
+  it('reads a request the wallet does not hold as in flight while the claim is under its send limit, and releases it once the limit passes', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = screenOver(storage, requests)
+    await owner.inFlight.claim({
+      draft: owner.draft,
+      prepared: owner.prepared,
+      requestId: 'young claim',
+      claimedAt: Date.now()
+    })
+    const page = secondPage(storage, requests)
+
+    unawaited(page.arrive())
+    await advanceTimers(0)
+    expect(page.store.state().requestId).toBe('young claim')
+    expect(page.store.state().follow).toBe('queued')
+    expect(offersSave(page.store)).toBe(false)
+    expect(page.wired.setupState).not.toHaveBeenCalled()
+
+    await advanceTimers(CLAIM_SEND_LIMIT_MS - 1)
+    expect(offersSave(page.store)).toBe(false)
+    expect((await stored(page.wired))?.requestId).toBe('young claim')
+
+    await advanceTimers(1)
+    expect(offersSave(page.store)).toBe(true)
+    expect(await stored(page.wired)).toBeUndefined()
+    expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('keeps a stored save that holds a hash where the request reads gone', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = screenOver(storage, requests)
+    await owner.inFlight.claim({
+      draft: owner.draft,
+      prepared: owner.prepared,
+      requestId: 'sent claim',
+      claimedAt: Date.now() - CLAIM_SEND_LIMIT_MS
+    })
+    const page = secondPage(storage, requests)
+    // The owner writes its hash while this page reads the setup.
+    const setup = deferred<ReturnType<typeof setupStateOf>>()
+    page.wired.setupState.mockImplementationOnce(() => setup.promise)
+    unawaited(page.arrive())
+    await advanceTimers(0)
+    expect(page.wired.setupState).toHaveBeenCalledTimes(1)
+    await owner.inFlight.markSent('sent claim', TX_HASH)
+
+    setup.resolve(setupStateOf(false))
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    // The page reads the stored save again, follows its hash and lands, with no Save offered.
+    expect(isSaved(page.store.state())).toBe(true)
+    expect(page.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, expect.anything())
+    expect(page.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  /**
+   * The owner's page claims and then holds before its send; the follower
+   * arrives meanwhile. Once `proceed` lets the owner go on, its send reaches
+   * the wallet, which queues the request and then broadcasts it.
+   */
+  const followDuringOwnersReads = async (
+    owner: WiredSave,
+    proceed: () => void,
+    requests: RequestsFake,
+    storage: MemoryStorage
+  ) => {
+    owner.port.sendAccountBatch.mockImplementation(() => pending())
+    unawaited(startSave(createArmStore(), owner.steps, OPTIONS))
+    await advanceTimers(0)
+    const claim = await stored(owner)
+    expect(claim).toBeDefined()
+    expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    const follower = secondPage(storage, requests)
+    unawaited(follower.arrive())
+    await advanceTimers(0)
+    expect(follower.store.state().requestId).toBe(claim!.requestId)
+    expect(offersSave(follower.store)).toBe(false)
+    expect(follower.wired.setupState).not.toHaveBeenCalled()
+    expect(await stored(owner)).toEqual(claim)
+
+    proceed()
+    await advanceTimers(0)
+    expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    requests.queued = [claim!.requestId]
+    requests.pushQueue()
+    await advanceTimers(0)
+    expect(follower.store.state().follow).toBe('queued')
+    expect(await stored(owner)).toEqual(claim)
+
+    requests.queued = []
+    requests.activity = [operationFor(claim!.requestId, { hash: TX_HASH })]
+    requests.pushQueue()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    expect(isSaved(follower.store.state())).toBe(true)
+    expect(follower.wired.receipts.wait).toHaveBeenCalledWith(TX_HASH, expect.anything())
+    expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(follower.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+  }
+
+  it('waits on a claim whose page still reads its stored save and follows its hash, with one send in all', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const owner = wireSave(account, script(), { storage, requests })
-    owner.port.sendAccountBatch.mockImplementation(() => pending())
     const answer = deferred<void>()
     const readInFlight = owner.steps.readInFlight.bind(owner.steps)
     jest.spyOn(owner.steps, 'readInFlight').mockImplementationOnce(async () => {
@@ -979,37 +1089,18 @@ describe('the void of a followed save', () => {
       await answer.promise
       return capture
     })
-    unawaited(startSave(createArmStore(), owner.steps, OPTIONS))
-    await advanceTimers(0)
-    const claim = await stored(owner)
-    expect(claim).toBeDefined()
-    expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
+    await followDuringOwnersReads(owner, () => answer.resolve(), requests, storage)
+  })
 
-    // The follower reads the request gone, then its setup read hangs.
-    const follower = secondPage(storage, requests)
+  it('waits on a claim whose page still reads the setup after its claim and follows its hash, with one send in all', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const owner = wireSave(account, script(), { storage, requests })
     const setup = deferred<ReturnType<typeof setupStateOf>>()
-    follower.wired.setupState.mockImplementationOnce(() => setup.promise)
-    unawaited(follower.arrive())
-    await advanceTimers(0)
-    expect(follower.wired.setupState).toHaveBeenCalledTimes(1)
-
-    // Meanwhile the owner's page hands its request to the wallet, which queues it.
-    answer.resolve()
-    await advanceTimers(0)
-    expect(owner.port.sendAccountBatch).toHaveBeenCalledTimes(1)
-    requests.queued = [claim!.requestId]
-    await advanceTimers(1_000)
-
-    setup.resolve(setupStateOf(false))
-    await advanceTimers(0)
-    expect(await stored(owner)).toEqual(claim)
-    expect(offersSave(follower.store)).toBe(false)
-    expect(follower.store.state().requestId).toBe(claim!.requestId)
-
-    await advanceTimers(FOLLOW_REREAD_MS)
-    expect(follower.store.state().follow).toBe('queued')
-    expect(await stored(owner)).toEqual(claim)
-    expect(follower.wired.port.sendAccountBatch).not.toHaveBeenCalled()
+    owner.setupState
+      .mockResolvedValueOnce(setupStateOf(false))
+      .mockImplementationOnce(() => setup.promise)
+    await followDuringOwnersReads(owner, () => setup.resolve(setupStateOf(false)), requests, storage)
   })
 })
 
@@ -1683,12 +1774,14 @@ describe('the age of the claim when the stored save is read before the send', ()
     expect(ownerStore.state().requestId).toBe(claim?.requestId)
     expect(owner.port.sendAccountBatch).not.toHaveBeenCalled()
 
-    // The owner's page sleeps: the device's clock moves on, its timers do not run.
+    // The follower reads the claim in flight; the owner's page then sleeps past its send limit.
     const follower = secondPage(storage, requests)
     unawaited(follower.arrive())
     await advanceTimers(0)
+    expect(offersSave(follower.store)).toBe(false)
+    expect(await stored(owner)).toEqual(claim)
+    await advanceTimers(CLAIM_SEND_LIMIT_MS)
     expect(offersSave(follower.store)).toBe(true)
-    jest.setSystemTime(Date.now() + CLAIM_SEND_LIMIT_MS)
     expect(await stored(owner)).toBeUndefined()
 
     const saving = startSave(follower.store, follower.wired.steps, OPTIONS)

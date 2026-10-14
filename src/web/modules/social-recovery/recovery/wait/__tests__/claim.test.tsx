@@ -379,7 +379,7 @@ describe('the claim of the execution', () => {
     expect((await executionOf(world.records, world.account))?.transactionHash).toBe(TX_HASH)
   })
 
-  it('lets the send add its request while the countdown holds its claim, and never once another page released it', async () => {
+  it('lets the send add its request while the countdown holds its claim, and never once another page released it and claimed under its own request', async () => {
     const world = await openWorld()
     elapse(world.kit)
     holdSend(world)
@@ -398,6 +398,8 @@ describe('the claim of the execution', () => {
       claim.requestId,
       read.status === 'present' ? read.revision : null
     )
+    expect(await options.canAdd()).toBe(false)
+    await claimElsewhere(world.records, world.account)
     expect(await options.canAdd()).toBe(false)
   })
 

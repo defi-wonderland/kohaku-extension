@@ -18,6 +18,7 @@ import {
   claimOf,
   CLAIM_NOW as NOW,
   flushTimers as flush,
+  frozenAfterClaim,
   keyedAccount,
   landedReceipt,
   landedSession,
@@ -260,6 +261,53 @@ describe('the claim of the submission', () => {
     shared.selectListed()
     await flush()
     expect(shared.adds()).toEqual([secondId])
+    await advanceTimers(SEND_SETTLE_MS + 1)
+    await flush()
+    expect(first.store.state().write).toMatchObject({
+      status: 'failedNotSent',
+      error: { reason: 'timeout' }
+    })
+    expect(shared.adds()).toEqual([secondId])
+  })
+
+  it('adds nothing where another page released the claim and started again before the add, with the account selected already, and offers the retry', async () => {
+    jest.setSystemTime(NOW)
+    const device = await openDevice()
+    const smart = await keyedAccount(903)
+    const shared = selectionWallet(smart.account)
+    shared.wallet.selected = smart.account.addr
+    const base = {
+      kit: device.kit,
+      account: device.account,
+      gathering: device.gathering,
+      plan: batchPlanOf(smart),
+      chosen: new Set([0, 1, 2, 3]),
+      requests: shared.port,
+      now: () => Date.now()
+    }
+    // The first page's reads of the session hold once its claim is written, as a page the browser froze.
+    const { steps, thaw } = frozenAfterClaim(
+      stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    )
+    const first = track({ store: pageOf(steps), steps })
+    startSubmission(first.store, steps).catch(() => undefined)
+    await flush()
+    const firstId = first.store.state().requestId
+    expect((await claimOf(device))?.requestId).toBe(firstId)
+    expect(shared.adds()).toEqual([])
+
+    const secondSteps = stepsOf({ ...base, port: shared.realSendPort(), records: device.records() })
+    const second = track({ store: pageOf(secondSteps), steps: secondSteps })
+    lookForClaim(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    expect(await claimOf(device)).toBeNull()
+    startSubmission(second.store, secondSteps).catch(() => undefined)
+    await flush()
+    const secondId = second.store.state().requestId
+    expect(shared.adds()).toEqual([secondId])
+
+    thaw()
+    await flush()
     await advanceTimers(SEND_SETTLE_MS + 1)
     await flush()
     expect(first.store.state().write).toMatchObject({

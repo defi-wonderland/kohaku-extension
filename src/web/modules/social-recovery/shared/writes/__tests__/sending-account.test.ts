@@ -256,7 +256,7 @@ describe('a selection that never lands while the wallet signs another operation'
   })
 })
 
-describe('the gate of an add that waited for the selection', () => {
+describe('the gate before an add', () => {
   const driveGated = (sender: ReturnType<typeof walletWith>['sender'], canAdd: AddGate) => {
     const machine = drivenMachine(submittingFor('save'))
     const done = driveAccountBatch({
@@ -272,15 +272,36 @@ describe('the gate of an add that waited for the selection', () => {
     return { machine, done }
   }
 
-  it('is not asked where the wallet selected the sending account already', async () => {
+  it('adds nothing and reads a timeout where the wallet selected the account already and it answers that the claim is gone', async () => {
     const { wallet, sender } = walletWith(SMART_ACCOUNT.addr)
     const canAdd = jest.fn(async () => false)
-    const { done } = driveGated(sender, canAdd)
+    const { machine, done } = driveGated(sender, canAdd)
     await advanceTimersAsync(0)
+    expect(canAdd).toHaveBeenCalledTimes(1)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+
+    await advanceTimersAsync(SEND_SETTLE_MS + 1)
+    await done
+    expect(machine.events).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ reason: 'timeout' })
+      })
+    ])
+    expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
+  })
+
+  it('adds the request once where the wallet selected the account already and it answers that the claim still holds', async () => {
+    const { wallet, sender } = walletWith(SMART_ACCOUNT.addr)
+    const canAdd = jest.fn(async () => true)
+    const { machine, done } = driveGated(sender, canAdd)
+    await advanceTimersAsync(0)
+    expect(canAdd).toHaveBeenCalledTimes(1)
     expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
-    expect(canAdd).not.toHaveBeenCalled()
+
     broadcast(wallet, REQUEST_ID)
     await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
   })
 
   it('adds nothing and reads a timeout where it answers that the claim is gone', async () => {

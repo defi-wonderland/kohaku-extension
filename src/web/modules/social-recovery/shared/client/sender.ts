@@ -110,6 +110,7 @@ import type {
   QueueLists,
   RecoveryKitMark,
   SendPort,
+  KeySendOptions,
   SendOptions,
   SendPortOptions,
   SendRefusal,
@@ -715,10 +716,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         armSettle()
       }
 
-      // While the port waited for the account's selection, another page may
-      // have released the caller's claim and sent again, so the caller is
-      // asked first. A page that sends between the caller's read and this add
-      // still meets this request in the queue, and both are withdrawn.
+      // Between the caller's claim and this add, another page may have
+      // released the claim and sent again, so the caller is asked first. A
+      // page that sends between the caller's read and this add still meets
+      // this request in the queue, and both are withdrawn.
       const addWhereHeld = () => {
         const { canAdd } = request
         if (!canAdd) {
@@ -916,7 +917,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         params: { sessionId: id, filters: { account, chainId }, pagination: { ...ACTIVITY_PAGE } }
       })
       if (isSelected(port.selectedAccount())) {
-        add()
+        addWhereHeld()
       } else {
         selecting = true
         port.dispatch({ type: 'MAIN_CONTROLLER_SELECT_ACCOUNT', params: { accountAddr: account } })
@@ -925,7 +926,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
   }
 
   return Object.freeze({
-    send(key: KeyHandle, transaction: GasEstimateCall, sendOptions?: SendOptions): Promise<Hex> {
+    send(key: KeyHandle, transaction: GasEstimateCall, sendOptions?: KeySendOptions): Promise<Hex> {
       if (!sameAddress(transaction.from, key.addr)) {
         return Promise.reject(
           new TypeError(
@@ -938,7 +939,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         return Promise.reject(sendRefusal('not-wired', key))
       }
       return follow({
-        id: newSendRequestId(),
+        id: sendOptions?.requestId ?? newSendRequestId(),
         // The queue, the sign screen and the activity compare addresses with
         // exact case, so the request carries the listed account's own address.
         account: listed.addr as Address,

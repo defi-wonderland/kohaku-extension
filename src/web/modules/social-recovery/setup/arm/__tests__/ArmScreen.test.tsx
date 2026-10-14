@@ -190,6 +190,9 @@ const {
   saveStepsOf,
   startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
+const {
+  CLAIM_SEND_LIMIT_MS
+}: typeof import('@web/modules/social-recovery/setup/arm/constants') = require('@web/modules/social-recovery/setup/arm/constants')
 /** Ten minutes: far past any wait of a follow, for a screen that is away. */
 const FAR_MS = 10 * 60_000
 const {
@@ -1715,10 +1718,13 @@ describe('a save another page of this device sent', () => {
       jest.useRealTimers()
     })
 
+    // The other page went away a while ago: past its claim's send limit, it no longer sends.
     const leave = async () => {
       await writeRecords(draftOf('encrypted'))
       wireClient('ready')
-      return anotherPageLeaves(false, () => tick(100))
+      const left = await anotherPageLeaves(false, () => tick(100))
+      jest.setSystemTime(Date.now() + CLAIM_SEND_LIMIT_MS)
+      return left
     }
 
     it('shows the save waiting while the wallet queue holds the request, then follows its hash to saved when the wallet broadcasts it', async () => {

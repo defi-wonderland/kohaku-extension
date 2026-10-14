@@ -893,12 +893,15 @@ const endFollow = (store: ArmStore, reading: symbol): void => {
  * when the queue changes; broadcast, its hash stored and its receipt waited
  * for; on a route the wallet cannot follow, the may-still-land state; a read
  * that did not answer, read again after a rest or on "check again", never
- * taken as gone; gone, the account's setup read: a setup found landed while no
- * page watched and is checked as after a receipt. Where none is found and
- * the wallet, read again, still holds no request, the request left the
- * wallet with nothing sent (`claimReadingOf`): the stored
- * save is void at once and released, and the save is offered again; a setup
- * read that fails is read again after a rest, never taken as none. Each step
+ * taken as gone; gone while the claim is younger than its send limit, still in
+ * flight, since its page may still read the setup and the stored save and
+ * then send, and read again once it is older; gone past it, the account's
+ * setup read: a setup found landed while no page watched and is checked as
+ * after a receipt. Where none is found and the wallet, read again, still
+ * holds no request, the request left the wallet with nothing sent
+ * (`claimReadingOf`): the stored save, where it still holds no hash, is void
+ * at once and released, and the save is offered again; a setup read that
+ * fails is read again after a rest, never taken as none. Each step
  * reads through the steps `followNow` names; an answer read through steps
  * that are no longer those is dropped and the step reads again. Answers the
  * steps of a void, where the stored save was void.
@@ -960,6 +963,13 @@ const followStep = async (
     await rest(store, FOLLOW_REREAD_MS)
     return followStep(store, reading, options)
   }
+  const sendable = CLAIM_SEND_LIMIT_MS - (Date.now() - hold.claimedAt)
+  if (sendable > 0) {
+    store.dispatch({ type: 'followed', run, reading: 'queued' })
+    const wait = Math.min(sendable, FOLLOW_REREAD_MS)
+    await rest(store, wait, steps.queueMoved(wait))
+    return followStep(store, reading, options)
+  }
   const found = await steps.hasSetup().catch(() => undefined)
   if (!stillAt(store, reading, at)) {
     return followStep(store, reading, options)
@@ -985,7 +995,7 @@ const followStep = async (
   if (found === false) {
     endFollow(store, reading)
     store.dispatch({ type: 'voided', run })
-    await steps.release(requestId).catch(() => undefined)
+    await steps.releaseUnsent(requestId).catch(() => undefined)
     return steps
   }
   store.dispatch({ type: 'followed', run, reading: 'gone' })
@@ -1057,6 +1067,7 @@ const followSave = async (
     steps,
     run: followed,
     requestId: record.requestId,
+    claimedAt: record.claimedAt,
     ...(record.startBlock !== undefined ? { startBlock: record.startBlock } : {})
   })
   return readFollow(store, options)

@@ -826,11 +826,20 @@ export type AddGate = () => Promise<boolean>
 /** What a send takes beside the transaction or the batch. */
 export interface SendOptions {
   /**
-   * Asked right before the port adds a request that waited for its account's
-   * selection; a false answer or a throw ends the send as a timeout with
-   * nothing added. An add with no wait is not asked.
+   * Asked right before the port adds the request, whether the account was
+   * selected already or the port waited for its selection; a false answer or
+   * a throw ends the send as a timeout with nothing added.
    */
   canAdd?: AddGate
+}
+
+/** What a key's own send takes beside the transaction. */
+export interface KeySendOptions extends SendOptions {
+  /**
+   * The id the request is queued under (`newSendRequestId`), so the caller
+   * knows it before the send; the port makes one where none is given.
+   */
+  requestId?: string
 }
 
 /**
@@ -841,7 +850,7 @@ export interface SendOptions {
  */
 export interface SendPort {
   /** The transaction the gas check estimated, from that key. */
-  send(key: KeyHandle, transaction: GasEstimateCall, options?: SendOptions): Promise<Hex>
+  send(key: KeyHandle, transaction: GasEstimateCall, options?: KeySendOptions): Promise<Hex>
   /**
    * The calls, in order, as one operation of the account. The sign screen
    * estimates it and offers the fee options; `onEstimation` hears each
@@ -873,7 +882,7 @@ export interface FollowedRequest {
   onEstimation?: EstimationListener
   /** The recovery kit's mark, for an account's batch that arms the kit. */
   recoveryKit?: RecoveryKitMark
-  /** Asked before an add that waited for the account's selection. */
+  /** Asked right before the add. */
   canAdd?: AddGate
 }
 

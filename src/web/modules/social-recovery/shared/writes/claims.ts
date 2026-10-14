@@ -13,16 +13,22 @@
  * holds it nowhere (a request queued and then dropped, a window the browser
  * closed), the send did not go out, never that it may still land, so the page
  * releases the claim, where it still holds no hash, and offers the start
- * again. A send from a key's own address carries no request the queue could
- * be asked about, so its claim with no hash reads as not sent at once. A read
- * of the queue that does not answer is read again, never taken as an answer.
+ * again. The setup's save is the one exception: its page reads the setup and
+ * the stored save between its claim and its send, so a save held nowhere
+ * reads as in flight while the claim is younger than the limit past which
+ * that page never sends, and is judged again once it is older. A send from a
+ * key's own address carries no request the queue could be asked about, so
+ * its claim with no hash reads as not sent at once. A read of the queue that
+ * does not answer is read again, never taken as an answer.
  *
  * The page whose live run wrote the claim is no arrival: it keeps its own
  * in-flight state while its send runs and follows its own hash to the
  * receipt, and writes the hash on the claim once the wallet answers one (the
  * submission and the execution write the claim back with it where an arrival
- * released it meanwhile). A second request of the same account, sent while
- * the first one still waits in the wallet, is refused by the request queue.
+ * released it meanwhile). Right before its request is added, that page asks
+ * whether the claim is still its own with no hash, and adds nothing where an
+ * arrival released it. A second request of the same account, sent while the
+ * first one still waits in the wallet, is refused by the request queue.
  */
 import type { ClaimReading, StoredClaim } from './types'
 
