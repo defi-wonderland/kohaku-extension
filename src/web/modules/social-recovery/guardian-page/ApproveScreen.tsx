@@ -7,8 +7,9 @@
  * holds nothing of the recoverer's. Once described, the request's lead stays
  * on the page while the client is built again or a read runs or fails. The
  * signature is made in the wallet's own sign window through the request
- * queue, for the key the request names where this wallet holds it; a locked
- * wallet goes to its unlock first and comes back here with the request. A
+ * queue, for the key the request names where this wallet holds it, once the
+ * wallet has selected that key's account; a locked wallet goes to its unlock
+ * first and comes back here with the request. A
  * request ends for good once a read found it dead or the recovery waiting,
  * once its deadline passed, or once the guardian declined it: a later failed
  * or pending read does not open it again. Its sign request is then withdrawn
@@ -48,10 +49,11 @@ import { approvalRequestOf, describedRequestOf } from './request'
 import SignedBlock from './SignedBlock'
 import { keyReadingOf, requestKeyOf, typedDataOf } from './signing'
 import StatusBlock from './StatusBlock'
-import type { ApprovalClient, DescribedRequest } from './types'
+import type { ApprovalClient, DescribedRequest, GuardianSigningInput } from './types'
 import useApprovalReads from './useApprovalReads'
 import useDeadlineClock from './useDeadlineClock'
 import useGuardianSigning from './useGuardianSigning'
+import useKeyAccountSelection from './useKeyAccountSelection'
 import { approvalValuesOf } from './values'
 
 const closePage = () => window.close()
@@ -103,15 +105,22 @@ const ApproveScreen = () => {
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
+  const listedAccounts = useCallback(() => accountsRef.current, [])
   const signer = useMemo(
     () =>
-      createSignerFacade(
-        signRequestPort(dispatch, () => accountsRef.current, windowId),
-        {
-          chainId: CHAIN_IDS[WALLET_RECOVERY_CHAIN]
-        }
-      ),
-    [dispatch, windowId]
+      createSignerFacade(signRequestPort(dispatch, listedAccounts, windowId), {
+        chainId: CHAIN_IDS[WALLET_RECOVERY_CHAIN]
+      }),
+    [dispatch, listedAccounts, windowId]
+  )
+  const selectKeyAccount = useKeyAccountSelection({ dispatch, accounts: listedAccounts })
+  // The sign window signs for the selected account, so the key's account is selected first.
+  const signTypedData = useCallback<GuardianSigningInput['signTypedData']>(
+    async (key, data, options) => {
+      await selectKeyAccount(key, options?.signal)
+      return signer.signTypedData(key, data, options)
+    },
+    [selectKeyAccount, signer]
   )
   const typedData = useMemo(
     () => (kit && request ? typedDataOf((r) => kit.approving.signingInput(r), request) : null),
@@ -131,7 +140,7 @@ const ApproveScreen = () => {
   const signing = useGuardianSigning({
     approving: kit?.approving ?? null,
     request,
-    signTypedData: signer.signTypedData,
+    signTypedData,
     ended
   })
 

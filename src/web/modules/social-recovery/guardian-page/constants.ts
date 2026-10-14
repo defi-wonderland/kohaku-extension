@@ -15,3 +15,6 @@ export const ECDSA_SLUG = 'ecdsa'
 
 /** The name of the file the offline block saves the payload in. */
 export const PAYLOAD_FILE_NAME = 'kohaku-approval-request.json'
+
+/** How long the page waits for the wallet to report the key's account as selected before it signs. */
+export const SELECT_ACCOUNT_LIMIT_MS = 5_000

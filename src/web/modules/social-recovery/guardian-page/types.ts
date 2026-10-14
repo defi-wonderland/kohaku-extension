@@ -8,8 +8,10 @@ import type {
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
+import type { Action } from '@web/extension-services/background/actions'
 import type {
   KeyHandle,
+  ListedAccount,
   RecoveryKitClient,
   SignOptions,
   TypedDataToSign
@@ -286,6 +288,22 @@ export type ApprovalOutcome = { approval: SignedApproval; verdict: Verdict } | '
 
 /** The approving side's three calls the page signs through. */
 export type ApprovingCalls = Pick<IMethodsOrchestrator, 'signingInput' | 'replyFrom' | 'verify'>
+
+/** The wallet's own action that selects a listed account. */
+export type SelectAccountAction = Extract<Action, { type: 'MAIN_CONTROLLER_SELECT_ACCOUNT' }>
+
+/** The wallet's edges the account selection reads: its dispatch and the accounts it lists. */
+export interface KeyAccountSelectionInput {
+  dispatch: (action: SelectAccountAction) => void
+  accounts: () => readonly ListedAccount[] | undefined
+}
+
+/**
+ * Selects the key's listed basic account in the wallet, and settles once the
+ * wallet reports it selected. It rejects where the selection does not land in
+ * time or the signal aborts first.
+ */
+export type SelectKeyAccount = (key: KeyHandle, signal?: AbortSignal) => Promise<void>
 
 export interface GuardianSigningInput {
   approving: ApprovingCalls | null
