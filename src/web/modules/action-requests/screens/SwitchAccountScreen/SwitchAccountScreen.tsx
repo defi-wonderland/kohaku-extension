@@ -71,7 +71,9 @@ const SwitchAccountScreen = () => {
   const dAppData = useMemo(() => userRequest?.session, [userRequest?.session])
 
   const handleDenyButtonPress = useCallback(() => {
-    if (!requestAction) return
+    if (!requestAction) {
+      return
+    }
 
     dispatch({
       type: 'REQUESTS_CONTROLLER_REJECT_USER_REQUEST',
@@ -80,7 +82,9 @@ const SwitchAccountScreen = () => {
   }, [requestAction, t, dispatch])
 
   const handleAuthorizeButtonPress = useCallback(() => {
-    if (!requestAction) return
+    if (!requestAction) {
+      return
+    }
 
     if (!nextAccount) {
       addToast(
@@ -111,8 +115,9 @@ const SwitchAccountScreen = () => {
 
   // Resolve the request
   useEffect(() => {
-    if (account?.addr !== nextAccount || (!userRequest && !switchAccountAction) || !requestAction)
+    if (account?.addr !== nextAccount || (!userRequest && !switchAccountAction) || !requestAction) {
       return
+    }
 
     dispatch({
       type: 'REQUESTS_CONTROLLER_RESOLVE_USER_REQUEST',
