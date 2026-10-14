@@ -483,6 +483,22 @@ describe('the decline', () => {
     page.unmount()
   })
 
+  it('leaves another link opened in the same tab undeclined, and reads it', async () => {
+    const page = await mountLive()
+    await page.press('guardian-decline')
+    expect(page.has('guardian-declined-title')).toBe(true)
+    await navigate(searchOf(linkOf(requestOf({ salt: '0x03' }))))
+    expect(page.has('guardian-declined-title')).toBe(false)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+    expect(kit.isAuthorized).toHaveBeenCalledTimes(2)
+    await page.press('guardian-acknowledge')
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    await advance(MINUTE)
+    expect(kit.recoveryState).toHaveBeenCalledTimes(3)
+    page.unmount()
+  })
+
   it('closes the tab from a death', async () => {
     const close = jest.spyOn(window, 'close').mockImplementation(() => {})
     kit.recoveryState.mockImplementation(async () => recoveryStateOf({ nextAttemptId: 4n }))

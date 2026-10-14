@@ -21,6 +21,7 @@ import {
   networkOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
+import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 
 import ApproveView from './ApproveView'
@@ -38,12 +39,15 @@ const ApproveScreen = () => {
   const { t } = useTranslation()
   const location = useLocation()
   const { networks } = useNetworksControllerState()
-  const [declined, setDeclined] = useState(false)
 
   const request = useMemo(
     () => approvalRequestOf(location.search, window.location.hash),
     [location.search]
   )
+  // Decline belongs to the request it was pressed for: another link opened in
+  // the same tab is not declined.
+  const [declinedFor, setDeclinedFor] = useState<ApproverRequest | null>(null)
+  const declined = !!request && declinedFor === request
   const build = useMemo(
     () => descriptorOf(WALLET_RECOVERY_CHAIN, addressBookOf(WALLET_RECOVERY_CHAIN)),
     []
@@ -91,7 +95,7 @@ const ApproveScreen = () => {
     }
     retry()
   }, [client, retry])
-  const onDecline = useCallback(() => setDeclined(true), [])
+  const onDecline = useCallback(() => setDeclinedFor(request), [request])
 
   const body = () => {
     if (!request || (kit && !described)) {
