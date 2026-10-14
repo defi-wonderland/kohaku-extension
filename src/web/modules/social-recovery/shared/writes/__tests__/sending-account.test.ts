@@ -14,6 +14,7 @@ import {
   DEFAULT_SEND_TIMEOUT_MS,
   type ListedAccount,
   SEND_SETTLE_MS,
+  type SendPort,
   type SendRequestAction,
   type SendRequestPort,
   type SendRequestUpdate
@@ -30,6 +31,8 @@ import {
   ownerTransaction,
   providerReceipt,
   SAVE,
+  type ScriptedWallet,
+  type SendKind,
   submittingFor,
   TX_HASH
 } from '@web/modules/social-recovery/shared/writes/__tests__/harness'
@@ -55,7 +58,7 @@ const OTHER: Address = '0x3333333333333333333333333333333333333333'
 /** A wallet that lists the key's basic account and the smart account, with `selected` selected. */
 const walletWith = (selected: string | undefined) => {
   const listeners = new Set<(update: SendRequestUpdate) => void>()
-  const wallet = {
+  const wallet: ScriptedWallet = {
     selected,
     dispatch: jest.fn<void, [SendRequestAction]>(),
     push: (update: SendRequestUpdate) => [...listeners].forEach((listener) => listener(update)),
@@ -99,7 +102,7 @@ const requestIdOf = (dispatch: jest.Mock): string => {
 }
 
 /** The wallet broadcasts the request's call and lists it in the activity. */
-const broadcast = (wallet: ReturnType<typeof walletWith>['wallet'], id: string) =>
+const broadcast = (wallet: ScriptedWallet, id: string) =>
   wallet.push({
     controller: 'activity',
     state: {
@@ -121,10 +124,10 @@ const broadcast = (wallet: ReturnType<typeof walletWith>['wallet'], id: string) 
   })
 
 /** A key's own transaction, which the wallet queues against the key's basic account. */
-const KEY_SEND = {
+const KEY_SEND: SendKind = {
   account: KEY_ACCOUNT.addr,
   other: SMART_ACCOUNT.addr,
-  drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+  drive: (sender: SendPort) => {
     const machine = drivenMachine(submittingFor('submission'))
     const done = driveSend({
       dispatch: machine.dispatch,
@@ -139,10 +142,10 @@ const KEY_SEND = {
 }
 
 /** An account's batch, which the wallet queues against the account. */
-const BATCH_SEND = {
+const BATCH_SEND: SendKind = {
   account: SMART_ACCOUNT.addr,
   other: KEY_ACCOUNT.addr,
-  drive: (sender: ReturnType<typeof walletWith>['sender']) => {
+  drive: (sender: SendPort) => {
     const machine = drivenMachine(submittingFor('save'))
     const done = driveAccountBatch({
       dispatch: machine.dispatch,
@@ -166,7 +169,7 @@ afterEach(() => {
 })
 
 /** The cases every send kind runs: where it is queued, and when it selects its account first. */
-const sendingAccountCases = ({ account, other, drive }: typeof KEY_SEND) => {
+const sendingAccountCases = ({ account, other, drive }: SendKind) => {
   it('is queued against its sending account at once where the wallet selected that account', async () => {
     const { wallet, sender } = walletWith(account)
     const { machine, done } = drive(sender)
@@ -276,7 +279,7 @@ describe('a selection that never lands while the wallet signs another operation'
 })
 
 describe('the gate before an add', () => {
-  const driveGated = (sender: ReturnType<typeof walletWith>['sender'], canAdd: AddGate) => {
+  const driveGated = (sender: SendPort, canAdd: AddGate) => {
     const machine = drivenMachine(submittingFor('save'))
     const done = driveAccountBatch({
       dispatch: machine.dispatch,
@@ -375,5 +378,68 @@ describe('the gate before an add', () => {
     broadcast(wallet, REQUEST_ID)
     await done
     expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+  })
+
+  /** A gate whose answers the test gives, one read at a time. */
+  const heldGate = () => {
+    let answer: (holds: boolean) => void = () => {}
+    const canAdd = jest.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve
+        })
+    )
+    return { canAdd, answer: (holds: boolean) => answer(holds) }
+  }
+
+  it('adds nothing on a yes where the user selected another account meanwhile, and asks again once the sending account is selected', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const gate = heldGate()
+    const { machine, done } = driveGated(sender, gate.canAdd)
+    await advanceTimersAsync(0)
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(gate.canAdd).toHaveBeenCalledTimes(1)
+    wallet.select(KEY_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    gate.answer(true)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    expect(typesOf(wallet.dispatch).filter((type) => type === SELECT)).toHaveLength(1)
+
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(gate.canAdd).toHaveBeenCalledTimes(2)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    gate.answer(true)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
+
+    broadcast(wallet, REQUEST_ID)
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+  })
+
+  it('reads a timeout at its limit with nothing added and nothing removed where the sending account is never selected again', async () => {
+    const { wallet, sender } = walletWith(OTHER)
+    const gate = heldGate()
+    const { machine, done } = driveGated(sender, gate.canAdd)
+    await advanceTimersAsync(0)
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    wallet.select(KEY_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    gate.answer(true)
+    await advanceTimersAsync(DEFAULT_SEND_TIMEOUT_MS + SEND_SETTLE_MS + 1)
+    await done
+    expect(machine.events).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ reason: 'timeout' })
+      })
+    ])
+    expect(gate.canAdd).toHaveBeenCalledTimes(1)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    expect(typesOf(wallet.dispatch)).not.toContain(REMOVE)
   })
 })

@@ -572,6 +572,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       let lastReading: string | undefined
       let settling: SettlingRefusal | undefined
       let selecting = false
+      let lastSelected = port.selectedAccount()
       let added = false
       let unsubscribe: () => void = () => {}
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -719,7 +720,10 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
       // Between the caller's claim and this add, another page may have
       // released the claim and sent again, so the caller is asked first. A
       // page that sends between the caller's read and this add still meets
-      // this request in the queue, and both are withdrawn.
+      // this request in the queue, and both are withdrawn. A yes counts only
+      // while the wallet still selects the sending account; where the user
+      // selected another account meanwhile, the port waits, and the next push
+      // that names the sending account asks again.
       const addWhereHeld = () => {
         const { canAdd } = request
         if (!canAdd) {
@@ -730,7 +734,9 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           if (done || settling !== undefined) {
             return
           }
-          if (holds) {
+          if (holds && !isSelected(lastSelected)) {
+            selecting = true
+          } else if (holds) {
             add()
           } else {
             settle('timeout', false)
@@ -759,7 +765,8 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           return
         }
         if (update.controller === 'selectedAccount') {
-          if (selecting && settling === undefined && isSelected(update.state.account?.addr)) {
+          lastSelected = update.state.account?.addr
+          if (selecting && settling === undefined && isSelected(lastSelected)) {
             selecting = false
             addWhereHeld()
           }
@@ -916,7 +923,7 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
         type: 'MAIN_CONTROLLER_ACTIVITY_SET_ACC_OPS_FILTERS',
         params: { sessionId: id, filters: { account, chainId }, pagination: { ...ACTIVITY_PAGE } }
       })
-      if (isSelected(port.selectedAccount())) {
+      if (isSelected(lastSelected)) {
         addWhereHeld()
       } else {
         selecting = true
