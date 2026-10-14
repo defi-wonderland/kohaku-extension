@@ -420,6 +420,31 @@ describe('the gate before an add', () => {
     expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
   })
 
+  it('adds nothing on a yes where the wallet selected the account already and the user selected another account during the read, and adds once the sending account is selected again', async () => {
+    const { wallet, sender } = walletWith(SMART_ACCOUNT.addr)
+    const gate = heldGate()
+    const { machine, done } = driveGated(sender, gate.canAdd)
+    await advanceTimersAsync(0)
+    expect(gate.canAdd).toHaveBeenCalledTimes(1)
+    wallet.select(KEY_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    gate.answer(true)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([])
+    expect(typesOf(wallet.dispatch)).not.toContain(SELECT)
+
+    wallet.select(SMART_ACCOUNT.addr)
+    await advanceTimersAsync(0)
+    expect(gate.canAdd).toHaveBeenCalledTimes(2)
+    gate.answer(true)
+    await advanceTimersAsync(0)
+    expect(queuedAccountsOf(wallet.dispatch)).toEqual([SMART_ACCOUNT.addr])
+
+    broadcast(wallet, REQUEST_ID)
+    await done
+    expect(machine.events.map((event) => event.type)).toEqual(['sent', 'receipt'])
+  })
+
   it('reads a timeout at its limit with nothing added and nothing removed where the sending account is never selected again', async () => {
     const { wallet, sender } = walletWith(OTHER)
     const gate = heldGate()
