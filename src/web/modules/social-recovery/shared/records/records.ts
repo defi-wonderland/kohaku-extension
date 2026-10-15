@@ -1166,9 +1166,10 @@ export const createWalletRecords = ({
    * the chain holds. It holds the session's key and then the recovery entry's,
    * the order the recoverer's abandon takes them. A live session is kept and
    * so is the entry beside it; a landed session with an execution in flight,
-   * or of the same attempt (its id, its setup nonce and its payload's hash),
-   * is kept, and only the same attempt's gets the entry. No session, a wiped
-   * one or the countdown of another attempt is replaced by the chain's, saved
+   * of the same attempt (its id, its setup nonce and its payload's hash), or
+   * of a newer attempt (a greater id), is kept, and only the same attempt's
+   * gets the entry. No session, a wiped one or the countdown of an older
+   * attempt is replaced by the chain's, saved
    * at the attempt's opening, and the entry is written after it.
    */
   const restoreCountdown = (
@@ -1200,7 +1201,11 @@ export const createWalletRecords = ({
           session.setupNonce === restored.setupNonce.toString() &&
           session.payloadHash !== undefined &&
           session.payloadHash.toLowerCase() === restored.payloadHash.toLowerCase()
-        if (same || session.execution) {
+        // The registry's attempt counter only grows, so a stored attempt with
+        // a greater id is the newer one.
+        const newer =
+          session.attemptId !== undefined && BigInt(session.attemptId) > restored.attemptId
+        if (same || newer || session.execution) {
           if (same) {
             await writeEntry()
           }

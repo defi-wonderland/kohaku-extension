@@ -210,6 +210,24 @@ describe('the countdown restored from the chain', () => {
     expect(await entryOf(records)).toEqual({ account: ACCOUNT, ...ENTRY })
   })
 
+  it('keeps the countdown of a newer attempt and its entry when an older attempt is restored after it', async () => {
+    const { storage, records } = setup()
+    await restore(records, ANOTHER_ATTEMPT)
+    const earlier = storage.calls.set.length
+    const result = await records.restoreCountdown(CHAIN_ID, ACCOUNT, SAME_ATTEMPT, {
+      route: EARLIER_ENTRY.route,
+      receivingAccount: EARLIER_ENTRY.receivingAccount
+    })
+    expect(result.outcome).toBe('kept')
+    expect(result.countdown.status === 'present' && result.countdown.value).toEqual(
+      ANOTHER_COUNTDOWN
+    )
+    expect(writesSince(storage, earlier)).toEqual([])
+    const countdown = await countdownOf(records)
+    expect(countdown.status === 'present' && countdown.value).toEqual(ANOTHER_COUNTDOWN)
+    expect(await entryOf(records)).toEqual({ account: ACCOUNT, ...ENTRY })
+  })
+
   it('runs after an update of the session that started before it, and reads what that update wrote', async () => {
     const { records } = setup()
     await live(records)

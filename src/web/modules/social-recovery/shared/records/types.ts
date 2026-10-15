@@ -735,8 +735,9 @@ export interface WalletRecords {
   /**
    * Keeps the countdown of an attempt found running on chain, holding the
    * session's key and then the recovery entry's. A live session, a landed one
-   * with an execution in flight and a landed one of the same attempt are kept;
-   * no session, a wiped one or the countdown of another attempt is replaced.
+   * with an execution in flight and a landed one of the same or a newer
+   * attempt are kept; no session, a wiped one or the countdown of an older
+   * attempt is replaced.
    * The entry is written only with the countdown, or beside a kept countdown
    * of the same attempt.
    */
