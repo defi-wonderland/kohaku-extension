@@ -627,7 +627,6 @@
       },
       "keyRemovedLine": "A recovery would remove this key. Saving this setup does not remove it.",
       "save": "Save recovery path",
-      "oneConfirmation": "One confirmation. The whole path is saved in one transaction your account's key pays.",
       "blocked": {
         "unavailable": {
           "chip": "Unavailable",
@@ -671,6 +670,7 @@
     },
     "arm": {
       "keyRecoveryWouldRemove": "Key a recovery would remove",
+      "costHeader": "What it costs",
       "title": "Setup saved",
       "live": "Your recovery path is live from this moment. Your Recovery Card is next.",
       "savedOnChain": "Saved on chain",
