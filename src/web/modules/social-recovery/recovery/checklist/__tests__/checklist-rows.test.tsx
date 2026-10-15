@@ -192,7 +192,7 @@ describe('the checklist rows', () => {
     }
   )
 
-  it('says every row is complete where the satisfied path has no row beyond the set', async () => {
+  it('adds no sentence under the rows where the satisfied path has no row beyond the set', async () => {
     const configuration = configurationOf([
       { threshold: 1, credentials: [passkeyCredential('Laptop passkey')] },
       { threshold: 1, credentials: [guardianCredential(GUARDIANS[0])] }
@@ -203,7 +203,7 @@ describe('the checklist rows', () => {
     )
 
     expect(mounted.byTestId('checklist-title')?.textContent).toBe(t(`${CHECKLIST}.satisfiedTitle`))
-    expect(mounted.byTestId('checklist-satisfied')?.textContent).toBe(t(`${CHECKLIST}.allComplete`))
+    expect(mounted.byTestId('checklist-satisfied')).toBeNull()
     expect(mounted.text()).not.toContain(t(`${CHECKLIST}.satisfied`))
   })
 
@@ -214,10 +214,10 @@ describe('the checklist rows', () => {
     expect(mounted.text()).toContain(t(`${CHECKLIST}.lead`))
     const aside = mounted.byTestId('checklist-columns-aside')
     expect(aside?.querySelector('[data-testid="checklist-verify"]')?.textContent).toBe(
-      t(`${CHECKLIST}.verifyNote`)
+      t(`${CHECKLIST}.verifyNoteTitle`) + t(`${CHECKLIST}.verifyNote`)
     )
     expect(aside?.querySelector('[data-testid="checklist-leaving-keeps"]')?.textContent).toBe(
-      t(`${CHECKLIST}.leavingKeeps`)
+      t(`${CHECKLIST}.leavingKeepsTitle`) + t(`${CHECKLIST}.leavingKeeps`)
     )
     expect(mounted.byTestId('checklist')?.textContent).not.toContain(t(`${CHECKLIST}.verifyNote`))
   })

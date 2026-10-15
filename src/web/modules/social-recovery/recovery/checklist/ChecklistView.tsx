@@ -457,12 +457,22 @@ const ChecklistView = ({
 
   const aside = (
     <>
-      <SectionCard tone="muted" spacing="item" testID="checklist-verify">
+      <SectionCard
+        tone="muted"
+        spacing="item"
+        label={t(`${CHECKLIST}.verifyNoteTitle`)}
+        testID="checklist-verify"
+      >
         <Text fontSize={12} appearance="secondaryText">
           {t(`${CHECKLIST}.verifyNote`)}
         </Text>
       </SectionCard>
-      <SectionCard tone="muted" spacing="item" testID="checklist-leaving-keeps">
+      <SectionCard
+        tone="muted"
+        spacing="item"
+        label={t(`${CHECKLIST}.leavingKeepsTitle`)}
+        testID="checklist-leaving-keeps"
+      >
         <Text fontSize={12} appearance="secondaryText">
           {t(`${CHECKLIST}.leavingKeeps`)}
         </Text>
@@ -533,9 +543,9 @@ const ChecklistView = ({
           </Alert>
         )}
         <ChecklistRows layout={layout} assessment={assessment} renderRow={renderRow} />
-        {satisfied && (
+        {satisfied && !everyRowComplete && (
           <Text fontSize={14} style={spacings.mtSm} testID="checklist-satisfied">
-            {t(everyRowComplete ? `${CHECKLIST}.allComplete` : `${CHECKLIST}.satisfied`)}
+            {t(`${CHECKLIST}.satisfied`)}
           </Text>
         )}
         <ActionsRow
