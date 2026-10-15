@@ -912,6 +912,8 @@ describe('the passkey row', () => {
       await reopenWith({ credential: CREDENTIAL, test: 'passed', backup: 'synced' })
       expect(view!.byTestId('passkey-chip')?.textContent).toBe(chip('tested'))
       expect(view!.byTestId('enroll-save-without-test')).toBeNull()
+      expect(view!.byTestId('enroll-create-first')).toBeNull()
+      expect(view!.isDisabled('enroll-save')).toBe(false)
       expect(view!.text()).not.toContain(t('socialRecovery.enroll.saveWithoutTest'))
     })
 

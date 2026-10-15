@@ -135,7 +135,7 @@ const EnrollView = ({
   if (enrollment?.test === 'not-tested') {
     note = t('socialRecovery.enroll.saveWithoutTest')
     noteTestID = 'enroll-save-without-test'
-  } else if (search.kind === 'passkey') {
+  } else if (!enrollment && search.kind === 'passkey') {
     note = t('socialRecovery.enroll.passkey.createFirst')
     noteTestID = 'enroll-create-first'
   }
