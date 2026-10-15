@@ -319,6 +319,7 @@
     "chrome": {
       "settings": "Settings",
       "breadcrumb": "Settings › Account recovery",
+      "setupStageCounter": "Set up · Step {{step}} of {{total}}",
       "otherAccount": {
         "title": "The wallet now selects another account",
         "body": "This setup belongs to {{account}}. Your work here stays with that account.",
