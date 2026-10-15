@@ -80,7 +80,11 @@ import TrezorController from '@web/modules/hardware-wallet/controllers/TrezorCon
 import LatticeSigner from '@web/modules/hardware-wallet/libs/LatticeSigner'
 import LedgerSigner from '@web/modules/hardware-wallet/libs/LedgerSigner'
 import TrezorSigner from '@web/modules/hardware-wallet/libs/TrezorSigner'
-import { startRecoveryWatcher, watchedNetworkOf } from '@web/modules/social-recovery/watcher'
+import {
+  registerRecoveryWatcherAlarm,
+  startRecoveryWatcher,
+  watchedNetworkOf
+} from '@web/modules/social-recovery/watcher'
 import { getExtensionInstanceId } from '@web/utils/analytics'
 import getOriginFromUrl from '@web/utils/getOriginFromUrl'
 import { LOG_LEVELS, logInfoWithPrefix } from '@web/utils/logger'
@@ -167,6 +171,7 @@ let walletStateCtrl: WalletStateController
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 handleRegisterScripts()
 handleKeepAlive()
+registerRecoveryWatcherAlarm()
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 providerRequestTransport.reply(async ({ method, id, params }, meta) => {
