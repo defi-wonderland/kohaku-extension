@@ -42,7 +42,7 @@ const mockWallet: {
 }
 // The wallet's controller states keep their identity between renders, as the real hooks do.
 const mockState = {
-  accounts: { accounts: [] },
+  accounts: { accounts: [] as unknown[] },
   networks: { networks: [{ chainId: 11155111n, name: 'Sepolia' }] },
   requests: { userRequests: [] }
 }
@@ -125,7 +125,12 @@ const NETWORK = { chainId: 11155111n, name: 'Sepolia' } as Partial<Network> as N
 const readyClient = (prepareCancelByOwner: jest.Mock) => ({
   status: 'ready',
   client: { recovery: { prepareCancelByOwner } },
-  reads: {},
+  // The key holds far more than the cancel's gas.
+  reads: {
+    estimateGas: async () => 50_000n,
+    gasPrice: async () => 1n,
+    nativeBalance: async () => 1_000_000_000_000_000_000n
+  },
   receipts: { blockNumber: async () => 1, wait: jest.fn() },
   retry: jest.fn()
 })
@@ -133,10 +138,10 @@ const readyClient = (prepareCancelByOwner: jest.Mock) => ({
 const readyFacts = (key?: { addr: Address; type: string }) => ({
   status: 'ready',
   facts: {
-    account: harness.listed(ACCOUNT),
+    account: { ...harness.listed(ACCOUNT), associatedKeys: [KEY] },
     network: NETWORK,
     deployed: true,
-    state: {},
+    state: { nonce: 0n, isDeployed: true },
     ...(key ? { key } : {})
   },
   retry: jest.fn()
@@ -167,6 +172,7 @@ describe("the cancel's screen", () => {
     prepare = jest.fn(async () => CANCEL_CALL)
     mockWallet.client = readyClient(prepare)
     mockWallet.facts = readyFacts({ addr: KEY, type: 'internal' })
+    mockState.accounts.accounts = [harness.listed(ACCOUNT)]
   })
 
   afterEach(() => {
@@ -182,13 +188,12 @@ describe("the cancel's screen", () => {
     expect(view.byTestId('cancel-spinner')).toBeNull()
   })
 
-  it('offers the attempt its own read finds open, and sends through the steps it built', async () => {
+  it('offers the attempt its own read finds open', async () => {
     view = await mount(at(cancelPathOf(ACCOUNT)))
 
     expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(NEW_KEY))
     expect(view.isDisabled('cancel-send')).toBe(false)
-    await view.press('cancel-send')
-    expect(prepare).toHaveBeenCalledTimes(1)
+    expect(prepare).not.toHaveBeenCalled()
   })
 
   it('offers a newer attempt the fresh read finds open', async () => {
@@ -280,5 +285,43 @@ describe('moving funds', () => {
 
     act(() => latest!.move())
     expect(mockWallet.dispatch).toHaveBeenCalledTimes(2)
+  })
+})
+
+// The run this send starts outlives the screen, one per account, so it runs after every other mount of the account.
+describe("the cancel's send", () => {
+  let view: Awaited<ReturnType<typeof mount>> | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  it('sends through the steps it built: one request in the wallet queue, for the account and the prepared call', async () => {
+    mockWallet.reads = openChain().reads
+    mockWallet.storage = memoryStorage()
+    mockWallet.navigate = jest.fn()
+    mockWallet.dispatch = jest.fn()
+    mockWallet.selected = ACCOUNT
+    const prepare = jest.fn(async () => CANCEL_CALL)
+    mockWallet.client = readyClient(prepare)
+    mockWallet.facts = readyFacts({ addr: KEY, type: 'internal' })
+    mockState.accounts.accounts = [harness.listed(ACCOUNT)]
+    view = await mount(at(cancelPathOf(ACCOUNT)))
+
+    await view.press('cancel-send')
+    await fixtures.settle()
+
+    expect(prepare).toHaveBeenCalledTimes(1)
+    const added = mockWallet.dispatch.mock.calls
+      .map(([action]) => action)
+      .filter(({ type }) => type === 'REQUESTS_CONTROLLER_ADD_USER_REQUEST')
+    expect(added).toHaveLength(1)
+    expect(added[0].params.userRequest.meta.accountAddr).toBe(ACCOUNT)
+    expect(added[0].params.userRequest.action).toEqual({
+      kind: 'calls',
+      calls: [{ to: CANCEL_CALL.target, value: CANCEL_CALL.value, data: CANCEL_CALL.data }]
+    })
+    expect(view.byTestId('cancel-in-progress')).not.toBeNull()
   })
 })
