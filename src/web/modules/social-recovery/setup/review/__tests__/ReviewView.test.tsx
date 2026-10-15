@@ -1231,18 +1231,19 @@ describe('the trust list', () => {
 })
 
 describe('the account block', () => {
-  it('names the account on one line by its short address, with no check line', async () => {
+  it('names the account on one line by its full address, with no check line and no key box', async () => {
     await mount()
 
-    expect(textOf('review-account-line')).toBe(renderShortAddress(ACCOUNT))
-    expect(pageText()).not.toContain(renderFullAddress(ACCOUNT))
+    expect(textOf('review-account-line')).toBe(renderFullAddress(ACCOUNT))
+    expect(pageText()).not.toContain(renderShortAddress(ACCOUNT))
     expect(pageText()).not.toContain(t('socialRecovery.review.account.check'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.keyRecoveryWouldRemove'))
   })
 
-  it('puts the label the wallet holds before the short address, with no caveat', async () => {
+  it('puts the label the wallet holds before the full address, with no caveat', async () => {
     await mount({ accountLabel: 'Account 1' })
 
-    expect(textOf('review-account-line')).toBe(`Account 1 · ${renderShortAddress(ACCOUNT)}`)
+    expect(textOf('review-account-line')).toBe(`Account 1 · ${renderFullAddress(ACCOUNT)}`)
     expect(pageText()).not.toContain(t('socialRecovery.display.nameCaveat'))
   })
 })

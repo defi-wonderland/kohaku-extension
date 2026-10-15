@@ -1,8 +1,8 @@
 /**
  * The review over the setup records: the path, the waiting period and the
- * privacy level, the account the save writes to on one line, and Save behind
- * its gate with the reason it cannot run on screen. The save screen names the
- * account in full with the key a recovery would remove. The trust list under
+ * privacy level, the account the save writes to on one line with its address
+ * in full, and Save behind its gate with the reason it cannot run on screen.
+ * The save screen adds the key a recovery would remove. The trust list under
  * its expander follows the account in the main column, since its retry can
  * unlock Save. An untested method is named once, beside Save. What a recovery
  * publishes and the spare-key comparison sit beside them.
@@ -35,9 +35,9 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import {
   renderChip,
+  renderFullAddress,
   renderNoun,
   renderResolvedName,
-  renderShortAddress,
   renderWaitLength
 } from '@web/modules/social-recovery/shared/display'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records/types'
@@ -313,13 +313,13 @@ const ReviewView = ({
         </SectionCard>
 
         <SectionCard label={t(`${REVIEW}.account.header`)} testID="review-account">
-          <Text fontSize={14} weight="medium" testID="review-account-line">
+          <Text fontSize={14} weight="medium" selectable testID="review-account-line">
             {name
               ? t('socialRecovery.display.nameWithAccount', {
                   name: name.name,
-                  account: renderShortAddress(account)
+                  account: renderFullAddress(account)
                 })
-              : renderShortAddress(account)}
+              : renderFullAddress(account)}
           </Text>
         </SectionCard>
 
