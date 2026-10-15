@@ -1,16 +1,16 @@
 /**
  * The running attempt's band with its two exits. Continue with that key keeps
- * the recovery entry under the account that holds the attempt's key and the
- * countdown the chain describes, then opens the wait; the recoverer's own
- * session may be gone, and the attempt lives on chain. The cancel opens the
- * cancel's own tab for the account.
+ * the countdown the chain describes, with the recovery entry under the account
+ * that holds the attempt's key, then opens the wait; the recoverer's own
+ * session may be gone, and the attempt lives on chain. A session the records
+ * keep instead is the one the wait follows. The cancel opens the cancel's own
+ * tab for the account.
  */
 import React, { useCallback, useMemo, useState } from 'react'
 
 import { cancelPathOf } from '@web/modules/social-recovery/cancel'
 import { waitPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 
-import { restoreCountdown } from './countdown'
 import { continueTargetOf, ownershipOf, seedReceiversOf } from './running'
 import RunningAttemptBandView from './RunningAttemptBandView'
 import type { ContinueState, RunningAttemptBandProps } from './types'
@@ -20,7 +20,6 @@ const RunningAttemptBand = ({
   account,
   chainId,
   records,
-  storage,
   route,
   choices,
   keys,
@@ -48,15 +47,16 @@ const RunningAttemptBand = ({
     const running = attempt.value
     setContinueState('writing')
     records
-      .recoveryEntry(chainId, account)
-      .write({ account, ...target })
-      .then(() =>
-        restoreCountdown(storage, records, chainId, account, {
+      .restoreCountdown(
+        chainId,
+        account,
+        {
           attemptId: running.attemptId,
           setupNonce: running.setupNonce,
           payloadHash: running.payloadHash,
           openedAtMs: opening.value.openedAt * 1000
-        })
+        },
+        target
       )
       .then(
         () => {
@@ -65,7 +65,7 @@ const RunningAttemptBand = ({
         },
         () => setContinueState('failed')
       )
-  }, [target, attempt, opening, continueState, records, storage, chainId, account, navigate])
+  }, [target, attempt, opening, continueState, records, chainId, account, navigate])
 
   const onCancel = useCallback(() => navigate(cancelPathOf(account)), [navigate, account])
 

@@ -3,10 +3,12 @@
  * attempt, then its opening, and beside them whether a key the keystore holds
  * is an authority of the account and which keys the fast track made on this
  * device. A read that throws, or does not answer within its limit, is failed
- * and never an answer: never no attempt and never a key. A retry reads again
- * every read that failed. The reads are released when the band goes.
+ * and never an answer: never no attempt and never a key; the opening's scan
+ * stops at the limit, and a retry scans again from the setup's block. A retry
+ * reads again every read that failed. The registry's reads are released when
+ * the band goes, or once the registry answers that no attempt waits.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { readWithin } from '@web/modules/social-recovery/shared/client'
 
@@ -43,6 +45,7 @@ export const useRunningAttempt = ({
   const [entries, setEntries] = useState<ListedEntries>(NO_ENTRIES)
   const [attemptRound, setAttemptRound] = useState(0)
   const [authorityRound, setAuthorityRound] = useState(0)
+  const releaseRef = useRef<() => void>(() => undefined)
 
   useEffect(() => {
     if (!active) {
@@ -50,12 +53,16 @@ export const useRunningAttempt = ({
       return undefined
     }
     const reads = openReads()
-    setOpened(reads)
-    return () => {
-      if (reads.status === 'ready') {
+    let released = false
+    const release = () => {
+      if (!released && reads.status === 'ready') {
+        released = true
         reads.close()
       }
     }
+    releaseRef.current = release
+    setOpened(reads)
+    return release
   }, [active, openReads])
 
   useEffect(() => {
@@ -70,6 +77,7 @@ export const useRunningAttempt = ({
     }
     const { reads } = opened
     let live = true
+    let stopped = false
     const run = async () => {
       const running = await readWithin(
         () => readRunningAttempt(reads, account),
@@ -83,13 +91,18 @@ export const useRunningAttempt = ({
         return
       }
       if (running === null) {
+        releaseRef.current()
         setAttempt({ status: 'ended' })
         return
       }
       setAttempt({ status: 'answered', value: running })
       const answered = await readWithin(
-        () => readOpening(reads, account, running),
-        CONFIRMED_READ_LIMIT_MS_STAND_IN
+        () => readOpening(reads, account, running, () => stopped),
+        CONFIRMED_READ_LIMIT_MS_STAND_IN,
+        (error) => {
+          stopped = true
+          return error
+        }
       ).then(
         (value): EntryRead<RunningOpening> => ({ status: 'answered', value }),
         (): EntryRead<RunningOpening> => FAILED
@@ -101,6 +114,7 @@ export const useRunningAttempt = ({
     run().catch(() => undefined)
     return () => {
       live = false
+      stopped = true
     }
   }, [active, opened, account, attemptRound])
 

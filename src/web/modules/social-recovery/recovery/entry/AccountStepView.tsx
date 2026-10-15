@@ -9,7 +9,8 @@
  * its loading state and its failed state with retry; none renders as the next
  * state before it answered. Where the setup read finds an attempt already
  * running and the account still authorizes the module, the band naming it
- * stands in place of continue until the registry says no attempt waits.
+ * stands in place of continue until the registry says no attempt waits; then
+ * the band says the attempt ended and continue comes back.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
@@ -44,7 +45,6 @@ const LABELS = 'socialRecovery.entry.labels'
 
 const AccountStepView = ({
   records,
-  storage,
   chainId,
   search,
   destination,
@@ -90,6 +90,8 @@ const AccountStepView = ({
     openReads: openAttemptReads,
     active: bandActive
   })
+  // An attempt that ended while the band stood leaves the band saying so, and
+  // continue to the readout comes back.
   const bandStands = bandActive && running.attempt.status !== 'ended'
 
   const backToField = useCallback(() => {
@@ -221,13 +223,12 @@ const AccountStepView = ({
           {networkName}
         </Text>
       </SectionCard>
-      {bandStands && (
+      {bandActive && (
         <RunningAttemptBand
           state={running}
           account={target.address}
           chainId={chainId}
           records={records}
-          storage={storage}
           route={search.route}
           choices={choices}
           keys={keys}

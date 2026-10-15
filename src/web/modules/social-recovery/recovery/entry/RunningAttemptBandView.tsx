@@ -5,7 +5,8 @@
  * the key is one this device holds, the band says so and offers to continue
  * with that key. Otherwise it waits it out, or, for a reader who holds the
  * account's own key, offers the cancel. A read that failed draws its line
- * with retry, never no attempt and never a key.
+ * with retry, never no attempt and never a key. An attempt that ended while
+ * the band stood leaves the band saying so.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -26,7 +27,6 @@ import {
 import type { RunningAttemptBandViewProps } from './types'
 
 const RUNNING = 'socialRecovery.entry.runningAttempt'
-const POLL_FAILED = 'socialRecovery.wait.pollFailed'
 
 const RunningAttemptBandView = ({
   attempt,
@@ -53,13 +53,8 @@ const RunningAttemptBandView = ({
     </Text>
   )
 
-  const failed = (testID: string) => (
-    <ReadFailedBlock
-      testID={testID}
-      title={t(`${POLL_FAILED}.title`)}
-      body={t(`${POLL_FAILED}.body`)}
-      onRetry={onRetry}
-    />
+  const failed = (testID: string, title: string = t(`${RUNNING}.readFailed`)) => (
+    <ReadFailedBlock testID={testID} title={title} onRetry={onRetry} />
   )
 
   const whose = () => {
@@ -71,7 +66,7 @@ const RunningAttemptBandView = ({
             'entry-running-yours'
           )}
           {continueState === 'failed' &&
-            line(t('socialRecovery.entry.confirm.writeFailed'), 'entry-running-continue-failed')}
+            line(t(`${RUNNING}.writeFailed`), 'entry-running-continue-failed')}
           {canContinue && (
             <View style={[flexbox.directionRow, spacings.mtTy]}>
               <Button
@@ -95,7 +90,8 @@ const RunningAttemptBandView = ({
     return (
       <>
         {line(t(`${RUNNING}.notYours`), 'entry-running-not-yours')}
-        {authority.status === 'failed' && failed('entry-running-authority-failed')}
+        {authority.status === 'failed' &&
+          failed('entry-running-authority-failed', t(`${RUNNING}.authorityFailed`))}
         {authority.status === 'answered' &&
           !authority.value &&
           line(t(`${RUNNING}.waitItOut`), 'entry-running-wait-it-out')}
@@ -123,6 +119,8 @@ const RunningAttemptBandView = ({
     body = <ActivityIndicator testID="entry-running-loading" />
   } else if (attempt.status === 'failed') {
     body = failed('entry-running-failed')
+  } else if (attempt.status === 'ended') {
+    body = line(t(`${RUNNING}.ended`), 'entry-running-ended')
   } else if (attempt.status === 'answered') {
     const { date } = renderDateTimeInZone(attempt.value.consumableAfter * 1000, timeZone)
     body = (

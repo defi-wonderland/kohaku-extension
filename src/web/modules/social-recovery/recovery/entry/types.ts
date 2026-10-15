@@ -23,7 +23,6 @@ import type {
 import type {
   ChainId,
   ListedRecoveryEntry,
-  RecordStorage,
   RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
@@ -177,8 +176,6 @@ export interface ReceivingRowProps {
 
 export interface AccountStepViewProps {
   records: AccountStepRecords
-  /** The storage the records are kept on. */
-  storage: RecordStorage
   chainId: ChainId
   search: AccountStepSearch
   /** The key a recovery installs: the receiving account's own key. */
@@ -253,7 +250,7 @@ export interface ConfirmedReadsViewProps {
 /** The records the account step reads and writes. */
 export type AccountStepRecords = Pick<
   WalletRecords,
-  'recoveryEntry' | 'recoverySession' | 'listRecoveryEntries'
+  'recoveryEntry' | 'recoverySession' | 'listRecoveryEntries' | 'restoreCountdown'
 >
 
 /** The reads of the registry the running attempt's band makes. */
@@ -340,16 +337,6 @@ export interface RunningAttemptInput {
   active: boolean
 }
 
-/** The countdown a recovery found on chain is kept as: the attempt and when it opened, in ms. */
-export interface RestoredCountdown {
-  attemptId: bigint
-  setupNonce: bigint
-  payloadHash: Hex
-  openedAtMs: number
-}
-
-export type RestoreOutcome = 'written' | 'kept'
-
 export type ContinueState = 'idle' | 'writing' | 'failed'
 
 export interface RunningAttemptBandProps {
@@ -357,7 +344,6 @@ export interface RunningAttemptBandProps {
   account: Address
   chainId: ChainId
   records: AccountStepRecords
-  storage: RecordStorage
   /** The route the holder came by. */
   route: RecoveryRoute
   choices: readonly ReceivingChoice[]

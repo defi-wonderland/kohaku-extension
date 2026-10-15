@@ -6,15 +6,10 @@
  * the page opens in place of its own provider; every other edge is the
  * harness's.
  */
-import type {
-  ActionState,
-  Address,
-  BlockHeader,
-  Handover,
-  Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { ActionState, Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
 import type { AttemptEvents, AttemptScan } from '@web/modules/social-recovery/shared/client'
 import {
+  advanceClock,
   BASIC,
   CHAIN_ID,
   confirmLost,
@@ -35,11 +30,16 @@ import {
   setWallet,
   smartAccount,
   SMART_KEY,
+  storage,
   storedEntry,
   t,
+  useLiveFakeClock,
   VAULT
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
-import type { Mounted } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
+import type {
+  FakeAttemptReads,
+  Mounted
+} from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 // Loaded after the harness, which gives jsdom the `TextEncoder` viem reads when it loads.
@@ -52,18 +52,12 @@ const {
   waitPathOf
 }: typeof import('@web/modules/social-recovery/recovery/checklist/search') = require('@web/modules/social-recovery/recovery/checklist/search')
 const {
+  CONFIRMED_READ_LIMIT_MS_STAND_IN: LIMIT_MS
+}: typeof import('@web/modules/social-recovery/recovery/entry/constants') = require('@web/modules/social-recovery/recovery/entry/constants')
+const {
   renderDateTimeInZone
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
-
-/** The registry's reads the page opens, one mock each, so a test scripts each call. */
-interface FakeAttemptReads {
-  latestBlock: jest.Mock<Promise<BlockHeader>, []>
-  stateOf: jest.Mock<Promise<ActionState>, [Address, number]>
-  attemptEventsOf: jest.Mock<Promise<AttemptEvents>, [Address, bigint, AttemptScan]>
-  blockTime: jest.Mock<Promise<number>, [number]>
-  handoverOf: jest.Mock<Handover | undefined, [Hex]>
-}
 
 const mockReads: FakeAttemptReads = {
   latestBlock: jest.fn(),
@@ -73,11 +67,13 @@ const mockReads: FakeAttemptReads = {
   handoverOf: jest.fn()
 }
 const mockClose = jest.fn()
+/** Whether the build reads a deployed registry, and whether the wallet holds the chain's network. */
+const mockEdges = { deployed: true, network: true }
 
 jest.mock('@web/modules/social-recovery/shared/client/watcher-reads', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client/watcher-reads'),
   // The page only asks whether the build reads a deployed registry; the connection below is the fake.
-  watchedDeploymentOf: () => ({}),
+  watchedDeploymentOf: () => (mockEdges.deployed ? {} : undefined),
   watcherConnectionFor: () => ({
     reads: {
       latestBlock: () => mockReads.latestBlock(),
@@ -93,7 +89,10 @@ jest.mock('@web/modules/social-recovery/shared/client/watcher-reads', () => ({
 }))
 jest.mock('@web/modules/social-recovery/shared/client/extension-provider', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client/extension-provider'),
-  networkOf: () => ({ chainId: 11155111n, name: 'Sepolia', rpcUrls: ['https://rpc.test'] }),
+  networkOf: () =>
+    mockEdges.network
+      ? { chainId: 11155111n, name: 'Sepolia', rpcUrls: ['https://rpc.test'] }
+      : undefined,
   providerKeyOf: () => 'sepolia'
 }))
 
@@ -102,6 +101,8 @@ const FRESH_INSTALL = searchOf('fresh-install', BASIC)
 
 /** A key neither this wallet nor its fast track holds. */
 const STRANGER: Address = getAddress('0x5e7a000000000000000000000000000000000031')
+/** Another account, recovered here earlier, whose entry names a receiving account the wallet no longer lists. */
+const OTHER: Address = getAddress('0x07e4000000000000000000000000000000000032')
 
 const PAYLOAD: Hex = '0x1234'
 const ATTEMPT_ID = 7n
@@ -184,7 +185,13 @@ beforeEach(() => {
   resetEdges()
   Object.values(mockReads).forEach((read) => read.mockReset())
   mockClose.mockReset()
+  mockEdges.deployed = true
+  mockEdges.network = true
   attemptTo(STRANGER)
+})
+
+afterEach(() => {
+  jest.useRealTimers()
 })
 
 describe('the running attempt band', () => {
@@ -330,7 +337,9 @@ describe('the running attempt band', () => {
   it('draws a failed registry read with retry, never as no attempt', async () => {
     mockReads.stateOf.mockRejectedValueOnce(new Error('rpc down'))
     const page = await openRunning()
-    expect(page.has('entry-running-failed')).toBe(true)
+    expect(page.textOf('entry-running-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.readFailed')
+    )
     expect(page.has('entry-running-lead')).toBe(false)
     expect(page.has('entry-continue')).toBe(false)
     await page.press('entry-running-failed-retry')
@@ -338,15 +347,18 @@ describe('the running attempt band', () => {
     page.unmount()
   })
 
-  it('offers continue to the readout once the registry holds no attempt waiting any more', async () => {
+  it('says the attempt ended, offers continue to the readout and releases the reads once the registry holds no attempt waiting', async () => {
     mockReads.stateOf.mockImplementation(async () => ({
       ...waitingState(),
       attempt: { ...waitingState().attempt, state: 'Cancelled' }
     }))
     const page = await openRunning()
-    expect(page.has('entry-running')).toBe(false)
+    expect(page.textOf('entry-running-ended')).toBe(t('socialRecovery.entry.runningAttempt.ended'))
+    expect(page.has('entry-running-loading')).toBe(false)
     expect(page.has('entry-continue')).toBe(true)
+    expect(mockClose).toHaveBeenCalledTimes(1)
     page.unmount()
+    expect(mockClose).toHaveBeenCalledTimes(1)
   })
 
   it('continues with that key: keeps the countdown the chain describes and opens the wait', async () => {
@@ -370,14 +382,158 @@ describe('the running attempt band', () => {
     page.unmount()
   })
 
-  it('keeps a live gathering of the account rather than overwriting it, and still opens the wait', async () => {
+  it('keeps a live gathering of the account and its entry rather than overwriting them, and still opens the wait', async () => {
     attemptTo(SMART_KEY)
     const page = await openRunning()
+    const entryBefore = await storedEntry(LOST)
     await records().recoverySession(CHAIN_ID, LOST).write(gatheringFor(LOST), null)
     await page.press('entry-running-continue')
     const session = await records().recoverySession(CHAIN_ID, LOST).read()
     expect(session.status === 'present' && session.value.state).toBe('live')
+    expect(await storedEntry(LOST)).toEqual(entryBefore)
     expect(navigate).toHaveBeenCalledWith(waitPathOf(LOST))
+    page.unmount()
+  })
+
+  it('says the countdown was not saved where the write fails, and opens no wait', async () => {
+    attemptTo(SMART_KEY)
+    const page = await openRunning()
+    storage.refuse = true
+    await page.press('entry-running-continue')
+    expect(page.textOf('entry-running-continue-failed')).toBe(
+      t('socialRecovery.entry.runningAttempt.writeFailed')
+    )
+    expect(navigate).not.toHaveBeenCalledWith(waitPathOf(LOST))
+    expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
+    storage.refuse = false
+    await page.press('entry-running-continue')
+    expect(navigate).toHaveBeenCalledWith(waitPathOf(LOST))
+    page.unmount()
+  })
+
+  it('reads a stale fast-track entry whose key the keystore does not hold as not yours, with the cancel', async () => {
+    setWallet({
+      accounts: [DAILY, VAULT, smartAccount(LOST, LOST_KEY, 'Lost')],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(LOST_KEY)]
+    })
+    await records()
+      .recoveryEntry(CHAIN_ID, OTHER)
+      .write({ account: OTHER, route: 'fresh-install', receivingAccount: STRANGER })
+    const page = await openRunning()
+    expect(page.textOf('entry-running-not-yours')).toBe(
+      t('socialRecovery.entry.runningAttempt.notYours')
+    )
+    expect(page.has('entry-running-yours')).toBe(false)
+    expect(page.has('entry-running-cancel')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws a failed authority read with its own line and retry, never as no cancel', async () => {
+    setWallet({
+      accounts: [DAILY, VAULT, smartAccount(LOST, LOST_KEY, 'Lost')],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(LOST_KEY)]
+    })
+    // Every read of the account's key fails until the node comes back.
+    let down = true
+    kit.isAuthority.mockImplementation(async (address) => {
+      if (address === LOST_KEY && down) {
+        throw new Error('rpc down')
+      }
+      return address === LOST_KEY
+    })
+    const page = await openRunning()
+    expect(page.textOf('entry-running-authority-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.authorityFailed')
+    )
+    expect(page.has('entry-running-wait-it-out')).toBe(false)
+    expect(page.has('entry-running-cancel')).toBe(false)
+    down = false
+    await page.press('entry-running-authority-failed-retry')
+    expect(page.has('entry-running-authority-failed')).toBe(false)
+    expect(page.has('entry-running-cancel')).toBe(true)
+    page.unmount()
+  })
+
+  it('offers no cancel on your own recovery, even where the wallet holds the account own key', async () => {
+    attemptTo(SMART_KEY)
+    setWallet({
+      accounts: [DAILY, VAULT, smartAccount(LOST, LOST_KEY, 'Lost')],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(LOST_KEY)]
+    })
+    const page = await openRunning()
+    expect(page.has('entry-running-yours')).toBe(true)
+    expect(page.has('entry-running-continue')).toBe(true)
+    expect(page.has('entry-running-cancel')).toBe(false)
+    expect(page.has('entry-running-cancel-body')).toBe(false)
+    page.unmount()
+  })
+
+  it('names no key for an opening whose payload does not decode', async () => {
+    mockReads.handoverOf.mockImplementation(() => undefined)
+    const page = await openRunning()
+    expect(page.textOf('entry-running-opening-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.readFailed')
+    )
+    expect(page.has('entry-running-key')).toBe(false)
+    expect(page.has('entry-running-not-yours')).toBe(false)
+    page.unmount()
+  })
+
+  const unreadable: [string, () => void][] = [
+    [
+      'the wallet holds no network for the chain',
+      () => {
+        mockEdges.network = false
+      }
+    ],
+    [
+      'the build reads no deployed registry',
+      () => {
+        mockEdges.deployed = false
+      }
+    ]
+  ]
+  unreadable.forEach(([name, arrange]) => {
+    it(`draws the band as failed, never as no attempt, where ${name}`, async () => {
+      arrange()
+      const page = await openRunning()
+      expect(page.textOf('entry-running-failed')).toContain(
+        t('socialRecovery.entry.runningAttempt.readFailed')
+      )
+      expect(page.has('entry-running-ended')).toBe(false)
+      expect(page.has('entry-continue')).toBe(false)
+      expect(mockReads.stateOf).not.toHaveBeenCalled()
+      page.unmount()
+    })
+  })
+
+  it('releases the registry reads once when the band goes', async () => {
+    const page = await openRunning()
+    expect(page.has('entry-running-lead')).toBe(true)
+    expect(mockClose).not.toHaveBeenCalled()
+    page.unmount()
+    expect(mockClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops the opening scan at the limit, and a retry scans again from the setup block', async () => {
+    useLiveFakeClock()
+    const scans: AttemptScan[] = []
+    mockReads.attemptEventsOf.mockImplementationOnce((_account, _attemptId, scan) => {
+      scans.push(scan)
+      return new Promise<never>(() => {})
+    })
+    const page = await openRunning()
+    expect(scans[0].stop?.()).toBe(false)
+    await advanceClock(LIMIT_MS)
+    expect(scans[0].stop?.()).toBe(true)
+    expect(page.has('entry-running-opening-failed')).toBe(true)
+    await page.press('entry-running-opening-failed-retry')
+    expect(mockReads.attemptEventsOf).toHaveBeenLastCalledWith(
+      LOST,
+      ATTEMPT_ID,
+      expect.objectContaining({ from: 100, to: 300, until: 'opening' })
+    )
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
     page.unmount()
   })
 })

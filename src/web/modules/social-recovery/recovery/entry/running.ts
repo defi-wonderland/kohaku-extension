@@ -6,15 +6,13 @@
  * layout for the key it hands the account to. Then whose recovery it is: the
  * key the fast track made on this device, a key the wallet holds, or neither.
  */
-import { keccak256 } from 'viem'
-
+import { isOpeningOf } from '@web/modules/social-recovery/recovery/wait'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type {
   ListedRecoveryEntry,
   RecoveryRoute
 } from '@web/modules/social-recovery/shared/records'
-import { sameHash } from '@web/modules/social-recovery/shared/writes'
 
 import { choiceFor } from './receiving'
 import type {
@@ -52,25 +50,24 @@ export const readRunningAttempt = async (
 
 /**
  * The attempt's opening: the key its payload hands the account to and the
- * time of its block. Rejects where no opening of this attempt matches its
- * payload hash or where the payload does not decode, so the key is never
- * guessed.
+ * time of its block. The scan back from the pinned block ends once `stop`
+ * answers true. Rejects where no opening of this attempt matches its id, its
+ * setup number and its payload hash, or where the payload does not decode,
+ * so the key is never guessed.
  */
 export const readOpening = async (
   reads: AttemptReads,
   account: Address,
-  attempt: RunningAttempt
+  attempt: RunningAttempt,
+  stop?: () => boolean
 ): Promise<RunningOpening> => {
   const { started } = await reads.attemptEventsOf(account, attempt.attemptId, {
     from: attempt.setupBlock,
     to: attempt.block,
-    until: 'opening'
+    until: 'opening',
+    ...(stop ? { stop } : {})
   })
-  if (
-    !started ||
-    started.setupNonce !== attempt.setupNonce ||
-    !sameHash(keccak256(started.payload), attempt.payloadHash)
-  ) {
+  if (!started || !isOpeningOf(started, attempt)) {
     throw new Error(`No opening of attempt ${attempt.attemptId} matches its payload hash.`)
   }
   const handover = reads.handoverOf(started.payload)
@@ -99,21 +96,18 @@ export const ownKeysOf = (
 /**
  * The keys the fast track made on this device: each fast track's recovery
  * entry names the account that receives control, whose key is the one the
- * fast track made.
+ * fast track made. An entry whose receiving account the wallet no longer
+ * lists with a key the keystore holds names no key.
  */
 export const seedReceiversOf = (
   entries: readonly ListedRecoveryEntry[],
   choices: readonly ReceivingChoice[]
 ): SeedReceiver[] =>
-  entries
-    .filter(({ record }) => record.value.route === 'fresh-install')
-    .map(({ record }) => {
-      const { receivingAccount } = record.value
-      return {
-        key: choiceFor(choices, receivingAccount)?.key.addr ?? receivingAccount,
-        receivingAccount
-      }
-    })
+  entries.flatMap(({ record }) => {
+    const { route, receivingAccount } = record.value
+    const choice = route === 'fresh-install' ? choiceFor(choices, receivingAccount) : undefined
+    return choice ? [{ key: choice.key.addr, receivingAccount: choice.address }] : []
+  })
 
 /** Whose recovery the attempt is, the fast track's key first, since the keystore holds it too. */
 export const ownershipOf = (

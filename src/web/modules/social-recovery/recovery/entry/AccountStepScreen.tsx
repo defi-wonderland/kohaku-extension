@@ -156,7 +156,6 @@ const AccountStepScreen = () => {
       {!!stepSearch && !!receiving && acknowledged && (
         <AccountStepView
           records={records}
-          storage={extensionRecordStorage}
           chainId={CHAIN_IDS[WALLET_RECOVERY_CHAIN]}
           search={stepSearch}
           destination={receiving.key.addr}
