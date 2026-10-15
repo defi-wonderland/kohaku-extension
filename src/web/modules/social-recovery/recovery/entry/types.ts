@@ -17,10 +17,13 @@ import type {
   KeyHandle,
   RecoveryKitClient,
   RemovedKeyReading,
-  WalletReads
+  WalletReads,
+  WatcherReads
 } from '@web/modules/social-recovery/shared/client'
 import type {
   ChainId,
+  ListedRecoveryEntry,
+  RecordStorage,
   RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
@@ -173,7 +176,9 @@ export interface ReceivingRowProps {
 }
 
 export interface AccountStepViewProps {
-  records: Pick<WalletRecords, 'recoveryEntry' | 'recoverySession'>
+  records: AccountStepRecords
+  /** The storage the records are kept on. */
+  storage: RecordStorage
   chainId: ChainId
   search: AccountStepSearch
   /** The key a recovery installs: the receiving account's own key. */
@@ -186,6 +191,11 @@ export interface AccountStepViewProps {
   client: EntryClient
   /** Resolves a name to an address; an empty answer is a name that does not resolve. */
   resolveName: (name: string) => Promise<string>
+  /** The wallet's accounts and the keys its keystore holds. */
+  accounts: readonly ReceivingAccountSource[]
+  keys: readonly HeldKeySource[]
+  /** Opens the reads of the attempt running against an account. */
+  openAttemptReads: AttemptReadsOpener
   navigate: (to: string) => void
 }
 
@@ -226,12 +236,149 @@ export interface ConfirmedReadsViewProps {
   networkName: string
   /** Whether the setup read reported an attempt running against the account. */
   attemptActive: boolean
+  /** Whether the running attempt's band stands in place of continue. */
+  runningBand: boolean
   onRetry: () => void
   /** Leaves a blocked state for the account field. */
   onBack: () => void
   /** Leaves a refusal about the installed key for the choice of another account. */
   onChooseAnother: () => void
   onContinue: () => void
+}
+
+// ---------------------------------------------------------------------------
+// The running attempt
+// ---------------------------------------------------------------------------
+
+/** The records the account step reads and writes. */
+export type AccountStepRecords = Pick<
+  WalletRecords,
+  'recoveryEntry' | 'recoverySession' | 'listRecoveryEntries'
+>
+
+/** The reads of the registry the running attempt's band makes. */
+export type AttemptReads = Pick<
+  WatcherReads,
+  'latestBlock' | 'stateOf' | 'attemptEventsOf' | 'blockTime' | 'handoverOf'
+>
+
+/**
+ * The reads of the running attempt as the page opened them: the wallet has not
+ * pushed its networks yet, the reads with what releases them, or no reads at
+ * all where the wallet holds no network for the chain or the build reads no
+ * deployed registry.
+ */
+export type OpenedAttemptReads =
+  | { status: 'loading' }
+  | { status: 'ready'; reads: AttemptReads; close: () => void }
+  | { status: 'unreadable' }
+
+export type AttemptReadsOpener = () => OpenedAttemptReads
+
+/** The attempt the registry holds as waiting, at the block the read pinned. */
+export interface RunningAttempt {
+  attemptId: bigint
+  setupNonce: bigint
+  payloadHash: Hex
+  /** When the attempt can execute, in seconds since epoch. */
+  consumableAfter: number
+  /** The block the setup was committed at, where the opening's scan starts. */
+  setupBlock: number
+  /** The block the read pinned. */
+  block: number
+}
+
+/** The registry's read of the attempt: running, answered, failed, or no attempt waiting any more. */
+export type RunningAttemptRead = EntryRead<RunningAttempt> | { status: 'ended' }
+
+/** What the attempt's opening tells: the key it hands the account to, and when it opened, in seconds. */
+export interface RunningOpening {
+  newKey: Address
+  openedAt: number
+}
+
+/**
+ * A key the fast track made on this device: the key of the account a fast
+ * track's recovery entry names as receiving control.
+ */
+export interface SeedReceiver {
+  key: Address
+  receivingAccount: Address
+}
+
+export type ListedEntries = readonly ListedRecoveryEntry[]
+
+/** Whose recovery the attempt is: the fast track's key, a key the wallet holds, or neither. */
+export type RunningOwnership = 'seed' | 'wallet' | 'not-yours'
+
+/** The entry a recovery that continues with the attempt's key is kept under. */
+export interface ContinueTarget {
+  route: RecoveryRoute
+  receivingAccount: Address
+}
+
+export interface RunningAttemptState {
+  attempt: RunningAttemptRead
+  opening: EntryRead<RunningOpening>
+  /** Whether a key the keystore holds is an authority of the account. */
+  authority: EntryRead<boolean>
+  /** The recovery entries this device keeps on the chain, from which the fast track's keys come. */
+  entries: ListedEntries
+  /** Reads again every read that failed. */
+  retry: () => void
+}
+
+export interface RunningAttemptInput {
+  account: Address
+  chainId: ChainId
+  records: Pick<WalletRecords, 'listRecoveryEntries'>
+  client: Pick<EntryKitClient, 'action'> | null
+  /** The account's own keys the keystore holds. */
+  ownKeys: readonly Address[]
+  openReads: AttemptReadsOpener
+  /** False until the band stands; nothing is read before. */
+  active: boolean
+}
+
+/** The countdown a recovery found on chain is kept as: the attempt and when it opened, in ms. */
+export interface RestoredCountdown {
+  attemptId: bigint
+  setupNonce: bigint
+  payloadHash: Hex
+  openedAtMs: number
+}
+
+export type RestoreOutcome = 'written' | 'kept'
+
+export type ContinueState = 'idle' | 'writing' | 'failed'
+
+export interface RunningAttemptBandProps {
+  state: RunningAttemptState
+  account: Address
+  chainId: ChainId
+  records: AccountStepRecords
+  storage: RecordStorage
+  /** The route the holder came by. */
+  route: RecoveryRoute
+  choices: readonly ReceivingChoice[]
+  keys: readonly HeldKeySource[]
+  navigate: (to: string) => void
+}
+
+export interface RunningAttemptBandViewProps {
+  attempt: RunningAttemptRead
+  opening: EntryRead<RunningOpening>
+  /** Whose recovery it is, or null while the key is not known. */
+  ownership: RunningOwnership | null
+  /** Whether a key the keystore holds is an authority of the account. */
+  authority: EntryRead<boolean>
+  /** Whether the wallet can continue with the attempt's key. */
+  canContinue: boolean
+  continueState: ContinueState
+  timeZone: string
+  onRetry: () => void
+  onContinue: () => void
+  onCancel: () => void
 }
 
 export interface CondensedGateProps {

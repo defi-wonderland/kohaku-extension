@@ -17,6 +17,16 @@ export { readDestination, readFit } from './reads'
 export { choiceFor, receivingChoiceOf, receivingChoicesOf } from './receiving'
 export { confirmedStepOf, destinationRefusalOf, recoverRefusalOf } from './refusal'
 export {
+  continueTargetOf,
+  holdsAuthority,
+  ownershipOf,
+  ownKeysOf,
+  readOpening,
+  readRunningAttempt,
+  seedReceiversOf
+} from './running'
+export { restoreCountdown } from './countdown'
+export {
   acknowledgedInState,
   accountStepPathOf,
   parseAccountStepSearch,
@@ -24,6 +34,15 @@ export {
 } from './search'
 export type {
   AccountStepSearch,
+  AttemptReads,
+  AttemptReadsOpener,
+  ContinueTarget,
+  OpenedAttemptReads,
+  RunningAttempt,
+  RunningAttemptRead,
+  RunningOpening,
+  RunningOwnership,
+  SeedReceiver,
   CondensedGateProps,
   ConfirmedReads,
   ConfirmedStage,
