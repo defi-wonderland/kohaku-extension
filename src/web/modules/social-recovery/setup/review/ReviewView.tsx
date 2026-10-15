@@ -1,8 +1,8 @@
 /**
- * The review over the setup records: the path, the waiting period and the
- * privacy level, the account the save writes to on one line with its address
- * in full, and Save behind its gate with the reason it cannot run on screen.
- * The save screen adds the key a recovery would remove. The trust list under
+ * The review over the setup records: the path with its rule lines, the
+ * waiting period and the privacy level, the account the save writes to on one
+ * line with its address in full, and Save behind its gate with the reason it
+ * cannot run on screen. The save screen adds the key a recovery would remove. The trust list under
  * its expander follows the account in the main column, since its retry can
  * unlock Save. An untested method is named once, beside Save. What a recovery
  * publishes and the spare-key comparison sit beside them.
@@ -50,7 +50,8 @@ import {
   pathRowOf,
   privacyLinesOf,
   publicationSentenceOf,
-  renderWait
+  renderWait,
+  ruleLinesOf
 } from './lead'
 import PathBlock from './PathBlock'
 import { accountReadsToRetry, saveGateOf, untestedInPath } from './gate'
@@ -200,6 +201,7 @@ const ReviewView = ({
 
   const { draft } = load
   const publication = publicationSentenceOf(clauses, addressBook, t)
+  const ruleLines = ruleLinesOf(draft, addressBook, t)
   const name = accountLabel ? renderResolvedName(accountLabel, 'informationOnly', t) : null
   const gate = saveGateOf({
     recordsLoaded: true,
@@ -283,6 +285,23 @@ const ReviewView = ({
             addressBook={addressBook}
             onRetryTest={(target) => navigate(enrollPathOf(target))}
           />
+          {ruleLines.length > 0 && (
+            <View style={spacings.mtSm} testID="review-rule-lines">
+              {ruleLines.map((ruleLine, index) => (
+                <Text
+                  // The lines are rebuilt from the path on every render, so a
+                  // line's place is its identity.
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={index}
+                  fontSize={14}
+                  style={spacings.mbTy}
+                  testID={`review-rule-line-${index}`}
+                >
+                  {ruleLine}
+                </Text>
+              ))}
+            </View>
+          )}
           {needsHostileMinorityLine(clauses) &&
             line(t(`${REVIEW}.hostileMinority`), 'review-hostile-minority')}
         </SectionCard>

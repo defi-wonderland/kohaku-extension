@@ -777,13 +777,27 @@ describe('the lead', () => {
       t
     )
 
-  it('leaves the rule lines of the shape to the editor', async () => {
+  it('carries the rule lines of the path once, inside the path card under its rows', async () => {
     const clauses = [group(2, ALICE, BOB, PASSKEY)]
     await mount({ clauses })
 
-    expect(textsStartingWith('review-rule-line-')).toEqual([])
-    expect(byTestId('review-rule-lines')).toBeNull()
-    ruleLinesFor(clauses).forEach((ruleLine) => expect(pageText()).not.toContain(ruleLine))
+    const lines = ruleLinesFor(clauses)
+    expect(lines.length).toBeGreaterThan(0)
+    expect(textsStartingWith('review-rule-line-')).toEqual(lines)
+    lines.forEach((ruleLine) => expect(pageText().split(ruleLine).length - 1).toBe(1))
+    expect(byTestId('review-rule-lines')?.parentElement?.contains(byTestId('review-path'))).toBe(
+      true
+    )
+    expect(isBefore('review-path', 'review-rule-lines')).toBe(true)
+    expect(byTestId('review-columns-aside')?.contains(byTestId('review-rule-lines'))).toBe(false)
+  })
+
+  it('states the single-method risk for a path of one method', async () => {
+    const clauses = [required(PASSKEY)]
+    await mount({ clauses, enrollments: [enrolled(PASSKEY)] })
+
+    expect(textsStartingWith('review-rule-line-')).toEqual(ruleLinesFor(clauses))
+    expect(textOf('review-rule-line-0')).toBe(t('socialRecovery.ruleLines.singleMethod'))
   })
 
   it('carries the hostile-minority guidance once for a group of three, and not for a group of two', async () => {
