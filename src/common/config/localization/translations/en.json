@@ -580,8 +580,9 @@
       "pathHeader": "Your recovery path",
       "hostileMinority": "With three or more members, choose a threshold a hostile minority cannot reach: a set that satisfies the rule can also cancel a recovery at once.",
       "spareKey": "A spare key on this account is the cheaper way to survive a lost key, and no help against a stolen one.",
-      "minimum": "This wallet's minimum is {{minimum}}. The chain enforces none.",
-      "costsHeader": "What a recovery costs and shows",
+      "spareKeyHeader": "One comparison",
+      "minimum": "This wallet's minimum is {{minimum}}.",
+      "publicationHeader": "What a recovery publishes",
       "publication": {
         "lead": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used.",
         "methods": "{{items}} becomes public and permanent.",
@@ -669,6 +670,7 @@
       "passkeyDeviceBound": "device-bound"
     },
     "arm": {
+      "keyRecoveryWouldRemove": "Key a recovery would remove",
       "title": "Setup saved",
       "live": "Your recovery path is live from this moment. Your Recovery Card is next.",
       "savedOnChain": "Saved on chain",
