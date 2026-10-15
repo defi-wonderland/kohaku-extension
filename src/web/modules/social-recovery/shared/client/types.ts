@@ -998,7 +998,10 @@ export interface AttemptScan {
   until?: 'opening' | 'ending'
   /** Asked before each chunk; the scan answers what it found so far once it answers true. */
   stop?: () => boolean
-  /** Told the first block of each chunk once its logs were read. */
+  /**
+   * Told the first block of each chunk once its logs were read and held no
+   * opening; nothing more once the opening is found.
+   */
   onChunk?: (from: number) => void
 }
 
@@ -1012,7 +1015,8 @@ export interface AttemptEvents {
 /**
  * The cheap reads the watcher polls one deployment with, each at a block
  * number the caller pinned. None runs the removed-key scan. A read that could
- * not be made rejects, and never answers empty.
+ * not be made rejects, and never answers empty; a contract's revert met by
+ * the state or authorization read rejects as the kit's named error.
  */
 export interface WatcherReads {
   /** The latest block, never the finalized one. */

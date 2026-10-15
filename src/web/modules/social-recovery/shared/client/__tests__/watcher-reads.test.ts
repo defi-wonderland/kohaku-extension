@@ -5,6 +5,7 @@
  */
 import {
   encodeAbiParameters,
+  encodeErrorResult,
   encodeEventTopics,
   encodeFunctionResult,
   type Hex,
@@ -17,6 +18,7 @@ import {
 
 import type { BlockRange, FilterSpec, RawLog } from '@web/modules/social-recovery/sdk-interfaces'
 import { createWatcherReads } from '@web/modules/social-recovery/shared/client'
+import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
 import {
   ACCOUNT,
   ACCOUNT_CODE,
@@ -31,7 +33,10 @@ import {
   HEAD,
   MANAGER,
   OTHER_ACTION,
-  scriptState
+  reverting,
+  scriptState,
+  stateOfCall,
+  thrownBy
 } from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
 import {
   handoverTo,
@@ -154,6 +159,39 @@ describe('the watcher reads', () => {
       { from: HEAD - 99, to: HEAD },
       { from: HEAD - 199, to: HEAD - 100 }
     ])
+  })
+
+  it('never tells the chunk that holds the opening, nor any chunk after it', async () => {
+    const { reads } = worldWith([attemptStartedLog(3n, handoverTo(NEW_KEY), HEAD - 150)])
+    const chunks: number[] = []
+
+    const found = await reads.attemptEventsOf(ACCOUNT, 3n, {
+      from: DEPLOYED_AT,
+      to: HEAD,
+      onChunk: (from) => chunks.push(from)
+    })
+
+    expect(found.started?.at.blockNumber).toBe(HEAD - 150)
+    expect(chunks).toEqual([HEAD - 99])
+  })
+
+  it("rejects a revert of the manager's state read as the kit's named error", async () => {
+    const { node, reads } = worldWith([])
+    node.answer(
+      MANAGER,
+      stateOfCall(),
+      reverting(
+        encodeErrorResult({
+          abi: POLICY_MANAGER_ABI,
+          errorName: 'PolicyManager_WrongSetupNonce',
+          args: [2n, 3n]
+        })
+      )
+    )
+
+    const thrown = await thrownBy(reads.stateOf(ACCOUNT, HEAD))
+    expect(thrown).toMatchObject({ name: 'LandingRevert', code: 'WrongSetupNonce' })
+    expect((thrown as Error).message).toContain('WrongSetupNonce')
   })
 
   it("never scans before the manager's deployment block", async () => {
