@@ -68,6 +68,21 @@ describe('the submission confirmation', () => {
       )
     })
 
+    it('puts Start recovery directly under the three values, before the run state', async () => {
+      const world = await openWorld()
+      const mounted = await open(world)
+      const order = Array.from(
+        mounted.byTestId('submit')?.querySelectorAll('[data-testid]') ?? []
+      ).map((node) => node.getAttribute('data-testid'))
+      const at = (id: string) => order.indexOf(id)
+      expect(at('submit-lead')).toBeGreaterThan(at('submit-title'))
+      expect(at('submit-action')).toBeGreaterThan(at('submit-lead'))
+      expect(at('submit-verify')).toBe(-1)
+      expect(mounted.byTestId('submit-columns-aside')?.textContent).toContain(
+        t(`${SUBMIT}.checkLine`)
+      )
+    })
+
     it('puts the name caveat beside a name the public name service resolves', async () => {
       const world = await openWorld()
       mockWallet.ens = 'alice.eth'
@@ -108,15 +123,27 @@ describe('the submission confirmation', () => {
       )
     })
 
-    it('counts no stage on the fresh install, under the plain header', async () => {
+    it('counts the fifth of five stages on the fresh install too, under the plain header', async () => {
       const world = await openWorld({ route: 'fresh-install' })
       const mounted = await open(world)
       expect(mounted.byTestId('plain-chrome')).not.toBeNull()
-      expect(mounted.byTestId('submit-stage')).toBeNull()
+      expect(mounted.textOf('submit-stage')).toBe(
+        t('socialRecovery.entry.stageCounter', { step: 5, total: 5 })
+      )
     })
   })
 
   describe('verify the details', () => {
+    it('sits beside the lead, its parts as muted cards', async () => {
+      const world = await openWorld()
+      const mounted = await open(world)
+      await openDetails(mounted)
+      const aside = mounted.byTestId('submit-columns-aside')
+      expect(aside?.querySelector('[data-testid="submit-payment"]')).not.toBeNull()
+      expect(aside?.querySelector('[data-testid="submit-path"]')).not.toBeNull()
+      expect(mounted.byTestId('submit')?.querySelector('[data-testid="submit-details"]')).toBeNull()
+    })
+
     it('stays closed until the recoverer opens it', async () => {
       const world = await openWorld()
       const mounted = await open(world)
@@ -135,7 +162,8 @@ describe('the submission confirmation', () => {
         t(`${SUBMIT}.accountPays`, { account: renderShortAddress(sender) })
       )
       expect(mounted.byTestId('submit-own-key-pays')).toBeNull()
-      expect(mounted.textOf('submit-sending-key')).toBe(sender)
+      expect(mounted.byTestId('submit-sending-key')).toBeNull()
+      expect(mounted.textOf('submit-payment')).not.toContain(sender)
       expect(mounted.textOf('submit-payment')).not.toContain(getAddress(world.sendingKey))
     })
 
@@ -149,7 +177,8 @@ describe('the submission confirmation', () => {
         t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sender) })
       )
       expect(mounted.byTestId('submit-account-pays')).toBeNull()
-      expect(mounted.textOf('submit-sending-key')).toBe(sender)
+      expect(mounted.byTestId('submit-sending-key')).toBeNull()
+      expect(mounted.textOf('submit-payment')).not.toContain(sender)
     }
 
     it('names the key that sends its own transaction on the fresh install', async () => {

@@ -1,7 +1,8 @@
 /**
- * Verify the details, the confirmation's expander: the words no payment and
- * the key that sends and pays, by its address once the sending key is read,
- * the node by kind as the review
+ * Verify the details, the confirmation's expander beside the lead, each part a
+ * muted card: the words no payment and the key that sends and pays, in its
+ * short form once the sending key is read (the lead holds the new key in
+ * full), the node by kind as the review
  * names it, the recovery path with the rows the submission carries and the
  * rows not needed, the waiting period as a duration, that only the account's
  * own key can cancel, what the submission publishes, and on the logged-in
@@ -20,7 +21,6 @@ import common from '@common/styles/utils/common'
 import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import {
-  renderFullAddress,
   renderNoun,
   renderShortAddress,
   renderValueLabel
@@ -50,7 +50,7 @@ const DetailsBlock = ({ route, ready, sendingPlan, onOpened }: DetailsBlockProps
   }, [expanded, onOpened])
 
   const line = (text: string, testID?: string) => (
-    <Text key={text} fontSize={14} style={spacings.mbTy} testID={testID}>
+    <Text key={text} fontSize={12} appearance="secondaryText" style={spacings.mbTy} testID={testID}>
       {text}
     </Text>
   )
@@ -99,41 +99,52 @@ const DetailsBlock = ({ route, ready, sendingPlan, onOpened }: DetailsBlockProps
       </Pressable>
       {expanded && (
         <>
-          <SectionCard label={renderValueLabel('payment', t)} testID="submit-payment">
+          <SectionCard
+            tone="muted"
+            spacing="item"
+            label={renderValueLabel('payment', t)}
+            testID="submit-payment"
+          >
             {line(t(`${SUBMIT}.noPayment`), 'submit-no-payment')}
-            {!!sendingPlan && (
-              <>
-                {sendingPlan.kind === 'key'
-                  ? line(
-                      t(`${SUBMIT}.ownKeyPays`, { key: renderShortAddress(sendingPlan.key.addr) }),
-                      'submit-own-key-pays'
-                    )
-                  : line(
-                      t(`${SUBMIT}.accountPays`, {
-                        account: renderShortAddress(sendingPlan.account)
-                      }),
-                      'submit-account-pays'
-                    )}
-                <Text fontSize={14} weight="number_medium" selectable testID="submit-sending-key">
-                  {renderFullAddress(sendingAddressOf(sendingPlan))}
-                </Text>
-              </>
-            )}
+            {!!sendingPlan &&
+              (sendingPlan.kind === 'key'
+                ? line(
+                    t(`${SUBMIT}.ownKeyPays`, {
+                      key: renderShortAddress(sendingAddressOf(sendingPlan))
+                    }),
+                    'submit-own-key-pays'
+                  )
+                : line(
+                    t(`${SUBMIT}.accountPays`, {
+                      account: renderShortAddress(sendingAddressOf(sendingPlan))
+                    }),
+                    'submit-account-pays'
+                  ))}
           </SectionCard>
-          <SectionCard label={renderNoun('recoveryPath', t)} testID="submit-path">
+          <SectionCard
+            tone="muted"
+            spacing="item"
+            label={renderNoun('recoveryPath', t)}
+            testID="submit-path"
+          >
             <ChecklistRows layout={layout} assessment={assessment} renderRow={renderRow} />
             <View style={spacings.mtSm}>
               {pathLinesOf(layout, chosen, t).map((text) => line(text, 'submit-path-line'))}
             </View>
           </SectionCard>
-          <SectionCard label={renderNoun('waitingPeriod', t)} testID="submit-wait">
+          <SectionCard
+            tone="muted"
+            spacing="item"
+            label={renderNoun('waitingPeriod', t)}
+            testID="submit-wait"
+          >
             {line(
               t(`${SUBMIT}.waitingPeriod`, { duration: renderWait(configuration.wait, t) }),
               'submit-waiting-period'
             )}
             {line(t(`${SUBMIT}.ownerCanCancel`), 'submit-owner-can-cancel')}
           </SectionCard>
-          <SectionCard testID="submit-publication">
+          <SectionCard tone="muted" spacing="item" testID="submit-publication">
             {publicationLinesOf(layout, chosen, t).map((text) =>
               line(text, 'submit-publication-line')
             )}

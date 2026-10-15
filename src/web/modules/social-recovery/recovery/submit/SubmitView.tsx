@@ -1,9 +1,11 @@
 /**
- * The submission confirmation over given props: the title and its lead, the
- * submitting state above the lead while the start is on its way, the three
- * values of the lead, verify the details, the verify again of every approval,
- * the run as it stands, and Start recovery, locked with its reason until the
- * three values and the payment line rendered and every approval verified.
+ * The submission confirmation over given props: the title and its lead, which
+ * say the transaction is being sent while the start is on its way, the three
+ * values of the lead, Start recovery under them, locked with its reason until
+ * the three values and the payment line rendered and every approval verified,
+ * then the verify again of every approval and the run as it stands. Beside
+ * them: the verified line, the second-funding note of the deposit step, and
+ * verify the details.
  */
 import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -14,8 +16,14 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import { ActionsRow, PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import {
+  ActionsRow,
+  PageTitle,
+  SectionCard,
+  TwoColumn
+} from '@web/modules/social-recovery/shared/chrome'
 import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
+import { DepositStepAside } from '@web/modules/social-recovery/shared/writes/components'
 
 import DetailsBlock from './DetailsBlock'
 import { namesNoPayment, rowNameOf } from './lead'
@@ -60,32 +68,40 @@ const SubmitView = ({
   )
 
   if (load.phase === 'loading') {
-    return <ActivityIndicator testID="submit-loading" />
+    return (
+      <TwoColumn testID="submit-columns">
+        <ActivityIndicator testID="submit-loading" />
+      </TwoColumn>
+    )
   }
   if (load.phase === 'update-the-wallet') {
     return (
-      <View testID="submit-update-the-wallet">
-        <Alert
-          type="error"
-          size="sm"
-          title={t('socialRecovery.client.updateTheWalletTitle')}
-          text={t('socialRecovery.client.updateTheWalletBody')}
-        />
-      </View>
+      <TwoColumn testID="submit-columns">
+        <View testID="submit-update-the-wallet">
+          <Alert
+            type="error"
+            size="sm"
+            title={t('socialRecovery.client.updateTheWalletTitle')}
+            text={t('socialRecovery.client.updateTheWalletBody')}
+          />
+        </View>
+      </TwoColumn>
     )
   }
   if (load.phase === 'failed') {
     return (
-      <View testID="submit-load-failed">
-        <Alert
-          type="error"
-          size="sm"
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.client.unavailableBody')}
-        >
-          {retryButton('submit-load-retry', onRetryLoad)}
-        </Alert>
-      </View>
+      <TwoColumn testID="submit-columns">
+        <View testID="submit-load-failed">
+          <Alert
+            type="error"
+            size="sm"
+            title={t('socialRecovery.client.unavailableTitle')}
+            text={t('socialRecovery.client.unavailableBody')}
+          >
+            {retryButton('submit-load-retry', onRetryLoad)}
+          </Alert>
+        </View>
+      </TwoColumn>
     )
   }
 
@@ -98,12 +114,6 @@ const SubmitView = ({
         return (
           <Text fontSize={14} appearance="secondaryText" testID="submit-checking">
             {t(`${SUBMIT}.checking`)}
-          </Text>
-        )
-      case 'verified':
-        return (
-          <Text fontSize={14} testID="submit-check-line">
-            {t(`${SUBMIT}.checkLine`)}
           </Text>
         )
       case 'rejected':
@@ -178,15 +188,75 @@ const SubmitView = ({
     write.status === 'needsDeposit' ||
     (!isLive(run) && !landedOf(run) && !mayStillLand(write) && !run.refusal)
 
-  return (
-    <View testID="submit">
-      <PageTitle
-        title={t(`${SUBMIT}.title`)}
-        lead={t(`${SUBMIT}.lead`)}
-        titleTestID="submit-title"
+  const actions = (idle || showsBack) && (
+    <ActionsRow
+      testID="submit-actions"
+      primary={
+        idle ? (
+          <Button
+            testID="submit-action"
+            type="primary"
+            text={t(`${SUBMIT}.action`)}
+            disabled={!canStart}
+            onPress={onStart}
+            hasBottomSpacing={false}
+          />
+        ) : null
+      }
+      secondary={
+        showsBack ? (
+          <Button
+            testID="submit-back"
+            type="outline"
+            text={t('socialRecovery.actions.back')}
+            onPress={onBack}
+            hasBottomSpacing={false}
+          />
+        ) : undefined
+      }
+      note={idle && !unlocked ? t(`${SUBMIT}.unlockReason`) : undefined}
+      noteTestID="submit-unlock-reason"
+    />
+  )
+
+  const aside = (
+    <>
+      {verify.status === 'verified' && (
+        <SectionCard tone="muted" spacing="item" testID="submit-verify">
+          <Text fontSize={12} appearance="secondaryText" testID="submit-check-line">
+            {t(`${SUBMIT}.checkLine`)}
+          </Text>
+        </SectionCard>
+      )}
+      {write.status === 'needsDeposit' && (
+        <DepositStepAside step={write.step} testID="submit-gas-second-funding" />
+      )}
+      <DetailsBlock
+        route={route}
+        ready={load}
+        sendingPlan={sending.status === 'ready' ? sending.plan : undefined}
+        onOpened={onDetailsOpened}
       />
-      {submitting && (
-        <View style={spacings.mbSm}>
+    </>
+  )
+
+  return (
+    <TwoColumn testID="submit-columns" aside={aside}>
+      <View testID="submit">
+        <PageTitle
+          title={t(submitting ? `${SUBMIT}.submittingTitle` : `${SUBMIT}.title`)}
+          lead={t(submitting ? 'socialRecovery.writes.submittingBody' : `${SUBMIT}.lead`)}
+          titleTestID="submit-title"
+        />
+        <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
+        {actions}
+        {verify.status !== 'verified' && (
+          <SectionCard style={spacings.mtSm} testID="submit-verify">
+            {verifyBlock()}
+          </SectionCard>
+        )}
+        {sendingBlock()}
+        <View style={spacings.mtSm}>
           <RunBlock
             run={run}
             onStart={onStart}
@@ -195,56 +265,8 @@ const SubmitView = ({
             onBack={onBack}
           />
         </View>
-      )}
-      <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
-      <DetailsBlock
-        route={route}
-        ready={load}
-        sendingPlan={sending.status === 'ready' ? sending.plan : undefined}
-        onOpened={onDetailsOpened}
-      />
-      <SectionCard testID="submit-verify">{verifyBlock()}</SectionCard>
-      {sendingBlock()}
-      {!submitting && (
-        <RunBlock
-          run={run}
-          onStart={onStart}
-          onCheckAgain={onCheckAgain}
-          onReread={onReread}
-          onBack={onBack}
-        />
-      )}
-      {(idle || showsBack) && (
-        <ActionsRow
-          testID="submit-actions"
-          primary={
-            idle ? (
-              <Button
-                testID="submit-action"
-                type="primary"
-                text={t(`${SUBMIT}.action`)}
-                disabled={!canStart}
-                onPress={onStart}
-                hasBottomSpacing={false}
-              />
-            ) : null
-          }
-          secondary={
-            showsBack ? (
-              <Button
-                testID="submit-back"
-                type="outline"
-                text={t('socialRecovery.actions.back')}
-                onPress={onBack}
-                hasBottomSpacing={false}
-              />
-            ) : undefined
-          }
-          note={idle && !unlocked ? t(`${SUBMIT}.unlockReason`) : undefined}
-          noteTestID="submit-unlock-reason"
-        />
-      )}
-    </View>
+      </View>
+    </TwoColumn>
   )
 }
 

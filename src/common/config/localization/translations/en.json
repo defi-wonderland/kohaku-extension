@@ -1067,6 +1067,7 @@
     },
     "submit": {
       "title": "Start the recovery",
+      "submittingTitle": "Submitting the recovery",
       "lead": "Check this before you start. When it is submitted, the waiting period begins and the account's own key can cancel it.",
       "keepsAddressNamed": "{{name}} · keeps this address",
       "keepsAddress": "Keeps this address",
