@@ -35,32 +35,44 @@ const CancelView: typeof import('@web/modules/social-recovery/cancel/CancelView'
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const { mount, t } = fixtures
-const { ACCOUNT, NEW_KEY, HEAD, HEAD_TIME, ENDED_TIME } = watcherFixtures
+const { ACCOUNT, NEW_KEY, OLD_KEY, HEAD, HEAD_TIME, ENDED_TIME } = watcherFixtures
 const { TX_HASH, SHORT } = runFixtures
 const ZONE = 'UTC'
+
+const ATTEMPT_4: NonNullable<WatcherReading['attempt']> = {
+  attemptId: 4n,
+  setupNonce: 1n,
+  payloadHash: `0x${'11'.repeat(32)}`,
+  consumableAfter: HEAD_TIME + 3600,
+  executionDue: false,
+  newKey: NEW_KEY
+}
 
 const OPEN: WatcherReading = {
   account: ACCOUNT,
   block: { number: HEAD, timestamp: HEAD_TIME },
   hasSetup: true,
   dormant: false,
-  attempt: {
-    attemptId: 4n,
-    setupNonce: 1n,
-    payloadHash: `0x${'11'.repeat(32)}`,
-    consumableAfter: HEAD_TIME + 3600,
-    executionDue: false,
-    newKey: NEW_KEY
-  }
+  attempt: ATTEMPT_4
 }
 
 const endedBy = (ended: NonNullable<WatcherReading['ended']>): WatcherReading => ({
-  ...OPEN,
-  attempt: undefined,
+  account: OPEN.account,
+  block: OPEN.block,
+  hasSetup: true,
+  dormant: false,
   ended
 })
 
 const RECEIPT = { transactionHash: TX_HASH, status: 0 as const, blockNumber: HEAD + 1 }
+
+const LANDED: CancelState['write'] = {
+  status: 'landed',
+  write: 'cancel',
+  run: 1,
+  transactionHash: TX_HASH,
+  receipt: { ...RECEIPT, status: 1 }
+}
 
 const withWrite = (write: CancelState['write'], rest: Partial<CancelState> = {}): CancelState => ({
   ...initialCancelState(),
@@ -75,7 +87,7 @@ describe('the cancel screen', () => {
 
   beforeEach(() => {
     props = {
-      read: { status: 'read', arrival: { reading: OPEN, target: 4n } },
+      read: { status: 'read', arrival: { reading: OPEN } },
       run: initialCancelState(),
       readiness: 'ready',
       timeZone: ZONE,
@@ -86,7 +98,8 @@ describe('the cancel screen', () => {
       onCheckAgain: jest.fn(),
       onBack: jest.fn(),
       onDone: jest.fn(),
-      onMoveFunds: jest.fn()
+      onMoveFunds: jest.fn(),
+      moveFundsBusy: false
     }
   })
 
@@ -119,15 +132,39 @@ describe('the cancel screen', () => {
     expect(props.onSend).toHaveBeenCalledWith(4n)
   })
 
+  it('confirms a dormant attempt with the dormant line alone, even once its execution is due', async () => {
+    view = await render({
+      read: {
+        status: 'read',
+        arrival: {
+          reading: { ...OPEN, dormant: true, attempt: { ...ATTEMPT_4, executionDue: true } }
+        }
+      }
+    })
+
+    expect(view.textOf('cancel-dormant')).toBe(t('socialRecovery.watcher.banner.dormant'))
+    expect(view.byTestId('cancel-due-chip')).toBeNull()
+    expect(view.byTestId('cancel-due')).toBeNull()
+    expect(view.byTestId('cancel-finishes')).toBeNull()
+    expect(view.isDisabled('cancel-send')).toBe(false)
+  })
+
   it('keeps the send closed while the client failed to load, with a retry', async () => {
     view = await render({ readiness: 'failed' })
 
     expect(view.isDisabled('cancel-send')).toBe(true)
     expect(view.textOf('cancel-ready-failed-line')).toBe(
-      t('socialRecovery.cancel.confirm.readFailed')
+      t('socialRecovery.cancel.confirm.clientFailed')
     )
     await view.press('cancel-ready-retry')
     expect(props.onRetryReady).toHaveBeenCalled()
+  })
+
+  it('says the wallet holds no key for the account, with the send closed', async () => {
+    view = await render({ readiness: 'noKey' })
+
+    expect(view.isDisabled('cancel-send')).toBe(true)
+    expect(view.textOf('cancel-view-only')).toBe(t('socialRecovery.cancel.confirm.viewOnly'))
   })
 
   it('refuses an attempt already ended by another road, naming it, and sends nothing', async () => {
@@ -135,8 +172,7 @@ describe('the cancel screen', () => {
       read: {
         status: 'read',
         arrival: {
-          reading: endedBy({ attemptId: 4n, road: 'cancelled', cancelledBy: 'cancelByProofs' }),
-          target: 4n
+          reading: endedBy({ attemptId: 4n, road: 'cancelled', cancelledBy: 'cancelByProofs' })
         }
       }
     })
@@ -148,32 +184,75 @@ describe('the cancel screen', () => {
     expect(view.byTestId('cancel-send')).toBeNull()
   })
 
-  it('names the controller where the attempt executed, and a newer attempt is not the one confirmed', async () => {
+  it('names the controller where the attempt executed', async () => {
     view = await render({
       read: {
         status: 'read',
         arrival: {
-          reading: endedBy({
-            attemptId: 4n,
-            road: 'executed',
-            controller: NEW_KEY,
-            at: ENDED_TIME
-          }),
-          target: 4n
+          reading: endedBy({ attemptId: 4n, road: 'executed', controller: NEW_KEY, at: ENDED_TIME })
         }
       }
     })
     expect(view.textOf('cancel-ended-controller')).toBe(display.renderFullAddress(NEW_KEY))
+  })
+
+  it('says the road is not read yet where the ending names none, and nothing where it settled without one', async () => {
+    view = await render({
+      read: {
+        status: 'read',
+        arrival: { reading: endedBy({ attemptId: 4n, road: 'cancelled' }) }
+      }
+    })
+    expect(view.textOf('cancel-ended-unread')).toBe(t('socialRecovery.cancel.landed.unread'))
+    expect(view.byTestId('cancel-ended-road')).toBeNull()
     view.unmount()
 
     view = await render({
       read: {
         status: 'read',
-        arrival: { reading: { ...OPEN, attempt: { ...OPEN.attempt!, attemptId: 5n } }, target: 4n }
+        arrival: {
+          reading: endedBy({ attemptId: 4n, road: 'cancelled', endingGap: 'not-found' })
+        }
       }
     })
+    expect(view.byTestId('cancel-ended-unread')).toBeNull()
     expect(view.textOf('cancel-ended-line')).toBe(t('socialRecovery.cancel.confirm.ended'))
-    expect(view.byTestId('cancel-send')).toBeNull()
+  })
+
+  it('tells no road where the reading ends another attempt than the one the run meant', async () => {
+    view = await render({
+      run: {
+        ...initialCancelState(),
+        target: 4n,
+        gone: endedBy({ attemptId: 5n, road: 'cancelled', cancelledBy: 'cancelByProofs' })
+      }
+    })
+
+    expect(view.textOf('cancel-ended-line')).toBe(t('socialRecovery.cancel.confirm.ended'))
+    expect(view.byTestId('cancel-ended-road')).toBeNull()
+  })
+
+  it('offers the cancel of a newer attempt open on arrival, never that the recovery ended', async () => {
+    const newer = { ...ATTEMPT_4, attemptId: 5n, newKey: OLD_KEY }
+    view = await render({
+      read: { status: 'read', arrival: { reading: { ...OPEN, attempt: newer } } }
+    })
+
+    expect(view.byTestId('cancel-ended')).toBeNull()
+    expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(OLD_KEY))
+    await view.press('cancel-send')
+    expect(props.onSend).toHaveBeenCalledWith(5n)
+  })
+
+  it('offers the newer attempt the run found open where its own attempt was gone, over the arrival', async () => {
+    const newer = { ...ATTEMPT_4, attemptId: 5n, newKey: OLD_KEY }
+    view = await render({
+      run: { ...initialCancelState(), target: 4n, gone: { ...OPEN, attempt: newer } }
+    })
+
+    expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(OLD_KEY))
+    await view.press('cancel-send')
+    expect(props.onSend).toHaveBeenCalledWith(5n)
   })
 
   it('reads a failed read as failed, with the retry, and sends nothing', async () => {
@@ -215,21 +294,21 @@ describe('the cancel screen', () => {
     expect(view.byTestId('cancel-check-again')).toBeNull()
   })
 
-  it('reads in progress, never cancelled, after a landing the read does not confirm yet', async () => {
-    view = await render({
-      run: withWrite(
-        {
-          status: 'landed',
-          write: 'cancel',
-          run: 1,
-          transactionHash: TX_HASH,
-          receipt: { ...RECEIPT, status: 1 }
-        },
-        { after: { stage: 'unread' } }
-      )
-    })
+  it('reads landed, never cancelled, while the reads after the landing run', async () => {
+    view = await render({ run: withWrite(LANDED, { after: { stage: 'reading' } }) })
 
-    expect(view.text()).toContain(t('socialRecovery.cancel.inProgress.title'))
+    expect(view.textOf('cancel-landed-title')).toBe(t('socialRecovery.cancel.landed.title'))
+    expect(view.textOf('cancel-landed-body')).toBe(t('socialRecovery.cancel.landed.body'))
+    expect(view.byTestId('cancel-landed-unread')).toBeNull()
+    expect(view.byTestId('cancel-cancelled')).toBeNull()
+  })
+
+  it('reads landed but unconfirmed, with check again, once the reads did not confirm', async () => {
+    view = await render({ run: withWrite(LANDED, { after: { stage: 'unread' } }) })
+
+    expect(view.textOf('cancel-landed-title')).toBe(t('socialRecovery.cancel.landed.title'))
+    expect(view.textOf('cancel-landed-unread')).toBe(t('socialRecovery.cancel.landed.unread'))
+    expect(view.textOf('cancel-check-again')).toBe(t('socialRecovery.cancel.landed.checkAgain'))
     expect(view.byTestId('cancel-cancelled')).toBeNull()
     await view.press('cancel-check-again')
     expect(props.onCheckAgain).toHaveBeenCalled()
@@ -249,6 +328,35 @@ describe('the cancel screen', () => {
     expect(view.text()).toContain(t('socialRecovery.cancel.failed.body'))
     expect(view.text()).toContain(t('socialRecovery.writes.tryAgain'))
     expect(view.textOf('cancel-move-funds')).toBe(t('socialRecovery.cancel.failed.moveFunds'))
+  })
+
+  it("reads the run's own gate refusing the add as nothing changed, never as rejected", async () => {
+    view = await render({
+      run: withWrite({
+        status: 'failedNotSent',
+        write: 'cancel',
+        run: 1,
+        error: accountBatchRefusal('timeout', ACCOUNT)
+      })
+    })
+
+    expect(view.text()).toContain(t('socialRecovery.writes.notSent'))
+    expect(view.text()).not.toContain(t('socialRecovery.cancel.failed.body'))
+    expect(view.text()).toContain(t('socialRecovery.writes.tryAgain'))
+  })
+
+  it('keeps move funds closed while the wallet selects the account', async () => {
+    view = await render({
+      moveFundsBusy: true,
+      run: withWrite({
+        status: 'failedNotSent',
+        write: 'cancel',
+        run: 1,
+        error: accountBatchRefusal('refused', ACCOUNT)
+      })
+    })
+
+    expect(view.isDisabled('cancel-move-funds')).toBe(true)
   })
 
   it('reads a revert after an execution as nothing left to cancel, naming the controller, with move funds', async () => {
@@ -287,16 +395,7 @@ describe('the cancel screen', () => {
 
   it('ends on the cancelled terminal with its lines, move funds and done, and no action to the editor', async () => {
     view = await render({
-      run: withWrite(
-        {
-          status: 'landed',
-          write: 'cancel',
-          run: 1,
-          transactionHash: TX_HASH,
-          receipt: { ...RECEIPT, status: 1 }
-        },
-        { after: { stage: 'cancelled' } }
-      )
+      run: withWrite(LANDED, { after: { stage: 'cancelled', attemptId: 4n } })
     })
 
     expect(view.textOf('cancel-cancelled-eyebrow')).toBe(
@@ -329,18 +428,25 @@ describe('the cancel screen', () => {
     expect(props.onDone).toHaveBeenCalled()
   })
 
+  it('names the attempt the cancel ended by its new key on the terminal', async () => {
+    view = await render({
+      run: withWrite(LANDED, { after: { stage: 'cancelled', attemptId: 5n, newKey: OLD_KEY } })
+    })
+
+    expect(view.textOf('cancel-cancelled-new-key')).toBe(display.renderFullAddress(OLD_KEY))
+  })
+
+  it('shows the terminal a followed cancel reached with no write of its own', async () => {
+    view = await render({
+      run: { ...initialCancelState(), target: 4n, after: { stage: 'cancelled', attemptId: 4n } }
+    })
+
+    expect(view.textOf('cancel-cancelled-title')).toBe(t('socialRecovery.cancel.cancelled.title'))
+  })
+
   it('names the other road that ended the attempt first, with done and no move funds', async () => {
     view = await render({
-      run: withWrite(
-        {
-          status: 'landed',
-          write: 'cancel',
-          run: 1,
-          transactionHash: TX_HASH,
-          receipt: { ...RECEIPT, status: 1 }
-        },
-        { after: { stage: 'otherRoad', road: 'setupWrite' } }
-      )
+      run: withWrite(LANDED, { after: { stage: 'otherRoad', attemptId: 4n, road: 'setupWrite' } })
     })
 
     expect(view.textOf('cancel-other-road')).toBe(

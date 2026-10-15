@@ -34,18 +34,14 @@ const RecoveryAttemptBannerView: typeof import('@web/modules/social-recovery/can
   require('@web/modules/social-recovery/cancel/RecoveryAttemptBannerView').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
-const { mount, t, watchedStorage, storeRecord, hooksOver } = fixtures
+const { act, mount, t, watchedStorage, storeRecord, hooksOver } = fixtures
 const { ACCOUNT, OTHER_ACCOUNT, NEW_KEY, HEAD, HEAD_TIME, SEPOLIA, ENDED_TIME } = watcherFixtures
 const ZONE = 'UTC'
 
-const smartAccount = (addr: Address, label: string): Account =>
-  ({
-    addr,
-    associatedKeys: [],
-    initialPrivileges: [],
-    creation: { factoryAddr: addr, bytecode: '0x', salt: '0x' },
-    preferences: { label, pfp: addr }
-  } as unknown as Account)
+const smartAccount = (addr: Address, label: string): Account => ({
+  ...watcherFixtures.listed(addr),
+  preferences: { label, pfp: addr }
+})
 
 const openRecord = (
   overrides: Partial<NonNullable<WatcherRecord['reading']>> = {},
@@ -111,9 +107,7 @@ describe('the recovery banner', () => {
     await storeRecord(world, SEPOLIA, ACCOUNT, openRecord())
     view = await render([smartAccount(ACCOUNT, 'Main')])
 
-    expect(view.textOf(`recovery-banner-${id}-title`)).toBe(
-      t('socialRecovery.watcher.banner.title')
-    )
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.banner.title'))
     expect(view.textOf(`recovery-banner-${id}-new-key`)).toBe(display.renderFullAddress(NEW_KEY))
     expect(view.textOf(`recovery-banner-${id}-finishes`)).toBe(
       t('socialRecovery.watcher.banner.finishes', { date: dateOf(HEAD_TIME + 3600) })
@@ -188,7 +182,51 @@ describe('the recovery banner', () => {
       t('socialRecovery.watcher.banner.dormant')
     )
     expect(view.byTestId(`recovery-banner-${id}-countdown`)).toBeNull()
+    expect(view.byTestId(`recovery-banner-${id}-finishes`)).toBeNull()
     expect(view.byTestId(`recovery-banner-${id}-not-me`)).not.toBeNull()
+  })
+
+  it('reads the dormant line alone where the attempt is also due', async () => {
+    await storeRecord(
+      world,
+      SEPOLIA,
+      ACCOUNT,
+      openRecord({ dormant: true }, { consumableAfter: HEAD_TIME - 60, executionDue: true })
+    )
+    view = await render([smartAccount(ACCOUNT, 'Main')])
+
+    expect(view.textOf(`recovery-banner-${id}-dormant`)).toBe(
+      t('socialRecovery.watcher.banner.dormant')
+    )
+    expect(view.byTestId(`recovery-banner-${id}-chip`)).toBeNull()
+    expect(view.byTestId(`recovery-banner-${id}-due`)).toBeNull()
+    expect(view.byTestId(`recovery-banner-${id}-due-cancel`)).toBeNull()
+    expect(view.byTestId(`recovery-banner-${id}-not-me`)).not.toBeNull()
+  })
+
+  it("ticks the countdown each second on the view's own clock", async () => {
+    // The countdown's ticks are held by the test, so each one runs when the test says a second passed.
+    const ticks: (() => void)[] = []
+    const intervals = jest.spyOn(window, 'setInterval').mockImplementation((handler) => {
+      ticks.push(() => handler())
+      // A timer that never repeats stands for the interval's handle.
+      return setTimeout(() => undefined, 0)
+    })
+    try {
+      await storeRecord(world, SEPOLIA, ACCOUNT, openRecord())
+      view = await render([smartAccount(ACCOUNT, 'Main')])
+      expect(view.textOf(`recovery-banner-${id}-countdown`)).toBe(
+        t('socialRecovery.watcher.banner.waiting', { countdown: '01:00:00' })
+      )
+      for (let second = 0; second < 3; second += 1) {
+        act(() => ticks.forEach((tick) => tick()))
+      }
+      expect(view.textOf(`recovery-banner-${id}-countdown`)).toBe(
+        t('socialRecovery.watcher.banner.waiting', { countdown: '00:59:57' })
+      )
+    } finally {
+      intervals.mockRestore()
+    }
   })
 
   it('reads a failed poll as failed, with the last check and the retry, and keeps the attempt under it', async () => {
@@ -198,12 +236,8 @@ describe('the recovery banner', () => {
     })
     view = await render([smartAccount(ACCOUNT, 'Main')])
 
-    expect(view.textOf(`recovery-banner-${id}-failed-title`)).toBe(
-      t('socialRecovery.watcher.failed.title')
-    )
-    expect(view.textOf(`recovery-banner-${id}-failed-body`)).toBe(
-      t('socialRecovery.watcher.failed.body')
-    )
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.failed.title'))
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.failed.body'))
     expect(view.textOf(`recovery-banner-${id}-last-read`)).toBe(
       t('socialRecovery.watcher.failed.lastRead', { date: dateOf(HEAD_TIME) })
     )
@@ -232,14 +266,16 @@ describe('the recovery banner', () => {
       })
     )
     view = await render([smartAccount(ACCOUNT, 'Main')])
-    expect(view.byTestId(`recovery-banner-${id}-failed-title`)).not.toBeNull()
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.failed.title'))
     expect(view.byTestId(`recovery-banner-${id}-attempt`)).toBeNull()
 
     await view.press(`recovery-banner-${id}-retry`)
 
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
     expect(destroy).toHaveBeenCalledTimes(1)
-    expect(view.byTestId(`recovery-banner-${id}-failed-title`)).toBeNull()
+    expect(view.textOf(`recovery-banner-${id}`)).not.toContain(
+      t('socialRecovery.watcher.failed.title')
+    )
     expect(view.textOf(`recovery-banner-${id}-new-key`)).toBe(display.renderFullAddress(NEW_KEY))
   })
 
@@ -261,6 +297,28 @@ describe('the recovery banner', () => {
     expect(view.byTestId(`recovery-banner-${id}`)).not.toBeNull()
   })
 
+  it("reads a record that cannot be read as failed, with the hook's retry", async () => {
+    const retry = jest.fn()
+    view = await mount(
+      <RecoveryAttemptBannerView
+        accounts={[smartAccount(ACCOUNT, 'Main')]}
+        useAttempt={() => ({ status: 'failed', retry })}
+        useDismissed={() => undefined}
+        onCancel={onCancel}
+        onDismiss={onDismiss}
+        onRetry={onRetry}
+        timeZone={ZONE}
+      />
+    )
+
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.failed.title'))
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(t('socialRecovery.watcher.failed.body'))
+    expect(view.byTestId(`recovery-banner-${id}-attempt`)).toBeNull()
+    await view.press(`recovery-banner-${id}-retry`)
+    expect(retry).toHaveBeenCalledTimes(1)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
+
   it('renders the executed notice with the controller and no cancel, until it is dismissed', async () => {
     await storeRecord(world, SEPOLIA, ACCOUNT, {
       reading: {
@@ -272,10 +330,10 @@ describe('the recovery banner', () => {
     })
     view = await render([smartAccount(ACCOUNT, 'Main')])
 
-    expect(view.textOf(`recovery-banner-${id}-executed-title`)).toBe(
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(
       t('socialRecovery.watcher.executed.title')
     )
-    expect(view.textOf(`recovery-banner-${id}-executed-body`)).toBe(
+    expect(view.textOf(`recovery-banner-${id}`)).toContain(
       t('socialRecovery.watcher.executed.body', { date: dateOf(ENDED_TIME) })
     )
     expect(view.textOf(`recovery-banner-${id}-controller`)).toBe(display.renderFullAddress(NEW_KEY))
@@ -325,5 +383,12 @@ describe('the recovery banner', () => {
         address: display.renderShortAddress(OTHER_ACCOUNT)
       })
     )
+  })
+
+  it('names an account with an empty label by its address alone', async () => {
+    await storeRecord(world, SEPOLIA, ACCOUNT, openRecord())
+    view = await render([smartAccount(ACCOUNT, ''), smartAccount(OTHER_ACCOUNT, 'Savings')])
+
+    expect(view.textOf(`recovery-banner-${id}-account`)).toBe(display.renderShortAddress(ACCOUNT))
   })
 })
