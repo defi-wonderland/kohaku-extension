@@ -882,15 +882,13 @@
     },
     "readout": {
       "title": "What this account's recovery needs",
+      "lockedTitle": "Enter the recovery password",
       "leadCommitted": "This is the setup committed for this account on the network named below.",
       "leadUnlocked": "This setup is readable on this device, after the recovery password unlocked it.",
-      "leadPrivate": "This account has a recovery setup. Its contents are private.",
+      "leadPrivate": "This account has a recovery setup. Its contents are private until the password unlocks them.",
       "configuredLine": "This account has a recovery setup.",
       "locked": {
-        "title": "We cannot show your setup yet.",
-        "enterPassword": "Enter the recovery password from your Recovery Card.",
-        "notExtensionPassword": "This is not your extension password.",
-        "cannotBegin": "Without the recovery password, this device cannot begin this recovery."
+        "notExtensionPassword": "This is not your extension password."
       },
       "unlock": "Unlock",
       "shapePreview": "The structure is visible. Enter the recovery password to reveal the method details and collect approvals.",
