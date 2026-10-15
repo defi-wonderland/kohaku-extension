@@ -340,9 +340,7 @@ describe('"Add a second method"', () => {
     const button = byTestId('editor-add-second-method')
     expect(byTestId('editor-path')?.contains(button)).toBe(true)
     expect(byTestId('editor-columns-aside')?.contains(button)).toBe(false)
-    expect(button?.parentElement?.parentElement).toBe(
-      byTestId('editor-add-group')?.parentElement
-    )
+    expect(button?.parentElement?.parentElement).toBe(byTestId('editor-add-group')?.parentElement)
     expect(byTestId('editor-columns-aside')?.textContent).toContain(
       en.socialRecovery.ruleLines.secondMethodOffer
     )

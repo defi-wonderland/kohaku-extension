@@ -165,8 +165,6 @@ export interface OwnerStageViewProps {
   onContinue: (receivingAccount: Address) => void
   /** Leaves the recovery. */
   onCancel: () => void
-  /** The stage counter, drawn at the top of the main column so the aside starts level with it. */
-  counter: ReactNode
 }
 
 export interface ReceivingRowProps {
@@ -203,6 +201,8 @@ export interface LookupFieldProps {
   onBack?: () => void
   /** Leaves the recovery. */
   onCancel: () => void
+  /** The stage counter, drawn at the top of the main column so the aside starts level with it. */
+  counter: ReactNode
 }
 
 export interface LookupStateProps {

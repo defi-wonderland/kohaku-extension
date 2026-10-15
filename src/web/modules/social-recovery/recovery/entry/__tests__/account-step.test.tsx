@@ -427,7 +427,9 @@ describe('the lookup field', () => {
     const page = await open(LOGGED_IN)
     expect(page.textOf('entry-account-hint')).toBe(t('socialRecovery.entry.account.hint'))
     expect(page.textOf('entry-account-field')).not.toContain('ENS name also resolves')
-    expect(page.textOf('entry-account-where')).toContain(t('socialRecovery.entry.account.whereBody'))
+    expect(page.textOf('entry-account-where')).toContain(
+      t('socialRecovery.entry.account.whereBody')
+    )
   })
 
   it('opens the main column with the stage counter, so the aside starts level with it', async () => {

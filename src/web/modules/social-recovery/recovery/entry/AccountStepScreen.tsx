@@ -134,8 +134,14 @@ const AccountStepScreen = () => {
   )
 
   return (
-    <RecoveryChrome route={route} titleKey="socialRecovery.routes.recover" testID="recovery-account">
-      {!!search && !!receiving && !acknowledged && <CondensedGate onPass={pass} counter={counter} />}
+    <RecoveryChrome
+      route={route}
+      titleKey="socialRecovery.routes.recover"
+      testID="recovery-account"
+    >
+      {!!search && !!receiving && !acknowledged && (
+        <CondensedGate onPass={pass} counter={counter} />
+      )}
       {!!stepSearch && !!receiving && acknowledged && (
         <AccountStepView
           records={records}
