@@ -572,7 +572,9 @@ describe('the readout while the setup is locked', () => {
     await commitLostSetup('private')
     const page = await open()
     const aside = page.byTestId('readout-columns-aside')
-    expect(aside?.querySelector('[data-testid="readout-two-passwords"]')).not.toBeNull()
+    expect(aside?.querySelector('[data-testid="readout-two-passwords"]')?.textContent).toBe(
+      t('socialRecovery.readout.twoPasswords.title') + t('socialRecovery.readout.twoPasswords.body')
+    )
     expect(page.textOf('readout')).not.toContain(t('socialRecovery.readout.twoPasswords.body'))
     expect(page.text().split(t('socialRecovery.readout.locked.notExtensionPassword'))).toHaveLength(
       2

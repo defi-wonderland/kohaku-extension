@@ -249,7 +249,12 @@ const ReadoutView = ({ state, account, networkName, context, onBack }: ReadoutVi
 
   const aside =
     step.kind === 'locked' ? (
-      <SectionCard tone="muted" spacing="item" testID="readout-two-passwords">
+      <SectionCard
+        tone="muted"
+        spacing="item"
+        label={t(`${READOUT}.twoPasswords.title`)}
+        testID="readout-two-passwords"
+      >
         <Text fontSize={12} appearance="secondaryText">
           {t(`${READOUT}.twoPasswords.body`)}
         </Text>

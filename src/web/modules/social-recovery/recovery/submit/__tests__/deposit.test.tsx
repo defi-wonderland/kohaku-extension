@@ -81,6 +81,15 @@ describe('the deposit step', () => {
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
+  it('puts the second funding beside the step, under its header', async () => {
+    const world = await openWorld()
+    const mounted = await startEmpty(world)
+    const card = mounted
+      .byTestId('submit-columns-aside')
+      ?.querySelector('[data-testid="submit-gas-second-funding"]')
+    expect(card?.textContent).toBe(t(`${GAS}.secondFundingTitle`) + t(`${GAS}.secondFunding`))
+  })
+
   it('offers the deposit from outside alone on the fresh install', async () => {
     const world = await openWorld({ route: 'fresh-install' })
     const mounted = await startEmpty(world)

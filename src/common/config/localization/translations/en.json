@@ -170,6 +170,7 @@
         "sendingKey": "The key that sends this recovery",
         "sendingKeyPays": "This key sends the recovery and pays its gas. The account cannot pay for itself until it is recovered.",
         "submissionAmount": "Send at most {{amount}} to this key for the submission. The exact amount follows the network fee when you submit.",
+        "secondFundingTitle": "A second transaction later",
         "secondFunding": "Executing after the waiting period is a second transaction. This wallet asks you to fund this key again at execution due, at that day's fee.",
         "network": "Send on {{network}}, the network of the account you are recovering.",
         "balanceWaiting": "Balance {{balance}} · waiting for funds…",
@@ -888,7 +889,7 @@
       "title": "What this account's recovery needs",
       "lockedTitle": "Enter the recovery password",
       "leadCommitted": "This is the setup committed for this account on the network named below.",
-      "leadUnlocked": "This setup is readable on this device, after the recovery password unlocked it.",
+      "leadUnlocked": "Everything a recovery of this account needs is below.",
       "leadPrivate": "This account has a recovery setup. Its contents are private until the password unlocks them.",
       "configuredLine": "This account has a recovery setup.",
       "locked": {
@@ -902,7 +903,8 @@
         "cardPointer": "Check the recovery password on your Recovery Card."
       },
       "twoPasswords": {
-        "body": "The recovery password was set when the account's recovery was created and is printed on the Recovery Card. The extension password unlocks this device."
+        "title": "The recovery password",
+        "body": "The recovery password was set when the account's recovery was created and is printed on the Recovery Card."
       },
       "reading": "Reading the setup from {{network}}…",
       "readFailedTitle": "We could not read the setup from {{network}}.",

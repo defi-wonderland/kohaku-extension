@@ -169,7 +169,11 @@ describe('DepositStepView: what renderDepositStep answers', () => {
         )
         expect(r.network).toBe(t(GAS_KEYS.network, { network: NETWORK.name }))
         expect(r.notes).toEqual(fastTrack ? [] : [t(GAS_KEYS.transferIsAnOperation)])
-        expect(r.aside).toEqual(write === 'submission' ? [t(GAS_KEYS.secondFunding)] : [])
+        expect(r.aside).toEqual(
+          write === 'submission'
+            ? [{ title: t(GAS_KEYS.secondFundingTitle), line: t(GAS_KEYS.secondFunding) }]
+            : []
+        )
         expect(r.waiting).toEqual([
           t(GAS_KEYS.balanceWaiting, {
             balance: renderGasBalance(step.balance, NETWORK.nativeAssetSymbol)
@@ -222,7 +226,7 @@ describe('DepositStepView: what renderDepositStep answers', () => {
         ...r.routes.flatMap((route) => [route.line, route.note]),
         r.network,
         ...r.notes,
-        ...r.aside,
+        ...r.aside.flatMap((note) => [note.title, note.line]),
         ...r.waiting,
         r.blocker.title,
         r.blocker.line

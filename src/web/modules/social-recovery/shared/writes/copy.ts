@@ -82,6 +82,7 @@ export const GAS_KEYS = {
   sendingKeyPays: `${GAS}.sendingKeyPays`,
   submissionAmount: `${GAS}.submissionAmount`,
   secondFunding: `${GAS}.secondFunding`,
+  secondFundingTitle: `${GAS}.secondFundingTitle`,
   network: `${GAS}.network`,
   balanceWaiting: `${GAS}.balanceWaiting`,
   continuesOnItsOwn: `${GAS}.continuesOnItsOwn`,
@@ -355,7 +356,10 @@ export const renderDepositStep = (
     routes,
     network: t(GAS_KEYS.network, { network }),
     notes: transferSentence,
-    aside: step.write === 'submission' ? [t(GAS_KEYS.secondFunding)] : [],
+    aside:
+      step.write === 'submission'
+        ? [{ title: t(GAS_KEYS.secondFundingTitle), line: t(GAS_KEYS.secondFunding) }]
+        : [],
     waiting: [t(GAS_KEYS.balanceWaiting, { balance }), t(GAS_KEYS.continuesOnItsOwn)],
     blocker: {
       title: t(GAS_KEYS.notEnoughGasSendingKey),

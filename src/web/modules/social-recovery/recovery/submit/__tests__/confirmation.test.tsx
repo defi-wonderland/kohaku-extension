@@ -73,9 +73,7 @@ describe('the submission confirmation', () => {
       const mounted = await open(world)
       const lead = mounted.byTestId('submit-lead')
       expect(lead?.querySelector('[data-testid="submit-payment"]')).not.toBeNull()
-      expect(mounted.textOf('submit-no-payment')).toBe(
-        t('socialRecovery.display.values.noPayment')
-      )
+      expect(mounted.textOf('submit-no-payment')).toBe(t('socialRecovery.display.values.noPayment'))
       const order = Array.from(lead?.querySelectorAll('[data-testid]') ?? []).map((node) =>
         node.getAttribute('data-testid')
       )
@@ -174,9 +172,7 @@ describe('the submission confirmation', () => {
       const world = await openWorld({ route: 'logged-in', receiving: 'smart' })
       const mounted = await open(world)
       const sender = getAddress(world.receiving.addr)
-      expect(mounted.textOf('submit-no-payment')).toBe(
-        t('socialRecovery.display.values.noPayment')
-      )
+      expect(mounted.textOf('submit-no-payment')).toBe(t('socialRecovery.display.values.noPayment'))
       expect(mounted.textOf('submit-account-pays')).toBe(
         t(`${SUBMIT}.accountPays`, { account: renderShortAddress(sender) })
       )

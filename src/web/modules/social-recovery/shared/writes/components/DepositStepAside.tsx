@@ -17,8 +17,8 @@ const DepositStepAside = ({ step, testID }: DepositStepAsideProps) => {
   }
   return (
     <>
-      {aside.map((line) => (
-        <SectionCard key={line} tone="muted" spacing="item" testID={testID}>
+      {aside.map(({ title, line }) => (
+        <SectionCard key={line} tone="muted" spacing="item" label={title} testID={testID}>
           <Text fontSize={12} appearance="secondaryText">
             {line}
           </Text>

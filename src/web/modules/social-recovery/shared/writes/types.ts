@@ -493,6 +493,12 @@ export interface RenderedRoute {
   note?: string
 }
 
+/** One note beside the step, under its header. */
+export interface RenderedAsideNote {
+  title: string
+  line: string
+}
+
 /** The deposit step as the screen reads it, in order. */
 export interface RenderedDepositStep {
   /** The small line over the title, where the variant has one. */
@@ -511,7 +517,7 @@ export interface RenderedDepositStep {
   network?: string
   notes: string[]
   /** The notes that only inform, which the write's screen draws beside the step. */
-  aside: string[]
+  aside: RenderedAsideNote[]
   /** The lines of a step that waits for the funds to arrive. */
   waiting: string[]
   /**
