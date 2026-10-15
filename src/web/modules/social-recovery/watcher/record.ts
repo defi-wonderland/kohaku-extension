@@ -18,7 +18,7 @@ import {
 import { inQueue, recordKeys } from '@web/modules/social-recovery/shared/records/records'
 import type { ChainId } from '@web/modules/social-recovery/shared/records/types'
 
-import { ENDING_GAPS, OPENING_GAPS } from './constants'
+import { ENDING_GAPS, OPENING_GAPS, TICK_LIMIT_MS } from './constants'
 import type {
   AttemptEnding,
   EndingGap,
@@ -227,7 +227,9 @@ export const readWatcherRecord = async (
  * when its poll started and stamps the record with it; one from a poll that
  * started before the poll of the stored record is dropped and answers the
  * stored record, so a poll that outlived its tick never covers a newer one.
- * A write that names no poll keeps the stored stamp.
+ * Such a poll started less than one tick before the stored one: a write that
+ * names a start more than two ticks earlier comes from a wall clock that moved
+ * back, and is written. A write that names no poll keeps the stored stamp.
  */
 export const updateWatcherRecord = (
   storage: WatcherStorage,
@@ -240,7 +242,13 @@ export const updateWatcherRecord = (
   return inQueue(key, async () => {
     const current = watcherRecordFrom(await storage.get(key))
     const stamped = current?.polledAt
-    if (current && polledAt !== undefined && stamped !== undefined && polledAt < stamped) {
+    if (
+      current &&
+      polledAt !== undefined &&
+      stamped !== undefined &&
+      polledAt < stamped &&
+      stamped - polledAt <= 2 * TICK_LIMIT_MS
+    ) {
       return current
     }
     const changed = change(current)
