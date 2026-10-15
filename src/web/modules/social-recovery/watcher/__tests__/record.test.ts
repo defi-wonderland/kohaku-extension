@@ -3,6 +3,7 @@ import {
   dismissAttempt,
   readWatcherRecord,
   storedWatcherRecordOf,
+  TICK_LIMIT_MS,
   updateWatcherRecord,
   watcherKeyOf,
   watcherRecordFrom
@@ -97,6 +98,30 @@ describe('the watcher record', () => {
     ]
     malformed.forEach((value) => expect(watcherRecordFrom(value)).toBeUndefined())
     expect(watcherRecordFrom(stored)).toEqual(RECORD)
+  })
+
+  it('drops a write from a poll one tick older, and writes one from a clock set back', async () => {
+    const storage = memoryStorage()
+    const stamped = 10 * TICK_LIMIT_MS
+    await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, () => RECORD, { polledAt: stamped })
+
+    const older = await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, () => ({ dismissed: [] }), {
+      polledAt: stamped - TICK_LIMIT_MS
+    })
+    expect(older).toEqual({ ...RECORD, polledAt: stamped })
+    expect(await readWatcherRecord(storage, SEPOLIA, ACCOUNT)).toEqual({
+      ...RECORD,
+      polledAt: stamped
+    })
+
+    const setBack = stamped - 5 * TICK_LIMIT_MS
+    await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, () => ({ dismissed: [] }), {
+      polledAt: setBack
+    })
+    expect(await readWatcherRecord(storage, SEPOLIA, ACCOUNT)).toEqual({
+      dismissed: [],
+      polledAt: setBack
+    })
   })
 
   it('dismisses an attempt once, keeping the reading', async () => {

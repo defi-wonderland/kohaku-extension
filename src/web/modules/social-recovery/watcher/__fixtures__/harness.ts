@@ -161,9 +161,13 @@ export const scriptedChain = () => {
             log && log.at.blockNumber >= scan.from && log.at.blockNumber <= scan.to
               ? log
               : undefined
-          scan.onChunk?.(scan.from)
+          const started = inScan(held.started) as AttemptEvents['started']
+          // A scan that holds the opening tells no chunk as read.
+          if (!started) {
+            scan.onChunk?.(scan.from)
+          }
           return {
-            started: inScan(held.started) as AttemptEvents['started'],
+            started,
             cancelled: inScan(held.cancelled) as AttemptEvents['cancelled'],
             consumed: inScan(held.consumed) as AttemptEvents['consumed']
           }

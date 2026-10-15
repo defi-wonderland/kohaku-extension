@@ -18,7 +18,7 @@ import {
 import { inQueue, recordKeys } from '@web/modules/social-recovery/shared/records/records'
 import type { ChainId } from '@web/modules/social-recovery/shared/records/types'
 
-import { ENDING_GAPS, OPENING_GAPS } from './constants'
+import { ENDING_GAPS, OPENING_GAPS, TICK_LIMIT_MS } from './constants'
 import type {
   AttemptEnding,
   EndingGap,
@@ -63,7 +63,8 @@ const storedReadingOf = (reading: WatcherReading): StoredWatcherRecord['reading'
 export const storedWatcherRecordOf = (record: WatcherRecord): StoredWatcherRecord => ({
   ...(record.reading ? { reading: storedReadingOf(record.reading) } : {}),
   ...(record.failed ? { failed: { ...record.failed } } : {}),
-  dismissed: record.dismissed.map((id) => id.toString())
+  dismissed: record.dismissed.map((id) => id.toString()),
+  ...(record.polledAt !== undefined ? { polledAt: record.polledAt } : {})
 })
 
 // ---------------------------------------------------------------------------
@@ -98,7 +99,8 @@ const attemptFrom = (value: unknown): WatchedAttempt | undefined => {
     !optional(value.removedKey, isStoredAddress) ||
     !optional(value.openingGap, (gap) => OPENING_GAPS.some((known) => known === gap)) ||
     !optional(value.scannedTo, isBlockNumber) ||
-    !optional(value.scannedFrom, isBlockNumber)
+    !optional(value.scannedFrom, isBlockNumber) ||
+    !optional(value.openingBlock, isBlockNumber)
   ) {
     return undefined
   }
@@ -191,7 +193,8 @@ export const watcherRecordFrom = (stored: unknown): WatcherRecord | undefined =>
   if (
     !Array.isArray(value.dismissed) ||
     !value.dismissed.every(isDecimalString) ||
-    !optional(value.failed, isFailure)
+    !optional(value.failed, isFailure) ||
+    !optional(value.polledAt, isTime)
   ) {
     return undefined
   }
@@ -202,7 +205,8 @@ export const watcherRecordFrom = (stored: unknown): WatcherRecord | undefined =>
   return {
     ...(reading ? { reading } : {}),
     ...(value.failed ? { failed: value.failed as PollFailure } : {}),
-    dismissed: (value.dismissed as string[]).map((id) => BigInt(id))
+    dismissed: (value.dismissed as string[]).map((id) => BigInt(id)),
+    ...(value.polledAt !== undefined ? { polledAt: value.polledAt as number } : {})
   }
 }
 
@@ -219,25 +223,40 @@ export const readWatcherRecord = async (
 
 /**
  * Writes the record `change` makes of the one stored, read and written while
- * the record's lock is held, and answers what it wrote. A write that carries
- * the block its reading or failure comes from, older than the block of the
- * stored reading, is dropped and answers the stored record: a poll that
- * outlived its tick never covers a newer reading.
+ * the record's lock is held, and answers what it wrote. A poll's write names
+ * when its poll started and stamps the record with it; one from a poll that
+ * started before the poll of the stored record is dropped and answers the
+ * stored record, so a poll that outlived its tick never covers a newer one.
+ * Such a poll started less than one tick before the stored one: a write that
+ * names a start more than two ticks earlier comes from a wall clock that moved
+ * back, and is written. A write that names no poll keeps the stored stamp.
  */
 export const updateWatcherRecord = (
   storage: WatcherStorage,
   chainId: ChainId,
   account: Address,
   change: (current: WatcherRecord | undefined) => WatcherRecord,
-  { now = Date.now, block }: WatcherWrite = {}
+  { now = Date.now, polledAt }: WatcherWrite = {}
 ): Promise<WatcherRecord> => {
   const key = watcherKeyOf(chainId, account)
   return inQueue(key, async () => {
     const current = watcherRecordFrom(await storage.get(key))
-    if (current?.reading && block !== undefined && block < current.reading.block.number) {
+    const stamped = current?.polledAt
+    if (
+      current &&
+      polledAt !== undefined &&
+      stamped !== undefined &&
+      polledAt < stamped &&
+      stamped - polledAt <= 2 * TICK_LIMIT_MS
+    ) {
       return current
     }
-    const next = change(current)
+    const changed = change(current)
+    const stamp = polledAt ?? stamped
+    const next: WatcherRecord = {
+      ...changed,
+      ...(stamp !== undefined ? { polledAt: stamp } : {})
+    }
     await storage.set(key, { value: storedWatcherRecordOf(next), savedAt: now() })
     return next
   })

@@ -80,14 +80,16 @@ const openingFieldsOf = ({
   removedKey,
   openingGap,
   scannedTo,
-  scannedFrom
+  scannedFrom,
+  openingBlock
 }: Opening): Opening => ({
   ...(openedAt !== undefined ? { openedAt } : {}),
   ...(newKey ? { newKey } : {}),
   ...(removedKey ? { removedKey } : {}),
   ...(openingGap ? { openingGap } : {}),
   ...(scannedTo !== undefined ? { scannedTo } : {}),
-  ...(scannedFrom !== undefined ? { scannedFrom } : {})
+  ...(scannedFrom !== undefined ? { scannedFrom } : {}),
+  ...(openingBlock !== undefined ? { openingBlock } : {})
 })
 
 /**
@@ -96,7 +98,7 @@ const openingFieldsOf = ({
  * then the blocks below the ones the earlier scans reached, where they ran out
  * before the setup block. The first scan reads from the setup block.
  */
-const openingRangesOf = (
+const rangesBelowOf = (
   setupBlock: number,
   pinned: number,
   held: WatchedAttempt | undefined
@@ -121,6 +123,21 @@ const openingRangesOf = (
 }
 
 /**
+ * The ranges of `rangesBelowOf`, after the one block an earlier poll found the
+ * opening in where it ended before reading the opening's time: an opening once
+ * found is read there first and never skipped.
+ */
+const openingRangesOf = (
+  setupBlock: number,
+  pinned: number,
+  held: WatchedAttempt | undefined
+): BlockRange[] => {
+  const found = held?.openingBlock
+  const ranges = rangesBelowOf(setupBlock, pinned, held)
+  return found !== undefined && found <= pinned ? [{ from: found, to: found }, ...ranges] : ranges
+}
+
+/**
  * The blocks the scans of this poll and the earlier ones read, as one range:
  * the merged stretch that reaches highest. The blocks below it are scanned on
  * a later poll.
@@ -142,7 +159,9 @@ const coveredOf = (read: BlockRange[]): BlockRange | undefined =>
  * decode, is never read again. One not found is scanned again on every poll
  * from a margin below the last scan's last block, so a log a lagging node or
  * a reorganization put there is read later; a scan that runs out of its limit
- * keeps the chunks it read, so a long range progresses across polls.
+ * keeps the chunks it read before the one holding the opening, so a long range
+ * progresses across polls. An opening found by a poll that then failed or ran
+ * out of its limit keeps its block for the next poll.
  */
 const openingOf = async (
   reads: WatcherReads,
@@ -161,6 +180,7 @@ const openingOf = async (
   const ranges = openingRangesOf(setupBlock, block.number, held)
   // The lowest block each range's scan reached, by the range's place.
   const reached: (number | undefined)[] = ranges.map(() => undefined)
+  let foundAt: number | undefined
   let stopped = false
   const read = await within(async (): Promise<Opening> => {
     const started = await ranges.reduce<Promise<AttemptEvents['started']>>(
@@ -181,6 +201,7 @@ const openingOf = async (
     if (!started || !samePayload(started.payload, attempt.payloadHash)) {
       return { openingGap: 'not-found', scannedTo: block.number }
     }
+    foundAt = started.at.blockNumber
     const openedAt = await reads.blockTime(started.at.blockNumber)
     const handover = reads.handoverOf(started.payload)
     if (!handover) {
@@ -207,7 +228,8 @@ const openingOf = async (
   return openingFieldsOf({
     openingGap: 'read-failed',
     scannedTo: covered?.to,
-    scannedFrom: covered && covered.from > setupBlock ? covered.from : undefined
+    scannedFrom: covered && covered.from > setupBlock ? covered.from : undefined,
+    openingBlock: foundAt
   })
 }
 
@@ -436,13 +458,18 @@ export const countsOnBadge = (record: WatcherRecord | undefined): boolean =>
   !!record &&
   (!!record.failed || (record.reading?.attempt !== undefined && !attemptDismissed(record)))
 
+/** Why a reading of a block below the stored reading's block is written as a failed poll. */
+const olderBlockMessage = (block: number, stored: number): string =>
+  `The node answers an older block than the last reading: ${block}, below ${stored}.`
+
 /**
  * One poll over the watched accounts: the latest block read once, then each
  * account's reading at it, written to the account's record. Each account's
  * state reads answer within the limit, counted from the poll's start, or the
- * account reads as failed. Every write carries the pinned block where the poll
- * read it, so a write of a poll that outlived its tick never covers the
- * reading of a newer block. Answers the number of accounts the badge counts.
+ * account reads as failed. Every write names when the poll started, so a
+ * write of a poll that outlived its tick never covers a newer poll's. A
+ * reading of a block below the stored reading's is written as a failed poll
+ * beside the stored reading. Answers the number of accounts the badge counts.
  */
 export const pollAccounts = async ({
   reads,
@@ -450,19 +477,14 @@ export const pollAccounts = async ({
   chainId,
   storage,
   now,
+  polledAt = now(),
   limitMs,
   scanLimitMs
 }: PollInput): Promise<number> => {
   const deadline = now() + limitMs
   let latest: Promise<BlockHeader> | undefined
-  let pinned: number | undefined
   const latestBlock = () => {
-    latest =
-      latest ??
-      reads.latestBlock().then((block) => {
-        pinned = block.number
-        return block
-      })
+    latest = latest ?? reads.latestBlock()
     return latest
   }
   const records = await Promise.all(
@@ -477,8 +499,16 @@ export const pollAccounts = async ({
           storage,
           chainId,
           account,
-          (current) => ({ reading, dismissed: current?.dismissed ?? [] }),
-          { now, block: reading.block.number }
+          (current) => {
+            const dismissed = current?.dismissed ?? []
+            const stored = current?.reading?.block.number
+            if (stored !== undefined && reading.block.number < stored) {
+              const failed = { at: now(), message: olderBlockMessage(reading.block.number, stored) }
+              return { ...current, failed, dismissed }
+            }
+            return { reading, dismissed }
+          },
+          { now, polledAt }
         )
       } catch (thrown) {
         const failed = { at: now(), message: messageOf(thrown) }
@@ -487,7 +517,7 @@ export const pollAccounts = async ({
           chainId,
           account,
           (current) => ({ ...current, failed, dismissed: current?.dismissed ?? [] }),
-          { now, block: pinned }
+          { now, polledAt }
         ).catch(() => ({ failed, dismissed: [] }))
       }
     })

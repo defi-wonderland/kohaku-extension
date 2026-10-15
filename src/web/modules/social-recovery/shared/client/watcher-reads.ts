@@ -28,6 +28,7 @@ import { createKitEventManager, LOG_CHUNK_BLOCKS } from './kit/events'
 import type { AttemptLog } from './kit/events/types'
 import { createActionReads, createManagerReads } from './kit/reads'
 import { decodedHandoverOf } from './kit/recovery-client/handover'
+import { withNamedRevert } from './kit/setup-client'
 import { createCodeRead, createProviderAdapter } from './provider-adapter'
 import type {
   AttemptEvents,
@@ -66,9 +67,10 @@ export const createWatcherReads = ({
       return size(await codeRead.code(account, block)) > 0
     },
 
-    stateOf: (account, block) => manager.stateOf(account, descriptor.action, block),
+    stateOf: (account, block) =>
+      withNamedRevert(() => manager.stateOf(account, descriptor.action, block)),
 
-    isAuthorized: (account, block) => action.isAuthorized(account, block),
+    isAuthorized: (account, block) => withNamedRevert(() => action.isAuthorized(account, block)),
 
     async attemptEventsOf(
       account: Address,
@@ -92,14 +94,14 @@ export const createWatcherReads = ({
       // Newest chunk first, each of at most `chunkWidth` blocks ending where the
       // newer one began; an opening precedes its ending, so the scan stops at
       // the first chunk that holds the opening, or the ending where that is
-      // all the scan asks for, or where the caller stops it.
+      // all the scan asks for, or where the caller stops it. A chunk is told
+      // to the caller as read only where it holds no opening.
       const scanBack = async (last: number, found: AttemptEvents): Promise<AttemptEvents> => {
         if (last < first || done(found) || scan.stop?.()) {
           return found
         }
         const range: BlockRange = { from: Math.max(first, last - chunkWidth + 1), to: last }
         const logs = (await events.fetch(filter, range)).filter(ofAttempt)
-        scan.onChunk?.(range.from)
         const next = logs.reduce<AttemptEvents>((held, log) => {
           if (log.kind === 'attempt-started') {
             return { ...held, started: log }
@@ -109,6 +111,9 @@ export const createWatcherReads = ({
           }
           return { ...held, consumed: log }
         }, found)
+        if (!next.started) {
+          scan.onChunk?.(range.from)
+        }
         return scanBack(range.from - 1, next)
       }
       return scanBack(scan.to, {})
