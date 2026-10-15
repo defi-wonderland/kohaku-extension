@@ -1,3 +1,4 @@
+import type { Account } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
 import { providerKeyOf } from '@web/modules/social-recovery/shared/client/extension-provider'
 import type { DeploymentDescriptor } from '@web/modules/social-recovery/sdk-interfaces'
@@ -28,7 +29,15 @@ const NETWORK = {
 
 const DEPLOYMENT = { deployedAt: 0 } as DeploymentDescriptor
 
-const setUp = ({ accounts = [listed(ACCOUNT)], deployed = true, networked = true } = {}) => {
+const setUp = ({
+  accounts = (): readonly Account[] => [listed(ACCOUNT)],
+  deployed = true,
+  networked = true,
+  ready = Promise.resolve() as Promise<unknown>,
+  storage = memoryStorage(),
+  connectThrows = false,
+  tickLimitMs = 2_000
+} = {}) => {
   const deployment = deployed ? DEPLOYMENT : undefined
   const network = networked ? NETWORK : undefined
   const chain = scriptedChain()
@@ -36,25 +45,28 @@ const setUp = ({ accounts = [listed(ACCOUNT)], deployed = true, networked = true
     chain.deploy(account)
     chain.setState(account, stateWith())
   })
-  const storage = memoryStorage()
   const { alarms, fire } = fakeAlarms()
   const onBadge = jest.fn()
   const destroy = jest.fn()
-  const connect = jest.fn((record: Network) => ({
-    reads: chain.reads,
-    providerKey: providerKeyOf(record),
-    destroy
-  }))
+  const connect = jest.fn((record: Network) => {
+    if (connectThrows) {
+      throw new Error('provider refused')
+    }
+    return { reads: chain.reads, providerKey: providerKeyOf(record), destroy }
+  })
   const watcher = startRecoveryWatcher({
-    accounts: () => accounts,
+    accounts,
     network: () => network,
+    ready,
     onBadge,
     deployment: () => deployment,
     alarms,
     storage,
     connect,
     now: () => 1_000,
-    limitMs: 1_000
+    limitMs: 1_000,
+    scanLimitMs: 1_000,
+    tickLimitMs
   })
   return { chain, storage, alarms, fire, onBadge, connect, destroy, watcher }
 }
@@ -94,7 +106,7 @@ describe('the watcher', () => {
 
   it('skips the basic accounts and writes one record per smart account', async () => {
     const { chain, storage } = setUp({
-      accounts: [listed(ACCOUNT), listed(BASIC_ACCOUNT, false), listed(OTHER_ACCOUNT)]
+      accounts: () => [listed(ACCOUNT), listed(BASIC_ACCOUNT, false), listed(OTHER_ACCOUNT)]
     })
     await settle()
 
@@ -136,7 +148,7 @@ describe('the watcher', () => {
 
     expect(onBadge).toHaveBeenCalledWith(1)
     expect((await readWatcherRecord(storage, SEPOLIA, ACCOUNT))?.failed?.message).toMatch(
-      /no network for chain 11155111/
+      /no enabled network for chain 11155111/
     )
   })
 
@@ -148,5 +160,144 @@ describe('the watcher', () => {
     expect(connect).toHaveBeenCalledTimes(1)
     watcher?.stop()
     expect(destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears an alarm an earlier build registered where this build has no deployed kit', async () => {
+    const { alarms } = setUp({ deployed: false })
+
+    expect(alarms.clear).toHaveBeenCalledWith(WATCHER_ALARM)
+    expect(alarms.onAlarm.addListener).not.toHaveBeenCalled()
+  })
+
+  it('listens at once and polls only once the accounts have loaded', async () => {
+    let load: (() => void) | undefined
+    let loadedAccounts: readonly Account[] = []
+    const ready = new Promise<void>((resolve) => {
+      load = resolve
+    })
+    const { alarms, chain, fire, onBadge, storage } = setUp({
+      accounts: () => loadedAccounts,
+      ready
+    })
+
+    expect(alarms.onAlarm.addListener).toHaveBeenCalledTimes(1)
+    fire(WATCHER_ALARM)
+    await settle()
+    expect(chain.reads.latestBlock).not.toHaveBeenCalled()
+    expect(onBadge).not.toHaveBeenCalled()
+
+    loadedAccounts = [listed(ACCOUNT)]
+    load?.()
+    await settle()
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(0)
+    expect((await readWatcherRecord(storage, SEPOLIA, ACCOUNT))?.reading?.account).toBe(ACCOUNT)
+  })
+
+  it('polls once the accounts have loaded, even where the load failed', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { chain, onBadge } = setUp({ ready: Promise.reject(new Error('load failed')) })
+    await settle()
+
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(0)
+    errors.mockRestore()
+  })
+
+  it('watches an account listed twice once', async () => {
+    const { chain, storage } = setUp({
+      accounts: () => [listed(ACCOUNT), listed(ACCOUNT.toLowerCase() as typeof ACCOUNT)]
+    })
+    await settle()
+
+    expect(chain.reads.stateOf).toHaveBeenCalledTimes(1)
+    expect(storage.entries.size).toBe(1)
+  })
+
+  it('skips a listed account whose address does not parse', async () => {
+    const { chain, onBadge } = setUp({
+      accounts: () => [listed('0xnot-an-address' as typeof ACCOUNT), listed(ACCOUNT)]
+    })
+    await settle()
+
+    expect(chain.reads.stateOf.mock.calls.map(([account]) => account)).toEqual([ACCOUNT])
+    expect(onBadge).toHaveBeenCalledWith(0)
+  })
+
+  it('marks every watched account failed where the provider cannot be built', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { onBadge, storage } = setUp({ connectThrows: true })
+    await settle()
+
+    expect(onBadge).toHaveBeenCalledWith(1)
+    expect((await readWatcherRecord(storage, SEPOLIA, ACCOUNT))?.failed?.message).toBe(
+      'provider refused'
+    )
+    expect(errors).toHaveBeenCalled()
+    errors.mockRestore()
+  })
+
+  it('writes nothing and leaves the badge where the accounts cannot be read and none is known', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { onBadge, storage } = setUp({
+      accounts: () => {
+        throw new Error('accounts unavailable')
+      }
+    })
+    await settle()
+
+    expect(onBadge).not.toHaveBeenCalled()
+    expect(storage.entries.size).toBe(0)
+    expect(errors).toHaveBeenCalled()
+    errors.mockRestore()
+  })
+
+  it('marks the accounts last read failed where the accounts cannot be read again', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    let readable = true
+    const { onBadge, storage, watcher } = setUp({
+      accounts: () => {
+        if (!readable) {
+          throw new Error('accounts unavailable')
+        }
+        return [listed(ACCOUNT)]
+      }
+    })
+    await settle()
+    expect(onBadge).toHaveBeenLastCalledWith(0)
+
+    readable = false
+    await watcher?.tick()
+    expect(onBadge).toHaveBeenLastCalledWith(1)
+    const record = await readWatcherRecord(storage, SEPOLIA, ACCOUNT)
+    expect(record?.failed?.message).toBe('accounts unavailable')
+    expect(record?.reading?.account).toBe(ACCOUNT)
+    errors.mockRestore()
+  })
+
+  it('bounds a tick whose storage never answers and runs the next tick', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const storage = memoryStorage()
+    const hang = jest.fn(
+      () =>
+        new Promise<never>(() => {
+          // never answers
+        })
+    )
+    const { get } = storage
+    storage.get = hang as unknown as typeof storage.get
+    const { chain, onBadge, watcher } = setUp({ storage, tickLimitMs: 30 })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 60)
+    })
+
+    expect(onBadge).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledWith('The recovery watcher could not poll', expect.any(Error))
+
+    storage.get = get
+    await watcher?.tick()
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(0)
+    errors.mockRestore()
   })
 })

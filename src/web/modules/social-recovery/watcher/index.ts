@@ -4,7 +4,15 @@
  * The React hook lives in its own file, `useWatchedAttempt`, imported by path,
  * so the background loads this module without the UI's code.
  */
-export { WATCHER_ALARM, WATCH_PERIOD_MINUTES, POLL_LIMIT_MS, OPENING_GAPS } from './constants'
+export {
+  WATCHER_ALARM,
+  WATCH_PERIOD_MINUTES,
+  POLL_LIMIT_MS,
+  SCAN_LIMIT_MS,
+  TICK_LIMIT_MS,
+  OPENING_GAPS,
+  ENDING_GAPS
+} from './constants'
 export { startRecoveryWatcher, watchedNetworkOf } from './alarm'
 export { pollAccount, pollAccounts, watchedAccountsOf, countsOnBadge } from './poll'
 export {
@@ -18,7 +26,9 @@ export {
 } from './record'
 export type {
   OpeningGap,
+  EndingGap,
   WatchedAttempt,
+  Opening,
   AttemptEnding,
   WatcherReading,
   PollFailure,
@@ -28,6 +38,7 @@ export type {
   StoredWatcherRecord,
   WatcherStorage,
   WatcherAlarms,
+  PollLimits,
   PollInput,
   RecoveryWatcherOptions,
   RecoveryWatcher,

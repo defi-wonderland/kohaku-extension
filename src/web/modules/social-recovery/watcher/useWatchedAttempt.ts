@@ -2,9 +2,11 @@
  * The watcher's record of one account on the recovery chain, for a page: read
  * from the extension's local storage, then followed through its change events
  * for that key alone. A failed last poll comes back beside the last good
- * reading, never in its place.
+ * reading, never in its place. A storage read that fails, or a stored value
+ * that is not a watcher record, reads as failed with a retry, never as an
+ * account the watcher has not polled.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import {
@@ -23,54 +25,64 @@ const BROWSER_SOURCES: WatchedAttemptSources = {
   subscribe: browserReportSubscribe
 }
 
-const stateOf = (stored: unknown): WatchedAttemptState => {
-  const record = watcherRecordFrom(stored)
-  if (!record) {
-    return { status: 'unwatched' }
-  }
-  return {
-    status: 'watched',
-    ...(record.reading ? { reading: record.reading } : {}),
-    ...(record.failed ? { failed: record.failed } : {}),
-    attemptDismissed: attemptDismissed(record)
-  }
-}
-
 export const useWatchedAttempt = (
   account: Address | undefined,
   sources: WatchedAttemptSources = BROWSER_SOURCES
 ): WatchedAttemptState => {
   const key = account ? watcherKeyOf(CHAIN_IDS[WALLET_RECOVERY_CHAIN], account) : undefined
-  const [stored, setStored] = useState<{ key?: string; state: WatchedAttemptState }>({
-    state: LOADING
-  })
+  const [reads, setReads] = useState(0)
+  const retry = useCallback(() => setReads((count) => count + 1), [])
+  const [stored, setStored] = useState<{
+    key?: string
+    reads?: number
+    state: WatchedAttemptState
+  }>({ state: LOADING })
 
   useEffect(() => {
     if (!key) {
       return undefined
+    }
+    const stateOf = (value: unknown): WatchedAttemptState => {
+      if (value === undefined) {
+        return { status: 'unwatched' }
+      }
+      const record = watcherRecordFrom(value)
+      if (!record) {
+        return { status: 'failed', retry }
+      }
+      return {
+        status: 'watched',
+        ...(record.reading ? { reading: record.reading } : {}),
+        ...(record.failed ? { failed: record.failed } : {}),
+        attemptDismissed: attemptDismissed(record)
+      }
     }
     let live = true
     let changed = false
     const unsubscribe = sources.subscribe(key, (value) => {
       if (live) {
         changed = true
-        setStored({ key, state: stateOf(value) })
+        setStored({ key, reads, state: stateOf(value) })
       }
     })
-    sources
-      .read(key)
-      .then((value) => {
+    sources.read(key).then(
+      (value) => {
         // A change event that arrived first is newer than this read.
         if (live && !changed) {
-          setStored({ key, state: stateOf(value) })
+          setStored({ key, reads, state: stateOf(value) })
         }
-      })
-      .catch(() => undefined)
+      },
+      () => {
+        if (live && !changed) {
+          setStored({ key, reads, state: { status: 'failed', retry } })
+        }
+      }
+    )
     return () => {
       live = false
       unsubscribe()
     }
-  }, [key, sources])
+  }, [key, reads, retry, sources])
 
-  return stored.key === key && key !== undefined ? stored.state : LOADING
+  return stored.key === key && stored.reads === reads && key !== undefined ? stored.state : LOADING
 }

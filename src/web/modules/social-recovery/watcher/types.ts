@@ -12,7 +12,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client/types'
 import type { ChainId, RecordStorage } from '@web/modules/social-recovery/shared/records/types'
 
-import type { OPENING_GAPS } from './constants'
+import type { ENDING_GAPS, OPENING_GAPS } from './constants'
 
 /**
  * Why an open attempt names no key yet: the read of its opening failed, the
@@ -20,6 +20,13 @@ import type { OPENING_GAPS } from './constants'
  * payload is not in the action's layout.
  */
 export type OpeningGap = typeof OPENING_GAPS[number]
+
+/**
+ * Why an ending whose logs were read lacks a field: no log of it was found, or
+ * the opening's payload is not in the action's layout. Such an ending is
+ * settled and its logs are not read again.
+ */
+export type EndingGap = typeof ENDING_GAPS[number]
 
 /** An attempt the manager holds as waiting, as one poll read it. */
 export interface WatchedAttempt {
@@ -39,11 +46,22 @@ export interface WatchedAttempt {
   removedKey?: Address
   /** Why no key is named yet; absent once the decode returned a key. */
   openingGap?: OpeningGap
+  /**
+   * The last block a scan found no opening up to; the next poll scans the
+   * blocks after it alone. Present while the opening is not found.
+   */
+  scannedTo?: number
 }
 
+/** What a poll reads of an attempt's opening. */
+export type Opening = Pick<
+  WatchedAttempt,
+  'openedAt' | 'newKey' | 'removedKey' | 'openingGap' | 'scannedTo'
+>
+
 /**
- * How the attempt the manager holds ended. A field left undefined is one
- * whose log is not read yet; the next poll reads it again.
+ * How the attempt the manager holds ended. A field left undefined with no
+ * `endingGap` is one whose log is not read yet; the next poll reads it again.
  */
 export type AttemptEnding =
   | {
@@ -53,6 +71,8 @@ export type AttemptEnding =
       controller?: Address
       /** The time of the block of the consume log, in seconds. */
       at?: number
+      /** Why a field is missing although the logs were read. */
+      endingGap?: EndingGap
     }
   | {
       attemptId: bigint
@@ -60,6 +80,8 @@ export type AttemptEnding =
       cancelledBy?: CancelledBy
       /** The time of the block of the cancel log, in seconds. */
       at?: number
+      /** Why a field is missing although the logs were read. */
+      endingGap?: EndingGap
     }
 
 /** One account's reading at one block. */
@@ -127,6 +149,14 @@ export interface WatcherAlarms {
   }
 }
 
+/** How long the two parts of one account's poll may run, in ms. */
+export interface PollLimits {
+  /** The latest block, the account's code, the manager's record and the authorization. */
+  stateMs: number
+  /** The opening and ending logs, counted from the state read's return. */
+  scanMs: number
+}
+
 /** What one poll over the watched accounts takes. */
 export interface PollInput {
   reads: WatcherReads
@@ -135,8 +165,10 @@ export interface PollInput {
   storage: WatcherStorage
   /** The clock a failure is stamped with, in ms since epoch. */
   now: () => number
-  /** How long the poll may run, in ms. */
+  /** How long the state reads of the poll may run, in ms. */
   limitMs: number
+  /** How long the log scans of one account may run once its state read returned, in ms. */
+  scanLimitMs: number
 }
 
 /** What the background starts the watcher with. */
@@ -145,7 +177,12 @@ export interface RecoveryWatcherOptions {
   accounts: () => readonly Account[]
   /** The network record of the recovery chain. */
   network: () => Network | undefined
-  /** Receives, after every poll, the number of accounts the badge counts. */
+  /**
+   * Settles once the accounts controller has loaded the listed accounts; no
+   * poll runs before it.
+   */
+  ready: Promise<unknown>
+  /** Receives, after every poll that read the accounts, the number the badge counts. */
   onBadge: (count: number) => void
   /** The deployment the watcher reads; the build's deployed kit where none is given. */
   deployment?: () => DeploymentDescriptor | undefined
@@ -154,6 +191,8 @@ export interface RecoveryWatcherOptions {
   connect?: (network: Network, deployment: DeploymentDescriptor) => WatcherConnection
   now?: () => number
   limitMs?: number
+  scanLimitMs?: number
+  tickLimitMs?: number
 }
 
 /** A started watcher. */
@@ -175,6 +214,8 @@ export type WatchedAttemptState =
   | { status: 'loading' }
   /** The watcher has not polled this account yet. */
   | { status: 'unwatched' }
+  /** The record could not be read, or holds no watcher record. */
+  | { status: 'failed'; retry: () => void }
   | {
       status: 'watched'
       /** The last good reading; absent where no poll has answered yet. */

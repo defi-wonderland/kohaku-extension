@@ -447,6 +447,7 @@ function getIntervalRefreshTime(constUpdateInterval: number, newestOpTimestamp: 
   startRecoveryWatcher({
     accounts: () => mainCtrl.accounts.accounts,
     network: () => watchedNetworkOf(mainCtrl.networks.networks),
+    ready: mainCtrl.accounts.initialLoadPromise,
     onBadge: (count) => {
       badgesCtrl.recoveryAttemptsCount = count
     }
