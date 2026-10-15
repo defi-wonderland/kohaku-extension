@@ -1,3 +1,17 @@
+import { encodeErrorResult } from 'viem'
+
+import { createWatcherReads } from '@web/modules/social-recovery/shared/client'
+import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
+import {
+  ACCOUNT as KIT_ACCOUNT,
+  ACCOUNT_CODE,
+  DEPLOYED_AT,
+  DESCRIPTOR,
+  fakeNode,
+  MANAGER,
+  reverting,
+  stateOfCall
+} from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
 import type { AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import {
   dismissAttempt,
@@ -18,6 +32,7 @@ import {
   memoryStorage,
   NEW_KEY,
   OLD_KEY,
+  OPENED_BLOCK,
   OPENED_TIME,
   OTHER_ACCOUNT,
   payloadTo,
@@ -33,13 +48,14 @@ const setUp = (accounts = [ACCOUNT]) => {
   const chain = scriptedChain()
   accounts.forEach((account) => chain.deploy(account))
   const storage = memoryStorage()
-  const poll = (limitMs = 1_000, scanLimitMs = 1_000) =>
+  const poll = (limitMs = 1_000, scanLimitMs = 1_000, polledAt = NOW) =>
     pollAccounts({
       reads: chain.reads,
       accounts,
       chainId: SEPOLIA,
       storage,
       now: () => NOW,
+      polledAt,
       limitMs,
       scanLimitMs
     })
@@ -513,23 +529,118 @@ describe('a poll of the watched accounts', () => {
     expect(attempt?.scannedFrom).toBeUndefined()
   })
 
-  it('drops the write of a poll that read an older block than the stored reading', async () => {
+  it('writes a reading of a block below the stored one as a failed poll, keeping the last reading and the badge', async () => {
     const { chain, poll, record } = setUp()
     chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
     chain.head.number = HEAD + 10
     await poll()
+    const good = (await record())?.reading
 
     chain.head.number = HEAD
     chain.setState(ACCOUNT, stateWith())
     expect(await poll()).toBe(1)
-    expect((await record())?.reading).toMatchObject({
-      block: { number: HEAD + 10 },
-      attempt: { attemptId: 4n }
-    })
+    const written = await record()
+    expect(written?.reading).toEqual(good)
+    expect(written?.failed?.message).toMatch(/older block than the last reading/)
 
     chain.setState(ACCOUNT, new Error('node down'))
     await poll()
-    expect((await record())?.failed).toBeUndefined()
+    expect((await record())?.failed?.message).toBe('node down')
+    expect((await record())?.reading).toEqual(good)
+  })
+
+  it('drops the reading and the failure of a poll that started before the stored one', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    await poll(1_000, 1_000, NOW + 60_000)
+    const good = await record()
+
+    chain.head.number = HEAD + 10
+    chain.setState(ACCOUNT, stateWith())
+    expect(await poll()).toBe(1)
+    expect(await record()).toEqual(good)
+
+    chain.setState(ACCOUNT, new Error('node down'))
+    await poll()
+    expect(await record()).toEqual(good)
+
+    await poll(1_000, 1_000, NOW + 120_000)
+    expect((await record())?.failed?.message).toBe('node down')
+  })
+
+  const timeCuts: { name: string; cut: (chain: ReturnType<typeof scriptedChain>) => void }[] = [
+    {
+      name: 'its time read threw',
+      cut: (chain) => chain.reads.blockTime.mockRejectedValueOnce(new Error('block refused'))
+    },
+    {
+      name: 'its time read did not answer within the limit',
+      cut: (chain) =>
+        chain.reads.blockTime.mockImplementationOnce(
+          () =>
+            new Promise(() => {
+              // never answers
+            })
+        )
+    }
+  ]
+  timeCuts.forEach(({ name, cut }) => {
+    it(`reads an opening found on the poll before in its block alone, where ${name}`, async () => {
+      const { chain, poll, record } = setUp()
+      chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+      chain.placeEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
+      cut(chain)
+
+      await poll(1_000, 20)
+      const first = (await record())?.reading?.attempt
+      expect(first).toMatchObject({ openingGap: 'read-failed', openingBlock: OPENED_BLOCK })
+      expect(first?.scannedTo).toBeUndefined()
+
+      chain.head.number = HEAD + 5
+      await poll()
+      expect(scansOf(chain).slice(1)).toEqual([
+        { from: OPENED_BLOCK, to: OPENED_BLOCK, until: 'opening' }
+      ])
+      const second = (await record())?.reading?.attempt
+      expect(second).toMatchObject({ newKey: NEW_KEY, openedAt: OPENED_TIME })
+      expect(second?.openingBlock).toBeUndefined()
+    })
+  })
+
+  it("names the manager's revert in the failure of the poll", async () => {
+    const node = fakeNode()
+    node.setCode(KIT_ACCOUNT, ACCOUNT_CODE, DEPLOYED_AT)
+    node.setCode(MANAGER, ACCOUNT_CODE)
+    node.answer(
+      MANAGER,
+      stateOfCall(),
+      reverting(
+        encodeErrorResult({
+          abi: POLICY_MANAGER_ABI,
+          errorName: 'PolicyManager_WrongSetupNonce',
+          args: [2n, 3n]
+        })
+      )
+    )
+    const storage = memoryStorage()
+
+    await pollAccounts({
+      reads: createWatcherReads({
+        provider: node.provider,
+        codeRead: node.codeRead,
+        descriptor: DESCRIPTOR
+      }),
+      accounts: [KIT_ACCOUNT],
+      chainId: SEPOLIA,
+      storage,
+      now: () => NOW,
+      limitMs: 1_000,
+      scanLimitMs: 1_000
+    })
+
+    expect((await readWatcherRecord(storage, SEPOLIA, KIT_ACCOUNT))?.failed?.message).toMatch(
+      /WrongSetupNonce/
+    )
   })
 
   it('keeps a failure that carries no block beside a newer reading', async () => {

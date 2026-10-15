@@ -57,12 +57,17 @@ export interface WatchedAttempt {
    * it are still to scan. Absent where the scans reached the setup block.
    */
   scannedFrom?: number
+  /**
+   * The block a scan found the opening in where the poll ended before it read
+   * the opening's time; the next poll reads that block alone first.
+   */
+  openingBlock?: number
 }
 
 /** What a poll reads of an attempt's opening. */
 export type Opening = Pick<
   WatchedAttempt,
-  'openedAt' | 'newKey' | 'removedKey' | 'openingGap' | 'scannedTo' | 'scannedFrom'
+  'openedAt' | 'newKey' | 'removedKey' | 'openingGap' | 'scannedTo' | 'scannedFrom' | 'openingBlock'
 >
 
 /**
@@ -125,6 +130,8 @@ export interface WatcherRecord {
   reading?: WatcherReading
   failed?: PollFailure
   dismissed: bigint[]
+  /** When the poll that wrote the reading or the failure last started, in ms since epoch. */
+  polledAt?: number
 }
 
 /** The open attempt as storage holds it, its two bigints as decimal strings. */
@@ -146,15 +153,16 @@ export interface StoredWatcherRecord {
   }
   failed?: PollFailure
   dismissed: string[]
+  polledAt?: number
 }
 
 /**
  * How one record write is made: the clock its save time is stamped with, and
- * the pinned block of the reading or failure it writes, where one was read.
+ * when the poll whose reading or failure it writes started, in ms since epoch.
  */
 export interface WatcherWrite {
   now?: () => number
-  block?: number
+  polledAt?: number
 }
 
 /** The storage the watcher's records live in. */
@@ -186,6 +194,8 @@ export interface PollInput {
   storage: WatcherStorage
   /** The clock a failure is stamped with, in ms since epoch. */
   now: () => number
+  /** When the poll started, in ms since epoch; the clock's time at the call where none is given. */
+  polledAt?: number
   /** How long the state reads of the poll may run, in ms. */
   limitMs: number
   /** How long the log scans of one account may run once its state read returned, in ms. */

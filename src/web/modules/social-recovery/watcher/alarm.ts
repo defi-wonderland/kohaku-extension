@@ -132,8 +132,15 @@ export const startRecoveryWatcher = ({
     return connection
   }
 
-  /** Marks the last reading of each account failed; answers the number the badge counts. */
-  const failAll = async (watched: readonly Address[], thrown: unknown): Promise<number> => {
+  /**
+   * Marks the last reading of each account failed by the poll that started at
+   * `polledAt`; answers the number the badge counts.
+   */
+  const failAll = async (
+    watched: readonly Address[],
+    thrown: unknown,
+    polledAt: number
+  ): Promise<number> => {
     const failed = { at: now(), message: messageOf(thrown) }
     await Promise.all(
       watched.map((account) =>
@@ -142,7 +149,7 @@ export const startRecoveryWatcher = ({
           chainId,
           account,
           (current) => ({ ...current, failed, dismissed: current?.dismissed ?? [] }),
-          { now }
+          { now, polledAt }
         ).catch(() => undefined)
       )
     )
@@ -151,13 +158,14 @@ export const startRecoveryWatcher = ({
 
   /** One poll; answers the badge's count, or undefined where the badge stays as it is. */
   const poll = async (): Promise<number | undefined> => {
+    const polledAt = now()
     let watched: Address[]
     try {
       watched = watchedAccountsOf(accounts())
     } catch (thrown) {
       // eslint-disable-next-line no-console
       console.error('The recovery watcher could not read the accounts', thrown)
-      return lastKnown.length === 0 ? undefined : failAll(lastKnown, thrown)
+      return lastKnown.length === 0 ? undefined : failAll(lastKnown, thrown, polledAt)
     }
     lastKnown = watched
     if (watched.length === 0) {
@@ -169,16 +177,26 @@ export const startRecoveryWatcher = ({
       if (!record) {
         return await failAll(
           watched,
-          new Error(`The extension holds no enabled network for chain ${chainId}.`)
+          new Error(`The extension holds no enabled network for chain ${chainId}.`),
+          polledAt
         )
       }
       reads = connectionFor(record).reads
     } catch (thrown) {
       // eslint-disable-next-line no-console
       console.error('The recovery watcher could not reach the recovery chain', thrown)
-      return failAll(watched, thrown)
+      return failAll(watched, thrown, polledAt)
     }
-    return pollAccounts({ reads, accounts: watched, chainId, storage, now, limitMs, scanLimitMs })
+    return pollAccounts({
+      reads,
+      accounts: watched,
+      chainId,
+      storage,
+      now,
+      polledAt,
+      limitMs,
+      scanLimitMs
+    })
   }
 
   const tick = async (): Promise<void> => {
