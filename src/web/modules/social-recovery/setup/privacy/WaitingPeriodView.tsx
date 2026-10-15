@@ -1,8 +1,8 @@
 /**
- * The waiting period step: the four chips, the default one marked, and the
- * custom entry in whole hours with its minimum beside it, 48 hours unless a
- * waiting period is stored, and what the wait is for beside them. Continue
- * stores the length in seconds and opens the privacy step.
+ * The waiting period step: the four chips, the default one marked inside its
+ * pill, and the custom entry in whole hours with its minimum beside it, 48
+ * hours unless a waiting period is stored, and what the wait is for beside
+ * them. Continue stores the length in seconds and opens the privacy step.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
@@ -20,7 +20,6 @@ import {
   PageTitle,
   PillChoice,
   SectionCard,
-  StatusChip,
   TwoColumn
 } from '@web/modules/social-recovery/shared/chrome'
 import { renderNoun, renderWaitLength } from '@web/modules/social-recovery/shared/display'
@@ -151,29 +150,19 @@ const WaitingPeriodView = ({
           <View style={[flexbox.directionRow, flexbox.wrap]}>
             {WAIT_CHIPS.map((chip) => {
               const { id } = chip
-              const pill = (
+              const isDefault = DEFAULT_CHOICE.kind === 'chip' && id === DEFAULT_CHOICE.id
+              return (
                 <PillChoice
                   key={id}
                   testID={`wait-chip-${id}`}
                   label={t(`${WAIT}.chips.${id}`)}
+                  mark={isDefault ? t('socialRecovery.privacy.defaultChip') : undefined}
+                  markTestID={isDefault ? 'wait-default-chip' : undefined}
                   selected={choice.kind === 'chip' && choice.id === id}
                   disabled={!loaded || isChipPastCeiling(chip, ceilingHours)}
                   onPress={() => setChoice({ kind: 'chip', id })}
                   style={[spacings.mrSm, spacings.mbSm]}
                 />
-              )
-              if (DEFAULT_CHOICE.kind !== 'chip' || id !== DEFAULT_CHOICE.id) {
-                return pill
-              }
-              return (
-                <View key={id} style={[flexbox.directionRow, flexbox.alignStart]}>
-                  {pill}
-                  <StatusChip
-                    testID="wait-default-chip"
-                    text={t('socialRecovery.privacy.defaultChip')}
-                    style={{ ...spacings.mrSm, ...spacings.mtTy }}
-                  />
-                </View>
               )
             })}
             <PillChoice

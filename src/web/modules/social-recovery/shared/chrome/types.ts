@@ -128,6 +128,9 @@ export interface RadioCardProps {
 
 export interface PillChoiceProps {
   label: string
+  /** A word drawn after the label inside the pill, such as the default mark. */
+  mark?: string
+  markTestID?: string
   selected: boolean
   onPress: () => void
   disabled?: boolean

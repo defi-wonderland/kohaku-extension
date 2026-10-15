@@ -75,7 +75,13 @@ describe('the waiting period step', () => {
         ['hours24', 'hours48', 'hours72', 'days7', 'custom'].map(
           (id) => h.byTestId(`wait-chip-${id}`)?.textContent
         )
-      ).toEqual([W.chips.hours24, W.chips.hours48, W.chips.hours72, W.chips.days7, W.custom])
+      ).toEqual([
+        W.chips.hours24,
+        `${W.chips.hours48} · ${S.privacy.defaultChip}`,
+        W.chips.hours72,
+        W.chips.days7,
+        W.custom
+      ])
     })
 
     const LENGTHS: [string, bigint][] = [
@@ -453,6 +459,7 @@ describe('the waiting period step', () => {
     it('marks the 48 hours chip as the default and states no standing floor line', async () => {
       await h.mount(recordsOn())
       expect(h.byTestId('wait-default-chip')?.textContent).toBe('Default')
+      expect(h.byTestId('wait-chip-hours48')?.textContent).toBe('48 hours · Default')
       expect(h.text().split('Default')).toHaveLength(2)
       expect(h.text()).not.toContain('The default is')
       expect(h.text()).not.toContain('or more')
