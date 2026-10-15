@@ -11,7 +11,8 @@
  * ran out polls nothing and leaves the next tick free. A build whose recovery
  * chain runs no deployed kit keeps no alarm and writes no record. A tick while
  * the previous one still runs is skipped, and a tick runs within its own
- * limit, its storage reads and writes included.
+ * limit, its storage reads and writes included; a poll that does not finish
+ * within it badges every account it watched.
  */
 import type { Network } from '@ambire-common/interfaces/network'
 import { browser } from '@web/constants/browserapi'
@@ -223,6 +224,10 @@ export const startRecoveryWatcher = ({
     } catch (thrown) {
       // eslint-disable-next-line no-console
       console.error('The recovery watcher could not poll', thrown)
+      // A poll that did not finish counts every account it watched as failed, with no wait on storage.
+      if (lastKnown.length > 0) {
+        onBadge(lastKnown.length)
+      }
     } finally {
       running = false
     }

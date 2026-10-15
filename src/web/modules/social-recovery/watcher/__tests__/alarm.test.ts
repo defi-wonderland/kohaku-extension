@@ -38,6 +38,7 @@ const setUp = ({
   storage = memoryStorage(),
   connectThrows = false,
   tickLimitMs = 2_000,
+  now = (): number => 1_000,
   fake = fakeAlarms()
 } = {}) => {
   const deployment = deployed ? DEPLOYMENT : undefined
@@ -65,7 +66,7 @@ const setUp = ({
     alarms,
     storage,
     connect,
-    now: () => 1_000,
+    now,
     limitMs: 1_000,
     scanLimitMs: 1_000,
     tickLimitMs
@@ -277,7 +278,7 @@ describe('the watcher', () => {
     errors.mockRestore()
   })
 
-  it('bounds a tick whose storage never answers and runs the next tick', async () => {
+  it('bounds a tick whose storage never answers, badges its account as failed and runs the next tick', async () => {
     const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     const storage = memoryStorage()
     const hang = jest.fn(
@@ -293,12 +294,37 @@ describe('the watcher', () => {
       setTimeout(resolve, 60)
     })
 
-    expect(onBadge).not.toHaveBeenCalled()
+    expect(onBadge).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(1)
     expect(errors).toHaveBeenCalledWith('The recovery watcher could not poll', expect.any(Error))
 
     storage.get = get
     await watcher?.tick()
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(0)
+    errors.mockRestore()
+  })
+
+  it('leaves the badge where a tick fails before it knows any account', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    let clockReadable = false
+    const { onBadge, watcher } = setUp({
+      now: () => {
+        if (!clockReadable) {
+          throw new Error('clock unavailable')
+        }
+        return 1_000
+      }
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20)
+    })
+
+    expect(onBadge).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledWith('The recovery watcher could not poll', expect.any(Error))
+
+    clockReadable = true
+    await watcher?.tick()
     expect(onBadge).toHaveBeenCalledWith(0)
     errors.mockRestore()
   })
