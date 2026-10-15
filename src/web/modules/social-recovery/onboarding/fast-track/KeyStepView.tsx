@@ -140,7 +140,12 @@ const KeyStepView = ({
           {t(`${KEY}.sameAddress`)}
         </Text>
       </SectionCard>
-      <SectionCard tone="muted" spacing="item" testID="fast-track-key-paper">
+      <SectionCard
+        tone="muted"
+        spacing="item"
+        label={t(`${KEY}.whereToKeep`)}
+        testID="fast-track-key-paper"
+      >
         <Text fontSize={12} appearance="secondaryText">
           {t(`${KEY}.paper`)}
         </Text>

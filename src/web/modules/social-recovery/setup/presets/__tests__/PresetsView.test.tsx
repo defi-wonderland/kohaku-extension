@@ -238,6 +238,7 @@ describe('the presets view', () => {
       )
       const aside = byTestId('presets-screen-columns-aside')
       expect(aside?.contains(byTestId('honesty-note') ?? null)).toBe(true)
+      expect(byTestId('honesty-note-card')?.textContent).toContain(S.presets.whatRecoveryCanDo)
       expect(aside?.contains(byTestId('recovery-status') ?? null)).toBe(true)
       expect(byTestId('presets-screen')?.contains(byTestId('preset-eitherOne') ?? null)).toBe(true)
     })

@@ -385,6 +385,7 @@
     },
     "honestyNote": "Recovery helps if you lose your key. It cannot stop someone who already has it.",
     "presets": {
+      "whatRecoveryCanDo": "What recovery can do",
       "lead": "One recovery path per account. Pick the shape that fits you.",
       "customize": "Customize",
       "pickOne": "Pick one · this becomes your recovery path",
@@ -776,6 +777,7 @@
         "installs": "This is the key the recovery will install on the account.",
         "onlyBackup": "These {{count}} words are your new key's recovery phrase, its only backup. Write them on paper, in order. Anyone who reads them controls whatever this key controls, including the account you are about to recover.",
         "paper": "Paper is safer than a screenshot, a note app, or a password manager you may lose with this device.",
+        "whereToKeep": "Where to keep it",
         "acknowledge": "I wrote the words down and stored them away from this device.",
         "action": "Continue to recovery",
         "creating": "Creating your new key…",

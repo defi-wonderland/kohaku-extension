@@ -172,6 +172,9 @@ describe('the key step', () => {
       expect(aside?.querySelector('[data-testid="fast-track-key-paper"]')?.textContent).toContain(
         'Paper is safer than a screenshot'
       )
+      expect(aside?.querySelector('[data-testid="fast-track-key-paper"]')?.textContent).toContain(
+        'Where to keep it'
+      )
     })
 
     it('ignores a phrase the keystore holds that this step did not make', async () => {

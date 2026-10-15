@@ -20,7 +20,6 @@ import flexbox from '@common/styles/utils/flexbox'
 import {
   ActionsRow,
   MethodRow,
-  NoteBox,
   PageTitle,
   RadioCard,
   SectionCard,
@@ -384,7 +383,16 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         </Text>
         <StatusChip testID="recovery-status" text={renderChip('recovery', 'notSetUp', t)} />
       </SectionCard>
-      <NoteBox testID="honesty-note">{t('socialRecovery.honestyNote')}</NoteBox>
+      <SectionCard
+        tone="muted"
+        spacing="item"
+        label={t('socialRecovery.presets.whatRecoveryCanDo')}
+        testID="honesty-note-card"
+      >
+        <Text testID="honesty-note" fontSize={12} appearance="secondaryText">
+          {t('socialRecovery.honestyNote')}
+        </Text>
+      </SectionCard>
     </>
   )
 
