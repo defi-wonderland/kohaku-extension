@@ -383,7 +383,7 @@
     },
     "honestyNote": "Recovery helps if you lose your key. It cannot stop someone who already has it.",
     "presets": {
-      "lead": "One recovery path per account. Pick the shape that fits you. You can change it later in Settings.",
+      "lead": "One recovery path per account. Pick the shape that fits you.",
       "customize": "Customize",
       "pickOne": "Pick one · this becomes your recovery path",
       "passkeyRequired": "Passkey (required)",
