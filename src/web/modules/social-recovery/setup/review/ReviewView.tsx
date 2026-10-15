@@ -166,36 +166,38 @@ const ReviewView = ({
 
   if (!load) {
     return (
-      <View testID="review">
-        {title}
-        {loadFailed ? (
-          <>
-            <Alert
-              type="error"
-              size="sm"
-              text={
-                <Alert.Text size="sm" type="error" testID="review-load-failed">
-                  {t('socialRecovery.records.loadFailed')}
-                </Alert.Text>
-              }
-            />
-            <ActionsRow
-              primary={
-                <Button
-                  testID="review-load-retry"
-                  type="primary"
-                  text={t('socialRecovery.writes.tryAgain')}
-                  onPress={retryLoad}
-                  hasBottomSpacing={false}
-                />
-              }
-              secondary={back}
-            />
-          </>
-        ) : (
-          <ActivityIndicator testID="review-spinner" />
-        )}
-      </View>
+      <TwoColumn testID="review-columns">
+        <View testID="review">
+          {title}
+          {loadFailed ? (
+            <>
+              <Alert
+                type="error"
+                size="sm"
+                text={
+                  <Alert.Text size="sm" type="error" testID="review-load-failed">
+                    {t('socialRecovery.records.loadFailed')}
+                  </Alert.Text>
+                }
+              />
+              <ActionsRow
+                primary={
+                  <Button
+                    testID="review-load-retry"
+                    type="primary"
+                    text={t('socialRecovery.writes.tryAgain')}
+                    onPress={retryLoad}
+                    hasBottomSpacing={false}
+                  />
+                }
+                secondary={back}
+              />
+            </>
+          ) : (
+            <ActivityIndicator testID="review-spinner" />
+          )}
+        </View>
+      </TwoColumn>
     )
   }
 

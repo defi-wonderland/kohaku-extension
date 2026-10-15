@@ -18,7 +18,7 @@ import {
   recoveryChainOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
-import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
+import { ActionsRow, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import ClientStateLine from './ClientStateLine'
@@ -88,44 +88,52 @@ const EnrollView = ({
 
   if (!search || !served || load.status === 'nothing') {
     return (
-      <View testID="enroll-nothing">
-        <Text fontSize={14} style={spacings.mbSm}>
-          {t('socialRecovery.ceremony.nothingToRun')}
-        </Text>
-        {back}
-      </View>
+      <TwoColumn testID="enroll-columns">
+        <View testID="enroll-nothing">
+          <Text fontSize={14} style={spacings.mbSm}>
+            {t('socialRecovery.ceremony.nothingToRun')}
+          </Text>
+          {back}
+        </View>
+      </TwoColumn>
     )
   }
 
   if (load.status === 'loading') {
-    return <ActivityIndicator testID="enroll-loading" />
+    return (
+      <TwoColumn testID="enroll-columns">
+        <ActivityIndicator testID="enroll-loading" />
+      </TwoColumn>
+    )
   }
 
   if (load.status === 'failed') {
     return (
-      <View testID="enroll-load-failed">
-        <Alert
-          type="error"
-          size="sm"
-          text={
-            <Alert.Text size="sm" type="error">
-              {t('socialRecovery.records.loadFailed')}
-            </Alert.Text>
-          }
-        />
-        <ActionsRow
-          primary={
-            <Button
-              testID="enroll-load-retry"
-              type="primary"
-              text={t('socialRecovery.writes.tryAgain')}
-              onPress={() => setAttempt((n) => n + 1)}
-              hasBottomSpacing={false}
-            />
-          }
-          secondary={back}
-        />
-      </View>
+      <TwoColumn testID="enroll-columns">
+        <View testID="enroll-load-failed">
+          <Alert
+            type="error"
+            size="sm"
+            text={
+              <Alert.Text size="sm" type="error">
+                {t('socialRecovery.records.loadFailed')}
+              </Alert.Text>
+            }
+          />
+          <ActionsRow
+            primary={
+              <Button
+                testID="enroll-load-retry"
+                type="primary"
+                text={t('socialRecovery.writes.tryAgain')}
+                onPress={() => setAttempt((n) => n + 1)}
+                hasBottomSpacing={false}
+              />
+            }
+            secondary={back}
+          />
+        </View>
+      </TwoColumn>
     )
   }
 

@@ -1268,6 +1268,8 @@ describe('what the review cannot read', () => {
 
     expect(textOf('review-load-failed')).toBe(t('socialRecovery.records.loadFailed'))
     expect(byTestId('review-save')).toBeNull()
+    expect(byTestId('review-columns-main')?.contains(byTestId('review-load-failed'))).toBe(true)
+    expect(byTestId('review-columns-aside')).toBeNull()
   })
 
   it("shows the client's unavailable pair with a retry and keeps Save disabled", async () => {
