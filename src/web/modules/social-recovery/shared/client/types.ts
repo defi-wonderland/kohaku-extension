@@ -977,6 +977,11 @@ export interface WatcherReadsInput {
 export interface AttemptScan {
   from: number
   to: number
+  /**
+   * The log the backwards scan stops at: the attempt's opening (the default),
+   * or its ending where the caller needs the ending alone.
+   */
+  until?: 'opening' | 'ending'
 }
 
 /** The logs of one attempt a scan found: its opening, and its ending where it ended. */
@@ -1003,8 +1008,9 @@ export interface WatcherReads {
   /**
    * The logs of one attempt of the account at the deployment's action,
    * scanned backwards from the scan's last block in chunks, stopping at the
-   * first chunk that holds the attempt's opening. The scan never starts
-   * before the manager's deployment block.
+   * first chunk that holds the attempt's opening, or its ending where the
+   * scan asks for the ending alone. The scan never starts before the
+   * manager's deployment block.
    */
   attemptEventsOf(account: Address, attemptId: bigint, scan: AttemptScan): Promise<AttemptEvents>
   /** The timestamp of a block, in seconds. */

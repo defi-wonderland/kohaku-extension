@@ -102,6 +102,26 @@ describe('the watcher reads', () => {
     ])
   })
 
+  it('stops at the chunk of the ending where the scan asks for the ending alone', async () => {
+    const { reads, scanned } = worldWith([
+      attemptStartedLog(3n, handoverTo(NEW_KEY), HEAD - 250),
+      attemptConsumedLog(3n, HEAD - 120)
+    ])
+
+    const found = await reads.attemptEventsOf(ACCOUNT, 3n, {
+      from: DEPLOYED_AT,
+      to: HEAD,
+      until: 'ending'
+    })
+
+    expect(found.consumed?.at.blockNumber).toBe(HEAD - 120)
+    expect(found.started).toBeUndefined()
+    expect(scanned()).toEqual([
+      { from: HEAD - 99, to: HEAD },
+      { from: HEAD - 199, to: HEAD - 100 }
+    ])
+  })
+
   it("keeps only the asked attempt's logs at the deployment's action", async () => {
     const { reads } = worldWith([
       attemptStartedLog(2n, handoverTo(NEW_KEY), HEAD - 300),
