@@ -106,7 +106,7 @@ export const startRecoveryWatcher = ({
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   let connection: WatcherConnection | undefined
   let running = false
-  // A stopped watcher builds no provider, writes no record and leaves the badge.
+  // A stopped watcher starts no poll and leaves the badge.
   let stopped = false
   // The accounts the last poll read, which a poll that cannot read them marks failed.
   let lastKnown: Address[] = []
