@@ -1128,9 +1128,11 @@
     "wait": {
       "title": "Recovery started",
       "lead": "Everything needed was submitted. Now the waiting period runs. The account's own key can cancel it until the end.",
+      "dueTitle": "The waiting period ended",
+      "dueLead": "Nobody has executed yet. Execute now to finish the recovery.",
       "started": "Started {{date}}",
       "finishes": "Finishes {{date}}",
-      "ended": "Ended {{date}}",
+      "ended": "Waiting period ended {{date}}",
       "endFromChain": "The end comes from the recovery registry on chain, not from this device's clock.",
       "startedOnChain": "Recovery started on chain",
       "explorer": "View on explorer",
@@ -1154,7 +1156,7 @@
         "noLastNumber": "The countdown stays hidden until the read succeeds, since a cancel could hide behind the last number this wallet read."
       },
       "executionDue": {
-        "lead": "The waiting period ended. Nobody has executed yet, and no deadline runs.",
+        "lead": "No deadline runs for the execution.",
         "action": "Execute now",
         "secondTransaction": "Executing is a second transaction. The same key that started the recovery sends it and pays its gas, after a gas check.",
         "executing": "Executing… your key is sending the transaction",
