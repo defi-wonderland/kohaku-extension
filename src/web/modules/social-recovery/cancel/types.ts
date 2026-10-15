@@ -5,6 +5,8 @@ import type {
   CancelledBy,
   DeploymentDescriptor,
   Hex,
+  IEventManager,
+  Notification,
   PreparedCall
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
@@ -157,6 +159,32 @@ export interface AttemptReaderInput {
 
 export type AttemptReader = () => Promise<WatcherReading>
 
+/** An attempt's cancel as the manager's log names it. */
+export type CancelLog = Extract<Notification, { kind: 'attempt-cancelled' }>
+
+/** The members of a log on ethers' receipt that the decoding reads. */
+export type ReceiptLog = Pick<
+  ProviderTransactionReceipt['logs'][number],
+  | 'address'
+  | 'topics'
+  | 'data'
+  | 'blockNumber'
+  | 'blockHash'
+  | 'index'
+  | 'transactionHash'
+  | 'removed'
+>
+
+/** Where the owner's cancel of the account is looked for in a receipt's logs. */
+export interface OwnerCancelInput {
+  logs: readonly ReceiptLog[]
+  /** The kit's events feed of the account, whose decoding owns the manager's logs. */
+  events: Pick<IEventManager, 'decodeLog'>
+  account: Address
+  /** The recovery action the account's attempts run on. */
+  action: Address
+}
+
 /** What the read after a landed cancel knows of the run. */
 export interface LandingInput {
   /** The attempt the run meant to cancel. */
@@ -167,6 +195,8 @@ export interface LandingInput {
   startBlock: number
   /** The block of the cancel's receipt. */
   landedBlock: number
+  /** The owner's cancel the receipt's own logs carry, where they could be read. */
+  cancelled?: CancelLog
 }
 
 /** What a landed cancel ended, from a fresh reading and the ending logs from the receipt's block on. */
@@ -283,6 +313,8 @@ export interface CancelSteps {
   claims: CancelClaims
   send(input: CancelSendInput): Promise<void>
   wait(transactionHash: Hex, startBlock: number): Promise<ProviderTransactionReceipt>
+  /** The owner's cancel of the account in the logs of a landed transaction's receipt, or none. */
+  receiptCancel(transactionHash: Hex, startBlock: number): Promise<CancelLog | undefined>
   /** Where the wallet holds a request; throws where it does not answer. */
   requestHold(requestId: string): Promise<RequestHold>
 }
@@ -313,6 +345,11 @@ export interface CancelState {
   after: AfterLanding
   /** A stored cancel followed without sending: the wallet still holds its request, or did not answer. */
   follow?: 'held' | 'unread'
+  /**
+   * The follow's newest reading where it finds the followed attempt no longer
+   * open while the wallet still holds the request, shown beside the follow.
+   */
+  followGone?: WatcherReading
   /** The receipt wait of the sent cancel failed; check again waits once more. */
   stalled?: boolean
   /** The request the run's cancel is queued under, once the run claimed it or follows it. */
@@ -395,6 +432,8 @@ export interface EndedBlockProps {
   /** The attempt the holder meant to cancel, where one was named; its ending alone is told. */
   target?: bigint
   onBack: () => void
+  /** Reads again where the ending's road is not read yet; no action where the page reads again by itself. */
+  onCheckAgain?: () => void
 }
 
 export interface CancelledBlockProps {

@@ -2,8 +2,9 @@
  * The cancel's steps over the wallet's own seams: the owner's cancel prepared
  * through the client as one call the account sends, the shared gas check of
  * that call as the account's own operation from its key, the send through the
- * request queue, the receipt wait, the wallet's reading of a queued request,
- * and the cancel in flight stored on this device.
+ * request queue, the receipt wait and the owner's cancel its logs carry, the
+ * wallet's reading of a queued request, and the cancel in flight stored on
+ * this device.
  */
 import {
   accountBatchTransactionOf,
@@ -18,6 +19,7 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 
 import { cancelClaimsOf } from './claim'
+import { ownerCancelOf } from './reads'
 import type { CancelSteps, CancelStepsInput } from './types'
 
 export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
@@ -60,6 +62,16 @@ export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
         canAdd
       }),
     wait: (transactionHash, startBlock) => receipts.wait(transactionHash, startBlock),
+    async receiptCancel(transactionHash, startBlock) {
+      // The transaction is mined, so the wait answers its receipt at once.
+      const receipt = await receipts.wait(transactionHash, startBlock)
+      return ownerCancelOf({
+        logs: receipt.logs,
+        events: client.recovery.events,
+        account,
+        action: client.descriptor.action
+      })
+    },
     requestHold: (requestId) => requestHoldOf(input.requests, requestId, account, chainId)
   }
 }

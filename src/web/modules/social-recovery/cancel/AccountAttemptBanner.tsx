@@ -79,6 +79,7 @@ const AccountAttemptBanner = ({
     text: string | undefined,
     lines: React.ReactNode
   ) => (
+    // The common banner takes no test id of its own, so the account's banner is named by this wrapper.
     <View testID={`recovery-banner-${id}`}>
       <Banner type={type} title={title} text={text} style={STACKED}>
         <View

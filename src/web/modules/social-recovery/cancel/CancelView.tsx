@@ -3,7 +3,8 @@
  * attempt (loading, failed with a retry, or no attempt open), then the confirm
  * for the attempt the newest read finds open, with its facts and whether the
  * page can send it. Then the shared write states: the gas check, the deposit
- * step naming the account's key with both routes, the cancel in progress, the
+ * step naming the account's key with both routes, the cancel in progress (with
+ * the attempt's ending where a followed request's attempt ended meanwhile), the
  * two readings of the failed state with the move-funds action where the state
  * offers it, after a landing the reads until they name what the cancel
  * ended, then the cancelled terminal.
@@ -159,15 +160,20 @@ const CancelView = ({
     }
     case 'submitting':
       return (
-        <SectionCard testID="cancel-in-progress">
-          <WriteStateView
-            state={{ status: 'submitting', write: 'cancel' }}
-            title={t(`${CANCEL}.inProgress.title`)}
-            body={[t(`${CANCEL}.inProgress.body`)]}
-          >
-            {run.stalled ? checkAgainButton(WRITES_KEYS.tryAgain) : null}
-          </WriteStateView>
-        </SectionCard>
+        <>
+          <SectionCard testID="cancel-in-progress">
+            <WriteStateView
+              state={{ status: 'submitting', write: 'cancel' }}
+              title={t(`${CANCEL}.inProgress.title`)}
+              body={[t(`${CANCEL}.inProgress.body`)]}
+            >
+              {run.stalled ? checkAgainButton(WRITES_KEYS.tryAgain) : null}
+            </WriteStateView>
+          </SectionCard>
+          {!!run.followGone && (
+            <EndedBlock reading={run.followGone} target={target} onBack={onBack} />
+          )}
+        </>
       )
     case 'landed':
       return (
@@ -265,7 +271,14 @@ const CancelView = ({
   }
   const open = reading.attempt
   if (!open) {
-    return <EndedBlock reading={reading} target={run.gone ? target : undefined} onBack={onBack} />
+    return (
+      <EndedBlock
+        reading={reading}
+        target={run.gone ? target : undefined}
+        onBack={onBack}
+        onCheckAgain={run.gone ? onCheckAgain : onRetryRead}
+      />
+    )
   }
 
   return (

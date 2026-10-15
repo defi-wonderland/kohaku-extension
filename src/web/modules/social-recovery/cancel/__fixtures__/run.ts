@@ -24,7 +24,7 @@ import {
   cancelClaimsOf,
   landingReaderOf
 } from '@web/modules/social-recovery/cancel'
-import type { CancelSteps } from '@web/modules/social-recovery/cancel'
+import type { CancelLog, CancelSteps } from '@web/modules/social-recovery/cancel'
 import {
   ACCOUNT,
   HEAD,
@@ -146,6 +146,7 @@ export interface RunWorld {
   wait: jest.Mock
   checkGas: jest.Mock
   requestHold: jest.Mock
+  receiptCancel: jest.Mock
 }
 
 /**
@@ -182,6 +183,8 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
   })
   const checkGas = jest.fn(async () => ENOUGH)
   const requestHold = jest.fn(async (): Promise<RequestHold> => ({ status: 'held' }))
+  // By default the receipt's logs cannot be read, so the read after a landing scans by id.
+  const receiptCancel = jest.fn(async (): Promise<CancelLog | undefined> => undefined)
   const readAttempt = attemptReaderOf({
     reads: chain.reads,
     account: ACCOUNT,
@@ -215,9 +218,10 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
         canAdd: input.canAdd
       }),
     wait: (hash, from) => wait(hash, from),
+    receiptCancel,
     requestHold
   }
-  return { chain, storage, steps, sendAccountBatch, wait, checkGas, requestHold }
+  return { chain, storage, steps, sendAccountBatch, wait, checkGas, requestHold, receiptCancel }
 }
 
 export { ACCOUNT, NEW_KEY, SEPOLIA }

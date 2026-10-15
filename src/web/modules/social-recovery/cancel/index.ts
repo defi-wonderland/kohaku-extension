@@ -6,6 +6,8 @@ export {
   AFTER_READ_TRIES,
   AFTER_READ_PAUSE_MS,
   FOLLOW_POLL_MS,
+  FOLLOW_ATTEMPT_ROUNDS,
+  RECEIPT_LOGS_READ_MS,
   SELECT_ACCOUNT_LIMIT_MS,
   CLAIM_SEND_LIMIT_MS,
   LANDING_ATTEMPTS
@@ -13,7 +15,13 @@ export {
 export { cancelPathOf, accountOfSearch } from './search'
 export { bannerReadingOf, anchorOf, standingOf, attemptAfterOf } from './readings'
 export { cancelClaimKeyOf, cancelClaimFrom, cancelClaimsOf } from './claim'
-export { attemptReaderOf, landingReaderOf, cancelDeploymentOf, pollOnce } from './reads'
+export {
+  attemptReaderOf,
+  landingReaderOf,
+  ownerCancelOf,
+  cancelDeploymentOf,
+  pollOnce
+} from './reads'
 export {
   initialCancelState,
   createCancelStore,

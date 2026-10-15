@@ -5,9 +5,10 @@
  * follow what the page read, and answers its own reading: the record is not
  * read back, since a newer write may stand there.
  */
-import { keccak256 } from 'viem'
+import isEqual from 'react-fast-compare'
+import { isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
-import type { BlockHeader } from '@web/modules/social-recovery/sdk-interfaces'
+import type { BlockHeader, RawLog } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   CHAIN_IDS,
   providerReadFailure,
@@ -26,23 +27,44 @@ import {
   POLL_LIMIT_MS,
   readWatcherRecord,
   SCAN_LIMIT_MS,
+  storedWatcherRecordOf,
   updateWatcherRecord
 } from '@web/modules/social-recovery/watcher'
+import type { WatcherReading } from '@web/modules/social-recovery/watcher'
 
 import { LANDING_ATTEMPTS } from './constants'
 import type {
   AttemptReader,
   AttemptReaderInput,
+  CancelLog,
+  LandingInput,
+  LandingOutcome,
   LandingReader,
   LandingReaderInput,
-  PollOnceInput
+  OwnerCancelInput,
+  PollOnceInput,
+  ReceiptLog
 } from './types'
 
+/** A reading as its record stores it, its block left out: two polls of an unchanged attempt compare equal. */
+const comparableOf = (reading: WatcherReading): unknown =>
+  JSON.parse(
+    JSON.stringify(
+      storedWatcherRecordOf({
+        reading: { ...reading, block: { number: 0, timestamp: 0 } },
+        dismissed: []
+      })
+    )
+  )
+
 /**
- * A fresh reading of the account at the latest block, written to its record.
- * Rejects as a failed provider read where the poll failed or did not answer
- * within its limit, and marks the record failed: a failed read never reads as
- * no attempt.
+ * A fresh reading of the account at the latest block, written to its record
+ * under the time the read started, as the background's poll stamps its own.
+ * The record is written only where the reading changed, apart from its block,
+ * or where it carries a failed mark to clear; a reading of a block below the
+ * stored one leaves the stored reading. Rejects as a failed provider read
+ * where the poll failed or did not answer within its limit, and marks the
+ * record failed: a failed read never reads as no attempt.
  */
 export const attemptReaderOf =
   ({
@@ -55,30 +77,36 @@ export const attemptReaderOf =
     scanLimitMs = SCAN_LIMIT_MS
   }: AttemptReaderInput): AttemptReader =>
   async () => {
-    let pinned: number | undefined
+    const polledAt = now()
     let latest: Promise<BlockHeader> | undefined
     const latestBlock = () => {
-      latest =
-        latest ??
-        reads.latestBlock().then((block) => {
-          pinned = block.number
-          return block
-        })
+      latest = latest ?? reads.latestBlock()
       return latest
     }
     try {
-      const previous = (await readWatcherRecord(storage, chainId, account))?.reading
+      const record = await readWatcherRecord(storage, chainId, account)
+      const previous = record?.reading
       const reading = await pollAccount(reads, account, latestBlock, previous, {
         stateMs: limitMs,
         scanMs: scanLimitMs
       })
-      await updateWatcherRecord(
-        storage,
-        chainId,
-        account,
-        (current) => ({ reading, dismissed: current?.dismissed ?? [] }),
-        { now, block: reading.block.number }
-      ).catch(() => undefined)
+      const unchanged =
+        !!previous && !record?.failed && isEqual(comparableOf(previous), comparableOf(reading))
+      if (!unchanged) {
+        await updateWatcherRecord(
+          storage,
+          chainId,
+          account,
+          (current) => {
+            const stored = current?.reading?.block.number
+            if (current && stored !== undefined && reading.block.number < stored) {
+              return current
+            }
+            return { reading, dismissed: current?.dismissed ?? [] }
+          },
+          { now, polledAt }
+        ).catch(() => undefined)
+      }
       return reading
     } catch (thrown: unknown) {
       const failed = {
@@ -90,25 +118,112 @@ export const attemptReaderOf =
         chainId,
         account,
         (current) => ({ ...current, failed, dismissed: current?.dismissed ?? [] }),
-        { now, block: pinned }
+        { now, polledAt }
       ).catch(() => undefined)
       throw providerReadFailure('call', thrown)
     }
   }
 
+/** A receipt's log in the kit's form; a log whose fields are not hex is none of the manager's. */
+const rawLogOf = (log: ReceiptLog): RawLog | undefined => {
+  const { address, topics, data, blockHash, transactionHash } = log
+  if (
+    !isAddress(address, { strict: false }) ||
+    !topics.every((topic) => isHex(topic)) ||
+    !isHex(data) ||
+    !isHex(blockHash) ||
+    !isHex(transactionHash)
+  ) {
+    return undefined
+  }
+  return {
+    address,
+    topics: topics as RawLog['topics'],
+    data,
+    blockNumber: log.blockNumber,
+    blockHash,
+    logIndex: log.index,
+    transactionHash,
+    removed: log.removed
+  }
+}
+
 /**
- * What a landed cancel ended. The cancel ends the attempt open at its block,
- * whatever its id, so the read takes a fresh reading at or past the receipt's
- * block, then the ending logs of the attempts from the newest the reading
- * names down to the one the run meant: an owner's cancel at or after the
- * receipt's block is this cancel, and names the attempt it ended, by its new
- * key where the opening's payload decodes. Without one, an ending of the
- * meant attempt by another road reads as that road. Anything else answers
- * undefined, so the caller reads again.
+ * The owner's cancel of the account among a receipt's logs, decoded by the
+ * kit's events feed: it names the attempt the cancel ended, whatever its id.
+ * Undefined where no log decodes as one.
  */
-export const landingReaderOf =
-  ({ reads, account, readAttempt, limitMs = SCAN_LIMIT_MS }: LandingReaderInput): LandingReader =>
-  async ({ target, known, startBlock, landedBlock }) => {
+export const ownerCancelOf = ({
+  logs,
+  events,
+  account,
+  action
+}: OwnerCancelInput): CancelLog | undefined =>
+  logs
+    .map((log) => {
+      const raw = rawLogOf(log)
+      return raw && !raw.removed ? events.decodeLog(raw) : undefined
+    })
+    .find(
+      (decoded): decoded is CancelLog =>
+        decoded?.kind === 'attempt-cancelled' &&
+        decoded.cancelledBy === 'cancelByOwner' &&
+        isAddressEqual(decoded.account, account) &&
+        isAddressEqual(decoded.action, action)
+    )
+
+/**
+ * What a landed cancel ended. The receipt's own log of the owner's cancel
+ * names the attempt it ended, whatever its id, so a later cancel of the
+ * account from another device is never taken for this one; the attempt is
+ * named by its new key where the opening's payload decodes, and a fresh
+ * reading brings the record up to date. Only where the receipt's logs could
+ * not be read does the read fall back to the ending logs by id: a fresh
+ * reading at or past the receipt's block, then the ending logs of the
+ * attempts from the newest the reading names down to the one the run meant;
+ * an owner's cancel at or after the receipt's block is taken as this cancel.
+ * Without one, an ending of the meant attempt by another road reads as that
+ * road. Anything else answers undefined, so the caller reads again.
+ */
+export const landingReaderOf = ({
+  reads,
+  account,
+  readAttempt,
+  limitMs = SCAN_LIMIT_MS
+}: LandingReaderInput): LandingReader => {
+  const newKeyOf = (attemptId: bigint, block: number) =>
+    readWithin(async () => {
+      // At the cancel's block the manager still holds the attempt it ended, with its payload's hash.
+      const state = await reads.stateOf(account, block)
+      if (state.attempt.attemptId !== attemptId) {
+        return undefined
+      }
+      const { started } = await reads.attemptEventsOf(account, attemptId, {
+        from: state.setupCommittedAtBlock,
+        to: block
+      })
+      return started && sameHash(keccak256(started.payload), state.attempt.payloadHash)
+        ? reads.handoverOf(started.payload)?.newAuthority
+        : undefined
+    }, limitMs).catch(() => undefined)
+
+  const cancelledOf = async (
+    attemptId: bigint,
+    block: number,
+    known: LandingInput['known']
+  ): Promise<LandingOutcome> => {
+    const newKey =
+      attemptId === known?.attemptId && known.newKey
+        ? known.newKey
+        : await newKeyOf(attemptId, block)
+    return { stage: 'cancelled', attemptId, ...(newKey ? { newKey } : {}) }
+  }
+
+  return async ({ target, known, startBlock, landedBlock, cancelled }) => {
+    if (cancelled) {
+      await readAttempt().catch(() => undefined)
+      return cancelledOf(cancelled.attemptId, cancelled.at.blockNumber, known)
+    }
     const reading = await readAttempt()
     const pinned = reading.block.number
     if (pinned < landedBlock) {
@@ -139,26 +254,7 @@ export const landingReaderOf =
         events.cancelled.at.blockNumber >= landedBlock
     )
     if (owners?.events.cancelled) {
-      const { attemptId } = owners
-      const block = owners.events.cancelled.at.blockNumber
-      const newKey =
-        attemptId === known?.attemptId && known.newKey
-          ? known.newKey
-          : await readWithin(async () => {
-              // At the cancel's block the manager still holds the attempt it ended, with its payload's hash.
-              const state = await reads.stateOf(account, block)
-              if (state.attempt.attemptId !== attemptId) {
-                return undefined
-              }
-              const { started } = await reads.attemptEventsOf(account, attemptId, {
-                from: state.setupCommittedAtBlock,
-                to: block
-              })
-              return started && sameHash(keccak256(started.payload), state.attempt.payloadHash)
-                ? reads.handoverOf(started.payload)?.newAuthority
-                : undefined
-            }, limitMs).catch(() => undefined)
-      return { stage: 'cancelled', attemptId, ...(newKey ? { newKey } : {}) }
+      return cancelledOf(owners.attemptId, owners.events.cancelled.at.blockNumber, known)
     }
     const meant = scans.find(({ attemptId }) => attemptId === target)?.events.cancelled
     const ended = reading.ended?.attemptId === target ? reading.ended : undefined
@@ -168,6 +264,7 @@ export const landingReaderOf =
     }
     return undefined
   }
+}
 
 /** The deployment the watcher reads: the build's deployed kit, or none. */
 export const cancelDeploymentOf = () => {

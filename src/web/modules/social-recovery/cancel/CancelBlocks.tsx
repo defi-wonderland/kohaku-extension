@@ -81,9 +81,9 @@ export const AttemptFacts = ({ attempt, dormant, timeZone }: AttemptFactsProps) 
  * ending is told only where it is the ending of the attempt the holder meant:
  * the road where the reads named it, the controller after an execution, and,
  * while a road or a controller is still to be read, that the registry has not
- * confirmed it yet.
+ * confirmed it yet, with the action that reads again.
  */
-export const EndedBlock = ({ reading, target, onBack }: EndedBlockProps) => {
+export const EndedBlock = ({ reading, target, onBack, onCheckAgain }: EndedBlockProps) => {
   const { t } = useTranslation()
   const ended =
     reading.ended && (target === undefined || reading.ended.attemptId === target)
@@ -109,14 +109,27 @@ export const EndedBlock = ({ reading, target, onBack }: EndedBlockProps) => {
     )
   } else if (ended && !ended.endingGap) {
     line = (
-      <Text
-        fontSize={14}
-        appearance="secondaryText"
-        style={spacings.mbTy}
-        testID="cancel-ended-unread"
-      >
-        {t(`${CANCEL}.landed.unread`)}
-      </Text>
+      <>
+        <Text
+          fontSize={14}
+          appearance="secondaryText"
+          style={spacings.mbTy}
+          testID="cancel-ended-unread"
+        >
+          {t(`${CANCEL}.landed.unread`)}
+        </Text>
+        {!!onCheckAgain && (
+          <Button
+            testID="cancel-ended-check-again"
+            type="secondary"
+            size="small"
+            text={t(`${CANCEL}.landed.checkAgain`)}
+            onPress={onCheckAgain}
+            hasBottomSpacing={false}
+            style={[flexbox.alignSelfStart, spacings.mbTy]}
+          />
+        )}
+      </>
     )
   }
   return (

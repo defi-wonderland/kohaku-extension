@@ -13,8 +13,14 @@ export const AFTER_READ_TRIES = 5
 /** The pause between two of those reads, in ms. */
 export const AFTER_READ_PAUSE_MS = 3_000
 
-/** How often a stored cancel whose request the wallet still holds is read again, in ms. */
+/** How often the wallet's hold of a followed request is read again, in ms. */
 export const FOLLOW_POLL_MS = 2_000
+
+/** Every how many of those rounds the follow also reads the attempt. */
+export const FOLLOW_ATTEMPT_ROUNDS = 5
+
+/** How long the read of a landed cancel's receipt, for its logs, may take, in ms. */
+export const RECEIPT_LOGS_READ_MS = 10_000
 
 /** How long the page waits for the wallet to select the account before the transfer screen, in ms. */
 export const SELECT_ACCOUNT_LIMIT_MS = 10_000
