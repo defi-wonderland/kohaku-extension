@@ -1,5 +1,5 @@
 /**
- * The wallet's own reads: three reads the wallet needs that no SDK member makes.
+ * The wallet's own reads: the reads the wallet needs that no SDK member makes.
  * They are not SDK members, so this interface is the extension's own, scripted
  * here so every screen that needs them builds against one shape. `shared/client`
  * wraps it; no screen imports it.
@@ -13,7 +13,6 @@
  *   the wallet does not list still names its key.
  * - `fitCheck`: the fit check against the code the account will carry, so a
  *   fresh account with no code yet is judged by the implementation it deploys.
- *
  *
  * Beside them, `attemptState` reads the manager's state alone, the recovery
  * state without the removed key, for a surface that never shows that key.

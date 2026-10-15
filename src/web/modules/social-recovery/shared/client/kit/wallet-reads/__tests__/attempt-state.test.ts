@@ -3,7 +3,7 @@
  * one pinned block: the state's fields and the block, a refused read
  * rethrown, and no code read and no log read made.
  */
-import { encodeErrorResult, zeroHash } from 'viem'
+import { encodeErrorResult, zeroAddress, zeroHash } from 'viem'
 
 import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
 import {
@@ -47,9 +47,9 @@ describe("the manager's attempt state", () => {
         consumableAfter: 1_900_000_000,
         payloadHash: zeroHash,
         order: {
-          token: '0x0000000000000000000000000000000000000000',
+          token: zeroAddress,
           amount: 0n,
-          payee: '0x0000000000000000000000000000000000000000'
+          payee: zeroAddress
         },
         usedMethods: [],
         ignoresPause: false
