@@ -882,7 +882,7 @@
       },
       "runningAttempt": {
         "title": "A recovery is already in progress for this account",
-        "lead": "The recovery registry allows one attempt at a time. This one finishes {{date}}.",
+        "lead": "The recovery registry allows one attempt at a time. This one can execute from {{date}}.",
         "yoursWallet": "This is your own recovery: the new key is one this wallet holds.",
         "yoursSeed": "This is your own recovery: the new key is the one this device wrote down on the fast track.",
         "continueWithKey": "Continue with that key",
@@ -1145,7 +1145,7 @@
       "title": "Recovery started",
       "lead": "Everything needed was submitted. Now the waiting period runs. The account's own key can cancel it until the end.",
       "started": "Started {{date}}",
-      "finishes": "Finishes {{date}}",
+      "finishes": "Can execute from {{date}}",
       "ended": "Ended {{date}}",
       "endFromChain": "The end comes from the recovery registry on chain, not from this device's clock.",
       "startedOnChain": "Recovery started on chain",
@@ -1377,7 +1377,7 @@
     "watcher": {
       "banner": {
         "title": "Somebody started recovering this account",
-        "finishes": "Finishes {{date}}",
+        "finishes": "Can execute from {{date}}",
         "waiting": "{{countdown}} · waiting",
         "executionDue": "Execution due",
         "dueBody": "The waiting period ended on {{date}} and nobody has executed yet.",
