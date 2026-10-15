@@ -6,17 +6,17 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 
-import type { ArrivalReader, AttemptRead, AttemptReadResult } from './types'
+import type { ArrivalReader, AttemptRead, AttemptReadResult, StoredAttemptRead } from './types'
 
 const LOADING: AttemptRead = { status: 'loading' }
 
 export const useAttemptRead = (readAttempt: ArrivalReader | null): AttemptReadResult => {
   const [attempt, setAttempt] = useState(0)
-  const [stored, setStored] = useState<{
-    reader: ArrivalReader | null
-    attempt: number
-    read: AttemptRead
-  }>({ reader: null, attempt: 0, read: LOADING })
+  const [stored, setStored] = useState<StoredAttemptRead>({
+    reader: null,
+    attempt: 0,
+    read: LOADING
+  })
 
   useEffect(() => {
     if (!readAttempt) {

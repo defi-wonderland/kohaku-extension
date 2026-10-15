@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
 import type {
@@ -63,10 +61,15 @@ export type BannerReading =
   | {
       kind: 'failed'
       failed: PollFailure
-      /** The time of the last good reading's block, in ms, where the record holds one. */
-      lastReadAt?: number
+      /**
+       * The time of the block the last good reading was pinned to, in ms, where
+       * the record holds one; the record keeps no time of the poll itself.
+       */
+      lastBlockAt?: number
       open?: OpenAttempt
     }
+  /** The record could not be read from storage, or is not a watcher record. */
+  | { kind: 'unreadable'; retry: () => void }
   | { kind: 'executed'; ending: ExecutedEnding }
 
 /** Reads the watcher's record of one account for a page; `useWatchedAttempt` by default. */
@@ -91,7 +94,11 @@ export interface RecoveryAttemptBannerViewProps {
 
 export interface AccountAttemptBannerProps {
   account: Address
-  /** The wallet's label for the account, shown with its truncated address where the wallet lists several accounts. */
+  /**
+   * Where the wallet lists several accounts, the wallet's label for the
+   * account, shown with its truncated address; an empty label shows the
+   * address alone. Undefined where the account line is not shown.
+   */
   name?: string
   useAttempt: WatchedAttemptHook
   useDismissed: DismissedHook
@@ -103,16 +110,21 @@ export interface AccountAttemptBannerProps {
 
 export interface AttemptLinesProps {
   open: OpenAttempt
+  /** Whether the lines carry the attempt's title; the banner's own title stands for it otherwise. */
+  titled: boolean
   account: Address
   timeZone: string
   onCancel: (account: Address) => void
   onDismiss: (account: Address, attemptId: bigint) => Promise<unknown>
 }
 
-export interface BannerFrameProps {
-  type: 'warning' | 'error'
-  testID: string
-  children: ReactNode
+/** The dashboard banner types the recovery banner takes: an attempt, or a failed read. */
+export type AttemptBannerType = 'warning' | 'error'
+
+/** The attempts the holder dismissed for one account, as last read. */
+export interface HeldDismissed {
+  account: Address
+  dismissed: bigint[]
 }
 
 /** What one poll of one account from a page takes; the extension's own by default. */
@@ -125,6 +137,7 @@ export interface PollOnceInput {
   storage?: WatcherStorage
   now?: () => number
   limitMs?: number
+  scanLimitMs?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -139,9 +152,35 @@ export interface AttemptReaderInput {
   storage: WatcherStorage
   now?: () => number
   limitMs?: number
+  scanLimitMs?: number
 }
 
 export type AttemptReader = () => Promise<WatcherReading>
+
+/** What the read after a landed cancel knows of the run. */
+export interface LandingInput {
+  /** The attempt the run meant to cancel. */
+  target: bigint
+  /** That attempt as the read before the send found it open, where the run read it. */
+  known?: WatchedAttempt
+  /** The block read before the send. */
+  startBlock: number
+  /** The block of the cancel's receipt. */
+  landedBlock: number
+}
+
+/** What a landed cancel ended, from a fresh reading and the ending logs from the receipt's block on. */
+export type LandingOutcome = Extract<AfterLanding, { stage: 'cancelled' } | { stage: 'otherRoad' }>
+
+/** Answers undefined while the reads do not say yet what the cancel ended. */
+export type LandingReader = (input: LandingInput) => Promise<LandingOutcome | undefined>
+
+export interface LandingReaderInput {
+  reads: WatcherReads
+  account: Address
+  readAttempt: AttemptReader
+  limitMs?: number
+}
 
 /** The cancel screen's read of the attempt on arrival. */
 export type AttemptRead =
@@ -149,17 +188,19 @@ export type AttemptRead =
   | { status: 'failed' }
   | { status: 'read'; arrival: Arrival }
 
-/**
- * The arrival's read: the fresh reading, and the attempt the holder came to
- * cancel, the one the watcher's record held before that read, else the one the
- * fresh reading holds open.
- */
+/** The arrival's read: the fresh reading, whose open attempt is the one the holder can cancel. */
 export interface Arrival {
   reading: WatcherReading
-  target?: bigint
 }
 
 export type ArrivalReader = () => Promise<Arrival>
+
+/** The arrival's read as the hook last stored it, with the reader and the round it belongs to. */
+export interface StoredAttemptRead {
+  reader: ArrivalReader | null
+  attempt: number
+  read: AttemptRead
+}
 
 export interface AttemptReadResult {
   read: AttemptRead
@@ -186,9 +227,14 @@ export interface CancelClaim {
   requestId: string
   /** The block read before the send, from which the receipt wait scans. */
   startBlock: number
+  /** When the claim was stored, in ms since epoch: past the send limit its page adds nothing. */
+  claimedAt: number
   /** The hash, once the wallet broadcast the cancel. */
   transactionHash?: Hex
 }
+
+/** A claim as a run asks for it; the store stamps the time. */
+export type NewCancelClaim = Omit<CancelClaim, 'claimedAt' | 'transactionHash'>
 
 /** The claim as storage holds it, its attempt id as a decimal string. */
 export type StoredCancelClaim = Omit<CancelClaim, 'attemptId'> & { attemptId: string }
@@ -198,7 +244,14 @@ export type ClaimAnswer = { claimed: true } | { claimed: false; held: CancelClai
 export interface CancelClaims {
   read(): Promise<CancelClaim | undefined>
   /** Stores the claim where none is stored, and answers the stored one otherwise. */
-  claim(claim: CancelClaim): Promise<ClaimAnswer>
+  claim(claim: NewCancelClaim): Promise<ClaimAnswer>
+  /**
+   * Whether the claim of `requestId` is still stored with no hash and younger
+   * than the send limit: the gate the wallet asks right before it adds the request.
+   */
+  canStillSend(requestId: string): Promise<boolean>
+  /** How long, in ms, the page that stored `claim` may still add its request; zero or less once past. */
+  sendableMs(claim: CancelClaim): number
   /** Writes the hash on the claim of `requestId`. */
   markSent(requestId: string, transactionHash: Hex): Promise<void>
   /** Removes the claim of `requestId`; a claim of another request stays. */
@@ -222,6 +275,7 @@ export interface CancelSendInput {
 /** The run's seams over the wallet: the reads, the prepare, the gas check, the send and the stored claim. */
 export interface CancelSteps {
   readAttempt: AttemptReader
+  readLanding: LandingReader
   prepare(): Promise<PreparedCall>
   checkGas(prepared: PreparedCall): Promise<GasCheck>
   newRequestId(): string
@@ -239,14 +293,22 @@ export type AfterLanding =
   | { stage: 'reading' }
   /** The reads after the landing did not agree yet; check again reads once more. */
   | { stage: 'unread' }
-  | { stage: 'cancelled' }
-  | { stage: 'otherRoad'; road: Exclude<CancelledBy, 'cancelByOwner'> }
+  /** The owner's cancel ended `attemptId`, named by its new key where the reads found it. */
+  | { stage: 'cancelled'; attemptId: bigint; newKey?: Address }
+  | { stage: 'otherRoad'; attemptId: bigint; road: Exclude<CancelledBy, 'cancelByOwner'> }
 
 export interface CancelState {
   write: WriteMachineState
   /** The attempt the run cancels. */
   target?: bigint
-  /** The reading in which the read before the send found the attempt gone; nothing was sent. */
+  /** That attempt as the run's read before the send found it open. */
+  targetAttempt?: WatchedAttempt
+  /** The block read before the run's send, or the followed claim's. */
+  startBlock?: number
+  /**
+   * The newest reading in which the run found its attempt no longer open, and
+   * sent nothing: the attempt ended, or another one is open and is offered.
+   */
   gone?: WatcherReading
   after: AfterLanding
   /** A stored cancel followed without sending: the wallet still holds its request, or did not answer. */
@@ -284,6 +346,7 @@ export interface CancelStepsInput {
   facts: ListedAccountFacts
   key: KeyHandle
   readAttempt: AttemptReader
+  readLanding: LandingReader
   storage: WatcherStorage
 }
 
@@ -316,20 +379,39 @@ export interface CancelViewProps {
   onBack: () => void
   onDone: () => void
   onMoveFunds: () => void
+  /** The wallet is selecting the account before the transfer screen opens. */
+  moveFundsBusy: boolean
 }
 
 export interface AttemptFactsProps {
   attempt: WatchedAttempt
+  /** The account does not authorize the action: the dormant reading replaces the end's. */
+  dormant: boolean
   timeZone: string
 }
 
 export interface EndedBlockProps {
   reading: WatcherReading
+  /** The attempt the holder meant to cancel, where one was named; its ending alone is told. */
+  target?: bigint
   onBack: () => void
 }
 
 export interface CancelledBlockProps {
-  after: Extract<AfterLanding, { stage: 'cancelled' } | { stage: 'otherRoad' }>
+  after: LandingOutcome
   onMoveFunds: () => void
+  moveFundsBusy: boolean
   onDone: () => void
+}
+
+/** A selection of the account the page waits for before it opens the transfer screen. */
+export interface MoveFundsWaiting {
+  account: Address
+  timer: ReturnType<typeof setTimeout>
+}
+
+export interface MoveFunds {
+  move: () => void
+  /** A selection is awaited; the button reads disabled until it lands or times out. */
+  busy: boolean
 }

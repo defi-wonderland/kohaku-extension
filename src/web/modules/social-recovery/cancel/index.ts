@@ -6,19 +6,14 @@ export {
   AFTER_READ_TRIES,
   AFTER_READ_PAUSE_MS,
   FOLLOW_POLL_MS,
-  SELECT_ACCOUNT_LIMIT_MS
+  SELECT_ACCOUNT_LIMIT_MS,
+  CLAIM_SEND_LIMIT_MS,
+  LANDING_ATTEMPTS
 } from './constants'
 export { cancelPathOf, accountOfSearch } from './search'
-export {
-  bannerReadingOf,
-  anchorOf,
-  targetOf,
-  standingOf,
-  landedOutcomeOf,
-  attemptAfterOf
-} from './readings'
+export { bannerReadingOf, anchorOf, standingOf, attemptAfterOf } from './readings'
 export { cancelClaimKeyOf, cancelClaimFrom, cancelClaimsOf } from './claim'
-export { attemptReaderOf, cancelDeploymentOf, pollOnce } from './reads'
+export { attemptReaderOf, landingReaderOf, cancelDeploymentOf, pollOnce } from './reads'
 export {
   initialCancelState,
   createCancelStore,

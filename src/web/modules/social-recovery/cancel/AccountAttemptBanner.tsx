@@ -1,16 +1,21 @@
 /**
- * The banner of one account over the watcher's record: an open attempt, a
- * failed poll with the open attempt the last good reading holds under it, or
- * the notice that a recovery handed control to another key. Nothing while the
- * record is read, for an account the watcher has not polled, for an attempt
- * the holder dismissed, or for an attempt a cancel ended.
+ * The banner of one account over the watcher's record, in the dashboard
+ * banner's own component: an open attempt, a failed poll with the open
+ * attempt the last good reading holds under it, a record that cannot be read
+ * with the hook's retry, or the notice that a recovery handed control to
+ * another key. Nothing while the record is read, for an account the watcher
+ * has not polled, for an attempt the holder dismissed, or for an attempt a
+ * cancel ended. The banner's lines run under its title, along the same
+ * coloured edge.
  */
 import React, { useCallback, useState } from 'react'
 import { View } from 'react-native'
 
+import Banner from '@common/components/Banner'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
+import useTheme from '@common/hooks/useTheme'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import {
@@ -20,11 +25,13 @@ import {
 } from '@web/modules/social-recovery/shared/display'
 
 import AttemptLines from './AttemptLines'
-import BannerFrame from './BannerFrame'
 import { bannerReadingOf } from './readings'
-import type { AccountAttemptBannerProps } from './types'
+import type { AccountAttemptBannerProps, AttemptBannerType } from './types'
 
 const WATCHER = 'socialRecovery.watcher'
+
+/** The banner stacks its lines under its title instead of beside it. */
+const STACKED = { flexDirection: 'column', alignItems: 'stretch' } as const
 
 const AccountAttemptBanner = ({
   account,
@@ -37,6 +44,7 @@ const AccountAttemptBanner = ({
   timeZone
 }: AccountAttemptBannerProps) => {
   const { t } = useTranslation()
+  const { theme } = useTheme()
   const state = useAttempt(account)
   const dismissed = useDismissed(account, state)
   const reading = bannerReadingOf(state, dismissed)
@@ -65,38 +73,74 @@ const AccountAttemptBanner = ({
     return null
   }
 
-  const accountLine = !!name && (
-    <Text
-      fontSize={12}
-      weight="medium"
-      appearance="secondaryText"
-      style={spacings.mbTy}
-      testID={`recovery-banner-${id}-account`}
-    >
-      {t(`${WATCHER}.banner.account`, { name, address: renderShortAddress(account) })}
-    </Text>
+  const frame = (
+    type: AttemptBannerType,
+    title: string,
+    text: string | undefined,
+    lines: React.ReactNode
+  ) => (
+    <View testID={`recovery-banner-${id}`}>
+      <Banner type={type} title={title} text={text} style={STACKED}>
+        <View
+          style={[
+            spacings.plSm,
+            spacings.prSm,
+            spacings.pbSm,
+            { borderLeftWidth: 6, borderLeftColor: theme[`${type}Decorative`] as string }
+          ]}
+        >
+          {name !== undefined && (
+            <Text
+              fontSize={12}
+              weight="medium"
+              appearance="secondaryText"
+              style={spacings.mbTy}
+              testID={`recovery-banner-${id}-account`}
+            >
+              {name
+                ? t(`${WATCHER}.banner.account`, { name, address: renderShortAddress(account) })
+                : renderShortAddress(account)}
+            </Text>
+          )}
+          {lines}
+        </View>
+      </Banner>
+    </View>
   )
+
+  const retryButton = (onPress: () => void) => (
+    <Button
+      testID={`recovery-banner-${id}-retry`}
+      type="secondary"
+      size="small"
+      text={t(`${WATCHER}.failed.retry`)}
+      onPress={onPress}
+      disabled={busy}
+      hasBottomSpacing={false}
+      style={[flexbox.alignSelfStart, spacings.mbSm]}
+    />
+  )
+
+  if (reading.kind === 'unreadable') {
+    return frame(
+      'error',
+      t(`${WATCHER}.failed.title`),
+      t(`${WATCHER}.failed.body`),
+      retryButton(reading.retry)
+    )
+  }
 
   if (reading.kind === 'executed') {
     const { ending } = reading
-    return (
-      <BannerFrame type="warning" testID={`recovery-banner-${id}`}>
-        {accountLine}
-        <Text
-          fontSize={16}
-          weight="medium"
-          style={spacings.mbTy}
-          testID={`recovery-banner-${id}-executed-title`}
-        >
-          {t(`${WATCHER}.executed.title`)}
-        </Text>
-        {ending.at !== undefined && (
-          <Text fontSize={14} style={spacings.mbTy} testID={`recovery-banner-${id}-executed-body`}>
-            {t(`${WATCHER}.executed.body`, {
-              date: renderDateTimeInZone(ending.at * 1000, timeZone).date
-            })}
-          </Text>
-        )}
+    return frame(
+      'warning',
+      t(`${WATCHER}.executed.title`),
+      ending.at !== undefined
+        ? t(`${WATCHER}.executed.body`, {
+            date: renderDateTimeInZone(ending.at * 1000, timeZone).date
+          })
+        : undefined,
+      <>
         {!!ending.controller && (
           <View style={spacings.mbTy}>
             <Text fontSize={12} appearance="secondaryText">
@@ -122,26 +166,17 @@ const AccountAttemptBanner = ({
           hasBottomSpacing={false}
           style={flexbox.alignSelfStart}
         />
-      </BannerFrame>
+      </>
     )
   }
 
   if (reading.kind === 'failed') {
-    return (
-      <BannerFrame type="error" testID={`recovery-banner-${id}`}>
-        {accountLine}
-        <Text
-          fontSize={16}
-          weight="medium"
-          style={spacings.mbTy}
-          testID={`recovery-banner-${id}-failed-title`}
-        >
-          {t(`${WATCHER}.failed.title`)}
-        </Text>
-        <Text fontSize={14} style={spacings.mbTy} testID={`recovery-banner-${id}-failed-body`}>
-          {t(`${WATCHER}.failed.body`)}
-        </Text>
-        {reading.lastReadAt !== undefined && (
+    return frame(
+      'error',
+      t(`${WATCHER}.failed.title`),
+      t(`${WATCHER}.failed.body`),
+      <>
+        {reading.lastBlockAt !== undefined && (
           <Text
             fontSize={14}
             appearance="secondaryText"
@@ -149,44 +184,37 @@ const AccountAttemptBanner = ({
             testID={`recovery-banner-${id}-last-read`}
           >
             {t(`${WATCHER}.failed.lastRead`, {
-              date: renderDateTimeInZone(reading.lastReadAt, timeZone).date
+              date: renderDateTimeInZone(reading.lastBlockAt, timeZone).date
             })}
           </Text>
         )}
-        <Button
-          testID={`recovery-banner-${id}-retry`}
-          type="secondary"
-          size="small"
-          text={t(`${WATCHER}.failed.retry`)}
-          onPress={retry}
-          disabled={busy}
-          hasBottomSpacing={false}
-          style={[flexbox.alignSelfStart, spacings.mbSm]}
-        />
+        {retryButton(retry)}
         {!!reading.open && (
           <AttemptLines
             open={reading.open}
+            titled
             account={account}
             timeZone={timeZone}
             onCancel={onCancel}
             onDismiss={onDismiss}
           />
         )}
-      </BannerFrame>
+      </>
     )
   }
 
-  return (
-    <BannerFrame type="warning" testID={`recovery-banner-${id}`}>
-      {accountLine}
-      <AttemptLines
-        open={reading.open}
-        account={account}
-        timeZone={timeZone}
-        onCancel={onCancel}
-        onDismiss={onDismiss}
-      />
-    </BannerFrame>
+  return frame(
+    'warning',
+    t(`${WATCHER}.banner.title`),
+    undefined,
+    <AttemptLines
+      open={reading.open}
+      titled={false}
+      account={account}
+      timeZone={timeZone}
+      onCancel={onCancel}
+      onDismiss={onDismiss}
+    />
   )
 }
 

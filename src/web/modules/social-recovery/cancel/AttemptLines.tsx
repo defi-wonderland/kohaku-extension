@@ -1,12 +1,12 @@
 /**
- * An open attempt as the banner names it: the title, the new key in full (or
- * that it is still read), the end in the reader's zone with the countdown
- * against the reading's block time, or, once the wait ended, that the
- * recovery can execute at any moment; the dormant line in place of the
- * countdown while the account does not authorize the action. Then the two
- * actions, the line under them, and the roads this release offers: only the
- * account's own key cancels, and editing the setup or removing recovery
- * cancels too.
+ * An open attempt as the banner names it: the title where the banner's own
+ * does not stand for it, the new key in full (or that it is still read), the
+ * end in the reader's zone with the countdown against the reading's block
+ * time, or, once the wait ended, that the recovery can execute at any moment.
+ * While the account does not authorize the action, the dormant line stands
+ * alone in place of all of these. Then the two actions, the line under them,
+ * and the roads this release offers: only the account's own key cancels, and
+ * editing the setup or removing recovery cancels too.
  */
 import React, { useCallback, useMemo, useState } from 'react'
 import { View } from 'react-native'
@@ -18,7 +18,6 @@ import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import {
   countdownStateOf,
-  renderCountdown,
   renderCountdownTime,
   renderDateTimeInZone,
   renderFullAddress,
@@ -31,7 +30,14 @@ import type { AttemptLinesProps } from './types'
 
 const BANNER = 'socialRecovery.watcher.banner'
 
-const AttemptLines = ({ open, account, timeZone, onCancel, onDismiss }: AttemptLinesProps) => {
+const AttemptLines = ({
+  open,
+  titled,
+  account,
+  timeZone,
+  onCancel,
+  onDismiss
+}: AttemptLinesProps) => {
   const { t } = useTranslation()
   const { attempt, dormant } = open
   const id = account.toLowerCase()
@@ -40,8 +46,9 @@ const AttemptLines = ({ open, account, timeZone, onCancel, onDismiss }: AttemptL
   const [dismissing, setDismissing] = useState(false)
 
   const due =
-    attempt.executionDue ||
-    (remainingMs !== null && countdownStateOf(remainingMs) === 'executionDue')
+    !dormant &&
+    (attempt.executionDue ||
+      (remainingMs !== null && countdownStateOf(remainingMs) === 'executionDue'))
   const endDate = renderDateTimeInZone(attempt.consumableAfter * 1000, timeZone).date
 
   const dismiss = useCallback(() => {
@@ -62,24 +69,51 @@ const AttemptLines = ({ open, account, timeZone, onCancel, onDismiss }: AttemptL
     </Text>
   )
 
+  let when: React.ReactNode
+  if (dormant) {
+    when = line(t(`${BANNER}.dormant`), `recovery-banner-${id}-dormant`)
+  } else if (due) {
+    when = (
+      <>
+        {line(t(`${BANNER}.dueBody`, { date: endDate }), `recovery-banner-${id}-due`)}
+        {line(t(`${BANNER}.dueCancel`), `recovery-banner-${id}-due-cancel`)}
+      </>
+    )
+  } else {
+    when = (
+      <>
+        {line(t(`${BANNER}.finishes`, { date: endDate }), `recovery-banner-${id}-finishes`)}
+        {remainingMs !== null &&
+          line(
+            t(`${BANNER}.waiting`, { countdown: renderCountdownTime(remainingMs) }),
+            `recovery-banner-${id}-countdown`
+          )}
+      </>
+    )
+  }
+
   return (
     <View testID={`recovery-banner-${id}-attempt`}>
-      <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
-        {due && !dormant && (
-          <Text
-            fontSize={12}
-            weight="semiBold"
-            appearance="warningText"
-            style={spacings.mrSm}
-            testID={`recovery-banner-${id}-chip`}
-          >
-            {t(`${BANNER}.executionDue`)}
-          </Text>
-        )}
-        <Text fontSize={16} weight="medium" testID={`recovery-banner-${id}-title`}>
-          {t(`${BANNER}.title`)}
-        </Text>
-      </View>
+      {(due || titled) && (
+        <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
+          {due && (
+            <Text
+              fontSize={12}
+              weight="semiBold"
+              appearance="warningText"
+              style={spacings.mrSm}
+              testID={`recovery-banner-${id}-chip`}
+            >
+              {t(`${BANNER}.executionDue`)}
+            </Text>
+          )}
+          {titled && (
+            <Text fontSize={16} weight="medium" testID={`recovery-banner-${id}-title`}>
+              {t(`${BANNER}.title`)}
+            </Text>
+          )}
+        </View>
+      )}
       <View style={spacings.mbTy}>
         <Text fontSize={12} appearance="secondaryText">
           {renderValueLabel('newKey', t)}
@@ -93,20 +127,7 @@ const AttemptLines = ({ open, account, timeZone, onCancel, onDismiss }: AttemptL
           {attempt.newKey ? renderFullAddress(attempt.newKey) : t(`${BANNER}.newKeyPending`)}
         </Text>
       </View>
-      {due
-        ? line(t(`${BANNER}.dueBody`, { date: endDate }), `recovery-banner-${id}-due`)
-        : line(t(`${BANNER}.finishes`, { date: endDate }), `recovery-banner-${id}-finishes`)}
-      {dormant && line(t(`${BANNER}.dormant`), `recovery-banner-${id}-dormant`)}
-      {!dormant && due && line(t(`${BANNER}.dueCancel`), `recovery-banner-${id}-due-cancel`)}
-      {!dormant &&
-        !due &&
-        remainingMs !== null &&
-        line(
-          countdownStateOf(remainingMs) === 'waiting'
-            ? t(`${BANNER}.waiting`, { countdown: renderCountdownTime(remainingMs) })
-            : renderCountdown({ remainingMs }, t),
-          `recovery-banner-${id}-countdown`
-        )}
+      {when}
       <View style={[flexbox.directionRow, flexbox.wrap, spacings.mtTy, spacings.mbTy]}>
         <Button
           testID={`recovery-banner-${id}-not-me`}

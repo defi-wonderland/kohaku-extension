@@ -1,7 +1,8 @@
 /**
  * One banner per smart account the wallet lists, whatever account is
  * selected. Where the wallet lists more than one account, each banner names
- * the account by the wallet's label and its truncated address.
+ * the account by the wallet's label and its truncated address, or by the
+ * address alone where the label is empty.
  */
 import React, { useMemo } from 'react'
 import { View } from 'react-native'
@@ -35,7 +36,7 @@ const RecoveryAttemptBannerView = ({
           <AccountAttemptBanner
             key={account}
             account={account}
-            name={named ? listed?.preferences?.label || undefined : undefined}
+            name={named ? listed?.preferences?.label ?? '' : undefined}
             useAttempt={useAttempt}
             useDismissed={useDismissed}
             onCancel={onCancel}

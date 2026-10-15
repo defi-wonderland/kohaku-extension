@@ -1,11 +1,12 @@
 /**
  * The owner's cancel, by state. Before any send: the fresh read of the
- * attempt (loading, failed with a retry, or the attempt already gone), then
- * the confirm with the attempt's facts. Then the shared write states: the gas
- * check, the deposit step naming the account's key with both routes, the
- * cancel in progress, the two readings of the failed state with the
- * move-funds action where the state offers it, and after a landing the reads
- * until the attempt reads cancelled, then the cancelled terminal.
+ * attempt (loading, failed with a retry, or no attempt open), then the confirm
+ * for the attempt the newest read finds open, with its facts and whether the
+ * page can send it. Then the shared write states: the gas check, the deposit
+ * step naming the account's key with both routes, the cancel in progress, the
+ * two readings of the failed state with the move-funds action where the state
+ * offers it, after a landing the reads until they name what the cancel
+ * ended, then the cancelled terminal.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -15,6 +16,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
+import { isSendRefusal } from '@web/modules/social-recovery/shared/client'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import {
   mayStillLand,
@@ -23,15 +25,28 @@ import {
   renderDepositStep,
   WRITES_KEYS
 } from '@web/modules/social-recovery/shared/writes'
+import type { WriteMachineState } from '@web/modules/social-recovery/shared/writes'
 import DepositStepView from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
 import WriteStateView from '@web/modules/social-recovery/shared/writes/components/WriteStateView'
 
 import { AttemptFacts, CancelledBlock, EndedBlock } from './CancelBlocks'
-import { standingOf } from './readings'
 import type { CancelViewProps } from './types'
 
 const BANNER = 'socialRecovery.watcher.banner'
 const CANCEL = 'socialRecovery.cancel'
+
+/**
+ * Whether a not-sent cancel reads the cancel's own sentence, that the wallet
+ * rejected it. A refusal that may still land, one for another request, a
+ * replaced transaction, and the run's own gate refusing the add (the claim no
+ * longer the run's, or the wait over) read the shared line alone.
+ */
+const ownNotSentBody = (write: WriteMachineState): boolean =>
+  write.status === 'failedNotSent' &&
+  !mayStillLand(write) &&
+  !otherRequestPending(write) &&
+  !write.replaced &&
+  !(isSendRefusal(write.error) && write.error.reason === 'timeout')
 
 const CancelView = ({
   read,
@@ -45,10 +60,11 @@ const CancelView = ({
   onCheckAgain,
   onBack,
   onDone,
-  onMoveFunds
+  onMoveFunds,
+  moveFundsBusy
 }: CancelViewProps) => {
   const { t } = useTranslation()
-  const { write, target } = run
+  const { write, target, after } = run
 
   const backButton = (
     <Button
@@ -68,35 +84,32 @@ const CancelView = ({
       size="small"
       text={t(key)}
       onPress={onMoveFunds}
+      disabled={moveFundsBusy}
       hasBottomSpacing={false}
       style={[flexbox.alignSelfStart, spacings.mtTy]}
     />
   )
-  const checkAgainButton = (
+  const checkAgainButton = (key: string) => (
     <Button
       testID="cancel-check-again"
       type="secondary"
       size="small"
-      text={t(WRITES_KEYS.tryAgain)}
+      text={t(key)}
       onPress={onCheckAgain}
       hasBottomSpacing={false}
       style={[flexbox.alignSelfStart, spacings.mtTy]}
     />
   )
-  const inProgress = (extra?: React.ReactNode) => (
-    <SectionCard testID="cancel-in-progress">
-      <WriteStateView
-        state={{ status: 'submitting', write: 'cancel' }}
-        title={t(`${CANCEL}.inProgress.title`)}
-        body={[t(`${CANCEL}.inProgress.body`)]}
-      >
-        {extra}
-      </WriteStateView>
-    </SectionCard>
-  )
 
-  if (run.gone) {
-    return <EndedBlock reading={run.gone} onBack={onBack} />
+  if (after.stage === 'cancelled' || after.stage === 'otherRoad') {
+    return (
+      <CancelledBlock
+        after={after}
+        onMoveFunds={onMoveFunds}
+        moveFundsBusy={moveFundsBusy}
+        onDone={onDone}
+      />
+    )
   }
 
   switch (write.status) {
@@ -145,21 +158,50 @@ const CancelView = ({
       )
     }
     case 'submitting':
-      return inProgress(run.stalled ? checkAgainButton : undefined)
+      return (
+        <SectionCard testID="cancel-in-progress">
+          <WriteStateView
+            state={{ status: 'submitting', write: 'cancel' }}
+            title={t(`${CANCEL}.inProgress.title`)}
+            body={[t(`${CANCEL}.inProgress.body`)]}
+          >
+            {run.stalled ? checkAgainButton(WRITES_KEYS.tryAgain) : null}
+          </WriteStateView>
+        </SectionCard>
+      )
     case 'landed':
-      if (run.after.stage === 'cancelled' || run.after.stage === 'otherRoad') {
-        return <CancelledBlock after={run.after} onMoveFunds={onMoveFunds} onDone={onDone} />
-      }
-      return inProgress(run.after.stage === 'unread' ? checkAgainButton : undefined)
-    case 'failedNotSent': {
-      // A refusal that may still land, or one for another request, reads the shared line alone.
-      const ownBody = !mayStillLand(write) && !otherRequestPending(write)
+      return (
+        <SectionCard testID="cancel-landed">
+          <Text fontSize={16} weight="medium" style={spacings.mbTy} testID="cancel-landed-title">
+            {t(`${CANCEL}.landed.title`)}
+          </Text>
+          <Text fontSize={14} style={spacings.mbTy} testID="cancel-landed-body">
+            {t(`${CANCEL}.landed.body`)}
+          </Text>
+          {after.stage === 'unread' ? (
+            <>
+              <Text
+                fontSize={14}
+                appearance="secondaryText"
+                style={spacings.mbTy}
+                testID="cancel-landed-unread"
+              >
+                {t(`${CANCEL}.landed.unread`)}
+              </Text>
+              {checkAgainButton(`${CANCEL}.landed.checkAgain`)}
+            </>
+          ) : (
+            <ActivityIndicator testID="cancel-landed-reading" style={flexbox.alignSelfStart} />
+          )}
+        </SectionCard>
+      )
+    case 'failedNotSent':
       return (
         <SectionCard testID="cancel-not-sent">
           <WriteStateView
             state={write}
             title={t(`${CANCEL}.failed.title`)}
-            body={ownBody ? [t(`${CANCEL}.failed.body`)] : undefined}
+            body={ownNotSentBody(write) ? [t(`${CANCEL}.failed.body`)] : undefined}
             onRetry={target !== undefined ? () => onSend(target) : undefined}
           >
             {offersMoveFunds(write) && moveFundsButton(`${CANCEL}.failed.moveFunds`)}
@@ -167,7 +209,6 @@ const CancelView = ({
           </WriteStateView>
         </SectionCard>
       )
-    }
     case 'failedReverted':
       return (
         <SectionCard testID="cancel-reverted">
@@ -195,32 +236,36 @@ const CancelView = ({
       break
   }
 
-  if (read.status === 'loading') {
-    return <ActivityIndicator testID="cancel-spinner" />
+  // The newest reading: the one in which the run found its attempt no longer open, else the arrival's.
+  let reading = run.gone
+  if (!reading) {
+    if (read.status === 'loading') {
+      return <ActivityIndicator testID="cancel-spinner" />
+    }
+    if (read.status === 'failed') {
+      return (
+        <SectionCard testID="cancel-read-failed">
+          <Text fontSize={14} style={spacings.mbTy} testID="cancel-read-failed-line">
+            {t(`${CANCEL}.confirm.readFailed`)}
+          </Text>
+          <Button
+            testID="cancel-read-retry"
+            type="primary"
+            size="small"
+            text={t(WRITES_KEYS.tryAgain)}
+            onPress={onRetryRead}
+            hasBottomSpacing={false}
+            style={flexbox.alignSelfStart}
+          />
+          {backButton}
+        </SectionCard>
+      )
+    }
+    reading = read.arrival.reading
   }
-  if (read.status === 'failed') {
-    return (
-      <SectionCard testID="cancel-read-failed">
-        <Text fontSize={14} style={spacings.mbTy} testID="cancel-read-failed-line">
-          {t(`${CANCEL}.confirm.readFailed`)}
-        </Text>
-        <Button
-          testID="cancel-read-retry"
-          type="primary"
-          size="small"
-          text={t(WRITES_KEYS.tryAgain)}
-          onPress={onRetryRead}
-          hasBottomSpacing={false}
-          style={flexbox.alignSelfStart}
-        />
-        {backButton}
-      </SectionCard>
-    )
-  }
-  const { reading, target: arrivalTarget } = read.arrival
-  const standing = arrivalTarget !== undefined ? standingOf(reading, arrivalTarget) : undefined
-  if (!standing || standing.kind !== 'open' || arrivalTarget === undefined) {
-    return <EndedBlock reading={reading} onBack={onBack} />
+  const open = reading.attempt
+  if (!open) {
+    return <EndedBlock reading={reading} target={run.gone ? target : undefined} onBack={onBack} />
   }
 
   return (
@@ -234,7 +279,7 @@ const CancelView = ({
       <Text fontSize={14} style={spacings.mbSm} testID="cancel-confirm-one-transaction">
         {t(`${CANCEL}.confirm.oneTransaction`)}
       </Text>
-      <AttemptFacts attempt={standing.attempt} timeZone={timeZone} />
+      <AttemptFacts attempt={open} dormant={reading.dormant} timeZone={timeZone} />
       <Text
         fontSize={14}
         appearance="secondaryText"
@@ -249,17 +294,22 @@ const CancelView = ({
           type="primary"
           size="small"
           text={t(`${CANCEL}.confirm.send`)}
-          onPress={() => onSend(arrivalTarget)}
+          onPress={() => onSend(open.attemptId)}
           disabled={readiness !== 'ready'}
           hasBottomSpacing={false}
           style={[spacings.mrSm, spacings.mtTy]}
         />
         {backButton}
       </View>
+      {readiness === 'noKey' && (
+        <Text fontSize={14} style={spacings.mtSm} testID="cancel-view-only">
+          {t(`${CANCEL}.confirm.viewOnly`)}
+        </Text>
+      )}
       {readiness === 'failed' && (
         <View style={spacings.mtSm} testID="cancel-ready-failed">
           <Text fontSize={14} style={spacings.mbTy} testID="cancel-ready-failed-line">
-            {t(`${CANCEL}.confirm.readFailed`)}
+            {t(`${CANCEL}.confirm.clientFailed`)}
           </Text>
           <Button
             testID="cancel-ready-retry"

@@ -24,6 +24,7 @@ export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
   const { account, chainId, client, facts, key, receipts, port } = input
   return {
     readAttempt: input.readAttempt,
+    readLanding: input.readLanding,
     async prepare() {
       const prepared = await client.recovery.prepareCancelByOwner()
       assertWriteDoor('cancel', prepared)

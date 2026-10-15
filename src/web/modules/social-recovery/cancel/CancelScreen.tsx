@@ -1,8 +1,8 @@
 /**
  * The owner's cancel's route, in a full tab: the account from the search (a
- * missing or malformed one goes back to the dashboard), the attempt the
- * watcher's record held for it, a fresh read of the attempt through the
- * watcher's poll, the recovery client of the account, its facts and key, and
+ * missing or malformed one goes back to the dashboard), a fresh read of the
+ * attempt through the watcher's poll, whose open attempt is the one offered,
+ * the reads after a landing, the recovery client of the account, its facts and key, and
  * the send port over the request queue. "Done" and "Go back" return to the
  * dashboard; moving funds selects the account and opens the transfer screen.
  */
@@ -34,11 +34,10 @@ import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useA
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { watcherConnectionFor } from '@web/modules/social-recovery/shared/client/watcher-reads'
 import { extensionRecordStorage } from '@web/modules/social-recovery/shared/records/extensionStorage'
-import { readWatcherRecord, watchedNetworkOf } from '@web/modules/social-recovery/watcher'
+import { watchedNetworkOf } from '@web/modules/social-recovery/watcher'
 
 import CancelView from './CancelView'
-import { attemptReaderOf, cancelDeploymentOf } from './reads'
-import { targetOf } from './readings'
+import { attemptReaderOf, cancelDeploymentOf, landingReaderOf } from './reads'
 import { accountOfSearch } from './search'
 import { cancelStepsOf } from './steps'
 import type {
@@ -46,7 +45,8 @@ import type {
   AttemptReader,
   CancelBodyProps,
   CancelReadiness,
-  CancelSteps
+  CancelSteps,
+  LandingReader
 } from './types'
 import { useAttemptRead } from './useAttemptRead'
 import { useCancelWrite } from './useCancelWrite'
@@ -96,25 +96,19 @@ const CancelBody = ({ account }: CancelBodyProps) => {
     return null
   }, [connection, account, storage, networks, network, descriptor])
 
-  // The attempt the holder came to cancel is the one the record held before this page read.
-  const recorded = useRef<{ target?: bigint } | null>(null)
-  const readArrival = useMemo<ArrivalReader | null>(() => {
-    if (!readAttempt) {
-      return null
-    }
-    return async () => {
-      if (!recorded.current) {
-        const record = await readWatcherRecord(storage, CHAIN_ID, account).catch(() => undefined)
-        recorded.current = { target: record?.reading?.attempt?.attemptId }
-      }
-      const reading = await readAttempt()
-      return {
-        reading,
-        target: recorded.current.target ?? targetOf(undefined, reading)
-      }
-    }
-  }, [readAttempt, storage, account])
+  // The attempt the holder can cancel is the one this page's own fresh read finds open.
+  const readArrival = useMemo<ArrivalReader | null>(
+    () => (readAttempt ? async () => ({ reading: await readAttempt() }) : null),
+    [readAttempt]
+  )
   const { read, retry: retryRead } = useAttemptRead(readArrival)
+  const readLanding = useMemo<LandingReader | null>(
+    () =>
+      connection && readAttempt
+        ? landingReaderOf({ reads: connection.reads, account, readAttempt })
+        : null,
+    [connection, readAttempt, account]
+  )
 
   const accountsRef = useRef<readonly ListedAccount[] | undefined>(accounts)
   accountsRef.current = accounts
@@ -143,7 +137,7 @@ const CancelBody = ({ account }: CancelBodyProps) => {
   const receipts = clientState.status === 'ready' ? clientState.receipts : null
   const ready = facts.status === 'ready' ? facts.facts : null
   const steps = useMemo<CancelSteps | null>(() => {
-    if (!kit || !chainReads || !receipts || !ready?.key || !readAttempt) {
+    if (!kit || !chainReads || !receipts || !ready?.key || !readAttempt || !readLanding) {
       return null
     }
     return cancelStepsOf({
@@ -157,9 +151,10 @@ const CancelBody = ({ account }: CancelBodyProps) => {
       facts: ready,
       key: ready.key,
       readAttempt,
+      readLanding,
       storage
     })
-  }, [kit, chainReads, receipts, ready, readAttempt, account, port, requests, storage])
+  }, [kit, chainReads, receipts, ready, readAttempt, readLanding, account, port, requests, storage])
   const run = useCancelWrite(steps, `${CHAIN_ID}:${account.toLowerCase()}`)
 
   const failed =
@@ -200,7 +195,8 @@ const CancelBody = ({ account }: CancelBodyProps) => {
       onCheckAgain={run.checkAgain}
       onBack={toDashboard}
       onDone={toDashboard}
-      onMoveFunds={moveFunds}
+      onMoveFunds={moveFunds.move}
+      moveFundsBusy={moveFunds.busy}
     />
   )
 }

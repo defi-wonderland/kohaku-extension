@@ -12,7 +12,8 @@
  *                                                 └─ its own ─▶ the attempt read again
  *                                                               ├─ gone ─▶ idle with the gone reading (the claim released)
  *                                                               └─ open ─▶ submitting ─▶ landed | failedNotSent | failedReverted
- *   landed ──▶ reads until the attempt reads cancelled, by the owner or by another road ──▶ cancelled | otherRoad | unread
+ *   landed ──▶ reads from the receipt's block until an owner's cancel names the attempt it ended,
+ *              or another road ended the meant one ──▶ cancelled | otherRoad | unread
  *   failedReverted ──▶ reads until the attempt read names how it had ended (attemptRead)
  *
  * The cancel is stored on this device, under the lock of its key, before the
@@ -22,9 +23,14 @@
  * its hash it waits for the receipt; with no hash it reads where the wallet
  * holds the request, and only a request the wallet holds nowhere and never
  * broadcast reads as not sent, so the claim is released and the start offered
- * again. The claim is released once the run ends with nothing on its way to
- * the chain, or once the receipt came back. A refusal whose operation may
- * still reach the chain keeps it.
+ * again; a claim younger than its send limit is waited on instead, since its
+ * page may still add the request. Each round of that follow also reads the
+ * attempt: once it reads ended, or another attempt open, the claim is
+ * released and the page shows the cancelled terminal or the reading, so no
+ * claim is held forever, a refusal that may still land included. The claim is
+ * released once the run ends with nothing on its way to the chain, or once the
+ * receipt came back. A refusal whose operation may still reach the chain
+ * keeps it until such a follow releases it.
  *
  * Every answer carries the run it belongs to, so the answer of a run the
  * holder left behind moves nothing, and no decision reads the device's clock.
@@ -51,7 +57,7 @@ import {
   FOLLOW_POLL_MS,
   SEND_BLOCK_READ_MS
 } from './constants'
-import { attemptAfterOf, landedOutcomeOf, standingOf } from './readings'
+import { attemptAfterOf, standingOf } from './readings'
 import type { CancelClaim, CancelState, CancelSteps, CancelStore } from './types'
 
 export const initialCancelState = (): CancelState => ({
@@ -134,26 +140,40 @@ const FOLLOWING = new WeakSet<CancelStore>()
 // After the receipt
 // ---------------------------------------------------------------------------
 
-/** Reads after a landed cancel until the attempt reads cancelled, a bounded number of times. */
+/**
+ * Reads after a landed cancel, from the receipt's block, until the reads name
+ * the attempt the cancel ended, a bounded number of times.
+ */
 const readAfterLanding = async (
   store: CancelStore,
   steps: CancelSteps,
   run: number,
   tries = AFTER_READ_TRIES
 ): Promise<void> => {
-  const { target } = store.state()
-  if (target === undefined || !inRun(store, run)) {
+  const state = store.state()
+  const { target, write } = state
+  if (target === undefined || write.run !== run || write.status !== 'landed') {
     return
   }
-  changeInRun(store, run, (state) => ({ ...state, after: { stage: 'reading' } }))
-  const reading = await steps.readAttempt().catch(() => undefined)
-  const outcome = reading ? landedOutcomeOf(reading, target) : undefined
+  changeInRun(store, run, (current) => ({ ...current, after: { stage: 'reading' } }))
+  const landedBlock = write.receipt.blockNumber ?? state.startBlock
+  const outcome =
+    landedBlock === undefined
+      ? undefined
+      : await steps
+          .readLanding({
+            target,
+            ...(state.targetAttempt ? { known: state.targetAttempt } : {}),
+            startBlock: state.startBlock ?? landedBlock,
+            landedBlock
+          })
+          .catch(() => undefined)
   if (outcome) {
-    changeInRun(store, run, (state) => ({ ...state, after: outcome }))
+    changeInRun(store, run, (current) => ({ ...current, after: outcome }))
     return
   }
   if (tries <= 1) {
-    changeInRun(store, run, (state) => ({ ...state, after: { stage: 'unread' } }))
+    changeInRun(store, run, (current) => ({ ...current, after: { stage: 'unread' } }))
     return
   }
   await pause(AFTER_READ_PAUSE_MS)
@@ -266,10 +286,48 @@ const followedWriteOf = (run: number, claim: CancelClaim): WriteMachineState => 
 })
 
 /**
+ * Ends the follow of a stored cancel whose attempt reads gone: a hash another
+ * page wrote meanwhile is followed; else the claim is released, and the page
+ * shows the cancelled terminal where the owner's cancel ended that attempt,
+ * or the reading otherwise (its ending, or the attempt now open).
+ */
+const endFollow = async (
+  store: CancelStore,
+  steps: CancelSteps,
+  run: number,
+  claim: CancelClaim,
+  reading: WatcherReading
+): Promise<void> => {
+  const stored = await steps.claims.read().catch(() => undefined)
+  if (stored?.requestId === claim.requestId && stored.transactionHash) {
+    dispatchTo(store)({
+      type: 'sent',
+      run,
+      transactionHash: stored.transactionHash,
+      startBlock: claim.startBlock
+    })
+    await waitHash(store, steps, run, stored.transactionHash, claim.startBlock, claim.requestId)
+    return
+  }
+  await steps.claims.release(claim.requestId).catch(() => undefined)
+  const ended = reading.ended?.attemptId === claim.attemptId ? reading.ended : undefined
+  const own = ended?.road === 'cancelled' && ended.cancelledBy === 'cancelByOwner'
+  changeInRun(store, run, (state) => {
+    const { follow, requestId, ...rest } = applyWrite(state, { type: 'reset' })
+    return own
+      ? { ...rest, after: { stage: 'cancelled', attemptId: claim.attemptId } }
+      : { ...rest, gone: reading }
+  })
+}
+
+/**
  * Reads where the wallet holds a followed request with no hash, while a screen
- * is attached: broadcast, it follows the hash; held nowhere, the cancel was
- * not sent, so the claim is released and the start offered again; held, or a
- * read with no answer, it reads again a moment later.
+ * is attached, and the attempt beside it, each read bounded: broadcast, it
+ * follows the hash; the attempt ended or another one open, the follow ends
+ * (`endFollow`); held, a read with no answer, or held nowhere while the claim
+ * is younger than its send limit, it reads again a moment later; held nowhere
+ * past it, the cancel was not sent, so the claim is released and the start
+ * offered again.
  */
 const followHold = async (
   store: CancelStore,
@@ -278,22 +336,36 @@ const followHold = async (
   claim: CancelClaim
 ): Promise<void> => {
   const current = store.state().write
-  if (!ATTACHED.has(steps) || current.run !== run || current.status !== 'submitting') {
+  if (
+    !ATTACHED.has(steps) ||
+    current.run !== run ||
+    current.status !== 'submitting' ||
+    current.transactionHash
+  ) {
     FOLLOWING.delete(store)
     return
   }
-  if (current.transactionHash) {
-    FOLLOWING.delete(store)
-    return
-  }
-  const hold = await steps.requestHold(claim.requestId).catch(() => undefined)
+  const [hold, reading] = await Promise.all([
+    steps.requestHold(claim.requestId).catch(() => undefined),
+    readWithin(steps.readAttempt, CLAIMED_READ_MS).catch(() => undefined)
+  ])
   if (!inRun(store, run)) {
     FOLLOWING.delete(store)
     return
   }
-  if (!hold || hold.status === 'held') {
+  if (
+    hold?.status !== 'broadcast' &&
+    reading &&
+    standingOf(reading, claim.attemptId).kind === 'gone'
+  ) {
+    FOLLOWING.delete(store)
+    await endFollow(store, steps, run, claim, reading)
+    return
+  }
+  const sendable = steps.claims.sendableMs(claim)
+  if (!hold || hold.status === 'held' || (hold.status === 'free' && sendable > 0)) {
     changeInRun(store, run, (state) => ({ ...state, follow: hold ? 'held' : 'unread' }))
-    await pause(FOLLOW_POLL_MS)
+    await pause(hold?.status === 'free' ? Math.min(sendable, FOLLOW_POLL_MS) : FOLLOW_POLL_MS)
     await followHold(store, steps, run, claim)
     return
   }
@@ -327,6 +399,7 @@ export const followClaim = async (
     target: claim.attemptId,
     after: { stage: 'none' },
     requestId: claim.requestId,
+    startBlock: claim.startBlock,
     // Until the wallet answers, a request with no hash reads as held.
     ...(claim.transactionHash ? {} : { follow: 'held' as const })
   }))
@@ -364,10 +437,12 @@ const checkAndSend = async (
   if (!inRun(store, run)) {
     return
   }
-  if (standingOf(reading, target).kind !== 'open') {
+  const standing = standingOf(reading, target)
+  if (standing.kind !== 'open') {
     gone(reading)
     return
   }
+  changeInRun(store, run, (state) => ({ ...state, targetAttempt: standing.attempt }))
   try {
     const prepared = await steps.prepare()
     const check = await steps.checkGas(prepared)
@@ -391,7 +466,7 @@ const checkAndSend = async (
       }
       return
     }
-    changeInRun(store, run, (state) => ({ ...state, requestId }))
+    changeInRun(store, run, (state) => ({ ...state, requestId, startBlock }))
     const release = () => steps.claims.release(requestId).catch(() => undefined)
     // Read again once the claim is stored: a cancel another page landed meanwhile is not sent twice.
     let again: WatcherReading
@@ -411,16 +486,12 @@ const checkAndSend = async (
       gone(again)
       return
     }
-    const ownsUnsent = async () => {
-      const held = await steps.claims.read()
-      return held?.requestId === requestId && !held.transactionHash
-    }
     await steps.send({
       prepared,
       run,
       requestId,
       startBlock,
-      canAdd: ownsUnsent,
+      canAdd: () => steps.claims.canStillSend(requestId),
       dispatch: (event) => {
         dispatch(event)
         if (event.type === 'sent' && event.run === run) {

@@ -24,9 +24,39 @@ import type { AttemptFactsProps, CancelledBlockProps, EndedBlockProps } from './
 const BANNER = 'socialRecovery.watcher.banner'
 const CANCEL = 'socialRecovery.cancel'
 
-export const AttemptFacts = ({ attempt, timeZone }: AttemptFactsProps) => {
+/**
+ * The new key in full, then when the attempt finishes or that its execution
+ * is due; while the account does not authorize the action the dormant reading
+ * stands alone in their place.
+ */
+export const AttemptFacts = ({ attempt, dormant, timeZone }: AttemptFactsProps) => {
   const { t } = useTranslation()
   const date = renderDateTimeInZone(attempt.consumableAfter * 1000, timeZone).date
+  let when: React.ReactNode
+  if (dormant) {
+    when = (
+      <Text fontSize={14} testID="cancel-dormant">
+        {t(`${BANNER}.dormant`)}
+      </Text>
+    )
+  } else if (attempt.executionDue) {
+    when = (
+      <>
+        <Text fontSize={12} weight="semiBold" appearance="warningText" testID="cancel-due-chip">
+          {t(`${BANNER}.executionDue`)}
+        </Text>
+        <Text fontSize={14} testID="cancel-due">
+          {t(`${BANNER}.dueBody`, { date })}
+        </Text>
+      </>
+    )
+  } else {
+    when = (
+      <Text fontSize={14} testID="cancel-finishes">
+        {t(`${BANNER}.finishes`, { date })}
+      </Text>
+    )
+  }
   return (
     <View style={spacings.mbSm} testID="cancel-facts">
       <Text fontSize={12} appearance="secondaryText">
@@ -41,48 +71,60 @@ export const AttemptFacts = ({ attempt, timeZone }: AttemptFactsProps) => {
       >
         {attempt.newKey ? renderFullAddress(attempt.newKey) : t(`${BANNER}.newKeyPending`)}
       </Text>
-      {attempt.executionDue ? (
-        <>
-          <Text fontSize={12} weight="semiBold" appearance="warningText" testID="cancel-due-chip">
-            {t(`${BANNER}.executionDue`)}
-          </Text>
-          <Text fontSize={14} testID="cancel-due">
-            {t(`${BANNER}.dueBody`, { date })}
-          </Text>
-        </>
-      ) : (
-        <Text fontSize={14} testID="cancel-finishes">
-          {t(`${BANNER}.finishes`, { date })}
-        </Text>
-      )}
+      {when}
     </View>
   )
 }
 
-/** The attempt is gone in the read before any send: nothing was sent, and the road or the controller says why. */
-export const EndedBlock = ({ reading, onBack }: EndedBlockProps) => {
+/**
+ * The attempt is gone in the read before any send: nothing was sent. The
+ * ending is told only where it is the ending of the attempt the holder meant:
+ * the road where the reads named it, the controller after an execution, and,
+ * while a road or a controller is still to be read, that the registry has not
+ * confirmed it yet.
+ */
+export const EndedBlock = ({ reading, target, onBack }: EndedBlockProps) => {
   const { t } = useTranslation()
-  const { ended } = reading
+  const ended =
+    reading.ended && (target === undefined || reading.ended.attemptId === target)
+      ? reading.ended
+      : undefined
+  let line: React.ReactNode = null
+  if (ended?.road === 'cancelled' && ended.cancelledBy) {
+    line = (
+      <Text fontSize={14} style={spacings.mbTy} testID="cancel-ended-road">
+        {t(cancelGoneRoadKey(ended.cancelledBy))}
+      </Text>
+    )
+  } else if (ended?.road === 'executed' && ended.controller) {
+    line = (
+      <View style={spacings.mbTy}>
+        <Text fontSize={12} appearance="secondaryText">
+          {t(WRITES_KEYS.nowControlledBy)}
+        </Text>
+        <Text fontSize={14} weight="number_medium" selectable testID="cancel-ended-controller">
+          {renderFullAddress(ended.controller)}
+        </Text>
+      </View>
+    )
+  } else if (ended && !ended.endingGap) {
+    line = (
+      <Text
+        fontSize={14}
+        appearance="secondaryText"
+        style={spacings.mbTy}
+        testID="cancel-ended-unread"
+      >
+        {t(`${CANCEL}.landed.unread`)}
+      </Text>
+    )
+  }
   return (
     <SectionCard testID="cancel-ended">
       <Text fontSize={14} style={spacings.mbTy} testID="cancel-ended-line">
         {t(`${CANCEL}.confirm.ended`)}
       </Text>
-      {ended?.road === 'cancelled' && !!ended.cancelledBy && (
-        <Text fontSize={14} style={spacings.mbTy} testID="cancel-ended-road">
-          {t(cancelGoneRoadKey(ended.cancelledBy))}
-        </Text>
-      )}
-      {ended?.road === 'executed' && !!ended.controller && (
-        <View style={spacings.mbTy}>
-          <Text fontSize={12} appearance="secondaryText">
-            {t(WRITES_KEYS.nowControlledBy)}
-          </Text>
-          <Text fontSize={14} weight="number_medium" selectable testID="cancel-ended-controller">
-            {renderFullAddress(ended.controller)}
-          </Text>
-        </View>
-      )}
+      {line}
       <Button
         testID="cancel-back"
         type="secondary"
@@ -97,14 +139,19 @@ export const EndedBlock = ({ reading, onBack }: EndedBlockProps) => {
 }
 
 /**
- * The cancelled terminal. The owner's cancel ended the attempt: the methods it
- * used still work, so the terminal points at replacing them, which arrives with
- * a later release, and at moving funds. Another road ended it first: control
- * did not move, so no move-funds action.
+ * The cancelled terminal. The owner's cancel ended the attempt it names, by
+ * its new key where the reads found it: the methods it used still work, so the
+ * terminal points at replacing them, which arrives with a later release, and
+ * at moving funds. Another road ended it first: control did not move, so no
+ * move-funds action.
  */
-export const CancelledBlock = ({ after, onMoveFunds, onDone }: CancelledBlockProps) => {
+export const CancelledBlock = ({
+  after,
+  onMoveFunds,
+  moveFundsBusy,
+  onDone
+}: CancelledBlockProps) => {
   const { t } = useTranslation()
-  const own = after.stage === 'cancelled'
   return (
     <SectionCard testID="cancel-cancelled">
       <Text
@@ -116,11 +163,26 @@ export const CancelledBlock = ({ after, onMoveFunds, onDone }: CancelledBlockPro
       >
         {t(`${CANCEL}.cancelled.eyebrow`)}
       </Text>
-      {own ? (
+      {after.stage === 'cancelled' ? (
         <>
           <Text fontSize={16} weight="medium" style={spacings.mbTy} testID="cancel-cancelled-title">
             {t(`${CANCEL}.cancelled.title`)}
           </Text>
+          {!!after.newKey && (
+            <View style={spacings.mbTy}>
+              <Text fontSize={12} appearance="secondaryText">
+                {renderValueLabel('newKey', t)}
+              </Text>
+              <Text
+                fontSize={14}
+                weight="number_medium"
+                selectable
+                testID="cancel-cancelled-new-key"
+              >
+                {renderFullAddress(after.newKey)}
+              </Text>
+            </View>
+          )}
           <Text fontSize={14} style={spacings.mbTy} testID="cancel-cancelled-body">
             {t(`${CANCEL}.cancelled.body`)}
           </Text>
@@ -147,13 +209,14 @@ export const CancelledBlock = ({ after, onMoveFunds, onDone }: CancelledBlockPro
         </Text>
       )}
       <View style={[flexbox.directionRow, flexbox.wrap, spacings.mtTy]}>
-        {own && (
+        {after.stage === 'cancelled' && (
           <Button
             testID="cancel-move-funds"
             type="primary"
             size="small"
             text={t(`${CANCEL}.cancelled.moveFunds`)}
             onPress={onMoveFunds}
+            disabled={moveFundsBusy}
             hasBottomSpacing={false}
             style={spacings.mrSm}
           />

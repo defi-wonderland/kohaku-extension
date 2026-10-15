@@ -4,7 +4,8 @@
  * reading, before the send, after a landed cancel and after a reverted one.
  *
  * A failed poll is shown as failed, never as no attempt, and keeps the open
- * attempt the last good reading holds, so the holder can still cancel it. An
+ * attempt the last good reading holds, so the holder can still cancel it; a
+ * record that cannot be read shows the failed look with its retry. An
  * attempt that ended by a cancel shows no banner. A recovery that executed
  * shows its notice until the holder dismisses that attempt.
  */
@@ -13,7 +14,7 @@ import { ATTEMPT_STILL_RUNNING } from '@web/modules/social-recovery/shared/write
 import type { CountdownAnchor } from '@web/modules/social-recovery/recovery/wait/types'
 import type { WatchedAttemptState, WatcherReading } from '@web/modules/social-recovery/watcher'
 
-import type { AfterLanding, AttemptStanding, BannerReading, OpenAttempt } from './types'
+import type { AttemptStanding, BannerReading, OpenAttempt } from './types'
 
 const NONE: BannerReading = { kind: 'none' }
 
@@ -31,6 +32,9 @@ export const bannerReadingOf = (
   state: WatchedAttemptState,
   dismissed: readonly bigint[] | undefined
 ): BannerReading => {
+  if (state.status === 'failed') {
+    return { kind: 'unreadable', retry: state.retry }
+  }
   if (state.status !== 'watched') {
     return NONE
   }
@@ -40,7 +44,7 @@ export const bannerReadingOf = (
     return {
       kind: 'failed',
       failed,
-      ...(reading ? { lastReadAt: reading.block.timestamp * 1000 } : {}),
+      ...(reading ? { lastBlockAt: reading.block.timestamp * 1000 } : {}),
       ...(open ? { open } : {})
     }
   }
@@ -66,12 +70,6 @@ export const anchorOf = ({ attempt, block }: OpenAttempt): CountdownAnchor => ({
   blockMs: block.timestamp * 1000
 })
 
-/** The attempt the holder came to cancel: the one the banner read, else the one a fresh reading holds open. */
-export const targetOf = (
-  recorded: WatcherReading | undefined,
-  fresh: WatcherReading | undefined
-): bigint | undefined => recorded?.attempt?.attemptId ?? fresh?.attempt?.attemptId
-
 /**
  * How the attempt `target` stands in a reading: open while the reading holds
  * that attempt as waiting; gone otherwise, with its ending where the reading
@@ -84,26 +82,6 @@ export const standingOf = (reading: WatcherReading, target: bigint): AttemptStan
   return reading.ended?.attemptId === target
     ? { kind: 'gone', ending: reading.ended }
     : { kind: 'gone' }
-}
-
-/**
- * What a reading after a landed cancel says of the attempt `target`: the
- * owner's cancel ended it, another road ended it first, or nothing yet (the
- * attempt still reads open, or its ending is not read yet).
- */
-export const landedOutcomeOf = (
-  reading: WatcherReading,
-  target: bigint
-): Extract<AfterLanding, { stage: 'cancelled' } | { stage: 'otherRoad' }> | undefined => {
-  const standing = standingOf(reading, target)
-  if (standing.kind !== 'gone' || standing.ending?.road !== 'cancelled') {
-    return undefined
-  }
-  const by = standing.ending.cancelledBy
-  if (!by) {
-    return undefined
-  }
-  return by === 'cancelByOwner' ? { stage: 'cancelled' } : { stage: 'otherRoad', road: by }
 }
 
 /**

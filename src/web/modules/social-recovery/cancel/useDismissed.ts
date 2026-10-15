@@ -13,12 +13,14 @@ import { extensionRecordStorage } from '@web/modules/social-recovery/shared/reco
 import { readWatcherRecord } from '@web/modules/social-recovery/watcher'
 import type { WatchedAttemptState, WatcherStorage } from '@web/modules/social-recovery/watcher'
 
+import type { HeldDismissed } from './types'
+
 export const useDismissed = (
   account: Address,
   state: WatchedAttemptState,
   storage: WatcherStorage = extensionRecordStorage
 ): bigint[] | undefined => {
-  const [held, setHeld] = useState<{ account: Address; dismissed: bigint[] } | null>(null)
+  const [held, setHeld] = useState<HeldDismissed | null>(null)
   const ended = state.status === 'watched' && !state.reading?.attempt && !!state.reading?.ended
 
   useEffect(() => {
