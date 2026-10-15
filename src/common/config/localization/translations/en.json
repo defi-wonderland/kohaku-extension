@@ -928,6 +928,9 @@
       "continueUnlock": "Every required method and every group must be complete.",
       "continueUnlockRequiredOnly": "Every required method must be complete.",
       "continueUnlockGroupsOnly": "Every group must be complete.",
+      "satisfiedTitle": "Every approval is in",
+      "satisfiedLead": "Continue to start the recovery.",
+      "allComplete": "Every row is complete.",
       "satisfied": "This path is satisfied. The submission uses the smallest set that satisfies the rule, so the other rows are not needed.",
       "verifyNote": "The wallet checks each approval against the chain when you add it, and again before you submit.",
       "cannotComplete": "I cannot complete this path",
@@ -960,7 +963,6 @@
         "howTheyAnswer": "Your guardian pastes the link into a browser that has Kohaku, signs on the page with the wallet that holds the key, or through the page's offline block on an air-gapped machine, and sends back one line. Paste it below.",
         "offlineBlock": "Open the approval page and use its offline block: carry the payload to your air-gapped machine by QR, sign it there, and bring the approval back. Paste it below.",
         "ownKey": "If you hold this key yourself, open the approval page and sign there like any guardian.",
-        "hardwareWallet": "A hardware wallet without a descriptor for this request shows two hashes and asks for blind signing. The values on the approval page are what to compare.",
         "openPage": "Open the approval page",
         "copyLink": "Copy the link",
         "copyMessage": "Copy a message with the link",
@@ -969,7 +971,6 @@
         "qrFailed": "The QR code could not be drawn. Copy the link instead.",
         "copied": "Copied",
         "copyFailed": "Could not copy. Select the text by hand.",
-        "messageSays": "The message names the install with its source and the publisher to check, and the call, and says the link reveals the account and the new key, so it is not to be forwarded.",
         "unlockReason": "The link and the approval page stay locked until the account, the new key, the key being removed and the payment line are shown.",
         "removedKeyReadFailed": "This wallet could not read the key this recovery removes. The link stays locked until it does.",
         "removedKeyUnavailable": "This wallet cannot name the key this recovery removes, so this row cannot be carried to a guardian.",
@@ -977,7 +978,7 @@
         "pasteHint": "One line, as your guardian sent it back.",
         "addAction": "Add approval",
         "added": "Approval added · {{date}}",
-        "verified": "Approval verified · counts toward this row",
+        "verified": "Approval verified",
         "markDeclined": "Mark as declined",
         "markUnanswered": "Mark as unanswered",
         "clear": "Clear",
@@ -1035,7 +1036,7 @@
       },
       "pollFailed": {
         "title": "Could not read the account's recovery state.",
-        "body": "The rows below may be out of date. This says nothing about whether this request still lives.",
+        "body": "The rows below may be out of date.",
         "held": "Nothing goes on until the read succeeds."
       },
       "unsatisfied": {
