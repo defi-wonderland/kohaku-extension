@@ -81,9 +81,10 @@ export const AttemptFacts = ({ attempt, dormant, timeZone }: AttemptFactsProps) 
  * ending is told only where it is the ending of the attempt the holder meant:
  * the road where the reads named it, the controller after an execution, and,
  * while a road or a controller is still to be read, that the registry has not
- * confirmed it yet, with the action that reads again.
+ * confirmed it yet, with the action that reads again. While the wallet still
+ * holds the cancel's request, only that ending is told.
  */
-export const EndedBlock = ({ reading, target, onBack, onCheckAgain }: EndedBlockProps) => {
+export const EndedBlock = ({ reading, target, onBack, onCheckAgain, held }: EndedBlockProps) => {
   const { t } = useTranslation()
   const ended =
     reading.ended && (target === undefined || reading.ended.attemptId === target)
@@ -131,6 +132,9 @@ export const EndedBlock = ({ reading, target, onBack, onCheckAgain }: EndedBlock
         )}
       </>
     )
+  }
+  if (held) {
+    return line ? <SectionCard testID="cancel-ended">{line}</SectionCard> : null
   }
   return (
     <SectionCard testID="cancel-ended">

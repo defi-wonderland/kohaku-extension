@@ -178,6 +178,8 @@ export type ReceiptLog = Pick<
 /** Where the owner's cancel of the account is looked for in a receipt's logs. */
 export interface OwnerCancelInput {
   logs: readonly ReceiptLog[]
+  /** The transaction the receipt is of; a log under another hash is not this transaction's. */
+  transactionHash: Hex
   /** The kit's events feed of the account, whose decoding owns the manager's logs. */
   events: Pick<IEventManager, 'decodeLog'>
   account: Address
@@ -317,6 +319,12 @@ export interface CancelSteps {
   receiptCancel(transactionHash: Hex, startBlock: number): Promise<CancelLog | undefined>
   /** Where the wallet holds a request; throws where it does not answer. */
   requestHold(requestId: string): Promise<RequestHold>
+  /**
+   * Asks the wallet to withdraw a request from its queue; throws where it
+   * cannot. The wallet keeps a request its sign screen signs or pauses on, so
+   * only a later hold read tells whether the request left.
+   */
+  withdrawRequest(requestId: string): void
 }
 
 /** What the run reads after its cancel landed. */
@@ -434,6 +442,11 @@ export interface EndedBlockProps {
   onBack: () => void
   /** Reads again where the ending's road is not read yet; no action where the page reads again by itself. */
   onCheckAgain?: () => void
+  /**
+   * The wallet still holds the cancel's request, which may still be signed:
+   * the ending's own line alone, never that nothing was sent.
+   */
+  held?: boolean
 }
 
 export interface CancelledBlockProps {

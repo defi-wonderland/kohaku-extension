@@ -171,7 +171,7 @@ const CancelView = ({
             </WriteStateView>
           </SectionCard>
           {!!run.followGone && (
-            <EndedBlock reading={run.followGone} target={target} onBack={onBack} />
+            <EndedBlock reading={run.followGone} target={target} onBack={onBack} held />
           )}
         </>
       )

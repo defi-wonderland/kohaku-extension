@@ -1,6 +1,7 @@
 import { accountBatchRefusal, isSendRefusal } from '@web/modules/social-recovery/shared/client'
 import {
   attachCancelSteps,
+  attemptReaderOf,
   CLAIM_SEND_LIMIT_MS,
   cancelClaimsOf,
   checkCancelAgain,
@@ -11,7 +12,7 @@ import {
   startCancel
 } from '@web/modules/social-recovery/cancel'
 import type { CancelClaims, CancelStore } from '@web/modules/social-recovery/cancel'
-import { readWatcherRecord } from '@web/modules/social-recovery/watcher'
+import { pollAccounts, readWatcherRecord } from '@web/modules/social-recovery/watcher'
 import {
   ACCOUNT,
   ATTEMPT,
@@ -31,6 +32,7 @@ import {
   runWorld
 } from '@web/modules/social-recovery/cancel/__fixtures__/run'
 import {
+  HEAD,
   OLD_KEY,
   atBlock,
   cancelledEvent,
@@ -437,9 +439,75 @@ describe("the owner's cancel run", () => {
     expect(store.state().write.status).toBe('submitting')
     expect(store.state().follow).toBe('held')
     expect(store.state().followGone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
+    expect(world.withdrawRequest).toHaveBeenCalledWith('elsewhere')
     expect(world.sendAccountBatch).not.toHaveBeenCalled()
     detachCancelSteps(world.steps)
     await following
+  })
+
+  it('withdraws a held request whose attempt ended, then releases the claim and shows the ending', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      world.withdrawRequest.mockImplementation(() => {
+        world.requestHold.mockResolvedValue({ status: 'free' })
+      })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      cancelOn(world.chain, 'cancelByProofs')
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      expect(world.withdrawRequest).toHaveBeenCalledWith('elsewhere')
+      expect(await world.steps.claims.read()).toMatchObject({ requestId: 'elsewhere' })
+
+      jest.advanceTimersByTime(FOLLOW_POLL_MS)
+      await settled()
+
+      expect(await world.steps.claims.read()).toBeUndefined()
+      expect(store.state().write.status).toBe('idle')
+      expect(store.state().gone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
+      expect(world.sendAccountBatch).not.toHaveBeenCalled()
+      detachCancelSteps(world.steps)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('keeps the follow and the claim where the withdrawal of a held request fails', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      world.withdrawRequest.mockImplementation(() => {
+        throw new Error('the wallet cannot withdraw this request')
+      })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      cancelOn(world.chain, 'cancelByProofs')
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      for (let round = 0; round < 6; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(world.withdrawRequest).toHaveBeenCalledTimes(2)
+      expect(await world.steps.claims.read()).toMatchObject({ requestId: 'elsewhere' })
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().follow).toBe('held')
+      expect(store.state().followGone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
+      detachCancelSteps(world.steps)
+      jest.advanceTimersByTime(FOLLOW_POLL_MS)
+      await settled()
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('reads the hold each round of a follow and the attempt every fifth', async () => {
@@ -481,6 +549,46 @@ describe("the owner's cancel run", () => {
     cancelOn(world.chain, 'cancelByProofs')
     await world.steps.readAttempt()
     expect(set).toHaveBeenCalledTimes(2)
+  })
+
+  it('writes nothing for a page read of an older block, so an earlier poll of a newer block is still written', async () => {
+    const world = runWorld()
+    const alarmPoll = (polledAt: number) =>
+      pollAccounts({
+        reads: world.chain.reads,
+        accounts: [ACCOUNT],
+        chainId: SEPOLIA,
+        storage: world.storage,
+        now: () => polledAt,
+        polledAt,
+        limitMs: 5_000,
+        scanLimitMs: 5_000
+      })
+    world.chain.head.number = HEAD + 2
+    await alarmPoll(1_000)
+
+    // The page's node answers an older block, with a reading that changed.
+    cancelOn(world.chain, 'cancelByProofs')
+    world.chain.head.number = HEAD
+    const pageRead = attemptReaderOf({
+      reads: world.chain.reads,
+      account: ACCOUNT,
+      chainId: SEPOLIA,
+      storage: world.storage,
+      now: () => 3_000,
+      limitMs: 5_000
+    })
+    expect((await pageRead()).block.number).toBe(HEAD)
+    let record = await readWatcherRecord(world.storage, SEPOLIA, ACCOUNT)
+    expect(record?.reading?.block.number).toBe(HEAD + 2)
+    expect(record?.polledAt).toBe(1_000)
+
+    // An alarm poll that started before the page's, at a newer block.
+    world.chain.head.number = HEAD + 3
+    await alarmPoll(2_000)
+    record = await readWatcherRecord(world.storage, SEPOLIA, ACCOUNT)
+    expect(record?.reading?.block.number).toBe(HEAD + 3)
+    expect(record?.reading?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
   })
 
   it('reads the attempt again where the run found it gone', async () => {

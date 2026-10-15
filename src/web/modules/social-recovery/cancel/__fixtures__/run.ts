@@ -2,7 +2,8 @@
  * The cancel's run over the watcher's real poll on a scripted chain, the real
  * write machine, the real send drive and the real stored claim on a storage
  * in memory. Only the edges are fakes: the prepare, the gas check, the send
- * port, the receipt wait and the wallet's reading of a queued request.
+ * port, the receipt wait and the wallet's reading and withdrawal of a queued
+ * request.
  */
 import { getAddress, zeroHash } from 'viem'
 
@@ -147,6 +148,7 @@ export interface RunWorld {
   checkGas: jest.Mock
   requestHold: jest.Mock
   receiptCancel: jest.Mock
+  withdrawRequest: jest.Mock
 }
 
 /**
@@ -183,6 +185,8 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
   })
   const checkGas = jest.fn(async () => ENOUGH)
   const requestHold = jest.fn(async (): Promise<RequestHold> => ({ status: 'held' }))
+  // By default the wallet keeps the request, as it does while its sign screen holds it.
+  const withdrawRequest = jest.fn<void, [string]>()
   // By default the receipt's logs cannot be read, so the read after a landing scans by id.
   const receiptCancel = jest.fn(async (): Promise<CancelLog | undefined> => undefined)
   const readAttempt = attemptReaderOf({
@@ -219,9 +223,20 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
       }),
     wait: (hash, from) => wait(hash, from),
     receiptCancel,
-    requestHold
+    requestHold,
+    withdrawRequest
   }
-  return { chain, storage, steps, sendAccountBatch, wait, checkGas, requestHold, receiptCancel }
+  return {
+    chain,
+    storage,
+    steps,
+    sendAccountBatch,
+    wait,
+    checkGas,
+    requestHold,
+    receiptCancel,
+    withdrawRequest
+  }
 }
 
 export { ACCOUNT, NEW_KEY, SEPOLIA }

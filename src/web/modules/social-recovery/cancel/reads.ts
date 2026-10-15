@@ -62,9 +62,10 @@ const comparableOf = (reading: WatcherReading): unknown =>
  * under the time the read started, as the background's poll stamps its own.
  * The record is written only where the reading changed, apart from its block,
  * or where it carries a failed mark to clear; a reading of a block below the
- * stored one leaves the stored reading. Rejects as a failed provider read
- * where the poll failed or did not answer within its limit, and marks the
- * record failed: a failed read never reads as no attempt.
+ * stored one writes nothing, not even its start time, so a poll that started
+ * earlier but read a newer block is still written. Rejects as a failed
+ * provider read where the poll failed or did not answer within its limit, and
+ * marks the record failed: a failed read never reads as no attempt.
  */
 export const attemptReaderOf =
   ({
@@ -99,8 +100,11 @@ export const attemptReaderOf =
           account,
           (current) => {
             const stored = current?.reading?.block.number
-            if (current && stored !== undefined && reading.block.number < stored) {
-              return current
+            if (stored !== undefined && reading.block.number < stored) {
+              // A throw inside the update leaves the record untouched, its poll's start time too.
+              throw new Error(
+                `The page read block ${reading.block.number}, below the stored ${stored}.`
+              )
             }
             return { reading, dismissed: current?.dismissed ?? [] }
           },
@@ -151,10 +155,12 @@ const rawLogOf = (log: ReceiptLog): RawLog | undefined => {
 /**
  * The owner's cancel of the account among a receipt's logs, decoded by the
  * kit's events feed: it names the attempt the cancel ended, whatever its id.
- * Undefined where no log decodes as one.
+ * Only the logs of the receipt's own transaction count. Undefined where no
+ * log decodes as one.
  */
 export const ownerCancelOf = ({
   logs,
+  transactionHash,
   events,
   account,
   action
@@ -162,7 +168,9 @@ export const ownerCancelOf = ({
   logs
     .map((log) => {
       const raw = rawLogOf(log)
-      return raw && !raw.removed ? events.decodeLog(raw) : undefined
+      return raw && !raw.removed && sameHash(raw.transactionHash, transactionHash)
+        ? events.decodeLog(raw)
+        : undefined
     })
     .find(
       (decoded): decoded is CancelLog =>

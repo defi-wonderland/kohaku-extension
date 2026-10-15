@@ -22,12 +22,14 @@
  * page that finds a stored cancel, on arrival or as the loser of a claim,
  * sends nothing and follows it: under its hash it waits for the receipt; with
  * no hash it reads where the wallet holds the request each round, and the
- * attempt every few rounds. Broadcast, it follows the hash. Held, the claim
- * stays whatever the attempt reads, since the holder may still sign it; an
- * attempt that reads ended is shown beside the follow. Held nowhere with the
- * attempt ended or another one open, the claim is released and the page
- * shows the cancelled terminal or the reading. Held nowhere and never
- * broadcast past the send limit, the cancel reads as not sent, so the claim
+ * attempt every few rounds. Broadcast, it follows the hash. Held while the
+ * attempt reads ended or another one open, the page withdraws the request, so
+ * no stale signature can cancel a newer attempt; until the wallet holds it no
+ * more, the claim stays, since the holder may still sign it, and the ending is
+ * shown beside the follow. Held nowhere with the attempt ended or another one
+ * open, the claim is released and the page shows the cancelled terminal or
+ * the reading. Held nowhere and never broadcast past the send limit, the
+ * cancel reads as not sent, so the claim
  * is released and the start offered again; a younger claim is waited on,
  * since its page may still add the request. The claim is released once the
  * run ends with nothing on its way to the chain, or once the receipt came
@@ -341,11 +343,14 @@ const endFollow = async (
  * is attached, each round, and the attempt every few rounds, each read
  * bounded: broadcast, it follows the hash; held nowhere with the attempt
  * ended or another one open, the follow ends (`endFollow`); held, or a read
- * with no answer, it reads again a moment later, and an attempt that reads
- * ended meanwhile is shown beside the follow while the claim stays, since the
- * holder may still sign the request; held nowhere while the claim is younger
- * than its send limit, it reads again; held nowhere past it, the cancel was
- * not sent, so the claim is released and the start offered again.
+ * with no answer, it reads again a moment later. Held where a fresh read of
+ * the attempt finds it ended or another one open, it withdraws the request,
+ * and the next round that reads it held nowhere ends the follow; until then,
+ * or where the withdrawal fails, the ending is shown beside the follow while
+ * the claim stays, since the holder may still sign the request. Held nowhere
+ * while the claim is younger than its send limit, it reads again; held
+ * nowhere past it, the cancel was not sent, so the claim is released and the
+ * start offered again.
  */
 const followHold = async (
   store: CancelStore,
@@ -384,6 +389,13 @@ const followHold = async (
     FOLLOWING.delete(store)
     await endFollow(store, steps, run, claim, followGone)
     return
+  }
+  if (reading && followGone && hold?.status === 'held') {
+    try {
+      steps.withdrawRequest(claim.requestId)
+    } catch {
+      // The follow goes on: the holder may still sign the request.
+    }
   }
   const sendable = steps.claims.sendableMs(claim)
   if (!hold || hold.status === 'held' || (hold.status === 'free' && sendable > 0)) {

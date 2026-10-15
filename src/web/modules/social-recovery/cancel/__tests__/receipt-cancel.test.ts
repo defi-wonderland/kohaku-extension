@@ -60,7 +60,7 @@ const events = createKitEventManager({
 })
 
 const find = (logs: ReceiptLog[]) =>
-  ownerCancelOf({ logs, events, account: ACCOUNT, action: ACTION })
+  ownerCancelOf({ logs, transactionHash: TX, events, account: ACCOUNT, action: ACTION })
 
 describe("the owner's cancel in a receipt's logs", () => {
   it('names the attempt the cancel ended, whatever its id', () => {
@@ -80,5 +80,17 @@ describe("the owner's cancel in a receipt's logs", () => {
   it('skips a log a reorg removed and a log that is not hex', () => {
     expect(find([{ ...cancelLog(41n), removed: true }])).toBeUndefined()
     expect(find([{ ...cancelLog(41n), data: 'not hex' }, cancelLog(42n)])?.attemptId).toBe(42n)
+  })
+
+  it("takes only a log of the receipt's own transaction", () => {
+    const other: Hex = `0x${'ef'.repeat(32)}`
+    expect(find([{ ...cancelLog(41n), transactionHash: other }])).toBeUndefined()
+    expect(find([{ ...cancelLog(41n), transactionHash: other }, cancelLog(42n)])?.attemptId).toBe(
+      42n
+    )
+    expect(
+      find([{ ...cancelLog(43n), transactionHash: TX.toUpperCase().replace('0X', '0x') }])
+        ?.attemptId
+    ).toBe(43n)
   })
 })

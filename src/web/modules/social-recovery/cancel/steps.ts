@@ -3,8 +3,8 @@
  * through the client as one call the account sends, the shared gas check of
  * that call as the account's own operation from its key, the send through the
  * request queue, the receipt wait and the owner's cancel its logs carry, the
- * wallet's reading of a queued request, and the cancel in flight stored on
- * this device.
+ * wallet's reading of a queued request and its withdrawal, and the cancel in
+ * flight stored on this device.
  */
 import {
   accountBatchTransactionOf,
@@ -67,11 +67,17 @@ export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
       const receipt = await receipts.wait(transactionHash, startBlock)
       return ownerCancelOf({
         logs: receipt.logs,
+        transactionHash,
         events: client.recovery.events,
         account,
         action: client.descriptor.action
       })
     },
-    requestHold: (requestId) => requestHoldOf(input.requests, requestId, account, chainId)
+    requestHold: (requestId) => requestHoldOf(input.requests, requestId, account, chainId),
+    withdrawRequest: (requestId) =>
+      input.requests.dispatch({
+        type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST',
+        params: { id: requestId }
+      })
   }
 }

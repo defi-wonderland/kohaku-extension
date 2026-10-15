@@ -251,6 +251,9 @@ describe('the cancel screen', () => {
     expect(view.textOf('cancel-ended-road')).toBe(
       t('socialRecovery.writes.cancelGoneRoad.cancelByProofs')
     )
+    // The holder may still sign the request, so the page never says nothing was sent.
+    expect(view.byTestId('cancel-ended-line')).toBeNull()
+    expect(view.byTestId('cancel-back')).toBeNull()
   })
 
   it('tells no road where the reading ends another attempt than the one the run meant', async () => {
