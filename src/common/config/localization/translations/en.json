@@ -419,13 +419,11 @@
       "recoverLine": "Lost access to another account? Start here."
     },
     "editor": {
-      "adjust": {
-        "title": "Adjust your path",
-        "lead": "Change what the path requires. Everything here is still a draft on this device."
-      },
-      "build": {
-        "title": "Build your path",
-        "lead": "Add the methods you want. Everything here is still a draft on this device."
+      "title": "Set up your path",
+      "lead": {
+        "empty": "Add the methods you want. Everything here is still a draft on this device.",
+        "open": "Fill each method. Everything here is still a draft on this device.",
+        "filled": "Every method is set. Continue when the path is right."
       },
       "requiredHeader": "Required",
       "groupHeader": "Group",
@@ -439,7 +437,6 @@
       "makeItAGroup": "Make it a group",
       "addSecondMethod": "Add a second method",
       "nothingRequired": "Nothing required yet",
-      "noGroup": "No group yet. A group is any N of its members.",
       "duplicate": "This method is already in your path. This wallet allows each method once.",
       "saveChanges": "Save changes",
       "continueUnlock": "Continue unlocks when your path has at least one method.",

@@ -22,8 +22,9 @@ import type { EditorPathProps } from './types'
 /**
  * The path as one tree: the required rows, then the groups, with the line on
  * the left joining them and "and" between each two, since recovery needs every
- * required row and every group's threshold together. The ways to add a
- * required row and a group sit beside the line where they add.
+ * required row and every group's threshold together. The groups' header
+ * draws once the path holds a group. The ways to add a required row and a
+ * group sit beside the line where they add.
  */
 const EditorPath = ({
   rows,
@@ -93,22 +94,17 @@ const EditorPath = ({
         </View>
       </PathTreeNode>
       {rows.length > 0 && groups.length > 0 && <PathTreeNode key="and-groups" variant="junction" />}
-      <PathTreeNode key="groups" variant="through" testID="editor-groups">
-        <SectionLabel testID="editor-groups-header">
-          {t(
-            groups.length === 1
-              ? 'socialRecovery.editor.groupHeader'
-              : 'socialRecovery.editor.groupsHeader'
-          )}
-        </SectionLabel>
-        {groups.length === 0 && (
-          <SectionCard tone="muted" spacing="item">
-            <Text fontSize={14} appearance="secondaryText">
-              {t('socialRecovery.editor.noGroup')}
-            </Text>
-          </SectionCard>
-        )}
-      </PathTreeNode>
+      {groups.length > 0 && (
+        <PathTreeNode key="groups" variant="through" testID="editor-groups">
+          <SectionLabel testID="editor-groups-header">
+            {t(
+              groups.length === 1
+                ? 'socialRecovery.editor.groupHeader'
+                : 'socialRecovery.editor.groupsHeader'
+            )}
+          </SectionLabel>
+        </PathTreeNode>
+      )}
       {groups.flatMap((group, position) => [
         ...(position > 0 ? [<PathTreeNode key={`and-${group.index}`} variant="junction" />] : []),
         <PathTreeNode key={`group-${group.index}`} testID={`editor-path-node-${group.index}`}>
