@@ -11,7 +11,7 @@ import { View } from 'react-native'
 import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import WarningGate from '@web/modules/social-recovery/onboarding/recover/WarningGate'
-import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
+import { ActionsRow, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 
 import type { CondensedGateProps } from './types'
 
@@ -27,21 +27,23 @@ const CondensedGate = ({ onPass }: CondensedGateProps) => {
   }, [acknowledged, onPass])
 
   return (
-    <View testID="entry-gate">
-      <WarningGate form="condensed" onAcknowledgedChange={setAcknowledged} />
-      <ActionsRow
-        primary={
-          <Button
-            testID="entry-gate-continue"
-            type="primary"
-            text={t('socialRecovery.actions.continue')}
-            disabled={!acknowledged}
-            onPress={proceed}
-            hasBottomSpacing={false}
-          />
-        }
-      />
-    </View>
+    <TwoColumn testID="entry-gate-columns">
+      <View testID="entry-gate">
+        <WarningGate form="condensed" onAcknowledgedChange={setAcknowledged} />
+        <ActionsRow
+          primary={
+            <Button
+              testID="entry-gate-continue"
+              type="primary"
+              text={t('socialRecovery.actions.continue')}
+              disabled={!acknowledged}
+              onPress={proceed}
+              hasBottomSpacing={false}
+            />
+          }
+        />
+      </View>
+    </TwoColumn>
   )
 }
 
