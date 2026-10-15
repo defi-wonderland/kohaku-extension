@@ -427,7 +427,7 @@ const inMemoryQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
  * holder cannot take a Web Locks lock twice, and the in-memory queue would
  * wait for itself.
  */
-const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
+export const inQueue = <R>(key: string, task: () => Promise<R>): Promise<R> => {
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
   if (locks) {
     return locks.request(key, () => task()) as Promise<R>

@@ -28,10 +28,10 @@ const RECORD: WatcherRecord = {
       payloadHash: `0x${'11'.repeat(32)}`,
       consumableAfter: HEAD_TIME + 3600,
       executionDue: false,
-      openedAt: HEAD_TIME - 60,
-      newKey: NEW_KEY
+      openingGap: 'not-found',
+      scannedTo: HEAD
     },
-    ended: { attemptId: 2n, road: 'cancelled', cancelledBy: 'setupWrite', at: HEAD_TIME - 600 }
+    ended: { attemptId: 2n, road: 'executed', controller: NEW_KEY, endingGap: 'not-found' }
   },
   failed: { at: 5, message: 'node down' },
   dismissed: [2n]
@@ -46,13 +46,7 @@ describe('the watcher record', () => {
 
   it('reads back what it wrote, every bigint whole', async () => {
     const storage = memoryStorage()
-    await updateWatcherRecord(
-      storage,
-      SEPOLIA,
-      ACCOUNT,
-      () => RECORD,
-      () => 9
-    )
+    await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, () => RECORD, { now: () => 9 })
 
     expect(await readWatcherRecord(storage, SEPOLIA, ACCOUNT)).toEqual(RECORD)
     expect(JSON.parse(storage.entries.get(watcherKeyOf(SEPOLIA, ACCOUNT)) ?? '')).toMatchObject({
@@ -79,6 +73,26 @@ describe('the watcher record', () => {
       {
         ...stored,
         value: { ...stored.value, reading: { ...stored.value.reading, ended: { road: 'lost' } } }
+      },
+      {
+        ...stored,
+        value: {
+          ...stored.value,
+          reading: {
+            ...stored.value.reading,
+            ended: { attemptId: '2', road: 'cancelled', endingGap: 'lost' }
+          }
+        }
+      },
+      {
+        ...stored,
+        value: {
+          ...stored.value,
+          reading: {
+            ...stored.value.reading,
+            attempt: { ...stored.value.reading?.attempt, scannedTo: -1 }
+          }
+        }
       }
     ]
     malformed.forEach((value) => expect(watcherRecordFrom(value)).toBeUndefined())

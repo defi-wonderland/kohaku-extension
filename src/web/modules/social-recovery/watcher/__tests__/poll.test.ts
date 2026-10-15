@@ -1,12 +1,16 @@
+import type { AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import {
   dismissAttempt,
   pollAccounts,
-  readWatcherRecord
+  readWatcherRecord,
+  updateWatcherRecord
 } from '@web/modules/social-recovery/watcher'
 
 import {
   ACCOUNT,
+  atBlock,
   cancelledEvent,
+  COMMITTED_AT,
   consumedEvent,
   ENDED_TIME,
   HEAD,
@@ -29,20 +33,25 @@ const setUp = (accounts = [ACCOUNT]) => {
   const chain = scriptedChain()
   accounts.forEach((account) => chain.deploy(account))
   const storage = memoryStorage()
-  const poll = (limitMs = 1_000) =>
+  const poll = (limitMs = 1_000, scanLimitMs = 1_000) =>
     pollAccounts({
       reads: chain.reads,
       accounts,
       chainId: SEPOLIA,
       storage,
       now: () => NOW,
-      limitMs
+      limitMs,
+      scanLimitMs
     })
   const record = (account = ACCOUNT) => readWatcherRecord(storage, SEPOLIA, account)
   return { chain, storage, poll, record }
 }
 
 const PAYLOAD = payloadTo(NEW_KEY)
+
+/** The blocks of each attempt scan the poll asked for, and the log each stops at. */
+const scansOf = (chain: ReturnType<typeof scriptedChain>) =>
+  chain.reads.attemptEventsOf.mock.calls.map(([, , { from, to, until }]) => ({ from, to, until }))
 
 describe('a poll of the watched accounts', () => {
   it('writes a reading with no attempt and no badge where none is open', async () => {
@@ -70,10 +79,11 @@ describe('a poll of the watched accounts', () => {
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
     expect(chain.reads.stateOf.mock.calls.map(([, block]) => block)).toEqual([HEAD, HEAD])
     expect(chain.reads.isAuthorized.mock.calls.map(([, block]) => block)).toEqual([HEAD, HEAD])
-    expect(chain.reads.attemptEventsOf).toHaveBeenCalledWith(ACCOUNT, 1n, {
-      from: 6_900_000,
-      to: HEAD
-    })
+    expect(chain.reads.attemptEventsOf).toHaveBeenCalledWith(
+      ACCOUNT,
+      1n,
+      expect.objectContaining({ from: COMMITTED_AT, to: HEAD, until: 'opening' })
+    )
   })
 
   it('reads an open attempt with its countdown and no key until its opening is read, then the decoded key', async () => {
@@ -92,6 +102,7 @@ describe('a poll of the watched accounts', () => {
     expect(first?.attempt?.newKey).toBeUndefined()
     expect(first?.attempt?.openedAt).toBeUndefined()
 
+    chain.head.number = HEAD + 1
     chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
     expect(await poll()).toBe(1)
     const second = (await record())?.reading?.attempt
@@ -285,7 +296,8 @@ describe('a poll of the watched accounts', () => {
       chainId: SEPOLIA,
       storage,
       now: () => NOW,
-      limitMs: 1_000
+      limitMs: 1_000,
+      scanLimitMs: 1_000
     })
 
     expect(chain.reads.stateOf).not.toHaveBeenCalled()
@@ -318,5 +330,287 @@ describe('a poll of the watched accounts', () => {
     expect((await record(ACCOUNT))?.reading?.attempt?.attemptId).toBe(4n)
     expect((await record(OTHER_ACCOUNT))?.reading?.account).toBe(OTHER_ACCOUNT)
     expect((await record(OTHER_ACCOUNT))?.reading?.attempt).toBeUndefined()
+  })
+
+  it('scans for a missing opening once from the setup block, then from a margin below the last scan', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+
+    await poll()
+    expect((await record())?.reading?.attempt).toMatchObject({
+      openingGap: 'not-found',
+      scannedTo: HEAD
+    })
+
+    chain.head.number = HEAD + 5
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
+    await poll()
+    expect(scansOf(chain)).toEqual([
+      { from: COMMITTED_AT, to: HEAD, until: 'opening' },
+      { from: HEAD - 64, to: HEAD + 5, until: 'opening' }
+    ])
+    const attempt = (await record())?.reading?.attempt
+    expect(attempt?.newKey).toBe(NEW_KEY)
+    expect(attempt?.scannedTo).toBeUndefined()
+  })
+
+  it('keeps the state reading where the log scan does not answer within its own limit', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    chain.reads.attemptEventsOf.mockImplementationOnce(
+      () =>
+        new Promise(() => {
+          // never answers
+        })
+    )
+
+    expect(await poll(1_000, 20)).toBe(1)
+    const written = await record()
+    expect(written?.failed).toBeUndefined()
+    expect(written?.reading?.attempt).toMatchObject({ attemptId: 4n, openingGap: 'read-failed' })
+  })
+
+  it('names the controller an earlier reading decoded and scans for the consume log alone', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
+    await poll()
+
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Consumed', payload: PAYLOAD }))
+    chain.setEvents(ACCOUNT, 4n, { consumed: consumedEvent(4n) })
+    await poll()
+
+    expect(chain.reads.attemptEventsOf).toHaveBeenLastCalledWith(ACCOUNT, 4n, {
+      from: COMMITTED_AT,
+      to: HEAD,
+      until: 'ending'
+    })
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'executed',
+      controller: NEW_KEY,
+      at: ENDED_TIME
+    })
+  })
+
+  it('reads a cancel log a later poll finds after a first scan found none', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Cancelled', payload: PAYLOAD }))
+
+    await poll()
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'cancelled',
+      notFoundAt: HEAD
+    })
+
+    chain.head.number = HEAD + 3
+    chain.setEvents(ACCOUNT, 4n, { cancelled: cancelledEvent(4n, 'cancelByOwner') })
+    await poll()
+    expect(scansOf(chain)[1]).toEqual({ from: HEAD - 64, to: HEAD + 3, until: 'ending' })
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'cancelled',
+      cancelledBy: 'cancelByOwner',
+      at: ENDED_TIME
+    })
+  })
+
+  it('settles an ending whose log is still missing a margin of blocks past the first scan, and reads it no more', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Cancelled', payload: PAYLOAD }))
+    await poll()
+
+    chain.head.number = HEAD + 63
+    await poll()
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'cancelled',
+      notFoundAt: HEAD
+    })
+
+    chain.head.number = HEAD + 64
+    await poll()
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'cancelled',
+      endingGap: 'not-found'
+    })
+
+    chain.setEvents(ACCOUNT, 4n, { cancelled: cancelledEvent(4n, 'cancelByOwner') })
+    chain.head.number = HEAD + 65
+    await poll()
+    expect(chain.reads.attemptEventsOf).toHaveBeenCalledTimes(3)
+    expect((await record())?.reading?.ended).toMatchObject({ endingGap: 'not-found' })
+  })
+
+  it('keeps the consume time it read while it looks again for a missing opening', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Consumed', payload: PAYLOAD }))
+    chain.setEvents(ACCOUNT, 4n, { consumed: consumedEvent(4n) })
+    await poll()
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'executed',
+      at: ENDED_TIME,
+      notFoundAt: HEAD
+    })
+
+    chain.head.number = HEAD + 1
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
+    await poll()
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'executed',
+      controller: NEW_KEY,
+      at: ENDED_TIME
+    })
+  })
+
+  it('reads an opening a later scan finds below the last scanned block', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    await poll()
+    expect((await record())?.reading?.attempt?.scannedTo).toBe(HEAD)
+
+    chain.placeEvents(ACCOUNT, 4n, { started: atBlock(startedEvent(4n, PAYLOAD), HEAD - 10) })
+    chain.head.number = HEAD + 5
+    await poll()
+
+    const attempt = (await record())?.reading?.attempt
+    expect(attempt).toMatchObject({ newKey: NEW_KEY, removedKey: OLD_KEY })
+    expect(attempt?.openingGap).toBeUndefined()
+  })
+
+  it('keeps the chunks a scan read before its limit, and scans the rest on the next poll', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    let cut: AttemptScan | undefined
+    chain.reads.attemptEventsOf.mockImplementationOnce((_account, _id, scan) => {
+      cut = scan
+      scan.onChunk?.(HEAD - 999)
+      return new Promise(() => {
+        // the next chunk never answers
+      })
+    })
+
+    await poll(1_000, 20)
+    expect((await record())?.reading?.attempt).toMatchObject({
+      openingGap: 'read-failed',
+      scannedTo: HEAD,
+      scannedFrom: HEAD - 999
+    })
+    expect(cut?.stop?.()).toBe(true)
+
+    chain.head.number = HEAD + 5
+    await poll()
+    expect(scansOf(chain).slice(1)).toEqual([
+      { from: HEAD - 64, to: HEAD + 5, until: 'opening' },
+      { from: COMMITTED_AT, to: HEAD - 1_000, until: 'opening' }
+    ])
+    const attempt = (await record())?.reading?.attempt
+    expect(attempt).toMatchObject({ openingGap: 'not-found', scannedTo: HEAD + 5 })
+    expect(attempt?.scannedFrom).toBeUndefined()
+  })
+
+  it('drops the write of a poll that read an older block than the stored reading', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    chain.head.number = HEAD + 10
+    await poll()
+
+    chain.head.number = HEAD
+    chain.setState(ACCOUNT, stateWith())
+    expect(await poll()).toBe(1)
+    expect((await record())?.reading).toMatchObject({
+      block: { number: HEAD + 10 },
+      attempt: { attemptId: 4n }
+    })
+
+    chain.setState(ACCOUNT, new Error('node down'))
+    await poll()
+    expect((await record())?.failed).toBeUndefined()
+  })
+
+  it('keeps a failure that carries no block beside a newer reading', async () => {
+    const { chain, storage, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith())
+    chain.head.number = HEAD + 10
+    await poll()
+
+    chain.reads.latestBlock.mockRejectedValueOnce(new Error('node down'))
+    await poll()
+    expect((await record())?.failed?.message).toBe('node down')
+
+    await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, (current) => ({
+      ...current,
+      failed: { at: NOW, message: 'accounts unavailable' },
+      dismissed: current?.dismissed ?? []
+    }))
+    expect((await record())?.failed?.message).toBe('accounts unavailable')
+    expect((await record())?.reading?.block.number).toBe(HEAD + 10)
+  })
+
+  it('settles an executed ending whose opening does not decode', async () => {
+    const { chain, poll, record } = setUp()
+    const undecodable = '0x1234'
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Consumed', payload: undecodable }))
+    chain.setEvents(ACCOUNT, 4n, {
+      started: startedEvent(4n, undecodable),
+      consumed: consumedEvent(4n)
+    })
+
+    await poll()
+    await poll()
+
+    expect(chain.reads.attemptEventsOf).toHaveBeenCalledTimes(1)
+    expect((await record())?.reading?.ended).toEqual({
+      attemptId: 4n,
+      road: 'executed',
+      at: ENDED_TIME,
+      endingGap: 'undecodable'
+    })
+  })
+
+  it('reads another attempt a reorganization brought, never with the key of the one it replaced', async () => {
+    const { chain, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, PAYLOAD) })
+    await poll()
+    expect((await record())?.reading?.attempt?.newKey).toBe(NEW_KEY)
+
+    const other = payloadTo(OLD_KEY)
+    chain.setState(ACCOUNT, stateWith({ attemptId: 5n, state: 'Waiting', payload: other }))
+    await poll()
+
+    const attempt = (await record())?.reading?.attempt
+    expect(attempt).toMatchObject({ attemptId: 5n, openingGap: 'not-found' })
+    expect(attempt?.newKey).toBeUndefined()
+    expect(chain.reads.attemptEventsOf).toHaveBeenLastCalledWith(
+      ACCOUNT,
+      5n,
+      expect.objectContaining({ from: COMMITTED_AT, to: HEAD, until: 'opening' })
+    )
+  })
+
+  it('keeps a dismissal written while a poll runs, both writes through the record queue', async () => {
+    const { chain, storage, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
+    await poll()
+    const { get } = storage
+    // Each read answers late, so two writes that did not queue would each write back what they read.
+    storage.get = (async (key: string) => {
+      const held = await get(key)
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5)
+      })
+      return held
+    }) as typeof storage.get
+
+    await Promise.all([poll(), dismissAttempt(SEPOLIA, ACCOUNT, 4n, storage)])
+
+    const written = await record()
+    expect(written?.dismissed).toEqual([4n])
+    expect(written?.reading?.attempt?.attemptId).toBe(4n)
   })
 })

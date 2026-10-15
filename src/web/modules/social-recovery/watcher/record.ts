@@ -4,8 +4,7 @@
  * like every record of the wallet, with every bigint as a decimal string.
  *
  * Both the background's poll and a page's dismissal write it, so each write
- * reads the record and writes it back while it holds the Web Locks lock named
- * by its key, which the worker and every extension page share.
+ * reads the record and writes it back while it holds the queue of its key.
  */
 import { isHex } from 'viem'
 
@@ -16,12 +15,13 @@ import {
   isDecimalString,
   isStoredAddress
 } from '@web/modules/social-recovery/shared/records/guards'
-import { recordKeys } from '@web/modules/social-recovery/shared/records/records'
+import { inQueue, recordKeys } from '@web/modules/social-recovery/shared/records/records'
 import type { ChainId } from '@web/modules/social-recovery/shared/records/types'
 
-import { OPENING_GAPS } from './constants'
+import { ENDING_GAPS, OPENING_GAPS } from './constants'
 import type {
   AttemptEnding,
+  EndingGap,
   PollFailure,
   StoredAttemptEnding,
   StoredWatchedAttempt,
@@ -29,7 +29,8 @@ import type {
   WatchedAttempt,
   WatcherReading,
   WatcherRecord,
-  WatcherStorage
+  WatcherStorage,
+  WatcherWrite
 } from './types'
 
 export const watcherKeyOf = (chainId: ChainId, account: Address): string =>
@@ -95,7 +96,9 @@ const attemptFrom = (value: unknown): WatchedAttempt | undefined => {
     !optional(value.openedAt, isTime) ||
     !optional(value.newKey, isStoredAddress) ||
     !optional(value.removedKey, isStoredAddress) ||
-    !optional(value.openingGap, (gap) => OPENING_GAPS.some((known) => known === gap))
+    !optional(value.openingGap, (gap) => OPENING_GAPS.some((known) => known === gap)) ||
+    !optional(value.scannedTo, isBlockNumber) ||
+    !optional(value.scannedFrom, isBlockNumber)
   ) {
     return undefined
   }
@@ -108,13 +111,31 @@ const attemptFrom = (value: unknown): WatchedAttempt | undefined => {
 }
 
 const endingFrom = (value: unknown): AttemptEnding | undefined => {
-  if (!isObject(value) || !isDecimalString(value.attemptId) || !optional(value.at, isTime)) {
+  if (
+    !isObject(value) ||
+    !isDecimalString(value.attemptId) ||
+    !optional(value.at, isTime) ||
+    !optional(value.endingGap, (gap) => ENDING_GAPS.some((known) => known === gap)) ||
+    !optional(value.notFoundAt, isBlockNumber)
+  ) {
     return undefined
   }
   const attemptId = BigInt(value.attemptId)
   const at = value.at as number | undefined
+  const endingGap = value.endingGap as EndingGap | undefined
+  const notFoundAt = value.notFoundAt as number | undefined
+  const gap = {
+    ...(endingGap ? { endingGap } : {}),
+    ...(notFoundAt !== undefined ? { notFoundAt } : {})
+  }
   if (value.road === 'executed' && optional(value.controller, isStoredAddress)) {
-    return { attemptId, road: 'executed', controller: value.controller as Address | undefined, at }
+    return {
+      attemptId,
+      road: 'executed',
+      controller: value.controller as Address | undefined,
+      at,
+      ...gap
+    }
   }
   if (
     value.road === 'cancelled' &&
@@ -124,7 +145,8 @@ const endingFrom = (value: unknown): AttemptEnding | undefined => {
       attemptId,
       road: 'cancelled',
       cancelledBy: value.cancelledBy as CancelledBy | undefined,
-      at
+      at,
+      ...gap
     }
   }
   return undefined
@@ -188,12 +210,6 @@ export const watcherRecordFrom = (stored: unknown): WatcherRecord | undefined =>
 // Reads and writes
 // ---------------------------------------------------------------------------
 
-/** Runs `task` while it holds the Web Locks lock named by `key`, where the platform has one. */
-const underLock = <R>(key: string, task: () => Promise<R>): Promise<R> => {
-  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-  return locks ? (locks.request(key, task) as Promise<R>) : task()
-}
-
 export const readWatcherRecord = async (
   storage: WatcherStorage,
   chainId: ChainId,
@@ -203,18 +219,25 @@ export const readWatcherRecord = async (
 
 /**
  * Writes the record `change` makes of the one stored, read and written while
- * the record's lock is held, and answers what it wrote.
+ * the record's lock is held, and answers what it wrote. A write that carries
+ * the block its reading or failure comes from, older than the block of the
+ * stored reading, is dropped and answers the stored record: a poll that
+ * outlived its tick never covers a newer reading.
  */
 export const updateWatcherRecord = (
   storage: WatcherStorage,
   chainId: ChainId,
   account: Address,
   change: (current: WatcherRecord | undefined) => WatcherRecord,
-  now: () => number = Date.now
+  { now = Date.now, block }: WatcherWrite = {}
 ): Promise<WatcherRecord> => {
   const key = watcherKeyOf(chainId, account)
-  return underLock(key, async () => {
-    const next = change(watcherRecordFrom(await storage.get(key)))
+  return inQueue(key, async () => {
+    const current = watcherRecordFrom(await storage.get(key))
+    if (current?.reading && block !== undefined && block < current.reading.block.number) {
+      return current
+    }
+    const next = change(current)
     await storage.set(key, { value: storedWatcherRecordOf(next), savedAt: now() })
     return next
   })

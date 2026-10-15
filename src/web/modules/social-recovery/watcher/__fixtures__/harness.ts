@@ -116,13 +116,24 @@ export const stateWith = (
 
 const lower = (address: Address) => address.toLowerCase()
 
-/** A chain the test scripts per account; a read throws where the test set an error for it. */
+/** A log of an attempt moved to another block. */
+export const atBlock = <T extends { at: LogPosition }>(log: T, blockNumber: number): T => ({
+  ...log,
+  at: { ...log.at, blockNumber }
+})
+
+/**
+ * A chain the test scripts per account; a read throws where the test set an
+ * error for it. Logs set with `setEvents` answer every scan; logs set with
+ * `placeEvents` answer only a scan whose blocks hold them.
+ */
 export const scriptedChain = () => {
   const head: BlockHeader = { number: HEAD, timestamp: HEAD_TIME, hash: zeroHash }
   const states = new Map<string, ActionState | Error>()
   const codes = new Set<string>()
   const unauthorized = new Set<string>()
   const events = new Map<string, AttemptEvents | Error>()
+  const placed = new Map<string, AttemptEvents>()
   const times = new Map<number, number>([
     [OPENED_BLOCK, OPENED_TIME],
     [ENDED_BLOCK, ENDED_TIME]
@@ -143,7 +154,20 @@ export const scriptedChain = () => {
       async (account) => !unauthorized.has(lower(account))
     ),
     attemptEventsOf: jest.fn<Promise<AttemptEvents>, [Address, bigint, AttemptScan]>(
-      async (account, attemptId) => {
+      async (account, attemptId, scan) => {
+        const held = placed.get(`${lower(account)}:${attemptId}`)
+        if (held) {
+          const inScan = (log?: { at: LogPosition }) =>
+            log && log.at.blockNumber >= scan.from && log.at.blockNumber <= scan.to
+              ? log
+              : undefined
+          scan.onChunk?.(scan.from)
+          return {
+            started: inScan(held.started) as AttemptEvents['started'],
+            cancelled: inScan(held.cancelled) as AttemptEvents['cancelled'],
+            consumed: inScan(held.consumed) as AttemptEvents['consumed']
+          }
+        }
         const found = events.get(`${lower(account)}:${attemptId}`) ?? {}
         if (found instanceof Error) {
           throw found
@@ -171,7 +195,9 @@ export const scriptedChain = () => {
     setState: (account: Address, state: ActionState | Error) => states.set(lower(account), state),
     unauthorize: (account: Address) => unauthorized.add(lower(account)),
     setEvents: (account: Address, attemptId: bigint, found: AttemptEvents | Error) =>
-      events.set(`${lower(account)}:${attemptId}`, found)
+      events.set(`${lower(account)}:${attemptId}`, found),
+    placeEvents: (account: Address, attemptId: bigint, found: AttemptEvents) =>
+      placed.set(`${lower(account)}:${attemptId}`, found)
   }
 }
 

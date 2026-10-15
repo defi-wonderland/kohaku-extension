@@ -60,10 +60,13 @@ const OPEN: WatcherRecord = {
   dismissed: []
 }
 
-const sourcesOver = (stored: Record<string, unknown>) => {
+const sourcesOver = (
+  stored: Record<string, unknown>,
+  read: (key: string) => Promise<unknown> = async (key) => stored[key]
+) => {
   const listeners = new Map<string, ((value: unknown) => void)[]>()
   return {
-    read: jest.fn(async (key: string) => stored[key]),
+    read: jest.fn(read),
     subscribe: jest.fn((key: string, onValue: (value: unknown) => void) => {
       listeners.set(key, [...(listeners.get(key) ?? []), onValue])
       return () =>
@@ -149,5 +152,55 @@ describe('the watched attempt hook', () => {
       failed: { at: 2, message: 'node down' },
       attemptDismissed: true
     })
+  })
+
+  it('keeps a change that arrived before its first read answered', async () => {
+    let answer: ((value: unknown) => void) | undefined
+    const sources = sourcesOver(
+      {},
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    await mount(sources)
+
+    await act(async () => {
+      sources.change(watcherKeyOf(SEPOLIA, ACCOUNT), recordWith(OPEN))
+    })
+    await act(async () => {
+      answer?.(undefined)
+    })
+
+    expect(latest()).toEqual({ status: 'watched', reading: OPEN.reading, attemptDismissed: false })
+  })
+
+  it('reads a failed storage read as failed, and reads again on retry', async () => {
+    let fails = true
+    const sources = sourcesOver({}, async () => {
+      if (fails) {
+        throw new Error('storage refused')
+      }
+      return recordWith(OPEN)
+    })
+    await mount(sources)
+
+    const failed = latest()
+    expect(failed).toEqual({ status: 'failed', retry: expect.any(Function) })
+
+    fails = false
+    await act(async () => {
+      if (failed.status === 'failed') {
+        failed.retry()
+      }
+    })
+    expect(sources.read).toHaveBeenCalledTimes(2)
+    expect(latest()).toEqual({ status: 'watched', reading: OPEN.reading, attemptDismissed: false })
+  })
+
+  it('reads a stored value that is not a watcher record as failed, never as unwatched', async () => {
+    await mount(sourcesOver({ [watcherKeyOf(SEPOLIA, ACCOUNT)]: { value: { dismissed: [4] } } }))
+
+    expect(latest()).toEqual({ status: 'failed', retry: expect.any(Function) })
   })
 })

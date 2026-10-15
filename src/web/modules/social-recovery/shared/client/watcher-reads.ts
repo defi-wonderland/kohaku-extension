@@ -85,15 +85,21 @@ export const createWatcherReads = ({
         isAddressEqual(notification.account, account) &&
         isAddressEqual(notification.action, descriptor.action)
       const first = Math.max(scan.from, descriptor.deployedAt)
+      const done = (found: AttemptEvents): boolean =>
+        scan.until === 'ending'
+          ? !!(found.started || found.cancelled || found.consumed)
+          : !!found.started
       // Newest chunk first, each of at most `chunkWidth` blocks ending where the
       // newer one began; an opening precedes its ending, so the scan stops at
-      // the first chunk that holds the opening.
+      // the first chunk that holds the opening, or the ending where that is
+      // all the scan asks for, or where the caller stops it.
       const scanBack = async (last: number, found: AttemptEvents): Promise<AttemptEvents> => {
-        if (last < first || found.started) {
+        if (last < first || done(found) || scan.stop?.()) {
           return found
         }
         const range: BlockRange = { from: Math.max(first, last - chunkWidth + 1), to: last }
         const logs = (await events.fetch(filter, range)).filter(ofAttempt)
+        scan.onChunk?.(range.from)
         const next = logs.reduce<AttemptEvents>((held, log) => {
           if (log.kind === 'attempt-started') {
             return { ...held, started: log }
