@@ -613,15 +613,81 @@ describe('the running attempt band while it stands', () => {
     page.unmount()
   })
 
-  it('keeps the last answer where a later read fails, never drawing the band as failed', async () => {
+  it('draws a later read that fails as failed with retry beside the attempt last read; the retry that answers clears it without scanning again', async () => {
     useLiveFakeClock()
     const page = await openRunning()
-    mockReads.stateOf.mockRejectedValue(new Error('rpc down'))
+    mockReads.stateOf.mockRejectedValueOnce(new Error('rpc down'))
     await advanceClock(POLL_MS)
+    expect(page.textOf('entry-running-refresh-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.readFailed')
+    )
     expect(page.has('entry-running-failed')).toBe(false)
     expect(page.textOf('entry-running-lead')).toBe(finishes())
     expect(page.textOf('entry-running-key')).toContain(STRANGER)
     expect(page.has('entry-running-ended')).toBe(false)
+    const scans = mockReads.attemptEventsOf.mock.calls.length
+    const reads = mockReads.stateOf.mock.calls.length
+    await page.press('entry-running-refresh-failed-retry')
+    expect(mockReads.stateOf.mock.calls.length).toBe(reads + 1)
+    expect(page.has('entry-running-refresh-failed')).toBe(false)
+    expect(page.has('entry-running-loading')).toBe(false)
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(mockReads.attemptEventsOf.mock.calls.length).toBe(scans)
+    page.unmount()
+  })
+
+  it('draws a later read that does not answer within the limit as failed with retry, keeping the attempt', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    mockReads.stateOf.mockImplementationOnce(() => new Promise<never>(() => {}))
+    await advanceClock(POLL_MS)
+    expect(page.has('entry-running-refresh-failed')).toBe(false)
+    await advanceClock(LIMIT_MS)
+    expect(page.has('entry-running-refresh-failed')).toBe(true)
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(page.has('entry-running-ended')).toBe(false)
+    page.unmount()
+  })
+
+  it('reads a later read from an older block with no attempt as failed, never as the end; a newer block with none ends it', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    attemptCancelled()
+    mockReads.latestBlock.mockImplementation(async () => ({
+      number: 200,
+      timestamp: OPENED_AT + 50,
+      hash: `0x${'cd'.repeat(32)}`
+    }))
+    await advanceClock(POLL_MS)
+    expect(page.has('entry-running-ended')).toBe(false)
+    expect(page.has('entry-running-refresh-failed')).toBe(true)
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(page.has('entry-continue')).toBe(false)
+    expect(mockClose).not.toHaveBeenCalled()
+    mockReads.latestBlock.mockImplementation(async () => ({
+      number: 301,
+      timestamp: OPENED_AT + 200,
+      hash: `0x${'cd'.repeat(32)}`
+    }))
+    await advanceClock(POLL_MS)
+    expect(page.textOf('entry-running-ended')).toBe(t('socialRecovery.entry.runningAttempt.ended'))
+    expect(page.has('entry-continue')).toBe(true)
+    expect(mockClose).toHaveBeenCalledTimes(1)
+    page.unmount()
+    expect(mockClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads a later read of the same attempt from an older block as failed', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    mockReads.latestBlock.mockImplementation(async () => ({
+      number: 250,
+      timestamp: OPENED_AT + 50,
+      hash: `0x${'cd'.repeat(32)}`
+    }))
+    await advanceClock(POLL_MS)
+    expect(page.has('entry-running-refresh-failed')).toBe(true)
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
     page.unmount()
   })
 
@@ -675,7 +741,7 @@ describe('whose recovery the running attempt is', () => {
   /** A key the wallet holds as the second key of the smart account, and of no other listed account. */
   const SECOND_KEY: Address = getAddress('0x5ec0000000000000000000000000000000000033')
 
-  it('continues with the second key a listed account holds, under that account', async () => {
+  it('offers continue to the readout, not with the key, where a listed account holds the key only as its second key', async () => {
     setWallet({
       accounts: [DAILY, { ...VAULT, associatedKeys: [SMART_KEY, SECOND_KEY] }],
       keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(SECOND_KEY)]
@@ -685,13 +751,9 @@ describe('whose recovery the running attempt is', () => {
     expect(page.textOf('entry-running-yours')).toBe(
       t('socialRecovery.entry.runningAttempt.yoursWallet')
     )
-    await page.press('entry-running-continue')
-    expect(await storedEntry(LOST)).toEqual({
-      account: LOST,
-      route: 'logged-in',
-      receivingAccount: VAULT.addr
-    })
-    expect(navigate).toHaveBeenCalledWith(waitPathOf(LOST))
+    expect(page.has('entry-running-continue')).toBe(false)
+    expect(page.has('entry-continue')).toBe(true)
+    expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
     page.unmount()
   })
 
@@ -733,6 +795,36 @@ describe('whose recovery the running attempt is', () => {
       t('socialRecovery.entry.runningAttempt.yoursSeed')
     )
     expect(page.has('entry-running-continue')).toBe(true)
+    listing.mockRestore()
+    page.unmount()
+  })
+
+  it('draws a listing of the recovery entries that does not answer as loading, then failed with retry after the limit', async () => {
+    useLiveFakeClock()
+    attemptTo(BASIC)
+    let hang = true
+    const getAll = storage.getAll?.bind(storage)
+    const listing = jest.spyOn(storage, 'getAll').mockImplementation(async () => {
+      if (hang || !getAll) {
+        return new Promise<never>(() => {})
+      }
+      return getAll()
+    })
+    const page = await openRunning(FRESH_INSTALL)
+    expect(page.has('entry-running-entries-loading')).toBe(true)
+    expect(page.has('entry-running-yours')).toBe(false)
+    expect(page.has('entry-running-continue')).toBe(false)
+    expect(page.has('entry-running-not-yours')).toBe(false)
+    await advanceClock(LIMIT_MS)
+    expect(page.has('entry-running-entries-loading')).toBe(false)
+    expect(page.textOf('entry-running-entries-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.readFailed')
+    )
+    hang = false
+    await page.press('entry-running-entries-failed-retry')
+    expect(page.textOf('entry-running-yours')).toBe(
+      t('socialRecovery.entry.runningAttempt.yoursSeed')
+    )
     listing.mockRestore()
     page.unmount()
   })
