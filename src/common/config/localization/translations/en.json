@@ -517,6 +517,7 @@
       }
     },
     "privacy": {
+      "defaultChip": "Default",
       "waitingPeriod": {
         "lead": "A recovery never finishes at once. While the waiting period runs, the account's own key can cancel a recovery it did not start.",
         "fieldLabel": "Waiting period for this account",
@@ -530,7 +531,7 @@
         "custom": "Custom",
         "customUnit": "hours",
         "customUnitMinutes": "minutes",
-        "minimumDefault": "This wallet needs a waiting period of {{minimum}} or more. The default is {{defaultLength}}.",
+        "customMinimum": "At least {{minimum}}.",
         "belowMinimum": "This wallet needs {{minimum}} or more.",
         "pastCeiling": "This wallet cannot save a waiting period this long. The longest it accepts is {{hours}} hours.",
         "wholeHours": "This wallet counts the waiting period in whole hours.",
@@ -546,7 +547,6 @@
         "header": "What can others read",
         "private": {
           "label": "Private",
-          "badge": "Default",
           "line": "A stranger sees that this account has a recovery setup and nothing of what it is until a recovery runs, which publishes the whole rule on chain in the clear."
         },
         "shapeVisible": {
@@ -559,6 +559,7 @@
           "line": "Everything is readable by anyone. No password is set and the card carries only the address."
         },
         "exposure": {
+          "header": "What stays hidden",
           "guardians": "Every guardian of your path is hidden from a stranger who cannot guess their address.",
           "unguessable": "{{items}} cannot be guessed at all and lose nothing before a recovery.",
           "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery."
