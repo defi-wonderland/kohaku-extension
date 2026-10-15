@@ -219,6 +219,40 @@ describe('the cancel screen', () => {
     expect(view.textOf('cancel-ended-line')).toBe(t('socialRecovery.cancel.confirm.ended'))
   })
 
+  it("reads again from the ended block's unread line: the run's reading, or the arrival's", async () => {
+    const unread = endedBy({ attemptId: 4n, road: 'cancelled' })
+    view = await render({ run: { ...initialCancelState(), target: 4n, gone: unread } })
+    expect(view.textOf('cancel-ended-check-again')).toBe(
+      t('socialRecovery.cancel.landed.checkAgain')
+    )
+    await view.press('cancel-ended-check-again')
+    expect(props.onCheckAgain).toHaveBeenCalledTimes(1)
+    expect(props.onRetryRead).not.toHaveBeenCalled()
+    view.unmount()
+
+    view = await render({ read: { status: 'read', arrival: { reading: unread } } })
+    await view.press('cancel-ended-check-again')
+    expect(props.onRetryRead).toHaveBeenCalledTimes(1)
+    expect(props.onCheckAgain).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the ending beside a followed request the wallet still holds', async () => {
+    view = await render({
+      run: withWrite(
+        { status: 'submitting', write: 'cancel', run: 1 },
+        {
+          follow: 'held',
+          followGone: endedBy({ attemptId: 4n, road: 'cancelled', cancelledBy: 'cancelByProofs' })
+        }
+      )
+    })
+
+    expect(view.byTestId('cancel-in-progress')).not.toBeNull()
+    expect(view.textOf('cancel-ended-road')).toBe(
+      t('socialRecovery.writes.cancelGoneRoad.cancelByProofs')
+    )
+  })
+
   it('tells no road where the reading ends another attempt than the one the run meant', async () => {
     view = await render({
       run: {
