@@ -1395,7 +1395,7 @@
         "title": "We could not check this account",
         "body": "This says nothing about whether a recovery is running.",
         "lastRead": "Last checked {{date}}.",
-        "lastBlock": "Last read at block {{block}}.",
+        "lastBlock": "Last read at block time {{date}}.",
         "retry": "Try again"
       },
       "executed": {
