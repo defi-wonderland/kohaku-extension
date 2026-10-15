@@ -93,10 +93,11 @@ describe('the account step chrome', () => {
     expect(page.has('entry-account-field')).toBe(true)
   })
 
-  it('shows the plain header and no counter on the fresh-install route', async () => {
+  it('shows the plain header with the stage counter on the fresh-install route', async () => {
     const page = await open(FRESH_INSTALL)
-    expect(page.has('recovery-stage')).toBe(false)
-    expect(page.text()).not.toContain(t('socialRecovery.entry.stageCounter', { step: 2, total: 5 }))
+    expect(page.textOf('recovery-stage')).toBe(
+      t('socialRecovery.entry.stageCounter', { step: 2, total: 5 })
+    )
     expect(page.text()).not.toContain(t('socialRecovery.chrome.breadcrumb'))
     expect(page.text()).toContain(t('socialRecovery.routes.recover'))
     expect(page.has('entry-account-field')).toBe(true)
@@ -399,6 +400,20 @@ describe('the lookup', () => {
   })
 })
 
+describe('the lookup field', () => {
+  it('keeps the field in the main column and the two notes on the lookup beside it, each once', async () => {
+    const page = await open(LOGGED_IN)
+    const aside = page.byTestId('entry-account-field-columns-aside')
+    expect(aside?.textContent).toContain(t('socialRecovery.entry.account.whereTitle'))
+    expect(aside?.textContent).toContain(t('socialRecovery.entry.account.startsNothingTitle'))
+    expect(page.textOf('entry-account-field')).toContain(t('socialRecovery.entry.account.lead'))
+    expect(page.textOf('entry-account-field')).not.toContain('starts no recovery')
+    expect(page.textOf('entry-account-field')).not.toContain(
+      t('socialRecovery.entry.account.startsNothingTitle')
+    )
+  })
+})
+
 describe('the confirmation', () => {
   it('shows the account address in full with the network, and no name caveat for an address', async () => {
     const page = await open(LOGGED_IN)
@@ -407,9 +422,16 @@ describe('the confirmation', () => {
     expect(page.textOf('entry-confirm-network')).toBe(NETWORK)
     expect(page.has('entry-confirm-name')).toBe(false)
     expect(page.has('entry-confirm-name-caveat')).toBe(false)
-    expect(page.textOf('entry-confirm-reads-only')).toBe(
-      t('socialRecovery.entry.confirm.readsOnly')
-    )
+  })
+
+  it('says once, beside the confirmation, that confirming starts nothing', async () => {
+    const page = await open(LOGGED_IN)
+    await lookUp(page, LOST.toLowerCase())
+    const aside = page.byTestId('entry-confirm-columns-aside')
+    expect(aside?.textContent).toContain(t('socialRecovery.entry.confirm.wrongAccountTitle'))
+    expect(aside?.textContent).toContain(t('socialRecovery.entry.confirm.startsNothingBody'))
+    expect(page.has('entry-confirm-reads-only')).toBe(false)
+    expect(page.textOf('entry-confirm')).not.toContain('reads the chain')
   })
 
   it('labels the account as the account being recovered', async () => {

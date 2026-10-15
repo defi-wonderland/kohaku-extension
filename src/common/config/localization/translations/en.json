@@ -800,7 +800,7 @@
       },
       "account": {
         "title": "Which account do you want to recover?",
-        "lead": "You do not need the key you lost. Looking up an account starts no recovery.",
+        "lead": "You do not need the key you lost.",
         "fieldLabel": "Account address or ENS name",
         "networkFixed": "Network · {{network}}",
         "hint": "The address is printed on your Recovery Card. You can also resolve an ENS name or copy the address from any explorer or wallet you sent funds from.",
@@ -834,7 +834,6 @@
         "lead": "Check the address before you continue.",
         "thisIsMine": "This is my account",
         "notMine": "Not mine",
-        "readsOnly": "This step reads the chain. Nothing is signed.",
         "readingSetup": "Reading the recovery setup…",
         "readingAuthorization": "Reading whether the account still authorizes the recovery module…",
         "readingFit": "Checking whether this release can recover this account…",

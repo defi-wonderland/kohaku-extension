@@ -21,7 +21,7 @@ import {
   readoutPathOf,
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist/search'
-import { SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
+import { SectionCard, SectionLabel, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 import ConfirmAccount from './ConfirmAccount'
@@ -139,19 +139,21 @@ const AccountStepView = ({
 
   if (!found) {
     return (
-      <LookupState
-        target={target}
-        networkName={networkName}
-        client={client}
-        setupState={setupState}
-        onRetrySetup={retrySetup}
-        onAnotherAddress={() => leave(backToField)}
-        onClose={
-          search.route === 'logged-in'
-            ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
-            : undefined
-        }
-      />
+      <TwoColumn testID="entry-lookup-columns">
+        <LookupState
+          target={target}
+          networkName={networkName}
+          client={client}
+          setupState={setupState}
+          onRetrySetup={retrySetup}
+          onAnotherAddress={() => leave(backToField)}
+          onClose={
+            search.route === 'logged-in'
+              ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
+              : undefined
+          }
+        />
+      </TwoColumn>
     )
   }
 
@@ -169,33 +171,35 @@ const AccountStepView = ({
   }
 
   return (
-    <View testID="entry-confirmed">
-      <SectionCard>
-        <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
-        <Text
-          fontSize={14}
-          weight="number_medium"
-          selectable
-          style={spacings.mbTy}
-          testID="entry-confirmed-address"
-        >
-          {renderFullAddress(target.address)}
-        </Text>
-        <Text fontSize={12} appearance="secondaryText">
-          {networkName}
-        </Text>
-      </SectionCard>
-      <ConfirmedReadsView
-        step={confirmedStepOf(reads, destination)}
-        route={search.route}
-        networkName={networkName}
-        attemptActive={found.attemptActive}
-        onRetry={reads.retry}
-        onBack={() => leave(backToField)}
-        onChooseAnother={() => leave(() => navigate(routeEntryPathOf(search.route)))}
-        onContinue={() => navigate(readoutPathOf(target.address))}
-      />
-    </View>
+    <TwoColumn testID="entry-confirmed-columns">
+      <View testID="entry-confirmed">
+        <SectionCard>
+          <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
+          <Text
+            fontSize={14}
+            weight="number_medium"
+            selectable
+            style={spacings.mbTy}
+            testID="entry-confirmed-address"
+          >
+            {renderFullAddress(target.address)}
+          </Text>
+          <Text fontSize={12} appearance="secondaryText">
+            {networkName}
+          </Text>
+        </SectionCard>
+        <ConfirmedReadsView
+          step={confirmedStepOf(reads, destination)}
+          route={search.route}
+          networkName={networkName}
+          attemptActive={found.attemptActive}
+          onRetry={reads.retry}
+          onBack={() => leave(backToField)}
+          onChooseAnother={() => leave(() => navigate(routeEntryPathOf(search.route)))}
+          onContinue={() => navigate(readoutPathOf(target.address))}
+        />
+      </View>
+    </TwoColumn>
   )
 }
 
