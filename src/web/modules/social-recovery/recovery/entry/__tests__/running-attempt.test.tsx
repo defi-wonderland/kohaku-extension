@@ -648,6 +648,27 @@ describe('the running attempt band while it stands', () => {
     expect(page.has('entry-running-not-yours')).toBe(true)
     page.unmount()
   })
+
+  it('keeps no countdown where a read already running when continue is pressed finds another attempt in place of the shown one', async () => {
+    useLiveFakeClock()
+    attemptTo(SMART_KEY)
+    const page = await openRunning()
+    nextAttemptTo(SMART_KEY)
+    const nextState = await mockReads.stateOf(LOST, 300)
+    const held = deferred<ActionState>()
+    mockReads.stateOf.mockImplementationOnce(() => held.promise)
+    await advanceClock(POLL_MS)
+    await page.press('entry-running-continue')
+    await outside(() => held.resolve(nextState))
+    expect(mockReads.attemptEventsOf).toHaveBeenLastCalledWith(
+      LOST,
+      NEXT_ID,
+      expect.objectContaining({ until: 'opening' })
+    )
+    expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
+    expect(navigate).not.toHaveBeenCalledWith(waitPathOf(LOST))
+    page.unmount()
+  })
 })
 
 describe('whose recovery the running attempt is', () => {

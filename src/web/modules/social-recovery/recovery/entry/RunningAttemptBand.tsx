@@ -1,7 +1,7 @@
 /**
  * The running attempt's band with its two exits. Continue with that key reads
- * the registry once more, then keeps the countdown of the attempt that read
- * names, with the recovery entry under the account that holds the attempt's
+ * the registry once more, then keeps the countdown only where that read names
+ * the attempt the band showed when pressed, with the recovery entry under the account that holds the attempt's
  * key, and opens the wait; the recoverer's own session may be gone, and the
  * attempt lives on chain. An attempt that ended meanwhile leaves the band
  * saying so, and another attempt found in its place is drawn instead; neither
@@ -13,6 +13,7 @@ import React, { useCallback, useMemo, useState } from 'react'
 import { cancelPathOf } from '@web/modules/social-recovery/cancel'
 import { waitPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 
+import { isSameAttempt } from './running'
 import RunningAttemptBandView from './RunningAttemptBandView'
 import type { ContinueState, RunningAttemptBandProps } from './types'
 
@@ -39,13 +40,14 @@ const RunningAttemptBand = ({
       return
     }
     const { openedAt } = opening.value
+    const shown = attempt.value
     setContinueState('writing')
     const run = async (): Promise<boolean> => {
       const checked = await recheck()
       if (checked.status === 'failed') {
         throw new Error('The registry did not answer before the countdown was kept.')
       }
-      if (checked.status !== 'same') {
+      if (checked.status !== 'same' || !isSameAttempt(checked.attempt, shown)) {
         return false
       }
       const running = checked.attempt
