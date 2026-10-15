@@ -1,6 +1,6 @@
 import { encodeErrorResult } from 'viem'
 
-import { createWatcherReads } from '@web/modules/social-recovery/shared/client'
+import { createWatcherReads, providerReadFailure } from '@web/modules/social-recovery/shared/client'
 import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
 import {
   ACCOUNT as KIT_ACCOUNT,
@@ -192,6 +192,40 @@ describe('a poll of the watched accounts', () => {
     const written = await record()
     expect(written?.reading).toBeUndefined()
     expect(written?.failed?.message).toBe('node down')
+  })
+
+  it('stores a failure with no URL from the error and at most 200 characters', async () => {
+    const url = 'https://rpc.example/v3/secret-key'
+    const withShort = Object.assign(
+      new Error(`server response 500 (info={"requestUrl":"${url}","responseStatus":"500"})`),
+      { shortMessage: 'server response 500 Internal Server Error' }
+    )
+    const cases = [
+      {
+        thrown: providerReadFailure('call', withShort),
+        message: 'The provider could not answer call: server response 500 Internal Server Error'
+      },
+      {
+        thrown: providerReadFailure('block', new Error(`request to ${url} failed`)),
+        message: 'The provider could not answer block: request to <url> failed'
+      },
+      {
+        thrown: new Error('missing response from wss://rpc.example/ws/secret-key'),
+        message: 'missing response from <url>'
+      },
+      { thrown: new Error('x'.repeat(500)), message: 'x'.repeat(200) }
+    ]
+    const stored = await Promise.all(
+      cases.map(async ({ thrown }) => {
+        const { chain, poll, record } = setUp()
+        chain.setState(ACCOUNT, thrown)
+        const count = await poll()
+        return { count, message: (await record())?.failed?.message }
+      })
+    )
+
+    expect(stored).toEqual(cases.map(({ message }) => ({ count: 1, message })))
+    stored.forEach(({ message }) => expect(message).not.toContain('secret-key'))
   })
 
   it('reads a poll that does not answer within its limit as failed', async () => {

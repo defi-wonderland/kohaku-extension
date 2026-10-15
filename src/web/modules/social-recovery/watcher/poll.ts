@@ -26,6 +26,7 @@ import type {
   Hex
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { readWithin, within } from '@web/modules/social-recovery/shared/client/limits'
+import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
 import type {
   AttemptEvents,
   AttemptScan,
@@ -55,8 +56,27 @@ export const watchedAccountsOf = (accounts: readonly Account[]): Address[] =>
     .map((account) => getAddress(account.addr))
     .filter((addr, index, all) => all.indexOf(addr) === index)
 
+// Anything that reads as a URL, which a provider's error text can carry with a key in it.
+const URL_PATTERN = /[a-z][a-z0-9+.-]*:\/\/\S+/gi
+const MESSAGE_LIMIT = 200
+
+// The text of a failure: ethers' short message where it gives one, which leaves out the request.
+const textOf = (thrown: unknown): string => {
+  if (!(thrown instanceof Error)) {
+    return String(thrown)
+  }
+  if ('shortMessage' in thrown && typeof thrown.shortMessage === 'string' && thrown.shortMessage) {
+    return thrown.shortMessage
+  }
+  if (isProviderReadFailure(thrown)) {
+    return `The provider could not answer ${thrown.read}: ${textOf(thrown.cause)}`
+  }
+  return thrown.message
+}
+
+/** The failure's text as a record keeps it: with no URL in it and at most 200 characters. */
 export const messageOf = (thrown: unknown): string =>
-  thrown instanceof Error ? thrown.message : String(thrown)
+  textOf(thrown).replace(URL_PATTERN, '<url>').slice(0, MESSAGE_LIMIT)
 
 const samePayload = (payload: Hex, payloadHash: Hex): boolean =>
   sameHash(keccak256(payload), payloadHash)
