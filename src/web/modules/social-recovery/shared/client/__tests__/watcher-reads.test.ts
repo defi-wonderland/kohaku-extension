@@ -137,6 +137,25 @@ describe('the watcher reads', () => {
     expect(found.cancelled).toMatchObject({ attemptId: 3n, cancelledBy: 'cancelByOwner' })
   })
 
+  it('tells each chunk it read and stops before the next chunk once asked', async () => {
+    const { reads, scanned } = worldWith([attemptStartedLog(3n, handoverTo(NEW_KEY), HEAD - 250)])
+    const chunks: number[] = []
+
+    const found = await reads.attemptEventsOf(ACCOUNT, 3n, {
+      from: DEPLOYED_AT,
+      to: HEAD,
+      stop: () => chunks.length === 2,
+      onChunk: (from) => chunks.push(from)
+    })
+
+    expect(found).toEqual({})
+    expect(chunks).toEqual([HEAD - 99, HEAD - 199])
+    expect(scanned()).toEqual([
+      { from: HEAD - 99, to: HEAD },
+      { from: HEAD - 199, to: HEAD - 100 }
+    ])
+  })
+
   it("never scans before the manager's deployment block", async () => {
     const { reads, scanned } = worldWith([])
 
