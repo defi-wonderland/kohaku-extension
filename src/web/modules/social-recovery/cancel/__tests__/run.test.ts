@@ -8,10 +8,12 @@ import {
   createCancelStore,
   detachCancelSteps,
   FOLLOW_POLL_MS,
+  OWN_SEND_READ_MS,
   recheckCancel,
-  startCancel
+  startCancel,
+  UNTRACKED_FOLLOW_MS
 } from '@web/modules/social-recovery/cancel'
-import type { CancelClaims, CancelStore } from '@web/modules/social-recovery/cancel'
+import type { CancelClaims, CancelHold, CancelStore } from '@web/modules/social-recovery/cancel'
 import { pollAccounts, readWatcherRecord } from '@web/modules/social-recovery/watcher'
 import {
   ACCOUNT,
@@ -29,6 +31,7 @@ import {
   minedAndReverted,
   openChain,
   openOn,
+  ownerCancelAt,
   runWorld
 } from '@web/modules/social-recovery/cancel/__fixtures__/run'
 import {
@@ -36,7 +39,9 @@ import {
   OLD_KEY,
   atBlock,
   cancelledEvent,
-  payloadTo
+  payloadTo,
+  startedEvent,
+  stateWith
 } from '@web/modules/social-recovery/watcher/__fixtures__/harness'
 
 // The real one, kept apart from the fake timers a test installs.
@@ -186,7 +191,7 @@ describe("the owner's cancel run", () => {
     expect(second.state().write.status).toBe('idle')
     expect(second.state().after).toEqual({ stage: 'cancelled', attemptId: ATTEMPT })
     expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
-    detachCancelSteps(world.steps)
+    detachCancelSteps(second, world.steps)
   })
 
   it('releases a followed claim held nowhere and offers the newer attempt where another one is open', async () => {
@@ -206,7 +211,7 @@ describe("the owner's cancel run", () => {
     expect(await world.steps.claims.read()).toBeUndefined()
     expect(store.state().write.status).toBe('idle')
     expect(store.state().gone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
-    detachCancelSteps(world.steps)
+    detachCancelSteps(store, world.steps)
   })
 
   it("never releases another tab's claim between its claim and its add", async () => {
@@ -227,7 +232,7 @@ describe("the owner's cancel run", () => {
     expect(store.state().after).toEqual(OWNED)
     expect(second.state().write.status).toBe('submitting')
     expect(second.state().follow).toBe('held')
-    detachCancelSteps(world.steps)
+    detachCancelSteps(second, world.steps)
   })
 
   it('names the road where the cancel reverted because another road had ended the attempt', async () => {
@@ -352,7 +357,7 @@ describe("the owner's cancel run", () => {
     expect(world.sendAccountBatch).not.toHaveBeenCalled()
     expect(world.wait).toHaveBeenCalledWith(OTHER_HASH, START_BLOCK)
     expect(store.state().after).toEqual({ stage: 'cancelled', attemptId: ATTEMPT, newKey: NEW_KEY })
-    detachCancelSteps(world.steps)
+    detachCancelSteps(store, world.steps)
   })
 
   it('offers the start again where the wallet holds a stored request nowhere past its send limit', async () => {
@@ -375,7 +380,7 @@ describe("the owner's cancel run", () => {
     await startCancel(store, world.steps, ATTEMPT)
     expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(world.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
-    detachCancelSteps(world.steps)
+    detachCancelSteps(store, world.steps)
   })
 
   it('follows a request the wallet broadcast meanwhile under its hash', async () => {
@@ -392,7 +397,7 @@ describe("the owner's cancel run", () => {
     expect(world.sendAccountBatch).not.toHaveBeenCalled()
     expect(world.wait).toHaveBeenCalledWith(OTHER_HASH, START_BLOCK)
     expect(store.state().after).toEqual({ stage: 'cancelled', attemptId: ATTEMPT, newKey: NEW_KEY })
-    detachCancelSteps(world.steps)
+    detachCancelSteps(store, world.steps)
   })
 
   it("names the attempt the receipt's own cancel log ended, an id the page never read", async () => {
@@ -411,7 +416,7 @@ describe("the owner's cancel run", () => {
     world.wait.mockImplementation(async (hash) => {
       cancelOn(world.chain, 'cancelByOwner')
       // A newer attempt opened right after, and the owner cancelled it from another device.
-      cancelOn(world.chain, 'cancelByOwner', ATTEMPT + 1n, payloadTo(OLD_KEY))
+      cancelOn(world.chain, 'cancelByOwner', ATTEMPT + 1n, payloadTo(OLD_KEY), OTHER_HASH)
       return landedReceipt(hash)
     })
     world.receiptCancel.mockResolvedValue(
@@ -441,7 +446,7 @@ describe("the owner's cancel run", () => {
     expect(store.state().followGone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
     expect(world.withdrawRequest).toHaveBeenCalledWith('elsewhere')
     expect(world.sendAccountBatch).not.toHaveBeenCalled()
-    detachCancelSteps(world.steps)
+    detachCancelSteps(store, world.steps)
     await following
   })
 
@@ -470,7 +475,7 @@ describe("the owner's cancel run", () => {
       expect(store.state().write.status).toBe('idle')
       expect(store.state().gone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
       expect(world.sendAccountBatch).not.toHaveBeenCalled()
-      detachCancelSteps(world.steps)
+      detachCancelSteps(store, world.steps)
     } finally {
       jest.useRealTimers()
     }
@@ -502,7 +507,7 @@ describe("the owner's cancel run", () => {
       expect(store.state().write.status).toBe('submitting')
       expect(store.state().follow).toBe('held')
       expect(store.state().followGone?.ended).toMatchObject({ cancelledBy: 'cancelByProofs' })
-      detachCancelSteps(world.steps)
+      detachCancelSteps(store, world.steps)
       jest.advanceTimersByTime(FOLLOW_POLL_MS)
       await settled()
     } finally {
@@ -531,7 +536,7 @@ describe("the owner's cancel run", () => {
 
       expect(world.requestHold).toHaveBeenCalledTimes(11)
       expect(readAttempt).toHaveBeenCalledTimes(3)
-      detachCancelSteps(world.steps)
+      detachCancelSteps(store, world.steps)
       jest.advanceTimersByTime(FOLLOW_POLL_MS)
       await settled()
     } finally {
@@ -551,7 +556,7 @@ describe("the owner's cancel run", () => {
     expect(set).toHaveBeenCalledTimes(2)
   })
 
-  it('writes nothing for a page read of an older block, so an earlier poll of a newer block is still written', async () => {
+  it('writes nothing for a page read of an older block and answers the stored newer reading, so an earlier poll of a newer block is still written', async () => {
     const world = runWorld()
     const alarmPoll = (polledAt: number) =>
       pollAccounts({
@@ -578,7 +583,10 @@ describe("the owner's cancel run", () => {
       now: () => 3_000,
       limitMs: 5_000
     })
-    expect((await pageRead()).block.number).toBe(HEAD)
+    const answered = await pageRead()
+    expect(answered.block.number).toBe(HEAD + 2)
+    expect(answered.attempt?.attemptId).toBe(ATTEMPT)
+    expect(answered.ended).toBeUndefined()
     let record = await readWatcherRecord(world.storage, SEPOLIA, ACCOUNT)
     expect(record?.reading?.block.number).toBe(HEAD + 2)
     expect(record?.polledAt).toBe(1_000)
@@ -604,5 +612,205 @@ describe("the owner's cancel run", () => {
     expect(store.state().write.status).toBe('idle')
     expect(store.state().gone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
     expect(world.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it("never names an owner's cancel of another transaction where the receipt's logs cannot be read", async () => {
+    const world = runWorld()
+    world.wait.mockImplementation(async (hash) => {
+      cancelOn(world.chain, 'cancelByOwner', ATTEMPT, payloadTo(NEW_KEY), hash)
+      // One block later another transaction of the owner's key cancels the next attempt.
+      const newer = payloadTo(OLD_KEY)
+      world.chain.setState(
+        ACCOUNT,
+        stateWith({ attemptId: ATTEMPT + 1n, state: 'Cancelled', payload: newer })
+      )
+      world.chain.setEvents(ACCOUNT, ATTEMPT + 1n, {
+        started: startedEvent(ATTEMPT + 1n, newer),
+        cancelled: ownerCancelAt(ATTEMPT + 1n, LANDED_BLOCK + 1, OTHER_HASH)
+      })
+      return landedReceipt(hash)
+    })
+    await startCancel(store, world.steps, ATTEMPT)
+
+    expect(world.receiptCancel).toHaveBeenCalledTimes(1)
+    expect(store.state().after).toEqual(OWNED)
+  })
+
+  it('answers the stored newer reading where the page reads an older block with no attempt', async () => {
+    const world = runWorld()
+    world.chain.head.number = HEAD + 2
+    await pollAccounts({
+      reads: world.chain.reads,
+      accounts: [ACCOUNT],
+      chainId: SEPOLIA,
+      storage: world.storage,
+      now: () => 1_000,
+      polledAt: 1_000,
+      limitMs: 5_000,
+      scanLimitMs: 5_000
+    })
+    world.chain.setState(ACCOUNT, stateWith())
+    world.chain.head.number = HEAD
+    const pageRead = attemptReaderOf({
+      reads: world.chain.reads,
+      account: ACCOUNT,
+      chainId: SEPOLIA,
+      storage: world.storage,
+      now: () => 3_000,
+      limitMs: 5_000
+    })
+
+    const answered = await pageRead()
+    expect(answered.block.number).toBe(HEAD + 2)
+    expect(answered.attempt?.attemptId).toBe(ATTEMPT)
+  })
+
+  it('takes up a follow with the steps a screen built again, without stopping it', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      const before = world.requestHold.mock.calls.length
+
+      // The screen builds its steps again: the old ones detach, the new ones attach.
+      const rebuiltHold = jest.fn(async (): Promise<CancelHold> => ({ status: 'held' }))
+      const rebuilt = { ...world.steps, requestHold: rebuiltHold }
+      detachCancelSteps(store, world.steps)
+      attachCancelSteps(store, rebuilt).catch(() => undefined)
+      await settled()
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(world.requestHold).toHaveBeenCalledTimes(before)
+      expect(rebuiltHold).toHaveBeenCalledTimes(5)
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().follow).toBe('held')
+      detachCancelSteps(store, rebuilt)
+      jest.advanceTimersByTime(FOLLOW_POLL_MS)
+      await settled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('withdraws its own waiting request once the attempt ended and another opened, and shows the ending', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      let refuse: (error: Error) => void = () => {}
+      world.sendAccountBatch.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            refuse = reject
+          })
+      )
+      startCancel(store, world.steps, ATTEMPT).catch(() => undefined)
+      await settled()
+      expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+      // The sign window stays open while another road ends the attempt and a newer one opens.
+      cancelOn(world.chain, 'cancelByProofs')
+      openOn(world.chain, ATTEMPT + 1n, payloadTo(OLD_KEY))
+      jest.advanceTimersByTime(OWN_SEND_READ_MS)
+      await settled()
+
+      expect(world.withdrawRequest).toHaveBeenCalledWith('request-1')
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().followGone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
+      expect(await world.steps.claims.read()).toMatchObject({ requestId: 'request-1' })
+
+      // The wallet drops the withdrawn request, and the send answers its refusal.
+      refuse(accountBatchRefusal('refused', ACCOUNT))
+      await settled()
+
+      expect(store.state().write.status).toBe('idle')
+      expect(store.state().gone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
+      expect(await world.steps.claims.read()).toBeUndefined()
+      expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(world.wait).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('reads nothing more for its own request once the send answered', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      const readAttempt = jest.fn(world.steps.readAttempt)
+      world.steps.readAttempt = readAttempt
+      await startCancel(store, world.steps, ATTEMPT)
+      const reads = readAttempt.mock.calls.length
+      jest.advanceTimersByTime(OWN_SEND_READ_MS * 3)
+      await settled()
+
+      expect(readAttempt).toHaveBeenCalledTimes(reads)
+      expect(world.withdrawRequest).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('ends the follow of an operation the wallet cannot follow to a hash once its attempt ends', async () => {
+    const world = runWorld()
+    world.requestHold.mockResolvedValue({ status: 'untracked' })
+    await world.steps.claims.claim({
+      attemptId: ATTEMPT,
+      requestId: 'elsewhere',
+      startBlock: START_BLOCK
+    })
+    cancelOn(world.chain, 'cancelByOwner')
+
+    await attachCancelSteps(store, world.steps)
+    await settled()
+
+    expect(await world.steps.claims.read()).toBeUndefined()
+    expect(store.state().write.status).toBe('idle')
+    expect(store.state().after).toEqual({ stage: 'cancelled', attemptId: ATTEMPT })
+    expect(world.withdrawRequest).not.toHaveBeenCalled()
+    expect(world.sendAccountBatch).not.toHaveBeenCalled()
+    detachCancelSteps(store, world.steps)
+  })
+
+  it('releases the claim of an operation the wallet cannot follow past its bound, and shows the reading', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      let clock = 1_000_000
+      const world = runWorld(openChain(), () => clock)
+      world.requestHold.mockResolvedValue({ status: 'untracked' })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().follow).toBe('held')
+
+      clock += UNTRACKED_FOLLOW_MS + 1
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(await world.steps.claims.read()).toBeUndefined()
+      expect(store.state().write.status).toBe('idle')
+      expect(store.state().gone?.attempt?.attemptId).toBe(ATTEMPT)
+      expect(world.sendAccountBatch).not.toHaveBeenCalled()
+      detachCancelSteps(store, world.steps)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

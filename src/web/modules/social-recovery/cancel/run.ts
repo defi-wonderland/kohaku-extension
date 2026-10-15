@@ -18,7 +18,10 @@
  *
  * The cancel is stored on this device, under the lock of its key, before the
  * request goes to the wallet, and the wallet adds the request only while that
- * claim is still this run's with no hash and younger than its send limit. A
+ * claim is still this run's with no hash and younger than its send limit.
+ * While the wallet holds that request unsigned, the run reads the attempt
+ * every few seconds and withdraws the request once the attempt ended or
+ * another one is open, so a late signature never cancels a newer attempt. A
  * page that finds a stored cancel, on arrival or as the loser of a claim,
  * sends nothing and follows it: under its hash it waits for the receipt; with
  * no hash it reads where the wallet holds the request each round, and the
@@ -37,10 +40,11 @@
  * such a follow releases it.
  *
  * Every answer carries the run it belongs to, so the answer of a run the
- * holder left behind moves nothing. The claim's send limit is the one
- * decision that reads the device's clock, the same exception the setup save
- * has: it is bounded by the claim's age, stamped when the claim was stored.
- * No other decision reads the clock.
+ * holder left behind moves nothing. The claim's send limit, and the bound of
+ * a follow of an operation the wallet cannot follow to a hash, are the
+ * decisions that read the device's clock, the same exception the setup save
+ * has: both are bounded by the claim's age, stamped when the claim was
+ * stored. No other decision reads the clock.
  */
 import {
   isProviderReadFailure,
@@ -63,11 +67,19 @@ import {
   CLAIMED_READ_MS,
   FOLLOW_ATTEMPT_ROUNDS,
   FOLLOW_POLL_MS,
+  OWN_SEND_READ_MS,
   RECEIPT_LOGS_READ_MS,
   SEND_BLOCK_READ_MS
 } from './constants'
 import { attemptAfterOf, standingOf } from './readings'
-import type { CancelClaim, CancelState, CancelSteps, CancelStore, LandingOutcome } from './types'
+import type {
+  CancelClaim,
+  CancelState,
+  CancelSteps,
+  CancelStore,
+  LandingOutcome,
+  OwnSendWatch
+} from './types'
 
 export const initialCancelState = (): CancelState => ({
   write: initialWriteState('cancel'),
@@ -141,8 +153,12 @@ const pause = (ms: number): Promise<void> =>
 const asReadFailure = (error: unknown) =>
   isProviderReadFailure(error) ? error : providerReadFailure('call', error)
 
-/** The steps of the screens attached now; a followed request is read only through one of them. */
-const ATTACHED = new Set<CancelSteps>()
+/**
+ * The steps of the screen attached to each store now; a followed request is
+ * read only through them, so a screen that builds its steps again takes up
+ * the follow in flight.
+ */
+const LIVE = new WeakMap<CancelStore, CancelSteps>()
 
 /** The stores whose followed request is being read, so one loop reads it. */
 const FOLLOWING = new WeakSet<CancelStore>()
@@ -181,6 +197,7 @@ const readAfterLanding = async (
         ...(state.targetAttempt ? { known: state.targetAttempt } : {}),
         startBlock,
         landedBlock,
+        transactionHash: write.receipt.transactionHash,
         ...(cancelled ? { cancelled } : {})
       })
       .catch(() => undefined)
@@ -339,33 +356,32 @@ const endFollow = async (
 }
 
 /**
- * Reads where the wallet holds a followed request with no hash, while a screen
- * is attached, each round, and the attempt every few rounds, each read
- * bounded: broadcast, it follows the hash; held nowhere with the attempt
- * ended or another one open, the follow ends (`endFollow`); held, or a read
- * with no answer, it reads again a moment later. Held where a fresh read of
- * the attempt finds it ended or another one open, it withdraws the request,
- * and the next round that reads it held nowhere ends the follow; until then,
- * or where the withdrawal fails, the ending is shown beside the follow while
- * the claim stays, since the holder may still sign the request. Held nowhere
- * while the claim is younger than its send limit, it reads again; held
- * nowhere past it, the cancel was not sent, so the claim is released and the
- * start offered again.
+ * Reads where the wallet holds a followed request with no hash, through the
+ * steps of the screen attached to the store now, each round, and the attempt
+ * every few rounds, each read bounded: broadcast, it follows the hash; held
+ * nowhere with the attempt ended or another one open, the follow ends
+ * (`endFollow`); held, or a read with no answer, it reads again a moment
+ * later. Held where a fresh read of the attempt finds it ended or another one
+ * open, it withdraws the request, and the next round that reads it held
+ * nowhere ends the follow; until then, or where the withdrawal fails, the
+ * ending is shown beside the follow while the claim stays, since the holder
+ * may still sign the request. Held nowhere while the claim is younger than its
+ * send limit, it reads again; held nowhere past it, the cancel was not sent,
+ * so the claim is released and the start offered again. Sent as an operation
+ * the wallet cannot follow to a hash, the follow ends once the attempt reads
+ * ended or another one open; past its own bound with the attempt still open,
+ * the claim is released and the reading shown, so a cancel that never lands
+ * is not followed forever.
  */
 const followHold = async (
   store: CancelStore,
-  steps: CancelSteps,
   run: number,
   claim: CancelClaim,
   round = 0
 ): Promise<void> => {
+  const steps = LIVE.get(store)
   const current = store.state().write
-  if (
-    !ATTACHED.has(steps) ||
-    current.run !== run ||
-    current.status !== 'submitting' ||
-    current.transactionHash
-  ) {
+  if (!steps || current.run !== run || current.status !== 'submitting' || current.transactionHash) {
     FOLLOWING.delete(store)
     return
   }
@@ -385,9 +401,19 @@ const followHold = async (
   if (reading) {
     followGone = standingOf(reading, claim.attemptId).kind === 'gone' ? reading : undefined
   }
-  if (hold?.status === 'free' && followGone) {
+  const untracked = hold?.status === 'untracked'
+  if ((hold?.status === 'free' || untracked) && followGone) {
     FOLLOWING.delete(store)
     await endFollow(store, steps, run, claim, followGone)
+    return
+  }
+  if (untracked && reading && steps.claims.untrackedFollowMs(claim) <= 0) {
+    FOLLOWING.delete(store)
+    await steps.claims.release(claim.requestId).catch(() => undefined)
+    changeInRun(store, run, (state) => {
+      const { follow, requestId, ...rest } = applyWrite(state, { type: 'reset' })
+      return { ...rest, gone: reading }
+    })
     return
   }
   if (reading && followGone && hold?.status === 'held') {
@@ -398,13 +424,13 @@ const followHold = async (
     }
   }
   const sendable = steps.claims.sendableMs(claim)
-  if (!hold || hold.status === 'held' || (hold.status === 'free' && sendable > 0)) {
+  if (!hold || hold.status === 'held' || untracked || (hold.status === 'free' && sendable > 0)) {
     changeInRun(store, run, (state) => {
       const { followGone: shown, ...rest } = state
       return { ...rest, follow: hold ? 'held' : 'unread', ...(followGone ? { followGone } : {}) }
     })
     await pause(hold?.status === 'free' ? Math.min(sendable, FOLLOW_POLL_MS) : FOLLOW_POLL_MS)
-    await followHold(store, steps, run, claim, round + 1)
+    await followHold(store, run, claim, round + 1)
     return
   }
   FOLLOWING.delete(store)
@@ -446,12 +472,82 @@ export const followClaim = async (
     return
   }
   FOLLOWING.add(store)
-  await followHold(store, steps, run, claim)
+  await followHold(store, run, claim)
 }
 
 // ---------------------------------------------------------------------------
 // The send
 // ---------------------------------------------------------------------------
+
+/**
+ * Follows the run's own request while the wallet holds it unsigned: every few
+ * seconds it reads the attempt, each read bounded, and where the attempt
+ * ended or another one is open while the wallet still holds the request, it
+ * withdraws the request, so a late signature never cancels a newer attempt,
+ * and shows the ending beside the send. It reads nothing once the send
+ * answered a hash or settled.
+ */
+const watchOwnSend = (
+  store: CancelStore,
+  steps: CancelSteps,
+  run: number,
+  target: bigint,
+  requestId: string
+): OwnSendWatch => {
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let wake: () => void = () => {}
+  let ending: WatcherReading | undefined
+  const waiting = () => {
+    const { write } = store.state()
+    return !stopped && write.run === run && write.status === 'submitting' && !write.transactionHash
+  }
+  const round = async (): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      wake = resolve
+      timer = setTimeout(resolve, OWN_SEND_READ_MS)
+    })
+    if (!waiting()) {
+      return
+    }
+    const live = LIVE.get(store) ?? steps
+    const [reading, hold] = await Promise.all([
+      readWithin(live.readAttempt, CLAIMED_READ_MS).catch(() => undefined),
+      live.requestHold(requestId).catch(() => undefined)
+    ])
+    if (!waiting()) {
+      return
+    }
+    if (reading) {
+      ending = standingOf(reading, target).kind === 'gone' ? reading : undefined
+      const shown = ending
+      changeInRun(store, run, (state) => {
+        if (!shown && !state.followGone) {
+          return state
+        }
+        const { followGone, ...rest } = state
+        return shown ? { ...rest, followGone: shown } : rest
+      })
+      if (shown && hold?.status === 'held') {
+        try {
+          live.withdrawRequest(requestId)
+        } catch {
+          // The send goes on: the holder may still sign the request.
+        }
+      }
+    }
+    await round()
+  }
+  round().catch(() => undefined)
+  return {
+    stop: () => {
+      stopped = true
+      clearTimeout(timer)
+      wake()
+    },
+    gone: () => ending
+  }
+}
 
 /** The attempt read, the gas check, the claim, the read again and the send of one run. */
 const checkAndSend = async (
@@ -524,20 +620,34 @@ const checkAndSend = async (
       gone(again)
       return
     }
-    await steps.send({
-      prepared,
-      run,
-      requestId,
-      startBlock,
-      canAdd: () => steps.claims.canStillSend(requestId),
-      dispatch: (event) => {
-        dispatch(event)
-        if (event.type === 'sent' && event.run === run) {
-          steps.claims.markSent(requestId, event.transactionHash).catch(() => undefined)
+    const watch = watchOwnSend(store, steps, run, target, requestId)
+    try {
+      await steps.send({
+        prepared,
+        run,
+        requestId,
+        startBlock,
+        canAdd: () => steps.claims.canStillSend(requestId),
+        dispatch: (event) => {
+          dispatch(event)
+          if (event.type === 'sent' && event.run === run) {
+            steps.claims.markSent(requestId, event.transactionHash).catch(() => undefined)
+          }
         }
-      }
-    })
+      })
+    } finally {
+      watch.stop()
+    }
     await settle(store, steps, run, requestId)
+    // A request withdrawn, or refused, after its attempt ended shows that ending: nothing was sent.
+    const ending = watch.gone()
+    if (ending) {
+      changeInRun(store, run, (state) =>
+        state.write.status === 'failedNotSent' && !state.write.mayStillLand
+          ? { ...applyWrite(state, { type: 'reset' }), gone: ending }
+          : state
+      )
+    }
   } catch (error: unknown) {
     fail(error)
   }
@@ -621,10 +731,11 @@ export const checkCancelAgain = async (store: CancelStore, steps: CancelSteps): 
 /**
  * Attaches a screen's steps. A run that never started follows a cancel
  * stored on this device; a followed request whose reads paused with no screen
- * attached is read again through these steps.
+ * attached is read again through these steps, and a follow in flight reads
+ * through them from its next round.
  */
 export const attachCancelSteps = async (store: CancelStore, steps: CancelSteps): Promise<void> => {
-  ATTACHED.add(steps)
+  LIVE.set(store, steps)
   const state = store.state()
   const untouched = state.write.status === 'idle' && state.write.run === 0 && !state.gone
   const pausedFollow =
@@ -648,12 +759,15 @@ export const attachCancelSteps = async (store: CancelStore, steps: CancelSteps):
     held.requestId === now.requestId
   ) {
     FOLLOWING.add(store)
-    await followHold(store, steps, now.write.run, held)
+    await followHold(store, now.write.run, held)
   }
 }
 
-export const detachCancelSteps = (steps: CancelSteps): void => {
-  ATTACHED.delete(steps)
+/** Detaches a screen's steps from the store, unless the store holds newer steps already. */
+export const detachCancelSteps = (store: CancelStore, steps: CancelSteps): void => {
+  if (LIVE.get(store) === steps) {
+    LIVE.delete(store)
+  }
 }
 
 /** Whether a run must outlive the screen that shows it: something is on its way, or being read. */

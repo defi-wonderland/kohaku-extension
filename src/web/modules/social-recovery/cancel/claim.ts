@@ -17,7 +17,7 @@ import { inQueue, RECORDS_KEY_PREFIX } from '@web/modules/social-recovery/shared
 import type { ChainId } from '@web/modules/social-recovery/shared/records/types'
 import type { WatcherStorage } from '@web/modules/social-recovery/watcher'
 
-import { CLAIM_SEND_LIMIT_MS } from './constants'
+import { CLAIM_SEND_LIMIT_MS, UNTRACKED_FOLLOW_MS } from './constants'
 import type { CancelClaim, CancelClaims, StoredCancelClaim } from './types'
 
 export const cancelClaimKeyOf = (chainId: ChainId, account: Address): string =>
@@ -90,6 +90,7 @@ export const cancelClaimsOf = (
       return held?.requestId === requestId && !held.transactionHash && sendableMs(held) > 0
     },
     sendableMs,
+    untrackedFollowMs: (claim) => UNTRACKED_FOLLOW_MS - (now() - claim.claimedAt),
     markSent: (requestId, transactionHash) =>
       inQueue(key, async () => {
         const held = await read()

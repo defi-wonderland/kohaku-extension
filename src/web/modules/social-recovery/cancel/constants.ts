@@ -19,6 +19,16 @@ export const FOLLOW_POLL_MS = 2_000
 /** Every how many of those rounds the follow also reads the attempt. */
 export const FOLLOW_ATTEMPT_ROUNDS = 5
 
+/** How often the run reads the attempt while its own request waits in the wallet, in ms. */
+export const OWN_SEND_READ_MS = 10_000
+
+/**
+ * How old a claim may be, in ms, while the wallet reports its request as an
+ * operation it cannot follow to a hash and the attempt stays open: past it,
+ * the claim is released and the reading shown.
+ */
+export const UNTRACKED_FOLLOW_MS = 600_000
+
 /** How long the read of a landed cancel's receipt, for its logs, may take, in ms. */
 export const RECEIPT_LOGS_READ_MS = 10_000
 

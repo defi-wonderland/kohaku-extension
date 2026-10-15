@@ -3,24 +3,25 @@
  * through the client as one call the account sends, the shared gas check of
  * that call as the account's own operation from its key, the send through the
  * request queue, the receipt wait and the owner's cancel its logs carry, the
- * wallet's reading of a queued request and its withdrawal, and the cancel in
+ * wallet's reading of a queued request (an operation it cannot follow to a
+ * hash read apart from a held one) and its withdrawal, and the cancel in
  * flight stored on this device.
  */
 import {
   accountBatchTransactionOf,
-  newSendRequestId
+  newSendRequestId,
+  sendRequestStateOf
 } from '@web/modules/social-recovery/shared/client'
 import {
   assertWriteDoor,
   checkGas,
   driveAccountBatch,
-  requestHoldOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 
 import { cancelClaimsOf } from './claim'
 import { ownerCancelOf } from './reads'
-import type { CancelSteps, CancelStepsInput } from './types'
+import type { CancelHold, CancelSteps, CancelStepsInput } from './types'
 
 export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
   const { account, chainId, client, facts, key, receipts, port } = input
@@ -73,7 +74,22 @@ export const cancelStepsOf = (input: CancelStepsInput): CancelSteps => {
         action: client.descriptor.action
       })
     },
-    requestHold: (requestId) => requestHoldOf(input.requests, requestId, account, chainId),
+    async requestHold(requestId): Promise<CancelHold> {
+      const state = await sendRequestStateOf(input.requests, requestId, account, chainId)
+      switch (state.status) {
+        case 'broadcast':
+          return { status: 'broadcast', transactionHash: state.transactionHash }
+        case 'gone':
+          return { status: 'free' }
+        // An operation the wallet cannot follow to a hash is never read as still held.
+        case 'untracked':
+          return { status: 'untracked' }
+        case 'unread':
+          throw new Error(`The wallet did not answer where it holds request ${requestId}.`)
+        default:
+          return { status: 'held' }
+      }
+    },
     withdrawRequest: (requestId) =>
       input.requests.dispatch({
         type: 'REQUESTS_CONTROLLER_REMOVE_USER_REQUEST',

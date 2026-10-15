@@ -197,6 +197,8 @@ export interface LandingInput {
   startBlock: number
   /** The block of the cancel's receipt. */
   landedBlock: number
+  /** The transaction the receipt is of: only its own log of the owner's cancel is this cancel's. */
+  transactionHash: Hex
   /** The owner's cancel the receipt's own logs carry, where they could be read. */
   cancelled?: CancelLog
 }
@@ -284,6 +286,11 @@ export interface CancelClaims {
   canStillSend(requestId: string): Promise<boolean>
   /** How long, in ms, the page that stored `claim` may still add its request; zero or less once past. */
   sendableMs(claim: CancelClaim): number
+  /**
+   * How long, in ms, `claim` is still followed while the wallet reports its
+   * request as an operation it cannot follow to a hash; zero or less once past.
+   */
+  untrackedFollowMs(claim: CancelClaim): number
   /** Writes the hash on the claim of `requestId`. */
   markSent(requestId: string, transactionHash: Hex): Promise<void>
   /** Removes the claim of `requestId`; a claim of another request stays. */
@@ -293,6 +300,13 @@ export interface CancelClaims {
 // ---------------------------------------------------------------------------
 // The cancel's run
 // ---------------------------------------------------------------------------
+
+/**
+ * Where the wallet holds the cancel's request: the shared reading, or
+ * `untracked` where the wallet sent it as an operation it cannot follow to a
+ * transaction hash, which may still reach the chain.
+ */
+export type CancelHold = RequestHold | { status: 'untracked' }
 
 /** What the send of one run takes. */
 export interface CancelSendInput {
@@ -318,7 +332,7 @@ export interface CancelSteps {
   /** The owner's cancel of the account in the logs of a landed transaction's receipt, or none. */
   receiptCancel(transactionHash: Hex, startBlock: number): Promise<CancelLog | undefined>
   /** Where the wallet holds a request; throws where it does not answer. */
-  requestHold(requestId: string): Promise<RequestHold>
+  requestHold(requestId: string): Promise<CancelHold>
   /**
    * Asks the wallet to withdraw a request from its queue; throws where it
    * cannot. The wallet keeps a request its sign screen signs or pauses on, so
@@ -362,6 +376,14 @@ export interface CancelState {
   stalled?: boolean
   /** The request the run's cancel is queued under, once the run claimed it or follows it. */
   requestId?: string
+}
+
+/** The follow of a run's own request while the send waits in the wallet. */
+export interface OwnSendWatch {
+  /** Ends the follow: no read runs after it. */
+  stop(): void
+  /** The newest reading in which the attempt read ended or another one open, while the send waited. */
+  gone(): WatcherReading | undefined
 }
 
 export interface CancelStore {

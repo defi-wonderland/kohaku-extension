@@ -18,14 +18,14 @@ import type {
   ProviderTransactionReceipt,
   SendPort
 } from '@web/modules/social-recovery/shared/client'
-import type { GasCheck, RequestHold } from '@web/modules/social-recovery/shared/writes'
+import type { GasCheck } from '@web/modules/social-recovery/shared/writes'
 import { depositStepOf, driveAccountBatch } from '@web/modules/social-recovery/shared/writes'
 import {
   attemptReaderOf,
   cancelClaimsOf,
   landingReaderOf
 } from '@web/modules/social-recovery/cancel'
-import type { CancelLog, CancelSteps } from '@web/modules/social-recovery/cancel'
+import type { CancelHold, CancelLog, CancelSteps } from '@web/modules/social-recovery/cancel'
 import {
   ACCOUNT,
   HEAD,
@@ -106,21 +106,34 @@ export const openChain = () => {
 
 export type Chain = ReturnType<typeof openChain>
 
+/** The owner's cancel of `attemptId`, logged in `block` by the transaction `transactionHash`. */
+export const ownerCancelAt = (
+  attemptId: bigint,
+  block: number,
+  transactionHash: Hex = TX_HASH
+): CancelLog => {
+  const cancelled = atBlock(cancelledEvent(attemptId, 'cancelByOwner'), block)
+  return { ...cancelled, at: { ...cancelled.at, transactionHash } }
+}
+
 /**
  * An attempt cancelled on the chain by `by`; the owner's cancel lands in the
- * cancel's own block, another road's before the send.
+ * cancel's own block under `transactionHash`, another road's before the send.
  */
 export const cancelOn = (
   chain: Chain,
   by: CancelledBy,
   attemptId: bigint = ATTEMPT,
-  payload: Hex = PAYLOAD
+  payload: Hex = PAYLOAD,
+  transactionHash: Hex = TX_HASH
 ) => {
   chain.setState(ACCOUNT, stateWith({ attemptId, state: 'Cancelled', payload }))
-  const cancelled = cancelledEvent(attemptId, by)
   chain.setEvents(ACCOUNT, attemptId, {
     started: startedEvent(attemptId, payload),
-    cancelled: by === 'cancelByOwner' ? atBlock(cancelled, LANDED_BLOCK) : cancelled
+    cancelled:
+      by === 'cancelByOwner'
+        ? ownerCancelAt(attemptId, LANDED_BLOCK, transactionHash)
+        : cancelledEvent(attemptId, by)
   })
 }
 
@@ -180,11 +193,11 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
     sendAccountBatch
   } as Partial<SendPort> as SendPort
   const wait = jest.fn<Promise<ProviderTransactionReceipt>, [Hex, number]>(async (hash) => {
-    cancelOn(chain, 'cancelByOwner')
+    cancelOn(chain, 'cancelByOwner', ATTEMPT, PAYLOAD, hash)
     return landedReceipt(hash)
   })
   const checkGas = jest.fn(async () => ENOUGH)
-  const requestHold = jest.fn(async (): Promise<RequestHold> => ({ status: 'held' }))
+  const requestHold = jest.fn(async (): Promise<CancelHold> => ({ status: 'held' }))
   // By default the wallet keeps the request, as it does while its sign screen holds it.
   const withdrawRequest = jest.fn<void, [string]>()
   // By default the receipt's logs cannot be read, so the read after a landing scans by id.

@@ -52,7 +52,7 @@ export const useCancelWrite = (steps: CancelSteps | null, runKey: string): Cance
       return undefined
     }
     attachCancelSteps(store, steps).catch(() => undefined)
-    return () => detachCancelSteps(steps)
+    return () => detachCancelSteps(store, steps)
   }, [store, steps])
 
   const start = useCallback(

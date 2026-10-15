@@ -5,6 +5,8 @@
  * follow what the page read, and answers its own reading: the record is not
  * read back, since a newer write may stand there.
  */
+import isUndefined from 'lodash/isUndefined'
+import omitBy from 'lodash/omitBy'
 import isEqual from 'react-fast-compare'
 import { isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
@@ -27,7 +29,6 @@ import {
   POLL_LIMIT_MS,
   readWatcherRecord,
   SCAN_LIMIT_MS,
-  storedWatcherRecordOf,
   updateWatcherRecord
 } from '@web/modules/social-recovery/watcher'
 import type { WatcherReading } from '@web/modules/social-recovery/watcher'
@@ -46,16 +47,15 @@ import type {
   ReceiptLog
 } from './types'
 
-/** A reading as its record stores it, its block left out: two polls of an unchanged attempt compare equal. */
-const comparableOf = (reading: WatcherReading): unknown =>
-  JSON.parse(
-    JSON.stringify(
-      storedWatcherRecordOf({
-        reading: { ...reading, block: { number: 0, timestamp: 0 } },
-        dismissed: []
-      })
-    )
-  )
+/**
+ * A reading with its block and its absent members left out: a reading read
+ * back from storage and a fresh poll of an unchanged attempt compare equal.
+ */
+const comparableOf = ({ block, attempt, ended, ...rest }: WatcherReading) => ({
+  ...rest,
+  ...(attempt ? { attempt: omitBy(attempt, isUndefined) } : {}),
+  ...(ended ? { ended: omitBy(ended, isUndefined) } : {})
+})
 
 /**
  * A fresh reading of the account at the latest block, written to its record
@@ -63,7 +63,8 @@ const comparableOf = (reading: WatcherReading): unknown =>
  * The record is written only where the reading changed, apart from its block,
  * or where it carries a failed mark to clear; a reading of a block below the
  * stored one writes nothing, not even its start time, so a poll that started
- * earlier but read a newer block is still written. Rejects as a failed
+ * earlier but read a newer block is still written, and the read answers the
+ * stored newer reading, never the lagging node's. Rejects as a failed
  * provider read where the poll failed or did not answer within its limit, and
  * marks the record failed: a failed read never reads as no attempt.
  */
@@ -93,25 +94,34 @@ export const attemptReaderOf =
       })
       const unchanged =
         !!previous && !record?.failed && isEqual(comparableOf(previous), comparableOf(reading))
+      // A reading of a newer block than the page's own stands: the page's node lags.
+      let answer = previous && previous.block.number > reading.block.number ? previous : reading
+      const newer = (stored: WatcherReading | undefined) => {
+        if (stored && stored.block.number > answer.block.number) {
+          answer = stored
+        }
+      }
       if (!unchanged) {
-        await updateWatcherRecord(
+        const written = await updateWatcherRecord(
           storage,
           chainId,
           account,
           (current) => {
-            const stored = current?.reading?.block.number
-            if (stored !== undefined && reading.block.number < stored) {
+            const stored = current?.reading
+            if (stored && reading.block.number < stored.block.number) {
+              newer(stored)
               // A throw inside the update leaves the record untouched, its poll's start time too.
               throw new Error(
-                `The page read block ${reading.block.number}, below the stored ${stored}.`
+                `The page read block ${reading.block.number}, below the stored ${stored.block.number}.`
               )
             }
             return { reading, dismissed: current?.dismissed ?? [] }
           },
           { now, polledAt }
         ).catch(() => undefined)
+        newer(written?.reading)
       }
-      return reading
+      return answer
     } catch (thrown: unknown) {
       const failed = {
         at: now(),
@@ -189,9 +199,10 @@ export const ownerCancelOf = ({
  * not be read does the read fall back to the ending logs by id: a fresh
  * reading at or past the receipt's block, then the ending logs of the
  * attempts from the newest the reading names down to the one the run meant;
- * an owner's cancel at or after the receipt's block is taken as this cancel.
- * Without one, an ending of the meant attempt by another road reads as that
- * road. Anything else answers undefined, so the caller reads again.
+ * an owner's cancel logged by the receipt's own transaction is taken as this
+ * cancel, and one of another transaction never is. Without one, an ending of
+ * the meant attempt by another road reads as that road. Anything else answers
+ * undefined, so the caller reads again.
  */
 export const landingReaderOf = ({
   reads,
@@ -227,7 +238,7 @@ export const landingReaderOf = ({
     return { stage: 'cancelled', attemptId, ...(newKey ? { newKey } : {}) }
   }
 
-  return async ({ target, known, startBlock, landedBlock, cancelled }) => {
+  return async ({ target, known, startBlock, landedBlock, transactionHash, cancelled }) => {
     if (cancelled) {
       await readAttempt().catch(() => undefined)
       return cancelledOf(cancelled.attemptId, cancelled.at.blockNumber, known)
@@ -259,7 +270,7 @@ export const landingReaderOf = ({
     const owners = scans.find(
       ({ events }) =>
         events.cancelled?.cancelledBy === 'cancelByOwner' &&
-        events.cancelled.at.blockNumber >= landedBlock
+        sameHash(events.cancelled.at.transactionHash, transactionHash)
     )
     if (owners?.events.cancelled) {
       return cancelledOf(owners.attemptId, owners.events.cancelled.at.blockNumber, known)
