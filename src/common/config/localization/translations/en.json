@@ -1077,7 +1077,6 @@
       "keepsAddress": "Keeps this address",
       "newKeyFastTrack": "The key this wallet created for the recovery",
       "newKeyLoggedIn": "The key of {{account}} on this device",
-      "noPayment": "This recovery names no payment.",
       "accountPays": "The account {{account}} sends this request and pays its gas.",
       "ownKeyPays": "Your key {{key}} sends this request and pays its gas.",
       "waitingPeriod": "The waiting period lasts {{duration}} from the moment the submission lands.",
@@ -1104,12 +1103,13 @@
           "aadhaar": "the identifier your Aadhaar produces"
         }
       },
+      "checkLineTitle": "Checked against the chain",
       "checkLine": "This wallet checked every approval against the chain again just now.",
       "checking": "Checking every approval against the chain…",
       "checkFailed": "This wallet could not check the approvals against the chain. That says nothing about whether they are valid. Try again.",
       "checkAgain": "Check again",
       "action": "Start recovery",
-      "unlockReason": "Start recovery stays locked until the account, the new key, the key being removed and the payment line are shown and every approval has verified.",
+      "unlockReason": "Start recovery stays locked until the account, the new key, the key being removed and the payment are shown and every approval has verified.",
       "removedKeyUnavailable": "This wallet cannot name the key this recovery removes.",
       "approvalNotVerified": "The approval for {{row}} did not verify. Go back to the checklist and add it again.",
       "gas": {

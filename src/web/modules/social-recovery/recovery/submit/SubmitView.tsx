@@ -1,13 +1,13 @@
 /**
  * The submission confirmation over given props: the title and its lead, which
- * say the transaction is being sent while the start is on its way, the three
+ * say the transaction is being sent while the start is on its way, the four
  * values of the lead, Start recovery under them, locked with its reason until
- * the three values and the payment line rendered and every approval verified,
+ * the four values rendered and every approval verified,
  * then the verify again of every approval and the run as it stands. Beside
  * them: the verified line, the second-funding note of the deposit step, and
  * verify the details.
  */
-import React, { useCallback, useState } from 'react'
+import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -26,7 +26,7 @@ import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
 import { DepositStepAside } from '@web/modules/social-recovery/shared/writes/components'
 
 import DetailsBlock from './DetailsBlock'
-import { namesNoPayment, rowNameOf } from './lead'
+import { paymentValueOf, rowNameOf } from './lead'
 import LeadBlock from './LeadBlock'
 import { isLive, landedOf } from './run'
 import RunBlock from './RunBlock'
@@ -51,9 +51,6 @@ const SubmitView = ({
   onBack
 }: SubmitViewProps) => {
   const { t } = useTranslation()
-  // The payment line renders only inside the expander, so the lock waits until it opened once.
-  const [detailsOpened, setDetailsOpened] = useState(false)
-  const onDetailsOpened = useCallback(() => setDetailsOpened(true), [])
 
   const retryButton = (testID: string, onPress: () => void, text?: string) => (
     <Button
@@ -175,11 +172,9 @@ const SubmitView = ({
     )
   }
 
-  const valuesRendered =
-    !!lead.newKey &&
-    lead.removed.status === 'named' &&
-    detailsOpened &&
-    namesNoPayment(load.session.gathering)
+  const payment = paymentValueOf(load.session.gathering, t)
+  const sendingPlan = sending.status === 'ready' ? sending.plan : undefined
+  const valuesRendered = !!lead.newKey && lead.removed.status === 'named' && payment !== null
   const unlocked = valuesRendered && verify.status === 'verified' && sending.status === 'ready'
   const idle = write.status === 'idle' && !run.refusal
   const canStart = unlocked && idle && run.lookup !== 'reading'
@@ -222,7 +217,12 @@ const SubmitView = ({
   const aside = (
     <>
       {verify.status === 'verified' && (
-        <SectionCard tone="muted" spacing="item" testID="submit-verify">
+        <SectionCard
+          tone="muted"
+          spacing="item"
+          label={t(`${SUBMIT}.checkLineTitle`)}
+          testID="submit-verify"
+        >
           <Text fontSize={12} appearance="secondaryText" testID="submit-check-line">
             {t(`${SUBMIT}.checkLine`)}
           </Text>
@@ -231,12 +231,7 @@ const SubmitView = ({
       {write.status === 'needsDeposit' && (
         <DepositStepAside step={write.step} testID="submit-gas-second-funding" />
       )}
-      <DetailsBlock
-        route={route}
-        ready={load}
-        sendingPlan={sending.status === 'ready' ? sending.plan : undefined}
-        onOpened={onDetailsOpened}
-      />
+      <DetailsBlock route={route} ready={load} />
     </>
   )
 
@@ -248,7 +243,13 @@ const SubmitView = ({
           lead={t(submitting ? 'socialRecovery.writes.submittingBody' : `${SUBMIT}.lead`)}
           titleTestID="submit-title"
         />
-        <LeadBlock route={route} lead={lead} onRetryRemoved={onRetryRemoved} />
+        <LeadBlock
+          route={route}
+          lead={lead}
+          payment={payment}
+          sendingPlan={sendingPlan}
+          onRetryRemoved={onRetryRemoved}
+        />
         {actions}
         {verify.status !== 'verified' && (
           <SectionCard style={spacings.mtSm} testID="submit-verify">
