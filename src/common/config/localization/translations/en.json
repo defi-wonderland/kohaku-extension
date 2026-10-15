@@ -1248,7 +1248,11 @@
     },
     "guardianPage": {
       "brand": "Kohaku · Account recovery",
-      "notice": "This page shows what its link says. Your call to the owner is the check.",
+      "stageCounter": "Approve · Step {{step}} of {{total}}",
+      "aside": {
+        "approving": "What approving does",
+        "wallet": "What your wallet shows"
+      },
       "lead": {
         "title": "You have been asked to approve a recovery",
         "body": "The owner of this account says they lost its key and named you as a guardian.",
@@ -1271,8 +1275,7 @@
       },
       "acknowledgment": {
         "label": "I called the owner on a number I already had and they confirmed this, or I am the owner.",
-        "ownNumber": "Call a number you already had. Never a number the link's sender gave you.",
-        "received": "A call you received does not answer this, whatever the caller named themselves. Only a call you placed on a number you already had counts.",
+        "callRule": "Only a call you placed on a number you already had counts. A call you received does not, whatever the caller named themselves.",
         "tickFirst": "Tick the box above first"
       },
       "actions": {
@@ -1306,6 +1309,7 @@
       "noRequest": "This link carries no request this page can read. Ask the person who sent it for the link again.",
       "signing": {
         "title": "Sign the approval",
+        "titleReady": "Ready to sign",
         "lead": "You approve by signing with the key this request names, from this wallet. Nothing is sent to the network and no money moves.",
         "keyHeading": "The key this request names",
         "keyHeld": "This wallet holds this key.",
@@ -1327,7 +1331,6 @@
         "copyPayload": "Copy the payload",
         "checkDevice": "Before signing, check that the values your signing device decodes match what the owner read to you.",
         "returnHeading": "Bring the signature back",
-        "returnLine": "The signature comes back by paste, the one way this page takes it.",
         "pasteLabel": "Paste the signature",
         "placeholder": "0x…",
         "add": "Add",
@@ -1341,9 +1344,9 @@
         "heading": "Your approval",
         "copy": "Copy the approval",
         "copyMessage": "Copy a message with it",
-        "messageHint": "The message adds one sentence of context around the approval line.",
         "message": "Here is my approval for the recovery of {{account}}. Paste this line into your checklist: {{line}}",
-        "regret": "Changed your mind? Tell the owner and whoever asked. The owner's key cancels a recovery they did not start, and an owner without a key can only warn the recoverer."
+        "regretTitle": "Changed your mind?",
+        "regret": "Tell the owner and whoever asked. The owner's key cancels a recovery they did not start, and an owner without a key can only warn the recoverer."
       },
       "declined": {
         "title": "Declined",
@@ -1355,7 +1358,7 @@
         "copyMessage": "Copy a message to send them",
         "message": "Someone asked me to approve a recovery of your account {{account}} to the new key {{newKey}}. I declined. If this was not you, your key can cancel a recovery you did not start.",
         "close": "Close this page",
-        "sentNothing": "This page sent nothing when you declined.",
+        "publishesTitle": "Even without your approval",
         "stillPublishes": "A recovery that completes without you still publishes your address with the rest of the path."
       },
       "notReadable": "Not readable"
