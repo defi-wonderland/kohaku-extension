@@ -13,15 +13,18 @@ import type {
   ListedRecoveryEntry,
   RecoveryRoute
 } from '@web/modules/social-recovery/shared/records'
+import { sameHash } from '@web/modules/social-recovery/shared/writes'
 
 import { choiceFor } from './receiving'
 import type {
   AttemptReads,
   ContinueTarget,
+  EntryRead,
   HeldKeySource,
   ReceivingAccountSource,
   ReceivingChoice,
   RunningAttempt,
+  RunningClaim,
   RunningOpening,
   RunningOwnership,
   SeedReceiver
@@ -47,6 +50,12 @@ export const readRunningAttempt = async (
     block: block.number
   }
 }
+
+/** Whether two reads of the registry name the same attempt: its id, its setup number and its payload hash. */
+export const isSameAttempt = (read: RunningAttempt, held: RunningAttempt): boolean =>
+  read.attemptId === held.attemptId &&
+  read.setupNonce === held.setupNonce &&
+  sameHash(read.payloadHash, held.payloadHash)
 
 /**
  * The attempt's opening: the key its payload hands the account to and the
@@ -127,8 +136,9 @@ export const ownershipOf = (
 /**
  * The entry a recovery that continues with the attempt's key is kept under:
  * the fast track's own receiving account on its route, or the wallet's
- * account whose key is the attempt's, its basic account first, on the route
- * the holder came by. Null where the wallet lists no account with that key.
+ * account that holds the attempt's key among its own keys, its basic account
+ * first, on the route the holder came by. Null where the wallet lists no
+ * account with that key.
  */
 export const continueTargetOf = (
   newKey: Address,
@@ -142,11 +152,38 @@ export const continueTargetOf = (
     return seed ? { route: 'fresh-install', receivingAccount: seed.receivingAccount } : null
   }
   if (ownership === 'wallet') {
-    const holding = choices.filter((choice) => sameAddress(choice.key.addr, newKey))
+    const holding = choices.filter(
+      (choice) =>
+        sameAddress(choice.key.addr, newKey) ||
+        choice.account.associatedKeys.some((associated) => sameAddress(associated, newKey))
+    )
     const choice = holding.find((candidate) => !candidate.smart) ?? holding[0]
     return choice ? { route, receivingAccount: choice.address } : null
   }
   return null
+}
+
+/**
+ * Whose recovery the attempt is, and where continuing keeps it, once its
+ * opening named the key and the recovery entries were listed; none before.
+ */
+export const runningClaimOf = (
+  opening: EntryRead<RunningOpening>,
+  entries: EntryRead<readonly ListedRecoveryEntry[]>,
+  choices: readonly ReceivingChoice[],
+  keys: readonly HeldKeySource[],
+  route: RecoveryRoute
+): RunningClaim => {
+  if (opening.status !== 'answered' || entries.status !== 'answered') {
+    return { ownership: null, target: null }
+  }
+  const { newKey } = opening.value
+  const seedReceivers = seedReceiversOf(entries.value, choices)
+  const ownership = ownershipOf(newKey, seedReceivers, keys)
+  return {
+    ownership,
+    target: continueTargetOf(newKey, ownership, seedReceivers, choices, route)
+  }
 }
 
 /** Whether a key the keystore holds is an authority of the account. */

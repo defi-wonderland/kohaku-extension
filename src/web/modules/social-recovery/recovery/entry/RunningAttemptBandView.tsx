@@ -5,7 +5,9 @@
  * the key is one this device holds, the band says so and offers to continue
  * with that key. Otherwise it waits it out, or, for a reader who holds the
  * account's own key, offers the cancel. A read that failed draws its line
- * with retry, never no attempt and never a key. An attempt that ended while
+ * with retry, never no attempt and never a key; whose recovery it is waits
+ * for the listing of the recovery entries, and a listing that failed draws
+ * its line with retry and no claim. An attempt that ended while
  * the band stood leaves the band saying so.
  */
 import React from 'react'
@@ -31,6 +33,7 @@ const RUNNING = 'socialRecovery.entry.runningAttempt'
 const RunningAttemptBandView = ({
   attempt,
   opening,
+  entries,
   ownership,
   authority,
   canContinue,
@@ -139,7 +142,10 @@ const RunningAttemptBandView = ({
             </Text>
           </View>
         )}
-        {opening.status === 'answered' && whose()}
+        {opening.status === 'answered' &&
+          entries.status === 'failed' &&
+          failed('entry-running-entries-failed')}
+        {opening.status === 'answered' && entries.status === 'answered' && whose()}
       </>
     )
   }

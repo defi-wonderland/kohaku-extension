@@ -314,15 +314,28 @@ export interface ContinueTarget {
   receivingAccount: Address
 }
 
+/**
+ * A read of the registry again while the band stands: the same attempt as it
+ * read, another attempt now drawn in its place, no attempt waiting any more,
+ * or a read that failed, which leaves the band as it was.
+ */
+export type AttemptRecheck =
+  | { status: 'same'; attempt: RunningAttempt }
+  | { status: 'changed' }
+  | { status: 'ended' }
+  | { status: 'failed' }
+
 export interface RunningAttemptState {
   attempt: RunningAttemptRead
   opening: EntryRead<RunningOpening>
   /** Whether a key the keystore holds is an authority of the account. */
   authority: EntryRead<boolean>
   /** The recovery entries this device keeps on the chain, from which the fast track's keys come. */
-  entries: ListedEntries
+  entries: EntryRead<ListedEntries>
   /** Reads again every read that failed. */
   retry: () => void
+  /** Reads the registry once more, after any read already running. */
+  recheck: () => Promise<AttemptRecheck>
 }
 
 export interface RunningAttemptInput {
@@ -339,22 +352,29 @@ export interface RunningAttemptInput {
 
 export type ContinueState = 'idle' | 'writing' | 'failed'
 
+/** Whose recovery the attempt is, and where a recovery that continues with its key is kept. */
+export interface RunningClaim {
+  /** Null while the key or the listing of the recovery entries is not known. */
+  ownership: RunningOwnership | null
+  /** Null where the wallet lists no account to continue under. */
+  target: ContinueTarget | null
+}
+
 export interface RunningAttemptBandProps {
   state: RunningAttemptState
+  claim: RunningClaim
   account: Address
   chainId: ChainId
   records: AccountStepRecords
-  /** The route the holder came by. */
-  route: RecoveryRoute
-  choices: readonly ReceivingChoice[]
-  keys: readonly HeldKeySource[]
   navigate: (to: string) => void
 }
 
 export interface RunningAttemptBandViewProps {
   attempt: RunningAttemptRead
   opening: EntryRead<RunningOpening>
-  /** Whose recovery it is, or null while the key is not known. */
+  /** The listing of the recovery entries, from which the fast track's keys come. */
+  entries: EntryRead<ListedEntries>
+  /** Whose recovery it is, or null while the key or the listing is not known. */
   ownership: RunningOwnership | null
   /** Whether a key the keystore holds is an authority of the account. */
   authority: EntryRead<boolean>

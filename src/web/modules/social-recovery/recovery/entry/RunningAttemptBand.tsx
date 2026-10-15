@@ -1,39 +1,33 @@
 /**
- * The running attempt's band with its two exits. Continue with that key keeps
- * the countdown the chain describes, with the recovery entry under the account
- * that holds the attempt's key, then opens the wait; the recoverer's own
- * session may be gone, and the attempt lives on chain. A session the records
- * keep instead is the one the wait follows. The cancel opens the cancel's own
- * tab for the account.
+ * The running attempt's band with its two exits. Continue with that key reads
+ * the registry once more, then keeps the countdown of the attempt that read
+ * names, with the recovery entry under the account that holds the attempt's
+ * key, and opens the wait; the recoverer's own session may be gone, and the
+ * attempt lives on chain. An attempt that ended meanwhile leaves the band
+ * saying so, and another attempt found in its place is drawn instead; neither
+ * keeps a countdown. A session the records keep instead is the one the wait
+ * follows. The cancel opens the cancel's own tab for the account.
  */
 import React, { useCallback, useMemo, useState } from 'react'
 
 import { cancelPathOf } from '@web/modules/social-recovery/cancel'
 import { waitPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 
-import { continueTargetOf, ownershipOf, seedReceiversOf } from './running'
 import RunningAttemptBandView from './RunningAttemptBandView'
 import type { ContinueState, RunningAttemptBandProps } from './types'
 
 const RunningAttemptBand = ({
   state,
+  claim,
   account,
   chainId,
   records,
-  route,
-  choices,
-  keys,
   navigate
 }: RunningAttemptBandProps) => {
-  const { attempt, opening, authority, entries, retry } = state
+  const { attempt, opening, authority, entries, retry, recheck } = state
+  const { ownership, target } = claim
   const [continueState, setContinueState] = useState<ContinueState>('idle')
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
-
-  const seedReceivers = useMemo(() => seedReceiversOf(entries, choices), [entries, choices])
-  const newKey = opening.status === 'answered' ? opening.value.newKey : null
-  const ownership = newKey ? ownershipOf(newKey, seedReceivers, keys) : null
-  const target =
-    newKey && ownership ? continueTargetOf(newKey, ownership, seedReceivers, choices, route) : null
 
   const onContinue = useCallback(() => {
     if (
@@ -44,28 +38,40 @@ const RunningAttemptBand = ({
     ) {
       return
     }
-    const running = attempt.value
+    const { openedAt } = opening.value
     setContinueState('writing')
-    records
-      .restoreCountdown(
+    const run = async (): Promise<boolean> => {
+      const checked = await recheck()
+      if (checked.status === 'failed') {
+        throw new Error('The registry did not answer before the countdown was kept.')
+      }
+      if (checked.status !== 'same') {
+        return false
+      }
+      const running = checked.attempt
+      await records.restoreCountdown(
         chainId,
         account,
         {
           attemptId: running.attemptId,
           setupNonce: running.setupNonce,
           payloadHash: running.payloadHash,
-          openedAtMs: opening.value.openedAt * 1000
+          openedAtMs: openedAt * 1000
         },
         target
       )
-      .then(
-        () => {
-          setContinueState('idle')
+      return true
+    }
+    run().then(
+      (kept) => {
+        setContinueState('idle')
+        if (kept) {
           navigate(waitPathOf(account))
-        },
-        () => setContinueState('failed')
-      )
-  }, [target, attempt, opening, continueState, records, chainId, account, navigate])
+        }
+      },
+      () => setContinueState('failed')
+    )
+  }, [target, attempt, opening, continueState, recheck, records, chainId, account, navigate])
 
   const onCancel = useCallback(() => navigate(cancelPathOf(account)), [navigate, account])
 
@@ -73,6 +79,7 @@ const RunningAttemptBand = ({
     <RunningAttemptBandView
       attempt={attempt}
       opening={opening}
+      entries={entries}
       ownership={ownership}
       authority={authority}
       canContinue={!!target}

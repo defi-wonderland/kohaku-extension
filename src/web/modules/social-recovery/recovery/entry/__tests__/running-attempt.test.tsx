@@ -55,6 +55,9 @@ const {
   CONFIRMED_READ_LIMIT_MS_STAND_IN: LIMIT_MS
 }: typeof import('@web/modules/social-recovery/recovery/entry/constants') = require('@web/modules/social-recovery/recovery/entry/constants')
 const {
+  CHECKLIST_POLL_MS: POLL_MS
+}: typeof import('@web/modules/social-recovery/recovery/checklist/constants') = require('@web/modules/social-recovery/recovery/checklist/constants')
+const {
   renderDateTimeInZone
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
@@ -150,6 +153,35 @@ const opening = (): AttemptEvents => ({
     }
   }
 })
+
+/** The registry holds no attempt waiting any more: the one it held was cancelled. */
+const attemptCancelled = () => {
+  mockReads.stateOf.mockImplementation(async () => ({
+    ...waitingState(),
+    attempt: { ...waitingState().attempt, state: 'Cancelled' }
+  }))
+}
+
+/** The registry holds a newer attempt, with another payload, whose opening hands the account to the key. */
+const NEXT_ID = ATTEMPT_ID + 1n
+const NEXT_PAYLOAD: Hex = '0x5678'
+const nextAttemptTo = (newKey: Address) => {
+  mockReads.stateOf.mockImplementation(async () => ({
+    ...waitingState(),
+    nextAttemptId: NEXT_ID + 1n,
+    attempt: { ...waitingState().attempt, attemptId: NEXT_ID, payloadHash: keccak256(NEXT_PAYLOAD) }
+  }))
+  mockReads.attemptEventsOf.mockImplementation(async () => {
+    const events = opening()
+    return events.started
+      ? { started: { ...events.started, attemptId: NEXT_ID, payload: NEXT_PAYLOAD } }
+      : events
+  })
+  mockReads.handoverOf.mockImplementation(() => ({
+    newAuthority: newKey,
+    removedAuthority: LOST_KEY
+  }))
+}
 
 /** The registry answers an attempt waiting whose opening hands the account to the key. */
 const attemptTo = (newKey: Address) => {
@@ -534,6 +566,153 @@ describe('the running attempt band', () => {
       expect.objectContaining({ from: 100, to: 300, until: 'opening' })
     )
     expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    page.unmount()
+  })
+})
+
+describe('the running attempt band while it stands', () => {
+  it('says the attempt ended once a later read finds none waiting, offers continue to the readout and releases the reads', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(page.has('entry-continue')).toBe(false)
+    attemptCancelled()
+    await advanceClock(POLL_MS)
+    expect(page.textOf('entry-running-ended')).toBe(t('socialRecovery.entry.runningAttempt.ended'))
+    expect(page.has('entry-continue')).toBe(true)
+    expect(mockClose).toHaveBeenCalledTimes(1)
+    const reads = mockReads.stateOf.mock.calls.length
+    await advanceClock(POLL_MS)
+    expect(mockReads.stateOf.mock.calls.length).toBe(reads)
+    page.unmount()
+    expect(mockClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the registry again when the tab returns to view', async () => {
+    const page = await openRunning()
+    attemptCancelled()
+    await outside(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(page.has('entry-running-ended')).toBe(true)
+    page.unmount()
+  })
+
+  it('names the newer attempt and its key once a later read finds it in place of the first', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    expect(page.has('entry-running-not-yours')).toBe(true)
+    nextAttemptTo(SMART_KEY)
+    await advanceClock(POLL_MS)
+    expect(mockReads.attemptEventsOf).toHaveBeenLastCalledWith(
+      LOST,
+      NEXT_ID,
+      expect.objectContaining({ until: 'opening' })
+    )
+    expect(page.textOf('entry-running-key')).toContain(SMART_KEY)
+    expect(page.has('entry-running-yours')).toBe(true)
+    expect(page.has('entry-running-not-yours')).toBe(false)
+    page.unmount()
+  })
+
+  it('keeps the last answer where a later read fails, never drawing the band as failed', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    mockReads.stateOf.mockRejectedValue(new Error('rpc down'))
+    await advanceClock(POLL_MS)
+    expect(page.has('entry-running-failed')).toBe(false)
+    expect(page.textOf('entry-running-lead')).toBe(finishes())
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(page.has('entry-running-ended')).toBe(false)
+    page.unmount()
+  })
+
+  it('reads the registry before keeping the countdown, and an attempt that ended meanwhile keeps none and says it ended', async () => {
+    attemptTo(SMART_KEY)
+    const page = await openRunning()
+    attemptCancelled()
+    await page.press('entry-running-continue')
+    expect(page.has('entry-running-ended')).toBe(true)
+    expect(page.has('entry-continue')).toBe(true)
+    expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
+    expect(navigate).not.toHaveBeenCalledWith(waitPathOf(LOST))
+    page.unmount()
+  })
+
+  it('keeps no countdown where the registry holds another attempt when continue is pressed, and names the newer one', async () => {
+    attemptTo(SMART_KEY)
+    const page = await openRunning()
+    nextAttemptTo(STRANGER)
+    await page.press('entry-running-continue')
+    expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
+    expect(navigate).not.toHaveBeenCalledWith(waitPathOf(LOST))
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    expect(page.has('entry-running-not-yours')).toBe(true)
+    page.unmount()
+  })
+})
+
+describe('whose recovery the running attempt is', () => {
+  /** A key the wallet holds as the second key of the smart account, and of no other listed account. */
+  const SECOND_KEY: Address = getAddress('0x5ec0000000000000000000000000000000000033')
+
+  it('continues with the second key a listed account holds, under that account', async () => {
+    setWallet({
+      accounts: [DAILY, { ...VAULT, associatedKeys: [SMART_KEY, SECOND_KEY] }],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(SECOND_KEY)]
+    })
+    attemptTo(SECOND_KEY)
+    const page = await openRunning()
+    expect(page.textOf('entry-running-yours')).toBe(
+      t('socialRecovery.entry.runningAttempt.yoursWallet')
+    )
+    await page.press('entry-running-continue')
+    expect(await storedEntry(LOST)).toEqual({
+      account: LOST,
+      route: 'logged-in',
+      receivingAccount: VAULT.addr
+    })
+    expect(navigate).toHaveBeenCalledWith(waitPathOf(LOST))
+    page.unmount()
+  })
+
+  it('offers continue to the readout for a held key no listed account names', async () => {
+    setWallet({
+      accounts: [DAILY, VAULT],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(SECOND_KEY)]
+    })
+    attemptTo(SECOND_KEY)
+    const page = await openRunning()
+    expect(page.textOf('entry-running-yours')).toBe(
+      t('socialRecovery.entry.runningAttempt.yoursWallet')
+    )
+    expect(page.has('entry-running-continue')).toBe(false)
+    expect(page.has('entry-continue')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws a failed listing of the recovery entries with retry and no claim; the retry that answers names the fast track', async () => {
+    attemptTo(BASIC)
+    let down = true
+    const getAll = storage.getAll?.bind(storage)
+    const listing = jest.spyOn(storage, 'getAll').mockImplementation(async () => {
+      if (down || !getAll) {
+        throw new Error('storage unavailable')
+      }
+      return getAll()
+    })
+    const page = await openRunning(FRESH_INSTALL)
+    expect(page.textOf('entry-running-entries-failed')).toContain(
+      t('socialRecovery.entry.runningAttempt.readFailed')
+    )
+    expect(page.has('entry-running-yours')).toBe(false)
+    expect(page.has('entry-running-continue')).toBe(false)
+    expect(page.has('entry-running-cancel')).toBe(false)
+    down = false
+    await page.press('entry-running-entries-failed-retry')
+    expect(page.textOf('entry-running-yours')).toBe(
+      t('socialRecovery.entry.runningAttempt.yoursSeed')
+    )
+    expect(page.has('entry-running-continue')).toBe(true)
+    listing.mockRestore()
     page.unmount()
   })
 })

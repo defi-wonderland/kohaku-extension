@@ -34,7 +34,7 @@ import LookupField from './LookupField'
 import LookupState from './LookupState'
 import { receivingChoicesOf } from './receiving'
 import { confirmedStepOf } from './refusal'
-import { ownKeysOf } from './running'
+import { ownKeysOf, runningClaimOf } from './running'
 import RunningAttemptBand from './RunningAttemptBand'
 import type { AccountStepViewProps } from './types'
 import { useConfirmedReads } from './useConfirmedReads'
@@ -90,9 +90,16 @@ const AccountStepView = ({
     openReads: openAttemptReads,
     active: bandActive
   })
+  const claim = useMemo(
+    () => runningClaimOf(running.opening, running.entries, choices, keys, search.route),
+    [running.opening, running.entries, choices, keys, search.route]
+  )
   // An attempt that ended while the band stood leaves the band saying so, and
-  // continue to the readout comes back.
-  const bandStands = bandActive && running.attempt.status !== 'ended'
+  // continue to the readout comes back; so does it for a recovery to a key
+  // this wallet holds under no account it lists, which cannot continue here.
+  const ownedWithoutAccount =
+    (claim.ownership === 'seed' || claim.ownership === 'wallet') && !claim.target
+  const bandStands = bandActive && running.attempt.status !== 'ended' && !ownedWithoutAccount
 
   const backToField = useCallback(() => {
     setConfirmed(false)
@@ -226,12 +233,10 @@ const AccountStepView = ({
       {bandActive && (
         <RunningAttemptBand
           state={running}
+          claim={claim}
           account={target.address}
           chainId={chainId}
           records={records}
-          route={search.route}
-          choices={choices}
-          keys={keys}
           navigate={navigate}
         />
       )}
