@@ -105,7 +105,7 @@ describe('the lead of a live request', () => {
   })
 
   it('keeps what approving does beside a dead request, without what the wallet shows', async () => {
-    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ nextAttemptId: 4n }))
+    kit.attemptState.mockImplementation(async () => attemptStateOf({ nextAttemptId: 4n }))
     const page = await mountLive()
     expect(page.textOf('guardian-page-columns-aside')).toContain(t(`${PAGE}.lead.effect`))
     expect(page.has('guardian-aside-wallet')).toBe(false)
@@ -274,19 +274,19 @@ describe('the step counter', () => {
   })
 
   it('draws none while the request is read, after a failed read, or once it died', async () => {
-    kit.recoveryState.mockImplementation(() => new Promise(() => {}))
+    kit.attemptState.mockImplementation(() => new Promise(() => {}))
     const reading = await mountLive()
     expect(reading.has('guardian-reading')).toBe(true)
     expect(reading.has('guardian-stage-counter')).toBe(false)
     reading.unmount()
-    kit.recoveryState.mockImplementation(async () => {
+    kit.attemptState.mockImplementation(async () => {
       throw new Error('rpc down')
     })
     const failed = await mountLive()
     expect(failed.has('guardian-read-failed')).toBe(true)
     expect(failed.has('guardian-stage-counter')).toBe(false)
     failed.unmount()
-    kit.recoveryState.mockImplementation(async () => recoveryStateOf({ nextAttemptId: 4n }))
+    kit.attemptState.mockImplementation(async () => attemptStateOf({ nextAttemptId: 4n }))
     const dead = await mountLive()
     expect(dead.has('guardian-dead-void')).toBe(true)
     expect(dead.has('guardian-stage-counter')).toBe(false)
