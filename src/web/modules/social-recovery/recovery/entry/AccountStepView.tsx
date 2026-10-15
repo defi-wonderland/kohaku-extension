@@ -88,6 +88,7 @@ const AccountStepView = ({
     client: ready,
     ownKeys,
     openReads: openAttemptReads,
+    setupBlock: setupState.status === 'answered' ? setupState.value.block.number : null,
     active: bandActive
   })
   const claim = useMemo(

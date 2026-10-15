@@ -47,6 +47,7 @@ export const useRunningAttempt = ({
   client,
   ownKeys,
   openReads,
+  setupBlock,
   active
 }: RunningAttemptInput): RunningAttemptState => {
   const [opened, setOpened] = useState<OpenedAttemptReads>(PENDING_READS)
@@ -60,6 +61,7 @@ export const useRunningAttempt = ({
   const [entriesRound, setEntriesRound] = useState(0)
   const releaseRef = useRef<() => void>(() => undefined)
   const recheckRef = useRef<() => Promise<AttemptRecheck>>(NO_RECHECK)
+  const highBlockRef = useRef(-1)
 
   useEffect(() => {
     if (!active) {
@@ -79,6 +81,13 @@ export const useRunningAttempt = ({
     return release
   }, [active, openReads])
 
+  // The highest block read so far outlives a retry, so a lagging answer just
+  // after one is never taken as the end; it starts again for another account
+  // or another connection.
+  useEffect(() => {
+    highBlockRef.current = setupBlock ?? -1
+  }, [account, opened, setupBlock])
+
   useEffect(() => {
     setAttempt(PENDING)
     setOpening(PENDING)
@@ -95,7 +104,6 @@ export const useRunningAttempt = ({
     let live = true
     let ended = false
     let held: RunningAttempt | null = null
-    let highBlock = -1
     let stopScan: () => void = () => undefined
     let queue: Promise<unknown> = Promise.resolve()
     let queued = 0
@@ -138,7 +146,7 @@ export const useRunningAttempt = ({
       if (!live) {
         return { status: 'failed' }
       }
-      if (reading === undefined || reading.block < highBlock) {
+      if (reading === undefined || reading.block < highBlockRef.current) {
         if (held) {
           setRefreshFailed(true)
         } else {
@@ -146,7 +154,7 @@ export const useRunningAttempt = ({
         }
         return { status: 'failed' }
       }
-      highBlock = reading.block
+      highBlockRef.current = reading.block
       setRefreshFailed(false)
       const running = reading.attempt
       if (running === null) {

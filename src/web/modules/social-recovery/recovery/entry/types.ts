@@ -358,6 +358,8 @@ export interface RunningAttemptInput {
   /** The account's own keys the keystore holds. */
   ownKeys: readonly Address[]
   openReads: AttemptReadsOpener
+  /** The block the setup read pinned, below which no read of the registry is accepted; null where none answered. */
+  setupBlock: number | null
   /** False until the band stands; nothing is read before. */
   active: boolean
 }

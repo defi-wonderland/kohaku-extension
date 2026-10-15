@@ -677,6 +677,38 @@ describe('the running attempt band while it stands', () => {
     expect(mockClose).toHaveBeenCalledTimes(1)
   })
 
+  it('reads the first read after a retry from an older block with no attempt as failed, never as the end', async () => {
+    mockReads.attemptEventsOf.mockRejectedValueOnce(new Error('rpc down'))
+    const page = await openRunning()
+    expect(page.has('entry-running-opening-failed')).toBe(true)
+    attemptCancelled()
+    mockReads.latestBlock.mockImplementation(async () => ({
+      number: 200,
+      timestamp: OPENED_AT + 50,
+      hash: `0x${'cd'.repeat(32)}`
+    }))
+    await page.press('entry-running-opening-failed-retry')
+    expect(page.has('entry-running-ended')).toBe(false)
+    expect(page.has('entry-running-failed')).toBe(true)
+    expect(page.has('entry-continue')).toBe(false)
+    expect(mockClose).not.toHaveBeenCalled()
+    page.unmount()
+  })
+
+  it('reads a first read from a block older than the setup read with no attempt as failed, never as the end', async () => {
+    attemptCancelled()
+    mockReads.latestBlock.mockImplementation(async () => ({
+      number: 150,
+      timestamp: OPENED_AT,
+      hash: `0x${'cd'.repeat(32)}`
+    }))
+    const page = await openRunning()
+    expect(page.has('entry-running-ended')).toBe(false)
+    expect(page.has('entry-running-failed')).toBe(true)
+    expect(mockClose).not.toHaveBeenCalled()
+    page.unmount()
+  })
+
   it('reads a later read of the same attempt from an older block as failed', async () => {
     useLiveFakeClock()
     const page = await openRunning()
