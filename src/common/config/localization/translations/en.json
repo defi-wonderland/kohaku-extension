@@ -1140,6 +1140,7 @@
       "started": "Started {{date}}",
       "finishes": "Finishes {{date}}",
       "ended": "Waiting period ended {{date}}",
+      "endFromChainTitle": "Where the end comes from",
       "endFromChain": "The end comes from the recovery registry on chain, not from this device's clock.",
       "startedOnChain": "Recovery started on chain",
       "explorer": "View on explorer",

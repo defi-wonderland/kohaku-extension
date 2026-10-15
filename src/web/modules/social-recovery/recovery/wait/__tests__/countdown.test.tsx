@@ -108,7 +108,7 @@ describe('the countdown', () => {
     expect(aside?.querySelector('[data-testid="wait-start-hash"]')).not.toBeNull()
     expect(aside?.querySelector('[data-testid="wait-explorer"]')).not.toBeNull()
     expect(aside?.querySelector('[data-testid="wait-end-from-chain"]')?.textContent).toBe(
-      t('socialRecovery.wait.endFromChain')
+      t('socialRecovery.wait.endFromChainTitle') + t('socialRecovery.wait.endFromChain')
     )
     expect(view.byTestId('wait-can-close')).not.toBeNull()
     expect(view.byTestId('wait-owner-can-cancel')).not.toBeNull()

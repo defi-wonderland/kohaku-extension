@@ -184,13 +184,8 @@ const WaitView = ({
           />
         </SectionCard>
       )}
-      {counting && (
-        <SectionCard tone="muted" spacing="item" testID="wait-end-from-chain">
-          <Text fontSize={12} appearance="secondaryText">
-            {t(`${WAIT}.endFromChain`)}
-          </Text>
-        </SectionCard>
-      )}
+      {counting &&
+        note(t(`${WAIT}.endFromChainTitle`), [t(`${WAIT}.endFromChain`)], 'wait-end-from-chain')}
       {phase.kind === 'waiting' &&
         note(t(`${WAIT}.canCloseTitle`), [t(`${WAIT}.canCloseBody`)], 'wait-can-close')}
       {phase.kind !== 'cannotExecute' &&

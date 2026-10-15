@@ -108,7 +108,12 @@ const DetailsBlock = ({ route, ready }: DetailsBlockProps) => {
             )}
             {line(t(`${SUBMIT}.ownerCanCancel`), 'submit-owner-can-cancel')}
           </SectionCard>
-          <SectionCard tone="muted" spacing="item" testID="submit-publication">
+          <SectionCard
+            tone="muted"
+            spacing="item"
+            label={t('socialRecovery.review.publicationHeader')}
+            testID="submit-publication"
+          >
             {publicationLinesOf(layout, chosen, t).map((text) =>
               line(text, 'submit-publication-line')
             )}

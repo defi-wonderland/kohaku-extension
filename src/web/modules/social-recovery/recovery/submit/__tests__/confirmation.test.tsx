@@ -163,7 +163,9 @@ describe('the submission confirmation', () => {
       expect(details?.querySelector('[data-testid="submit-payment"]')).toBeNull()
       expect(details?.querySelector('[data-testid="submit-path"]')).not.toBeNull()
       expect(details?.querySelector('[data-testid="submit-wait"]')).not.toBeNull()
-      expect(details?.querySelector('[data-testid="submit-publication"]')).not.toBeNull()
+      expect(details?.querySelector('[data-testid="submit-publication"]')?.textContent).toContain(
+        t('socialRecovery.review.publicationHeader')
+      )
     })
 
     it('stays closed until the recoverer opens it', async () => {
