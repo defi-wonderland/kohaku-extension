@@ -285,6 +285,12 @@ export interface RunningAttempt {
   block: number
 }
 
+/** One read of the registry: the block it pinned, and the attempt waiting there or null where none waits. */
+export interface RunningAttemptReading {
+  block: number
+  attempt: RunningAttempt | null
+}
+
 /** The registry's read of the attempt: running, answered, failed, or no attempt waiting any more. */
 export type RunningAttemptRead = EntryRead<RunningAttempt> | { status: 'ended' }
 
@@ -332,6 +338,12 @@ export interface RunningAttemptState {
   authority: EntryRead<boolean>
   /** The recovery entries this device keeps on the chain, from which the fast track's keys come. */
   entries: EntryRead<ListedEntries>
+  /**
+   * Whether the last read of the registry after the first answer failed, did
+   * not answer in time, or pinned a block older than one already read; the
+   * attempt shown is then the last good read's, drawn as failed with retry.
+   */
+  refreshFailed: boolean
   /** Reads again every read that failed. */
   retry: () => void
   /** Reads the registry once more, after any read already running. */
@@ -371,6 +383,8 @@ export interface RunningAttemptBandProps {
 
 export interface RunningAttemptBandViewProps {
   attempt: RunningAttemptRead
+  /** Whether the last read of the registry failed after an earlier one answered. */
+  refreshFailed: boolean
   opening: EntryRead<RunningOpening>
   /** The listing of the recovery entries, from which the fast track's keys come. */
   entries: EntryRead<ListedEntries>

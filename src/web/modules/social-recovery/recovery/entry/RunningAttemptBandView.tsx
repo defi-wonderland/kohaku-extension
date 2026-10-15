@@ -5,10 +5,11 @@
  * the key is one this device holds, the band says so and offers to continue
  * with that key. Otherwise it waits it out, or, for a reader who holds the
  * account's own key, offers the cancel. A read that failed draws its line
- * with retry, never no attempt and never a key; whose recovery it is waits
- * for the listing of the recovery entries, and a listing that failed draws
- * its line with retry and no claim. An attempt that ended while
- * the band stood leaves the band saying so.
+ * with retry, never no attempt and never a key; a later read of the attempt
+ * that failed draws its line with retry above the attempt last read. Whose
+ * recovery it is waits for the listing of the recovery entries, and a
+ * listing that failed draws its line with retry and no claim. An attempt
+ * that ended while the band stood leaves the band saying so.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -32,6 +33,7 @@ const RUNNING = 'socialRecovery.entry.runningAttempt'
 
 const RunningAttemptBandView = ({
   attempt,
+  refreshFailed,
   opening,
   entries,
   ownership,
@@ -128,6 +130,7 @@ const RunningAttemptBandView = ({
     const { date } = renderDateTimeInZone(attempt.value.consumableAfter * 1000, timeZone)
     body = (
       <>
+        {refreshFailed && failed('entry-running-refresh-failed')}
         {line(t(`${RUNNING}.lead`, { date }), 'entry-running-lead')}
         {opening.status === 'pending' &&
           line(t('socialRecovery.watcher.banner.newKeyPending'), 'entry-running-key-pending', true)}
@@ -141,6 +144,9 @@ const RunningAttemptBandView = ({
               {renderFullAddress(opening.value.newKey)}
             </Text>
           </View>
+        )}
+        {opening.status === 'answered' && entries.status === 'pending' && (
+          <ActivityIndicator testID="entry-running-entries-loading" />
         )}
         {opening.status === 'answered' &&
           entries.status === 'failed' &&

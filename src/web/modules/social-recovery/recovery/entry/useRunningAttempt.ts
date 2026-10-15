@@ -8,9 +8,12 @@
  * reads again every read that failed. Once the attempt answered, the registry
  * is read again on the checklist's poll period and whenever the tab returns
  * to view: an attempt that ended draws the ended state, another attempt in
- * its place is drawn with its own opening, and a read that fails keeps the
- * last answer. The registry's reads are released when the band goes, or once
- * the registry answers that no attempt waits.
+ * its place is drawn with its own opening, and a read that fails, does not
+ * answer in time or pins a block older than one already read keeps the last
+ * answer only beside a failed mark with retry; such a read never ends the
+ * attempt. The listing of the recovery entries has the same limit. The
+ * registry's reads are released when the band goes, or once the registry
+ * answers that no attempt waits.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -51,6 +54,7 @@ export const useRunningAttempt = ({
   const [opening, setOpening] = useState<EntryRead<RunningOpening>>(PENDING)
   const [authority, setAuthority] = useState<EntryRead<boolean>>(PENDING)
   const [entries, setEntries] = useState<EntryRead<ListedEntries>>(PENDING)
+  const [refreshFailed, setRefreshFailed] = useState(false)
   const [attemptRound, setAttemptRound] = useState(0)
   const [authorityRound, setAuthorityRound] = useState(0)
   const [entriesRound, setEntriesRound] = useState(0)
@@ -78,6 +82,7 @@ export const useRunningAttempt = ({
   useEffect(() => {
     setAttempt(PENDING)
     setOpening(PENDING)
+    setRefreshFailed(false)
     recheckRef.current = NO_RECHECK
     if (!active || opened.status === 'loading') {
       return undefined
@@ -90,6 +95,7 @@ export const useRunningAttempt = ({
     let live = true
     let ended = false
     let held: RunningAttempt | null = null
+    let highBlock = -1
     let stopScan: () => void = () => undefined
     let queue: Promise<unknown> = Promise.resolve()
     let queued = 0
@@ -118,24 +124,31 @@ export const useRunningAttempt = ({
 
     // One round reads the registry; the first draws what it finds, a later
     // one changes the band only where the attempt ended or another took its
-    // place, and a later one that fails leaves the band as it was.
+    // place. A read that fails, or pins a block below the highest one already
+    // read, changes nothing: it draws the first read as failed, and a later
+    // one as a failed refresh beside the attempt last read.
     const round = async (): Promise<AttemptRecheck> => {
       if (!live || ended) {
         return ended ? { status: 'ended' } : { status: 'failed' }
       }
-      const running = await readWithin(
+      const reading = await readWithin(
         () => readRunningAttempt(reads, account),
         CONFIRMED_READ_LIMIT_MS_STAND_IN
       ).catch(() => undefined)
       if (!live) {
         return { status: 'failed' }
       }
-      if (running === undefined) {
-        if (!held) {
+      if (reading === undefined || reading.block < highBlock) {
+        if (held) {
+          setRefreshFailed(true)
+        } else {
           setAttempt(FAILED)
         }
         return { status: 'failed' }
       }
+      highBlock = reading.block
+      setRefreshFailed(false)
+      const running = reading.attempt
       if (running === null) {
         ended = true
         held = null
@@ -224,7 +237,7 @@ export const useRunningAttempt = ({
       return undefined
     }
     let live = true
-    records.listRecoveryEntries(chainId).then(
+    readWithin(() => records.listRecoveryEntries(chainId), CONFIRMED_READ_LIMIT_MS_STAND_IN).then(
       (listed) => {
         if (live) {
           setEntries({ status: 'answered', value: listed })
@@ -244,6 +257,9 @@ export const useRunningAttempt = ({
   const retry = useCallback(() => {
     if (attempt.status === 'failed' || opening.status === 'failed') {
       setAttemptRound((round) => round + 1)
+    } else if (refreshFailed) {
+      // The attempt stays drawn while the registry is read once more; the opening is not scanned again.
+      recheckRef.current().catch(() => undefined)
     }
     if (authority.status === 'failed') {
       setAuthorityRound((round) => round + 1)
@@ -251,9 +267,9 @@ export const useRunningAttempt = ({
     if (entries.status === 'failed') {
       setEntriesRound((round) => round + 1)
     }
-  }, [attempt.status, opening.status, authority.status, entries.status])
+  }, [attempt.status, opening.status, refreshFailed, authority.status, entries.status])
 
   const recheck = useCallback(() => recheckRef.current(), [])
 
-  return { attempt, opening, authority, entries, retry, recheck }
+  return { attempt, opening, authority, entries, refreshFailed, retry, recheck }
 }

@@ -24,30 +24,37 @@ import type {
   ReceivingAccountSource,
   ReceivingChoice,
   RunningAttempt,
+  RunningAttemptReading,
   RunningClaim,
   RunningOpening,
   RunningOwnership,
   SeedReceiver
 } from './types'
 
-/** The attempt waiting at the latest block, or null where the registry holds none waiting. */
+/**
+ * The block the read pinned, with the attempt waiting at it, or null where
+ * the registry holds none waiting at that block.
+ */
 export const readRunningAttempt = async (
   reads: AttemptReads,
   account: Address
-): Promise<RunningAttempt | null> => {
+): Promise<RunningAttemptReading> => {
   const block = await reads.latestBlock()
   const state = await reads.stateOf(account, block.number)
   const { attempt } = state
   if (attempt.state !== 'Waiting') {
-    return null
+    return { block: block.number, attempt: null }
   }
   return {
-    attemptId: attempt.attemptId,
-    setupNonce: attempt.setupNonce,
-    payloadHash: attempt.payloadHash,
-    consumableAfter: attempt.consumableAfter,
-    setupBlock: state.setupCommittedAtBlock,
-    block: block.number
+    block: block.number,
+    attempt: {
+      attemptId: attempt.attemptId,
+      setupNonce: attempt.setupNonce,
+      payloadHash: attempt.payloadHash,
+      consumableAfter: attempt.consumableAfter,
+      setupBlock: state.setupCommittedAtBlock,
+      block: block.number
+    }
   }
 }
 
@@ -136,9 +143,11 @@ export const ownershipOf = (
 /**
  * The entry a recovery that continues with the attempt's key is kept under:
  * the fast track's own receiving account on its route, or the wallet's
- * account that holds the attempt's key among its own keys, its basic account
- * first, on the route the holder came by. Null where the wallet lists no
- * account with that key.
+ * account whose first held key is the attempt's key, its basic account
+ * first, on the route the holder came by. The wait takes the receiving
+ * account's first held key as the new key, so an account that holds the
+ * attempt's key only as another of its keys is no target. Null where no
+ * listed account qualifies.
  */
 export const continueTargetOf = (
   newKey: Address,
@@ -152,11 +161,7 @@ export const continueTargetOf = (
     return seed ? { route: 'fresh-install', receivingAccount: seed.receivingAccount } : null
   }
   if (ownership === 'wallet') {
-    const holding = choices.filter(
-      (choice) =>
-        sameAddress(choice.key.addr, newKey) ||
-        choice.account.associatedKeys.some((associated) => sameAddress(associated, newKey))
-    )
+    const holding = choices.filter((choice) => sameAddress(choice.key.addr, newKey))
     const choice = holding.find((candidate) => !candidate.smart) ?? holding[0]
     return choice ? { route, receivingAccount: choice.address } : null
   }
