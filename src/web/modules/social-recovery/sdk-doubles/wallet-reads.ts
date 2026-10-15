@@ -14,16 +14,22 @@
  * - `fitCheck`: the fit check against the code the account will carry, so a
  *   fresh account with no code yet is judged by the implementation it deploys.
  *
+ *
+ * Beside them, `attemptState` reads the manager's state alone, the recovery
+ * state without the removed key, for a surface that never shows that key.
+ *
  * Every read throws when it could not be made, and never answers empty.
  */
 import type {
   Address,
   ApproverReply,
   ApproverRequest,
+  RecoveryState,
   Verdict
 } from '@web/modules/social-recovery/sdk-interfaces'
 
 import type { ScriptedChain } from './chain'
+import { DEFAULT_BLOCK_TAGS } from './context'
 import { digestOfRequest, doubleProof, sameAddress } from './encoding'
 import { replyReadable, requestReadable } from './orchestrator'
 import type {
@@ -78,6 +84,25 @@ export class WalletReadsDouble implements IWalletReadsDouble {
   async removedKey(): Promise<RemovedKeyReading> {
     this.chain.guard('walletReads.removedKey')
     return this.chain.removedKeyReading(!!this.config.creation)
+  }
+
+  /**
+   * The manager's state at the pinned block, as the recovery state reads it,
+   * without the removed key. Only a block read or a state read scripted to
+   * fail throws.
+   */
+  async attemptState(): Promise<Omit<RecoveryState, 'removedKey'>> {
+    this.chain.guard('provider.block')
+    const block = this.chain.blockAt(DEFAULT_BLOCK_TAGS.read)
+    this.chain.guard('manager.stateOf')
+    const state = this.chain.stateOf()
+    return {
+      attempt: state.attempt,
+      nextAttemptId: state.nextAttemptId,
+      setupCommitment: state.setupCommitment,
+      setupNonce: state.setupNonce,
+      block
+    }
   }
 
   async fitCheck(accountImplementation?: Address): Promise<FitCheckReading> {
