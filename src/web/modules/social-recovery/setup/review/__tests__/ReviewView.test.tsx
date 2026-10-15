@@ -295,14 +295,38 @@ describe('the verify-the-details expander', () => {
     expect(textOf('review-verify-details')).toBe(t('socialRecovery.review.verifyDetails'))
     expect(byTestId('review-trust-list')).toBeNull()
     expect(pageText()).not.toContain(t('socialRecovery.review.trust.selfAttested'))
-    expect(byTestId('review-columns-aside')?.contains(byTestId('review-verify-details'))).toBe(true)
 
     await press('review-verify-details')
-    expect(byTestId('review-columns-aside')?.contains(byTestId('review-trust-list'))).toBe(true)
 
     expect(byTestId('review-trust-list')).not.toBeNull()
     expect(pageText()).toContain(t('socialRecovery.review.trust.selfAttested'))
     expect(pageText()).toContain(t('socialRecovery.review.trust.deadProvider'))
+  })
+})
+
+describe('where the verify-the-details expander sits', () => {
+  it('holds the expander and its trust list in the main column, after the account and before Save', async () => {
+    await mount()
+    await press('review-verify-details')
+
+    const main = byTestId('review-columns-main')
+    const aside = byTestId('review-columns-aside')
+    ;['review-verify-details', 'review-trust-list'].forEach((id) => {
+      expect(main?.contains(byTestId(id))).toBe(true)
+      expect(aside?.contains(byTestId(id))).toBe(false)
+    })
+    expect(isBefore('review-account', 'review-verify-details')).toBe(true)
+    expect(isBefore('review-trust-list', 'review-save')).toBe(true)
+  })
+
+  it('keeps only the text cards in the aside', async () => {
+    await mount()
+    await press('review-verify-details')
+
+    const aside = byTestId('review-columns-aside')
+    expect(aside?.querySelector('[role="button"]')).toBeNull()
+    expect(aside?.contains(byTestId('review-what-publishes'))).toBe(true)
+    expect(aside?.contains(byTestId('review-comparison'))).toBe(true)
   })
 })
 

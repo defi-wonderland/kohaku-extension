@@ -2,10 +2,10 @@
  * The submission confirmation over given props: the title and its lead, which
  * say the transaction is being sent while the start is on its way, the four
  * values of the lead, Start recovery under them, locked with its reason until
- * the four values rendered and every approval verified,
- * then the verify again of every approval and the run as it stands. Beside
- * them: the verified line, the second-funding note of the deposit step, and
- * verify the details.
+ * the four values rendered and every approval verified, verify the details
+ * under it, then the verify again of every approval and the run as it stands.
+ * Beside them: the verified line and the second-funding note of the deposit
+ * step.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -231,7 +231,6 @@ const SubmitView = ({
       {write.status === 'needsDeposit' && (
         <DepositStepAside step={write.step} testID="submit-gas-second-funding" />
       )}
-      <DetailsBlock route={route} ready={load} />
     </>
   )
 
@@ -251,6 +250,9 @@ const SubmitView = ({
           onRetryRemoved={onRetryRemoved}
         />
         {actions}
+        <View style={spacings.mtSm}>
+          <DetailsBlock route={route} ready={load} />
+        </View>
         {verify.status !== 'verified' && (
           <SectionCard style={spacings.mtSm} testID="submit-verify">
             {verifyBlock()}

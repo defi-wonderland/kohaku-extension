@@ -2,9 +2,10 @@
  * The review over the setup records: the path, the waiting period and the
  * privacy level, the account the save writes to on one line, and Save behind
  * its gate with the reason it cannot run on screen. The save screen names the
- * account in full with the key a recovery would remove. An untested method is
- * named once, beside Save. What a recovery publishes, the
- * spare-key comparison and the trust list under its expander sit beside them.
+ * account in full with the key a recovery would remove. The trust list under
+ * its expander follows the account in the main column, since its retry can
+ * unlock Save. An untested method is named once, beside Save. What a recovery
+ * publishes and the spare-key comparison sit beside them.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Pressable, View } from 'react-native'
@@ -267,43 +268,6 @@ const ReviewView = ({
       >
         {note(t(`${REVIEW}.spareKey`), 'review-spare-key')}
       </SectionCard>
-      <Pressable
-        testID="review-verify-details"
-        accessibilityRole="button"
-        // react-native-web renders this as aria-expanded; the React Native
-        // types do not declare it, so it travels in a spread
-        {...{ accessibilityExpanded: expanded }}
-        onPress={() => setExpanded((open) => !open)}
-        style={[
-          flexbox.directionRow,
-          flexbox.alignCenter,
-          flexbox.justifySpaceBetween,
-          common.borderRadiusPrimary,
-          spacings.ph,
-          spacings.pvSm,
-          spacings.mbSm,
-          {
-            borderWidth: 1,
-            borderColor: theme.secondaryBorder,
-            backgroundColor: theme.secondaryBackground
-          }
-        ]}
-      >
-        <Text fontSize={14} weight="medium">
-          {t(`${REVIEW}.verifyDetails`)}
-        </Text>
-        {expanded ? <UpArrowIcon /> : <DownArrowIcon />}
-      </Pressable>
-      {expanded && !!ready && (
-        <View style={spacings.mbSm}>
-          <TrustList rows={rows} client={ready} onRetry={retry} />
-        </View>
-      )}
-      {expanded && client.status === 'loading' && (
-        <SectionCard>
-          <ActivityIndicator testID="review-trust-spinner" />
-        </SectionCard>
-      )}
     </>
   )
 
@@ -358,6 +322,46 @@ const ReviewView = ({
               : renderShortAddress(account)}
           </Text>
         </SectionCard>
+
+        <View testID="review-details">
+          <Pressable
+            testID="review-verify-details"
+            accessibilityRole="button"
+            // react-native-web renders this as aria-expanded; the React Native
+            // types do not declare it, so it travels in a spread
+            {...{ accessibilityExpanded: expanded }}
+            onPress={() => setExpanded((open) => !open)}
+            style={[
+              flexbox.directionRow,
+              flexbox.alignCenter,
+              flexbox.justifySpaceBetween,
+              common.borderRadiusPrimary,
+              spacings.ph,
+              spacings.pvSm,
+              spacings.mbSm,
+              {
+                borderWidth: 1,
+                borderColor: theme.secondaryBorder,
+                backgroundColor: theme.secondaryBackground
+              }
+            ]}
+          >
+            <Text fontSize={14} weight="medium">
+              {t(`${REVIEW}.verifyDetails`)}
+            </Text>
+            {expanded ? <UpArrowIcon /> : <DownArrowIcon />}
+          </Pressable>
+          {expanded && !!ready && (
+            <View style={spacings.mbSm}>
+              <TrustList rows={rows} client={ready} onRetry={retry} />
+            </View>
+          )}
+          {expanded && client.status === 'loading' && (
+            <SectionCard>
+              <ActivityIndicator testID="review-trust-spinner" />
+            </SectionCard>
+          )}
+        </View>
 
         {!!clientRefusal && (
           <View style={spacings.mbLg} testID="review-client-refusal">

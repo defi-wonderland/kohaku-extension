@@ -1,5 +1,5 @@
 /**
- * Verify the details, the confirmation's expander beside the lead, each part a
+ * Verify the details, the confirmation's expander under Start recovery, each part a
  * muted card: the recovery path with the rows the submission carries and the
  * rows not needed, the waiting period as a duration, that only the account's
  * own key can cancel, what the submission publishes, and on the logged-in

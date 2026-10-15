@@ -148,16 +148,22 @@ describe('the submission confirmation', () => {
   })
 
   describe('verify the details', () => {
-    it('sits beside the lead, its parts as muted cards, the payment not among them', async () => {
+    it('sits in the main column under Start recovery, its parts as muted cards, the payment not among them', async () => {
       const world = await openWorld()
       const mounted = await open(world)
       await openDetails(mounted)
-      const aside = mounted.byTestId('submit-columns-aside')
-      expect(aside?.querySelector('[data-testid="submit-payment"]')).toBeNull()
-      expect(aside?.querySelector('[data-testid="submit-path"]')).not.toBeNull()
-      expect(aside?.querySelector('[data-testid="submit-wait"]')).not.toBeNull()
-      expect(aside?.querySelector('[data-testid="submit-publication"]')).not.toBeNull()
-      expect(mounted.byTestId('submit')?.querySelector('[data-testid="submit-details"]')).toBeNull()
+      const details = mounted.byTestId('submit-details')
+      expect(mounted.byTestId('submit-columns-main')?.contains(details)).toBe(true)
+      expect(mounted.byTestId('submit-columns-aside')?.contains(details)).toBe(false)
+      const action = mounted.byTestId('submit-action')
+      expect(
+        // eslint-disable-next-line no-bitwise
+        action!.compareDocumentPosition(details!) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+      expect(details?.querySelector('[data-testid="submit-payment"]')).toBeNull()
+      expect(details?.querySelector('[data-testid="submit-path"]')).not.toBeNull()
+      expect(details?.querySelector('[data-testid="submit-wait"]')).not.toBeNull()
+      expect(details?.querySelector('[data-testid="submit-publication"]')).not.toBeNull()
     })
 
     it('stays closed until the recoverer opens it', async () => {
