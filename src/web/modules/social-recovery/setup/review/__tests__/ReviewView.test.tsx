@@ -295,8 +295,10 @@ describe('the verify-the-details expander', () => {
     expect(textOf('review-verify-details')).toBe(t('socialRecovery.review.verifyDetails'))
     expect(byTestId('review-trust-list')).toBeNull()
     expect(pageText()).not.toContain(t('socialRecovery.review.trust.selfAttested'))
+    expect(byTestId('review-columns-aside')?.contains(byTestId('review-verify-details'))).toBe(true)
 
     await press('review-verify-details')
+    expect(byTestId('review-columns-aside')?.contains(byTestId('review-trust-list'))).toBe(true)
 
     expect(byTestId('review-trust-list')).not.toBeNull()
     expect(pageText()).toContain(t('socialRecovery.review.trust.selfAttested'))
@@ -495,20 +497,13 @@ describe('save and the trust list reads', () => {
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupPrivacy)
   })
 
-  it('shows the one-confirmation line under the save action', async () => {
+  it('states no cost under the save action, which the save screen carries', async () => {
     await mount()
 
-    const elements = Array.from(container.querySelectorAll<HTMLElement>('*'))
-    const confirmation = elements.findIndex(
-      (element) =>
-        element.children.length === 0 &&
-        element.textContent === t('socialRecovery.review.oneConfirmation')
-    )
-    const save = elements.findIndex((element) => element.dataset.testid === 'review-save')
-    const lastInSave = elements.findLastIndex((element) => elements[save]?.contains(element))
-
-    expect(save).toBeGreaterThanOrEqual(0)
-    expect(confirmation).toBeGreaterThan(lastInSave)
+    expect(byTestId('review-save')).not.toBeNull()
+    expect(pageText()).not.toContain('One confirmation')
+    expect(pageText()).not.toContain(t('socialRecovery.costLines.save'))
+    expect(pageText()).not.toContain(t('socialRecovery.costLines.recovery'))
   })
 })
 
@@ -751,22 +746,13 @@ describe('the lead', () => {
       t
     )
 
-  it('renders the rule lines of a two-of-three group', async () => {
+  it('leaves the rule lines of the shape to the editor', async () => {
     const clauses = [group(2, ALICE, BOB, PASSKEY)]
     await mount({ clauses })
 
-    const lines = textsStartingWith('review-rule-line-')
-    expect(lines).toEqual(ruleLinesFor(clauses))
-    expect(lines.length).toBeGreaterThan(0)
-  })
-
-  it('renders the rule lines of a single row', async () => {
-    const clauses = [required(PASSKEY)]
-    await mount({ clauses })
-
-    const lines = textsStartingWith('review-rule-line-')
-    expect(lines).toEqual(ruleLinesFor(clauses))
-    expect(lines.length).toBeGreaterThan(0)
+    expect(textsStartingWith('review-rule-line-')).toEqual([])
+    expect(byTestId('review-rule-lines')).toBeNull()
+    ruleLinesFor(clauses).forEach((ruleLine) => expect(pageText()).not.toContain(ruleLine))
   })
 
   it('carries the hostile-minority guidance once for a group of three, and not for a group of two', async () => {
@@ -786,24 +772,30 @@ describe('the lead', () => {
 
     expect(textOf('review-wait')).toBe(t('socialRecovery.privacy.waitingPeriod.chips.days7'))
     expect(textOf('review-spare-key')).toBe(t('socialRecovery.review.spareKey'))
+    const aside = byTestId('review-columns-aside')
+    expect(aside?.contains(byTestId('review-comparison'))).toBe(true)
+    expect(textOf('review-comparison')).toContain('One comparison')
+    expect(byTestId('review-columns-main')?.contains(byTestId('review-wait'))).toBe(true)
   })
 
   it("names a wait under one hour in minutes, and the floor in a release build's words", async () => {
     await mount({ wait: 300n })
 
     expect(textOf('review-wait')).toBe('5 minutes')
-    expect(pageText()).toContain("This wallet's minimum is 24 hours. The chain enforces none.")
+    expect(textOf('review-wait-minimum')).toBe("This wallet's minimum is 24 hours.")
+    expect(pageText()).not.toContain('The chain enforces none')
   })
 
-  it('carries the publication line once with its second sentence and the save cost', async () => {
+  it('carries the publication line once with its second sentence, beside the path, with no cost', async () => {
     await mount({ clauses: [required(ALICE)] })
 
     expect(textsStartingWith('review-publication')).toEqual([
       t('socialRecovery.review.publication.lead'),
       t('socialRecovery.review.publication.guardian')
     ])
-    expect(textOf('review-save-cost')).toBe(t('socialRecovery.costLines.save'))
-    expect(pageText()).toContain(t('socialRecovery.costLines.recovery'))
+    expect(byTestId('review-columns-aside')?.contains(byTestId('review-what-publishes'))).toBe(true)
+    expect(byTestId('review-save-cost')).toBeNull()
+    expect(byTestId('review-costs')).toBeNull()
   })
 
   it('reads Private with the recovery password set', async () => {
@@ -1328,9 +1320,8 @@ describe('the key a recovery would remove', () => {
   it('is named in full under the account with its line', async () => {
     await mount()
 
-    expect(textOf('review-removed-key')).toContain(
-      t('socialRecovery.display.values.keyBeingRemoved')
-    )
+    expect(textOf('review-removed-key')).toContain('Key a recovery would remove')
+    expect(textOf('review-removed-key')).not.toContain('Key being removed')
     expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
     expect(textOf('review-removed-key-line')).toBe(t('socialRecovery.review.keyRemovedLine'))
     expect(isDisabled('review-save')).toBe(false)

@@ -156,6 +156,7 @@ export const pathRowOf = (
       name: kind ? kindNameOf(kind, t) : renderFullAddress(credential.method),
       aside: null,
       chip: renderChip('method', 'notYetActive', t),
+      tested: false,
       lines: []
     }
   }
@@ -181,6 +182,7 @@ export const pathRowOf = (
     name,
     aside,
     chip: enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null,
+    tested: enrollment?.test === 'passed',
     lines: [...(enrollment ? verdictLinesOf(enrollment, t) : []), ...kindLinesOf(kind, t)]
   }
 }

@@ -1,7 +1,8 @@
 /**
  * The enroll screen for one slot of the path: the passkey row or the guardian
  * row fills it with the credential its enrollment produced. Save and continue
- * and Back both return to the editor with the records as they stand.
+ * and Back both return to the editor with the records as they stand; the
+ * line that saving works without the test shows until a test has run.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -131,30 +132,15 @@ const EnrollView = ({
   const enrollment = load.status === 'enrolled' ? load.enrollment : null
   let note: string | undefined
   let noteTestID: string | undefined
-  if (enrollment) {
+  if (enrollment?.test === 'not-tested') {
     note = t('socialRecovery.enroll.saveWithoutTest')
     noteTestID = 'enroll-save-without-test'
   } else if (search.kind === 'passkey') {
     note = t('socialRecovery.enroll.passkey.createFirst')
     noteTestID = 'enroll-create-first'
   }
-  const row = {
-    records,
-    setup,
-    chainId,
-    account,
-    navigate,
-    search,
-    book,
-    client,
-    deps,
-    enrollment,
-    onEnrollment
-  }
-
-  return (
-    <View testID="enroll-screen">
-      {search.kind === 'passkey' ? <PasskeyRow {...row} /> : <GuardianRow {...row} />}
+  const actions = (
+    <>
       <ClientStateLine client={client} />
       <ActionsRow
         primary={
@@ -175,6 +161,26 @@ const EnrollView = ({
         note={note}
         noteTestID={noteTestID}
       />
+    </>
+  )
+  const row = {
+    records,
+    setup,
+    chainId,
+    account,
+    navigate,
+    search,
+    book,
+    client,
+    deps,
+    enrollment,
+    onEnrollment,
+    actions
+  }
+
+  return (
+    <View testID="enroll-screen">
+      {search.kind === 'passkey' ? <PasskeyRow {...row} /> : <GuardianRow {...row} />}
     </View>
   )
 }

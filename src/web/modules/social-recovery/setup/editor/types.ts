@@ -64,7 +64,6 @@ export type AddTarget =
 export interface EditorLoad {
   draft: SetupDraft
   enrollments: Enrollment[]
-  mode: 'adjust' | 'build'
   roles: ClauseRole[]
 }
 
@@ -170,8 +169,14 @@ export interface IndexedClause {
   index: number
 }
 
+/**
+ * How far the draft's slots are filled: no method yet, a slot still waiting
+ * for its method, or every slot holding one.
+ */
+export type EditorFill = 'empty' | 'open' | 'filled'
+
 export interface EditorHeaderProps {
-  mode: EditorLoad['mode']
+  fill: EditorFill
   /** Whether the last move was refused because the path already holds the credential. */
   refused: boolean
 }

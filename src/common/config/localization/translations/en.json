@@ -354,7 +354,9 @@
       }
     },
     "disclosures": {
-      "guardianPublication": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used. If a recovery uses this guardian, their address goes on chain in the clear. Even unused, anyone who can guess it can find it. Ask them first.",
+      "guardianAskFirst": "Ask your guardian first: a recovery publishes their address on chain in the clear.",
+      "guardianPublicationHeader": "What a recovery publishes",
+      "guardianPublication": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used. Even unused, anyone who can guess a guardian's address can find it.",
       "smartAccount": "If this address is a smart account, whoever controls it can approve for it.",
       "identity": "This method shows the details on the document, not that you are the one using it now.",
       "passportPublication": "If a recovery ever uses this method, the identifier your passport produces goes on chain in the clear, beside your account. Any later setup with the same passport can be linked to it.",
@@ -383,7 +385,7 @@
     },
     "honestyNote": "Recovery helps if you lose your key. It cannot stop someone who already has it.",
     "presets": {
-      "lead": "One recovery path per account. Pick the shape that fits you. You can change it later in Settings.",
+      "lead": "One recovery path per account. Pick the shape that fits you.",
       "customize": "Customize",
       "pickOne": "Pick one · this becomes your recovery path",
       "passkeyRequired": "Passkey (required)",
@@ -419,13 +421,11 @@
       "recoverLine": "Lost access to another account? Start here."
     },
     "editor": {
-      "adjust": {
-        "title": "Adjust your path",
-        "lead": "Change what the path requires. Everything here is still a draft on this device."
-      },
-      "build": {
-        "title": "Build your path",
-        "lead": "Add the methods you want. Everything here is still a draft on this device."
+      "title": "Set up your path",
+      "lead": {
+        "empty": "Add the methods you want. Everything here is still a draft on this device.",
+        "open": "Fill each method. Everything here is still a draft on this device.",
+        "filled": "Every method is set. Continue when the path is right."
       },
       "requiredHeader": "Required",
       "groupHeader": "Group",
@@ -439,7 +439,6 @@
       "makeItAGroup": "Make it a group",
       "addSecondMethod": "Add a second method",
       "nothingRequired": "Nothing required yet",
-      "noGroup": "No group yet. A group is any N of its members.",
       "duplicate": "This method is already in your path. This wallet allows each method once.",
       "saveChanges": "Save changes",
       "continueUnlock": "Continue unlocks when your path has at least one method.",
@@ -470,15 +469,15 @@
       "passkey": {
         "title": "Set up your passkey",
         "authenticators": "Face ID, a fingerprint or a security key",
-        "explainer": "A passkey is a key held by this device or your password manager. You approve a recovery with Face ID, a fingerprint or a security key. There is nothing to remember and nothing to write down.",
+        "explainerHeader": "What a passkey is",
+        "explainer": "A passkey is a key held by this device or your password manager. You approve a recovery with it. There is nothing to remember and nothing to write down.",
         "nameLabel": "Passkey name",
         "defaultName": "{{device}} passkey",
         "noneYet": "No passkey exists yet",
-        "createLine": "Your device creates the key. It asks you for Face ID, a fingerprint or a security key, and nothing is sent to the network.",
+        "createLine": "Your device creates the key and sends nothing to the network.",
         "create": "Create passkey",
         "createOnPhoneInstead": "Create it on your phone instead",
         "createOnPhone": "Create it on your phone",
-        "testOffered": "The access test is offered right after. Save works with or without the test.",
         "createFirst": "Create the passkey first.",
         "testLead": "Sign one test challenge with this passkey. The test runs locally.",
         "testPassed": "Your passkey signed a test challenge on this device. The test runs locally.",
@@ -518,6 +517,7 @@
       }
     },
     "privacy": {
+      "defaultChip": "Default",
       "waitingPeriod": {
         "lead": "A recovery never finishes at once. While the waiting period runs, the account's own key can cancel a recovery it did not start.",
         "fieldLabel": "Waiting period for this account",
@@ -531,7 +531,7 @@
         "custom": "Custom",
         "customUnit": "hours",
         "customUnitMinutes": "minutes",
-        "minimumDefault": "This wallet needs a waiting period of {{minimum}} or more. The default is {{defaultLength}}.",
+        "customMinimum": "At least {{minimum}}.",
         "belowMinimum": "This wallet needs {{minimum}} or more.",
         "pastCeiling": "This wallet cannot save a waiting period this long. The longest it accepts is {{hours}} hours.",
         "wholeHours": "This wallet counts the waiting period in whole hours.",
@@ -547,7 +547,6 @@
         "header": "What can others read",
         "private": {
           "label": "Private",
-          "badge": "Default",
           "line": "A stranger sees that this account has a recovery setup and nothing of what it is until a recovery runs, which publishes the whole rule on chain in the clear."
         },
         "shapeVisible": {
@@ -560,6 +559,7 @@
           "line": "Everything is readable by anyone. No password is set and the card carries only the address."
         },
         "exposure": {
+          "header": "What stays hidden",
           "guardians": "Every guardian of your path is hidden from a stranger who cannot guess their address.",
           "unguessable": "{{items}} cannot be guessed at all and lose nothing before a recovery.",
           "unguessableOne": "{{items}} cannot be guessed at all and loses nothing before a recovery."
@@ -580,8 +580,9 @@
       "pathHeader": "Your recovery path",
       "hostileMinority": "With three or more members, choose a threshold a hostile minority cannot reach: a set that satisfies the rule can also cancel a recovery at once.",
       "spareKey": "A spare key on this account is the cheaper way to survive a lost key, and no help against a stolen one.",
-      "minimum": "This wallet's minimum is {{minimum}}. The chain enforces none.",
-      "costsHeader": "What a recovery costs and shows",
+      "spareKeyHeader": "One comparison",
+      "minimum": "This wallet's minimum is {{minimum}}.",
+      "publicationHeader": "What a recovery publishes",
       "publication": {
         "lead": "A recovery publishes the whole recovery path on chain in the clear, every method in it and not only the ones it used.",
         "methods": "{{items}} becomes public and permanent.",
@@ -626,7 +627,6 @@
       },
       "keyRemovedLine": "A recovery would remove this key. Saving this setup does not remove it.",
       "save": "Save recovery path",
-      "oneConfirmation": "One confirmation. The whole path is saved in one transaction your account's key pays.",
       "blocked": {
         "unavailable": {
           "chip": "Unavailable",
@@ -669,6 +669,8 @@
       "passkeyDeviceBound": "device-bound"
     },
     "arm": {
+      "keyRecoveryWouldRemove": "Key a recovery would remove",
+      "costHeader": "What it costs",
       "title": "Setup saved",
       "live": "Your recovery path is live from this moment. Your Recovery Card is next.",
       "savedOnChain": "Saved on chain",
@@ -698,7 +700,7 @@
     },
     "card": {
       "title": "Your Recovery Card",
-      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
+      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe.",
       "cardTitle": "Kohaku · Recovery card",
       "reveal": "Reveal",
       "hide": "Hide",

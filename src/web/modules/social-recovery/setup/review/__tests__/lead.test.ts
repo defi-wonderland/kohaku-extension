@@ -279,6 +279,7 @@ describe('a row of the path', () => {
       name: PASSKEY.label,
       aside: t('socialRecovery.review.passkeySynced'),
       chip: chip('tested'),
+      tested: true,
       lines: []
     })
   })
@@ -287,6 +288,7 @@ describe('a row of the path', () => {
     const row = rowOf(enrolled(PASSKEY, 'not-tested', { backup: 'device-bound' }))
     expect(row.aside).toBe(t('socialRecovery.review.passkeyDeviceBound'))
     expect(row.lines).toEqual([t(`${CEREMONY}.notTestedLine`)])
+    expect(row.tested).toBe(false)
   })
 
   it('reads an empty slot by its kind as not yet active, with no line', () => {
@@ -295,6 +297,7 @@ describe('a row of the path', () => {
       name: t('socialRecovery.methodNames.passport'),
       aside: null,
       chip: chip('notYetActive'),
+      tested: false,
       lines: []
     })
   })
