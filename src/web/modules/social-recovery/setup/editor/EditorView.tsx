@@ -20,7 +20,8 @@ import type { Clause, Finding, SetupDraft } from '@web/modules/social-recovery/s
 import { ActionsRow, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records'
-import { getRuleLines } from '@web/modules/social-recovery/shared/rule-lines'
+import { getRuleLines, RULE_LINE_KEYS } from '@web/modules/social-recovery/shared/rule-lines'
+import type { RuleLineKey } from '@web/modules/social-recovery/shared/rule-lines'
 
 import EditorActions from './EditorActions'
 import EditorHeader from './EditorHeader'
@@ -65,6 +66,12 @@ import type {
   Refusal,
   SlotPosition
 } from './types'
+
+/** The lines that offer a second method; while one shows, the path offers the button that adds it. */
+const SECOND_METHOD_OFFERS: readonly RuleLineKey[] = [
+  RULE_LINE_KEYS.secondMethodOffer,
+  RULE_LINE_KEYS.secondMethodOfferAny
+]
 
 const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps) => {
   const { t } = useTranslation()
@@ -369,23 +376,7 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
     clientRefusal = 'unavailable'
   }
 
-  const aside =
-    ruleLines.length > 0 ? (
-      <RuleLines
-        ruleLines={ruleLines}
-        checking={checking}
-        secondMenuOpen={menu?.place === 'second'}
-        canMakeItAGroup={offersMakeItAGroup(clauses)}
-        // The offer counts required rows by their stored shape, so the
-        // press gathers every clause that shape reads as a row.
-        onMakeItAGroup={() =>
-          commit(makeItAGroup(current()), makeItAGroupRoles(rolesOf(current())))
-        }
-        onToggleSecondMenu={() => toggleMenu({ place: 'second' })}
-        onPickKind={onPickKind}
-        onCloseMenu={closeMenu}
-      />
-    ) : undefined
+  const aside = ruleLines.length > 0 ? <RuleLines ruleLines={ruleLines} /> : undefined
 
   return (
     <TwoColumn testID="editor-columns" aside={aside}>
@@ -423,6 +414,13 @@ const EditorView = ({ records, client, addressBook, navigate }: EditorViewProps)
             commit(removeClause(current(), index), withoutRole(currentRoles(), index))
           }
           onAddGroup={() => commit(addGroup(current()), [...currentRoles(), 'group'])}
+          offersSecondMethod={ruleLines.some(({ key }) => SECOND_METHOD_OFFERS.includes(key))}
+          canMakeItAGroup={offersMakeItAGroup(clauses)}
+          // The offer counts required rows by their stored shape, so the
+          // press gathers every clause that shape reads as a row.
+          onMakeItAGroup={() =>
+            commit(makeItAGroup(current()), makeItAGroupRoles(rolesOf(current())))
+          }
         />
 
         <EditorActions

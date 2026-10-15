@@ -238,19 +238,15 @@ export interface EditorPathProps extends PathPartProps {
   onToggleMenu: (target: AddTarget) => void
   onRemoveGroup: (group: number) => void
   onAddGroup: () => void
+  /** Whether the path is one method, which "Add a second method" extends. */
+  offersSecondMethod: boolean
+  /** Whether the path is two required rows and no group, which "Make it a group" turns into one group. */
+  canMakeItAGroup: boolean
+  onMakeItAGroup: () => void
 }
 
 export interface RuleLinesProps {
   ruleLines: RuleLine[]
-  checking: boolean
-  /** Whether the second method's kind menu is open. */
-  secondMenuOpen: boolean
-  /** Whether the path is two required rows and no group, which "Make it a group" turns into one group. */
-  canMakeItAGroup: boolean
-  onMakeItAGroup: () => void
-  onToggleSecondMenu: () => void
-  onPickKind: (kind: SlotKind) => void
-  onCloseMenu: () => void
 }
 
 export interface RefusalListProps {
