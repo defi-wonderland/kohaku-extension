@@ -1,6 +1,6 @@
 /**
- * The watcher's start: the extension's browser alarm, every minute while the
- * browser is open, whether the popup is open or not and whether the keystore
+ * The watcher's start: the extension's browser alarm, every 30 minutes while
+ * the browser is open, whether the popup is open or not and whether the keystore
  * is locked or not, and one poll once the accounts have loaded. A poll needs
  * the listed accounts and the recovery chain's network record, never a key.
  *

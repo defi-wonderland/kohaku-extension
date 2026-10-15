@@ -75,12 +75,12 @@ const setUp = ({
 }
 
 describe('the watcher', () => {
-  it('registers an alarm of one minute and polls once at start', async () => {
+  it('registers an alarm of thirty minutes and polls once at start', async () => {
     const { alarms, chain, onBadge } = setUp()
     await settle()
 
     expect(alarms.create).toHaveBeenCalledTimes(1)
-    expect(alarms.create).toHaveBeenCalledWith(WATCHER_ALARM, { periodInMinutes: 1 })
+    expect(alarms.create).toHaveBeenCalledWith(WATCHER_ALARM, { periodInMinutes: 30 })
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
     expect(onBadge).toHaveBeenCalledWith(0)
   })
