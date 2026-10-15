@@ -889,7 +889,11 @@
         "notYours": "The new key is not one this wallet holds.",
         "waitItOut": "Wait it out. Only the account's own key can stop this recovery.",
         "cancelExit": "Cancel it with this wallet's key",
-        "cancelExitBody": "This wallet holds the account's own key, which can cancel the recovery before it finishes."
+        "cancelExitBody": "This wallet holds the account's own key, which can cancel the recovery before it finishes.",
+        "readFailed": "We could not read the running recovery. This says nothing about who started it or whether it still runs.",
+        "authorityFailed": "We could not check whether this wallet holds the account's key.",
+        "writeFailed": "This wallet could not save the recovery's countdown. Try again.",
+        "ended": "This recovery ended while you were reading. Continue to the readout."
       }
     },
     "readout": {
@@ -1391,6 +1395,7 @@
         "title": "We could not check this account",
         "body": "This says nothing about whether a recovery is running.",
         "lastRead": "Last checked {{date}}.",
+        "lastBlock": "Last read at block {{block}}.",
         "retry": "Try again"
       },
       "executed": {
@@ -1414,7 +1419,9 @@
       },
       "inProgress": {
         "title": "Cancelling…",
-        "body": "The attempt is live until this lands. Keep this window open."
+        "body": "The attempt is live until this lands. Keep this window open.",
+        "earlierMayLand": "An earlier cancel of this account may still land and could end this recovery. Wait for it, or cancel again in a few minutes.",
+        "newerAttempt": "Another recovery of this account started meanwhile. This wallet offers its cancel once the earlier one is settled."
       },
       "landed": {
         "title": "The cancel landed",
