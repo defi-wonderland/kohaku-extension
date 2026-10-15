@@ -700,7 +700,7 @@
     },
     "card": {
       "title": "Your Recovery Card",
-      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe, away from the device that holds your wallet.",
+      "lead": "Save it or print it. Keep it somewhere ordinary, a drawer, a folder or a safe.",
       "cardTitle": "Kohaku · Recovery card",
       "reveal": "Reveal",
       "hide": "Hide",
