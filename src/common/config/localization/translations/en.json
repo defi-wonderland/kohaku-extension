@@ -747,7 +747,6 @@
         "body": "Recovery is something you start for your own account, on your own. If somebody asked you to open this screen — a support agent, a helpful stranger, someone in a chat, someone on a call — stop now. They are stealing from you.",
         "nobodyWatches": "Nobody legitimate needs to watch your screen while you do this.",
         "nobodyNeedsPhrase": "Nobody will ever need your recovery phrase. Not us, not anyone.",
-        "walkAway": "You can close this and walk away at any point.",
         "importPointer": "If you still have your recovery phrase, import it instead.",
         "importAction": "Import instead",
         "acknowledgeRecover": "Nobody claiming to be support asked me to do this. I am recovering my own account.",
