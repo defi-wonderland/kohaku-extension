@@ -765,10 +765,8 @@
         "strong": "Strong enough · {{count}} characters",
         "mismatch": "The two passwords you typed do not match.",
         "whatHeader": "What this password does",
-        "thisDeviceOnly": "It unlocks the extension on this device only.",
-        "forgotten": "If you forget it, you can reset the extension and restore your new key from the recovery phrase you write down next.",
-        "staysHere": "It never leaves this device and it is not part of your recovery path.",
-        "twoPasswords": "Recovery may later ask for the recovery password, the one the account's owner set and printed on the Recovery Card. This one only unlocks the extension on this device."
+          "forgotten": "If you forget it, you can reset the extension and restore your new key from the recovery phrase you write down next.",
+          "twoPasswords": "Recovery may later ask for the recovery password, the one printed on the Recovery Card. This one only unlocks the extension on this device."
       },
       "key": {
         "title": "Write down the recovery phrase of your new key",
