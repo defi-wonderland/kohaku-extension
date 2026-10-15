@@ -29,7 +29,8 @@ import type {
   WatchedAttempt,
   WatcherReading,
   WatcherRecord,
-  WatcherStorage
+  WatcherStorage,
+  WatcherWrite
 } from './types'
 
 export const watcherKeyOf = (chainId: ChainId, account: Address): string =>
@@ -96,7 +97,8 @@ const attemptFrom = (value: unknown): WatchedAttempt | undefined => {
     !optional(value.newKey, isStoredAddress) ||
     !optional(value.removedKey, isStoredAddress) ||
     !optional(value.openingGap, (gap) => OPENING_GAPS.some((known) => known === gap)) ||
-    !optional(value.scannedTo, isBlockNumber)
+    !optional(value.scannedTo, isBlockNumber) ||
+    !optional(value.scannedFrom, isBlockNumber)
   ) {
     return undefined
   }
@@ -113,14 +115,19 @@ const endingFrom = (value: unknown): AttemptEnding | undefined => {
     !isObject(value) ||
     !isDecimalString(value.attemptId) ||
     !optional(value.at, isTime) ||
-    !optional(value.endingGap, (gap) => ENDING_GAPS.some((known) => known === gap))
+    !optional(value.endingGap, (gap) => ENDING_GAPS.some((known) => known === gap)) ||
+    !optional(value.notFoundAt, isBlockNumber)
   ) {
     return undefined
   }
   const attemptId = BigInt(value.attemptId)
   const at = value.at as number | undefined
   const endingGap = value.endingGap as EndingGap | undefined
-  const gap = endingGap ? { endingGap } : {}
+  const notFoundAt = value.notFoundAt as number | undefined
+  const gap = {
+    ...(endingGap ? { endingGap } : {}),
+    ...(notFoundAt !== undefined ? { notFoundAt } : {})
+  }
   if (value.road === 'executed' && optional(value.controller, isStoredAddress)) {
     return {
       attemptId,
@@ -212,18 +219,25 @@ export const readWatcherRecord = async (
 
 /**
  * Writes the record `change` makes of the one stored, read and written while
- * the record's lock is held, and answers what it wrote.
+ * the record's lock is held, and answers what it wrote. A write that carries
+ * the block its reading or failure comes from, older than the block of the
+ * stored reading, is dropped and answers the stored record: a poll that
+ * outlived its tick never covers a newer reading.
  */
 export const updateWatcherRecord = (
   storage: WatcherStorage,
   chainId: ChainId,
   account: Address,
   change: (current: WatcherRecord | undefined) => WatcherRecord,
-  now: () => number = Date.now
+  { now = Date.now, block }: WatcherWrite = {}
 ): Promise<WatcherRecord> => {
   const key = watcherKeyOf(chainId, account)
   return inQueue(key, async () => {
-    const next = change(watcherRecordFrom(await storage.get(key)))
+    const current = watcherRecordFrom(await storage.get(key))
+    if (current?.reading && block !== undefined && block < current.reading.block.number) {
+      return current
+    }
+    const next = change(current)
     await storage.set(key, { value: storedWatcherRecordOf(next), savedAt: now() })
     return next
   })

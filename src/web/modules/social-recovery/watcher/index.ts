@@ -10,10 +10,11 @@ export {
   POLL_LIMIT_MS,
   SCAN_LIMIT_MS,
   TICK_LIMIT_MS,
+  RESCAN_MARGIN_BLOCKS,
   OPENING_GAPS,
   ENDING_GAPS
 } from './constants'
-export { startRecoveryWatcher, watchedNetworkOf } from './alarm'
+export { registerRecoveryWatcherAlarm, startRecoveryWatcher, watchedNetworkOf } from './alarm'
 export { pollAccount, pollAccounts, watchedAccountsOf, countsOnBadge } from './poll'
 export {
   watcherKeyOf,
@@ -37,6 +38,7 @@ export type {
   StoredAttemptEnding,
   StoredWatcherRecord,
   WatcherStorage,
+  WatcherWrite,
   WatcherAlarms,
   PollLimits,
   PollInput,

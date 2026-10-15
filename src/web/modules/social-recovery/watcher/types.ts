@@ -47,21 +47,29 @@ export interface WatchedAttempt {
   /** Why no key is named yet; absent once the decode returned a key. */
   openingGap?: OpeningGap
   /**
-   * The last block a scan found no opening up to; the next poll scans the
-   * blocks after it alone. Present while the opening is not found.
+   * The last block a scan found no opening up to. Present while the opening is
+   * not found; the next poll scans again from a margin below it.
    */
   scannedTo?: number
+  /**
+   * The lowest block the scans reached below `scannedTo` where they ran out
+   * before the setup block: the blocks from the setup block to the one below
+   * it are still to scan. Absent where the scans reached the setup block.
+   */
+  scannedFrom?: number
 }
 
 /** What a poll reads of an attempt's opening. */
 export type Opening = Pick<
   WatchedAttempt,
-  'openedAt' | 'newKey' | 'removedKey' | 'openingGap' | 'scannedTo'
+  'openedAt' | 'newKey' | 'removedKey' | 'openingGap' | 'scannedTo' | 'scannedFrom'
 >
 
 /**
  * How the attempt the manager holds ended. A field left undefined with no
  * `endingGap` is one whose log is not read yet; the next poll reads it again.
+ * A log not found is looked for again until the pinned block is a margin past
+ * `notFoundAt`, and the ending settles with `endingGap` only then.
  */
 export type AttemptEnding =
   | {
@@ -73,6 +81,8 @@ export type AttemptEnding =
       at?: number
       /** Why a field is missing although the logs were read. */
       endingGap?: EndingGap
+      /** The pinned block of the first scan that found a log of the ending missing. */
+      notFoundAt?: number
     }
   | {
       attemptId: bigint
@@ -82,6 +92,8 @@ export type AttemptEnding =
       at?: number
       /** Why a field is missing although the logs were read. */
       endingGap?: EndingGap
+      /** The pinned block of the first scan that found a log of the ending missing. */
+      notFoundAt?: number
     }
 
 /** One account's reading at one block. */
@@ -134,6 +146,15 @@ export interface StoredWatcherRecord {
   }
   failed?: PollFailure
   dismissed: string[]
+}
+
+/**
+ * How one record write is made: the clock its save time is stamped with, and
+ * the pinned block of the reading or failure it writes, where one was read.
+ */
+export interface WatcherWrite {
+  now?: () => number
+  block?: number
 }
 
 /** The storage the watcher's records live in. */

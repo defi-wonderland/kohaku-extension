@@ -22,12 +22,18 @@ import type {
   ActionState,
   Address,
   BlockHeader,
+  BlockRange,
   Hex
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { readWithin, within } from '@web/modules/social-recovery/shared/client/limits'
-import type { AttemptScan, WatcherReads } from '@web/modules/social-recovery/shared/client/types'
+import type {
+  AttemptEvents,
+  AttemptScan,
+  WatcherReads
+} from '@web/modules/social-recovery/shared/client/types'
 import { sameHash } from '@web/modules/social-recovery/shared/writes/hashes'
 
+import { RESCAN_MARGIN_BLOCKS } from './constants'
 import { attemptDismissed, readWatcherRecord, updateWatcherRecord } from './record'
 import type {
   AttemptEnding,
@@ -55,13 +61,6 @@ export const messageOf = (thrown: unknown): string =>
 const samePayload = (payload: Hex, payloadHash: Hex): boolean =>
   sameHash(keccak256(payload), payloadHash)
 
-/** The blocks an attempt's logs are scanned over: from the setup's commit to the pinned block. */
-const scanOf = (
-  state: ActionState,
-  block: BlockHeader,
-  until: AttemptScan['until'] = 'opening'
-): AttemptScan => ({ from: state.setupCommittedAtBlock, to: block.number, until })
-
 /** The attempt the last reading holds, where it is this attempt with this payload. */
 const heldAttemptOf = (
   attempt: ActionState['attempt'],
@@ -80,19 +79,70 @@ const openingFieldsOf = ({
   newKey,
   removedKey,
   openingGap,
-  scannedTo
+  scannedTo,
+  scannedFrom
 }: Opening): Opening => ({
   ...(openedAt !== undefined ? { openedAt } : {}),
   ...(newKey ? { newKey } : {}),
   ...(removedKey ? { removedKey } : {}),
   ...(openingGap ? { openingGap } : {}),
-  ...(scannedTo !== undefined ? { scannedTo } : {})
+  ...(scannedTo !== undefined ? { scannedTo } : {}),
+  ...(scannedFrom !== undefined ? { scannedFrom } : {})
 })
 
 /**
+ * The block ranges an opening not found yet is scanned over, newest first: the
+ * blocks from a margin below the last scan's last block to the pinned block,
+ * then the blocks below the ones the earlier scans reached, where they ran out
+ * before the setup block. The first scan reads from the setup block.
+ */
+const openingRangesOf = (
+  setupBlock: number,
+  pinned: number,
+  held: WatchedAttempt | undefined
+): BlockRange[] => {
+  const heldTo = held?.scannedTo
+  if (heldTo === undefined) {
+    return [{ from: setupBlock, to: pinned }]
+  }
+  const top: BlockRange = {
+    from: Math.max(setupBlock, heldTo - RESCAN_MARGIN_BLOCKS),
+    to: pinned
+  }
+  const below = held?.scannedFrom
+  if (below === undefined || below <= setupBlock) {
+    return top.from <= top.to ? [top] : []
+  }
+  if (below >= top.from) {
+    return [{ from: setupBlock, to: pinned }]
+  }
+  const rest: BlockRange = { from: setupBlock, to: below - 1 }
+  return top.from <= top.to ? [top, rest] : [rest]
+}
+
+/**
+ * The blocks the scans of this poll and the earlier ones read, as one range:
+ * the merged stretch that reaches highest. The blocks below it are scanned on
+ * a later poll.
+ */
+const coveredOf = (read: BlockRange[]): BlockRange | undefined =>
+  [...read]
+    .sort((a, b) => b.to - a.to)
+    .reduce<BlockRange | undefined>((covered, range) => {
+      if (!covered) {
+        return { ...range }
+      }
+      return range.to >= covered.from - 1
+        ? { from: Math.min(covered.from, range.from), to: covered.to }
+        : covered
+    }, undefined)
+
+/**
  * The attempt's opening. A decoded opening, or one whose payload does not
- * decode, is never read again; one not found is scanned again over the blocks
- * after the last scan alone.
+ * decode, is never read again. One not found is scanned again on every poll
+ * from a margin below the last scan's last block, so a log a lagging node or
+ * a reorganization put there is read later; a scan that runs out of its limit
+ * keeps the chunks it read, so a long range progresses across polls.
  */
 const openingOf = async (
   reads: WatcherReads,
@@ -107,17 +157,27 @@ const openingOf = async (
   if (held && (held.openingGap === undefined || held.openingGap === 'undecodable')) {
     return openingFieldsOf(held)
   }
-  const scannedTo = held?.scannedTo
-  const from = scannedTo === undefined ? state.setupCommittedAtBlock : scannedTo + 1
-  if (from > block.number) {
-    return openingFieldsOf({ openingGap: 'not-found', scannedTo })
-  }
+  const setupBlock = state.setupCommittedAtBlock
+  const ranges = openingRangesOf(setupBlock, block.number, held)
+  // The lowest block each range's scan reached, by the range's place.
+  const reached: (number | undefined)[] = ranges.map(() => undefined)
+  let stopped = false
   const read = await within(async (): Promise<Opening> => {
-    const { started } = await reads.attemptEventsOf(account, attempt.attemptId, {
-      from,
-      to: block.number,
-      until: 'opening'
-    })
+    const started = await ranges.reduce<Promise<AttemptEvents['started']>>(
+      async (found, range, index) =>
+        (await found) ??
+        (
+          await reads.attemptEventsOf(account, attempt.attemptId, {
+            ...range,
+            until: 'opening',
+            stop: () => stopped,
+            onChunk: (from) => {
+              reached[index] = from
+            }
+          })
+        ).started,
+      Promise.resolve(undefined)
+    )
     if (!started || !samePayload(started.payload, attempt.payloadHash)) {
       return { openingGap: 'not-found', scannedTo: block.number }
     }
@@ -128,22 +188,53 @@ const openingOf = async (
     }
     return { openedAt, newKey: handover.newAuthority, removedKey: handover.removedAuthority }
   }, scanMs)
-  return read ?? openingFieldsOf({ openingGap: 'read-failed', scannedTo })
+  // A scan still running past its limit stops before its next chunk.
+  stopped = true
+  if (read) {
+    return read
+  }
+  const earlier: BlockRange[] =
+    held?.scannedTo === undefined
+      ? []
+      : [{ from: held.scannedFrom ?? setupBlock, to: held.scannedTo }]
+  const covered = coveredOf([
+    ...earlier,
+    ...ranges.flatMap((range, index) => {
+      const from = reached[index]
+      return from === undefined ? [] : [{ from, to: range.to }]
+    })
+  ])
+  return openingFieldsOf({
+    openingGap: 'read-failed',
+    scannedTo: covered?.to,
+    scannedFrom: covered && covered.from > setupBlock ? covered.from : undefined
+  })
 }
 
 const roadOf = (attempt: ActionState['attempt']): AttemptEnding['road'] =>
   attempt.state === 'Consumed' ? 'executed' : 'cancelled'
 
+/** The ending the last reading holds for this attempt and road. */
+const heldEndingOf = (
+  attempt: ActionState['attempt'],
+  previous: WatcherReading | undefined
+): AttemptEnding | undefined => {
+  const held = previous?.ended
+  return held && held.attemptId === attempt.attemptId && held.road === roadOf(attempt)
+    ? held
+    : undefined
+}
+
 /**
  * The ending the last reading holds for this attempt where it is settled:
- * every field named, or its logs read and a field found missing.
+ * every field named, or its logs read and a field found missing for good.
  */
 const settledEndingOf = (
   attempt: ActionState['attempt'],
   previous: WatcherReading | undefined
 ): AttemptEnding | undefined => {
-  const held = previous?.ended
-  if (!held || held.attemptId !== attempt.attemptId || held.road !== roadOf(attempt)) {
+  const held = heldEndingOf(attempt, previous)
+  if (!held) {
     return undefined
   }
   if (held.endingGap !== undefined) {
@@ -152,6 +243,47 @@ const settledEndingOf = (
   const named = held.road === 'executed' ? !!held.controller : !!held.cancelledBy
   return named && held.at !== undefined ? held : undefined
 }
+
+/**
+ * The blocks an ending's logs are scanned over: from the setup's commit, or,
+ * once a scan found a log missing, from a margin below that scan's block, to
+ * the pinned block.
+ */
+const endingScanOf = (
+  state: ActionState,
+  block: BlockHeader,
+  notFoundAt: number | undefined,
+  until: AttemptScan['until']
+): AttemptScan => ({
+  from:
+    notFoundAt === undefined
+      ? state.setupCommittedAtBlock
+      : Math.max(state.setupCommittedAtBlock, notFoundAt - RESCAN_MARGIN_BLOCKS),
+  to: block.number,
+  until
+})
+
+/**
+ * An ending a scan found a log of missing: looked for again until the pinned
+ * block is a margin past the first such scan, then settled without it.
+ */
+const notFoundEndingOf = (
+  ending: AttemptEnding,
+  notFoundAt: number | undefined,
+  block: BlockHeader
+): AttemptEnding => {
+  const first = notFoundAt ?? block.number
+  return block.number >= first + RESCAN_MARGIN_BLOCKS
+    ? { ...ending, endingGap: 'not-found' }
+    : { ...ending, notFoundAt: first }
+}
+
+/** An ending whose logs did not answer this poll, keeping what earlier polls read. */
+const unreadEndingOf = (ending: AttemptEnding, held: AttemptEnding | undefined): AttemptEnding => ({
+  ...ending,
+  ...(held?.at !== undefined ? { at: held.at } : {}),
+  ...(held?.notFoundAt !== undefined ? { notFoundAt: held.notFoundAt } : {})
+})
 
 /** The controller an earlier reading already decoded for this attempt. */
 const knownControllerOf = (
@@ -176,25 +308,29 @@ const executedOf = async (
   const { attempt } = state
   const { attemptId } = attempt
   const known = knownControllerOf(attempt, previous)
+  const held = heldEndingOf(attempt, previous)
   const read = await within(async (): Promise<AttemptEnding> => {
     // With the controller already decoded only the consume log is needed.
     const { started, consumed } = await reads.attemptEventsOf(
       account,
       attemptId,
-      scanOf(state, block, known ? 'ending' : 'opening')
+      endingScanOf(state, block, held?.notFoundAt, known ? 'ending' : 'opening')
     )
-    const at = consumed ? await reads.blockTime(consumed.at.blockNumber) : undefined
+    const at = consumed ? await reads.blockTime(consumed.at.blockNumber) : held?.at
     const opening =
       started && samePayload(started.payload, attempt.payloadHash) ? started : undefined
     const controller =
       known ?? (opening ? reads.handoverOf(opening.payload)?.newAuthority : undefined)
     const ending: AttemptEnding = { attemptId, road: 'executed', controller, at }
     if (at === undefined || (!known && !opening)) {
-      return { ...ending, endingGap: 'not-found' }
+      return notFoundEndingOf(ending, held?.notFoundAt, block)
     }
     return controller ? ending : { ...ending, endingGap: 'undecodable' }
   }, scanMs)
-  return read ?? { attemptId, road: 'executed', ...(known ? { controller: known } : {}) }
+  return (
+    read ??
+    unreadEndingOf({ attemptId, road: 'executed', ...(known ? { controller: known } : {}) }, held)
+  )
 }
 
 const cancelledOf = async (
@@ -202,17 +338,19 @@ const cancelledOf = async (
   account: Address,
   state: ActionState,
   block: BlockHeader,
+  previous: WatcherReading | undefined,
   scanMs: number
 ): Promise<AttemptEnding> => {
   const { attemptId } = state.attempt
+  const held = heldEndingOf(state.attempt, previous)
   const read = await within(async (): Promise<AttemptEnding> => {
     const { cancelled } = await reads.attemptEventsOf(
       account,
       attemptId,
-      scanOf(state, block, 'ending')
+      endingScanOf(state, block, held?.notFoundAt, 'ending')
     )
     if (!cancelled) {
-      return { attemptId, road: 'cancelled', endingGap: 'not-found' }
+      return notFoundEndingOf({ attemptId, road: 'cancelled' }, held?.notFoundAt, block)
     }
     return {
       attemptId,
@@ -221,7 +359,7 @@ const cancelledOf = async (
       at: await reads.blockTime(cancelled.at.blockNumber)
     }
   }, scanMs)
-  return read ?? { attemptId, road: 'cancelled' }
+  return read ?? unreadEndingOf({ attemptId, road: 'cancelled' }, held)
 }
 
 /**
@@ -287,7 +425,7 @@ export const pollAccount = async (
       settledEndingOf(attempt, previous) ??
       (attempt.state === 'Consumed'
         ? await executedOf(reads, account, state, block, previous, limits.scanMs)
-        : await cancelledOf(reads, account, state, block, limits.scanMs))
+        : await cancelledOf(reads, account, state, block, previous, limits.scanMs))
     return { ...reading, ended }
   }
   return reading
@@ -302,7 +440,9 @@ export const countsOnBadge = (record: WatcherRecord | undefined): boolean =>
  * One poll over the watched accounts: the latest block read once, then each
  * account's reading at it, written to the account's record. Each account's
  * state reads answer within the limit, counted from the poll's start, or the
- * account reads as failed. Answers the number of accounts the badge counts.
+ * account reads as failed. Every write carries the pinned block where the poll
+ * read it, so a write of a poll that outlived its tick never covers the
+ * reading of a newer block. Answers the number of accounts the badge counts.
  */
 export const pollAccounts = async ({
   reads,
@@ -315,8 +455,14 @@ export const pollAccounts = async ({
 }: PollInput): Promise<number> => {
   const deadline = now() + limitMs
   let latest: Promise<BlockHeader> | undefined
+  let pinned: number | undefined
   const latestBlock = () => {
-    latest = latest ?? reads.latestBlock()
+    latest =
+      latest ??
+      reads.latestBlock().then((block) => {
+        pinned = block.number
+        return block
+      })
     return latest
   }
   const records = await Promise.all(
@@ -332,7 +478,7 @@ export const pollAccounts = async ({
           chainId,
           account,
           (current) => ({ reading, dismissed: current?.dismissed ?? [] }),
-          now
+          { now, block: reading.block.number }
         )
       } catch (thrown) {
         const failed = { at: now(), message: messageOf(thrown) }
@@ -341,7 +487,7 @@ export const pollAccounts = async ({
           chainId,
           account,
           (current) => ({ ...current, failed, dismissed: current?.dismissed ?? [] }),
-          now
+          { now, block: pinned }
         ).catch(() => ({ failed, dismissed: [] }))
       }
     })

@@ -4,6 +4,7 @@ import { providerKeyOf } from '@web/modules/social-recovery/shared/client/extens
 import type { DeploymentDescriptor } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   readWatcherRecord,
+  registerRecoveryWatcherAlarm,
   startRecoveryWatcher,
   WATCHER_ALARM
 } from '@web/modules/social-recovery/watcher'
@@ -36,7 +37,8 @@ const setUp = ({
   ready = Promise.resolve() as Promise<unknown>,
   storage = memoryStorage(),
   connectThrows = false,
-  tickLimitMs = 2_000
+  tickLimitMs = 2_000,
+  fake = fakeAlarms()
 } = {}) => {
   const deployment = deployed ? DEPLOYMENT : undefined
   const network = networked ? NETWORK : undefined
@@ -45,7 +47,7 @@ const setUp = ({
     chain.deploy(account)
     chain.setState(account, stateWith())
   })
-  const { alarms, fire } = fakeAlarms()
+  const { alarms, fire } = fake
   const onBadge = jest.fn()
   const destroy = jest.fn()
   const connect = jest.fn((record: Network) => {
@@ -299,5 +301,46 @@ describe('the watcher', () => {
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
     expect(onBadge).toHaveBeenCalledWith(0)
     errors.mockRestore()
+  })
+
+  it('skips an alarm that fires after the registration and before the start, then polls on it once started', async () => {
+    const fake = fakeAlarms()
+    registerRecoveryWatcherAlarm(fake.alarms)
+
+    expect(() => fake.fire(WATCHER_ALARM)).not.toThrow()
+    await settle()
+
+    const { chain, fire } = setUp({ fake })
+    await settle()
+    expect(fake.alarms.onAlarm.addListener).toHaveBeenCalledTimes(1)
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+
+    fire(WATCHER_ALARM)
+    await settle()
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves later ticks free while the accounts never load, and polls once they do', async () => {
+    const warnings = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    let load: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      load = resolve
+    })
+    const { chain, fire, onBadge, watcher } = setUp({ ready, tickLimitMs: 20 })
+    const wait = () =>
+      new Promise((resolve) => {
+        setTimeout(resolve, 40)
+      })
+    await wait()
+    fire(WATCHER_ALARM)
+    await wait()
+    expect(chain.reads.latestBlock).not.toHaveBeenCalled()
+    expect(warnings).toHaveBeenCalledTimes(1)
+
+    load?.()
+    await watcher?.tick()
+    expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(onBadge).toHaveBeenCalledWith(0)
+    warnings.mockRestore()
   })
 })

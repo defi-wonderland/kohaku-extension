@@ -46,13 +46,7 @@ describe('the watcher record', () => {
 
   it('reads back what it wrote, every bigint whole', async () => {
     const storage = memoryStorage()
-    await updateWatcherRecord(
-      storage,
-      SEPOLIA,
-      ACCOUNT,
-      () => RECORD,
-      () => 9
-    )
+    await updateWatcherRecord(storage, SEPOLIA, ACCOUNT, () => RECORD, { now: () => 9 })
 
     expect(await readWatcherRecord(storage, SEPOLIA, ACCOUNT)).toEqual(RECORD)
     expect(JSON.parse(storage.entries.get(watcherKeyOf(SEPOLIA, ACCOUNT)) ?? '')).toMatchObject({

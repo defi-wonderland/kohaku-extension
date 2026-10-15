@@ -19,6 +19,14 @@ export const SCAN_LIMIT_MS = 15_000
  */
 export const TICK_LIMIT_MS = 55_000
 
+/**
+ * The blocks below a scan's last block that a later scan reads again, since a
+ * node that lags at the head or a reorganization can hold a log there that the
+ * first scan did not see; and how many blocks past its first not-found an
+ * ending's logs are looked for before the ending settles without them.
+ */
+export const RESCAN_MARGIN_BLOCKS = 64
+
 /** Why an open attempt names no key yet. */
 export const OPENING_GAPS = ['read-failed', 'not-found', 'undecodable'] as const
 
