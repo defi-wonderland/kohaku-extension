@@ -92,8 +92,6 @@ export const guardianAddressOf = (credential: Credential): Address | undefined =
  */
 const verdictLinesOf = (enrollment: Enrollment, t: Translate): string[] => {
   switch (enrollment.test) {
-    case 'not-tested':
-      return [t(`${CEREMONY}.notTestedLine`)]
     case 'failed':
       return [
         enrollment.cause?.startsWith('check-rejected')
@@ -104,6 +102,8 @@ const verdictLinesOf = (enrollment: Enrollment, t: Translate): string[] => {
       return [t(`${CEREMONY}.testUnavailableLine`)]
     case 'not-supported':
       return [t(`${CEREMONY}.notSupportedLine`)]
+    // An untested method is named once, in the warning beside Save.
+    case 'not-tested':
     case 'passed':
     default:
       return []

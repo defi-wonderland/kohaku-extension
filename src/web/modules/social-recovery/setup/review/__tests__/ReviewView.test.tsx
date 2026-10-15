@@ -45,7 +45,7 @@ const { parse, stringify } = jest.requireActual<
 const { getRuleLines, renderRuleLines } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/rule-lines')
 >('@web/modules/social-recovery/shared/rule-lines')
-const { renderFullAddress } = jest.requireActual<
+const { renderFullAddress, renderShortAddress } = jest.requireActual<
   typeof import('@web/modules/social-recovery/shared/display')
 >('@web/modules/social-recovery/shared/display')
 const { deploymentDescriptor, publisherKeyOf, auditedActionOf, sameAddress, shapeNoteOf } =
@@ -512,7 +512,7 @@ describe('the path rows', () => {
 
   const VERDICTS: [Enrollment['test'], string | undefined, string, string | null][] = [
     ['passed', undefined, 'tested', null],
-    ['not-tested', undefined, 'notTested', `${CEREMONY}.notTestedLine`],
+    ['not-tested', undefined, 'notTested', null],
     ['failed', 'check-rejected', 'testFailed', `${CEREMONY}.testFailedNoMatch`],
     ['unavailable', undefined, 'testUnavailable', `${CEREMONY}.testUnavailableLine`],
     ['not-supported', undefined, 'notSupported', `${CEREMONY}.notSupportedLine`]
@@ -552,8 +552,16 @@ describe('the path rows', () => {
 
   const UNFAILED_LINES: [Enrollment['test'], string[]][] = [
     ['passed', []],
-    ['not-tested', [t(`${CEREMONY}.notTestedLine`)]]
+    ['not-tested', []]
   ]
+  it('state that an untested method may fail once, in the warning beside Save', async () => {
+    await mount({ clauses: [required(ALICE)], enrollments: [enrolled(ALICE, 'not-tested')] })
+
+    const sentence = t(`${CEREMONY}.notTestedLine`)
+    expect(pageText().split(sentence)).toHaveLength(2)
+    expect(textOf('review-not-tested')).toContain(sentence)
+  })
+
   UNFAILED_LINES.forEach(([test, lines]) => {
     it(`show no failed line on a ${test} test`, async () => {
       await mount({ clauses: [required(ALICE)], enrollments: [enrolled(ALICE, test)] })
@@ -628,7 +636,6 @@ describe('the path rows', () => {
     await mount({ clauses: [required(PASSPORT)], enrollments: [enrolled(PASSPORT, 'not-tested')] })
 
     expect(textsStartingWith('review-row-0-0-line-')).toEqual([
-      t(`${CEREMONY}.notTestedLine`),
       t('socialRecovery.disclosures.identity'),
       t('socialRecovery.disclosures.passportPublication')
     ])
@@ -1200,19 +1207,19 @@ describe('the trust list', () => {
 })
 
 describe('the account block', () => {
-  it('names the account in full with its check line', async () => {
+  it('names the account on one line by its short address, with no check line', async () => {
     await mount()
 
-    expect(textOf('review-account-address')).toBe(renderFullAddress(ACCOUNT))
-    expect(textOf('review-account-check')).toBe(t('socialRecovery.review.account.check'))
-    expect(byTestId('review-account-caveat')).toBeNull()
+    expect(textOf('review-account-line')).toBe(renderShortAddress(ACCOUNT))
+    expect(pageText()).not.toContain(renderFullAddress(ACCOUNT))
+    expect(pageText()).not.toContain(t('socialRecovery.review.account.check'))
   })
 
-  it('carries the name caveat beside the label the wallet holds', async () => {
+  it('puts the label the wallet holds before the short address, with no caveat', async () => {
     await mount({ accountLabel: 'Account 1' })
 
-    expect(textOf('review-account-label')).toBe('Account 1')
-    expect(textOf('review-account-caveat')).toBe(t('socialRecovery.display.nameCaveat'))
+    expect(textOf('review-account-line')).toBe(`Account 1 · ${renderShortAddress(ACCOUNT)}`)
+    expect(pageText()).not.toContain(t('socialRecovery.display.nameCaveat'))
   })
 })
 
@@ -1317,13 +1324,12 @@ describe('a read that did not answer', () => {
 describe('the key a recovery would remove', () => {
   const BLOCKED = 'socialRecovery.review.blocked'
 
-  it('is named in full under the account with its line', async () => {
+  it('is read before Save runs but left to the save screen to show', async () => {
     await mount()
 
-    expect(textOf('review-removed-key')).toContain('Key a recovery would remove')
-    expect(textOf('review-removed-key')).not.toContain('Key being removed')
-    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
-    expect(textOf('review-removed-key-line')).toBe(t('socialRecovery.review.keyRemovedLine'))
+    expect(pageText()).not.toContain(t('socialRecovery.arm.keyRecoveryWouldRemove'))
+    expect(pageText()).not.toContain(renderFullAddress(REMOVED_KEY))
+    expect(pageText()).not.toContain(t('socialRecovery.review.keyRemovedLine'))
     expect(isDisabled('review-save')).toBe(false)
   })
 
@@ -1338,7 +1344,6 @@ describe('the key a recovery would remove', () => {
       }
     })
 
-    expect(byTestId('review-removed-key')).toBeNull()
     expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.removedKeyUnreadable.title`))
     expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.removedKeyUnreadable.body`))
     expect(isDisabled('review-save')).toBe(true)
@@ -1348,7 +1353,6 @@ describe('the key a recovery would remove', () => {
     expect(account.removedKey).toHaveBeenCalledTimes(2)
     expect(account.fitCheck).toHaveBeenCalledTimes(1)
     expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
-    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
     expect(isDisabled('review-save')).toBe(false)
   })
 
@@ -1409,7 +1413,6 @@ describe("the wallet's reading of the account's keys", () => {
     })
 
     expect(blockers()).toHaveLength(0)
-    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
     expect(isDisabled('review-save')).toBe(false)
   })
 
@@ -1426,7 +1429,6 @@ describe("the wallet's reading of the account's keys", () => {
     )
     expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
     expect(byTestId('review-blocked-retry')).toBeNull()
-    expect(byTestId('review-removed-key')).toBeNull()
     expect(isDisabled('review-save')).toBe(true)
     expect(account.removedKey).toHaveBeenCalledTimes(1)
   })
@@ -1481,7 +1483,6 @@ describe("the wallet's reading of the account's keys", () => {
       setupState: async () => setupStateOf(true)
     })
 
-    expect(byTestId('review-removed-key-pending')).not.toBeNull()
     expect(blockers()).toHaveLength(0)
     expect(isDisabled('review-save')).toBe(true)
 
@@ -1803,7 +1804,6 @@ describe('the account reads', () => {
         })
     })
 
-    expect(textOf('review-removed-key-address')).toBe(renderFullAddress(REMOVED_KEY))
     expect(isDisabled('review-save')).toBe(true)
 
     await act(async () => answerFit({ basis: 'deployed-code', fits: true }))

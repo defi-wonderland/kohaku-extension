@@ -1,8 +1,9 @@
 /**
  * The review over the setup records: the path, the waiting period and the
- * privacy level, the account the save writes to with the key a recovery would
- * remove, and Save behind its gate with the reason it cannot run on screen.
- * An untested method is named beside Save. What a recovery publishes, the
+ * privacy level, the account the save writes to on one line, and Save behind
+ * its gate with the reason it cannot run on screen. The save screen names the
+ * account in full with the key a recovery would remove. An untested method is
+ * named once, beside Save. What a recovery publishes, the
  * spare-key comparison and the trust list under its expander sit beside them.
  */
 import React, { useEffect, useMemo, useState } from 'react'
@@ -23,7 +24,6 @@ import {
   ActionsRow,
   PageTitle,
   SectionCard,
-  SectionLabel,
   StatusChip,
   TwoColumn
 } from '@web/modules/social-recovery/shared/chrome'
@@ -33,10 +33,10 @@ import {
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
 import {
-  renderFullAddress,
   renderChip,
   renderNoun,
   renderResolvedName,
+  renderShortAddress,
   renderWaitLength
 } from '@web/modules/social-recovery/shared/display'
 import { defaultSetupDraft } from '@web/modules/social-recovery/shared/records/types'
@@ -199,7 +199,7 @@ const ReviewView = ({
 
   const { draft } = load
   const publication = publicationSentenceOf(clauses, addressBook, t)
-  const name = accountLabel ? renderResolvedName(accountLabel, 'besideAddressToCheck', t) : null
+  const name = accountLabel ? renderResolvedName(accountLabel, 'informationOnly', t) : null
   const gate = saveGateOf({
     recordsLoaded: true,
     clientReady: !!ready,
@@ -213,7 +213,6 @@ const ReviewView = ({
     backup: draft.privacy.backup,
     passwordSet: load.passwordSet
   })
-  const { removedKey } = accountReads
 
   // Runs again every read that did not answer: the trust list's reads of each
   // method and the account's reads that threw.
@@ -350,51 +349,14 @@ const ReviewView = ({
         </SectionCard>
 
         <SectionCard label={t(`${REVIEW}.account.header`)} testID="review-account">
-          {!!name && (
-            <Text fontSize={16} weight="medium" style={spacings.mbTy} testID="review-account-label">
-              {name.name}
-            </Text>
-          )}
-          <Text
-            fontSize={14}
-            weight="number_medium"
-            selectable
-            style={spacings.mbTy}
-            testID="review-account-address"
-          >
-            {renderFullAddress(account)}
+          <Text fontSize={14} weight="medium" testID="review-account-line">
+            {name
+              ? t('socialRecovery.display.nameWithAccount', {
+                  name: name.name,
+                  account: renderShortAddress(account)
+                })
+              : renderShortAddress(account)}
           </Text>
-          {note(t(`${REVIEW}.account.check`), 'review-account-check')}
-          {!!name?.caveat && note(name.caveat, 'review-account-caveat')}
-          {removedKey.status === 'answered' && removedKey.value.kind === 'named' && (
-            <View style={spacings.mtTy} testID="review-removed-key">
-              <View
-                style={[
-                  common.borderRadiusPrimary,
-                  spacings.phSm,
-                  spacings.pvSm,
-                  spacings.mbTy,
-                  { backgroundColor: theme.secondaryBackground }
-                ]}
-              >
-                <SectionLabel>{t('socialRecovery.arm.keyRecoveryWouldRemove')}</SectionLabel>
-                <Text
-                  fontSize={14}
-                  weight="number_medium"
-                  selectable
-                  testID="review-removed-key-address"
-                >
-                  {renderFullAddress(removedKey.value.key)}
-                </Text>
-              </View>
-              <Text fontSize={12} appearance="secondaryText" testID="review-removed-key-line">
-                {t(`${REVIEW}.keyRemovedLine`)}
-              </Text>
-            </View>
-          )}
-          {!!ready && removedKey.status === 'pending' && (
-            <ActivityIndicator testID="review-removed-key-pending" />
-          )}
         </SectionCard>
 
         {!!clientRefusal && (
