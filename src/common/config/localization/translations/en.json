@@ -174,8 +174,6 @@
         "network": "Send on {{network}}, the network of the account you are recovering.",
         "balanceWaiting": "Balance {{balance}} · waiting for funds…",
         "continuesOnItsOwn": "This screen continues on its own once the funds arrive.",
-        "alreadyFunded": "Already funded? This step skips itself.",
-        "continueUnlocks": "Continue unlocks when the funds arrive.",
         "notEnoughGas": "Not enough gas",
         "notEnoughGasAccountKey": "Not enough gas on your account's key",
         "notEnoughGasSendingKey": "Not enough gas on the sending key",
@@ -821,6 +819,10 @@
           "readFailedTitle": "We could not read {{network}}.",
           "readFailedHint": "The read failed. Your Recovery Card has the full address printed on it."
         }
+      },
+      "accountLine": {
+        "label": "Account",
+        "network": "· {{network}}"
       },
       "labels": {
         "address": "Address",

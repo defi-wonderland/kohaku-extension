@@ -421,3 +421,9 @@ export interface ReadoutPasswordAskProps {
 export interface ReadoutPathBlockProps {
   path: ReadoutPath
 }
+
+export interface AccountLineProps {
+  account: Address
+  networkName: string
+  testID: string
+}
