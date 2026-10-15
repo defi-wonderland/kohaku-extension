@@ -21,6 +21,7 @@ import {
   LANDED_BLOCK,
   NEW_KEY,
   OTHER_HASH,
+  PAYLOAD,
   SEPOLIA,
   SHORT,
   START_BLOCK,
@@ -812,5 +813,137 @@ describe("the owner's cancel run", () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  it('keeps the claim of an operation the wallet cannot follow while its bound runs with the attempt open', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      let clock = 1_000_000
+      const world = runWorld(openChain(), () => clock)
+      world.requestHold.mockResolvedValue({ status: 'untracked' })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+
+      clock += UNTRACKED_FOLLOW_MS - 1
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(await world.steps.claims.read()).toMatchObject({ requestId: 'elsewhere' })
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().gone).toBeUndefined()
+      detachCancelSteps(store, world.steps)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('keeps the claim of an operation the wallet cannot follow when its attempt ends by proofs and a newer one opens, offering no send until the bound', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      let clock = 1_000_000
+      const world = runWorld(openChain(), () => clock)
+      world.requestHold.mockResolvedValue({ status: 'untracked' })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      cancelOn(world.chain, 'cancelByProofs')
+      openOn(world.chain, ATTEMPT + 1n, PAYLOAD)
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      // The operation may still land on the newer attempt: the claim stands and nothing is offered.
+      expect(await world.steps.claims.read()).toMatchObject({ requestId: 'elsewhere' })
+      expect(store.state().write.status).toBe('submitting')
+      expect(store.state().followGone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
+      expect(store.state().gone).toBeUndefined()
+      expect(world.withdrawRequest).not.toHaveBeenCalled()
+      expect(world.sendAccountBatch).not.toHaveBeenCalled()
+
+      clock += UNTRACKED_FOLLOW_MS + 1
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(await world.steps.claims.read()).toBeUndefined()
+      expect(store.state().write.status).toBe('idle')
+      expect(store.state().gone?.attempt?.attemptId).toBe(ATTEMPT + 1n)
+      expect(world.sendAccountBatch).not.toHaveBeenCalled()
+      detachCancelSteps(store, world.steps)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('shows the cancelled terminal where an operation the wallet cannot follow lands as the owner cancel after a newer attempt opened', async () => {
+    jest.useFakeTimers('modern')
+    try {
+      const world = runWorld()
+      world.requestHold.mockResolvedValue({ status: 'untracked' })
+      await world.steps.claims.claim({
+        attemptId: ATTEMPT,
+        requestId: 'elsewhere',
+        startBlock: START_BLOCK
+      })
+      cancelOn(world.chain, 'cancelByProofs')
+      openOn(world.chain, ATTEMPT + 1n, PAYLOAD)
+      attachCancelSteps(store, world.steps).catch(() => undefined)
+      await settled()
+      expect(store.state().write.status).toBe('submitting')
+
+      cancelOn(world.chain, 'cancelByOwner', ATTEMPT + 1n)
+      for (let round = 0; round < 5; round += 1) {
+        jest.advanceTimersByTime(FOLLOW_POLL_MS)
+        // eslint-disable-next-line no-await-in-loop
+        await settled()
+      }
+
+      expect(await world.steps.claims.read()).toBeUndefined()
+      expect(store.state().write.status).toBe('idle')
+      expect(store.state().after).toEqual({ stage: 'cancelled', attemptId: ATTEMPT + 1n })
+      expect(world.sendAccountBatch).not.toHaveBeenCalled()
+      detachCancelSteps(store, world.steps)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('releases the claim of an operation the wallet cannot follow once its attempt ended by another road with none open', async () => {
+    const world = runWorld()
+    world.requestHold.mockResolvedValue({ status: 'untracked' })
+    await world.steps.claims.claim({
+      attemptId: ATTEMPT,
+      requestId: 'elsewhere',
+      startBlock: START_BLOCK
+    })
+    cancelOn(world.chain, 'cancelByProofs')
+
+    await attachCancelSteps(store, world.steps)
+    await settled()
+
+    expect(await world.steps.claims.read()).toBeUndefined()
+    expect(store.state().write.status).toBe('idle')
+    expect(store.state().gone?.ended).toMatchObject({
+      attemptId: ATTEMPT,
+      cancelledBy: 'cancelByProofs'
+    })
+    expect(world.sendAccountBatch).not.toHaveBeenCalled()
+    detachCancelSteps(store, world.steps)
   })
 })

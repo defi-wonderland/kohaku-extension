@@ -32,19 +32,26 @@
  * shown beside the follow. Held nowhere with the attempt ended or another one
  * open, the claim is released and the page shows the cancelled terminal or
  * the reading. Held nowhere and never broadcast past the send limit, the
- * cancel reads as not sent, so the claim
- * is released and the start offered again; a younger claim is waited on,
- * since its page may still add the request. The claim is released once the
- * run ends with nothing on its way to the chain, or once the receipt came
- * back. A refusal whose operation may still reach the chain keeps it until
- * such a follow releases it.
+ * cancel reads as not sent, so the claim is released and the start offered
+ * again; a younger claim is waited on, since its page may still add the
+ * request. Sent as an operation the wallet cannot follow to a hash, the cancel
+ * may still land at any time, so the claim stays until the claim's attempt
+ * ends: the cancelled terminal where the owner's cancel ended it, or a later
+ * attempt, else the other road's reading. While another attempt is open
+ * meanwhile, the ending is shown beside the follow and no cancel of the newer
+ * attempt is offered; past the untracked bound with an attempt still open, the
+ * operation did not land, so the claim is released and the reading shown. The
+ * claim is released once the run ends with nothing on its way to the chain,
+ * or once the receipt came back. A refusal whose operation may still reach the
+ * chain keeps it until such a follow releases it.
  *
  * Every answer carries the run it belongs to, so the answer of a run the
- * holder left behind moves nothing. The claim's send limit, and the bound of
- * a follow of an operation the wallet cannot follow to a hash, are the
- * decisions that read the device's clock, the same exception the setup save
- * has: both are bounded by the claim's age, stamped when the claim was
- * stored. No other decision reads the clock.
+ * holder left behind moves nothing. Two decisions read the device's clock,
+ * the same exception the setup save has: the claim's send limit, which the
+ * wallet asks right before it adds the request, and the untracked bound,
+ * which releases the claim of an operation the wallet cannot follow to a hash
+ * while an attempt still reads open. Both are bounded by the claim's age,
+ * stamped when the claim was stored. No other decision reads the clock.
  */
 import {
   isProviderReadFailure,
@@ -323,15 +330,16 @@ const followedWriteOf = (run: number, claim: CancelClaim): WriteMachineState => 
  * Ends the follow of a stored cancel whose attempt reads gone while the wallet
  * holds its request nowhere: a hash another page wrote meanwhile is followed;
  * else the claim is released, and the page shows the cancelled terminal where
- * the owner's cancel ended that attempt, or the reading otherwise (its ending,
- * or the attempt now open).
+ * the owner's cancel ended the attempt `endedId` (the claim's own by default),
+ * or the reading otherwise (its ending, or the attempt now open).
  */
 const endFollow = async (
   store: CancelStore,
   steps: CancelSteps,
   run: number,
   claim: CancelClaim,
-  reading: WatcherReading
+  reading: WatcherReading,
+  endedId: bigint = claim.attemptId
 ): Promise<void> => {
   const stored = await steps.claims.read().catch(() => undefined)
   if (stored?.requestId === claim.requestId && stored.transactionHash) {
@@ -345,14 +353,31 @@ const endFollow = async (
     return
   }
   await steps.claims.release(claim.requestId).catch(() => undefined)
-  const ended = reading.ended?.attemptId === claim.attemptId ? reading.ended : undefined
+  const ended = reading.ended?.attemptId === endedId ? reading.ended : undefined
   const own = ended?.road === 'cancelled' && ended.cancelledBy === 'cancelByOwner'
   changeInRun(store, run, (state) => {
     const { follow, requestId, ...rest } = applyWrite(state, { type: 'reset' })
     return own
-      ? { ...rest, after: { stage: 'cancelled', attemptId: claim.attemptId } }
+      ? { ...rest, after: { stage: 'cancelled', attemptId: endedId } }
       : { ...rest, gone: reading }
   })
+}
+
+/**
+ * The attempt the owner's cancel ended in a reading, where it is the claim's
+ * attempt or one opened after it: an operation the wallet cannot follow to a
+ * hash cancels whichever attempt is open when it lands.
+ */
+const ownerCancelSince = (
+  reading: WatcherReading | undefined,
+  claim: CancelClaim
+): bigint | undefined => {
+  const ended = reading?.ended
+  return ended?.road === 'cancelled' &&
+    ended.cancelledBy === 'cancelByOwner' &&
+    ended.attemptId >= claim.attemptId
+    ? ended.attemptId
+    : undefined
 }
 
 /**
@@ -367,11 +392,17 @@ const endFollow = async (
  * ending is shown beside the follow while the claim stays, since the holder
  * may still sign the request. Held nowhere while the claim is younger than its
  * send limit, it reads again; held nowhere past it, the cancel was not sent,
- * so the claim is released and the start offered again. Sent as an operation
- * the wallet cannot follow to a hash, the follow ends once the attempt reads
- * ended or another one open; past its own bound with the attempt still open,
- * the claim is released and the reading shown, so a cancel that never lands
- * is not followed forever.
+ * so the claim is released and the start offered again.
+ *
+ * Sent as an operation the wallet cannot follow to a hash, the cancel may
+ * still land at any time, against whichever attempt is open then. The follow
+ * ends with the cancelled terminal once the owner's cancel ended the claim's
+ * attempt or a later one, and with the reading once the claim's attempt ended
+ * by another road with no other one open. While another attempt is open, the
+ * claim stays and the ending of the claim's attempt is shown beside the
+ * follow, with no cancel of the newer attempt offered. Past the claim's bound
+ * with an attempt still open, the operation evidently did not land: the claim
+ * is released and the reading shown, with its cancel offered.
  */
 const followHold = async (
   store: CancelStore,
@@ -401,20 +432,28 @@ const followHold = async (
   if (reading) {
     followGone = standingOf(reading, claim.attemptId).kind === 'gone' ? reading : undefined
   }
-  const untracked = hold?.status === 'untracked'
-  if ((hold?.status === 'free' || untracked) && followGone) {
+  if (hold?.status === 'free' && followGone) {
     FOLLOWING.delete(store)
     await endFollow(store, steps, run, claim, followGone)
     return
   }
-  if (untracked && reading && steps.claims.untrackedFollowMs(claim) <= 0) {
-    FOLLOWING.delete(store)
-    await steps.claims.release(claim.requestId).catch(() => undefined)
-    changeInRun(store, run, (state) => {
-      const { follow, requestId, ...rest } = applyWrite(state, { type: 'reset' })
-      return { ...rest, gone: reading }
-    })
-    return
+  const untracked = hold?.status === 'untracked'
+  if (untracked) {
+    const landedOn = ownerCancelSince(followGone, claim)
+    if (followGone && (landedOn !== undefined || !followGone.attempt)) {
+      FOLLOWING.delete(store)
+      await endFollow(store, steps, run, claim, followGone, landedOn)
+      return
+    }
+    if (reading?.attempt && steps.claims.untrackedFollowMs(claim) <= 0) {
+      FOLLOWING.delete(store)
+      await steps.claims.release(claim.requestId).catch(() => undefined)
+      changeInRun(store, run, (state) => {
+        const { follow, requestId, ...rest } = applyWrite(state, { type: 'reset' })
+        return { ...rest, gone: reading }
+      })
+      return
+    }
   }
   if (reading && followGone && hold?.status === 'held') {
     try {

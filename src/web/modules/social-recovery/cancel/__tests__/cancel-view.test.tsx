@@ -256,6 +256,20 @@ describe('the cancel screen', () => {
     expect(view.byTestId('cancel-back')).toBeNull()
   })
 
+  it('offers no cancel of a newer attempt while a followed request may still land', async () => {
+    const newer = { ...ATTEMPT_4, attemptId: 5n, newKey: OLD_KEY }
+    view = await render({
+      run: withWrite(
+        { status: 'submitting', write: 'cancel', run: 1 },
+        { follow: 'held', followGone: { ...OPEN, attempt: newer } }
+      )
+    })
+
+    expect(view.byTestId('cancel-in-progress')).not.toBeNull()
+    expect(view.byTestId('cancel-send')).toBeNull()
+    expect(view.byTestId('cancel-confirm')).toBeNull()
+  })
+
   it('tells no road where the reading ends another attempt than the one the run meant', async () => {
     view = await render({
       run: {

@@ -24,8 +24,8 @@ export const OWN_SEND_READ_MS = 10_000
 
 /**
  * How old a claim may be, in ms, while the wallet reports its request as an
- * operation it cannot follow to a hash and the attempt stays open: past it,
- * the claim is released and the reading shown.
+ * operation it cannot follow to a hash and an attempt still reads open: past
+ * it, the claim is released and the reading shown, with its cancel offered.
  */
 export const UNTRACKED_FOLLOW_MS = 600_000
 
