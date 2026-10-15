@@ -37,7 +37,8 @@ const ConfirmAccount = ({
   writing,
   writeFailed,
   onConfirm,
-  onNotMine
+  onNotMine,
+  counter
 }: ConfirmAccountProps) => {
   const { t } = useTranslation()
   const resolved = target.name ? renderResolvedName(target.name, 'besideAddressToCheck', t) : null
@@ -70,6 +71,7 @@ const ConfirmAccount = ({
   return (
     <TwoColumn testID="entry-confirm-columns" aside={aside}>
       <View testID="entry-confirm">
+        {counter}
         <PageTitle
           title={t(`${CONFIRM}.title`)}
           lead={t(`${CONFIRM}.lead`)}

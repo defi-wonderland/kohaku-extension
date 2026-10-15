@@ -32,7 +32,8 @@ const LookupField = ({
   onTarget,
   resolveName,
   onBack,
-  onCancel
+  onCancel,
+  counter
 }: LookupFieldProps) => {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
@@ -118,6 +119,7 @@ const LookupField = ({
   return (
     <TwoColumn testID="entry-account-field-columns" aside={aside}>
       <View testID="entry-account-field">
+        {counter}
         <PageTitle
           title={t(`${ACCOUNT}.title`)}
           lead={t(`${ACCOUNT}.lead`)}
@@ -139,7 +141,12 @@ const LookupField = ({
         <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy} testID="entry-network">
           {t(`${ACCOUNT}.networkFixed`, { network: networkName })}
         </Text>
-        <Text fontSize={12} appearance="secondaryText" style={spacings.mbSm}>
+        <Text
+          fontSize={12}
+          appearance="secondaryText"
+          style={spacings.mbSm}
+          testID="entry-account-hint"
+        >
           {t(`${ACCOUNT}.hint`)}
         </Text>
 

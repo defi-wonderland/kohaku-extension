@@ -387,13 +387,23 @@ describe('the lookup', () => {
     )
     expect(page.has('entry-confirm')).toBe(false)
 
-    // The module line sits in the card beside the address and the network; the lead follows the card.
-    const card = page.byTestId('entry-no-setup-account')
-    const lead = page.byTestId('entry-no-setup-lead')
-    expect(card?.contains(page.byTestId('entry-no-setup-module'))).toBe(true)
-    expect(lead?.textContent).toBe(t('socialRecovery.entry.noSetup.lead'))
-    expect(card?.contains(lead)).toBe(false)
-    expect(lead && card?.compareDocumentPosition(lead)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    // The title, the account looked up and the retry stay in the main column;
+    // the card note and the module line sit beside them, and "no setup" is said once.
+    const main = page.byTestId('entry-lookup-columns-main')
+    const aside = page.byTestId('entry-lookup-columns-aside')
+    ;['entry-no-setup-title', 'entry-no-setup-account', 'entry-lookup-another'].forEach((id) =>
+      expect(main?.contains(page.byTestId(id))).toBe(true)
+    )
+    ;['entry-no-setup-card', 'entry-no-setup-other-wallet', 'entry-no-setup-module'].forEach((id) =>
+      expect(aside?.contains(page.byTestId(id))).toBe(true)
+    )
+    expect(page.textOf('entry-no-setup-card')).toContain(
+      t('socialRecovery.entry.noSetup.cardTitle')
+    )
+    expect(page.textOf('entry-no-setup-elsewhere')).toContain(
+      t('socialRecovery.entry.noSetup.otherWalletTitle')
+    )
+    expect(page.text()).not.toContain('carries no recovery setup')
 
     await page.press('entry-lookup-another')
     expect(page.has('entry-account-field')).toBe(true)
@@ -410,6 +420,24 @@ describe('the lookup field', () => {
     expect(page.textOf('entry-account-field')).not.toContain('starts no recovery')
     expect(page.textOf('entry-account-field')).not.toContain(
       t('socialRecovery.entry.account.startsNothingTitle')
+    )
+  })
+
+  it('holds the hint to the card alone, the aside saying where else the address is found', async () => {
+    const page = await open(LOGGED_IN)
+    expect(page.textOf('entry-account-hint')).toBe(t('socialRecovery.entry.account.hint'))
+    expect(page.textOf('entry-account-field')).not.toContain('ENS name also resolves')
+    expect(page.textOf('entry-account-where')).toContain(t('socialRecovery.entry.account.whereBody'))
+  })
+
+  it('opens the main column with the stage counter, so the aside starts level with it', async () => {
+    const page = await open(LOGGED_IN)
+    const main = page.byTestId('entry-account-field-columns-main')
+    expect(main?.querySelector('[data-testid]')?.getAttribute('data-testid')).toBe(
+      'entry-account-field'
+    )
+    expect(page.byTestId('entry-account-field')?.firstElementChild).toBe(
+      page.byTestId('recovery-stage')
     )
   })
 })

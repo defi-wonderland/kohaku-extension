@@ -45,7 +45,8 @@ const AccountStepView = ({
   onTarget,
   client,
   resolveName,
-  navigate
+  navigate,
+  counter
 }: AccountStepViewProps) => {
   const { t } = useTranslation()
   const [confirmed, setConfirmed] = useState(false)
@@ -128,6 +129,7 @@ const AccountStepView = ({
           search.route === 'logged-in' ? () => navigate(routeEntryPathOf(search.route)) : undefined
         }
         onCancel={() => navigate(WEB_ROUTES.socialRecoverySetup)}
+        counter={counter}
       />
     )
   }
@@ -139,21 +141,20 @@ const AccountStepView = ({
 
   if (!found) {
     return (
-      <TwoColumn testID="entry-lookup-columns">
-        <LookupState
-          target={target}
-          networkName={networkName}
-          client={client}
-          setupState={setupState}
-          onRetrySetup={retrySetup}
-          onAnotherAddress={() => leave(backToField)}
-          onClose={
-            search.route === 'logged-in'
-              ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
-              : undefined
-          }
-        />
-      </TwoColumn>
+      <LookupState
+        target={target}
+        networkName={networkName}
+        client={client}
+        setupState={setupState}
+        onRetrySetup={retrySetup}
+        onAnotherAddress={() => leave(backToField)}
+        onClose={
+          search.route === 'logged-in'
+            ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
+            : undefined
+        }
+        counter={counter}
+      />
     )
   }
 
@@ -166,6 +167,7 @@ const AccountStepView = ({
         writeFailed={writeFailed}
         onConfirm={confirm}
         onNotMine={backToField}
+        counter={counter}
       />
     )
   }
@@ -173,6 +175,7 @@ const AccountStepView = ({
   return (
     <TwoColumn testID="entry-confirmed-columns">
       <View testID="entry-confirmed">
+        {counter}
         <SectionCard>
           <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
           <Text

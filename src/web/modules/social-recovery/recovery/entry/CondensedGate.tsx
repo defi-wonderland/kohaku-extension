@@ -15,7 +15,7 @@ import { ActionsRow, TwoColumn } from '@web/modules/social-recovery/shared/chrom
 
 import type { CondensedGateProps } from './types'
 
-const CondensedGate = ({ onPass }: CondensedGateProps) => {
+const CondensedGate = ({ onPass, counter }: CondensedGateProps) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
   useEffect(() => setAcknowledged(false), [])
@@ -29,6 +29,7 @@ const CondensedGate = ({ onPass }: CondensedGateProps) => {
   return (
     <TwoColumn testID="entry-gate-columns">
       <View testID="entry-gate">
+        {counter}
         <WarningGate form="condensed" onAcknowledgedChange={setAcknowledged} />
         <ActionsRow
           primary={
