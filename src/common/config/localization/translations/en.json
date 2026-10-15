@@ -553,7 +553,7 @@
         },
         "shapeVisible": {
           "label": "Shape visible",
-          "line": "The shape of your setup is readable: {{shape}}. Which ones stays hidden.",
+          "line": "The shape of your setup is readable: {{shape}}. Which ones stay hidden.",
           "lineEmpty": "The shape of your setup is readable. Which methods you chose stays hidden."
         },
         "public": {

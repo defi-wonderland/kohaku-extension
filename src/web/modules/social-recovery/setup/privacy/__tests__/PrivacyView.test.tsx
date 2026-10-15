@@ -180,7 +180,7 @@ describe('the privacy step', () => {
     it('the Shape visible line names the path by its kinds of method and how many must answer', async () => {
       await h.mount(await withDraft({ clauses: PASSKEY_PASSPORT_AND_GUARDIAN }))
       expect(h.byTestId('level-line-shape-visible')?.textContent).toBe(
-        'The shape of your setup is readable: a passkey, a passport and a guardian, any 2 of 3. Which ones stays hidden.'
+        'The shape of your setup is readable: a passkey, a passport and a guardian, any 2 of 3. Which ones stay hidden.'
       )
     })
 
