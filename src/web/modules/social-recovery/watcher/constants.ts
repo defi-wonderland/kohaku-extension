@@ -1,8 +1,11 @@
 /** The name of the watcher's browser alarm. */
 export const WATCHER_ALARM = 'socialRecovery:watcher'
 
-/** How often the alarm fires, in minutes: an attempt reaches the holder within a minute. */
-export const WATCH_PERIOD_MINUTES = 1
+/**
+ * How often the alarm fires, in minutes: a recovery waits at least a day before
+ * it can run, so an attempt reaches the holder long before it can end.
+ */
+export const WATCH_PERIOD_MINUTES = 30
 
 /** How long the state reads of one poll may run before the poll reads as failed, in ms. */
 export const POLL_LIMIT_MS = 30_000

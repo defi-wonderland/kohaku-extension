@@ -24,7 +24,7 @@ import {
   readoutPathOf,
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist/search'
-import { SectionCard, SectionLabel } from '@web/modules/social-recovery/shared/chrome'
+import { SectionCard, SectionLabel, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
@@ -56,7 +56,8 @@ const AccountStepView = ({
   accounts,
   keys,
   openAttemptReads,
-  navigate
+  navigate,
+  counter
 }: AccountStepViewProps) => {
   const { t } = useTranslation()
   const [confirmed, setConfirmed] = useState(false)
@@ -174,6 +175,7 @@ const AccountStepView = ({
           search.route === 'logged-in' ? () => navigate(routeEntryPathOf(search.route)) : undefined
         }
         onCancel={() => navigate(WEB_ROUTES.socialRecoverySetup)}
+        counter={counter}
       />
     )
   }
@@ -197,6 +199,7 @@ const AccountStepView = ({
             ? () => leave(() => navigate(WEB_ROUTES.socialRecoverySetup))
             : undefined
         }
+        counter={counter}
       />
     )
   }
@@ -210,49 +213,53 @@ const AccountStepView = ({
         writeFailed={writeFailed}
         onConfirm={confirm}
         onNotMine={backToField}
+        counter={counter}
       />
     )
   }
 
   return (
-    <View testID="entry-confirmed">
-      <SectionCard>
-        <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
-        <Text
-          fontSize={14}
-          weight="number_medium"
-          selectable
-          style={spacings.mbTy}
-          testID="entry-confirmed-address"
-        >
-          {renderFullAddress(target.address)}
-        </Text>
-        <Text fontSize={12} appearance="secondaryText">
-          {networkName}
-        </Text>
-      </SectionCard>
-      {bandActive && (
-        <RunningAttemptBand
-          state={running}
-          claim={claim}
-          account={target.address}
-          chainId={chainId}
-          records={records}
-          navigate={navigate}
+    <TwoColumn testID="entry-confirmed-columns">
+      <View testID="entry-confirmed">
+        {counter}
+        <SectionCard>
+          <SectionLabel>{t(`${LABELS}.accountLookedUp`)}</SectionLabel>
+          <Text
+            fontSize={14}
+            weight="number_medium"
+            selectable
+            style={spacings.mbTy}
+            testID="entry-confirmed-address"
+          >
+            {renderFullAddress(target.address)}
+          </Text>
+          <Text fontSize={12} appearance="secondaryText">
+            {networkName}
+          </Text>
+        </SectionCard>
+        {bandActive && (
+          <RunningAttemptBand
+            state={running}
+            claim={claim}
+            account={target.address}
+            chainId={chainId}
+            records={records}
+            navigate={navigate}
+          />
+        )}
+        <ConfirmedReadsView
+          step={confirmedStepOf(reads, destination)}
+          route={search.route}
+          networkName={networkName}
+          attemptActive={found.attemptActive}
+          runningBand={bandStands}
+          onRetry={reads.retry}
+          onBack={() => leave(backToField)}
+          onChooseAnother={() => leave(() => navigate(routeEntryPathOf(search.route)))}
+          onContinue={() => navigate(readoutPathOf(target.address))}
         />
-      )}
-      <ConfirmedReadsView
-        step={confirmedStepOf(reads, destination)}
-        route={search.route}
-        networkName={networkName}
-        attemptActive={found.attemptActive}
-        runningBand={bandStands}
-        onRetry={reads.retry}
-        onBack={() => leave(backToField)}
-        onChooseAnother={() => leave(() => navigate(routeEntryPathOf(search.route)))}
-        onContinue={() => navigate(readoutPathOf(target.address))}
-      />
-    </View>
+      </View>
+    </TwoColumn>
   )
 }
 
