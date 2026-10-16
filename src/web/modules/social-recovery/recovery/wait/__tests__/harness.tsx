@@ -27,6 +27,7 @@ import { TextDecoder, TextEncoder } from 'util'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Key } from '@ambire-common/interfaces/keystore'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
+import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
   Address,
@@ -878,6 +879,17 @@ export const mountWait = (account: Address): Promise<Mounted> =>
   mountElement(
     <MemoryRouter
       initialEntries={[waitPathOf(account)]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <WaitScreen />
+    </MemoryRouter>
+  )
+
+/** Mounts the wait at its route with no account in the search. */
+export const mountWaitWithNoAccount = (): Promise<Mounted> =>
+  mountElement(
+    <MemoryRouter
+      initialEntries={[`/${WEB_ROUTES.socialRecoveryRecoveryWait}`]}
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >
       <WaitScreen />
