@@ -182,7 +182,7 @@ The extension reads the payee once, when the request is built, and never polls i
 
 ## D-374 Guardian approval payloads
 
-The SDK builds what a guardian signs and parses what comes back, and the extension never assembles a digest itself. This section names the request, the payload, the reply and the typed data under all three.
+The SDK builds what a guardian signs and files the reply that comes back, the extension parses the reply's line itself since it owns that format, and the extension never assembles a digest itself. This section names the request, the payload, the reply and the typed data under all three.
 
 The recoverer's own recovery client builds one request per place through `getApproverRequests`, each carrying that place's method, config and salt and no other place's. The recoverer sends that request to the approver as the page's link. The page turns the request it holds into what it renders and into what the connected wallet signs, through the methods orchestrator's `describeRequest` and `signingInput`. Neither call holds a provider and neither reads a chain.
 
@@ -194,7 +194,7 @@ The payload carries the hash of the setup body and never the body, so nothing of
 
 The page packages the guardian's material into the reply through the orchestrator's `replyFrom`. The reply travels as one line, the plain JSON of the Reply record with its keys in record order, and the recoverer's paste reads it back with a JSON parse and a shape check, since the SDK ships no serializer and the integrator owns the format, ruled on 2026-10-15. The recoverer's own client files that reply through `addApproverReply`, which produces the claim and never throws. It returns a typed `AddResult`, `filed` or `refused`, and a refusal names one of five causes: a kind or version it does not read, binding fields that do not match, a digest this gathering does not produce for that place, a place the map does not name, and a method, config or salt that is not the place's. The paste check beside it tries the two verification paths in turn for every credential, the signer `ecrecover` returns first and the credential's own `isValidSignature`, a chain read, after. It never branches on a detection of code at the address, and takes the order the wallet method itself takes, contracts D-104. An ordinary key that began delegating and a smart account that has not yet transacted are therefore both read the way the chain would read them.
 
-That check reports unmatched where neither path answers for that credential. A wrong recovery is no error of its own, since the returned artifact is a bare signature carrying no field of the request it signed. A signature over another request's digest recovers some other address and returns unmatched like any other, D-308.
+That check reports unmatched where neither path answers for that credential. A wrong recovery is no error of its own. The reply's envelope carries the binding fields and the digest, which the filing compares, but its proof is a bare signature carrying no field of the request it signed, so a signature over another request's digest under this request's envelope recovers some other address and returns unmatched like any other, D-308.
 
 Of the four errors the paste shows, the extension adds one on its own, already in the list. It adds no warning for an address that holds no code, since the check tries both paths for that address anyway and no chain read tells an undeployed smart account from a wrong signer. Every approval counts or fails on paste, contracts D-104.
 
