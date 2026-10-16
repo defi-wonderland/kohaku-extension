@@ -8,7 +8,7 @@
 import type { Address, Hex } from './common'
 import type { Notification } from './events'
 import type { Handover, PaymentOrder } from './formats'
-import type { AttemptState } from './interactor'
+import type { AttemptState, RemovedKey } from './interactor'
 
 /** Setup errors: the reverts the chain would produce later and the delegated guards. */
 export const SETUP_ERROR_CODES = [
@@ -204,8 +204,7 @@ export interface SetupDescription {
   methodStanding: unknown
   passkeyDomains: unknown
   candidateKeys: { address: Address; isAuthority: boolean }[]
-  // The SDK names this value but no literal; `'no-creation-triple'` is the extension's own.
-  removedKey: Address | 'no-creation-triple'
+  removedKey: RemovedKey
   privacy: unknown
   backup: unknown
   reveals: unknown

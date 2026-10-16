@@ -49,6 +49,7 @@ import { PASSKEY_CONFIG } from './methods'
 import { composeBatch, shouldSimulate, simulationFrom, withSimulation } from './prepared'
 import { codedError, finding, unansweredRead, validationRefusal } from './scripts'
 import type { ClientContext, LastSetupWrite, MethodReads } from './types'
+import { removedKeyOfReading } from './wallet-reads'
 
 // A shift, since the build compiles `**` to Math.pow, which throws on a bigint.
 // eslint-disable-next-line no-bitwise
@@ -462,8 +463,7 @@ export class SetupClientDouble implements ISetupClient {
       })),
       passkeyDomains,
       candidateKeys,
-      // No value exists for a replay that names no key or several; see `recoveryState`.
-      removedKey: removed.kind === 'named' ? removed.key : 'no-creation-triple',
+      removedKey: removedKeyOfReading(removed),
       privacy: { level: levelOfDraft(draft), publicMetadata: draft.privacy.publicMetadata },
       backup: { form: draft.privacy.backup },
       reveals: { publicMetadata: draft.privacy.publicMetadata !== '0x' },

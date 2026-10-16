@@ -165,7 +165,7 @@ describe("the new key of the account's latest consumed handover", () => {
     })
     await expect(reads.removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'no-key-entry'
+      cause: 'not-a-key'
     })
     expect(askedPrivileges()).toEqual([])
   })
@@ -275,7 +275,7 @@ describe('the candidates of every source', () => {
     const { reads, askedPrivileges } = worldOf({ holders: [KEY_A], authorities: [KEY_A] })
     await expect(reads.removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'no-key-entry'
+      cause: 'not-a-key'
     })
     expect(askedPrivileges()).toEqual([])
   })
@@ -364,7 +364,7 @@ describe('the scans of an account with no creation record', () => {
       const { node, reads, scansOf } = worldOf({ createdAt })
       await expect(reads.removedKey()).resolves.toEqual({
         kind: 'unavailable',
-        cause: 'no-key-entry'
+        cause: 'not-a-key'
       })
       const blocks = node.codeRead.code.mock.calls.map(([, block]) => block)
       expect(blocks[0]).toBe(HEAD)
@@ -470,7 +470,7 @@ describe('an account with no creation record and no code', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'no-creation-record'
+      cause: 'no-source'
     })
     expect(node.provider.logs).not.toHaveBeenCalled()
     expect(node.transactionRead).not.toHaveBeenCalled()

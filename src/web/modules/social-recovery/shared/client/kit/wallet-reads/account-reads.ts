@@ -80,7 +80,7 @@ import { createReplyVerify } from './verify-reply'
 const readingOf = (keys: readonly Address[]): RemovedKeyReading => {
   const [key] = keys
   if (key === undefined) {
-    return { kind: 'unavailable', cause: 'no-key-entry' }
+    return { kind: 'unavailable', cause: 'not-a-key' }
   }
   if (keys.length > 1) {
     return { kind: 'unavailable', cause: 'several-key-entries' }
@@ -194,7 +194,7 @@ export const createKitWalletReads = ({
     if (!scan.bounded) {
       return reading
     }
-    if (reading.kind === 'unavailable' && reading.cause === 'no-key-entry') {
+    if (reading.kind === 'unavailable' && reading.cause === 'not-a-key') {
       throw scan.refusal
     }
     return { ...reading, privilegeScanBoundedAt: scan.from }
@@ -207,7 +207,7 @@ export const createKitWalletReads = ({
         return removedKeyOfDeployed(block)
       }
       if (!account.creation) {
-        return { kind: 'unavailable', cause: 'no-creation-record' }
+        return { kind: 'unavailable', cause: 'no-source' }
       }
       return readingOf(
         distinctKeys(

@@ -63,7 +63,7 @@ describe('the wallet reads of a deployed account with no creation record', () =>
     world.chain.setAuthorities([])
     await expect(world.walletReads().removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'no-key-entry'
+      cause: 'not-a-key'
     })
   })
 
@@ -82,7 +82,7 @@ describe('the wallet reads of an account with no creation record and no code', (
     const reads = world.walletReads()
     await expect(reads.removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'no-creation-record'
+      cause: 'no-source'
     })
     await expect(reads.fitCheck()).resolves.toEqual({ basis: 'no-code', fits: false })
   })
@@ -118,7 +118,7 @@ describe('the gathering and the state record of an account with no creation reco
       cause: 'several-key-entries'
     })
     expect((await (await world.recoveryClient()).recoveryState()).removedKey).toBe(
-      'no-creation-triple'
+      'no-source'
     )
   })
 
@@ -126,7 +126,7 @@ describe('the gathering and the state record of an account with no creation reco
     const world = createWorld({ hasCode: false })
     expect((await removedUnknownOf(world))?.values).toMatchObject({
       creationTriple: false,
-      cause: 'no-creation-record'
+      cause: 'no-source'
     })
   })
 })
