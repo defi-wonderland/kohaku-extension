@@ -17,6 +17,7 @@ import type {
   PreparedCall,
   PrepareOptions,
   PrivacyLevel,
+  RemovedKey,
   SetupConfirmation,
   SetupDescription,
   SetupDraft,
@@ -421,7 +422,13 @@ export class SetupClientDouble implements ISetupClient {
       action.supportsAccount(),
       manager.stateOf()
     ])
-    const removed = chain.removedKeyReading(!!config.creation)
+    let removedKey: RemovedKey
+    try {
+      chain.guard('walletReads.removedKey')
+      removedKey = removedKeyOfReading(chain.removedKeyReading(!!config.creation))
+    } catch {
+      removedKey = 'unread'
+    }
     const placed = placesOf(chain.account, configurationOfDraft(draft))
     const passkeyDomains = placed
       .filter((p) => sameAddress(p.credential.method, chain.descriptor.methodPasskey))
@@ -463,7 +470,7 @@ export class SetupClientDouble implements ISetupClient {
       })),
       passkeyDomains,
       candidateKeys,
-      removedKey: removedKeyOfReading(removed),
+      removedKey,
       privacy: { level: levelOfDraft(draft), publicMetadata: draft.privacy.publicMetadata },
       backup: { form: draft.privacy.backup },
       reveals: { publicMetadata: draft.privacy.publicMetadata !== '0x' },
