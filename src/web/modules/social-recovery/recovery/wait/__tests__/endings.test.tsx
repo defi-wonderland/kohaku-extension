@@ -29,7 +29,11 @@ import {
   useWaitClock,
   waiting
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
-import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
+import type {
+  Mounted,
+  RoutedWait,
+  World
+} from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { CancelledBy } from '@web/modules/social-recovery/sdk-interfaces'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import type { StoredSession } from '@web/modules/social-recovery/shared/records'
@@ -132,6 +136,30 @@ describe('where the wait sends the holder with no account in its search', () => 
     view = await mountWaitWithNoAccount()
 
     expect(view.paths()).toEqual([ACCOUNT_STEP])
+  })
+
+  it('sends nowhere from a listing that answers after the search moved to another account', async () => {
+    const landedWorld = await openWorld()
+    const other = await openWorld({ countdown: false })
+    await landCountdown(other.records, landedWorld.account, ONE_GUARDIAN)
+    const { storage } = other
+    const getAll = storage.getAll.bind(storage)
+    let release = () => {}
+    const listed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    storage.getAll = async () => {
+      await listed
+      return getAll()
+    }
+    view = await mountWaitWithNoAccount()
+    expect(view.paths()).toEqual([])
+
+    await (view as RoutedWait).goTo(waitPath(other))
+    release()
+    await tick(0)
+
+    expect(view.paths()).not.toContain(waitPath(landedWorld))
   })
 
   it('goes to the account step where two sessions have landed', async () => {

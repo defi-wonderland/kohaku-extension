@@ -511,16 +511,19 @@ const WaitScreen = () => {
   const search = useMemo(() => parseChecklistSearch(location.search), [location.search])
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const account = search?.account
-  const mounted = useRef(true)
+  // Moves on with each account in the search and on unmount, so a listing that
+  // answers after either sends the holder nowhere.
+  const generation = useRef(0)
   useEffect(() => {
-    mounted.current = true
+    generation.current += 1
     return () => {
-      mounted.current = false
+      generation.current += 1
     }
-  }, [])
+  }, [account])
   const onAbsent = useCallback(() => {
+    const started = generation.current
     const toAccountStep = () => {
-      if (mounted.current) {
+      if (generation.current === started) {
         navigate(accountStepPath(), { replace: true })
       }
     }
@@ -531,7 +534,7 @@ const WaitScreen = () => {
     records.listCountdowns(CHAIN_ID).then((landed) => {
       if (landed.length !== 1) {
         toAccountStep()
-      } else if (mounted.current) {
+      } else if (generation.current === started) {
         navigate(waitPathOf(landed[0].account), { replace: true })
       }
     }, toAccountStep)
