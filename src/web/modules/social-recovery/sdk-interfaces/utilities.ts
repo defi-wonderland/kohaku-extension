@@ -138,7 +138,11 @@ export interface RestoreRefusal extends Error {
 export const KIT_ERROR_SOURCES = ['manager', 'action', 'account', 'language'] as const
 export type KitErrorSource = typeof KIT_ERROR_SOURCES[number]
 
-/** The closed set of twenty-five kit errors, twenty-one on the manager and four on the action. */
+/**
+ * The closed set of twenty-eight kit errors, twenty-two on the manager and six
+ * on the action. Every name drops its contract's prefix except the action's two
+ * refusals of a key, named as deployed.
+ */
 export const KIT_ERROR_NAMES = [
   'InvalidCommitment',
   'WrongSetupNonce',
@@ -161,9 +165,12 @@ export const KIT_ERROR_NAMES = [
   'RuleUnsatisfied',
   'WaitNotOver',
   'WrongPayload',
+  'ActionDoesNotServeAccount',
   'BatchNotApproved',
   'MalformedHandover',
-  'ReservedAuthority',
+  'RecoveryAction_NotAKey',
+  'RecoveryAction_AlreadyPrivileged',
+  'AccountNotServed',
   'NotConsumable'
 ] as const
 export type KitErrorName = typeof KIT_ERROR_NAMES[number]
