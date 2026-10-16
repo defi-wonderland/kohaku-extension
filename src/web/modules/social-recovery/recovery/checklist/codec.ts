@@ -34,9 +34,6 @@ export const recordOfLine = (line: string): unknown => {
   }
 }
 
-/** A record as one line of plain JSON, its keys in the order the record holds them. */
-export const jsonLineOfRecord = (record: object): string => JSON.stringify(record)
-
 /**
  * The JSON value a pasted text carries, any JSON whitespace accepted, or null
  * where the text is longer than a record travels in or is not JSON.

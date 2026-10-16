@@ -13,7 +13,7 @@ import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 import { isDecimalString, isStoredAddress } from '@web/modules/social-recovery/shared/records'
 
-import { isIndex, isObject, isPurpose, jsonLineOfRecord, recordOfJsonLine } from './codec'
+import { isIndex, isObject, isPurpose, recordOfJsonLine } from './codec'
 import type {
   AddReplyResult,
   ChecklistLayout,
@@ -60,7 +60,7 @@ const replyRecordOf = ({
 })
 
 /** An approval as the one line the guardian sends back: its record as plain JSON. */
-export const replyLineOf = (reply: ApproverReply): string => jsonLineOfRecord(replyRecordOf(reply))
+export const replyLineOf = (reply: ApproverReply): string => JSON.stringify(replyRecordOf(reply))
 
 /** The approval a pasted text carries, or null where it is not one; any JSON whitespace is accepted. */
 export const replyOfLine = (text: string): ApproverReply | null => {

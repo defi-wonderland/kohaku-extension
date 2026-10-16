@@ -142,17 +142,8 @@ export const revertedKeyOf = (write: WriteKind, cause: RevertCause): string =>
     ? WRITES_KEYS.revertedExecuteGone
     : REVERTED_KEYS[write]
 
-/** The kit errors whose cause sentence another block of the string table already words. */
-const BORROWED_CAUSE_KEYS: Partial<Record<KitErrorName, string>> = {
-  RecoveryAction_NotAKey: 'socialRecovery.entry.refusal.removedNotAuthority',
-  RecoveryAction_AlreadyPrivileged: `${WRITES}.causes.ReservedAuthority`,
-  AccountNotServed: 'socialRecovery.review.blocked.cannotRecover.reasonNotSupported',
-  ActionDoesNotServeAccount: 'socialRecovery.editor.refusals.actionUnsupported'
-}
-
 /** The key of the cause sentence of one kit error, `socialRecovery.writes.causes.<name>`. */
-export const causeKey = (name: KitErrorName): string =>
-  BORROWED_CAUSE_KEYS[name] ?? `${WRITES}.causes.${name}`
+export const causeKey = (name: KitErrorName): string => `${WRITES}.causes.${name}`
 
 /** The key of the cause sentence of a revert the wallet cannot name. */
 export const UNNAMED_CAUSE_KEY = `${WRITES}.causes.unnamed`
