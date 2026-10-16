@@ -44,7 +44,11 @@ import type {
  * sources name hold none, or more than one key holds authority. The last is
  * the wallet's own rule, stricter than the SDK, which names one of them.
  */
-export const REMOVED_KEY_UNAVAILABLE_CAUSES = ['no-source', 'not-a-key', 'several-key-entries'] as const
+export const REMOVED_KEY_UNAVAILABLE_CAUSES = [
+  'no-source',
+  'not-a-key',
+  'several-key-entries'
+] as const
 
 /**
  * The reading as the SDK's removed-key value. Several keys holding authority

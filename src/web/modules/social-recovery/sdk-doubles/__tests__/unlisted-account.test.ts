@@ -117,9 +117,7 @@ describe('the gathering and the state record of an account with no creation reco
       creationTriple: false,
       cause: 'several-key-entries'
     })
-    expect((await (await world.recoveryClient()).recoveryState()).removedKey).toBe(
-      'no-source'
-    )
+    expect((await (await world.recoveryClient()).recoveryState()).removedKey).toBe('no-source')
   })
 
   it('refuse the gathering for want of a creation record where the account has no code', async () => {
