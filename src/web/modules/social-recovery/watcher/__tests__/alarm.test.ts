@@ -75,12 +75,12 @@ const setUp = ({
 }
 
 describe('the watcher', () => {
-  it('registers an alarm of one minute and polls once at start', async () => {
+  it('registers an alarm of thirty minutes and polls once at start', async () => {
     const { alarms, chain, onBadge } = setUp()
     await settle()
 
     expect(alarms.create).toHaveBeenCalledTimes(1)
-    expect(alarms.create).toHaveBeenCalledWith(WATCHER_ALARM, { periodInMinutes: 1 })
+    expect(alarms.create).toHaveBeenCalledWith(WATCHER_ALARM, { periodInMinutes: 30 })
     expect(chain.reads.latestBlock).toHaveBeenCalledTimes(1)
     expect(onBadge).toHaveBeenCalledWith(0)
   })
@@ -163,6 +163,41 @@ describe('the watcher', () => {
     expect(connect).toHaveBeenCalledTimes(1)
     watcher?.stop()
     expect(destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('builds no provider, writes no record and leaves the badge where it stops while the accounts load', async () => {
+    let load: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      load = resolve
+    })
+    const { connect, onBadge, storage, watcher } = setUp({ ready })
+
+    watcher?.stop()
+    load?.()
+    await settle()
+
+    expect(connect).not.toHaveBeenCalled()
+    expect(storage.entries.size).toBe(0)
+    expect(onBadge).not.toHaveBeenCalled()
+  })
+
+  it('leaves the alarm of a later watcher on the same alarm API running where the first one stops', async () => {
+    const fake = fakeAlarms()
+    const first = setUp({ fake })
+    await settle()
+    const second = setUp({ fake })
+    await settle()
+
+    first.watcher?.stop()
+    expect(fake.alarms.clear).not.toHaveBeenCalled()
+
+    fake.fire(WATCHER_ALARM)
+    await settle()
+    expect(first.chain.reads.latestBlock).toHaveBeenCalledTimes(1)
+    expect(second.chain.reads.latestBlock).toHaveBeenCalledTimes(2)
+
+    second.watcher?.stop()
+    expect(fake.alarms.clear).toHaveBeenCalledWith(WATCHER_ALARM)
   })
 
   it('clears an alarm an earlier build registered where this build has no deployed kit', async () => {

@@ -1,6 +1,6 @@
 /**
- * The watcher's start: the extension's browser alarm, every minute while the
- * browser is open, whether the popup is open or not and whether the keystore
+ * The watcher's start: the extension's browser alarm, every 30 minutes while
+ * the browser is open, whether the popup is open or not and whether the keystore
  * is locked or not, and one poll once the accounts have loaded. A poll needs
  * the listed accounts and the recovery chain's network record, never a key.
  *
@@ -106,6 +106,8 @@ export const startRecoveryWatcher = ({
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   let connection: WatcherConnection | undefined
   let running = false
+  // A stopped watcher starts no poll and leaves the badge.
+  let stopped = false
   // The accounts the last poll read, which a poll that cannot read them marks failed.
   let lastKnown: Address[] = []
   let isLoaded = false
@@ -159,6 +161,9 @@ export const startRecoveryWatcher = ({
 
   /** One poll; answers the badge's count, or undefined where the badge stays as it is. */
   const poll = async (): Promise<number | undefined> => {
+    if (stopped) {
+      return undefined
+    }
     const polledAt = now()
     let watched: Address[]
     try {
@@ -212,20 +217,20 @@ export const startRecoveryWatcher = ({
         return
       }
     }
-    if (running) {
+    if (running || stopped) {
       return
     }
     running = true
     try {
       const count = await readWithin(poll, tickLimitMs)
-      if (count !== undefined) {
+      if (count !== undefined && !stopped) {
         onBadge(count)
       }
     } catch (thrown) {
       // eslint-disable-next-line no-console
       console.error('The recovery watcher could not poll', thrown)
       // A poll that did not finish counts every account it watched as failed, with no wait on storage.
-      if (lastKnown.length > 0) {
+      if (lastKnown.length > 0 && !stopped) {
         onBadge(lastKnown.length)
       }
     } finally {
@@ -242,10 +247,12 @@ export const startRecoveryWatcher = ({
   return {
     tick,
     stop: () => {
+      stopped = true
+      // A later watcher started on the same alarm API owns the alarm and keeps it.
       if (startedTicks.get(alarms) === tick) {
         startedTicks.delete(alarms)
+        alarms.clear(WATCHER_ALARM)
       }
-      alarms.clear(WATCHER_ALARM)
       connection?.destroy()
       connection = undefined
     }
