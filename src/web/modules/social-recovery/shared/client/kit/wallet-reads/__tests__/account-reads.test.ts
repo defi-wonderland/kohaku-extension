@@ -92,6 +92,14 @@ describe('the removed key of an account with no code', () => {
     })
   })
 
+  it('names no source where the creation record grants no key at all', async () => {
+    const { reads } = worldOf({ initialPrivileges: [] })
+    await expect(reads.removedKey()).resolves.toEqual({
+      kind: 'unavailable',
+      cause: 'no-source'
+    })
+  })
+
   it('names none where several keys hold a creation privilege', async () => {
     const { reads } = worldOf({
       initialPrivileges: [

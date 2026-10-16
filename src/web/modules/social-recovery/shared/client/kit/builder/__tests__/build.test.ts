@@ -351,7 +351,7 @@ describe("the wallet's reads", () => {
     node.setCode(ACCOUNT, CONTRACT_CODE)
     await expect(client.walletReads.removedKey()).resolves.toEqual({
       kind: 'unavailable',
-      cause: 'not-a-key'
+      cause: 'no-source'
     })
     const rangesAt = (address: Address) =>
       node.provider.logs.mock.calls
