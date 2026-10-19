@@ -17,14 +17,16 @@ export const REMOVAL_DRAFT: SetupDraft = {
   privacy: { publicMetadata: '0x', backup: 'empty' }
 }
 
-/** Where each of the management editor's writes is followed, and the link's label. */
+/** Where each of the management editor's writes is followed, the line that says so, and the link's label. */
 export const MANAGE_LINKS: Readonly<Record<ManageIntent, ElsewhereLink>> = {
   manageEdit: {
     route: WEB_ROUTES.socialRecoveryManageReview,
-    label: 'socialRecovery.management.review.title'
+    line: `${OVERVIEW}.writes.editInFlight`,
+    label: `${OVERVIEW}.writes.openReview`
   },
   manageRemove: {
     route: WEB_ROUTES.socialRecoveryManageRemove,
-    label: 'socialRecovery.management.remove.title'
+    line: `${OVERVIEW}.writes.removeInFlight`,
+    label: `${OVERVIEW}.writes.openRemove`
   }
 }

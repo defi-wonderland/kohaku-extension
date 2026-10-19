@@ -85,6 +85,7 @@ const OverviewWriteStep = ({
   reads,
   autoStart,
   onFinished,
+  onLeft,
   onClose,
   navigate
 }: OverviewWriteStepProps) => {
@@ -247,6 +248,13 @@ const OverviewWriteStep = ({
       onFinished()
     }
   }, [finished, onFinished])
+  // A run that lost its claim to a write of the management editor sent nothing; the overview points there.
+  const left = screen === 'overview-elsewhere'
+  useEffect(() => {
+    if (left) {
+      onLeft()
+    }
+  }, [left, onLeft])
 
   const canStart =
     steps !== null &&

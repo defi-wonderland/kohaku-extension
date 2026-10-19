@@ -311,10 +311,20 @@ describe("the overview's screen", () => {
   })
 
   const EDITOR_WRITES = [
-    { mark: ':manage-edit', route: WEB_ROUTES.socialRecoveryManageReview },
-    { mark: ':manage-remove', route: WEB_ROUTES.socialRecoveryManageRemove }
+    {
+      mark: ':manage-edit',
+      route: WEB_ROUTES.socialRecoveryManageReview,
+      line: 'socialRecovery.management.overview.writes.editInFlight',
+      link: 'socialRecovery.management.overview.writes.openReview'
+    },
+    {
+      mark: ':manage-remove',
+      route: WEB_ROUTES.socialRecoveryManageRemove,
+      line: 'socialRecovery.management.overview.writes.removeInFlight',
+      link: 'socialRecovery.management.overview.writes.openRemove'
+    }
   ]
-  EDITOR_WRITES.forEach(({ mark, route }) =>
+  EDITOR_WRITES.forEach(({ mark, route, line, link }) =>
     it(`leaves a write the editor stored under ${mark} to the editor's screen, with no step of its own`, async () => {
       const world = await dormantWorld()
       const prepared = await world.client.setup.prepareClearSetup()
@@ -332,9 +342,11 @@ describe("the overview's screen", () => {
 
       view = await mount(<OverviewScreen />)
 
-      expect(view.textOf('overview-write-elsewhere')).toContain(
+      expect(view.textOf('overview-write-elsewhere')).toContain(t(line))
+      expect(view.textOf('overview-write-elsewhere')).not.toContain(
         t('socialRecovery.management.overview.writes.inFlightElsewhere')
       )
+      expect(view.textOf('overview-open-elsewhere')).toContain(t(link))
       expect(view.byTestId('overview-dormant')).toBeNull()
       expect(view.byTestId('overview-step-clear')).toBeNull()
       expect(view.byTestId('overview-step-reauthorize')).toBeNull()
@@ -347,4 +359,40 @@ describe("the overview's screen", () => {
       expect(stored.status).toBe('present')
     })
   )
+
+  it("stops a clear whose claim loses to a write the editor stored after the screen opened, sends nothing, and points to the editor's screen", async () => {
+    const world = await dormantWorld()
+    const port = sendPortOver()
+    const receipts = receiptsOver()
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+    mockState.navigation.navigate.mockClear()
+
+    view = await mount(<OverviewScreen />)
+    await view.press('overview-clear')
+    expect(view.byTestId('overview-step-clear')).not.toBeNull()
+
+    const requestId = `${newSendRequestId()}:manage-edit`
+    await world.records.saveInFlight(CHAIN_ID, address).claim({
+      draft: REMOVAL_DRAFT,
+      prepared: await world.client.setup.prepareClearSetup(),
+      requestId,
+      claimedAt: Date.now()
+    })
+    await view.press('overview-step-start')
+    await settle()
+
+    expect(view.byTestId('overview-step-clear')).toBeNull()
+    expect(view.textOf('overview-write-elsewhere')).toContain(
+      t('socialRecovery.management.overview.writes.editInFlight')
+    )
+    await view.press('overview-open-elsewhere')
+    expect(mockState.navigation.navigate).toHaveBeenCalledWith(
+      WEB_ROUTES.socialRecoveryManageReview
+    )
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(receipts.wait).not.toHaveBeenCalled()
+    const stored = await world.records.saveInFlight(CHAIN_ID, address).read()
+    expect(stored.status === 'present' && stored.value.requestId).toBe(requestId)
+  })
 })

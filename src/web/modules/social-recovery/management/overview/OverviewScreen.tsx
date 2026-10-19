@@ -114,8 +114,10 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
 
   const [open, setOpen] = useState<OpenStep | null>(null)
   const [elsewhere, setElsewhere] = useState<ManageIntent | null>(null)
+  const [heldRound, setHeldRound] = useState(0)
   // A write of the overview this device holds in flight opens its step, whose run follows it;
-  // one of the management editor is left to its own screen.
+  // one of the management editor is left to its own screen. Read on arrival, and again where
+  // a step's run stopped at a write it does not follow.
   useEffect(() => {
     let live = true
     records
@@ -142,7 +144,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     return () => {
       live = false
     }
-  }, [records, chainId, account])
+  }, [records, chainId, account, heldRound])
 
   const onOpen = useCallback((intent: OverviewIntent) => {
     // The mirror's action is the holder's confirmation itself; the other two confirm on their step.
@@ -152,6 +154,11 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   const onFinished = useCallback(() => {
     setOpen(null)
     retry()
+  }, [retry])
+  const onLeft = useCallback(() => {
+    setOpen(null)
+    retry()
+    setHeldRound((round) => round + 1)
   }, [retry])
   const onClose = useCallback(() => setOpen(null), [])
 
@@ -172,7 +179,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       type="warning"
       size="sm"
       style={spacings.mbSm}
-      text={t('socialRecovery.management.overview.writes.inFlightElsewhere')}
+      text={t(MANAGE_LINKS[elsewhere].line)}
     >
       <ActionsRow
         primary={
@@ -205,6 +212,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
         reads={reads}
         autoStart={open.autoStart}
         onFinished={onFinished}
+        onLeft={onLeft}
         onClose={onClose}
         navigate={navigate}
       />
