@@ -229,16 +229,15 @@ const removalWith = async (attemptOpen: boolean, authorized = true) => {
     authorized
   })
   const navigate = jest.fn()
-  const view = await mount(
-    React.createElement(RemoveStageView, {
-      records,
-      session,
-      chainId: CHAIN_ID,
-      account: ACCOUNT,
-      navigate
-    })
-  )
-  return { view, records, session, navigate }
+  const element = React.createElement(RemoveStageView, {
+    records,
+    session,
+    chainId: CHAIN_ID,
+    account: ACCOUNT,
+    navigate
+  })
+  const view = await mount(element)
+  return { view, element, records, session, navigate }
 }
 
 const removalOver = async (attemptOpen: boolean, authorized = true) =>
@@ -434,8 +433,7 @@ describe('the removal around the refusals and other writes', () => {
     expect(view.byTestId('manage-remove-ended')).not.toBeNull()
     expect(view.byTestId('manage-remove-done')).toBeNull()
     expect(view.textOf('manage-remove-done-title')).toBe(t(`${REMOVE}.alreadyTitle`))
-    expect(view.text()).toContain(t(`${REMOVE}.alreadyBody`))
-    expect(view.text()).not.toContain(t(`${REMOVE}.doneBody`))
+    expect(view.textOf('manage-remove-done-lead')).toBe(t(`${REMOVE}.alreadyBody`))
     expect((await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()).status).toBe('absent')
     expect((await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).status).toBe('absent')
     expect(await session.read()).toBeUndefined()
@@ -457,6 +455,30 @@ describe('the removal around the refusals and other writes', () => {
       window.dispatchEvent(new Event('focus'))
     })
     await settle()
+
+    expect(navigate).toHaveBeenCalledWith('social-recovery/manage/review')
+    view.unmount()
+  })
+
+  it('reads the stored write again where the run stops for another screen, and routes there', async () => {
+    const { view, element, records, navigate } = await removalWith(false)
+    await records.saveInFlight(CHAIN_ID, ACCOUNT).claim({
+      draft: REMOVAL_DRAFT,
+      prepared: { kind: 'call', target: ACCOUNT, value: 0n, data: '0x' } as never,
+      requestId: `${newSendRequestId()}${MANAGE_INTENT_MARKS.manageEdit}`,
+      claimedAt: Date.now()
+    })
+    expect(navigate).not.toHaveBeenCalled()
+
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'idle', write: 'ownerWrite', run: 1 },
+        after: { stage: 'none' },
+        stop: 'overview-elsewhere'
+      }
+    }
+    await view.render(React.cloneElement(element))
 
     expect(navigate).toHaveBeenCalledWith('social-recovery/manage/review')
     view.unmount()

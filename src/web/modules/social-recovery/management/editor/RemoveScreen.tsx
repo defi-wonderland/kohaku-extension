@@ -108,12 +108,17 @@ export const RemoveStageView = ({
   const { state } = run
   const screen = armScreenOf(state)
 
-  // A run that read or lost its claim to another screen's write ends unsent; the stored write is read again.
+  // A run that read or lost its claim to another screen's write ends unsent, or stops for that
+  // screen; the stored write is read again.
   useEffect(() => {
-    if (state.lookup === 'failed' || state.write.status === 'failedNotSent') {
+    if (
+      state.lookup === 'failed' ||
+      state.write.status === 'failedNotSent' ||
+      state.stop === 'overview-elsewhere'
+    ) {
       refreshHeld()
     }
-  }, [state.lookup, state.write.status, refreshHeld])
+  }, [state.lookup, state.write.status, state.stop, refreshHeld])
 
   // The chain holds no setup and no authorization: this device keeps nothing of the setup either.
   const endedElsewhere = screen === 'already-set-up'
@@ -146,9 +151,12 @@ export const RemoveStageView = ({
     <View testID={endedElsewhere ? 'manage-remove-ended' : 'manage-remove-done'}>
       <PageTitle
         title={t(endedElsewhere ? `${REMOVE}.alreadyTitle` : `${REMOVE}.doneTitle`)}
-        lead={t(endedElsewhere ? `${REMOVE}.alreadyBody` : `${REMOVE}.doneBody`)}
         titleTestID="manage-remove-done-title"
-      />
+      >
+        <Text fontSize={14} appearance="secondaryText" testID="manage-remove-done-lead">
+          {t(endedElsewhere ? `${REMOVE}.alreadyBody` : `${REMOVE}.doneBody`)}
+        </Text>
+      </PageTitle>
       <ActionsRow
         primary={
           <Button

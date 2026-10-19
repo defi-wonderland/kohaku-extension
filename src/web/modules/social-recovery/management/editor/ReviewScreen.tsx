@@ -254,12 +254,17 @@ export const ReviewStageView = ({
   const screen = armScreenOf(state)
   const { write } = state
 
-  // A run that read or lost its claim to another screen's write ends unsent; the stored write is read again.
+  // A run that read or lost its claim to another screen's write ends unsent, or stops for that
+  // screen; the stored write is read again.
   useEffect(() => {
-    if (state.lookup === 'failed' || write.status === 'failedNotSent') {
+    if (
+      state.lookup === 'failed' ||
+      write.status === 'failedNotSent' ||
+      state.stop === 'overview-elsewhere'
+    ) {
       refreshHeld()
     }
-  }, [state.lookup, write.status, refreshHeld])
+  }, [state.lookup, write.status, state.stop, refreshHeld])
 
   const openUrl = useCallback((url: string) => {
     Linking.openURL(url).catch(() => undefined)

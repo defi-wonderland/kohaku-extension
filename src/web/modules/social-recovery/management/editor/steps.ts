@@ -27,7 +27,7 @@
  * batch, prepared together and sent through the account's own door. Its
  * end stands once the setup is gone and the account no longer authorizes the
  * action. Its prepare reads the attempt for the screen's line alone: a read
- * that fails stops nothing. Its landing, and a run that finds that end
+ * that fails stops nothing and leaves the line as the screen drew it. Its landing, and a run that finds that end
  * already standing, wipe the recovery password, the setup records, this
  * device's opened setup and the edit session.
  */
@@ -228,8 +228,8 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
     ...ownRequestSteps('manageRemove', save),
     hasSetup: async () => removalStands(await client.setup.setupState()),
     async prepare(): Promise<PreparedSave> {
-      // The removal removes whatever stands; an attempt it could not read draws no line.
-      await readAttempt(input).catch(() => input.onAttempt?.({ open: false, dormant: false }))
+      // The removal removes whatever stands; an attempt it could not read leaves the line as it was.
+      await readAttempt(input).catch(() => undefined)
       const prepared = await client.setup.prepareRemoveSetup()
       assertWriteDoor('ownerWrite', prepared)
       return { draft: REMOVAL_DRAFT, prepared, calls: callsOf(prepared) }

@@ -413,7 +413,7 @@ describe('the removal', () => {
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
   })
 
-  it('removes whatever stands where the attempt read fails, with no cancel line', async () => {
+  it('removes whatever stands where the attempt read fails, leaving the line as drawn', async () => {
     const world = await fixture.worldOf('lands')
     world.client.walletReads.attemptState = async () => {
       throw new Error('the attempt read failed')
@@ -428,7 +428,7 @@ describe('the removal', () => {
 
     expect(isSaved(store.state())).toBe(true)
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
-    expect(heard).toEqual([{ open: false, dormant: false }])
+    expect(heard).toEqual([])
   })
 
   it('never reads as done where the send was refused', async () => {
