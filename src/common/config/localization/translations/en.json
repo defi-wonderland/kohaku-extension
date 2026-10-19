@@ -1602,7 +1602,9 @@
         "action": "Remove recovery",
         "doneTitle": "Recovery removed",
         "doneBody": "This account has no recovery path now.",
-        "keep": "Keep recovery"
+        "keep": "Keep recovery",
+        "alreadyTitle": "Recovery was already removed",
+        "alreadyBody": "Another device removed this account's recovery path before this wallet sent anything. This account has no recovery path now."
       }
     }
   }
