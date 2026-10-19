@@ -10,7 +10,12 @@ import type { Account } from '@ambire-common/interfaces/account'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
-import { canRetry, mayStillLand } from '@web/modules/social-recovery/shared/writes'
+import {
+  canRetry,
+  intentOfRequest,
+  mayStillLand,
+  requestIdOf
+} from '@web/modules/social-recovery/shared/writes'
 
 import {
   armScreenOf,
@@ -270,6 +275,48 @@ describe('the claim before the send', () => {
     expect(isSaved(store.state())).toBe(true)
     expect(page.confirmSetup).toHaveBeenCalledTimes(1)
     expect(page.saveSetup).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a save that meets a write of the recovery overview at its claim', () => {
+  it('stops with nothing sent or followed where the overview claimed after the save read the account, and leaves its write stored', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const overview = wireSave(account, script(), { storage, requests })
+    overview.receipts.wait.mockImplementation(() => pending())
+    const overviewSteps: SaveSteps = {
+      ...overview.steps,
+      newRequestId: () => requestIdOf('removeAuthorization')
+    }
+    const page = wireSave(account, script(), { storage, requests })
+    const store = createArmStore()
+
+    // The save reads the account and prepares; the overview claims before the save's claim.
+    const prepared = deferred<void>()
+    const pageSteps: SaveSteps = {
+      ...page.steps,
+      prepare: async () => {
+        await prepared.promise
+        return page.steps.prepare()
+      }
+    }
+    const running = startSave(store, pageSteps, OPTIONS)
+    await advanceTimers(0)
+    unawaited(startSave(createArmStore(), overviewSteps, OPTIONS))
+    await advanceTimers(0)
+    const held = await stored(overview)
+    expect(held && intentOfRequest(held.requestId)).toBe('removeAuthorization')
+
+    prepared.resolve()
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    expect(store.state().stop).toBe('overview-elsewhere')
+    expect(armScreenOf(store.state())).toBe('overview-elsewhere')
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(page.receipts.wait).not.toHaveBeenCalled()
+    expect(page.confirmSetup).not.toHaveBeenCalled()
+    expect((await stored(page))?.requestId).toBe(held?.requestId)
   })
 })
 

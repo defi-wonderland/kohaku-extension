@@ -20,6 +20,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
+import type { WriteKind } from '@web/modules/social-recovery/shared/writes'
+
 import {
   attachSteps,
   checkReceiptAgain,
@@ -34,8 +36,6 @@ import {
   saveAgain,
   startSave
 } from './run'
-import type { WriteKind } from '@web/modules/social-recovery/shared/writes'
-
 import type { ArmRun, ArmStore, SaveSteps } from './types'
 
 const RUNS = new Map<string, ArmStore>()

@@ -8,6 +8,7 @@
  *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas: the setup read, the gas check
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ the claim, the setup read again (time-limited)
+ *                                     ├─ lost to an overview write ─▶ stopped (nothing sent or followed)
  *                                     ├─ a setup found ─▶ already set up (the claim released)
  *                                     └─ none ─▶ the send's block: the claim's, else read (time-limited)
  *                                                ├─ unread ─▶ failedNotSent (the claim released)
@@ -74,6 +75,7 @@ import {
   coversHashes,
   DROPPED_AFTER_MS,
   initialWriteState,
+  intentOfRequest,
   mayStillLand,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
@@ -300,6 +302,16 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         write: writeReducer(state.write, { type: 'reset' }),
         after: { stage: 'none' },
         stop: 'already-set-up'
+      }
+    case 'overviewElsewhere':
+      // Taken after the claim and before the send, in place of a follow.
+      if (!awaitingHashIn(state, event.run)) {
+        return state
+      }
+      return {
+        write: writeReducer(state.write, { type: 'reset' }),
+        after: { stage: 'none' },
+        stop: 'overview-elsewhere'
       }
     case 'prepared':
       if (!inRun(state, event.run) || state.write.status !== 'checkingGas' || state.prepared) {
@@ -1252,6 +1264,14 @@ const sendClaimed = async (
   return ranOut
 }
 
+/**
+ * Whether a run whose own request is `own` leaves the stored write to its
+ * holder instead of following it: a save that meets a write of the recovery
+ * overview, which only the overview follows and judges.
+ */
+const leftToOverview = (own: string, stored: SaveInFlightRecord): boolean =>
+  !intentOfRequest(own) && !!intentOfRequest(stored.requestId)
+
 /** Follows a stored save in place of the run's own send, and looks again where it was void. */
 const followInstead = async (
   store: ArmStore,
@@ -1268,8 +1288,9 @@ const followInstead = async (
 
 /**
  * A claimed run whose stored save is no longer its own: it sends nothing and
- * releases nothing. It follows the stored save another page holds now; where
- * none is stored, the save is looked for again before it is offered.
+ * releases nothing. It follows the stored save another page holds now, or
+ * stops where a save meets a write of the recovery overview; where none is
+ * stored, the save is looked for again before it is offered.
  */
 const yieldClaim = async (
   store: ArmStore,
@@ -1279,7 +1300,12 @@ const yieldClaim = async (
   options: ConfirmReadOptions
 ): Promise<void> => {
   if (stored.status === 'present') {
+    const own = store.state().requestId
     store.dispatch({ type: 'released', run })
+    if (own && leftToOverview(own, stored.value)) {
+      store.dispatch({ type: 'overviewElsewhere', run })
+      return
+    }
     await followInstead(store, steps, run, stored.value, options)
     return
   }
@@ -1328,6 +1354,10 @@ const checkAndSend = async (
     return
   }
   if (!claim.claimed) {
+    if (leftToOverview(requestId, claim.record.value)) {
+      store.dispatch({ type: 'overviewElsewhere', run })
+      return
+    }
     await followInstead(store, steps, run, claim.record.value, options)
     return
   }

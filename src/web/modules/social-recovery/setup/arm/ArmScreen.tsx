@@ -299,7 +299,11 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       />
     )
   }
-  if (overviewWrite.status === 'answered' && overviewWrite.value) {
+  // Found on arrival, or met by the save's claim after that read.
+  if (
+    (overviewWrite.status === 'answered' && overviewWrite.value) ||
+    state.stop === 'overview-elsewhere'
+  ) {
     return (
       <Alert
         testID="arm-overview-write"
