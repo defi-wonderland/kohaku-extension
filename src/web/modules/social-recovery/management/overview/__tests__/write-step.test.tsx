@@ -149,6 +149,7 @@ const stepOf = (
     reads={READABLE()}
     autoStart={false}
     onFinished={jest.fn()}
+    onLeft={jest.fn()}
     onClose={jest.fn()}
     navigate={jest.fn()}
     {...fields}

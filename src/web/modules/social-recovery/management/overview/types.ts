@@ -124,9 +124,10 @@ export interface OverviewReads {
 /** The three writes the overview sends. */
 export type { OverviewIntent }
 
-/** The screen that follows a write stored by another management screen, and its link's label key. */
+/** The screen that follows a write stored by another management screen, the line's key and its link's label key. */
 export interface ElsewhereLink {
   route: string
+  line: string
   label: string
 }
 
@@ -207,6 +208,8 @@ export interface OverviewWriteStepProps {
   autoStart: boolean
   /** The run ended where the overview reads the chain again. */
   onFinished: () => void
+  /** The run stopped before its send at a write the management editor holds, which only the editor follows. */
+  onLeft: () => void
   onClose: () => void
   navigate: (to: string) => void
 }

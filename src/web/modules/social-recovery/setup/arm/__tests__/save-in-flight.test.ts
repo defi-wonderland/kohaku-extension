@@ -318,6 +318,108 @@ describe('a save that meets a write of the recovery overview at its claim', () =
     expect(page.confirmSetup).not.toHaveBeenCalled()
     expect((await stored(page))?.requestId).toBe(held?.requestId)
   })
+
+  it('stops with nothing sent where its claim held and the stored write became one of the overview before the send, and leaves that write stored', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const page = wireSave(account, script(), { storage, requests })
+    const store = createArmStore()
+    const overviewId = requestIdOf('clear')
+    let claimedByRun: string | undefined
+    // Between the claim and the send another page released the save's claim and the overview claimed.
+    const pageSteps: SaveSteps = {
+      ...page.steps,
+      hasSetup: async () => {
+        const own = store.state().requestId
+        if (own && !claimedByRun) {
+          claimedByRun = own
+          await page.inFlight.release(own)
+          await page.inFlight.claim({
+            draft: page.draft,
+            prepared: page.prepared,
+            requestId: overviewId,
+            claimedAt: Date.now()
+          })
+        }
+        return page.steps.hasSetup()
+      }
+    }
+
+    const running = startSave(store, pageSteps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    expect(claimedByRun).toBeDefined()
+    expect(store.state().stop).toBe('overview-elsewhere')
+    expect(store.state().requestId).toBeUndefined()
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(page.receipts.wait).not.toHaveBeenCalled()
+    expect(page.confirmSetup).not.toHaveBeenCalled()
+    expect((await stored(page))?.requestId).toBe(overviewId)
+  })
+})
+
+describe('a write of one management screen that meets a write of the other at its claim', () => {
+  const EDITOR_ID = 'social-recovery-sender:1:manage-edit'
+  const CASES = [
+    { named: 'an overview run that meets a write of the editor', own: 'clear', other: EDITOR_ID },
+    { named: 'an editor run that meets a write of the overview', own: 'editor', other: 'overview' }
+  ] as const
+
+  CASES.forEach(({ named, own, other }) =>
+    it(`stops with nothing sent or followed for ${named}, and leaves that write stored`, async () => {
+      const storage = memoryStorage()
+      const requests = requestsFake()
+      const page = wireSave(account, script(), { storage, requests })
+      const otherId = other === 'overview' ? requestIdOf('reauthorize') : other
+      await page.inFlight.claim({
+        draft: page.draft,
+        prepared: page.prepared,
+        requestId: otherId,
+        claimedAt: Date.now()
+      })
+      const store = createArmStore()
+      const steps: SaveSteps = {
+        ...page.steps,
+        newRequestId: () => (own === 'editor' ? `${Date.now()}:manage-remove` : requestIdOf(own))
+      }
+
+      const running = startSave(store, steps, OPTIONS)
+      await advanceTimers(SHORT_TIMEOUT_MS)
+      await running
+
+      expect(store.state().stop).toBe('overview-elsewhere')
+      expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+      expect(page.receipts.wait).not.toHaveBeenCalled()
+      expect(page.confirmSetup).not.toHaveBeenCalled()
+      expect((await stored(page))?.requestId).toBe(otherId)
+    })
+  )
+
+  it('follows a write of the overview from another overview run, with nothing sent', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const page = wireSave(account, script(), { storage, requests })
+    const otherId = requestIdOf('reauthorize')
+    await page.inFlight.claim({
+      draft: page.draft,
+      prepared: page.prepared,
+      requestId: otherId,
+      claimedAt: Date.now()
+    })
+    await page.inFlight.markSent(otherId, TX_HASH, START_BLOCK)
+    const store = createArmStore()
+    const steps: SaveSteps = { ...page.steps, newRequestId: () => requestIdOf('clear') }
+
+    const running = startSave(store, steps, OPTIONS)
+    await advanceTimers(SHORT_TIMEOUT_MS)
+    await running
+
+    expect(store.state().stop).toBeUndefined()
+    expect(store.state().requestId).toBe(otherId)
+    expect(page.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
 })
 
 describe('each way a run ends, against the stored save after it', () => {
