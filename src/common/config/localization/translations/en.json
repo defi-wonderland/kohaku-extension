@@ -1499,7 +1499,11 @@
           "dropped": "The node no longer knows this transaction. It did not land, and the account stands as it did. Send it again.",
           "mayStillLand": "This change was sent and can still land. This wallet keeps watching for it.",
           "inFlightElsewhere": "A change from the recovery overview is on its way for this account. Follow it there.",
-          "openOverview": "Open the recovery overview"
+          "openOverview": "Open the recovery overview",
+          "editInFlight": "A change to the recovery path is on its way for this account. Follow it on the review of changes.",
+          "openReview": "Open the review of changes",
+          "removeInFlight": "The removal of recovery is on its way for this account. Follow it on the removal screen.",
+          "openRemove": "Open the removal"
         },
         "locked": {
           "title": "Your recovery path is locked on this device",
