@@ -1,8 +1,9 @@
 /**
- * What the edit changes against the configuration it started from, the card
- * the changes make stale, and the member the rule still needs: marked while
- * its group sits at its threshold, its removal refused by the editor's own
- * rules, and the mark lifted once the threshold drops or a replacement joins.
+ * What the edit changes against the configuration it started from, members
+ * moved between groups among them, the card the changes make stale, and the
+ * member the rule still needs: marked while its group sits at its threshold,
+ * its removal refused by the editor's own rules, and the mark lifted once the
+ * threshold drops or a replacement joins.
  */
 import {
   addedCredentialsOf,
@@ -131,9 +132,17 @@ describe('the stale card line', () => {
 describe('the member the rule still needs', () => {
   const atThreshold: Clause[] = [{ threshold: 3, credentials: [A, B, C] }]
 
-  it('marks the group whose threshold equals its members', () => {
-    expect(stillNeededOf(atThreshold)).toEqual([{ clause: 0, required: 3, count: 3 }])
-    expect(stillNeededOf(COMMITTED)).toEqual([])
+  it('marks every member of the group whose threshold equals its members', () => {
+    expect([...stillNeededOf(atThreshold)]).toEqual(['0:0', '0:1', '0:2'])
+    expect(stillNeededOf(COMMITTED).size).toBe(0)
+  })
+
+  it('never marks an empty slot, nor the one member of a group of one', () => {
+    const withSlot: Clause[] = [
+      { threshold: 2, credentials: [A, { method: `0x${'0'.repeat(40)}`, config: '0x' }, B] }
+    ]
+    expect([...stillNeededOf(withSlot)]).toEqual(['0:0', '0:2'])
+    expect(stillNeededOf([{ threshold: 1, credentials: [A] }]).size).toBe(0)
   })
 
   it('refuses the path its removal leaves', () => {
@@ -145,18 +154,67 @@ describe('the member the rule still needs', () => {
 
   it('lifts once the threshold drops', () => {
     const lowered = setThreshold(atThreshold, 0, 2)
-    expect(stillNeededOf(lowered)).toEqual([])
+    expect(stillNeededOf(lowered).size).toBe(0)
     expect(shapeRefusalsOf(draftOf(removeMember(lowered, 0, 1)))).toEqual([])
   })
 
   it('lifts once a replacement joins the group', () => {
     const replaced: Clause[] = [{ threshold: 3, credentials: [A, B, C, D] }]
-    expect(stillNeededOf(replaced)).toEqual([])
+    expect(stillNeededOf(replaced).size).toBe(0)
     expect(shapeRefusalsOf(draftOf(removeMember(replaced, 0, 1)))).toEqual([])
   })
 
   it('reads every group on its own', () => {
     const two = addGroup(atThreshold)
-    expect(stillNeededOf(two).map(({ clause }) => clause)).toEqual([0])
+    expect([...stillNeededOf(two)].every((key) => key.startsWith('0:'))).toBe(true)
+  })
+})
+
+describe('members moved between groups', () => {
+  const twoGroups: Clause[] = [
+    { threshold: 1, credentials: [A, B] },
+    { threshold: 1, credentials: [C, D] }
+  ]
+  const baseline: EditSession = {
+    ...sessionAt(),
+    configuration: { clauses: twoGroups, wait: 172_800n, ignoresPause: true }
+  }
+
+  it('reads a swap across groups as a changed path, though the members and the rule stay', () => {
+    const swapped: Clause[] = [
+      { threshold: 1, credentials: [A, C] },
+      { threshold: 1, credentials: [B, D] }
+    ]
+    const rows = changesOf({
+      baseline,
+      draft: draftOf(swapped),
+      passwordChanged: false,
+      ruleOf
+    })
+    expect(rows).toEqual([{ kind: 'pathChanged' }])
+  })
+
+  it('reads members kept in their groups, in another order, as no change', () => {
+    const reordered: Clause[] = [
+      { threshold: 1, credentials: [D, C] },
+      { threshold: 1, credentials: [B, A] }
+    ]
+    expect(
+      changesOf({ baseline, draft: draftOf(reordered), passwordChanged: false, ruleOf })
+    ).toEqual([])
+  })
+
+  it('reads a removed member as removed, never as moved', () => {
+    const removed: Clause[] = [
+      { threshold: 1, credentials: [A] },
+      { threshold: 1, credentials: [C, D] }
+    ]
+    const kinds = changesOf({
+      baseline,
+      draft: draftOf(removed),
+      passwordChanged: false,
+      ruleOf
+    }).map(({ kind }) => kind)
+    expect(kinds).toEqual(['members', 'rule'])
   })
 })

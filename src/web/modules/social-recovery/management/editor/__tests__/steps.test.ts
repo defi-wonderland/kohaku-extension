@@ -6,11 +6,14 @@
  * account's batch, reading as saved only once it landed and the check agreed,
  * and then wiping the setup records, rewriting this device's opened setup
  * and ending the session; a refused send that changes nothing on this device;
- * a setup moved past the edit's start that sends nothing; and the removal's
- * one batch of the clear and the zero write, its check and its wipe.
+ * a setup moved past the edit's start that sends nothing; the refusal of a
+ * dormant setup's commit while an attempt is open; the removal's one batch of
+ * the clear and the zero write, its check, its wipe, and an end that already
+ * stands; and a write that meets another write of the editor stored by
+ * another tab, which it never takes up nor releases.
  */
 import type { EditWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
-import type { EditSession } from '@web/modules/social-recovery/management/editor/types'
+import type { AttemptRead, EditSession } from '@web/modules/social-recovery/management/editor/types'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const fixture: typeof import('@web/modules/social-recovery/management/editor/__fixtures__/world') = require('@web/modules/social-recovery/management/editor/__fixtures__/world')
@@ -18,8 +21,15 @@ const {
   editStepsOf,
   removalStepsOf,
   removalStands,
-  writeOfRequest
+  wipeRemovedSetup
 }: typeof import('@web/modules/social-recovery/management/editor/steps') = require('@web/modules/social-recovery/management/editor/steps')
+const {
+  intentOfRequest,
+  MANAGE_INTENT_MARKS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
+const {
+  newSendRequestId
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
   configurationOfDraft,
   openEditSession
@@ -70,7 +80,11 @@ const openAndEdit = async (world: EditWorld): Promise<EditSession> => {
   return session
 }
 
-const editSteps = async (world: EditWorld, baseline: EditSession) => {
+const editSteps = async (
+  world: EditWorld,
+  baseline: EditSession,
+  onAttempt?: (read: AttemptRead) => void
+) => {
   const draft = await world.records.setup(CHAIN_ID, world.account).setupDraft.read()
   if (draft.status !== 'present') {
     throw new Error('no draft to save')
@@ -84,12 +98,30 @@ const editSteps = async (world: EditWorld, baseline: EditSession) => {
       baseline,
       draft: draft.value,
       password: readRecoveryPassword(CHAIN_ID, world.account),
-      newPassword: readNewPassword(CHAIN_ID, world.account)
+      newPassword: readNewPassword(CHAIN_ID, world.account),
+      onAttempt
     })
   }
 }
 
-const removalSteps = (world: EditWorld) => removalStepsOf({ ...world, chainId: CHAIN_ID, key: KEY })
+const removalSteps = (world: EditWorld, onAttempt?: (read: AttemptRead) => void) =>
+  removalStepsOf({ ...world, chainId: CHAIN_ID, key: KEY, onAttempt })
+
+/** Stores a write of the editor as another tab claims it, with no hash yet. */
+const claimedElsewhere = async (world: EditWorld, mark: string): Promise<string> => {
+  const requestId = `${newSendRequestId()}${mark}`
+  const prepared = await world.client.setup.prepareRemoveSetup()
+  const claim = await world.records.saveInFlight(CHAIN_ID, world.account).claim({
+    draft: (await removalSteps(world).prepare()).draft,
+    prepared,
+    requestId,
+    claimedAt: Date.now()
+  })
+  if (!claim.claimed) {
+    throw new Error('another write was already stored')
+  }
+  return requestId
+}
 
 const setupRecordsHeld = async (world: EditWorld): Promise<number> => {
   const setup = world.records.setup(CHAIN_ID, world.account)
@@ -185,7 +217,94 @@ describe('the save of the changes', () => {
         newPassword: undefined
       }).prepare()
     ).rejects.toThrow('needs the recovery password')
-    expect(writeOfRequest(steps.newRequestId())).toBe('edit')
+    expect(intentOfRequest(steps.newRequestId())).toBe('manageEdit')
+  })
+
+  it('stamps the opened setup with the landed commit, not a later one read at the wipe', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const { draft, steps } = await editSteps(world, baseline)
+    const { saveSetup } = world.records
+    // Another device commits between the check after the landing and this device's wipe.
+    world.records.saveSetup = async (...args) => {
+      world.chain.commitSetup({
+        level: 'private',
+        configuration: CONFIGURATION,
+        password: PASSWORD
+      })
+      return saveSetup(...args)
+    }
+
+    await startSave(createArmStore(), steps)
+
+    const cache = await world.records.decryptedSetupCache(CHAIN_ID, world.account).read()
+    const state = await world.client.setup.setupState()
+    expect(cache.status === 'present' && cache.value.configuration).toEqual(
+      configurationOfDraft(draft)
+    )
+    expect(cache.status === 'present' && cache.value.setupNonce).toBe(baseline.setupNonce + 1n)
+    expect(state.setupNonce).toBe(baseline.setupNonce + 2n)
+  })
+
+  it('keeps the new password in memory even where a storage write of the wipe fails', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    holdNewPassword(CHAIN_ID, world.account, NEW_PASSWORD)
+    const { steps } = await editSteps(world, { ...baseline, password: 'changed' })
+    world.records.saveSetup = async () => {
+      throw new Error('storage refused the wipe')
+    }
+    const store = createArmStore()
+
+    await startSave(store, steps)
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe(NEW_PASSWORD)
+    expect(readNewPassword(CHAIN_ID, world.account)).toBeUndefined()
+    expect(await world.session.read()).toBeUndefined()
+  })
+
+  it('forgets the committed password where another tab sealed the backup under a new one', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    // The new password lives in the other tab's memory; this tab follows that save.
+    const { steps } = await editSteps(world, { ...baseline, password: 'changed' })
+    await steps.wipe()
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+  })
+
+  it('refuses to commit a setup the account no longer authorizes while an attempt is open', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    world.chain.openAttempt()
+    world.chain.setAuthorized(false)
+    const heard: AttemptRead[] = []
+    const { steps } = await editSteps(world, baseline, (read) => heard.push(read))
+    const store = createArmStore()
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(heard).toEqual([{ open: true, dormant: true }])
+  })
+
+  it('tells the screen the attempt it read right before the send', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const heard: AttemptRead[] = []
+    const { steps } = await editSteps(world, baseline, (read) => heard.push(read))
+    world.chain.openAttempt()
+
+    await startSave(createArmStore(), steps)
+
+    expect(heard).toEqual([{ open: true, dormant: false }])
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -196,7 +315,7 @@ describe('the removal', () => {
     const save = await steps.prepare()
     expect(save.prepared.kind).toBe('batch')
     expect(save.calls).toHaveLength(2)
-    expect(writeOfRequest(steps.newRequestId())).toBe('remove')
+    expect(intentOfRequest(steps.newRequestId())).toBe('manageRemove')
   })
 
   it('reads as done once the setup and the authorization are both gone, and wipes this device', async () => {
@@ -207,7 +326,7 @@ describe('the removal', () => {
       configuration: CONFIGURATION,
       setupNonce: 1n
     })
-    const store = createArmStore()
+    const store = createArmStore('ownerWrite')
 
     await startSave(store, removalSteps(world))
 
@@ -232,11 +351,90 @@ describe('the removal', () => {
     expect((await steps.confirm(save)).landed).toBe(true)
   })
 
+  it('sends nothing where the end already stands, and the local wipe then keeps nothing', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    await openAndEdit(world)
+    await world.records.decryptedSetupCache(CHAIN_ID, world.account).write({
+      configuration: CONFIGURATION,
+      setupNonce: 1n
+    })
+    world.chain.clearSetup()
+    world.chain.setAuthorized(false)
+    const store = createArmStore('ownerWrite')
+
+    await startSave(store, removalSteps(world))
+
+    expect(store.state().stop).toBe('already-set-up')
+    expect(isSaved(store.state())).toBe(false)
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await wipeRemovedSetup({
+      records: world.records,
+      session: world.session,
+      chainId: CHAIN_ID,
+      account: world.account
+    })
+    expect(await setupRecordsHeld(world)).toBe(0)
+    expect(await world.session.read()).toBeUndefined()
+    expect((await world.records.decryptedSetupCache(CHAIN_ID, world.account).read()).status).toBe(
+      'absent'
+    )
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+  })
+
   it('never reads as done where the send was refused', async () => {
     const world = await fixture.worldOf('refused')
-    const store = createArmStore()
+    const store = createArmStore('ownerWrite')
     await startSave(store, removalSteps(world))
     expect(isSaved(store.state())).toBe(false)
     expect((await world.client.setup.setupState()).hasSetup).toBe(true)
+  })
+})
+
+describe('two tabs, one write of the editor each', () => {
+  it('a removal that loses its claim to an edit another tab stored sends nothing and keeps it', async () => {
+    const world = await fixture.worldOf('lands')
+    const store = createArmStore('ownerWrite')
+    const steps = removalSteps(world)
+    // The other tab claims its edit after this tab read no write stored.
+    const { claim } = steps
+    let edit: string | undefined
+    steps.claim = async (...args) => {
+      edit = await claimedElsewhere(world, MANAGE_INTENT_MARKS.manageEdit)
+      return claim(...args)
+    }
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    const stored = await world.records.saveInFlight(CHAIN_ID, world.account).read()
+    expect(stored.status === 'present' && stored.value.requestId).toBe(edit)
+    expect((await world.client.setup.setupState()).hasSetup).toBe(true)
+  })
+
+  it('never follows the other write it finds stored, nor releases it', async () => {
+    const world = await fixture.worldOf('lands')
+    const edit = await claimedElsewhere(world, MANAGE_INTENT_MARKS.manageEdit)
+    const steps = removalSteps(world)
+    const store = createArmStore('ownerWrite')
+
+    await expect(steps.readInFlight()).rejects.toThrow('belongs to another screen')
+    await startSave(store, steps)
+    await steps.release(edit)
+    await steps.releaseUnsent(edit)
+
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(store.state().write.status).toBe('failedNotSent')
+    const stored = await world.records.saveInFlight(CHAIN_ID, world.account).read()
+    expect(stored.status === 'present' && stored.value.requestId).toBe(edit)
+  })
+
+  it('takes up its own write stored by another tab', async () => {
+    const world = await fixture.worldOf('lands')
+    const own = await claimedElsewhere(world, MANAGE_INTENT_MARKS.manageRemove)
+    const read = await removalSteps(world).readInFlight()
+    expect(read.status === 'present' && read.value.requestId).toBe(own)
   })
 })

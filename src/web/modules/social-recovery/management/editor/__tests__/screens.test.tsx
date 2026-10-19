@@ -3,10 +3,15 @@
  *
  * The review of changes and the removal over given reads: the review's save
  * held until the trust rows of the added rows rendered and held with nothing
- * changed, the sentence that saving cancels the recovery in progress only
- * while an attempt is open, and the removal's typed confirmation with its own
- * cancel sentence. The client, the reads and the run are the screens' seams,
- * each given here; the records sit on an in-memory storage.
+ * changed, the warning beside it for an added row never tested, the sentence
+ * that saving cancels the recovery in progress only while an attempt is open,
+ * and the save refused while the setup is not authorized and an attempt is
+ * open; the removal's typed confirmation with its own cancel sentence, which
+ * that refusal leaves alone, its end found already standing, drawn apart and
+ * wiping this device, and a write another tab stored meanwhile, which sends
+ * the holder to that write's screen once the tab is back in view. The client,
+ * the reads and the run are the screens' seams, each given here; the records
+ * sit on an in-memory storage.
  */
 import { TextDecoder, TextEncoder } from 'util'
 
@@ -63,9 +68,20 @@ jest.mock('@web/modules/social-recovery/setup/review/useAccountReads', () => ({
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
 const {
+  act,
   mount,
+  settle,
   t
 }: typeof import('@web/modules/social-recovery/cancel/__fixtures__/mount') = require('@web/modules/social-recovery/cancel/__fixtures__/mount')
+const {
+  REMOVAL_DRAFT
+}: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
+const {
+  newSendRequestId
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  MANAGE_INTENT_MARKS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const review: typeof import('@web/modules/social-recovery/setup/review/__fixtures__/review') = require('@web/modules/social-recovery/setup/review/__fixtures__/review')
 const {
   ReviewStageView
@@ -103,8 +119,11 @@ const baseline: EditSession = {
   password: 'kept'
 }
 
-const readsOf = (attemptOpen: boolean) => ({
-  facts: { status: 'answered', value: { setup: review.setupStateOf(true), attemptOpen } },
+const readsOf = (attemptOpen: boolean, authorized = true) => ({
+  facts: {
+    status: 'answered',
+    value: { setup: { ...review.setupStateOf(true), isAuthorized: authorized }, attemptOpen }
+  },
   path: { kind: 'none' },
   ask: { status: 'idle' },
   notices: { status: 'pending' },
@@ -143,11 +162,13 @@ const idleRun = () => ({
 const given = async ({
   clauses,
   trustAnswered,
-  attemptOpen
+  attemptOpen,
+  authorized = true
 }: {
   clauses: Clause[]
   trustAnswered: boolean
   attemptOpen: boolean
+  authorized?: boolean
 }) => {
   const storage = makeStorage()
   const records = createWalletRecords({ storage })
@@ -175,7 +196,7 @@ const given = async ({
       receipts: {},
       retry: jest.fn()
     },
-    reads: readsOf(attemptOpen),
+    reads: readsOf(attemptOpen, authorized),
     facts: { status: 'ready', facts: { key: review.REMOVED_KEY } },
     run: idleRun(),
     trust: {
@@ -200,18 +221,28 @@ const reviewOver = async (options: Parameters<typeof given>[0]) => {
   )
 }
 
-const removalOver = async (attemptOpen: boolean) => {
-  const { records, session } = await given({ clauses: COMMITTED, trustAnswered: true, attemptOpen })
-  return mount(
+const removalWith = async (attemptOpen: boolean, authorized = true) => {
+  const { records, session } = await given({
+    clauses: COMMITTED,
+    trustAnswered: true,
+    attemptOpen,
+    authorized
+  })
+  const navigate = jest.fn()
+  const view = await mount(
     React.createElement(RemoveStageView, {
       records,
       session,
       chainId: CHAIN_ID,
       account: ACCOUNT,
-      navigate: jest.fn()
+      navigate
     })
   )
+  return { view, records, session, navigate }
 }
+
+const removalOver = async (attemptOpen: boolean, authorized = true) =>
+  (await removalWith(attemptOpen, authorized)).view
 
 describe('the review of changes', () => {
   it('holds the save until the trust rows of the added rows answered', async () => {
@@ -258,6 +289,47 @@ describe('the review of changes', () => {
     closed.unmount()
   })
 
+  it('warns beside the save for an added row never tested, and never for a committed one', async () => {
+    const view = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    expect(view.byTestId('manage-review-not-tested')).not.toBeNull()
+    expect(view.byTestId('manage-review-not-tested-0-1')).not.toBeNull()
+    expect(view.byTestId('manage-review-not-tested-0-0')).toBeNull()
+    expect(view.isDisabled('manage-review-save')).toBe(false)
+    view.unmount()
+  })
+
+  it('refuses the save while the setup is not authorized and an attempt is open', async () => {
+    const view = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: true,
+      authorized: false
+    })
+    expect(view.textOf('manage-review-dormant-refused')).toContain(t(`${REVIEW}.dormantRefused`))
+    expect(view.byTestId('manage-review-cancels')).toBeNull()
+    expect(view.isDisabled('manage-review-save')).toBe(true)
+    view.unmount()
+
+    const authorized = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: true
+    })
+    expect(authorized.byTestId('manage-review-dormant-refused')).toBeNull()
+    expect(authorized.isDisabled('manage-review-save')).toBe(false)
+    authorized.unmount()
+  })
+
+  it('leads back to the editor in its own words', async () => {
+    const view = await reviewOver({ clauses: COMMITTED, trustAnswered: true, attemptOpen: false })
+    expect(view.textOf('manage-review-back')).toBe(t(`${REVIEW}.backToEditor`))
+    view.unmount()
+  })
+
   it('starts the save from its action once it is enabled', async () => {
     const view = await reviewOver({
       clauses: [review.group(1, ALICE, BOB)],
@@ -277,9 +349,6 @@ describe('the removal', () => {
     if (!input) {
       throw new Error('no field to type into')
     }
-    const { act } = jest.requireActual<
-      typeof import('@web/modules/social-recovery/cancel/__fixtures__/mount')
-    >('@web/modules/social-recovery/cancel/__fixtures__/mount')
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, word)
       input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -306,5 +375,88 @@ describe('the removal', () => {
     const closed = await removalOver(false)
     expect(closed.byTestId('manage-remove-cancels')).toBeNull()
     closed.unmount()
+  })
+})
+
+describe('the removal around the refusals and other writes', () => {
+  const typeWord = async (view: Awaited<ReturnType<typeof removalOver>>) => {
+    const field = view.byTestId('manage-remove-word')
+    const input = field instanceof HTMLInputElement ? field : field?.querySelector('input')
+    if (!input) {
+      throw new Error('no field to type into')
+    }
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        t(`${REMOVE}.word`)
+      )
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  it('removes a dormant setup while an attempt is open, since its clear cancels the attempt', async () => {
+    const view = await removalOver(true, false)
+    await typeWord(view)
+    expect(view.isDisabled('manage-remove-action')).toBe(false)
+    expect(view.textOf('manage-remove-cancels')).toBe(t(`${REMOVE}.cancelsLine`))
+    expect(view.textOf('manage-remove-keep')).toBe(t(`${REMOVE}.keep`))
+    view.unmount()
+  })
+
+  it('draws an end found already standing apart from its own removal, and keeps nothing here', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write({
+      configuration: baseline.configuration,
+      setupNonce: 1n
+    })
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'idle', write: 'ownerWrite', run: 1 },
+        after: { stage: 'none' },
+        stop: 'already-set-up'
+      }
+    }
+    const view = await mount(
+      React.createElement(RemoveStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate: jest.fn()
+      })
+    )
+
+    expect(view.byTestId('manage-remove-ended')).not.toBeNull()
+    expect(view.byTestId('manage-remove-done')).toBeNull()
+    expect(view.textOf('manage-remove-done-title')).toBe(t(`${REMOVE}.doneTitle`))
+    expect((await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()).status).toBe('absent')
+    expect((await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).status).toBe('absent')
+    expect(await session.read()).toBeUndefined()
+    view.unmount()
+  })
+
+  it('sends the holder to the review once the tab is back in view over an edit another tab stored', async () => {
+    const { view, records, navigate } = await removalWith(false)
+    expect(navigate).not.toHaveBeenCalled()
+
+    const claim = await records.saveInFlight(CHAIN_ID, ACCOUNT).claim({
+      draft: REMOVAL_DRAFT,
+      prepared: { kind: 'call', target: ACCOUNT, value: 0n, data: '0x' } as never,
+      requestId: `${newSendRequestId()}${MANAGE_INTENT_MARKS.manageEdit}`,
+      claimedAt: Date.now()
+    })
+    expect(claim.claimed).toBe(true)
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await settle()
+
+    expect(navigate).toHaveBeenCalledWith('social-recovery/manage/review')
+    view.unmount()
   })
 })

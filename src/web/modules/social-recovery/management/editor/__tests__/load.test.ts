@@ -1,8 +1,8 @@
 /**
  * The committed configuration loaded into the setup records and read back,
  * the edit session taken up under the same setup and started again once the
- * setup moved, and the session's storage read, which keeps nothing it cannot
- * read as a session.
+ * setup moved or its setup draft is gone, and the session's storage read,
+ * which keeps nothing it cannot read as a session.
  */
 import {
   configurationOfDraft,
@@ -147,6 +147,20 @@ describe('the edit session', () => {
     expect(again.password).toBe('kept')
     const draft = await world.setup.setupDraft.read()
     expect(draft.status === 'present' && draft.value.wait).toBe(CONFIGURATION.wait)
+  })
+
+  it('loads the chain again where the session stands but its setup draft is gone', async () => {
+    const world = worldOf()
+    const input = { ...world, configuration: CONFIGURATION, level: 'private' as const }
+    await openEditSession({ ...input, state: stateAt(4n) })
+    await world.session.write({ ...(await world.session.read())!, password: 'changed' })
+    await world.setup.setupDraft.wipe()
+
+    const again = await openEditSession({ ...input, state: stateAt(4n) })
+
+    expect(again.password).toBe('kept')
+    const draft = await world.setup.setupDraft.read()
+    expect(draft.status === 'present' && configurationOfDraft(draft.value)).toEqual(CONFIGURATION)
   })
 
   it('reads a stored value it cannot read as a session as none', async () => {
