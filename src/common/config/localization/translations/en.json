@@ -1555,7 +1555,8 @@
           "rule": "Rule: {{before}} becomes {{after}}",
           "waitingPeriod": "Waiting period: {{before}} becomes {{after}}",
           "privacy": "Privacy level: {{before}} becomes {{after}}",
-          "password": "Recovery password: changed"
+          "password": "Recovery password: changed",
+          "pathChanged": "Members moved between groups"
         },
         "staleCard": "A changed recovery password or privacy level makes a printed Recovery Card stale. Print a new one after you save.",
         "password": {
@@ -1568,6 +1569,9 @@
         "stillNeeded": {
           "title": "This member is still needed",
           "body": "The path needs {{required}} of {{count}} in this group. Lower the threshold or add a replacement first, then remove this member."
+        },
+        "values": {
+          "change": "Change"
         }
       },
       "review": {
@@ -1576,7 +1580,13 @@
         "save": "Save changes",
         "cancelsLine": "Saving will cancel the recovery in progress.",
         "addedRows": "New rows",
-        "unchanged": "Nothing changed. There is nothing to save."
+        "unchanged": "Nothing changed. There is nothing to save.",
+        "savedTitle": "Changes saved",
+        "savedBody": "Your recovery path is updated on the chain. Print a new Recovery Card if this screen says the old one is stale.",
+        "done": "Done",
+        "backToEditor": "Back to the editor",
+        "setupChangedBody": "Another device changed this setup after you opened the editor. The editor reloads it from the chain, and your unsaved changes are gone.",
+        "dormantRefused": "This setup is not active on the account and a recovery is in progress. This wallet does not re-commit a setup while that recovery runs: cancel it first."
       },
       "remove": {
         "title": "Remove recovery",
@@ -1587,7 +1597,8 @@
         "word": "REMOVE",
         "action": "Remove recovery",
         "doneTitle": "Recovery removed",
-        "doneBody": "This account has no recovery path now."
+        "doneBody": "This account has no recovery path now.",
+        "keep": "Keep recovery"
       }
     }
   }
