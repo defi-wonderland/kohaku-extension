@@ -18,7 +18,7 @@
  * holder to the removal, and another screen's stored write to the overview;
  * the stored write is read again whenever the tab comes back into view.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -111,6 +111,9 @@ export const ReviewStageView = ({
   const dormantRefused = attemptRead
     ? attemptRead.dormant
     : !!facts && facts.attemptOpen && !facts.setup.isAuthorized
+  // Read by the save's prepare, which sends nothing over an attempt this screen did not show.
+  const cancelLineShown = useRef(false)
+  cancelLineShown.current = attemptOpen && !dormantRefused
   const addressBook = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)
@@ -229,7 +232,8 @@ export const ReviewStageView = ({
       draft: loaded.draft,
       password,
       newPassword,
-      onAttempt: setAttemptRead
+      onAttempt: setAttemptRead,
+      showsCancelLine: () => cancelLineShown.current
     })
   }, [
     ready,

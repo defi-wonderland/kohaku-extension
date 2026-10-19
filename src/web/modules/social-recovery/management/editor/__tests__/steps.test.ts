@@ -83,7 +83,8 @@ const openAndEdit = async (world: EditWorld): Promise<EditSession> => {
 const editSteps = async (
   world: EditWorld,
   baseline: EditSession,
-  onAttempt?: (read: AttemptRead) => void
+  onAttempt?: (read: AttemptRead) => void,
+  showsCancelLine?: () => boolean
 ) => {
   const draft = await world.records.setup(CHAIN_ID, world.account).setupDraft.read()
   if (draft.status !== 'present') {
@@ -99,7 +100,8 @@ const editSteps = async (
       draft: draft.value,
       password: readRecoveryPassword(CHAIN_ID, world.account),
       newPassword: readNewPassword(CHAIN_ID, world.account),
-      onAttempt
+      onAttempt,
+      showsCancelLine
     })
   }
 }
@@ -306,6 +308,34 @@ describe('the save of the changes', () => {
     expect(heard).toEqual([{ open: true, dormant: false }])
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
+
+  it('sends nothing over an attempt the screen did not show, and sends once it shows it', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    let shown = false
+    const { steps } = await editSteps(
+      world,
+      baseline,
+      (read) => {
+        shown = read.open
+      },
+      () => shown
+    )
+    world.chain.openAttempt()
+    const store = createArmStore()
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(shown).toBe(true)
+
+    await startSave(store, steps)
+
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
 })
 
 describe('the removal', () => {
@@ -381,6 +411,24 @@ describe('the removal', () => {
       'absent'
     )
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+  })
+
+  it('removes whatever stands where the attempt read fails, with no cancel line', async () => {
+    const world = await fixture.worldOf('lands')
+    world.client.walletReads.attemptState = async () => {
+      throw new Error('the attempt read failed')
+    }
+    const heard: AttemptRead[] = []
+    const store = createArmStore('ownerWrite')
+
+    await startSave(
+      store,
+      removalSteps(world, (read) => heard.push(read))
+    )
+
+    expect(isSaved(store.state())).toBe(true)
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(heard).toEqual([{ open: false, dormant: false }])
   })
 
   it('never reads as done where the send was refused', async () => {

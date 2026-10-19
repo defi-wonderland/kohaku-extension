@@ -130,7 +130,7 @@ const before = (first: HTMLElement | null, second: HTMLElement | null): boolean 
   if (!first || !second) {
     return false
   }
-  const order = [...document.querySelectorAll('[data-testid]')]
+  const order = Array.from(document.querySelectorAll('[data-testid]'))
   return order.indexOf(first) < order.indexOf(second)
 }
 

@@ -145,8 +145,8 @@ export const RemoveStageView = ({
   const done = (
     <View testID={endedElsewhere ? 'manage-remove-ended' : 'manage-remove-done'}>
       <PageTitle
-        title={t(`${REMOVE}.doneTitle`)}
-        lead={t(`${REMOVE}.doneBody`)}
+        title={t(endedElsewhere ? `${REMOVE}.alreadyTitle` : `${REMOVE}.doneTitle`)}
+        lead={t(endedElsewhere ? `${REMOVE}.alreadyBody` : `${REMOVE}.doneBody`)}
         titleTestID="manage-remove-done-title"
       />
       <ActionsRow

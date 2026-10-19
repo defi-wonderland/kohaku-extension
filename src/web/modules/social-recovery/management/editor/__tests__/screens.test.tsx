@@ -433,7 +433,9 @@ describe('the removal around the refusals and other writes', () => {
 
     expect(view.byTestId('manage-remove-ended')).not.toBeNull()
     expect(view.byTestId('manage-remove-done')).toBeNull()
-    expect(view.textOf('manage-remove-done-title')).toBe(t(`${REMOVE}.doneTitle`))
+    expect(view.textOf('manage-remove-done-title')).toBe(t(`${REMOVE}.alreadyTitle`))
+    expect(view.text()).toContain(t(`${REMOVE}.alreadyBody`))
+    expect(view.text()).not.toContain(t(`${REMOVE}.doneBody`))
     expect((await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()).status).toBe('absent')
     expect((await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).status).toBe('absent')
     expect(await session.read()).toBeUndefined()

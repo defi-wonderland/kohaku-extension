@@ -168,6 +168,8 @@ export interface EditStepsInput extends EditorStepsInput {
   password: string | undefined
   /** The new recovery password, where the holder typed one. */
   newPassword: string | undefined
+  /** Whether the screen shows the line that saving cancels the attempt in progress. */
+  showsCancelLine?: () => boolean
 }
 
 /** The seams a write runs through, from the wallet's own states. */

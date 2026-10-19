@@ -13,7 +13,9 @@
  * and it cancels an attempt running against the old setup in the same act.
  * Its prepare reads the attempt again and refuses while the setup is not
  * authorized and an attempt is open, since that commit would authorize the
- * setup again while the recovery runs. The save's setup read becomes the read
+ * setup again while the recovery runs, and refuses an open attempt the screen
+ * did not show, so the holder sees that saving cancels it before a second
+ * press sends. The save's setup read becomes the read
  * of whether the setup moved past the one the edit started from: a run that
  * finds it moved at its start sends nothing, and a followed write that finds
  * it moved is checked as after its receipt. Its landing first keeps the
@@ -24,9 +26,10 @@
  * The removal sends the clear and the zero write of the authorization as one
  * batch, prepared together and sent through the account's own door. Its
  * end stands once the setup is gone and the account no longer authorizes the
- * action. Its landing, and a run that finds that end already standing, wipe
- * the recovery password, the setup records, this device's opened setup and
- * the edit session.
+ * action. Its prepare reads the attempt for the screen's line alone: a read
+ * that fails stops nothing. Its landing, and a run that finds that end
+ * already standing, wipe the recovery password, the setup records, this
+ * device's opened setup and the edit session.
  */
 import { REMOVAL_DRAFT } from '@web/modules/social-recovery/management/overview/constants'
 import {
@@ -173,11 +176,17 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
       if (sealed && password === undefined) {
         throw new Error('The save seals the setup and needs the recovery password.')
       }
+      // What the screen showed when the holder pressed, before this read moves it.
+      const lineShown = input.showsCancelLine?.() ?? true
       const attempt = await readAttempt(input)
       if (attempt.dormant) {
         throw new Error(
           'This wallet does not commit a setup again while a recovery is in progress.'
         )
+      }
+      // The holder confirms a save that cancels an attempt only once the screen says so.
+      if (attempt.open && !lineShown) {
+        throw new Error('An attempt opened that the screen did not show; nothing was sent.')
       }
       return save.prepare()
     },
@@ -219,7 +228,8 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
     ...ownRequestSteps('manageRemove', save),
     hasSetup: async () => removalStands(await client.setup.setupState()),
     async prepare(): Promise<PreparedSave> {
-      await readAttempt(input)
+      // The removal removes whatever stands; an attempt it could not read draws no line.
+      await readAttempt(input).catch(() => input.onAttempt?.({ open: false, dormant: false }))
       const prepared = await client.setup.prepareRemoveSetup()
       assertWriteDoor('ownerWrite', prepared)
       return { draft: REMOVAL_DRAFT, prepared, calls: callsOf(prepared) }
