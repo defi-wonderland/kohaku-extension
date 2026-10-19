@@ -16,14 +16,12 @@ import type {
   SetupDraft,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
-import { newSendRequestId } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook, RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
 import type { DecryptedSetupCacheRecord } from '@web/modules/social-recovery/shared/records'
 import { privacyOfLevel } from '@web/modules/social-recovery/setup/privacy/writes'
 import { methodsOf } from '@web/modules/social-recovery/setup/review'
 import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
 
-import { OVERVIEW_INTENTS } from './constants'
 import type {
   EndedNotice,
   MovedKeys,
@@ -186,20 +184,4 @@ export const goalStands = (intent: OverviewIntent, setup: SetupState): boolean =
     default:
       return !setup.isAuthorized
   }
-}
-
-const INTENT_MARK = ':overview-'
-
-/** A request id for one of the overview's writes, carrying which write it is. */
-export const requestIdOf = (intent: OverviewIntent): string =>
-  `${newSendRequestId()}${INTENT_MARK}${intent}`
-
-/** The write a stored request id names; none for a request another screen sent. */
-export const intentOfRequest = (requestId: string): OverviewIntent | undefined => {
-  const at = requestId.lastIndexOf(INTENT_MARK)
-  if (at < 0) {
-    return undefined
-  }
-  const named = requestId.slice(at + INTENT_MARK.length)
-  return OVERVIEW_INTENTS.find((intent) => intent === named)
 }

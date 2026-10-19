@@ -49,12 +49,13 @@ import TrustList from '@web/modules/social-recovery/setup/review/TrustList'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 
 import { OVERVIEW, REMOVAL_DRAFT } from './constants'
+import { overviewWriteKeysOf } from './copy'
 import PathLockedAsk from './PathLockedAsk'
 import { levelOfReading, needsPassword, reauthorizeDraftOf } from './readings'
-import type { LevelRead, OverviewIntent, OverviewWriteStepProps } from './types'
+import type { LevelRead, OverviewIntent, OverviewWriteStepProps, StepHeadings } from './types'
 import { overviewStepsOf } from './writeSteps'
 
-const HEADINGS: Record<OverviewIntent, { title: string; lead: string; action: string }> = {
+const HEADINGS: Record<OverviewIntent, StepHeadings> = {
   reauthorize: {
     title: `${OVERVIEW}.reauthorize.title`,
     lead: `${OVERVIEW}.reauthorize.lead`,
@@ -181,6 +182,11 @@ const OverviewWriteStep = ({
     [clauses, trust.reads, client, addressBook]
   )
 
+  // A re-authorize the wallet refused at its prepare, an attempt being open, hands back
+  // once its run ended there, so the run is dropped with the step and none is kept.
+  const [refusedAtPrepare, setRefusedAtPrepare] = useState(false)
+  const onAttemptOpen = useCallback(() => setRefusedAtPrepare(true), [])
+
   const ready = accountFacts.status === 'ready' ? accountFacts.facts : null
   // The steps also follow a write stored on this device before the draft is known; a new
   // re-authorize starts only once its draft and its password are held.
@@ -201,9 +207,11 @@ const OverviewWriteStep = ({
       facts: ready,
       key: ready.key,
       draft: draft ?? REMOVAL_DRAFT,
-      password
+      password,
+      onAttemptOpen
     })
   }, [
+    onAttemptOpen,
     ready,
     intent,
     client,
@@ -218,15 +226,22 @@ const OverviewWriteStep = ({
     password
   ])
 
-  const run = useArmRun(steps, `overview:${intent}:${chainId}:${account.toLowerCase()}`)
+  // The re-authorize commits through the save's own prepare and gas check; a removal is another setup write.
+  const run = useArmRun(
+    steps,
+    `overview:${intent}:${chainId}:${account.toLowerCase()}`,
+    reauthorize ? 'save' : 'ownerWrite'
+  )
   const { state } = run
   const screen = armScreenOf(state)
   const { write } = state
 
+  // A landed write whose check did not answer stays on its step with the check again.
   const finished =
     screen === 'saved' ||
     screen === 'already-set-up' ||
-    (!reauthorize && (screen === 'disagreed' || screen === 'unread'))
+    (!reauthorize && screen === 'disagreed') ||
+    (refusedAtPrepare && write.status === 'failedNotSent')
   useEffect(() => {
     if (finished) {
       onFinished()
@@ -450,6 +465,9 @@ const OverviewWriteStep = ({
     if (state.dropped) {
       return (
         <SectionCard spacing="none" testID="overview-step-dropped">
+          <Text fontSize={14} style={spacings.mbTy} testID="overview-step-dropped-line">
+            {t(`${OVERVIEW}.writes.dropped`)}
+          </Text>
           <Button
             testID="overview-step-send-again"
             type="secondary"
@@ -457,7 +475,7 @@ const OverviewWriteStep = ({
             text={t('socialRecovery.writes.tryAgain')}
             onPress={run.saveAgain}
             hasBottomSpacing={false}
-            style={flexbox.alignSelfStart}
+            style={[flexbox.alignSelfStart, spacings.mtTy]}
           />
         </SectionCard>
       )
@@ -466,9 +484,15 @@ const OverviewWriteStep = ({
       write.status === 'submitting' &&
       ((!!write.transactionHash && !!state.stalled) ||
         (!write.transactionHash && state.follow === 'unread'))
+    const keys = overviewWriteKeysOf(write)
     return (
       <SectionCard spacing="none">
-        <WriteStateView state={write} onRetry={run.start} testID={`overview-step-${write.status}`}>
+        <WriteStateView
+          state={write}
+          body={keys.body ? [t(keys.body)] : undefined}
+          onRetry={run.start}
+          testID={`overview-step-${write.status}`}
+        >
           {checksAgain && (
             <Button
               testID="overview-step-check-again"
@@ -496,6 +520,24 @@ const OverviewWriteStep = ({
     )
   }
 
+  // The removal landed and its check did not answer: it reads again, never as done.
+  const unreadBlock = () => (
+    <SectionCard spacing="none" testID="overview-step-unread">
+      <Text fontSize={14} style={spacings.mbTy} testID="overview-step-unread-line">
+        {t(`${OVERVIEW}.reads.failedTitle`)}
+      </Text>
+      <Button
+        testID="overview-step-reread"
+        type="secondary"
+        size="small"
+        text={t('socialRecovery.arm.checkAgain')}
+        onPress={run.reread}
+        hasBottomSpacing={false}
+        style={[flexbox.alignSelfStart, spacings.mtTy]}
+      />
+    </SectionCard>
+  )
+
   // Back wherever nothing is on its way to the chain.
   const stopped =
     !!state.dropped ||
@@ -515,6 +557,7 @@ const OverviewWriteStep = ({
       {screen === 'arrival' && arrival()}
       {screen === 'run' && runBlock()}
       {screen === 'confirming' && <ActivityIndicator testID="overview-step-confirming" />}
+      {screen === 'unread' && unreadBlock()}
       {screen === 'run' && stopped && (
         <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mtSm]}>{back}</View>
       )}

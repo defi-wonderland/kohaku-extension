@@ -105,8 +105,12 @@ export type AfterLanding =
   | { stage: 'disagreed'; check: DisagreedCheck }
   | { stage: 'unread' }
 
-/** Why a run ended before it prepared anything: the account already holds a setup. */
-export type ArmStop = 'already-set-up'
+/**
+ * Why a run ended with nothing sent: the account already holds a setup, or
+ * the save lost its claim to a write of the recovery overview, which is the
+ * overview's to follow.
+ */
+export type ArmStop = 'already-set-up' | 'overview-elsewhere'
 
 /**
  * The read of a save in flight stored on this device, before the save is
@@ -133,7 +137,7 @@ export interface ArmState {
   /** The save the run prepared, or the stored one it follows; absent until either is known. */
   prepared?: PreparedSave
   after: AfterLanding
-  /** Set where the run found a setup on the account before it prepared; nothing moves the run after it. */
+  /** Set where the run ended with nothing sent for a reason no retry changes; nothing moves the run after it. */
   stop?: ArmStop
   /** The sign screen's last estimation of the run's batch. */
   estimation?: FeeReading
@@ -173,6 +177,7 @@ export type ArmEvent =
   | { type: 'write'; event: WriteEvent }
   | { type: 'lookup'; run: number; reading: InFlightLookup }
   | { type: 'alreadySetUp'; run: number }
+  | { type: 'overviewElsewhere'; run: number }
   | { type: 'prepared'; run: number; prepared: PreparedSave }
   | { type: 'claimed'; run: number; requestId: string }
   | {
@@ -401,6 +406,7 @@ export type ArmScreenKind =
   | 'arrival'
   | 'run'
   | 'already-set-up'
+  | 'overview-elsewhere'
   | 'confirming'
   | 'saved'
   | 'disagreed'
