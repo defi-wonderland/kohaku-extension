@@ -142,37 +142,32 @@ describe('setup client double', () => {
   })
 
   describe('prepareClearSetup', () => {
-    it('pairs clearSetup and the disarming call while a setup stands on an armed account', async () => {
-      const world = createWorld()
-      world.script.setupCommitted('private')
-      world.script.authorized(true)
-      const batch = asBatch(await (await world.setupClient()).prepareClearSetup())
-      expect(batch.atomic).toBe(true)
-      expect(batch.calls).toHaveLength(2)
-      const targets = batch.calls.map((c) => c.target.toLowerCase()).sort()
-      expect(targets).toEqual(
-        [world.account.toLowerCase(), world.descriptor.manager.toLowerCase()].sort()
-      )
-      batch.calls.forEach((c) => expect(c.sender).toBe('account'))
-    })
-
-    it('returns clearSetup alone on a dormant setup', async () => {
-      const world = createWorld()
-      world.script.setupCommitted('private')
-      world.script.authorized(false)
-      const call = asCall(await (await world.setupClient()).prepareClearSetup())
-      expect(call.target.toLowerCase()).toBe(world.descriptor.manager.toLowerCase())
-      expect(call.sender).toBe('account')
-    })
-
-    it('returns the disarming call alone where no setup stands', async () => {
-      const world = createWorld()
-      world.script.setupNone()
-      world.script.authorized(true)
-      const call = asCall(await (await world.setupClient()).prepareClearSetup())
-      expect(call.target.toLowerCase()).toBe(world.account.toLowerCase())
-      expect(call.sender).toBe('account')
-    })
+    ;[true, false].forEach((authorized) =>
+      it(`returns clearSetup alone on the manager, with the authorization ${
+        authorized ? 'held' : 'absent'
+      }`, async () => {
+        const world = createWorld()
+        world.script.setupCommitted('private')
+        world.script.authorized(authorized)
+        const call = await (await world.setupClient()).prepareClearSetup()
+        expectCall(call)
+        expect(call.target.toLowerCase()).toBe(world.descriptor.manager.toLowerCase())
+        expect(call.sender).toBe('account')
+        expect(world.chain.effectOf(call.data)?.kind).toBe('clear')
+      })
+    )
+    ;[true, false].forEach((authorized) =>
+      it(`refuses where no setup stands, with the authorization ${
+        authorized ? 'held' : 'absent'
+      }`, async () => {
+        const world = createWorld()
+        world.script.setupNone()
+        world.script.authorized(authorized)
+        const setup = await world.setupClient()
+        const error = (await expectThrown(() => setup.prepareClearSetup())) as CodedError
+        expect(error.code).toBe('setup.no-setup')
+      })
+    )
 
     it('throws when scripted to refuse', async () => {
       const world = createWorld()
