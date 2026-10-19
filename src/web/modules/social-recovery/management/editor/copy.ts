@@ -36,6 +36,8 @@ export const renderChange = (row: ChangeRow, t: Translate): string => {
   switch (row.kind) {
     case 'members':
       return t(`${changes}.members`, { added: row.added, removed: row.removed })
+    case 'pathChanged':
+      return t(`${changes}.pathChanged`)
     case 'rule':
       return t(`${changes}.rule`, { before: row.before, after: row.after })
     case 'waitingPeriod':

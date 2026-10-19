@@ -1,15 +1,18 @@
 /**
- * Which write the account's stored write in flight belongs to, read once per
- * mount and again on retry: none, one of the editor's two, or another
- * screen's. A screen builds its run only over no stored write or its own, so
- * a run never follows another screen's write as its own.
+ * Which write the account's stored write in flight belongs to: none, one of
+ * the editor's two, or another screen's. It is read on mount, again each time
+ * the tab comes back into view, since another tab may have stored a write
+ * meanwhile, and again on the screen's ask. A read again keeps the last answer
+ * until the new one, so a run built over it is not dropped while it reads. A
+ * screen builds its run only over no stored write or its own, so a run never
+ * follows another screen's write as its own.
  */
 import { useCallback, useEffect, useState } from 'react'
 
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
+import { intentOfRequest } from '@web/modules/social-recovery/shared/writes'
 
-import { writeOfRequest } from './steps'
 import type { HeldWrite, HeldWriteRead } from './types'
 
 export const useHeldWrite = (
@@ -22,7 +25,6 @@ export const useHeldWrite = (
 
   useEffect(() => {
     let live = true
-    setHeld({ status: 'pending' })
     records
       .saveInFlight(chainId, account)
       .read()
@@ -32,15 +34,22 @@ export const useHeldWrite = (
             return
           }
           if (read.status !== 'present') {
-            setHeld({ status: 'none' })
+            setHeld((was) => (was.status === 'none' ? was : { status: 'none' }))
             return
           }
-          const write = writeOfRequest(read.value.requestId)
-          setHeld(write ? { status: 'held', write } : { status: 'other' })
+          const intent = intentOfRequest(read.value.requestId)
+          setHeld((was) => {
+            if (intent === 'manageEdit' || intent === 'manageRemove') {
+              return was.status === 'held' && was.write === intent
+                ? was
+                : { status: 'held', write: intent }
+            }
+            return was.status === 'other' ? was : { status: 'other' }
+          })
         },
         () => {
           if (live) {
-            setHeld({ status: 'failed' })
+            setHeld((was) => (was.status === 'pending' ? { status: 'failed' } : was))
           }
         }
       )
@@ -49,6 +58,28 @@ export const useHeldWrite = (
     }
   }, [records, chainId, account, round])
 
-  const retry = useCallback(() => setRound((at) => at + 1), [])
-  return { held, retry }
+  const refresh = useCallback(() => setRound((at) => at + 1), [])
+  const retry = useCallback(() => {
+    setHeld({ status: 'pending' })
+    refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+    const onShown = () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+        refresh()
+      }
+    }
+    window.addEventListener('focus', onShown)
+    document.addEventListener('visibilitychange', onShown)
+    return () => {
+      window.removeEventListener('focus', onShown)
+      document.removeEventListener('visibilitychange', onShown)
+    }
+  }, [refresh])
+
+  return { held, retry, refresh }
 }

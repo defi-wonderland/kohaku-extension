@@ -1,14 +1,15 @@
 /**
  * The edit of the committed recovery path: the overview's reads in front,
  * the committed configuration loaded into the setup records, then the setup's
- * own editor over them with the groups whose every member the rule needs, and
- * the committed values beside it, the waiting period, the recovery password
- * and the privacy level, each opening its own step. What the edit changes and
- * the stale card line follow every write of the draft.
+ * own editor over them under this page's one title, with every member the
+ * rule cannot lose marked still needed and held from removal, and the
+ * committed values above its review action, the waiting period, the recovery
+ * password and the privacy level, each opening its own step. What the edit
+ * changes and the stale card line follow every write of the draft.
  *
- * A write of the editor stored on this device as in flight sends the holder
- * to the screen that follows it, so no edit starts over a write on its way.
- * Cancel drops the edit: the setup records, the session and a new password.
+ * A write stored on this device as in flight sends the holder to the screen
+ * that follows it, so no edit starts over a write on its way. Cancel drops
+ * the edit: the setup records, the session and a new password.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -35,11 +36,11 @@ import {
   createWalletRecords,
   extensionRecordStorage,
   readRecoveryPassword,
-  SETUP_RECORD_NAMES,
   setRecoveryPassword,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 import type { WalletRecords } from '@web/modules/social-recovery/shared/records'
+import { intentOfRequest } from '@web/modules/social-recovery/shared/writes'
 import EditorView from '@web/modules/social-recovery/setup/editor/EditorView'
 import type { EditorClient } from '@web/modules/social-recovery/setup/editor/types'
 import PrivacyView from '@web/modules/social-recovery/setup/privacy/PrivacyView'
@@ -53,8 +54,6 @@ import PasswordChange from './PasswordChange'
 import ReadsGate from './ReadsGate'
 import { editorTargetOf, isPrivacyContinue } from './routing'
 import { dropNewPassword, editSessionOf, holdNewPassword } from './session'
-import { writeOfRequest } from './steps'
-import StillNeededBlock from './StillNeededBlock'
 import type { EditSession, EditStage, EditStageProps } from './types'
 import { useCommittedLevel } from './useCommittedLevel'
 import ValuesBlock from './ValuesBlock'
@@ -111,11 +110,14 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
     const open = async () => {
       const held = await records.saveInFlight(chainId, account).read()
       if (held.status === 'present') {
-        navigate(
-          writeOfRequest(held.value.requestId) === 'remove'
-            ? WEB_ROUTES.socialRecoveryManageRemove
-            : WEB_ROUTES.socialRecoveryManageReview
-        )
+        const intent = intentOfRequest(held.value.requestId)
+        if (intent === 'manageRemove') {
+          navigate(WEB_ROUTES.socialRecoveryManageRemove)
+        } else if (intent === 'manageEdit') {
+          navigate(WEB_ROUTES.socialRecoveryManageReview)
+        } else {
+          navigate(WEB_ROUTES.socialRecoveryManage)
+        }
         return
       }
       const editing = await openEditSession({
@@ -129,12 +131,15 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
       if (!live) {
         return
       }
+      if (stored.status !== 'present') {
+        throw new Error('The edit opened with no setup draft.')
+      }
       committedPassword.current = readRecoveryPassword(chainId, account)
       if (editing.password === 'kept') {
         dropNewPassword(chainId, account)
       }
       setOpened(editing)
-      setDraft(stored.status === 'present' ? stored.value : null)
+      setDraft(stored.value)
     }
     open().catch(() => {
       if (live) {
@@ -204,17 +209,21 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
     [chainId, account, markPassword]
   )
 
+  // A write in flight keeps the edit it sends; the overview then shows that write.
   const onCancel = useCallback(async () => {
-    await Promise.all([
-      ...SETUP_RECORD_NAMES.map((name) => setupRecords[name].wipe()),
-      session.wipe()
-    ]).catch(() => undefined)
-    dropNewPassword(chainId, account)
+    const dropped = await records.startOverSetup(chainId, account).then(
+      () => true,
+      () => false
+    )
+    if (dropped) {
+      await session.wipe().catch(() => undefined)
+      dropNewPassword(chainId, account)
+    }
     if (committedPassword.current !== undefined) {
       setRecoveryPassword(chainId, account, committedPassword.current)
     }
     navigate(WEB_ROUTES.socialRecoveryManage)
-  }, [setupRecords, session, chainId, account, navigate])
+  }, [records, session, chainId, account, navigate])
 
   const editorClient = useMemo<EditorClient>(() => {
     if (kit) {
@@ -241,6 +250,10 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
         : [],
     [opened, draft, addressBook, t]
   )
+  const stillNeeded = useMemo(() => stillNeededOf(draft?.clauses ?? []), [draft])
+  const heading = useMemo(() => ({ title: t(`${EDITOR}.title`), lead: t(`${EDITOR}.lead`) }), [t])
+  // The path and the value steps draw their own title; every other state draws the page's.
+  const stageTitled = canOpen && !openFailed && !!opened && !!draft && stage !== 'password'
 
   const body = () => {
     if (openFailed) {
@@ -289,19 +302,23 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
     }
     return (
       <View testID="manage-edit-path">
-        <StillNeededBlock groups={stillNeededOf(draft.clauses)} />
         <EditorView
           records={setupRecords}
           client={editorClient}
           addressBook={addressBook}
           navigate={editorNavigate}
-        />
-        <ValuesBlock
-          draft={draft}
-          addressBook={addressBook}
-          passwordChanged={rows.some(({ kind }) => kind === 'password')}
-          stale={makesCardStale(rows)}
-          onStage={setStage}
+          stillNeeded={stillNeeded}
+          heading={heading}
+          continueLabel={t(`${EDITOR}.review`)}
+          beforeActions={
+            <ValuesBlock
+              draft={draft}
+              addressBook={addressBook}
+              passwordChanged={rows.some(({ kind }) => kind === 'password')}
+              stale={makesCardStale(rows)}
+              onStage={setStage}
+            />
+          }
         />
         <ActionsRow
           primary={
@@ -320,11 +337,9 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
 
   return (
     <View testID="manage-edit">
-      <PageTitle
-        title={t(`${EDITOR}.title`)}
-        lead={t(`${EDITOR}.lead`)}
-        titleTestID="manage-edit-title"
-      />
+      {!stageTitled && (
+        <PageTitle title={heading.title} lead={heading.lead} titleTestID="manage-edit-title" />
+      )}
       <ReadsGate
         reads={reads}
         level={committedLevel.level}

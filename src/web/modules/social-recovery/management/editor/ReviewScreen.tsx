@@ -5,13 +5,18 @@
  * publishes, the trust list of the rows the edit adds under its expander, the
  * account the save writes to, and the save behind the setup review's own
  * gate, which waits for every trust read, plus the edit's own: nothing
- * changed holds it with its line. While an attempt is open on the account the
- * line that saving cancels it sits above the save.
+ * changed holds it with its line, and so does a setup the account no longer
+ * authorizes while an attempt is open, since its commit would authorize it
+ * again while that recovery runs. An added row this device never tested warns
+ * beside the save. While an attempt is open on the account the line that
+ * saving cancels it sits above the save; the save's prepare reads the attempt
+ * again, and the line follows that read.
  *
  * The save runs here over the save's own run, in the shared states with the
  * edit's copy, and reads as saved only once the check after the landing
  * agreed and the records were wiped. A stored removal in flight sends the
- * holder to the removal, and another screen's stored write to the overview.
+ * holder to the removal, and another screen's stored write to the overview;
+ * the stored write is read again whenever the tab comes back into view.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
@@ -40,7 +45,8 @@ import { renderFullAddress, renderHash } from '@web/modules/social-recovery/shar
 import {
   createWalletRecords,
   extensionRecordStorage,
-  readRecoveryPassword
+  readRecoveryPassword,
+  sameCredential
 } from '@web/modules/social-recovery/shared/records'
 import {
   armScreenOf,
@@ -56,7 +62,8 @@ import {
   publicationSentenceOf,
   ruleLinesOf,
   saveGateOf,
-  trustRowsOf
+  trustRowsOf,
+  untestedInPath
 } from '@web/modules/social-recovery/setup/review'
 import PathBlock from '@web/modules/social-recovery/setup/review/PathBlock'
 import SaveBlocker from '@web/modules/social-recovery/setup/review/SaveBlocker'
@@ -67,6 +74,7 @@ import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrus
 import { addedCredentialsOf, changesOf, makesCardStale, passwordChangedOf } from './changes'
 import ChangesBlock from './ChangesBlock'
 import { EDITOR, REVIEW } from './constants'
+import DetailsExpander from './DetailsExpander'
 import { ruleOfPath } from './copy'
 import {
   addedTrustRowsOf,
@@ -75,11 +83,12 @@ import {
   nothingOnItsWay,
   passwordMissingOf
 } from './readings'
+import NotTestedBlock from './NotTestedBlock'
 import ReadsGate from './ReadsGate'
 import RunBlock from './RunBlock'
 import { editSessionOf, readNewPassword } from './session'
 import { editStepsOf } from './steps'
-import type { EditStageProps, ReviewLoad } from './types'
+import type { AttemptRead, EditStageProps, ReviewLoad } from './types'
 import { useHeldWrite } from './useHeldWrite'
 import { useWriteSeams } from './useWriteSeams'
 
@@ -94,17 +103,24 @@ export const ReviewStageView = ({
   const clientState = useRecoveryClient(account)
   const reads = useOverviewReads({ client: clientState, records, chainId, account })
   const kit = clientState.status === 'ready' ? clientState.client : null
-  const attemptOpen = reads.facts.status === 'answered' && reads.facts.value.attemptOpen
+  const facts = reads.facts.status === 'answered' ? reads.facts.value : null
+  // The attempt as the save's prepare last read it; a new read of the overview's facts replaces it.
+  const [attemptRead, setAttemptRead] = useState<AttemptRead | null>(null)
+  useEffect(() => setAttemptRead(null), [reads.facts])
+  const attemptOpen = attemptRead ? attemptRead.open : !!facts?.attemptOpen
+  const dormantRefused = attemptRead
+    ? attemptRead.dormant
+    : !!facts && facts.attemptOpen && !facts.setup.isAuthorized
   const addressBook = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)
-  const { held, retry: retryHeld } = useHeldWrite(records, chainId, account)
+  const { held, retry: retryHeld, refresh: refreshHeld } = useHeldWrite(records, chainId, account)
   const [load, setLoad] = useState<ReviewLoad>({ status: 'pending' })
   const [loadRound, setLoadRound] = useState(0)
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
-    if (held.status === 'held' && held.write === 'remove') {
+    if (held.status === 'held' && held.write === 'manageRemove') {
       navigate(WEB_ROUTES.socialRecoveryManageRemove)
     }
     if (held.status === 'other') {
@@ -192,7 +208,7 @@ export const ReviewStageView = ({
   const stale = makesCardStale(rows)
 
   const ready = accountFacts.status === 'ready' ? accountFacts.facts : null
-  const ownWrite = held.status === 'none' || (held.status === 'held' && held.write === 'edit')
+  const ownWrite = held.status === 'none' || (held.status === 'held' && held.write === 'manageEdit')
   const steps = useMemo(() => {
     if (!ready?.key || !kit || !loaded || !ownWrite || clientState.status !== 'ready') {
       return null
@@ -212,7 +228,8 @@ export const ReviewStageView = ({
       baseline: loaded.baseline,
       draft: loaded.draft,
       password,
-      newPassword
+      newPassword,
+      onAttempt: setAttemptRead
     })
   }, [
     ready,
@@ -233,6 +250,13 @@ export const ReviewStageView = ({
   const screen = armScreenOf(state)
   const { write } = state
 
+  // A run that read or lost its claim to another screen's write ends unsent; the stored write is read again.
+  useEffect(() => {
+    if (state.lookup === 'failed' || write.status === 'failedNotSent') {
+      refreshHeld()
+    }
+  }, [state.lookup, write.status, refreshHeld])
+
   const openUrl = useCallback((url: string) => {
     Linking.openURL(url).catch(() => undefined)
   }, [])
@@ -243,7 +267,7 @@ export const ReviewStageView = ({
     <Button
       testID="manage-review-back"
       type="outline"
-      text={t('socialRecovery.ceremony.backAction')}
+      text={t(`${REVIEW}.backToEditor`)}
       onPress={toEditor}
       hasBottomSpacing={false}
     />
@@ -252,7 +276,10 @@ export const ReviewStageView = ({
   const saved = () => (
     <View testID="manage-review-saved">
       <Text fontSize={20} weight="medium" style={spacings.mbTy} testID="manage-review-saved-title">
-        {t('socialRecovery.arm.title')}
+        {t(`${REVIEW}.savedTitle`)}
+      </Text>
+      <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
+        {t(`${REVIEW}.savedBody`)}
       </Text>
       <SectionCard>
         {write.status === 'landed' && (
@@ -297,7 +324,7 @@ export const ReviewStageView = ({
           <Button
             testID="manage-review-saved-done"
             type="primary"
-            text={t('socialRecovery.done.close')}
+            text={t(`${REVIEW}.done`)}
             onPress={toOverview}
             hasBottomSpacing={false}
           />
@@ -351,7 +378,9 @@ export const ReviewStageView = ({
         recordsLoaded: true,
         clientReady: !!kit,
         trustRows,
-        untested: false,
+        untested: untestedInPath(clauses, loaded.enrollments).filter(({ credential }) =>
+          added.some((one) => sameCredential(one, credential))
+        ),
         clauses,
         backup: draft.privacy.backup,
         passwordSet: !passwordMissing
@@ -410,14 +439,10 @@ export const ReviewStageView = ({
 
         {trustRows.length > 0 && (
           <SectionCard label={t(`${REVIEW}.addedRows`)} testID="manage-review-added">
-            <Button
+            <DetailsExpander
               testID="manage-review-verify-details"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.review.verifyDetails')}
-              onPress={() => setExpanded((open) => !open)}
-              hasBottomSpacing={false}
-              style={[flexbox.alignSelfStart, spacings.mbSm]}
+              expanded={expanded}
+              onToggle={() => setExpanded((open) => !open)}
             />
             {expanded && !!kit && <TrustList rows={trustRows} client={kit} onRetry={trust.retry} />}
           </SectionCard>
@@ -429,7 +454,16 @@ export const ReviewStageView = ({
           </Text>
         </SectionCard>
 
-        {!!gate.blocked && (
+        {dormantRefused && (
+          <Alert
+            testID="manage-review-dormant-refused"
+            type="error"
+            size="sm"
+            style={spacings.mbSm}
+            text={t(`${REVIEW}.dormantRefused`)}
+          />
+        )}
+        {!dormantRefused && !!gate.blocked && (
           <SaveBlocker
             blocked={gate.blocked}
             onRetry={retryUnanswered}
@@ -447,12 +481,19 @@ export const ReviewStageView = ({
             text={t('socialRecovery.arm.viewOnly')}
           />
         )}
+        {gate.notTested && (
+          <NotTestedBlock
+            untested={gate.notTested}
+            enrollments={loaded.enrollments}
+            addressBook={addressBook}
+          />
+        )}
         {rows.length === 0 && (
           <Text fontSize={14} style={spacings.mbSm} testID="manage-review-unchanged">
             {t(`${REVIEW}.unchanged`)}
           </Text>
         )}
-        {attemptOpen && (
+        {attemptOpen && !dormantRefused && (
           <Text fontSize={14} weight="medium" style={spacings.mbSm} testID="manage-review-cancels">
             {t(`${REVIEW}.cancelsLine`)}
           </Text>
@@ -466,7 +507,13 @@ export const ReviewStageView = ({
                 testID="manage-review-save"
                 type="primary"
                 text={t(`${REVIEW}.save`)}
-                disabled={!gate.canSave || !steps || state.lookup !== 'none' || !!state.stop}
+                disabled={
+                  !gate.canSave ||
+                  dormantRefused ||
+                  !steps ||
+                  state.lookup !== 'none' ||
+                  !!state.stop
+                }
                 onPress={run.start}
                 hasBottomSpacing={false}
               />
@@ -496,7 +543,8 @@ export const ReviewStageView = ({
               type="warning"
               size="sm"
               style={spacings.mbSm}
-              text={t('socialRecovery.records.setupChangedTitle')}
+              title={t('socialRecovery.records.setupChangedTitle')}
+              text={t(`${REVIEW}.setupChangedBody`)}
             />
             <ActionsRow primary={backToEditor} />
           </View>
@@ -518,7 +566,16 @@ export const ReviewStageView = ({
       case 'run':
         return (
           <View>
-            {attemptOpen && (
+            {dormantRefused && (
+              <Alert
+                testID="manage-review-run-dormant-refused"
+                type="error"
+                size="sm"
+                style={spacings.mbSm}
+                text={t(`${REVIEW}.dormantRefused`)}
+              />
+            )}
+            {attemptOpen && !dormantRefused && (
               <Text fontSize={14} weight="medium" style={spacings.mbSm}>
                 {t(`${REVIEW}.cancelsLine`)}
               </Text>

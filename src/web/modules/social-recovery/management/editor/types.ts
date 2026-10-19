@@ -28,8 +28,9 @@ import type {
   SetupRecords,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
-import type { OwnerWrite } from '@web/modules/social-recovery/shared/writes'
+import type { ManageIntent, OwnerWrite } from '@web/modules/social-recovery/shared/writes'
 import type { ArmRun } from '@web/modules/social-recovery/setup/arm'
+import type { UntestedCredential } from '@web/modules/social-recovery/setup/review'
 
 // ---------------------------------------------------------------------------
 // The edit session
@@ -91,6 +92,8 @@ export interface OpenEditInput {
 /** One committed value the edit changes. */
 export type ChangeRow =
   | { kind: 'members'; added: number; removed: number }
+  /** Members the path keeps, in other groups than before. */
+  | { kind: 'pathChanged' }
   | { kind: 'rule'; before: string; after: string }
   | { kind: 'waitingPeriod'; before: SetupDraft['wait']; after: SetupDraft['wait'] }
   | { kind: 'privacy'; before: PrivacyLevel; after: PrivacyLevel }
@@ -104,32 +107,32 @@ export interface ChangesInput {
   ruleOf: (clauses: readonly Clause[]) => string
 }
 
-/** A group whose every member the rule needs: its place, its threshold and its members. */
-export interface StillNeededGroup {
-  clause: number
-  required: number
-  count: number
-}
-
 // ---------------------------------------------------------------------------
 // The writes
 // ---------------------------------------------------------------------------
-
-/** The two writes of the editor: the save of the changes, and the removal. */
-export type EditorWrite = 'edit' | 'remove'
 
 /** Which write the account's stored write in flight belongs to. */
 export type HeldWrite =
   | { status: 'pending' }
   | { status: 'failed' }
   | { status: 'none' }
-  | { status: 'held'; write: EditorWrite }
+  | { status: 'held'; write: ManageIntent }
   /** A write another screen stored. */
   | { status: 'other' }
 
 export interface HeldWriteRead {
   held: HeldWrite
+  /** Reads it again from its pending state, after a read that failed. */
   retry: () => void
+  /** Reads it again and keeps the last answer until the new one. */
+  refresh: () => void
+}
+
+/** The attempt as a write's prepare read it, right before the send. */
+export interface AttemptRead {
+  open: boolean
+  /** The setup no longer authorized on the account while the attempt is open. */
+  dormant: boolean
 }
 
 export interface EditorStepsInput {
@@ -144,6 +147,16 @@ export interface EditorStepsInput {
   account: Address
   facts: ListedAccountFacts
   key: KeyHandle
+  /** Hears the attempt as the prepare read it. */
+  onAttempt?: (read: AttemptRead) => void
+}
+
+/** What the local wipe after a removal reaches. */
+export interface RemovedWipeInput {
+  records: Pick<WalletRecords, 'setup' | 'decryptedSetupCache'>
+  session: EditSessionAccessor
+  chainId: ChainId
+  account: Address
 }
 
 export interface EditStepsInput extends EditorStepsInput {
@@ -207,8 +220,16 @@ export interface PasswordChangeProps {
   onCancel: () => void
 }
 
-export interface StillNeededBlockProps {
-  groups: readonly StillNeededGroup[]
+export interface NotTestedBlockProps {
+  untested: readonly UntestedCredential[]
+  enrollments: readonly Enrollment[]
+  addressBook: AddressBook
+}
+
+export interface DetailsExpanderProps {
+  expanded: boolean
+  onToggle: () => void
+  testID: string
 }
 
 export interface ChangesBlockProps {

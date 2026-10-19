@@ -54,7 +54,7 @@ const ValuesBlock = ({ draft, addressBook, passwordChanged, stale, onStage }: Va
       {value(
         renderNoun('waitingPeriod', t),
         renderWait(draft.wait, t),
-        t('socialRecovery.privacy.waitingPeriod.fieldLabel'),
+        t(`${EDITOR}.values.change`),
         'wait'
       )}
       {level !== 'public' &&
@@ -67,7 +67,7 @@ const ValuesBlock = ({ draft, addressBook, passwordChanged, stale, onStage }: Va
       {value(
         t('socialRecovery.review.privacyHeader'),
         privacyLinesOf(draft, addressBook, true, t)[0],
-        t('socialRecovery.privacy.level.title'),
+        t(`${EDITOR}.values.change`),
         'privacy'
       )}
       {stale && (

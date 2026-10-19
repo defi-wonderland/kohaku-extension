@@ -5,9 +5,13 @@
  * account the line that removing recovery cancels it, above the action. The
  * removal clears the setup and removes the action's authorization in one
  * batch over the save's own run, in the shared states, and reads as done only
- * once the chain reads both gone and the records were wiped. A stored save of
- * the changes in flight sends the holder to the review, and another screen's
- * stored write to the overview.
+ * once the chain reads both gone and the records were wiped. A run that finds
+ * both already gone sends nothing, says that the account has no recovery path
+ * now, drawn apart from a removal it sent, and this device keeps nothing of
+ * the setup. The removal's prepare reads the attempt again, and the cancel
+ * line follows that read. A stored save of the changes in flight sends the holder
+ * to the review, and another screen's stored write to the overview; the
+ * stored write is read again whenever the tab comes back into view.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -42,8 +46,8 @@ import { nothingOnItsWay } from './readings'
 import ReadsGate from './ReadsGate'
 import RunBlock from './RunBlock'
 import { editSessionOf } from './session'
-import { removalStepsOf } from './steps'
-import type { EditStageProps } from './types'
+import { removalStepsOf, wipeRemovedSetup } from './steps'
+import type { AttemptRead, EditStageProps } from './types'
 import { useHeldWrite } from './useHeldWrite'
 import { useWriteSeams } from './useWriteSeams'
 
@@ -58,14 +62,19 @@ export const RemoveStageView = ({
   const clientState = useRecoveryClient(account)
   const reads = useOverviewReads({ client: clientState, records, chainId, account })
   const kit = clientState.status === 'ready' ? clientState.client : null
-  const attemptOpen = reads.facts.status === 'answered' && reads.facts.value.attemptOpen
+  // The attempt as the removal's prepare last read it; a new read of the overview's facts replaces it.
+  const [attemptRead, setAttemptRead] = useState<AttemptRead | null>(null)
+  useEffect(() => setAttemptRead(null), [reads.facts])
+  const attemptOpen = attemptRead
+    ? attemptRead.open
+    : reads.facts.status === 'answered' && reads.facts.value.attemptOpen
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)
-  const { held, retry: retryHeld } = useHeldWrite(records, chainId, account)
+  const { held, retry: retryHeld, refresh: refreshHeld } = useHeldWrite(records, chainId, account)
   const [typed, setTyped] = useState('')
 
   useEffect(() => {
-    if (held.status === 'held' && held.write === 'edit') {
+    if (held.status === 'held' && held.write === 'manageEdit') {
       navigate(WEB_ROUTES.socialRecoveryManageReview)
     }
     if (held.status === 'other') {
@@ -74,7 +83,8 @@ export const RemoveStageView = ({
   }, [held, navigate])
 
   const ready = accountFacts.status === 'ready' ? accountFacts.facts : null
-  const ownWrite = held.status === 'none' || (held.status === 'held' && held.write === 'remove')
+  const ownWrite =
+    held.status === 'none' || (held.status === 'held' && held.write === 'manageRemove')
   const steps = useMemo(() => {
     if (!ready?.key || !kit || !ownWrite || clientState.status !== 'ready') {
       return null
@@ -90,12 +100,28 @@ export const RemoveStageView = ({
       chainId,
       account,
       facts: ready,
-      key: ready.key
+      key: ready.key,
+      onAttempt: setAttemptRead
     })
   }, [ready, kit, ownWrite, clientState, seams, records, session, chainId, account])
-  const run = useArmRun(steps, `manage:remove:${chainId}:${account.toLowerCase()}`)
+  const run = useArmRun(steps, `manage:remove:${chainId}:${account.toLowerCase()}`, 'ownerWrite')
   const { state } = run
   const screen = armScreenOf(state)
+
+  // A run that read or lost its claim to another screen's write ends unsent; the stored write is read again.
+  useEffect(() => {
+    if (state.lookup === 'failed' || state.write.status === 'failedNotSent') {
+      refreshHeld()
+    }
+  }, [state.lookup, state.write.status, refreshHeld])
+
+  // The chain holds no setup and no authorization: this device keeps nothing of the setup either.
+  const endedElsewhere = screen === 'already-set-up'
+  useEffect(() => {
+    if (endedElsewhere) {
+      wipeRemovedSetup({ records, session, chainId, account }).catch(() => undefined)
+    }
+  }, [endedElsewhere, records, session, chainId, account])
 
   const toOverview = useCallback(() => navigate(WEB_ROUTES.socialRecoveryManage), [navigate])
   const word = t(`${REMOVE}.word`)
@@ -105,7 +131,7 @@ export const RemoveStageView = ({
     <Button
       testID="manage-remove-keep"
       type="outline"
-      text={t('socialRecovery.actions.cancel')}
+      text={t(`${REMOVE}.keep`)}
       onPress={toOverview}
       hasBottomSpacing={false}
     />
@@ -117,7 +143,7 @@ export const RemoveStageView = ({
   )
 
   const done = (
-    <View testID="manage-remove-done">
+    <View testID={endedElsewhere ? 'manage-remove-ended' : 'manage-remove-done'}>
       <PageTitle
         title={t(`${REMOVE}.doneTitle`)}
         lead={t(`${REMOVE}.doneBody`)}

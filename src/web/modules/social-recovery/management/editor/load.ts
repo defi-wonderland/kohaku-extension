@@ -73,9 +73,9 @@ export const writeLoadedRecords = async (
 
 /**
  * Opens the edit of the committed setup: an edit session read under the setup
- * the chain holds now is taken up as it stands, with the records it left;
- * any other loads the committed configuration into the setup records and
- * starts a new session over it.
+ * the chain holds now, whose setup draft the records still hold, is taken up
+ * as it stands, with the records it left; any other loads the committed
+ * configuration into the setup records and starts a new session over it.
  */
 export const openEditSession = async ({
   setup,
@@ -85,7 +85,7 @@ export const openEditSession = async ({
   level
 }: OpenEditInput): Promise<EditSession> => {
   const held = await session.read()
-  if (held && isCacheCurrent(held, state)) {
+  if (held && isCacheCurrent(held, state) && (await setup.setupDraft.read()).status === 'present') {
     return held
   }
   await writeLoadedRecords(setup, recordsOfConfiguration(configuration, level))
