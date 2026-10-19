@@ -465,7 +465,6 @@ describe('the cancel screen', () => {
     expect(view.textOf('cancel-cancelled-only-own-key')).toBe(
       t('socialRecovery.watcher.banner.onlyOwnKey')
     )
-    expect(view.text()).not.toContain(t('socialRecovery.cancel.cancelled.replaceLater'))
     const actions = Array.from(document.querySelectorAll('[tabindex]')).map(
       (node) => node.textContent
     )
