@@ -11,9 +11,9 @@
  * `prepareRemoveSetup`, `prepareRemoveAuthorization`, `prepareStartAttempt`,
  * `prepareCancelByProofs`, `prepareCancelByVeto`, `prepareExecuteHandover`,
  * `initRecoveryGathering`, `initCancelGathering`, `complete`, `getSetup` and
- * `confirmSetup` throw an ordinary error; a refusal
- * raised by validation is a `ValidationRefusal` and the one `getSetup` (and the
- * two inits) throw on a restore is a `RestoreRefusal` (utilities.ts).
+ * `confirmSetup` throw an ordinary error; a refusal raised by validation is a
+ * `ValidationRefusal` and the one `getSetup` (and the two inits) throw on a
+ * restore is a `RestoreRefusal` (utilities.ts).
  * `addApproverReply` returns its typed result instead.
  */
 import type { Address, BlockHeader, Hex, ReadResult } from './common'
@@ -261,6 +261,9 @@ export interface HandoverInput {
  * The entry a holder's integrator builds while the holder still holds their
  * key.
  *
+ * `prepareClearSetup` is the manager's clear alone, which leaves the
+ * authorization standing; it refuses where no setup stands.
+ *
  * Removing recovery pairs two writes: the manager's clear and a zero written
  * to the kit's slot on the account. Either write alone leaves a dormant setup
  * (a later authorization revives it) or a dead authorization (a later save
@@ -278,7 +281,7 @@ export interface ISetupClient {
     password?: string,
     options?: PrepareOptions
   ): Promise<PreparedCall | PreparedBatch>
-  prepareClearSetup(options?: PrepareOptions): Promise<PreparedCall | PreparedBatch>
+  prepareClearSetup(options?: PrepareOptions): Promise<PreparedCall>
   prepareRemoveSetup(options?: PrepareOptions): Promise<PreparedBatch>
   prepareRemoveAuthorization(options?: PrepareOptions): Promise<PreparedCall>
   confirmSetup(

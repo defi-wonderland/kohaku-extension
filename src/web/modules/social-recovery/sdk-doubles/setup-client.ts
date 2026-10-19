@@ -543,28 +543,22 @@ export class SetupClientDouble implements ISetupClient {
     )
   }
 
-  async prepareClearSetup(options?: PrepareOptions): Promise<PreparedCall | PreparedBatch> {
+  async prepareClearSetup(options?: PrepareOptions): Promise<PreparedCall> {
     const { chain, manager, action, actionAddress, config } = this.ctx
     chain.guardRefusal('setup.prepareClearSetup')
     const block = await pinBlock(this.ctx)
     const [state, authorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
-    const hasSetup = state.setupCommitment !== zeroHash
+    if (state.setupCommitment === zeroHash) {
+      throw codedError('setup.no-setup', { isAuthorized: authorized })
+    }
     const simulate = shouldSimulate(options, config.simulate)
     const failure = chain.simulationFailure('setup.prepareClearSetup')
     const from = simulationFrom(chain, 'account', options)
-    const pin = (c: PreparedCall, error = failure): PreparedCall => {
-      const pinned = { ...c, block: { number: block.number, hash: block.hash } }
-      return simulate ? withSimulation(pinned, from, error) : pinned
+    const call = {
+      ...(await manager.prepareClearSetup(actionAddress)),
+      block: { number: block.number, hash: block.hash }
     }
-    if (hasSetup && authorized) {
-      const clear = await manager.prepareClearSetup(actionAddress)
-      const disarm = await action.disarmingCall()
-      return composeBatch([pin(clear), pin(disarm, undefined)], block)
-    }
-    if (hasSetup) {
-      return pin(await manager.prepareClearSetup(actionAddress))
-    }
-    return pin(await action.disarmingCall())
+    return simulate ? withSimulation(call, from, failure) : call
   }
 
   async prepareRemoveSetup(options?: PrepareOptions): Promise<PreparedBatch> {
