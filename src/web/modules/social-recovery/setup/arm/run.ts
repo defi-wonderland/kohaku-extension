@@ -77,7 +77,6 @@ import {
   initialWriteState,
   intentOfRequest,
   mayStillLand,
-  overviewIntentOf,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type {
@@ -1268,19 +1267,13 @@ const sendClaimed = async (
 /**
  * Whether a run whose own request is `own` leaves the stored write to its
  * holder instead of following it: a write of the recovery overview or of the
- * management editor is followed and judged only by a run of the same screen,
- * so a save that meets either one stops, and so do an overview run and an
- * editor run that meet each other's write. A stored save is followed by any
- * run.
+ * management editor is followed and judged only by a run of that same write,
+ * so a save, another overview write or an editor write that meets it stops.
+ * A stored save is followed by any run.
  */
 const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
-  if (!intentOfRequest(stored.requestId)) {
-    return false
-  }
-  if (!intentOfRequest(own)) {
-    return true
-  }
-  return !overviewIntentOf(own) !== !overviewIntentOf(stored.requestId)
+  const held = intentOfRequest(stored.requestId)
+  return !!held && intentOfRequest(own) !== held
 }
 
 /** Follows a stored save in place of the run's own send, and looks again where it was void. */

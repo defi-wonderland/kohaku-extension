@@ -359,19 +359,31 @@ describe('a save that meets a write of the recovery overview at its claim', () =
   })
 })
 
-describe('a write of one management screen that meets a write of the other at its claim', () => {
-  const EDITOR_ID = 'social-recovery-sender:1:manage-edit'
+describe('a management write that meets another management write at its claim', () => {
   const CASES = [
-    { named: 'an overview run that meets a write of the editor', own: 'clear', other: EDITOR_ID },
-    { named: 'an editor run that meets a write of the overview', own: 'editor', other: 'overview' }
-  ] as const
+    {
+      named: 'an overview run that meets a write of the editor',
+      ownId: () => requestIdOf('clear'),
+      otherId: () => 'social-recovery-sender:1:manage-edit'
+    },
+    {
+      named: 'an editor run that meets a write of the overview',
+      ownId: () => 'social-recovery-sender:2:manage-remove',
+      otherId: () => requestIdOf('reauthorize')
+    },
+    {
+      named: "an overview clear that meets the overview's re-authorize",
+      ownId: () => requestIdOf('clear'),
+      otherId: () => requestIdOf('reauthorize')
+    }
+  ]
 
-  CASES.forEach(({ named, own, other }) =>
+  CASES.forEach(({ named, ownId, otherId: otherIdOf }) =>
     it(`stops with nothing sent or followed for ${named}, and leaves that write stored`, async () => {
       const storage = memoryStorage()
       const requests = requestsFake()
       const page = wireSave(account, script(), { storage, requests })
-      const otherId = other === 'overview' ? requestIdOf('reauthorize') : other
+      const otherId = otherIdOf()
       await page.inFlight.claim({
         draft: page.draft,
         prepared: page.prepared,
@@ -379,10 +391,7 @@ describe('a write of one management screen that meets a write of the other at it
         claimedAt: Date.now()
       })
       const store = createArmStore()
-      const steps: SaveSteps = {
-        ...page.steps,
-        newRequestId: () => (own === 'editor' ? `${Date.now()}:manage-remove` : requestIdOf(own))
-      }
+      const steps: SaveSteps = { ...page.steps, newRequestId: ownId }
 
       const running = startSave(store, steps, OPTIONS)
       await advanceTimers(SHORT_TIMEOUT_MS)
@@ -396,11 +405,11 @@ describe('a write of one management screen that meets a write of the other at it
     })
   )
 
-  it('follows a write of the overview from another overview run, with nothing sent', async () => {
+  it('follows a write of the overview from another run of that same write, with nothing sent', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
     const page = wireSave(account, script(), { storage, requests })
-    const otherId = requestIdOf('reauthorize')
+    const otherId = requestIdOf('clear')
     await page.inFlight.claim({
       draft: page.draft,
       prepared: page.prepared,

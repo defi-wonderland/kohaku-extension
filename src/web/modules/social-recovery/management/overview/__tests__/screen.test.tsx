@@ -395,4 +395,66 @@ describe("the overview's screen", () => {
     const stored = await world.records.saveInFlight(CHAIN_ID, address).read()
     expect(stored.status === 'present' && stored.value.requestId).toBe(requestId)
   })
+
+  it('stops a clear whose claim loses to a re-authorize another tab stored, and opens the re-authorize step to follow it with nothing sent', async () => {
+    const world = await dormantWorld()
+    const port = sendPortOver()
+    const receipts = receiptsOver()
+    receipts.wait.mockImplementation(() => armHarness.pending())
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+
+    view = await mount(<OverviewScreen />)
+    await view.press('overview-clear')
+    expect(view.byTestId('overview-step-clear')).not.toBeNull()
+
+    const draft = reauthorizeDraftOf(CONFIGURATION, 'public')
+    const inFlight = world.records.saveInFlight(CHAIN_ID, address)
+    const requestId = requestIdOf('reauthorize')
+    await inFlight.claim({
+      draft,
+      prepared: await world.client.setup.prepareCommitSetup(draft),
+      requestId,
+      claimedAt: Date.now(),
+      startBlock: armHarness.START_BLOCK
+    })
+    await inFlight.markSent(requestId, armHarness.TX_HASH, armHarness.START_BLOCK)
+    await view.press('overview-step-start')
+    await settle()
+
+    expect(view.byTestId('overview-step-clear')).toBeNull()
+    expect(view.byTestId('overview-step-reauthorize')).not.toBeNull()
+    expect(view.byTestId('overview-step-submitting')).not.toBeNull()
+    expect(view.byTestId('overview-step-start')).toBeNull()
+    expect(receipts.wait).toHaveBeenCalledWith(armHarness.TX_HASH, armHarness.START_BLOCK)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    const stored = await inFlight.read()
+    expect(stored.status === 'present' && stored.value.requestId).toBe(requestId)
+  })
+
+  it("drops the editor's block once the tab is shown again and the editor's write is no longer stored", async () => {
+    const world = await dormantWorld()
+    const requestId = `${newSendRequestId()}:manage-remove`
+    const inFlight = world.records.saveInFlight(CHAIN_ID, address)
+    await inFlight.claim({
+      draft: REMOVAL_DRAFT,
+      prepared: await world.client.setup.prepareClearSetup(),
+      requestId,
+      claimedAt: Date.now()
+    })
+    mockWallet.port = sendPortOver()
+    mockWallet.client = readyOver(world.client, GAS_READS, receiptsOver())
+
+    view = await mount(<OverviewScreen />)
+    expect(view.byTestId('overview-write-elsewhere')).not.toBeNull()
+
+    await inFlight.release(requestId)
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await settle()
+
+    expect(view.byTestId('overview-write-elsewhere')).toBeNull()
+    expect(view.byTestId('overview-dormant')).not.toBeNull()
+  })
 })
