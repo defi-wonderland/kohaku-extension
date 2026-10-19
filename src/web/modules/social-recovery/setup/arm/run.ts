@@ -77,6 +77,7 @@ import {
   initialWriteState,
   intentOfRequest,
   mayStillLand,
+  overviewIntentOf,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes'
 import type {
@@ -1266,11 +1267,21 @@ const sendClaimed = async (
 
 /**
  * Whether a run whose own request is `own` leaves the stored write to its
- * holder instead of following it: a save that meets a write of the recovery
- * overview, which only the overview follows and judges.
+ * holder instead of following it: a write of the recovery overview or of the
+ * management editor is followed and judged only by a run of the same screen,
+ * so a save that meets either one stops, and so do an overview run and an
+ * editor run that meet each other's write. A stored save is followed by any
+ * run.
  */
-const leftToOverview = (own: string, stored: SaveInFlightRecord): boolean =>
-  !intentOfRequest(own) && !!intentOfRequest(stored.requestId)
+const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
+  if (!intentOfRequest(stored.requestId)) {
+    return false
+  }
+  if (!intentOfRequest(own)) {
+    return true
+  }
+  return !overviewIntentOf(own) !== !overviewIntentOf(stored.requestId)
+}
 
 /** Follows a stored save in place of the run's own send, and looks again where it was void. */
 const followInstead = async (
@@ -1289,7 +1300,7 @@ const followInstead = async (
 /**
  * A claimed run whose stored save is no longer its own: it sends nothing and
  * releases nothing. It follows the stored save another page holds now, or
- * stops where a save meets a write of the recovery overview; where none is
+ * stops where that write belongs to another screen's run; where none is
  * stored, the save is looked for again before it is offered.
  */
 const yieldClaim = async (
@@ -1302,7 +1313,7 @@ const yieldClaim = async (
   if (stored.status === 'present') {
     const own = store.state().requestId
     store.dispatch({ type: 'released', run })
-    if (own && leftToOverview(own, stored.value)) {
+    if (own && leftToHolder(own, stored.value)) {
       store.dispatch({ type: 'overviewElsewhere', run })
       return
     }
@@ -1354,7 +1365,7 @@ const checkAndSend = async (
     return
   }
   if (!claim.claimed) {
-    if (leftToOverview(requestId, claim.record.value)) {
+    if (leftToHolder(requestId, claim.record.value)) {
       store.dispatch({ type: 'overviewElsewhere', run })
       return
     }
