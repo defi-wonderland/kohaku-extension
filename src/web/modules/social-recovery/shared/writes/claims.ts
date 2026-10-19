@@ -39,8 +39,15 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import type { SendRequestPort } from '@web/modules/social-recovery/shared/client'
 
-import { OVERVIEW_INTENT_MARK, OVERVIEW_INTENTS } from './constants'
-import type { ClaimReading, OverviewIntent, RequestHold, StoredClaim } from './types'
+import { MANAGE_INTENT_MARKS, OVERVIEW_INTENT_MARK, OVERVIEW_INTENTS } from './constants'
+import type {
+  ClaimReading,
+  ManageIntent,
+  ManagementIntent,
+  OverviewIntent,
+  RequestHold,
+  StoredClaim
+} from './types'
 
 /** The first reading of a stored claim: in flight under its hash, or one whose request the wallet's queue decides. */
 export const claimReadingOf = ({ transactionHash }: StoredClaim): ClaimReading =>
@@ -79,12 +86,27 @@ export const requestHoldOf = async (
 export const requestIdOf = (intent: OverviewIntent): string =>
   `${newSendRequestId()}${OVERVIEW_INTENT_MARK}${intent}`
 
-/** The overview write a stored request id names; none for a request another screen sent. */
-export const intentOfRequest = (requestId: string): OverviewIntent | undefined => {
+const MANAGE_INTENTS = Object.keys(MANAGE_INTENT_MARKS) as ManageIntent[]
+
+/**
+ * The write of the overview or of the management editor a stored request id
+ * names; none for a request another screen sent.
+ */
+export const intentOfRequest = (requestId: string): ManagementIntent | undefined => {
+  const managed = MANAGE_INTENTS.find((intent) => requestId.endsWith(MANAGE_INTENT_MARKS[intent]))
+  if (managed) {
+    return managed
+  }
   const at = requestId.lastIndexOf(OVERVIEW_INTENT_MARK)
   if (at < 0) {
     return undefined
   }
   const named = requestId.slice(at + OVERVIEW_INTENT_MARK.length)
   return OVERVIEW_INTENTS.find((intent) => intent === named)
+}
+
+/** The overview write a stored request id names; none for any other screen's request. */
+export const overviewIntentOf = (requestId: string): OverviewIntent | undefined => {
+  const intent = intentOfRequest(requestId)
+  return OVERVIEW_INTENTS.find((overview) => overview === intent)
 }

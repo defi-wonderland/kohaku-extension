@@ -1,4 +1,4 @@
-import type { OverviewIntent } from './types'
+import type { ManageIntent, OverviewIntent } from './types'
 
 /**
  * How long after it went out a write whose transactions the node does not
@@ -25,3 +25,9 @@ export const OVERVIEW_INTENTS: readonly OverviewIntent[] = [
 
 /** The mark between a request id and the overview write it names. */
 export const OVERVIEW_INTENT_MARK = ':overview-'
+
+/** The mark each of the management editor's writes carries on the request id it stores. */
+export const MANAGE_INTENT_MARKS: Readonly<Record<ManageIntent, string>> = {
+  manageEdit: ':manage-edit',
+  manageRemove: ':manage-remove'
+}

@@ -122,12 +122,16 @@ const {
 const {
   REMOVAL_DRAFT
 }: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
+const {
+  WEB_ROUTES
+}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const OverviewScreen: typeof import('@web/modules/social-recovery/management/overview/OverviewScreen').default =
   require('@web/modules/social-recovery/management/overview/OverviewScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const {
   mount,
+  t,
   worldAt,
   readyOver,
   readyFactsOf,
@@ -223,4 +227,42 @@ describe("the overview's screen", () => {
     expect(view.byTestId('overview-dormant')).not.toBeNull()
     expect(view.byTestId('overview-step-clear')).toBeNull()
   })
+
+  const EDITOR_WRITES = [
+    { mark: ':manage-edit', route: WEB_ROUTES.socialRecoveryManageReview },
+    { mark: ':manage-remove', route: WEB_ROUTES.socialRecoveryManageRemove }
+  ]
+  EDITOR_WRITES.forEach(({ mark, route }) =>
+    it(`leaves a write the editor stored under ${mark} to the editor's screen, with no step of its own`, async () => {
+      const world = await dormantWorld()
+      const prepared = await world.client.setup.prepareClearSetup()
+      await world.records.saveInFlight(CHAIN_ID, address).claim({
+        draft: REMOVAL_DRAFT,
+        prepared,
+        requestId: `${newSendRequestId()}${mark}`,
+        claimedAt: Date.now()
+      })
+      const port = sendPortOver()
+      const receipts = receiptsOver()
+      mockWallet.port = port
+      mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+      mockState.navigation.navigate.mockClear()
+
+      view = await mount(<OverviewScreen />)
+
+      expect(view.textOf('overview-write-elsewhere')).toContain(
+        t('socialRecovery.management.overview.writes.inFlightElsewhere')
+      )
+      expect(view.byTestId('overview-dormant')).toBeNull()
+      expect(view.byTestId('overview-step-clear')).toBeNull()
+      expect(view.byTestId('overview-step-reauthorize')).toBeNull()
+      expect(view.byTestId('overview-step-removeAuthorization')).toBeNull()
+      await view.press('overview-open-elsewhere')
+      expect(mockState.navigation.navigate).toHaveBeenCalledWith(route)
+      expect(receipts.wait).not.toHaveBeenCalled()
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+      const stored = await world.records.saveInFlight(CHAIN_ID, address).read()
+      expect(stored.status).toBe('present')
+    })
+  )
 })

@@ -568,3 +568,9 @@ export type RequestHold =
  * removed.
  */
 export type OverviewIntent = 'reauthorize' | 'clear' | 'removeAuthorization'
+
+/** Which of the management editor's writes a stored request names: the edit, or the removal. */
+export type ManageIntent = 'manageEdit' | 'manageRemove'
+
+/** The write of the management screens a stored request names. */
+export type ManagementIntent = OverviewIntent | ManageIntent

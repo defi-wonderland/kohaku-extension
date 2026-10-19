@@ -4,12 +4,17 @@
  * the overview's reads, reads the watcher's record for the ending and mounts
  * the cancel lane's banner of the account while an attempt is open. A write
  * of the overview stored on this device as in flight opens its own step
- * again, so the run follows it instead of sending a second one.
+ * again, so the run follows it instead of sending a second one; a write the
+ * management editor stored is left to the editor's screen, and the overview
+ * points there.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
+import Alert from '@common/components/Alert'
+import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
+import spacings from '@common/styles/spacings'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import AccountAttemptBanner from '@web/modules/social-recovery/cancel/AccountAttemptBanner'
 import { pollOnce } from '@web/modules/social-recovery/cancel/reads'
@@ -19,6 +24,7 @@ import { CHAIN_NAMES } from '@web/modules/social-recovery/recovery/entry/constan
 import type { ReadoutRowContext } from '@web/modules/social-recovery/recovery/entry/types'
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
 import { relyingPartyOf } from '@web/modules/social-recovery/shared/ceremony'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import {
@@ -34,13 +40,15 @@ import {
   createWalletRecords,
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
-import { intentOfRequest } from '@web/modules/social-recovery/shared/writes'
+import { intentOfRequest, overviewIntentOf } from '@web/modules/social-recovery/shared/writes'
+import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
 import { kindOfMethodIn } from '@web/modules/social-recovery/setup/privacy/exposure'
 import { kindNameOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 import { dismissAttempt, watchedNetworkOf } from '@web/modules/social-recovery/watcher'
 import { useWatchedAttempt } from '@web/modules/social-recovery/watcher/useWatchedAttempt'
 
+import { MANAGE_LINKS } from './constants'
 import OverviewView from './OverviewView'
 import OverviewWriteStep from './OverviewWriteStep'
 import { clausesOfPath, movedInPath, pathMethodsOf } from './readings'
@@ -105,7 +113,9 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   )
 
   const [open, setOpen] = useState<OpenStep | null>(null)
-  // A write of the overview this device holds in flight opens its step, whose run follows it.
+  const [elsewhere, setElsewhere] = useState<ManageIntent | null>(null)
+  // A write of the overview this device holds in flight opens its step, whose run follows it;
+  // one of the management editor is left to its own screen.
   useEffect(() => {
     let live = true
     records
@@ -113,10 +123,18 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       .read()
       .then(
         (held) => {
-          const intent =
-            held.status === 'present' ? intentOfRequest(held.value.requestId) : undefined
-          if (live && intent) {
+          if (!live || held.status !== 'present') {
+            return
+          }
+          const { requestId } = held.value
+          const intent = overviewIntentOf(requestId)
+          if (intent) {
             setOpen({ intent, autoStart: false })
+            return
+          }
+          const managed = intentOfRequest(requestId)
+          if (managed === 'manageEdit' || managed === 'manageRemove') {
+            setElsewhere(managed)
           }
         },
         () => undefined
@@ -148,8 +166,32 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     [network]
   )
 
+  const elsewhereBlock = elsewhere ? (
+    <Alert
+      testID="overview-write-elsewhere"
+      type="warning"
+      size="sm"
+      style={spacings.mbSm}
+      text={t('socialRecovery.management.overview.writes.inFlightElsewhere')}
+    >
+      <ActionsRow
+        primary={
+          <Button
+            testID="overview-open-elsewhere"
+            type="secondary"
+            size="small"
+            text={t(MANAGE_LINKS[elsewhere].label)}
+            onPress={() => navigate(MANAGE_LINKS[elsewhere].route)}
+            hasBottomSpacing={false}
+          />
+        }
+      />
+    </Alert>
+  ) : null
+
   const step =
-    open && clientState.status === 'ready' && reads.facts.status === 'answered' ? (
+    elsewhereBlock ??
+    (open && clientState.status === 'ready' && reads.facts.status === 'answered' ? (
       <OverviewWriteStep
         key={open.intent}
         intent={open.intent}
@@ -166,7 +208,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
         onClose={onClose}
         navigate={navigate}
       />
-    ) : null
+    ) : null)
 
   return (
     <OverviewView

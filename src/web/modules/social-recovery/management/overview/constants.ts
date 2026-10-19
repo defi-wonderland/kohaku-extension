@@ -1,4 +1,8 @@
+import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
+
+import type { ElsewhereLink } from './types'
 
 export const OVERVIEW = 'socialRecovery.management.overview'
 
@@ -11,4 +15,16 @@ export const REMOVAL_DRAFT: SetupDraft = {
   clauses: [],
   ignoresPause: true,
   privacy: { publicMetadata: '0x', backup: 'empty' }
+}
+
+/** Where each of the management editor's writes is followed, and the link's label. */
+export const MANAGE_LINKS: Readonly<Record<ManageIntent, ElsewhereLink>> = {
+  manageEdit: {
+    route: WEB_ROUTES.socialRecoveryManageReview,
+    label: 'socialRecovery.management.review.title'
+  },
+  manageRemove: {
+    route: WEB_ROUTES.socialRecoveryManageRemove,
+    label: 'socialRecovery.management.remove.title'
+  }
 }
