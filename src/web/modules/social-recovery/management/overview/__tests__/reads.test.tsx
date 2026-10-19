@@ -26,6 +26,9 @@ const {
   readRecoveryPassword,
   wipeRecoveryPassword
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  notServedRefusal
+}: typeof import('@web/modules/social-recovery/shared/client/kit/setup-client') = require('@web/modules/social-recovery/shared/client/kit/setup-client')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const { mount, t, worldAt, readyOver, ReadsProbe, typeInto, ACCOUNT, PASSWORD, CONFIGURATION } =
@@ -128,6 +131,34 @@ describe('the overview reads', () => {
     await view.press('overview-read-failed-retry')
     expect(view.byTestId('overview-read-failed')).toBeNull()
     expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+  })
+
+  it('reads a kit that does not serve the method logs as no moved keys, and still shows the setup', async () => {
+    const world = await worldAt('public')
+    jest.spyOn(world.client.setup.events, 'methodFilter').mockImplementation(() => {
+      throw notServedRefusal('events.methodFilter')
+    })
+    view = await renderOver(world)
+    expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    expect(view.byTestId('overview-notices-failed')).toBeNull()
+    expect(view.byTestId('overview-notices-reading')).toBeNull()
+  })
+
+  it('reads a method filter that fails for another reason as a failed notices read with retry', async () => {
+    const world = await worldAt('public')
+    const methodFilter = jest
+      .spyOn(world.client.setup.events, 'methodFilter')
+      .mockImplementation(() => {
+        throw new Error('node down')
+      })
+    view = await renderOver(world)
+    expect(view.byTestId('overview-notices-failed')).not.toBeNull()
+    expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+
+    methodFilter.mockRestore()
+    await view.press('overview-notices-failed-retry')
+    expect(view.byTestId('overview-notices-failed')).toBeNull()
   })
 
   it('reads an account with no setup as not set up', async () => {

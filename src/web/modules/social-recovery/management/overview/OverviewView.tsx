@@ -305,8 +305,8 @@ const OverviewView = ({
       return (
         <ReadFailedBlock
           testID="overview-notices-failed"
-          title={t(`${OVERVIEW}.reads.failedTitle`)}
-          body={t(`${OVERVIEW}.reads.failedBody`)}
+          title={t(`${OVERVIEW}.reads.noticesFailedTitle`)}
+          body={t(`${OVERVIEW}.reads.noticesFailedBody`)}
           onRetry={reads.retryNotices}
         />
       )
