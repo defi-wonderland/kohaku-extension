@@ -11,7 +11,7 @@ import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
 import type { ArmState } from '@web/modules/social-recovery/setup/arm'
 import type { AccountReads, SaveGate, TrustRow } from '@web/modules/social-recovery/setup/review'
 
-import type { ChangeRow, EditSession } from './types'
+import type { EditGateInput, EditSession } from './types'
 
 /**
  * The trust list rows of the methods the added rows use, each headed by the
@@ -56,11 +56,23 @@ export const passwordMissingOf = (
   return session.password === 'changed' ? newPassword === undefined : password === undefined
 }
 
-/** The review's save gate: the setup review's own, and something to save. */
-export const editGateOf = (gate: SaveGate, rows: readonly ChangeRow[]): SaveGate => ({
-  ...gate,
-  canSave: gate.canSave && rows.length > 0
-})
+/**
+ * The review's save gate: the setup review's own, and something to save. An
+ * edit that adds no row has no trust row to read, so that half of the gate
+ * stands once every other read answered and nothing blocks; an added row
+ * holds the save until its trust reads rendered.
+ */
+export const editGateOf = ({ gate, rows, added, reads, clientReady }: EditGateInput): SaveGate => {
+  const nothingToTrust =
+    added.length === 0 &&
+    clientReady &&
+    gate.blocked === null &&
+    reads.removedKey.status === 'answered' &&
+    reads.fitCheck.status === 'answered' &&
+    reads.setupState.status === 'answered' &&
+    reads.description.status !== 'pending'
+  return { ...gate, canSave: (gate.canSave || nothingToTrust) && rows.length > 0 }
+}
 
 /** Whether the run stands where nothing is on its way to the chain, so leaving loses nothing. */
 export const nothingOnItsWay = ({ dropped, write }: ArmState): boolean =>

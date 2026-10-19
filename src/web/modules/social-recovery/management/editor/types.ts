@@ -6,6 +6,7 @@ import type {
   Address,
   Clause,
   Configuration,
+  Credential,
   Hex,
   PrivacyLevel,
   SetupDraft,
@@ -30,7 +31,11 @@ import type {
 } from '@web/modules/social-recovery/shared/records'
 import type { ManageIntent, OwnerWrite } from '@web/modules/social-recovery/shared/writes'
 import type { ArmRun } from '@web/modules/social-recovery/setup/arm'
-import type { UntestedCredential } from '@web/modules/social-recovery/setup/review'
+import type {
+  AccountReads,
+  SaveGate,
+  UntestedCredential
+} from '@web/modules/social-recovery/setup/review'
 
 // ---------------------------------------------------------------------------
 // The edit session
@@ -119,6 +124,16 @@ export type HeldWrite =
   | { status: 'held'; write: ManageIntent }
   /** A write another screen stored. */
   | { status: 'other' }
+
+/** What the review's save gate reads beside the setup review's own gate. */
+export interface EditGateInput {
+  gate: SaveGate
+  rows: readonly ChangeRow[]
+  /** The members the edit adds. */
+  added: readonly Credential[]
+  reads: AccountReads
+  clientReady: boolean
+}
 
 export interface HeldWriteRead {
   held: HeldWrite

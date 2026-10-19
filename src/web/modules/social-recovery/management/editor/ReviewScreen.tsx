@@ -380,10 +380,11 @@ export const ReviewStageView = ({
       return <ActivityIndicator testID="manage-review-loading" />
     }
     const passwordMissing = passwordMissingOf(loaded.baseline, draft, password, newPassword)
-    const gate = editGateOf(
-      saveGateOf({
+    const setupState = editedSetupRead(accountReads.setupState)
+    const gate = editGateOf({
+      gate: saveGateOf({
         ...accountReads,
-        setupState: editedSetupRead(accountReads.setupState),
+        setupState,
         recordsLoaded: true,
         clientReady: !!kit,
         trustRows,
@@ -394,8 +395,11 @@ export const ReviewStageView = ({
         backup: draft.privacy.backup,
         passwordSet: !passwordMissing
       }),
-      rows
-    )
+      rows,
+      added,
+      reads: { ...accountReads, setupState },
+      clientReady: !!kit
+    })
     const retryUnanswered = () => {
       trustRows
         .filter(({ contract }) => contract.status === 'unavailable')

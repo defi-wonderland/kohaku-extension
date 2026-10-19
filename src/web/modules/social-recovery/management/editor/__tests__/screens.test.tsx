@@ -94,7 +94,8 @@ const {
   writeLoadedRecords
 }: typeof import('@web/modules/social-recovery/management/editor/load') = require('@web/modules/social-recovery/management/editor/load')
 const {
-  editSessionOf
+  editSessionOf,
+  holdNewPassword
 }: typeof import('@web/modules/social-recovery/management/editor/session') = require('@web/modules/social-recovery/management/editor/session')
 const {
   createWalletRecords,
@@ -163,25 +164,40 @@ const given = async ({
   clauses,
   trustAnswered,
   attemptOpen,
-  authorized = true
+  authorized = true,
+  committed = COMMITTED,
+  wait,
+  password = 'kept'
 }: {
   clauses: Clause[]
   trustAnswered: boolean
   attemptOpen: boolean
   authorized?: boolean
+  /** The path the edit started from. */
+  committed?: Clause[]
+  wait?: bigint
+  password?: EditSession['password']
 }) => {
   const storage = makeStorage()
   const records = createWalletRecords({ storage })
   const session = editSessionOf(storage, CHAIN_ID, ACCOUNT)
   const setup = records.setup(CHAIN_ID, ACCOUNT)
-  await writeLoadedRecords(setup, recordsOfConfiguration(baseline.configuration, 'private'))
+  const started: EditSession = {
+    ...baseline,
+    configuration: { ...baseline.configuration, clauses: committed },
+    password
+  }
+  await writeLoadedRecords(setup, recordsOfConfiguration(started.configuration, 'private'))
   const loaded = await setup.setupDraft.read()
   if (loaded.status !== 'present') {
     throw new Error('no draft loaded')
   }
-  await setup.writeDraftAndPath({ ...loaded.value, clauses })
-  await session.write(baseline)
+  await setup.writeDraftAndPath({ ...loaded.value, clauses, wait: wait ?? loaded.value.wait })
+  await session.write(started)
   setRecoveryPassword(CHAIN_ID, ACCOUNT, 'card password')
+  if (password === 'changed') {
+    holdNewPassword(CHAIN_ID, ACCOUNT, 'a new card password')
+  }
   Object.assign(mockWorld, {
     client: {
       status: 'ready',
@@ -242,6 +258,56 @@ const removalWith = async (attemptOpen: boolean, authorized = true) => {
 
 const removalOver = async (attemptOpen: boolean, authorized = true) =>
   (await removalWith(attemptOpen, authorized)).view
+
+describe('the save of an edit that adds no row', () => {
+  // The trust reads never answer here: an edit that adds no row has none to wait for.
+  const noTrust = { trustAnswered: false, attemptOpen: false }
+  const TWO = [review.group(2, ALICE, BOB)]
+  const cases: { name: string; options: Parameters<typeof given>[0]; change: string }[] = [
+    {
+      name: 'a threshold change',
+      options: { ...noTrust, committed: TWO, clauses: [review.group(1, ALICE, BOB)] },
+      change: 'manage-change-rule'
+    },
+    {
+      name: 'a waiting period change',
+      options: { ...noTrust, clauses: COMMITTED, wait: 259_200n },
+      change: 'manage-change-waitingPeriod'
+    },
+    {
+      name: 'a removal',
+      options: { ...noTrust, committed: TWO, clauses: [review.group(1, ALICE)] },
+      change: 'manage-change-members'
+    },
+    {
+      name: 'a new password at a hidden level',
+      options: { ...noTrust, clauses: COMMITTED, password: 'changed' },
+      change: 'manage-change-password'
+    }
+  ]
+  cases.forEach(({ name, options, change }) =>
+    it(`enables Save for ${name}`, async () => {
+      const view = await reviewOver(options)
+      expect(view.byTestId(change)).not.toBeNull()
+      expect(view.byTestId('manage-review-not-tested')).toBeNull()
+      expect(view.isDisabled('manage-review-save')).toBe(false)
+      view.unmount()
+    })
+  )
+
+  it('keeps Save held with nothing changed, and says so', async () => {
+    const view = await reviewOver({ ...noTrust, clauses: COMMITTED })
+    expect(view.textOf('manage-review-unchanged')).toBe(t(`${REVIEW}.unchanged`))
+    expect(view.isDisabled('manage-review-save')).toBe(true)
+    view.unmount()
+  })
+
+  it('keeps Save held for an added row until its trust read rendered', async () => {
+    const view = await reviewOver({ ...noTrust, clauses: [review.group(1, ALICE, BOB)] })
+    expect(view.isDisabled('manage-review-save')).toBe(true)
+    view.unmount()
+  })
+})
 
 describe('the review of changes', () => {
   it('holds the save until the trust rows of the added rows answered', async () => {
