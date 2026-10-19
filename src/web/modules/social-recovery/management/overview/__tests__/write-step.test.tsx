@@ -268,6 +268,26 @@ describe("the overview's write step", () => {
     expect(stored.status).toBe('absent')
   })
 
+  it('runs the removal of the authorization past the gas check to one send once its press opened the step, and hands back once the chain agrees', async () => {
+    const world = await worldAt('public', address)
+    world.chain.clearSetup()
+    world.chain.setAuthorized(true)
+    const port = sendPortOver(() => world.chain.setAuthorized(false))
+    mockWallet.port = port
+    const onFinished = jest.fn()
+    view = await mount(
+      stepOf(world, await factsOver(world), {
+        intent: 'removeAuthorization',
+        autoStart: true,
+        receipts: receiptsOver(),
+        onFinished
+      })
+    )
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('overview-step-checkingGas')).toBeNull()
+    expect(onFinished).toHaveBeenCalled()
+  })
+
   describe('a write the network dropped', () => {
     beforeEach(() => {
       harness.useAdvancingFakeTimers()
