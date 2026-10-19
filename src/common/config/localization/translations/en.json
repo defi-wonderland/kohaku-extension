@@ -1457,7 +1457,6 @@
         "title": "You cancelled this recovery",
         "body": "The methods it used still work. Whoever holds them can try again. Replace them now, or move your funds.",
         "replace": "Replace them",
-        "replaceLater": "Replacing a method of a saved setup arrives with the recovery overview in a later release. Until then, move your funds if you cannot trust the methods.",
         "moveFunds": "Move funds",
         "done": "Done",
         "otherRoad": "Another road ended this recovery before your cancel: {{road}} Control did not move."
@@ -1476,8 +1475,6 @@
           "action": "Set up recovery"
         },
         "path": {
-          "label": "Your recovery path",
-          "waitingPeriod": "Waiting period {{period}}",
           "editPath": "Edit path",
           "removeRecovery": "Remove recovery",
           "pendingLine": "Editing or removing recovery cancels the recovery in progress."
@@ -1495,7 +1492,14 @@
           "loading": "Reading this account's recovery setup.",
           "failedTitle": "This wallet could not read the setup",
           "failedBody": "The read did not return. The setup on the chain is unchanged. Try again.",
-          "retry": "Try again"
+          "noticesFailedTitle": "This wallet could not read the notices",
+          "noticesFailedBody": "The read of the method and attempt events did not return. The setup on the chain is unchanged. Try again."
+        },
+        "writes": {
+          "dropped": "The node no longer knows this transaction. It did not land, and the account stands as it did. Send it again.",
+          "mayStillLand": "This change was sent and can still land. This wallet keeps watching for it.",
+          "inFlightElsewhere": "A change from the recovery overview is on its way for this account. Follow it there.",
+          "openOverview": "Open the recovery overview"
         },
         "locked": {
           "title": "Your recovery path is locked on this device",
@@ -1510,7 +1514,7 @@
           "body": "The recovery module lost its authorization on this account. A later authorization would revive this setup under this rule, so repair it now.",
           "reauthorize": "Re-authorize",
           "clear": "Clear",
-          "reauthorizeNote": "Re-authorize shows the trust list first and saves your whole setup again. It asks for your recovery password where this device cannot read your path.",
+          "reauthorizeNote": "Re-authorize shows the trust list first and saves your whole setup again. At a hidden privacy level it asks for your recovery password.",
           "pendingLine": "The recovery in progress cannot execute until this account authorizes the recovery module again.",
           "refused": "This wallet does not re-authorize while a recovery is in progress. It keeps the cancel and the repair apart: cancel the recovery first, then re-authorize.",
           "clearCancels": "Clearing the setup ends the recovery in progress.",
@@ -1527,7 +1531,6 @@
           "body": "The method's admin changed the keys this row was tested against. Run the test again to see whether the row still works.",
           "admin": "This party can change the key this method trusts, so it could approve for this method.",
           "caveat": "A passing test does not clear this risk. An admin who adds a key of their own beside the legitimate one leaves your own row verifying.",
-          "test": "Run the test",
           "edit": "Edit path"
         },
         "ended": {
