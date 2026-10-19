@@ -9,14 +9,25 @@
  * soon as the step mounts, so a later mount at the same entry, for this
  * account or another, does not start again. A reload, a typed address, or
  * back and forward show the summary with the Save button instead. The
- * wallet's sign screen is the one confirmation.
+ * wallet's sign screen is the one confirmation. A change of the recovery
+ * overview stored as in flight for the account is left to the overview: the
+ * step points there and neither follows nor saves.
  */
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Linking } from 'react-native'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { isAddress, isAddressEqual } from 'viem'
 
+import Alert from '@common/components/Alert'
+import Button from '@common/components/Button'
+import { useTranslation } from '@common/config/localization'
+import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import spacings from '@common/styles/spacings'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
+import { intentOfRequest } from '@web/modules/social-recovery/management/overview/readings'
+import type { EntryRead } from '@web/modules/social-recovery/recovery/entry/types'
+import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
+import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
@@ -52,6 +63,7 @@ import { useArmRun } from './useArmRun'
 import { useSaveLoad } from './useSaveLoad'
 
 const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
+  const { t } = useTranslation()
   const { accounts } = useAccountsControllerState()
   const { dispatch, windowId } = useBackgroundService()
   const queue = useRequestsControllerState()
@@ -124,13 +136,44 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     [requests, chainId]
   )
 
+  // A change the recovery overview stored as in flight is the overview's to follow and
+  // judge: the save neither follows it nor starts while it is stored.
+  const [overviewWrite, setOverviewWrite] = useState<EntryRead<boolean>>({ status: 'pending' })
+  const [overviewRound, setOverviewRound] = useState(0)
+  useEffect(() => {
+    setOverviewWrite({ status: 'pending' })
+    let live = true
+    records
+      .saveInFlight(chainId, account)
+      .read()
+      .then(
+        (held) => {
+          if (live) {
+            setOverviewWrite({
+              status: 'answered',
+              value: held.status === 'present' && !!intentOfRequest(held.value.requestId)
+            })
+          }
+        },
+        () => {
+          if (live) {
+            setOverviewWrite({ status: 'failed' })
+          }
+        }
+      )
+    return () => {
+      live = false
+    }
+  }, [records, chainId, account, overviewRound])
+  const saveMayRun = overviewWrite.status === 'answered' && !overviewWrite.value
+
   const ready = facts.status === 'ready' ? facts.facts : null
   // The wallet's own record of the account the step saves, for its name.
   const listed = accounts?.find(
     (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, account)
   )
   const steps = useMemo<SaveSteps | null>(() => {
-    if (!kit || !chainReads || !receipts || !ready?.key || !draft) {
+    if (!saveMayRun || !kit || !chainReads || !receipts || !ready?.key || !draft) {
       return null
     }
     return saveStepsOf({
@@ -148,7 +191,20 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       draft,
       password
     })
-  }, [kit, chainReads, receipts, ready, draft, port, requests, records, chainId, account, password])
+  }, [
+    saveMayRun,
+    kit,
+    chainReads,
+    receipts,
+    ready,
+    draft,
+    port,
+    requests,
+    records,
+    chainId,
+    account,
+    password
+  ])
 
   const {
     state,
@@ -233,6 +289,40 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     accountReads.removedKey.status === 'answered' && accountReads.removedKey.value.kind === 'named'
       ? accountReads.removedKey.value.key
       : undefined
+
+  if (overviewWrite.status === 'failed') {
+    return (
+      <ReadFailedBlock
+        testID="arm-overview-write-failed"
+        title={t('socialRecovery.records.loadFailed')}
+        onRetry={() => setOverviewRound((round) => round + 1)}
+      />
+    )
+  }
+  if (overviewWrite.status === 'answered' && overviewWrite.value) {
+    return (
+      <Alert
+        testID="arm-overview-write"
+        type="warning"
+        size="sm"
+        style={spacings.mbSm}
+        text={t('socialRecovery.management.overview.writes.inFlightElsewhere')}
+      >
+        <ActionsRow
+          primary={
+            <Button
+              testID="arm-open-overview"
+              type="secondary"
+              size="small"
+              text={t('socialRecovery.management.overview.writes.openOverview')}
+              onPress={() => navigate(WEB_ROUTES.socialRecoveryManage)}
+              hasBottomSpacing={false}
+            />
+          }
+        />
+      </Alert>
+    )
+  }
 
   return (
     <ArmView
