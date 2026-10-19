@@ -982,15 +982,45 @@ describe('prepareRemoveAuthorization', () => {
   })
 })
 
-describe('the members the deployed kit does not serve', () => {
-  it('refuses the clear, naming the member', async () => {
-    const world = kitWorld()
-    expect(await thrownBy(world.setup.prepareClearSetup())).toMatchObject({
-      name: 'NotServedRefusal',
-      member: 'setup.prepareClearSetup'
+describe('prepareClearSetup', () => {
+  it("sends the manager's clear of the action alone, from the account at the pinned block", async () => {
+    const world = armedWithSetup(true)
+    const call = await world.setup.prepareClearSetup()
+    if (call.kind !== 'call') {
+      throw new Error('The clear came back as a batch.')
+    }
+    expect([call.kind, call.target, call.value, call.sender, call.block]).toEqual([
+      'call',
+      MANAGER,
+      0n,
+      'account',
+      { number: HEAD, hash: world.node.head.hash }
+    ])
+    expect(slice(call.data, 0, 4)).toBe(CLEAR_SELECTOR)
+    expect(decodeFunctionData({ abi: POLICY_MANAGER_ABI, data: call.data })).toEqual({
+      functionName: 'clearSetup',
+      args: [getAddress(ACTION)]
     })
-    expect(world.node.calls).toEqual([])
   })
+
+  it('clears a setup the account no longer authorizes the same way', async () => {
+    const call = await armedWithSetup(false).setup.prepareClearSetup()
+    if (call.kind !== 'call') {
+      throw new Error('The clear came back as a batch.')
+    }
+    expect([call.target, slice(call.data, 0, 4)]).toEqual([MANAGER, CLEAR_SELECTOR])
+  })
+  ;[true, false].forEach((authorized) =>
+    it(`refuses where no setup stands, with the authorization ${
+      authorized ? 'held' : 'absent'
+    }`, async () => {
+      const world = kitWorld({ accountCode: ACCOUNT_CODE })
+      scriptAction(world.node, { supportsAccount: true, authorized })
+      expect(await thrownBy(world.setup.prepareClearSetup())).toMatchObject({
+        code: 'setup.no-setup'
+      })
+    })
+  )
 })
 
 describe('the method calls the client makes', () => {
