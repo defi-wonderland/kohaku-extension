@@ -117,7 +117,8 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   const [heldRound, setHeldRound] = useState(0)
   // A write of the overview this device holds in flight opens its step, whose run follows it;
   // one of the management editor is left to its own screen. Read on arrival, and again where
-  // a step's run stopped at a write it does not follow.
+  // a step's run stopped at a write it does not follow, or where the tab is shown again while
+  // the editor's write is pointed to.
   useEffect(() => {
     let live = true
     records
@@ -125,18 +126,15 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       .read()
       .then(
         (held) => {
-          if (!live || held.status !== 'present') {
+          if (!live) {
             return
           }
-          const { requestId } = held.value
-          const intent = overviewIntentOf(requestId)
+          const requestId = held.status === 'present' ? held.value.requestId : undefined
+          const managed = requestId ? intentOfRequest(requestId) : undefined
+          setElsewhere(managed === 'manageEdit' || managed === 'manageRemove' ? managed : null)
+          const intent = requestId ? overviewIntentOf(requestId) : undefined
           if (intent) {
             setOpen({ intent, autoStart: false })
-            return
-          }
-          const managed = intentOfRequest(requestId)
-          if (managed === 'manageEdit' || managed === 'manageRemove') {
-            setElsewhere(managed)
           }
         },
         () => undefined
@@ -160,6 +158,19 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     retry()
     setHeldRound((round) => round + 1)
   }, [retry])
+  useEffect(() => {
+    if (!elsewhere) {
+      return undefined
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        retry()
+        setHeldRound((round) => round + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [elsewhere, retry])
   const onClose = useCallback(() => setOpen(null), [])
 
   const onCancel = useCallback((target: Address) => navigate(cancelPathOf(target)), [navigate])
