@@ -75,6 +75,7 @@ jest.mock('@web/modules/social-recovery/shared/client', () => ({
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const React: typeof import('react') = require('react')
+const { flushSync }: typeof import('react-dom') = require('react-dom')
 const harness: typeof import('@web/modules/social-recovery/management/overview/__fixtures__/harness') = require('@web/modules/social-recovery/management/overview/__fixtures__/harness')
 const armHarness: typeof import('@web/modules/social-recovery/setup/arm/__tests__/harness') = require('@web/modules/social-recovery/setup/arm/__tests__/harness')
 const OverviewWriteStep: typeof import('@web/modules/social-recovery/management/overview/OverviewWriteStep').default =
@@ -217,6 +218,40 @@ describe("the overview's write step", () => {
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
+  it('starts the next re-authorize of the page clean after one refused at its prepare', async () => {
+    const world = await worldAt('public', address)
+    world.chain.setAuthorized(false)
+    const port = sendPortOver()
+    mockWallet.port = port
+    world.chain.openAttempt()
+    const facts = await factsOver(world)
+    // The overview closes the step at once when the step hands back.
+    const Closing = () => {
+      const [open, setOpen] = React.useState(true)
+      return open
+        ? stepOf(world, facts, {
+            intent: 'reauthorize',
+            receipts: receiptsOver(),
+            onFinished: () => flushSync(() => setOpen(false))
+          })
+        : null
+    }
+    const refused = await mount(<Closing />)
+    await refused.press('overview-step-start')
+    expect(refused.byTestId('overview-step-reauthorize')).toBeNull()
+    refused.unmount()
+
+    world.chain.cancelAttempt('account')
+    view = await mount(
+      stepOf(world, await factsOver(world), { intent: 'reauthorize', receipts: receiptsOver() })
+    )
+    expect(view.byTestId('overview-step-failedNotSent')).toBeNull()
+    expect(view.isDisabled('overview-step-start')).toBe(false)
+
+    await view.press('overview-step-start')
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the clear in progress while its receipt is awaited, and hands back once the chain agrees', async () => {
     const world = await worldAt('public', address)
     world.chain.setAuthorized(false)
@@ -241,6 +276,28 @@ describe("the overview's write step", () => {
     await harness.settle()
     expect(onFinished).toHaveBeenCalled()
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it("reads a clear whose transaction reverted with the setup write's revert line, never the save's", async () => {
+    const world = await worldAt('public', address)
+    world.chain.setAuthorized(false)
+    const port = sendPortOver()
+    mockWallet.port = port
+    const receipts = receiptsOver()
+    receipts.wait.mockImplementation(async (hash: `0x${string}`) => {
+      throw armHarness.minedAndReverted(hash)
+    })
+    const onFinished = jest.fn()
+    view = await mount(stepOf(world, await factsOver(world), { receipts, onFinished }))
+
+    await view.press('overview-step-start')
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    const shown = view.textOf('overview-step-failedReverted') ?? ''
+    const [, ownerTail] = t('socialRecovery.writes.reverted', { cause: '|' }).split('|')
+    const [, saveTail] = t('socialRecovery.writes.revertedSave', { cause: '|' }).split('|')
+    expect(shown).toContain(ownerTail.trim())
+    expect(shown).not.toContain(saveTail.trim())
+    expect(onFinished).not.toHaveBeenCalled()
   })
 
   it('keeps a landed clear whose check did not answer on its step, and its check again hands back once the read agrees', async () => {

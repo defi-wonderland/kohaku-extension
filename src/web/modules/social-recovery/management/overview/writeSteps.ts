@@ -26,22 +26,11 @@ import {
   requestIdOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
-import type { GasCheck } from '@web/modules/social-recovery/shared/writes'
 import { callsOf, saveStepsOf } from '@web/modules/social-recovery/setup/arm'
 import type { PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 
 import { attemptOpenOf, goalStands } from './readings'
 import type { OverviewStepsInput } from './types'
-
-/**
- * A removal's gas check, checked through the account's own door, as the run
- * takes it: the run is the save's, and its machine ignores a check made for
- * another write kind.
- */
-const asSaveCheck = (check: GasCheck): GasCheck =>
-  check.kind === 'enough'
-    ? { ...check, write: 'save' }
-    : { ...check, step: { ...check.step, write: 'save' } }
 
 export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
   const { intent, client, facts, key } = input
@@ -96,18 +85,16 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
     checkGas:
       intent === 'reauthorize'
         ? save.checkGas
-        : async ({ prepared, calls }) =>
-            asSaveCheck(
-              await checkGas({
-                write: 'ownerWrite',
-                prepared,
-                key,
-                reads: input.reads,
-                network: facts.network,
-                transaction: accountBatchTransactionOf(facts, key, calls),
-                operates: walletAccountRefOf(facts)
-              })
-            ),
+        : ({ prepared, calls }) =>
+            checkGas({
+              write: 'ownerWrite',
+              prepared,
+              key,
+              reads: input.reads,
+              network: facts.network,
+              transaction: accountBatchTransactionOf(facts, key, calls),
+              operates: walletAccountRefOf(facts)
+            }),
     confirm: intent === 'reauthorize' ? save.confirm : removalConfirmation,
     async wipe(): Promise<void> {
       const held = await inFlight.read()

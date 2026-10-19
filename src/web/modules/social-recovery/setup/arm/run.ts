@@ -80,6 +80,7 @@ import {
 import type {
   UnknownReading,
   WriteEvent,
+  WriteKind,
   WriteMachineState
 } from '@web/modules/social-recovery/shared/writes'
 
@@ -103,9 +104,9 @@ import type {
   SaveSteps
 } from './types'
 
-/** The save before anything ran. */
-export const initialArmState = (): ArmState => ({
-  write: initialWriteState('save'),
+/** The run before anything ran, of the save or of another setup write the run sends. */
+export const initialArmState = (write: WriteKind = 'save'): ArmState => ({
+  write: initialWriteState(write),
   after: { stage: 'none' }
 })
 
@@ -351,9 +352,9 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
   }
 }
 
-/** A store over the reducer, starting from `initial` or from nothing. */
-export const createArmStore = (initial: ArmState = initialArmState()): ArmStore => {
-  let current = initial
+/** A store over the reducer, starting from nothing for the write it sends. */
+export const createArmStore = (write: WriteKind = 'save'): ArmStore => {
+  let current = initialArmState(write)
   const listeners = new Set<() => void>()
   return {
     state: () => current,

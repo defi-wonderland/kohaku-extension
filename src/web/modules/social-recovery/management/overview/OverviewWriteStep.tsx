@@ -182,6 +182,11 @@ const OverviewWriteStep = ({
     [clauses, trust.reads, client, addressBook]
   )
 
+  // A re-authorize the wallet refused at its prepare, an attempt being open, hands back
+  // once its run ended there, so the run is dropped with the step and none is kept.
+  const [refusedAtPrepare, setRefusedAtPrepare] = useState(false)
+  const onAttemptOpen = useCallback(() => setRefusedAtPrepare(true), [])
+
   const ready = accountFacts.status === 'ready' ? accountFacts.facts : null
   // The steps also follow a write stored on this device before the draft is known; a new
   // re-authorize starts only once its draft and its password are held.
@@ -203,10 +208,10 @@ const OverviewWriteStep = ({
       key: ready.key,
       draft: draft ?? REMOVAL_DRAFT,
       password,
-      onAttemptOpen: onFinished
+      onAttemptOpen
     })
   }, [
-    onFinished,
+    onAttemptOpen,
     ready,
     intent,
     client,
@@ -221,14 +226,22 @@ const OverviewWriteStep = ({
     password
   ])
 
-  const run = useArmRun(steps, `overview:${intent}:${chainId}:${account.toLowerCase()}`)
+  // The re-authorize commits through the save's own prepare and gas check; a removal is another setup write.
+  const run = useArmRun(
+    steps,
+    `overview:${intent}:${chainId}:${account.toLowerCase()}`,
+    reauthorize ? 'save' : 'ownerWrite'
+  )
   const { state } = run
   const screen = armScreenOf(state)
   const { write } = state
 
   // A landed write whose check did not answer stays on its step with the check again.
   const finished =
-    screen === 'saved' || screen === 'already-set-up' || (!reauthorize && screen === 'disagreed')
+    screen === 'saved' ||
+    screen === 'already-set-up' ||
+    (!reauthorize && screen === 'disagreed') ||
+    (refusedAtPrepare && write.status === 'failedNotSent')
   useEffect(() => {
     if (finished) {
       onFinished()
