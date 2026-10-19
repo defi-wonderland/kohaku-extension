@@ -34,6 +34,7 @@ import {
   createWalletRecords,
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
+import { intentOfRequest } from '@web/modules/social-recovery/shared/writes'
 import { kindOfMethodIn } from '@web/modules/social-recovery/setup/privacy/exposure'
 import { kindNameOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
@@ -42,7 +43,7 @@ import { useWatchedAttempt } from '@web/modules/social-recovery/watcher/useWatch
 
 import OverviewView from './OverviewView'
 import OverviewWriteStep from './OverviewWriteStep'
-import { clausesOfPath, intentOfRequest, movedInPath, pathMethodsOf } from './readings'
+import { clausesOfPath, movedInPath, pathMethodsOf } from './readings'
 import type { OpenStep, OverviewIntent, OverviewStageProps } from './types'
 import { useOverviewReads } from './useOverviewReads'
 

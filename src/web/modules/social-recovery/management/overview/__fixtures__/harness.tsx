@@ -75,9 +75,11 @@ const {
   useOverviewReads
 }: typeof import('@web/modules/social-recovery/management/overview/useOverviewReads') = require('@web/modules/social-recovery/management/overview/useOverviewReads')
 const {
-  attemptOpenOf,
-  requestIdOf
+  attemptOpenOf
 }: typeof import('@web/modules/social-recovery/management/overview/readings') = require('@web/modules/social-recovery/management/overview/readings')
+const {
+  requestIdOf
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const {
   REMOVAL_DRAFT
 }: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')

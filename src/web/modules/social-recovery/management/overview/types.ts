@@ -26,6 +26,7 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
+import type { OverviewIntent } from '@web/modules/social-recovery/shared/writes'
 import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ export interface OverviewReads {
 // ---------------------------------------------------------------------------
 
 /** The three writes the overview sends. */
-export type OverviewIntent = 'reauthorize' | 'clear' | 'removeAuthorization'
+export type { OverviewIntent }
 
 /** The privacy level the committed setup reads at, or a setup this build cannot read. */
 export type LevelRead = EntryRead<PrivacyLevel> | { status: 'unreadable' }

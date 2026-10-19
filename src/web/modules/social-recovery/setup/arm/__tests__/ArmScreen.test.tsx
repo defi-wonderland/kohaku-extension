@@ -2385,8 +2385,8 @@ describe('a change the recovery overview stored as in flight', () => {
       typeof import('@web/modules/social-recovery/shared/records')
     >('@web/modules/social-recovery/shared/records')
     const { requestIdOf } = jest.requireActual<
-      typeof import('@web/modules/social-recovery/management/overview/readings')
-    >('@web/modules/social-recovery/management/overview/readings')
+      typeof import('@web/modules/social-recovery/shared/writes')
+    >('@web/modules/social-recovery/shared/writes')
     const inFlight = createWalletRecords({ storage: extensionRecordStorage }).saveInFlight(
       CHAIN_ID,
       address

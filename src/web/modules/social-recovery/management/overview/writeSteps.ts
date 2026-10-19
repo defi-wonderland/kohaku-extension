@@ -23,13 +23,14 @@ import { accountBatchTransactionOf } from '@web/modules/social-recovery/shared/c
 import {
   assertWriteDoor,
   checkGas,
+  requestIdOf,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
 import type { GasCheck } from '@web/modules/social-recovery/shared/writes'
 import { callsOf, saveStepsOf } from '@web/modules/social-recovery/setup/arm'
 import type { PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 
-import { attemptOpenOf, goalStands, requestIdOf } from './readings'
+import { attemptOpenOf, goalStands } from './readings'
 import type { OverviewStepsInput } from './types'
 
 /**

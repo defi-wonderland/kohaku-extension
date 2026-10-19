@@ -561,3 +561,10 @@ export type RequestHold =
   | { status: 'held' }
   | { status: 'broadcast'; transactionHash: Hex }
   | { status: 'free' }
+
+/**
+ * Which of the recovery overview's writes a stored request names: the setup
+ * committed and authorized again, the setup cleared, or the authorization
+ * removed.
+ */
+export type OverviewIntent = 'reauthorize' | 'clear' | 'removeAuthorization'

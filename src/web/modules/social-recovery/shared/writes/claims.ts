@@ -32,10 +32,15 @@
  * first one still waits in the wallet, is refused by the request queue.
  */
 import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
-import { heldRequestStateOf, sendRequestStateOf } from '@web/modules/social-recovery/shared/client'
+import {
+  heldRequestStateOf,
+  newSendRequestId,
+  sendRequestStateOf
+} from '@web/modules/social-recovery/shared/client'
 import type { SendRequestPort } from '@web/modules/social-recovery/shared/client'
 
-import type { ClaimReading, RequestHold, StoredClaim } from './types'
+import { OVERVIEW_INTENT_MARK, OVERVIEW_INTENTS } from './constants'
+import type { ClaimReading, OverviewIntent, RequestHold, StoredClaim } from './types'
 
 /** The first reading of a stored claim: in flight under its hash, or one whose request the wallet's queue decides. */
 export const claimReadingOf = ({ transactionHash }: StoredClaim): ClaimReading =>
@@ -68,4 +73,18 @@ export const requestHoldOf = async (
     default:
       return { status: 'held' }
   }
+}
+
+/** A request id for one of the recovery overview's writes, carrying which write it is. */
+export const requestIdOf = (intent: OverviewIntent): string =>
+  `${newSendRequestId()}${OVERVIEW_INTENT_MARK}${intent}`
+
+/** The overview write a stored request id names; none for a request another screen sent. */
+export const intentOfRequest = (requestId: string): OverviewIntent | undefined => {
+  const at = requestId.lastIndexOf(OVERVIEW_INTENT_MARK)
+  if (at < 0) {
+    return undefined
+  }
+  const named = requestId.slice(at + OVERVIEW_INTENT_MARK.length)
+  return OVERVIEW_INTENTS.find((intent) => intent === named)
 }

@@ -26,10 +26,12 @@ const {
   REMOVAL_DRAFT
 }: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
 const {
-  intentOfRequest,
-  reauthorizeDraftOf,
-  requestIdOf
+  reauthorizeDraftOf
 }: typeof import('@web/modules/social-recovery/management/overview/readings') = require('@web/modules/social-recovery/management/overview/readings')
+const {
+  intentOfRequest,
+  requestIdOf
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const {
   CHAIN_IDS,
   WALLET_RECOVERY_CHAIN

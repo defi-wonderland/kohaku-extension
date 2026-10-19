@@ -9,12 +9,10 @@ import {
   attemptOpenOf,
   endedNoticeOf,
   goalStands,
-  intentOfRequest,
   movedInPath,
   noticesOf,
   overviewKindOf,
-  reauthorizeDraftOf,
-  requestIdOf
+  reauthorizeDraftOf
 } from '@web/modules/social-recovery/management/overview/readings'
 import type {
   Address,
@@ -169,13 +167,5 @@ describe('the overview readings', () => {
     expect(goalStands('clear', setupOf({ hasSetup: true }))).toBe(false)
     expect(goalStands('removeAuthorization', setupOf({ isAuthorized: false }))).toBe(true)
     expect(goalStands('removeAuthorization', setupOf({ isAuthorized: true }))).toBe(false)
-  })
-
-  it('finds the write a stored request id names, and none for another screen request', () => {
-    expect(intentOfRequest(requestIdOf('reauthorize'))).toBe('reauthorize')
-    expect(intentOfRequest(requestIdOf('clear'))).toBe('clear')
-    expect(intentOfRequest(requestIdOf('removeAuthorization'))).toBe('removeAuthorization')
-    expect(requestIdOf('clear')).not.toBe(requestIdOf('clear'))
-    expect(intentOfRequest('social-recovery-sender:1234')).toBeUndefined()
   })
 })
