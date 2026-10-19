@@ -51,7 +51,8 @@ const EditorPath = ({
   onAddGroup,
   offersSecondMethod,
   canMakeItAGroup,
-  onMakeItAGroup
+  onMakeItAGroup,
+  stillNeeded
 }: EditorPathProps) => {
   const { t } = useTranslation()
   const shared = { addressBook, enrollments, checking, menu, onOpenSlot, onPickKind, onCloseMenu }
@@ -121,6 +122,7 @@ const EditorPath = ({
             onRemoveMember={onRemoveMember}
             onToggleMenu={onToggleMenu}
             onRemoveGroup={onRemoveGroup}
+            stillNeeded={stillNeeded}
             {...shared}
           />
         </PathTreeNode>

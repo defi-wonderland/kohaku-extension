@@ -81,6 +81,15 @@ export type EditorClient =
 /** Why the editor cannot run the path check: an older wallet, or a kit it could not reach. */
 export type ClientRefusal = 'update-the-wallet' | 'unavailable'
 
+/** A member of a group by its place in the path: the clause, then the member. */
+export type MemberKey = `${number}:${number}`
+
+/** The heading over the path, in place of the setup's own. */
+export interface EditorHeading {
+  title: string
+  lead: string
+}
+
 export interface EditorViewProps {
   /** The account's setup records: the draft, the path and the enrollments. */
   records: SetupRecords
@@ -88,6 +97,12 @@ export interface EditorViewProps {
   addressBook: AddressBook
   /** Opens a route, with its search string where it carries one. */
   navigate: (to: string) => void
+  /** Members the path cannot lose: each reads still needed and cannot be removed. */
+  stillNeeded?: ReadonlySet<MemberKey>
+  heading?: EditorHeading
+  continueLabel?: string
+  /** What sits between the path and its actions. */
+  beforeActions?: ReactNode
 }
 
 export interface CredentialRowProps {
@@ -179,6 +194,7 @@ export interface EditorHeaderProps {
   fill: EditorFill
   /** Whether the last move was refused because the path already holds the credential. */
   refused: boolean
+  heading?: EditorHeading
 }
 
 /** What the path's rows and groups share: the records, the open menu and the slot actions. */
@@ -220,6 +236,7 @@ export interface GroupCardProps extends PathPartProps {
   onRemoveMember: (group: number, member: number) => void
   onToggleMenu: (target: AddTarget) => void
   onRemoveGroup: (group: number) => void
+  stillNeeded?: ReadonlySet<MemberKey>
 }
 
 export interface EditorPathProps extends PathPartProps {
@@ -243,6 +260,7 @@ export interface EditorPathProps extends PathPartProps {
   /** Whether the path is two required rows and no group, which "Make it a group" turns into one group. */
   canMakeItAGroup: boolean
   onMakeItAGroup: () => void
+  stillNeeded?: ReadonlySet<MemberKey>
 }
 
 export interface RuleLinesProps {
@@ -271,6 +289,7 @@ export interface EditorActionsProps {
   onRetryWrite: () => void
   onContinue: () => void
   onBack: () => void
+  continueLabel?: string
 }
 
 export type { SlotPosition }
