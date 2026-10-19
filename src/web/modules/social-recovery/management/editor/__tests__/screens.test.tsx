@@ -1,0 +1,310 @@
+/**
+ * @jest-environment jsdom
+ *
+ * The review of changes and the removal over given reads: the review's save
+ * held until the trust rows of the added rows rendered and held with nothing
+ * changed, the sentence that saving cancels the recovery in progress only
+ * while an attempt is open, and the removal's typed confirmation with its own
+ * cancel sentence. The client, the reads and the run are the screens' seams,
+ * each given here; the records sit on an in-memory storage.
+ */
+import { TextDecoder, TextEncoder } from 'util'
+
+import type { ScreensWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
+import type { EditSession } from '@web/modules/social-recovery/management/editor/types'
+import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
+
+Object.assign(globalThis, { TextEncoder, TextDecoder })
+
+jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
+  SEPOLIA_DEPLOYMENT_VARIABLE: 'SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT',
+  sepoliaDeploymentVariable: () => undefined
+}))
+
+const mockWorld: ScreensWorld = {} as ScreensWorld
+
+jest.mock('@common/utils/clipboard', () => ({ setStringAsync: async () => true }))
+jest.mock('@common/hooks/useNavigation', () => ({
+  __esModule: true,
+  default: () => ({ navigate: jest.fn() })
+}))
+// The route's chrome is not drawn here: the stage views render inside it.
+jest.mock('@web/modules/social-recovery/shared/chrome/SetupChrome', () => ({
+  __esModule: true,
+  default: () => null
+}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
+  __esModule: true,
+  default: () => ({})
+}))
+
+jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
+  useRecoveryClient: () => mockWorld.client
+}))
+jest.mock('@web/modules/social-recovery/management/overview/useOverviewReads', () => ({
+  useOverviewReads: () => mockWorld.reads
+}))
+jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
+  useAccountFacts: () => mockWorld.facts
+}))
+jest.mock('@web/modules/social-recovery/management/editor/useWriteSeams', () => ({
+  useWriteSeams: () => ({})
+}))
+jest.mock('@web/modules/social-recovery/setup/arm/useArmRun', () => ({
+  useArmRun: () => mockWorld.run
+}))
+jest.mock('@web/modules/social-recovery/setup/review/useTrustReads', () => ({
+  useTrustReads: () => mockWorld.trust
+}))
+jest.mock('@web/modules/social-recovery/setup/review/useAccountReads', () => ({
+  useAccountReads: () => mockWorld.accountReads
+}))
+
+/* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const React: typeof import('react') = require('react')
+const {
+  mount,
+  t
+}: typeof import('@web/modules/social-recovery/cancel/__fixtures__/mount') = require('@web/modules/social-recovery/cancel/__fixtures__/mount')
+const review: typeof import('@web/modules/social-recovery/setup/review/__fixtures__/review') = require('@web/modules/social-recovery/setup/review/__fixtures__/review')
+const {
+  ReviewStageView
+}: typeof import('@web/modules/social-recovery/management/editor/ReviewScreen') = require('@web/modules/social-recovery/management/editor/ReviewScreen')
+const {
+  RemoveStageView
+}: typeof import('@web/modules/social-recovery/management/editor/RemoveScreen') = require('@web/modules/social-recovery/management/editor/RemoveScreen')
+const {
+  recordsOfConfiguration,
+  writeLoadedRecords
+}: typeof import('@web/modules/social-recovery/management/editor/load') = require('@web/modules/social-recovery/management/editor/load')
+const {
+  editSessionOf
+}: typeof import('@web/modules/social-recovery/management/editor/session') = require('@web/modules/social-recovery/management/editor/session')
+const {
+  createWalletRecords,
+  setRecoveryPassword
+}: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const {
+  makeStorage
+}: typeof import('@web/modules/social-recovery/shared/records/__fixtures__/storage') = require('@web/modules/social-recovery/shared/records/__fixtures__/storage')
+/* eslint-enable @typescript-eslint/no-var-requires, global-require */
+
+const { ACCOUNT, ALICE, BOB, BOOK, CHAIN_ID, SHIPPED } = review
+const REVIEW = 'socialRecovery.management.review'
+const REMOVE = 'socialRecovery.management.remove'
+
+const COMMITTED: Clause[] = [review.group(1, ALICE)]
+
+const baseline: EditSession = {
+  configuration: { clauses: COMMITTED, wait: 172_800n, ignoresPause: true },
+  setupNonce: 1n,
+  setupCommitment: `0x${'ab'.repeat(32)}`,
+  level: 'private',
+  password: 'kept'
+}
+
+const readsOf = (attemptOpen: boolean) => ({
+  facts: { status: 'answered', value: { setup: review.setupStateOf(true), attemptOpen } },
+  path: { kind: 'none' },
+  ask: { status: 'idle' },
+  notices: { status: 'pending' },
+  retry: jest.fn(),
+  retryPath: jest.fn(),
+  retryNotices: jest.fn(),
+  unlock: jest.fn(),
+  askAgain: jest.fn()
+})
+
+const ACCOUNT_READS = {
+  removedKey: { status: 'answered', value: { kind: 'named', key: review.REMOVED_KEY } },
+  fitCheck: { status: 'answered', value: { basis: 'deployed-code', fits: true } },
+  setupState: { status: 'answered', value: review.setupStateOf(true) },
+  description: { status: 'answered', value: review.descriptionOf() },
+  retry: jest.fn()
+}
+
+const idleRun = () => ({
+  state: {
+    write: { status: 'idle', write: 'save', run: 0 },
+    after: { stage: 'none' },
+    lookup: 'none'
+  },
+  start: jest.fn(),
+  recheck: jest.fn(),
+  reread: jest.fn(),
+  checkAgain: jest.fn(),
+  lookAgain: jest.fn(),
+  checkSetup: jest.fn(),
+  endWhereSetUp: jest.fn(),
+  saveAgain: jest.fn()
+})
+
+/** Sets the screens' seams: the edit's path, whether its rows' trust reads answered, and the attempt. */
+const given = async ({
+  clauses,
+  trustAnswered,
+  attemptOpen
+}: {
+  clauses: Clause[]
+  trustAnswered: boolean
+  attemptOpen: boolean
+}) => {
+  const storage = makeStorage()
+  const records = createWalletRecords({ storage })
+  const session = editSessionOf(storage, CHAIN_ID, ACCOUNT)
+  const setup = records.setup(CHAIN_ID, ACCOUNT)
+  await writeLoadedRecords(setup, recordsOfConfiguration(baseline.configuration, 'private'))
+  const loaded = await setup.setupDraft.read()
+  if (loaded.status !== 'present') {
+    throw new Error('no draft loaded')
+  }
+  await setup.writeDraftAndPath({ ...loaded.value, clauses })
+  await session.write(baseline)
+  setRecoveryPassword(CHAIN_ID, ACCOUNT, 'card password')
+  Object.assign(mockWorld, {
+    client: {
+      status: 'ready',
+      client: {
+        chain: 'sepolia',
+        descriptor: { shippedMethods: SHIPPED },
+        moduleReads: {},
+        setup: {},
+        walletReads: {}
+      },
+      reads: {},
+      receipts: {},
+      retry: jest.fn()
+    },
+    reads: readsOf(attemptOpen),
+    facts: { status: 'ready', facts: { key: review.REMOVED_KEY } },
+    run: idleRun(),
+    trust: {
+      reads: trustAnswered ? review.readsOf([[BOOK.methods.ecdsa, review.answered()]]) : {},
+      retry: jest.fn()
+    },
+    accountReads: ACCOUNT_READS
+  })
+  return { records, session }
+}
+
+const reviewOver = async (options: Parameters<typeof given>[0]) => {
+  const { records, session } = await given(options)
+  return mount(
+    React.createElement(ReviewStageView, {
+      records,
+      session,
+      chainId: CHAIN_ID,
+      account: ACCOUNT,
+      navigate: jest.fn()
+    })
+  )
+}
+
+const removalOver = async (attemptOpen: boolean) => {
+  const { records, session } = await given({ clauses: COMMITTED, trustAnswered: true, attemptOpen })
+  return mount(
+    React.createElement(RemoveStageView, {
+      records,
+      session,
+      chainId: CHAIN_ID,
+      account: ACCOUNT,
+      navigate: jest.fn()
+    })
+  )
+}
+
+describe('the review of changes', () => {
+  it('holds the save until the trust rows of the added rows answered', async () => {
+    const view = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: false,
+      attemptOpen: false
+    })
+    expect(view.byTestId('manage-change-members')).not.toBeNull()
+    expect(view.isDisabled('manage-review-save')).toBe(true)
+    view.unmount()
+
+    const answered = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    expect(answered.isDisabled('manage-review-save')).toBe(false)
+    answered.unmount()
+  })
+
+  it('holds the save with nothing changed, and says so', async () => {
+    const view = await reviewOver({ clauses: COMMITTED, trustAnswered: true, attemptOpen: false })
+    expect(view.textOf('manage-review-unchanged')).toBe(t(`${REVIEW}.unchanged`))
+    expect(view.isDisabled('manage-review-save')).toBe(true)
+    view.unmount()
+  })
+
+  it('carries the sentence that saving cancels the recovery only while an attempt is open', async () => {
+    const open = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: true
+    })
+    expect(open.textOf('manage-review-cancels')).toBe(t(`${REVIEW}.cancelsLine`))
+    open.unmount()
+
+    const closed = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    expect(closed.byTestId('manage-review-cancels')).toBeNull()
+    closed.unmount()
+  })
+
+  it('starts the save from its action once it is enabled', async () => {
+    const view = await reviewOver({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    await view.press('manage-review-save')
+    expect(mockWorld.run.start).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+})
+
+describe('the removal', () => {
+  const typeWord = async (view: Awaited<ReturnType<typeof removalOver>>, word: string) => {
+    const field = view.byTestId('manage-remove-word')
+    const input = field instanceof HTMLInputElement ? field : field?.querySelector('input')
+    if (!input) {
+      throw new Error('no field to type into')
+    }
+    const { act } = jest.requireActual<
+      typeof import('@web/modules/social-recovery/cancel/__fixtures__/mount')
+    >('@web/modules/social-recovery/cancel/__fixtures__/mount')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, word)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  it('warns, and enables the removal only on the exact word', async () => {
+    const view = await removalOver(false)
+    expect(view.textOf('manage-remove-warning')).toContain(t(`${REMOVE}.warning`))
+    expect(view.isDisabled('manage-remove-action')).toBe(true)
+    await typeWord(view, t(`${REMOVE}.word`).toLowerCase())
+    expect(view.isDisabled('manage-remove-action')).toBe(true)
+    await typeWord(view, t(`${REMOVE}.word`))
+    expect(view.isDisabled('manage-remove-action')).toBe(false)
+    await view.press('manage-remove-action')
+    expect(mockWorld.run.start).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+
+  it('carries the sentence that removing cancels the recovery only while an attempt is open', async () => {
+    const open = await removalOver(true)
+    expect(open.textOf('manage-remove-cancels')).toBe(t(`${REMOVE}.cancelsLine`))
+    open.unmount()
+    const closed = await removalOver(false)
+    expect(closed.byTestId('manage-remove-cancels')).toBeNull()
+    closed.unmount()
+  })
+})
