@@ -125,6 +125,15 @@ const {
 const {
   WEB_ROUTES
 }: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
+const {
+  reauthorizeDraftOf
+}: typeof import('@web/modules/social-recovery/management/overview/readings') = require('@web/modules/social-recovery/management/overview/readings')
+const {
+  requestIdOf
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
+const {
+  deferred
+}: typeof import('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred') = require('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred')
 const OverviewScreen: typeof import('@web/modules/social-recovery/management/overview/OverviewScreen').default =
   require('@web/modules/social-recovery/management/overview/OverviewScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
@@ -138,8 +147,11 @@ const {
   receiptsOver,
   sendPortOver,
   storeOverviewWrite,
+  act,
+  settle,
   GAS_READS,
-  CHAIN_ID
+  CHAIN_ID,
+  CONFIGURATION
 } = harness
 
 let seed = 0x5c0
@@ -226,6 +238,76 @@ describe("the overview's screen", () => {
 
     expect(view.byTestId('overview-dormant')).not.toBeNull()
     expect(view.byTestId('overview-step-clear')).toBeNull()
+  })
+
+  it('takes up a re-authorize sent before a reload: its step reopens and follows it to the landing with no second send', async () => {
+    const world = await dormantWorld()
+    const draft = reauthorizeDraftOf(CONFIGURATION, 'public')
+    const prepared = await world.client.setup.prepareCommitSetup(draft)
+    const inFlight = world.records.saveInFlight(CHAIN_ID, address)
+    const requestId = requestIdOf('reauthorize')
+    await inFlight.claim({
+      draft,
+      prepared,
+      requestId,
+      claimedAt: Date.now(),
+      startBlock: armHarness.START_BLOCK
+    })
+    await inFlight.markSent(requestId, armHarness.TX_HASH, armHarness.START_BLOCK)
+    const port = sendPortOver()
+    const receipts = receiptsOver()
+    const landing = deferred<ReturnType<typeof armHarness.landedReceipt>>()
+    receipts.wait.mockImplementation(() => landing.promise)
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+
+    view = await mount(<OverviewScreen />)
+
+    expect(view.byTestId('overview-step-reauthorize')).not.toBeNull()
+    expect(view.byTestId('overview-step-submitting')).not.toBeNull()
+    expect(view.byTestId('overview-step-start')).toBeNull()
+    expect(receipts.wait).toHaveBeenCalledWith(armHarness.TX_HASH, armHarness.START_BLOCK)
+
+    world.chain.land(prepared)
+    await act(async () => {
+      landing.resolve(armHarness.landedReceipt(armHarness.TX_HASH))
+    })
+    await settle()
+
+    expect(view.byTestId('overview-step-reauthorize')).toBeNull()
+    expect(view.byTestId('overview-dormant')).toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect((await inFlight.read()).status).toBe('absent')
+  })
+
+  it("starts the mirror's removal of the authorization as soon as its action opens the step, and sends once", async () => {
+    const storage = makeStorage()
+    mockWallet.storage = storage
+    const world = await worldAt('public', address, storage)
+    world.chain.clearSetup()
+    world.chain.setAuthorized(true)
+    const port = sendPortOver(() => world.chain.setAuthorized(false))
+    const receipts = receiptsOver()
+    const landing = deferred<ReturnType<typeof armHarness.landedReceipt>>()
+    receipts.wait.mockImplementation(() => landing.promise)
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+
+    view = await mount(<OverviewScreen />)
+    expect(view.byTestId('overview-mirror')).not.toBeNull()
+
+    await view.press('overview-remove-authorization')
+    expect(view.byTestId('overview-step-removeAuthorization')).not.toBeNull()
+    expect(view.byTestId('overview-step-start')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      landing.resolve(armHarness.landedReceipt(armHarness.TX_HASH))
+    })
+    await settle()
+    expect(view.byTestId('overview-step-removeAuthorization')).toBeNull()
+    expect(view.byTestId('overview-mirror')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
   const EDITOR_WRITES = [
