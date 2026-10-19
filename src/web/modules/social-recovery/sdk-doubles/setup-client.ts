@@ -1,9 +1,9 @@
 /**
- * The `ISetupClient` double: the two judgments, the commit and clear prepares
- * with their call-or-batch shapes, the confirmation read, the setup-side state
- * record and the restore, over the shared part doubles. Every read goes through
- * a part, so a read scripted to fail there fails here. The arming seam reaches
- * this client alone, through its constructor.
+ * The `ISetupClient` double: the two judgments, the commit, clear and removal
+ * prepares with their call-or-batch shapes, the confirmation read, the
+ * setup-side state record and the restore, over the shared part doubles. Every
+ * read goes through a part, so a read scripted to fail there fails here. The
+ * arming seam reaches this client alone, through its constructor.
  */
 import type {
   Address,
@@ -565,6 +565,49 @@ export class SetupClientDouble implements ISetupClient {
       return pin(await manager.prepareClearSetup(actionAddress))
     }
     return pin(await action.disarmingCall())
+  }
+
+  async prepareRemoveSetup(options?: PrepareOptions): Promise<PreparedBatch> {
+    const { chain, manager, action, actionAddress, config } = this.ctx
+    chain.guardRefusal('setup.prepareRemoveSetup')
+    const block = await pinBlock(this.ctx)
+    const [state, authorized] = await Promise.all([manager.stateOf(), action.isAuthorized()])
+    if (state.setupCommitment === zeroHash) {
+      throw codedError('setup.no-setup', { isAuthorized: authorized })
+    }
+    const simulate = shouldSimulate(options, config.simulate)
+    const failure = chain.simulationFailure('setup.prepareRemoveSetup')
+    const from = simulationFrom(chain, 'account', options)
+    const calls = [
+      await manager.prepareClearSetup(actionAddress),
+      await action.disarmingCall()
+    ].map((c) => ({ ...c, block: { number: block.number, hash: block.hash } }))
+    return composeBatch(
+      simulate
+        ? calls.map((c, i) => withSimulation(c, from, i === 0 ? failure : undefined))
+        : calls,
+      block
+    )
+  }
+
+  async prepareRemoveAuthorization(options?: PrepareOptions): Promise<PreparedCall> {
+    const { chain, action, config } = this.ctx
+    chain.guardRefusal('setup.prepareRemoveAuthorization')
+    const block = await pinBlock(this.ctx)
+    if (!(await action.isAuthorized())) {
+      throw codedError('setup.not-authorized', { action: this.ctx.actionAddress })
+    }
+    const call = {
+      ...(await action.disarmingCall()),
+      block: { number: block.number, hash: block.hash }
+    }
+    return shouldSimulate(options, config.simulate)
+      ? withSimulation(
+          call,
+          simulationFrom(chain, 'account', options),
+          chain.simulationFailure('setup.prepareRemoveAuthorization')
+        )
+      : call
   }
 
   async confirmSetup(
