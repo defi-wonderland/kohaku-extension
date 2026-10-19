@@ -141,6 +141,15 @@ export interface OverviewStepsInput {
   /** The re-authorize's rebuilt draft; a removal carries the removal's stand-in. */
   draft: SetupDraft
   password: string | undefined
+  /** The re-authorize found an attempt open before it prepared, and sent nothing. */
+  onAttemptOpen: () => void
+}
+
+/** The keys of a write step's title, lead and action. */
+export interface StepHeadings {
+  title: string
+  lead: string
+  action: string
 }
 
 // ---------------------------------------------------------------------------

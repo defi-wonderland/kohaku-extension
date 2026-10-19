@@ -1,0 +1,226 @@
+/**
+ * @jest-environment jsdom
+ *
+ * The overview's screen over a client built over the stand-in's chain, with
+ * the wallet's hooks faked and the records on a storage in memory: a write
+ * of the overview stored on this device as in flight opens its step again,
+ * which follows it with nothing sent and hands the overview back its read
+ * once the chain agrees; a write another screen stored opens no step.
+ */
+import type { Account } from '@ambire-common/interfaces/account'
+import type { KeyHandle, SendPort } from '@web/modules/social-recovery/shared/client'
+
+jest.mock('viem', () => {
+  // eslint-disable-next-line global-require
+  const { TextDecoder, TextEncoder } = require('util')
+  Object.assign(globalThis, { TextDecoder, TextEncoder })
+  return jest.requireActual('viem')
+})
+jest.mock('@common/utils/clipboard', () => ({ setStringAsync: async () => true }))
+jest.mock('@common/components/Spinner', () => ({ __esModule: true, default: () => null }))
+
+const mockWallet: {
+  account: string | undefined
+  facts: unknown
+  client: unknown
+  port: SendPort | null
+  storage: unknown
+} = { account: undefined, facts: null, client: null, port: null, storage: null }
+// The wallet's controller states keep their identity between renders, as the real hooks do.
+const mockState = {
+  accounts: { accounts: [] as unknown[] },
+  networks: { networks: [] as unknown[] },
+  requests: { userRequests: [] as unknown[] },
+  selected: { account: null },
+  navigation: { navigate: jest.fn() },
+  background: {
+    dispatch: jest.fn((action: { type: string }) => {
+      if (action.type === 'INIT_CONTROLLER_STATE') {
+        Promise.resolve()
+          .then(() => {
+            const { default: eventBus } = jest.requireActual(
+              '@web/extension-services/event/eventBus'
+            )
+            eventBus.emit('signAccountOp', null)
+          })
+          .catch(() => undefined)
+      }
+    }),
+    windowId: undefined
+  }
+}
+jest.mock('@common/hooks/useNavigation', () => ({
+  __esModule: true,
+  default: () => mockState.navigation
+}))
+jest.mock('@web/hooks/useAccountsControllerState', () => ({
+  __esModule: true,
+  default: () => mockState.accounts
+}))
+jest.mock('@web/hooks/useNetworksControllerState', () => ({
+  __esModule: true,
+  default: () => mockState.networks
+}))
+jest.mock('@web/hooks/useBackgroundService', () => ({
+  __esModule: true,
+  default: () => mockState.background
+}))
+jest.mock('@web/hooks/useRequestsControllerState', () => ({
+  __esModule: true,
+  default: () => mockState.requests
+}))
+jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
+  __esModule: true,
+  default: () => mockState.selected
+}))
+jest.mock('@web/modules/social-recovery/shared/chrome/useSetupAccount', () => ({
+  __esModule: true,
+  default: () => ({
+    account: mockWallet.account,
+    differs: false,
+    selected: undefined,
+    switchToSelected: () => {}
+  })
+}))
+jest.mock('@web/modules/social-recovery/shared/chrome/SetupChrome', () => ({
+  __esModule: true,
+  default: ({ children }: { children: unknown }) => children
+}))
+jest.mock('@web/modules/social-recovery/cancel/AccountAttemptBanner', () => ({
+  __esModule: true,
+  default: () => null
+}))
+jest.mock('@web/modules/social-recovery/watcher/useWatchedAttempt', () => ({
+  useWatchedAttempt: () => ({ status: 'unwatched' })
+}))
+jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
+  useRecoveryClient: () => mockWallet.client
+}))
+jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
+  useAccountFacts: () => mockWallet.facts
+}))
+jest.mock('@web/modules/social-recovery/shared/client', () => ({
+  ...jest.requireActual('@web/modules/social-recovery/shared/client'),
+  createSendPort: () => mockWallet.port
+}))
+jest.mock('@web/modules/social-recovery/shared/records/extensionStorage', () => ({
+  get extensionRecordStorage() {
+    return mockWallet.storage
+  }
+}))
+
+/* eslint-disable @typescript-eslint/no-var-requires, global-require */
+const React: typeof import('react') = require('react')
+const harness: typeof import('@web/modules/social-recovery/management/overview/__fixtures__/harness') = require('@web/modules/social-recovery/management/overview/__fixtures__/harness')
+const armHarness: typeof import('@web/modules/social-recovery/setup/arm/__tests__/harness') = require('@web/modules/social-recovery/setup/arm/__tests__/harness')
+const {
+  makeStorage
+}: typeof import('@web/modules/social-recovery/shared/records/__fixtures__/storage') = require('@web/modules/social-recovery/shared/records/__fixtures__/storage')
+const {
+  newSendRequestId
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  REMOVAL_DRAFT
+}: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
+const OverviewScreen: typeof import('@web/modules/social-recovery/management/overview/OverviewScreen').default =
+  require('@web/modules/social-recovery/management/overview/OverviewScreen').default
+/* eslint-enable @typescript-eslint/no-var-requires, global-require */
+
+const {
+  mount,
+  worldAt,
+  readyOver,
+  readyFactsOf,
+  receiptsOver,
+  sendPortOver,
+  storeOverviewWrite,
+  GAS_READS,
+  CHAIN_ID
+} = harness
+
+let seed = 0x5c0
+let account: Account
+let key: KeyHandle
+let address: `0x${string}`
+
+beforeEach(async () => {
+  // Each test runs on an account of its own, so no run held for one account meets another test.
+  seed += 1
+  ;({ account, key } = await armHarness.keyedAccount(seed))
+  address = account.addr as `0x${string}`
+  mockWallet.account = address
+  mockWallet.facts = readyFactsOf(account, key)
+})
+
+describe("the overview's screen", () => {
+  let view: Awaited<ReturnType<typeof mount>> | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /** A dormant setup on the chain, and the client and the storage the screen reads it through. */
+  const dormantWorld = async () => {
+    const storage = makeStorage()
+    mockWallet.storage = storage
+    const world = await worldAt('public', address, storage)
+    world.chain.setAuthorized(false)
+    return world
+  }
+
+  it('opens a stored clear again, follows it with nothing sent, and reads the chain once it agrees', async () => {
+    const world = await dormantWorld()
+    await storeOverviewWrite(world, 'clear', address)
+    world.chain.clearSetup()
+    const port = sendPortOver()
+    const receipts = receiptsOver()
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+
+    view = await mount(<OverviewScreen />)
+
+    expect(receipts.wait).toHaveBeenCalledWith(armHarness.TX_HASH, armHarness.START_BLOCK)
+    expect(view.byTestId('overview-step-clear')).toBeNull()
+    expect(view.byTestId('overview-empty')).not.toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    const stored = await world.records.saveInFlight(CHAIN_ID, address).read()
+    expect(stored.status).toBe('absent')
+  })
+
+  it('keeps the step of a stored clear open while its receipt is awaited, with no start offered', async () => {
+    const world = await dormantWorld()
+    await storeOverviewWrite(world, 'clear', address)
+    const port = sendPortOver()
+    const receipts = receiptsOver()
+    receipts.wait.mockImplementation(() => armHarness.pending())
+    mockWallet.port = port
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+
+    view = await mount(<OverviewScreen />)
+
+    expect(view.byTestId('overview-step-clear')).not.toBeNull()
+    expect(view.byTestId('overview-step-submitting')).not.toBeNull()
+    expect(view.byTestId('overview-step-start')).toBeNull()
+    expect(view.byTestId('overview-dormant')).toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('opens no step for a write another screen stored', async () => {
+    const world = await dormantWorld()
+    const prepared = await world.client.setup.prepareClearSetup()
+    await world.records.saveInFlight(CHAIN_ID, address).claim({
+      draft: REMOVAL_DRAFT,
+      prepared,
+      requestId: newSendRequestId(),
+      claimedAt: Date.now()
+    })
+    mockWallet.port = sendPortOver()
+    mockWallet.client = readyOver(world.client, GAS_READS, receiptsOver())
+
+    view = await mount(<OverviewScreen />)
+
+    expect(view.byTestId('overview-dormant')).not.toBeNull()
+    expect(view.byTestId('overview-step-clear')).toBeNull()
+  })
+})

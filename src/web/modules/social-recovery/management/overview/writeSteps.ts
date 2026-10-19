@@ -11,7 +11,8 @@
  * removal's check agrees once the read finds the removal's end.
  *
  * The re-authorize reads the attempt again before it prepares and refuses
- * while one is open, since the wallet keeps the cancel and the repair apart.
+ * while one is open, since the wallet keeps the cancel and the repair apart;
+ * it tells its step, so the overview reads the chain again and draws why.
  */
 import type {
   PreparedBatch,
@@ -24,11 +25,22 @@ import {
   checkGas,
   walletAccountRefOf
 } from '@web/modules/social-recovery/shared/writes'
+import type { GasCheck } from '@web/modules/social-recovery/shared/writes'
 import { callsOf, saveStepsOf } from '@web/modules/social-recovery/setup/arm'
 import type { PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 
 import { attemptOpenOf, goalStands, requestIdOf } from './readings'
 import type { OverviewStepsInput } from './types'
+
+/**
+ * A removal's gas check, checked through the account's own door, as the run
+ * takes it: the run is the save's, and its machine ignores a check made for
+ * another write kind.
+ */
+const asSaveCheck = (check: GasCheck): GasCheck =>
+  check.kind === 'enough'
+    ? { ...check, write: 'save' }
+    : { ...check, step: { ...check.step, write: 'save' } }
 
 export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
   const { intent, client, facts, key } = input
@@ -75,6 +87,7 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
         client.walletReads.attemptState()
       ])
       if (attemptOpenOf(state, attempt)) {
+        input.onAttemptOpen()
         throw new Error('This wallet does not re-authorize while a recovery is in progress.')
       }
       return save.prepare()
@@ -82,16 +95,18 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
     checkGas:
       intent === 'reauthorize'
         ? save.checkGas
-        : ({ prepared, calls }) =>
-            checkGas({
-              write: 'ownerWrite',
-              prepared,
-              key,
-              reads: input.reads,
-              network: facts.network,
-              transaction: accountBatchTransactionOf(facts, key, calls),
-              operates: walletAccountRefOf(facts)
-            }),
+        : async ({ prepared, calls }) =>
+            asSaveCheck(
+              await checkGas({
+                write: 'ownerWrite',
+                prepared,
+                key,
+                reads: input.reads,
+                network: facts.network,
+                transaction: accountBatchTransactionOf(facts, key, calls),
+                operates: walletAccountRefOf(facts)
+              })
+            ),
     confirm: intent === 'reauthorize' ? save.confirm : removalConfirmation,
     async wipe(): Promise<void> {
       const held = await inFlight.read()
@@ -103,13 +118,16 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
         await cache.wipe()
         return
       }
-      if (intent === 'reauthorize') {
+      // The cache takes the path the landed write committed, the stored write's own;
+      // a run with no path of its own leaves the cache as it stands.
+      const committed = held.status === 'present' ? held.value.draft : input.draft
+      if (intent === 'reauthorize' && committed.clauses.length > 0) {
         const state = await client.setup.setupState()
         await cache.write({
           configuration: {
-            clauses: input.draft.clauses,
-            wait: input.draft.wait,
-            ignoresPause: input.draft.ignoresPause
+            clauses: committed.clauses,
+            wait: committed.wait,
+            ignoresPause: committed.ignoresPause
           },
           setupNonce: state.setupNonce,
           setupCommitment: state.setupCommitment
