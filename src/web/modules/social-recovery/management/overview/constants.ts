@@ -33,3 +33,10 @@ export const MANAGE_LINKS: Readonly<Record<ManageIntent, ElsewhereLink>> = {
     label: `${OVERVIEW}.writes.openRemove`
   }
 }
+
+/** Where a save of the setup flow is followed, the line that says so, and the link's label. */
+export const SAVE_LINK: ElsewhereLink = {
+  route: WEB_ROUTES.socialRecoverySetupSave,
+  line: `${OVERVIEW}.writes.saveInFlight`,
+  label: `${OVERVIEW}.writes.openSave`
+}

@@ -359,8 +359,28 @@ describe('a save that meets a write of the recovery overview at its claim', () =
   })
 })
 
-describe('an arrival that finds a stored write of another management write', () => {
+describe('an arrival that finds a stored write of another kind', () => {
   const CASES = [
+    {
+      named: 'an overview clear that finds a save',
+      ownId: () => requestIdOf('clear'),
+      otherId: () => 'social-recovery-sender:7'
+    },
+    {
+      named: 'an overview removal of the authorization that finds a save',
+      ownId: () => requestIdOf('removeAuthorization'),
+      otherId: () => 'social-recovery-sender:7'
+    },
+    {
+      named: 'an overview re-authorize that finds a save',
+      ownId: () => requestIdOf('reauthorize'),
+      otherId: () => 'social-recovery-sender:7'
+    },
+    {
+      named: 'an editor run that finds a save',
+      ownId: () => 'social-recovery-sender:2:manage-remove',
+      otherId: () => 'social-recovery-sender:7'
+    },
     {
       named: 'a save that finds a write of the overview',
       ownId: undefined,
@@ -405,6 +425,30 @@ describe('an arrival that finds a stored write of another management write', () 
     })
   )
 
+  it('follows a stored save from a save, with nothing sent', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const page = wireSave(account, script(), { storage, requests })
+    page.receipts.wait.mockImplementation(() => pending())
+    const otherId = 'social-recovery-sender:7'
+    await page.inFlight.claim({
+      draft: page.draft,
+      prepared: page.prepared,
+      requestId: otherId,
+      claimedAt: Date.now()
+    })
+    await page.inFlight.markSent(otherId, TX_HASH, START_BLOCK)
+    const store = createArmStore()
+
+    unawaited(lookForSave(store, page.steps, OPTIONS))
+    await advanceTimers(0)
+
+    expect(store.state().stop).toBeUndefined()
+    expect(store.state().requestId).toBe(otherId)
+    expect(page.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
   it('follows a stored write of the same overview write, with nothing sent', async () => {
     const storage = memoryStorage()
     const requests = requestsFake()
@@ -431,8 +475,13 @@ describe('an arrival that finds a stored write of another management write', () 
   })
 })
 
-describe('a management write that meets another management write at its claim', () => {
+describe('a management write that meets a write of another kind at its claim', () => {
   const CASES = [
+    {
+      named: 'an overview clear that meets a save',
+      ownId: () => requestIdOf('clear'),
+      otherId: () => 'social-recovery-sender:7'
+    },
     {
       named: 'an overview run that meets a write of the editor',
       ownId: () => requestIdOf('clear'),
