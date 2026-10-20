@@ -66,6 +66,23 @@ export interface ScriptedOpening {
   order: PaymentOrder
 }
 
+/** The members of the manager's `eip712Domain` answer, the descriptor's unless a seed names others. */
+export interface ScriptedDomain {
+  fields: Hex
+  name: string
+  version: string
+  chainId: bigint
+  verifyingContract: Address
+}
+
+/** The action's immutables as the node answers them, the descriptor's and this build's derivations unless a seed names others. */
+export interface ScriptedConstants {
+  manager: Address
+  ambireImplementation: Address
+  kitSlot: Address
+  binding: Hex
+}
+
 /** A verdict the node can be seeded with for a module it cannot judge. */
 export type ScriptedVerdict = Extract<Verdict, 'satisfied' | 'rejected'>
 

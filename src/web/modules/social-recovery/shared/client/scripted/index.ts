@@ -3,6 +3,8 @@ export { ScriptedNode } from './node'
 export { createScriptedSigner } from './signer'
 export type {
   ScriptedAttemptOptions,
+  ScriptedConstants,
+  ScriptedDomain,
   ScriptedFailure,
   ScriptedManagerState,
   ScriptedMethod,

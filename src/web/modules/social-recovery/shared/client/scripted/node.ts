@@ -15,7 +15,11 @@
  * the account's `privileges`; a write answers empty, so a simulation passes.
  * A read `failRead` names fails as a transport failure or reverts with the
  * bytes given, until `restoreRead`. The latest block follows the node's
- * clock, so a window measured from it stays current.
+ * clock, so a window measured from it stays current. A deployment that
+ * disagrees with the build is seeded the same way: the chain id, the
+ * manager's domain and the action's immutables answer what `setChainId`,
+ * `setDomain` and `setConstants` name, and `setContractCode` removes a
+ * contract.
  */
 import {
   ACCOUNT_EVENTS_ABI,
@@ -100,6 +104,8 @@ import { providerReadFailure, revertedCall } from '../provider-adapter'
 import type {
   ScriptedAttemptOptions,
   ScriptedBlock,
+  ScriptedConstants,
+  ScriptedDomain,
   ScriptedFailure,
   ScriptedManagerState,
   ScriptedMethod,
@@ -203,6 +209,15 @@ export class ScriptedNode implements IProvider {
   private readonly failures = new Map<string, ScriptedFailure>()
 
   private readonly verdicts = new Map<string, ScriptedVerdict>()
+
+  private domain: Partial<ScriptedDomain> = {}
+
+  private constants: Partial<ScriptedConstants> = {}
+
+  private chainIdAnswer: number | undefined
+
+  /** The descriptor's contracts seeded as absent, by lowercase address. */
+  private readonly absent = new Set<string>()
 
   private readonly passkeyCodec = passkeyMethod().codec
 
@@ -337,6 +352,17 @@ export class ScriptedNode implements IProvider {
   }
 
   /**
+   * Writes one privilege on the account as the account's own transaction
+   * would, the key privilege by default, in one mined block with its
+   * `LogPrivilegeChanged`; a zero value revokes it.
+   */
+  setPrivilege(key: Address, value: Hex = KEY_VALUE): void {
+    const block = this.mine()
+    const hash = this.recordTransaction(block, this.account, '0x')
+    this.writePrivilege(key, value, block, hash)
+  }
+
+  /**
    * Commits a setup as a holder's commit would: the body and the commitment
    * at the next nonce, the backup the privacy's choice names (sealed under the
    * password, the configuration's serialization, or none) and the public
@@ -408,6 +434,36 @@ export class ScriptedNode implements IProvider {
     return hash
   }
 
+  /** Makes the manager's `eip712Domain` answer these members over the descriptor's. */
+  setDomain(domain: Partial<ScriptedDomain>): void {
+    this.domain = { ...this.domain, ...domain }
+  }
+
+  /** Makes the action's immutables answer these values over the descriptor's and this build's derivations. */
+  setConstants(constants: Partial<ScriptedConstants>): void {
+    this.constants = { ...this.constants, ...constants }
+  }
+
+  /** Makes the provider answer this chain id over the descriptor's. */
+  setChainId(chainId: number): void {
+    this.chainIdAnswer = chainId
+  }
+
+  /**
+   * Deploys or removes one of the descriptor's contracts: an absent one holds
+   * no code and answers every call with no bytes, as a node answers a call to
+   * an address with no contract.
+   */
+  setContractCode(address: Address, hasCode: boolean): void {
+    if (hasCode) {
+      this.absent.delete(lower(address))
+      this.codes.set(lower(address), CONTRACT_CODE)
+    } else {
+      this.absent.add(lower(address))
+      this.codes.delete(lower(address))
+    }
+  }
+
   /** Seeds the passkey module's verdict over every proof for one credential's config. */
   setVerdict(config: Hex, verdict: ScriptedVerdict): void {
     this.verdicts.set(config.toLowerCase(), verdict)
@@ -440,12 +496,15 @@ export class ScriptedNode implements IProvider {
 
   async chainId(): Promise<number> {
     this.guard('chainId')
-    return this.descriptor.chainId
+    return this.chainIdAnswer ?? this.descriptor.chainId
   }
 
   async call(to: Address, data: Hex, _from: Address, block: BlockTag): Promise<Hex> {
     this.guard('call')
     this.blockAt(block)
+    if (this.absent.has(lower(to))) {
+      return '0x'
+    }
     const write = this.decodeWrite(data)
     if (write) {
       return '0x'
@@ -590,11 +649,11 @@ export class ScriptedNode implements IProvider {
           abi: POLICY_MANAGER_EIP712_DOMAIN_ABI,
           functionName: 'eip712Domain',
           result: [
-            BUILDER_DOMAIN_FIELDS,
-            FORMATS_DIGEST_DOMAIN_NAME,
-            d.digestVersion,
-            BigInt(d.chainId),
-            d.manager,
+            this.domain.fields ?? BUILDER_DOMAIN_FIELDS,
+            this.domain.name ?? FORMATS_DIGEST_DOMAIN_NAME,
+            this.domain.version ?? d.digestVersion,
+            this.domain.chainId ?? BigInt(d.chainId),
+            this.domain.verifyingContract ?? d.manager,
             zeroHash,
             []
           ]
@@ -683,13 +742,19 @@ export class ScriptedNode implements IProvider {
         return this.boolean('holdsAnyPrivilege', value !== undefined && value !== zeroHash)
       }
       case 'MANAGER':
-        return encodeAbiParameters([{ type: 'address' }], [d.manager])
+        return encodeAbiParameters([{ type: 'address' }], [this.constants.manager ?? d.manager])
       case 'AMBIRE_IMPLEMENTATION':
-        return encodeAbiParameters([{ type: 'address' }], [d.servedImplementation])
+        return encodeAbiParameters(
+          [{ type: 'address' }],
+          [this.constants.ambireImplementation ?? d.servedImplementation]
+        )
       case 'KIT_SLOT':
-        return encodeAbiParameters([{ type: 'address' }], [kitSlot(d.action)])
+        return encodeAbiParameters(
+          [{ type: 'address' }],
+          [this.constants.kitSlot ?? kitSlot(d.action)]
+        )
       case 'BINDING':
-        return kitBinding(d.action)
+        return this.constants.binding ?? kitBinding(d.action)
       case 'KEY_VALUE':
         return KEY_VALUE
       case 'privileges': {

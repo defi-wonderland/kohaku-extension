@@ -38,7 +38,8 @@ import {
   MethodsOrchestrator,
   PolicyManager,
   RecoveryClient,
-  SetupClient
+  SetupClient,
+  SocialRecoveryBuilder
 } from '@kohaku-eth/social-recovery'
 import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
@@ -46,6 +47,7 @@ import type {
   BlockTag,
   ClientConfiguration,
   DeploymentDescriptor,
+  FilterSpec,
   Hex,
   IProvider,
   IRecoveryMethod,
@@ -62,6 +64,7 @@ import {
   extensionProviderFor,
   WALLET_RECOVERY_CHAIN,
   type ApprovingClient,
+  type DeploymentFacts,
   type ExtensionProvider,
   type HeldRequestQueue,
   type KeyHandle,
@@ -86,7 +89,7 @@ import {
   type SubmittedOperation
 } from '@web/modules/social-recovery/shared/client'
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
-import type { ScriptedNode as FakeNode } from '@web/modules/social-recovery/shared/client/scripted'
+import { ScriptedNode as FakeNode } from '@web/modules/social-recovery/shared/client/scripted'
 // The stand-in is not part of the barrel a screen imports; tests reach it by path.
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/types'
@@ -203,12 +206,25 @@ export const ethersOver = (chain: FakeNode): EthersMock => {
   }
   mock.getNetwork = jest.fn(async () => ({ chainId: BigInt(mock.answeredChainId), name: 'mock' }))
   mock.call = jest.fn(async (tx: { to?: string; data?: string; blockTag?: unknown }) => ethCall(tx))
-  mock.getLogs = jest.fn(async () => [])
+  mock.getLogs = jest.fn(
+    async (filter: { address: Address[]; topics: FilterSpec['topics']; fromBlock: number; toBlock: number }) =>
+      (
+        await chain.logs(
+          { address: filter.address, topics: filter.topics },
+          { from: filter.fromBlock, to: filter.toBlock }
+        )
+      ).map((log) => ({ ...log, index: log.logIndex, removed: log.removed ?? false }))
+  )
   mock.getBlock = jest.fn(async (tag: unknown) => blockOf(tag))
   mock.getBalance = jest.fn(async () => NODE_ANSWERS.balance)
   mock.estimateGas = jest.fn(async () => NODE_ANSWERS.gas)
-  mock.getCode = jest.fn(async () => '0x')
-  mock.getTransaction = jest.fn(async () => null)
+  mock.getCode = jest.fn(async (address: Address, tag?: unknown) =>
+    chain.code(address, tagOf(tag ?? 'latest'))
+  )
+  mock.getTransaction = jest.fn(async (hash: Hex) => {
+    const transaction = await chain.transaction(hash)
+    return transaction ? { ...transaction, data: transaction.input } : null
+  })
   mock.destroy = jest.fn()
   mock.send = jest.fn(async (method: string, params: unknown[]) => {
     switch (method) {
@@ -280,6 +296,25 @@ export const spyOnPrepares = (): jest.SpyInstance[] =>
       jest.spyOn(proto as unknown as Record<string, () => unknown>, name)
     )
   )
+
+/** The SDK builder's entry, its setters and its builds, each spied on. */
+export const spyOnBuilder = () => {
+  const proto = SocialRecoveryBuilder.prototype
+  return {
+    from: jest.spyOn(SocialRecoveryBuilder, 'from'),
+    withPolicyManager: jest.spyOn(proto, 'withPolicyManager'),
+    withCodec: jest.spyOn(proto, 'withCodec'),
+    withEventManager: jest.spyOn(proto, 'withEventManager'),
+    withRecoveryAction: jest.spyOn(proto, 'withRecoveryAction'),
+    withMethod: jest.spyOn(proto, 'withMethod'),
+    withSignerRecovery: jest.spyOn(proto, 'withSignerRecovery'),
+    buildSetupClient: jest.spyOn(proto, 'buildSetupClient'),
+    buildRecoveryClient: jest.spyOn(proto, 'buildRecoveryClient'),
+    recoveryAction: jest.spyOn(proto, 'recoveryAction'),
+    methodModuleReads: jest.spyOn(proto, 'methodModuleReads'),
+    buildMethodsOrchestrator: jest.spyOn(proto, 'buildMethodsOrchestrator')
+  }
+}
 
 /** The value a setter received last, the one the builder builds with. */
 export const lastArg = (spy: jest.SpyInstance, index = 0): unknown => {
@@ -377,6 +412,44 @@ export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}
   const adapter = createProviderAdapter(ethers)
   const config: RecoveryClientConfiguration = {
     chain: chainLabel,
+    account,
+    addressBook,
+    provider: adapter,
+    ...overrides
+  }
+  return { chain, ethers, adapter, config, descriptor, account }
+}
+
+/** A deployed kit's facts for the deployment variable a test mocks; every address made up. */
+export const DEPLOYED_FACTS: DeploymentFacts = {
+  manager: addressOf('deployed-manager'),
+  methodEcdsa: addressOf('deployed-method-ecdsa'),
+  methodPasskey: addressOf('deployed-method-passkey'),
+  action: addressOf('deployed-action'),
+  deployedAt: 900,
+  digestVersion: '1',
+  managerVersion: '1.0.0',
+  auditedActions: [{ action: addressOf('deployed-action'), publisher: 'ethereumFoundation' }]
+}
+
+/**
+ * A world on Sepolia with the deployment variable a test mocked to a deployed
+ * kit: a fake node of its own for the deployment's descriptor (never the
+ * stand-in's), the extension provider mocked over it and the adapter the
+ * configuration names, which the build then reads through.
+ */
+export const createDeployedWorld = (
+  overrides: Partial<RecoveryClientConfiguration> = {}
+): World => {
+  sdkStandIn.reset()
+  const account = overrides.account ?? addressOf('account')
+  const addressBook = overrides.addressBook ?? addressBookOf('sepolia')
+  const descriptor = descriptorOf('sepolia', addressBook)
+  const chain = new FakeNode({ descriptor, account })
+  const ethers = ethersOver(chain)
+  const adapter = createProviderAdapter(ethers)
+  const config: RecoveryClientConfiguration = {
+    chain: 'sepolia',
     account,
     addressBook,
     provider: adapter,

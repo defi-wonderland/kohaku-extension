@@ -1,10 +1,10 @@
 /**
- * The provider adapter answers `IProvider`'s four reads, each routed once
+ * The provider adapter answers `IProvider`'s six reads, each routed once
  * through the extension's own provider with the arguments the SDK fixes. A read
  * the adapter could not make reaches the SDK as a failure, never as an empty
  * answer, and a reverted call rejects with the raw revert data. The balance and
  * gas reads run on the same provider beside the adapter, since the SDK's
- * provider answers four reads and no balance.
+ * provider answers six reads and no balance.
  *
  * The SDK fixes the arguments, not the ethers member, so the first checks of
  * each read accept the high-level ethers member or the raw JSON-RPC `send`. The
@@ -12,6 +12,7 @@
  * what the ethers provider the extension builds then sends the node.
  */
 import { AbiCoder, makeError } from 'ethers'
+import { zeroAddress } from 'viem'
 
 import type { Network } from '@ambire-common/interfaces/network'
 
@@ -21,6 +22,7 @@ import {
   AdapterWorld,
   adapterOver,
   callException,
+  createWorld,
   createChainReads,
   createProviderAdapter,
   ethersOver,
@@ -64,7 +66,7 @@ const sameNumber = (seen: unknown, n: number): boolean =>
 const lower = (a: unknown) => (typeof a === 'string' ? a.toLowerCase() : a)
 
 const world = (): AdapterWorld => {
-  const chain = new ScriptedChain()
+  const { chain } = createWorld()
   const ethers = ethersOver(chain)
   return { chain, ethers, adapter: adapterOver(ethers) }
 }
@@ -86,8 +88,15 @@ const colibriError = (code: number, message: string, data?: Hex) =>
 const readOf = (caught: unknown) => (caught as { read?: unknown }).read
 
 describe('the provider adapter, IProvider over the extension provider', () => {
-  it('answers the four reads and nothing else', () => {
-    expect(functionMembersOf(world().adapter).sort()).toEqual(['block', 'call', 'chainId', 'logs'])
+  it('answers the six reads and nothing else', () => {
+    expect(functionMembersOf(world().adapter).sort()).toEqual([
+      'block',
+      'call',
+      'chainId',
+      'code',
+      'logs',
+      'transaction'
+    ])
   })
 
   describe('chainId()', () => {
@@ -112,15 +121,15 @@ describe('the provider adapter, IProvider over the extension provider', () => {
   })
 
   describe('call(to, data, from, block)', () => {
-    const CALL_CASES: [string, Address | undefined, BlockTag][] = [
+    const CALL_CASES: [string, Address, BlockTag][] = [
       ['a from address at latest', FROM, 'latest'],
-      ['no from address at finalized', undefined, 'finalized'],
+      ['the zero from address at finalized', zeroAddress, 'finalized'],
       ['a from address at a block number', FROM, 1234]
     ]
     CALL_CASES.forEach(([title, from, tag]) =>
       it(`runs one eth_call with the target, the calldata, ${title}`, async () => {
         const w = world()
-        w.chain.calls.set(`${TO.toLowerCase()}:${DATA.toLowerCase()}`, { result: '0xcafe' })
+        jest.spyOn(w.chain, 'call').mockResolvedValueOnce('0xcafe')
         await expect(w.adapter.call(TO, DATA, from, tag)).resolves.toBe('0xcafe')
         const [member, args] = onlyCall(w.ethers)
         let tx: Record<string, unknown>
@@ -138,11 +147,7 @@ describe('the provider adapter, IProvider over the extension provider', () => {
         }
         expect(lower(tx.to)).toBe(TO.toLowerCase())
         expect(lower(tx.data)).toBe(DATA.toLowerCase())
-        if (from) {
-          expect(lower(tx.from)).toBe(from.toLowerCase())
-        } else {
-          expect(tx.from).toBeUndefined()
-        }
+        expect(lower(tx.from)).toBe(from.toLowerCase())
         expect(sameTag(seenTag, tag)).toBe(true)
       })
     )
