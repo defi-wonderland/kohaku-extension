@@ -188,7 +188,7 @@ describe('the presets screen', () => {
   it("shows the other account's own draft, and the first account's grid when it comes back", async () => {
     const records = createWalletRecords({ storage: mockStorage })
     await records.setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], OTHER_ACCOUNT).setupDraft.write({
-      wait: 172800n,
+      wait: 172800,
       clauses: [],
       ignoresPause: true,
       privacy: { backup: 'encrypted', publicMetadata: '0x' }
@@ -215,7 +215,7 @@ describe('the presets screen', () => {
     await createWalletRecords({ storage: mockStorage })
       .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], ACCOUNT)
       .setupDraft.write({
-        wait: 172800n,
+        wait: 172800,
         clauses: [],
         ignoresPause: true,
         privacy: { backup: 'encrypted', publicMetadata: '0x' }
@@ -256,7 +256,7 @@ describe('the presets screen', () => {
     await createWalletRecords({ storage: mockStorage })
       .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], ACCOUNT)
       .setupDraft.write({
-        wait: 172800n,
+        wait: 172800,
         clauses: [],
         ignoresPause: true,
         privacy: { backup: 'encrypted', publicMetadata: '0x' }

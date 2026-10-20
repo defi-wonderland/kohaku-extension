@@ -92,9 +92,9 @@ const LANDED: WriteMachineState = {
 }
 
 const kitError = (name: 'InvalidCommitment'): KitError => ({
-  kind: 'known',
+  known: true,
   source: 'manager',
-  name,
+  name: `PolicyManager_${name}`,
   selector: '0x12345678',
   args: {}
 })

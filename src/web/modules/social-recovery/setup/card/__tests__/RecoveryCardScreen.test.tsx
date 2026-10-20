@@ -197,7 +197,7 @@ let nextAccount = 1
 const newAccount = (): Address => `0x${(nextAccount++).toString(16).padStart(40, '0')}` as Address
 
 const draftWith = (backup: SetupDraft['privacy']['backup']): SetupDraft => ({
-  wait: 86400n,
+  wait: 86400,
   clauses: [{ threshold: 1, credentials: [{ method: '0x01', config: '0xabcd' }] }],
   ignoresPause: false,
   privacy: { publicMetadata: '0x', backup }

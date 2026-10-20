@@ -182,7 +182,7 @@ export const makeStorage = (faults: StorageFaults = {}): RecordStorage => {
 }
 
 export const draftOf = (clauses: Clause[]): SetupDraft => ({
-  wait: 172800n,
+  wait: 172800,
   clauses,
   ignoresPause: false,
   privacy: { backup: 'encrypted', publicMetadata: '0x' }
@@ -208,7 +208,7 @@ export const recordsWith = async (
   return { records, faults, storage }
 }
 
-export const storedClauses = async (records: WalletRecords): Promise<Clause[]> => {
+export const storedClauses = async (records: WalletRecords): Promise<readonly Clause[]> => {
   const read = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
   if (read.status !== 'present') {
     throw new Error('no draft stored')

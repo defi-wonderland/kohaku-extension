@@ -54,9 +54,9 @@ const groupLabel = (n: number) => i18n.t('socialRecovery.shape.group', { n })
 const EMPTY_GROUP_SLOT = i18n.t('socialRecovery.editor.refusals.emptyGroupSlot')
 
 /** Two to the 48 seconds, the first wait a 48-bit field cannot hold. */
-const TWO_TO_THE_48 = 281474976710656n
+const TWO_TO_THE_48 = 281474976710656
 
-const draftOf = (clauses: Clause[], wait = 259200n): SetupDraft => ({
+const draftOf = (clauses: Clause[], wait = 259200): SetupDraft => ({
   wait,
   clauses,
   ignoresPause: false,
@@ -125,7 +125,7 @@ const mount = async ({
   clauses,
   wait,
   validate = async () => NO_FINDING
-}: { clauses?: Clause[]; wait?: bigint; validate?: Validate } = {}) => {
+}: { clauses?: Clause[]; wait?: number; validate?: Validate } = {}) => {
   const { records, storage } = makeRecords()
   if (clauses) {
     await records.setupDraft.write(draftOf(clauses, wait))

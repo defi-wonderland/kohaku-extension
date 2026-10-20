@@ -309,7 +309,7 @@ describe('filling and placing', () => {
 
   it('keeps every field of the draft but its clauses', () => {
     const draft: SetupDraft = {
-      wait: 604800n,
+      wait: 604800,
       clauses: presetPath(),
       ignoresPause: true,
       privacy: { publicMetadata: '0x01', backup: 'clear' }
