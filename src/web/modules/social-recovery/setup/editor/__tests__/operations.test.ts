@@ -9,7 +9,14 @@ import { getAddress, zeroAddress } from 'viem'
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
 import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/shared/client'
-import type { Clause, Finding, SetupDraft } from '@kohaku-eth/social-recovery'
+import type {
+  Clause,
+  ErrorCode,
+  SetupDraft,
+  ValidationError,
+  ValidationWarning,
+  WarningCode
+} from '@kohaku-eth/social-recovery'
 
 import {
   renderFailedTestLine,
@@ -411,11 +418,16 @@ describe('the enroll search', () => {
 })
 
 describe('the path check at continue', () => {
-  const finding = (code: Finding['code']): Finding => ({ code, subject: 'setup', values: {} })
+  const finding = (code: ErrorCode): ValidationError => ({ code, subject: 'setup', values: {} })
+  const warning = (code: WarningCode): ValidationWarning => ({
+    code,
+    subject: 'setup',
+    values: {}
+  })
 
   it('blocks on an error finding and never on warnings alone', () => {
     expect(blocksContinue({ errors: [finding('clause.empty')], warnings: [] })).toBe(true)
-    expect(blocksContinue({ errors: [], warnings: [finding('clause.empty')] })).toBe(false)
+    expect(blocksContinue({ errors: [], warnings: [warning('clause.shared-failure')] })).toBe(false)
     expect(blocksContinue({ errors: [], warnings: [] })).toBe(false)
   })
 
@@ -452,7 +464,7 @@ describe('the path check at continue', () => {
     expect(renderFinding(finding('clause.threshold-above-count'), t)).toBe(
       en.socialRecovery.editor.refusals.thresholdAboveMembers
     )
-    expect(renderFinding(finding('clause.single-point'), t)).toBe('clause.single-point')
+    expect(renderFinding(warning('clause.single-point'), t)).toBe('clause.single-point')
   })
 })
 

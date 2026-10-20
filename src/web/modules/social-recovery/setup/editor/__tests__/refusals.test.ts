@@ -7,7 +7,13 @@
  */
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
-import type { Clause, Credential, Finding, SetupDraft } from '@kohaku-eth/social-recovery'
+import type {
+  Clause,
+  Credential,
+  ErrorCode,
+  SetupDraft,
+  ValidationError
+} from '@kohaku-eth/social-recovery'
 import {
   SETUP_ERROR_CODES,
   clientConfigurationOf,
@@ -471,7 +477,7 @@ describe('the place a refusal points at', () => {
 })
 
 describe("the SDK's setup errors", () => {
-  const finding = (code: Finding['code']): Finding => ({ code, subject: 'setup', values: {} })
+  const finding = (code: ErrorCode): ValidationError => ({ code, subject: 'setup', values: {} })
 
   it('each render a sentence, never a bare code, and none credits the chain', () => {
     SETUP_ERROR_CODES.forEach((code) => {

@@ -12,7 +12,15 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type { Clause, Finding, SetupDraft, ValidationResult } from '@kohaku-eth/social-recovery'
+import type {
+  Clause,
+  ErrorCode,
+  SetupDraft,
+  ValidationError,
+  ValidationResult,
+  ValidationWarning,
+  WarningCode
+} from '@kohaku-eth/social-recovery'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import type {
@@ -85,7 +93,8 @@ const draftOf = (clauses: Clause[]): SetupDraft => ({
 })
 
 const NO_FINDING: ValidationResult = { errors: [], warnings: [] }
-const finding = (code: Finding['code']): Finding => ({ code, subject: 'clause', values: {} })
+const finding = (code: ErrorCode): ValidationError => ({ code, subject: 'clause', values: {} })
+const warning = (code: WarningCode): ValidationWarning => ({ code, subject: 'clause', values: {} })
 
 let container: HTMLDivElement
 let root: Root
@@ -211,7 +220,7 @@ const mount = async ({
 }
 
 const expectPathMatchesDraft = async (
-  stored: () => Promise<{ draft: SetupDraft | null; path: Clause[] | null }>,
+  stored: () => Promise<{ draft: SetupDraft | null; path: readonly Clause[] | null }>,
   clauses: Clause[]
 ) => {
   const { draft, path } = await stored()
@@ -565,7 +574,7 @@ describe('continue', () => {
   it('goes on past warnings alone and renders none of them', async () => {
     const { navigate } = await mount({
       clauses: presetPath(),
-      validate: async () => ({ errors: [], warnings: [finding('clause.shared-failure')] })
+      validate: async () => ({ errors: [], warnings: [warning('clause.shared-failure')] })
     })
     await press('editor-continue')
     expect(navigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoverySetupWaitingPeriod)

@@ -13,7 +13,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, SetupDraft } from '@kohaku-eth/social-recovery'
+import type { Address, Hex, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { StepViewProps } from '@web/modules/social-recovery/setup/privacy'
 import type { RecordStorage, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
@@ -34,6 +34,7 @@ const themeConfig: typeof import('@common/styles/themeConfig') = require('@commo
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
+const { hexToString }: typeof import('viem') = require('viem')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 export const CHAIN_ID = 11155111
@@ -143,6 +144,38 @@ export const draftOf = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
   privacy: { backup: 'encrypted', publicMetadata: '0x' },
   ...overrides
 })
+
+export interface PublicShape {
+  wait: bigint
+  ignoresPause: boolean
+  clauses: { threshold: number; methods: Address[] }[]
+}
+
+export interface PublicNote {
+  kind: 'shape'
+  shape: PublicShape
+}
+
+const SHAPE_MARK = 'kohaku-double:shape:'
+
+/**
+ * Reads a public note as a reader of the note's layout does: the mark, then
+ * the shape as JSON whose wait is a tagged decimal string.
+ */
+export const readPublicNote = (note: Hex): PublicNote => {
+  const text = hexToString(note)
+  if (!text.startsWith(SHAPE_MARK)) {
+    throw new Error('not a shape note')
+  }
+  return {
+    kind: 'shape',
+    shape: JSON.parse(text.slice(SHAPE_MARK.length), (_key, value) =>
+      value && typeof value === 'object' && typeof value.$bigint === 'string'
+        ? BigInt(value.$bigint)
+        : value
+    )
+  }
+}
 
 export interface Harness {
   navigate: jest.Mock

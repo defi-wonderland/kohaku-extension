@@ -11,7 +11,13 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type { Clause, Finding, SetupDraft, ValidationResult } from '@kohaku-eth/social-recovery'
+import type {
+  Clause,
+  ErrorCode,
+  SetupDraft,
+  ValidationError,
+  ValidationResult
+} from '@kohaku-eth/social-recovery'
 
 import type { Root, Validate } from '@web/modules/social-recovery/setup/editor/__tests__/harness'
 
@@ -64,7 +70,7 @@ const draftOf = (clauses: Clause[], wait = 259200): SetupDraft => ({
 })
 
 const NO_FINDING: ValidationResult = { errors: [], warnings: [] }
-const finding = (code: Finding['code']): Finding => ({ code, subject: 'setup', values: {} })
+const finding = (code: ErrorCode): ValidationError => ({ code, subject: 'setup', values: {} })
 
 let container: HTMLDivElement
 let root: Root
