@@ -137,7 +137,7 @@ export const recordsOn = (faults: StorageFaults = {}): WalletRecords =>
   createWalletRecords({ storage: makeStorage(faults) })
 
 export const draftOf = (overrides: Partial<SetupDraft> = {}): SetupDraft => ({
-  wait: 172800n,
+  wait: 172800,
   clauses: [],
   ignoresPause: true,
   privacy: { backup: 'encrypted', publicMetadata: '0x' },
@@ -224,18 +224,18 @@ const describeHarness = runningHarnessItself ? describe : () => undefined
 describeHarness('the step view harness', () => {
   it('round-trips a waiting period and a draft through the storage double', async () => {
     const setup = recordsOn().setup(CHAIN_ID, ACCOUNT)
-    await setup.waitingPeriod.write(172800n)
-    await setup.setupDraft.write(draftOf({ wait: 86400n }))
+    await setup.waitingPeriod.write(172800)
+    await setup.setupDraft.write(draftOf({ wait: 86400 }))
     const wait = await setup.waitingPeriod.read()
     const draft = await setup.setupDraft.read()
-    expect(wait.status === 'present' && wait.value).toBe(172800n)
-    expect(draft.status === 'present' && draft.value).toEqual(draftOf({ wait: 86400n }))
+    expect(wait.status === 'present' && wait.value).toBe(172800)
+    expect(draft.status === 'present' && draft.value).toEqual(draftOf({ wait: 86400 }))
   })
 
   it('refuses the given number of writes, then stores', async () => {
     const setup = recordsOn({ set: 1 }).setup(CHAIN_ID, ACCOUNT)
-    await expect(setup.waitingPeriod.write(86400n)).rejects.toThrow()
-    await setup.waitingPeriod.write(86400n)
+    await expect(setup.waitingPeriod.write(86400)).rejects.toThrow()
+    await setup.waitingPeriod.write(86400)
     expect((await setup.waitingPeriod.read()).status).toBe('present')
   })
 })

@@ -275,7 +275,7 @@ export const browserErrorNameOf = (outcome: CeremonyOutcome<unknown>): string | 
 export const isMethodFailure = (
   value: Hex | Reply | EnrollFailure | ReplyFailure
 ): value is EnrollFailure | ReplyFailure =>
-  typeof value === 'object' && (value.kind === 'enroll-failure' || value.kind === 'reply-failure')
+  typeof value === 'object' && value.kind === 'reply-failure'
 
 /**
  * One typed failure of the method as an outcome.
@@ -289,7 +289,7 @@ export const isMethodFailure = (
  * - device-unavailable: the device did not answer, unavailable with retry; a
  *   phone hand-off that never connected reads unreachable.
  * - material-rejected: the material was not a config or a proof, failed.
- * - method-unsupported, version-unread: not supported, with no retry.
+ * - method-unsupported, request-unsupported: not supported, with no retry.
  */
 export const outcomeOfMethodFailure = (
   failure: EnrollFailure | ReplyFailure,
@@ -303,7 +303,7 @@ export const outcomeOfMethodFailure = (
     case 'device-unavailable':
       return unavailable(options.handOff ? 'unreachable' : 'device-unavailable')
     case 'method-unsupported':
-    case 'version-unread':
+    case 'request-unsupported':
       return notSupported(failure.cause)
     case 'material-rejected':
     default:

@@ -9,7 +9,7 @@
  * never of the bare id; the wallet hands the SDK that origin string as the
  * relying party id. The module reads the id at runtime from the page origin.
  */
-import type { Hex } from '@kohaku-eth/social-recovery'
+import type { EnrollInput, Hex, Params } from '@kohaku-eth/social-recovery'
 
 import {
   bytesToHex,
@@ -141,7 +141,11 @@ describe('the origin string the method names', () => {
   NOT_PLAIN.forEach(([title, params]) =>
     it(`hands the method the origin string alone where the caller passed ${title}`, async () => {
       const method = fakeMethod()
-      await hosts.enroll({ method, orchestrator: fakeOrchestrator(method), params })
+      await hosts.enroll({
+        method,
+        orchestrator: fakeOrchestrator(method),
+        params: params as Params
+      })
       expect(method.enrollInput.mock.calls.map((c) => c[0])).toStrictEqual([
         { relyingPartyId: EXTENSION_ORIGIN }
       ])
@@ -163,7 +167,7 @@ describe('the origin string the method names', () => {
     ['no relying party', { rp: {} }]
   ].forEach(([title, options]) =>
     it(`refuses creation options that name ${title as string}, before any ceremony`, async () => {
-      const method = fakeMethod({ enrollInput: options })
+      const method = fakeMethod({ enrollInput: options as unknown as EnrollInput })
       const orchestrator = fakeOrchestrator(method)
       const outcome = await hosts.enroll({ method, orchestrator })
       expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })

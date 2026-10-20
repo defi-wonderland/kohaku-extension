@@ -48,7 +48,7 @@ const group = (threshold: number, methods: Hex[]): Clause => ({
 })
 
 const draft = (clauses: Clause[]): SetupDraft => ({
-  wait: 604800n,
+  wait: 604800,
   clauses,
   ignoresPause: false,
   privacy: { publicMetadata: '0x' as Hex, backup: 'encrypted' }

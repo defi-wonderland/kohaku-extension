@@ -3,9 +3,13 @@ import type {
   Address,
   ApproverRequest,
   DeviceBinding,
+  EnrollInput,
   Hex,
   IMethodsOrchestrator,
+  Input,
   IRecoveryMethod,
+  Material,
+  Params,
   Reply,
   ReplyFailureCause
 } from '@kohaku-eth/social-recovery'
@@ -183,7 +187,7 @@ export interface DeviceCallContext {
 export type DeviceResult =
   | {
       ok: true
-      material: unknown
+      material: Material
       /** The ceremony's own facts, a passkey's kind among them. */
       facts?: PasskeyFacts
       /** The credential id, base64url, where the ceremony minted or used one. */
@@ -193,9 +197,9 @@ export type DeviceResult =
 
 export interface CeremonyDevice {
   /** The enrollment ceremony: `input` is what the method's `enrollInput` returned. */
-  enroll(input: unknown, context: DeviceCallContext): Promise<DeviceResult>
+  enroll(input: EnrollInput, context: DeviceCallContext): Promise<DeviceResult>
   /** The signing ceremony: `input` is what the method's `signingInput` returned. */
-  sign(input: unknown, context: DeviceCallContext): Promise<DeviceResult>
+  sign(input: Input, context: DeviceCallContext): Promise<DeviceResult>
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +353,7 @@ export interface ClaimValue {
 export type CeremonyValue = EnrollValue | TestAccessValue | ClaimValue
 
 /** The device a call runs and the params the method receives. */
-export type DeviceChoice = { device: CeremonyDevice; params: unknown }
+export type DeviceChoice = { device: CeremonyDevice; params: Params | undefined }
 
 /** The signing half's answer: the reply, or the outcome that ends the call. */
 export type SignedReply =
@@ -422,7 +426,7 @@ export interface ResolvedCeremony {
   orchestrator: IMethodsOrchestrator
   method: IRecoveryMethod
   methodAddress?: Address
-  params?: unknown
+  params?: Params
   request?: ApproverRequest
   device?: CeremonyDevice
 }

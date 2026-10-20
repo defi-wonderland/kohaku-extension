@@ -122,11 +122,11 @@ export const setupStateOf = (hasSetup = false): SetupState => ({
 
 /** A setup description naming the candidate keys and the key a recovery removes. */
 export const descriptionOf = (
-  candidateKeys: SetupDescription['candidateKeys'] = [{ address: REMOVED_KEY, isAuthority: true }],
+  candidateKeys: SetupDescription['candidateKeys'] = [{ key: REMOVED_KEY, isAuthority: true }],
   removedKey: SetupDescription['removedKey'] = REMOVED_KEY
 ): SetupDescription => ({
   rule: null,
-  wait: { seconds: 172800n, defaultSeconds: 172800n },
+  wait: { committed: 172800, clientDefault: 172800 },
   failureDomains: null,
   parties: null,
   methodStanding: null,
@@ -154,7 +154,7 @@ export type Answer<T> = (module: Address) => Promise<ReadResult<T>>
 export interface MountOptions {
   clauses?: Clause[]
   enrollments?: Enrollment[]
-  wait?: bigint
+  wait?: number
   backup?: SetupDraft['privacy']['backup']
   publicMetadata?: SetupDraft['privacy']['publicMetadata']
   passwordSet?: boolean

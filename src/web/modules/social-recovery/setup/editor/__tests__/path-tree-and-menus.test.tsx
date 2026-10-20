@@ -80,7 +80,7 @@ const KIND_NAMES: Record<SlotKind, string> = {
 }
 
 const draftOf = (clauses: Clause[]): SetupDraft => ({
-  wait: 259200n,
+  wait: 259200,
   clauses,
   ignoresPause: false,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }

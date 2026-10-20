@@ -78,7 +78,7 @@ const {
 } = harness
 
 const draftOf = (clauses: Clause[]): SetupDraft => ({
-  wait: 259200n,
+  wait: 259200,
   clauses,
   ignoresPause: false,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }
@@ -594,7 +594,7 @@ describe('the first edit over no stored draft', () => {
     await press('editor-add-group')
     const { draft, path } = await stored()
     expect(draft).toEqual({
-      wait: BigInt(48 * 60 * 60),
+      wait: 48 * 60 * 60,
       clauses: [{ threshold: 2, credentials: [] }],
       ignoresPause: true,
       privacy: { publicMetadata: '0x', backup: 'encrypted' }

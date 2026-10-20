@@ -187,7 +187,7 @@ export const draftOf = (
   publicMetadata: Hex = '0x',
   clauses: Clause[] = PATH
 ): SetupDraft => ({
-  wait: 172800n,
+  wait: 172800,
   clauses,
   ignoresPause: true,
   privacy: { backup, publicMetadata }
@@ -788,10 +788,10 @@ export const runSave = async (
 // ---------------------------------------------------------------------------
 
 export const descriptionOf = (
-  candidateKeys: SetupDescription['candidateKeys'] = [{ address: REMOVED_KEY, isAuthority: true }]
+  candidateKeys: SetupDescription['candidateKeys'] = [{ key: REMOVED_KEY, isAuthority: true }]
 ): SetupDescription => ({
   rule: null,
-  wait: { seconds: 172800n, defaultSeconds: 172800n },
+  wait: { committed: 172800, clientDefault: 172800 },
   failureDomains: null,
   parties: null,
   methodStanding: null,
@@ -894,8 +894,8 @@ const gateInputOf = (gate: GateCase) => {
       reads.description = {
         status: 'answered',
         value: descriptionOf([
-          { address: REMOVED_KEY, isAuthority: true },
-          { address: KEY.addr, isAuthority: true }
+          { key: REMOVED_KEY, isAuthority: true },
+          { key: KEY.addr, isAuthority: true }
         ])
       }
       break

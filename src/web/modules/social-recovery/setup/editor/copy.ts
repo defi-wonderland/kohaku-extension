@@ -5,7 +5,7 @@
  * finding renders as. Every setup error renders a sentence; any other finding
  * renders its code.
  */
-import type { Credential, ErrorCode, Finding } from '@kohaku-eth/social-recovery'
+import type { Credential, Finding } from '@kohaku-eth/social-recovery'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 import type { StatusChipTone } from '@web/modules/social-recovery/shared/chrome'
 import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/display'
@@ -18,7 +18,7 @@ import type {
 
 import { enrollmentOf } from '@web/modules/social-recovery/shared/records'
 import { isEmptySlot } from './operations'
-import type { ClauseRole, ClientRefusal, Refusal, RefusalKey } from './types'
+import type { ClauseRole, ClientRefusal, Refusal, RefusalKey, SetupErrorCode } from './types'
 
 const KIND_NAME_KEYS: Record<SlotKind, string> = {
   passkey: 'socialRecovery.methodNames.passkey',
@@ -54,7 +54,7 @@ const REFUSAL_KEYS: Record<RefusalKey, string> = {
 // A backup too wide for its padding and an action that cannot serve the
 // account are the SDK's findings alone: this wallet never judges either shape
 // itself, so each has a sentence of its own outside the editor's refusals.
-const SETUP_ERROR_KEYS: Record<ErrorCode, string> = {
+const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
   'rule.empty': REFUSAL_KEYS.noMethod,
   'clause.empty': REFUSAL_KEYS.emptyGroup,
   'rule.all-thresholds-zero': REFUSAL_KEYS.thresholdBelowOne,
