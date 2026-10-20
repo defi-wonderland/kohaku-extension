@@ -10,6 +10,8 @@
  * default when the stored string is falsy and parses it otherwise. So a field
  * holding `undefined` loses its key and a `bigint` survives, as in the extension.
  */
+import { keccak256 } from 'viem'
+
 import { parse } from '@ambire-common/libs/richJson/richJson'
 import en from '@common/config/localization/translations/en.json'
 import type {
@@ -65,6 +67,8 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 import { makeStorage } from '@web/modules/social-recovery/shared/records/__fixtures__/storage'
 import type {
+  ApprovalRequest,
+  RequestMembers,
   RichJsonStorageDouble,
   SessionUpdate
 } from '@web/modules/social-recovery/shared/records/__fixtures__/types'
@@ -165,6 +169,7 @@ const PREDICTED_ATTEMPT_ID = 7n
 const VALID_UNTIL = '1700086400'
 const PROOF_A = '0xdeadbeefdeadbeef'
 const PROOF_B = '0xfeedfacefeedface'
+const PAYLOAD: Hex = '0x00'
 
 const reply = (place: number, proof: Hex, account: Address = ACCOUNT): Reply => ({
   kind: 'recovery-proof-reply',
@@ -185,26 +190,32 @@ const reply = (place: number, proof: Hex, account: Address = ACCOUNT): Reply => 
 
 const APPROVALS: Reply[] = [reply(0, PROOF_A), reply(1, PROOF_B)]
 
+const requestMembersOf = (account: Address): RequestMembers => ({
+  chainId: CHAIN_ID.toString(),
+  manager: MANAGER,
+  digestVersion: '1',
+  account,
+  action: ACTION,
+  attemptId: PREDICTED_ATTEMPT_ID.toString(),
+  setupNonce: '3',
+  setupBody: '0x00',
+  validUntil: VALID_UNTIL,
+  block: { number: 1, timestamp: '1700000000', hash: '0x01' }
+})
+
 // The SDK's gathering record, the body of a live session.
 const gathering = (
   account: Address = ACCOUNT,
   replies: Reply[] = APPROVALS,
-  request: Partial<Gathering['request']> = {}
+  request: Partial<ApprovalRequest> = {}
 ): Gathering => ({
   kind: 'gathering',
   version: 1,
   purpose: 'approval',
   request: {
-    chainId: CHAIN_ID.toString(),
-    manager: MANAGER,
-    digestVersion: '1',
-    account,
-    action: ACTION,
-    attemptId: PREDICTED_ATTEMPT_ID.toString(),
-    setupNonce: '3',
-    setupBody: '0x00',
-    validUntil: VALID_UNTIL,
-    block: { number: 1, timestamp: '1700000000', hash: '0x01' },
+    ...requestMembersOf(account),
+    payload: PAYLOAD,
+    order: { token: METHOD, amount: '0', payee: account },
     ...request
   },
   places: [0, 1].map((place) => ({
@@ -220,6 +231,15 @@ const gathering = (
 })
 
 const GATHERING = gathering()
+
+const CANCELLATION: Gathering = {
+  kind: 'gathering',
+  version: 1,
+  purpose: 'cancellation',
+  request: { ...requestMembersOf(ACCOUNT), consumableAfter: '1700172800' },
+  places: GATHERING.places,
+  replies: []
+}
 
 const FIVE_EVENTS: RecoveryWipeEvent[] = [
   'submission-landed',
@@ -303,7 +323,11 @@ const writeAllSetup = async (records: WalletRecords, account: Address = ACCOUNT)
 }
 
 // The attempt the landed session keeps from the request of `GATHERING`.
-const LANDED_ATTEMPT = { attemptId: PREDICTED_ATTEMPT_ID.toString(), setupNonce: '3' }
+const LANDED_ATTEMPT = {
+  attemptId: PREDICTED_ATTEMPT_ID.toString(),
+  setupNonce: '3',
+  payloadHash: keccak256(PAYLOAD)
+}
 
 // The one line a wipe keeps for an event: the reason, the account and, for an
 // expired request, its deadline. The submission landing keeps the landed state,
@@ -947,7 +971,7 @@ describe('the recovery session', () => {
     await expect(
       writeSession(records, gathering(ACCOUNT, APPROVALS, { chainId: '1' }))
     ).rejects.toThrow(/names chain/)
-    await expect(writeSession(records, { ...GATHERING, purpose: 'cancellation' })).rejects.toThrow(
+    await expect(writeSession(records, CANCELLATION)).rejects.toThrow(
       /approval gathering, not cancellation/
     )
     expect(storage.raw.size).toBe(0)
@@ -1411,7 +1435,7 @@ describe('the session survives the submission as the countdown record, with no i
 })
 
 describe('a live request is compared whole, and its replies only grow', () => {
-  const REQUEST_VARIANTS: [string, Partial<Gathering['request']>][] = [
+  const REQUEST_VARIANTS: [string, Partial<ApprovalRequest>][] = [
     ['setupBody', { setupBody: '0x01' }],
     ['digestVersion', { digestVersion: '2' }],
     ['payload', { payload: '0x1234' }],
@@ -1431,9 +1455,15 @@ describe('a live request is compared whole, and its replies only grow', () => {
   )
 
   const blockWithUndefined = { ...GATHERING.request.block, note: undefined }
-  const UNDEFINED_KEYS: [string, Partial<Gathering['request']>][] = [
-    ['an optional key', { payload: undefined }],
-    ['every optional key', { payload: undefined, order: undefined, consumableAfter: undefined }],
+  // The approval request holds no optional key, so a key it does not hold goes in through a cast.
+  const withKeys = (keys: Record<string, null | undefined>) =>
+    keys as unknown as Partial<ApprovalRequest>
+  const UNDEFINED_KEYS: [string, Partial<ApprovalRequest>][] = [
+    ['a key the request does not hold', withKeys({ consumableAfter: undefined })],
+    [
+      'several keys the request does not hold',
+      withKeys({ consumableAfter: undefined, note: undefined })
+    ],
     ['a key inside the block', { block: blockWithUndefined }]
   ]
 
@@ -1454,7 +1484,7 @@ describe('a live request is compared whole, and its replies only grow', () => {
     await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]]))
     const before = dump(storage)
     await expect(
-      writeSession(records, gathering(ACCOUNT, APPROVALS, { payload: null as unknown as Hex }))
+      writeSession(records, gathering(ACCOUNT, APPROVALS, withKeys({ consumableAfter: null })))
     ).rejects.toThrow(/holds another request/)
     expect(dump(storage)).toBe(before)
   })
@@ -1462,7 +1492,7 @@ describe('a live request is compared whole, and its replies only grow', () => {
   it('inside an array, undefined and null count as the same entry, since the storage keeps both as null', async () => {
     const { storage, records } = setup()
     // The request type holds no array, so the list goes in through a cast.
-    const withList = (list: unknown[]) => ({ list } as unknown as Partial<Gathering['request']>)
+    const withList = (list: unknown[]) => ({ list } as unknown as Partial<ApprovalRequest>)
     await writeSession(records, gathering(ACCOUNT, [], withList(['0x01', undefined])))
     await writeSession(records, gathering(ACCOUNT, [APPROVALS[0]], withList(['0x01', undefined])))
     await writeSession(records, gathering(ACCOUNT, APPROVALS, withList(['0x01', null])))

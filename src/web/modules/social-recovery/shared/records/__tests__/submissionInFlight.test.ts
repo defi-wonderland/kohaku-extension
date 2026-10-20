@@ -75,6 +75,8 @@ const gathering = (replies: Reply[]): Gathering => ({
     attemptId: '7',
     setupNonce: '3',
     setupBody: '0x00',
+    payload: '0x00',
+    order: { token: METHOD, amount: '0', payee: ACCOUNT },
     validUntil: '1700086400',
     block: { number: 1, timestamp: '1700000000', hash: '0x01' }
   },
