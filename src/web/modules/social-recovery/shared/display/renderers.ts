@@ -342,9 +342,9 @@ export const renderRemaining = (remainingMs: number, t: Translate = i18n.t): str
  * `48 hours`, and hours with their minutes otherwise, `1 hour 5 minutes`.
  * Seconds past a whole minute round down.
  */
-export const renderWaitLength = (seconds: bigint, t: Translate = i18n.t): string => {
-  const hours = Number(seconds / 3600n)
-  const minutes = Number((seconds % 3600n) / 60n)
+export const renderWaitLength = (seconds: number, t: Translate = i18n.t): string => {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
   if (hours === 0) {
     return t('socialRecovery.display.remainingMinutes', { count: minutes })
   }

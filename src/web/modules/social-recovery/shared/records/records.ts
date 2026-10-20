@@ -17,7 +17,13 @@ import isEqual from 'react-fast-compare'
 import { bytesToHex, isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
-import type { Address, Gathering, Hex } from '@kohaku-eth/social-recovery'
+import type {
+  Address,
+  ApproverRequest,
+  Gathering,
+  GatheringPlace,
+  Hex
+} from '@kohaku-eth/social-recovery'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
 import { isDecimalString, isStoredAddress } from './guards'
@@ -59,10 +65,12 @@ import type {
   SetupRecordName,
   SetupRecords,
   StoredCountdown,
+  StoredWait,
   StoredRecord,
   StoredSession,
   SubmissionInFlightClaim,
   SubmissionInFlightRecord,
+  WaitingPeriodRecord,
   WalletRecords,
   WalletRecordsOptions
 } from './types'
@@ -191,10 +199,13 @@ const isRecoveryEntry = (value: unknown): value is RecoveryEntryRecord => {
   )
 }
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
 /**
  * Whether a stored value is a ceremony request: its account, chain and method,
- * and what its call needs, an enrollment's method address or a test's or a
- * claim's request.
+ * and what its call needs, an enrollment's method address and params or a
+ * test's or a claim's request, with the method's params where it has them.
  */
 const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
   if (typeof value !== 'object' || value === null) {
@@ -210,10 +221,14 @@ const isCeremonyRequest = (value: unknown): value is CeremonyRequestRecord => {
   }
   switch (record.call) {
     case 'enroll':
-      return isStoredAddress(record.methodAddress)
+      return isStoredAddress(record.methodAddress) && isPlainObject(record.params)
     case 'testAccess':
     case 'createClaim':
-      return typeof record.request === 'object' && record.request !== null
+      return (
+        typeof record.request === 'object' &&
+        record.request !== null &&
+        (record.params === undefined || isPlainObject(record.params))
+      )
     case 'healthCheck':
       return true
     default:
@@ -273,6 +288,47 @@ const isSubmissionInFlight = (value: unknown): value is SubmissionInFlightRecord
 /** Whether a stored value is an execution in flight: the same shape as a submission in flight. */
 const isExecutionInFlight = (value: unknown): value is ExecutionInFlightRecord =>
   isSubmissionInFlight(value)
+
+/** A stored wait as the number of seconds the SDK takes. */
+const waitAsRead = (wait: StoredWait): number => (typeof wait === 'bigint' ? Number(wait) : wait)
+
+/** A stored record that carries a wait, with the wait as a number. */
+const withWaitAsRead = <T extends { wait: StoredWait }>(value: T): T & { wait: number } => ({
+  ...value,
+  wait: waitAsRead(value.wait)
+})
+
+/**
+ * Whether a stored credential holds code, read from a value the storage
+ * holds: a record stored before the status was kept reads as a credential with
+ * no code, the answer for every credential whose code was not read.
+ */
+const holdsCodeAsRead = (value: { credentialHoldsCode?: unknown }): boolean =>
+  value.credentialHoldsCode === true
+
+/** A stored place with its credential's code status. */
+const placeAsRead = (place: GatheringPlace): GatheringPlace => ({
+  ...place,
+  credentialHoldsCode: holdsCodeAsRead(place)
+})
+
+/** A stored gathering whose places are a list, each with its credential's code status. */
+const gatheringAsRead = (gathering: Gathering): Gathering => ({
+  ...gathering,
+  places: gathering.places.map(placeAsRead)
+})
+
+/** A stored request with its credential's code status. */
+const requestAsRead = (request: ApproverRequest): ApproverRequest => ({
+  ...request,
+  credentialHoldsCode: holdsCodeAsRead(request)
+})
+
+/** A stored ceremony request, its access test's or claim's request with its code status. */
+const ceremonyRequestAsRead = (value: CeremonyRequestRecord): CeremonyRequestRecord =>
+  value.call === 'testAccess' || value.call === 'createClaim'
+    ? { ...value, request: requestAsRead(value.request) }
+    : value
 
 /**
  * Deep equality of a stored request and the request a write names, as the
@@ -372,7 +428,8 @@ const landedFrom = (request: Gathering['request']): LandedRecoverySession =>
     account: request.account,
     attemptId: request.attemptId,
     setupNonce: request.setupNonce,
-    payloadHash: isHex(request.payload) ? keccak256(request.payload) : undefined
+    payloadHash:
+      'payload' in request && isHex(request.payload) ? keccak256(request.payload) : undefined
   })
 
 /**
@@ -391,9 +448,11 @@ const sessionAsRead = (value: RecoverySessionRecord): RecoverySessionRecord => {
   }
   const { gathering } = value
   const submission = isSubmissionInFlight(value.submission) ? value.submission : undefined
-  return Array.isArray(gathering.places) && Array.isArray(gathering.replies)
-    ? liveSession(gathering, notesKept(value.notes, gathering), submission)
-    : liveSession(gathering, undefined, submission)
+  if (!Array.isArray(gathering.places) || !Array.isArray(gathering.replies)) {
+    return liveSession(gathering, undefined, submission)
+  }
+  const read = gatheringAsRead(gathering)
+  return liveSession(read, notesKept(value.notes, read), submission)
 }
 
 const newRevision = (): SessionRevision =>
@@ -528,12 +587,21 @@ export const createWalletRecords = ({
       await storage.remove(key)
     })
 
-  const accessor = <T>(key: string): RecordAccessor<T> => ({
-    read: () => readKey<T>(key),
-    write: (value: T) => inQueue(key, () => writeKey<T>(key, value)),
-    wipe: () => removeKey(key),
-    age: async (at?: number) => recordAge(await readKey<T>(key), at ?? now())
-  })
+  const accessor = <T>(
+    key: string,
+    asRead: (value: T) => T = (value) => value
+  ): RecordAccessor<T> => {
+    const read = async (): Promise<RecordRead<T>> => {
+      const stored = await readKey<T>(key)
+      return stored.status === 'present' ? { ...stored, value: asRead(stored.value) } : stored
+    }
+    return {
+      read,
+      write: (value: T) => inQueue(key, () => writeKey<T>(key, value)),
+      wipe: () => removeKey(key),
+      age: async (at?: number) => recordAge(await read(), at ?? now())
+    }
+  }
 
   /**
    * The save in flight stored under a key. A stored value that is not a save in
@@ -544,7 +612,11 @@ export const createWalletRecords = ({
     if (!isStoredRecord(stored) || !isSaveInFlight(stored.value)) {
       return ABSENT
     }
-    return { status: 'present', value: stored.value, savedAt: stored.savedAt }
+    return {
+      status: 'present',
+      value: { ...stored.value, draft: withWaitAsRead(stored.value.draft) },
+      savedAt: stored.savedAt
+    }
   }
 
   // --- the six setup records -----------------------------------------------
@@ -557,11 +629,14 @@ export const createWalletRecords = ({
     const draftKey = recordKeys.setup('setupDraft', chainId, account)
     const pathKey = recordKeys.setup('path', chainId, account)
     return {
-      setupDraft: accessor(draftKey),
+      setupDraft: accessor<SetupDraftRecord>(draftKey, withWaitAsRead),
       inventory: accessor(recordKeys.setup('inventory', chainId, account)),
       path: accessor(pathKey),
       enrollments: accessor(recordKeys.setup('enrollments', chainId, account)),
-      waitingPeriod: accessor(recordKeys.setup('waitingPeriod', chainId, account)),
+      waitingPeriod: accessor<WaitingPeriodRecord>(
+        recordKeys.setup('waitingPeriod', chainId, account),
+        waitAsRead
+      ),
       passwordSet: accessor(recordKeys.setup('passwordSet', chainId, account)),
       writeDraftAndPath: (draft: SetupDraftRecord) =>
         inQueues([draftKey, pathKey], async () => {
@@ -1255,7 +1330,10 @@ export const createWalletRecords = ({
     chainId: ChainId,
     account: Address
   ): RecordAccessor<DecryptedSetupCacheRecord> =>
-    accessor<DecryptedSetupCacheRecord>(recordKeys.decryptedSetupCache(chainId, account))
+    accessor<DecryptedSetupCacheRecord>(
+      recordKeys.decryptedSetupCache(chainId, account),
+      (value) => ({ ...value, configuration: withWaitAsRead(value.configuration) })
+    )
 
   // --- the ceremony request ------------------------------------------------
 
@@ -1270,7 +1348,11 @@ export const createWalletRecords = ({
       if (!isStoredRecord(stored) || !isCeremonyRequest(stored.value)) {
         return ABSENT
       }
-      return { status: 'present', value: stored.value, savedAt: stored.savedAt }
+      return {
+        status: 'present',
+        value: ceremonyRequestAsRead(stored.value),
+        savedAt: stored.savedAt
+      }
     }
     return {
       read,

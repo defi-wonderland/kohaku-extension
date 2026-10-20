@@ -13,6 +13,7 @@ import type {
   Credential,
   Gathering,
   Hex,
+  Params,
   PreparedBatch,
   PreparedCall,
   SetupDraft
@@ -68,7 +69,7 @@ export type SetupDraftRecord = SetupDraft
  * with a fresh `clauses` list, so a caller may change what it gets.
  */
 export const defaultSetupDraft = (): SetupDraftRecord => ({
-  wait: BigInt(48 * 60 * 60),
+  wait: 48 * 60 * 60,
   clauses: [],
   ignoresPause: true,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }
@@ -175,6 +176,12 @@ export interface SlotPosition {
 
 /** 5. The waiting period, in seconds, the type the setup draft's `wait` carries. */
 export type WaitingPeriodRecord = SetupDraft['wait']
+
+/**
+ * A wait in seconds as the storage may hold it: a record written before the
+ * wait was a number holds it as a bigint.
+ */
+export type StoredWait = SetupDraft['wait'] | bigint
 
 /**
  * 6. The password-set flag. Never a boolean: the record's presence says the
@@ -491,11 +498,11 @@ export interface CeremonyRequestTarget {
  * material: the outcome travels back in the tab's report alone.
  */
 export type CeremonyRequestRecord =
-  | (CeremonyRequestTarget & { call: 'enroll'; methodAddress: Address; params: unknown })
+  | (CeremonyRequestTarget & { call: 'enroll'; methodAddress: Address; params: Params })
   | (CeremonyRequestTarget & {
       call: 'testAccess' | 'createClaim'
       request: ApproverRequest
-      params?: unknown
+      params?: Params
     })
   | (CeremonyRequestTarget & { call: 'healthCheck' })
 
