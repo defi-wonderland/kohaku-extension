@@ -3,7 +3,14 @@
  * the client is built. A disagreement refuses the client before anything is
  * prepared, as the "update the wallet" state of the account step.
  */
-import { FORMATS_DIGEST_DOMAIN_NAME, PolicyManager } from '@kohaku-eth/social-recovery'
+import {
+  BUILDER_CHAIN_MISMATCH_MESSAGE,
+  BUILDER_DOMAIN_CHAIN_MESSAGE,
+  BUILDER_DOMAIN_FIELDS_MESSAGE,
+  BUILDER_VERIFYING_CONTRACT_MESSAGE,
+  FORMATS_DIGEST_DOMAIN_NAME,
+  PolicyManager
+} from '@kohaku-eth/social-recovery'
 import * as descriptors from '@web/modules/social-recovery/shared/client/descriptors'
 
 import {
@@ -47,12 +54,17 @@ describe('the digest-version check', () => {
     })
   })
 
-  it('refuses a domain whose name is not PolicyManager before any client is built', async () => {
+  it('refuses a domain whose name is not PolicyManager the same way, before any client is built', async () => {
     const builder = spyOnBuilder()
     const world = createWorld()
     world.chain.setDomain({ name: 'SomeOtherManager' })
     const caught = await thrownBy(buildRecoveryClient(world.config))
-    expect(caught).toBeInstanceOf(Error)
+    expect(isDigestVersionRefusal(caught)).toBe(true)
+    expect((caught as DigestVersionRefusal).state).toBe('update-the-wallet')
+    expect((caught as DigestVersionRefusal).published).toEqual({
+      name: 'SomeOtherManager',
+      version: world.descriptor.digestVersion
+    })
     expect(builder.buildRecoveryClient).not.toHaveBeenCalled()
   })
 
@@ -102,17 +114,16 @@ describe('the digest-version check', () => {
       world.chain.setChainId(1)
       world.chain.setDomain({ version: 'other' })
       const caught = await thrownBy(buildRecoveryClient(world.config))
-      expect(caught).toBeInstanceOf(Error)
       expect(isDigestVersionRefusal(caught)).toBe(false)
-      expect(caught).toMatchObject({ message: expect.stringMatching(/chain/i) })
+      expect(caught).toMatchObject({ message: BUILDER_CHAIN_MISMATCH_MESSAGE })
     })
 
     it('reads a manager on another chain as a construction refusal, not as update the wallet', async () => {
       const world = createWorld()
       world.chain.setDomain({ chainId: 1n, version: 'other' })
       const caught = await thrownBy(buildRecoveryClient(world.config))
-      expect(caught).toBeInstanceOf(Error)
       expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect(caught).toMatchObject({ message: BUILDER_DOMAIN_CHAIN_MESSAGE })
     })
 
     it('reads a domain whose verifying contract is another manager as a construction refusal', async () => {
@@ -122,8 +133,8 @@ describe('the digest-version check', () => {
         version: 'other'
       })
       const caught = await thrownBy(buildRecoveryClient(world.config))
-      expect(caught).toBeInstanceOf(Error)
       expect(isDigestVersionRefusal(caught)).toBe(false)
+      expect(caught).toMatchObject({ message: BUILDER_VERIFYING_CONTRACT_MESSAGE })
     })
   })
 
@@ -131,8 +142,8 @@ describe('the digest-version check', () => {
     const world = createWorld()
     world.chain.setDomain({ fields: '0x1f' })
     const caught = await thrownBy(buildRecoveryClient(world.config))
-    expect(caught).toBeInstanceOf(Error)
     expect(isDigestVersionRefusal(caught)).toBe(false)
+    expect(caught).toMatchObject({ message: BUILDER_DOMAIN_FIELDS_MESSAGE })
   })
 })
 

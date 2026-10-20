@@ -6,6 +6,8 @@
  * disagrees with the build, and a privilege write, answer as they were seeded.
  */
 import {
+  BUILDER_CHAIN_MISMATCH_MESSAGE,
+  BUILDER_DIGEST_VERSION_MESSAGE,
   isProviderRevert,
   SocialRecoveryBuilder,
   configurationCommitment,
@@ -108,11 +110,11 @@ describe('the fake node under the SDK', () => {
   it('answers a deployment that disagrees with the build as it was seeded, through the SDK', async () => {
     const node = nodeOf()
     node.setChainId(1)
-    await expect(clientsOver(node)).rejects.toThrow()
+    await expect(clientsOver(node)).rejects.toThrow(BUILDER_CHAIN_MISMATCH_MESSAGE)
 
     const other = nodeOf()
     other.setDomain({ version: '2' })
-    await expect(clientsOver(other)).rejects.toThrow()
+    await expect(clientsOver(other)).rejects.toThrow(BUILDER_DIGEST_VERSION_MESSAGE)
 
     const moved = nodeOf()
     moved.setConstants({ manager: GUARDIAN })

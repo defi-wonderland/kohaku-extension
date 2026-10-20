@@ -8,6 +8,7 @@
  * through its one module, mocked here; the deployment is a fake node of its
  * own, every address in it made up.
  */
+import { BUILDER_CHAIN_MISMATCH_MESSAGE } from '@kohaku-eth/social-recovery'
 import type { Address, Hex } from '@kohaku-eth/social-recovery'
 import { toFunctionSelector, zeroHash } from 'viem'
 
@@ -172,7 +173,10 @@ describe('a chain whose deployment record names a deployed kit', () => {
   it("refuses another chain after the one domain read the client's own deployment check makes", async () => {
     const world = createDeployedWorld()
     world.ethers.answeredChainId = 1
-    await thrownBy(buildRecoveryClient(world.config))
+    const caught = await thrownBy(buildRecoveryClient(world.config))
+    expect(caught).toMatchObject({ message: BUILDER_CHAIN_MISMATCH_MESSAGE })
+    expect(isDigestVersionRefusal(caught)).toBe(false)
+    expect(isDeploymentRefusal(caught)).toBe(false)
     expect(checksOf(world)).toEqual(['eip712Domain'])
   })
 

@@ -15,8 +15,8 @@
  * The SDK's construction checks run at the first build, in the SDK's order:
  * the provider's chain id, the manager domain's chain id and verifying
  * contract, its `fields` bitmap, its digest version and its name. A refused
- * digest version throws a `DigestVersionRefusal`, so no prepare can run; the
- * account step draws it as the update-the-wallet state. A deployment is
+ * digest version or domain name throws a `DigestVersionRefusal`, so no
+ * prepare can run; the account step draws it as the update-the-wallet state. A deployment is
  * checked further: its manager answers at its address, and the action is
  * bound to the deployment's manager, the served implementation and the kit
  * slot and binding this build derives, or the build refuses with a
@@ -25,6 +25,7 @@
 import {
   AmbireActionCodec,
   BUILDER_DIGEST_VERSION_MESSAGE,
+  BUILDER_DOMAIN_NAME_MESSAGE,
   FORMATS_DIGEST_DOMAIN_NAME,
   KitRefusalError,
   passkeyMethod,
@@ -111,9 +112,9 @@ const refusedDigestVersion = async (
  * Builds the recovery kit client for one account from one configuration.
  *
  * Throws the SDK's `KitRefusalError` where a construction check refuses, a
- * `DigestVersionRefusal` where the manager publishes another digest version,
- * and a `DeploymentRefusal` where the deployment's manager or action
- * disagrees with it, all before any client is handed out. Every other
+ * `DigestVersionRefusal` where the manager publishes another digest version
+ * or domain name, and a `DeploymentRefusal` where the deployment's manager or
+ * action disagrees with it, all before any client is handed out. Every other
  * failure propagates as it was thrown.
  */
 export const buildRecoveryClient = async (
@@ -153,7 +154,11 @@ export const buildRecoveryClient = async (
         approving: builder.buildMethodsOrchestrator()
       }
     } catch (thrown) {
-      if (thrown instanceof KitRefusalError && thrown.message === BUILDER_DIGEST_VERSION_MESSAGE) {
+      if (
+        thrown instanceof KitRefusalError &&
+        (thrown.message === BUILDER_DIGEST_VERSION_MESSAGE ||
+          thrown.message === BUILDER_DOMAIN_NAME_MESSAGE)
+      ) {
         throw await refusedDigestVersion(policyManager, descriptor)
       }
       throw thrown
