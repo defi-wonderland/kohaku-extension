@@ -13,9 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
 
-import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
-import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
@@ -24,8 +22,7 @@ import useBackgroundService from '@web/hooks/useBackgroundService'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
 import { readSetupReading } from '@web/modules/social-recovery/recovery/entry/readout'
-import { ActionsRow, PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
-import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
+import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
 import {
   addressBookOf,
   createSendPort,
@@ -34,9 +31,7 @@ import {
 import type { HeldRequestQueue, ListedAccount } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { readRecoveryPassword } from '@web/modules/social-recovery/shared/records'
-import { mayStillLand, renderDepositStep } from '@web/modules/social-recovery/shared/writes'
-import DepositStepView from '@web/modules/social-recovery/shared/writes/components/DepositStepView'
-import WriteStateView from '@web/modules/social-recovery/shared/writes/components/WriteStateView'
+import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
 import { armScreenOf } from '@web/modules/social-recovery/setup/arm'
 import DisagreedView from '@web/modules/social-recovery/setup/arm/DisagreedView'
 import { useArmRun } from '@web/modules/social-recovery/setup/arm/useArmRun'
@@ -45,14 +40,17 @@ import {
   trustReadsComplete,
   trustRowsOf
 } from '@web/modules/social-recovery/setup/review'
-import TrustList from '@web/modules/social-recovery/setup/review/TrustList'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 
 import { OVERVIEW, REMOVAL_DRAFT } from './constants'
 import { overviewWriteKeysOf } from './copy'
-import PathLockedAsk from './PathLockedAsk'
+import ReauthorizeArrival from './ReauthorizeArrival'
 import { levelOfReading, needsPassword, reauthorizeDraftOf } from './readings'
+import RunBlock from './RunBlock'
 import type { LevelRead, OverviewIntent, OverviewWriteStepProps, StepHeadings } from './types'
+import WriteStepArrival from './WriteStepArrival'
+import WriteStepUnavailable from './WriteStepUnavailable'
+import WriteStepUnread from './WriteStepUnread'
 import { overviewStepsOf } from './writeSteps'
 
 const HEADINGS: Record<OverviewIntent, StepHeadings> = {
@@ -123,6 +121,7 @@ const OverviewWriteStep = ({
   // The re-authorize commits the setup at the level it was committed at.
   const [level, setLevel] = useState<LevelRead>({ status: 'pending' })
   const [levelRound, setLevelRound] = useState(0)
+  const retryLevel = useCallback(() => setLevelRound((round) => round + 1), [])
   useEffect(() => {
     if (!reauthorize) {
       return undefined
@@ -302,99 +301,6 @@ const OverviewWriteStep = ({
     ) : null
   }
 
-  const unavailable = () => {
-    if (accountFacts.status === 'unavailable') {
-      return (
-        <ReadFailedBlock
-          testID="overview-step-unavailable"
-          title={t('socialRecovery.client.unavailableTitle')}
-          body={
-            accountFacts.cause === 'not-listed'
-              ? t('socialRecovery.arm.notListed')
-              : t('socialRecovery.client.unavailableBody')
-          }
-          onRetry={accountFacts.retry}
-        />
-      )
-    }
-    if (ready && !ready.key) {
-      return (
-        <Alert
-          testID="overview-step-view-only"
-          type="error"
-          size="sm"
-          style={spacings.mbSm}
-          title={t('socialRecovery.client.unavailableTitle')}
-          text={t('socialRecovery.arm.viewOnly')}
-        />
-      )
-    }
-    return null
-  }
-
-  const reauthorizeArrival = () => {
-    if (reads.path.kind === 'locked') {
-      return (
-        <PathLockedAsk
-          testID="overview-step-locked"
-          ask={reads.ask}
-          onUnlock={reads.unlock}
-          onAskAgain={reads.askAgain}
-          onRetry={reads.retryPath}
-          bare
-        />
-      )
-    }
-    if (reads.path.kind === 'read-failed') {
-      return (
-        <ReadFailedBlock
-          testID="overview-step-path-failed"
-          title={t(`${OVERVIEW}.reads.failedTitle`)}
-          body={t(`${OVERVIEW}.reads.failedBody`)}
-          onRetry={reads.retryPath}
-        />
-      )
-    }
-    if (level.status === 'failed') {
-      return (
-        <ReadFailedBlock
-          testID="overview-step-level-failed"
-          title={t(`${OVERVIEW}.reads.failedTitle`)}
-          body={t(`${OVERVIEW}.reads.failedBody`)}
-          onRetry={() => setLevelRound((round) => round + 1)}
-        />
-      )
-    }
-    if (level.status === 'unreadable' || reads.path.kind === 'update-the-wallet') {
-      return (
-        <Alert
-          testID="overview-step-update-the-wallet"
-          type="error"
-          size="sm"
-          style={spacings.mbSm}
-          title={t('socialRecovery.client.updateTheWalletTitle')}
-          text={t('socialRecovery.client.updateTheWalletHow')}
-        />
-      )
-    }
-    if (!configuration || level.status === 'pending') {
-      return <ActivityIndicator testID="overview-step-reading" style={spacings.mbSm} />
-    }
-    if (passwordMissing) {
-      return (
-        <PathLockedAsk
-          testID="overview-step-password"
-          ask={reads.ask}
-          onUnlock={reads.unlock}
-          onAskAgain={reads.askAgain}
-          onRetry={reads.retryPath}
-          bare
-        />
-      )
-    }
-    return <TrustList rows={rows} client={client} onRetry={(method) => trust.retry(method)} />
-  }
-
   const startAction = (
     <Button
       testID="overview-step-start"
@@ -404,146 +310,6 @@ const OverviewWriteStep = ({
       onPress={run.start}
       hasBottomSpacing={false}
     />
-  )
-
-  const arrival = () => (
-    <View>
-      {reauthorize && reauthorizeArrival()}
-      {intent === 'clear' && facts.attemptOpen && (
-        <Text
-          fontSize={14}
-          weight="medium"
-          style={spacings.mtSm}
-          testID="overview-step-clear-cancels"
-        >
-          {t(`${OVERVIEW}.dormant.clearCancels`)}
-        </Text>
-      )}
-      {state.lookup === 'reading' || (!steps && accountFacts.status === 'loading') ? (
-        <ActivityIndicator testID="overview-step-lookup" style={spacings.mtSm} />
-      ) : (
-        <ActionsRow primary={startAction} secondary={back} />
-      )}
-      {state.lookup === 'failed' && (
-        <ReadFailedBlock
-          testID="overview-step-lookup-failed"
-          title={t('socialRecovery.records.loadFailed')}
-          onRetry={run.lookAgain}
-        />
-      )}
-    </View>
-  )
-
-  const runBlock = () => {
-    if (write.status === 'needsDeposit') {
-      const rendered = renderDepositStep(write.step, {}, t)
-      return (
-        <SectionCard spacing="none">
-          <DepositStepView step={write.step} variant="blocker" testID="overview-step-gas">
-            {rendered.routes.map((route) => (
-              <View key={route.kind} style={spacings.mbSm}>
-                <Text fontSize={14} weight="medium">
-                  {route.line}
-                </Text>
-                {!!route.note && (
-                  <Text fontSize={12} appearance="secondaryText">
-                    {route.note}
-                  </Text>
-                )}
-              </View>
-            ))}
-            {rendered.notes.map((note) => (
-              <Text key={note} fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-                {note}
-              </Text>
-            ))}
-            <Button
-              testID="overview-step-gas-continue"
-              type="primary"
-              size="small"
-              text={t('socialRecovery.actions.continue')}
-              onPress={run.recheck}
-              hasBottomSpacing={false}
-              style={flexbox.alignSelfStart}
-            />
-          </DepositStepView>
-        </SectionCard>
-      )
-    }
-    if (state.dropped) {
-      return (
-        <SectionCard spacing="none" testID="overview-step-dropped">
-          <Text fontSize={14} style={spacings.mbTy} testID="overview-step-dropped-line">
-            {t(`${OVERVIEW}.writes.dropped`)}
-          </Text>
-          <Button
-            testID="overview-step-send-again"
-            type="secondary"
-            size="small"
-            text={t('socialRecovery.writes.tryAgain')}
-            onPress={run.saveAgain}
-            hasBottomSpacing={false}
-            style={[flexbox.alignSelfStart, spacings.mtTy]}
-          />
-        </SectionCard>
-      )
-    }
-    const checksAgain =
-      write.status === 'submitting' &&
-      ((!!write.transactionHash && !!state.stalled) ||
-        (!write.transactionHash && state.follow === 'unread'))
-    const keys = overviewWriteKeysOf(write)
-    return (
-      <SectionCard spacing="none">
-        <WriteStateView
-          state={write}
-          body={keys.body ? [t(keys.body)] : undefined}
-          onRetry={run.start}
-          testID={`overview-step-${write.status}`}
-        >
-          {checksAgain && (
-            <Button
-              testID="overview-step-check-again"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.arm.checkAgain')}
-              onPress={run.checkAgain}
-              hasBottomSpacing={false}
-              style={[flexbox.alignSelfStart, spacings.mtTy]}
-            />
-          )}
-          {mayStillLand(write) && (
-            <Button
-              testID="overview-step-check-chain"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.arm.checkAgain')}
-              onPress={run.checkSetup}
-              hasBottomSpacing={false}
-              style={[flexbox.alignSelfStart, spacings.mtTy]}
-            />
-          )}
-        </WriteStateView>
-      </SectionCard>
-    )
-  }
-
-  // The removal landed and its check did not answer: it reads again, never as done.
-  const unreadBlock = () => (
-    <SectionCard spacing="none" testID="overview-step-unread">
-      <Text fontSize={14} style={spacings.mbTy} testID="overview-step-unread-line">
-        {t(`${OVERVIEW}.reads.failedTitle`)}
-      </Text>
-      <Button
-        testID="overview-step-reread"
-        type="secondary"
-        size="small"
-        text={t('socialRecovery.arm.checkAgain')}
-        onPress={run.reread}
-        hasBottomSpacing={false}
-        style={[flexbox.alignSelfStart, spacings.mtTy]}
-      />
-    </SectionCard>
   )
 
   // Back wherever nothing is on its way to the chain.
@@ -561,11 +327,39 @@ const OverviewWriteStep = ({
         lead={t(headings.lead)}
         titleTestID="overview-step-title"
       />
-      {unavailable()}
-      {screen === 'arrival' && arrival()}
-      {screen === 'run' && runBlock()}
+      <WriteStepUnavailable accountFacts={accountFacts} />
+      {screen === 'arrival' && (
+        <WriteStepArrival
+          clearCancels={intent === 'clear' && facts.attemptOpen}
+          reading={state.lookup === 'reading' || (!steps && accountFacts.status === 'loading')}
+          lookupFailed={state.lookup === 'failed'}
+          onLookAgain={run.lookAgain}
+          startAction={startAction}
+          back={back}
+        >
+          {reauthorize && (
+            <ReauthorizeArrival
+              reads={reads}
+              level={level}
+              onRetryLevel={retryLevel}
+              passwordMissing={passwordMissing}
+              rows={rows}
+              client={client}
+              onRetryTrust={trust.retry}
+            />
+          )}
+        </WriteStepArrival>
+      )}
+      {screen === 'run' && (
+        <RunBlock
+          run={run}
+          droppedLine={`${OVERVIEW}.writes.dropped`}
+          keysOf={overviewWriteKeysOf}
+          testID="overview-step"
+        />
+      )}
       {screen === 'confirming' && <ActivityIndicator testID="overview-step-confirming" />}
-      {screen === 'unread' && unreadBlock()}
+      {screen === 'unread' && <WriteStepUnread onReread={run.reread} />}
       {screen === 'run' && stopped && (
         <View style={[flexbox.directionRow, flexbox.alignCenter, spacings.mtSm]}>{back}</View>
       )}
