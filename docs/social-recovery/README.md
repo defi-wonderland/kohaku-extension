@@ -25,8 +25,7 @@ Only the files the implementation reads are here. The personas, the requirements
 
 ## Rules the implementation keeps
 
-- Screens build and test against the SDK doubles of PT-035 until the SDK lands. Screens import the extension's own client layer (PT-038), never the doubles directly, so the swap to the real SDK touches one folder.
-- The SDK interfaces the doubles imitate are the ones `design/sdk.md` D-201 declares. The builder hands an integrator `IMethodModuleReads`, never `IPolicyManagerInteractor`, and `IRecoveryActionInteractor`, never `IRecoveryActionArming`.
+- The extension consumes the SDK as the package `@kohaku-eth/social-recovery`, its runtime through the extension's own client layer, and keeps a fake node in that layer for the build with no deployment and for the unit tests.
 - Records live in the extension's local storage and never in a background controller (D-310).
 - Ceremonies that die on focus loss run in a full tab, never in the action popup (D-316).
 - Every holder-facing build carries one manifest public key (D-312, 2026-09-23), since the passkey relying party is the extension's own origin.
