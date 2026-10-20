@@ -48,6 +48,7 @@ const gathering = (): Gathering => ({
     setupNonce: '9',
     setupBody: '0x00',
     payload: PAYLOAD,
+    order: { token: ACCOUNT, amount: '0', payee: ACCOUNT },
     validUntil: '1700086400',
     block: { number: 1, timestamp: '1700000000', hash: '0x01' }
   },

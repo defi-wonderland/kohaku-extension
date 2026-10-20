@@ -92,8 +92,8 @@ const CASES: Record<Exclude<HostName, 'healthCheck'>, Case[]> = {
       verdict: 'not-supported'
     },
     {
-      title: 'the method cannot read the record version',
-      script: { configFrom: enrollFailure('version-unread') },
+      title: 'the method cannot read the request',
+      script: { configFrom: enrollFailure('request-unsupported') },
       verdict: 'not-supported'
     }
   ],
@@ -490,7 +490,7 @@ describe('what a row renders, by call', () => {
       NOTE('unreachableNote'),
       null
     ])
-    expect(row(notSupported('version-unread'), 'createClaim')).toEqual([
+    expect(row(notSupported('request-unsupported'), 'createClaim')).toEqual([
       null,
       NOTE('notSupportedNote'),
       null

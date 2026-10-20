@@ -84,7 +84,8 @@ const gathering = (replies: Reply[]): Gathering => ({
     config: '0xabcd',
     salt: '0x01',
     standing: 'not-stopped',
-    stoppable: false
+    stoppable: false,
+    credentialHoldsCode: false
   })),
   replies
 })

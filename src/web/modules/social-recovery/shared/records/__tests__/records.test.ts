@@ -111,7 +111,7 @@ const T0 = 1_700_000_000_000
 const HOUR = 60 * 60 * 1000
 
 const SETUP_DRAFT: SetupDraft = {
-  wait: 86400n,
+  wait: 86400,
   clauses: [{ threshold: 1, credentials: [{ method: METHOD, config: '0xabcd' }] }],
   ignoresPause: false,
   privacy: { publicMetadata: '0x', backup: 'encrypted' }
@@ -128,7 +128,7 @@ const SETUP_SAMPLES: SetupRecordValues = {
   inventory: ['another-device', 'guardian-wallets'],
   path: SETUP_DRAFT.clauses,
   enrollments: [ENROLLMENT],
-  waitingPeriod: 86400n,
+  waitingPeriod: 86400,
   passwordSet: 'password-set'
 }
 
@@ -213,7 +213,8 @@ const gathering = (
     config: '0xabcd',
     salt: '0x01',
     standing: 'not-stopped',
-    stoppable: false
+    stoppable: false,
+    credentialHoldsCode: false
   })),
   replies
 })
@@ -538,18 +539,18 @@ describe('the empty slots of a path', () => {
 describe('the default setup draft', () => {
   it('waits 48 hours, holds no clause, opts out of the pause and keeps an encrypted private backup', () => {
     const draft = defaultSetupDraft()
-    expect(draft.wait).toBe(BigInt(48 * 60 * 60))
+    expect(draft.wait).toBe(48 * 60 * 60)
     expect(draft.clauses).toEqual([])
     expect(draft.ignoresPause).toBe(true)
     expect(draft.privacy).toEqual({ publicMetadata: '0x', backup: 'encrypted' })
   })
 
-  it('round-trips through storage with its wait still a bigint', async () => {
+  it('round-trips through storage with its wait still a number', async () => {
     const { records } = setup()
     await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(defaultSetupDraft())
     const { value } = present(await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read())
     expect(value).toEqual(defaultSetupDraft())
-    expect(typeof value.wait).toBe('bigint')
+    expect(typeof value.wait).toBe('number')
   })
 
   it('each call returns a fresh draft with a fresh clause list', () => {
@@ -563,16 +564,15 @@ describe('the default setup draft', () => {
 
   it('a caller that changes the draft it got, clauses and privacy included, leaves the next call as it was', async () => {
     const draft = defaultSetupDraft()
-    draft.clauses.push({ threshold: 1, credentials: [emptySlot('passkey')] })
-    draft.privacy.backup = 'clear'
-    draft.wait = 86400n
-    draft.ignoresPause = false
+    Array.prototype.push.call(draft.clauses, { threshold: 1, credentials: [emptySlot('passkey')] })
+    Object.assign(draft.privacy, { backup: 'clear' })
+    Object.assign(draft, { wait: 86400, ignoresPause: false })
     const { records } = setup()
     await records.setup(CHAIN_ID, ACCOUNT).writeDraftAndPath(draft)
     const next = defaultSetupDraft()
     expect(next.clauses).toEqual([])
     expect(next.privacy.backup).toBe('encrypted')
-    expect(next.wait).toBe(BigInt(48 * 60 * 60))
+    expect(next.wait).toBe(48 * 60 * 60)
     expect(next.ignoresPause).toBe(true)
   })
 })
@@ -837,17 +837,20 @@ describe('no record is a bare boolean or zero', () => {
 
   it('a waiting period of zero still reads as a stored fact, not as absent', async () => {
     const { records } = setup()
-    await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(0n)
-    expect(present(await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.read()).value).toBe(0n)
+    await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.write(0)
+    expect(present(await records.setup(CHAIN_ID, ACCOUNT).waitingPeriod.read()).value).toBe(0)
   })
 
-  it('a bigint survives the rich JSON the helper stores', async () => {
+  it('a wait an earlier build stored as a bigint reads as the same number of seconds', async () => {
     const { storage, records } = setup()
-    await records.setup(CHAIN_ID, ACCOUNT).setupDraft.write(SETUP_DRAFT)
+    const draftKey = recordKeys.setup('setupDraft', CHAIN_ID, ACCOUNT)
+    const periodKey = recordKeys.setup('waitingPeriod', CHAIN_ID, ACCOUNT)
+    await storage.set(draftKey, { value: { ...SETUP_DRAFT, wait: 86400n }, savedAt: T0 })
+    await storage.set(periodKey, { value: 86400n, savedAt: T0 })
     expect(dump(storage)).toContain('$bigint')
-    const { value } = present(await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read())
-    expect(typeof value.wait).toBe('bigint')
-    expect(value.wait).toBe(86400n)
+    const setupRecords = records.setup(CHAIN_ID, ACCOUNT)
+    expect(present(await setupRecords.setupDraft.read()).value).toEqual(SETUP_DRAFT)
+    expect(present(await setupRecords.waitingPeriod.read()).value).toBe(86400)
   })
 
   it('a record whose value is undefined loses its value key and reads as absent, never as present', async () => {
@@ -881,7 +884,7 @@ describe('no record is a bare boolean or zero', () => {
   it('every value the records write is a truthy object', async () => {
     const { storage, records } = setup()
     await writeAllSetup(records)
-    await records.setup(CHAIN_ID, OTHER_ACCOUNT).waitingPeriod.write(0n)
+    await records.setup(CHAIN_ID, OTHER_ACCOUNT).waitingPeriod.write(0)
     await writeSession(records, GATHERING)
     await landSession(records)
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)
@@ -1214,7 +1217,7 @@ describe('the decrypted setup cache after execution', () => {
     expect(await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).toBe(ABSENT)
   })
 
-  it('holds the decrypted setup and its nonce as bigints, readable without the password after a worker restart', async () => {
+  it('holds the decrypted setup and its nonce as a bigint, readable without the password after a worker restart', async () => {
     const { storage, records, clock } = setup()
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)
     // The stored string carries the configuration, not a pointer to it.
@@ -1223,7 +1226,7 @@ describe('the decrypted setup cache after execution', () => {
     const restarted = createWalletRecords({ storage, now: () => clock.t })
     const cache = present(await restarted.decryptedSetupCache(CHAIN_ID, ACCOUNT).read())
     expect(cache.value).toEqual(CACHE)
-    expect(typeof cache.value.configuration.wait).toBe('bigint')
+    expect(typeof cache.value.configuration.wait).toBe('number')
     expect(cache.value.setupNonce).toBe(3n)
     expect(await restarted.decryptedSetupCache(CHAIN_ID, ACCOUNT).age()).toBe(2 * HOUR)
   })
@@ -1240,7 +1243,7 @@ describe('the decrypted setup cache after execution', () => {
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)
     clock.t = T0 + HOUR
     const reimported: DecryptedSetupCacheRecord = {
-      configuration: { ...CONFIGURATION, wait: 172800n },
+      configuration: { ...CONFIGURATION, wait: 172800 },
       setupNonce: 4n
     }
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(reimported)
@@ -2258,7 +2261,10 @@ describe('the ceremony request under its request id', () => {
     place: 0,
     method: METHOD,
     config: '0xabcd',
-    salt: '0x01'
+    salt: '0x01',
+    credentialHoldsCode: false,
+    payload: '0x',
+    order: { token: METHOD, amount: '0', payee: ACCOUNT }
   }
   const PARAMS = { relyingPartyId: 'chrome-extension://abc', userName: 'holder' }
   const target = { account: ACCOUNT, chainId: CHAIN_ID, method: 'passkey' }
@@ -2503,10 +2509,10 @@ describe('the ceremony request under its request id', () => {
 
 describe('the setup save in flight', () => {
   const KEY = recordKeys.saveInFlight(CHAIN_ID, ACCOUNT)
-  // A committed draft whose wait is beyond a safe integer, so only a bigint keeps it.
+  // A committed draft with a wait of its own.
   const SECOND_DRAFT: SetupDraft = {
     ...SETUP_DRAFT,
-    wait: 18_446_744_073_709_551_616n + 1n,
+    wait: 7 * 24 * 60 * 60 + 1,
     clauses: [
       {
         threshold: 2,
@@ -2593,13 +2599,13 @@ describe('the setup save in flight', () => {
     expect(batch.kind === 'batch' && batch.calls[1].value).toBe(1_180_591_620_717_411_303_424n)
   })
 
-  it('a claim stores the committed draft, and another page reads the same draft back with its bigint wait', async () => {
+  it('a claim stores the committed draft, and another page reads the same draft back with its wait', async () => {
     const { storage, records } = setup()
     await records.saveInFlight(CHAIN_ID, ACCOUNT).claim(SECOND_CLAIM)
     const tab = createWalletRecords({ storage, now: () => T0 })
     const { draft } = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value
     expect(draft).toEqual(SECOND_DRAFT)
-    expect(draft.wait).toBe(18_446_744_073_709_551_616n + 1n)
+    expect(draft.wait).toBe(7 * 24 * 60 * 60 + 1)
   })
 
   it('keeps the draft it was claimed with when the setup draft record changes after the claim', async () => {
@@ -2640,7 +2646,7 @@ describe('the setup save in flight', () => {
     expect((await saving.claim(SECOND_CLAIM)).record.value).toEqual(sent)
   })
 
-  it('marking it sent keeps the draft of the claim, its bigint wait included', async () => {
+  it('marking it sent keeps the draft of the claim, its wait included', async () => {
     const { storage, records } = setup()
     const saving = records.saveInFlight(CHAIN_ID, ACCOUNT)
     await saving.claim(SECOND_CLAIM)
@@ -2648,7 +2654,7 @@ describe('the setup save in flight', () => {
     const tab = createWalletRecords({ storage, now: () => T0 })
     const { draft } = present(await tab.saveInFlight(CHAIN_ID, ACCOUNT).read()).value
     expect(draft).toEqual(SECOND_DRAFT)
-    expect(draft.wait).toBe(18_446_744_073_709_551_616n + 1n)
+    expect(draft.wait).toBe(7 * 24 * 60 * 60 + 1)
   })
 
   const CLAIM_BLOCK = 7_000_100
