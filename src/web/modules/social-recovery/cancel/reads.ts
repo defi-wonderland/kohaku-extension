@@ -166,7 +166,8 @@ const rawLogOf = (log: ReceiptLog): RawLog | undefined => {
  * The owner's cancel of the account among a receipt's logs, decoded by the
  * kit's events feed: it names the attempt the cancel ended, whatever its id.
  * Only the logs of the receipt's own transaction count. Undefined where no
- * log decodes as one.
+ * log is that cancel; a log at the manager's address that does not decode
+ * throws, and the caller then falls back to the reading by id.
  */
 export const ownerCancelOf = ({
   logs,

@@ -19,10 +19,10 @@ const fullAddressOf = (address: Address | undefined): string | null =>
   address ? renderFullAddress(address) : null
 
 /**
- * The payment line of the request's own order. A request with no order, or a
- * zero amount, reads no payment; an order this folder cannot name a token for
- * renders nothing, so the carriers stay locked rather than show a payment the
- * guardian cannot read.
+ * The payment line of the request's own order. A request that is not an
+ * approval, or an order of a zero amount, reads no payment; an order this
+ * folder cannot name a token for renders nothing, so the carriers stay locked
+ * rather than show a payment the guardian cannot read.
  */
 const paymentOf = (request: ApproverRequest, t: Translate): string | null => {
   if (request.purpose !== 'approval') {
