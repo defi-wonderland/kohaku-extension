@@ -128,6 +128,19 @@ export interface SetupReading {
   source: SetupReadingSource
 }
 
+/**
+ * What the check of the password held in memory found, with the account and
+ * the password it checked: it opens the account's backup, the backup refuses
+ * it or is gone, or the check did not answer. A check that could not run for
+ * want of a client runs again once a client is ready.
+ */
+export interface HeldPasswordCheck {
+  address: Address
+  password: string
+  result: 'opened' | 'refused' | 'failed'
+  source: SetupReadingSource
+}
+
 /** A password a check opened, with the account it opened for. */
 export interface OpenedPassword {
   address: Address
