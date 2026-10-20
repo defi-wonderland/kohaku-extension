@@ -69,6 +69,7 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
     const ended = goalStands(intent, state)
     return {
       landed: ended,
+      ...(ended ? {} : { cause: 'no-event' as const }),
       isAuthorized: ended,
       nonce: state.setupNonce,
       setupCommitment: state.setupCommitment

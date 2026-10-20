@@ -196,7 +196,7 @@ describe('the overview reads', () => {
     const world = await worldAt('private')
     view = await renderOver(world)
     const first = await world.client.setup.setupState()
-    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
     world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
 
     await view.press('overview-locked-action')
@@ -213,7 +213,7 @@ describe('the overview reads', () => {
 
   it('refuses an older setup opened beside the state of a newer one, keeps none of it, and reads the facts again', async () => {
     const world = await worldAt('private')
-    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
     world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
     const attemptState = jest.spyOn(world.client.walletReads, 'attemptState')
     view = await renderOver(world)
@@ -238,7 +238,7 @@ describe('the overview reads', () => {
 
   it('reads the path as failed with retry, keeping nothing, where every opened setup is the older one', async () => {
     const world = await worldAt('private')
-    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
     world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
     view = await renderOver(world)
     // A node that stays behind the one the state reads came from opens the older setup every time.

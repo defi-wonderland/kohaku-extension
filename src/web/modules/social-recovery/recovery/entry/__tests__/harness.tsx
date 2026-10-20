@@ -518,7 +518,13 @@ export const gatheringFor = (account: Address): Gathering => ({
     setupNonce: '1',
     setupBody: '0x00',
     validUntil: '1800086400',
-    block: { number: 1, timestamp: '1800000000', hash: '0x01' }
+    block: { number: 1, timestamp: '1800000000', hash: '0x01' },
+    payload: '0xabcdef',
+    order: {
+      token: '0x0000000000000000000000000000000000000000',
+      amount: '0',
+      payee: '0x0000000000000000000000000000000000000000'
+    }
   },
   places: [],
   replies: []
@@ -896,7 +902,7 @@ export const LOST_SETUP: Configuration = {
       }))
     }
   ],
-  wait: 432_000n,
+  wait: 432_000,
   ignoresPause: false
 }
 
@@ -908,7 +914,7 @@ export const OTHER_ORIGIN_SETUP: Configuration = {
       credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') }]
     }
   ],
-  wait: 432_000n,
+  wait: 432_000,
   ignoresPause: false
 }
 
@@ -918,7 +924,7 @@ export const UNKNOWN_METHOD: Address = getAddress('0x0dd000000000000000000000000
 /** A setup whose one method is a module this build does not know. */
 export const UNKNOWN_METHOD_SETUP: Configuration = {
   clauses: [{ threshold: 1, credentials: [{ method: UNKNOWN_METHOD, config: '0x01' }] }],
-  wait: 432_000n,
+  wait: 432_000,
   ignoresPause: false
 }
 
@@ -933,7 +939,7 @@ export const SHORT_GROUP_SETUP: Configuration = {
       ]
     }
   ],
-  wait: 432_000n,
+  wait: 432_000,
   ignoresPause: false
 }
 
@@ -948,7 +954,7 @@ export const ONE_ANSWERABLE_SETUP: Configuration = {
       ]
     }
   ],
-  wait: 432_000n,
+  wait: 432_000,
   ignoresPause: false
 }
 

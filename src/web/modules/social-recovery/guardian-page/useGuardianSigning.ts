@@ -93,7 +93,7 @@ const useGuardianSigning = ({
       if (!approving) {
         return 'unpackaged'
       }
-      const reply = await approving.replyFrom(owner, typedData, { signature })
+      const reply = await approving.replyFrom(owner, { ...typedData }, { signature })
       if (reply.kind === 'reply-failure') {
         return 'unpackaged'
       }

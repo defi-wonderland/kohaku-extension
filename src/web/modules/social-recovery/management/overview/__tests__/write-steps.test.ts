@@ -148,7 +148,7 @@ describe('the overview writes', () => {
     expect(agreed.landed && agreed.isAuthorized).toBe(true)
     world.chain.commitSetup({
       level: 'public',
-      configuration: { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+      configuration: { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
     })
 
     await steps.wipe()

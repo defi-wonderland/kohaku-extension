@@ -43,7 +43,7 @@ export interface ConsumeEvent {
   /** The removed key's latest earlier grant, where a privilege event names one. */
   removedPrivilege?: Hex
   /** The methods the consumed attempt's record names as used. */
-  usedMethods: Address[]
+  usedMethods: readonly Address[]
   /** The consume's block time, in seconds since epoch. */
   time: number
 }

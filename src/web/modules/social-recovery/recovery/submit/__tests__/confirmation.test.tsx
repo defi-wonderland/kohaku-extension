@@ -234,7 +234,7 @@ describe('the submission confirmation', () => {
     })
 
     it('gives a wait under one hour in whole minutes, never as zero hours', async () => {
-      const world = await openWorld({ configuration: { ...MIXED_PATH, wait: 300n } })
+      const world = await openWorld({ configuration: { ...MIXED_PATH, wait: 300 } })
       const mounted = await open(world)
       await openDetails(mounted)
       expect(mounted.textOf('submit-waiting-period')).toBe(

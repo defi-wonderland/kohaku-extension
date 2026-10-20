@@ -49,13 +49,13 @@ export const deadlinePassed = (gathering: Gathering, clock: number): boolean =>
  * changed setup is not this request's.
  */
 const isOwnAttempt = (gathering: Gathering, attempt: Attempt): boolean => {
-  const { attemptId, setupNonce, payload } = gathering.request
+  const { attemptId, setupNonce } = gathering.request
   return (
     attempt.state !== 'None' &&
     attempt.attemptId === BigInt(attemptId) &&
     attempt.setupNonce === BigInt(setupNonce) &&
-    payload !== undefined &&
-    keccak256(payload) === attempt.payloadHash
+    gathering.purpose === 'approval' &&
+    keccak256(gathering.request.payload) === attempt.payloadHash
   )
 }
 

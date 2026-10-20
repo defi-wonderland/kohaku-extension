@@ -30,6 +30,7 @@ import type {
   Attempt,
   Configuration,
   Credential,
+  Gathering,
   Hex,
   KitNotification,
   RecoveryState
@@ -830,9 +831,13 @@ export const openWorld = async ({
  * hash: its request carries no payload. The world must open with no countdown.
  */
 export const landRecordWithoutAttempt = async ({ records, account, configuration }: World) => {
+  // A session an earlier build stored, whose request carried no handover bytes.
+  const opened = gatheringOf(configuration, 1, account)
+  const { payload, ...request } = opened.request
+  expect(payload).toBeDefined()
   const live = await records
     .recoverySession(CHAIN_ID, account)
-    .write(gatheringOf(configuration, 1, account), null)
+    .write({ ...opened, request } as unknown as Gathering, null)
   await records.landSubmission(CHAIN_ID, account, live.revision)
 }
 

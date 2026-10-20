@@ -12,6 +12,7 @@
 import type { Gathering, Hex } from '@kohaku-eth/social-recovery'
 
 import type {
+  ApprovalGathering,
   FakeDeps,
   FakeKit,
   Mounted,
@@ -61,7 +62,7 @@ const PAYLOAD: Hex = '0xabcdef'
 const OTHER_PAYLOAD: Hex = '0x123456'
 
 /** The gathering of attempt one, with the payload its submission would carry. */
-const withPayload = (gathering: Gathering, payload: Hex = PAYLOAD): Gathering => ({
+const withPayload = (gathering: ApprovalGathering, payload: Hex = PAYLOAD): Gathering => ({
   ...gathering,
   request: { ...gathering.request, payload }
 })

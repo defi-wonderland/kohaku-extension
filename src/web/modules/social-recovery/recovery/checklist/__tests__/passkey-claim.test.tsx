@@ -599,6 +599,7 @@ describe('the passkey row', () => {
         .write(withReplies(gathering, [0]), read?.revision ?? null)
       if (refuses) {
         kit.addApproverReply.mockImplementation((held) => ({
+          outcome: 'refused',
           gathering: held,
           reason: { kind: 'add-refusal', cause: 'binding-mismatch' }
         }))

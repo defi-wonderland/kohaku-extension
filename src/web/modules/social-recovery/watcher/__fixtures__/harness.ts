@@ -128,7 +128,12 @@ export const atBlock = <T extends { at: LogPosition }>(log: T, blockNumber: numb
  * `placeEvents` answer only a scan whose blocks hold them.
  */
 export const scriptedChain = () => {
-  const head: BlockHeader = { number: HEAD, timestamp: HEAD_TIME, hash: zeroHash }
+  // The head a test moves, a mutable copy of the header the node answers.
+  const head: { number: number; timestamp: BlockHeader['timestamp']; hash: Hex } = {
+    number: HEAD,
+    timestamp: HEAD_TIME,
+    hash: zeroHash
+  }
   const states = new Map<string, ActionState | Error>()
   const codes = new Set<string>()
   const unauthorized = new Set<string>()

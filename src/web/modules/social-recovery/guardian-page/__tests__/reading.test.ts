@@ -41,7 +41,9 @@ const VALID_UNTIL = CREATED_AT + 86_400
 const BEFORE_DEADLINE = CREATED_AT * 1000
 const AFTER_DEADLINE = (VALID_UNTIL + 1) * 1000
 
-const requestOf = (overrides: Partial<ApproverRequest> = {}): ApproverRequest => ({
+const requestOf = (
+  overrides: Partial<Extract<ApproverRequest, { purpose: 'approval' }>> = {}
+): Extract<ApproverRequest, { purpose: 'approval' }> => ({
   kind: 'recovery-proof-request',
   version: 1,
   purpose: 'approval',
@@ -54,11 +56,13 @@ const requestOf = (overrides: Partial<ApproverRequest> = {}): ApproverRequest =>
   setupNonce: '2',
   setupBodyHash: `0x${'5e'.repeat(32)}`,
   payload: PAYLOAD,
+  order: { token: zeroAddress, amount: '0', payee: zeroAddress },
   validUntil: String(VALID_UNTIL),
   place: 1,
   method: getAddress('0xecd5000000000000000000000000000000000002'),
   config: '0x01',
   salt: '0x02',
+  credentialHoldsCode: false,
   ...overrides
 })
 
@@ -92,17 +96,17 @@ const factsOf = (overrides: Partial<PollFacts> = {}): PollFacts => ({
 
 const descriptionOf = (overrides: Partial<RequestDescription> = {}): RequestDescription => ({
   account: ACCOUNT,
-  chainId: BigInt(BUILD.chainId),
+  chainId: BUILD.chainId,
   manager: BUILD.manager,
   action: requestOf().action,
   attemptId: 3n,
   setupNonce: 2n,
   purpose: 'approval',
-  handover: { decoded: true, value: { newAuthority: NEW_KEY, removedAuthority: REMOVED_KEY } },
+  handover: { decoded: true, newAuthority: NEW_KEY, removedAuthority: REMOVED_KEY },
   validUntil: VALID_UNTIL,
   place: 1,
-  identityPublic: undefined,
-  device: undefined,
+  identityPublic: { method: requestOf().method, config: requestOf().config, saltPublished: true },
+  device: 'no-implementation',
   ...overrides
 })
 
@@ -135,9 +139,12 @@ describe('the request the link carries', () => {
   })
 
   it('reads no request from a link that carries a cancellation', () => {
-    const { payload, ...cancellation } = requestOf({ purpose: 'cancellation' })
-    expect(payload).toBeDefined()
-    const cancelLink = approvalLinkOf(cancellation, 'chrome-extension://kohaku/tab.html')
+    const { payload, order, ...members } = requestOf()
+    expect([payload, order]).toEqual([PAYLOAD, expect.any(Object)])
+    const cancelLink = approvalLinkOf(
+      { ...members, purpose: 'cancellation' },
+      'chrome-extension://kohaku/tab.html'
+    )
     expect(approvalRequestOf(cancelLink, '')).toBeNull()
   })
 
@@ -307,7 +314,7 @@ describe('what the page reads of the request', () => {
   })
 
   it('refuses a request aimed at another chain, manager or digest version before any read', () => {
-    const others: Partial<ApproverRequest>[] = [
+    const others: Partial<Extract<ApproverRequest, { purpose: 'approval' }>>[] = [
       { chainId: '1' },
       { manager: getAddress('0xd41f8b062c97ae5310bd7f4a6e21c08539dab7e7') },
       { digestVersion: '2' }
@@ -351,7 +358,10 @@ describe('the four values and the deadline', () => {
   })
 
   it('leaves the values not rendered where the handover is not decoded or the payment has an amount', () => {
-    const undecoded = approvalValuesOf(descriptionOf({ handover: { decoded: false } }), t)
+    const undecoded = approvalValuesOf(
+      descriptionOf({ handover: { decoded: false, cause: 'no-codec' } }),
+      t
+    )
     expect(undecoded.lines.map(({ value }) => value)).toEqual([ACCOUNT, null, null, 'No payment'])
     expect(undecoded.rendered).toBe(false)
     const paid = approvalValuesOf(
@@ -384,7 +394,13 @@ describe('the sign action', () => {
   it('stays disabled while any one gate is closed, the ticked box alone enabling nothing', () => {
     const closed = [
       { ...open, acknowledged: false },
-      { ...open, values: approvalValuesOf(descriptionOf({ handover: { decoded: false } }), t) },
+      {
+        ...open,
+        values: approvalValuesOf(
+          descriptionOf({ handover: { decoded: false, cause: 'no-codec' } }),
+          t
+        )
+      },
       { ...open, deadline: null },
       { ...open, deadline: { ...deadline, passed: true } },
       { ...open, reading: { kind: 'failed' } as ApprovalReading },

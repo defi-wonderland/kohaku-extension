@@ -25,10 +25,10 @@ const fullAddressOf = (address: Address | undefined): string | null =>
  * guardian cannot read.
  */
 const paymentOf = (request: ApproverRequest, t: Translate): string | null => {
-  const { order } = request
-  if (!order) {
+  if (request.purpose !== 'approval') {
     return renderPaymentOrder(null, null, t)
   }
+  const { order } = request
   try {
     return renderPaymentOrder(
       { token: order.token, amount: BigInt(order.amount), payee: order.payee },
@@ -61,8 +61,5 @@ export const guardianValuesOf = (
     },
     { name: 'payment', label: renderValueLabel('payment', t), value: paymentOf(request, t) }
   ]
-  // An approval request with no handover bytes has a link the approval page
-  // refuses, so the row does not hand it out.
-  const carriable = request.purpose !== 'approval' || request.payload !== undefined
-  return { lines, ready: carriable && lines.every((line) => line.value !== null) }
+  return { lines, ready: lines.every((line) => line.value !== null) }
 }

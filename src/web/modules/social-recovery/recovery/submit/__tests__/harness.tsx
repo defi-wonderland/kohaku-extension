@@ -56,7 +56,10 @@ import type {
   StoredSession,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
-import type { TestStorage } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
+import type {
+  ApprovalGathering,
+  TestStorage
+} from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import type {
   SendingPlan,
   SubmitKitClient,
@@ -265,7 +268,7 @@ export const submitGathering = (
   configuration: Configuration,
   replied: number[],
   order?: { amount: string }
-): Gathering => {
+): ApprovalGathering => {
   const opened = gatheringOf(configuration, 1, account)
   return {
     ...opened,
@@ -287,7 +290,7 @@ export const landedSession = (account: Address, gathering: Gathering) => ({
   account,
   attemptId: gathering.request.attemptId,
   setupNonce: gathering.request.setupNonce,
-  payloadHash: keccak256(gathering.request.payload ?? '0x')
+  payloadHash: keccak256('payload' in gathering.request ? gathering.request.payload : '0x')
 })
 
 /** The manager's attempt record of this gathering's start, under its id, nonce and payload hash. */
@@ -407,11 +410,11 @@ export const fakeKit = (
       attemptId: BigInt(open.request.attemptId),
       setupNonce: BigInt(open.request.setupNonce),
       setupBody: open.request.setupBody,
-      payload: open.request.payload ?? '0x',
+      payload: 'payload' in open.request ? open.request.payload : '0x',
       order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
       validUntil: Number(open.request.validUntil),
       proofs: chosen.map((place) => ({
-        place: BigInt(place),
+        place,
         method: open.places[place].method,
         config: open.places[place].config,
         salt: open.places[place].salt,
@@ -594,7 +597,7 @@ export const recordsOn = (storage: TestStorage): WalletRecords => createWalletRe
  * `gathering`: the same attempt, a later deadline, and the payload `payload`
  * (the same new key where it is left out).
  */
-export const regathered = (gathering: Gathering, payload: Hex = PAYLOAD): Gathering => ({
+export const regathered = (gathering: ApprovalGathering, payload: Hex = PAYLOAD): Gathering => ({
   ...gathering,
   request: {
     ...gathering.request,
@@ -831,7 +834,7 @@ export const stepsOf = (input: {
   port: SendPort
   records: WalletRecords
   account: Address
-  gathering: Gathering
+  gathering: ApprovalGathering
   plan: SendingPlan
   chosen: ReadonlySet<number>
   now?: () => number
@@ -921,7 +924,7 @@ export const CLAIM_NOW = 1_800_000_000_000
 /** One device: a recovery's live session on one storage, the chain's kit, and the records each page opens. */
 export interface Device {
   account: Address
-  gathering: Gathering
+  gathering: ApprovalGathering
   kit: Kit
   /** The records each page opens over the device's one storage. */
   records: () => WalletRecords
@@ -998,7 +1001,7 @@ export const batchPlan = async (seed: number): Promise<SendingPlan> =>
 
 /** A decoded kit error the wallet read from a reverted start. */
 export const kitError = (name: string) => ({
-  kind: 'known' as const,
+  known: true as const,
   source: 'manager' as const,
   name,
   selector: '0x12345678' as Hex,
@@ -1141,7 +1144,7 @@ export interface World {
   records: WalletRecords
   kit: Kit
   port: ReturnType<typeof sendPort>
-  gathering: Gathering
+  gathering: ApprovalGathering
   configuration: Configuration
   receiving: Account
   /** The key the recovery installs. */
