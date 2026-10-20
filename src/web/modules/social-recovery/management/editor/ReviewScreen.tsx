@@ -260,7 +260,7 @@ export const ReviewStageView = ({
     if (
       state.lookup === 'failed' ||
       write.status === 'failedNotSent' ||
-      state.stop === 'overview-elsewhere'
+      state.stop === 'held-by-another-write'
     ) {
       refreshHeld()
     }

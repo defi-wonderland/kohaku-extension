@@ -585,7 +585,7 @@ describe('the removal around the refusals and other writes', () => {
       state: {
         write: { status: 'idle', write: 'ownerWrite', run: 1 },
         after: { stage: 'none' },
-        stop: 'overview-elsewhere'
+        stop: 'held-by-another-write'
       }
     }
     await view.render(React.cloneElement(element))

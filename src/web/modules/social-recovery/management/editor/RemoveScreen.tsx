@@ -120,7 +120,7 @@ export const RemoveStageView = ({
     if (
       state.lookup === 'failed' ||
       state.write.status === 'failedNotSent' ||
-      state.stop === 'overview-elsewhere'
+      state.stop === 'held-by-another-write'
     ) {
       refreshHeld()
     }
