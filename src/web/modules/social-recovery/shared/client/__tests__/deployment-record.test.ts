@@ -9,7 +9,7 @@
 import { getAddress, zeroAddress } from 'viem'
 
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import {
   addressBookOf,
   AUDITED_ACTIONS,

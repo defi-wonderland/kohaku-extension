@@ -3,7 +3,7 @@
  *
  * - The extension's own provider is mocked as an `ethers`-shaped object of
  *   `jest.fn` members, its typed reads and its JSON-RPC `send`, answering from
- *   a `ScriptedChain`. No test reaches a network.
+ *   the fake node. No test reaches a network.
  * - The background is a fake request queue behind the `SignRequestPort`: a
  *   `jest.fn` dispatch, a window id, the accounts the wallet lists, and a
  *   `push` a test drives by hand with the `requests` and `signMessage`
@@ -19,12 +19,13 @@
  *   JSON-RPC network, whose `send` answers the transactions, receipts, blocks
  *   and nonces a test scripts, as a node's JSON (`scriptedNode`), so ethers'
  *   own wait decides the receipt, the revert and the replacement.
- * - The stand-in's scripted chain (`sdkStandIn.chainFor`) is reset before each
- *   world, so one test's domain script never leaks into the next.
+ * - The stand-in's fake node (`sdkStandIn.nodeFor`) is reset before each
+ *   world, so one test's world never leaks into the next.
  * - The ceremony tab's resolver reads the wallet's records over an in-memory
  *   storage and a client of the approving side alone, built by a `jest.fn`.
  */
 import { AbiCoder, id, toBeHex, toQuantity, Wallet } from 'ethers'
+import { zeroAddress } from 'viem'
 
 import { Session } from '@ambire-common/classes/session'
 import type { AccountOnchainState } from '@ambire-common/interfaces/account'
@@ -33,16 +34,12 @@ import type { SignUserRequest } from '@ambire-common/interfaces/userRequest'
 import { AccountOpStatus } from '@ambire-common/libs/accountOp/types'
 
 import {
-  addressOf,
-  MethodsOrchestratorDouble,
-  PolicyManagerDouble,
-  ProviderDouble,
-  RecoveryActionDouble,
-  RecoveryClientDouble,
-  RecoveryKitBuilderDouble,
-  ScriptedChain,
-  SetupClientDouble
-} from '@web/modules/social-recovery/sdk-doubles'
+  AmbireRecoveryAction,
+  MethodsOrchestrator,
+  PolicyManager,
+  RecoveryClient,
+  SetupClient
+} from '@kohaku-eth/social-recovery'
 import type { VisibilitySource } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   Address,
@@ -53,7 +50,7 @@ import type {
   IProvider,
   IRecoveryMethod,
   PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import {
   addressBookOf,
   CHAIN_IDS,
@@ -88,7 +85,8 @@ import {
   type SignRequestUpdate,
   type SubmittedOperation
 } from '@web/modules/social-recovery/shared/client'
-import { createCodeRead } from '@web/modules/social-recovery/shared/client/provider-adapter'
+import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
+import type { ScriptedNode as FakeNode } from '@web/modules/social-recovery/shared/client/scripted'
 // The stand-in is not part of the barrel a screen imports; tests reach it by path.
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/types'
@@ -98,7 +96,7 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 
 export * from '@web/modules/social-recovery/shared/client'
-export { sdkStandIn }
+export { sdkStandIn, addressOf }
 
 export type HookState = RecoveryClientState & { retry: () => void }
 
@@ -131,11 +129,11 @@ export const CLIENT_CONFIGURATION_KEYS: (keyof ClientConfiguration)[] = [
   'creation',
   'accountImplementation',
   'blockTags',
-  'logChunkWidth',
+  'logChunkSize',
   'simulate',
   'defaultWait',
-  'shortWaitBelow',
-  'maximumWait',
+  'shortWait',
+  'maxWait',
   'requestWindow',
   'cancelWindow',
   'ruleCostBound'
@@ -144,23 +142,6 @@ export const CLIENT_CONFIGURATION_KEYS: (keyof ClientConfiguration)[] = [
 /** Whether a member name hands a signer, a key or storage to the SDK side. */
 export const namesSignerOrStorage = (name: string): boolean =>
   /signer|storage|keystore|seed|privatekey|mnemonic/i.test(name) || /^sign([A-Z]|$)/.test(name)
-
-const SELECTOR = {
-  eip712Domain: id('eip712Domain()').slice(0, 10),
-  name: id('name()').slice(0, 10),
-  version: id('version()').slice(0, 10)
-}
-
-const coder = AbiCoder.defaultAbiCoder()
-
-/** What the manager's `eip712Domain()` answers, ABI-encoded from the chain's scripted domain. */
-export const encodedDomain = (chain: ScriptedChain): Hex => {
-  const d = chain.manager.domain
-  return coder.encode(
-    ['bytes1', 'string', 'string', 'uint256', 'address', 'bytes32', 'uint256[]'],
-    [d.fields, d.name, d.version, d.chainId, d.verifyingContract, d.salt, d.extensions]
-  ) as Hex
-}
 
 const tagOf = (tag: unknown): BlockTag =>
   typeof tag === 'string' && tag.startsWith('0x') ? Number(tag) : (tag as BlockTag)
@@ -183,6 +164,7 @@ export interface EthersMock {
   estimateGas: jest.Mock
   send: jest.Mock
   getCode: jest.Mock
+  getTransaction: jest.Mock
   destroy: jest.Mock
   /** The chain id this provider answers; defaults to the chain's descriptor. */
   answeredChainId: number
@@ -204,41 +186,29 @@ export const underlyingCalls = (mock: EthersMock): [string, unknown[]][] =>
     mock[member].mock.calls.map((args) => [member, args] as [string, unknown[]])
   )
 
-/** An ethers-shaped provider whose reads answer from `chain`. */
-export const ethersOver = (chain: ScriptedChain): EthersMock => {
+/** An ethers-shaped provider whose reads answer from the fake node. */
+export const ethersOver = (chain: FakeNode): EthersMock => {
   const mock = {} as EthersMock
   mock.answeredChainId = chain.descriptor.chainId
-  const ethCall = (tx: { to?: string; data?: string }): Hex => {
-    const to = (tx.to ?? '').toLowerCase()
-    const data = (tx.data ?? '').toLowerCase()
-    if (to === chain.descriptor.manager.toLowerCase()) {
-      if (data.startsWith(SELECTOR.eip712Domain)) {
-        return encodedDomain(chain)
-      }
-      if (data.startsWith(SELECTOR.name)) {
-        return coder.encode(['string'], [chain.manager.name]) as Hex
-      }
-      if (data.startsWith(SELECTOR.version)) {
-        return coder.encode(['string'], [chain.manager.version]) as Hex
-      }
-    }
-    const scripted = chain.calls.get(`${to}:${data}`)
-    if (scripted && 'result' in scripted) {
-      return scripted.result
-    }
-    return '0x'
-  }
+  const ethCall = (tx: { to?: string; data?: string; blockTag?: unknown }): Promise<Hex> =>
+    chain.call(
+      (tx.to ?? zeroAddress) as Address,
+      (tx.data ?? '0x') as Hex,
+      zeroAddress,
+      tagOf(tx.blockTag ?? 'latest')
+    )
   const blockOf = (tag: unknown) => {
     const b = chain.blockAt(tagOf(tag))
     return { number: b.number, timestamp: b.timestamp, hash: b.hash }
   }
   mock.getNetwork = jest.fn(async () => ({ chainId: BigInt(mock.answeredChainId), name: 'mock' }))
-  mock.call = jest.fn(async (tx: { to?: string; data?: string }) => ethCall(tx))
+  mock.call = jest.fn(async (tx: { to?: string; data?: string; blockTag?: unknown }) => ethCall(tx))
   mock.getLogs = jest.fn(async () => [])
   mock.getBlock = jest.fn(async (tag: unknown) => blockOf(tag))
   mock.getBalance = jest.fn(async () => NODE_ANSWERS.balance)
   mock.estimateGas = jest.fn(async () => NODE_ANSWERS.gas)
   mock.getCode = jest.fn(async () => '0x')
+  mock.getTransaction = jest.fn(async () => null)
   mock.destroy = jest.fn()
   mock.send = jest.fn(async (method: string, params: unknown[]) => {
     switch (method) {
@@ -298,64 +268,24 @@ const PREPARE = /^prepare|^armingCall$|^disarmingCall$/
 const prepareMembersOf = (proto: object): string[] =>
   Object.getOwnPropertyNames(proto).filter((n) => PREPARE.test(n))
 
-/** Spies on every prepare member of every double the client could reach. */
+/** Spies on every prepare member of every SDK part the client could reach. */
 export const spyOnPrepares = (): jest.SpyInstance[] =>
   [
-    RecoveryClientDouble.prototype,
-    SetupClientDouble.prototype,
-    PolicyManagerDouble.prototype,
-    RecoveryActionDouble.prototype
+    RecoveryClient.prototype,
+    SetupClient.prototype,
+    PolicyManager.prototype,
+    AmbireRecoveryAction.prototype
   ].flatMap((proto) =>
     prepareMembersOf(proto).map((name) =>
       jest.spyOn(proto as unknown as Record<string, () => unknown>, name)
     )
   )
 
-export interface BuilderSpies {
-  provider: jest.SpyInstance
-  descriptor: jest.SpyInstance
-  account: jest.SpyInstance
-  action: jest.SpyInstance
-  config: jest.SpyInstance
-  policyManager: jest.SpyInstance
-  eventManager: jest.SpyInstance
-  method: jest.SpyInstance
-  codec: jest.SpyInstance
-  buildSetupClient: jest.SpyInstance
-  buildRecoveryClient: jest.SpyInstance
-  recoveryAction: jest.SpyInstance
-  methodModuleReads: jest.SpyInstance
-}
-
-export const spyOnBuilder = (): BuilderSpies => {
-  const proto = RecoveryKitBuilderDouble.prototype
-  return {
-    provider: jest.spyOn(proto, 'provider'),
-    descriptor: jest.spyOn(proto, 'descriptor'),
-    account: jest.spyOn(proto, 'account'),
-    action: jest.spyOn(proto, 'action'),
-    config: jest.spyOn(proto, 'config'),
-    policyManager: jest.spyOn(proto, 'policyManager'),
-    eventManager: jest.spyOn(proto, 'eventManager'),
-    method: jest.spyOn(proto, 'method'),
-    codec: jest.spyOn(proto, 'codec'),
-    buildSetupClient: jest.spyOn(proto, 'buildSetupClient'),
-    buildRecoveryClient: jest.spyOn(proto, 'buildRecoveryClient'),
-    recoveryAction: jest.spyOn(proto, 'recoveryAction'),
-    methodModuleReads: jest.spyOn(proto, 'methodModuleReads')
-  }
-}
-
 /** The value a setter received last, the one the builder builds with. */
 export const lastArg = (spy: jest.SpyInstance, index = 0): unknown => {
   const { calls } = spy.mock
   return calls.length ? calls[calls.length - 1][index] : undefined
 }
-
-export const providerDoubleReads = (): jest.SpyInstance[] =>
-  (['chainId', 'call', 'logs', 'block'] as const).map((m) =>
-    jest.spyOn(ProviderDouble.prototype, m)
-  )
 
 /** The prototype chain of a value, itself first, stopping before Object's and Function's. */
 const chainOf = (value: object): object[] => {
@@ -419,8 +349,8 @@ export const thrownBy = (run: Promise<unknown>): Promise<unknown> =>
   )
 
 export interface World {
-  /** The stand-in's scripted chain record the client is built against. */
-  chain: ScriptedChain
+  /** The stand-in's fake node the client is built against. */
+  chain: FakeNode
   /** The extension's own provider, mocked. */
   ethers: EthersMock
   /** The adapter over it, the configuration's provider. */
@@ -433,7 +363,7 @@ export interface World {
 
 /**
  * A world on the chain this build reads: the client's own address book and
- * descriptor, the stand-in's scripted chain for them (reset first), the
+ * descriptor, the stand-in's fake node for them (reset first), the
  * extension provider mocked over it and the adapter the configuration names.
  */
 export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}): World => {
@@ -442,7 +372,7 @@ export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}
   const addressBook = overrides.addressBook ?? addressBookOf(WALLET_RECOVERY_CHAIN)
   const chainLabel = overrides.chain ?? WALLET_RECOVERY_CHAIN
   const descriptor = descriptorOf(chainLabel, addressBook)
-  const chain = sdkStandIn.chainFor(descriptor, account)
+  const chain = sdkStandIn.nodeFor(descriptor, account)
   const ethers = ethersOver(chain)
   const adapter = createProviderAdapter(ethers)
   const config: RecoveryClientConfiguration = {
@@ -450,8 +380,6 @@ export const createWorld = (overrides: Partial<RecoveryClientConfiguration> = {}
     account,
     addressBook,
     provider: adapter,
-    codeRead: createCodeRead(ethers),
-    transactionRead: async () => null,
     ...overrides
   }
   return { chain, ethers, adapter, config, descriptor, account }
@@ -1232,7 +1160,7 @@ export const fakeApprovingClient = (
 ): FakeApprovingClient => {
   const methods = new Map(Object.entries(served))
   return {
-    approving: new MethodsOrchestratorDouble(new Map(), []),
+    approving: new MethodsOrchestrator(new Map(), new Map(), []),
     methodFor: jest.fn((slug: string) => methods.get(slug)),
     descriptor
   }
@@ -1244,14 +1172,14 @@ export type { KeyHandle }
 // only when Jest runs this file, never from a file that imports the harness.
 if (expect.getState().testPath === __filename) {
   describe('harness', () => {
-    it('answers the manager domain ABI-encoded from the scripted chain', async () => {
-      const chain = new ScriptedChain()
+    it('answers the manager domain ABI-encoded from the fake node', async () => {
+      const { chain } = createWorld()
       const ethers = ethersOver(chain)
       const answer = await ethers.call({
         to: chain.descriptor.manager,
-        data: SELECTOR.eip712Domain
+        data: id('eip712Domain()').slice(0, 10)
       })
-      const decoded = coder.decode(
+      const decoded = AbiCoder.defaultAbiCoder().decode(
         ['bytes1', 'string', 'string', 'uint256', 'address', 'bytes32', 'uint256[]'],
         answer
       )
@@ -1259,10 +1187,10 @@ if (expect.getState().testPath === __filename) {
       expect(Number(decoded[3])).toBe(chain.descriptor.chainId)
     })
 
-    it('builds a world whose scripted chain carries the client descriptor', () => {
+    it('builds a world whose fake node carries the client descriptor', () => {
       const world = createWorld()
       expect(world.chain.descriptor).toEqual(world.descriptor)
-      expect(world.chain).toBe(sdkStandIn.chainFor(world.descriptor, world.account))
+      expect(world.chain).toBe(sdkStandIn.nodeFor(world.descriptor, world.account))
     })
   })
 }

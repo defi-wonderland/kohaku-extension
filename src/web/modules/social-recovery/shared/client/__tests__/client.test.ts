@@ -6,14 +6,6 @@
  * every prepared call is sent from a key the signer holds.
  */
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
-import {
-  addressOf,
-  DEFAULT_REQUEST_WINDOW,
-  MANAGER_DOMAIN_FIELDS,
-  PolicyManagerDouble,
-  ProviderDouble,
-  WalletMethodDouble
-} from '@web/modules/social-recovery/sdk-doubles'
 import type {
   Configuration,
   DeploymentDescriptor,
@@ -21,7 +13,7 @@ import type {
   IProvider,
   PreparedBatch,
   PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 
 import {
   buildRecoveryClient,

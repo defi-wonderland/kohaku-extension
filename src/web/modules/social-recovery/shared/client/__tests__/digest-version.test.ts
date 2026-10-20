@@ -3,7 +3,6 @@
  * the client is built. A disagreement refuses the client before anything is
  * prepared, as the "update the wallet" state of the account step.
  */
-import { PolicyManagerDouble, ScriptedReadFailure } from '@web/modules/social-recovery/sdk-doubles'
 import * as descriptors from '@web/modules/social-recovery/shared/client/descriptors'
 
 import {

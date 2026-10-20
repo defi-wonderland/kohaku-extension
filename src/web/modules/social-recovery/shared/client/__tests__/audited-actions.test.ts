@@ -8,7 +8,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 
 import {
   AUDITED_ACTIONS,

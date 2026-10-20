@@ -10,41 +10,13 @@
 import { encodeFunctionData, parseAbi, zeroHash } from 'viem'
 
 import {
-  addressOf,
-  RecoveryKitBuilderDouble,
-  SetupClientDouble
-} from '@web/modules/social-recovery/sdk-doubles'
-import {
   addressBookOf,
   buildRecoveryClient,
   type RecoveryClientConfiguration
 } from '@web/modules/social-recovery/shared/client'
 import { createWorld } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
-import {
-  CONSTANT_CALLS,
-  DEPLOYED_ACTION,
-  DOMAIN_CALL,
-  FACTS,
-  scriptDeployment
-} from '@web/modules/social-recovery/shared/client/kit/builder/__tests__/harness'
-import {
-  ACCOUNT,
-  draftAt,
-  fakeNode,
-  KEY_A,
-  KEY_B,
-  MANAGER,
-  METHOD_ECDSA,
-  NO_STATE,
-  reverting,
-  scriptAction,
-  scriptMethod,
-  stateAnswer,
-  stateOfCall,
-  thrownBy
-} from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
-import type { ScriptedDeployment } from '@web/modules/social-recovery/shared/client/kit/builder/__fixtures__/types'
+import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
 
 jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({

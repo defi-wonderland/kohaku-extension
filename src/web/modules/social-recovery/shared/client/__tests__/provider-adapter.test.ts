@@ -15,14 +15,7 @@ import { AbiCoder, makeError } from 'ethers'
 
 import type { Network } from '@ambire-common/interfaces/network'
 
-import { ScriptedChain } from '@web/modules/social-recovery/sdk-doubles'
-import type {
-  Address,
-  BlockTag,
-  FilterSpec,
-  Hex,
-  PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, BlockTag, FilterSpec, Hex, PreparedCall } from '@kohaku-eth/social-recovery'
 
 import {
   AdapterWorld,

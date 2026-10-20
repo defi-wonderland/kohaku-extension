@@ -5,8 +5,7 @@
  * the account and chain that request names.
  */
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
-import { addressOf, PasskeyMethodDouble } from '@web/modules/social-recovery/sdk-doubles'
-import type { ApproverRequest, IRecoveryMethod } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, IRecoveryMethod } from '@kohaku-eth/social-recovery'
 import {
   CEREMONY_REPORT_CLOCK_SKEW_MS,
   CEREMONY_REPORT_TTL_MS,
@@ -39,8 +38,8 @@ import {
   spyOnBuilder,
   thrownBy
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
+import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
-import { FACTS } from '@web/modules/social-recovery/shared/client/kit/builder/__tests__/harness'
 
 jest.mock('@ambire-common/services/provider/getRpcProvider', () => ({
   getRpcProvider: jest.fn()

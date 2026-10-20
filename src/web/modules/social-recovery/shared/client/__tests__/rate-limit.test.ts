@@ -9,9 +9,9 @@
 import { AbiCoder, FetchRequest, FetchResponse, JsonRpcApiProvider, makeError } from 'ethers'
 import { zeroHash } from 'viem'
 
-import type { Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Hex } from '@kohaku-eth/social-recovery'
 import { createChainReads } from '@web/modules/social-recovery/shared/client/chain-reads'
-import { advanceClock } from '@web/modules/social-recovery/shared/client/kit/events/__fixtures__/retries'
+import { advanceClock } from '@web/modules/social-recovery/shared/client/events/__fixtures__/retries'
 import {
   createCodeRead,
   createProviderAdapter,
@@ -207,7 +207,7 @@ describe('the other reads the node refuses for its rate limit', () => {
     const send = refusingThen([nodeAnswered('eth_chainId', TOO_MANY)], '0xaa36a7')
     const adapter = adapterOf({ getLogs, getBlock, send })
     const reads = Promise.all([
-      adapter.logs({ addresses: [TO], topics: [] }, { from: 1, to: 2 }),
+      adapter.logs({ address: [TO], topics: [] }, { from: 1, to: 2 }),
       adapter.block('latest'),
       adapter.chainId()
     ])

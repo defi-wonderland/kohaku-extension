@@ -16,32 +16,8 @@ import {
   zeroAddress
 } from 'viem'
 
-import type { BlockRange, FilterSpec, RawLog } from '@web/modules/social-recovery/sdk-interfaces'
+import type { BlockRange, FilterSpec, RawLog } from '@kohaku-eth/social-recovery'
 import { createWatcherReads } from '@web/modules/social-recovery/shared/client'
-import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
-import {
-  ACCOUNT,
-  ACCOUNT_CODE,
-  ACTION,
-  ACTION_ABI,
-  attemptConsumedLog,
-  attemptStartedLog,
-  CONTRACT_CODE,
-  DEPLOYED_AT,
-  DESCRIPTOR,
-  fakeNode,
-  HEAD,
-  MANAGER,
-  OTHER_ACTION,
-  reverting,
-  scriptState,
-  stateOfCall,
-  thrownBy
-} from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
-import {
-  handoverTo,
-  NEW_KEY
-} from '@web/modules/social-recovery/shared/client/kit/wallet-reads/__fixtures__/world'
 
 const CANCELLED = parseAbi([
   'event AttemptCancelled(address indexed account, address indexed action, uint64 attemptId, address canceller, address stoppedMethod, uint64 setupNonce, uint256[] usedPlaces)'
