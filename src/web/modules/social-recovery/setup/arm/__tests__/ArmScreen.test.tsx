@@ -2400,6 +2400,7 @@ describe('a change the recovery overview stored as in flight', () => {
       startBlock: harness.START_BLOCK
     })
     await inFlight.markSent(requestId, harness.TX_HASH, harness.START_BLOCK)
+    return () => inFlight.release(requestId)
   }
 
   it('points to the overview and neither follows, judges nor sends it, on the push of the review', async () => {
@@ -2423,6 +2424,31 @@ describe('a change the recovery overview stored as in flight', () => {
 
     await press('arm-open-overview')
     expect(router.pathname).toBe(`/${WEB_ROUTES.socialRecoveryManage}`)
+  })
+
+  it('reads the stored change again when the tab is shown, and offers the save once it left', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    const release = await storeOverviewClear()
+    await openByAddress()
+    expect(byTestId('arm-overview-write')).not.toBeNull()
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await settle()
+    expect(byTestId('arm-overview-write')).not.toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+
+    await release()
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await settle()
+
+    expect(byTestId('arm-overview-write')).toBeNull()
+    expect(byTestId('arm-save')).not.toBeNull()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
   it('offers the save as before once no overview change is stored', async () => {

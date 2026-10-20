@@ -5,7 +5,8 @@
  * own run over the records both read: the first claims and sends, the second
  * loses the claim and follows the first's write to its landing, and only one
  * transaction goes out. A re-authorize held at the deposit step sends nothing
- * where an attempt opened meanwhile, and a clear that finds another write of
+ * where an attempt opened meanwhile, and so does one where an attempt opened
+ * while it claimed the write, and a clear that finds another write of
  * the overview stored leaves it to that write's own step.
  */
 import type { Account } from '@ambire-common/interfaces/account'
@@ -136,6 +137,53 @@ describe('a re-authorize held at the deposit step', () => {
     world.chain.openAttempt()
     balance = GAS_READS_BALANCE
     await recheckGas(store, steps)
+
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(onAttemptOpen).toHaveBeenCalledTimes(1)
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect((await world.records.saveInFlight(CHAIN_ID, address).read()).status).toBe('absent')
+  })
+})
+
+describe('a re-authorize whose claim an attempt overtakes', () => {
+  it('sends nothing, releases its claim and tells its step where an attempt opened as the claim returned', async () => {
+    const world = await worldAt('public', address)
+    world.chain.setAuthorized(false)
+    const port = sendPortOver()
+    const onAttemptOpen = jest.fn()
+    const records = {
+      ...world.records,
+      saveInFlight: (chainId: number, of: `0x${string}`) => {
+        const inFlight = world.records.saveInFlight(chainId, of)
+        return {
+          ...inFlight,
+          claim: async (...args: Parameters<typeof inFlight.claim>) => {
+            const claim = await inFlight.claim(...args)
+            world.chain.openAttempt()
+            return claim
+          }
+        }
+      }
+    }
+    const steps = overviewStepsOf({
+      intent: 'reauthorize',
+      client: world.client,
+      reads: { ...GAS_READS, nativeBalance: async () => GAS_READS_BALANCE } as ChainReads,
+      receipts: receiptsOver(),
+      port,
+      requests: armHarness.requestsFake(),
+      records,
+      chainId: CHAIN_ID,
+      account: address,
+      facts: armHarness.factsOf(account, { key }),
+      key,
+      draft: reauthorizeDraftOf(CONFIGURATION, 'public'),
+      password: undefined,
+      onAttemptOpen
+    })
+    const store = createArmStore('save')
+
+    await startSave(store, steps)
 
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
     expect(onAttemptOpen).toHaveBeenCalledTimes(1)

@@ -1092,20 +1092,18 @@ const followSave = async (
 
 /**
  * Whether a run whose own request is `own` leaves the stored write to its
- * holder instead of following it: a write of the recovery overview or of the
- * management editor is followed and judged only by a run of that same write,
- * so a save, another overview write or an editor write that meets it stops.
- * A stored save is followed by any run.
+ * holder instead of following it: a stored write is followed and judged only
+ * by a run of that same kind of write, so a save that meets a write of the
+ * recovery overview or of the management editor stops, and so does one of
+ * those writes that meets a save or another of them.
  */
-const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
-  const held = intentOfRequest(stored.requestId)
-  return !!held && intentOfRequest(own) !== held
-}
+const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean =>
+  intentOfRequest(own) !== intentOfRequest(stored.requestId)
 
 /**
  * Before the save is offered: reads the save in flight stored on this device
  * and, where one is, follows it in a new run with nothing sent. A stored write
- * of another management write is left to its own screen: the run stops there
+ * of another kind is left to its own screen: the run stops there
  * with nothing followed, sent or released. Reads once per run held, and again
  * only after a read that failed.
  */

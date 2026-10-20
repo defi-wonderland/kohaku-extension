@@ -165,6 +165,20 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
       live = false
     }
   }, [records, chainId, account, overviewRound])
+  const heldElsewhere = overviewWrite.status === 'answered' && overviewWrite.value
+  // The other write may land and leave while this tab is hidden: shown again, the tab reads once more.
+  useEffect(() => {
+    if (!heldElsewhere) {
+      return undefined
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        setOverviewRound((round) => round + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [heldElsewhere])
   const saveMayRun = overviewWrite.status === 'answered' && !overviewWrite.value
 
   const ready = facts.status === 'ready' ? facts.facts : null
@@ -300,10 +314,7 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     )
   }
   // Found on arrival, or met by the save's claim after that read.
-  if (
-    (overviewWrite.status === 'answered' && overviewWrite.value) ||
-    state.stop === 'held-by-another-write'
-  ) {
+  if (heldElsewhere || state.stop === 'held-by-another-write') {
     return (
       <Alert
         testID="arm-overview-write"

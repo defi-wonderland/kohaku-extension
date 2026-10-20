@@ -5,8 +5,8 @@
  * the cancel lane's banner of the account while an attempt is open. A write
  * of the overview stored on this device as in flight opens its own step
  * again, so the run follows it instead of sending a second one; a write the
- * management editor stored is left to the editor's screen, and the overview
- * points there.
+ * management editor stored is left to the editor's screen, and a save of the
+ * setup flow to the save screen, and the overview points there.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -41,18 +41,17 @@ import {
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
 import { intentOfRequest, overviewIntentOf } from '@web/modules/social-recovery/shared/writes'
-import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
 import { kindOfMethodIn } from '@web/modules/social-recovery/setup/privacy/exposure'
 import { kindNameOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 import { dismissAttempt, watchedNetworkOf } from '@web/modules/social-recovery/watcher'
 import { useWatchedAttempt } from '@web/modules/social-recovery/watcher/useWatchedAttempt'
 
-import { MANAGE_LINKS } from './constants'
+import { MANAGE_LINKS, SAVE_LINK } from './constants'
 import OverviewView from './OverviewView'
 import OverviewWriteStep from './OverviewWriteStep'
 import { clausesOfPath, movedInPath, pathMethodsOf } from './readings'
-import type { OpenStep, OverviewIntent, OverviewStageProps } from './types'
+import type { ElsewhereLink, OpenStep, OverviewIntent, OverviewStageProps } from './types'
 import { useOverviewReads } from './useOverviewReads'
 
 const OverviewStage = ({ records, chainId, account, navigate }: OverviewStageProps) => {
@@ -113,12 +112,12 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   )
 
   const [open, setOpen] = useState<OpenStep | null>(null)
-  const [elsewhere, setElsewhere] = useState<ManageIntent | null>(null)
+  const [elsewhere, setElsewhere] = useState<ElsewhereLink | null>(null)
   const [heldRound, setHeldRound] = useState(0)
   // A write of the overview this device holds in flight opens its step, whose run follows it;
-  // one of the management editor is left to its own screen. Read on arrival, and again where
-  // a step's run stopped at a write it does not follow, or where the tab is shown again while
-  // the editor's write is pointed to.
+  // one of the management editor or a save of the setup flow is left to its own screen. Read
+  // on arrival, and again where a step's run stopped at a write it does not follow, or where
+  // the tab is shown again while that write is pointed to.
   useEffect(() => {
     let live = true
     records
@@ -131,7 +130,11 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
           }
           const requestId = held.status === 'present' ? held.value.requestId : undefined
           const managed = requestId ? intentOfRequest(requestId) : undefined
-          setElsewhere(managed === 'manageEdit' || managed === 'manageRemove' ? managed : null)
+          if (managed === 'manageEdit' || managed === 'manageRemove') {
+            setElsewhere(MANAGE_LINKS[managed])
+          } else {
+            setElsewhere(requestId && !managed ? SAVE_LINK : null)
+          }
           const intent = requestId ? overviewIntentOf(requestId) : undefined
           if (intent) {
             setOpen({ intent, autoStart: false })
@@ -190,7 +193,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       type="warning"
       size="sm"
       style={spacings.mbSm}
-      text={t(MANAGE_LINKS[elsewhere].line)}
+      text={t(elsewhere.line)}
     >
       <ActionsRow
         primary={
@@ -198,8 +201,8 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
             testID="overview-open-elsewhere"
             type="secondary"
             size="small"
-            text={t(MANAGE_LINKS[elsewhere].label)}
-            onPress={() => navigate(MANAGE_LINKS[elsewhere].route)}
+            text={t(elsewhere.label)}
+            onPress={() => navigate(elsewhere.route)}
             hasBottomSpacing={false}
           />
         }

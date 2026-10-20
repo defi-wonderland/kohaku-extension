@@ -141,7 +141,7 @@ export interface OverviewReads {
 /** The three writes the overview sends. */
 export type { OverviewIntent }
 
-/** The screen that follows a write stored by another management screen, the line's key and its link's label key. */
+/** The screen that follows a write stored by another screen, the line's key and its link's label key. */
 export interface ElsewhereLink {
   route: string
   line: string

@@ -222,24 +222,6 @@ describe("the overview's screen", () => {
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
-  it('opens no step for a write another screen stored', async () => {
-    const world = await dormantWorld()
-    const prepared = await world.client.setup.prepareClearSetup()
-    await world.records.saveInFlight(CHAIN_ID, address).claim({
-      draft: REMOVAL_DRAFT,
-      prepared,
-      requestId: newSendRequestId(),
-      claimedAt: Date.now()
-    })
-    mockWallet.port = sendPortOver()
-    mockWallet.client = readyOver(world.client, GAS_READS, receiptsOver())
-
-    view = await mount(<OverviewScreen />)
-
-    expect(view.byTestId('overview-dormant')).not.toBeNull()
-    expect(view.byTestId('overview-step-clear')).toBeNull()
-  })
-
   it('takes up a re-authorize sent before a reload: its step reopens and follows it to the landing with no second send', async () => {
     const world = await dormantWorld()
     const draft = reauthorizeDraftOf(CONFIGURATION, 'public')
@@ -310,22 +292,31 @@ describe("the overview's screen", () => {
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  const EDITOR_WRITES = [
+  const OTHER_WRITES = [
     {
+      named: "the editor's change",
       mark: ':manage-edit',
       route: WEB_ROUTES.socialRecoveryManageReview,
       line: 'socialRecovery.management.overview.writes.editInFlight',
       link: 'socialRecovery.management.overview.writes.openReview'
     },
     {
+      named: "the editor's removal",
       mark: ':manage-remove',
       route: WEB_ROUTES.socialRecoveryManageRemove,
       line: 'socialRecovery.management.overview.writes.removeInFlight',
       link: 'socialRecovery.management.overview.writes.openRemove'
+    },
+    {
+      named: "the setup flow's save",
+      mark: '',
+      route: WEB_ROUTES.socialRecoverySetupSave,
+      line: 'socialRecovery.management.overview.writes.saveInFlight',
+      link: 'socialRecovery.management.overview.writes.openSave'
     }
   ]
-  EDITOR_WRITES.forEach(({ mark, route, line, link }) =>
-    it(`leaves a write the editor stored under ${mark} to the editor's screen, with no step of its own`, async () => {
+  OTHER_WRITES.forEach(({ named, mark, route, line, link }) =>
+    it(`leaves a stored write of ${named} to its own screen and points there, with no step of its own`, async () => {
       const world = await dormantWorld()
       const prepared = await world.client.setup.prepareClearSetup()
       await world.records.saveInFlight(CHAIN_ID, address).claim({

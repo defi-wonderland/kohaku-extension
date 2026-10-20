@@ -25,6 +25,7 @@ import {
   setRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 
+import { COMMITMENT_DISAGREEMENT_LIMIT } from './constants'
 import { attemptOpenOf, isCacheCurrent, isSameSetup, noticesOf } from './readings'
 import type {
   OverviewFactsRead,
@@ -58,11 +59,14 @@ export const useOverviewReads = ({
   const unlockRound = useRef(0)
   // The block of the last facts answer accepted for this client.
   const floor = useRef<number | undefined>(undefined)
+  // The opened setups in a row whose commitment disagreed with the facts read.
+  const disagreements = useRef(0)
 
   const setup: SetupState | null = facts.status === 'answered' ? facts.value.setup : null
 
   useEffect(() => {
     floor.current = undefined
+    disagreements.current = 0
   }, [kit])
 
   useEffect(() => {
@@ -106,13 +110,28 @@ export const useOverviewReads = ({
   }, [client.status, kit, factsRound])
 
   /**
-   * Keeps the opened setup on this device where the setup state read now still
-   * names the setup the facts read, and answers whether it does; a refused
-   * write leaves the path shown.
+   * Keeps the opened setup on this device where it is the setup the facts read,
+   * its commitment at their nonce being theirs, and the setup state read now
+   * still names that setup; answers whether both hold. A node behind the one
+   * the facts came from can open an older setup, which this refuses; one that
+   * keeps doing so throws at the limit, so the path reads as failed with retry
+   * instead of reading the facts again with no end. A refused write leaves the
+   * path shown.
    */
   const keep = useCallback(
     async (state: SetupState, configuration: Configuration): Promise<boolean> => {
-      if (!kit || !isSameSetup(await kit.setup.setupState(), state)) {
+      if (!kit) {
+        return false
+      }
+      const committed = kit.walletReads.commitmentOf(state.setupNonce, configuration)
+      if (committed.toLowerCase() !== state.setupCommitment.toLowerCase()) {
+        disagreements.current += 1
+        if (disagreements.current >= COMMITMENT_DISAGREEMENT_LIMIT) {
+          throw new Error('The opened setup keeps disagreeing with the committed one.')
+        }
+        return false
+      }
+      if (!isSameSetup(await kit.setup.setupState(), state)) {
         return false
       }
       await records
@@ -178,6 +197,7 @@ export const useOverviewReads = ({
           return
         }
         if (step) {
+          disagreements.current = 0
           setPath(step)
         } else {
           readFactsAgain()
@@ -255,6 +275,7 @@ export const useOverviewReads = ({
               }
               setAsk(IDLE)
               if (agrees) {
+                disagreements.current = 0
                 setPath({ kind: 'readable', configuration })
               } else {
                 readFactsAgain()
@@ -304,6 +325,7 @@ export const useOverviewReads = ({
   }, [ask.status])
 
   const retryPath = useCallback(() => {
+    disagreements.current = 0
     if (ask.status === 'event-failed' && typed.current) {
       check(typed.current)
       return
@@ -312,6 +334,7 @@ export const useOverviewReads = ({
   }, [ask.status, check])
 
   const retry = useCallback(() => {
+    disagreements.current = 0
     if (client.status === 'failed') {
       client.retry()
       return
