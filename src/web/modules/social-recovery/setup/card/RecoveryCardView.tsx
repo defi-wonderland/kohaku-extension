@@ -50,7 +50,8 @@ const RecoveryCardView = ({
   renderPasswordAsk,
   onSetPasswordAgain,
   onBack,
-  onContinue
+  onContinue,
+  fromManage = false
 }: RecoveryCardViewProps) => {
   const { t } = useTranslation()
 
@@ -282,7 +283,11 @@ const RecoveryCardView = ({
                 testID="card-continue"
                 type="primary"
                 hasBottomSpacing={false}
-                text={t('socialRecovery.actions.continue')}
+                text={t(
+                  fromManage
+                    ? 'socialRecovery.management.review.done'
+                    : 'socialRecovery.actions.continue'
+                )}
                 onPress={onContinue}
               />
             }

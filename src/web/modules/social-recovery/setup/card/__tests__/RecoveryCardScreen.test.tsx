@@ -388,6 +388,21 @@ describe('the recovery card screen', () => {
       await writeDraft(account, 'clear')
       await mount(account)
       expect(byTestId('card-stage')?.textContent).toBe('Set up · Step 7 of 7')
+      expect(byTestId('card-continue')?.textContent).toBe(t('socialRecovery.actions.continue'))
+    })
+
+    it('stands outside the setup stages when the overview opened it, and leads back there', async () => {
+      const account = newAccount()
+      await writeDraft(account, 'clear')
+      await mount(account, '?from=manage')
+      expect(byTestId('recovery-card')).not.toBeNull()
+      expect(byTestId('card-stage')).toBeNull()
+      expect(container.textContent).not.toContain('Step 7 of 7')
+      expect(byTestId('card-continue')?.textContent).toBe(
+        t('socialRecovery.management.review.done')
+      )
+      await press('card-continue')
+      expect(location.pathname).toBe(`/${WEB_ROUTES.socialRecoveryManage}`)
     })
 
     it('reads an encrypted draft as hidden and a clear one as public', async () => {

@@ -171,6 +171,8 @@ export interface RecoveryCardViewProps {
   onSetPasswordAgain: () => void
   onBack: () => void
   onContinue: () => void
+  /** The recovery overview opened the card: its primary action reads as done there, not as the next stage. */
+  fromManage?: boolean
 }
 
 export interface CardFaceProps {
