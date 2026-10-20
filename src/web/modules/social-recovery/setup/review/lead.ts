@@ -183,7 +183,7 @@ export const pathRowOf = (
     name,
     aside,
     chip: enrollment ? renderChip('method', VERDICT_CHIPS[enrollment.test], t) : null,
-    tested: enrollment?.test === 'passed',
+    tested: enrollment?.test === 'passed' || enrollment?.test === 'live',
     lines: [...(enrollment ? verdictLinesOf(enrollment, t) : []), ...kindLinesOf(kind, t)]
   }
 }
