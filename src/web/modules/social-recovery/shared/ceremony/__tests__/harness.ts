@@ -16,20 +16,20 @@
 /* eslint-disable max-classes-per-file -- the WebAuthn classes jsdom lacks, and one encoder */
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
+  Ctx,
   DeviceBinding,
   EnrollFailure,
   Hex,
   IMethodCodec,
   IMethodsOrchestrator,
   IRecoveryMethod,
-  MethodContext,
-  MethodFailureCause,
+  Reply,
   ReplyFailure,
+  ReplyFailureCause,
   RequestDescription,
   Verdict
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 
 // ---------------------------------------------------------------------------
 // The jsdom globals the module needs and jest-environment-jsdom 29 leaves out
@@ -710,11 +710,11 @@ const answerSync = <T>(scripted: Scripted<T>): T => {
 export const CONFIG_HEX: Hex = `0x${'c0'.repeat(64)}`
 export const PROOF_HEX: Hex = `0x${'9f'.repeat(96)}`
 
-export const enrollFailure = (cause: MethodFailureCause): EnrollFailure => ({
+export const enrollFailure = (cause: ReplyFailureCause): EnrollFailure => ({
   kind: 'enroll-failure',
   cause
 })
-export const replyFailure = (cause: MethodFailureCause): ReplyFailure => ({
+export const replyFailure = (cause: ReplyFailureCause): ReplyFailure => ({
   kind: 'reply-failure',
   cause
 })
@@ -731,9 +731,9 @@ export interface FakeMethod extends IRecoveryMethod {
   modules: jest.Mock<Address[], [unknown]>
   enrollInput: jest.Mock<unknown, [unknown]>
   configFrom: jest.Mock<Promise<Hex | EnrollFailure>, [unknown, unknown]>
-  signingInput: jest.Mock<unknown, [MethodContext, unknown?]>
-  replyFrom: jest.Mock<Promise<Hex | ReplyFailure>, [MethodContext, unknown, unknown]>
-  verify: jest.Mock<Promise<Verdict>, [MethodContext, Hex]>
+  signingInput: jest.Mock<unknown, [Ctx, unknown?]>
+  replyFrom: jest.Mock<Promise<Hex | ReplyFailure>, [Ctx, unknown, unknown]>
+  verify: jest.Mock<Promise<Verdict>, [Ctx, Hex]>
   describe: jest.Mock
 }
 
@@ -752,19 +752,17 @@ export const fakeMethod = (
   configFrom: jest.fn<Promise<Hex | EnrollFailure>, [unknown, unknown]>(async () =>
     answer(script.configFrom ?? CONFIG_HEX)
   ),
-  signingInput: jest.fn((ctx: MethodContext, params?: unknown) => {
+  signingInput: jest.fn((ctx: Ctx, params?: unknown) => {
     if (script.signingInput !== undefined) {
       return answerSync(script.signingInput)
     }
     const p = params as { relyingPartyId?: string } | undefined
     return { challenge: ctx.digest, rpId: p?.relyingPartyId, params }
   }),
-  replyFrom: jest.fn<Promise<Hex | ReplyFailure>, [MethodContext, unknown, unknown]>(async () =>
+  replyFrom: jest.fn<Promise<Hex | ReplyFailure>, [Ctx, unknown, unknown]>(async () =>
     answer(script.replyFrom ?? PROOF_HEX)
   ),
-  verify: jest.fn<Promise<Verdict>, [MethodContext, Hex]>(async () =>
-    answer(script.verify ?? 'satisfied')
-  ),
+  verify: jest.fn<Promise<Verdict>, [Ctx, Hex]>(async () => answer(script.verify ?? 'satisfied')),
   codec: opaqueCodec,
   deviceBinding,
   describe: jest.fn(() => ({ kind: 'webauthn-authenticator' as const })),
@@ -776,12 +774,12 @@ export interface FakeOrchestrator extends IMethodsOrchestrator {
   describeRequest: jest.Mock<RequestDescription, [ApproverRequest]>
   verify: jest.Mock<Promise<Verdict>, [ApproverRequest, number, Hex]>
   signingInput: jest.Mock<unknown, [ApproverRequest, unknown?]>
-  replyFrom: jest.Mock<Promise<ApproverReply | ReplyFailure>, [ApproverRequest, unknown, unknown]>
+  replyFrom: jest.Mock<Promise<Reply | ReplyFailure>, [ApproverRequest, unknown, unknown]>
   enrollInput: jest.Mock<unknown, [Address, unknown]>
   configFrom: jest.Mock<Promise<Hex | EnrollFailure>, [Address, unknown, unknown]>
 }
 
-const ctxOf = (request: ApproverRequest): MethodContext => ({
+const ctxOf = (request: ApproverRequest): Ctx => ({
   request,
   place: request.place,
   digest: FIXTURE_DIGEST,

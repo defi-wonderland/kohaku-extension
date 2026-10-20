@@ -16,12 +16,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
-import type {
-  Address,
-  Configuration,
-  PrivacyLevel,
-  SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Configuration, SetupState } from '@kohaku-eth/social-recovery'
+import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
 import { setRecoveryPassword } from '@web/modules/social-recovery/shared/records'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
 

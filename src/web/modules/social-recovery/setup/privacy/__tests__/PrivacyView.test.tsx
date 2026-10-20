@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import type { Clause, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { WalletRecords } from '@web/modules/social-recovery/shared/records'
 
 import type {
@@ -28,9 +28,6 @@ const {
   shapeNoteOf,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
-const {
-  readPublicNote
-}: typeof import('@web/modules/social-recovery/sdk-doubles') = require('@web/modules/social-recovery/sdk-doubles')
 const {
   PASSWORD_SET,
   readRecoveryPassword,

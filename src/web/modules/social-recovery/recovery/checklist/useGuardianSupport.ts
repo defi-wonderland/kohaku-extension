@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { ApproverReply } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Reply } from '@kohaku-eth/social-recovery'
 
 import { tabPageUrl } from './link'
 import { oneApprovalOf, pasteApproval } from './paste'
@@ -89,7 +89,7 @@ const useGuardianSupport = ({
       return null
     }
     const oneApproval = oneApprovalOf(layout)
-    const versionRefused = (reply: ApproverReply): boolean => {
+    const versionRefused = (reply: Reply): boolean => {
       try {
         return kit.recovery.addApproverReply(gathering, reply).reason?.cause === 'version-unread'
       } catch {

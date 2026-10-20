@@ -5,7 +5,7 @@
  * value the page cannot read renders as such, and the lead is then not
  * rendered, so the sign action stays disabled. Pure.
  */
-import type { Address, RequestDescription } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, RequestDescription } from '@kohaku-eth/social-recovery'
 import {
   renderDeadline,
   renderFullAddress,

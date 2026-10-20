@@ -7,7 +7,7 @@
  * renders its reason and gathers again; and the holder sent to the readout
  * where this device cannot open the setup.
  */
-import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration } from '@kohaku-eth/social-recovery'
 
 import type {
   Mounted,

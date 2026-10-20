@@ -1,4 +1,4 @@
-import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupDraft } from '@kohaku-eth/social-recovery'
 
 import type { CustomWait, WaitChip, WaitChoice } from './types'
 

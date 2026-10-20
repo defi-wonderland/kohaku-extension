@@ -19,7 +19,7 @@ import {
   unlockFailureOf
 } from '@web/modules/social-recovery/recovery/entry/readout'
 import type { EntryRead, UnlockState } from '@web/modules/social-recovery/recovery/entry/types'
-import type { Configuration, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, SetupState } from '@kohaku-eth/social-recovery'
 import {
   readRecoveryPassword,
   setRecoveryPassword

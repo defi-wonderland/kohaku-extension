@@ -1,5 +1,5 @@
 import i18n from '@common/config/localization'
-import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, SetupDraft } from '@kohaku-eth/social-recovery'
 import { shapeNoteOf } from '@web/modules/social-recovery/shared/client'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'

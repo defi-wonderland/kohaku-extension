@@ -9,11 +9,13 @@ import type {
   Address,
   Configuration,
   Gathering,
-  RestoreCause,
-  RestoreRefusal
-} from '@web/modules/social-recovery/sdk-interfaces'
-import { RESTORE_CAUSES } from '@web/modules/social-recovery/sdk-interfaces'
-import { REQUEST_WINDOW_SECONDS } from '@web/modules/social-recovery/shared/client'
+  KitRefusalError,
+  RestoreCauseCode
+} from '@kohaku-eth/social-recovery'
+import {
+  RESTORE_CAUSE_CODES,
+  REQUEST_WINDOW_SECONDS
+} from '@web/modules/social-recovery/shared/client'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
 import type { ExpectedRevision, SessionRead } from '@web/modules/social-recovery/shared/records'
 
@@ -46,15 +48,15 @@ export const configurationOf = async (input: ConfigurationInput): Promise<Config
 }
 
 /** The restore cause a thrown value carries, where it is a restore refusal. */
-const restoreCauseOf = (error: unknown): RestoreCause | undefined => {
-  if (typeof error !== 'object' || error === null || !('cause' in error)) {
+const restoreCauseOf = (error: unknown): RestoreCauseCode | undefined => {
+  if (typeof error !== 'object' || error === null || !('restoreCause' in error)) {
     return undefined
   }
-  const { cause } = error as Partial<RestoreRefusal>
+  const { restoreCause: cause } = error as Partial<KitRefusalError>
   if (typeof cause !== 'object' || cause === null) {
     return undefined
   }
-  return RESTORE_CAUSES.find((known) => known === cause.code)
+  return RESTORE_CAUSE_CODES.find((known) => known === cause.code)
 }
 
 /** A stored session as what opening found. */

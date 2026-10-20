@@ -17,13 +17,13 @@
  * Every function here is pure and runs under Jest's node environment.
  */
 import type {
-  ApproverReply,
   DeviceBinding,
   EnrollFailure,
   Hex,
+  Reply,
   ReplyFailure,
   Verdict
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { MethodChip } from '@web/modules/social-recovery/shared/display'
 
 import type {
@@ -273,7 +273,7 @@ export const browserErrorNameOf = (outcome: CeremonyOutcome<unknown>): string | 
 // ---------------------------------------------------------------------------
 
 export const isMethodFailure = (
-  value: Hex | ApproverReply | EnrollFailure | ReplyFailure
+  value: Hex | Reply | EnrollFailure | ReplyFailure
 ): value is EnrollFailure | ReplyFailure =>
   typeof value === 'object' && (value.kind === 'enroll-failure' || value.kind === 'reply-failure')
 

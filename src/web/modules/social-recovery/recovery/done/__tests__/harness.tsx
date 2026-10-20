@@ -31,9 +31,9 @@ import type {
   Configuration,
   Credential,
   Hex,
-  Notification,
+  KitNotification,
   RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryRoute, WalletRecords } from '@web/modules/social-recovery/shared/records'
 import type { TestStorage } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
@@ -362,7 +362,7 @@ export const attemptStarted = (
     setupNonce = 1n,
     usedMethods = []
   }: { payload?: Hex; setupNonce?: bigint; usedMethods?: Address[] } = {}
-): Notification => ({
+): KitNotification => ({
   kind: 'attempt-started',
   account,
   action: BOOK.action,
@@ -382,7 +382,7 @@ export const attemptConsumed = (
   attemptId = 1n,
   blockNumber = CONSUME_BLOCK,
   transactionHash: Hex = CONSUME_TX
-): Notification => ({
+): KitNotification => ({
   kind: 'attempt-consumed',
   account,
   action: BOOK.action,
@@ -397,7 +397,7 @@ export const privilegeChanged = (
   blockNumber: number,
   transactionHash: Hex,
   logIndex = 0
-): Notification => ({
+): KitNotification => ({
   kind: 'privilege-changed',
   account,
   addr,
@@ -409,7 +409,7 @@ export const privilegeChanged = (
 export const recoveryPrivileges = (
   account: Address,
   { granted = NEW_KEY, removed = REMOVED_KEY, creation = true } = {}
-): Notification[] => [
+): KitNotification[] => [
   ...(creation
     ? [privilegeChanged(account, removed, ORIGINAL_PRIV, CREATION_BLOCK, CREATE_TX)]
     : []),
@@ -422,8 +422,8 @@ export interface FakeChain {
   attempt: Attempt
   blockNumber: number
   blockTime: number
-  accountEvents: Notification[]
-  privilegeEvents: Notification[]
+  accountEvents: KitNotification[]
+  privilegeEvents: KitNotification[]
   /** The attempt read rejects while set. */
   failing: boolean
   /** The attempt read never answers while set. */

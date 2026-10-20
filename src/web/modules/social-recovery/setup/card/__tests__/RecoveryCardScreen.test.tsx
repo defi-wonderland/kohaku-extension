@@ -14,7 +14,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, SetupDraft } from '@kohaku-eth/social-recovery'
 import {
   digestVersionRefusal,
   restoreRefusalOf

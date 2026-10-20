@@ -7,7 +7,7 @@ import type {
   Finding,
   ISetupClient,
   SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,

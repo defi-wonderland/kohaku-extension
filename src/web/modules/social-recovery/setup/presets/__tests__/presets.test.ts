@@ -10,7 +10,7 @@ import { encodeAbiParameters, zeroAddress } from 'viem'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
-import type { Address, Credential, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Credential, SetupDraft } from '@kohaku-eth/social-recovery'
 import {
   cardRuleLines,
   clausesOfShape,

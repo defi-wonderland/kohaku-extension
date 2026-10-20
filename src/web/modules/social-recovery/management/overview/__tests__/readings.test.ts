@@ -17,9 +17,9 @@ import {
 import type {
   Address,
   Configuration,
-  Notification,
+  KitNotification,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
 import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
 
@@ -85,7 +85,7 @@ describe('the overview readings', () => {
   })
 
   it('keeps each method latest key update and the cancelled attempts, and drops removed logs', () => {
-    const found: Notification[] = [
+    const found: KitNotification[] = [
       { kind: 'method-keys-updated', method: METHOD_A, previous: [], current: [HASH], at: at(120) },
       { kind: 'method-keys-updated', method: METHOD_A, previous: [], current: [HASH], at: at(150) },
       {

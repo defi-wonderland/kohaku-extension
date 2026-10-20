@@ -9,10 +9,7 @@ import { isHex } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { browser } from '@web/constants/browserapi'
-import type {
-  ApproverRequest,
-  SerializedPaymentOrder
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, SerializedPaymentOrder } from '@kohaku-eth/social-recovery'
 
 import { isDecimalString, isStoredAddress } from '@web/modules/social-recovery/shared/records'
 

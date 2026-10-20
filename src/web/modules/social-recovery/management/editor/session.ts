@@ -12,13 +12,8 @@
  */
 import { isHex } from 'viem'
 
-import { PRIVACY_LEVELS } from '@web/modules/social-recovery/sdk-interfaces'
-import type {
-  Address,
-  Clause,
-  Configuration,
-  Credential
-} from '@web/modules/social-recovery/sdk-interfaces'
+import { PRIVACY_LEVELS } from '@web/modules/social-recovery/shared/client'
+import type { Address, Clause, Configuration, Credential } from '@kohaku-eth/social-recovery'
 import { isStoredAddress, RECORDS_KEY_PREFIX } from '@web/modules/social-recovery/shared/records'
 import type { ChainId } from '@web/modules/social-recovery/shared/records'
 

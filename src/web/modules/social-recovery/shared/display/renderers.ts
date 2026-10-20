@@ -8,7 +8,7 @@
 import { formatUnits, getAddress, isAddress, isHex, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
-import type { Address, Hex, PaymentOrder } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Hex, PaymentOrder } from '@kohaku-eth/social-recovery'
 
 import type {
   CountdownState,

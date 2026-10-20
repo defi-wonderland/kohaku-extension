@@ -15,17 +15,20 @@ import { decodeAbiParameters, hexToString, isAddress, isHex } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
-import { RESTORE_CAUSES } from '@web/modules/social-recovery/sdk-interfaces'
+import {
+  RESTORE_CAUSE_CODES,
+  REQUEST_WINDOW_SECONDS,
+  sameAddress
+} from '@web/modules/social-recovery/shared/client'
 import type {
   Address,
   Clause,
   Configuration,
   Credential,
   Hex,
-  RestoreRefusal,
+  KitRefusalError,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
-import { REQUEST_WINDOW_SECONDS, sameAddress } from '@web/modules/social-recovery/shared/client'
+} from '@kohaku-eth/social-recovery'
 import { renderFullAddress, renderHiddenValue } from '@web/modules/social-recovery/shared/display'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 import { isStoredAddress } from '@web/modules/social-recovery/shared/records'
@@ -109,14 +112,14 @@ export const continuePathOf = (route: RecoveryRoute, account: Address): string =
 
 /** The restore cause and the backup's refusal reason a thrown value carries, if it is a restore refusal. */
 export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null => {
-  if (typeof error !== 'object' || error === null || !('cause' in error)) {
+  if (typeof error !== 'object' || error === null || !('restoreCause' in error)) {
     return null
   }
-  const { cause } = error as Partial<RestoreRefusal>
+  const { restoreCause: cause } = error as Partial<KitRefusalError>
   if (typeof cause !== 'object' || cause === null) {
     return null
   }
-  const known = RESTORE_CAUSES.find((restore) => restore === cause.code)
+  const known = RESTORE_CAUSE_CODES.find((restore) => restore === cause.code)
   if (!known) {
     return null
   }

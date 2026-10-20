@@ -9,11 +9,11 @@ import type {
   IEventManager,
   IRecoveryActionInteractor,
   ISetupClient,
-  PrivacyLevel,
-  RestoreCause,
+  RestoreCauseCode,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
+  PrivacyLevel,
   AddressBook,
   FitCheckReading,
   KeyHandle,
@@ -441,7 +441,7 @@ export type ReadoutClient =
 
 /** The restore cause a thrown restore refusal carries, with the backup's refusal reason where it names one. */
 export interface RestoreRefusalReading {
-  cause: RestoreCause
+  cause: RestoreCauseCode
   reason?: unknown
 }
 

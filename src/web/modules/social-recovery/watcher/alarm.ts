@@ -16,7 +16,7 @@
  */
 import type { Network } from '@ambire-common/interfaces/network'
 import { browser } from '@web/constants/browserapi'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client/chains'
 import {
   networkOf,

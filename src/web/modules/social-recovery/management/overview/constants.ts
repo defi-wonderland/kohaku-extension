@@ -1,5 +1,5 @@
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
-import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupDraft } from '@kohaku-eth/social-recovery'
 import { CARD_FROM_KEY, CARD_FROM_MANAGE } from '@web/modules/social-recovery/setup/card'
 import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
 

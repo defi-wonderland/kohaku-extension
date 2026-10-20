@@ -25,11 +25,7 @@ import { TextDecoder, TextEncoder } from 'util'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type {
-  Clause,
-  SetupConfirmation,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, SetupConfirmation, SetupDraft } from '@kohaku-eth/social-recovery'
 import type {
   KeyHandle,
   SendPort,

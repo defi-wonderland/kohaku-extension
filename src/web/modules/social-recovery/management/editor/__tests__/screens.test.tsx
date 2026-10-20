@@ -18,7 +18,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ScreensWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
 import type { EditSession } from '@web/modules/social-recovery/management/editor/types'
-import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause } from '@kohaku-eth/social-recovery'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 

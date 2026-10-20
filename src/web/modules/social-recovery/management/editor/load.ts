@@ -12,11 +12,8 @@ import {
   isCacheCurrent,
   reauthorizeDraftOf
 } from '@web/modules/social-recovery/management/overview/readings'
-import type {
-  Configuration,
-  PrivacyLevel,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, SetupDraft } from '@kohaku-eth/social-recovery'
+import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
 import { PASSWORD_SET } from '@web/modules/social-recovery/shared/records'
 import type { Enrollment, SetupRecords } from '@web/modules/social-recovery/shared/records'
 

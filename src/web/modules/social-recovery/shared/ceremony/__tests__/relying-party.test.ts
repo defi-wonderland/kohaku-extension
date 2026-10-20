@@ -9,7 +9,7 @@
  * never of the bare id; the wallet hands the SDK that origin string as the
  * relying party id. The module reads the id at runtime from the page origin.
  */
-import type { Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex } from '@kohaku-eth/social-recovery'
 
 import {
   bytesToHex,

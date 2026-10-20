@@ -9,7 +9,7 @@
  * another setup is not this request's either. The landing leaves no claim
  * request and no report of the request that landed.
  */
-import type { Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Gathering, Hex } from '@kohaku-eth/social-recovery'
 
 import type {
   FakeDeps,

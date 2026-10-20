@@ -36,10 +36,10 @@ import type {
   Configuration,
   Gathering,
   Hex,
-  Notification,
+  KitNotification,
   PreparedCall,
   RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   AccountFactsResult,
   KeyHandle,
@@ -295,7 +295,7 @@ export interface FakeChain {
   /** The pinned block's time, in seconds. */
   blockTime: number
   blockNumber: number
-  events: Notification[]
+  events: KitNotification[]
   authorized: boolean
   supported: boolean
   /** Whether the key being removed still holds a key value on the account. */
@@ -345,7 +345,7 @@ export const attemptStarted = (
   account: Address,
   payload: Hex = PAYLOAD,
   attemptId = 1n
-): Notification => ({
+): KitNotification => ({
   kind: 'attempt-started',
   account,
   action: checklist.BOOK.action,
@@ -360,7 +360,7 @@ export const attemptStarted = (
   at: logAt(START_BLOCK + 2)
 })
 
-export const attemptCancelled = (account: Address, cancelledBy: CancelledBy): Notification => ({
+export const attemptCancelled = (account: Address, cancelledBy: CancelledBy): KitNotification => ({
   kind: 'attempt-cancelled',
   account,
   action: checklist.BOOK.action,
@@ -373,7 +373,7 @@ export const attemptCancelled = (account: Address, cancelledBy: CancelledBy): No
   at: logAt(START_BLOCK + 9, TX_HASH)
 })
 
-export const attemptConsumed = (account: Address): Notification => ({
+export const attemptConsumed = (account: Address): KitNotification => ({
   kind: 'attempt-consumed',
   account,
   action: checklist.BOOK.action,
@@ -457,7 +457,7 @@ export const fakeKit = (account: Address): Kit => {
       block: { number: chain.blockNumber, timestamp: chain.blockTime, hash: zeroHash }
     }
   })
-  const fetch = jest.fn(async (): Promise<Notification[]> => chain.events)
+  const fetch = jest.fn(async (): Promise<KitNotification[]> => chain.events)
   const accountFilter = jest.fn(() => ({ kind: 'account-filter' }))
   const prepareExecuteHandover = jest.fn(async () => EXECUTE_CALL)
   const isAuthorized = jest.fn(async () => chain.authorized)

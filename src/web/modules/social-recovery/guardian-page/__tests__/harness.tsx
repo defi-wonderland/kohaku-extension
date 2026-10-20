@@ -24,15 +24,15 @@ import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
   Attempt,
   Hex,
   RecoveryState,
+  Reply,
   ReplyFailure,
   RequestDescription,
   Verdict
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   KeyHandle,
   RecoveryAttemptState,
@@ -63,7 +63,7 @@ export interface KitScript {
   removedKey: jest.Mock<Promise<RemovedKeyReading>, []>
   isAuthorized: jest.Mock<Promise<boolean>, []>
   signingInput: jest.Mock<unknown, [ApproverRequest]>
-  replyFrom: jest.Mock<Promise<ApproverReply | ReplyFailure>, [ApproverRequest, unknown, unknown]>
+  replyFrom: jest.Mock<Promise<Reply | ReplyFailure>, [ApproverRequest, unknown, unknown]>
   verify: jest.Mock<Promise<Verdict>, [ApproverRequest, number, Hex]>
 }
 
@@ -271,11 +271,6 @@ const {
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
 const {
-  digestOfRequest,
-  membersOfRequest,
-  typedDataOf
-}: typeof import('@web/modules/social-recovery/sdk-doubles/encoding') = require('@web/modules/social-recovery/sdk-doubles/encoding')
-const {
   approvalLinkOf,
   replyOfLine
 }: typeof import('@web/modules/social-recovery/recovery/checklist') = require('@web/modules/social-recovery/recovery/checklist')
@@ -418,7 +413,7 @@ export const signatureBy = (account: SigningAccount, typedData: TypedDataToSign)
   account.signTypedData(typedData as unknown as Parameters<SigningAccount['signTypedData']>[0])
 
 /** The reply the wallet method packages from a signature: the signature is the proof. */
-export const replyOf = (request: ApproverRequest, proof: Hex): ApproverReply => ({
+export const replyOf = (request: ApproverRequest, proof: Hex): Reply => ({
   kind: 'recovery-proof-reply',
   version: 1,
   chainId: request.chainId,
@@ -439,7 +434,7 @@ export const replyOf = (request: ApproverRequest, proof: Hex): ApproverReply => 
  * The line the guardian sends back for a reply, written out here: the reply's
  * record as plain JSON on one line, its keys in the record's order.
  */
-export const lineOf = (reply: ApproverReply): string =>
+export const lineOf = (reply: Reply): string =>
   JSON.stringify({
     kind: reply.kind,
     version: reply.version,
@@ -458,7 +453,7 @@ export const lineOf = (reply: ApproverReply): string =>
   })
 
 /** The approval the recoverer's paste reads from a line. */
-export const pastedReplyOf = (line: string): ApproverReply | null => replyOfLine(line)
+export const pastedReplyOf = (line: string): Reply | null => replyOfLine(line)
 
 /** The EIP-712 digest of typed data. */
 export const hashOf = (typedData: TypedDataToSign): Hex =>

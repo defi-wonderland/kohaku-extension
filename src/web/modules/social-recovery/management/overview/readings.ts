@@ -11,12 +11,15 @@ import type {
   Address,
   Clause,
   Configuration,
-  Notification,
-  PrivacyLevel,
+  KitNotification,
   SetupDraft,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
-import type { AddressBook, RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
+} from '@kohaku-eth/social-recovery'
+import type {
+  PrivacyLevel,
+  AddressBook,
+  RecoveryAttemptState
+} from '@web/modules/social-recovery/shared/client'
 import type { DecryptedSetupCacheRecord } from '@web/modules/social-recovery/shared/records'
 import { privacyOfLevel } from '@web/modules/social-recovery/setup/privacy/writes'
 import { methodsOf } from '@web/modules/social-recovery/setup/review'
@@ -63,7 +66,7 @@ export const isSameSetup = (read: SetupState, earlier: SetupState): boolean =>
  * every attempt a cancel ended. A log a reorganization removed counts for
  * neither.
  */
-export const noticesOf = (found: readonly Notification[]): OverviewNotices => {
+export const noticesOf = (found: readonly KitNotification[]): OverviewNotices => {
   const moved = new Map<string, MovedKeys>()
   const cancelledAttempts: bigint[] = []
   found.forEach((notification) => {

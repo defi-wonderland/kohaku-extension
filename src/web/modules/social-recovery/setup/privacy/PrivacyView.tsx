@@ -17,7 +17,7 @@ import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
-import type { Clause } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause } from '@kohaku-eth/social-recovery'
 import {
   ActionsRow,
   PageTitle,

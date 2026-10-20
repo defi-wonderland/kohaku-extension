@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { ApproverRequest, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Hex } from '@kohaku-eth/social-recovery'
 import { replyLineOf } from '@web/modules/social-recovery/recovery/checklist'
 import { signatureOf } from '@web/modules/social-recovery/setup/enroll/guardian'
 import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'

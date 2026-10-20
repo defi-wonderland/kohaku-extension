@@ -13,7 +13,7 @@
 import { TextDecoder, TextEncoder } from 'util'
 
 import type { ScreensWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
-import type { Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration } from '@kohaku-eth/social-recovery'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 

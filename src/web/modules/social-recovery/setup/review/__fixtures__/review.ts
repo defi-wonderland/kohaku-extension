@@ -8,12 +8,12 @@ import type {
   Credential,
   Hex,
   ModuleInfo,
+  Parties,
   ReadResult,
   SetupDescription,
   SetupDraft,
-  SetupState,
-  TrustedParties
-} from '@web/modules/social-recovery/sdk-interfaces'
+  SetupState
+} from '@kohaku-eth/social-recovery'
 import { addressBookOf, deploymentDescriptor } from '@web/modules/social-recovery/shared/client'
 import type { FitCheckReading, RemovedKeyReading } from '@web/modules/social-recovery/shared/client'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
@@ -82,7 +82,7 @@ export const enrolled = (
 export const declaration = (
   admin: Address = zeroAddress,
   pendingAdmin: Address = zeroAddress
-): ReadResult<TrustedParties> => ({
+): ReadResult<Parties> => ({
   answered: true,
   value: {
     admin,
@@ -104,7 +104,7 @@ export const NOT_PAUSED: ReadResult<boolean> = { answered: true, value: false }
 
 /** Every read of a method answered: the declaration given, a module that answers to the method interface, and not stopped. */
 export const answered = (
-  trustedParties: ReadResult<TrustedParties> = declaration(),
+  trustedParties: ReadResult<Parties> = declaration(),
   moduleInfo: ReadResult<ModuleInfo> = info(),
   paused: ReadResult<boolean> = NOT_PAUSED
 ): MethodReads => ({ trustedParties, moduleInfo, paused })
@@ -159,7 +159,7 @@ export interface MountOptions {
   publicMetadata?: SetupDraft['privacy']['publicMetadata']
   passwordSet?: boolean
   client?: 'loading' | 'failed' | 'update-the-wallet'
-  trustedParties?: Answer<TrustedParties>
+  trustedParties?: Answer<Parties>
   moduleInfo?: Answer<ModuleInfo>
   paused?: Answer<boolean>
   removedKey?: () => Promise<RemovedKeyReading>

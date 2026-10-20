@@ -16,7 +16,7 @@ import type {
   PreparedBatch,
   PreparedCall,
   SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { CollectionChip } from '@web/modules/social-recovery/shared/display'
 
 /**

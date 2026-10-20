@@ -24,7 +24,7 @@ import type {
   BlockHeader,
   BlockRange,
   Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import { readWithin, within } from '@web/modules/social-recovery/shared/client/limits'
 import { isProviderReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
 import type {

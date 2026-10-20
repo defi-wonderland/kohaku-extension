@@ -14,15 +14,15 @@ import { parse } from '@ambire-common/libs/richJson/richJson'
 import en from '@common/config/localization/translations/en.json'
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
   Configuration,
   Gathering,
   Hex,
   PreparedBatch,
   PreparedCall,
+  Reply,
   SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import { parseCeremonySearch } from '@web/modules/social-recovery/shared/ceremony'
 import {
   ABSENT,
@@ -166,7 +166,7 @@ const VALID_UNTIL = '1700086400'
 const PROOF_A = '0xdeadbeefdeadbeef'
 const PROOF_B = '0xfeedfacefeedface'
 
-const reply = (place: number, proof: Hex, account: Address = ACCOUNT): ApproverReply => ({
+const reply = (place: number, proof: Hex, account: Address = ACCOUNT): Reply => ({
   kind: 'recovery-proof-reply',
   version: 1,
   chainId: CHAIN_ID.toString(),
@@ -183,12 +183,12 @@ const reply = (place: number, proof: Hex, account: Address = ACCOUNT): ApproverR
   proof
 })
 
-const APPROVALS: ApproverReply[] = [reply(0, PROOF_A), reply(1, PROOF_B)]
+const APPROVALS: Reply[] = [reply(0, PROOF_A), reply(1, PROOF_B)]
 
 // The SDK's gathering record, the body of a live session.
 const gathering = (
   account: Address = ACCOUNT,
-  replies: ApproverReply[] = APPROVALS,
+  replies: Reply[] = APPROVALS,
   request: Partial<Gathering['request']> = {}
 ): Gathering => ({
   kind: 'gathering',

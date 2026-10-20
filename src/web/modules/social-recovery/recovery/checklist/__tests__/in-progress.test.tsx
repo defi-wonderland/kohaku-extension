@@ -6,7 +6,7 @@
  * where none is left. The home band renders a line for each live session and
  * nothing without one.
  */
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 
 import type {
   Mounted,

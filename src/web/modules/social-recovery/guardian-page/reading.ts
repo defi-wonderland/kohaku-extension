@@ -6,7 +6,7 @@
  */
 import { isAddressEqual, keccak256 } from 'viem'
 
-import type { ApproverRequest, Attempt } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Attempt } from '@kohaku-eth/social-recovery'
 import { attemptLive } from '@web/modules/social-recovery/recovery/checklist'
 import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
 

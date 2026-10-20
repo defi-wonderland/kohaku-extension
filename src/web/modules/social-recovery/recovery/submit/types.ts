@@ -6,7 +6,7 @@ import type {
   Hex,
   PreparedCall,
   RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   AddGate,
   ChainReads,

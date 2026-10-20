@@ -7,12 +7,7 @@
  */
 import { getAddress, zeroHash } from 'viem'
 
-import type {
-  Address,
-  CancelledBy,
-  Hex,
-  PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, CancelledBy, Hex, PreparedCall } from '@kohaku-eth/social-recovery'
 import { accountBatchRefusal } from '@web/modules/social-recovery/shared/client'
 import type {
   ProviderTransactionReceipt,

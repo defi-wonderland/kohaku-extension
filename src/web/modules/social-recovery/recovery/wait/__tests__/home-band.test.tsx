@@ -20,7 +20,7 @@ import {
   waiting
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
-import type { Attempt } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Attempt } from '@kohaku-eth/social-recovery'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 

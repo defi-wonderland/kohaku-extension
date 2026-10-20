@@ -45,7 +45,7 @@ import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
 import useSelectedAccountControllerState from '@web/hooks/useSelectedAccountControllerState'
-import type { Address, Configuration } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Configuration } from '@kohaku-eth/social-recovery'
 import RecoveryChrome from '@web/modules/social-recovery/shared/chrome/RecoveryChrome'
 import {
   addressBookOf,

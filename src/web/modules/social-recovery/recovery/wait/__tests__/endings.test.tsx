@@ -34,7 +34,7 @@ import type {
   RoutedWait,
   World
 } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
-import type { CancelledBy } from '@web/modules/social-recovery/sdk-interfaces'
+import type { CancelledBy } from '@kohaku-eth/social-recovery'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import type { StoredSession } from '@web/modules/social-recovery/shared/records'
 

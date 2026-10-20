@@ -7,7 +7,7 @@
  */
 import { keccak256 } from 'viem'
 
-import type { Attempt, Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Attempt, Gathering } from '@kohaku-eth/social-recovery'
 import { within } from '@web/modules/social-recovery/shared/client'
 
 import type { ChecklistKitClient, ChecklistLoad, PollFacts, PollOutcome, PollTarget } from './types'

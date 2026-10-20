@@ -8,7 +8,7 @@
  */
 import { isHex } from 'viem'
 
-import type { ApproverReply, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Reply } from '@kohaku-eth/social-recovery'
 import type { Translate } from '@web/modules/social-recovery/shared/display'
 
 import { isDecimalString, isStoredAddress } from '@web/modules/social-recovery/shared/records'
@@ -42,7 +42,7 @@ const replyRecordOf = ({
   salt,
   digest,
   proof
-}: ApproverReply): ApproverReply => ({
+}: Reply): Reply => ({
   kind,
   version,
   chainId,
@@ -60,10 +60,10 @@ const replyRecordOf = ({
 })
 
 /** An approval as the one line the guardian sends back: its record as plain JSON. */
-export const replyLineOf = (reply: ApproverReply): string => JSON.stringify(replyRecordOf(reply))
+export const replyLineOf = (reply: Reply): string => JSON.stringify(replyRecordOf(reply))
 
 /** The approval a pasted text carries, or null where it is not one; any JSON whitespace is accepted. */
-export const replyOfLine = (text: string): ApproverReply | null => {
+export const replyOfLine = (text: string): Reply | null => {
   const r = recordOfJsonLine(text)
   if (
     !isObject(r) ||
@@ -133,7 +133,7 @@ export const judgePaste = (input: PasteJudgeInput): PasteJudgement => {
 export const verifyStepOf = async (
   verify: VerifyReply,
   request: ApproverRequest,
-  reply: ApproverReply
+  reply: Reply
 ): Promise<VerifyStep> => {
   try {
     const verdict = await verify(request, reply)

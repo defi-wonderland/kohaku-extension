@@ -7,7 +7,7 @@
  * through the request queue or brought back through the offline block, with
  * the signature checked locally.
  */
-import type { Address, Clause, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, Hex } from '@kohaku-eth/social-recovery'
 import type {
   KeyHandle,
   SignOptions,

@@ -8,7 +8,7 @@
  */
 import { keccak256 } from 'viem'
 
-import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex } from '@kohaku-eth/social-recovery'
 import {
   ChainCountdown,
   createWalletRecords,

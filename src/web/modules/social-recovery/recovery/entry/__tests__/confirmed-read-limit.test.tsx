@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import type { Address, BlockTag } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, BlockTag } from '@kohaku-eth/social-recovery'
 import {
   advanceClock,
   BASIC,
@@ -15,16 +15,6 @@ import {
   useLiveFakeClock
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
-import {
-  ACCOUNT,
-  KEY_A
-} from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
-import {
-  CREATION,
-  HOLDS,
-  same,
-  worldOf
-} from '@web/modules/social-recovery/shared/client/kit/wallet-reads/__fixtures__/world'
 
 const HOUR_MS = 60 * 60 * 1000
 

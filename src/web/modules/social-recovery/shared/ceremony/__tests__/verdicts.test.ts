@@ -11,7 +11,7 @@
  * access alone, a passed enrollment reads not tested until its test runs, and
  * a claim reads the checklist's chips.
  */
-import type { ApproverReply, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex, Reply } from '@kohaku-eth/social-recovery'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 
 import {
@@ -295,7 +295,7 @@ describe('a method that answers null', () => {
     })
     const claiming = fakeMethod()
     const orchestrator = fakeOrchestrator(claiming)
-    orchestrator.replyFrom.mockResolvedValue(null as unknown as ApproverReply)
+    orchestrator.replyFrom.mockResolvedValue(null as unknown as Reply)
     const claimed = await hosts.createClaim({ method: claiming, orchestrator })
     ;[enrolled, claimed].forEach((outcome) =>
       expect(outcome.raw).toMatchObject({ kind: 'verdict', verdict: 'failed', cause: 'thrown' })

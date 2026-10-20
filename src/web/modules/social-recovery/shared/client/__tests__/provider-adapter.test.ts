@@ -171,7 +171,7 @@ describe('the provider adapter, IProvider over the extension provider', () => {
   })
 
   describe('logs(filterSpec, range)', () => {
-    const filter: FilterSpec = { addresses: [TO], topics: [TOPIC, null] }
+    const filter: FilterSpec = { address: [TO], topics: [TOPIC, null] }
 
     it('runs one eth_getLogs over the addresses, the topics and the two blocks of the range', async () => {
       const w = world()
@@ -486,7 +486,7 @@ describe('the four reads on the typed members of the ethers provider', () => {
   })
 
   describe('logs(filterSpec, range)', () => {
-    const filter: FilterSpec = { addresses: [TO], topics: [TOPIC, null] }
+    const filter: FilterSpec = { address: [TO], topics: [TOPIC, null] }
     const ethersLog = {
       address: TO,
       topics: Object.freeze([TOPIC]),
@@ -783,7 +783,7 @@ describe('through the ethers provider the extension builds for a network', () =>
   it('sends one eth_getLogs over the range as quantities and answers the log with its checksummed address', async () => {
     const node = nodeAnswering({ eth_getLogs: [NODE_LOG] })
     const logs = await createProviderAdapter(node.provider).logs(
-      { addresses: [CHECKSUMMED], topics: [TOPIC, null] },
+      { address: [CHECKSUMMED], topics: [TOPIC, null] },
       { from: 900, to: 1900 }
     )
     expect(logs).toEqual([
@@ -852,7 +852,7 @@ describe('through the ethers provider the extension builds for a network', () =>
       'logs',
       (provider) =>
         createProviderAdapter(provider).logs(
-          { addresses: [TO, BAD_CHECKSUM], topics: [TOPIC] },
+          { address: [TO, BAD_CHECKSUM], topics: [TOPIC] },
           { from: 900, to: 1900 }
         )
     ]
@@ -903,7 +903,7 @@ describe('through the ethers provider the extension builds for a network', () =>
       const node = nodeAnswering({ eth_getLogs: [NODE_LOG, log] })
       const caught = await thrownBy(
         createProviderAdapter(node.provider).logs(
-          { addresses: [CHECKSUMMED], topics: [TOPIC] },
+          { address: [CHECKSUMMED], topics: [TOPIC] },
           { from: 900, to: 1900 }
         )
       )

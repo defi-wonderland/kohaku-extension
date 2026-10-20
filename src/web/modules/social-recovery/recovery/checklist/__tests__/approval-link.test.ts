@@ -7,7 +7,7 @@
 import { keccak256 } from 'viem'
 
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
-import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest } from '@kohaku-eth/social-recovery'
 import {
   approvalLinkOf,
   requestOfApprovalLink

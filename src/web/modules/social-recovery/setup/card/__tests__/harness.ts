@@ -7,7 +7,7 @@
  * the parts of its file, and every string a page shows, read by a tokenizer of
  * its own.
  */
-import type { RestoreCause, RestoreRefusal } from '@web/modules/social-recovery/sdk-interfaces'
+import type { KitRefusalError, RestoreCauseCode } from '@kohaku-eth/social-recovery'
 import type { DigestVersionRefusal } from '@web/modules/social-recovery/shared/client'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
@@ -126,8 +126,8 @@ export interface PdfFileParts {
   streams: PdfStream[]
 }
 
-export const restoreRefusalOf = (cause: RestoreCause): RestoreRefusal => {
-  const error = new Error(`The restore refused: ${cause}`) as RestoreRefusal
+export const restoreRefusalOf = (cause: RestoreCauseCode): KitRefusalError => {
+  const error = new Error(`The restore refused: ${cause}`) as KitRefusalError
   error.name = 'RestoreRefusal'
   error.cause = { code: cause, subject: 'setup', values: {} }
   return error

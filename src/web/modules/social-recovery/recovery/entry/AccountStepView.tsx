@@ -25,7 +25,7 @@ import {
   routeEntryPathOf
 } from '@web/modules/social-recovery/recovery/checklist/search'
 import { SectionCard, SectionLabel, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 
 import ConfirmAccount from './ConfirmAccount'

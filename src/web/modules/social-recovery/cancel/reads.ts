@@ -10,7 +10,7 @@ import omitBy from 'lodash/omitBy'
 import isEqual from 'react-fast-compare'
 import { isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
-import type { BlockHeader, RawLog } from '@web/modules/social-recovery/sdk-interfaces'
+import type { BlockHeader, RawLog } from '@kohaku-eth/social-recovery'
 import {
   CHAIN_IDS,
   providerReadFailure,

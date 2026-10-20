@@ -8,8 +8,8 @@
  */
 import { isHex } from 'viem'
 
-import type { Address, CancelledBy } from '@web/modules/social-recovery/sdk-interfaces'
-import { CANCELLED_BY } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, CancelledBy } from '@kohaku-eth/social-recovery'
+import { CANCELLED_BY } from '@web/modules/social-recovery/shared/client'
 import { extensionRecordStorage } from '@web/modules/social-recovery/shared/records/extensionStorage'
 import {
   isDecimalString,

@@ -14,7 +14,7 @@ import type {
   CancelledBy,
   Hex,
   LogPosition
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type { AttemptEvents, AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import type { WatcherStorage } from '@web/modules/social-recovery/watcher'
 

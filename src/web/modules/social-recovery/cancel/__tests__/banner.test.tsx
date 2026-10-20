@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import type { Account } from '@ambire-common/interfaces/account'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import type { WatcherRecord } from '@web/modules/social-recovery/watcher'
 
 // viem builds a TextEncoder and a TextDecoder when either entry loads, which

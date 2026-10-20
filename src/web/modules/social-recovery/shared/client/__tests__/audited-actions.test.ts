@@ -118,7 +118,7 @@ describe('the deployment descriptors', () => {
 
   it('answers a fresh record every call, so no caller moves the shipped data', () => {
     const first = deploymentDescriptor('sepolia')
-    first.auditedActions.push(ABSENT)
+    ;(first.auditedActions as string[]).push(ABSENT)
     expect(deploymentDescriptor('sepolia').auditedActions).not.toContain(ABSENT)
   })
 

@@ -22,11 +22,7 @@
  * device committed meanwhile never makes the old path read as current. The
  * wipe releases and caches only a stored write of this same intent.
  */
-import type {
-  PreparedBatch,
-  PreparedCall,
-  SetupConfirmation
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { PreparedBatch, PreparedCall, SetupConfirmation } from '@kohaku-eth/social-recovery'
 import { accountBatchTransactionOf } from '@web/modules/social-recovery/shared/client'
 import {
   assertWriteDoor,

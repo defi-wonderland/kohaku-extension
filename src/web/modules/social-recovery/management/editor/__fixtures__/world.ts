@@ -7,7 +7,7 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type { Configuration, Hex, PreparedCall } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, Hex, PreparedCall } from '@kohaku-eth/social-recovery'
 import type { EstimationListener, SendPort } from '@web/modules/social-recovery/shared/client'
 
 import type { EditWorld, LandingCase } from './types'
@@ -31,9 +31,6 @@ const {
 const {
   sdkStandIn
 }: typeof import('@web/modules/social-recovery/shared/client/stand-in') = require('@web/modules/social-recovery/shared/client/stand-in')
-const {
-  ecdsaConfigOf
-}: typeof import('@web/modules/social-recovery/shared/client/kit/formats/credentials') = require('@web/modules/social-recovery/shared/client/kit/formats/credentials')
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')

@@ -11,11 +11,11 @@ import type {
   Address,
   Configuration,
   LogPosition,
-  PrivacyLevel,
   SetupDraft,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
+  PrivacyLevel,
   AccountFactsResult,
   ChainReads,
   KeyHandle,

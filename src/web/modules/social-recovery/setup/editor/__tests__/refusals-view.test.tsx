@@ -11,12 +11,7 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type {
-  Clause,
-  Finding,
-  SetupDraft,
-  ValidationResult
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Finding, SetupDraft, ValidationResult } from '@kohaku-eth/social-recovery'
 
 import type { Root, Validate } from '@web/modules/social-recovery/setup/editor/__tests__/harness'
 

@@ -35,7 +35,7 @@ import {
   walletAddsIt
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
-import type { Configuration, Credential } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, Credential } from '@kohaku-eth/social-recovery'
 import { renderChip, renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { kindNameOf } from '@web/modules/social-recovery/setup/review'
 import { setRecoveryPassword } from '@web/modules/social-recovery/shared/records'

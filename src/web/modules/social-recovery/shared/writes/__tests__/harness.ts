@@ -28,10 +28,10 @@ import type {
   Address,
   Hex,
   KitError,
-  KitErrorName,
   PreparedBatch,
   PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
+import type { KitErrorName } from '@web/modules/social-recovery/shared/client'
 import {
   createChainReads,
   createReceiptWait,

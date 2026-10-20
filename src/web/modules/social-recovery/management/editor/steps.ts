@@ -42,7 +42,7 @@ import {
   attemptOpenOf,
   isCacheCurrent
 } from '@web/modules/social-recovery/management/overview/readings'
-import type { SetupConfirmation, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupConfirmation, SetupState } from '@kohaku-eth/social-recovery'
 import {
   accountBatchTransactionOf,
   newSendRequestId

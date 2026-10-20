@@ -15,14 +15,9 @@ import type {
   OverviewReads,
   OverviewViewProps
 } from '@web/modules/social-recovery/management/overview/types'
+import type { Address, Configuration, Hex, SetupState } from '@kohaku-eth/social-recovery'
 import type {
-  Address,
-  Configuration,
-  Hex,
   PrivacyLevel,
-  SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
-import type {
   ChainReads,
   KeyHandle,
   RecoveryKitClient
@@ -60,9 +55,6 @@ const {
 const {
   sdkStandIn
 }: typeof import('@web/modules/social-recovery/shared/client/stand-in') = require('@web/modules/social-recovery/shared/client/stand-in')
-const {
-  ecdsaConfigOf
-}: typeof import('@web/modules/social-recovery/shared/client/kit/formats/credentials') = require('@web/modules/social-recovery/shared/client/kit/formats/credentials')
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')

@@ -1,14 +1,14 @@
 import type { Storage } from '@ambire-common/interfaces/storage'
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
   DeviceBinding,
   Hex,
   IMethodsOrchestrator,
   IRecoveryMethod,
-  MethodFailureCause
-} from '@web/modules/social-recovery/sdk-interfaces'
+  Reply,
+  ReplyFailureCause
+} from '@kohaku-eth/social-recovery'
 import type { CollectionChip, MethodChip } from '@web/modules/social-recovery/shared/display'
 
 import type { CEREMONY_STEPS } from './device'
@@ -24,7 +24,7 @@ export type CeremonyCall = typeof CEREMONY_CALLS[number]
 export type CeremonyVerdict = typeof CEREMONY_VERDICTS[number]
 export type DismissalNote = typeof DISMISSAL_NOTES[number]
 export type HostCause = typeof HOST_CAUSES[number]
-export type CeremonyCause = MethodFailureCause | HostCause
+export type CeremonyCause = ReplyFailureCause | HostCause
 
 export type PassedOutcome<T> = { kind: 'verdict'; verdict: 'passed'; retry: false; value: T }
 export type FailedOutcome = {
@@ -341,7 +341,7 @@ export interface TestAccessValue {
 
 /** What a passed claim carries: the reply for one place. */
 export interface ClaimValue {
-  reply: ApproverReply
+  reply: Reply
   facts?: PasskeyFacts
 }
 
@@ -353,7 +353,7 @@ export type DeviceChoice = { device: CeremonyDevice; params: unknown }
 
 /** The signing half's answer: the reply, or the outcome that ends the call. */
 export type SignedReply =
-  | { ok: true; reply: ApproverReply; facts?: PasskeyFacts }
+  | { ok: true; reply: Reply; facts?: PasskeyFacts }
   | { ok: false; outcome: CeremonyOutcome<never> }
 
 // ---------------------------------------------------------------------------
@@ -407,7 +407,7 @@ export type ReportSubscribe = (key: string, onValue: (value: unknown) => void) =
 
 /**
  * What the caller's record resolves to: the injected orchestrator and method
- * implementation (typed by `sdk-interfaces`, never the doubles), and the
+ * implementation (typed by the SDK package), and the
  * inputs of the call. Enroll needs `methodAddress` and `params`; test access
  * and create claim need `request`. A method whose material the caller already
  * holds (a guardian's address or signature, a zkPassport result, an Aadhaar

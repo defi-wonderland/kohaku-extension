@@ -6,7 +6,7 @@
  * refused as a member still to enroll, a required row with one as a method
  * still to enroll, and a clause with no enrolled member at all as empty.
  */
-import type { Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, SetupDraft } from '@kohaku-eth/social-recovery'
 import { isEmptySlot } from '@web/modules/social-recovery/shared/records'
 
 import { methodCountOf, roleOf, rolesOf } from './operations'

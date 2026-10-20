@@ -8,7 +8,7 @@
  * other reason, or does not answer in time, reads as unanswered. No answer but
  * the first reads as saved.
  */
-import type { SetupConfirmation } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupConfirmation } from '@kohaku-eth/social-recovery'
 
 import {
   COMMITMENT_MISMATCH_CODE,

@@ -36,7 +36,7 @@ import {
   t,
   UNKNOWN_METHOD_SETUP
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
-import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupState } from '@kohaku-eth/social-recovery'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/types'
 import {

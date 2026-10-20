@@ -8,12 +8,7 @@
  * The records run against the rich JSON storage double, whose `calls` list
  * every storage write, so a test sees each write an accessor call makes.
  */
-import type {
-  Address,
-  ApproverReply,
-  Gathering,
-  Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex, Reply } from '@kohaku-eth/social-recovery'
 import {
   createWalletRecords,
   DirectWipeEvent,
@@ -50,7 +45,7 @@ const OTHER_CLAIM: SubmissionInFlightClaim = {
   claimedAt: T0 + 1000
 }
 
-const reply = (place: number): ApproverReply => ({
+const reply = (place: number): Reply => ({
   kind: 'recovery-proof-reply',
   version: 1,
   chainId: CHAIN_ID.toString(),
@@ -67,7 +62,7 @@ const reply = (place: number): ApproverReply => ({
   proof: place === 0 ? '0xdeadbeefdeadbeef' : '0xfeedfacefeedface'
 })
 
-const gathering = (replies: ApproverReply[]): Gathering => ({
+const gathering = (replies: Reply[]): Gathering => ({
   kind: 'gathering',
   version: 1,
   purpose: 'approval',

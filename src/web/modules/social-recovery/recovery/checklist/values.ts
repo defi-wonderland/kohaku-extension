@@ -5,7 +5,7 @@
  * still unread leaves the block not ready, and the carriers stay locked.
  * Addresses render in full, since both ends compare them on the call. Pure.
  */
-import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ApproverRequest } from '@kohaku-eth/social-recovery'
 import {
   renderFullAddress,
   renderPaymentOrder,

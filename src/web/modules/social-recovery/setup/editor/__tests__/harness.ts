@@ -12,7 +12,7 @@ import type {
   Hex,
   SetupDraft,
   ValidationResult
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import { addressBookOf } from '@web/modules/social-recovery/shared/client'
 import type {
   Enrollment,

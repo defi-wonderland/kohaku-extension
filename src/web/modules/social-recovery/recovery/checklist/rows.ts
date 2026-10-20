@@ -5,12 +5,7 @@
  */
 import { decodeAbiParameters } from 'viem'
 
-import type {
-  Assessment,
-  Configuration,
-  Gathering,
-  Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Assessment, Configuration, Gathering, Hex } from '@kohaku-eth/social-recovery'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'

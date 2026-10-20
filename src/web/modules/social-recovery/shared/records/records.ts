@@ -17,7 +17,7 @@ import isEqual from 'react-fast-compare'
 import { bytesToHex, isAddress, isAddressEqual, isHex, keccak256 } from 'viem'
 
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
-import type { Address, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex } from '@kohaku-eth/social-recovery'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
 import { isDecimalString, isStoredAddress } from './guards'

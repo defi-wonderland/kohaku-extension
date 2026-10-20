@@ -13,12 +13,8 @@ import {
   stillNeededOf
 } from '@web/modules/social-recovery/management/editor/changes'
 import type { EditSession } from '@web/modules/social-recovery/management/editor/types'
-import type {
-  Clause,
-  Credential,
-  PrivacyLevel,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, SetupDraft } from '@kohaku-eth/social-recovery'
+import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
 import { privacyOfLevel } from '@web/modules/social-recovery/setup/privacy/writes'
 import {
   addGroup,

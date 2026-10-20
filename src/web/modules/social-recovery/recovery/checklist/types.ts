@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
   Assessment,
   Attempt,
@@ -10,8 +9,9 @@ import type {
   Gathering,
   GatheringPlace,
   Hex,
+  Reply,
   Verdict
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   CeremonyOutcome,
   PasskeyFacts,
@@ -291,7 +291,7 @@ export interface ChecklistState {
   load: ChecklistLoad
   assessment: Assessment | null
   retry: () => void
-  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+  addReply: (reply: Reply) => Promise<AddReplyResult>
   setNote: (place: number, note: RowNote | null) => Promise<void>
   noteFailed: boolean
   /** Wipes the live session; `onWiped` runs once the wipe lands, before the tab leaves. */
@@ -395,7 +395,7 @@ export interface ClaimTarget {
 
 /** A passed claim's reply, with where the authenticator sat where the report says. */
 export interface PassedClaim {
-  reply: ApproverReply
+  reply: Reply
   facts?: Pick<PasskeyFacts, 'place'>
 }
 
@@ -496,7 +496,7 @@ export interface GuardianRowProps {
   support: GuardianSupport
   busy: boolean
   setNote: (place: number, note: RowNote | null) => void
-  addReply: (reply: ApproverReply) => Promise<AddReplyResult>
+  addReply: (reply: Reply) => Promise<AddReplyResult>
 }
 
 /** The guardian row's carriers, its message and its paste field mount here. */
@@ -515,7 +515,7 @@ export interface GuardianCarriersProps {
 // The guardian rows' link, values and paste check
 // ---------------------------------------------------------------------------
 
-export type AddReply = (reply: ApproverReply) => Promise<AddReplyResult>
+export type AddReply = (reply: Reply) => Promise<AddReplyResult>
 
 /** The key the recovery removes, as the checklist read it for the guardian rows. */
 export type RemovedKeyRead =
@@ -562,7 +562,7 @@ export type PasteError =
 /** The pure steps' answer: a written error, or the reply to verify against its own place's request. */
 export type PasteJudgement =
   | { kind: 'refused'; error: PasteError }
-  | { kind: 'verify'; reply: ApproverReply; request: ApproverRequest | undefined }
+  | { kind: 'verify'; reply: Reply; request: ApproverRequest | undefined }
 
 /** What a paste came to: the reply added to its place, or one written error. */
 export type PasteOutcome = { kind: 'added'; place: number } | { kind: 'error'; error: PasteError }
@@ -570,7 +570,7 @@ export type PasteOutcome = { kind: 'added'; place: number } | { kind: 'error'; e
 /** What the verify of one reply came to: passed on to the add, rejected, or a check that failed. */
 export type VerifyStep = 'pass' | 'rejected' | 'failed'
 
-export type VerifyReply = (request: ApproverRequest, reply: ApproverReply) => Promise<Verdict>
+export type VerifyReply = (request: ApproverRequest, reply: Reply) => Promise<Verdict>
 
 export interface PasteJudgeInput {
   text: string
@@ -581,7 +581,7 @@ export interface PasteJudgeInput {
   /** One approval is the whole request: a one-row path or a group of threshold one. */
   oneApproval: boolean
   /** Whether the client refuses the reply's kind or version. */
-  versionRefused: (reply: ApproverReply) => boolean
+  versionRefused: (reply: Reply) => boolean
 }
 
 export interface PasteInput extends Omit<PasteJudgeInput, 'nowSeconds'> {

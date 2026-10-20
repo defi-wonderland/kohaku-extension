@@ -20,8 +20,9 @@
  */
 import { isHex } from 'viem'
 
-import type { Hex, KitError, KitErrorName } from '@web/modules/social-recovery/sdk-interfaces'
-import { CANCELLED_BY, KIT_ERROR_NAMES } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Hex, KitError } from '@kohaku-eth/social-recovery'
+import type { KitErrorName } from '@web/modules/social-recovery/shared/client'
+import { CANCELLED_BY, KIT_ERROR_NAMES } from '@web/modules/social-recovery/shared/client'
 
 import type {
   AttemptAfterCancel,

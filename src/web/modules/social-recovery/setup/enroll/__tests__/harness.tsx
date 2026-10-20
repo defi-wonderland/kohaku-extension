@@ -23,7 +23,7 @@ import type {
   IMethodsOrchestrator,
   IRecoveryMethod,
   SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   CeremonyCall,
   CeremonyOutcome,

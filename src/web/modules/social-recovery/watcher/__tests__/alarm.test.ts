@@ -1,7 +1,7 @@
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
 import { providerKeyOf } from '@web/modules/social-recovery/shared/client/extension-provider'
-import type { DeploymentDescriptor } from '@web/modules/social-recovery/sdk-interfaces'
+import type { DeploymentDescriptor } from '@kohaku-eth/social-recovery'
 import {
   readWatcherRecord,
   registerRecoveryWatcherAlarm,

@@ -6,9 +6,9 @@ import type {
   DeploymentDescriptor,
   Hex,
   IEventManager,
-  Notification,
+  KitNotification,
   PreparedCall
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   AddGate,
   ChainReads,
@@ -160,7 +160,7 @@ export interface AttemptReaderInput {
 export type AttemptReader = () => Promise<WatcherReading>
 
 /** An attempt's cancel as the manager's log names it. */
-export type CancelLog = Extract<Notification, { kind: 'attempt-cancelled' }>
+export type CancelLog = Extract<KitNotification, { kind: 'attempt-cancelled' }>
 
 /** The members of a log on ethers' receipt that the decoding reads. */
 export type ReceiptLog = Pick<

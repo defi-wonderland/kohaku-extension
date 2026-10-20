@@ -13,7 +13,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { StepViewProps } from '@web/modules/social-recovery/setup/privacy'
 import type { RecordStorage, WalletRecords } from '@web/modules/social-recovery/shared/records'
 

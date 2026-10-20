@@ -42,7 +42,7 @@ import type {
   SetupDescription,
   SetupDraft,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import {
   accountBatchRefusal,
   addressBookOf,

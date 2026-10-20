@@ -10,7 +10,7 @@
  * outcome and no undelivered claim of the dead request reaches the next
  * gathering.
  */
-import type { Configuration, Gathering, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Configuration, Gathering, Hex } from '@kohaku-eth/social-recovery'
 import type { RecoverySessionAccessor } from '@web/modules/social-recovery/shared/records'
 
 import type {

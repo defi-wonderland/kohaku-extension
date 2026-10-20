@@ -12,8 +12,7 @@ import {
   zeroAddress
 } from 'viem'
 
-import type { Address, IProvider } from '@web/modules/social-recovery/sdk-interfaces'
-import { createKitEventManager } from '@web/modules/social-recovery/shared/client/kit/events'
+import type { Address, IProvider } from '@kohaku-eth/social-recovery'
 import { ownerCancelOf } from '@web/modules/social-recovery/cancel'
 import type { ReceiptLog } from '@web/modules/social-recovery/cancel'
 

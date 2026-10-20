@@ -11,12 +11,7 @@
  */
 import { keccak256 } from 'viem'
 
-import type {
-  Address,
-  ApproverReply,
-  Gathering,
-  Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex, Reply } from '@kohaku-eth/social-recovery'
 import {
   CountdownRead,
   createWalletRecords,
@@ -54,7 +49,7 @@ const OTHER_CLAIM: ExecutionInFlightClaim = {
   claimedAt: T0 + 1000
 }
 
-const reply = (place: number): ApproverReply => ({
+const reply = (place: number): Reply => ({
   kind: 'recovery-proof-reply',
   version: 1,
   chainId: CHAIN_ID.toString(),

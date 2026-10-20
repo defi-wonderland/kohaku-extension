@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import { isVisible } from '@web/modules/social-recovery/shared/ceremony'
 import {
   CHAIN_IDS,

@@ -29,7 +29,7 @@ import {
   storeLiveRecovery,
   t
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
-import type { SetupState } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupState } from '@kohaku-eth/social-recovery'
 import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/types'
 import { wipeRecoveryPassword } from '@web/modules/social-recovery/shared/records'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'

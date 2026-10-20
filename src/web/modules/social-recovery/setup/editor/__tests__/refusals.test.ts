@@ -7,14 +7,9 @@
  */
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
-import type {
-  Clause,
-  Credential,
-  Finding,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
-import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, Finding, SetupDraft } from '@kohaku-eth/social-recovery'
 import {
+  SETUP_ERROR_CODES,
   clientConfigurationOf,
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'

@@ -6,12 +6,7 @@
  */
 import { decodeAbiParameters } from 'viem'
 
-import type {
-  Address,
-  Clause,
-  Credential,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, Credential, SetupDraft } from '@kohaku-eth/social-recovery'
 import { privacyLevelOf, sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
 import {

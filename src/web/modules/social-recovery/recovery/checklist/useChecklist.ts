@@ -11,11 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type {
-  ApproverReply,
-  Assessment,
-  Configuration
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Assessment, Configuration, Reply } from '@kohaku-eth/social-recovery'
 import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
 import type {
   DirectWipeEvent,
@@ -230,7 +226,7 @@ const useChecklist = ({
   }
 
   const addReply = useCallback(
-    async (reply: ApproverReply): Promise<AddReplyResult> => {
+    async (reply: Reply): Promise<AddReplyResult> => {
       const current = currentLive()
       if (!current || !kit) {
         return { kind: 'refused', cause: 'not-live' }

@@ -33,9 +33,6 @@ const {
   readRecoveryPassword,
   wipeRecoveryPassword
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
-const {
-  notServedRefusal
-}: typeof import('@web/modules/social-recovery/shared/client/kit/setup-client') = require('@web/modules/social-recovery/shared/client/kit/setup-client')
 const OverviewView: typeof import('@web/modules/social-recovery/management/overview/OverviewView').default =
   require('@web/modules/social-recovery/management/overview/OverviewView').default
 const {

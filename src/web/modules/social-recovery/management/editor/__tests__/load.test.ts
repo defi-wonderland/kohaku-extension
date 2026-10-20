@@ -16,13 +16,9 @@ import {
   editSessionKeyOf,
   editSessionOf
 } from '@web/modules/social-recovery/management/editor/session'
-import type {
-  Configuration,
-  PrivacyLevel,
-  SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
-import { PRIVACY_LEVELS } from '@web/modules/social-recovery/sdk-interfaces'
-import { privacyLevelOf } from '@web/modules/social-recovery/shared/client'
+import type { Configuration, SetupState } from '@kohaku-eth/social-recovery'
+import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
+import { PRIVACY_LEVELS, privacyLevelOf } from '@web/modules/social-recovery/shared/client'
 import { renderRowChip, rowChipTone } from '@web/modules/social-recovery/setup/editor'
 import { recordTest } from '@web/modules/social-recovery/setup/enroll/writes'
 import { untestedInPath } from '@web/modules/social-recovery/setup/review'

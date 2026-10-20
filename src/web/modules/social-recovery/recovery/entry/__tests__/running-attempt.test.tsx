@@ -6,7 +6,7 @@
  * the page opens in place of its own provider; every other edge is the
  * harness's.
  */
-import type { ActionState, Address, Hex } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ActionState, Address, Hex } from '@kohaku-eth/social-recovery'
 import type { AttemptEvents, AttemptScan } from '@web/modules/social-recovery/shared/client'
 import {
   advanceClock,

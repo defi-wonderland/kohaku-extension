@@ -28,17 +28,17 @@ import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
   Address,
-  ApproverReply,
   ApproverRequest,
   Attempt,
   AttemptRequest,
   Configuration,
   Gathering,
   Hex,
-  Notification,
+  KitNotification,
   PreparedCall,
-  RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+  RecoveryState,
+  Reply
+} from '@kohaku-eth/social-recovery'
 import type {
   AccountFactsResult,
   KeyHandle,
@@ -324,7 +324,7 @@ export const recoveryStateOf = (attempt: Attempt, block = START_BLOCK + 5): Reco
 })
 
 /** The manager's `attempt-started` event of this gathering's start. */
-export const attemptStarted = (gathering: Gathering, payload: Hex = PAYLOAD): Notification =>
+export const attemptStarted = (gathering: Gathering, payload: Hex = PAYLOAD): KitNotification =>
   ({
     kind: 'attempt-started',
     account: gathering.request.account,
@@ -338,7 +338,7 @@ export const attemptStarted = (gathering: Gathering, payload: Hex = PAYLOAD): No
     order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
     consumableAfter: 0,
     at: { blockNumber: START_BLOCK + 2, removed: false }
-  } as unknown as Notification)
+  } as unknown as KitNotification)
 
 /** ethers' error from `wait()` on a transaction the chain mined and reverted. */
 export const minedAndReverted = (hash: Hex = TX_HASH): Error =>
@@ -422,9 +422,9 @@ export const fakeKit = (
   const prepareStartAttempt = jest.fn(async () => START_CALL)
   const recoveryState = jest.fn(async () => recoveryStateOf(chain.attempt))
   const accountFilter = jest.fn(() => ({ kind: 'account-filter' }))
-  const fetch = jest.fn(async (): Promise<Notification[]> => [])
+  const fetch = jest.fn(async (): Promise<KitNotification[]> => [])
   const verifyReply = jest.fn(
-    async (request: ApproverRequest, reply: ApproverReply): Promise<string> =>
+    async (request: ApproverRequest, reply: Reply): Promise<string> =>
       request.place === reply.place ? 'satisfied' : 'rejected'
   )
   const removedKey = jest.fn(async () => ({ kind: 'named', key: REMOVED }))

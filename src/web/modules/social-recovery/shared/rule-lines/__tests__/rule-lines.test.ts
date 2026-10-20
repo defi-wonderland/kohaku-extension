@@ -2,12 +2,7 @@ import i18next from 'i18next'
 import { isAddressEqual } from 'viem'
 
 import en from '@common/config/localization/translations/en.json'
-import type {
-  Clause,
-  Credential,
-  Hex,
-  SetupDraft
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, Hex, SetupDraft } from '@kohaku-eth/social-recovery'
 
 import { addressBookOf } from '@web/modules/social-recovery/shared/client/addresses'
 import { emptySlot, SLOT_KINDS } from '@web/modules/social-recovery/shared/records'

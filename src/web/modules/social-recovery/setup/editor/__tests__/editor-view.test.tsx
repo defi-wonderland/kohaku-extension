@@ -12,12 +12,7 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type {
-  Clause,
-  Finding,
-  SetupDraft,
-  ValidationResult
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Finding, SetupDraft, ValidationResult } from '@kohaku-eth/social-recovery'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import type {

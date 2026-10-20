@@ -5,12 +5,7 @@
  * finding renders as. Every setup error renders a sentence; any other finding
  * renders its code.
  */
-import type {
-  Credential,
-  Finding,
-  FindingCode,
-  SetupErrorCode
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Credential, ErrorCode, Finding } from '@kohaku-eth/social-recovery'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 import type { StatusChipTone } from '@web/modules/social-recovery/shared/chrome'
 import type { MethodChip, Translate } from '@web/modules/social-recovery/shared/display'
@@ -59,7 +54,7 @@ const REFUSAL_KEYS: Record<RefusalKey, string> = {
 // A backup too wide for its padding and an action that cannot serve the
 // account are the SDK's findings alone: this wallet never judges either shape
 // itself, so each has a sentence of its own outside the editor's refusals.
-const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
+const SETUP_ERROR_KEYS: Record<ErrorCode, string> = {
   'rule.empty': REFUSAL_KEYS.noMethod,
   'clause.empty': REFUSAL_KEYS.emptyGroup,
   'rule.all-thresholds-zero': REFUSAL_KEYS.thresholdBelowOne,
@@ -73,7 +68,7 @@ const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
   'backup.too-wide': 'socialRecovery.editor.refusals.backupTooWide'
 }
 
-const FINDING_KEYS: Partial<Record<FindingCode, string>> = SETUP_ERROR_KEYS
+const FINDING_KEYS: Partial<Record<Finding['code'], string>> = SETUP_ERROR_KEYS
 
 const CLIENT_REFUSAL_KEYS: Record<ClientRefusal, { title: string; body: string }> = {
   'update-the-wallet': {

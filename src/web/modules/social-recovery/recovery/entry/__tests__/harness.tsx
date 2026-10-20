@@ -25,10 +25,10 @@ import type {
   Gathering,
   Handover,
   Hex,
-  PrivacyLevel,
   SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
+  PrivacyLevel,
   AttemptEvents,
   AttemptScan,
   FitCheckReading,
@@ -328,10 +328,6 @@ const {
 const {
   sdkStandIn
 }: typeof import('@web/modules/social-recovery/shared/client/stand-in') = require('@web/modules/social-recovery/shared/client/stand-in')
-const {
-  ecdsaConfigOf,
-  passkeyConfigOf
-}: typeof import('@web/modules/social-recovery/shared/client/kit/formats/credentials') = require('@web/modules/social-recovery/shared/client/kit/formats/credentials')
 const {
   relyingPartyOf,
   rpIdHashOf

@@ -8,7 +8,7 @@ import React, { useEffect, useState } from 'react'
 import { View } from 'react-native'
 
 import spacings from '@common/styles/spacings'
-import type { Address } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address } from '@kohaku-eth/social-recovery'
 import WaitHomeLine from '@web/modules/social-recovery/recovery/wait/WaitHomeLine'
 
 import HomeRecoveryLine from './HomeRecoveryLine'

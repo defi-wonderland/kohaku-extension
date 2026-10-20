@@ -4,7 +4,7 @@
  * and the publication lines by the kinds of the set the submission carries.
  * Strings come from `t`.
  */
-import type { Gathering } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Gathering } from '@kohaku-eth/social-recovery'
 import {
   renderFullAddress,
   renderPaymentOrder,

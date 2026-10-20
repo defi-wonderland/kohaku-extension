@@ -6,7 +6,7 @@
  */
 import { isAddress } from 'viem'
 
-import type { Address, ApproverRequest, Verdict } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ApproverRequest, Verdict } from '@kohaku-eth/social-recovery'
 import { isObject } from '@web/modules/social-recovery/recovery/checklist/codec'
 import { isSignFlowFailure, sameAddress } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryKitClient, TypedDataToSign } from '@web/modules/social-recovery/shared/client'

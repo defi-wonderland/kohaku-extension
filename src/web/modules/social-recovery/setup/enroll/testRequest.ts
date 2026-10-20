@@ -12,7 +12,7 @@
  */
 import { bytesToHex, zeroAddress, zeroHash } from 'viem'
 
-import type { ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest } from '@kohaku-eth/social-recovery'
 import { REQUEST_WINDOW_SECONDS } from '@web/modules/social-recovery/shared/client'
 import type { TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 

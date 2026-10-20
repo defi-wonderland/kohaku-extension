@@ -8,7 +8,7 @@
  * keeps after a re-authorize, under the setup its own check agreed on.
  */
 import type { OverviewIntent } from '@web/modules/social-recovery/management/overview/types'
-import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupDraft } from '@kohaku-eth/social-recovery'
 import type {
   ChainReads,
   ListedAccountFacts,

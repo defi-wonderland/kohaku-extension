@@ -1,17 +1,6 @@
 import { encodeErrorResult } from 'viem'
 
 import { createWatcherReads, providerReadFailure } from '@web/modules/social-recovery/shared/client'
-import { POLICY_MANAGER_ABI } from '@web/modules/social-recovery/shared/client/kit/abi'
-import {
-  ACCOUNT as KIT_ACCOUNT,
-  ACCOUNT_CODE,
-  DEPLOYED_AT,
-  DESCRIPTOR,
-  fakeNode,
-  MANAGER,
-  reverting,
-  stateOfCall
-} from '@web/modules/social-recovery/shared/client/kit/setup-client/__tests__/harness'
 import type { AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import {
   dismissAttempt,

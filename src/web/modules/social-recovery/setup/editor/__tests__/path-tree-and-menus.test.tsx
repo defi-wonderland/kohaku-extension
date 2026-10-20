@@ -9,12 +9,7 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type {
-  Clause,
-  Credential,
-  SetupDraft,
-  ValidationResult
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Clause, Credential, SetupDraft, ValidationResult } from '@kohaku-eth/social-recovery'
 import type { Enrollment, SlotKind } from '@web/modules/social-recovery/shared/records'
 
 import type { Root } from '@web/modules/social-recovery/setup/editor/__tests__/harness'

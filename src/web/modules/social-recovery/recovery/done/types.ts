@@ -4,8 +4,8 @@ import type {
   Configuration,
   Credential,
   Hex,
-  Notification
-} from '@web/modules/social-recovery/sdk-interfaces'
+  KitNotification
+} from '@kohaku-eth/social-recovery'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client'
 import type {
   RecoveryEntryRecord,
@@ -21,8 +21,8 @@ import type { LandedAttempt, StartedNotice } from '@web/modules/social-recovery/
 
 export type DoneKitClient = Pick<RecoveryKitClient, 'recovery' | 'descriptor' | 'account'>
 
-export type ConsumedNotice = Extract<Notification, { kind: 'attempt-consumed' }>
-export type PrivilegeNotice = Extract<Notification, { kind: 'privilege-changed' }>
+export type ConsumedNotice = Extract<KitNotification, { kind: 'attempt-consumed' }>
+export type PrivilegeNotice = Extract<KitNotification, { kind: 'privilege-changed' }>
 
 /** The time of a block by its number, in seconds since epoch. */
 export type BlockTimeRead = (blockNumber: number) => Promise<number>

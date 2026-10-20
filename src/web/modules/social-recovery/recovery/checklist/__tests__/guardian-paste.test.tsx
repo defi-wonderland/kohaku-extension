@@ -37,21 +37,13 @@ import {
   TIME_ZONE,
   testRecords
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
-import type {
-  AddRefusalReason,
-  ApproverReply,
-  Configuration,
-  Gathering
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { AddRefusalCause, Configuration, Gathering, Reply } from '@kohaku-eth/social-recovery'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
   renderDateTimeInZone
 }: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
-const {
-  notServedRefusal
-}: typeof import('@web/modules/social-recovery/shared/client/kit/setup-client') = require('@web/modules/social-recovery/shared/client/kit/setup-client')
 const {
   CHECKLIST_POLL_MS
 }: typeof import('@web/modules/social-recovery/recovery/checklist/constants') = require('@web/modules/social-recovery/recovery/checklist/constants')
@@ -264,7 +256,7 @@ describe('the guardian paste', () => {
 
   it('reads a reply missing its signature as not an approval', async () => {
     await open()
-    const reply: Partial<ApproverReply> = { ...replyOf(gathering, 1) }
+    const reply: Partial<Reply> = { ...replyOf(gathering, 1) }
     delete reply.proof
     const line = lineOf(reply)
 
@@ -405,7 +397,7 @@ describe('the guardian paste', () => {
     expect(view?.valueOf(id(1, 'paste-input'))).toBe('')
   })
 
-  const addRefusals: AddRefusalReason[] = [
+  const addRefusals: AddRefusalCause[] = [
     'place-unknown',
     'credential-mismatch',
     'binding-mismatch',
@@ -432,7 +424,7 @@ describe('the guardian paste', () => {
 
   it('reads a reply for a place the path does not hold as matching no method', async () => {
     await open()
-    kit.addApproverReply.mockImplementation((held: Gathering, reply: ApproverReply) =>
+    kit.addApproverReply.mockImplementation((held: Gathering, reply: Reply) =>
       held.places.some((place) => place.place === reply.place)
         ? { gathering: { ...held, replies: [...held.replies, reply] } }
         : { gathering: held, reason: { kind: 'add-refusal', cause: 'place-unknown' } }

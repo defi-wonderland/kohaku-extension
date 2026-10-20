@@ -8,8 +8,8 @@ import { getAddress, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
 import en from '@common/config/localization/translations/en.json'
-import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/sdk-interfaces'
-import type { Clause, Finding, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import { SETUP_ERROR_CODES } from '@web/modules/social-recovery/shared/client'
+import type { Clause, Finding, SetupDraft } from '@kohaku-eth/social-recovery'
 
 import {
   renderFailedTestLine,

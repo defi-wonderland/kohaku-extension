@@ -6,7 +6,7 @@
  * the extension's records over an in-memory storage.
  */
 import type { Account } from '@ambire-common/interfaces/account'
-import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupDraft } from '@kohaku-eth/social-recovery'
 import {
   accountBatchRefusal,
   accountBatchTransactionOf,

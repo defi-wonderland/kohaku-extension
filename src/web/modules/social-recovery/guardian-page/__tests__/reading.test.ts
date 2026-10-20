@@ -6,11 +6,7 @@
 import { getAddress, keccak256, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
-import type {
-  ApproverRequest,
-  Attempt,
-  RequestDescription
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { ApproverRequest, Attempt, RequestDescription } from '@kohaku-eth/social-recovery'
 import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
 import { approvalLinkOf } from '@web/modules/social-recovery/recovery/checklist'
 import {

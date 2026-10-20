@@ -14,12 +14,7 @@
  */
 import { keccak256 } from 'viem'
 
-import type {
-  Address,
-  Gathering,
-  Hex,
-  RecoveryState
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Gathering, Hex, RecoveryState } from '@kohaku-eth/social-recovery'
 import {
   accountBatchTransactionOf,
   listedBasicAccountOf,

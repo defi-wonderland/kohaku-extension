@@ -1,11 +1,6 @@
 import type { Account } from '@ambire-common/interfaces/account'
 import type { Network } from '@ambire-common/interfaces/network'
-import type {
-  Address,
-  CancelledBy,
-  DeploymentDescriptor,
-  Hex
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, CancelledBy, DeploymentDescriptor, Hex } from '@kohaku-eth/social-recovery'
 import type {
   WatcherConnection,
   WatcherReads

@@ -12,7 +12,7 @@ import { TextDecoder, TextEncoder } from 'util'
 
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
-import type { Address, Clause, SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, Clause, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { PresetChoice, PresetId } from '@web/modules/social-recovery/setup/presets'
 import type {
   Enrollment,

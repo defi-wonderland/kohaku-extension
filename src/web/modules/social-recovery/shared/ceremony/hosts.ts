@@ -3,8 +3,8 @@
  * and health check.
  *
  * A host takes the orchestrator and the method implementation as injected
- * parameters typed by `sdk-interfaces`, and never imports the SDK doubles: the
- * ESLint fence keeps them to `shared/client`. The tab gets both from its
+ * parameters typed by the SDK package, and never imports the SDK's runtime:
+ * the ESLint fence keeps it to `shared/client`. The tab gets both from its
  * source's resolver, by default the one `shared/client` builds over the
  * wallet's records and the client. A test passes its own. Each host renders
  * its steps through `onStep`, honours `signal` as the abort, and returns
@@ -21,7 +21,7 @@
  * again after every call it awaits: an abort that arrives while the method
  * packages or checks ends in the cancelled note, and its answer is dropped.
  */
-import type { Address, ApproverRequest } from '@web/modules/social-recovery/sdk-interfaces'
+import type { Address, ApproverRequest } from '@kohaku-eth/social-recovery'
 
 import type {
   CeremonyCall,

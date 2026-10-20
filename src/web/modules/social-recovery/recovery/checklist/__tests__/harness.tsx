@@ -18,9 +18,8 @@ import { webcrypto } from 'crypto'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type {
-  AddResult,
   Address,
-  ApproverReply,
+  AddResult,
   ApproverRequest,
   Assessment,
   AttemptRequest,
@@ -29,8 +28,9 @@ import type {
   Credential,
   Gathering,
   Hex,
+  Reply,
   SerializedPaymentOrder
-} from '@web/modules/social-recovery/sdk-interfaces'
+} from '@kohaku-eth/social-recovery'
 import type {
   CeremonyCall,
   CeremonyOutcome,
@@ -426,7 +426,7 @@ export const servedRequestOf = (gathering: Gathering, place: number): ApproverRe
   order: NO_PAYMENT
 })
 
-export const replyOf = (gathering: Gathering, place: number): ApproverReply => {
+export const replyOf = (gathering: Gathering, place: number): Reply => {
   const at = gathering.places[place]
   const r = gathering.request
   return {
@@ -517,7 +517,7 @@ export const fakeKit = (configuration: Configuration, options: FakeKitOptions = 
       (options.served ? servedRequestOf : requestOf)(gathering, place.place)
     )
   )
-  const addApproverReply = jest.fn((gathering: Gathering, reply: ApproverReply): AddResult => {
+  const addApproverReply = jest.fn((gathering: Gathering, reply: Reply): AddResult => {
     if (reply.attemptId !== gathering.request.attemptId) {
       return { gathering, reason: { kind: 'add-refusal', cause: 'binding-mismatch' } }
     }
