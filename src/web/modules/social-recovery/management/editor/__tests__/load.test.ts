@@ -4,10 +4,12 @@
  * setup moved or its setup draft is gone, and the session's storage read,
  * which keeps nothing it cannot read as a session.
  */
+import i18n from '@common/config/localization'
 import {
   configurationOfDraft,
   openEditSession,
-  recordsOfConfiguration
+  recordsOfConfiguration,
+  writeLoadedRecords
 } from '@web/modules/social-recovery/management/editor/load'
 import {
   editSessionFrom,
@@ -21,6 +23,9 @@ import type {
 } from '@web/modules/social-recovery/sdk-interfaces'
 import { PRIVACY_LEVELS } from '@web/modules/social-recovery/sdk-interfaces'
 import { privacyLevelOf } from '@web/modules/social-recovery/shared/client'
+import { renderRowChip, rowChipTone } from '@web/modules/social-recovery/setup/editor'
+import { recordTest } from '@web/modules/social-recovery/setup/enroll/writes'
+import { untestedInPath } from '@web/modules/social-recovery/setup/review'
 import { createWalletRecords } from '@web/modules/social-recovery/shared/records'
 import { makeStorage } from '@web/modules/social-recovery/shared/records/__fixtures__/storage'
 
@@ -77,12 +82,30 @@ describe('the load of a committed configuration', () => {
     })
   })
 
-  it('holds one enrollment for each committed row, none tested on this device', () => {
+  it('holds one enrollment for each committed row, each read as live', () => {
     const { enrollments } = recordsOfConfiguration(CONFIGURATION, 'private')
     expect(enrollments.map(({ credential }) => credential)).toEqual(
       CONFIGURATION.clauses.flatMap(({ credentials }) => credentials)
     )
-    expect(enrollments.every(({ test }) => test === 'not-tested')).toBe(true)
+    expect(enrollments.every(({ test }) => test === 'live')).toBe(true)
+  })
+
+  it('reads a committed row as live and never as untested, and a test run on it as that test reads', async () => {
+    const t = (key: string) => String(i18n.t(key))
+    const loaded = recordsOfConfiguration(CONFIGURATION, 'private')
+    const [row] = CONFIGURATION.clauses[0].credentials
+    expect(renderRowChip(row, loaded.enrollments, t)).toBe(t('socialRecovery.status.method.live'))
+    expect(rowChipTone(row, loaded.enrollments)).toBe('success')
+    expect(untestedInPath(CONFIGURATION.clauses, loaded.enrollments)).toEqual([])
+
+    const setup = createWalletRecords({ storage: makeStorage() }).setup(CHAIN_ID, ACCOUNT)
+    await writeLoadedRecords(setup, loaded)
+    const passed = await recordTest(setup, row, 'passed')
+    expect(passed && renderRowChip(row, [passed], t)).toBe(t('socialRecovery.status.method.tested'))
+    const failed = await recordTest(setup, row, 'failed')
+    expect(failed && renderRowChip(row, [failed], t)).toBe(
+      t('socialRecovery.status.method.testFailed')
+    )
   })
 
   it('leaves the committed configuration alone when the records change', () => {

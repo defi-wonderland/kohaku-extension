@@ -50,7 +50,8 @@ const VERDICT_CHIPS: Record<EnrollmentTestVerdict, MethodChip> = {
   'not-tested': 'notTested',
   failed: 'testFailed',
   unavailable: 'testUnavailable',
-  'not-supported': 'notSupported'
+  'not-supported': 'notSupported',
+  live: 'live'
 }
 
 const CEREMONY = 'socialRecovery.ceremony'

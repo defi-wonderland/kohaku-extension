@@ -5,8 +5,8 @@
  * period, and the level the draft's privacy fields with the password-set flag
  * at a hidden level. The draft read back gives the configuration again.
  *
- * A committed row carries no access test of this device, so its enrollment
- * reads as not tested.
+ * A committed row is already part of the setup on chain, so its enrollment
+ * reads as live; a test run on it in the edit moves it to that test's verdict.
  */
 import {
   isCacheCurrent,
@@ -35,7 +35,7 @@ export const recordsOfConfiguration = (
   }
   const setupDraft = reauthorizeDraftOf(copied, level)
   const enrollments: Enrollment[] = setupDraft.clauses.flatMap(({ credentials }) =>
-    credentials.map((credential) => ({ credential, test: 'not-tested' as const }))
+    credentials.map((credential) => ({ credential, test: 'live' as const }))
   )
   return {
     setupDraft,
