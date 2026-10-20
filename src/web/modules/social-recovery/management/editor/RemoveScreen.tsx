@@ -20,16 +20,13 @@ import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
-import Input from '@common/components/Input'
-import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
 import { OVERVIEW } from '@web/modules/social-recovery/management/overview/constants'
 import { useOverviewReads } from '@web/modules/social-recovery/management/overview/useOverviewReads'
-import { ActionsRow, PageTitle } from '@web/modules/social-recovery/shared/chrome'
+import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
@@ -44,9 +41,11 @@ import { armScreenOf } from '@web/modules/social-recovery/setup/arm'
 import { useArmRun } from '@web/modules/social-recovery/setup/arm/useArmRun'
 
 import { REMOVE } from './constants'
-import { nothingOnItsWay } from './readings'
 import ReadsGate from './ReadsGate'
-import RunBlock from './RunBlock'
+import RemoveArrival from './RemoveArrival'
+import RemoveDisagreed from './RemoveDisagreed'
+import RemoveDone from './RemoveDone'
+import RemoveRun from './RemoveRun'
 import { editSessionOf } from './session'
 import { removalStepsOf, wipeRemovedSetup } from './steps'
 import type { AttemptRead, EditStageProps } from './types'
@@ -147,160 +146,14 @@ export const RemoveStageView = ({
       hasBottomSpacing={false}
     />
   )
-  const cancels = attemptOpen && (
-    <Text fontSize={14} weight="medium" style={spacings.mbSm} testID="manage-remove-cancels">
-      {t(`${REMOVE}.cancelsLine`)}
-    </Text>
-  )
-
-  const done = (
-    <View testID={endedElsewhere ? 'manage-remove-ended' : 'manage-remove-done'}>
-      <PageTitle
-        title={t(endedElsewhere ? `${REMOVE}.alreadyTitle` : `${REMOVE}.doneTitle`)}
-        titleTestID="manage-remove-done-title"
-      >
-        <Text fontSize={14} appearance="secondaryText" testID="manage-remove-done-lead">
-          {t(endedElsewhere ? `${REMOVE}.alreadyBody` : `${REMOVE}.doneBody`)}
-        </Text>
-      </PageTitle>
-      <ActionsRow
-        primary={
-          <Button
-            testID="manage-remove-done-action"
-            type="primary"
-            text={t('socialRecovery.done.close')}
-            onPress={toOverview}
-            hasBottomSpacing={false}
-          />
-        }
-      />
-    </View>
-  )
-
-  const arrival = () => {
-    if (held.status === 'failed') {
-      return (
-        <ReadFailedBlock
-          testID="manage-remove-held-failed"
-          title={t('socialRecovery.records.loadFailed')}
-          onRetry={retryHeld}
-        />
-      )
-    }
-    const lookingUp =
-      held.status === 'pending' ||
-      state.lookup === 'reading' ||
-      (!steps && accountFacts.status === 'loading')
-    return (
-      <View testID="manage-remove-arrival">
-        <Text fontSize={14} style={spacings.mbSm} testID="manage-remove-body">
-          {t(`${REMOVE}.body`)}
-        </Text>
-        <Input
-          testID="manage-remove-word"
-          label={t(`${REMOVE}.typeToConfirm`, { word })}
-          accessibilityLabel={t(`${REMOVE}.typeToConfirm`, { word })}
-          placeholder={word}
-          value={typed}
-          onChangeText={setTyped}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        {ready && !ready.key && (
-          <Alert
-            testID="manage-remove-view-only"
-            type="error"
-            size="sm"
-            style={spacings.mbSm}
-            text={t('socialRecovery.arm.viewOnly')}
-          />
-        )}
-        {cancels}
-        {lookingUp ? (
-          <ActivityIndicator testID="manage-remove-lookup" />
-        ) : (
-          <ActionsRow
-            primary={
-              <Button
-                testID="manage-remove-action"
-                type="danger"
-                text={t(`${REMOVE}.action`)}
-                disabled={!confirmed || !steps || state.lookup !== 'none'}
-                onPress={run.start}
-                hasBottomSpacing={false}
-              />
-            }
-            secondary={keep}
-          />
-        )}
-        {state.lookup === 'failed' && (
-          <ReadFailedBlock
-            testID="manage-remove-lookup-failed"
-            title={t('socialRecovery.records.loadFailed')}
-            onRetry={run.lookAgain}
-          />
-        )}
-      </View>
-    )
-  }
-
-  const body = () => {
-    switch (screen) {
-      case 'saved':
-      case 'already-set-up':
-        return done
-      case 'disagreed':
-        // A read of the same check again answers the same; the overview reads what stands.
-        return (
-          <Alert
-            testID="manage-remove-check-disagreed"
-            type="error"
-            size="sm"
-            style={spacings.mbSm}
-            title={t(`${OVERVIEW}.reads.failedTitle`)}
-            text={t(`${OVERVIEW}.reads.failedBody`)}
-          >
-            <View style={[flexbox.directionRow, spacings.mtTy]}>
-              <Button
-                testID="manage-remove-check-disagreed-overview"
-                type="secondary"
-                size="small"
-                text={t(`${OVERVIEW}.writes.openOverview`)}
-                onPress={toOverview}
-                hasBottomSpacing={false}
-              />
-            </View>
-          </Alert>
-        )
-      case 'unread':
-        return (
-          <ReadFailedBlock
-            testID="manage-remove-check-failed"
-            title={t(`${OVERVIEW}.reads.failedTitle`)}
-            body={t(`${OVERVIEW}.reads.failedBody`)}
-            onRetry={run.reread}
-          />
-        )
-      case 'confirming':
-        return <ActivityIndicator testID="manage-remove-confirming" />
-      case 'run':
-        return (
-          <View>
-            {cancels}
-            <RunBlock run={run} write="ownerWrite" testID="manage-remove-run" />
-            {nothingOnItsWay(state) && (
-              <View style={[flexbox.directionRow, spacings.mtSm]}>{keep}</View>
-            )}
-          </View>
-        )
-      case 'arrival':
-      default:
-        return arrival()
-    }
-  }
+  const lookingUp =
+    held.status === 'pending' ||
+    state.lookup === 'reading' ||
+    (!steps && accountFacts.status === 'loading')
+  const arrives = screen === 'arrival' || screen === 'held-by-another-write'
 
   if (screen === 'saved' || screen === 'already-set-up') {
-    return done
+    return <RemoveDone endedElsewhere={endedElsewhere} onClose={toOverview} />
   }
 
   return (
@@ -314,7 +167,34 @@ export const RemoveStageView = ({
         text={t(`${REMOVE}.warning`)}
       />
       <ReadsGate reads={reads} needsPath={false} testID="manage-remove-reads">
-        {body()}
+        {screen === 'disagreed' && <RemoveDisagreed onOverview={toOverview} />}
+        {screen === 'unread' && (
+          <ReadFailedBlock
+            testID="manage-remove-check-failed"
+            title={t(`${OVERVIEW}.reads.failedTitle`)}
+            body={t(`${OVERVIEW}.reads.failedBody`)}
+            onRetry={run.reread}
+          />
+        )}
+        {screen === 'confirming' && <ActivityIndicator testID="manage-remove-confirming" />}
+        {screen === 'run' && <RemoveRun run={run} attemptOpen={attemptOpen} keep={keep} />}
+        {arrives && (
+          <RemoveArrival
+            heldFailed={held.status === 'failed'}
+            onRetryHeld={retryHeld}
+            lookingUp={lookingUp}
+            word={word}
+            typed={typed}
+            onType={setTyped}
+            facts={ready}
+            attemptOpen={attemptOpen}
+            canRemove={confirmed && !!steps && state.lookup === 'none'}
+            lookupFailed={state.lookup === 'failed'}
+            onRemove={run.start}
+            onLookAgain={run.lookAgain}
+            keep={keep}
+          />
+        )}
       </ReadsGate>
     </View>
   )

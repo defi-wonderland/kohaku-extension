@@ -9,16 +9,17 @@
  * renders as an answer.
  */
 import React from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
-import Alert from '@common/components/Alert'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { OVERVIEW } from '@web/modules/social-recovery/management/overview/constants'
 import PathLockedAsk from '@web/modules/social-recovery/management/overview/PathLockedAsk'
-import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 
+import ReadsFailed from './ReadsFailed'
+import ReadsLoading from './ReadsLoading'
+import ReadsUpdateTheWallet from './ReadsUpdateTheWallet'
 import type { CommittedLevel, ReadsGateProps } from './types'
 
 const PENDING: CommittedLevel = { status: 'pending' }
@@ -34,38 +35,14 @@ const ReadsGate = ({
 }: ReadsGateProps) => {
   const { t } = useTranslation()
 
-  const failed = (onRetry: () => void, id: string) => (
-    <ReadFailedBlock
-      testID={`${testID}-${id}`}
-      title={t(`${OVERVIEW}.reads.failedTitle`)}
-      body={t(`${OVERVIEW}.reads.failedBody`)}
-      onRetry={onRetry}
-    />
-  )
-  const updateTheWallet = (
-    <Alert
-      testID={`${testID}-update-the-wallet`}
-      type="error"
-      size="sm"
-      title={t('socialRecovery.client.updateTheWalletTitle')}
-      text={t('socialRecovery.client.updateTheWalletHow')}
-    />
-  )
-  const reading = (
-    <View testID={`${testID}-reading`}>
-      <ActivityIndicator style={spacings.mbSm} />
-      <Text fontSize={14} appearance="secondaryText">
-        {t(`${OVERVIEW}.reads.loading`)}
-      </Text>
-    </View>
-  )
-
   const { facts, path } = reads
+  const reading = <ReadsLoading testID={`${testID}-reading`} />
+  const updateTheWallet = <ReadsUpdateTheWallet testID={`${testID}-update-the-wallet`} />
   if (facts.status === 'pending') {
     return reading
   }
   if (facts.status === 'failed') {
-    return failed(reads.retry, 'facts-failed')
+    return <ReadsFailed onRetry={reads.retry} testID={`${testID}-facts-failed`} />
   }
   if (facts.status === 'update-the-wallet') {
     return updateTheWallet
@@ -96,7 +73,7 @@ const ReadsGate = ({
     case 'read-failed':
     case 'no-details':
     case 'mismatch':
-      return failed(reads.retryPath, 'path-failed')
+      return <ReadsFailed onRetry={reads.retryPath} testID={`${testID}-path-failed`} />
     case 'readable':
       break
     default:
@@ -106,7 +83,7 @@ const ReadsGate = ({
     return reading
   }
   if (level.status === 'failed') {
-    return failed(onRetryLevel ?? reads.retry, 'level-failed')
+    return <ReadsFailed onRetry={onRetryLevel ?? reads.retry} testID={`${testID}-level-failed`} />
   }
   if (level.status === 'unreadable') {
     return updateTheWallet

@@ -14,15 +14,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
-import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import { useOverviewReads } from '@web/modules/social-recovery/management/overview/useOverviewReads'
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
-import { ActionsRow, PageTitle } from '@web/modules/social-recovery/shared/chrome'
+import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import {
@@ -41,14 +39,15 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 import type { WalletRecords } from '@web/modules/social-recovery/shared/records'
 import { intentOfRequest } from '@web/modules/social-recovery/shared/writes'
-import EditorView from '@web/modules/social-recovery/setup/editor/EditorView'
 import type { EditorClient } from '@web/modules/social-recovery/setup/editor/types'
 import PrivacyView from '@web/modules/social-recovery/setup/privacy/PrivacyView'
 import WaitingPeriodView from '@web/modules/social-recovery/setup/privacy/WaitingPeriodView'
 
-import { changesOf, makesCardStale, passwordChangedOf, stillNeededOf } from './changes'
+import { changesOf, passwordChangedOf, stillNeededOf } from './changes'
 import { EDITOR } from './constants'
 import { ruleOfPath } from './copy'
+import EditOpenFailed from './EditOpenFailed'
+import EditPath from './EditPath'
 import { openEditSession } from './load'
 import PasswordChange from './PasswordChange'
 import ReadsGate from './ReadsGate'
@@ -56,7 +55,6 @@ import { editorTargetOf, isPrivacyContinue } from './routing'
 import { dropNewPassword, editSessionOf, holdNewPassword } from './session'
 import type { EditSession, EditStage, EditStageProps } from './types'
 import { useCommittedLevel } from './useCommittedLevel'
-import ValuesBlock from './ValuesBlock'
 
 export const EditStageView = ({ records, session, chainId, account, navigate }: EditStageProps) => {
   const { t } = useTranslation()
@@ -258,85 +256,10 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
   // The path and the value steps draw their own title; every other state draws the page's.
   const stageTitled = canOpen && !openFailed && !!opened && !!draft && stage !== 'password'
 
-  const body = () => {
-    if (openFailed) {
-      return (
-        <View testID="manage-edit-open-failed">
-          <Alert type="error" size="sm" text={t('socialRecovery.records.loadFailed')} />
-          <ActionsRow
-            primary={
-              <Button
-                testID="manage-edit-open-retry"
-                type="primary"
-                text={t('socialRecovery.writes.tryAgain')}
-                onPress={() => setOpenRound((round) => round + 1)}
-                hasBottomSpacing={false}
-              />
-            }
-          />
-        </View>
-      )
-    }
-    if (!opened || !draft) {
-      return <ActivityIndicator testID="manage-edit-opening" />
-    }
-    if (stage === 'wait') {
-      return (
-        <WaitingPeriodView
-          records={observed}
-          chainId={chainId}
-          account={account}
-          navigate={stepNavigate}
-        />
-      )
-    }
-    if (stage === 'privacy') {
-      return (
-        <PrivacyView
-          records={observed}
-          chainId={chainId}
-          account={account}
-          navigate={stepNavigate}
-        />
-      )
-    }
-    if (stage === 'password') {
-      return <PasswordChange onDone={onNewPassword} onCancel={() => setStage('path')} />
-    }
-    return (
-      <View testID="manage-edit-path">
-        <EditorView
-          records={setupRecords}
-          client={editorClient}
-          addressBook={addressBook}
-          navigate={editorNavigate}
-          stillNeeded={stillNeeded}
-          heading={heading}
-          continueLabel={t(`${EDITOR}.review`)}
-          beforeActions={
-            <ValuesBlock
-              draft={draft}
-              addressBook={addressBook}
-              passwordChanged={rows.some(({ kind }) => kind === 'password')}
-              stale={makesCardStale(rows)}
-              onStage={setStage}
-            />
-          }
-        />
-        <ActionsRow
-          primary={
-            <Button
-              testID="manage-edit-cancel"
-              type="outline"
-              text={t('socialRecovery.actions.cancel')}
-              onPress={onCancel}
-              hasBottomSpacing={false}
-            />
-          }
-        />
-      </View>
-    )
-  }
+  const retryOpen = useCallback(() => setOpenRound((round) => round + 1), [])
+  const toPath = useCallback(() => setStage('path'), [])
+  // The draft of an edit that opened, where opening it did not fail.
+  const openDraft = !openFailed && opened ? draft : null
 
   return (
     <View testID="manage-edit">
@@ -350,7 +273,43 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
         passwordHeld={passwordHeld}
         testID="manage-edit-reads"
       >
-        <View style={spacings.mtSm}>{body()}</View>
+        <View style={spacings.mtSm}>
+          {openFailed && <EditOpenFailed onRetry={retryOpen} />}
+          {!openFailed && !openDraft && <ActivityIndicator testID="manage-edit-opening" />}
+          {!!openDraft && stage === 'wait' && (
+            <WaitingPeriodView
+              records={observed}
+              chainId={chainId}
+              account={account}
+              navigate={stepNavigate}
+            />
+          )}
+          {!!openDraft && stage === 'privacy' && (
+            <PrivacyView
+              records={observed}
+              chainId={chainId}
+              account={account}
+              navigate={stepNavigate}
+            />
+          )}
+          {!!openDraft && stage === 'password' && (
+            <PasswordChange onDone={onNewPassword} onCancel={toPath} />
+          )}
+          {!!openDraft && stage === 'path' && (
+            <EditPath
+              records={setupRecords}
+              client={editorClient}
+              addressBook={addressBook}
+              navigate={editorNavigate}
+              stillNeeded={stillNeeded}
+              heading={heading}
+              draft={openDraft}
+              rows={rows}
+              onStage={setStage}
+              onCancel={onCancel}
+            />
+          )}
+        </View>
       </ReadsGate>
     </View>
   )

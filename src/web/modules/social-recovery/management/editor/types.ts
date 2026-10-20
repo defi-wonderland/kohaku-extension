@@ -32,10 +32,20 @@ import type {
 import type { ManageIntent, OwnerWrite } from '@web/modules/social-recovery/shared/writes'
 import type { ArmRun } from '@web/modules/social-recovery/setup/arm'
 import type {
+  EditorClient,
+  EditorHeading,
+  MemberKey
+} from '@web/modules/social-recovery/setup/editor/types'
+import type {
   AccountReads,
   SaveGate,
+  TrustRow,
   UntestedCredential
 } from '@web/modules/social-recovery/setup/review'
+import type {
+  AccountReadsState,
+  TrustReadsState
+} from '@web/modules/social-recovery/setup/review/types'
 
 // ---------------------------------------------------------------------------
 // The edit session
@@ -267,4 +277,126 @@ export interface ValuesBlockProps {
   passwordChanged: boolean
   stale: boolean
   onStage: (stage: EditStage) => void
+}
+
+export interface ValueRowProps {
+  label: string
+  /** The value as it stands; an empty text draws the action alone. */
+  text: string
+  action: string
+  stage: EditStage
+  onStage: (stage: EditStage) => void
+}
+
+export interface ReadsFailedProps {
+  onRetry: () => void
+  testID: string
+}
+
+export interface ReadsBlockProps {
+  testID: string
+}
+
+export interface EditOpenFailedProps {
+  onRetry: () => void
+}
+
+export interface EditPathProps {
+  records: SetupRecords
+  client: EditorClient
+  addressBook: AddressBook
+  navigate: (to: string) => void
+  stillNeeded: ReadonlySet<MemberKey>
+  heading: EditorHeading
+  draft: SetupDraft
+  rows: readonly ChangeRow[]
+  onStage: (stage: EditStage) => void
+  onCancel: () => void
+}
+
+export interface ReviewSavedProps {
+  /** The hash of the save, where it landed. */
+  transactionHash?: Hex
+  onExplorer: () => void
+  stale: boolean
+  onDone: () => void
+  /** Opens the Recovery Card, where the edit makes the printed one stale. */
+  onCard?: () => void
+}
+
+export interface ReviewArrivalProps {
+  held: HeldWrite
+  load: ReviewLoad
+  onRetryLoad: () => void
+  rows: readonly ChangeRow[]
+  stale: boolean
+  /** The members the edit adds. */
+  added: readonly Credential[]
+  trustRows: readonly TrustRow[]
+  trust: TrustReadsState
+  accountReads: AccountReadsState
+  addressBook: AddressBook
+  client: RecoveryKitClient | null
+  account: Address
+  password: string | undefined
+  newPassword: string | undefined
+  expanded: boolean
+  onToggleExpanded: () => void
+  attemptOpen: boolean
+  dormantRefused: boolean
+  facts: ListedAccountFacts | null
+  /** The stored write, or the account's facts, are still being read. */
+  lookingUp: boolean
+  /** The run holds its steps, and nothing reads or stops it. */
+  runReady: boolean
+  lookupFailed: boolean
+  onSave: () => void
+  onLookAgain: () => void
+  onEditor: () => void
+  onOverview: () => void
+  backToEditor: ReactNode
+}
+
+export interface ReviewSetupChangedProps {
+  backToEditor: ReactNode
+}
+
+export interface ReviewRunProps {
+  run: ArmRun
+  attemptOpen: boolean
+  dormantRefused: boolean
+  backToEditor: ReactNode
+}
+
+export interface RemoveDoneProps {
+  /** The chain held neither the setup nor the authorization, and nothing was sent. */
+  endedElsewhere: boolean
+  onClose: () => void
+}
+
+export interface RemoveArrivalProps {
+  heldFailed: boolean
+  onRetryHeld: () => void
+  lookingUp: boolean
+  word: string
+  typed: string
+  onType: (text: string) => void
+  facts: ListedAccountFacts | null
+  attemptOpen: boolean
+  /** The typed word matches, and the run holds its steps and reads nothing. */
+  canRemove: boolean
+  lookupFailed: boolean
+  onRemove: () => void
+  onLookAgain: () => void
+  keep: ReactNode
+}
+
+export interface RemoveDisagreedProps {
+  onOverview: () => void
+}
+
+export interface RemoveRunProps {
+  run: ArmRun
+  attemptOpen: boolean
+  keep: ReactNode
 }

@@ -21,17 +21,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
 
-import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
-import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
-import spacings from '@common/styles/spacings'
-import flexbox from '@common/styles/utils/flexbox'
 import { useOverviewReads } from '@web/modules/social-recovery/management/overview/useOverviewReads'
-import { ActionsRow, PageTitle, SectionCard } from '@web/modules/social-recovery/shared/chrome'
-import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
+import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import {
@@ -41,12 +36,10 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import { useAccountFacts } from '@web/modules/social-recovery/shared/client/useAccountFacts'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
-import { renderFullAddress, renderHash } from '@web/modules/social-recovery/shared/display'
 import {
   createWalletRecords,
   extensionRecordStorage,
-  readRecoveryPassword,
-  sameCredential
+  readRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 import {
   armScreenOf,
@@ -56,36 +49,19 @@ import {
 import DisagreedView from '@web/modules/social-recovery/setup/arm/DisagreedView'
 import { useArmRun } from '@web/modules/social-recovery/setup/arm/useArmRun'
 import { levelOfBackup } from '@web/modules/social-recovery/setup/card'
-import {
-  accountReadsToRetry,
-  methodsOf,
-  publicationSentenceOf,
-  ruleLinesOf,
-  saveGateOf,
-  trustRowsOf,
-  untestedInPath
-} from '@web/modules/social-recovery/setup/review'
-import PathBlock from '@web/modules/social-recovery/setup/review/PathBlock'
-import SaveBlocker from '@web/modules/social-recovery/setup/review/SaveBlocker'
-import TrustList from '@web/modules/social-recovery/setup/review/TrustList'
+import { methodsOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useAccountReads } from '@web/modules/social-recovery/setup/review/useAccountReads'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
 
 import { addedCredentialsOf, changesOf, makesCardStale, passwordChangedOf } from './changes'
-import ChangesBlock from './ChangesBlock'
-import { EDITOR, REVIEW } from './constants'
-import DetailsExpander from './DetailsExpander'
+import { REVIEW } from './constants'
 import { ruleOfPath } from './copy'
-import {
-  addedTrustRowsOf,
-  editedSetupRead,
-  editGateOf,
-  nothingOnItsWay,
-  passwordMissingOf
-} from './readings'
-import NotTestedBlock from './NotTestedBlock'
+import { addedTrustRowsOf } from './readings'
 import ReadsGate from './ReadsGate'
-import RunBlock from './RunBlock'
+import ReviewArrival from './ReviewArrival'
+import ReviewRun from './ReviewRun'
+import ReviewSaved from './ReviewSaved'
+import ReviewSetupChanged from './ReviewSetupChanged'
 import { editSessionOf, readNewPassword } from './session'
 import { editStepsOf } from './steps'
 import type { AttemptRead, EditStageProps, ReviewLoad } from './types'
@@ -282,328 +258,24 @@ export const ReviewStageView = ({
     />
   )
 
-  const saved = () => (
-    <View testID="manage-review-saved">
-      <Text fontSize={20} weight="medium" style={spacings.mbTy} testID="manage-review-saved-title">
-        {t(`${REVIEW}.savedTitle`)}
-      </Text>
-      <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
-        {t(`${REVIEW}.savedBody`)}
-      </Text>
-      <SectionCard>
-        {write.status === 'landed' && (
-          <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap, spacings.mbTy]}>
-            <Text fontSize={14} weight="number_medium" selectable style={spacings.mrSm}>
-              {renderHash(write.transactionHash)}
-            </Text>
-            <Button
-              testID="manage-review-saved-explorer"
-              type="ghost"
-              size="small"
-              text={t('socialRecovery.arm.explorer')}
-              onPress={() =>
-                write.status === 'landed' &&
-                openUrl(
-                  explorerTransactionUrlOf(
-                    kit?.chain ?? WALLET_RECOVERY_CHAIN,
-                    write.transactionHash
-                  )
-                )
-              }
-              hasBottomSpacing={false}
-            />
-          </View>
-        )}
-        <Text fontSize={12} appearance="secondaryText">
-          {t('socialRecovery.arm.oneTransaction')}
-        </Text>
-      </SectionCard>
-      {stale && (
-        <Text
-          fontSize={14}
-          weight="medium"
-          style={spacings.mbSm}
-          testID="manage-review-saved-stale"
-        >
-          {t(`${EDITOR}.staleCard`)}
-        </Text>
-      )}
-      <ActionsRow
-        primary={
-          <Button
-            testID="manage-review-saved-done"
-            type="primary"
-            text={t(`${REVIEW}.done`)}
-            onPress={toOverview}
-            hasBottomSpacing={false}
-          />
-        }
-        secondary={
-          stale && draft ? (
-            <Button
-              testID="manage-review-saved-card"
-              type="secondary"
-              text={t('socialRecovery.management.overview.card.action')}
-              onPress={() => navigate(cardPathOf(levelOfBackup(draft.privacy.backup)))}
-              hasBottomSpacing={false}
-            />
-          ) : undefined
-        }
-      />
-    </View>
-  )
-
-  const arrival = () => {
-    if (held.status === 'failed' || load.status === 'failed') {
-      return (
-        <ReadFailedBlock
-          testID="manage-review-load-failed"
-          title={t('socialRecovery.records.loadFailed')}
-          onRetry={() => {
-            retryHeld()
-            setLoadRound((round) => round + 1)
-          }}
-        />
-      )
+  const toExplorer = useCallback(() => {
+    if (write.status === 'landed') {
+      openUrl(explorerTransactionUrlOf(kit?.chain ?? WALLET_RECOVERY_CHAIN, write.transactionHash))
     }
-    if (load.status === 'none') {
-      return (
-        <View testID="manage-review-nothing">
-          <Text fontSize={14} style={spacings.mbSm}>
-            {t(`${EDITOR}.changes.none`)}
-          </Text>
-          <ActionsRow primary={backToEditor} />
-        </View>
-      )
+  }, [write, kit, openUrl])
+  const toCard = useCallback(() => {
+    if (draft) {
+      navigate(cardPathOf(levelOfBackup(draft.privacy.backup)))
     }
-    if (!loaded || !draft || held.status === 'pending') {
-      return <ActivityIndicator testID="manage-review-loading" />
-    }
-    const passwordMissing = passwordMissingOf(loaded.baseline, draft, password, newPassword)
-    const setupState = editedSetupRead(accountReads.setupState)
-    const gate = editGateOf({
-      gate: saveGateOf({
-        ...accountReads,
-        setupState,
-        recordsLoaded: true,
-        clientReady: !!kit,
-        trustRows,
-        untested: untestedInPath(clauses, loaded.enrollments).filter(({ credential }) =>
-          added.some((one) => sameCredential(one, credential))
-        ),
-        clauses,
-        backup: draft.privacy.backup,
-        passwordSet: !passwordMissing
-      }),
-      rows,
-      added,
-      reads: { ...accountReads, setupState },
-      clientReady: !!kit
-    })
-    const retryUnanswered = () => {
-      trustRows
-        .filter(({ contract }) => contract.status === 'unavailable')
-        .forEach(({ method }) => trust.retry(method))
-      accountReads.retry(accountReadsToRetry(accountReads))
-    }
-    const publication = publicationSentenceOf(clauses, addressBook, t)
-    const ruleLines = ruleLinesOf(draft, addressBook, t)
-    const lookingUp = state.lookup === 'reading' || (!steps && accountFacts.status === 'loading')
-
-    return (
-      <View testID="manage-review-arrival">
-        <ChangesBlock rows={rows} stale={stale} />
-
-        <SectionCard>
-          <PathBlock
-            clauses={clauses}
-            enrollments={loaded.enrollments}
-            addressBook={addressBook}
-            onRetryTest={toEditor}
-          />
-          {ruleLines.map((ruleLine, index) => (
-            <Text
-              // The lines are rebuilt from the path on every render, so a line's place is its identity.
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              fontSize={14}
-              style={spacings.mbTy}
-              testID={`manage-review-rule-line-${index}`}
-            >
-              {ruleLine}
-            </Text>
-          ))}
-        </SectionCard>
-
-        <SectionCard
-          tone="muted"
-          spacing="item"
-          label={t('socialRecovery.review.publicationHeader')}
-        >
-          <Text fontSize={12} appearance="secondaryText" style={spacings.mbTy}>
-            {t('socialRecovery.review.publication.lead')}
-          </Text>
-          {!!publication && (
-            <Text fontSize={12} appearance="secondaryText" testID="manage-review-publication">
-              {publication}
-            </Text>
-          )}
-        </SectionCard>
-
-        {trustRows.length > 0 && (
-          <SectionCard label={t(`${REVIEW}.addedRows`)} testID="manage-review-added">
-            <DetailsExpander
-              testID="manage-review-verify-details"
-              expanded={expanded}
-              onToggle={() => setExpanded((open) => !open)}
-            />
-            {expanded && !!kit && <TrustList rows={trustRows} client={kit} onRetry={trust.retry} />}
-          </SectionCard>
-        )}
-
-        <SectionCard label={t('socialRecovery.review.account.header')}>
-          <Text fontSize={14} weight="medium" selectable testID="manage-review-account">
-            {renderFullAddress(account)}
-          </Text>
-        </SectionCard>
-
-        {dormantRefused && (
-          <Alert
-            testID="manage-review-dormant-refused"
-            type="error"
-            size="sm"
-            style={spacings.mbSm}
-            text={t(`${REVIEW}.dormantRefused`)}
-          />
-        )}
-        {!dormantRefused && !!gate.blocked && (
-          <SaveBlocker
-            blocked={gate.blocked}
-            onRetry={retryUnanswered}
-            onOpen={toOverview}
-            onEditor={toEditor}
-            onPrivacy={toEditor}
-          />
-        )}
-        {ready && !ready.key && (
-          <Alert
-            testID="manage-review-view-only"
-            type="error"
-            size="sm"
-            style={spacings.mbSm}
-            text={t('socialRecovery.arm.viewOnly')}
-          />
-        )}
-        {gate.notTested && (
-          <NotTestedBlock
-            untested={gate.notTested}
-            enrollments={loaded.enrollments}
-            addressBook={addressBook}
-          />
-        )}
-        {rows.length === 0 && (
-          <Text fontSize={14} style={spacings.mbSm} testID="manage-review-unchanged">
-            {t(`${REVIEW}.unchanged`)}
-          </Text>
-        )}
-        {attemptOpen && !dormantRefused && (
-          <Text fontSize={14} weight="medium" style={spacings.mbSm} testID="manage-review-cancels">
-            {t(`${REVIEW}.cancelsLine`)}
-          </Text>
-        )}
-        {lookingUp ? (
-          <ActivityIndicator testID="manage-review-lookup" />
-        ) : (
-          <ActionsRow
-            primary={
-              <Button
-                testID="manage-review-save"
-                type="primary"
-                text={t(`${REVIEW}.save`)}
-                disabled={
-                  !gate.canSave ||
-                  dormantRefused ||
-                  !steps ||
-                  state.lookup !== 'none' ||
-                  !!state.stop
-                }
-                onPress={run.start}
-                hasBottomSpacing={false}
-              />
-            }
-            secondary={backToEditor}
-          />
-        )}
-        {state.lookup === 'failed' && (
-          <ReadFailedBlock
-            testID="manage-review-lookup-failed"
-            title={t('socialRecovery.records.loadFailed')}
-            onRetry={run.lookAgain}
-          />
-        )}
-      </View>
-    )
-  }
-
-  const body = () => {
-    switch (screen) {
-      case 'saved':
-        return saved()
-      case 'already-set-up':
-        return (
-          <View testID="manage-review-setup-changed">
-            <Alert
-              type="warning"
-              size="sm"
-              style={spacings.mbSm}
-              title={t('socialRecovery.records.setupChangedTitle')}
-              text={t(`${REVIEW}.setupChangedBody`)}
-            />
-            <ActionsRow primary={backToEditor} />
-          </View>
-        )
-      case 'disagreed':
-      case 'unread':
-        return write.status === 'landed' || state.landedUnseen ? (
-          <DisagreedView
-            transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
-            chain={kit?.chain ?? WALLET_RECOVERY_CHAIN}
-            check={state.after.stage === 'disagreed' ? state.after.check : undefined}
-            onReread={run.reread}
-            navigate={navigate}
-            openUrl={openUrl}
-          />
-        ) : null
-      case 'confirming':
-        return <ActivityIndicator testID="manage-review-confirming" />
-      case 'run':
-        return (
-          <View>
-            {dormantRefused && (
-              <Alert
-                testID="manage-review-run-dormant-refused"
-                type="error"
-                size="sm"
-                style={spacings.mbSm}
-                text={t(`${REVIEW}.dormantRefused`)}
-              />
-            )}
-            {attemptOpen && !dormantRefused && (
-              <Text fontSize={14} weight="medium" style={spacings.mbSm}>
-                {t(`${REVIEW}.cancelsLine`)}
-              </Text>
-            )}
-            <RunBlock run={run} write="edit" testID="manage-review-run" />
-            {nothingOnItsWay(state) && (
-              <View style={[flexbox.directionRow, spacings.mtSm]}>{backToEditor}</View>
-            )}
-          </View>
-        )
-      case 'arrival':
-      default:
-        return arrival()
-    }
-  }
+  }, [draft, navigate])
+  const retryLoad = useCallback(() => {
+    retryHeld()
+    setLoadRound((round) => round + 1)
+  }, [retryHeld])
+  const toggleExpanded = useCallback(() => setExpanded((open) => !open), [])
+  const lookingUp = state.lookup === 'reading' || (!steps && accountFacts.status === 'loading')
+  const arrives = screen === 'arrival' || screen === 'held-by-another-write'
+  const landedOrUnseen = write.status === 'landed' || !!state.landedUnseen
 
   return (
     <View testID="manage-review">
@@ -613,7 +285,66 @@ export const ReviewStageView = ({
         titleTestID="manage-review-title"
       />
       <ReadsGate reads={reads} needsPath={false} testID="manage-review-reads">
-        {body()}
+        {screen === 'saved' && (
+          <ReviewSaved
+            transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
+            onExplorer={toExplorer}
+            stale={stale}
+            onDone={toOverview}
+            onCard={stale && draft ? toCard : undefined}
+          />
+        )}
+        {screen === 'already-set-up' && <ReviewSetupChanged backToEditor={backToEditor} />}
+        {(screen === 'disagreed' || screen === 'unread') && landedOrUnseen && (
+          <DisagreedView
+            transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
+            chain={kit?.chain ?? WALLET_RECOVERY_CHAIN}
+            check={state.after.stage === 'disagreed' ? state.after.check : undefined}
+            onReread={run.reread}
+            navigate={navigate}
+            openUrl={openUrl}
+          />
+        )}
+        {screen === 'confirming' && <ActivityIndicator testID="manage-review-confirming" />}
+        {screen === 'run' && (
+          <ReviewRun
+            run={run}
+            attemptOpen={attemptOpen}
+            dormantRefused={dormantRefused}
+            backToEditor={backToEditor}
+          />
+        )}
+        {arrives && (
+          <ReviewArrival
+            held={held}
+            load={load}
+            onRetryLoad={retryLoad}
+            rows={rows}
+            stale={stale}
+            added={added}
+            trustRows={trustRows}
+            trust={trust}
+            accountReads={accountReads}
+            addressBook={addressBook}
+            client={kit}
+            account={account}
+            password={password}
+            newPassword={newPassword}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+            attemptOpen={attemptOpen}
+            dormantRefused={dormantRefused}
+            facts={ready}
+            lookingUp={lookingUp}
+            runReady={!!steps && state.lookup === 'none' && !state.stop}
+            lookupFailed={state.lookup === 'failed'}
+            onSave={run.start}
+            onLookAgain={run.lookAgain}
+            onEditor={toEditor}
+            onOverview={toOverview}
+            backToEditor={backToEditor}
+          />
+        )}
       </ReadsGate>
     </View>
   )
