@@ -109,6 +109,9 @@ export const EditStageView = ({ records, session, chainId, account, navigate }: 
     setOpenFailed(false)
     const open = async () => {
       const held = await records.saveInFlight(chainId, account).read()
+      if (!live) {
+        return
+      }
       if (held.status === 'present') {
         const intent = intentOfRequest(held.value.requestId)
         if (intent === 'manageRemove') {

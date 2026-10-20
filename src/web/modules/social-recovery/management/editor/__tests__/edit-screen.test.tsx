@@ -5,7 +5,8 @@
  * own over the setup's editor, the committed values above the action that
  * opens the review of changes, and every member of a group at its threshold
  * marked still needed, its removal held with the reason beside it, while a
- * member of a group with room to lose one stays removable. The client, the
+ * member of a group with room to lose one stays removable; a page left before
+ * its read of a stored write answered sends the tab nowhere. The client, the
  * reads and the committed level are the screen's seams, each given here; the
  * records sit on an in-memory storage.
  */
@@ -63,6 +64,12 @@ const {
   editSessionOf
 }: typeof import('@web/modules/social-recovery/management/editor/session') = require('@web/modules/social-recovery/management/editor/session')
 const {
+  newSendRequestId
+}: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  MANAGE_INTENT_MARKS
+}: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
+const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
 const {
@@ -82,9 +89,11 @@ const COMMITTED: Configuration = {
   ignoresPause: true
 }
 
-const editPage = async () => {
+const editPage = async (
+  records: ReturnType<typeof createWalletRecords> = createWalletRecords({ storage: makeStorage() }),
+  navigate: (to: string) => void = jest.fn()
+) => {
   const storage = makeStorage()
-  const records = createWalletRecords({ storage })
   const session = editSessionOf(storage, CHAIN_ID, ACCOUNT)
   Object.assign(mockWorld, {
     client: {
@@ -120,7 +129,7 @@ const editPage = async () => {
       session,
       chainId: CHAIN_ID,
       account: ACCOUNT,
-      navigate: jest.fn()
+      navigate
     })
   )
   return { view, records }
@@ -168,5 +177,31 @@ describe('the edit page', () => {
     expect(held.status === 'present' && held.value.clauses[0].credentials).toHaveLength(2)
     expect(held.status === 'present' && held.value.clauses[1].credentials).toHaveLength(1)
     view.unmount()
+  })
+
+  it('sends the tab nowhere where the page was left before its read of a stored write answered', async () => {
+    const records = createWalletRecords({ storage: makeStorage() })
+    let answer: (read: unknown) => void = () => undefined
+    const { saveInFlight } = records
+    records.saveInFlight = (...args) => ({
+      ...saveInFlight(...args),
+      read: () =>
+        new Promise((resolve) => {
+          answer = resolve as (read: unknown) => void
+        })
+    })
+    const navigate = jest.fn()
+    const { view } = await editPage(records, navigate)
+
+    view.unmount()
+    answer({
+      status: 'present',
+      value: { requestId: `${newSendRequestId()}${MANAGE_INTENT_MARKS.manageRemove}` }
+    })
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
+
+    expect(navigate).not.toHaveBeenCalled()
   })
 })
