@@ -40,12 +40,22 @@ import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
 // The chain's reading of the account
 // ---------------------------------------------------------------------------
 
-/**
- * What the overview draws from the setup and the authorization: no setup and
- * no authorization, both, a setup the account no longer authorizes, or an
- * authorization with no setup behind it.
- */
-export type OverviewKind = 'not-set-up' | 'set-up' | 'dormant' | 'mirror'
+/** What the overview draws from the setup and the account's authorization of the recovery action. */
+export type OverviewKind =
+  /** No setup is committed and the account does not authorize the action. */
+  | 'not-set-up'
+  /** A setup is committed and the account authorizes the action: recovery works. */
+  | 'set-up'
+  /**
+   * A committed setup the account no longer authorizes: no recovery against it
+   * can execute. Repaired by re-authorizing it or by clearing it.
+   */
+  | 'dormant'
+  /**
+   * An authorization the account still holds with no setup behind it, as a
+   * clear alone leaves it. Repaired by removing the authorization.
+   */
+  | 'mirror'
 
 /** The setup state and whether an attempt is open on the account, pending or ready. */
 export interface OverviewFacts {
