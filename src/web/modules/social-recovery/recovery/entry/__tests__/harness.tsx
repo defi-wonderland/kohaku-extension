@@ -12,6 +12,7 @@
  */
 import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
+import { webcrypto } from 'crypto'
 import { TextDecoder, TextEncoder } from 'util'
 
 import type { Account } from '@ambire-common/interfaces/account'
@@ -42,6 +43,32 @@ import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures_
 import type { Deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/types'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
+// The fake node seals a backup with WebCrypto, which jsdom does not carry. Its
+// work runs off the event loop on the real clock, so the harness counts each
+// call still running and `settle` waits for them.
+let cryptoRunning = 0
+const countedSubtle = new Proxy(webcrypto.subtle, {
+  get(target, name) {
+    const member: unknown = Reflect.get(target, name)
+    if (typeof member !== 'function') {
+      return member
+    }
+    return (...args: unknown[]) => {
+      cryptoRunning += 1
+      return Promise.resolve(member.apply(target, args)).finally(() => {
+        cryptoRunning -= 1
+      })
+    }
+  }
+})
+Object.defineProperty(globalThis, 'crypto', {
+  value: {
+    getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+    randomUUID: webcrypto.randomUUID.bind(webcrypto),
+    subtle: countedSubtle
+  },
+  configurable: true
+})
 // React only runs effects and state updates inside act() when this flag is set.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -121,9 +148,9 @@ export interface Mounted {
   holds: (outer: string, inner: string) => boolean
 }
 
-/** A setup committed on the stand-in's chain for the lost account, and the client built over it. */
+/** A setup committed on the lost account's fake node, and the client built over it. */
 export interface CommittedWorld {
-  chain: ReturnType<typeof StandIn.chainFor>
+  chain: ReturnType<typeof StandIn.nodeFor>
   client: RecoveryKitClient
 }
 
@@ -311,6 +338,13 @@ jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
 const React: typeof import('react') = require('react')
 const { encodeErrorResult, getAddress, parseAbi }: typeof import('viem') = require('viem')
 const { makeError }: typeof import('ethers') = require('ethers')
+const {
+  passkeyMethod,
+  walletMethod
+}: typeof import('@kohaku-eth/social-recovery') = require('@kohaku-eth/social-recovery')
+const {
+  privacyOfLevel
+}: typeof import('@web/modules/social-recovery/setup/privacy/writes') = require('@web/modules/social-recovery/setup/privacy/writes')
 const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
@@ -703,15 +737,27 @@ const THEME_CONTEXT: ThemeContextReturnType = {
   setThemeType: () => {}
 }
 
+const tick = (ms = 0) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
 /**
  * Lets the pending reads and writes settle, then renders what they changed.
- * The fakes answer in microtasks, which all run before a timer fires.
+ * The fakes answer in microtasks, which all run before a timer fires; a
+ * backup's sealing or opening runs on the real clock, and is waited out.
  */
 export const settle = () =>
   act(async () => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0)
-    })
+    await tick()
+    for (let round = 0; round < 500 && cryptoRunning > 0; round += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await tick(10)
+      if (cryptoRunning === 0) {
+        // eslint-disable-next-line no-await-in-loop
+        await tick()
+      }
+    }
   })
 
 /** Fake timers that still move with real time, so the harness's own waits keep running. */
@@ -872,12 +918,19 @@ export const GUARDIANS: Address[] = [
 ]
 
 const ADDRESS_BOOK = addressBookOf(WALLET_RECOVERY_CHAIN)
+// Checksummed, as the SDK opens a method address from a backup.
+const PASSKEY_METHOD = getAddress(ADDRESS_BOOK.methods.passkey)
+const GUARDIAN_METHOD = getAddress(ADDRESS_BOOK.methods.ecdsa)
+
+/** A guardian's config: the address whose signature answers for it. */
+export const guardianConfigOf = (guardian: Address): Hex =>
+  walletMethod().codec.encodeConfig({ signer: guardian })
 
 /** A passkey config whose committed origin hash is this page's own, or another origin's. */
 export const passkeyConfig = (origin: 'this' | 'other') =>
-  passkeyConfigOf({
-    x: `0x${'11'.repeat(32)}`,
-    y: `0x${'22'.repeat(32)}`,
+  passkeyMethod().codec.encodeConfig({
+    x: BigInt(`0x${'11'.repeat(32)}`),
+    y: BigInt(`0x${'22'.repeat(32)}`),
     rpIdHash:
       origin === 'this'
         ? relyingPartyOf(window.location).rpIdHash
@@ -892,13 +945,13 @@ export const LOST_SETUP: Configuration = {
   clauses: [
     {
       threshold: 1,
-      credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('this') }]
+      credentials: [{ method: PASSKEY_METHOD, config: passkeyConfig('this') }]
     },
     {
       threshold: 2,
       credentials: GUARDIANS.map((guardian) => ({
-        method: ADDRESS_BOOK.methods.ecdsa,
-        config: ecdsaConfigOf(guardian)
+        method: GUARDIAN_METHOD,
+        config: guardianConfigOf(guardian)
       }))
     }
   ],
@@ -911,7 +964,7 @@ export const OTHER_ORIGIN_SETUP: Configuration = {
   clauses: [
     {
       threshold: 1,
-      credentials: [{ method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') }]
+      credentials: [{ method: PASSKEY_METHOD, config: passkeyConfig('other') }]
     }
   ],
   wait: 432_000,
@@ -934,8 +987,8 @@ export const SHORT_GROUP_SETUP: Configuration = {
     {
       threshold: 2,
       credentials: [
-        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
-        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+        { method: PASSKEY_METHOD, config: passkeyConfig('other') },
+        { method: GUARDIAN_METHOD, config: guardianConfigOf(GUARDIANS[0]) }
       ]
     }
   ],
@@ -949,8 +1002,8 @@ export const ONE_ANSWERABLE_SETUP: Configuration = {
     {
       threshold: 1,
       credentials: [
-        { method: ADDRESS_BOOK.methods.passkey, config: passkeyConfig('other') },
-        { method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIANS[0]) }
+        { method: PASSKEY_METHOD, config: passkeyConfig('other') },
+        { method: GUARDIAN_METHOD, config: guardianConfigOf(GUARDIANS[0]) }
       ]
     }
   ],
@@ -958,15 +1011,13 @@ export const ONE_ANSWERABLE_SETUP: Configuration = {
   ignoresPause: false
 }
 
-/** A recovery client for the lost account built over a scripted chain. */
+/** A recovery client for the lost account built over its fake node. */
 const clientOver = (chain: CommittedWorld['chain']) =>
   buildRecoveryClient({
     chain: WALLET_RECOVERY_CHAIN,
     account: LOST,
     addressBook: ADDRESS_BOOK,
-    provider: sdkStandIn.providerFor(chain),
-    codeRead: { code: async () => '0x' },
-    transactionRead: async () => null
+    provider: sdkStandIn.providerFor(chain)
   })
 
 /** The ready state of the screen's hook over a built client. */
@@ -974,20 +1025,20 @@ export const readyOver = (client: RecoveryKitClient): ClientState =>
   ({ status: 'ready', client, reads: {}, receipts: {}, retry: () => {} } as unknown as ClientState)
 
 /**
- * Commits a setup for the lost account at a privacy level on the stand-in's
- * chain, builds the recovery client over it, and hands it to the screen.
+ * Commits a setup for the lost account at a privacy level on its fake node,
+ * builds the recovery client over it, and hands it to the screen.
  */
 export const commitLostSetup = async (
   level: PrivacyLevel,
   configuration: Configuration = LOST_SETUP
 ): Promise<CommittedWorld> => {
   sdkStandIn.reset()
-  const chain = sdkStandIn.chainFor(descriptorOf(WALLET_RECOVERY_CHAIN, ADDRESS_BOOK), LOST)
-  chain.commitSetup({
-    level,
+  const chain = sdkStandIn.nodeFor(descriptorOf(WALLET_RECOVERY_CHAIN, ADDRESS_BOOK), LOST)
+  await chain.commitSetup(
     configuration,
-    password: level === 'public' ? undefined : CARD_PASSWORD
-  })
+    privacyOfLevel({ ...configuration, privacy: { publicMetadata: '0x', backup: 'empty' } }, level),
+    level === 'public' ? undefined : CARD_PASSWORD
+  )
   const client = await clientOver(chain)
   setClient(LOST, readyOver(client))
   return { chain, client }
@@ -1003,8 +1054,8 @@ export const rebuildClient = async (world: CommittedWorld): Promise<CommittedWor
 /** The value a restore refuses with: a cause and the values the refusal carries. */
 export const restoreRefusal = (code: string, values: Record<string, unknown> = {}): Error =>
   Object.assign(new Error(`The restore refused: ${code}`), {
-    name: 'RestoreRefusal',
-    cause: { code, subject: 'restore', values }
+    name: 'KitRefusalError',
+    restoreCause: { code, subject: 'restore', values }
   })
 
 /** A guardian's address as a row draws it. */
