@@ -361,10 +361,6 @@ export const attemptActiveRefusal = (): Error =>
     findings: { errors: [{ code: 'request.attempt-active', severity: 'error', values: {} }] }
   })
 
-/** The deployed kit's refusal of a member it does not serve yet. */
-export const notServed = (member: string): Error =>
-  Object.assign(new Error(`not served: ${member}`), { name: 'NotServedRefusal', member })
-
 // ---------------------------------------------------------------------------
 // The client
 // ---------------------------------------------------------------------------

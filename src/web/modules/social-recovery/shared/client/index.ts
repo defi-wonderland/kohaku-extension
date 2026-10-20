@@ -127,7 +127,6 @@ export type {
   DigestVersionRefusal,
   DeploymentCheck,
   DeploymentRefusal,
-  NotServedRefusal,
   WalletReads,
   RecoveryAttemptState,
   FitCheckReading,

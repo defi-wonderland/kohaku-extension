@@ -223,18 +223,9 @@ export const useOverviewReads = ({
     let live = true
     const { events } = kit.setup
     const range = { from: setup.setupCommittedAtBlock, to: setup.block.number }
-    // A kit that does not serve the method logs reads as none moved; any other failure fails the read.
-    const methodLogs = Promise.resolve()
-      .then(() => events.fetch(events.methodFilter(), range))
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === 'NotServedRefusal') {
-          return []
-        }
-        throw error
-      })
     Promise.all([
       Promise.resolve().then(() => events.fetch(events.accountFilter(), range)),
-      methodLogs
+      Promise.resolve().then(() => events.fetch(events.methodFilter(), range))
     ]).then(
       ([own, methods]) => {
         if (live) {

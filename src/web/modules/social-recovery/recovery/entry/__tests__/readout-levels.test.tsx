@@ -285,12 +285,9 @@ describe('the readout at Shape visible', () => {
     expect(await storedCache()).not.toBeNull()
   })
 
-  it('renders a refused setup event read as a failed read with a retry, never as Private', async () => {
+  it('renders a rejected setup event read as a failed read with a retry, never as Private', async () => {
     const world = await commitLostSetup('shape-visible')
-    const refusal = Object.assign(new Error('not served'), {
-      name: 'NotServedRefusal',
-      member: 'setup.events.fetch'
-    })
+    const refusal = new Error('the node did not answer')
     const { events } = world.client.setup
     const fetch = events.fetch.bind(events)
     // The restore with no password reads the setup event first; the note read follows it.

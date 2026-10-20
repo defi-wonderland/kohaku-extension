@@ -16,7 +16,6 @@ import {
   MIXED_PATH,
   mountSubmit,
   mockWallet,
-  notServed,
   openWorld,
   passkeyCredential,
   passportCredential,
@@ -469,9 +468,9 @@ describe('the submission confirmation', () => {
       expect(mounted.isDisabled('submit-action')).toBe(false)
     })
 
-    it('reads check failed and stays locked where the client refuses the verify', async () => {
+    it('reads check failed and stays locked while every verify read fails', async () => {
       const world = await openWorld()
-      world.kit.verifyReply.mockRejectedValue(notServed('walletReads.verifyReply'))
+      world.kit.verifyReply.mockRejectedValue(new Error('node down'))
       const mounted = await open(world)
       await openDetails(mounted)
       expect(mounted.textOf('submit-check-failed')).toContain(t(`${SUBMIT}.checkFailed`))
