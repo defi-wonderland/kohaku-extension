@@ -1,6 +1,13 @@
+import { ERRORS_MANAGER_ABI } from '@kohaku-eth/social-recovery'
 import { encodeErrorResult } from 'viem'
 
-import { createWatcherReads, providerReadFailure } from '@web/modules/social-recovery/shared/client'
+import {
+  createWatcherReads,
+  deploymentDescriptor,
+  providerReadFailure
+} from '@web/modules/social-recovery/shared/client'
+import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
+import { ScriptedNode } from '@web/modules/social-recovery/shared/client/scripted'
 import type { AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import {
   dismissAttempt,
@@ -32,6 +39,7 @@ import {
 } from '@web/modules/social-recovery/watcher/__fixtures__/harness'
 
 const NOW = 1_800_000_123_000
+const KIT_ACCOUNT = addressOf('kit-account')
 
 const setUp = (accounts = [ACCOUNT]) => {
   const chain = scriptedChain()
@@ -129,7 +137,7 @@ describe('a poll of the watched accounts', () => {
   it('names no key from an opening whose payload is not the one the attempt committed', async () => {
     const { chain, poll, record } = setUp()
     chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
-    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, payloadTo(OLD_KEY)) })
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, payloadTo(OTHER_ACCOUNT)) })
 
     await poll()
 
@@ -631,28 +639,20 @@ describe('a poll of the watched accounts', () => {
   })
 
   it("names the manager's revert in the failure of the poll", async () => {
-    const node = fakeNode()
-    node.setCode(KIT_ACCOUNT, ACCOUNT_CODE, DEPLOYED_AT)
-    node.setCode(MANAGER, ACCOUNT_CODE)
-    node.answer(
-      MANAGER,
-      stateOfCall(),
-      reverting(
-        encodeErrorResult({
-          abi: POLICY_MANAGER_ABI,
-          errorName: 'PolicyManager_WrongSetupNonce',
-          args: [2n, 3n]
-        })
-      )
-    )
+    const descriptor = deploymentDescriptor('sepolia')
+    const node = new ScriptedNode({ descriptor, account: KIT_ACCOUNT })
+    node.failRead('stateOf', {
+      kind: 'revert',
+      data: encodeErrorResult({
+        abi: ERRORS_MANAGER_ABI,
+        errorName: 'PolicyManager_WrongSetupNonce',
+        args: [2n, 3n]
+      })
+    })
     const storage = memoryStorage()
 
     await pollAccounts({
-      reads: createWatcherReads({
-        provider: node.provider,
-        codeRead: node.codeRead,
-        descriptor: DESCRIPTOR
-      }),
+      reads: createWatcherReads({ provider: node, descriptor }),
       accounts: [KIT_ACCOUNT],
       chainId: SEPOLIA,
       storage,
@@ -713,7 +713,7 @@ describe('a poll of the watched accounts', () => {
     await poll()
     expect((await record())?.reading?.attempt?.newKey).toBe(NEW_KEY)
 
-    const other = payloadTo(OLD_KEY)
+    const other = payloadTo(OTHER_ACCOUNT)
     chain.setState(ACCOUNT, stateWith({ attemptId: 5n, state: 'Waiting', payload: other }))
     await poll()
 

@@ -3,7 +3,8 @@
  * only what survives a JSON round trip, and an alarm API that records what it
  * was asked.
  */
-import { decodeAbiParameters, encodeAbiParameters, getAddress, keccak256, zeroHash } from 'viem'
+import { AmbireActionCodec } from '@kohaku-eth/social-recovery'
+import { getAddress, keccak256, zeroHash } from 'viem'
 
 import type { Account } from '@ambire-common/interfaces/account'
 import type {
@@ -32,10 +33,12 @@ export const OPENED_TIME = 1_799_000_000
 export const ENDED_BLOCK = 6_990_000
 export const ENDED_TIME = 1_799_900_000
 const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
+const ACTION: Address = getAddress('0x00000000000000000000000000000000000ac710')
+const CODEC = new AmbireActionCodec([ACTION])
 
 /** The action's payload of a handover from `OLD_KEY` to `newKey`. */
 export const payloadTo = (newKey: Address): Hex =>
-  encodeAbiParameters([{ type: 'address' }, { type: 'address' }], [newKey, OLD_KEY])
+  CODEC.encode({ newAuthority: newKey, removedAuthority: OLD_KEY })
 
 const positionAt = (blockNumber: number): LogPosition => ({
   blockNumber,
@@ -52,7 +55,7 @@ export const startedEvent = (
 ): NonNullable<AttemptEvents['started']> => ({
   kind: 'attempt-started',
   account,
-  action: getAddress('0x00000000000000000000000000000000000ac710'),
+  action: ACTION,
   attemptId,
   setupNonce: 1n,
   setupBody: '0x',
@@ -70,7 +73,7 @@ export const cancelledEvent = (
 ): NonNullable<AttemptEvents['cancelled']> => ({
   kind: 'attempt-cancelled',
   account: ACCOUNT,
-  action: getAddress('0x00000000000000000000000000000000000ac710'),
+  action: ACTION,
   attemptId,
   canceller: ACCOUNT,
   vetoingMethod: zeroHash.slice(0, 42) as Address,
@@ -83,7 +86,7 @@ export const cancelledEvent = (
 export const consumedEvent = (attemptId: bigint): NonNullable<AttemptEvents['consumed']> => ({
   kind: 'attempt-consumed',
   account: ACCOUNT,
-  action: getAddress('0x00000000000000000000000000000000000ac710'),
+  action: ACTION,
   attemptId,
   at: positionAt(ENDED_BLOCK)
 })
@@ -187,11 +190,7 @@ export const scriptedChain = () => {
     blockTime: jest.fn(async (block: number) => times.get(block) ?? 0),
     handoverOf: (payload: Hex) => {
       try {
-        const [newAuthority, removedAuthority] = decodeAbiParameters(
-          [{ type: 'address' }, { type: 'address' }],
-          payload
-        )
-        return { newAuthority, removedAuthority }
+        return CODEC.decode(payload)
       } catch {
         return undefined
       }
