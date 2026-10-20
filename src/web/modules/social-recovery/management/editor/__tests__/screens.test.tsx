@@ -56,6 +56,11 @@ jest.mock('@web/modules/social-recovery/shared/client/useAccountFacts', () => ({
 jest.mock('@web/modules/social-recovery/management/editor/useWriteSeams', () => ({
   useWriteSeams: () => ({})
 }))
+// The chain moves a block at once, so a check read again after each new block runs without a wait.
+jest.mock('@web/modules/social-recovery/setup/arm/block', () => ({
+  ...jest.requireActual('@web/modules/social-recovery/setup/arm/block'),
+  waitForNewBlock: async () => undefined
+}))
 jest.mock('@web/modules/social-recovery/setup/arm/useArmRun', () => ({
   useArmRun: () => mockWorld.run
 }))
@@ -570,7 +575,7 @@ describe('the removal around the refusals and other writes', () => {
     again.unmount()
   })
 
-  it('reads a disagreed removal again, as removed once the chain reads both gone, and retries a read that failed', async () => {
+  it('reads a disagreed removal again, disagreed while the chain still reads a setup, as removed once the chain reads both gone, and retries a read that failed', async () => {
     const { records, session } = await given({
       clauses: COMMITTED,
       trustAnswered: true,
@@ -603,6 +608,18 @@ describe('the removal around the refusals and other writes', () => {
     expect(view.text()).not.toContain(t('socialRecovery.management.overview.reads.failedTitle'))
     expect(view.byTestId('manage-remove-check-disagreed-overview')).not.toBeNull()
 
+    // The chain still reads the setup on every read of the check.
+    setupState.mockResolvedValue(review.setupStateOf(true))
+    await view.press('manage-remove-check-disagreed-read-again')
+    await settle()
+    expect(setupState).toHaveBeenCalled()
+    expect(view.text()).toContain(t(`${REMOVE}.disagreedTitle`))
+    expect(view.isDisabled('manage-remove-check-disagreed-read-again')).toBe(false)
+    expect(view.byTestId('manage-remove-check-failed')).toBeNull()
+    expect(view.byTestId('manage-remove-done')).toBeNull()
+    expect((await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()).status).toBe('present')
+
+    setupState.mockClear()
     setupState.mockRejectedValueOnce(new Error('the read did not return'))
     await view.press('manage-remove-check-disagreed-read-again')
     await settle()
