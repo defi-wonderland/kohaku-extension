@@ -9,8 +9,8 @@
  * note throws instead of being coerced.
  *
  * The fakes of `IRecoveryMethod` and `IMethodsOrchestrator` are hand-written and
- * typed by `sdk-interfaces/`: the ESLint fence forbids this module to import the
- * doubles of `sdk-doubles/`. `navigator.credentials` is mocked; no test reaches
+ * typed by the SDK package: the ESLint fence forbids this module to import the
+ * SDK's runtime. `navigator.credentials` is mocked; no test reaches
  * a real authenticator.
  */
 /* eslint-disable max-classes-per-file -- the WebAuthn classes jsdom lacks, and one encoder */
