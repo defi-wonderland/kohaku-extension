@@ -14,6 +14,7 @@ import {
   draftOf,
   harnessOf,
   holdReads,
+  readPublicNote,
   recordsOn
 } from '@web/modules/social-recovery/setup/privacy/__tests__/harness'
 
@@ -554,7 +555,7 @@ describe('the privacy step', () => {
       expect(readPublicNote(draft.privacy.publicMetadata)).toEqual({
         kind: 'shape',
         shape: {
-          wait: draft.wait,
+          wait: BigInt(draft.wait),
           ignoresPause: draft.ignoresPause,
           clauses: [{ threshold: 2, methods: [passkey.method, passport.method, guardian.method] }]
         }

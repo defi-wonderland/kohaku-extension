@@ -125,20 +125,20 @@ export const descriptionOf = (
   candidateKeys: SetupDescription['candidateKeys'] = [{ key: REMOVED_KEY, isAuthority: true }],
   removedKey: SetupDescription['removedKey'] = REMOVED_KEY
 ): SetupDescription => ({
-  rule: null,
+  rule: { clauses: [] },
   wait: { committed: 172800, clientDefault: 172800 },
-  failureDomains: null,
-  parties: null,
-  methodStanding: null,
-  passkeyDomains: null,
+  failureDomains: [],
+  parties: { methods: [], walletGuardians: [] },
+  methodStanding: [],
+  passkeyDomains: [],
   candidateKeys,
   removedKey,
-  privacy: null,
-  backup: null,
-  reveals: null,
-  cancel: null,
-  upgrade: null,
-  pause: null
+  privacy: { publicMetadata: '0x', backup: 'encrypted' },
+  backup: { choice: 'encrypted', anySuppliedSalt: false },
+  reveals: { suppliedSaltPlaces: [] },
+  cancel: { cancelByVeto: true },
+  upgrade: {},
+  pause: { ignoresPause: true, methods: [] }
 })
 
 /** The reads keyed as the trust list holds them, by the method's lowercased address. */
