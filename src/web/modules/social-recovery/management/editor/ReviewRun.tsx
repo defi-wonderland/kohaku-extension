@@ -12,10 +12,10 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
+import RunBlock from '@web/modules/social-recovery/management/overview/RunBlock'
 
 import { REVIEW } from './constants'
 import { nothingOnItsWay } from './readings'
-import RunBlock from './RunBlock'
 import type { ReviewRunProps } from './types'
 
 const ReviewRun = ({ run, attemptOpen, dormantRefused, backToEditor }: ReviewRunProps) => {
@@ -36,7 +36,12 @@ const ReviewRun = ({ run, attemptOpen, dormantRefused, backToEditor }: ReviewRun
           {t(`${REVIEW}.cancelsLine`)}
         </Text>
       )}
-      <RunBlock run={run} write="edit" testID="manage-review-run" />
+      <RunBlock
+        run={run}
+        write="edit"
+        droppedLine="socialRecovery.arm.dropped"
+        testID="manage-review-run"
+      />
       {nothingOnItsWay(run.state) && (
         <View style={[flexbox.directionRow, spacings.mtSm]}>{backToEditor}</View>
       )}

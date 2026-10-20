@@ -29,7 +29,7 @@ import type {
   SetupRecords,
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
-import type { ManageIntent, OwnerWrite } from '@web/modules/social-recovery/shared/writes'
+import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
 import type { ArmRun } from '@web/modules/social-recovery/setup/arm'
 import type {
   EditorClient,
@@ -262,13 +262,6 @@ export interface DetailsExpanderProps {
 export interface ChangesBlockProps {
   rows: readonly ChangeRow[]
   stale: boolean
-}
-
-export interface RunBlockProps {
-  run: ArmRun
-  /** The write whose copy the shared states read. */
-  write: OwnerWrite
-  testID: string
 }
 
 export interface ValuesBlockProps {
