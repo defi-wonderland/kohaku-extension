@@ -11,14 +11,21 @@
  *   account whose setup is already gone, and refuses `setup.not-authorized`
  *   where the account does not authorize the action.
  * - `confirmSetup` reads a commit as landed only where the manager still
- *   holds its nonce and commitment after the SDK found its event.
+ *   holds its nonce and commitment after the SDK found its event, and refuses
+ *   `confirm.commitment-mismatch` where the draft does not recompute to the
+ *   commitment the prepared commit carries.
  * - `getSetup` under a password opens a clear backup too, which the SDK
  *   opens only from the configuration itself.
  *
  * A contract's revert met by any of the four is rethrown as the kit's named
  * error.
  */
-import { pinBlockHeader, setupStands } from '@kohaku-eth/social-recovery'
+import {
+  KitRefusalError,
+  pinBlockHeader,
+  SETUP_CLIENT_COMMITMENT_UNMATCHED_MESSAGE,
+  setupStands
+} from '@kohaku-eth/social-recovery'
 import type {
   Configuration,
   ConfigurationSource,
@@ -132,7 +139,15 @@ export const createRecoverySetupClient = ({
       prepared: PreparedCall | PreparedBatch
     ): Promise<SetupConfirmation> {
       return withNamedRevert(async () => {
-        const confirmation = await setup.confirmSetup(draft, prepared)
+        const confirmation = await setup.confirmSetup(draft, prepared).catch((thrown: unknown) => {
+          if (
+            thrown instanceof KitRefusalError &&
+            thrown.message === SETUP_CLIENT_COMMITMENT_UNMATCHED_MESSAGE
+          ) {
+            throw codedRefusal('confirm.commitment-mismatch')
+          }
+          throw thrown
+        })
         return confirmationAgainstState(confirmation, await policyManager.stateOf(await pin()))
       })
     },

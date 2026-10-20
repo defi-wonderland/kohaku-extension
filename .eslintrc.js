@@ -29,8 +29,13 @@ module.exports = {
   overrides: [
     {
       // Account recovery: only shared/client imports the SDK's runtime; every folder may import its types.
+      // Tests and fixtures may use the SDK's encoders to build their records.
       files: ['src/web/modules/social-recovery/**/*.{ts,tsx,js,jsx}'],
-      excludedFiles: ['src/web/modules/social-recovery/shared/client/**'],
+      excludedFiles: [
+        'src/web/modules/social-recovery/shared/client/**',
+        'src/web/modules/social-recovery/**/__tests__/**',
+        'src/web/modules/social-recovery/**/__fixtures__/**'
+      ],
       rules: {
         '@typescript-eslint/no-restricted-imports': [
           'error',
