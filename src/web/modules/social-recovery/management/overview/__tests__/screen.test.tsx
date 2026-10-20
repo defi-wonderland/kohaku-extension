@@ -316,7 +316,7 @@ describe("the overview's screen", () => {
     }
   ]
   OTHER_WRITES.forEach(({ named, mark, route, line, link }) =>
-    it(`leaves a stored write of ${named} to its own screen and points there, with no step of its own`, async () => {
+    it(`leaves a stored write of ${named} to its own screen and points there under the overview's title and status, with no path or step of its own`, async () => {
       const world = await dormantWorld()
       const prepared = await world.client.setup.prepareClearSetup()
       await world.records.saveInFlight(CHAIN_ID, address).claim({
@@ -338,7 +338,11 @@ describe("the overview's screen", () => {
         t('socialRecovery.management.overview.writes.inFlightElsewhere')
       )
       expect(view.textOf('overview-open-elsewhere')).toContain(t(link))
+      expect(view.textOf('overview-title')).toContain(t('socialRecovery.management.overview.title'))
+      expect(view.byTestId('overview-chip-not-active')).not.toBeNull()
       expect(view.byTestId('overview-dormant')).toBeNull()
+      expect(view.byTestId('overview-path')).toBeNull()
+      expect(view.byTestId('overview-clear')).toBeNull()
       expect(view.byTestId('overview-step-clear')).toBeNull()
       expect(view.byTestId('overview-step-reauthorize')).toBeNull()
       expect(view.byTestId('overview-step-removeAuthorization')).toBeNull()

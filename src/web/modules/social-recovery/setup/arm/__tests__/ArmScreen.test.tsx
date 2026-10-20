@@ -2403,7 +2403,7 @@ describe('a change the recovery overview stored as in flight', () => {
     return () => inFlight.release(requestId)
   }
 
-  it('points to the overview and neither follows, judges nor sends it, on the push of the review', async () => {
+  it('points to the overview under the save title and neither follows, judges nor sends it, on the push of the review', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
     await storeOverviewClear()
@@ -2413,6 +2413,8 @@ describe('a change the recovery overview stored as in flight', () => {
     expect(byTestId('arm-overview-write')?.textContent).toContain(
       t('socialRecovery.management.overview.writes.inFlightElsewhere')
     )
+    expect(byTestId('arm-title')?.textContent).toContain(t('socialRecovery.routes.setupSave'))
+    expect(byTestId('arm-account')).toBeNull()
     expect(byTestId('arm-save')).toBeNull()
     expect(byTestId('arm-disagreed-mismatch')).toBeNull()
     expect(receipts.wait).not.toHaveBeenCalled()
