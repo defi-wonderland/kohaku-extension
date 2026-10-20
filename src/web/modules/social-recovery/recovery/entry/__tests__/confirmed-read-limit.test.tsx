@@ -32,7 +32,8 @@ const HOLDS: Hex = `0x${'00'.repeat(31)}01`
 const CREATION = {
   factory: '0x00000000000000000000000000000000000fac70' as Address,
   bytecode: '0x00' as Hex,
-  salt: `0x${'00'.repeat(32)}` as Hex
+  salt: `0x${'00'.repeat(32)}` as Hex,
+  block: 1
 }
 
 /** The listed basic account deployed on its fake node, KEY_A holding it, and a client over it. */
@@ -91,9 +92,7 @@ describe('the reads after the confirmation have a time limit', () => {
 
     await waitAnHour()
 
-    expect(
-      code.mock.calls.filter(([, block]) => typeof block === 'number').length
-    ).toBe(2)
+    expect(code.mock.calls.filter(([, block]) => typeof block === 'number').length).toBe(2)
     expect(screen.has('entry-reads-fit-failed-retry')).toBe(true)
     expect(screen.has('entry-reads-fit-loading')).toBe(false)
   })

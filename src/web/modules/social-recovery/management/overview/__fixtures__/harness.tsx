@@ -102,7 +102,12 @@ export const CONFIGURATION: Configuration = {
   clauses: [
     {
       threshold: 1,
-      credentials: [{ method: getAddress(ADDRESS_BOOK.methods.ecdsa), config: walletMethod().codec.encodeConfig({ signer: GUARDIAN }) }]
+      credentials: [
+        {
+          method: getAddress(ADDRESS_BOOK.methods.ecdsa),
+          config: walletMethod().codec.encodeConfig({ signer: GUARDIAN })
+        }
+      ]
     }
   ],
   wait: 172_800,
@@ -132,7 +137,9 @@ export const settleUntil = async (check: () => boolean, rounds = 100): Promise<v
 
 /** Settles until no read or password check on the page is still running. */
 export const settleReads = (): Promise<void> =>
-  settleUntil(() => !document.querySelector('[data-testid$="-reading"], [data-testid$="-checking"]'))
+  settleUntil(
+    () => !document.querySelector('[data-testid$="-reading"], [data-testid$="-checking"]')
+  )
 
 /** Types into a field the way a holder does, so React hears the change. */
 export const typeInto = async (container: HTMLElement | null, value: string): Promise<void> => {

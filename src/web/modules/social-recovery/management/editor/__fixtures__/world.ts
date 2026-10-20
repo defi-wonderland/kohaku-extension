@@ -99,7 +99,9 @@ const portOver = (world: Pick<EditWorld, 'chain'>, landing: LandingCase): SendPo
       if (landing === 'refused') {
         throw accountBatchRefusal('refused', account)
       }
-      world.chain.land({ kind: 'batch', calls: [...calls] })
+      // The account's batch lands all its calls together, as the wallet sends them.
+      const { number, hash } = world.chain.head
+      world.chain.land({ kind: 'batch', calls, atomic: true, block: { number, hash } })
       return arm.TX_HASH
     }
   )

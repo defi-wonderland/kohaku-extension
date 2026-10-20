@@ -53,13 +53,11 @@ const countedSubtle = new Proxy(webcrypto.subtle, {
     if (typeof member !== 'function') {
       return member
     }
-    return async (...args: unknown[]) => {
+    return (...args: unknown[]) => {
       cryptoRunning += 1
-      try {
-        return await member.apply(target, args)
-      } finally {
+      return Promise.resolve(member.apply(target, args)).finally(() => {
         cryptoRunning -= 1
-      }
+      })
     }
   }
 })
