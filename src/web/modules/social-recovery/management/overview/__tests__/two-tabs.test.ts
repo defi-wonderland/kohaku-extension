@@ -155,7 +155,7 @@ describe('a clear that finds the removal of the authorization stored', () => {
 
     await lookForSave(tab.store, tab.steps)
 
-    expect(tab.store.state().stop).toBe('overview-elsewhere')
+    expect(tab.store.state().stop).toBe('held-by-another-write')
     expect(tab.receipts.wait).not.toHaveBeenCalled()
     expect(tab.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(await world.records.saveInFlight(CHAIN_ID, address).read()).toEqual(held)

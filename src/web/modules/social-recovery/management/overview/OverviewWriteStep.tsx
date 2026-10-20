@@ -247,8 +247,8 @@ const OverviewWriteStep = ({
       onFinished()
     }
   }, [finished, onFinished])
-  // A run that lost its claim to a write of the management editor sent nothing; the overview points there.
-  const left = screen === 'overview-elsewhere'
+  // A run that met a stored write of another write sent nothing; the overview points at its owner.
+  const left = screen === 'held-by-another-write'
   useEffect(() => {
     if (left) {
       onLeft()

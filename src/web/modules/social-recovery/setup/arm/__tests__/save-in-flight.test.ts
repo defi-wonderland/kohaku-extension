@@ -311,8 +311,8 @@ describe('a save that meets a write of the recovery overview at its claim', () =
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
 
-    expect(store.state().stop).toBe('overview-elsewhere')
-    expect(armScreenOf(store.state())).toBe('overview-elsewhere')
+    expect(store.state().stop).toBe('held-by-another-write')
+    expect(armScreenOf(store.state())).toBe('held-by-another-write')
     expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(page.receipts.wait).not.toHaveBeenCalled()
     expect(page.confirmSetup).not.toHaveBeenCalled()
@@ -350,7 +350,7 @@ describe('a save that meets a write of the recovery overview at its claim', () =
     await running
 
     expect(claimedByRun).toBeDefined()
-    expect(store.state().stop).toBe('overview-elsewhere')
+    expect(store.state().stop).toBe('held-by-another-write')
     expect(store.state().requestId).toBeUndefined()
     expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(page.receipts.wait).not.toHaveBeenCalled()
@@ -396,7 +396,7 @@ describe('an arrival that finds a stored write of another management write', () 
 
       await lookForSave(store, steps, OPTIONS)
 
-      expect(store.state().stop).toBe('overview-elsewhere')
+      expect(store.state().stop).toBe('held-by-another-write')
       expect(store.state().requestId).toBeUndefined()
       expect(page.receipts.wait).not.toHaveBeenCalled()
       expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -469,7 +469,7 @@ describe('a management write that meets another management write at its claim', 
       await advanceTimers(SHORT_TIMEOUT_MS)
       await running
 
-      expect(store.state().stop).toBe('overview-elsewhere')
+      expect(store.state().stop).toBe('held-by-another-write')
       expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
       expect(page.receipts.wait).not.toHaveBeenCalled()
       expect(page.confirmSetup).not.toHaveBeenCalled()

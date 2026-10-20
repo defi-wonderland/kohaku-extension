@@ -107,10 +107,12 @@ export type AfterLanding =
 
 /**
  * Why a run ended with nothing sent: the account already holds a setup, or
- * the save lost its claim to a write of the recovery overview, which is the
- * overview's to follow.
+ * the run found that the account's one stored write belongs to another write
+ * (one of the overview's, one of the editor's, or another overview action):
+ * the run sent and released nothing, and the screen points at the screen that
+ * owns that write, which follows it.
  */
-export type ArmStop = 'already-set-up' | 'overview-elsewhere'
+export type ArmStop = 'already-set-up' | 'held-by-another-write'
 
 /**
  * The read of a save in flight stored on this device, before the save is
@@ -177,7 +179,7 @@ export type ArmEvent =
   | { type: 'write'; event: WriteEvent }
   | { type: 'lookup'; run: number; reading: InFlightLookup }
   | { type: 'alreadySetUp'; run: number }
-  | { type: 'overviewElsewhere'; run: number }
+  | { type: 'heldByAnotherWrite'; run: number }
   | { type: 'prepared'; run: number; prepared: PreparedSave }
   | { type: 'claimed'; run: number; requestId: string }
   | {
@@ -400,13 +402,14 @@ export type Arrival =
 
 /**
  * What the screen shows: the arrival, the run, a setup the run found already
- * there, the check running, saved, disagreed or the check unanswered.
+ * there, a stored write that another write holds, the check running, saved,
+ * disagreed or the check unanswered.
  */
 export type ArmScreenKind =
   | 'arrival'
   | 'run'
   | 'already-set-up'
-  | 'overview-elsewhere'
+  | 'held-by-another-write'
   | 'confirming'
   | 'saved'
   | 'disagreed'
