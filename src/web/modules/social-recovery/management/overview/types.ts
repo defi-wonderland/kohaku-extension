@@ -219,6 +219,11 @@ export interface OverviewViewProps {
   banner: ReactNode
   /** The open write step, drawn in place of the overview's body. */
   step: ReactNode
+  /**
+   * The pointer to a write another screen stored as in flight, drawn under the
+   * title and the status line in place of the overview's body.
+   */
+  held: ReactNode
   onOpen: (intent: OverviewIntent) => void
   navigate: (to: string) => void
 }

@@ -187,7 +187,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     [network]
   )
 
-  const elsewhereBlock = elsewhere ? (
+  const held = elsewhere ? (
     <Alert
       testID="overview-write-elsewhere"
       type="warning"
@@ -211,8 +211,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   ) : null
 
   const step =
-    elsewhereBlock ??
-    (open && clientState.status === 'ready' && reads.facts.status === 'answered' ? (
+    open && clientState.status === 'ready' && reads.facts.status === 'answered' ? (
       <OverviewWriteStep
         key={open.intent}
         intent={open.intent}
@@ -230,7 +229,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
         onClose={onClose}
         navigate={navigate}
       />
-    ) : null)
+    ) : null
 
   return (
     <OverviewView
@@ -253,6 +252,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
         />
       }
       step={step}
+      held={held}
       onOpen={onOpen}
       navigate={navigate}
     />

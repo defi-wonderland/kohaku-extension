@@ -14,7 +14,7 @@
  * step points there and neither follows nor saves.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Linking } from 'react-native'
+import { Linking, View } from 'react-native'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { isAddress, isAddressEqual } from 'viem'
 
@@ -25,7 +25,7 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import type { EntryRead } from '@web/modules/social-recovery/recovery/entry/types'
-import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
+import { ActionsRow, PageTitle, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import useBackgroundService from '@web/hooks/useBackgroundService'
 import useRequestsControllerState from '@web/hooks/useRequestsControllerState'
@@ -316,26 +316,31 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
   // Found on arrival, or met by the save's claim after that read.
   if (heldElsewhere || state.stop === 'held-by-another-write') {
     return (
-      <Alert
-        testID="arm-overview-write"
-        type="warning"
-        size="sm"
-        style={spacings.mbSm}
-        text={t('socialRecovery.management.overview.writes.inFlightElsewhere')}
-      >
-        <ActionsRow
-          primary={
-            <Button
-              testID="arm-open-overview"
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.management.overview.writes.openOverview')}
-              onPress={() => navigate(WEB_ROUTES.socialRecoveryManage)}
-              hasBottomSpacing={false}
+      <TwoColumn testID="arm-columns">
+        <View testID="arm-held">
+          <PageTitle title={t('socialRecovery.routes.setupSave')} titleTestID="arm-title" />
+          <Alert
+            testID="arm-overview-write"
+            type="warning"
+            size="sm"
+            style={spacings.mbSm}
+            text={t('socialRecovery.management.overview.writes.inFlightElsewhere')}
+          >
+            <ActionsRow
+              primary={
+                <Button
+                  testID="arm-open-overview"
+                  type="secondary"
+                  size="small"
+                  text={t('socialRecovery.management.overview.writes.openOverview')}
+                  onPress={() => navigate(WEB_ROUTES.socialRecoveryManage)}
+                  hasBottomSpacing={false}
+                />
+              }
             />
-          }
-        />
-      </Alert>
+          </Alert>
+        </View>
+      </TwoColumn>
     )
   }
 

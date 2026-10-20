@@ -163,6 +163,7 @@ export const viewPropsOf = (fields: Partial<OverviewViewProps> = {}): OverviewVi
   adminOf: () => undefined,
   banner: React.createElement('div', { 'data-testid': 'banner-slot' }),
   step: null,
+  held: null,
   onOpen: jest.fn(),
   navigate: jest.fn(),
   ...fields

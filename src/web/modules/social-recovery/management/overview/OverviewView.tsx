@@ -10,6 +10,8 @@
  * mirror shows its one action. The path, the moved-keys notices, the notice
  * after an ended attempt, the recover-an-account entry and the Recovery Card
  * follow. A read that runs or failed shows its own state, never an answer.
+ * A write another screen stored as in flight keeps the title, and the status
+ * line where the facts are read, above its pointer, with no path or action.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -44,11 +46,31 @@ const OverviewView = ({
   adminOf,
   banner,
   step,
+  held,
   onOpen,
   navigate
 }: OverviewViewProps) => {
   const { t } = useTranslation()
   const { facts, path } = reads
+
+  if (held) {
+    const known = facts.status === 'answered' ? facts.value : null
+    return (
+      <TwoColumn testID="overview-columns">
+        <View testID="overview-held">
+          <OverviewTitle />
+          {!!known && (
+            <OverviewChips
+              kind={overviewKindOf(known.setup)}
+              path={path}
+              attemptOpen={known.attemptOpen}
+            />
+          )}
+          {held}
+        </View>
+      </TwoColumn>
+    )
+  }
 
   if (step) {
     return (
