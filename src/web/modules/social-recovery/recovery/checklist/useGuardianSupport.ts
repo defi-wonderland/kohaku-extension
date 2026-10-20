@@ -91,7 +91,8 @@ const useGuardianSupport = ({
     const oneApproval = oneApprovalOf(layout)
     const versionRefused = (reply: Reply): boolean => {
       try {
-        return kit.recovery.addApproverReply(gathering, reply).reason?.cause === 'version-unread'
+        const added = kit.recovery.addApproverReply(gathering, reply)
+        return added.outcome === 'refused' && added.reason.cause === 'kind-or-version-unread'
       } catch {
         return false
       }
@@ -105,7 +106,7 @@ const useGuardianSupport = ({
         oneApproval,
         versionRefused,
         now: () => at,
-        verifyReply: (request, reply) => kit.walletReads.verifyReply(request, reply),
+        verifyReply: (request, reply) => kit.approving.verify(request, reply.place, reply.proof),
         addReply
       })
       if (outcome.kind === 'added') {

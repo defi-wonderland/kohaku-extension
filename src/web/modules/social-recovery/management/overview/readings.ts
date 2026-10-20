@@ -94,7 +94,7 @@ export const movedInPath = (
 ): MovedKeys[] => moved.filter(({ method }) => methods.some((used) => isAddressEqual(used, method)))
 
 /** The clauses of the path as far as this device reads them: the whole path, or its shape alone. */
-export const clausesOfPath = (path: PathStep): Clause[] => {
+export const clausesOfPath = (path: PathStep): readonly Clause[] => {
   if (path.kind === 'readable') {
     return path.configuration.clauses
   }

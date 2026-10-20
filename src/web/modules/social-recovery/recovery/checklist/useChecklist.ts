@@ -232,7 +232,7 @@ const useChecklist = ({
         return { kind: 'refused', cause: 'not-live' }
       }
       const added = kit.recovery.addApproverReply(current.session.gathering, reply)
-      if (added.reason) {
+      if (added.outcome === 'refused') {
         return { kind: 'refused', cause: added.reason.cause }
       }
       setBusy(true)

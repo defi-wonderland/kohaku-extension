@@ -124,7 +124,8 @@ export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null =
     return null
   }
   const { values } = cause
-  const reason = typeof values === 'object' && values !== null ? values.reason : undefined
+  const reason =
+    typeof values === 'object' && values !== null && 'reason' in values ? values.reason : undefined
   return { cause: known, reason }
 }
 
@@ -242,11 +243,16 @@ export const configurationOfNote = (note: Hex): Configuration | null => {
     return null
   }
   const { wait, ignoresPause } = body as Record<string, unknown>
-  if (typeof wait !== 'bigint' || typeof ignoresPause !== 'boolean') {
+  if (
+    typeof wait !== 'bigint' ||
+    wait < 0n ||
+    wait > BigInt(Number.MAX_SAFE_INTEGER) ||
+    typeof ignoresPause !== 'boolean'
+  ) {
     return null
   }
   return {
-    wait,
+    wait: Number(wait),
     ignoresPause,
     clauses: clauses.map(({ threshold, credentials }) => ({
       threshold,

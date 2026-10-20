@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type {
+  AddRefusalCause,
   Address,
   ApproverRequest,
   Assessment,
@@ -119,7 +120,7 @@ export type UnsatisfiedReading =
 
 export type ChecklistKitClient = Pick<
   RecoveryKitClient,
-  'recovery' | 'setup' | 'walletReads' | 'action'
+  'recovery' | 'setup' | 'walletReads' | 'action' | 'approving'
 >
 
 export type ChecklistClient =
@@ -261,7 +262,7 @@ export interface ConfigurationInput {
   records: WalletRecords
   chainId: ChainId
   account: Address
-  client: ChecklistKitClient
+  client: Pick<ChecklistKitClient, 'setup'>
   password: string | undefined
 }
 
@@ -282,7 +283,7 @@ export interface HeldConfiguration {
 /** What adding a reply came to; `held` where a failed poll held every add. */
 export type AddReplyResult =
   | { kind: 'added' }
-  | { kind: 'refused'; cause: string }
+  | { kind: 'refused'; cause: AddRefusalCause | 'not-live' }
   | { kind: 'conflict' }
   | { kind: 'write-failed' }
   | { kind: 'held' }

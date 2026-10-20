@@ -199,7 +199,7 @@ export const chosenPlacesOf = (
   }
   try {
     const built = kit.recovery.complete(gathering, undefined, nowSeconds)
-    return new Set(built.proofs.map((proof) => Number(proof.place)))
+    return new Set(built.proofs.map((proof) => proof.place))
   } catch {
     return undefined
   }

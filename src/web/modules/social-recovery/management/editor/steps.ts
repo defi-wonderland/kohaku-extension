@@ -300,6 +300,7 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
       const ended = removalStands(state)
       return {
         landed: ended,
+        ...(ended ? {} : { cause: 'no-event' as const }),
         isAuthorized: ended,
         nonce: state.setupNonce,
         setupCommitment: state.setupCommitment

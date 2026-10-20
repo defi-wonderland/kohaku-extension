@@ -39,11 +39,22 @@ const isClause = (value: unknown): value is Clause =>
   Array.isArray(value.credentials) &&
   value.credentials.every(isCredential)
 
+/** A stored wait in seconds: a number, or the bigint an earlier build stored. */
+const waitOf = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value : undefined
+  }
+  if (typeof value === 'bigint' && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value)
+  }
+  return undefined
+}
+
 const isConfiguration = (value: unknown): value is Configuration =>
   isObject(value) &&
   Array.isArray(value.clauses) &&
   value.clauses.every(isClause) &&
-  typeof value.wait === 'bigint' &&
+  waitOf(value.wait) !== undefined &&
   typeof value.ignoresPause === 'boolean'
 
 /** The session a stored value holds; a storage read is a boundary, so every field is checked. */
@@ -52,7 +63,9 @@ export const editSessionFrom = (stored: unknown): EditSession | undefined => {
     return undefined
   }
   const { configuration, setupNonce, setupCommitment, level, password } = stored.value
+  const wait = isObject(configuration) ? waitOf(configuration.wait) : undefined
   if (
+    wait === undefined ||
     !isConfiguration(configuration) ||
     typeof setupNonce !== 'bigint' ||
     !isHex(setupCommitment) ||
@@ -61,7 +74,8 @@ export const editSessionFrom = (stored: unknown): EditSession | undefined => {
   ) {
     return undefined
   }
-  return stored.value as unknown as EditSession
+  const session = stored.value as unknown as EditSession
+  return { ...session, configuration: { ...configuration, wait } }
 }
 
 export const editSessionOf = (

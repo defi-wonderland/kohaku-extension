@@ -46,7 +46,7 @@ const isOwnAttempt = (request: ApproverRequest, attempt: Attempt): boolean =>
   attempt.state !== 'None' &&
   attempt.attemptId === BigInt(request.attemptId) &&
   attempt.setupNonce === BigInt(request.setupNonce) &&
-  request.payload !== undefined &&
+  request.purpose === 'approval' &&
   keccak256(request.payload) === attempt.payloadHash
 
 /**

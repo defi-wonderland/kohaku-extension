@@ -25,7 +25,7 @@ export const LOCKED = `${OVERVIEW}.locked`
  * holds a draft, and a removal commits none. Nothing reads it back.
  */
 export const REMOVAL_DRAFT: SetupDraft = {
-  wait: 0n,
+  wait: 0,
   clauses: [],
   ignoresPause: true,
   privacy: { publicMetadata: '0x', backup: 'empty' }
