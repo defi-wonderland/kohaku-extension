@@ -8,13 +8,14 @@
  * and ending the session; a refused send that changes nothing on this device;
  * a setup moved past the edit's start that sends nothing; the refusal of a
  * dormant setup's commit while an attempt is open, and of an attempt the
- * screen did not show, on every path to the send; the new password sealed
- * only where the session marks it; the recovery password kept with no read
- * where this tab's own write landed, and after a followed write only where
- * the landed backup opens with it; the
- * removal's one batch of the clear and the zero write, its check, its wipe,
- * its stop over an attempt the screen did not show, and an end that already
- * stands; and a write that meets another write of the editor stored by
+ * screen did not show, on every path to the send and again after the claim;
+ * the new password sealed only where the session marks it; the recovery
+ * password kept with no read where this tab's own write landed, and after a
+ * followed write only where the landed backup opens with it; the removal's
+ * one batch of the clear and the zero write, its check, its wipe, its stop
+ * over an attempt the screen did not show, before the gas check and after the
+ * claim, and an end that already stands; and a write that meets another
+ * write of the editor stored by
  * another tab, which it never takes up nor releases.
  */
 import type { EditWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
@@ -163,6 +164,24 @@ const followsLanding = async (tabA: SaveSteps, tabB: SaveSteps, between: () => v
   expect((await tabB.confirm(followed)).landed).toBe(true)
   await tabB.wipe()
 }
+
+/** Runs `afterClaim` once the run's first claim of its write resolved. */
+const onceClaimed = (steps: SaveSteps, afterClaim: () => void) => {
+  const { claim } = steps
+  let done = false
+  // eslint-disable-next-line no-param-reassign
+  steps.claim = async (...args) => {
+    const claimed = await claim(...args)
+    if (!done) {
+      done = true
+      afterClaim()
+    }
+    return claimed
+  }
+}
+
+const storedWrite = async (world: EditWorld) =>
+  (await world.records.saveInFlight(CHAIN_ID, world.account).read()).status
 
 const opensWith = (world: EditWorld, password: string) =>
   world.client.setup.getSetup({ password }).then(
@@ -537,8 +556,55 @@ describe('the save of the changes', () => {
 
     await startSave(createArmStore(), steps)
 
-    expect(heard).toEqual([{ open: true, dormant: false }])
+    expect(heard[heard.length - 1]).toEqual({ open: true, dormant: false })
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing over an attempt opened right after the claim, and sends once the screen shows it', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    let shown = false
+    const { steps } = await editSteps(
+      world,
+      baseline,
+      (read) => {
+        shown = read.open
+      },
+      () => shown
+    )
+    onceClaimed(steps, () => world.chain.openAttempt())
+    const store = createArmStore()
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(await storedWrite(world)).toBe('absent')
+    expect(shown).toBe(true)
+
+    await startSave(store, steps)
+
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('sends nothing where the setup went dormant with an attempt opened right after the claim', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const { steps } = await editSteps(world, baseline, undefined, () => true)
+    onceClaimed(steps, () => {
+      world.chain.openAttempt()
+      world.chain.setAuthorized(false)
+    })
+    const store = createArmStore()
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(await storedWrite(world)).toBe('absent')
   })
 
   it('sends nothing over an attempt the screen did not show, and sends once it shows it', async () => {
@@ -706,6 +772,32 @@ describe('the removal', () => {
 
     expect(store.state().write.status).toBe('failedNotSent')
     expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing over an attempt opened right after the claim, and sends once the screen shows it', async () => {
+    const world = await fixture.worldOf('lands')
+    let shown = false
+    const steps = removalSteps(
+      world,
+      (read) => {
+        shown = read.open
+      },
+      () => shown
+    )
+    onceClaimed(steps, () => world.chain.openAttempt())
+    const store = createArmStore('ownerWrite')
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(await storedWrite(world)).toBe('absent')
+    expect(shown).toBe(true)
+
+    await startSave(store, steps)
+
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
   })
 
   it('never reads as done where the send was refused', async () => {

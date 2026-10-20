@@ -11,8 +11,9 @@
  * The save of the changes commits the draft through the save's own prepare:
  * the kit reads the setup nonce from the chain, so the commit is the update,
  * and it cancels an attempt running against the old setup in the same act.
- * Its gas check, which every path to the send runs, reads the attempt again
- * first and refuses while the setup is not authorized and an attempt is open,
+ * Its gas check, which every path to the send runs, and its send, after the
+ * claim and before the request is handed to the wallet, read the attempt
+ * again and refuse while the setup is not authorized and an attempt is open,
  * since that commit would authorize the setup again while the recovery runs,
  * and refuses an open attempt the screen did not show, so the holder sees
  * that saving cancels it before a second press sends. The new recovery
@@ -30,7 +31,7 @@
  * The removal sends the clear and the zero write of the authorization as one
  * batch, prepared together and sent through the account's own door. Its
  * end stands once the setup is gone and the account no longer authorizes the
- * action. Its gas check reads the attempt again first and refuses an open
+ * action. Its gas check and its send read the attempt again and refuse an open
  * attempt the screen did not show; a read that fails stops nothing and leaves
  * the line as the screen drew it. Its landing, and a run that finds that end
  * already standing, wipe the recovery password, the setup records, this
@@ -219,6 +220,11 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
       await guardAttempt()
       return save.checkGas(prepared)
     },
+    // Reads the attempt again after the claim, before the request is handed to the wallet.
+    async send(...args) {
+      await guardAttempt()
+      return save.send(...args)
+    },
     async confirm(prepared: PreparedSave): Promise<SetupConfirmation> {
       const confirmation = await save.confirm(prepared)
       if (confirmation.landed) {
@@ -252,6 +258,17 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
     draft: REMOVAL_DRAFT,
     password: undefined
   })
+
+  const guardAttempt = async () => {
+    const lineShown = input.showsCancelLine?.() ?? true
+    // The removal removes whatever stands; an attempt it could not read leaves the line as it was.
+    const attempt = await readAttempt(input).catch(() => undefined)
+    // The holder confirms a removal that cancels an attempt only once the screen says so.
+    if (attempt?.open && !lineShown) {
+      throw new Error(UNSHOWN_ATTEMPT)
+    }
+  }
+
   return {
     ...save,
     ...ownRequestSteps('manageRemove', save),
@@ -261,14 +278,13 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
       assertWriteDoor('ownerWrite', prepared)
       return { draft: REMOVAL_DRAFT, prepared, calls: callsOf(prepared) }
     },
+    // Reads the attempt again after the claim, before the request is handed to the wallet.
+    async send(...args) {
+      await guardAttempt()
+      return save.send(...args)
+    },
     async checkGas({ prepared, calls }: PreparedSave) {
-      const lineShown = input.showsCancelLine?.() ?? true
-      // The removal removes whatever stands; an attempt it could not read leaves the line as it was.
-      const attempt = await readAttempt(input).catch(() => undefined)
-      // The holder confirms a removal that cancels an attempt only once the screen says so.
-      if (attempt?.open && !lineShown) {
-        throw new Error(UNSHOWN_ATTEMPT)
-      }
+      await guardAttempt()
       return checkGas({
         write: 'ownerWrite',
         prepared,
