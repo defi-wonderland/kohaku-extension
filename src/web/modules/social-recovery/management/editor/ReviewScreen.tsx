@@ -18,7 +18,7 @@
  * holder to the removal, and another screen's stored write to the overview;
  * the stored write is read again whenever the tab comes back into view.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, View } from 'react-native'
 
 import Button from '@common/components/Button'
@@ -89,7 +89,11 @@ export const ReviewStageView = ({
     : !!facts && facts.attemptOpen && !facts.setup.isAuthorized
   // Read by the save before the send, which sends nothing over an attempt this screen did not show.
   const cancelLineShown = useRef(false)
-  cancelLineShown.current = attemptOpen && !dormantRefused
+  const lineShown = attemptOpen && !dormantRefused
+  // Set once the screen with or without the line is committed, never from a render React may drop.
+  useLayoutEffect(() => {
+    cancelLineShown.current = lineShown
+  }, [lineShown])
   const addressBook = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)

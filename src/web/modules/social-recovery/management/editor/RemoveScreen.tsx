@@ -17,7 +17,7 @@
  * to the review, and another screen's stored write to the overview; the
  * stored write is read again whenever the tab comes back into view.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -74,7 +74,10 @@ export const RemoveStageView = ({
     : reads.facts.status === 'answered' && reads.facts.value.attemptOpen
   // Read by the removal before the send, which sends nothing over an attempt this screen did not show.
   const cancelLineShown = useRef(false)
-  cancelLineShown.current = attemptOpen
+  // Set once the screen with or without the line is committed, never from a render React may drop.
+  useLayoutEffect(() => {
+    cancelLineShown.current = attemptOpen
+  }, [attemptOpen])
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)
   const { held, retry: retryHeld, refresh: refreshHeld } = useHeldWrite(records, chainId, account)
