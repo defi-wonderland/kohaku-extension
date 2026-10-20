@@ -1577,7 +1577,9 @@
           "body": "The path needs {{required}} of {{count}} in this group. Lower the threshold or add a replacement first, then remove this member."
         },
         "values": {
-          "change": "Change"
+          "change": "Change",
+          "passwordChanged": "Changed",
+          "passwordKept": "Kept"
         }
       },
       "review": {

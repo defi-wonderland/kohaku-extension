@@ -14,7 +14,6 @@ import { renderNoun, renderPasswordName } from '@web/modules/social-recovery/sha
 import { privacyLinesOf, renderWait } from '@web/modules/social-recovery/setup/review'
 
 import { EDITOR } from './constants'
-import { renderChange } from './copy'
 import type { ValuesBlockProps } from './types'
 import ValueRow from './ValueRow'
 
@@ -34,7 +33,7 @@ const ValuesBlock = ({ draft, addressBook, passwordChanged, stale, onStage }: Va
       {level !== 'public' && (
         <ValueRow
           label={renderPasswordName('recoveryPassword', t)}
-          text={passwordChanged ? renderChange({ kind: 'password' }, t) : ''}
+          text={t(`${EDITOR}.values.${passwordChanged ? 'passwordChanged' : 'passwordKept'}`)}
           action={t(`${EDITOR}.password.action`)}
           stage="password"
           onStage={onStage}

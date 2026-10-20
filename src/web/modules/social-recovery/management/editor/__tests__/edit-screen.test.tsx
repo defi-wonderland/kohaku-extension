@@ -60,6 +60,8 @@ const review: typeof import('@web/modules/social-recovery/setup/review/__fixture
 const {
   EditStageView
 }: typeof import('@web/modules/social-recovery/management/editor/EditScreen') = require('@web/modules/social-recovery/management/editor/EditScreen')
+const ValuesBlock: typeof import('@web/modules/social-recovery/management/editor/ValuesBlock').default =
+  require('@web/modules/social-recovery/management/editor/ValuesBlock').default
 const {
   editSessionOf
 }: typeof import('@web/modules/social-recovery/management/editor/session') = require('@web/modules/social-recovery/management/editor/session')
@@ -203,5 +205,39 @@ describe('the edit page', () => {
     })
 
     expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('shows the recovery password as changed or kept beside the action that changes it', async () => {
+    const onStage = jest.fn()
+    const valuesWith = (passwordChanged: boolean) =>
+      mount(
+        React.createElement(ValuesBlock, {
+          draft: {
+            wait: COMMITTED.wait,
+            clauses: COMMITTED.clauses,
+            ignoresPause: true,
+            privacy: { publicMetadata: '0x', backup: 'encrypted' }
+          },
+          addressBook: review.BOOK,
+          passwordChanged,
+          stale: passwordChanged,
+          onStage
+        })
+      )
+    const cases: { changed: boolean; value: string }[] = [
+      { changed: true, value: t(`${EDITOR}.values.passwordChanged`) },
+      { changed: false, value: t(`${EDITOR}.values.passwordKept`) }
+    ]
+    // Awaited one after the other: each case mounts and unmounts its own page.
+    await cases.reduce(async (previous, { changed, value }) => {
+      await previous
+      const view = await valuesWith(changed)
+      expect(view.textOf('manage-value-password-text')).toBe(value)
+      expect(view.text()).not.toContain(t(`${EDITOR}.changes.password`))
+      expect(view.textOf('manage-value-password-change')).toBe(t(`${EDITOR}.password.action`))
+      await view.press('manage-value-password-change')
+      expect(onStage).toHaveBeenLastCalledWith('password')
+      view.unmount()
+    }, Promise.resolve())
   })
 })
