@@ -21,10 +21,11 @@
  * of whether the setup moved past the one the edit started from: a run that
  * finds it moved at its start sends nothing, and a followed write that finds
  * it moved is checked as after its receipt. Its landing first keeps the
- * recovery password the backup is now sealed under, and a new password this
- * tab holds only where it opens the landed backup, then wipes the setup
- * records, ends the edit session and rewrites this device's opened setup with
- * the configuration and the nonce the landed commit holds.
+ * recovery password the backup is now sealed under: the one this tab sent
+ * where its own write landed, and for a write it followed only a password it
+ * holds that opens the landed backup. It then wipes the setup records, ends
+ * the edit session and rewrites this device's opened setup with the
+ * configuration and the nonce the landed commit holds.
  *
  * The removal sends the clear and the zero write of the authorization as one
  * batch, prepared together and sent through the account's own door. Its
@@ -40,11 +41,7 @@ import {
   attemptOpenOf,
   isCacheCurrent
 } from '@web/modules/social-recovery/management/overview/readings'
-import type {
-  SetupConfirmation,
-  SetupDraft,
-  SetupState
-} from '@web/modules/social-recovery/sdk-interfaces'
+import type { SetupConfirmation, SetupState } from '@web/modules/social-recovery/sdk-interfaces'
 import {
   accountBatchTransactionOf,
   newSendRequestId
@@ -65,10 +62,15 @@ import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
 import { callsOf, saveStepsOf } from '@web/modules/social-recovery/setup/arm'
 import type { PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 
-import { passwordChangedOf } from './changes'
 import { configurationOfDraft } from './load'
 import { dropNewPassword } from './session'
-import type { AttemptRead, EditorStepsInput, EditStepsInput, RemovedWipeInput } from './types'
+import type {
+  AttemptRead,
+  EditorStepsInput,
+  EditStepsInput,
+  LandedCommit,
+  RemovedWipeInput
+} from './types'
 
 /** Runs every write, and fails with the first that failed once all of them ended. */
 const allWrites = async (writes: readonly Promise<unknown>[]): Promise<void> => {
@@ -161,26 +163,29 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
     setup: input.records.setup(chainId, account),
     password
   })
-  // The commit the check after the landing agreed on, with the draft it sent.
-  let landed: { draft: SetupDraft; confirmation: SetupConfirmation } | undefined
+  // The write this tab's own prepare made; a write it follows arrives as another object.
+  let own: PreparedSave | undefined
+  let landed: LandedCommit | undefined
+
+  /** Whether the backup that landed opens with a password this tab holds. */
+  const opensLanded = (candidate: string): Promise<boolean> =>
+    input.client.setup.getSetup({ password: candidate }).then(
+      () => true,
+      () => false
+    )
 
   const keepPassword = async () => {
-    if (!sealed) {
+    const candidate = newPassword ?? input.password
+    if (!landed || landed.draft.privacy.backup !== 'encrypted') {
       wipeRecoveryPassword(chainId, account)
-    } else if (newPassword !== undefined) {
-      // A tab that follows another tab's save holds its own unsent password; it keeps only one
-      // that opens the backup that landed.
-      const opens = await input.client.setup.getSetup({ password: newPassword }).then(
-        () => true,
-        () => false
-      )
-      if (opens) {
-        setRecoveryPassword(chainId, account, newPassword)
-      } else {
-        wipeRecoveryPassword(chainId, account)
-      }
-    } else if (passwordChangedOf(baseline, input.draft, baseline.password)) {
-      // Another tab typed the password the backup is sealed under; this tab never held it.
+    } else if (landed.own && password !== undefined) {
+      // The landed backup is sealed under exactly the password this tab sent.
+      setRecoveryPassword(chainId, account, password)
+    } else if (candidate !== undefined && (await opensLanded(candidate))) {
+      setRecoveryPassword(chainId, account, candidate)
+    } else {
+      // Another tab sealed the backup this tab followed. A password it refuses, or a read with no
+      // answer, is not kept: the card asks the holder and checks the typed password itself.
       wipeRecoveryPassword(chainId, account)
     }
     dropNewPassword(chainId, account)
@@ -207,7 +212,8 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
       if (sealed && password === undefined) {
         throw new Error('The save seals the setup and needs the recovery password.')
       }
-      return save.prepare()
+      own = await save.prepare()
+      return own
     },
     async checkGas(prepared: PreparedSave) {
       await guardAttempt()
@@ -216,7 +222,7 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
     async confirm(prepared: PreparedSave): Promise<SetupConfirmation> {
       const confirmation = await save.confirm(prepared)
       if (confirmation.landed) {
-        landed = { draft: prepared.draft, confirmation }
+        landed = { draft: prepared.draft, confirmation, own: prepared === own }
       }
       return confirmation
     },

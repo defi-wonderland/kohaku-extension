@@ -8,8 +8,10 @@
  * and ending the session; a refused send that changes nothing on this device;
  * a setup moved past the edit's start that sends nothing; the refusal of a
  * dormant setup's commit while an attempt is open, and of an attempt the
- * screen did not show, on every path to the send; the new password kept only
- * where the session marks it and the landed backup opens with it; the
+ * screen did not show, on every path to the send; the new password sealed
+ * only where the session marks it; the recovery password kept with no read
+ * where this tab's own write landed, and after a followed write only where
+ * the landed backup opens with it; the
  * removal's one batch of the clear and the zero write, its check, its wipe,
  * its stop over an attempt the screen did not show, and an end that already
  * stands; and a write that meets another write of the editor stored by
@@ -17,6 +19,7 @@
  */
 import type { EditWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
 import type { AttemptRead, EditSession } from '@web/modules/social-recovery/management/editor/types'
+import type { PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const fixture: typeof import('@web/modules/social-recovery/management/editor/__fixtures__/world') = require('@web/modules/social-recovery/management/editor/__fixtures__/world')
@@ -132,6 +135,33 @@ const editStepsHolding = async (
     password: PASSWORD,
     newPassword
   })
+}
+
+/**
+ * Lands tab A's own save, runs `between` once it landed, then has tab B check
+ * and settle that write as a follower does, from the stored write.
+ */
+const followsLanding = async (tabA: SaveSteps, tabB: SaveSteps, between: () => void) => {
+  let sent: PreparedSave | undefined
+  const { prepare } = tabA
+  // eslint-disable-next-line no-param-reassign
+  tabA.prepare = async () => {
+    sent = await prepare()
+    return sent
+  }
+  await startSave(createArmStore(), tabA)
+  if (!sent) {
+    throw new Error('tab A prepared nothing')
+  }
+  between()
+  const followed = tabB.followedSave({
+    draft: sent.draft,
+    prepared: sent.prepared,
+    requestId: newSendRequestId(),
+    claimedAt: Date.now()
+  })
+  expect((await tabB.confirm(followed)).landed).toBe(true)
+  await tabB.wipe()
 }
 
 const opensWith = (world: EditWorld, password: string) =>
@@ -314,14 +344,43 @@ describe('the save of the changes', () => {
     expect(await world.session.read()).toBeUndefined()
   })
 
-  it('forgets the committed password where another tab sealed the backup under a new one', async () => {
+  it('keeps the new password it sealed under with no read, even where a read would fail', async () => {
     const world = await fixture.worldOf('lands')
     setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
     const baseline = await openAndEdit(world)
-    // The new password lives in the other tab's memory; this tab follows that save.
+    holdNewPassword(CHAIN_ID, world.account, NEW_PASSWORD)
     const { steps } = await editSteps(world, { ...baseline, password: 'changed' })
-    await steps.wipe()
+    const { getSetup } = world.client.setup
+    const failingRead = jest.fn(async () => {
+      throw new Error('the backup read did not answer')
+    })
+    world.client.setup.getSetup = failingRead
+
+    await startSave(createArmStore(), steps)
+
+    expect(failingRead).not.toHaveBeenCalled()
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe(NEW_PASSWORD)
+    world.client.setup.getSetup = getSetup
+    expect(await opensWith(world, NEW_PASSWORD)).toBe(true)
+  })
+
+  it('holds no stale password after it follows another tab that sealed under a new one', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const tabA = await editStepsHolding(
+      world,
+      { ...baseline, password: 'changed' },
+      'tab A password'
+    )
+    // Tab B loaded its review while the session still marked the password kept.
+    const tabB = await editStepsHolding(world, { ...baseline, password: 'kept' }, undefined)
+
+    await followsLanding(tabA, tabB, () => setRecoveryPassword(CHAIN_ID, world.account, PASSWORD))
+
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+    expect(await opensWith(world, 'tab A password')).toBe(true)
+    expect(await opensWith(world, PASSWORD)).toBe(false)
   })
 
   it('keeps a held new password only where it opens the backup another tab landed', async () => {
@@ -331,15 +390,61 @@ describe('the save of the changes', () => {
     const tabA = await editStepsHolding(world, baseline, 'tab A password')
     const tabB = await editStepsHolding(world, baseline, 'tab B password')
 
-    await startSave(createArmStore(), tabA)
-    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe('tab A password')
-    // Tab B follows tab A's landing with its own password still in memory.
-    await tabB.wipe()
+    await followsLanding(tabA, tabB, () =>
+      expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe('tab A password')
+    )
 
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
     expect(readNewPassword(CHAIN_ID, world.account)).toBeUndefined()
     expect(await opensWith(world, 'tab A password')).toBe(true)
     expect(await opensWith(world, 'tab B password')).toBe(false)
+  })
+
+  it('keeps the password it holds where it opens the backup another tab landed', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const tabA = await editStepsHolding(
+      world,
+      { ...baseline, password: 'changed' },
+      'tab A password'
+    )
+    const tabB = await editStepsHolding(
+      world,
+      { ...baseline, password: 'changed' },
+      'tab A password'
+    )
+
+    await followsLanding(tabA, tabB, () => setRecoveryPassword(CHAIN_ID, world.account, PASSWORD))
+
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe('tab A password')
+  })
+
+  it('keeps no password after a followed landing whose backup read does not answer', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const tabA = await editStepsHolding(
+      world,
+      { ...baseline, password: 'changed' },
+      'tab A password'
+    )
+    const tabB = await editStepsHolding(
+      world,
+      { ...baseline, password: 'changed' },
+      'tab A password'
+    )
+    const { getSetup } = world.client.setup
+
+    await followsLanding(tabA, tabB, () => {
+      world.client.setup.getSetup = async () => {
+        throw new Error('the backup read did not answer')
+      }
+    })
+
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+    world.client.setup.getSetup = getSetup
+    expect(await opensWith(world, 'tab A password')).toBe(true)
   })
 
   it('seals under the committed password where the session never marked a new one', async () => {

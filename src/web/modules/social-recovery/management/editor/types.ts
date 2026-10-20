@@ -9,6 +9,7 @@ import type {
   Credential,
   Hex,
   PrivacyLevel,
+  SetupConfirmation,
   SetupDraft,
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
@@ -195,6 +196,14 @@ export interface EditStepsInput extends EditorStepsInput {
   password: string | undefined
   /** The new recovery password, where the holder typed one. */
   newPassword: string | undefined
+}
+
+/** A commit the check after the landing agreed on, with the draft it sent. */
+export interface LandedCommit {
+  draft: SetupDraft
+  confirmation: SetupConfirmation
+  /** Whether this tab's own prepare made the write, rather than a write it followed. */
+  own: boolean
 }
 
 /** The seams a write runs through, from the wallet's own states. */
