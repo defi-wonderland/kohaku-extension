@@ -8,12 +8,14 @@
  * once the chain reads both gone and the records were wiped. A run that finds
  * both already gone sends nothing, says that the account has no recovery path
  * now, drawn apart from a removal it sent, and this device keeps nothing of
- * the setup. The removal's prepare reads the attempt again, and the cancel
- * line follows that read. A stored save of the changes in flight sends the holder
+ * the setup. The removal reads the attempt again right before the send,
+ * sends nothing over an open attempt the screen did not show, and the cancel
+ * line follows that read. A check after the landing that disagrees opens the
+ * overview, which reads the setup that stands. A stored save of the changes in flight sends the holder
  * to the review, and another screen's stored write to the overview; the
  * stored write is read again whenever the tab comes back into view.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
 import Alert from '@common/components/Alert'
@@ -62,12 +64,15 @@ export const RemoveStageView = ({
   const clientState = useRecoveryClient(account)
   const reads = useOverviewReads({ client: clientState, records, chainId, account })
   const kit = clientState.status === 'ready' ? clientState.client : null
-  // The attempt as the removal's prepare last read it; a new read of the overview's facts replaces it.
+  // The attempt as the removal last read it before the send; a new read of the overview's facts replaces it.
   const [attemptRead, setAttemptRead] = useState<AttemptRead | null>(null)
   useEffect(() => setAttemptRead(null), [reads.facts])
   const attemptOpen = attemptRead
     ? attemptRead.open
     : reads.facts.status === 'answered' && reads.facts.value.attemptOpen
+  // Read by the removal before the send, which sends nothing over an attempt this screen did not show.
+  const cancelLineShown = useRef(false)
+  cancelLineShown.current = attemptOpen
   const seams = useWriteSeams(chainId)
   const accountFacts = useAccountFacts(account)
   const { held, retry: retryHeld, refresh: refreshHeld } = useHeldWrite(records, chainId, account)
@@ -101,7 +106,8 @@ export const RemoveStageView = ({
       account,
       facts: ready,
       key: ready.key,
-      onAttempt: setAttemptRead
+      onAttempt: setAttemptRead,
+      showsCancelLine: () => cancelLineShown.current
     })
   }, [ready, kit, ownWrite, clientState, seams, records, session, chainId, account])
   const run = useArmRun(steps, `manage:remove:${chainId}:${account.toLowerCase()}`, 'ownerWrite')
@@ -244,6 +250,28 @@ export const RemoveStageView = ({
       case 'already-set-up':
         return done
       case 'disagreed':
+        // A read of the same check again answers the same; the overview reads what stands.
+        return (
+          <Alert
+            testID="manage-remove-check-disagreed"
+            type="error"
+            size="sm"
+            style={spacings.mbSm}
+            title={t(`${OVERVIEW}.reads.failedTitle`)}
+            text={t(`${OVERVIEW}.reads.failedBody`)}
+          >
+            <View style={[flexbox.directionRow, spacings.mtTy]}>
+              <Button
+                testID="manage-remove-check-disagreed-overview"
+                type="secondary"
+                size="small"
+                text={t(`${OVERVIEW}.writes.openOverview`)}
+                onPress={toOverview}
+                hasBottomSpacing={false}
+              />
+            </View>
+          </Alert>
+        )
       case 'unread':
         return (
           <ReadFailedBlock

@@ -8,7 +8,8 @@
  * and the save refused while the setup is not authorized and an attempt is
  * open; the removal's typed confirmation with its own cancel sentence, which
  * that refusal leaves alone, its end found already standing, drawn apart and
- * wiping this device, and a write another tab stored meanwhile, which sends
+ * wiping this device, a check after its landing that disagreed, which leads
+ * to the overview, and a write another tab stored meanwhile, which sends
  * the holder to that write's screen once the tab is back in view. The client,
  * the reads and the run are the screens' seams, each given here; the records
  * sit on an in-memory storage.
@@ -524,6 +525,49 @@ describe('the removal around the refusals and other writes', () => {
 
     expect(navigate).toHaveBeenCalledWith('social-recovery/manage/review')
     view.unmount()
+  })
+
+  it('opens the overview where the check after the landing disagreed, and reads again only an unread one', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    const checked = (stage: 'disagreed' | 'unread') => {
+      mockWorld.run = {
+        ...idleRun(),
+        state: {
+          write: { status: 'landed', write: 'ownerWrite', transactionHash: '0x01', run: 1 },
+          after: { stage },
+          lookup: 'none'
+        }
+      }
+      const navigate = jest.fn()
+      const element = React.createElement(RemoveStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+      return { navigate, element }
+    }
+
+    const disagreed = checked('disagreed')
+    const view = await mount(disagreed.element)
+    expect(view.byTestId('manage-remove-check-failed')).toBeNull()
+    await view.press('manage-remove-check-disagreed-overview')
+    expect(disagreed.navigate).toHaveBeenCalledWith('social-recovery/manage')
+    expect(mockWorld.run.reread).not.toHaveBeenCalled()
+    view.unmount()
+
+    const unread = checked('unread')
+    const again = await mount(unread.element)
+    expect(again.byTestId('manage-remove-check-disagreed')).toBeNull()
+    await again.press('manage-remove-check-failed-retry')
+    expect(mockWorld.run.reread).toHaveBeenCalledTimes(1)
+    expect(unread.navigate).not.toHaveBeenCalled()
+    again.unmount()
   })
 
   it('reads the stored write again where the run stops for another screen, and routes there', async () => {
