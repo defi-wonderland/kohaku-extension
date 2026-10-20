@@ -411,6 +411,36 @@ describe('the review of changes', () => {
     expect(mockWorld.run.start).toHaveBeenCalledTimes(1)
     view.unmount()
   })
+
+  it('opens the Recovery Card after a saved change as one the overview opened', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false,
+      password: 'changed'
+    })
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'landed', write: 'ownerWrite', transactionHash: '0x01', run: 1 },
+        after: { stage: 'saved' },
+        lookup: 'none'
+      }
+    }
+    const navigate = jest.fn()
+    const view = await mount(
+      React.createElement(ReviewStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+    )
+    await view.press('manage-review-saved-card')
+    expect(navigate).toHaveBeenCalledWith('/social-recovery/setup/card?level=hidden&from=manage')
+    view.unmount()
+  })
 })
 
 describe('the removal', () => {

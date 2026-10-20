@@ -48,7 +48,11 @@ import {
 } from '@web/modules/social-recovery/setup/arm'
 import DisagreedView from '@web/modules/social-recovery/setup/arm/DisagreedView'
 import { useArmRun } from '@web/modules/social-recovery/setup/arm/useArmRun'
-import { levelOfBackup } from '@web/modules/social-recovery/setup/card'
+import {
+  CARD_FROM_KEY,
+  CARD_FROM_MANAGE,
+  levelOfBackup
+} from '@web/modules/social-recovery/setup/card'
 import { methodsOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useAccountReads } from '@web/modules/social-recovery/setup/review/useAccountReads'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
@@ -292,7 +296,10 @@ export const ReviewStageView = ({
   }, [write, kit, openUrl])
   const toCard = useCallback(() => {
     if (draft) {
-      navigate(cardPathOf(levelOfBackup(draft.privacy.backup)))
+      // The card opened from here stands outside the setup stages and leads back to the overview.
+      navigate(
+        `${cardPathOf(levelOfBackup(draft.privacy.backup))}&${CARD_FROM_KEY}=${CARD_FROM_MANAGE}`
+      )
     }
   }, [draft, navigate])
   const retryLoad = useCallback(() => {
