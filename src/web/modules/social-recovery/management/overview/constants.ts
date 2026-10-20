@@ -6,6 +6,13 @@ import type { ElsewhereLink } from './types'
 
 export const OVERVIEW = 'socialRecovery.management.overview'
 
+/**
+ * How many opened setups in a row may disagree with the commitment the facts
+ * read before the path reads as failed with retry: a setup that moved settles
+ * in one round, a node that stays behind never does.
+ */
+export const COMMITMENT_DISAGREEMENT_LIMIT = 3
+
 /** The keys of the recovery password ask of a locked path. */
 export const LOCKED = `${OVERVIEW}.locked`
 
