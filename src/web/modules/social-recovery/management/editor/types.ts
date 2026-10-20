@@ -31,7 +31,7 @@ import type {
   WalletRecords
 } from '@web/modules/social-recovery/shared/records'
 import type { ManageIntent } from '@web/modules/social-recovery/shared/writes'
-import type { ArmRun } from '@web/modules/social-recovery/setup/arm'
+import type { ArmRun, PreparedSave, SaveSteps } from '@web/modules/social-recovery/setup/arm'
 import type {
   EditorClient,
   EditorHeading,
@@ -394,7 +394,28 @@ export interface RemoveArrivalProps {
 }
 
 export interface RemoveDisagreedProps {
+  /** The check read again is on its way. */
+  reading: boolean
+  onReadAgain: () => void
   onOverview: () => void
+}
+
+/**
+ * The removal's own read again of its check after a landing that disagreed:
+ * none asked, one on its way, one that did not answer, or one that read the
+ * setup and the authorization both gone, with this device's records wiped.
+ */
+export type RemovalRereadStatus = 'idle' | 'reading' | 'failed' | 'removed'
+
+export interface RemovalRereadInput {
+  steps: SaveSteps | null
+  /** The landed removal the check reads after. */
+  prepared?: PreparedSave
+}
+
+export interface RemovalReread {
+  status: RemovalRereadStatus
+  reread: () => void
 }
 
 export interface RemoveRunProps {

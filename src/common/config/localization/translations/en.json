@@ -1606,7 +1606,10 @@
         "doneBody": "This account has no recovery path now.",
         "keep": "Keep recovery",
         "alreadyTitle": "Recovery was already removed",
-        "alreadyBody": "Another device removed this account's recovery path before this wallet sent anything. This account has no recovery path now."
+        "alreadyBody": "Another device removed this account's recovery path before this wallet sent anything. This account has no recovery path now.",
+        "disagreedTitle": "The chain still reads a recovery setup",
+        "disagreedBody": "The removal landed, but the chain still reads a setup or an authorization for this account. Read it again, or open the overview to see what stands.",
+        "readAgain": "Read again"
       }
     }
   }

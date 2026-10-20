@@ -10,8 +10,10 @@
  * now, drawn apart from a removal it sent, and this device keeps nothing of
  * the setup. The removal reads the attempt again right before the send,
  * sends nothing over an open attempt the screen did not show, and the cancel
- * line follows that read. A check after the landing that disagrees opens the
- * overview, which reads the setup that stands. A stored save of the changes in flight sends the holder
+ * line follows that read. A check after the landing that disagrees offers to
+ * read it again, which reads as removed once the chain reads both gone, or to
+ * open the overview, which reads the setup that stands. A stored save of the
+ * changes in flight sends the holder
  * to the review, and another screen's stored write to the overview; the
  * stored write is read again whenever the tab comes back into view.
  */
@@ -50,6 +52,7 @@ import { editSessionOf } from './session'
 import { removalStepsOf, wipeRemovedSetup } from './steps'
 import type { AttemptRead, EditStageProps } from './types'
 import { useHeldWrite } from './useHeldWrite'
+import { useRemovalReread } from './useRemovalReread'
 import { useWriteSeams } from './useWriteSeams'
 
 export const RemoveStageView = ({
@@ -112,6 +115,7 @@ export const RemoveStageView = ({
   const run = useArmRun(steps, `manage:remove:${chainId}:${account.toLowerCase()}`, 'ownerWrite')
   const { state } = run
   const screen = armScreenOf(state)
+  const check = useRemovalReread({ steps, prepared: state.prepared })
 
   // A run that read or lost its claim to another screen's write ends unsent, or stops for that
   // screen; the stored write is read again.
@@ -175,7 +179,11 @@ export const RemoveStageView = ({
     (!steps && accountFacts.status === 'loading')
   const arrives = screen === 'arrival' || screen === 'held-by-another-write'
 
-  if (screen === 'saved' || screen === 'already-set-up') {
+  if (
+    screen === 'saved' ||
+    screen === 'already-set-up' ||
+    (screen === 'disagreed' && check.status === 'removed')
+  ) {
     return <RemoveDone endedElsewhere={endedElsewhere} onClose={toOverview} />
   }
 
@@ -190,7 +198,21 @@ export const RemoveStageView = ({
         text={t(`${REMOVE}.warning`)}
       />
       <ReadsGate reads={reads} needsPath={false} testID="manage-remove-reads">
-        {screen === 'disagreed' && <RemoveDisagreed onOverview={toOverview} />}
+        {screen === 'disagreed' && check.status === 'failed' && (
+          <ReadFailedBlock
+            testID="manage-remove-check-failed"
+            title={t(`${OVERVIEW}.reads.failedTitle`)}
+            body={t(`${OVERVIEW}.reads.failedBody`)}
+            onRetry={check.reread}
+          />
+        )}
+        {screen === 'disagreed' && check.status !== 'failed' && (
+          <RemoveDisagreed
+            reading={check.status === 'reading'}
+            onReadAgain={check.reread}
+            onOverview={toOverview}
+          />
+        )}
         {screen === 'unread' && (
           <ReadFailedBlock
             testID="manage-remove-check-failed"

@@ -527,7 +527,7 @@ describe('the removal around the refusals and other writes', () => {
     view.unmount()
   })
 
-  it('opens the overview where the check after the landing disagreed, and reads again only an unread one', async () => {
+  it('opens the overview where the check after the landing disagreed, and leaves the read again of the run to an unread one', async () => {
     const { records, session } = await given({
       clauses: COMMITTED,
       trustAnswered: true,
@@ -568,6 +568,57 @@ describe('the removal around the refusals and other writes', () => {
     expect(mockWorld.run.reread).toHaveBeenCalledTimes(1)
     expect(unread.navigate).not.toHaveBeenCalled()
     again.unmount()
+  })
+
+  it('reads a disagreed removal again, as removed once the chain reads both gone, and retries a read that failed', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    const setupState = jest.fn()
+    Object.assign((mockWorld.client as { client: { setup: object } }).client.setup, {
+      setupState
+    })
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'landed', write: 'ownerWrite', transactionHash: '0x01', run: 1 },
+        after: { stage: 'disagreed', check: 'mismatch' },
+        lookup: 'none',
+        prepared: { draft: REMOVAL_DRAFT, prepared: {}, calls: [] }
+      }
+    }
+    const navigate = jest.fn()
+    const view = await mount(
+      React.createElement(RemoveStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+    )
+    expect(view.text()).toContain(t(`${REMOVE}.disagreedTitle`))
+    expect(view.text()).not.toContain(t('socialRecovery.management.overview.reads.failedTitle'))
+    expect(view.byTestId('manage-remove-check-disagreed-overview')).not.toBeNull()
+
+    setupState.mockRejectedValueOnce(new Error('the read did not return'))
+    await view.press('manage-remove-check-disagreed-read-again')
+    await settle()
+    expect(setupState).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('manage-remove-check-disagreed')).toBeNull()
+    expect(view.byTestId('manage-remove-done')).toBeNull()
+
+    setupState.mockResolvedValueOnce(review.setupStateOf(false))
+    await view.press('manage-remove-check-failed-retry')
+    await settle()
+    expect(setupState).toHaveBeenCalledTimes(2)
+    expect(view.byTestId('manage-remove-done')).not.toBeNull()
+    expect((await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()).status).not.toBe('present')
+    expect(mockWorld.run.reread).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    view.unmount()
   })
 
   it('reads the stored write again where the run stops for another screen, and routes there', async () => {
