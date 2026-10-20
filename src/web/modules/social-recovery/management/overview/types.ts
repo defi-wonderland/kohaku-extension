@@ -16,6 +16,7 @@ import type {
   SetupState
 } from '@web/modules/social-recovery/sdk-interfaces'
 import type {
+  AccountFactsResult,
   ChainReads,
   KeyHandle,
   ListedAccountFacts,
@@ -26,19 +27,35 @@ import type {
 } from '@web/modules/social-recovery/shared/client'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
-import type { OverviewIntent } from '@web/modules/social-recovery/shared/writes'
+import type {
+  OverviewIntent,
+  OwnerWrite,
+  WriteState
+} from '@web/modules/social-recovery/shared/writes'
+import type { ArmRun, SaveWriteKeys } from '@web/modules/social-recovery/setup/arm'
+import type { TrustRow } from '@web/modules/social-recovery/setup/review'
 import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
 
 // ---------------------------------------------------------------------------
 // The chain's reading of the account
 // ---------------------------------------------------------------------------
 
-/**
- * What the overview draws from the setup and the authorization: no setup and
- * no authorization, both, a setup the account no longer authorizes, or an
- * authorization with no setup behind it.
- */
-export type OverviewKind = 'not-set-up' | 'set-up' | 'dormant' | 'mirror'
+/** What the overview draws from the setup and the account's authorization of the recovery action. */
+export type OverviewKind =
+  /** No setup is committed and the account does not authorize the action. */
+  | 'not-set-up'
+  /** A setup is committed and the account authorizes the action: recovery works. */
+  | 'set-up'
+  /**
+   * A committed setup the account no longer authorizes: no recovery against it
+   * can execute. Repaired by re-authorizing it or by clearing it.
+   */
+  | 'dormant'
+  /**
+   * An authorization the account still holds with no setup behind it, as a
+   * clear alone leaves it. Repaired by removing the authorization.
+   */
+  | 'mirror'
 
 /** The setup state and whether an attempt is open on the account, pending or ready. */
 export interface OverviewFacts {
@@ -174,6 +191,18 @@ export interface PathLockedAskProps {
   testID: string
 }
 
+export interface PathLockedBodyProps {
+  ask: UnlockState
+  /** The field is open: the holder pressed the locked notice's action, or the step asks at once. */
+  asking: boolean
+  onAsk: () => void
+  typed: string
+  onChange: (text: string) => void
+  onSubmit: () => void
+  onRetry: () => void
+  testID: string
+}
+
 export interface OverviewViewProps {
   reads: OverviewReads
   context: ReadoutRowContext
@@ -219,6 +248,89 @@ export interface OverviewStageProps {
   chainId: ChainId
   account: Address
   navigate: (to: string) => void
+}
+
+// ---------------------------------------------------------------------------
+// The parts of the views
+// ---------------------------------------------------------------------------
+
+export interface OverviewTitleProps {
+  lead?: string
+}
+
+export interface OverviewNavigateProps {
+  navigate: (to: string) => void
+}
+
+export interface OverviewChipsProps {
+  kind: OverviewKind
+  path: PathStep
+  attemptOpen: boolean
+}
+
+export interface DormantBlockProps {
+  attemptOpen: boolean
+  onOpen: (intent: OverviewIntent) => void
+}
+
+export interface MirrorBlockProps {
+  onOpen: (intent: OverviewIntent) => void
+}
+
+export type NoticesBlockProps = Pick<
+  OverviewViewProps,
+  'reads' | 'context' | 'timeZone' | 'ending' | 'methodNameOf' | 'adminOf' | 'navigate'
+>
+
+export type PathBodyProps = Pick<OverviewViewProps, 'reads' | 'context' | 'networkName'>
+
+export type PathBlockProps = PathBodyProps & {
+  kind: OverviewKind
+  attemptOpen: boolean
+  navigate: (to: string) => void
+}
+
+export interface WriteStepUnavailableProps {
+  accountFacts: AccountFactsResult
+}
+
+export interface ReauthorizeArrivalProps {
+  reads: OverviewReads
+  level: LevelRead
+  onRetryLevel: () => void
+  /** The committed level hides the setup and this tab holds no recovery password. */
+  passwordMissing: boolean
+  rows: readonly TrustRow[]
+  client: RecoveryKitClient
+  onRetryTrust: (method: Address) => void
+}
+
+export interface WriteStepArrivalProps {
+  /** The re-authorize's own arrival, drawn above the actions. */
+  children?: ReactNode
+  /** The clear is open while an attempt is: it says the clear ends that recovery. */
+  clearCancels: boolean
+  /** The stored write, or the account's facts, are still being read. */
+  reading: boolean
+  lookupFailed: boolean
+  onLookAgain: () => void
+  startAction: ReactNode
+  back: ReactNode
+}
+
+export interface WriteStepUnreadProps {
+  onReread: () => void
+}
+
+export interface RunBlockProps {
+  run: ArmRun
+  /** The write whose copy the shared states read, where it is not the run's own. */
+  write?: OwnerWrite
+  /** The key of the line for a write the network dropped. */
+  droppedLine: string
+  /** The screen's own words over a write state, where it carries any. */
+  keysOf?: (state: WriteState) => SaveWriteKeys
+  testID: string
 }
 
 /** The step the overview has open, and whether it starts by itself. */

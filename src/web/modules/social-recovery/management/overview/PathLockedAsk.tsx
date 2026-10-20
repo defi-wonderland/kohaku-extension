@@ -6,21 +6,15 @@
  * value lives in this component alone and is emptied once a check starts.
  */
 import React, { useCallback, useState } from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
-import Alert from '@common/components/Alert'
-import Button from '@common/components/Button'
-import InputPassword from '@common/components/InputPassword'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
-import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 
-import { OVERVIEW } from './constants'
+import { LOCKED } from './constants'
+import PathLockedBody from './PathLockedBody'
 import type { PathLockedAskProps } from './types'
-
-const LOCKED = `${OVERVIEW}.locked`
 
 const PathLockedAsk = ({
   ask,
@@ -52,70 +46,7 @@ const PathLockedAsk = ({
     setTyped('')
   }, [typed, ask.status, onUnlock])
 
-  const renderBody = () => {
-    if (ask.status === 'checking') {
-      return <ActivityIndicator testID={`${testID}-checking`} style={spacings.mbSm} />
-    }
-    if (ask.status === 'event-failed') {
-      return (
-        <ReadFailedBlock
-          testID={`${testID}-event-failed`}
-          title={t(`${OVERVIEW}.reads.failedTitle`)}
-          body={t(`${OVERVIEW}.reads.failedBody`)}
-          onRetry={onRetry}
-        />
-      )
-    }
-    if (!asking) {
-      return (
-        <ActionsRow
-          primary={
-            <Button
-              testID={`${testID}-action`}
-              type="primary"
-              text={t(`${LOCKED}.action`)}
-              onPress={() => setAsking(true)}
-              hasBottomSpacing={false}
-            />
-          }
-        />
-      )
-    }
-    return (
-      <View>
-        {ask.status === 'wrong' && (
-          <Alert
-            testID={`${testID}-wrong`}
-            type="error"
-            size="sm"
-            style={spacings.mbSm}
-            text={t(`${LOCKED}.wrong`)}
-          />
-        )}
-        <InputPassword
-          testID={`${testID}-field`}
-          label={t(`${LOCKED}.field`)}
-          accessibilityLabel={t(`${LOCKED}.field`)}
-          value={typed}
-          onChangeText={change}
-          onSubmitEditing={submit}
-          containerStyle={spacings.mb0}
-        />
-        <ActionsRow
-          primary={
-            <Button
-              testID={`${testID}-unlock`}
-              type="primary"
-              text={t(`${LOCKED}.unlock`)}
-              disabled={!typed || ask.status !== 'idle'}
-              onPress={submit}
-              hasBottomSpacing={false}
-            />
-          }
-        />
-      </View>
-    )
-  }
+  const openField = useCallback(() => setAsking(true), [])
 
   return (
     <View testID={testID}>
@@ -129,7 +60,16 @@ const PathLockedAsk = ({
           </Text>
         </>
       )}
-      {renderBody()}
+      <PathLockedBody
+        ask={ask}
+        asking={asking}
+        onAsk={openField}
+        typed={typed}
+        onChange={change}
+        onSubmit={submit}
+        onRetry={onRetry}
+        testID={testID}
+      />
     </View>
   )
 }

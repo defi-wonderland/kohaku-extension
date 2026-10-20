@@ -53,6 +53,11 @@ export const isCacheCurrent = (cache: DecryptedSetupCacheRecord, setup: SetupSta
   (cache.setupCommitment === undefined ||
     cache.setupCommitment.toLowerCase() === setup.setupCommitment.toLowerCase())
 
+/** Whether two reads of the setup state name the same committed setup: its nonce and its commitment. */
+export const isSameSetup = (read: SetupState, earlier: SetupState): boolean =>
+  read.setupNonce === earlier.setupNonce &&
+  read.setupCommitment.toLowerCase() === earlier.setupCommitment.toLowerCase()
+
 /**
  * What the logs since the commit hold: each method's latest key update, and
  * every attempt a cancel ended. A log a reorganization removed counts for

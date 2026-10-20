@@ -6,6 +6,9 @@ import type { ElsewhereLink } from './types'
 
 export const OVERVIEW = 'socialRecovery.management.overview'
 
+/** The keys of the recovery password ask of a locked path. */
+export const LOCKED = `${OVERVIEW}.locked`
+
 /**
  * The draft a removal's stored write carries: the record of a write in flight
  * holds a draft, and a removal commits none. Nothing reads it back.

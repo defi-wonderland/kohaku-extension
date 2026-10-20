@@ -8,7 +8,7 @@
  *                     ├─ deposit ──▶ needsDeposit ──recheck──▶ checkingGas: the setup read, the gas check
  *                     ├─ a refusal ─▶ failedNotSent (nothing sent)
  *                     └─ enough ───▶ the claim, the setup read again (time-limited)
- *                                     ├─ lost to an overview write ─▶ stopped (nothing sent or followed)
+ *                                     ├─ held by another write ─▶ stopped (nothing sent or followed)
  *                                     ├─ a setup found ─▶ already set up (the claim released)
  *                                     └─ none ─▶ the send's block: the claim's, else read (time-limited)
  *                                                ├─ unread ─▶ failedNotSent (the claim released)
@@ -303,15 +303,19 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         after: { stage: 'none' },
         stop: 'already-set-up'
       }
-    case 'overviewElsewhere':
-      // Taken after the claim and before the send, in place of a follow.
-      if (!awaitingHashIn(state, event.run)) {
+    case 'heldByAnotherWrite':
+      // Taken after the claim and before the send, in place of a follow, or
+      // from the arrival's read of the stored write, before any start.
+      if (
+        !awaitingHashIn(state, event.run) &&
+        !(inRun(state, event.run) && state.write.status === 'idle' && state.lookup === 'reading')
+      ) {
         return state
       }
       return {
         write: writeReducer(state.write, { type: 'reset' }),
         after: { stage: 'none' },
-        stop: 'overview-elsewhere'
+        stop: 'held-by-another-write'
       }
     case 'prepared':
       if (!inRun(state, event.run) || state.write.status !== 'checkingGas' || state.prepared) {
@@ -1087,9 +1091,23 @@ const followSave = async (
 }
 
 /**
+ * Whether a run whose own request is `own` leaves the stored write to its
+ * holder instead of following it: a write of the recovery overview or of the
+ * management editor is followed and judged only by a run of that same write,
+ * so a save, another overview write or an editor write that meets it stops.
+ * A stored save is followed by any run.
+ */
+const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
+  const held = intentOfRequest(stored.requestId)
+  return !!held && intentOfRequest(own) !== held
+}
+
+/**
  * Before the save is offered: reads the save in flight stored on this device
- * and, where one is, follows it in a new run with nothing sent. Reads once per
- * run held, and again only after a read that failed.
+ * and, where one is, follows it in a new run with nothing sent. A stored write
+ * of another management write is left to its own screen: the run stops there
+ * with nothing followed, sent or released. Reads once per run held, and again
+ * only after a read that failed.
  */
 export const lookForSave = async (
   store: ArmStore,
@@ -1115,6 +1133,10 @@ export const lookForSave = async (
   }
   if (read.status !== 'present') {
     store.dispatch({ type: 'lookup', run, reading: 'none' })
+    return
+  }
+  if (leftToHolder(steps.newRequestId(), read.value)) {
+    store.dispatch({ type: 'heldByAnotherWrite', run })
     return
   }
   // A void save may have let another page store its own: the save is offered only where none is.
@@ -1264,18 +1286,6 @@ const sendClaimed = async (
   return ranOut
 }
 
-/**
- * Whether a run whose own request is `own` leaves the stored write to its
- * holder instead of following it: a write of the recovery overview or of the
- * management editor is followed and judged only by a run of that same write,
- * so a save, another overview write or an editor write that meets it stops.
- * A stored save is followed by any run.
- */
-const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
-  const held = intentOfRequest(stored.requestId)
-  return !!held && intentOfRequest(own) !== held
-}
-
 /** Follows a stored save in place of the run's own send, and looks again where it was void. */
 const followInstead = async (
   store: ArmStore,
@@ -1307,7 +1317,7 @@ const yieldClaim = async (
     const own = store.state().requestId
     store.dispatch({ type: 'released', run })
     if (own && leftToHolder(own, stored.value)) {
-      store.dispatch({ type: 'overviewElsewhere', run })
+      store.dispatch({ type: 'heldByAnotherWrite', run })
       return
     }
     await followInstead(store, steps, run, stored.value, options)
@@ -1359,7 +1369,7 @@ const checkAndSend = async (
   }
   if (!claim.claimed) {
     if (leftToHolder(requestId, claim.record.value)) {
-      store.dispatch({ type: 'overviewElsewhere', run })
+      store.dispatch({ type: 'heldByAnotherWrite', run })
       return
     }
     await followInstead(store, steps, run, claim.record.value, options)

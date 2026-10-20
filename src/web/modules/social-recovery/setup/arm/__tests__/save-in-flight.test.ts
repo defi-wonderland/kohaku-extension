@@ -311,8 +311,8 @@ describe('a save that meets a write of the recovery overview at its claim', () =
     await advanceTimers(SHORT_TIMEOUT_MS)
     await running
 
-    expect(store.state().stop).toBe('overview-elsewhere')
-    expect(armScreenOf(store.state())).toBe('overview-elsewhere')
+    expect(store.state().stop).toBe('held-by-another-write')
+    expect(armScreenOf(store.state())).toBe('held-by-another-write')
     expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(page.receipts.wait).not.toHaveBeenCalled()
     expect(page.confirmSetup).not.toHaveBeenCalled()
@@ -350,12 +350,84 @@ describe('a save that meets a write of the recovery overview at its claim', () =
     await running
 
     expect(claimedByRun).toBeDefined()
-    expect(store.state().stop).toBe('overview-elsewhere')
+    expect(store.state().stop).toBe('held-by-another-write')
     expect(store.state().requestId).toBeUndefined()
     expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
     expect(page.receipts.wait).not.toHaveBeenCalled()
     expect(page.confirmSetup).not.toHaveBeenCalled()
     expect((await stored(page))?.requestId).toBe(overviewId)
+  })
+})
+
+describe('an arrival that finds a stored write of another management write', () => {
+  const CASES = [
+    {
+      named: 'a save that finds a write of the overview',
+      ownId: undefined,
+      otherId: () => requestIdOf('removeAuthorization')
+    },
+    {
+      named: 'an overview clear that finds the removal of the authorization',
+      ownId: () => requestIdOf('clear'),
+      otherId: () => requestIdOf('removeAuthorization')
+    },
+    {
+      named: 'an overview run that finds a write of the editor',
+      ownId: () => requestIdOf('reauthorize'),
+      otherId: () => 'social-recovery-sender:1:manage-edit'
+    }
+  ]
+
+  CASES.forEach(({ named, ownId, otherId: otherIdOf }) =>
+    it(`stops with nothing followed, sent or released for ${named}`, async () => {
+      const storage = memoryStorage()
+      const requests = requestsFake()
+      const page = wireSave(account, script(), { storage, requests })
+      const otherId = otherIdOf()
+      await page.inFlight.claim({
+        draft: page.draft,
+        prepared: page.prepared,
+        requestId: otherId,
+        claimedAt: Date.now()
+      })
+      await page.inFlight.markSent(otherId, TX_HASH, START_BLOCK)
+      const store = createArmStore()
+      const steps: SaveSteps = ownId ? { ...page.steps, newRequestId: ownId } : page.steps
+
+      await lookForSave(store, steps, OPTIONS)
+
+      expect(store.state().stop).toBe('held-by-another-write')
+      expect(store.state().requestId).toBeUndefined()
+      expect(page.receipts.wait).not.toHaveBeenCalled()
+      expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
+      expect(page.confirmSetup).not.toHaveBeenCalled()
+      expect((await stored(page))?.requestId).toBe(otherId)
+    })
+  )
+
+  it('follows a stored write of the same overview write, with nothing sent', async () => {
+    const storage = memoryStorage()
+    const requests = requestsFake()
+    const page = wireSave(account, script(), { storage, requests })
+    page.receipts.wait.mockImplementation(() => pending())
+    const otherId = requestIdOf('clear')
+    await page.inFlight.claim({
+      draft: page.draft,
+      prepared: page.prepared,
+      requestId: otherId,
+      claimedAt: Date.now()
+    })
+    await page.inFlight.markSent(otherId, TX_HASH, START_BLOCK)
+    const store = createArmStore()
+    const steps: SaveSteps = { ...page.steps, newRequestId: () => requestIdOf('clear') }
+
+    unawaited(lookForSave(store, steps, OPTIONS))
+    await advanceTimers(0)
+
+    expect(store.state().stop).toBeUndefined()
+    expect(store.state().requestId).toBe(otherId)
+    expect(page.receipts.wait).toHaveBeenCalledWith(TX_HASH, START_BLOCK)
+    expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 })
 
@@ -397,7 +469,7 @@ describe('a management write that meets another management write at its claim', 
       await advanceTimers(SHORT_TIMEOUT_MS)
       await running
 
-      expect(store.state().stop).toBe('overview-elsewhere')
+      expect(store.state().stop).toBe('held-by-another-write')
       expect(page.port.sendAccountBatch).not.toHaveBeenCalled()
       expect(page.receipts.wait).not.toHaveBeenCalled()
       expect(page.confirmSetup).not.toHaveBeenCalled()

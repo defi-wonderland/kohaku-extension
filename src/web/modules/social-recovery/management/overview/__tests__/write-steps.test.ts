@@ -5,7 +5,7 @@
  * end each write reads as already standing, the re-authorize refused while an
  * attempt is open, the removals prepared through the account's own door, a
  * removal's check that agrees once its end stands, and the path the cache
- * keeps after a re-authorize.
+ * keeps after a re-authorize, under the setup its own check agreed on.
  */
 import type { OverviewIntent } from '@web/modules/social-recovery/management/overview/types'
 import type { SetupDraft } from '@web/modules/social-recovery/sdk-interfaces'
@@ -26,6 +26,7 @@ const {
   REMOVAL_DRAFT
 }: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
 const {
+  isCacheCurrent,
   reauthorizeDraftOf
 }: typeof import('@web/modules/social-recovery/management/overview/readings') = require('@web/modules/social-recovery/management/overview/readings')
 const {
@@ -121,7 +122,9 @@ describe('the overview writes', () => {
     })
     world.chain.setAuthorized(true)
 
-    await stepsOver(world, 'reauthorize', REMOVAL_DRAFT).wipe()
+    const followed = stepsOver(world, 'reauthorize', REMOVAL_DRAFT)
+    await followed.confirm(sent)
+    await followed.wipe()
 
     const cache = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
     expect(cache.status === 'present' && cache.value.configuration).toEqual(CONFIGURATION)
@@ -131,6 +134,59 @@ describe('the overview writes', () => {
   it('leaves the cache untouched where a re-authorize with no draft finds no stored write', async () => {
     const world = await worldAt('public')
     await stepsOver(world, 'reauthorize', REMOVAL_DRAFT).wipe()
+    const cache = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
+    expect(cache.status).toBe('absent')
+  })
+
+  it('stamps the cache with the setup its own check agreed on where another setup was committed before the wipe', async () => {
+    const world = await worldAt('public')
+    world.chain.setAuthorized(false)
+    const steps = stepsOver(world, 'reauthorize')
+    const sent = await steps.prepare()
+    world.chain.land(sent.prepared)
+    const agreed = await steps.confirm(sent)
+    expect(agreed.landed && agreed.isAuthorized).toBe(true)
+    world.chain.commitSetup({
+      level: 'public',
+      configuration: { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    })
+
+    await steps.wipe()
+
+    const cache = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
+    expect(cache.status === 'present' && cache.value.setupNonce).toBe(agreed.nonce)
+    const now = await world.client.setup.setupState()
+    expect(now.setupNonce).not.toBe(agreed.nonce)
+    expect(cache.status === 'present' && isCacheCurrent(cache.value, now)).toBe(false)
+  })
+
+  it('leaves the cache untouched where a re-authorize wipes with no check of its own', async () => {
+    const world = await worldAt('public')
+    await stepsOver(world, 'reauthorize').wipe()
+    const cache = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
+    expect(cache.status).toBe('absent')
+  })
+
+  it('neither releases nor caches a stored write of another intent', async () => {
+    const world = await worldAt('public')
+    world.chain.setAuthorized(false)
+    const steps = stepsOver(world, 'reauthorize', REMOVAL_DRAFT)
+    const sent = await stepsOver(world, 'reauthorize').prepare()
+    const inFlight = world.records.saveInFlight(CHAIN_ID, ACCOUNT)
+    const otherId = requestIdOf('clear')
+    await inFlight.claim({
+      draft: sent.draft,
+      prepared: sent.prepared,
+      requestId: otherId,
+      claimedAt: Date.now()
+    })
+    world.chain.setAuthorized(true)
+    await steps.confirm(sent)
+
+    await steps.wipe()
+
+    const held = await inFlight.read()
+    expect(held.status === 'present' && held.value.requestId).toBe(otherId)
     const cache = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
     expect(cache.status).toBe('absent')
   })
