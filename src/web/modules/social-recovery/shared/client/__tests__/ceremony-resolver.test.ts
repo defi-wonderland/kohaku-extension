@@ -459,7 +459,9 @@ describe('the client builder the ceremony tab uses', () => {
     SLUGS.forEach((slug) => expect(client.methodFor(slug)).toBeDefined())
     const module = world.config.addressBook.methods.passkey
     const input = { kind: 'nothing-to-perform' } as const
-    const enroll = jest.spyOn(client.methodFor('passkey') as IRecoveryMethod, 'enrollInput').mockReturnValue(input)
+    const enroll = jest
+      .spyOn(client.methodFor('passkey') as IRecoveryMethod, 'enrollInput')
+      .mockReturnValue(input)
     expect(client.approving.enrollInput(module, {})).toEqual(input)
     expect(enroll).toHaveBeenCalledTimes(1)
     expect(world.ethers.destroy).toHaveBeenCalledTimes(1)

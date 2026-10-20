@@ -138,9 +138,7 @@ const verifyCallsOf = (node: ScriptedProvider) =>
 
 const answersWord = (word: Hex) => () => word
 
-const worldOf = (
-  verdicts: { ecdsa?: () => Hex | Error; passkey?: () => Hex | Error } = {}
-) => {
+const worldOf = (verdicts: { ecdsa?: () => Hex | Error; passkey?: () => Hex | Error } = {}) => {
   const node = scriptedProvider()
   node.setCode(METHOD_ECDSA, CONTRACT_CODE)
   node.setCode(METHOD_PASSKEY, CONTRACT_CODE)

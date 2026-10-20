@@ -144,7 +144,7 @@ describe('the fake node judges a pasted reply', () => {
     )
   })
 
-  it("satisfies an unseeded passkey reply whose proof the passkey layout encodes, and rejects bytes it does not", async () => {
+  it('satisfies an unseeded passkey reply whose proof the passkey layout encodes, and rejects bytes it does not', async () => {
     const client = await clientOf()
     const { descriptor } = client
     const request = requestFor(

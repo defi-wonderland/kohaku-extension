@@ -36,9 +36,12 @@ const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
 const ACTION: Address = getAddress('0x00000000000000000000000000000000000ac710')
 const CODEC = new AmbireActionCodec([ACTION])
 
-/** The action's payload of a handover from `OLD_KEY` to `newKey`. */
+/** The action's payload of a handover from `OLD_KEY` to `newKey`, or from `NEW_KEY` to `OLD_KEY`. */
 export const payloadTo = (newKey: Address): Hex =>
-  CODEC.encode({ newAuthority: newKey, removedAuthority: OLD_KEY })
+  CODEC.encode({
+    newAuthority: newKey,
+    removedAuthority: newKey === OLD_KEY ? NEW_KEY : OLD_KEY
+  })
 
 const positionAt = (blockNumber: number): LogPosition => ({
   blockNumber,

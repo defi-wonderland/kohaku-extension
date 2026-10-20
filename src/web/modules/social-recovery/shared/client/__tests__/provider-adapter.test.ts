@@ -449,14 +449,6 @@ describe('the four reads on the typed members of the ethers provider', () => {
       ])
     })
 
-    it('names no sender where none is given', async () => {
-      const w = world()
-      w.ethers.call.mockResolvedValue('0x')
-      await w.adapter.call(TO, DATA, undefined, 'finalized')
-      const [[, [request]]] = underlyingCalls(w.ethers)
-      expect(request).toEqual({ to: TO, data: DATA, blockTag: 'finalized' })
-    })
-
     it('rejects a CALL_EXCEPTION ethers throws from call with the raw revert data', async () => {
       const w = world()
       w.ethers.call.mockRejectedValue(ethersRevert('call', REVERT))

@@ -206,25 +206,12 @@ export const ethersOver = (chain: FakeNode): EthersMock => {
   }
   mock.getNetwork = jest.fn(async () => ({ chainId: BigInt(mock.answeredChainId), name: 'mock' }))
   mock.call = jest.fn(async (tx: { to?: string; data?: string; blockTag?: unknown }) => ethCall(tx))
-  mock.getLogs = jest.fn(
-    async (filter: { address: Address[]; topics: FilterSpec['topics']; fromBlock: number; toBlock: number }) =>
-      (
-        await chain.logs(
-          { address: filter.address, topics: filter.topics },
-          { from: filter.fromBlock, to: filter.toBlock }
-        )
-      ).map((log) => ({ ...log, index: log.logIndex, removed: log.removed ?? false }))
-  )
+  mock.getLogs = jest.fn(async () => [])
   mock.getBlock = jest.fn(async (tag: unknown) => blockOf(tag))
   mock.getBalance = jest.fn(async () => NODE_ANSWERS.balance)
   mock.estimateGas = jest.fn(async () => NODE_ANSWERS.gas)
-  mock.getCode = jest.fn(async (address: Address, tag?: unknown) =>
-    chain.code(address, tagOf(tag ?? 'latest'))
-  )
-  mock.getTransaction = jest.fn(async (hash: Hex) => {
-    const transaction = await chain.transaction(hash)
-    return transaction ? { ...transaction, data: transaction.input } : null
-  })
+  mock.getCode = jest.fn(async () => '0x')
+  mock.getTransaction = jest.fn(async () => null)
   mock.destroy = jest.fn()
   mock.send = jest.fn(async (method: string, params: unknown[]) => {
     switch (method) {
@@ -254,6 +241,31 @@ export const ethersOver = (chain: FakeNode): EthersMock => {
     }
   })
   return mock
+}
+
+/** Routes the mock's logs, code and transaction reads to the fake node too, as a deployed chain answers them. */
+const routeAllReads = (mock: EthersMock, chain: FakeNode): void => {
+  mock.getLogs.mockImplementation(
+    async (filter: {
+      address: Address[]
+      topics: FilterSpec['topics']
+      fromBlock: number
+      toBlock: number
+    }) =>
+      (
+        await chain.logs(
+          { address: filter.address, topics: filter.topics },
+          { from: filter.fromBlock, to: filter.toBlock }
+        )
+      ).map((log) => ({ ...log, index: log.logIndex, removed: log.removed ?? false }))
+  )
+  mock.getCode.mockImplementation(async (address: Address, tag?: unknown) =>
+    chain.code(address, tagOf(tag ?? 'latest'))
+  )
+  mock.getTransaction.mockImplementation(async (hash: Hex) => {
+    const transaction = await chain.transaction(hash)
+    return transaction ? { ...transaction, data: transaction.input } : null
+  })
 }
 
 /** Every underlying member rejects with `error`, whichever route the client takes. */
@@ -447,6 +459,7 @@ export const createDeployedWorld = (
   const descriptor = descriptorOf('sepolia', addressBook)
   const chain = new FakeNode({ descriptor, account })
   const ethers = ethersOver(chain)
+  routeAllReads(ethers, chain)
   const adapter = createProviderAdapter(ethers)
   const config: RecoveryClientConfiguration = {
     chain: 'sepolia',

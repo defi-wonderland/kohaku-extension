@@ -59,7 +59,6 @@ const ARMED: Hex = '0x0000000000000000000000000000000000000000000000000000000000
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
 const KEY_A = addressOf('key-a')
 
-
 const clientOver = async (world: World) =>
   buildRecoveryClient({
     ...world.config,
@@ -348,7 +347,10 @@ describe('the events feed', () => {
     })
     const { events } = client.setup
     const { head } = world.chain
-    const found = await events.fetch(events.accountFilter(), { from: head.number - 10, to: head.number })
+    const found = await events.fetch(events.accountFilter(), {
+      from: head.number - 10,
+      to: head.number
+    })
     expect(found.map((notification) => notification.kind)).toEqual(['setup-committed'])
     expect(world.ethers.getLogs).toHaveBeenCalled()
     expect(client.recovery.events).toBe(events)

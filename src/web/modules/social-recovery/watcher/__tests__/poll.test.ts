@@ -137,7 +137,7 @@ describe('a poll of the watched accounts', () => {
   it('names no key from an opening whose payload is not the one the attempt committed', async () => {
     const { chain, poll, record } = setUp()
     chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))
-    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, payloadTo(OTHER_ACCOUNT)) })
+    chain.setEvents(ACCOUNT, 4n, { started: startedEvent(4n, payloadTo(OLD_KEY)) })
 
     await poll()
 
@@ -713,7 +713,7 @@ describe('a poll of the watched accounts', () => {
     await poll()
     expect((await record())?.reading?.attempt?.newKey).toBe(NEW_KEY)
 
-    const other = payloadTo(OTHER_ACCOUNT)
+    const other = payloadTo(OLD_KEY)
     chain.setState(ACCOUNT, stateWith({ attemptId: 5n, state: 'Waiting', payload: other }))
     await poll()
 

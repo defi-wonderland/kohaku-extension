@@ -53,7 +53,8 @@ const inputsOf = (spies: ReturnType<typeof spyOnBuilder>) =>
     configuration: Record<string, unknown>
   }
 
-const guardianConfig = (): Hex => walletMethod().codec.encodeConfig({ signer: addressOf('approver') })
+const guardianConfig = (): Hex =>
+  walletMethod().codec.encodeConfig({ signer: addressOf('approver') })
 
 describe('buildRecoveryClient', () => {
   it('builds one client from a configuration naming one chain and the address book', async () => {

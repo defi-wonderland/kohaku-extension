@@ -18,7 +18,8 @@ import type {
   FilterSpec,
   FilterTopic,
   Hex,
-  RawLog
+  RawLog,
+  RawTransaction
 } from '@kohaku-eth/social-recovery'
 import {
   encodeAbiParameters,
@@ -120,7 +121,7 @@ export const scriptedProvider = (): ScriptedProvider => {
       const held = codes.get(address.toLowerCase())
       return held && (typeof block !== 'number' || block >= held.from) ? held.code : '0x'
     }),
-    transaction: jest.fn(async (hash: Hex) => {
+    transaction: jest.fn(async (hash: Hex): Promise<RawTransaction | undefined> => {
       const sender = senders.get(hash.toLowerCase())
       if (sender instanceof Error) {
         throw sender

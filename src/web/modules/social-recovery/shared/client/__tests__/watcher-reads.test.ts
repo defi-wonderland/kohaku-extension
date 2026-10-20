@@ -82,7 +82,6 @@ const worldWith = (logs: RawLog[]) => {
   return { node, reads, scanned }
 }
 
-
 describe('the watcher reads', () => {
   it('scans an attempt backwards from the pinned block and stops at the chunk of its opening', async () => {
     const payload = handoverTo(NEW_KEY)
