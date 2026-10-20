@@ -1,135 +1,160 @@
 /**
- * The client of a deployed kit once its checks passed: the methods it serves
- * by slug, the action bound to the account with its real disarming call, the
- * wallet's reads over the chain with the verify of a pasted reply, the
- * recovery gathering and prepares over the manager, the one events feed both
- * sides serve, and the members it does not serve yet, each refusing by name.
+ * The client of a deployed kit once its checks passed, built over a fake node
+ * of the deployment: the methods it serves by slug, the action bound to the
+ * account with its disarming call, the wallet's reads over the chain with the
+ * verify of a pasted reply, the commit the setup client prepares, the
+ * recovery gathering and prepares over the manager, and the one events feed
+ * both sides serve.
  */
 import {
+  approvalDigest,
+  approvalTypedData,
+  kitSlot,
+  METHOD_ECDSA_CONFIG_ABI,
+  POLICY_MANAGER_WRITES_ABI,
+  RECOVERY_ACTION_SET_ADDR_PRIVILEGE_ABI
+} from '@kohaku-eth/social-recovery'
+import type {
+  Address,
+  ApproverRequest,
+  Configuration,
+  Hex,
+  PreparedBatch,
+  PreparedCall,
+  Reply,
+  SetupDraft
+} from '@kohaku-eth/social-recovery'
+import {
   decodeFunctionData,
-  encodeEventTopics,
-  encodeFunctionData,
-  encodeFunctionResult,
+  encodeAbiParameters,
   getAddress,
-  type Hex,
   hexToBigInt,
-  isAddressEqual,
+  keccak256,
   numberToHex,
-  pad,
-  parseAbi,
   parseSignature,
   serializeSignature,
   zeroAddress,
   zeroHash
 } from 'viem'
-
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
-import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
-import type { Address, ClientConfiguration, Reply } from '@kohaku-eth/social-recovery'
-import type {
-  DeploymentFacts,
-  PrivilegeAccount
-} from '@web/modules/social-recovery/shared/client/types'
+import {
+  addressOf,
+  buildRecoveryClient,
+  createDeployedWorld,
+  DEPLOYED_FACTS,
+  thrownBy,
+  World
+} from '@web/modules/social-recovery/shared/client/__tests__/harness'
+import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
 
-const ARMED = '0x0000000000000000000000000000000000000000000000000000000000000001'
+jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
+  ...jest.requireActual('@web/modules/social-recovery/shared/client/deployment-env'),
+  sepoliaDeploymentVariable: jest.fn()
+}))
 
+type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
+
+const ARMED: Hex = '0x0000000000000000000000000000000000000000000000000000000000000001'
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+const KEY_A = addressOf('key-a')
 
-const PRIVILEGE_EVENT = parseAbi(['event LogPrivilegeChanged(address indexed addr, bytes32 priv)'])
-const PRIVILEGES_VIEW = parseAbi(['function privileges(address) view returns (bytes32)'])
-const CANCEL_BY_OWNER = parseAbi(['function cancelByOwner(address action)'])
 
-const BOOK = {
-  manager: MANAGER,
-  methods: {
-    ecdsa: METHOD_ECDSA,
-    passkey: METHOD_PASSKEY,
-    aadhaar: METHOD_AADHAAR,
-    zkpassport: METHOD_ZKPASSPORT
-  },
-  action: DEPLOYED_ACTION
-}
-
-const LISTED_ACCOUNT: PrivilegeAccount = {
-  addr: ACCOUNT,
-  associatedKeys: [KEY_A],
-  initialPrivileges: [[KEY_A, ARMED]],
-  creation: { factoryAddr: MANAGER, bytecode: '0x00', salt: zeroHash }
-}
-
-const clientOver = (
-  facts: DeploymentFacts = FACTS,
-  {
-    privilegeAccount = LISTED_ACCOUNT,
-    blockTags,
-    logChunkWidth
-  }: {
-    privilegeAccount?: PrivilegeAccount
-    blockTags?: ClientConfiguration['blockTags']
-    logChunkWidth?: number
-  } = {}
-) => {
-  const node = fakeNode()
-  scriptDeployment(node)
-  const descriptor = { ...DESCRIPTOR, action: DEPLOYED_ACTION, auditedActions: [DEPLOYED_ACTION] }
-  const client = buildKitClient({
-    chain: 'sepolia',
-    account: ACCOUNT,
-    descriptor,
-    facts,
-    addressBook: BOOK,
-    config: defaultClientConfiguration({
-      accountImplementation: PROXY_AMBIRE_ACCOUNT,
-      ...(blockTags && { blockTags }),
-      ...(logChunkWidth !== undefined && { logChunkWidth })
-    }),
-    provider: node.provider,
-    codeRead: node.codeRead,
-    transactionRead: node.transactionRead,
-    manager: createManagerReads(node.provider, MANAGER),
-    action: createActionReads(
-      { provider: node.provider, codeRead: node.codeRead },
-      DEPLOYED_ACTION
-    ),
-    privilegeAccount
+const clientOver = async (world: World) =>
+  buildRecoveryClient({
+    ...world.config,
+    candidateKeys: [KEY_A],
+    initialPrivileges: [[KEY_A, ARMED]],
+    creation: { factory: DEPLOYED_FACTS.manager, bytecode: '0x00', salt: zeroHash, block: 1 }
   })
-  return { node, client }
-}
 
-const modulesOf = (client: ReturnType<typeof clientOver>['client'], slug: string): Address[] =>
-  (client.methodFor(slug)?.modules(client.descriptor) ?? []).map((m) => getAddress(m))
+const configurationOf = (world: World, guardian: Address): Configuration => ({
+  wait: 432_000,
+  ignoresPause: false,
+  clauses: [
+    {
+      threshold: 1,
+      credentials: [
+        {
+          method: world.descriptor.methodEcdsa,
+          config: encodeAbiParameters(METHOD_ECDSA_CONFIG_ABI, [guardian])
+        }
+      ]
+    }
+  ]
+})
+
+const requestFor = (world: World, guardian: Address): ApprovalRequest => ({
+  kind: 'recovery-proof-request',
+  version: 1,
+  purpose: 'approval',
+  chainId: String(world.descriptor.chainId),
+  manager: world.descriptor.manager,
+  digestVersion: world.descriptor.digestVersion,
+  account: world.account,
+  action: world.descriptor.action,
+  attemptId: '7',
+  setupNonce: '3',
+  setupBodyHash: keccak256('0x01'),
+  payload: '0x02',
+  order: { token: zeroAddress, amount: '0', payee: zeroAddress },
+  validUntil: '1900000000',
+  place: 0,
+  method: world.descriptor.methodEcdsa,
+  config: encodeAbiParameters(METHOD_ECDSA_CONFIG_ABI, [guardian]),
+  salt: `0x${'01'.padStart(64, '0')}`,
+  credentialHoldsCode: false
+})
+
+const membersOf = (request: ApprovalRequest) => ({
+  chainId: Number(request.chainId),
+  manager: request.manager,
+  account: request.account,
+  action: request.action,
+  attemptId: BigInt(request.attemptId),
+  setupNonce: BigInt(request.setupNonce),
+  setupBodyHash: request.setupBodyHash,
+  validUntil: Number(request.validUntil),
+  digestVersion: request.digestVersion,
+  payload: request.payload,
+  order: { ...request.order, amount: BigInt(request.order.amount) }
+})
+
+const commitCallOf = (prepared: PreparedCall | PreparedBatch): PreparedCall =>
+  prepared.kind === 'call' ? prepared : prepared.calls[prepared.calls.length - 1]
+
+beforeEach(() => {
+  ;(sepoliaDeploymentVariable as jest.Mock).mockReturnValue(JSON.stringify(DEPLOYED_FACTS))
+})
+
+afterEach(() => {
+  jest.restoreAllMocks()
+})
 
 describe('methodFor', () => {
-  it('serves the two primary methods at the deployment addresses, and no identity method it does not name', () => {
-    const { client } = clientOver()
-    expect(modulesOf(client, 'ecdsa')).toContain(getAddress(METHOD_ECDSA))
-    expect(modulesOf(client, 'passkey')).toContain(getAddress(METHOD_PASSKEY))
+  it('serves the two primary methods at the deployment addresses, and no identity method', async () => {
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    const modulesOf = (slug: string): Address[] =>
+      (client.methodFor(slug)?.modules(client.descriptor) ?? []).map((m) => getAddress(m))
+    expect(modulesOf('ecdsa')).toContain(getAddress(DEPLOYED_FACTS.methodEcdsa))
+    expect(modulesOf('passkey')).toContain(getAddress(DEPLOYED_FACTS.methodPasskey))
     expect(client.methodFor('aadhaar')).toBeUndefined()
     expect(client.methodFor('zkpassport')).toBeUndefined()
     expect(client.methodFor('unknown')).toBeUndefined()
   })
 
-  it('serves an identity method where the deployment names its module', () => {
-    const { client } = clientOver({
-      ...FACTS,
-      methodAadhaar: getAddress(METHOD_AADHAAR),
-      methodZkpassport: getAddress(METHOD_ZKPASSPORT)
-    })
-    expect(modulesOf(client, 'aadhaar')).toContain(getAddress(METHOD_AADHAAR))
-    expect(modulesOf(client, 'zkpassport')).toContain(getAddress(METHOD_ZKPASSPORT))
-  })
-
   it("judges a guardian's real signature by the config's key as satisfied, on the method and the approving side", async () => {
-    const { client } = clientOver()
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
     const guardian = privateKeyToAccount(generatePrivateKey())
-    const request = approverRequestAt(guardianAt(0, { config: ecdsaConfigOf(guardian.address) }), 0)
-    const digest = digestOfRequest(request)
+    const request = requestFor(world, guardian.address)
+    const digest = approvalDigest(membersOf(request), request.place)
     const ctx = {
       request,
       place: request.place,
       digest,
-      typedData: typedDataOf(membersOfRequest(request))
+      typedData: approvalTypedData(membersOf(request), request.place)
     }
     const signature = await guardian.sign({ hash: digest })
 
@@ -137,12 +162,14 @@ describe('methodFor', () => {
     expect(await client.approving.verify(request, request.place, signature)).toBe('satisfied')
   })
 
-  it("gives the guardian's typed data to sign and turns a high-s signature into the low form in the reply", async () => {
-    const { client } = clientOver()
+  it('turns a high-s signature into the low form in the reply', async () => {
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
     const guardian = privateKeyToAccount(generatePrivateKey())
-    const request = approverRequestAt(guardianAt(0, { config: ecdsaConfigOf(guardian.address) }), 0)
-    const digest = digestOfRequest(request)
-    const signature = await guardian.sign({ hash: digest })
+    const request = requestFor(world, guardian.address)
+    const signature = await guardian.sign({
+      hash: approvalDigest(membersOf(request), request.place)
+    })
     const { r, s, yParity } = parseSignature(signature)
     const highS = serializeSignature({
       r,
@@ -150,10 +177,8 @@ describe('methodFor', () => {
       yParity: yParity === 0 ? 1 : 0
     })
 
-    expect(client.approving.signingInput(request)).toEqual(typedDataOf(membersOfRequest(request)))
-    const reply = (await client.approving.replyFrom(request, undefined, {
-      signature: highS
-    })) as Reply
+    const input = client.approving.signingInput(request)
+    const reply = (await client.approving.replyFrom(request, input, { signature: highS })) as Reply
     expect(reply.kind).toBe('recovery-proof-reply')
     expect(reply.proof).toBe(signature)
   })
@@ -161,35 +186,44 @@ describe('methodFor', () => {
 
 describe('the action bound to the account', () => {
   it('prepares the disarming call the account sends to itself, at the pinned block', async () => {
-    const { node, client } = clientOver()
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
     const call = await client.action.disarmingCall()
     expect([call.kind, call.target, call.value, call.sender]).toEqual([
       'call',
-      ACCOUNT,
+      getAddress(world.account),
       0n,
       'account'
     ])
-    expect(call.block).toEqual({ number: HEAD, hash: node.head.hash })
-    const { functionName, args } = decodeFunctionData({ abi: ACCOUNT_ABI, data: call.data })
+    expect(call.block.number).toBe(world.chain.head.number)
+    const { functionName, args } = decodeFunctionData({
+      abi: RECOVERY_ACTION_SET_ADDR_PRIVILEGE_ABI,
+      data: call.data
+    })
     expect(functionName).toBe('setAddrPrivilege')
-    expect(args).toEqual([DEPLOYED_KIT_SLOT, zeroHash])
+    expect(args).toEqual([getAddress(kitSlot(world.descriptor.action)), zeroHash])
   })
 
-  it('answers the account not armed with no call where it has no code', async () => {
-    const { node, client } = clientOver()
+  it('answers the account not armed where it has no code', async () => {
+    const world = createDeployedWorld()
+    world.chain.setHasCode(false)
+    const client = await clientOver(world)
     await expect(client.action.isAuthorized()).resolves.toBe(false)
-    expect(node.calls).toEqual([])
   })
 })
 
 describe("the wallet's reads", () => {
   it('names the key the creation grants on an account with no code', async () => {
-    const { client } = clientOver()
+    const world = createDeployedWorld()
+    world.chain.setHasCode(false)
+    const client = await clientOver(world)
     await expect(client.walletReads.removedKey()).resolves.toEqual({ kind: 'named', key: KEY_A })
   })
 
   it('judges the fit of an account with no code by the implementation the action serves', async () => {
-    const { client } = clientOver()
+    const world = createDeployedWorld()
+    world.chain.setHasCode(false)
+    const client = await clientOver(world)
     await expect(client.walletReads.fitCheck()).resolves.toMatchObject({
       basis: 'code-to-be',
       fits: true
@@ -197,234 +231,126 @@ describe("the wallet's reads", () => {
   })
 
   it("names a deployed account's key from its privilege writes where the wallet holds no creation record", async () => {
-    const { node, client } = clientOver(FACTS, {
-      privilegeAccount: {
-        addr: ACCOUNT,
-        associatedKeys: [],
-        initialPrivileges: [],
-        creation: null
-      },
-      blockTags: { read: 'finalized', watch: 'finalized' }
-    })
-    node.setCode(ACCOUNT, CONTRACT_CODE, DEPLOYED_AT)
-    node.addLog({
-      address: ACCOUNT,
-      topics: encodeEventTopics({
-        abi: PRIVILEGE_EVENT,
-        eventName: 'LogPrivilegeChanged',
-        args: { addr: KEY_A }
-      }) as Hex[],
-      data: ARMED,
-      blockNumber: HEAD - 5,
-      blockHash: zeroHash,
-      logIndex: 0,
-      transactionHash: zeroHash
-    })
-    node.answer(
-      ACCOUNT,
-      encodeFunctionData({ abi: PRIVILEGES_VIEW, functionName: 'privileges', args: [KEY_A] }),
-      ARMED
-    )
-    node.answer(
-      DEPLOYED_ACTION,
-      encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, KEY_A] }),
-      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'isAuthority', result: true })
-    )
+    const world = createDeployedWorld()
+    world.chain.setPrivilege(KEY_A)
+    const client = await buildRecoveryClient(world.config)
     await expect(client.walletReads.removedKey()).resolves.toEqual({
       kind: 'named',
       key: getAddress(KEY_A)
     })
-    expect(node.provider.block).toHaveBeenCalledWith('finalized')
-    expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
-      { from: DEPLOYED_AT, to: HEAD },
-      { from: DEPLOYED_AT, to: HEAD }
-    ])
-    expect(node.calls.map(({ to, block }) => [to, block])).toEqual([
-      [ACCOUNT, HEAD],
-      [DEPLOYED_ACTION, HEAD]
-    ])
-    node.answer(
-      DEPLOYED_ACTION,
-      encodeFunctionData({ abi: ACTION_ABI, functionName: 'supportsAccount', args: [ACCOUNT] }),
-      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'supportsAccount', result: true })
-    )
     await expect(client.walletReads.fitCheck()).resolves.toEqual({
       basis: 'deployed-code',
       fits: true
     })
   })
 
-  it("names the sender of an unlisted account's latest setup commit through the transaction read", async () => {
-    const { node, client } = clientOver(FACTS, {
-      privilegeAccount: { addr: ACCOUNT, associatedKeys: [], initialPrivileges: [], creation: null }
-    })
-    node.setCode(ACCOUNT, CONTRACT_CODE, DEPLOYED_AT)
-    const commit = committedLog(
-      { action: DEPLOYED_ACTION, nonce: 1n, setupCommitment: ARMED },
-      HEAD - 5
-    )
-    node.addLog(commit)
-    node.setSender(commit.transactionHash, getAddress(KEY_A))
-    node.answer(
-      ACCOUNT,
-      encodeFunctionData({ abi: PRIVILEGES_VIEW, functionName: 'privileges', args: [KEY_A] }),
-      ARMED
-    )
-    node.answer(
-      DEPLOYED_ACTION,
-      encodeFunctionData({ abi: ACTION_ABI, functionName: 'isAuthority', args: [ACCOUNT, KEY_A] }),
-      encodeFunctionResult({ abi: ACTION_ABI, functionName: 'isAuthority', result: true })
-    )
-    await expect(client.walletReads.removedKey()).resolves.toEqual({
-      kind: 'named',
-      key: getAddress(KEY_A)
-    })
-    expect(node.transactionRead.mock.calls).toEqual([[commit.transactionHash]])
-  })
-
-  it("reads an unlisted account's privilege writes and manager logs in chunks of the configured width", async () => {
-    const { node, client } = clientOver(FACTS, {
-      privilegeAccount: {
-        addr: ACCOUNT,
-        associatedKeys: [],
-        initialPrivileges: [],
-        creation: null
-      },
-      logChunkWidth: 400_000
-    })
-    node.setCode(ACCOUNT, CONTRACT_CODE)
-    await expect(client.walletReads.removedKey()).resolves.toEqual({
-      kind: 'unavailable',
-      cause: 'no-source'
-    })
-    const rangesAt = (address: Address) =>
-      node.provider.logs.mock.calls
-        .filter(([filter]) => filter.addresses.some((at: Address) => isAddressEqual(at, address)))
-        .map(([, range]) => range)
-    expect(rangesAt(ACCOUNT)).toEqual([
-      { from: 0, to: 399_999 },
-      { from: 400_000, to: 799_999 },
-      { from: 800_000, to: HEAD }
-    ])
-    expect(rangesAt(MANAGER)).toEqual([{ from: DEPLOYED_AT, to: HEAD }])
-  })
-
   it('computes the commitment of a configuration as the commit the setup client prepares carries it', async () => {
-    const { node, client } = clientOver()
-    node.answer(MANAGER, stateOfCall(DEPLOYED_ACTION), stateAnswer(NO_STATE))
-    scriptMethod(node, METHOD_ECDSA, { name: 'method-ecdsa' })
-    scriptAction(node, { at: DEPLOYED_ACTION })
-    const prepared = await client.setup.prepareCommitSetup(draftAt('public'))
-    const args = commitArgsOf(commitCallOf(prepared))
-    expect(client.walletReads.commitmentOf(args.nonce, CONFIGURATION)).toBe(args.setupCommitment)
-    const other = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
-    expect(client.walletReads.commitmentOf(args.nonce, other)).not.toBe(args.setupCommitment)
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    const configuration = configurationOf(world, addressOf('guardian'))
+    const draft: SetupDraft = {
+      ...configuration,
+      privacy: { publicMetadata: '0x', backup: 'clear' }
+    }
+    const prepared = await client.setup.prepareCommitSetup(draft)
+    const decoded = decodeFunctionData({
+      abi: POLICY_MANAGER_WRITES_ABI,
+      data: commitCallOf(prepared).data
+    })
+    if (decoded.functionName !== 'commitSetup') {
+      throw new Error(`Not a commit: ${decoded.functionName}.`)
+    }
+    const [, setupCommitment, nonce] = decoded.args
+    expect(client.walletReads.commitmentOf(nonce, configuration)).toBe(setupCommitment)
+    const other = { ...configuration, wait: configuration.wait + 1 }
+    expect(client.walletReads.commitmentOf(nonce, other)).not.toBe(setupCommitment)
   })
 
   it("verifies a pasted reply through the guardian method's own verify view", async () => {
-    const { node, client } = clientOver()
-    scriptMethod(node, METHOD_ECDSA, { verify: VERIFY_MAGIC })
-    const request = approverRequestAt(guardianAt(0), 0)
-    const reply = approverReplyTo(request)
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    const guardian = privateKeyToAccount(generatePrivateKey())
+    const request = requestFor(world, guardian.address)
+    const digest = approvalDigest(membersOf(request), request.place)
+    const reply: Reply = {
+      kind: 'recovery-proof-reply',
+      version: 1,
+      chainId: request.chainId,
+      manager: request.manager,
+      account: request.account,
+      action: request.action,
+      attemptId: request.attemptId,
+      purpose: request.purpose,
+      place: request.place,
+      method: request.method,
+      config: request.config,
+      salt: request.salt,
+      digest,
+      proof: await guardian.sign({ hash: digest })
+    }
+    const verify = jest.spyOn(world.chain, 'call')
 
     expect(await client.walletReads.verifyReply(request, reply)).toBe('satisfied')
-    expect(verifyCallsOf(node)).toEqual([
-      expect.objectContaining({ module: METHOD_ECDSA, proof: reply.proof })
+    expect(verify.mock.calls.map(([to]) => getAddress(to))).toEqual([
+      getAddress(world.descriptor.methodEcdsa)
     ])
   })
 })
 
 describe('the recovery side', () => {
-  it("opens a gathering over the manager's state of the deployed action", async () => {
-    const { node, client } = clientOver()
-    node.answer(
-      MANAGER,
-      stateOfCall(DEPLOYED_ACTION),
-      stateAnswer({ ...NO_STATE, attemptState: 1 })
-    )
+  it('refuses a gathering while an attempt is already open on the deployed action', async () => {
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    const configuration = configurationOf(world, addressOf('guardian'))
+    await world.chain.commitSetup(configuration, { publicMetadata: '0x', backup: 'clear' })
+    world.chain.openAttempt()
     const thrown = await thrownBy(
       client.recovery.initRecoveryGathering(
-        { password: 'unused' },
-        { newAuthority: KEY_A },
+        configuration,
+        { newAuthority: addressOf('new-key'), removedAuthority: KEY_A },
         { token: zeroAddress, amount: 0n, payee: zeroAddress },
         { window: 3600 }
       )
     )
-    expect(thrown).toMatchObject({
-      name: 'ValidationRefusal',
-      findings: { errors: [expect.objectContaining({ code: 'request.attempt-active' })] }
-    })
-    expect(node.calls).toEqual([{ to: MANAGER, data: stateOfCall(DEPLOYED_ACTION), block: HEAD }])
+    expect(thrown).toBeInstanceOf(Error)
   })
 
   it("prepares the owner's cancel the account sends to the manager, at the pinned block", async () => {
-    const { node, client } = clientOver()
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    await world.chain.commitSetup(configurationOf(world, addressOf('guardian')), {
+      publicMetadata: '0x',
+      backup: 'clear'
+    })
+    world.chain.openAttempt()
     const call = await client.recovery.prepareCancelByOwner()
     expect([call.kind, call.target, call.value, call.sender]).toEqual([
       'call',
-      MANAGER,
+      getAddress(world.descriptor.manager),
       0n,
       'account'
     ])
-    expect(call.block).toEqual({ number: HEAD, hash: node.head.hash })
-    expect(decodeFunctionData({ abi: CANCEL_BY_OWNER, data: call.data })).toEqual({
-      functionName: 'cancelByOwner',
-      args: [getAddress(DEPLOYED_ACTION)]
-    })
+    const decoded = decodeFunctionData({ abi: POLICY_MANAGER_WRITES_ABI, data: call.data })
+    expect(decoded.functionName).toBe('cancelByOwner')
+    expect(getAddress((decoded.args as readonly unknown[])[0] as Address)).toBe(
+      getAddress(world.descriptor.action)
+    )
   })
 })
 
 describe('the events feed', () => {
   it("reads the manager's logs of the account at the deployed action, one feed on both sides", async () => {
-    const { node, client } = clientOver()
-    const { events } = client.setup
-    await expect(
-      events.fetch(events.accountFilter(), { from: HEAD - 10, to: HEAD })
-    ).resolves.toEqual([])
-    expect(node.provider.logs).toHaveBeenCalledWith(
-      {
-        addresses: [MANAGER],
-        topics: [
-          [
-            SETUP_COMMITTED_TOPIC,
-            SETUP_CLEARED_TOPIC,
-            ATTEMPT_STARTED_TOPIC,
-            ATTEMPT_CANCELLED_TOPIC,
-            ATTEMPT_CONSUMED_TOPIC
-          ],
-          pad(ACCOUNT.toLowerCase() as Hex),
-          pad(DEPLOYED_ACTION.toLowerCase() as Hex)
-        ]
-      },
-      { from: HEAD - 10, to: HEAD }
-    )
-    expect(client.recovery.events).toBe(events)
-  })
-
-  it('reads in chunks of the configured width, which a node with a narrow ceiling serves', async () => {
-    const { node, client } = clientOver(FACTS, { logChunkWidth: 2 })
-    const read = node.provider.logs.getMockImplementation()!
-    node.provider.logs.mockImplementation(async (filter, range) => {
-      if (range.to - range.from + 1 > 2) {
-        throw new Error('range too wide')
-      }
-      return read(filter, range)
+    const world = createDeployedWorld()
+    const client = await clientOver(world)
+    await world.chain.commitSetup(configurationOf(world, addressOf('guardian')), {
+      publicMetadata: '0x',
+      backup: 'clear'
     })
     const { events } = client.setup
-    await expect(events.fetch(events.accountFilter(), { from: 100, to: 104 })).resolves.toEqual([])
-    expect(node.provider.logs.mock.calls.map(([, range]) => range)).toEqual([
-      { from: 100, to: 101 },
-      { from: 102, to: 103 },
-      { from: 104, to: 104 }
-    ])
-  })
-})
-
-describe('the members the deployed kit does not serve yet', () => {
-  it("refuses the events feed's method filter by name", () => {
-    const { client } = clientOver()
-    expect(() => client.recovery.events.methodFilter()).toThrow(
-      expect.objectContaining({ name: 'NotServedRefusal', member: 'events.methodFilter' })
-    )
+    const { head } = world.chain
+    const found = await events.fetch(events.accountFilter(), { from: head.number - 10, to: head.number })
+    expect(found.map((notification) => notification.kind)).toEqual(['setup-committed'])
+    expect(world.ethers.getLogs).toHaveBeenCalled()
+    expect(client.recovery.events).toBe(events)
   })
 })

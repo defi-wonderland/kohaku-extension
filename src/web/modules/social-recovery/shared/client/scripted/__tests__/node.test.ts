@@ -2,7 +2,8 @@
  * The fake node under the real SDK: a seeded setup reads back through the
  * SDK's setup client and restores from its sealed backup, a landed prepared
  * batch changes what the manager answers, and a failed read rejects as the
- * provider would, a revert in the SDK's revert shape.
+ * provider would, a revert in the SDK's revert shape. A deployment that
+ * disagrees with the build, and a privilege write, answer as they were seeded.
  */
 import {
   isProviderRevert,
@@ -11,8 +12,16 @@ import {
   METHOD_ECDSA_CONFIG_ABI
 } from '@kohaku-eth/social-recovery'
 import type { Address, Configuration, DeploymentDescriptor } from '@kohaku-eth/social-recovery'
-import { encodeAbiParameters, zeroHash } from 'viem'
+import {
+  decodeFunctionResult,
+  encodeAbiParameters,
+  encodeFunctionData,
+  getAddress,
+  zeroAddress,
+  zeroHash
+} from 'viem'
 
+import { ACTION_IMMUTABLES_ABI } from '@web/modules/social-recovery/shared/client/abi'
 import { ScriptedNode } from '@web/modules/social-recovery/shared/client/scripted'
 
 const at = (n: number): Address => `0x${n.toString(16).padStart(40, '0')}` as Address
@@ -94,6 +103,53 @@ describe('the fake node under the SDK', () => {
     expect(state.hasSetup).toBe(true)
     expect(state.isAuthorized).toBe(true)
     expect((await setupClient.confirmSetup(draft, prepared)).landed).toBe(true)
+  })
+
+  it('answers a deployment that disagrees with the build as it was seeded, through the SDK', async () => {
+    const node = nodeOf()
+    node.setChainId(1)
+    await expect(clientsOver(node)).rejects.toThrow()
+
+    const other = nodeOf()
+    other.setDomain({ version: '2' })
+    await expect(clientsOver(other)).rejects.toThrow()
+
+    const moved = nodeOf()
+    moved.setConstants({ manager: GUARDIAN })
+    const answer = await moved.call(
+      DESCRIPTOR.action,
+      encodeFunctionData({ abi: ACTION_IMMUTABLES_ABI, functionName: 'MANAGER' }),
+      zeroAddress,
+      'latest'
+    )
+    expect(
+      decodeFunctionResult({ abi: ACTION_IMMUTABLES_ABI, functionName: 'MANAGER', data: answer })
+    ).toBe(getAddress(GUARDIAN))
+
+    moved.setContractCode(DESCRIPTOR.manager, false)
+    await expect(moved.code(DESCRIPTOR.manager, 'latest')).resolves.toBe('0x')
+    await expect(
+      moved.call(
+        DESCRIPTOR.manager,
+        encodeFunctionData({ abi: ACTION_IMMUTABLES_ABI, functionName: 'MANAGER' }),
+        zeroAddress,
+        'latest'
+      )
+    ).resolves.toBe('0x')
+  })
+
+  it('writes a privilege on the account with its log, as the account would', async () => {
+    const node = nodeOf()
+    node.setPrivilege(GUARDIAN)
+    const { setupClient } = await clientsOver(node)
+    const writes = await setupClient.events.fetch(setupClient.events.privilegeFilter(), {
+      from: 0,
+      to: node.head.number
+    })
+    expect(writes).toMatchObject([{ kind: 'privilege-changed', addr: getAddress(GUARDIAN) }])
+
+    node.setPrivilege(GUARDIAN, zeroHash)
+    expect(node.privileges.has(GUARDIAN.toLowerCase())).toBe(false)
   })
 
   it('rejects a failed read as a transport failure, and a scripted revert in the revert shape', async () => {
