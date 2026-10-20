@@ -5,8 +5,9 @@
  * chain: the locked path's password flow, the path a public setup shows with
  * no password, the dormant reading over an open attempt, a failed setup
  * read and an answer from an older block that read as failed with retry,
- * never as not set up, and an unlock that meets a newer setup and keeps only
- * the setup the chain names.
+ * never as not set up, an unlock that meets a newer setup and keeps only
+ * the setup the chain names, and an older setup opened beside the newer
+ * state, which is refused and read again.
  */
 import type {
   ReadsProbeProps,
@@ -206,6 +207,31 @@ describe('the overview reads', () => {
 
     const now = await world.client.setup.setupState()
     expect(now.setupNonce).not.toBe(first.setupNonce)
+    const kept = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
+    expect(kept.status === 'present' && kept.value.setupNonce).toBe(now.setupNonce)
+    expect(kept.status === 'present' && kept.value.configuration.wait).toBe(newer.wait)
+    expect(view.byTestId('readout-path')).not.toBeNull()
+  })
+
+  it('refuses an older setup opened beside the state of a newer one, keeps none of it, and reads the facts again', async () => {
+    const world = await worldAt('private')
+    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
+    const attemptState = jest.spyOn(world.client.walletReads, 'attemptState')
+    view = await renderOver(world)
+    const factsReads = attemptState.mock.calls.length
+    // A node behind the one the state reads came from opens the setup before the newer commit, once.
+    const getSetup = jest
+      .spyOn(world.client.setup, 'getSetup')
+      .mockResolvedValueOnce({ ...CONFIGURATION })
+
+    await view.press('overview-locked-action')
+    await typeInto(view.byTestId('overview-locked-field'), PASSWORD)
+    await view.press('overview-locked-unlock')
+
+    const now = await world.client.setup.setupState()
+    expect(getSetup).toHaveBeenCalledTimes(2)
+    expect(attemptState.mock.calls.length).toBeGreaterThan(factsReads)
     const kept = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
     expect(kept.status === 'present' && kept.value.setupNonce).toBe(now.setupNonce)
     expect(kept.status === 'present' && kept.value.configuration.wait).toBe(newer.wait)

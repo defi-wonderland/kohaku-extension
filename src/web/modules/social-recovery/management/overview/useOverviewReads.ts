@@ -106,13 +106,22 @@ export const useOverviewReads = ({
   }, [client.status, kit, factsRound])
 
   /**
-   * Keeps the opened setup on this device where the setup state read now still
-   * names the setup the facts read, and answers whether it does; a refused
+   * Keeps the opened setup on this device where it is the setup the facts read,
+   * its commitment at their nonce being theirs, and the setup state read now
+   * still names that setup; answers whether both hold. A node behind the one
+   * the facts came from can open an older setup, which this refuses. A refused
    * write leaves the path shown.
    */
   const keep = useCallback(
     async (state: SetupState, configuration: Configuration): Promise<boolean> => {
-      if (!kit || !isSameSetup(await kit.setup.setupState(), state)) {
+      if (!kit) {
+        return false
+      }
+      const committed = kit.walletReads.commitmentOf(state.setupNonce, configuration)
+      if (committed.toLowerCase() !== state.setupCommitment.toLowerCase()) {
+        return false
+      }
+      if (!isSameSetup(await kit.setup.setupState(), state)) {
         return false
       }
       await records
