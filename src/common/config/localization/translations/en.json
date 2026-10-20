@@ -1577,7 +1577,8 @@
         },
         "stillNeeded": {
           "title": "This member is still needed",
-          "body": "The path needs {{required}} of {{count}} in this group. Lower the threshold or add a replacement first, then remove this member."
+          "body": "The path needs {{required}} of {{count}} in this group. Lower the threshold or add a replacement first, then remove this member.",
+          "action": "Lower the threshold and remove"
         },
         "values": {
           "change": "Change",

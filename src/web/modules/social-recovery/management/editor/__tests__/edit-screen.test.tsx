@@ -54,6 +54,7 @@ jest.mock('@web/modules/social-recovery/management/editor/useCommittedLevel', ()
 const React: typeof import('react') = require('react')
 const {
   mount,
+  settle,
   t
 }: typeof import('@web/modules/social-recovery/cancel/__fixtures__/mount') = require('@web/modules/social-recovery/cancel/__fixtures__/mount')
 const review: typeof import('@web/modules/social-recovery/setup/review/__fixtures__/review') = require('@web/modules/social-recovery/setup/review/__fixtures__/review')
@@ -160,24 +161,42 @@ describe('the edit page', () => {
     view.unmount()
   })
 
-  it('marks every member its group cannot lose, and holds its removal with the reason', async () => {
+  it('marks every member its group cannot lose with the reason, and offers one action in place of its remove', async () => {
     const { view, records } = await editPage()
 
     ;[0, 1].forEach((member) => {
       expect(view.byTestId(`editor-member-0-${member}-still-needed`)).not.toBeNull()
-      expect(view.isDisabled(`editor-member-0-${member}-remove`)).toBe(true)
+      expect(view.byTestId(`editor-member-0-${member}-remove`)).toBeNull()
+      expect(view.textOf(`editor-member-0-${member}-lower-and-remove`)).toBe(
+        t(`${EDITOR}.stillNeeded.action`)
+      )
       expect(view.textOf(`editor-member-0-${member}-still-needed-reason`)).toBe(
         t(`${EDITOR}.stillNeeded.body`, { required: 2, count: 2 })
       )
     })
     expect(view.byTestId('editor-member-1-0-still-needed')).toBeNull()
+    expect(view.byTestId('editor-member-1-0-lower-and-remove')).toBeNull()
     expect(view.isDisabled('editor-member-1-0-remove')).toBe(false)
 
-    await view.press('editor-member-0-0-remove')
     await view.press('editor-member-1-0-remove')
-    const held = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
-    expect(held.status === 'present' && held.value.clauses[0].credentials).toHaveLength(2)
-    expect(held.status === 'present' && held.value.clauses[1].credentials).toHaveLength(1)
+    const removed = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
+    expect(removed.status === 'present' && removed.value.clauses[1].credentials).toHaveLength(1)
+    view.unmount()
+  })
+
+  it('lowers the threshold by one and removes the held member in one tap, and the group holds no chip after', async () => {
+    const { view, records } = await editPage()
+
+    await view.press('editor-member-0-0-lower-and-remove')
+    await settle()
+    const edited = await records.setup(CHAIN_ID, ACCOUNT).setupDraft.read()
+    expect(edited.status === 'present' && edited.value.clauses[0]).toEqual({
+      threshold: 1,
+      credentials: [COMMITTED.clauses[0].credentials[1]]
+    })
+    expect(view.byTestId('editor-member-0-0-still-needed')).toBeNull()
+    expect(view.byTestId('editor-member-0-0-lower-and-remove')).toBeNull()
+    expect(view.byTestId('editor-member-0-0-remove')).not.toBeNull()
     view.unmount()
   })
 

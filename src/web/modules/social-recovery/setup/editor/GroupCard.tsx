@@ -27,7 +27,8 @@ import type { GroupCardProps } from './types'
  * whole number or a threshold above the group's members (as soon as the group
  * holds one, before Continue), its members and their actions, the menu that
  * adds a member of any kind, and its remove. A member the path cannot lose
- * reads still needed, and its remove is held with the reason under it.
+ * reads still needed with the reason under it, and in place of its remove one
+ * action lowers the group's threshold by one and removes it.
  */
 const GroupCard = ({
   group: { clause, index },
@@ -43,6 +44,7 @@ const GroupCard = ({
   onThresholdText,
   onMakeRequired,
   onRemoveMember,
+  onLowerAndRemove,
   onToggleMenu,
   onRemoveGroup,
   stillNeeded
@@ -129,16 +131,29 @@ const GroupCard = ({
               hasBottomSpacing={false}
               style={spacings.mrTy}
             />
-            <Button
-              testID={`editor-member-${index}-${member}-remove`}
-              type="secondary"
-              size="small"
-              text={t('socialRecovery.actions.remove')}
-              onPress={() => onRemoveMember(index, member)}
-              disabled={checking || neededAt(member)}
-              hasBottomSpacing={false}
-              style={spacings.mrTy}
-            />
+            {neededAt(member) ? (
+              <Button
+                testID={`editor-member-${index}-${member}-lower-and-remove`}
+                type="secondary"
+                size="small"
+                text={t('socialRecovery.management.editor.stillNeeded.action')}
+                onPress={() => onLowerAndRemove(index, member)}
+                disabled={checking}
+                hasBottomSpacing={false}
+                style={spacings.mrTy}
+              />
+            ) : (
+              <Button
+                testID={`editor-member-${index}-${member}-remove`}
+                type="secondary"
+                size="small"
+                text={t('socialRecovery.actions.remove')}
+                onPress={() => onRemoveMember(index, member)}
+                disabled={checking}
+                hasBottomSpacing={false}
+                style={spacings.mrTy}
+              />
+            )}
             {neededAt(member) && (
               <StatusChip
                 text={renderChip('editor', 'stillNeeded', t)}

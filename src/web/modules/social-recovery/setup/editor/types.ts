@@ -234,6 +234,8 @@ export interface GroupCardProps extends PathPartProps {
   onThresholdText: (group: number, text: string) => void
   onMakeRequired: (group: number, member: number) => void
   onRemoveMember: (group: number, member: number) => void
+  /** Lowers the group's threshold by one and removes a member the path still needs, in one edit. */
+  onLowerAndRemove: (group: number, member: number) => void
   onToggleMenu: (target: AddTarget) => void
   onRemoveGroup: (group: number) => void
   stillNeeded?: ReadonlySet<MemberKey>
@@ -252,6 +254,7 @@ export interface EditorPathProps extends PathPartProps {
   onThresholdText: (group: number, text: string) => void
   onMakeRequired: (group: number, member: number) => void
   onRemoveMember: (group: number, member: number) => void
+  onLowerAndRemove: (group: number, member: number) => void
   onToggleMenu: (target: AddTarget) => void
   onRemoveGroup: (group: number) => void
   onAddGroup: () => void

@@ -421,6 +421,15 @@ const EditorView = ({
               commit(removeMember(current(), index, member), currentRoles())
             }
           }}
+          onLowerAndRemove={(index, member) => {
+            const { threshold } = current()[index]
+            if (stillNeeded?.has(`${index}:${member}`) && threshold > 1) {
+              commit(
+                setThreshold(removeMember(current(), index, member), index, threshold - 1),
+                currentRoles()
+              )
+            }
+          }}
           stillNeeded={stillNeeded}
           onRemoveGroup={(index) =>
             commit(removeClause(current(), index), withoutRole(currentRoles(), index))

@@ -46,6 +46,7 @@ const EditorPath = ({
   onThresholdText,
   onMakeRequired,
   onRemoveMember,
+  onLowerAndRemove,
   onToggleMenu,
   onRemoveGroup,
   onAddGroup,
@@ -120,6 +121,7 @@ const EditorPath = ({
             onThresholdText={onThresholdText}
             onMakeRequired={onMakeRequired}
             onRemoveMember={onRemoveMember}
+            onLowerAndRemove={onLowerAndRemove}
             onToggleMenu={onToggleMenu}
             onRemoveGroup={onRemoveGroup}
             stillNeeded={stillNeeded}
