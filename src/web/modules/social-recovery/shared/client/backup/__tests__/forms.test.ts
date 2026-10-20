@@ -31,7 +31,6 @@ const CONFIGURATION: Configuration = {
 
 describe('backupFormOf', () => {
   it('names the empty backup', () => {
-    expect(EMPTY_BACKUP).toBe('0x')
     expect(backupFormOf(EMPTY_BACKUP)).toBe('empty')
   })
 

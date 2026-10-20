@@ -1,8 +1,18 @@
 /**
- * A deployed or undeployed account on a fake node, with the wallet's reads of
- * it built over the kit's own reads. The logs and the view answers are
- * encoded here from hand-written signatures.
+ * A deployed or undeployed account on a scripted provider, with the wallet's
+ * reads of it built over the SDK's own manager, action, event manager and
+ * codec. The account's privilege writes and views are encoded with the
+ * account ABIs the client carries.
  */
+import {
+  ACCOUNT_EVENTS_ABI,
+  AmbireActionCodec,
+  AmbireRecoveryAction,
+  EventManager,
+  PolicyManager,
+  RECOVERY_ACTION_VIEWS_ABI
+} from '@kohaku-eth/social-recovery'
+import type { Address, BlockRange, BlockTag, FilterSpec } from '@kohaku-eth/social-recovery'
 import {
   decodeFunctionData,
   encodeAbiParameters,
@@ -11,13 +21,31 @@ import {
   getAddress,
   type Hex,
   pad,
-  parseAbi,
   toFunctionSelector,
   zeroHash
 } from 'viem'
 
 import { ERC_4337_ENTRYPOINT } from '@ambire-common/consts/deploy'
-import type { Address, BlockRange, FilterSpec } from '@kohaku-eth/social-recovery'
+import {
+  ACCOUNT,
+  ACCOUNT_CODE,
+  ACTION,
+  committedLog,
+  CONTRACT_CODE,
+  DEPLOYED_AT,
+  DESCRIPTOR,
+  HEAD,
+  scriptedProvider
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import {
+  ACCOUNT_PRIVILEGES_ABI,
+  ACTION_IMMUTABLES_ABI
+} from '@web/modules/social-recovery/shared/client/abi'
+import { createActionViews } from '@web/modules/social-recovery/shared/client/deployment-checks'
+import { LOG_CHUNK_BLOCKS } from '@web/modules/social-recovery/shared/client/events'
+import { createWalletReads } from '@web/modules/social-recovery/shared/client/wallet-reads'
+
+import type { AccountWorldOptions } from './types'
 
 export const KEY_C: Address = '0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3'
 export const CONTROLLER: Address = '0xc4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4'
@@ -30,13 +58,8 @@ export const HOLDS: Hex = pad('0x01')
 export const CREATION = { factoryAddr: ACTION_HOLDER, bytecode: '0x60', salt: zeroHash }
 const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
 
-const PRIVILEGE_EVENT = parseAbi(['event LogPrivilegeChanged(address indexed addr, bytes32 priv)'])
-const PRIVILEGES_VIEW = parseAbi(['function privileges(address) view returns (bytes32)'])
-const IS_AUTHORITY = parseAbi([
-  'function isAuthority(address account, address key) view returns (bool)'
-])
 export const [PRIVILEGE_TOPIC] = encodeEventTopics({
-  abi: PRIVILEGE_EVENT,
+  abi: ACCOUNT_EVENTS_ABI,
   eventName: 'LogPrivilegeChanged'
 })
 
@@ -55,7 +78,7 @@ export const privilegeLog = (addr: Address, priv: Hex, blockNumber: number, remo
   return {
     address: ACCOUNT,
     topics: encodeEventTopics({
-      abi: PRIVILEGE_EVENT,
+      abi: ACCOUNT_EVENTS_ABI,
       eventName: 'LogPrivilegeChanged',
       args: { addr }
     }) as Hex[],
@@ -73,21 +96,22 @@ export const commitAt = (blockNumber: number, action: Address = ACTION) =>
 
 /** The action's payload of a handover to `newAuthority`. */
 export const handoverTo = (newAuthority: Address): Hex =>
-  encodeAbiParameters(
-    [{ type: 'address' }, { type: 'address' }],
-    [newAuthority, '0x0000000000000000000000000000000000000bad']
-  )
+  new AmbireActionCodec([ACTION]).encode({
+    newAuthority,
+    removedAuthority: '0x0000000000000000000000000000000000000bad'
+  })
 
-/** The ranges a scan from `from` to the pinned head reads, in chunks of ten thousand blocks. */
+/** The ranges a scan from `from` to the pinned head reads, in the wallet's chunks. */
 export const chunksFrom = (from: number) => {
   const chunks: BlockRange[] = []
-  for (let start = from; start <= HEAD; start += 10_000) {
-    chunks.push({ from: start, to: Math.min(start + 9_999, HEAD) })
+  for (let start = from; start <= HEAD; start += LOG_CHUNK_BLOCKS) {
+    chunks.push({ from: start, to: Math.min(start + LOG_CHUNK_BLOCKS - 1, HEAD) })
   }
   return chunks
 }
 
 export const worldOf = ({
+  addr = ACCOUNT,
   code = ACCOUNT_CODE,
   deployedAt = DEPLOYED_AT,
   createdAt = deployedAt,
@@ -99,9 +123,11 @@ export const worldOf = ({
   initialPrivileges = [],
   creation = null,
   knownKeys,
-  blockTags
+  blockTags = { read: 'latest', watch: 'latest' },
+  accountImplementation,
+  supportsAccount = true
 }: AccountWorldOptions = {}) => {
-  const node = fakeNode()
+  const node = scriptedProvider()
   node.setCode(ACCOUNT, code, createdAt)
   node.setCode(ACTION, CONTRACT_CODE)
   logs.forEach((log) => node.addLog(log))
@@ -111,44 +137,72 @@ export const worldOf = ({
   node.answerWith(ACCOUNT, toFunctionSelector('privileges(address)'), (data) => {
     const {
       args: [key]
-    } = decodeFunctionData({ abi: PRIVILEGES_VIEW, data })
+    } = decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data })
     return listed(holders, key) ? HOLDS : zeroHash
   })
   node.answerWith(ACTION, toFunctionSelector('isAuthority(address,address)'), (data) => {
-    const {
-      args: [, key]
-    } = decodeFunctionData({ abi: IS_AUTHORITY, data })
+    const decoded = decodeFunctionData({ abi: RECOVERY_ACTION_VIEWS_ABI, data })
     return encodeFunctionResult({
-      abi: IS_AUTHORITY,
+      abi: RECOVERY_ACTION_VIEWS_ABI,
       functionName: 'isAuthority',
-      result: listed(authorities, key)
+      result: decoded.functionName === 'isAuthority' && listed(authorities, decoded.args[1])
     })
   })
+  node.answerWith(ACTION, toFunctionSelector('supportsAccount(address)'), () =>
+    encodeFunctionResult({
+      abi: RECOVERY_ACTION_VIEWS_ABI,
+      functionName: 'supportsAccount',
+      result: supportsAccount
+    })
+  )
+  node.answerWith(ACTION, toFunctionSelector('AMBIRE_IMPLEMENTATION()'), () =>
+    encodeFunctionResult({
+      abi: ACTION_IMMUTABLES_ABI,
+      functionName: 'AMBIRE_IMPLEMENTATION',
+      result: DESCRIPTOR.servedImplementation
+    })
+  )
   const descriptor = { ...DESCRIPTOR, deployedAt }
-  const reads = createKitWalletReads({
-    account: { addr: ACCOUNT, associatedKeys, initialPrivileges, creation },
+  const codec = new AmbireActionCodec([ACTION])
+  const { provider } = node
+  const reads = createWalletReads({
+    account: { addr, associatedKeys, initialPrivileges, creation },
     knownKeys,
-    action: createActionReads({ provider: node.provider, codeRead: node.codeRead }, ACTION),
-    manager: createManagerReads(node.provider, MANAGER),
-    moduleReads: createMethodReads(node.provider),
-    codeRead: node.codeRead,
-    provider: node.provider,
-    blockTags,
+    accountImplementation,
+    provider,
     descriptor,
-    events: createKitEventManager({ provider: node.provider, descriptor, account: ACCOUNT }),
-    transactionRead: node.transactionRead
+    blockTags,
+    logChunkSize: LOG_CHUNK_BLOCKS,
+    policyManager: new PolicyManager(provider, descriptor, ACCOUNT, ACTION, blockTags),
+    action: new AmbireRecoveryAction(provider, descriptor, ACCOUNT, ACTION, codec, blockTags),
+    actionViews: createActionViews(provider, ACTION),
+    events: new EventManager(provider, descriptor, ACCOUNT, ACTION, new Map(), {
+      logChunkSize: LOG_CHUNK_BLOCKS
+    }),
+    codec
   })
   const askedPrivileges = () =>
     node.calls
       .filter(({ to }) => same(to, ACCOUNT))
-      .map(({ data }) => lower(decodeFunctionData({ abi: PRIVILEGES_VIEW, data }).args[0]))
+      .map(({ data }) => lower(decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data }).args[0]))
   const askedAuthority = () =>
     node.calls
       .filter(({ to }) => same(to, ACTION))
-      .map(({ data, block }) => [
-        lower(decodeFunctionData({ abi: IS_AUTHORITY, data }).args[1]),
-        block
-      ])
+      .flatMap(({ data, block }): [string, BlockTag][] => {
+        const decoded = decodeFunctionData({ abi: RECOVERY_ACTION_VIEWS_ABI, data })
+        return decoded.functionName === 'isAuthority' ? [[lower(decoded.args[1]), block]] : []
+      })
+  /** The action's views asked, by name and arguments, in order. */
+  const askedAction = () =>
+    node.calls
+      .filter(({ to }) => same(to, ACTION))
+      .map(({ data }) => {
+        const decoded = decodeFunctionData({
+          abi: [...RECOVERY_ACTION_VIEWS_ABI, ...ACTION_IMMUTABLES_ABI],
+          data
+        })
+        return [decoded.functionName, ...(decoded.args ?? [])]
+      })
   const scans = () =>
     (node.provider.logs.mock.calls as [FilterSpec, BlockRange][]).map(([filter, range]) => ({
       filter,
@@ -156,7 +210,7 @@ export const worldOf = ({
     }))
   const scansOf = (address: Address) =>
     scans()
-      .filter(({ filter }) => same(filter.addresses[0], address))
+      .filter(({ filter }) => same(filter.address[0], address))
       .map(({ range }) => range)
-  return { node, reads, askedPrivileges, askedAuthority, scans, scansOf }
+  return { node, reads, askedPrivileges, askedAuthority, askedAction, scans, scansOf }
 }

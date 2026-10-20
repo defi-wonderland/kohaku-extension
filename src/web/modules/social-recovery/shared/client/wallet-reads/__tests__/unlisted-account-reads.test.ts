@@ -14,7 +14,39 @@ import { toFunctionSelector, zeroHash } from 'viem'
 
 import type { Address, RawLog } from '@kohaku-eth/social-recovery'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
+import {
+  ACCOUNT,
+  ACCOUNT_CODE,
+  ACTION,
+  attemptConsumedLog,
+  attemptStartedLog,
+  DEPLOYED_AT,
+  HEAD,
+  KEY_A,
+  KEY_B,
+  MANAGER,
+  OTHER_ACTION
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import { pastRetryPauses } from '@web/modules/social-recovery/shared/client/events/__fixtures__/retries'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
+import {
+  ACTION_HOLDER,
+  chunksFrom,
+  commitAt,
+  CONTROLLER,
+  ENTRY_POINT,
+  handoverTo,
+  HOLDS,
+  KEY_C,
+  named,
+  NEW_KEY,
+  PRIVILEGE_TOPIC,
+  privilegeLog,
+  RELAYER,
+  same,
+  STRANGER,
+  worldOf
+} from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/world'
 
 describe("the sender of the account's latest setup commit", () => {
   it('is the removed key where no privilege write names it and the wallet knows none, once the action counts it', async () => {
@@ -26,7 +58,7 @@ describe("the sender of the account's latest setup commit", () => {
       authorities: [CONTROLLER]
     })
     await expect(reads.removedKey()).resolves.toEqual(named(CONTROLLER))
-    expect(node.transactionRead.mock.calls).toEqual([[commit.transactionHash]])
+    expect(node.provider.transaction.mock.calls).toEqual([[commit.transactionHash]])
     expect(askedAuthority()).toEqual([[CONTROLLER, HEAD]])
   })
 
@@ -45,7 +77,7 @@ describe("the sender of the account's latest setup commit", () => {
       authorities: [KEY_A, KEY_B, CONTROLLER]
     })
     await expect(reads.removedKey()).resolves.toEqual(named(CONTROLLER))
-    expect(node.transactionRead.mock.calls).toEqual([[latest.transactionHash]])
+    expect(node.provider.transaction.mock.calls).toEqual([[latest.transactionHash]])
   })
 
   eachIt<[string, Address | null]>([
@@ -176,7 +208,7 @@ describe('the logs a node answers beyond the filter', () => {
       { ...attemptConsumedLog(9n, DEPLOYED_AT + 50), address: STRANGER }
     ])
     await expect(world.reads.removedKey()).resolves.toEqual(named(KEY_A))
-    expect(world.node.transactionRead.mock.calls).toEqual([[commit.transactionHash]])
+    expect(world.node.provider.transaction.mock.calls).toEqual([[commit.transactionHash]])
     expect(world.askedPrivileges()).toEqual([KEY_A])
   })
 })
@@ -266,11 +298,11 @@ describe('the scans of an account with no creation record', () => {
     })
     expect(
       scans()
-        .filter(({ filter }) => same(filter.addresses[0], ACCOUNT))
+        .filter(({ filter }) => same(filter.address[0], ACCOUNT))
         .map(({ filter, range }) => [filter, range])
     ).toEqual(
       chunksFrom(createdAt).map((range) => [
-        { addresses: [ACCOUNT], topics: [PRIVILEGE_TOPIC] },
+        { address: [ACCOUNT], topics: [[PRIVILEGE_TOPIC]] },
         range
       ])
     )
@@ -301,7 +333,7 @@ describe('the scans of an account with no creation record', () => {
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_B))
     expect(scansOf(ACCOUNT)[0].from).toBe(createdAt)
     expect(Math.min(...scansOf(ACCOUNT).map(({ from }) => from))).toBe(createdAt)
-    const searched = node.codeRead.code.mock.calls.map(([, block]) => block)
+    const searched = node.provider.code.mock.calls.map(([, block]) => block)
     expect(searched).toContain(createdAt)
     expect(searched).toContain(createdAt - 1)
   })
@@ -334,7 +366,7 @@ describe('the scans of an account with no creation record', () => {
         kind: 'unavailable',
         cause: 'no-source'
       })
-      const blocks = node.codeRead.code.mock.calls.map(([, block]) => block)
+      const blocks = node.provider.code.mock.calls.map(([, block]) => block)
       expect(blocks[0]).toBe(HEAD)
       expect(blocks.length - 1).toBeLessThanOrEqual(Math.floor(Math.log2(HEAD)) + 1)
       expect(scansOf(ACCOUNT)[0].from).toBe(createdAt)
@@ -352,7 +384,7 @@ describe('the scans of an account with no creation record', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
     expect(node.provider.block.mock.calls).toEqual([['finalized']])
-    const codeBlocks = node.codeRead.code.mock.calls.map(([, block]) => block)
+    const codeBlocks = node.provider.code.mock.calls.map(([, block]) => block)
     expect(codeBlocks[0]).toBe(HEAD)
     expect(codeBlocks.every((block) => typeof block === 'number' && block <= HEAD)).toBe(true)
     expect(new Set(scans().map(({ range }) => range.to))).toEqual(new Set([HEAD]))
@@ -441,7 +473,7 @@ describe('an account with no creation record and no code', () => {
       cause: 'no-source'
     })
     expect(node.provider.logs).not.toHaveBeenCalled()
-    expect(node.transactionRead).not.toHaveBeenCalled()
+    expect(node.provider.transaction).not.toHaveBeenCalled()
     expect(node.calls).toEqual([])
   })
 })
@@ -475,8 +507,8 @@ describe('a node that refuses code reads at past blocks for its pruned history',
       holders: [KEY_A],
       authorities: [KEY_A]
     })
-    const answer = world.node.codeRead.code.getMockImplementation()
-    world.node.codeRead.code.mockImplementation(async (address, block) => {
+    const answer = world.node.provider.code.getMockImplementation()
+    world.node.provider.code.mockImplementation(async (address, block) => {
       if (refuseHead || (typeof block === 'number' && block < HEAD)) {
         throw refusal
       }
@@ -546,11 +578,11 @@ describe('a failed read of an account with no creation record', () => {
   const failure = providerReadFailure('call', new Error('timeout'))
   eachIt<[string, (world: ReturnType<typeof worldOf>) => void]>([
     ['the pinned block', ({ node }) => node.provider.block.mockRejectedValueOnce(failure)],
-    ['the code', ({ node }) => node.codeRead.code.mockRejectedValueOnce(failure)],
+    ['the code', ({ node }) => node.provider.code.mockRejectedValueOnce(failure)],
     [
       'the code at a past block',
       ({ node }) =>
-        node.codeRead.code.mockResolvedValueOnce(ACCOUNT_CODE).mockRejectedValueOnce(failure)
+        node.provider.code.mockResolvedValueOnce(ACCOUNT_CODE).mockRejectedValueOnce(failure)
     ],
     ['a log chunk, on every try,', ({ node }) => node.provider.logs.mockRejectedValue(failure)],
     [

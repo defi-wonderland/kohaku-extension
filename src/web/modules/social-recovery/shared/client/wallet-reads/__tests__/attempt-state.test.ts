@@ -3,7 +3,20 @@
  * one pinned block: the state's fields and the block, a refused read
  * rethrown, and no code read and no log read made.
  */
-import { encodeErrorResult, zeroAddress, zeroHash } from 'viem'
+import { ERRORS_MANAGER_ABI } from '@kohaku-eth/social-recovery'
+import { encodeErrorResult, getAddress, zeroAddress, zeroHash } from 'viem'
+
+import {
+  ACCOUNT_CODE,
+  CONTRACT_CODE,
+  HEAD,
+  MANAGER,
+  reverting,
+  scriptState,
+  stateOfCall,
+  thrownBy
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import { worldOf } from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/world'
 
 const COMMITMENT = `0x${'5a'.repeat(32)}` as const
 
@@ -52,10 +65,10 @@ describe("the manager's attempt state", () => {
   it('reads the state once, at the pinned block, and makes no code read and no log read', async () => {
     const { node, reads } = deployedWorld()
     await reads.attemptState()
-    expect(node.calls).toEqual([{ to: MANAGER, data: stateOfCall(), block: HEAD }])
-    expect(node.codeRead.code).not.toHaveBeenCalled()
+    expect(node.calls).toEqual([{ to: getAddress(MANAGER), data: stateOfCall(), block: HEAD }])
+    expect(node.provider.code).not.toHaveBeenCalled()
     expect(node.provider.logs).not.toHaveBeenCalled()
-    expect(node.transactionRead).not.toHaveBeenCalled()
+    expect(node.provider.transaction).not.toHaveBeenCalled()
   })
 
   it('pins the block at the configured read tag', async () => {
@@ -78,7 +91,7 @@ describe("the manager's attempt state", () => {
       stateOfCall(),
       reverting(
         encodeErrorResult({
-          abi: POLICY_MANAGER_ABI,
+          abi: ERRORS_MANAGER_ABI,
           errorName: 'PolicyManager_WrongSetupNonce',
           args: [2n, 3n]
         })
@@ -86,7 +99,7 @@ describe("the manager's attempt state", () => {
     )
     expect(await thrownBy(reads.attemptState())).toMatchObject({
       name: 'LandingRevert',
-      code: 'WrongSetupNonce'
+      code: 'PolicyManager_WrongSetupNonce'
     })
   })
 

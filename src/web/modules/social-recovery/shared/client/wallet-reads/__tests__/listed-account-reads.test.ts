@@ -12,6 +12,30 @@ import { zeroHash } from 'viem'
 
 import type { Address, RawLog } from '@kohaku-eth/social-recovery'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
+import {
+  ACCOUNT,
+  attemptConsumedLog,
+  attemptStartedLog,
+  DEPLOYED_AT,
+  HEAD,
+  KEY_A,
+  KEY_B,
+  MANAGER
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import {
+  chunksFrom,
+  commitAt,
+  CREATION,
+  ENTRY_POINT,
+  handoverTo,
+  HOLDS,
+  KEY_C,
+  named,
+  NEW_KEY,
+  privilegeLog,
+  RELAYER,
+  worldOf
+} from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/world'
 
 const listedWorldOf = (options: Parameters<typeof worldOf>[0] = {}) =>
   worldOf({
@@ -143,7 +167,7 @@ describe('the scans of a deployed listed account', () => {
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_C))
     expect(scansOf(ACCOUNT)).toEqual(chunksFrom(createdAt))
     expect(scansOf(MANAGER)).toEqual(chunksFrom(DEPLOYED_AT))
-    const searched = node.codeRead.code.mock.calls.map(([, block]) => block)
+    const searched = node.provider.code.mock.calls.map(([, block]) => block)
     expect(searched[0]).toBe(HEAD)
     expect(searched).toContain(createdAt)
     expect(searched).toContain(createdAt - 1)
@@ -160,8 +184,8 @@ describe('a listed account with no code', () => {
     })
     await expect(reads.removedKey()).resolves.toEqual(named(KEY_A))
     expect(node.provider.logs).not.toHaveBeenCalled()
-    expect(node.transactionRead).not.toHaveBeenCalled()
+    expect(node.provider.transaction).not.toHaveBeenCalled()
     expect(node.calls).toEqual([])
-    expect(node.codeRead.code.mock.calls.map(([, block]) => block)).toEqual([HEAD])
+    expect(node.provider.code.mock.calls.map(([, block]) => block)).toEqual([HEAD])
   })
 })

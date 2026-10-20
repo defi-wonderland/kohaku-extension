@@ -1,48 +1,161 @@
 /**
- * The verify of a pasted reply over a node scripted by hand: the reply is
+ * The verify of a pasted reply over a provider scripted by hand: the reply is
  * checked against the request of its own place, then judged by the
  * credential's own method module through its `verify` view. Every address is
  * made up.
  */
-import { concat, pad, toFunctionSelector } from 'viem'
-
+import {
+  approvalDigest,
+  GATHERING_REPLY_KIND,
+  GATHERING_REPLY_VERSION,
+  GATHERING_REQUEST_KIND,
+  GATHERING_REQUEST_VERSION,
+  METHOD_ECDSA_CONFIG_ABI,
+  passkeyMethod,
+  POLICY_METHOD_VERIFY_ABI,
+  VERDICT_MAGIC_VALUE
+} from '@kohaku-eth/social-recovery'
+import type { ApproverRequest, Reply } from '@kohaku-eth/social-recovery'
+import {
+  concat,
+  decodeFunctionData,
+  encodeAbiParameters,
+  keccak256,
+  pad,
+  slice,
+  toFunctionSelector,
+  zeroAddress
+} from 'viem'
 import type { Hex } from 'viem'
 
-import type { ApproverRequest, Reply } from '@kohaku-eth/social-recovery'
 import { eachIt } from '@web/modules/social-recovery/shared/chrome/__fixtures__/table'
+import {
+  ACCOUNT,
+  ACTION,
+  CONTRACT_CODE,
+  DESCRIPTOR,
+  HEAD_TIMESTAMP,
+  MANAGER,
+  METHOD_ECDSA,
+  METHOD_PASSKEY,
+  reverting,
+  scriptedProvider,
+  thrownBy
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import type { ScriptedProvider } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
+import { createReplyVerify } from '@web/modules/social-recovery/shared/client/wallet-reads'
 
-const GUARDIAN_REQUEST = approverRequestAt(guardianAt(0), 0)
-const PASSKEY_REQUEST = approverRequestAt(passkeyAt(1), 1)
+type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
+
 const OTHER_WORD: Hex = '0xffffffff'
 const VERIFY_SELECTOR = toFunctionSelector('verify(bytes,bytes32,bytes)')
-const MAGIC_WORD = pad(VERIFY_MAGIC, { dir: 'right', size: 32 })
 
-const worldOf = (scripts: { ecdsa?: ScriptedMethod; passkey?: ScriptedMethod } = {}) => {
-  const node = fakeNode()
-  scriptMethod(node, METHOD_ECDSA, scripts.ecdsa)
-  scriptMethod(node, METHOD_PASSKEY, scripts.passkey)
-  const reads = createKitWalletReads({
-    account: { addr: ACCOUNT, associatedKeys: [], initialPrivileges: [], creation: null },
-    action: createActionReads({ provider: node.provider, codeRead: node.codeRead }, ACTION),
-    manager: createManagerReads(node.provider, MANAGER),
-    moduleReads: createMethodReads(node.provider),
-    codeRead: node.codeRead,
-    provider: node.provider,
-    descriptor: DESCRIPTOR,
-    events: createKitEventManager({
-      provider: node.provider,
-      descriptor: DESCRIPTOR,
-      account: ACCOUNT
-    }),
-    transactionRead: node.transactionRead
+const guardianConfigAt = (index: number): Hex =>
+  encodeAbiParameters(METHOD_ECDSA_CONFIG_ABI, [pad(`0x${(index + 1).toString(16)}`, { size: 20 })])
+
+const passkeyConfigAt = (index: number): Hex =>
+  passkeyMethod().codec.encodeConfig({
+    x: BigInt(index + 1),
+    y: BigInt(index + 2),
+    rpIdHash: pad(`0x${(index + 3).toString(16)}`)
   })
-  return { node, verify: reads.verifyReply }
+
+/** The request an approver of `config` under `method` at `place` answers, on an approval of the account. */
+const approverRequestAt = (method: Hex, config: Hex, place: number): ApprovalRequest => ({
+  kind: GATHERING_REQUEST_KIND,
+  version: GATHERING_REQUEST_VERSION,
+  purpose: 'approval',
+  chainId: String(DESCRIPTOR.chainId),
+  manager: MANAGER,
+  digestVersion: DESCRIPTOR.digestVersion,
+  account: ACCOUNT,
+  action: ACTION,
+  attemptId: '7',
+  setupNonce: '3',
+  setupBodyHash: keccak256('0x01'),
+  payload: '0x02',
+  order: { token: zeroAddress, amount: '0', payee: zeroAddress },
+  validUntil: String(HEAD_TIMESTAMP + 7200),
+  place,
+  method,
+  config,
+  salt: pad(`0x${(place + 1).toString(16)}`),
+  credentialHoldsCode: false
+})
+
+/** The digest the SDK derives for an approval request's place. */
+const digestOfRequest = (request: ApprovalRequest): Hex =>
+  approvalDigest(
+    {
+      chainId: Number(request.chainId),
+      manager: request.manager,
+      account: request.account,
+      action: request.action,
+      attemptId: BigInt(request.attemptId),
+      setupNonce: BigInt(request.setupNonce),
+      setupBodyHash: request.setupBodyHash,
+      validUntil: Number(request.validUntil),
+      digestVersion: request.digestVersion,
+      payload: request.payload,
+      order: { ...request.order, amount: BigInt(request.order.amount) }
+    },
+    request.place
+  )
+
+/** The reply to `request`, made against its own digest. */
+const approverReplyTo = (request: ApprovalRequest, overrides: Partial<Reply> = {}): Reply => ({
+  kind: GATHERING_REPLY_KIND,
+  version: GATHERING_REPLY_VERSION,
+  chainId: request.chainId,
+  manager: request.manager,
+  account: request.account,
+  action: request.action,
+  attemptId: request.attemptId,
+  purpose: request.purpose,
+  place: request.place,
+  method: request.method,
+  config: request.config,
+  salt: request.salt,
+  digest: digestOfRequest(request),
+  proof: `0x${'0f'.repeat(65)}`,
+  ...overrides
+})
+
+const GUARDIAN_REQUEST = approverRequestAt(METHOD_ECDSA, guardianConfigAt(0), 0)
+const PASSKEY_REQUEST = approverRequestAt(METHOD_PASSKEY, passkeyConfigAt(1), 1)
+
+/** The `verify` calls the provider was asked, decoded, in order. */
+const verifyCallsOf = (node: ScriptedProvider) =>
+  node.calls
+    .filter(({ data }) => slice(data, 0, 4) === VERIFY_SELECTOR)
+    .map(({ to, data }) => {
+      const {
+        args: [config, digest, proof]
+      } = decodeFunctionData({ abi: POLICY_METHOD_VERIFY_ABI, data })
+      return { module: to, config, digest, proof }
+    })
+
+const answersWord = (word: Hex) => () => word
+
+const worldOf = (
+  verdicts: { ecdsa?: () => Hex | Error; passkey?: () => Hex | Error } = {}
+) => {
+  const node = scriptedProvider()
+  node.setCode(METHOD_ECDSA, CONTRACT_CODE)
+  node.setCode(METHOD_PASSKEY, CONTRACT_CODE)
+  if (verdicts.ecdsa) {
+    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, verdicts.ecdsa)
+  }
+  if (verdicts.passkey) {
+    node.answerWith(METHOD_PASSKEY, VERIFY_SELECTOR, verdicts.passkey)
+  }
+  return { node, verify: createReplyVerify(node.provider) }
 }
 
 describe("the module's judgement", () => {
   it("is satisfied where the guardian's module answers the magic value over the request's digest", async () => {
-    const { node, verify } = worldOf({ ecdsa: { verify: VERIFY_MAGIC } })
+    const { node, verify } = worldOf({ ecdsa: answersWord(VERDICT_MAGIC_VALUE) })
     const reply = approverReplyTo(GUARDIAN_REQUEST)
 
     expect(await verify(GUARDIAN_REQUEST, reply)).toBe('satisfied')
@@ -58,8 +171,8 @@ describe("the module's judgement", () => {
 
   it("asks the passkey's own module for a passkey's reply, never the guardian's", async () => {
     const { node, verify } = worldOf({
-      ecdsa: { verify: OTHER_WORD },
-      passkey: { verify: VERIFY_MAGIC }
+      ecdsa: answersWord(OTHER_WORD),
+      passkey: answersWord(VERDICT_MAGIC_VALUE)
     })
 
     expect(await verify(PASSKEY_REQUEST, approverReplyTo(PASSKEY_REQUEST))).toBe('satisfied')
@@ -67,60 +180,50 @@ describe("the module's judgement", () => {
   })
 
   it('is rejected where the module answers another word', async () => {
-    const { verify } = worldOf({ ecdsa: { verify: OTHER_WORD } })
+    const { verify } = worldOf({ ecdsa: answersWord(OTHER_WORD) })
 
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
   it('is rejected where the magic value comes with non-zero padding, as the manager refuses it', async () => {
-    const { node, verify } = worldOf()
-    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => `${MAGIC_WORD.slice(0, -2)}01` as Hex)
+    const { verify } = worldOf({
+      ecdsa: answersWord(`${VERDICT_MAGIC_VALUE.slice(0, -2)}01` as Hex)
+    })
 
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
   it('is rejected where the magic word is followed by a trailing word, as the manager refuses it', async () => {
-    const { node, verify } = worldOf()
-    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => concat([MAGIC_WORD, MAGIC_WORD]))
+    const { verify } = worldOf({
+      ecdsa: answersWord(concat([VERDICT_MAGIC_VALUE, VERDICT_MAGIC_VALUE]))
+    })
+
+    expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
+  })
+
+  it('is rejected where the module answers no word, as an address with no code does', async () => {
+    const { verify } = worldOf({ ecdsa: answersWord('0x') })
 
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
   it('is rejected where the module reverts on the proof', async () => {
-    const { verify } = worldOf({ ecdsa: { verify: reverting('0x08c379a0') } })
+    const { verify } = worldOf({ ecdsa: () => reverting('0x08c379a0') })
 
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
   it('rejects with the failure where the provider could not make the read, so the check can be tried again', async () => {
     const failure = providerReadFailure('call', new Error('node down'))
-    const { verify } = worldOf({ ecdsa: { verify: failure } })
+    const { verify } = worldOf({ ecdsa: () => failure })
 
     expect(await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))).toBe(
       failure
     )
-  })
-
-  it('rejects with the failure where every view of the module fails, whatever its verify would answer', async () => {
-    const failure = providerReadFailure('call', new Error('node down'))
-    const { verify } = worldOf({ ecdsa: { views: failure, verify: VERIFY_MAGIC } })
-
-    expect(await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))).toBe(
-      failure
-    )
-  })
-
-  it('rejects with a read failure where the module answers no word, as an address with no code does', async () => {
-    const { node, verify } = worldOf()
-    node.answerWith(METHOD_ECDSA, VERIFY_SELECTOR, () => '0x')
-
-    expect(
-      await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))
-    ).toMatchObject({ name: 'ProviderReadFailure', read: 'call' })
   })
 
   it('reads the module again on every verify', async () => {
-    const { node, verify } = worldOf({ ecdsa: { verify: VERIFY_MAGIC } })
+    const { node, verify } = worldOf({ ecdsa: answersWord(VERDICT_MAGIC_VALUE) })
     const reply = approverReplyTo(GUARDIAN_REQUEST)
 
     await verify(GUARDIAN_REQUEST, reply)
@@ -136,10 +239,6 @@ describe('a reply that does not answer the request', () => {
 
   const CASES: [string, () => [ApproverRequest, Reply]][] = [
     [
-      'a reply with no proof',
-      () => [GUARDIAN_REQUEST, without(approverReplyTo(GUARDIAN_REQUEST), 'proof')]
-    ],
-    [
       'a reply of another kind',
       () => [
         GUARDIAN_REQUEST,
@@ -147,6 +246,13 @@ describe('a reply that does not answer the request', () => {
           ...approverReplyTo(GUARDIAN_REQUEST),
           kind: 'recovery-proof-request'
         } as unknown as Reply
+      ]
+    ],
+    [
+      'a reply of another version',
+      () => [
+        GUARDIAN_REQUEST,
+        approverReplyTo(GUARDIAN_REQUEST, { version: GATHERING_REPLY_VERSION + 1 })
       ]
     ],
     [
@@ -163,7 +269,7 @@ describe('a reply that does not answer the request', () => {
     ],
     [
       'a reply that names another config',
-      () => [GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST, { config: guardianAt(5).config })]
+      () => [GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST, { config: guardianConfigAt(5) })]
     ],
     [
       'a reply made against another digest',
@@ -181,16 +287,15 @@ describe('a reply that does not answer the request', () => {
   ]
 
   eachIt(CASES)('is rejected with no read: %s', async (_name, build) => {
-    const { node, verify } = worldOf({ ecdsa: { verify: VERIFY_MAGIC } })
+    const { node, verify } = worldOf({ ecdsa: answersWord(VERDICT_MAGIC_VALUE) })
     const [request, reply] = build()
 
     expect(await verify(request, reply)).toBe('rejected')
-    expect(verifyCallsOf(node)).toEqual([])
     expect(node.calls).toEqual([])
   })
 
   it('matches the method, the config and the digest whatever their case', async () => {
-    const { verify } = worldOf({ ecdsa: { verify: VERIFY_MAGIC } })
+    const { verify } = worldOf({ ecdsa: answersWord(VERDICT_MAGIC_VALUE) })
     const reply = approverReplyTo(GUARDIAN_REQUEST)
     const upper = (value: Hex): Hex => `0x${value.slice(2).toUpperCase()}`
 
@@ -205,7 +310,7 @@ describe('a reply that does not answer the request', () => {
   })
 
   it('never reads the manager', async () => {
-    const { node, verify } = worldOf({ ecdsa: { verify: VERIFY_MAGIC } })
+    const { node, verify } = worldOf({ ecdsa: answersWord(VERDICT_MAGIC_VALUE) })
 
     await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))
 

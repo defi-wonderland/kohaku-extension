@@ -3,11 +3,15 @@
  * hands a screen: the fake node's ECDSA module satisfies a proof the
  * guardian's own key signed over the request's digest and rejects one another
  * key signed; its passkey module answers the verdict the world was seeded
- * with.
+ * with, and with no seed satisfies a proof the passkey layout encodes.
  */
-import { approvalDigest, METHOD_ECDSA_CONFIG_ABI } from '@kohaku-eth/social-recovery'
+import {
+  approvalDigest,
+  METHOD_ECDSA_CONFIG_ABI,
+  METHOD_PASSKEY_PROOF_ABI
+} from '@kohaku-eth/social-recovery'
 import type { Address, Hex, Reply } from '@kohaku-eth/social-recovery'
-import { encodeAbiParameters, zeroAddress } from 'viem'
+import { encodeAbiParameters, stringToHex, zeroAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
@@ -137,6 +141,30 @@ describe('the fake node judges a pasted reply', () => {
     node.setVerdict(config, 'satisfied')
     await expect(client.walletReads.verifyReply(request, replyTo(request, '0x01'))).resolves.toBe(
       'satisfied'
+    )
+  })
+
+  it("satisfies an unseeded passkey reply whose proof the passkey layout encodes, and rejects bytes it does not", async () => {
+    const client = await clientOf()
+    const { descriptor } = client
+    const request = requestFor(
+      descriptor.methodPasskey,
+      `0x${'b2'.repeat(96)}`,
+      descriptor.manager,
+      descriptor.action
+    )
+    const proof = encodeAbiParameters(METHOD_PASSKEY_PROOF_ABI, [
+      `0x${'00'.repeat(37)}`,
+      stringToHex('{}'),
+      1n,
+      1n
+    ])
+
+    await expect(client.walletReads.verifyReply(request, replyTo(request, proof))).resolves.toBe(
+      'satisfied'
+    )
+    await expect(client.walletReads.verifyReply(request, replyTo(request, '0x01'))).resolves.toBe(
+      'rejected'
     )
   })
 })

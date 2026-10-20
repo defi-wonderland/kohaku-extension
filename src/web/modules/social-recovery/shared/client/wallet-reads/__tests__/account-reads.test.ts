@@ -1,29 +1,32 @@
 /**
  * The key a recovery would remove from a listed account with no code, and the
- * fit check, read over a fake code read and a fake action: the removed key is
- * taken from the creation privileges at the pinned block, with no chain read
- * of a key; the fit check reads the deployed code, or compares the
- * implementation to be with the action's.
+ * fit check, read over a scripted provider through the SDK's action: the
+ * removed key is taken from the creation privileges at the pinned block,
+ * with no chain read of a key; the fit check reads the deployed code, or
+ * compares the implementation to be with the action's.
  */
 import { getAddress, type Hex, pad, zeroHash } from 'viem'
 
 import { ERC_4337_ENTRYPOINT } from '@ambire-common/consts/deploy'
-import type { Address, BlockTag } from '@kohaku-eth/social-recovery'
+import type { Address } from '@kohaku-eth/social-recovery'
+import {
+  ACCOUNT,
+  ACCOUNT_CODE,
+  HEAD
+} from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
+import { worldOf as accountWorldOf } from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/world'
 
-const ACCOUNT: Address = '0xabCDeF0123456789AbcdEf0123456789aBCDEF01'
 const KEY_A: Address = '0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa'
 const KEY_B: Address = '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB'
 const KEY_C: Address = '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC'
 const ENTRY_POINT = getAddress(ERC_4337_ENTRYPOINT)
 const IMPLEMENTATION: Address = '0x0F2AA7bcda3d9D210dF69a394b6965CB2566c828'
 const OTHER_IMPLEMENTATION: Address = '0x5555555555555555555555555555555555555555'
-const ACCOUNT_CODE: Hex = '0x6080604052'
 const HOLDS: Hex = pad('0x01')
-const PINNED = 100
 const CREATION = { factoryAddr: OTHER_IMPLEMENTATION, bytecode: '0x60', salt: zeroHash }
 
 const worldOf = ({
-  addr = ACCOUNT,
+  addr,
   code = '0x',
   initialPrivileges = [],
   associatedKeys = [],
@@ -38,38 +41,20 @@ const worldOf = ({
   creation?: typeof CREATION | null
   accountImplementation?: Address
   supportsAccount?: boolean
-}) => {
-  const codeRead = { code: jest.fn<Promise<Hex>, [Address, BlockTag?]>(async () => code) }
-  const action = {
-    isAuthority: jest.fn<Promise<boolean>, [Address, Address]>(async () => true),
-    supportsAccount: jest.fn<Promise<boolean>, [Address]>(async () => supportsAccount),
-    ambireImplementation: jest.fn(async () => IMPLEMENTATION)
-  }
-  const provider = {
-    chainId: jest.fn(async () => 11155111),
-    call: jest.fn(async (): Promise<Hex> => zeroHash),
-    logs: jest.fn(async () => []),
-    block: jest.fn(async () => ({ number: PINNED, timestamp: 0, hash: zeroHash }))
-  }
-  const events = { accountFilter: jest.fn(), fetch: jest.fn(async () => []) }
-  const reads = createKitWalletReads({
-    account: { addr, associatedKeys, initialPrivileges, creation },
+}) =>
+  accountWorldOf({
+    addr,
+    code,
+    initialPrivileges,
+    associatedKeys,
+    creation,
     accountImplementation,
-    action,
-    manager: { stateOf: jest.fn() },
-    moduleReads: { verify: jest.fn() },
-    codeRead,
-    provider,
-    descriptor: { manager: OTHER_IMPLEMENTATION, action: OTHER_IMPLEMENTATION, deployedAt: 0 },
-    events,
-    transactionRead: jest.fn(async () => null)
+    supportsAccount
   })
-  return { reads, codeRead, action, provider, events }
-}
 
 describe('the removed key of an account with no code', () => {
   it('is the one key whose creation privilege is not zero, with no authority read and no scan', async () => {
-    const { reads, action, codeRead, provider, events } = worldOf({
+    const { node, reads, askedAction } = worldOf({
       initialPrivileges: [
         [KEY_A, HOLDS],
         [KEY_B, zeroHash]
@@ -77,10 +62,9 @@ describe('the removed key of an account with no code', () => {
       associatedKeys: [KEY_C]
     })
     await expect(reads.removedKey()).resolves.toEqual({ kind: 'named', key: KEY_A })
-    expect(action.isAuthority).not.toHaveBeenCalled()
-    expect(codeRead.code.mock.calls).toEqual([[ACCOUNT, PINNED]])
-    expect(provider.logs).not.toHaveBeenCalled()
-    expect(events.fetch).not.toHaveBeenCalled()
+    expect(askedAction()).toEqual([])
+    expect(node.provider.code.mock.calls).toEqual([[ACCOUNT, HEAD]])
+    expect(node.provider.logs).not.toHaveBeenCalled()
   })
 
   it('names none where every creation privilege is zero', async () => {
@@ -136,25 +120,24 @@ describe('the removed key of an account with no code', () => {
 describe('the fit check', () => {
   ;[true, false].forEach((supportsAccount) =>
     it(`reads supportsAccount for an account with code (${supportsAccount})`, async () => {
-      const { reads, action } = worldOf({ code: ACCOUNT_CODE, supportsAccount })
+      const { reads, askedAction } = worldOf({ code: ACCOUNT_CODE, supportsAccount })
       await expect(reads.fitCheck(OTHER_IMPLEMENTATION)).resolves.toEqual({
         basis: 'deployed-code',
         fits: supportsAccount
       })
-      expect(action.supportsAccount).toHaveBeenCalledWith(ACCOUNT)
-      expect(action.ambireImplementation).not.toHaveBeenCalled()
+      expect(askedAction()).toEqual([['supportsAccount', ACCOUNT]])
     })
   )
 
   it("compares the code to be with the action's implementation, in any case", async () => {
     const lower = IMPLEMENTATION.toLowerCase() as Address
-    const { reads, action } = worldOf({})
+    const { reads, askedAction } = worldOf({})
     await expect(reads.fitCheck(lower)).resolves.toEqual({
       basis: 'code-to-be',
       implementation: lower,
       fits: true
     })
-    expect(action.supportsAccount).not.toHaveBeenCalled()
+    expect(askedAction()).toEqual([['AMBIRE_IMPLEMENTATION']])
   })
 
   it('does not fit code to be of another implementation', async () => {
@@ -185,17 +168,17 @@ describe('the fit check', () => {
   })
 
   it('has no basis with no code and no implementation', async () => {
-    const { reads, action } = worldOf({})
+    const { reads, askedAction } = worldOf({})
     await expect(reads.fitCheck()).resolves.toEqual({ basis: 'no-code', fits: false })
-    expect(action.ambireImplementation).not.toHaveBeenCalled()
+    expect(askedAction()).toEqual([])
   })
 })
 
 describe('an account record with a malformed address', () => {
   it('rejects both reads', async () => {
-    const { reads, codeRead } = worldOf({ addr: '0x1234', initialPrivileges: [[KEY_A, HOLDS]] })
+    const { node, reads } = worldOf({ addr: '0x1234', initialPrivileges: [[KEY_A, HOLDS]] })
     await expect(reads.removedKey()).rejects.toThrow(/0x1234/)
     await expect(reads.fitCheck(IMPLEMENTATION)).rejects.toThrow(/0x1234/)
-    expect(codeRead.code).not.toHaveBeenCalled()
+    expect(node.provider.code).not.toHaveBeenCalled()
   })
 })
