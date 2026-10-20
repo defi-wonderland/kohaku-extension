@@ -12,7 +12,8 @@
  *
  * The re-authorize reads the attempt again before it prepares and before
  * every gas check, the deposit step's continuation and the recheck after a
- * short estimation included, and refuses while one is open, since the wallet
+ * short estimation included, and once more after it wins the claim, right
+ * before the send, and refuses while one is open, since the wallet
  * keeps the cancel and the repair apart; it tells its step, so the overview
  * reads the chain again and draws why.
  *
@@ -112,6 +113,22 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
               transaction: accountBatchTransactionOf(facts, key, calls),
               operates: walletAccountRefOf(facts)
             }),
+    // An attempt may open while the claim waits: a won claim releases and refuses on one.
+    claim:
+      intent === 'reauthorize'
+        ? async (prepared, requestId, startBlock) => {
+            const claim = await save.claim(prepared, requestId, startBlock)
+            if (claim.claimed) {
+              try {
+                await refuseWhileAttemptOpen()
+              } catch (error: unknown) {
+                await save.release(requestId).catch(() => undefined)
+                throw error
+              }
+            }
+            return claim
+          }
+        : save.claim,
     confirm:
       intent === 'reauthorize'
         ? async (prepared) => {
