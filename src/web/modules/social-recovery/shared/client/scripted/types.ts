@@ -7,7 +7,8 @@ import type {
   Hex,
   Parties,
   PaymentOrder,
-  ProviderRevert
+  ProviderRevert,
+  Verdict
 } from '@kohaku-eth/social-recovery'
 
 /** What one fake node's world starts from; every member but the two first has a default. */
@@ -64,6 +65,9 @@ export interface ScriptedOpening {
   payload: Hex
   order: PaymentOrder
 }
+
+/** A verdict the node can be seeded with for a module it cannot judge. */
+export type ScriptedVerdict = Extract<Verdict, 'satisfied' | 'rejected'>
 
 /** How a failed read fails: a transport failure, or a revert with these bytes. */
 export type ScriptedFailure = { kind: 'unavailable' } | ({ kind: 'revert' } & ProviderRevert)

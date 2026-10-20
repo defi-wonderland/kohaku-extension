@@ -36,6 +36,8 @@ import {
   kitBinding,
   kitSlot,
   MANAGER_EVENTS_ABI,
+  METHOD_ECDSA_CONFIG_ABI,
+  passkeyMethod,
   POLICY_ACTION_INTERFACE_ID,
   POLICY_MANAGER_EIP712_DOMAIN_ABI,
   POLICY_MANAGER_HASH_APPROVAL_ABI,
@@ -55,7 +57,8 @@ import {
   RECOVERY_CLIENT_EXECUTE_HANDOVER_ABI,
   sealBackup,
   serializeConfiguration,
-  setupCommitment
+  setupCommitment,
+  VERDICT_MAGIC_VALUE
 } from '@kohaku-eth/social-recovery'
 import type {
   Address,
@@ -72,7 +75,8 @@ import type {
   PreparedBatch,
   PreparedCall,
   RawLog,
-  RawTransaction
+  RawTransaction,
+  Verdict
 } from '@kohaku-eth/social-recovery'
 import {
   bytesToHex,
@@ -86,6 +90,7 @@ import {
   keccak256,
   numberToHex,
   pad,
+  recoverAddress,
   zeroAddress,
   zeroHash
 } from 'viem'
@@ -99,13 +104,15 @@ import type {
   ScriptedManagerState,
   ScriptedMethod,
   ScriptedNodeSeed,
-  ScriptedOpening
+  ScriptedOpening,
+  ScriptedVerdict
 } from './types'
 
 const BLOCK_TIME = 12
 const DAY = 24 * 3600
 const KEY_VALUE: Hex = pad('0x01', { size: 32 })
 const MANAGER_INTERFACE_ID: Hex = '0x675e6a4a'
+const PROVIDER_READ_NAMES = ['chainId', 'call', 'logs', 'block', 'code', 'transaction'] as const
 // Any non-empty code: the node answers the views itself.
 const CONTRACT_CODE: Hex = '0x6080604052'
 
@@ -194,6 +201,10 @@ export class ScriptedNode implements IProvider {
   private readonly codes = new Map<string, Hex>()
 
   private readonly failures = new Map<string, ScriptedFailure>()
+
+  private readonly verdicts = new Map<string, ScriptedVerdict>()
+
+  private readonly passkeyCodec = passkeyMethod().codec
 
   private readonly codec: AmbireActionCodec
 
@@ -397,6 +408,11 @@ export class ScriptedNode implements IProvider {
     return hash
   }
 
+  /** Seeds the passkey module's verdict over every proof for one credential's config. */
+  setVerdict(config: Hex, verdict: ScriptedVerdict): void {
+    this.verdicts.set(config.toLowerCase(), verdict)
+  }
+
   /** Makes a read fail until `restoreRead`: one of the six provider reads, or one view by its function name. */
   failRead(read: string, failure: ScriptedFailure = { kind: 'unavailable' }): this {
     this.failures.set(read, failure)
@@ -439,6 +455,12 @@ export class ScriptedNode implements IProvider {
       throw revertedCall('call', '0x')
     }
     this.guard(decoded.functionName)
+    if (decoded.functionName === 'verify') {
+      const [config, digest, proof] = decoded.args
+      return (await this.verdictOf(to, config, digest, proof)) === 'satisfied'
+        ? VERDICT_MAGIC_VALUE
+        : zeroHash
+    }
     return this.answer(to, decoded)
   }
 
@@ -481,7 +503,42 @@ export class ScriptedNode implements IProvider {
     if (failure.kind === 'revert') {
       throw revertedCall('call', failure.data)
     }
-    throw providerReadFailure('call', new Error(`the node does not answer ${read}`))
+    // A view named by its function fails as the call it is made through.
+    const providerRead = PROVIDER_READ_NAMES.find((name) => name === read) ?? 'call'
+    throw providerReadFailure(providerRead, new Error(`the node does not answer ${read}`))
+  }
+
+  /**
+   * A method module's verdict over one proof: the ECDSA module's is the signer
+   * the digest and the 65-byte proof recover against the config's address; the
+   * passkey module's is the one `setVerdict` seeded for the config, else a
+   * proof the passkey codec decodes satisfies, since the node runs no WebAuthn.
+   * Any other module rejects.
+   */
+  private async verdictOf(module: Address, config: Hex, digest: Hex, proof: Hex): Promise<Verdict> {
+    const d = this.descriptor
+    if (isAddressEqual(module, d.methodEcdsa)) {
+      try {
+        const [signer] = decodeAbiParameters(METHOD_ECDSA_CONFIG_ABI, config)
+        const recovered = await recoverAddress({ hash: digest, signature: proof })
+        return isAddressEqual(recovered, signer) ? 'satisfied' : 'rejected'
+      } catch {
+        return 'rejected'
+      }
+    }
+    if (isAddressEqual(module, d.methodPasskey)) {
+      const seeded = this.verdicts.get(config.toLowerCase())
+      if (seeded) {
+        return seeded
+      }
+      try {
+        this.passkeyCodec.decodeProof(proof)
+        return 'satisfied'
+      } catch {
+        return 'rejected'
+      }
+    }
+    return 'rejected'
   }
 
   private decodeWrite(data: Hex) {
@@ -607,9 +664,6 @@ export class ScriptedNode implements IProvider {
           functionName: 'paused',
           result: method?.paused ?? false
         })
-      case 'verify':
-        // The node judges no proof: every proof reads as the module's refusal.
-        return pad('0x', { size: 32 })
       case 'supportsAccount': {
         const [account] = decoded.args
         return this.boolean(

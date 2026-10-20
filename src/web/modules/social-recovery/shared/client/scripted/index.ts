@@ -6,5 +6,6 @@ export type {
   ScriptedFailure,
   ScriptedManagerState,
   ScriptedMethod,
-  ScriptedNodeSeed
+  ScriptedNodeSeed,
+  ScriptedVerdict
 } from './types'

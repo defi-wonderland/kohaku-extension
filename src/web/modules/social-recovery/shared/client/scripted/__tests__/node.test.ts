@@ -7,10 +7,11 @@
 import {
   isProviderRevert,
   SocialRecoveryBuilder,
-  configurationCommitment
+  configurationCommitment,
+  METHOD_ECDSA_CONFIG_ABI
 } from '@kohaku-eth/social-recovery'
 import type { Address, Configuration, DeploymentDescriptor } from '@kohaku-eth/social-recovery'
-import { zeroHash } from 'viem'
+import { encodeAbiParameters, zeroHash } from 'viem'
 
 import { ScriptedNode } from '@web/modules/social-recovery/shared/client/scripted'
 
@@ -41,7 +42,10 @@ const CONFIGURATION: Configuration = {
     {
       threshold: 1,
       credentials: [
-        { method: DESCRIPTOR.methodEcdsa, config: `0x${GUARDIAN.slice(2).padStart(64, '0')}` }
+        {
+          method: DESCRIPTOR.methodEcdsa,
+          config: encodeAbiParameters(METHOD_ECDSA_CONFIG_ABI, [GUARDIAN])
+        }
       ]
     }
   ]

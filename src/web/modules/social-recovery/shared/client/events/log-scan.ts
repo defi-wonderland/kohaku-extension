@@ -9,7 +9,6 @@
  * already made that read again with its own pauses. A scan with no last block
  * reads `latest` first. Logs the node reports as removed are dropped.
  */
-import { BUILDER_DEFAULT_LOG_CHUNK_SIZE } from '@kohaku-eth/social-recovery'
 import type {
   BlockRange,
   FilterSpec,
@@ -21,11 +20,12 @@ import type {
 
 import { delayPromise } from '@common/utils/promises'
 
+import { LOG_CHUNK_SIZE } from '../configuration'
 import { rateLimited } from '../provider-adapter'
 import type { LogScan } from './types'
 
-/** The widest block range one log query asks for, since a node may cap the range. */
-export const LOG_CHUNK_BLOCKS = BUILDER_DEFAULT_LOG_CHUNK_SIZE
+/** The widest block range one log query asks for: the wallet's own configured width. */
+export const LOG_CHUNK_BLOCKS = LOG_CHUNK_SIZE
 
 export const LOG_CHUNK_RETRIES = 3
 export const LOG_CHUNK_RETRY_MS = 1_000
