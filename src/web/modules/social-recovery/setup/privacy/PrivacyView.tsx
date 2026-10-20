@@ -56,7 +56,7 @@ const PrivacyView = ({ records, chainId, account, navigate }: PrivacyViewProps) 
   const { t } = useTranslation()
 
   const [level, setLevel] = useState<OfferedLevel>('private')
-  const [clauses, setClauses] = useState<Clause[]>([])
+  const [clauses, setClauses] = useState<readonly Clause[]>([])
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [loaded, setLoaded] = useState(false)

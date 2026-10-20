@@ -76,7 +76,7 @@ const joinItems = ([lead, ...rest]: string[], t: Translate): string => {
  * the clear.
  */
 export const exposureLinesOf = (
-  clauses: Clause[],
+  clauses: readonly Clause[],
   level: OfferedLevel,
   book: AddressBook,
   t: Translate
