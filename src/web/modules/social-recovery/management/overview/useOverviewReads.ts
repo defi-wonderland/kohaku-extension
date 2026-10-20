@@ -4,9 +4,13 @@
  * device's opened setup where it is the committed one, else with the recovery
  * password held in memory, else by its privacy level: a setup kept in the
  * clear opens with none, a hidden one stays locked until the password opens
- * it. An opened setup is kept in the decrypted setup cache. Every read has
- * its loading state and its failed state with retry, and a read that failed
- * or has not returned never renders as an answer.
+ * it. An opened setup is kept in the decrypted setup cache, and shown, only
+ * where the setup state read after the opening still names the setup the
+ * facts read; otherwise the facts are read again. Every read has its loading
+ * state and its failed state with retry, and a read that failed or has not
+ * returned never renders as an answer. An answer from a block below the last
+ * one the facts accepted reads as failed with retry, so a lagging provider
+ * never shows an older state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -21,7 +25,7 @@ import {
   setRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 
-import { attemptOpenOf, isCacheCurrent, noticesOf } from './readings'
+import { attemptOpenOf, isCacheCurrent, isSameSetup, noticesOf } from './readings'
 import type {
   OverviewFactsRead,
   OverviewNotices,
@@ -52,8 +56,14 @@ export const useOverviewReads = ({
   const typed = useRef<string | null>(null)
   // Each unlock answers only while the setup it was typed for is still the one read.
   const unlockRound = useRef(0)
+  // The block of the last facts answer accepted for this client.
+  const floor = useRef<number | undefined>(undefined)
 
   const setup: SetupState | null = facts.status === 'answered' ? facts.value.setup : null
+
+  useEffect(() => {
+    floor.current = undefined
+  }, [kit])
 
   useEffect(() => {
     if (client.status === 'update-the-wallet') {
@@ -71,12 +81,18 @@ export const useOverviewReads = ({
     let live = true
     Promise.all([kit.setup.setupState(), kit.walletReads.attemptState()]).then(
       ([state, attempt]) => {
-        if (live) {
-          setFacts({
-            status: 'answered',
-            value: { setup: state, attemptOpen: attemptOpenOf(state, attempt) }
-          })
+        if (!live) {
+          return
         }
+        if (floor.current !== undefined && state.block.number < floor.current) {
+          setFacts({ status: 'failed' })
+          return
+        }
+        floor.current = state.block.number
+        setFacts({
+          status: 'answered',
+          value: { setup: state, attemptOpen: attemptOpenOf(state, attempt) }
+        })
       },
       () => {
         if (live) {
@@ -89,10 +105,17 @@ export const useOverviewReads = ({
     }
   }, [client.status, kit, factsRound])
 
-  /** Keeps the opened setup on this device; a refused write leaves the path shown. */
+  /**
+   * Keeps the opened setup on this device where the setup state read now still
+   * names the setup the facts read, and answers whether it does; a refused
+   * write leaves the path shown.
+   */
   const keep = useCallback(
-    (state: SetupState, configuration: Configuration) => {
-      records
+    async (state: SetupState, configuration: Configuration): Promise<boolean> => {
+      if (!kit || !isSameSetup(await kit.setup.setupState(), state)) {
+        return false
+      }
+      await records
         .decryptedSetupCache(chainId, account)
         .write({
           configuration,
@@ -100,9 +123,12 @@ export const useOverviewReads = ({
           setupCommitment: state.setupCommitment
         })
         .catch(() => undefined)
+      return true
     },
-    [records, chainId, account]
+    [kit, records, chainId, account]
   )
+
+  const readFactsAgain = useCallback(() => setFactsRound((round) => round + 1), [])
 
   useEffect(() => {
     unlockRound.current += 1
@@ -114,7 +140,8 @@ export const useOverviewReads = ({
     }
     setPath({ kind: 'reading' })
     let live = true
-    const run = async (): Promise<PathStep> => {
+    // Null where the setup moved after the facts read, so the facts read again.
+    const run = async (): Promise<PathStep | null> => {
       const cached = await records
         .decryptedSetupCache(chainId, account)
         .read()
@@ -126,15 +153,15 @@ export const useOverviewReads = ({
       if (held !== undefined) {
         const opened = await kit.setup.getSetup({ password: held }).catch(() => null)
         if (opened) {
-          keep(setup, opened)
-          return { kind: 'readable', configuration: opened }
+          return (await keep(setup, opened)) ? { kind: 'readable', configuration: opened } : null
         }
       }
       const reading = await readSetupReading(kit, setup)
       switch (reading.kind) {
         case 'readable':
-          keep(setup, reading.configuration)
-          return { kind: 'readable', configuration: reading.configuration }
+          return (await keep(setup, reading.configuration))
+            ? { kind: 'readable', configuration: reading.configuration }
+            : null
         case 'shape-readable':
           return { kind: 'locked', level: 'shape-visible', shape: reading.shape }
         case 'sealed':
@@ -147,8 +174,13 @@ export const useOverviewReads = ({
     }
     run().then(
       (step) => {
-        if (live) {
+        if (!live) {
+          return
+        }
+        if (step) {
           setPath(step)
+        } else {
+          readFactsAgain()
         }
       },
       () => {
@@ -160,7 +192,7 @@ export const useOverviewReads = ({
     return () => {
       live = false
     }
-  }, [kit, setup, records, chainId, account, keep, pathRound])
+  }, [kit, setup, records, chainId, account, keep, readFactsAgain, pathRound])
 
   useEffect(() => {
     if (!kit || !setup || !setup.hasSetup) {
@@ -215,9 +247,27 @@ export const useOverviewReads = ({
           }
           typed.current = null
           setRecoveryPassword(chainId, account, password)
-          keep(setup, configuration)
-          setAsk(IDLE)
-          setPath({ kind: 'readable', configuration })
+          // The password stays held, so the facts read again open the setup they name with it.
+          keep(setup, configuration).then(
+            (agrees) => {
+              if (unlockRound.current !== mine) {
+                return
+              }
+              setAsk(IDLE)
+              if (agrees) {
+                setPath({ kind: 'readable', configuration })
+              } else {
+                readFactsAgain()
+              }
+            },
+            () => {
+              if (unlockRound.current !== mine) {
+                return
+              }
+              setAsk(IDLE)
+              setPath({ kind: 'read-failed' })
+            }
+          )
         },
         (error: unknown) => {
           if (unlockRound.current !== mine) {
@@ -234,7 +284,7 @@ export const useOverviewReads = ({
         }
       )
     },
-    [kit, setup, chainId, account, keep]
+    [kit, setup, chainId, account, keep, readFactsAgain]
   )
 
   const unlock = useCallback(
@@ -266,8 +316,8 @@ export const useOverviewReads = ({
       client.retry()
       return
     }
-    setFactsRound((round) => round + 1)
-  }, [client])
+    readFactsAgain()
+  }, [client, readFactsAgain])
 
   const retryNotices = useCallback(() => setNoticesRound((round) => round + 1), [])
 

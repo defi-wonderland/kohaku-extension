@@ -3,10 +3,15 @@
  *
  * The overview over its own reads on a client built over the stand-in's
  * chain: the locked path's password flow, the path a public setup shows with
- * no password, the dormant reading over an open attempt, and a failed setup
- * read that reads as failed with retry, never as not set up.
+ * no password, the dormant reading over an open attempt, a failed setup
+ * read and an answer from an older block that read as failed with retry,
+ * never as not set up, and an unlock that meets a newer setup and keeps only
+ * the setup the chain names.
  */
-import type { World } from '@web/modules/social-recovery/management/overview/__fixtures__/types'
+import type {
+  ReadsProbeProps,
+  World
+} from '@web/modules/social-recovery/management/overview/__fixtures__/types'
 
 jest.mock('viem', () => {
   // eslint-disable-next-line global-require
@@ -29,12 +34,37 @@ const {
 const {
   notServedRefusal
 }: typeof import('@web/modules/social-recovery/shared/client/kit/setup-client') = require('@web/modules/social-recovery/shared/client/kit/setup-client')
+const OverviewView: typeof import('@web/modules/social-recovery/management/overview/OverviewView').default =
+  require('@web/modules/social-recovery/management/overview/OverviewView').default
+const {
+  useOverviewReads
+}: typeof import('@web/modules/social-recovery/management/overview/useOverviewReads') = require('@web/modules/social-recovery/management/overview/useOverviewReads')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
-const { mount, t, worldAt, readyOver, ReadsProbe, typeInto, ACCOUNT, PASSWORD, CONFIGURATION } =
-  harness
+const {
+  mount,
+  act,
+  t,
+  worldAt,
+  readyOver,
+  viewPropsOf,
+  ReadsProbe,
+  typeInto,
+  ACCOUNT,
+  PASSWORD,
+  CONFIGURATION
+} = harness
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 const O = 'socialRecovery.management.overview'
+
+// The facts read's retry of the last render, which the view offers only after a failed read.
+let retryFacts: () => void = () => {}
+
+const RetryProbe = ({ client, records, chainId, onOpen }: ReadsProbeProps) => {
+  const reads = useOverviewReads({ client, records, chainId, account: ACCOUNT })
+  retryFacts = reads.retry
+  return <OverviewView {...viewPropsOf({ reads, onOpen })} />
+}
 
 describe('the overview reads', () => {
   let view: Awaited<ReturnType<typeof mount>> | undefined
@@ -131,6 +161,55 @@ describe('the overview reads', () => {
     await view.press('overview-read-failed-retry')
     expect(view.byTestId('overview-read-failed')).toBeNull()
     expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+  })
+
+  it('reads an answer from a block below the last accepted one as failed with retry, never as not set up', async () => {
+    const world = await worldAt('public')
+    view = await mount(
+      <RetryProbe
+        client={readyOver(world.client)}
+        records={world.records}
+        chainId={CHAIN_ID}
+        onOpen={jest.fn()}
+      />
+    )
+    expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+
+    const accepted = await world.client.setup.setupState()
+    jest.spyOn(world.client.setup, 'setupState').mockImplementationOnce(async () => ({
+      ...accepted,
+      hasSetup: false,
+      isAuthorized: false,
+      block: { ...accepted.block, number: accepted.block.number - 1 }
+    }))
+    await act(async () => retryFacts())
+
+    expect(view.byTestId('overview-read-failed')).not.toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).toBeNull()
+    expect(view.byTestId('overview-empty')).toBeNull()
+
+    await view.press('overview-read-failed-retry')
+    expect(view.byTestId('overview-read-failed')).toBeNull()
+    expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+  })
+
+  it('keeps no opened setup under the nonce of an older facts read where a newer setup was committed before the unlock', async () => {
+    const world = await worldAt('private')
+    view = await renderOver(world)
+    const first = await world.client.setup.setupState()
+    const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1n }
+    world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
+
+    await view.press('overview-locked-action')
+    await typeInto(view.byTestId('overview-locked-field'), PASSWORD)
+    await view.press('overview-locked-unlock')
+
+    const now = await world.client.setup.setupState()
+    expect(now.setupNonce).not.toBe(first.setupNonce)
+    const kept = await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()
+    expect(kept.status === 'present' && kept.value.setupNonce).toBe(now.setupNonce)
+    expect(kept.status === 'present' && kept.value.configuration.wait).toBe(newer.wait)
+    expect(view.byTestId('readout-path')).not.toBeNull()
   })
 
   it('reads a kit that does not serve the method logs as no moved keys, and still shows the setup', async () => {
