@@ -251,6 +251,12 @@ const {
   zeroAddress
 }: typeof import('viem') = require('viem')
 const {
+  approvalDigest,
+  approvalTypedData,
+  cancellationDigest,
+  cancellationTypedData
+}: typeof import('@kohaku-eth/social-recovery') = require('@kohaku-eth/social-recovery')
+const {
   generatePrivateKey,
   privateKeyToAccount
 }: typeof import('viem/accounts') = require('viem/accounts')
@@ -404,9 +410,37 @@ export const attemptStateOf = (
   ...overrides
 })
 
+/** The members a request's digest closes over, its decimal strings read back as numbers. */
+const membersOf = (request: ApproverRequest) => ({
+  chainId: Number(request.chainId),
+  manager: request.manager,
+  account: request.account,
+  action: request.action,
+  attemptId: BigInt(request.attemptId),
+  setupNonce: BigInt(request.setupNonce),
+  setupBodyHash: request.setupBodyHash,
+  validUntil: Number(request.validUntil),
+  digestVersion: request.digestVersion
+})
+
+/** The approval members of an approval request: its payload and its order beside the common ones. */
+const approvalMembersOf = (request: Extract<ApproverRequest, { purpose: 'approval' }>) => ({
+  ...membersOf(request),
+  payload: request.payload,
+  order: { ...request.order, amount: BigInt(request.order.amount) }
+})
+
 /** The typed data the wallet method hands over for a request. */
 export const typedDataFor = (request: ApproverRequest): TypedDataToSign =>
-  typedDataOf(membersOfRequest(request)) as unknown as TypedDataToSign
+  (request.purpose === 'approval'
+    ? approvalTypedData(approvalMembersOf(request), request.place)
+    : cancellationTypedData(membersOf(request), request.place)) as unknown as TypedDataToSign
+
+/** The digest a request's typed data hashes to. */
+const digestFor = (request: ApproverRequest): Hex =>
+  request.purpose === 'approval'
+    ? approvalDigest(approvalMembersOf(request), request.place)
+    : cancellationDigest(membersOf(request), request.place)
 
 type SigningAccount = typeof GUARDIAN_ACCOUNT
 
@@ -428,7 +462,7 @@ export const replyOf = (request: ApproverRequest, proof: Hex): Reply => ({
   method: request.method,
   config: request.config,
   salt: request.salt,
-  digest: digestOfRequest(request),
+  digest: digestFor(request),
   proof
 })
 
