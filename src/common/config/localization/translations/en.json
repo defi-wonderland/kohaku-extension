@@ -129,6 +129,7 @@
       "remainingHours_plural": "{{count}} hours",
       "remainingMinutes": "{{count}} minute",
       "remainingMinutes_plural": "{{count}} minutes",
+      "hoursAndMinutes": "{{hours}} {{minutes}}",
       "publishers": {
         "ethereumFoundation": "Ethereum Foundation"
       },
