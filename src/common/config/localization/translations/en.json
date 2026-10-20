@@ -729,7 +729,9 @@
       "passwordAskAction": "Show the card",
       "wrongRecoveryPassword": "That is not your recovery password. Try again.",
       "passwordUnchecked": "This wallet could not check your recovery password. Try again.",
-      "downloadUnavailable": "Your recovery password has characters a PDF cannot carry. Print the card instead."
+      "downloadUnavailable": "Your recovery password has characters a PDF cannot carry. Print the card instead.",
+      "passwordCheckFailedTitle": "This wallet could not check the recovery password",
+      "passwordCheckFailedBody": "The read did not return. The password stays on this device and is not shown until the check runs. Try again."
     },
     "create": {
       "controllingKeyRow": "Controlling key of {{account}}. The wallet adds it as an account of its own. Recovery does not cover funds held on it.",

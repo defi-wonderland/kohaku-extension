@@ -684,7 +684,7 @@ describe('the recovery card screen', () => {
       expect(readRecoveryPassword(CHAIN_ID, account)).toBe(TYPED)
     })
 
-    it('shows the row label alone while the held password is checked, and asks where the check fails', async () => {
+    it('shows the row label alone while the held password is checked, and the failed row with its retry where the check fails', async () => {
       const account = newAccount()
       setRecoveryPassword(CHAIN_ID, account, PASSWORD)
       const check = deferred<object>()
@@ -699,20 +699,36 @@ describe('the recovery card screen', () => {
         check.reject(new Error('the node did not answer'))
       })
       await settle()
+      expect(byTestId('card-password-check-failed')?.textContent).toContain(
+        S.card.passwordCheckFailedTitle
+      )
       expect(byTestId('card-reveal')).toBeNull()
-      expect(byTestId('card-recovery-password-ask')).not.toBeNull()
+      expect(byTestId('card-recovery-password-ask')).toBeNull()
       expect(container.textContent).not.toContain(PASSWORD)
+      expect(carriersDisabled()).toEqual([true, true])
       expect(readRecoveryPassword(CHAIN_ID, account)).toBe(PASSWORD)
+
+      await press('card-password-check-failed-retry')
+      await settle()
+      expect(setup.getSetup.mock.calls).toEqual([
+        [{ password: PASSWORD }],
+        [{ password: PASSWORD }]
+      ])
+      expect(byTestId('card-password-check-failed')).toBeNull()
+      await press('card-reveal')
+      expect(byTestId('card-password-value')?.textContent).toBe(PASSWORD)
     })
 
-    it('checks the held password once a client is ready after one that failed', async () => {
+    it('checks the held password once a client is ready after one that failed, and builds the client again on retry', async () => {
       mockClient.current = { status: 'failed', error: new Error('no client') }
       const account = newAccount()
       setRecoveryPassword(CHAIN_ID, account, PASSWORD)
       await mount(account)
       expect(byTestId('card-reveal')).toBeNull()
-      expect(byTestId('card-recovery-password-ask')).not.toBeNull()
+      expect(byTestId('card-password-check-failed')).not.toBeNull()
       expect(setup.getSetup).not.toHaveBeenCalled()
+      await press('card-password-check-failed-retry')
+      expect(retry).toHaveBeenCalledTimes(1)
 
       await clientSays({ status: 'ready', client: { setup } })
       await settle()

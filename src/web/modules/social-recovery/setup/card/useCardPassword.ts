@@ -4,8 +4,8 @@
  * in memory shows only once it opens the saved backup, checked the way a typed
  * password is, since another device may have changed the password meanwhile:
  * the row stays blank while the check runs, a refusal wipes it from memory and
- * asks again, and a check that does not answer asks again and keeps it, never
- * showing it unchecked. At the hidden level with none,
+ * asks again, and a check that does not answer keeps it unshown and says so,
+ * with a retry that runs the check again. At the hidden level with none,
  * the account's setup is read: a saved setup lets the holder type the password
  * again, checked by opening the saved backup with it; no saved setup leads back
  * to the privacy step. A setup read that fails, or a client that cannot be
@@ -107,7 +107,6 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
     if (clientFailed) {
       if (!heldResult) {
         setHeldCheck({ address, password: held, result: 'failed', source: 'failed-client' })
-        setReading({ address, row: 'ask', source: 'failed-client' })
       }
       return
     }
@@ -140,9 +139,8 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
             })
             return
           }
-          // The held password is kept: the holder can type it again, and the next card checks it.
+          // The held password is kept, unshown, until a check opens the backup with it.
           checked('failed')
-          setReading({ address, row: 'ask', source: 'setup' })
         }
       )
     return () => {
@@ -236,9 +234,21 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
 
   // The row holds its label alone while the first check of the held password runs.
   const checkingHeld = heldToCheck && !heldResult
+  const heldCheckFailed = heldToCheck && heldResult === 'failed'
+  // Runs the check of the held password again from the start, with a client built again where none was.
+  const retryHeld = useCallback(() => {
+    setHeldCheck(null)
+    setReading(null)
+    if (clientFailed) {
+      retry()
+    }
+  }, [clientFailed, retry])
   const missingPassword = useMemo<MissingPasswordRow>(() => {
     if (checkingHeld) {
       return READING
+    }
+    if (heldCheckFailed) {
+      return { kind: 'failed', retry: retryHeld }
     }
     if (readRow === 'gone') {
       return GONE
@@ -247,7 +257,7 @@ export const useCardPassword = (address: Address | null, level: CardLevel | null
       return { kind: 'ask', check }
     }
     return READING
-  }, [checkingHeld, readRow, check])
+  }, [checkingHeld, heldCheckFailed, retryHeld, readRow, check])
 
   return { password, missingPassword }
 }
