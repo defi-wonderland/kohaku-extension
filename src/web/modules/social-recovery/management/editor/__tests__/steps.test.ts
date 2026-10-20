@@ -7,8 +7,11 @@
  * and then wiping the setup records, rewriting this device's opened setup
  * and ending the session; a refused send that changes nothing on this device;
  * a setup moved past the edit's start that sends nothing; the refusal of a
- * dormant setup's commit while an attempt is open; the removal's one batch of
- * the clear and the zero write, its check, its wipe, and an end that already
+ * dormant setup's commit while an attempt is open, and of an attempt the
+ * screen did not show, on every path to the send; the new password kept only
+ * where the session marks it and the landed backup opens with it; the
+ * removal's one batch of the clear and the zero write, its check, its wipe,
+ * its stop over an attempt the screen did not show, and an end that already
  * stands; and a write that meets another write of the editor stored by
  * another tab, which it never takes up nor releases.
  */
@@ -41,8 +44,12 @@ const {
 const {
   createArmStore,
   isSaved,
+  recheckGas,
   startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
+const {
+  chainReadsFor
+}: typeof import('@web/modules/social-recovery/setup/arm/__tests__/harness') = require('@web/modules/social-recovery/setup/arm/__tests__/harness')
 const {
   readRecoveryPassword,
   setRecoveryPassword,
@@ -106,8 +113,47 @@ const editSteps = async (
   }
 }
 
-const removalSteps = (world: EditWorld, onAttempt?: (read: AttemptRead) => void) =>
-  removalStepsOf({ ...world, chainId: CHAIN_ID, key: KEY, onAttempt })
+/** The steps of a tab that holds its own new password in memory. */
+const editStepsHolding = async (
+  world: EditWorld,
+  baseline: EditSession,
+  newPassword: string | undefined
+) => {
+  const draft = await world.records.setup(CHAIN_ID, world.account).setupDraft.read()
+  if (draft.status !== 'present') {
+    throw new Error('no draft to save')
+  }
+  return editStepsOf({
+    ...world,
+    chainId: CHAIN_ID,
+    key: KEY,
+    baseline,
+    draft: draft.value,
+    password: PASSWORD,
+    newPassword
+  })
+}
+
+const opensWith = (world: EditWorld, password: string) =>
+  world.client.setup.getSetup({ password }).then(
+    () => true,
+    () => false
+  )
+
+const removalSteps = (
+  world: EditWorld,
+  onAttempt?: (read: AttemptRead) => void,
+  showsCancelLine?: () => boolean
+) => removalStepsOf({ ...world, chainId: CHAIN_ID, key: KEY, onAttempt, showsCancelLine })
+
+/** The world whose key holds too little for the gas check, and the funding that ends it. */
+const shortAtFirst = (world: EditWorld) => {
+  const reads = chainReadsFor('deposit')
+  return {
+    short: { ...world, reads },
+    funded: () => reads.nativeBalance.mockImplementation(async () => 1_000_000_000_000_000_000n)
+  }
+}
 
 /** Stores a write of the editor as another tab claims it, with no hash yet. */
 const claimedElsewhere = async (world: EditWorld, mark: string): Promise<string> => {
@@ -278,6 +324,87 @@ describe('the save of the changes', () => {
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
   })
 
+  it('keeps a held new password only where it opens the backup another tab landed', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline: EditSession = { ...(await openAndEdit(world)), password: 'changed' }
+    const tabA = await editStepsHolding(world, baseline, 'tab A password')
+    const tabB = await editStepsHolding(world, baseline, 'tab B password')
+
+    await startSave(createArmStore(), tabA)
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe('tab A password')
+    // Tab B follows tab A's landing with its own password still in memory.
+    await tabB.wipe()
+
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBeUndefined()
+    expect(readNewPassword(CHAIN_ID, world.account)).toBeUndefined()
+    expect(await opensWith(world, 'tab A password')).toBe(true)
+    expect(await opensWith(world, 'tab B password')).toBe(false)
+  })
+
+  it('seals under the committed password where the session never marked a new one', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    // The new password reached memory, but the session's mark was never written.
+    holdNewPassword(CHAIN_ID, world.account, NEW_PASSWORD)
+    const { steps } = await editSteps(world, { ...baseline, password: 'kept' })
+
+    await startSave(createArmStore(), steps)
+
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(await opensWith(world, PASSWORD)).toBe(true)
+    expect(await opensWith(world, NEW_PASSWORD)).toBe(false)
+    expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe(PASSWORD)
+    expect(readNewPassword(CHAIN_ID, world.account)).toBeUndefined()
+  })
+
+  it('sends nothing from the deposit step over an attempt opened since, the screen not showing it', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const { short, funded } = shortAtFirst(world)
+    let shown = false
+    const { steps } = await editSteps(
+      short,
+      baseline,
+      (read) => {
+        shown = read.open
+      },
+      () => false
+    )
+    const store = createArmStore()
+
+    await startSave(store, steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+    world.chain.openAttempt()
+    funded()
+    await recheckGas(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(shown).toBe(true)
+  })
+
+  it('sends nothing from the deposit step where the setup went dormant with an attempt open', async () => {
+    const world = await fixture.worldOf('lands')
+    setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
+    const baseline = await openAndEdit(world)
+    const { short, funded } = shortAtFirst(world)
+    const { steps } = await editSteps(short, baseline, undefined, () => true)
+    const store = createArmStore()
+
+    await startSave(store, steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+    world.chain.openAttempt()
+    world.chain.setAuthorized(false)
+    funded()
+    await recheckGas(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
   it('refuses to commit a setup the account no longer authorizes while an attempt is open', async () => {
     const world = await fixture.worldOf('lands')
     setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
@@ -423,12 +550,57 @@ describe('the removal', () => {
 
     await startSave(
       store,
-      removalSteps(world, (read) => heard.push(read))
+      removalSteps(
+        world,
+        (read) => heard.push(read),
+        () => false
+      )
     )
 
     expect(isSaved(store.state())).toBe(true)
     expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(heard).toEqual([])
+  })
+
+  it('sends nothing over an attempt the screen did not show, and sends once it shows it', async () => {
+    const world = await fixture.worldOf('lands')
+    let shown = false
+    const steps = removalSteps(
+      world,
+      (read) => {
+        shown = read.open
+      },
+      () => shown
+    )
+    world.chain.openAttempt()
+    const store = createArmStore('ownerWrite')
+
+    await startSave(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(shown).toBe(true)
+
+    await startSave(store, steps)
+
+    expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(isSaved(store.state())).toBe(true)
+  })
+
+  it('sends nothing from the deposit step over an attempt opened since, the screen not showing it', async () => {
+    const world = await fixture.worldOf('lands')
+    const { short, funded } = shortAtFirst(world)
+    const steps = removalSteps(short, undefined, () => false)
+    const store = createArmStore('ownerWrite')
+
+    await startSave(store, steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+    world.chain.openAttempt()
+    funded()
+    await recheckGas(store, steps)
+
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
   it('never reads as done where the send was refused', async () => {

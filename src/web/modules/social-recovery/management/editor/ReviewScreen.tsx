@@ -9,8 +9,8 @@
  * authorizes while an attempt is open, since its commit would authorize it
  * again while that recovery runs. An added row this device never tested warns
  * beside the save. While an attempt is open on the account the line that
- * saving cancels it sits above the save; the save's prepare reads the attempt
- * again, and the line follows that read.
+ * saving cancels it sits above the save; the save reads the attempt again
+ * right before the send, and the line follows that read.
  *
  * The save runs here over the save's own run, in the shared states with the
  * edit's copy, and reads as saved only once the check after the landing
@@ -104,14 +104,14 @@ export const ReviewStageView = ({
   const reads = useOverviewReads({ client: clientState, records, chainId, account })
   const kit = clientState.status === 'ready' ? clientState.client : null
   const facts = reads.facts.status === 'answered' ? reads.facts.value : null
-  // The attempt as the save's prepare last read it; a new read of the overview's facts replaces it.
+  // The attempt as the save last read it before the send; a new read of the overview's facts replaces it.
   const [attemptRead, setAttemptRead] = useState<AttemptRead | null>(null)
   useEffect(() => setAttemptRead(null), [reads.facts])
   const attemptOpen = attemptRead ? attemptRead.open : !!facts?.attemptOpen
   const dormantRefused = attemptRead
     ? attemptRead.dormant
     : !!facts && facts.attemptOpen && !facts.setup.isAuthorized
-  // Read by the save's prepare, which sends nothing over an attempt this screen did not show.
+  // Read by the save before the send, which sends nothing over an attempt this screen did not show.
   const cancelLineShown = useRef(false)
   cancelLineShown.current = attemptOpen && !dormantRefused
   const addressBook = useMemo(() => addressBookOf(WALLET_RECOVERY_CHAIN), [])

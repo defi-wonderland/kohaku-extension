@@ -143,7 +143,7 @@ export interface HeldWriteRead {
   refresh: () => void
 }
 
-/** The attempt as a write's prepare read it, right before the send. */
+/** The attempt as a write read it, right before the send. */
 export interface AttemptRead {
   open: boolean
   /** The setup no longer authorized on the account while the attempt is open. */
@@ -162,8 +162,10 @@ export interface EditorStepsInput {
   account: Address
   facts: ListedAccountFacts
   key: KeyHandle
-  /** Hears the attempt as the prepare read it. */
+  /** Hears the attempt as the write read it right before the send. */
   onAttempt?: (read: AttemptRead) => void
+  /** Whether the screen shows the line that the write cancels the attempt in progress. */
+  showsCancelLine?: () => boolean
 }
 
 /** What the local wipe after a removal reaches. */
@@ -183,8 +185,6 @@ export interface EditStepsInput extends EditorStepsInput {
   password: string | undefined
   /** The new recovery password, where the holder typed one. */
   newPassword: string | undefined
-  /** Whether the screen shows the line that saving cancels the attempt in progress. */
-  showsCancelLine?: () => boolean
 }
 
 /** The seams a write runs through, from the wallet's own states. */

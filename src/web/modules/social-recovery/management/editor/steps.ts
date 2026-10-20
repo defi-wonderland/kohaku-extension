@@ -11,23 +11,27 @@
  * The save of the changes commits the draft through the save's own prepare:
  * the kit reads the setup nonce from the chain, so the commit is the update,
  * and it cancels an attempt running against the old setup in the same act.
- * Its prepare reads the attempt again and refuses while the setup is not
- * authorized and an attempt is open, since that commit would authorize the
- * setup again while the recovery runs, and refuses an open attempt the screen
- * did not show, so the holder sees that saving cancels it before a second
- * press sends. The save's setup read becomes the read
+ * Its gas check, which every path to the send runs, reads the attempt again
+ * first and refuses while the setup is not authorized and an attempt is open,
+ * since that commit would authorize the setup again while the recovery runs,
+ * and refuses an open attempt the screen did not show, so the holder sees
+ * that saving cancels it before a second press sends. The new recovery
+ * password seals the backup only where the edit session marks it typed, so
+ * the save does what the review showed. The save's setup read becomes the read
  * of whether the setup moved past the one the edit started from: a run that
  * finds it moved at its start sends nothing, and a followed write that finds
  * it moved is checked as after its receipt. Its landing first keeps the
- * recovery password the backup is now sealed under, then wipes the setup
+ * recovery password the backup is now sealed under, and a new password this
+ * tab holds only where it opens the landed backup, then wipes the setup
  * records, ends the edit session and rewrites this device's opened setup with
  * the configuration and the nonce the landed commit holds.
  *
  * The removal sends the clear and the zero write of the authorization as one
  * batch, prepared together and sent through the account's own door. Its
  * end stands once the setup is gone and the account no longer authorizes the
- * action. Its prepare reads the attempt for the screen's line alone: a read
- * that fails stops nothing and leaves the line as the screen drew it. Its landing, and a run that finds that end
+ * action. Its gas check reads the attempt again first and refuses an open
+ * attempt the screen did not show; a read that fails stops nothing and leaves
+ * the line as the screen drew it. Its landing, and a run that finds that end
  * already standing, wipe the recovery password, the setup records, this
  * device's opened setup and the edit session.
  */
@@ -124,6 +128,8 @@ const readAttempt = async (input: EditorStepsInput): Promise<AttemptRead> => {
   return read
 }
 
+const UNSHOWN_ATTEMPT = 'An attempt opened that the screen did not show; nothing was sent.'
+
 /** Whether the removal's end stands: no setup, and no authorization of the action. */
 export const removalStands = (state: SetupState): boolean => !state.hasSetup && !state.isAuthorized
 
@@ -147,7 +153,9 @@ export const wipeRemovedSetup = async ({
 export const editStepsOf = (input: EditStepsInput): SaveSteps => {
   const { baseline, chainId, account } = input
   const sealed = input.draft.privacy.backup === 'encrypted'
-  const password = sealed ? input.newPassword ?? input.password : undefined
+  // The review shows a new password only where the session marks it; the save follows the review.
+  const newPassword = baseline.password === 'changed' ? input.newPassword : undefined
+  const password = sealed ? newPassword ?? input.password : undefined
   const save = saveStepsOf({
     ...input,
     setup: input.records.setup(chainId, account),
@@ -156,16 +164,39 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
   // The commit the check after the landing agreed on, with the draft it sent.
   let landed: { draft: SetupDraft; confirmation: SetupConfirmation } | undefined
 
-  const keepPassword = () => {
+  const keepPassword = async () => {
     if (!sealed) {
       wipeRecoveryPassword(chainId, account)
-    } else if (input.newPassword !== undefined) {
-      setRecoveryPassword(chainId, account, input.newPassword)
+    } else if (newPassword !== undefined) {
+      // A tab that follows another tab's save holds its own unsent password; it keeps only one
+      // that opens the backup that landed.
+      const opens = await input.client.setup.getSetup({ password: newPassword }).then(
+        () => true,
+        () => false
+      )
+      if (opens) {
+        setRecoveryPassword(chainId, account, newPassword)
+      } else {
+        wipeRecoveryPassword(chainId, account)
+      }
     } else if (passwordChangedOf(baseline, input.draft, baseline.password)) {
       // Another tab typed the password the backup is sealed under; this tab never held it.
       wipeRecoveryPassword(chainId, account)
     }
     dropNewPassword(chainId, account)
+  }
+
+  const guardAttempt = async () => {
+    // What the screen showed when the holder pressed, before this read moves it.
+    const lineShown = input.showsCancelLine?.() ?? true
+    const attempt = await readAttempt(input)
+    if (attempt.dormant) {
+      throw new Error('This wallet does not commit a setup again while a recovery is in progress.')
+    }
+    // The holder confirms a save that cancels an attempt only once the screen says so.
+    if (attempt.open && !lineShown) {
+      throw new Error(UNSHOWN_ATTEMPT)
+    }
   }
 
   return {
@@ -176,19 +207,11 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
       if (sealed && password === undefined) {
         throw new Error('The save seals the setup and needs the recovery password.')
       }
-      // What the screen showed when the holder pressed, before this read moves it.
-      const lineShown = input.showsCancelLine?.() ?? true
-      const attempt = await readAttempt(input)
-      if (attempt.dormant) {
-        throw new Error(
-          'This wallet does not commit a setup again while a recovery is in progress.'
-        )
-      }
-      // The holder confirms a save that cancels an attempt only once the screen says so.
-      if (attempt.open && !lineShown) {
-        throw new Error('An attempt opened that the screen did not show; nothing was sent.')
-      }
       return save.prepare()
+    },
+    async checkGas(prepared: PreparedSave) {
+      await guardAttempt()
+      return save.checkGas(prepared)
     },
     async confirm(prepared: PreparedSave): Promise<SetupConfirmation> {
       const confirmation = await save.confirm(prepared)
@@ -198,7 +221,7 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
       return confirmation
     },
     async wipe(): Promise<void> {
-      keepPassword()
+      await keepPassword()
       const cache = input.records.decryptedSetupCache(chainId, account)
       await allWrites([
         input.records.saveSetup(chainId, account),
@@ -228,14 +251,19 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
     ...ownRequestSteps('manageRemove', save),
     hasSetup: async () => removalStands(await client.setup.setupState()),
     async prepare(): Promise<PreparedSave> {
-      // The removal removes whatever stands; an attempt it could not read leaves the line as it was.
-      await readAttempt(input).catch(() => undefined)
       const prepared = await client.setup.prepareRemoveSetup()
       assertWriteDoor('ownerWrite', prepared)
       return { draft: REMOVAL_DRAFT, prepared, calls: callsOf(prepared) }
     },
-    checkGas: ({ prepared, calls }) =>
-      checkGas({
+    async checkGas({ prepared, calls }: PreparedSave) {
+      const lineShown = input.showsCancelLine?.() ?? true
+      // The removal removes whatever stands; an attempt it could not read leaves the line as it was.
+      const attempt = await readAttempt(input).catch(() => undefined)
+      // The holder confirms a removal that cancels an attempt only once the screen says so.
+      if (attempt?.open && !lineShown) {
+        throw new Error(UNSHOWN_ATTEMPT)
+      }
+      return checkGas({
         write: 'ownerWrite',
         prepared,
         key,
@@ -243,7 +271,8 @@ export const removalStepsOf = (input: EditorStepsInput): SaveSteps => {
         network: facts.network,
         transaction: accountBatchTransactionOf(facts, key, calls),
         operates: walletAccountRefOf(facts)
-      }),
+      })
+    },
     async confirm(): Promise<SetupConfirmation> {
       const state = await client.setup.setupState()
       const ended = removalStands(state)
