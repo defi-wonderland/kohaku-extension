@@ -65,7 +65,7 @@ const at = (blockNumber: number, removed = false) => ({
 
 const CONFIGURATION: Configuration = {
   clauses: [{ threshold: 1, credentials: [{ method: METHOD_A, config: '0x01' }] }],
-  wait: 86_400n,
+  wait: 86_400,
   ignoresPause: true
 }
 

@@ -251,7 +251,7 @@ describe('the submission', () => {
         const request = picked(...args)
         return {
           ...request,
-          proofs: [...request.proofs.slice(0, 3), { ...request.proofs[3], place: 4n }]
+          proofs: [...request.proofs.slice(0, 3), { ...request.proofs[3], place: 4 }]
         }
       })
       await mounted.press('submit-action')

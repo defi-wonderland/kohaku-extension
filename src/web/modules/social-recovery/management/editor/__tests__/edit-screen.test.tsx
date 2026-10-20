@@ -88,7 +88,7 @@ const DAVE = { ...ALICE, config: `0x${'0d'.repeat(32)}` as const }
 // A group that needs both of its members, and a group that needs one of two.
 const COMMITTED: Configuration = {
   clauses: [review.group(2, ALICE, BOB), review.group(1, CAROL, DAVE)],
-  wait: 172_800n,
+  wait: 172_800,
   ignoresPause: true
 }
 

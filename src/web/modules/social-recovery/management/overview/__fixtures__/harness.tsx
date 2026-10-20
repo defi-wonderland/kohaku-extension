@@ -94,7 +94,7 @@ export const CONFIGURATION: Configuration = {
       credentials: [{ method: ADDRESS_BOOK.methods.ecdsa, config: ecdsaConfigOf(GUARDIAN) }]
     }
   ],
-  wait: 172_800n,
+  wait: 172_800,
   ignoresPause: true
 }
 

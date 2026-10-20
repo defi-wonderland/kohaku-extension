@@ -66,7 +66,7 @@ const submissionOver = (gathering: Gathering, places: number[]) => ({
   proofs: places.map((place) => {
     const at = gathering.places[place]
     return {
-      place: BigInt(place),
+      place,
       method: at.method,
       config: at.config,
       salt: at.salt,

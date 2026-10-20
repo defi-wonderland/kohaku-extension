@@ -43,7 +43,7 @@ const CONFIGURATION: Configuration = {
       credentials: [{ method: '0x0000000000000000000000000000000000000004', config: '0x04' }]
     }
   ],
-  wait: 259_200n,
+  wait: 259_200,
   ignoresPause: true
 }
 
@@ -106,8 +106,8 @@ describe('the load of a committed configuration', () => {
 
   it('leaves the committed configuration alone when the records change', () => {
     const loaded = recordsOfConfiguration(CONFIGURATION, 'private')
-    loaded.setupDraft.clauses[0].credentials.pop()
-    expect(CONFIGURATION.clauses[0].credentials).toHaveLength(3)
+    expect(loaded.setupDraft.clauses[0].credentials).not.toBe(CONFIGURATION.clauses[0].credentials)
+    expect(loaded.setupDraft.clauses[0].credentials).toEqual(CONFIGURATION.clauses[0].credentials)
   })
 })
 
@@ -140,7 +140,7 @@ describe('the edit session', () => {
     const world = worldOf()
     const input = { ...world, configuration: CONFIGURATION, level: 'private' as const }
     await openEditSession({ ...input, state: stateAt(4n) })
-    const edited = { ...recordsOfConfiguration(CONFIGURATION, 'private').setupDraft, wait: 86_400n }
+    const edited = { ...recordsOfConfiguration(CONFIGURATION, 'private').setupDraft, wait: 86_400 }
     await world.setup.writeDraftAndPath(edited)
     await world.session.write({ ...(await world.session.read())!, password: 'changed' })
 
@@ -148,7 +148,7 @@ describe('the edit session', () => {
 
     expect(again.password).toBe('changed')
     const draft = await world.setup.setupDraft.read()
-    expect(draft.status === 'present' && draft.value.wait).toBe(86_400n)
+    expect(draft.status === 'present' && draft.value.wait).toBe(86_400)
   })
 
   it('starts again from the chain once the setup moved', async () => {
@@ -157,7 +157,7 @@ describe('the edit session', () => {
     await openEditSession({ ...input, state: stateAt(4n) })
     await world.setup.writeDraftAndPath({
       ...recordsOfConfiguration(CONFIGURATION, 'private').setupDraft,
-      wait: 86_400n
+      wait: 86_400
     })
 
     const again = await openEditSession({ ...input, state: stateAt(5n) })

@@ -311,8 +311,11 @@ export const PAYLOAD: Hex = '0xabcdef'
 export const ATTEMPT_ID = '3'
 export const SETUP_NONCE = '2'
 
+/** The approval branch of a request, the one a link to the page carries. */
+export type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
+
 /** The approval request one place's link carries. */
-export const requestOf = (overrides: Partial<ApproverRequest> = {}): ApproverRequest => ({
+export const requestOf = (overrides: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
   kind: 'recovery-proof-request',
   version: 1,
   purpose: 'approval',
@@ -325,11 +328,13 @@ export const requestOf = (overrides: Partial<ApproverRequest> = {}): ApproverReq
   setupNonce: SETUP_NONCE,
   setupBodyHash: `0x${'5e'.repeat(32)}`,
   payload: PAYLOAD,
+  order: { token: zeroAddress, amount: '0', payee: zeroAddress },
   validUntil: String(VALID_UNTIL),
   place: 1,
   method: DESCRIPTOR.methodEcdsa,
   config: configOf(GUARDIAN),
   salt: '0x02',
+  credentialHoldsCode: false,
   ...overrides
 })
 
@@ -348,20 +353,17 @@ export const descriptionOf = (
   overrides: Partial<RequestDescription> = {}
 ): RequestDescription => ({
   account: request.account,
-  chainId: BigInt(request.chainId),
+  chainId: Number(request.chainId),
   manager: request.manager,
   action: request.action,
   attemptId: BigInt(request.attemptId),
   setupNonce: BigInt(request.setupNonce),
   purpose: 'approval',
-  handover: {
-    decoded: true,
-    value: { newAuthority: NEW_KEY, removedAuthority: REMOVED_KEY }
-  },
+  handover: { decoded: true, newAuthority: NEW_KEY, removedAuthority: REMOVED_KEY },
   validUntil: Number(request.validUntil),
   place: request.place,
-  identityPublic: undefined,
-  device: undefined,
+  identityPublic: { method: request.method, config: request.config, saltPublished: true },
+  device: 'no-implementation',
   ...overrides
 })
 

@@ -56,7 +56,7 @@ export const guardianOf = (address: `0x${string}`) => ({
 
 export const CONFIGURATION: Configuration = {
   clauses: [{ threshold: 1, credentials: [guardianOf(GUARDIAN)] }],
-  wait: 172_800n,
+  wait: 172_800,
   ignoresPause: true
 }
 

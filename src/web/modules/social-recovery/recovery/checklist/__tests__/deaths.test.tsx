@@ -14,6 +14,7 @@ import type { Configuration, Gathering, Hex } from '@kohaku-eth/social-recovery'
 import type { RecoverySessionAccessor } from '@web/modules/social-recovery/shared/records'
 
 import type {
+  ApprovalGathering,
   FakeDeps,
   FakeKit,
   Mounted,
@@ -230,7 +231,7 @@ describe('the request dies', () => {
       let land: jest.SpyInstance
 
       /** The gathering with the payload its submission carries. */
-      const submitted = (gathering: Gathering): Gathering => ({
+      const submitted = (gathering: ApprovalGathering): Gathering => ({
         ...gathering,
         request: { ...gathering.request, payload: PAYLOAD }
       })
