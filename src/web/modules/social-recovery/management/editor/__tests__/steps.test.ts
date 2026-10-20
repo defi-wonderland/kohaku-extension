@@ -249,7 +249,7 @@ describe('the save of the changes', () => {
     })
     // The committed setup now opens with the password it was sealed under.
     expect(await world.client.setup.getSetup({ password: PASSWORD })).toEqual(
-      configurationOfDraft(draft)
+      fixture.asOpened(configurationOfDraft(draft))
     )
   })
 
@@ -263,7 +263,7 @@ describe('the save of the changes', () => {
     await startSave(createArmStore(), steps)
 
     expect(await world.client.setup.getSetup({ password: NEW_PASSWORD })).toEqual(
-      configurationOfDraft(draft)
+      fixture.asOpened(configurationOfDraft(draft))
     )
     expect(readRecoveryPassword(CHAIN_ID, world.account)).toBe(NEW_PASSWORD)
     expect(readNewPassword(CHAIN_ID, world.account)).toBeUndefined()
@@ -289,7 +289,7 @@ describe('the save of the changes', () => {
     const world = await fixture.worldOf('lands')
     setRecoveryPassword(CHAIN_ID, world.account, PASSWORD)
     const baseline = await openAndEdit(world)
-    world.chain.commitSetup({ level: 'private', configuration: CONFIGURATION, password: PASSWORD })
+    await world.chain.commitSetup(CONFIGURATION, fixture.PRIVATE, PASSWORD)
     const { steps } = await editSteps(world, baseline)
     const store = createArmStore()
 
@@ -325,11 +325,7 @@ describe('the save of the changes', () => {
     const { saveSetup } = world.records
     // Another device commits between the check after the landing and this device's wipe.
     world.records.saveSetup = async (...args) => {
-      world.chain.commitSetup({
-        level: 'private',
-        configuration: CONFIGURATION,
-        password: PASSWORD
-      })
+      await world.chain.commitSetup(CONFIGURATION, fixture.PRIVATE, PASSWORD)
       return saveSetup(...args)
     }
 

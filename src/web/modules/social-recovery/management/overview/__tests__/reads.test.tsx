@@ -74,8 +74,9 @@ describe('the overview reads', () => {
     wipeRecoveryPassword(CHAIN_ID, ACCOUNT)
   })
 
-  const renderOver = async (world: World, onOpen = jest.fn()) =>
-    mount(
+  // A sealed backup's open runs on the real clock: each render and press waits for the reads it starts.
+  const renderOver = async (world: World, onOpen = jest.fn()) => {
+    const mounted = await mount(
       <ReadsProbe
         client={readyOver(world.client)}
         records={world.records}
@@ -83,6 +84,15 @@ describe('the overview reads', () => {
         onOpen={onOpen}
       />
     )
+    await harness.settleReads()
+    return {
+      ...mounted,
+      press: async (id: string) => {
+        await mounted.press(id)
+        await harness.settleReads()
+      }
+    }
+  }
 
   it('keeps a private path locked until the right recovery password, then shows it and keeps it', async () => {
     const world = await worldAt('private')
@@ -151,12 +161,12 @@ describe('the overview reads', () => {
 
   it('reads a failed setup read as failed with retry, never as not set up', async () => {
     const world = await worldAt('public')
-    world.chain.failRead('setup.setupState')
+    world.chain.failRead('stateOf')
     view = await renderOver(world)
     expect(view.byTestId('overview-read-failed')).not.toBeNull()
     expect(view.byTestId('overview-chip-not-set-up')).toBeNull()
 
-    world.chain.restoreRead('setup.setupState')
+    world.chain.restoreRead('stateOf')
     await view.press('overview-read-failed-retry')
     expect(view.byTestId('overview-read-failed')).toBeNull()
     expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
@@ -197,7 +207,7 @@ describe('the overview reads', () => {
     view = await renderOver(world)
     const first = await world.client.setup.setupState()
     const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
-    world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
+    await harness.commitAt(world.chain, 'private', newer)
 
     await view.press('overview-locked-action')
     await typeInto(view.byTestId('overview-locked-field'), PASSWORD)
@@ -214,7 +224,7 @@ describe('the overview reads', () => {
   it('refuses an older setup opened beside the state of a newer one, keeps none of it, and reads the facts again', async () => {
     const world = await worldAt('private')
     const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
-    world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
+    await harness.commitAt(world.chain, 'private', newer)
     const attemptState = jest.spyOn(world.client.walletReads, 'attemptState')
     view = await renderOver(world)
     const factsReads = attemptState.mock.calls.length
@@ -239,7 +249,7 @@ describe('the overview reads', () => {
   it('reads the path as failed with retry, keeping nothing, where every opened setup is the older one', async () => {
     const world = await worldAt('private')
     const newer = { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
-    world.chain.commitSetup({ level: 'private', configuration: newer, password: PASSWORD })
+    await harness.commitAt(world.chain, 'private', newer)
     view = await renderOver(world)
     // A node that stays behind the one the state reads came from opens the older setup every time.
     const getSetup = jest
@@ -257,11 +267,9 @@ describe('the overview reads', () => {
     expect(kept.status).toBe('absent')
   })
 
-  it('reads a kit that does not serve the method logs as no moved keys, and still shows the setup', async () => {
+  it('still shows the setup and its notices for an account the action does not serve', async () => {
     const world = await worldAt('public')
-    jest.spyOn(world.client.setup.events, 'methodFilter').mockImplementation(() => {
-      throw notServedRefusal('events.methodFilter')
-    })
+    world.chain.supportsAccount = false
     view = await renderOver(world)
     expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
     expect(view.byTestId('readout-path')).not.toBeNull()

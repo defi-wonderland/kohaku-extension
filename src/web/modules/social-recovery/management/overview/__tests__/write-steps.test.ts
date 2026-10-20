@@ -146,10 +146,7 @@ describe('the overview writes', () => {
     world.chain.land(sent.prepared)
     const agreed = await steps.confirm(sent)
     expect(agreed.landed && agreed.isAuthorized).toBe(true)
-    world.chain.commitSetup({
-      level: 'public',
-      configuration: { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 }
-    })
+    await harness.commitAt(world.chain, 'public', { ...CONFIGURATION, wait: CONFIGURATION.wait + 1 })
 
     await steps.wipe()
 
