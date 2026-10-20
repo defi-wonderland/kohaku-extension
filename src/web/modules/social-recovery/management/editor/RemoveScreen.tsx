@@ -125,6 +125,29 @@ export const RemoveStageView = ({
     }
   }, [state.lookup, state.write.status, state.stop, refreshHeld])
 
+  // A stop for another screen's write whose record is gone by the read again has nowhere to route
+  // from the stored write; the overview reads everything again.
+  useEffect(() => {
+    if (state.stop !== 'held-by-another-write') {
+      return undefined
+    }
+    let live = true
+    records
+      .saveInFlight(chainId, account)
+      .read()
+      .then(
+        (read) => {
+          if (live && read.status !== 'present') {
+            navigate(WEB_ROUTES.socialRecoveryManage)
+          }
+        },
+        () => undefined
+      )
+    return () => {
+      live = false
+    }
+  }, [state.stop, records, chainId, account, navigate])
+
   // The chain holds no setup and no authorization: this device keeps nothing of the setup either.
   const endedElsewhere = screen === 'already-set-up'
   useEffect(() => {

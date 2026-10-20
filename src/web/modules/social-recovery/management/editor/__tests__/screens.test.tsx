@@ -593,4 +593,31 @@ describe('the removal around the refusals and other writes', () => {
     expect(navigate).toHaveBeenCalledWith('social-recovery/manage/review')
     view.unmount()
   })
+
+  it('opens the overview where the run stops for another screen whose write was released meanwhile', async () => {
+    const { view, element, records, navigate } = await removalWith(false)
+    const requestId = `${newSendRequestId()}${MANAGE_INTENT_MARKS.manageEdit}`
+    const inFlight = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await inFlight.claim({
+      draft: REMOVAL_DRAFT,
+      prepared: { kind: 'call', target: ACCOUNT, value: 0n, data: '0x' } as never,
+      requestId,
+      claimedAt: Date.now()
+    })
+    await inFlight.release(requestId)
+
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'idle', write: 'ownerWrite', run: 1 },
+        after: { stage: 'none' },
+        stop: 'held-by-another-write'
+      }
+    }
+    await view.render(React.cloneElement(element))
+
+    expect(navigate).toHaveBeenCalledWith('social-recovery/manage')
+    expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage/review')
+    view.unmount()
+  })
 })
