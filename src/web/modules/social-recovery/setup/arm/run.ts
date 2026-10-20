@@ -304,8 +304,12 @@ export const armReducer = (state: ArmState, event: ArmEvent): ArmState => {
         stop: 'already-set-up'
       }
     case 'overviewElsewhere':
-      // Taken after the claim and before the send, in place of a follow.
-      if (!awaitingHashIn(state, event.run)) {
+      // Taken after the claim and before the send, in place of a follow, or
+      // from the arrival's read of the stored write, before any start.
+      if (
+        !awaitingHashIn(state, event.run) &&
+        !(inRun(state, event.run) && state.write.status === 'idle' && state.lookup === 'reading')
+      ) {
         return state
       }
       return {
@@ -1087,9 +1091,23 @@ const followSave = async (
 }
 
 /**
+ * Whether a run whose own request is `own` leaves the stored write to its
+ * holder instead of following it: a write of the recovery overview or of the
+ * management editor is followed and judged only by a run of that same write,
+ * so a save, another overview write or an editor write that meets it stops.
+ * A stored save is followed by any run.
+ */
+const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
+  const held = intentOfRequest(stored.requestId)
+  return !!held && intentOfRequest(own) !== held
+}
+
+/**
  * Before the save is offered: reads the save in flight stored on this device
- * and, where one is, follows it in a new run with nothing sent. Reads once per
- * run held, and again only after a read that failed.
+ * and, where one is, follows it in a new run with nothing sent. A stored write
+ * of another management write is left to its own screen: the run stops there
+ * with nothing followed, sent or released. Reads once per run held, and again
+ * only after a read that failed.
  */
 export const lookForSave = async (
   store: ArmStore,
@@ -1115,6 +1133,10 @@ export const lookForSave = async (
   }
   if (read.status !== 'present') {
     store.dispatch({ type: 'lookup', run, reading: 'none' })
+    return
+  }
+  if (leftToHolder(steps.newRequestId(), read.value)) {
+    store.dispatch({ type: 'overviewElsewhere', run })
     return
   }
   // A void save may have let another page store its own: the save is offered only where none is.
@@ -1262,18 +1284,6 @@ const sendClaimed = async (
     }
   }
   return ranOut
-}
-
-/**
- * Whether a run whose own request is `own` leaves the stored write to its
- * holder instead of following it: a write of the recovery overview or of the
- * management editor is followed and judged only by a run of that same write,
- * so a save, another overview write or an editor write that meets it stops.
- * A stored save is followed by any run.
- */
-const leftToHolder = (own: string, stored: SaveInFlightRecord): boolean => {
-  const held = intentOfRequest(stored.requestId)
-  return !!held && intentOfRequest(own) !== held
 }
 
 /** Follows a stored save in place of the run's own send, and looks again where it was void. */

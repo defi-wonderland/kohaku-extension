@@ -4,10 +4,12 @@
  * Two tabs of this device on the same clear of the overview, each with its
  * own run over the records both read: the first claims and sends, the second
  * loses the claim and follows the first's write to its landing, and only one
- * transaction goes out.
+ * transaction goes out. A re-authorize held at the deposit step sends nothing
+ * where an attempt opened meanwhile, and a clear that finds another write of
+ * the overview stored leaves it to that write's own step.
  */
 import type { Account } from '@ambire-common/interfaces/account'
-import type { KeyHandle } from '@web/modules/social-recovery/shared/client'
+import type { ChainReads, KeyHandle } from '@web/modules/social-recovery/shared/client'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const harness: typeof import('@web/modules/social-recovery/management/overview/__fixtures__/harness') = require('@web/modules/social-recovery/management/overview/__fixtures__/harness')
@@ -19,8 +21,13 @@ const {
   REMOVAL_DRAFT
 }: typeof import('@web/modules/social-recovery/management/overview/constants') = require('@web/modules/social-recovery/management/overview/constants')
 const {
+  reauthorizeDraftOf
+}: typeof import('@web/modules/social-recovery/management/overview/readings') = require('@web/modules/social-recovery/management/overview/readings')
+const {
   createArmStore,
   isSaved,
+  lookForSave,
+  recheckGas,
   startSave
 }: typeof import('@web/modules/social-recovery/setup/arm') = require('@web/modules/social-recovery/setup/arm')
 const {
@@ -28,7 +35,9 @@ const {
 }: typeof import('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred') = require('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
-const { worldAt, receiptsOver, sendPortOver, GAS_READS, CHAIN_ID } = harness
+const { worldAt, receiptsOver, sendPortOver, GAS_READS, CHAIN_ID, CONFIGURATION } = harness
+
+const GAS_READS_BALANCE = 1_000_000_000_000_000_000n
 
 let account: Account
 let key: KeyHandle
@@ -92,5 +101,63 @@ describe('two tabs on the same clear', () => {
     expect(first.port.sendAccountBatch).toHaveBeenCalledTimes(1)
     expect(second.port.sendAccountBatch).not.toHaveBeenCalled()
     expect((await world.records.saveInFlight(CHAIN_ID, address).read()).status).toBe('absent')
+  })
+})
+
+describe('a re-authorize held at the deposit step', () => {
+  it('sends nothing and tells its step where an attempt opened before the deposit continuation', async () => {
+    const world = await worldAt('public', address)
+    world.chain.setAuthorized(false)
+    let balance = 0n
+    const reads = { ...GAS_READS, nativeBalance: async () => balance } as ChainReads
+    const port = sendPortOver()
+    const onAttemptOpen = jest.fn()
+    const steps = overviewStepsOf({
+      intent: 'reauthorize',
+      client: world.client,
+      reads,
+      receipts: receiptsOver(),
+      port,
+      requests: armHarness.requestsFake(),
+      records: world.records,
+      chainId: CHAIN_ID,
+      account: address,
+      facts: armHarness.factsOf(account, { key }),
+      key,
+      draft: reauthorizeDraftOf(CONFIGURATION, 'public'),
+      password: undefined,
+      onAttemptOpen
+    })
+    const store = createArmStore('save')
+
+    await startSave(store, steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+
+    world.chain.openAttempt()
+    balance = GAS_READS_BALANCE
+    await recheckGas(store, steps)
+
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(onAttemptOpen).toHaveBeenCalledTimes(1)
+    expect(store.state().write.status).toBe('failedNotSent')
+    expect((await world.records.saveInFlight(CHAIN_ID, address).read()).status).toBe('absent')
+  })
+})
+
+describe('a clear that finds the removal of the authorization stored', () => {
+  it('stops with nothing followed, sent or released, and leaves that write stored', async () => {
+    const world = await worldAt('public', address)
+    // Another tab stored its removal while the account still authorized the action.
+    await harness.storeOverviewWrite(world, 'removeAuthorization', address)
+    world.chain.setAuthorized(false)
+    const held = await world.records.saveInFlight(CHAIN_ID, address).read()
+    const tab = tabOver(world)
+
+    await lookForSave(tab.store, tab.steps)
+
+    expect(tab.store.state().stop).toBe('overview-elsewhere')
+    expect(tab.receipts.wait).not.toHaveBeenCalled()
+    expect(tab.port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(await world.records.saveInFlight(CHAIN_ID, address).read()).toEqual(held)
   })
 })
