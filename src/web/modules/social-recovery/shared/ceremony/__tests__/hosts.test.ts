@@ -20,8 +20,7 @@ import type {
   CeremonyStep,
   ChainVerdict,
   DeviceCallContext,
-  ResolvedCeremony,
-  RunDeps
+  ResolvedCeremony
 } from '@web/modules/social-recovery/shared/ceremony'
 import {
   ceremony,
@@ -33,6 +32,7 @@ import {
   PASSKEY_METHOD,
   PROOF_HEX
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
+import type { HostSetup } from '@web/modules/social-recovery/shared/ceremony/__fixtures__/types'
 
 const PROOFS: Material = { proofs: [{ name: 'outer_evm_count_4' }] }
 
@@ -58,16 +58,7 @@ const phoneDevice = (material: Material = PROOFS) => {
   return { device, contexts }
 }
 
-interface Setup {
-  verdict?: Verdict
-  chainVerdict?: ChainVerdict
-  binding?: 'external-app' | 'in-browser-prover'
-  deps?: RunDeps
-  material?: Material
-  script?: MethodScript
-}
-
-const run = async (call: CeremonyCall, setup: Setup = {}) => {
+const run = async (call: CeremonyCall, setup: HostSetup = {}) => {
   const binding = setup.binding ?? 'external-app'
   const method = fakeMethod(
     { ...INPUTS, verify: setup.verdict ?? 'not-judged', ...setup.script },
@@ -183,6 +174,51 @@ describe('the access test of a method that cannot judge its own proof', () => {
     expect(outcome).toEqual({ kind: 'dismissed', note: 'cancelled', detail: 'AbortError' })
     expect(chainVerdict).toHaveBeenCalledTimes(1)
   })
+  ;(
+    [
+      ['a verdict', (settle: { resolve: (v: Verdict) => void }) => settle.resolve('satisfied')],
+      [
+        'a rejection',
+        (settle: { reject: (e: Error) => void }) => settle.reject(new Error('late read failure'))
+      ]
+    ] as const
+  ).forEach(([what, finish]) =>
+    it(`stays cancelled, with no unhandled rejection, where the hung read later settles with ${what}`, async () => {
+      const unhandled: unknown[] = []
+      const onUnhandled = (reason: unknown) => unhandled.push(reason)
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        const controller = new AbortController()
+        let reading: () => void = () => undefined
+        const asked = new Promise<void>((resolve) => {
+          reading = resolve
+        })
+        const settle: { resolve: (value: Verdict) => void; reject: (error: Error) => void } = {
+          resolve: () => undefined,
+          reject: () => undefined
+        }
+        const chainVerdict = jest.fn<Promise<Verdict>, Parameters<ChainVerdict>>(() => {
+          reading()
+          return new Promise<Verdict>((resolve, reject) => {
+            settle.resolve = resolve
+            settle.reject = reject
+          })
+        })
+        const running = run('testAccess', { chainVerdict, deps: { signal: controller.signal } })
+        await asked
+        controller.abort()
+        const { outcome } = await running
+        finish(settle)
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10)
+        })
+        expect(outcome).toEqual({ kind: 'dismissed', note: 'cancelled', detail: 'AbortError' })
+        expect(unhandled).toEqual([])
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+      }
+    })
+  )
 
   it('shows the checking step before it reads the chain', async () => {
     const steps: CeremonyStep[] = []

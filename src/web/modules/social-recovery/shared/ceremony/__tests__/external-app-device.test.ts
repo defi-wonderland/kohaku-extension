@@ -17,6 +17,10 @@ import type {
   DeviceCallContext,
   DeviceResult
 } from '@web/modules/social-recovery/shared/ceremony'
+import type {
+  Callback,
+  Watched
+} from '@web/modules/social-recovery/shared/ceremony/__fixtures__/types'
 
 const URL = 'https://zkpassport.example/r?id=1'
 const OUTER = { name: 'outer_evm_count_4', publicInputs: ['0x0a', '0x00', '0x1c8', '0x00'] }
@@ -32,8 +36,6 @@ const CANCELLED = {
   stop: { kind: 'dismissed', note: 'cancelled', detail: 'AbortError' }
 }
 const REFUSED = { ok: false, stop: { kind: 'dismissed', note: 'refused' } }
-
-type Callback = (...args: unknown[]) => unknown
 
 /** A request whose callbacks the test fires; `onResult` only where the library offers it. */
 const phoneRequest = ({ withResult = true }: { withResult?: boolean } = {}) => {
@@ -65,12 +67,6 @@ const tick = () =>
   new Promise((resolve) => {
     setTimeout(resolve, 0)
   })
-
-interface Watched {
-  context: DeviceCallContext
-  steps: CeremonyStep[]
-  views: CeremonyView[]
-}
 
 const watched = (extra: Partial<DeviceCallContext> = {}): Watched => {
   const steps: CeremonyStep[] = []

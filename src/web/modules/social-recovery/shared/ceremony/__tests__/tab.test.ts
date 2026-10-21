@@ -58,6 +58,7 @@ import {
   setVisibility,
   SYNCED_FLAGS
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
+import type { Callback } from '@web/modules/social-recovery/shared/ceremony/__fixtures__/types'
 
 const mockUi = { isTab: true, isPopup: false, isActionWindow: false }
 const mockNetworks: { current: Network[]; listeners: Set<() => void> } = {
@@ -703,8 +704,6 @@ describe('the ceremony tab for the identity bindings', () => {
   const PHONE_URL = 'https://zkpassport.example/r?id=1'
   const QR_DATA = '2374971804270526477833002468783965837992554564899874087591661303561346432389'
   const OUTER = { name: 'outer_evm_count_4' }
-
-  type Callback = (...args: unknown[]) => unknown
 
   /** A zkPassport request whose callbacks the test fires, as the phone would. */
   const phoneRequest = () => {

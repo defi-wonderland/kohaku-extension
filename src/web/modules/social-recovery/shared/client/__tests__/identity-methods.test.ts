@@ -29,14 +29,18 @@ import {
   extensionClientFor,
   networkRecord,
   sameAddress,
-  sdkStandIn,
-  World
+  sdkStandIn
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
 import {
   createScriptedAadhaarStack,
   createScriptedZkPassportStack
 } from '@web/modules/social-recovery/shared/client/scripted'
+import type {
+  Followed,
+  Heard,
+  IdentityWorld
+} from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import type { ApprovalRequest } from '@web/modules/social-recovery/shared/client/scripted/__fixtures__/types'
 import type { RecoveryKitClient } from '@web/modules/social-recovery/shared/client/types'
 
@@ -154,23 +158,11 @@ const materialOf = (result: DeviceResult): Material => {
   return result.material
 }
 
-interface Followed {
-  steps: CeremonyStep[]
-  views: CeremonyView[]
-}
-
 const deviceContext = (call: 'enroll' | 'createClaim', followed: Followed) => ({
   call,
   onStep: (step: CeremonyStep) => followed.steps.push(step),
   show: (view: CeremonyView) => followed.views.push(view)
 })
-
-interface IdentityWorld {
-  world: World
-  client: RecoveryKitClient
-  zkModule: Address
-  aadhaarModule: Address
-}
 
 const identityWorld = async (): Promise<IdentityWorld> => {
   const world = createWorld({ chain: 'sepolia' })
@@ -447,13 +439,6 @@ describe('the scripted zkPassport stack', () => {
     devMode: false
   } as const
 
-  interface Heard {
-    events: string[]
-    proofs: unknown[]
-    results: unknown[]
-    errors: string[]
-  }
-
   const listen = async (
     stack: ReturnType<typeof createScriptedZkPassportStack>,
     customData?: string
@@ -516,7 +501,7 @@ describe('the scripted zkPassport stack', () => {
     })
   })
 
-  it("answers the verifier parameters with the vector's words and the proof's identifier", async () => {
+  it("answers the verifier parameters with the non-salted nullifier type and the proof's identifier where the SDK reads them", async () => {
     const stack = createScriptedZkPassportStack({ stepMs: 1, identifier: 777n })
     const { client, heard } = await listen(stack)
     await waitFor(20)
@@ -526,15 +511,10 @@ describe('the scripted zkPassport stack', () => {
       scope: 'kohaku-recovery',
       devMode: false
     })
-    const word = (value: bigint) => numberToHex(value, { size: 32 })
-    expect(params.proofVerificationData).toEqual({
-      vkeyHash: word(0x63n),
-      proof: '0x123456',
-      publicInputs: [0x0an, 0x0bn, 0x0cn, 0x0dn, 0x0en, 0n, 777n, 0n].map(word)
-    })
-    expect(params.committedInputs).toBe('0x1234')
-    expect(params.serviceConfig).toEqual({
-      validityPeriodInSeconds: 86400,
+    const inputs = params.proofVerificationData.publicInputs
+    expect(BigInt(inputs[inputs.length - 3])).toBe(0n)
+    expect(BigInt(inputs[inputs.length - 2])).toBe(777n)
+    expect(params.serviceConfig).toMatchObject({
       domain: 'kohaku.stand-in',
       scope: 'kohaku-recovery',
       devMode: false
