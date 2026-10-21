@@ -12,7 +12,8 @@
  *
  * `call` decodes the calldata with the SDK's ABIs and answers the manager's
  * views, the action's views and immutables, each method module's views and
- * the account's `privileges`; a write answers empty, so a simulation passes.
+ * the account's `privileges`; a write answers empty, so a simulation passes,
+ * and a start the manager would refuse reverts as it would.
  * A read `failRead` names fails as a transport failure or reverts with the
  * bytes given, until `restoreRead`. The latest block follows the node's
  * clock, so a window measured from it stays current. A deployment that
@@ -33,6 +34,7 @@ import {
   configurationBody,
   decodeSetupBody,
   encodeSetupBody,
+  ERRORS_MANAGER_ABI,
   FORMATS_CANCEL_BY_PROOFS_ABI,
   FORMATS_CREATION_RUNTIME_HEAD,
   FORMATS_CREATION_RUNTIME_TAIL,
@@ -89,6 +91,7 @@ import {
   decodeAbiParameters,
   decodeFunctionData,
   encodeAbiParameters,
+  encodeErrorResult,
   encodeEventTopics,
   encodeFunctionResult,
   isAddressEqual,
@@ -117,18 +120,6 @@ import type {
 
 const BLOCK_TIME = 12
 const DAY = 24 * 3600
-
-/**
- * The wait an attempt counts from its start: the one the setup body it
- * carries names, a day where the body does not decode.
- */
-const waitOfBody = (setupBody: Hex): number => {
-  try {
-    return decodeSetupBody(setupBody).wait
-  } catch {
-    return DAY
-  }
-}
 
 const KEY_VALUE: Hex = pad('0x01', { size: 32 })
 const MANAGER_INTERFACE_ID: Hex = '0x675e6a4a'
@@ -437,10 +428,19 @@ export class ScriptedNode implements IProvider {
     this.applyConsume(block, zeroAddress)
   }
 
-  /** Applies a prepared call or batch the way the contracts would, all in one mined block. */
+  /**
+   * Applies a prepared call or batch the way the contracts would, all in one
+   * mined block; a refused call throws the revert and nothing lands.
+   */
   land(prepared: PreparedCall | PreparedBatch): Hex {
-    const block = this.mine()
     const calls = prepared.kind === 'call' ? [prepared] : prepared.calls
+    calls.forEach((call) => {
+      const refusal = this.refusalOf(call.data)
+      if (refusal) {
+        throw refusal
+      }
+    })
+    const block = this.mine()
     const from =
       prepared.kind === 'call' && prepared.sender === 'anyone' ? zeroAddress : this.account
     const hash = this.recordTransaction(block, from, calls[0]?.data ?? '0x')
@@ -521,6 +521,10 @@ export class ScriptedNode implements IProvider {
     }
     const write = this.decodeWrite(data)
     if (write) {
+      const refusal = this.refusalOf(data)
+      if (refusal) {
+        throw refusal
+      }
       return '0x'
     }
     const decoded = this.decodeView(data)
@@ -612,6 +616,37 @@ export class ScriptedNode implements IProvider {
       }
     }
     return 'rejected'
+  }
+
+  /**
+   * The revert the manager answers a write with, if any: a start whose setup
+   * body does not recompute to the stored commitment, or does not decode, is
+   * refused, and nothing of the call lands.
+   */
+  private refusalOf(data: Hex) {
+    const write = this.decodeWrite(data)
+    if (write?.functionName !== 'startAttempt') {
+      return undefined
+    }
+    const [{ account, action, setupNonce, setupBody }] = write.args
+    const recomputed = setupCommitment(account, action, setupNonce, setupBody)
+    const committed = this.manager.setupCommitment
+    if (recomputed.toLowerCase() !== committed.toLowerCase()) {
+      return revertedCall(
+        'call',
+        encodeErrorResult({
+          abi: ERRORS_MANAGER_ABI,
+          errorName: 'PolicyManager_SetupCommitmentMismatch',
+          args: [recomputed, committed]
+        })
+      )
+    }
+    try {
+      decodeSetupBody(setupBody)
+    } catch {
+      return revertedCall('call', '0x')
+    }
+    return undefined
   }
 
   private decodeWrite(data: Hex) {
@@ -1103,7 +1138,7 @@ export class ScriptedNode implements IProvider {
         this.applyStart(
           request,
           {
-            consumableAfter: block.timestamp + waitOfBody(request.setupBody),
+            consumableAfter: block.timestamp + decodeSetupBody(request.setupBody).wait,
             ignoresPause: false,
             usedMethods: request.proofs.map((proof) => proof.method),
             usedPlaces: request.proofs.map((proof) => proof.place)

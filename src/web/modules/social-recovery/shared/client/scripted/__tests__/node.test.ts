@@ -13,16 +13,20 @@ import {
   configurationBody,
   configurationCommitment,
   encodeSetupBody,
+  ERRORS_MANAGER_ABI,
   FORMATS_START_ATTEMPT_ABI,
-  METHOD_ECDSA_CONFIG_ABI
+  METHOD_ECDSA_CONFIG_ABI,
+  setupCommitment as commitmentOf
 } from '@kohaku-eth/social-recovery'
 import type {
   Address,
   Configuration,
   DeploymentDescriptor,
+  Hex,
   PreparedCall
 } from '@kohaku-eth/social-recovery'
 import {
+  decodeErrorResult,
   decodeFunctionResult,
   encodeAbiParameters,
   encodeFunctionData,
@@ -76,6 +80,31 @@ const nodeOf = () =>
 const clientsOver = (node: ScriptedNode) =>
   SocialRecoveryBuilder.from({ provider: node, account: ACCOUNT, descriptor: DESCRIPTOR }).build()
 
+const startOf = (node: ScriptedNode, setupBody: Hex): PreparedCall =>
+  ({
+    kind: 'call',
+    target: DESCRIPTOR.manager,
+    value: 0n,
+    sender: 'anyone',
+    data: encodeFunctionData({
+      abi: FORMATS_START_ATTEMPT_ABI,
+      functionName: 'startAttempt',
+      args: [
+        {
+          account: ACCOUNT,
+          action: DESCRIPTOR.action,
+          attemptId: node.manager.nextAttemptId,
+          setupNonce: node.manager.setupNonce,
+          setupBody,
+          payload: '0x',
+          order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
+          validUntil: 1_790_100_000,
+          proofs: []
+        }
+      ]
+    })
+  } as unknown as PreparedCall)
+
 describe('the fake node under the SDK', () => {
   it('reads a seeded setup back through the setup client and restores it from its backup', async () => {
     const node = nodeOf()
@@ -124,32 +153,61 @@ describe('the fake node under the SDK', () => {
     } as const
     node.land(await setupClient.prepareCommitSetup(draft))
 
-    const start = {
-      kind: 'call',
-      target: DESCRIPTOR.manager,
-      value: 0n,
-      sender: 'anyone',
-      data: encodeFunctionData({
-        abi: FORMATS_START_ATTEMPT_ABI,
-        functionName: 'startAttempt',
-        args: [
-          {
-            account: ACCOUNT,
-            action: DESCRIPTOR.action,
-            attemptId: node.manager.nextAttemptId,
-            setupNonce: node.manager.setupNonce,
-            setupBody: encodeSetupBody(configurationBody(CONFIGURATION, ACCOUNT)),
-            payload: '0x',
-            order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
-            validUntil: 1_790_100_000,
-            proofs: []
-          }
-        ]
-      })
-    } as unknown as PreparedCall
-    node.land(start)
+    node.land(startOf(node, encodeSetupBody(configurationBody(CONFIGURATION, ACCOUNT))))
 
     expect(node.manager.attempt?.consumableAfter).toBe(node.head.timestamp + CONFIGURATION.wait)
+  })
+
+  it('refuses a start whose body does not match the commitment or does not decode, and lands nothing', async () => {
+    const node = nodeOf()
+    const { setupClient } = await clientsOver(node)
+    const draft = {
+      ...CONFIGURATION,
+      privacy: { publicMetadata: '0x', backup: 'empty' }
+    } as const
+    node.land(await setupClient.prepareCommitSetup(draft))
+    const head = node.head.number
+    const { attempt } = node.manager
+    const committed = node.manager.setupCommitment
+
+    const otherBody = encodeSetupBody(
+      configurationBody({ ...CONFIGURATION, wait: 24 * 3600 }, ACCOUNT)
+    )
+    const mismatch = (() => {
+      try {
+        node.land(startOf(node, otherBody))
+        return undefined
+      } catch (error: unknown) {
+        return error
+      }
+    })()
+    expect(isProviderRevert(mismatch)).toBe(true)
+    expect(
+      decodeErrorResult({ abi: ERRORS_MANAGER_ABI, data: (mismatch as { data: Hex }).data })
+    ).toMatchObject({
+      errorName: 'PolicyManager_SetupCommitmentMismatch',
+      args: [
+        commitmentOf(ACCOUNT, DESCRIPTOR.action, node.manager.setupNonce, otherBody),
+        committed
+      ]
+    })
+    await expect(
+      node.call(DESCRIPTOR.manager, startOf(node, otherBody).data, ACCOUNT, 'latest')
+    ).rejects.toMatchObject({ data: (mismatch as { data: Hex }).data })
+
+    const undecodable: Hex = '0xdeadbeef'
+    node.manager.setupCommitment = commitmentOf(
+      ACCOUNT,
+      DESCRIPTOR.action,
+      node.manager.setupNonce,
+      undecodable
+    )
+    expect(() => node.land(startOf(node, undecodable))).toThrow(
+      expect.objectContaining({ name: 'RevertedCall', data: '0x' })
+    )
+
+    expect(node.manager.attempt).toEqual(attempt)
+    expect(node.head.number).toBe(head)
   })
 
   it('answers a deployment that disagrees with the build as it was seeded, through the SDK', async () => {
