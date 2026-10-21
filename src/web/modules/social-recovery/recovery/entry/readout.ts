@@ -68,9 +68,6 @@ export const REQUEST_HOURS = REQUEST_WINDOW_SECONDS / 3600
 /** The password a restore takes to open a backup kept in the clear, which asks for none. */
 const NO_PASSWORD = ''
 
-/** The refusal reasons of a backup whose bytes this build cannot read. */
-const UNREADABLE_REASONS: readonly unknown[] = ['unknown-version', 'malformed']
-
 /**
  * The rule lines the readout leaves out: the offers to add a method, which
  * only the editor can act on, and the warning about losing the key, which the
@@ -110,7 +107,7 @@ export const continuePathOf = (route: RecoveryRoute, account: Address): string =
 // The thrown values a read answers
 // ---------------------------------------------------------------------------
 
-/** The restore cause and the backup's refusal reason a thrown value carries, if it is a restore refusal. */
+/** The restore cause a thrown value carries, if it is a restore refusal. */
 export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null => {
   if (typeof error !== 'object' || error === null || !('restoreCause' in error)) {
     return null
@@ -120,18 +117,13 @@ export const restoreRefusalOf = (error: unknown): RestoreRefusalReading | null =
     return null
   }
   const known = RESTORE_CAUSE_CODES.find((restore) => restore === cause.code)
-  if (!known) {
-    return null
-  }
-  const { values } = cause
-  const reason =
-    typeof values === 'object' && values !== null && 'reason' in values ? values.reason : undefined
-  return { cause: known, reason }
+  return known ? { cause: known } : null
 }
 
 /**
  * Why a restore with the recovery password failed. A backup the password does
- * not open is a wrong password; a failure that is no refusal is a failed read
+ * not open is a wrong password, a damaged backup too, since the restore
+ * refuses both alike; a failure that is no refusal is a failed read
  * of the setup event, which the restore makes before it can judge the password.
  */
 export const unlockFailureOf = (error: unknown): UnlockFailure => {
@@ -145,7 +137,7 @@ export const unlockFailureOf = (error: unknown): UnlockFailure => {
   if (refusal.cause === 'restore.commitment-mismatch') {
     return 'mismatch'
   }
-  return UNREADABLE_REASONS.includes(refusal.reason) ? 'unreadable' : 'wrong'
+  return 'wrong'
 }
 
 // ---------------------------------------------------------------------------
@@ -301,9 +293,6 @@ const readingOfRefusal = (error: unknown): SetupReading | null => {
   }
   if (refusal.cause === 'restore.commitment-mismatch') {
     return { kind: 'mismatch' }
-  }
-  if (UNREADABLE_REASONS.includes(refusal.reason)) {
-    return { kind: 'unreadable' }
   }
   return null
 }

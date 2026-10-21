@@ -239,9 +239,6 @@ export const useReadout = ({
         case 'sealed':
           setStep({ kind: 'locked', level: 'private', unlock: IDLE })
           return
-        case 'unreadable':
-          setStep({ kind: 'update-the-wallet' })
-          return
         default:
           setStep({ kind: reading.kind })
       }
@@ -283,8 +280,6 @@ export const useReadout = ({
             typed.current = failure === 'event-failed' ? password : null
             if (failure === 'wrong' || failure === 'event-failed') {
               setStep({ kind: 'locked', level, shape, unlock: { status: failure } })
-            } else if (failure === 'unreadable') {
-              setStep({ kind: 'update-the-wallet' })
             } else {
               setStep({ kind: failure })
             }

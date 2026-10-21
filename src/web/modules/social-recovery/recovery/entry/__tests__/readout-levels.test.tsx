@@ -463,21 +463,6 @@ describe('the reads that fail and the setups this build cannot read', () => {
     expectConfigured(page)
   })
 
-  it('renders update the wallet for a backup whose format this build cannot read', async () => {
-    const world = await commitLostSetup('private')
-    jest
-      .spyOn(world.client.setup, 'getSetup')
-      .mockRejectedValue(
-        restoreRefusal('restore.backup-unopened', { reason: 'unknown-version', version: 9 })
-      )
-    const page = await open()
-    expect(page.has('readout-update-the-wallet')).toBe(true)
-    expect(page.text()).toContain(t('socialRecovery.client.updateTheWalletTitle'))
-    expect(page.has('readout-password-field')).toBe(false)
-    expectNothingOfTheSetup(page)
-    expectConfigured(page)
-  })
-
   it('offers Back on update the wallet, and Back goes to the account step on the fresh-install route', async () => {
     await storeEntry('fresh-install')
     setClient(LOST, refusedClient())

@@ -439,10 +439,9 @@ export type ReadoutClient =
   | { status: 'update-the-wallet' }
   | { status: 'failed'; retry: () => void }
 
-/** The restore cause a thrown restore refusal carries, with the backup's refusal reason where it names one. */
+/** The restore cause a thrown restore refusal carries. */
 export interface RestoreRefusalReading {
   cause: RestoreCauseCode
-  reason?: unknown
 }
 
 /** The path's shape a shape-visible setup publishes: each clause's threshold and its methods, no value. */
@@ -453,19 +452,18 @@ export interface ShapeNote {
 /**
  * What the setup read answers before the recovery password: sealed, the shape
  * readable with the values withheld, or the whole configuration readable; or
- * a setup this device cannot open at all: a backup this build cannot read, no
- * backup, or a backup that does not match the commitment.
+ * a setup this device cannot open at all: no backup, or a backup that does
+ * not match the commitment.
  */
 export type SetupReading =
   | { kind: 'sealed' }
   | { kind: 'shape-readable'; shape: ShapeNote }
   | { kind: 'readable'; configuration: Configuration }
-  | { kind: 'unreadable' }
   | { kind: 'no-details' }
   | { kind: 'mismatch' }
 
 /** Why the recovery password did not open the setup. */
-export type UnlockFailure = 'wrong' | 'event-failed' | 'unreadable' | 'no-details' | 'mismatch'
+export type UnlockFailure = 'wrong' | 'event-failed' | 'no-details' | 'mismatch'
 
 /** The password ask at a hidden level. */
 export type UnlockState =

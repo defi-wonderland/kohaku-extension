@@ -185,8 +185,6 @@ export const useOverviewReads = ({
           return { kind: 'locked', level: 'shape-visible', shape: reading.shape }
         case 'sealed':
           return { kind: 'locked', level: 'private' }
-        case 'unreadable':
-          return { kind: 'update-the-wallet' }
         default:
           return { kind: reading.kind }
       }
@@ -292,7 +290,7 @@ export const useOverviewReads = ({
             return
           }
           setAsk(IDLE)
-          setPath(failure === 'unreadable' ? { kind: 'update-the-wallet' } : { kind: failure })
+          setPath({ kind: failure })
         }
       )
     },
