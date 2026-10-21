@@ -20,6 +20,7 @@ import type { Address, Configuration, SetupState } from '@kohaku-eth/social-reco
 import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
 import {
   recordDeploymentOf,
+  isSessionOfDeployment,
   setRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
@@ -209,7 +210,12 @@ export const useReadout = ({
     }
     const run = async (): Promise<void> => {
       const session = await records.recoverySession(chainId, account).read()
-      if (session.status === 'present' && session.value.state === 'live') {
+      // A session of another deployment, or one that names none, is not resumed.
+      if (
+        session.status === 'present' &&
+        session.value.state === 'live' &&
+        isSessionOfDeployment(session.value, kit.descriptor)
+      ) {
         const cache = await records.decryptedSetupCache(chainId, account).read()
         if (!current()) {
           return

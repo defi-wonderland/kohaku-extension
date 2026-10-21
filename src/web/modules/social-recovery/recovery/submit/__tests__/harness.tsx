@@ -283,14 +283,16 @@ export const submitGathering = (
 
 /**
  * The session as the records keep it once this gathering's submission landed:
- * the account and the request's attempt id, setup nonce and payload hash.
+ * the account, the request's attempt id, setup nonce and payload hash, and
+ * the manager and action it names.
  */
 export const landedSession = (account: Address, gathering: Gathering) => ({
   state: 'landed' as const,
   account,
   attemptId: gathering.request.attemptId,
   setupNonce: gathering.request.setupNonce,
-  payloadHash: keccak256('payload' in gathering.request ? gathering.request.payload : '0x')
+  payloadHash: keccak256('payload' in gathering.request ? gathering.request.payload : '0x'),
+  deployment: { manager: gathering.request.manager, action: gathering.request.action }
 })
 
 /** The manager's attempt record of this gathering's start, under its id, nonce and payload hash. */
@@ -451,7 +453,8 @@ export const fakeKit = (
     },
     setup: { getSetup: jest.fn(async () => configuration) },
     walletReads: { verifyReply, removedKey },
-    action: {}
+    action: {},
+    descriptor: { manager: BOOK.manager, action: BOOK.action }
   } as unknown as SubmitKitClient
   return {
     client,

@@ -21,6 +21,7 @@ import type {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
   ACCOUNT,
+  BOOK,
   CHAIN_ID,
   depsOf,
   fakeKit,
@@ -74,7 +75,12 @@ const WAIT_PATH = `/${WEB_ROUTES.socialRecoveryRecoveryWait}?account=${ACCOUNT}`
  * the records keep it: the attempt id and the setup nonce as the request
  * carries them, and the hash of its payload. Nothing else of the gathering.
  */
-const LANDED_REQUEST = { attemptId: '1', setupNonce: '1', payloadHash: keccak256(PAYLOAD) }
+const LANDED_REQUEST = {
+  attemptId: '1',
+  setupNonce: '1',
+  payloadHash: keccak256(PAYLOAD),
+  deployment: { manager: BOOK.manager, action: BOOK.action }
+}
 
 describe('the request lands on the chain', () => {
   let view: Mounted | undefined

@@ -26,6 +26,7 @@ import type {
 import type {
   ChainId,
   ListedRecoveryEntry,
+  RecordDeployment,
   RecoveryEntryRecord,
   RecoveryRoute,
   WalletRecords
@@ -390,6 +391,8 @@ export interface RunningAttemptBandProps {
   claim: RunningClaim
   account: Address
   chainId: ChainId
+  /** The manager and the action the attempt was read from. */
+  deployment: RecordDeployment
   records: AccountStepRecords
   navigate: (to: string) => void
 }

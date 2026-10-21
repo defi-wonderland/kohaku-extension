@@ -22,6 +22,7 @@ import type {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import {
   ACCOUNT,
+  BOOK,
   CHAIN_ID,
   configurationOf,
   DAY_SECONDS,
@@ -69,6 +70,9 @@ const {
   CHECKLIST_POLL_MS,
   POLL_LIMIT_MS
 }: typeof import('@web/modules/social-recovery/recovery/checklist/constants') = require('@web/modules/social-recovery/recovery/checklist/constants')
+const {
+  behindRequest
+}: typeof import('@web/modules/social-recovery/recovery/checklist/poll') = require('@web/modules/social-recovery/recovery/checklist/poll')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const DEATHS = 'socialRecovery.checklist.deaths'
@@ -559,24 +563,39 @@ describe('the request dies', () => {
       })
     })
 
-    it('reads a manager at nonce zero as the setup changed for a request of another manager, never as a failed poll', async () => {
+    it('opens a new gathering over a live request of another manager, never a failed poll over it', async () => {
       const gathering = gatheringOf(MIXED_PATH, 3)
       const retired = {
         ...gathering,
         request: { ...gathering.request, manager: RETIRED_MANAGER }
       }
-      const seeded = await open(MIXED_PATH, withReplies(retired, [1]))
-      kit.recoveryState.mockResolvedValue(
-        recoveryStateOf({ setupNonce: BigInt(0), nextAttemptId: BigInt(3) })
-      )
+      await open(MIXED_PATH, withReplies(retired, [1]))
 
       await settle(CHECKLIST_POLL_MS)
 
-      expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'setup-changed', seeded.revision)
+      expect(kit.initRecoveryGathering).toHaveBeenCalledTimes(1)
+      const stored = (await storedSession(world.records))?.value
+      expect(stored?.state === 'live' && stored.gathering.request.manager).toBe(BOOK.manager)
+      expect(wipe).not.toHaveBeenCalled()
       expect(view?.byTestId('checklist-poll-failed')).toBeNull()
-      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
-        t(`${RECORDS}.setupChangedTitle`)
+    })
+
+    it('reads an answer below the request as behind only on the manager and action the request names', () => {
+      const gathering = gatheringOf(MIXED_PATH, 3)
+      // The check reads the counters alone.
+      const facts = {
+        ...recoveryStateOf({ setupNonce: BigInt(0), nextAttemptId: BigInt(3) }),
+        authorized: true
+      } as unknown as Parameters<typeof behindRequest>[1]
+      expect(behindRequest(gathering, facts, { manager: BOOK.manager, action: BOOK.action })).toBe(
+        true
       )
+      expect(
+        behindRequest(gathering, facts, { manager: RETIRED_MANAGER, action: BOOK.action })
+      ).toBe(false)
+      expect(
+        behindRequest(gathering, facts, { manager: BOOK.manager, action: RETIRED_MANAGER })
+      ).toBe(false)
     })
   })
 

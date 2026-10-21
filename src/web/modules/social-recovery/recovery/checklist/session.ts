@@ -16,7 +16,10 @@ import {
   RESTORE_CAUSE_CODES,
   REQUEST_WINDOW_SECONDS
 } from '@web/modules/social-recovery/shared/client'
-import { isSessionRevisionConflict } from '@web/modules/social-recovery/shared/records'
+import {
+  isSessionRevisionConflict,
+  isSessionOfDeployment
+} from '@web/modules/social-recovery/shared/records'
 import type { ExpectedRevision, SessionRead } from '@web/modules/social-recovery/shared/records'
 
 import { NO_PAYMENT_ORDER } from './constants'
@@ -152,23 +155,26 @@ const startGathering = async (
 }
 
 /**
- * What the checklist opens on: a stored live, wiped or landed session, and
- * otherwise a new gathering once the destination key is known. The line the
- * recoverer's own abandon leaves is no reason to show: it counts as no session,
- * and the new gathering replaces it.
+ * What the checklist opens on: a stored live, wiped or landed session of the
+ * deployment the client reads, and otherwise a new gathering once the
+ * destination key is known. The line the recoverer's own abandon leaves is no
+ * reason to show, and a session of another deployment, or one that names none,
+ * holds nothing of this one: either counts as no session, and the new
+ * gathering replaces it.
  */
 export const openChecklist = async (input: OpenInput): Promise<OpenResult> => {
   const read = await input.records.recoverySession(input.chainId, input.account).read()
   const found = resultOfRead(read)
-  const abandoned =
-    found?.kind === 'wiped' && found.session.reason === 'recoverer-abandoned' ? found : null
-  if (found && !abandoned) {
+  const abandoned = found?.kind === 'wiped' && found.session.reason === 'recoverer-abandoned'
+  const foreign =
+    read.status === 'present' && !isSessionOfDeployment(read.value, input.client.descriptor)
+  if (found && !abandoned && !foreign) {
     return found
   }
   if (!input.destination) {
     return { kind: 'needs-destination' }
   }
-  return startGathering(input, input.destination, abandoned ? abandoned.revision : null)
+  return startGathering(input, input.destination, read.status === 'present' ? read.revision : null)
 }
 
 /**

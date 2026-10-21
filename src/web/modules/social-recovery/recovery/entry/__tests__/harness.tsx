@@ -389,6 +389,8 @@ export const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 export const DESCRIPTOR = deploymentDescriptor(WALLET_RECOVERY_CHAIN)
 /** The recovery module the no-setup sentence names, checksummed as the screens draw it. */
 export const MODULE: Address = getAddress(DESCRIPTOR.action)
+/** The manager and the action this build reads, as the records it writes name them. */
+export const DEPLOYMENT = { manager: DESCRIPTOR.manager, action: DESCRIPTOR.action }
 /** The network the screens name: the wallet lists no network record, so the chain's own name. */
 export const NETWORK = 'Sepolia'
 
@@ -570,7 +572,7 @@ export const storeLiveRecovery = async (
   entry: { route: 'logged-in' | 'fresh-install'; receivingAccount: Address }
 ) => {
   const held = records()
-  await held.recoveryEntry(CHAIN_ID, account).write({ account, ...entry })
+  await held.recoveryEntry(CHAIN_ID, account).write({ account, ...entry, deployment: DEPLOYMENT })
   await held.recoverySession(CHAIN_ID, account).write(gatheringFor(account), null)
 }
 

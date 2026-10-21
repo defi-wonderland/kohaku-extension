@@ -14,6 +14,7 @@ import {
   CHAIN_ID,
   confirmLost,
   DAILY,
+  DEPLOYMENT,
   DESCRIPTOR,
   gatheringFor,
   keyOf,
@@ -402,13 +403,15 @@ describe('the running attempt band', () => {
       account: LOST,
       attemptId: ATTEMPT_ID.toString(),
       setupNonce: SETUP_NONCE.toString(),
-      payloadHash: keccak256(PAYLOAD)
+      payloadHash: keccak256(PAYLOAD),
+      deployment: DEPLOYMENT
     })
     expect(countdown.status === 'present' && countdown.savedAt).toBe(OPENED_AT * 1000)
     expect(await storedEntry(LOST)).toEqual({
       account: LOST,
       route: 'logged-in',
-      receivingAccount: VAULT.addr
+      receivingAccount: VAULT.addr,
+      deployment: DEPLOYMENT
     })
     expect(navigate).toHaveBeenCalledWith(waitPathOf(LOST))
     page.unmount()
