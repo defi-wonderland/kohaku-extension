@@ -10,9 +10,10 @@ import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import { browserErrorNameOf, noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
+import { browserErrorNameOf } from '@web/modules/social-recovery/shared/ceremony'
 import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 
+import { rowNoteKeyOf } from './outcome'
 import type { IdentityCreateBlockProps } from './types'
 
 const IdentityCreateBlock = ({
@@ -24,7 +25,7 @@ const IdentityCreateBlock = ({
 }: IdentityCreateBlockProps) => {
   const { t } = useTranslation()
   const { row } = copy
-  const enrollNote = enrollOutcome ? noteKeyOfOutcome(enrollOutcome, 'enroll') : null
+  const enrollNote = enrollOutcome ? rowNoteKeyOf(enrollOutcome, 'enroll', copy.refusedNote) : null
   const enrollError = enrollOutcome ? browserErrorNameOf(enrollOutcome) : null
   const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
 

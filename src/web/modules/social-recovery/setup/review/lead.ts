@@ -121,7 +121,10 @@ const kindLinesOf = (kind: MethodKind | undefined, t: Translate) => {
     ]
   }
   if (kind === 'aadhaar') {
-    return [t('socialRecovery.disclosures.identity')]
+    return [
+      t('socialRecovery.disclosures.identity'),
+      t('socialRecovery.disclosures.aadhaarPublication')
+    ]
   }
   return []
 }

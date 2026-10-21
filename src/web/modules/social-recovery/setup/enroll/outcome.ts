@@ -4,7 +4,7 @@
  * which a reload drops. A dismissal leaves the stored verdict as it was.
  */
 import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
-import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
+import type { CeremonyCall, CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
 import type { TestChips } from './types'
@@ -79,6 +79,19 @@ export const testLineKeyOf = (
 }
 
 /**
+ * The note an outcome leaves on a row, where a row whose device is a phone app
+ * names a refusal as the holder's own decline on the phone.
+ */
+export const rowNoteKeyOf = (
+  outcome: CeremonyOutcome<unknown>,
+  call: CeremonyCall,
+  refusedNote?: string
+): string | null =>
+  refusedNote && outcome.kind === 'dismissed' && outcome.note === 'refused'
+    ? refusedNote
+    : noteKeyOfOutcome(outcome, call)
+
+/**
  * The note a test outcome adds beside the stored verdict's line: a dismissal,
  * an unreachable phone, a credential of another origin. A passed or a
  * not-supported test adds none, and a note the line already reads is not
@@ -86,9 +99,10 @@ export const testLineKeyOf = (
  */
 export const testNoteKeysOf = (
   outcome: CeremonyOutcome<unknown>,
-  lineKey: string | null
+  lineKey: string | null,
+  refusedNote?: string
 ): string[] => {
-  const note = noteKeyOfOutcome(outcome, 'testAccess')
+  const note = rowNoteKeyOf(outcome, 'testAccess', refusedNote)
   if (!note || note === lineKey) {
     return []
   }
