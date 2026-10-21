@@ -104,18 +104,34 @@ const flagAt = (value: unknown, field: string): boolean => {
   return value
 }
 
-// A field element of the proving curve has at most 77 decimal digits.
+// The seed is an element of the proving curve's scalar field, so it is a
+// decimal number below that field's modulus.
+const PROVING_FIELD_MODULUS =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n
+
 const nullifierSeedAt = (value: unknown): string => {
-  if (typeof value !== 'string' || !/^[0-9]{1,77}$/.test(value)) {
+  if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) {
     return refuse('aadhaarNullifierSeed must be a decimal number')
+  }
+  if (BigInt(value) >= PROVING_FIELD_MODULUS) {
+    return refuse('aadhaarNullifierSeed must be a decimal number below the proving field')
   }
   return value
 }
 
+const PEM_BEGIN = '-----BEGIN CERTIFICATE-----'
+
+// One complete PEM block: the begin line, one or more lines of base64, the end line.
+const PEM_CERTIFICATE =
+  /^-----BEGIN CERTIFICATE-----\r?\n([A-Za-z0-9+/=]+\r?\n)+-----END CERTIFICATE-----$/
+
 const certificateAt = (value: unknown): string => {
   const text = textAt(value, 'aadhaarCertificate')
-  if (!text.includes('-----BEGIN CERTIFICATE-----')) {
+  if (!text.includes(PEM_BEGIN)) {
     return refuse('aadhaarCertificate must be a PEM certificate')
+  }
+  if (!PEM_CERTIFICATE.test(text.trim())) {
+    return refuse('aadhaarCertificate must be a complete PEM certificate')
   }
   return text
 }
@@ -160,10 +176,11 @@ const explorerUrlAt = (value: unknown): string => {
  * known fields, an address is malformed or zero, the deployment block is not a
  * whole number of zero or more, a version or an identity method's text is
  * empty, the testnet flag is not a boolean, the Aadhaar nullifier seed is not
- * a decimal number, the Aadhaar certificate is not PEM, the line names one
- * field of the zkPassport domain and scope or of the Aadhaar seed and
- * certificate without the other, an audited action names an unknown
- * publisher, or the explorer URL is not an http or https URL.
+ * a decimal number below the proving field, the Aadhaar certificate is not one
+ * complete PEM block, the line names one field of the zkPassport domain and
+ * scope or of the Aadhaar seed and certificate without the other, an audited
+ * action names an unknown publisher, or the explorer URL is not an http or
+ * https URL.
  */
 export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   let parsed: unknown

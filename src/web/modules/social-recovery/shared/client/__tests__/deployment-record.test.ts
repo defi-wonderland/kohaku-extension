@@ -71,7 +71,26 @@ const FACTS = {
   ]
 }
 
-const CERTIFICATE = '-----BEGIN CERTIFICATE-----\nMIIBmade+up\n-----END CERTIFICATE-----\n'
+/** A throwaway self-signed certificate made for this test; it holds no secret. */
+const CERTIFICATE = [
+  '-----BEGIN CERTIFICATE-----',
+  'MIIBnTCCAQYCCQDiAomKfafhkDANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhz',
+  'dGFuZC1pbjAeFw0yNjEwMjEyMTI5MDVaFw0yNjEwMjIyMTI5MDVaMBMxETAPBgNV',
+  'BAMMCHN0YW5kLWluMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDf1ajsyhTb',
+  'wDBA+BeWq15hB9CQin6fR5NADbiwA4h5aiUpbHTTh2Swx6fiu3bVjmtLkTGZvMLB',
+  'Hw0JeWry2BNYH1WLKGI5OZXB/rBzXBmcPfZ41C4UrC8qZ0CrgI/w58hZXl+g3um6',
+  'Hd5Rljdkr07Jz9KOh0xpzQ2Y5b8sfDT4HwIDAQABMA0GCSqGSIb3DQEBCwUAA4GB',
+  'AKW5PABs4ZLTCXK6LfCYsbVnCMbIbUbRJk25v5/APqcMZsuHM3Q9POGC+nH07VTn',
+  '4s3HHqJEL8/1gfeF3DDV3lm4e3ybTKL2IXyT1ILhYa/rNE8NBMn6fwfgoj8hg8os',
+  'SSa1V1qyaYYIhxPdgPdWIfwhclYaX/kAyi/1Cl2va0kP',
+  '-----END CERTIFICATE-----',
+  ''
+].join('\n')
+
+const FIELD_MODULUS =
+  '21888242871839275222246405745257275088548364400416034343698204186575808495617'
+const FIELD_MAXIMUM =
+  '21888242871839275222246405745257275088548364400416034343698204186575808495616'
 
 const IDENTITY_FIELDS = {
   zkPassportDomain: 'wallet.example',
@@ -329,8 +348,8 @@ describe('a build with a Sepolia deployment variable', () => {
     expect(deployment.zkPassportTestnetTree).toBe(false)
   })
 
-  it('takes a nullifier seed of 77 digits', () => {
-    const seed = '9'.repeat(77)
+  it('takes the largest nullifier seed below the proving field', () => {
+    const seed = FIELD_MAXIMUM
     expect(
       deploymentFactsFrom(
         json({ ...FACTS, aadhaarNullifierSeed: seed, aadhaarCertificate: CERTIFICATE })
@@ -509,7 +528,17 @@ describe('a malformed deployment variable', () => {
     [
       'a nullifier seed of 78 digits',
       json({ ...FACTS, aadhaarNullifierSeed: '1'.repeat(78) }),
-      /aadhaarNullifierSeed must be a decimal number/
+      /aadhaarNullifierSeed must be a decimal number below the proving field/
+    ],
+    [
+      'a nullifier seed equal to the proving field modulus',
+      json({ ...FACTS, aadhaarNullifierSeed: FIELD_MODULUS }),
+      /aadhaarNullifierSeed must be a decimal number below the proving field/
+    ],
+    [
+      'a nullifier seed of 77 nines',
+      json({ ...FACTS, aadhaarNullifierSeed: '9'.repeat(77) }),
+      /aadhaarNullifierSeed must be a decimal number below the proving field/
     ],
     [
       'an empty Aadhaar certificate',
@@ -520,6 +549,27 @@ describe('a malformed deployment variable', () => {
       'an Aadhaar certificate that is not PEM',
       json({ ...FACTS, aadhaarCertificate: 'MIIBmade+up' }),
       /aadhaarCertificate must be a PEM certificate/
+    ],
+    [
+      'an Aadhaar certificate of the markers alone',
+      json({
+        ...FACTS,
+        aadhaarCertificate: '-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n'
+      }),
+      /aadhaarCertificate must be a complete PEM certificate/
+    ],
+    [
+      'an Aadhaar certificate whose body is not base64',
+      json({
+        ...FACTS,
+        aadhaarCertificate: '-----BEGIN CERTIFICATE-----\nnot base64!\n-----END CERTIFICATE-----\n'
+      }),
+      /aadhaarCertificate must be a complete PEM certificate/
+    ],
+    [
+      'an Aadhaar certificate with no end line',
+      json({ ...FACTS, aadhaarCertificate: CERTIFICATE.replace('-----END CERTIFICATE-----', '') }),
+      /aadhaarCertificate must be a complete PEM certificate/
     ],
     [
       'a zkPassport domain without its scope',
