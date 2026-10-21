@@ -229,23 +229,26 @@ export interface PasskeyDeviceOptions {
   randomBytes?: (length: number) => Uint8Array
 }
 
-/** The creation options a passkey method's `enrollInput` returns. */
+/**
+ * What a passkey method's `enrollInput` returns: the relying party id it was
+ * handed, the user name, and the options for `navigator.credentials.create`.
+ */
 export interface PasskeyEnrollInput {
-  rp?: { id?: string; name?: string }
-  user?: { id?: string; name?: string; displayName?: string }
-  pubKeyCredParams?: { type: 'public-key'; alg: number }[]
-  authenticatorSelection?: AuthenticatorSelectionCriteria
-  attestation?: AttestationConveyancePreference
-  excludeCredentials?: { type?: 'public-key'; id: string }[]
-  challenge?: string
+  kind?: string
+  relyingPartyId?: string
+  userName?: string
+  options?: { publicKey?: Partial<PublicKeyCredentialCreationOptions> }
 }
 
-/** The request options a passkey method's `signingInput` returns. */
+/**
+ * What a passkey method's `signingInput` returns: the relying party id it was
+ * handed, the credential it limits the claim to, and the options for
+ * `navigator.credentials.get`.
+ */
 export interface PasskeySigningInput {
-  challenge: Hex | string
-  rpId?: string
-  userVerification?: UserVerificationRequirement
-  allowCredentials?: { type?: 'public-key'; id: string }[]
+  relyingPartyId?: string
+  credentialId?: string
+  options?: { publicKey?: Partial<PublicKeyCredentialRequestOptions> }
 }
 
 /**

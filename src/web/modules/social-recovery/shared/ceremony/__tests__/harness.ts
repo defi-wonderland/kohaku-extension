@@ -9,9 +9,10 @@
  * note throws instead of being coerced.
  *
  * The fakes of `IRecoveryMethod` and `IMethodsOrchestrator` are hand-written and
- * typed by the SDK package: the ESLint fence forbids this module to import the
- * SDK's runtime. `navigator.credentials` is mocked; no test reaches
- * a real authenticator.
+ * typed by the SDK package; unless a test scripts them, the fake method's
+ * `enrollInput` and `signingInput` answer what the SDK's own passkey method
+ * returns. `navigator.credentials` is mocked; no test reaches a real
+ * authenticator.
  */
 /* eslint-disable max-classes-per-file -- the WebAuthn classes jsdom lacks, and one encoder */
 import type {
@@ -755,13 +756,7 @@ export const fakeMethod = (
     if (script.enrollInput !== undefined) {
       return answerSync(script.enrollInput)
     }
-    const p = params as { relyingPartyId?: string; userName?: string } | undefined
-    return {
-      kind: 'ceremony',
-      rp: { id: p?.relyingPartyId },
-      user: { name: p?.userName },
-      params
-    }
+    return sdkPasskeyMethod().enrollInput(params)
   }),
   configFrom: jest.fn<Promise<Hex | EnrollFailure>, [EnrollInput, Material]>(async () =>
     answer(script.configFrom ?? CONFIG_HEX)
@@ -770,8 +765,7 @@ export const fakeMethod = (
     if (script.signingInput !== undefined) {
       return answerSync(script.signingInput)
     }
-    const p = params as { relyingPartyId?: string } | undefined
-    return { challenge: ctx.digest, rpId: p?.relyingPartyId, params }
+    return sdkPasskeyMethod().signingInput(ctx, params)
   }),
   replyFrom: jest.fn<Promise<Hex | ReplyFailure>, [Ctx, Input, Material]>(async () =>
     answer(script.replyFrom ?? PROOF_HEX)
@@ -888,6 +882,10 @@ export const ceremony = (): CeremonyModule =>
 /** The tab's browser defaults: the passkey device over `navigator.credentials` at this page's origin. */
 export const browserDefaults = (): BrowserDefaultsModule =>
   require('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults') as BrowserDefaultsModule
+
+/** The SDK's own passkey method; the SDK builds a TextEncoder when it loads, so it loads late. */
+export const sdkPasskeyMethod = (): IRecoveryMethod =>
+  (require('@kohaku-eth/social-recovery') as typeof import('@kohaku-eth/social-recovery')).passkeyMethod()
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
 const MODULE_VERDICT: Record<string, FourVerdict> = {

@@ -9,16 +9,18 @@
  * never of the bare id; the wallet hands the SDK that origin string as the
  * relying party id. The module reads the id at runtime from the page origin.
  */
-import type { EnrollInput, Hex, Params } from '@kohaku-eth/social-recovery'
+import type { Ctx, EnrollInput, Hex, Params } from '@kohaku-eth/social-recovery'
 
 import {
   bytesToHex,
+  callerParams,
   EXTENSION_ID,
   EXTENSION_ORIGIN,
   fakeAssertion,
   fakeAttestation,
   fakeMethod,
   fakeOrchestrator,
+  FIXTURE_DIGEST,
   generatePoint,
   hosts,
   installCredentials,
@@ -26,6 +28,7 @@ import {
   ORIGIN_HASH,
   P256Point,
   relyingParty,
+  sdkPasskeyMethod,
   stringsIn,
   SYNCED_FLAGS
 } from '@web/modules/social-recovery/shared/ceremony/__tests__/harness'
@@ -95,19 +98,48 @@ describe('the origin string the method names', () => {
   it('becomes the host in the creation options', async () => {
     const method = fakeMethod()
     await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
-    const asked = method.enrollInput.mock.results[0].value as { rp: { id: string } }
-    expect(asked.rp.id).toBe(EXTENSION_ORIGIN)
+    const asked = method.enrollInput.mock.results[0].value as {
+      relyingPartyId: string
+      options: CredentialCreationOptions
+    }
+    expect(asked.relyingPartyId).toBe(EXTENSION_ORIGIN)
+    expect(asked.options.publicKey?.rp.id).toBe(EXTENSION_ORIGIN)
     const options = creds.create.mock.calls[0][0] as CredentialCreationOptions
     expect(options.publicKey?.rp.id).toBe(EXTENSION_ID)
+  })
+
+  it('reaches navigator.credentials.create with the SDK passkey method of the wallet', async () => {
+    const method = fakeMethod()
+    const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    const asked = sdkPasskeyMethod().enrollInput(callerParams()) as {
+      options: CredentialCreationOptions
+    }
+    expect(creds.create).toHaveBeenCalledTimes(1)
+    const options = creds.create.mock.calls[0][0] as CredentialCreationOptions
+    expect(options.publicKey).toMatchObject({
+      rp: { id: EXTENSION_ID },
+      user: { name: 'holder' },
+      pubKeyCredParams: asked.options.publicKey?.pubKeyCredParams,
+      authenticatorSelection: asked.options.publicKey?.authenticatorSelection,
+      attestation: asked.options.publicKey?.attestation
+    })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
   })
 
   it('becomes the host in the request options', async () => {
     const method = fakeMethod()
     await hosts.createClaim({ method, orchestrator: fakeOrchestrator(method) })
-    const asked = method.signingInput.mock.results[0].value as { rpId: string }
-    expect(asked.rpId).toBe(EXTENSION_ORIGIN)
+    const asked = method.signingInput.mock.results[0].value as {
+      relyingPartyId: string
+      options: CredentialRequestOptions
+    }
+    expect(asked.relyingPartyId).toBe(EXTENSION_ORIGIN)
+    expect(asked.options.publicKey?.rpId).toBe(EXTENSION_ORIGIN)
     const options = creds.get.mock.calls[0][0] as CredentialRequestOptions
     expect(options.publicKey?.rpId).toBe(EXTENSION_ID)
+    expect(bytesToHex(new Uint8Array(options.publicKey?.challenge as ArrayBuffer))).toBe(
+      FIXTURE_DIGEST
+    )
   })
 
   // The module owns the relying party id: whatever the caller's record passed,
@@ -161,13 +193,32 @@ describe('the origin string the method names', () => {
   })
 
   // The device accepts the full origin string back and nothing else.
-  ;[
-    ['the bare id', { rp: { id: EXTENSION_ID } }],
-    ['another origin', { rp: { id: 'https://example.com' } }],
-    ['no relying party', { rp: {} }]
-  ].forEach(([title, options]) =>
-    it(`refuses creation options that name ${title as string}, before any ceremony`, async () => {
-      const method = fakeMethod({ enrollInput: options as unknown as EnrollInput })
+  const enrollInputFor = (relyingPartyId: string): EnrollInput =>
+    sdkPasskeyMethod().enrollInput({ relyingPartyId, userName: 'holder' })
+  const ENROLL_CASES: [string, () => EnrollInput][] = [
+    ['the bare id', () => enrollInputFor(EXTENSION_ID)],
+    ['another origin', () => enrollInputFor('https://example.com')],
+    [
+      'no relying party',
+      () => ({ ...enrollInputFor(EXTENSION_ORIGIN), relyingPartyId: undefined })
+    ],
+    [
+      'another origin inside its options alone',
+      () => {
+        const real = enrollInputFor(EXTENSION_ORIGIN) as EnrollInput & {
+          options: CredentialCreationOptions
+        }
+        const publicKey = real.options.publicKey as PublicKeyCredentialCreationOptions
+        return {
+          ...real,
+          options: { publicKey: { ...publicKey, rp: { ...publicKey.rp, id: 'https://example.com' } } }
+        }
+      }
+    ]
+  ]
+  ENROLL_CASES.forEach(([title, input]) =>
+    it(`refuses creation options that name ${title}, before any ceremony`, async () => {
+      const method = fakeMethod({ enrollInput: input() })
       const orchestrator = fakeOrchestrator(method)
       const outcome = await hosts.enroll({ method, orchestrator })
       expect(outcome).toMatchObject({ type: 'verdict', verdict: 'failed' })
@@ -181,7 +232,10 @@ describe('the origin string the method names', () => {
 
   it('refuses request options that name the bare id, before any ceremony', async () => {
     const method = fakeMethod({
-      signingInput: { challenge: `0x${'ab'.repeat(32)}`, rpId: EXTENSION_ID }
+      signingInput: sdkPasskeyMethod().signingInput(
+        { digest: FIXTURE_DIGEST } as Ctx,
+        { relyingPartyId: EXTENSION_ID }
+      )
     })
     const orchestrator = fakeOrchestrator(method)
     const outcome = await hosts.createClaim({ method, orchestrator })
