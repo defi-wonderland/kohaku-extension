@@ -824,9 +824,11 @@ export const openWorld = async ({
     })
   }
   if (cache) {
-    await records
-      .decryptedSetupCache(CHAIN_ID, account)
-      .write({ configuration, setupNonce: 1n, deployment: { manager: BOOK.manager, action: BOOK.action } })
+    await records.decryptedSetupCache(CHAIN_ID, account).write({
+      configuration,
+      setupNonce: 1n,
+      deployment: { manager: BOOK.manager, action: BOOK.action }
+    })
   }
   if (countdown) {
     await landCountdown({ records, account, configuration }, { attempt })

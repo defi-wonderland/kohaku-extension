@@ -191,7 +191,11 @@ describe('the countdown restored from the chain', () => {
         setupNonce: '9',
         payloadHash: ANOTHER_ATTEMPT.payloadHash,
         deployment: { ...DEPLOYMENT, manager: EARLIER_RECEIVING },
-        execution: { requestId: 'social-recovery-execute:first', startBlock: 7_000_000, claimedAt: T0 }
+        execution: {
+          requestId: 'social-recovery-execute:first',
+          startBlock: 7_000_000,
+          claimedAt: T0
+        }
       },
       savedAt: T0,
       revision: 'c'.repeat(24)

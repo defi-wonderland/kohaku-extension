@@ -38,13 +38,11 @@ const inputOf = (password: string | undefined) => {
 describe('the configuration the checklist opens with', () => {
   it('takes the cache read from the manager and action the client reads', async () => {
     const { input, records, getSetup } = inputOf(PASSWORD)
-    await records
-      .decryptedSetupCache(CHAIN_ID, ACCOUNT)
-      .write({
-        configuration: CACHED,
-        setupNonce: 1n,
-        deployment: { manager: MANAGER, action: ACTION }
-      })
+    await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write({
+      configuration: CACHED,
+      setupNonce: 1n,
+      deployment: { manager: MANAGER, action: ACTION }
+    })
 
     expect(await configurationOf(input)).toEqual({
       kind: 'configuration',
