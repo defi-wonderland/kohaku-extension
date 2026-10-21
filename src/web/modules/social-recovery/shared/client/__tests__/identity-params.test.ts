@@ -225,7 +225,7 @@ describe("the client's params for an identity method", () => {
   })
 
   it('hands nothing for a method whose fields the deployment omits, and still serves the method', async () => {
-    variable.mockReturnValue(JSON.stringify(without('aadhaarCertificate')))
+    variable.mockReturnValue(JSON.stringify(without('aadhaarNullifierSeed', 'aadhaarCertificate')))
     const client = await buildRecoveryClient(createDeployedWorld().config)
     expect(client.methodParamsFor('aadhaar', 'enroll')).toBeUndefined()
     expect(client.methodParamsFor('zkpassport', 'enroll')).toBeDefined()

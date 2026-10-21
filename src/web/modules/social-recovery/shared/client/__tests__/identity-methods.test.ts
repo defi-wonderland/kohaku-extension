@@ -596,18 +596,20 @@ describe('the zkPassport method over a scripted phone that fails', () => {
   const method = (stack: ReturnType<typeof createScriptedZkPassportStack>) =>
     zkPassportMethod(stack)
   const PARAMS = { domain: 'kohaku.stand-in', scope: 'kohaku-recovery' }
+  /** A screen that draws the request's code, which the device needs to run. */
+  const SCREEN = { show: () => undefined }
 
   it('reads a declined request as the refused note', async () => {
     const stack = createScriptedZkPassportStack({ stepMs: 1 })
     stack.script({ answer: 'reject' })
-    const result = await externalAppDevice().enroll(method(stack).enrollInput(PARAMS), {})
+    const result = await externalAppDevice().enroll(method(stack).enrollInput(PARAMS), SCREEN)
     expect(result).toEqual({ ok: false, stop: { kind: 'dismissed', note: 'refused' } })
   })
 
   it("reads the phone's error as failed with its message", async () => {
     const stack = createScriptedZkPassportStack({ stepMs: 1 })
     stack.script({ answer: 'error', error: 'The chip did not answer.' })
-    const result = await externalAppDevice().enroll(method(stack).enrollInput(PARAMS), {})
+    const result = await externalAppDevice().enroll(method(stack).enrollInput(PARAMS), SCREEN)
     expect(result).toEqual({
       ok: false,
       stop: expect.objectContaining({
@@ -624,7 +626,7 @@ describe('the zkPassport method over a scripted phone that fails', () => {
     const controller = new AbortController()
     let settled = false
     const running = externalAppDevice()
-      .enroll(method(stack).enrollInput(PARAMS), { signal: controller.signal })
+      .enroll(method(stack).enrollInput(PARAMS), { ...SCREEN, signal: controller.signal })
       .finally(() => {
         settled = true
       })
@@ -641,7 +643,7 @@ describe('the zkPassport method over a scripted phone that fails', () => {
     const stack = createScriptedZkPassportStack({ stepMs: 1 })
     const passport = method(stack)
     const enrollInput = passport.enrollInput(PARAMS)
-    const enrolled = await externalAppDevice().enroll(enrollInput, {})
+    const enrolled = await externalAppDevice().enroll(enrollInput, SCREEN)
     const config = await passport.configFrom(enrollInput, materialOf(enrolled))
     stack.script({ identifier: 456n })
     const ctx = {
@@ -651,7 +653,7 @@ describe('the zkPassport method over a scripted phone that fails', () => {
       typedData: {} as never
     }
     const input = passport.signingInput(ctx, PARAMS)
-    const signed = await externalAppDevice().sign(input, {})
+    const signed = await externalAppDevice().sign(input, SCREEN)
     await expect(passport.replyFrom(ctx, input, materialOf(signed))).resolves.toEqual({
       kind: 'reply-failure',
       cause: 'material-rejected'

@@ -166,6 +166,24 @@ describe('the access test of a method that cannot judge its own proof', () => {
     expect(outcome).toEqual({ kind: 'dismissed', note: 'cancelled', detail: 'AbortError' })
   })
 
+  it('reads an abort during a chain read that never settles as cancelled at once', async () => {
+    const controller = new AbortController()
+    let reading: () => void = () => undefined
+    const asked = new Promise<void>((resolve) => {
+      reading = resolve
+    })
+    const chainVerdict = jest.fn<Promise<Verdict>, Parameters<ChainVerdict>>(() => {
+      reading()
+      return new Promise<Verdict>(() => {})
+    })
+    const running = run('testAccess', { chainVerdict, deps: { signal: controller.signal } })
+    await asked
+    controller.abort()
+    const { outcome } = await running
+    expect(outcome).toEqual({ kind: 'dismissed', note: 'cancelled', detail: 'AbortError' })
+    expect(chainVerdict).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the checking step before it reads the chain', async () => {
     const steps: CeremonyStep[] = []
     let stepsAtRead: CeremonyStep[] = []

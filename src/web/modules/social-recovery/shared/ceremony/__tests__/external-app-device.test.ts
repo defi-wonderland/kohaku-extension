@@ -142,33 +142,22 @@ describe('the external-app device at an enrollment', () => {
     await expect(run.running).resolves.toEqual({ ok: false, stop: UNAVAILABLE })
   })
 
-  it("builds the verified result from the success callback's outer proof where the library offers no result callback", async () => {
+  it('reads a request with no result callback as a device that did not answer, right after it opens, and shows nothing', async () => {
+    const phone = phoneRequest({ withResult: false })
+    const run = await start('enroll', phone)
+    expect(run.open).toHaveBeenCalledTimes(1)
+    expect(run.outcome()).toEqual({ ok: false, stop: UNAVAILABLE })
+    expect(run.views).toEqual([])
+    expect(run.steps).toEqual([])
+    expect(phone.listening('success')).toBe(0)
+  })
+
+  it('never builds the result from the success callback, whatever proofs it delivers', async () => {
     const phone = phoneRequest({ withResult: false })
     const run = await start('enroll', phone)
     phone.fire('success', { proofs: [INNER, OUTER], result: {} })
-    await expect(run.running).resolves.toEqual({
-      ok: true,
-      material: { result: { verified: true, uniqueIdentifier: '456', proofs: [INNER, OUTER] } }
-    })
+    await expect(run.running).resolves.toEqual({ ok: false, stop: UNAVAILABLE })
   })
-
-  const UNREADABLE: [string, unknown[]][] = [
-    ['no outer proof', [INNER]],
-    ['an outer proof with no public inputs', [{ name: 'outer_evm_count_4' }]],
-    [
-      'an outer proof whose identifier is no number',
-      [{ ...OUTER, publicInputs: ['0x0a', 'x', '0'] }]
-    ],
-    ['no proofs at all', []]
-  ]
-  UNREADABLE.forEach(([what, proofs]) =>
-    it(`reads ${what} from a library with no result callback as a device that did not answer`, async () => {
-      const phone = phoneRequest({ withResult: false })
-      const run = await start('enroll', phone)
-      phone.fire('success', { proofs, result: {} })
-      await expect(run.running).resolves.toEqual({ ok: false, stop: UNAVAILABLE })
-    })
-  )
 })
 
 describe('the external-app device at a claim', () => {
@@ -298,13 +287,13 @@ describe('the external-app device at a claim', () => {
       })
     )
 
-    it('runs on a screen that draws nothing', async () => {
-      const phone = phoneRequest()
-      const open = jest.fn(async () => phone.request)
-      const running = externalAppDevice()[call](inputOf(open), {})
-      await tick()
-      phone.fire('reject')
-      await expect(running).resolves.toEqual(REFUSED)
+    it('is not supported, with no retry and no request opened, on a screen that cannot draw the code', async () => {
+      const open = jest.fn(async () => phoneRequest().request)
+      await expect(externalAppDevice()[call](inputOf(open), {})).resolves.toEqual({
+        ok: false,
+        stop: { kind: 'verdict', verdict: 'notSupported', retry: false, cause: 'no-implementation' }
+      })
+      expect(open).not.toHaveBeenCalled()
     })
   })
 )
