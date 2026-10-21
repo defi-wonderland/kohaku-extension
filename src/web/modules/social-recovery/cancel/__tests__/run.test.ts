@@ -36,6 +36,7 @@ import {
   runWorld
 } from '@web/modules/social-recovery/cancel/__fixtures__/run'
 import {
+  DEPLOYMENT,
   HEAD,
   OLD_KEY,
   atBlock,
@@ -562,6 +563,7 @@ describe("the owner's cancel run", () => {
     const alarmPoll = (polledAt: number) =>
       pollAccounts({
         reads: world.chain.reads,
+        deployment: DEPLOYMENT,
         accounts: [ACCOUNT],
         chainId: SEPOLIA,
         storage: world.storage,
@@ -642,6 +644,7 @@ describe("the owner's cancel run", () => {
     world.chain.head.number = HEAD + 2
     await pollAccounts({
       reads: world.chain.reads,
+      deployment: DEPLOYMENT,
       accounts: [ACCOUNT],
       chainId: SEPOLIA,
       storage: world.storage,

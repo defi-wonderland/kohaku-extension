@@ -36,6 +36,12 @@ const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
 const ACTION: Address = getAddress('0x00000000000000000000000000000000000ac710')
 const CODEC = new AmbireActionCodec([ACTION])
 
+/** The manager and the action the scripted chain stands for. */
+export const DEPLOYMENT = {
+  manager: getAddress('0x0000000000000000000000000000000000000a9e'),
+  action: ACTION
+} as const
+
 /** The action's payload of a handover from `OLD_KEY` to `newKey`, or from `NEW_KEY` to `OLD_KEY`. */
 export const payloadTo = (newKey: Address): Hex =>
   CODEC.encode({

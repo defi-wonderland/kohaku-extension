@@ -489,10 +489,12 @@ const olderBlockMessage = (block: number, stored: number): string =>
  * account reads as failed. Every write names when the poll started, so a
  * write of a poll that outlived its tick never covers a newer poll's. A
  * reading of a block below the stored reading's is written as a failed poll
- * beside the stored reading. Answers the number of accounts the badge counts.
+ * beside the stored reading. Each reading names the deployment it was read
+ * from. Answers the number of accounts the badge counts.
  */
 export const pollAccounts = async ({
   reads,
+  deployment,
   accounts,
   chainId,
   storage,
@@ -526,7 +528,7 @@ export const pollAccounts = async ({
               const failed = { at: now(), message: olderBlockMessage(reading.block.number, stored) }
               return { ...current, failed, dismissed }
             }
-            return { reading, dismissed }
+            return { reading: { ...reading, deployment }, dismissed }
           },
           { now, polledAt }
         )

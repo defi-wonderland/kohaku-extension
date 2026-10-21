@@ -21,6 +21,7 @@ import {
   watchedDeploymentOf,
   watcherConnectionFor
 } from '@web/modules/social-recovery/shared/client/watcher-reads'
+import { recordDeploymentOf } from '@web/modules/social-recovery/shared/records/deployment'
 import { extensionRecordStorage } from '@web/modules/social-recovery/shared/records/extensionStorage'
 import { sameHash } from '@web/modules/social-recovery/shared/writes/hashes'
 import {
@@ -320,6 +321,7 @@ export const pollOnce = async ({
   try {
     await pollAccounts({
       reads: connection.reads,
+      deployment: recordDeploymentOf(descriptor),
       accounts: [account],
       chainId: CHAIN_IDS[WALLET_RECOVERY_CHAIN],
       storage,

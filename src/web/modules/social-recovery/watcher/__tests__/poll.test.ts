@@ -22,6 +22,7 @@ import {
   cancelledEvent,
   COMMITTED_AT,
   consumedEvent,
+  DEPLOYMENT,
   ENDED_TIME,
   HEAD,
   HEAD_TIME,
@@ -48,6 +49,7 @@ const setUp = (accounts = [ACCOUNT]) => {
   const poll = (limitMs = 1_000, scanLimitMs = 1_000, polledAt = NOW) =>
     pollAccounts({
       reads: chain.reads,
+      deployment: DEPLOYMENT,
       accounts,
       chainId: SEPOLIA,
       storage,
@@ -67,7 +69,7 @@ const scansOf = (chain: ReturnType<typeof scriptedChain>) =>
   chain.reads.attemptEventsOf.mock.calls.map(([, , { from, to, until }]) => ({ from, to, until }))
 
 describe('a poll of the watched accounts', () => {
-  it('writes a reading with no attempt and no badge where none is open', async () => {
+  it('writes a reading with no attempt and no badge where none is open, naming the deployment it read', async () => {
     const { chain, poll, record } = setUp()
     chain.setState(ACCOUNT, stateWith())
 
@@ -77,7 +79,8 @@ describe('a poll of the watched accounts', () => {
       account: ACCOUNT,
       block: { number: HEAD, timestamp: HEAD_TIME },
       hasSetup: true,
-      dormant: false
+      dormant: false,
+      deployment: DEPLOYMENT
     })
     expect(written?.failed).toBeUndefined()
   })
@@ -339,6 +342,7 @@ describe('a poll of the watched accounts', () => {
     const storage = memoryStorage()
     await pollAccounts({
       reads: chain.reads,
+      deployment: DEPLOYMENT,
       accounts: [ACCOUNT],
       chainId: SEPOLIA,
       storage,
@@ -653,6 +657,7 @@ describe('a poll of the watched accounts', () => {
 
     await pollAccounts({
       reads: createWatcherReads({ provider: node, descriptor }),
+      deployment: DEPLOYMENT,
       accounts: [KIT_ACCOUNT],
       chainId: SEPOLIA,
       storage,

@@ -5,7 +5,11 @@ import type {
   WatcherConnection,
   WatcherReads
 } from '@web/modules/social-recovery/shared/client/types'
-import type { ChainId, RecordStorage } from '@web/modules/social-recovery/shared/records/types'
+import type {
+  ChainId,
+  RecordDeployment,
+  RecordStorage
+} from '@web/modules/social-recovery/shared/records/types'
 
 import type { ENDING_GAPS, OPENING_GAPS } from './constants'
 
@@ -109,6 +113,8 @@ export interface WatcherReading {
   attempt?: WatchedAttempt
   /** The ending of the last attempt, where the manager holds an ended one. */
   ended?: AttemptEnding
+  /** The manager and the action the reading came from; absent on a reading an earlier build wrote. */
+  readonly deployment?: RecordDeployment
 }
 
 /** A poll that failed or did not answer in time; `at` in ms since epoch. */
@@ -184,6 +190,8 @@ export interface PollLimits {
 /** What one poll over the watched accounts takes. */
 export interface PollInput {
   reads: WatcherReads
+  /** The manager and the action `reads` go to, written with each reading. */
+  deployment: RecordDeployment
   accounts: readonly Address[]
   chainId: ChainId
   storage: WatcherStorage

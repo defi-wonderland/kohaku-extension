@@ -28,6 +28,7 @@ import {
   watchedDeploymentOf,
   watcherConnectionFor
 } from '@web/modules/social-recovery/shared/client/watcher-reads'
+import { recordDeploymentOf } from '@web/modules/social-recovery/shared/records/deployment'
 import { extensionRecordStorage } from '@web/modules/social-recovery/shared/records/extensionStorage'
 
 import {
@@ -199,6 +200,7 @@ export const startRecoveryWatcher = ({
     }
     return pollAccounts({
       reads,
+      deployment: recordDeploymentOf(descriptor),
       accounts: watched,
       chainId,
       storage,

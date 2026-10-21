@@ -260,7 +260,7 @@ describe('the recovery banner', () => {
       pollOnce({
         account,
         network: { chainId: BigInt(SEPOLIA) } as never,
-        deployment: () => ({} as never),
+        deployment: () => watcherFixtures.DEPLOYMENT as never,
         connect: () => ({ reads: chain.reads, providerKey: 'test', destroy }),
         storage: world.storage
       })
