@@ -78,7 +78,6 @@ export type PathStep =
   | { kind: 'none' }
   | { kind: 'reading' }
   | { kind: 'read-failed' }
-  | { kind: 'update-the-wallet' }
   | { kind: 'no-details' }
   | { kind: 'mismatch' }
   /** This device cannot read the path until the recovery password opens it. */

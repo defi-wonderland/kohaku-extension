@@ -430,7 +430,8 @@ export class ScriptedNode implements IProvider {
 
   /**
    * Applies a prepared call or batch the way the contracts would, all in one
-   * mined block; a refused call throws the revert and nothing lands.
+   * mined block; a refused call throws the revert and nothing lands. Every
+   * call of a batch is checked against the state before the batch.
    */
   land(prepared: PreparedCall | PreparedBatch): Hex {
     const calls = prepared.kind === 'call' ? [prepared] : prepared.calls
