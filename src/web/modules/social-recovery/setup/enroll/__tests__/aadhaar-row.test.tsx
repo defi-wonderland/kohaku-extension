@@ -22,6 +22,7 @@ describeIdentityRow({
   enrolledLine: `${AADHAAR}.enrolledLine`,
   testLead: `${AADHAAR}.testLead`,
   testPassed: `${AADHAAR}.testPassed`,
+  refusedNote: 'socialRecovery.ceremony.refusedNote',
   disclosures: [
     'socialRecovery.disclosures.identity',
     'socialRecovery.disclosures.aadhaarPublication',
