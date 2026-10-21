@@ -231,7 +231,8 @@ export const chosenPlacesOf = (
 /**
  * Whether a claim's outcome says its method did not answer this time: the
  * device or the hand-off could not be reached, or the ceremony failed. A reply
- * the client refused is an answer, not a silence.
+ * the client refused, or a proof that did not match, is an answer, not a
+ * silence.
  */
 export const methodDidNotAnswer = (outcome: CeremonyOutcome<unknown>): boolean => {
   if (outcome.kind !== 'verdict') {
@@ -240,7 +241,11 @@ export const methodDidNotAnswer = (outcome: CeremonyOutcome<unknown>): boolean =
   if (outcome.verdict === 'unavailable') {
     return true
   }
-  return outcome.verdict === 'failed' && outcome.cause !== 'check-rejected'
+  return (
+    outcome.verdict === 'failed' &&
+    outcome.cause !== 'check-rejected' &&
+    outcome.cause !== 'material-rejected'
+  )
 }
 
 /**
