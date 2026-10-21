@@ -110,6 +110,16 @@ export interface EndedNotice {
 // The reads hook
 // ---------------------------------------------------------------------------
 
+/**
+ * What this device has seen of the account's setup at the client's
+ * deployment: the highest setup nonce, and the block of the watcher's last
+ * reading where it found a setup.
+ */
+export interface KnownFloor {
+  setupNonce?: bigint
+  setupBlock?: number
+}
+
 export interface OverviewReadsInput {
   client: RecoveryClientState & { retry: () => void }
   records: Pick<WalletRecords, 'decryptedSetupCache'>

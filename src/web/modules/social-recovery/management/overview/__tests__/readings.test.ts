@@ -9,7 +9,8 @@ import {
   attemptOpenOf,
   endedNoticeOf,
   goalStands,
-  knownSetupNonceOf,
+  isBelowFloor,
+  knownFloorOf,
   movedInPath,
   noticesOf,
   overviewKindOf,
@@ -171,8 +172,9 @@ describe('the overview readings', () => {
   })
 })
 
-describe('the setup nonce this device has seen', () => {
+describe('the setup this device has seen', () => {
   const DEPLOYMENT = { manager: METHOD_A, action: METHOD_B }
+  const nonceOf = (...args: Parameters<typeof knownFloorOf>) => knownFloorOf(...args).setupNonce
   const RETIRED = {
     manager: '0x00000000000000000000000000000000000000cc' as Address,
     action: METHOD_B
@@ -201,12 +203,8 @@ describe('the setup nonce this device has seen', () => {
   })
 
   it('takes the higher nonce of the records read under the same manager and action', () => {
-    expect(knownSetupNonceOf(cacheAt(2n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(
-      3n
-    )
-    expect(knownSetupNonceOf(cacheAt(4n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(
-      4n
-    )
+    expect(nonceOf(cacheAt(2n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(3n)
+    expect(nonceOf(cacheAt(4n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(4n)
   })
 
   it('matches the deployment whatever the case of its addresses', () => {
@@ -214,19 +212,45 @@ describe('the setup nonce this device has seen', () => {
       manager: `0x${METHOD_A.slice(2).toUpperCase()}` as Address,
       action: `0x${METHOD_B.slice(2).toUpperCase()}` as Address
     }
-    expect(knownSetupNonceOf(cacheAt(2n, upper), undefined, DEPLOYMENT)).toBe(2n)
+    expect(nonceOf(cacheAt(2n, upper), undefined, DEPLOYMENT)).toBe(2n)
   })
 
   it('gives no floor from a record of another manager or another action', () => {
-    expect(knownSetupNonceOf(cacheAt(2n, RETIRED), watchedAt(2n, RETIRED), DEPLOYMENT)).toBe(
-      undefined
-    )
+    expect(nonceOf(cacheAt(2n, RETIRED), watchedAt(2n, RETIRED), DEPLOYMENT)).toBe(undefined)
     const otherAction = { manager: METHOD_A, action: METHOD_A }
-    expect(knownSetupNonceOf(cacheAt(2n, otherAction), undefined, DEPLOYMENT)).toBe(undefined)
-    expect(knownSetupNonceOf(cacheAt(1n, DEPLOYMENT), watchedAt(5n, RETIRED), DEPLOYMENT)).toBe(1n)
+    expect(nonceOf(cacheAt(2n, otherAction), undefined, DEPLOYMENT)).toBe(undefined)
+    expect(nonceOf(cacheAt(1n, DEPLOYMENT), watchedAt(5n, RETIRED), DEPLOYMENT)).toBe(1n)
   })
 
   it('gives no floor from a record that names no deployment', () => {
-    expect(knownSetupNonceOf(cacheAt(2n), watchedAt(2n), DEPLOYMENT)).toBe(undefined)
+    expect(nonceOf(cacheAt(2n), watchedAt(2n), DEPLOYMENT)).toBe(undefined)
+  })
+
+  it("reads no setup below the block of the watcher's reading that found one as below the floor, and a clear at or after it as standing", () => {
+    const reading = (hasSetup: boolean, deployment?: typeof DEPLOYMENT): WatcherRecord => ({
+      reading: {
+        account: METHOD_A,
+        block: { number: 1001, timestamp: 1 },
+        hasSetup,
+        dormant: false,
+        ...(deployment ? { deployment } : {})
+      },
+      dismissed: []
+    })
+    const known = knownFloorOf(undefined, reading(true, DEPLOYMENT), DEPLOYMENT)
+    const cleared = (number: number) =>
+      setupOf({ hasSetup: false, setupNonce: 0n, block: { number, timestamp: 1, hash: HASH } })
+    expect(isBelowFloor(cleared(1000), known)).toBe(true)
+    expect(isBelowFloor(cleared(1001), known)).toBe(false)
+    expect(isBelowFloor(cleared(1002), known)).toBe(false)
+    expect(
+      isBelowFloor(setupOf({ block: { number: 1000, timestamp: 1, hash: HASH } }), known)
+    ).toBe(false)
+    const unfounded = [
+      knownFloorOf(undefined, reading(false, DEPLOYMENT), DEPLOYMENT),
+      knownFloorOf(undefined, reading(true, RETIRED), DEPLOYMENT),
+      knownFloorOf(undefined, reading(true), DEPLOYMENT)
+    ]
+    unfounded.forEach((floor) => expect(isBelowFloor(cleared(1000), floor)).toBe(false))
   })
 })

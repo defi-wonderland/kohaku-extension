@@ -29,6 +29,7 @@ import type { AttemptEnding, WatcherRecord } from '@web/modules/social-recovery/
 
 import type {
   EndedNotice,
+  KnownFloor,
   MovedKeys,
   OverviewIntent,
   OverviewKind,
@@ -76,28 +77,47 @@ export const isCacheCurrent = (
 ): boolean => isOfDeployment(cache.deployment, descriptor) && isReadUnder(cache, setup)
 
 /**
- * The highest setup nonce this device has seen for the account at the
- * deployment the client reads: the one its opened setup was read under, and
- * the one the attempt the watcher last read was opened under. A setup nonce
- * never goes down at one manager, so an answer below it comes from a node that
- * lags or lost its state. A record of another deployment, or one that names
- * none, says nothing of this manager's nonce and gives no floor.
+ * What this device has seen of the account's setup at the deployment the
+ * client reads. The setup nonce is the highest of the one its opened setup was
+ * read under and the one the attempt the watcher last read was opened under: a
+ * setup nonce never goes down at one manager, so an answer below it comes from
+ * a node that lags or lost its state. The setup block is the block of the
+ * watcher's last reading where that reading found a setup: an answer of no
+ * setup from an earlier block comes from a node behind that reading. A record
+ * of another deployment, or one that names none, says nothing of this manager
+ * and gives neither.
  */
-export const knownSetupNonceOf = (
+export const knownFloorOf = (
   cache: DecryptedSetupCacheRecord | undefined,
   watched: WatcherRecord | undefined,
   descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
-): bigint | undefined =>
-  [
-    cache && isOfDeployment(cache.deployment, descriptor) ? cache.setupNonce : undefined,
+): KnownFloor => {
+  const reading =
     watched?.reading && isOfDeployment(watched.reading.deployment, descriptor)
-      ? watched.reading.attempt?.setupNonce
+      ? watched.reading
       : undefined
+  const setupNonce = [
+    cache && isOfDeployment(cache.deployment, descriptor) ? cache.setupNonce : undefined,
+    reading?.attempt?.setupNonce
   ].reduce<bigint | undefined>(
     (highest, nonce) =>
       nonce === undefined || (highest !== undefined && highest >= nonce) ? highest : nonce,
     undefined
   )
+  return {
+    ...(setupNonce === undefined ? {} : { setupNonce }),
+    ...(reading?.hasSetup ? { setupBlock: reading.block.number } : {})
+  }
+}
+
+/**
+ * Whether a setup state reads below what this device has seen: a setup nonce
+ * below the known one, or no setup at a block before a reading that found one.
+ * A clear read at or after that reading's block stands.
+ */
+export const isBelowFloor = (state: SetupState, known: KnownFloor): boolean =>
+  (known.setupNonce !== undefined && state.setupNonce < known.setupNonce) ||
+  (!state.hasSetup && known.setupBlock !== undefined && state.block.number < known.setupBlock)
 
 /** Whether two reads of the setup state name the same committed setup: its nonce and its commitment. */
 export const isSameSetup = (read: SetupState, earlier: SetupState): boolean =>

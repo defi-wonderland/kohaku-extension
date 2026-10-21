@@ -26,9 +26,14 @@ jest.mock('viem', () => {
 const React: typeof import('react') = require('react')
 const harness: typeof import('@web/modules/social-recovery/management/overview/__fixtures__/harness') = require('@web/modules/social-recovery/management/overview/__fixtures__/harness')
 const {
+  buildRecoveryClient,
   CHAIN_IDS,
+  descriptorOf,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  sdkStandIn
+}: typeof import('@web/modules/social-recovery/shared/client/stand-in') = require('@web/modules/social-recovery/shared/client/stand-in')
 const {
   readRecoveryPassword,
   wipeRecoveryPassword
@@ -93,6 +98,39 @@ const watchAttemptAt = (
     },
     dismissed: []
   }))
+
+/** Stores the watcher's reading of a setup with no attempt open, at a block, read from a deployment. */
+const watchSetupAt = (
+  storage: ReturnType<typeof makeStorage>,
+  block: number,
+  deployment: typeof DEPLOYMENT
+) =>
+  updateWatcherRecord(storage, CHAIN_ID, ACCOUNT, () => ({
+    reading: {
+      account: ACCOUNT,
+      block: { number: block, timestamp: 1 },
+      hasSetup: true,
+      dormant: false,
+      deployment
+    },
+    dismissed: []
+  }))
+
+/** A client over a fake node that holds no setup for the account and stands still at one block. */
+const clearedClientAt = (block: number) => {
+  sdkStandIn.reset()
+  const time = Math.floor(Date.now() / 1000)
+  const chain = sdkStandIn.nodeFor(descriptorOf(WALLET_RECOVERY_CHAIN, ADDRESS_BOOK), ACCOUNT, {
+    firstBlock: block,
+    clock: () => time
+  })
+  return buildRecoveryClient({
+    chain: WALLET_RECOVERY_CHAIN,
+    account: ACCOUNT,
+    addressBook: ADDRESS_BOOK,
+    provider: sdkStandIn.providerFor(chain)
+  })
+}
 
 // The facts read's retry of the last render, which the view offers only after a failed read.
 let retryFacts: () => void = () => {}
@@ -274,6 +312,50 @@ describe('the overview reads', () => {
 
     expect(view.byTestId('overview-read-failed')).not.toBeNull()
     expect(view.byTestId('overview-empty')).toBeNull()
+  })
+
+  it('reads a fresh node as failed with retry where the stored cache cannot be read, never as not set up', async () => {
+    const storage = makeStorage()
+    const world = await worldAt('public', ACCOUNT, storage)
+    await world.records
+      .decryptedSetupCache(CHAIN_ID, ACCOUNT)
+      .write({ configuration: CONFIGURATION, setupNonce: 1n, deployment: DEPLOYMENT })
+    jest.spyOn(storage, 'get').mockRejectedValue(new Error('storage unavailable'))
+
+    view = await renderOver({ ...world, client: await freshClientOf() })
+
+    expect(view.byTestId('overview-read-failed')).not.toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).toBeNull()
+    expect(view.byTestId('overview-empty')).toBeNull()
+  })
+
+  it("reads no setup from a block before the watcher's reading of one as failed with retry, and from a later block as not set up", async () => {
+    const storage = makeStorage()
+    const world = await worldAt('public', ACCOUNT, storage)
+    await watchSetupAt(storage, 1001, DEPLOYMENT)
+    const mountAt = async (block: number) => {
+      const mounted = await mount(
+        <ReadsProbe
+          client={readyOver(await clearedClientAt(block))}
+          records={world.records}
+          watcherStorage={storage}
+          chainId={CHAIN_ID}
+          onOpen={jest.fn()}
+        />
+      )
+      await harness.settleReads()
+      return mounted
+    }
+
+    view = await mountAt(1000)
+    expect(view.byTestId('overview-read-failed')).not.toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).toBeNull()
+    expect(view.byTestId('overview-empty')).toBeNull()
+    view.unmount()
+
+    view = await mountAt(1002)
+    expect(view.byTestId('overview-read-failed')).toBeNull()
+    expect(view.byTestId('overview-empty')).not.toBeNull()
   })
 
   it('reads a new manager at nonce zero as not set up beside a cache of a retired manager at a higher nonce, and keeps the cache', async () => {
