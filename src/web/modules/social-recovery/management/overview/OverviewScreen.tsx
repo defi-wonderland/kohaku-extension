@@ -8,7 +8,10 @@
  * management editor stored is left to the editor's screen, and a save of the
  * setup flow to the save screen, and the overview points there. Every key
  * this wallet's keystore holds goes to the reads, which ask whether one signs
- * for the account once a recovery executed.
+ * for the account once a recovery executed. The reads run again when the
+ * watcher reads a new ending of the account's attempt and whenever the tab is
+ * shown again, so an overview left open reaches what the chain now holds;
+ * neither runs them while a write step is open, whose own end reads again.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Linking } from 'react-native'
@@ -125,6 +128,11 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   )
 
   const [open, setOpen] = useState<OpenStep | null>(null)
+  const stepOpen = open !== null
+  const ended = watched.status === 'watched' ? watched.reading?.ended : undefined
+  const endingKey = ended ? `${ended.attemptId}:${ended.road}` : undefined
+  // The ending the reads last ran for; the one known at mount needs no second read.
+  const [readForEnding, setReadForEnding] = useState(endingKey)
   const [elsewhere, setElsewhere] = useState<ElsewhereLink | null>(null)
   const [heldRound, setHeldRound] = useState(0)
   // A write of the overview this device holds in flight opens its step, whose run follows it;
@@ -174,19 +182,29 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     retry()
     setHeldRound((round) => round + 1)
   }, [retry])
+  // A read run again unmounts an open step, whose run would stop; the ending waits for it to close.
   useEffect(() => {
-    if (!elsewhere) {
-      return undefined
+    if (stepOpen || endingKey === readForEnding) {
+      return
     }
+    setReadForEnding(endingKey)
+    retry()
+  }, [stepOpen, endingKey, readForEnding, retry])
+  useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState !== 'visible') {
+        return
+      }
+      if (!stepOpen) {
         retry()
+      }
+      if (elsewhere) {
         setHeldRound((round) => round + 1)
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [elsewhere, retry])
+  }, [elsewhere, stepOpen, retry])
   const onClose = useCallback(() => setOpen(null), [])
   const chain = kit?.chain
   const onTransaction = useCallback(
@@ -260,7 +278,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       context={context}
       networkName={networkName}
       timeZone={timeZone}
-      ending={watched.status === 'watched' ? watched.reading?.ended : undefined}
+      ending={ended}
       methodNameOf={methodNameOf}
       adminOf={adminOf}
       banner={

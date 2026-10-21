@@ -96,8 +96,21 @@ jest.mock('@web/modules/social-recovery/cancel/AccountAttemptBanner', () => ({
   __esModule: true,
   default: () => null
 }))
+// Each mounted reader of the watcher's record, so a test can push the record's next state.
+const mockWatchers = new Set<(update: (round: number) => number) => void>()
 jest.mock('@web/modules/social-recovery/watcher/useWatchedAttempt', () => ({
-  useWatchedAttempt: () => mockWallet.watched ?? { status: 'unwatched' }
+  useWatchedAttempt: () => {
+    // eslint-disable-next-line global-require
+    const { useEffect, useState } = require('react')
+    const [, bump] = useState(0)
+    useEffect(() => {
+      mockWatchers.add(bump)
+      return () => {
+        mockWatchers.delete(bump)
+      }
+    }, [])
+    return mockWallet.watched ?? { status: 'unwatched' }
+  }
 }))
 jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
   useRecoveryClient: () => mockWallet.client
@@ -545,6 +558,155 @@ describe("the overview's screen", () => {
     } finally {
       mockState.accounts.accounts = []
       mockState.keystore.keys = []
+    }
+  })
+
+  describe('left open while an attempt waits', () => {
+    const CONTROLLER = '0x00000000000000000000000000000000000000e2' as const
+
+    /** An attempt open on the account that hands control away from its one held key. */
+    const waitingWorld = async () => {
+      const storage = makeStorage()
+      mockWallet.storage = storage
+      const world = await worldAt('public', address, storage)
+      world.chain.setAuthorities([key.addr])
+      world.chain.openAttempt({
+        handover: { newAuthority: CONTROLLER, removedAuthority: key.addr }
+      })
+      const { attempt } = await world.client.walletReads.attemptState()
+      mockWallet.client = readyOver(world.client)
+      mockState.accounts.accounts = [account]
+      mockState.keystore.keys = [{ addr: key.addr, type: key.type }]
+      mockWallet.watched = { status: 'watched', attemptDismissed: false }
+      return { world, attemptId: attempt.attemptId }
+    }
+
+    /** The recovery executes from another wallet: the attempt consumed, the held key no longer signing. */
+    const executeElsewhere = async (world: Awaited<ReturnType<typeof waitingWorld>>['world']) => {
+      world.chain.consume()
+      expect((await world.client.walletReads.attemptState()).attempt.state).toBe('Consumed')
+      expect(await world.client.action.isAuthority(key.addr)).toBe(false)
+    }
+
+    const pushExecutedEnding = async (attemptId: bigint) => {
+      mockWallet.watched = {
+        status: 'watched',
+        reading: {
+          account: address,
+          block: { number: 300, timestamp: 3_000 },
+          hasSetup: true,
+          dormant: false,
+          ended: {
+            attemptId,
+            road: 'executed',
+            controller: CONTROLLER,
+            at: 2_500,
+            transactionHash: armHarness.TX_HASH
+          }
+        },
+        attemptDismissed: false
+      }
+      await act(async () => {
+        mockWatchers.forEach((bump) => bump((round) => round + 1))
+      })
+      await harness.settleReads()
+    }
+
+    const showTab = async () => {
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await harness.settleReads()
+    }
+
+    const terminal = () => ({
+      moved: view?.byTestId('overview-control-moved-notice') !== null,
+      edit: view?.byTestId('overview-edit-path') !== null
+    })
+
+    afterEach(() => {
+      mockState.accounts.accounts = []
+      mockState.keystore.keys = []
+      mockWallet.watched = undefined
+    })
+
+    it('reaches the terminal state with no remount once the watcher reads the execution and the tab is shown', async () => {
+      const { world, attemptId } = await waitingWorld()
+      view = await mount(<OverviewScreen />)
+      await harness.settleReads()
+      expect(terminal()).toEqual({ moved: false, edit: true })
+
+      await executeElsewhere(world)
+      await pushExecutedEnding(attemptId)
+      await showTab()
+
+      expect(terminal()).toEqual({ moved: true, edit: false })
+      expect(view.textOf('overview-control-moved-controller')).toBe(
+        display.renderFullAddress(CONTROLLER)
+      )
+    })
+
+    it('reads the chain again when the watcher reads a new ending alone', async () => {
+      const { world, attemptId } = await waitingWorld()
+      view = await mount(<OverviewScreen />)
+      await harness.settleReads()
+
+      await executeElsewhere(world)
+      await pushExecutedEnding(attemptId)
+
+      expect(terminal()).toEqual({ moved: true, edit: false })
+    })
+
+    it('reads the chain again when the tab is shown alone', async () => {
+      const { world } = await waitingWorld()
+      view = await mount(<OverviewScreen />)
+      await harness.settleReads()
+
+      await executeElsewhere(world)
+      await showTab()
+
+      expect(terminal()).toEqual({ moved: true, edit: false })
+    })
+  })
+
+  it('keeps an open write step mounted when the tab is shown or the watcher reads a new ending', async () => {
+    const world = await dormantWorld()
+    await storeOverviewWrite(world, 'clear', address)
+    const receipts = receiptsOver()
+    receipts.wait.mockImplementation(() => armHarness.pending())
+    mockWallet.port = sendPortOver()
+    mockWallet.client = readyOver(world.client, GAS_READS, receipts)
+    mockWallet.watched = { status: 'watched', attemptDismissed: false }
+    try {
+      view = await mount(<OverviewScreen />)
+      const step = view.byTestId('overview-step-clear')
+      expect(step).not.toBeNull()
+
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await settle()
+      mockWallet.watched = {
+        status: 'watched',
+        reading: {
+          account: address,
+          block: { number: 300, timestamp: 3_000 },
+          hasSetup: true,
+          dormant: true,
+          ended: { attemptId: 9n, road: 'cancelled', cancelledBy: 'cancelByOwner', at: 2_500 }
+        },
+        attemptDismissed: false
+      }
+      await act(async () => {
+        mockWatchers.forEach((bump) => bump((round) => round + 1))
+      })
+      await settle()
+
+      expect(view.byTestId('overview-step-clear')).toBe(step)
+      expect(view.byTestId('overview-step-submitting')).not.toBeNull()
+      expect(view.byTestId('overview-reading')).toBeNull()
+    } finally {
+      mockWallet.watched = undefined
     }
   })
 })
