@@ -21,6 +21,7 @@ import type {
   Clause,
   Hex,
   IRecoveryMethod,
+  Params,
   SetupDraft
 } from '@kohaku-eth/social-recovery'
 import type {
@@ -93,14 +94,27 @@ const {
   walletMethod
 }: typeof import('@kohaku-eth/social-recovery') = require('@kohaku-eth/social-recovery')
 const {
+  anonAadhaarMethod,
+  zkPassportMethod
+}: typeof import('@kohaku-eth/social-recovery/recovery-methods') = require('@kohaku-eth/social-recovery/recovery-methods')
+const {
   ceremonyReport,
-  ceremonyResultKey
+  ceremonyResultKey,
+  takeCeremonyReport
 }: typeof import('@web/modules/social-recovery/shared/ceremony') = require('@web/modules/social-recovery/shared/ceremony')
 const {
   addressBookOf,
   deploymentDescriptor,
   WALLET_RECOVERY_CHAIN
 }: typeof import('@web/modules/social-recovery/shared/client') = require('@web/modules/social-recovery/shared/client')
+const {
+  methodParamsOf,
+  STAND_IN_IDENTITY_PARAMS
+}: typeof import('@web/modules/social-recovery/shared/client/identity-params') = require('@web/modules/social-recovery/shared/client/identity-params')
+const {
+  createScriptedAadhaarStack,
+  createScriptedZkPassportStack
+}: typeof import('@web/modules/social-recovery/shared/client/scripted') = require('@web/modules/social-recovery/shared/client/scripted')
 const {
   createWalletRecords,
   emptySlot
@@ -234,8 +248,16 @@ export { emptySlot }
 export interface ReportChannel {
   store: ReportStore
   subscribe: ReportSubscribe
-  /** Writes the report the tab writes for the ceremony `id`, and tells the listeners. */
-  report: (id: string, call: CeremonyCall, outcome: CeremonyOutcome<unknown>) => Promise<void>
+  /**
+   * Writes the report the tab writes for the ceremony `id` of the method
+   * `method` (the passkey's unless given), and tells the listeners.
+   */
+  report: (
+    id: string,
+    call: CeremonyCall,
+    outcome: CeremonyOutcome<unknown>,
+    method?: string
+  ) => Promise<void>
   has: (id: string) => boolean
   listeners: () => number
   takes: jest.Mock
@@ -268,9 +290,9 @@ export const reportChannel = (): ReportChannel => {
   return {
     store,
     subscribe,
-    report: async (id, call, outcome) => {
+    report: async (id, call, outcome, method = 'passkey') => {
       const key = ceremonyResultKey(id)
-      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, NOW)
+      const value = ceremonyReport({ id, call, method }, outcome, NOW)
       values.set(key, value)
       listeners.get(key)?.forEach((listener) => listener(value))
     },
@@ -314,16 +336,33 @@ export interface FakeClient {
   enrollParams: unknown[]
 }
 
+export interface ReadyClientOptions {
+  /** The params the client gives a method for a call; the stand-in chain's by default. */
+  methodParamsFor?: (slug: string, call: CeremonyCall) => Params | undefined
+}
+
+/** The params of the stand-in chain, which every device of the chain shares. */
+export const standInParamsFor = (slug: string, call: CeremonyCall): Params | undefined =>
+  methodParamsOf(STAND_IN_IDENTITY_PARAMS, slug, call)
+
 /**
- * A ready client over the SDK's orchestrator with the two shipped methods,
- * each serving the modules the descriptor names for it. It records every
- * enrollment's params and every request it is asked to build signing input for.
+ * A ready client over the SDK's orchestrator with the shipped methods and the
+ * two identity methods over their scripted stacks, each serving the modules
+ * the descriptor names for it. It records every enrollment's params and every
+ * request it is asked to build signing input for.
  */
-export const readyClient = (): FakeClient => {
+export const readyClient = (options: ReadyClientOptions = {}): FakeClient => {
   const signingInputs: ApproverRequest[] = []
   const enrollParams: unknown[] = []
   const ecdsa = walletMethod()
-  const methods: IRecoveryMethod[] = [ecdsa, passkeyMethod()]
+  const zkPassport = zkPassportMethod(createScriptedZkPassportStack())
+  const aadhaar = anonAadhaarMethod({ stack: createScriptedAadhaarStack() })
+  const bySlug = new Map<string, IRecoveryMethod>([
+    ['ecdsa', ecdsa],
+    ['zkpassport', zkPassport],
+    ['aadhaar', aadhaar]
+  ])
+  const methods: IRecoveryMethod[] = [ecdsa, passkeyMethod(), zkPassport, aadhaar]
   const approving = new MethodsOrchestrator(
     new Map(
       methods.flatMap((method) =>
@@ -347,8 +386,8 @@ export const readyClient = (): FakeClient => {
       status: 'ready',
       client: {
         approving,
-        methodFor: (slug: string) => (slug === 'ecdsa' ? ecdsa : undefined),
-        methodParamsFor: () => undefined,
+        methodFor: (slug: string) => bySlug.get(slug),
+        methodParamsFor: options.methodParamsFor ?? standInParamsFor,
         descriptor: DESCRIPTOR
       }
     },
@@ -637,6 +676,35 @@ describeHarness('the enroll view harness', () => {
     expect(channel.has('a')).toBe(false)
     stop()
     expect(channel.listeners()).toBe(0)
+  })
+
+  it('writes a report under the method it is given, which only that method takes', async () => {
+    const channel = reportChannel()
+    await channel.report('a', 'enroll', { kind: 'dismissed', note: 'cancelled' }, 'zkpassport')
+    const asPasskey = { id: 'a', call: 'enroll' as const, method: 'passkey' }
+    expect(await takeCeremonyReport(asPasskey, channel.store, NOW)).toBeNull()
+    const taken = await takeCeremonyReport(
+      { ...asPasskey, method: 'zkpassport' },
+      channel.store,
+      NOW
+    )
+    expect(taken?.outcome).toEqual({ kind: 'dismissed', note: 'cancelled' })
+  })
+
+  it('serves both identity methods by their slugs, for the modules the book names', async () => {
+    const { client } = readyClient().state as Extract<EnrollClient, { status: 'ready' }>
+    ;(['zkpassport', 'aadhaar'] as const).forEach((slug) => {
+      const method = client.methodFor(slug)
+      expect(method?.modules(DESCRIPTOR).map((m) => m.toLowerCase())).toContain(
+        BOOK.methods[slug].toLowerCase()
+      )
+      expect(client.methodParamsFor(slug, 'enroll')).toBeDefined()
+    })
+    const none = readyClient({ methodParamsFor: () => undefined }).state as Extract<
+      EnrollClient,
+      { status: 'ready' }
+    >
+    expect(none.client.methodParamsFor('zkpassport', 'enroll')).toBeUndefined()
   })
 
   it('stores a path with an empty slot and reads it back', async () => {
