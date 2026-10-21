@@ -8,9 +8,10 @@
  * or config differ from the request's, or whose digest is not the request's,
  * answers `rejected` with no read. An answer of exactly the module's verdict
  * word is `satisfied`, as the manager reads it; any other answer, or a revert
- * of the call, is `rejected`, since the manager refuses the proof. A read the
- * provider could not make rejects, so the caller reads a failed check and
- * tries again. One read per verify; nothing is cached.
+ * of the call, is `rejected`, since the manager refuses the proof. An empty
+ * answer, as an address with no code gives, and a read the provider could not
+ * make, reject with the provider's read failure, so the caller reads a failed
+ * check and tries again. One read per verify; nothing is cached.
  */
 import {
   approvalDigest,
@@ -25,9 +26,10 @@ import {
   VERDICT_MAGIC_VALUE
 } from '@kohaku-eth/social-recovery'
 import type { ApproverRequest, Hex, Reply, Verdict } from '@kohaku-eth/social-recovery'
-import { encodeFunctionData } from 'viem'
+import { encodeFunctionData, size } from 'viem'
 
 import { sameAddress } from '../addresses'
+import { providerReadFailure } from '../provider-adapter'
 import type { WalletReads } from '../types'
 import type { ReplyVerifyProvider } from './types'
 
@@ -96,6 +98,9 @@ export const createReplyVerify =
         RECOVERY_ACTION_READ_FROM,
         'latest'
       )
+      if (size(answer) === 0) {
+        throw providerReadFailure('call', new Error('the method module answered no bytes'))
+      }
       return sameBytes(answer, VERDICT_MAGIC_VALUE) ? 'satisfied' : 'rejected'
     } catch (thrown: unknown) {
       if (isProviderRevert(thrown)) {

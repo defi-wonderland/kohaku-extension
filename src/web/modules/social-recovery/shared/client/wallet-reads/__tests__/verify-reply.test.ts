@@ -199,10 +199,12 @@ describe("the module's judgement", () => {
     expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
   })
 
-  it('is rejected where the module answers no word, as an address with no code does', async () => {
+  it('rejects with a read failure where the module answers no word, as an address with no code does', async () => {
     const { verify } = worldOf({ ecdsa: answersWord('0x') })
 
-    expect(await verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST))).toBe('rejected')
+    expect(
+      await thrownBy(verify(GUARDIAN_REQUEST, approverReplyTo(GUARDIAN_REQUEST)))
+    ).toMatchObject({ name: 'ProviderReadFailure', read: 'call' })
   })
 
   it('is rejected where the module reverts on the proof', async () => {
