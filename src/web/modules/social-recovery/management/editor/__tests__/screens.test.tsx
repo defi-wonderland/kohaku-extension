@@ -734,6 +734,66 @@ describe('the review and the removal once a recovery moved control away from thi
     }
   }
 
+  /**
+   * The screen's own write stored as sent and its run following it, then the
+   * facts read that control moved away: the run stays drawn and the screen
+   * stays.
+   */
+  const followingOwnWrite = async (
+    stage: typeof ReviewStageView | typeof RemoveStageView,
+    intent: 'manageEdit' | 'manageRemove'
+  ) => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    const requestId = `${newSendRequestId()}${MANAGE_INTENT_MARKS[intent]}`
+    const inFlight = records.saveInFlight(CHAIN_ID, ACCOUNT)
+    await inFlight.claim({
+      draft: REMOVAL_DRAFT,
+      prepared: { kind: 'call', target: ACCOUNT, value: 0n, data: '0x' } as never,
+      requestId,
+      claimedAt: Date.now()
+    })
+    await inFlight.markSent(requestId, '0x01', 1)
+    mockWorld.run = {
+      ...idleRun(),
+      state: {
+        write: { status: 'submitting', write: 'ownerWrite', transactionHash: '0x01', run: 1 },
+        after: { stage: 'none' },
+        lookup: 'none'
+      }
+    }
+    moveControl()
+    const navigate = jest.fn()
+    const view = await mount(
+      React.createElement(stage, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+    )
+    await settle()
+    return { view, navigate }
+  }
+
+  it('keeps a removal following its own write in flight drawn once control moved away', async () => {
+    const { view, navigate } = await followingOwnWrite(RemoveStageView, 'manageRemove')
+    expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage')
+    expect(view.byTestId('manage-remove-run-submitting')).not.toBeNull()
+    view.unmount()
+  })
+
+  it('keeps a review following its own save in flight drawn once control moved away', async () => {
+    const { view, navigate } = await followingOwnWrite(ReviewStageView, 'manageEdit')
+    expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage')
+    expect(view.byTestId('manage-review-run-submitting')).not.toBeNull()
+    view.unmount()
+  })
+
   it('sends a removal opened by its address to the overview, with nothing of the removal drawn', async () => {
     const { records, session } = await given({
       clauses: COMMITTED,

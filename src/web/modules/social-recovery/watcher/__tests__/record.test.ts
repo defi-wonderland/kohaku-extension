@@ -79,7 +79,8 @@ describe('the watcher record', () => {
         ended: { ...stored.reading.ended, transactionHash: 'not a hash' }
       }
     }
-    expect(watcherRecordFrom(garbled)).toBeUndefined()
+    expect(watcherRecordFrom({ savedAt: 1, value: stored })).toBeDefined()
+    expect(watcherRecordFrom({ savedAt: 1, value: garbled })).toBeUndefined()
   })
 
   it('reads back the deployment a reading was read from, and reads a reading that names none', async () => {
