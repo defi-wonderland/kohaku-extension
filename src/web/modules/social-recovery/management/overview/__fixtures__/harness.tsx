@@ -185,6 +185,7 @@ export const readsOf = (fields: Partial<OverviewReads> = {}): OverviewReads => (
 /** The view's props over given reads, each callback a mock. */
 export const viewPropsOf = (fields: Partial<OverviewViewProps> = {}): OverviewViewProps => ({
   reads: readsOf(),
+  account: ACCOUNT,
   context: CONTEXT,
   networkName: 'Sepolia',
   timeZone: 'UTC',

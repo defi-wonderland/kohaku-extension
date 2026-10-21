@@ -44,6 +44,7 @@ import type { OverviewFacts, OverviewKind, OverviewViewProps } from './types'
 
 const OverviewView = ({
   reads,
+  account,
   context,
   networkName,
   timeZone,
@@ -144,7 +145,7 @@ const OverviewView = ({
           <OverviewTitle lead={t(leadKey())} />
         )}
         <OverviewChips kind={overviewKindOf(setup)} path={path} attemptOpen={attemptOpen} />
-        {!!notice && <ControlMovedBlock notice={notice} />}
+        {!!notice && <ControlMovedBlock notice={notice} account={account} />}
         {attemptOpen && !notice && <View testID="overview-banner">{banner}</View>}
         {kind === 'dormant' && <DormantBlock attemptOpen={attemptOpen} onOpen={onOpen} />}
         {kind === 'mirror' && <MirrorBlock onOpen={onOpen} />}
@@ -157,6 +158,7 @@ const OverviewView = ({
             methodNameOf={methodNameOf}
             adminOf={adminOf}
             navigate={navigate}
+            actionable={!notice}
           />
         )}
         {setup.hasSetup && (

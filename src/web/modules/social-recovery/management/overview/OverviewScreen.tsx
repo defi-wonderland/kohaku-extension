@@ -256,6 +256,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   return (
     <OverviewView
       reads={reads}
+      account={account}
       context={context}
       networkName={networkName}
       timeZone={timeZone}

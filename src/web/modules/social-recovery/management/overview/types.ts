@@ -242,6 +242,8 @@ export interface PathLockedBodyProps {
 
 export interface OverviewViewProps {
   reads: OverviewReads
+  /** The account the overview reads. */
+  account: Address
   context: ReadoutRowContext
   /** The recovery chain's name, as the wallet lists its network. */
   networkName: string
@@ -308,9 +310,12 @@ export interface OverviewNavigateProps {
 
 export interface ControlMovedBlockProps {
   notice: ControlMovedNotice
+  /** The account the overview reads. */
+  account: Address
 }
 
-export interface ControlMovedTitleProps extends ControlMovedBlockProps {
+export interface ControlMovedTitleProps {
+  notice: ControlMovedNotice
   timeZone: string
   /** Opens the explorer page of the transaction that moved control. */
   onTransaction: (transactionHash: Hex) => void
@@ -334,7 +339,10 @@ export interface MirrorBlockProps {
 export type NoticesBlockProps = Pick<
   OverviewViewProps,
   'reads' | 'context' | 'timeZone' | 'ending' | 'methodNameOf' | 'adminOf' | 'navigate'
->
+> & {
+  /** Whether each notice carries its action; without, only its text is drawn. */
+  actionable: boolean
+}
 
 export type PathBodyProps = Pick<OverviewViewProps, 'reads' | 'context' | 'networkName'>
 

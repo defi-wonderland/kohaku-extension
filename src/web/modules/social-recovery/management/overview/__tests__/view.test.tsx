@@ -317,6 +317,18 @@ describe('the overview', () => {
     expect(view.text()).toContain(
       t(`${O}.controlMoved.lead`, { date: display.renderDateTimeInZone(1_700_000, 'UTC').date })
     )
+    expect(view.text()).toContain(t('socialRecovery.display.values.account'))
+    expect(view.textOf('overview-control-moved-account')).toBe(
+      display.renderFullAddress(harness.ACCOUNT)
+    )
+    const accountRow = view.byTestId('overview-control-moved-account')
+    const controllerRow = view.byTestId('overview-control-moved-controller')
+    expect(
+      accountRow &&
+        controllerRow &&
+        // eslint-disable-next-line no-bitwise
+        accountRow.compareDocumentPosition(controllerRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     expect(view.text()).toContain(t(`${O}.controlMoved.controller`))
     expect(view.textOf('overview-control-moved-controller')).toBe(
       display.renderFullAddress(controller)
@@ -331,6 +343,47 @@ describe('the overview', () => {
     expect(view.byTestId('overview-recover')).not.toBeNull()
     await view.press('overview-control-moved-transaction')
     expect(props.onTransaction).toHaveBeenCalledWith(HASH)
+  })
+
+  it('keeps the text of a notice and draws none of its actions once control moved away', async () => {
+    const method = ADDRESS_BOOK.methods.ecdsa
+    const id = method.toLowerCase()
+    view = await render(
+      viewPropsOf({
+        reads: readsOf({
+          facts: {
+            status: 'answered',
+            value: { setup: setupStateOf({}), attemptOpen: false, movedBy: 3n }
+          },
+          path: { kind: 'readable', configuration: CONFIGURATION },
+          notices: {
+            status: 'answered',
+            value: {
+              moved: [
+                {
+                  method,
+                  at: {
+                    blockNumber: 150,
+                    blockHash: HASH,
+                    logIndex: 0,
+                    transactionHash: HASH,
+                    removed: false
+                  }
+                }
+              ],
+              cancelledAttempts: []
+            }
+          }
+        }),
+        adminOf: () => ADMIN
+      })
+    )
+    expect(view.textOf(`overview-moved-${id}-title`)).toBe(
+      t(`${O}.movedKeys.title`, { method: 'Guardian' })
+    )
+    expect(view.textOf(`overview-moved-${id}-caveat`)).toBe(t(`${O}.movedKeys.caveat`))
+    expect(view.byTestId(`overview-moved-${id}-edit`)).toBeNull()
+    expect(view.byTestId('overview-reauthorize')).toBeNull()
   })
 
   it('reads the moved control with no time, key or link where the watcher read none', async () => {
