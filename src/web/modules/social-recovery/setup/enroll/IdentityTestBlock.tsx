@@ -32,6 +32,12 @@ const IdentityTestBlock = ({
     ? 'socialRecovery.ceremony.notOnThisNetworkLine'
     : testLineKeyOf(enrollment, skipped, copy.testPassed)
   const testable = !unsupported && enrollment.test !== 'not-supported'
+  // A result the method's own check refused, as a proof of another document's
+  // identifier, says what to try; a mismatch on chain reads its own line.
+  const rejected =
+    !unsupported &&
+    enrollment.test === 'failed' &&
+    !!enrollment.cause?.startsWith('material-rejected')
   const offered = testable && enrollment.test === 'not-tested' && !skipped
   const again =
     testable &&
@@ -72,7 +78,18 @@ const IdentityTestBlock = ({
           />
         </>
       )}
-      <TestResultLines row={row} lineKey={lineKey} outcome={testOutcome} />
+      <TestResultLines
+        row={row}
+        lineKey={lineKey}
+        outcome={testOutcome}
+        refusedNote={copy.refusedNote}
+      >
+        {rejected && (
+          <Text testID={`${row}-test-cause`} fontSize={14}>
+            {t('socialRecovery.ceremony.rejectedCause')}
+          </Text>
+        )}
+      </TestResultLines>
       {(again || run) && (
         <ActionsRow
           primary={

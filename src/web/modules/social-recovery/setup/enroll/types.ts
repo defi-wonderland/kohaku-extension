@@ -306,6 +306,8 @@ export interface TestResultLinesProps {
   lineKey: string | null
   /** The test outcome that just arrived, null where none did. */
   outcome: CeremonyOutcome<unknown> | null
+  /** The note a refused dismissal reads on this row, where it differs from the shared one. */
+  refusedNote?: string
   /** What renders between the lasting line and the outcome's notes. */
   children?: ReactNode
 }
@@ -452,6 +454,8 @@ export interface IdentityCopy {
   enrolledLine: string
   testLead: string
   testPassed: string
+  /** The note a refused ceremony reads, where the row's device names the refusal its own way. */
+  refusedNote?: string
 }
 
 export type IdentityCopies = { readonly [K in IdentityKind]: IdentityCopy }

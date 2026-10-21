@@ -75,6 +75,9 @@ const paramsOf = (slug: string, call: CeremonyCall): Params => ({ slug, call, se
 export const describeIdentityRow = (kind: IdentityRowCase) => {
   const { slug, row } = kind
   const id = (suffix: string) => `${row}-${suffix}`
+  // The passport's phone app reports the holder's decline as a refusal.
+  const phoneNoteOf = (noteKey: string) =>
+    slug === 'zkpassport' && noteKey === 'refusedNote' ? 'declinedNote' : noteKey
 
   /** Two empty slots of the kind; the screen fills the second. */
   const TWO_SLOTS: Clause[] = pathWith(emptySlot(slug), emptySlot(slug))
@@ -342,7 +345,9 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         ['a phone that never connected', unavailable('unreachable'), 'unreachableNote']
       ] as const)('offers to try again after %s, with its note', async ([, outcome, noteKey]) => {
         const request = await createAndReturn(outcome)
-        expect(view!.byTestId(id('enroll-note'))?.textContent).toBe(t(`${CEREMONY}.${noteKey}`))
+        expect(view!.byTestId(id('enroll-note'))?.textContent).toBe(
+          t(`${CEREMONY}.${phoneNoteOf(noteKey)}`)
+        )
         expect(view!.byTestId(id('start'))).toBeNull()
         expect(view!.byTestId(id('try-again'))?.textContent).toBe(t(`${CEREMONY}.tryAgainAction`))
         expect(view!.byTestId(id('enrolled'))).toBeNull()
@@ -501,7 +506,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         async ([, outcome, noteKey]) => {
           await testAndReturn(outcome)
           expect(view!.byTestId(id('chip'))?.textContent).toBe(chip('notTested'))
-          expect(view!.allText(id('test-note'))).toEqual([t(`${CEREMONY}.${noteKey}`)])
+          expect(view!.allText(id('test-note'))).toEqual([t(`${CEREMONY}.${phoneNoteOf(noteKey)}`)])
           expect(view!.byTestId(id('run-test'))).not.toBeNull()
           const [enrollment] = await storedEnrollments(records)
           expect(enrollment.test).toBe('not-tested')

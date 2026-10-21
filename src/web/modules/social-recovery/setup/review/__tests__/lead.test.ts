@@ -270,8 +270,11 @@ describe('a row of the path', () => {
     ])
   })
 
-  it('carries the identity line alone on an Aadhaar row', () => {
-    expect(rowOf(enrolled(AADHAAR)).lines).toEqual([t('socialRecovery.disclosures.identity')])
+  it('carries the identity line and the publication line on an Aadhaar row', () => {
+    expect(rowOf(enrolled(AADHAAR)).lines).toEqual([
+      t('socialRecovery.disclosures.identity'),
+      t('socialRecovery.disclosures.aadhaarPublication')
+    ])
   })
 
   it('names a synced passkey by its label with the synced word', () => {

@@ -44,7 +44,8 @@ export const IDENTITY_COPY: IdentityCopies = {
     actionLine: `${ENROLL}.passport.scanLine`,
     enrolledLine: `${ENROLL}.passport.enrolledLine`,
     testLead: `${ENROLL}.passport.testLead`,
-    testPassed: `${ENROLL}.passport.testPassed`
+    testPassed: `${ENROLL}.passport.testPassed`,
+    refusedNote: 'socialRecovery.ceremony.declinedNote'
   },
   aadhaar: {
     row: 'aadhaar',
