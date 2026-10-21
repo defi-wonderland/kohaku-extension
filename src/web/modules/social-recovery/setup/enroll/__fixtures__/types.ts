@@ -13,6 +13,8 @@ export interface IdentityRowCase {
   enrolledLine: string
   testLead: string
   testPassed: string
+  /** The note a refused ceremony reads on the row. */
+  refusedNote: string
   /** The lines of the disclosure card, in order. */
   disclosures: string[]
 }

@@ -75,9 +75,9 @@ const paramsOf = (slug: string, call: CeremonyCall): Params => ({ slug, call, se
 export const describeIdentityRow = (kind: IdentityRowCase) => {
   const { slug, row } = kind
   const id = (suffix: string) => `${row}-${suffix}`
-  // The passport's phone app reports the holder's decline as a refusal.
-  const phoneNoteOf = (noteKey: string) =>
-    slug === 'zkpassport' && noteKey === 'refusedNote' ? 'declinedNote' : noteKey
+  // A refusal reads the kind's own note; every other note is the shared one.
+  const noteOf = (noteKey: string) =>
+    noteKey === 'refusedNote' ? kind.refusedNote : `${CEREMONY}.${noteKey}`
 
   /** Two empty slots of the kind; the screen fills the second. */
   const TWO_SLOTS: Clause[] = pathWith(emptySlot(slug), emptySlot(slug))
@@ -345,9 +345,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         ['a phone that never connected', unavailable('unreachable'), 'unreachableNote']
       ] as const)('offers to try again after %s, with its note', async ([, outcome, noteKey]) => {
         const request = await createAndReturn(outcome)
-        expect(view!.byTestId(id('enroll-note'))?.textContent).toBe(
-          t(`${CEREMONY}.${phoneNoteOf(noteKey)}`)
-        )
+        expect(view!.byTestId(id('enroll-note'))?.textContent).toBe(t(noteOf(noteKey)))
         expect(view!.byTestId(id('start'))).toBeNull()
         expect(view!.byTestId(id('try-again'))?.textContent).toBe(t(`${CEREMONY}.tryAgainAction`))
         expect(view!.byTestId(id('enrolled'))).toBeNull()
@@ -486,6 +484,46 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         }
       )
 
+      it('names a result the method refused under the failed line, with a run again', async () => {
+        await testAndReturn(failed('material-rejected', 'another identifier'))
+        expect(view!.byTestId(id('chip'))?.textContent).toBe(chip('testFailed'))
+        expect(view!.byTestId(id('test-line'))?.textContent).toBe(t(`${CEREMONY}.testFailedLine`))
+        expect(view!.byTestId(id('test-cause'))?.textContent).toBe(t(`${CEREMONY}.rejectedCause`))
+        expect(view!.byTestId(id('run-test-again'))?.textContent).toBe(
+          t('socialRecovery.actions.runTheTestAgain')
+        )
+        expect(await storedEnrollments(records)).toEqual([
+          {
+            credential: credentialOf(CONFIG),
+            test: 'failed',
+            cause: 'material-rejected: another identifier'
+          }
+        ])
+
+        // The cause line comes from the stored verdict, so a reopen keeps it.
+        await open()
+        expect(view!.byTestId(id('test-cause'))?.textContent).toBe(t(`${CEREMONY}.rejectedCause`))
+      })
+
+      each([
+        ['a mismatch on chain', failed('check-rejected'), 'testFailedNoMatch'],
+        ['any other failure', failed('thrown'), 'testFailedLine']
+      ] as const)('reads %s with its line and no cause line', async ([, outcome, lineKey]) => {
+        await testAndReturn(outcome)
+        expect(view!.byTestId(id('test-line'))?.textContent).toBe(t(`${CEREMONY}.${lineKey}`))
+        expect(view!.byTestId(id('test-cause'))).toBeNull()
+      })
+
+      it('reads the refused note of the kind at the creation and at the test', async () => {
+        await createAndReturn(dismissed('refused'))
+        expect(view!.byTestId(id('enroll-note'))?.textContent).toBe(t(kind.refusedNote))
+        await view!.press(id('try-again'))
+        await returnFrom(lastRequestId(), 'enroll', passed({ config: CONFIG }))
+        await view!.press(id('run-test'))
+        await returnFrom(lastRequestId(), 'testAccess', dismissed('refused'))
+        expect(view!.allText(id('test-note'))).toEqual([t(kind.refusedNote)])
+      })
+
       it('reads not supported with its line and offers no retry', async () => {
         await testAndReturn(notSupported('no-implementation'))
         expect(view!.byTestId(id('chip'))?.textContent).toBe(chip('notSupported'))
@@ -506,7 +544,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         async ([, outcome, noteKey]) => {
           await testAndReturn(outcome)
           expect(view!.byTestId(id('chip'))?.textContent).toBe(chip('notTested'))
-          expect(view!.allText(id('test-note'))).toEqual([t(`${CEREMONY}.${phoneNoteOf(noteKey)}`)])
+          expect(view!.allText(id('test-note'))).toEqual([t(noteOf(noteKey))])
           expect(view!.byTestId(id('run-test'))).not.toBeNull()
           const [enrollment] = await storedEnrollments(records)
           expect(enrollment.test).toBe('not-tested')
