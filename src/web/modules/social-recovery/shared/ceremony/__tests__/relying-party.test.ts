@@ -126,6 +126,22 @@ describe('the origin string the method names', () => {
     expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
   })
 
+  it("packages the device's credential into a config of its key under the origin hash, through the SDK passkey method", async () => {
+    const method = fakeMethod()
+    method.configFrom.mockImplementation((input, material) =>
+      sdkPasskeyMethod().configFrom(input, material)
+    )
+    const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
+    expect(outcome).toMatchObject({ type: 'verdict', verdict: 'passed' })
+    expect(method.configFrom).toHaveBeenCalledTimes(1)
+    const config = (await method.configFrom.mock.results[0].value) as Hex
+    expect(sdkPasskeyMethod().codec.decodeConfig(config)).toEqual({
+      x: BigInt(bytesToHex(point.x)),
+      y: BigInt(bytesToHex(point.y)),
+      rpIdHash: ORIGIN_HASH
+    })
+  })
+
   it('becomes the host in the request options', async () => {
     const method = fakeMethod()
     await hosts.createClaim({ method, orchestrator: fakeOrchestrator(method) })
