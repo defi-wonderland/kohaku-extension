@@ -1,8 +1,8 @@
 /**
  * An identity's access test: offered and skippable while the document is not
  * tested, and run again once it passed, failed or could not run. A document
- * the method cannot serve, or a chain that cannot run the method, reads not
- * supported with no retry, since the answer will not change.
+ * the method cannot serve reads not supported, and a network that cannot run
+ * the method says so; neither offers a retry, since the answer will not change.
  */
 import React from 'react'
 
@@ -29,7 +29,7 @@ const IdentityTestBlock = ({
   const { t } = useTranslation()
   const { row } = copy
   const lineKey = unsupported
-    ? 'socialRecovery.ceremony.notSupportedLine'
+    ? 'socialRecovery.ceremony.notOnThisNetworkLine'
     : testLineKeyOf(enrollment, skipped, copy.testPassed)
   const testable = !unsupported && enrollment.test !== 'not-supported'
   const offered = testable && enrollment.test === 'not-tested' && !skipped
