@@ -42,11 +42,12 @@ import {
   scriptedProvider,
   thrownBy
 } from '@web/modules/social-recovery/shared/client/__fixtures__/scripted-provider'
-import type { ScriptedProvider } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
+import type {
+  ApprovalRequest,
+  ScriptedProvider
+} from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
 import { createReplyVerify } from '@web/modules/social-recovery/shared/client/wallet-reads'
-
-type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
 
 const OTHER_WORD: Hex = '0xffffffff'
 const VERIFY_SELECTOR = toFunctionSelector('verify(bytes,bytes32,bytes)')

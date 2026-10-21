@@ -16,7 +16,6 @@ import {
 } from '@kohaku-eth/social-recovery'
 import type {
   Address,
-  ApproverRequest,
   Configuration,
   Hex,
   PreparedBatch,
@@ -46,14 +45,13 @@ import {
   thrownBy,
   World
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
+import type { ApprovalRequest } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
 
 jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
   ...jest.requireActual('@web/modules/social-recovery/shared/client/deployment-env'),
   sepoliaDeploymentVariable: jest.fn()
 }))
-
-type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
 
 const ARMED: Hex = '0x0000000000000000000000000000000000000000000000000000000000000001'
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n

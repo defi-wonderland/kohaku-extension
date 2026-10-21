@@ -1,11 +1,15 @@
 import type {
   Address,
+  ApproverRequest,
   BlockHeader,
   BlockTag,
   Hex,
   IProvider,
   RawLog
 } from '@kohaku-eth/social-recovery'
+
+/** An approver request for an approval, the one purpose the module's verify judges a reply for. */
+export type ApprovalRequest = Extract<ApproverRequest, { purpose: 'approval' }>
 
 /** One `eth_call` the scripted provider answered: where, what and at which block. */
 export interface ProviderCall {
