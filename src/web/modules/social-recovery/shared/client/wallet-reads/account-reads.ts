@@ -258,6 +258,10 @@ export const createWalletReads = ({
       }
     },
 
+    async blockTime(blockNumber: number): Promise<number> {
+      return (await provider.block(blockNumber)).timestamp
+    },
+
     verifyReply: createReplyVerify(provider),
 
     commitmentOf: (nonce, configuration) =>

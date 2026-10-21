@@ -67,9 +67,12 @@ export interface MockWallet {
   walletAdds: boolean
   /** The networks the networks controller pushes. */
   networks: { chainId: bigint; name: string; nativeAssetSymbol: string }[]
-  /** The block time the extension's provider answers, by block number. */
+  /** The block time the client's provider answers, by block number. */
   blockTimes: Map<number, number>
+  /** The block reads through the client's provider. */
   blockReads: number[]
+  /** The block reads through the extension's own provider, which the screen never makes. */
+  extensionBlockReads: number[]
   /** The signer-state reads of the wallet's account facts. */
   factsReads: string[]
   version: number
@@ -89,6 +92,7 @@ export const mockWallet: MockWallet = {
   networks: [],
   blockTimes: new Map(),
   blockReads: [],
+  extensionBlockReads: [],
   factsReads: [],
   version: 0,
   listeners: new Set()
@@ -197,12 +201,8 @@ jest.mock('@web/modules/social-recovery/shared/client', () => ({
   extensionProviderFor: () => ({ destroy: () => undefined }),
   createProviderAdapter: () => ({
     block: async (blockNumber: number) => {
-      mockWallet.blockReads.push(blockNumber)
-      const timestamp = mockWallet.blockTimes.get(blockNumber)
-      if (timestamp === undefined) {
-        throw new Error('no such block')
-      }
-      return { number: blockNumber, timestamp }
+      mockWallet.extensionBlockReads.push(blockNumber)
+      throw new Error('the extension provider is not read')
     }
   })
 }))
@@ -490,6 +490,14 @@ export const fakeKit = (account: Address, configuration: Configuration = MIXED_P
   const signer = () => jest.fn(async () => SIGNER_STATE_KEY)
   const signerReads = [signer(), signer(), signer(), signer()]
   const [removedKey, isAuthority, holdsAnyPrivilege, signers] = signerReads
+  const blockTime = jest.fn(async (blockNumber: number) => {
+    mockWallet.blockReads.push(blockNumber)
+    const timestamp = mockWallet.blockTimes.get(blockNumber)
+    if (timestamp === undefined) {
+      throw new Error('no such block')
+    }
+    return timestamp
+  })
   const client = {
     chain: 'sepolia',
     account,
@@ -499,7 +507,7 @@ export const fakeKit = (account: Address, configuration: Configuration = MIXED_P
       events: { accountFilter, privilegeFilter, fetch }
     },
     setup: { getSetup },
-    walletReads: { removedKey, signers },
+    walletReads: { removedKey, signers, blockTime },
     action: { isAuthority, holdsAnyPrivilege }
   } as unknown as RecoveryKitClient
   return { client, chain, recoveryState, fetch, getSetup, signerReads }
@@ -805,6 +813,7 @@ export const openWorld = async ({
   mockWallet.dispatch = jest.fn()
   mockWallet.blockTimes = new Map([[CONSUME_BLOCK, CONSUME_TIME]])
   mockWallet.blockReads = []
+  mockWallet.extensionBlockReads = []
   mockWallet.factsReads = []
   mockWallet.listeners = new Set()
   if (entry) {

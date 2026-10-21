@@ -352,6 +352,8 @@ export interface WalletReads {
   /** Whether the action fits the account, judged against the code it will carry. */
   fitCheck(accountImplementation?: Address): Promise<FitCheckReading>
   attemptState(): Promise<RecoveryAttemptState>
+  /** The time of a block by its number, in seconds, on the provider the client reads. */
+  blockTime(blockNumber: number): Promise<number>
   /**
    * The setup commitment the manager would store for the client's account and
    * action over `configuration` at `nonce`, in the encoding the client's own

@@ -169,6 +169,18 @@ describe('buildRecoveryClient', () => {
     expect(world.ethers.getBlock).not.toHaveBeenCalled()
   })
 
+  it("reads a block's time over the stand-in's node, never the extension provider, and fails where the node cannot answer", async () => {
+    const world = createWorld()
+    const client = await buildRecoveryClient(world.config)
+    const earlier = world.chain.mine()
+    world.chain.mine()
+    expect(await client.walletReads.blockTime(earlier.number)).toBe(earlier.timestamp)
+    expect(world.ethers.getBlock).not.toHaveBeenCalled()
+
+    world.chain.failRead('block')
+    expect(await thrownBy(client.walletReads.blockTime(earlier.number))).toBeInstanceOf(Error)
+  })
+
   it('binds the one chain the configuration names and refuses a node on another', async () => {
     const world = createWorld()
     world.chain.setChainId(1)

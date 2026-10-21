@@ -25,8 +25,6 @@ import {
   privilegeChanged,
   recoveryPrivileges,
   REMOVED_KEY,
-  SEPOLIA,
-  setWallet,
   SIGNER_STATE_KEY,
   t,
   tick,
@@ -335,20 +333,14 @@ describe('the consume of the current attempt only', () => {
 })
 
 describe('no network for the recovery chain', () => {
-  it('renders failed, never loading, and reads once the network appears', async () => {
+  it("reads the consume block's time through the client, which needs no network of the extension's", async () => {
     const world = await openWorld({ route: 'logged-in', walletAdds: true })
     mockWallet.networks = []
     const screen = await mountDone(world.account)
-    expect(screen.has('done-read-failed')).toBe(true)
-    expect(screen.has('done-loading')).toBe(false)
-    expect(screen.has('done')).toBe(false)
-    await screen.press('done-read-failed-retry')
-    expect(screen.has('done-read-failed')).toBe(true)
-    expect(screen.has('done')).toBe(false)
-
-    await setWallet({ networks: [SEPOLIA] })
     expect(screen.has('done')).toBe(true)
     expect(screen.textOf('done-lead')).toBe(lead(CONSUME_TIME))
+    expect(mockWallet.blockReads).toEqual([CONSUME_BLOCK])
+    expect(mockWallet.extensionBlockReads).toEqual([])
     screen.unmount()
   })
 })
