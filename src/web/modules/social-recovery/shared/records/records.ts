@@ -1291,7 +1291,11 @@ export const createWalletRecords = ({
     }
     return inQueues([key, entryKey], async (): Promise<CountdownRestore> => {
       const current = await readSessionAt(key)
-      if (current.status === 'present' && current.value.state === 'live') {
+      if (
+        current.status === 'present' &&
+        current.value.state === 'live' &&
+        isSessionOfDeployment(current.value, restored.deployment)
+      ) {
         return { outcome: 'kept', countdown: ABSENT }
       }
       if (current.status === 'present' && current.value.state === 'landed') {

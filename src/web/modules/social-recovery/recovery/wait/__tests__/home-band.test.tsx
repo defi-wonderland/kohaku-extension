@@ -6,11 +6,14 @@ import {
   CHAIN_ID,
   CHAIN_TIME,
   elapse,
+  gatheringOf,
   HOUR,
+  MIXED_PATH,
   mountBand,
   NO_ATTEMPT,
   openWorld,
   resetTab,
+  RETIRED_MANAGER,
   showTab,
   storeCountdownOnRetiredManager,
   storeCountdownWithoutAttempt,
@@ -100,6 +103,28 @@ describe('the home band for a landed recovery', () => {
     view = await mountBand(world.records)
 
     expect(view.byTestId(`home-countdown-${world.account.toLowerCase()}`)).toBeNull()
+    expect(view.text()).toBe('')
+  })
+
+  it('lists a live session of this deployment, and none of a retired manager', async () => {
+    const world = await openWorld({ countdown: false })
+    const ours = gatheringOf(MIXED_PATH, 1, world.account)
+    await world.records.recoverySession(CHAIN_ID, world.account).write(ours, null)
+    view = await mountBand(world.records)
+    const id = world.account.toLowerCase()
+    expect(view.byTestId(`home-recovery-${id}`)).not.toBeNull()
+    view.unmount()
+
+    const other = await openWorld({ countdown: false })
+    const theirs = gatheringOf(MIXED_PATH, 1, other.account)
+    await other.records
+      .recoverySession(CHAIN_ID, other.account)
+      .write(
+        { ...theirs, request: { ...theirs.request, manager: RETIRED_MANAGER } } as typeof theirs,
+        null
+      )
+    view = await mountBand(other.records)
+    expect(view.byTestId(`home-recovery-${other.account.toLowerCase()}`)).toBeNull()
     expect(view.text()).toBe('')
   })
 

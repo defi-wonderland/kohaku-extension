@@ -61,6 +61,7 @@ const openRecord = (
       newKey: NEW_KEY,
       ...attempt
     },
+    deployment: watcherFixtures.DEPLOYMENT,
     ...overrides
   },
   dismissed: []

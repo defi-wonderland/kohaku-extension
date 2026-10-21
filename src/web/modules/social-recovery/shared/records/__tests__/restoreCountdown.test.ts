@@ -181,6 +181,19 @@ describe('the countdown restored from the chain', () => {
     expect(await entryOf(records)).toEqual(EARLIER_ENTRY)
   })
 
+  it('replaces a live session of a retired manager with the countdown, and writes the entry', async () => {
+    const { records } = setup()
+    const old = gathering()
+    await records
+      .recoverySession(CHAIN_ID, ACCOUNT)
+      .write({ ...old, request: { ...old.request, manager: EARLIER_RECEIVING } } as Gathering, null)
+    const result = await restore(records, ANOTHER_ATTEMPT)
+    expect(result.outcome).toBe('written')
+    const countdown = await countdownOf(records)
+    expect(countdown.status === 'present' && countdown.value).toEqual(ANOTHER_COUNTDOWN)
+    expect(await entryOf(records)).toEqual({ account: ACCOUNT, ...ENTRY, deployment: DEPLOYMENT })
+  })
+
   it('keeps a live session and leaves the entry untouched', async () => {
     const { storage, records } = setup()
     await live(records)

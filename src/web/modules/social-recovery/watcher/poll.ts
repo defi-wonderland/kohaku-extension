@@ -526,7 +526,10 @@ export const pollAccounts = async ({
           chainId,
           account,
           (current) => {
-            const dismissed = current?.dismissed ?? []
+            // A new manager numbers its attempts afresh: no dismissal of another deployment holds.
+            const dismissed = isOfDeployment(current?.reading?.deployment, deployment)
+              ? current?.dismissed ?? []
+              : []
             const stored = current?.reading?.block.number
             if (stored !== undefined && reading.block.number < stored) {
               const failed = { at: now(), message: olderBlockMessage(reading.block.number, stored) }

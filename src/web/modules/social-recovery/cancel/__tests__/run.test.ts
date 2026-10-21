@@ -14,7 +14,11 @@ import {
   UNTRACKED_FOLLOW_MS
 } from '@web/modules/social-recovery/cancel'
 import type { CancelClaims, CancelHold, CancelStore } from '@web/modules/social-recovery/cancel'
-import { pollAccounts, readWatcherRecord } from '@web/modules/social-recovery/watcher'
+import {
+  dismissAttempt,
+  pollAccounts,
+  readWatcherRecord
+} from '@web/modules/social-recovery/watcher'
 import {
   ACCOUNT,
   ATTEMPT,
@@ -38,6 +42,7 @@ import {
 import {
   DEPLOYMENT,
   HEAD,
+  RETIRED_DEPLOYMENT,
   OLD_KEY,
   atBlock,
   cancelledEvent,
@@ -580,6 +585,7 @@ describe("the owner's cancel run", () => {
     world.chain.head.number = HEAD
     const pageRead = attemptReaderOf({
       reads: world.chain.reads,
+      deployment: DEPLOYMENT,
       account: ACCOUNT,
       chainId: SEPOLIA,
       storage: world.storage,
@@ -657,6 +663,7 @@ describe("the owner's cancel run", () => {
     world.chain.head.number = HEAD
     const pageRead = attemptReaderOf({
       reads: world.chain.reads,
+      deployment: DEPLOYMENT,
       account: ACCOUNT,
       chainId: SEPOLIA,
       storage: world.storage,
@@ -667,6 +674,40 @@ describe("the owner's cancel run", () => {
     const answered = await pageRead()
     expect(answered.block.number).toBe(HEAD + 2)
     expect(answered.attempt?.attemptId).toBe(ATTEMPT)
+  })
+
+  it('lends no stored reading of a retired deployment, keeps none of its dismissals, and writes its own deployment', async () => {
+    const world = runWorld()
+    await pollAccounts({
+      reads: world.chain.reads,
+      deployment: RETIRED_DEPLOYMENT,
+      accounts: [ACCOUNT],
+      chainId: SEPOLIA,
+      storage: world.storage,
+      now: () => 1_000,
+      polledAt: 1_000,
+      limitMs: 5_000,
+      scanLimitMs: 5_000
+    })
+    await dismissAttempt(SEPOLIA, ACCOUNT, ATTEMPT, world.storage)
+    world.chain.reads.attemptEventsOf.mockClear()
+    const pageRead = attemptReaderOf({
+      reads: world.chain.reads,
+      deployment: DEPLOYMENT,
+      account: ACCOUNT,
+      chainId: SEPOLIA,
+      storage: world.storage,
+      now: () => 3_000,
+      limitMs: 5_000
+    })
+
+    const answered = await pageRead()
+
+    expect(world.chain.reads.attemptEventsOf).toHaveBeenCalled()
+    expect(answered.deployment).toEqual(DEPLOYMENT)
+    const record = await readWatcherRecord(world.storage, SEPOLIA, ACCOUNT)
+    expect(record?.reading?.deployment).toEqual(DEPLOYMENT)
+    expect(record?.dismissed).toEqual([])
   })
 
   it('takes up a follow with the steps a screen built again, without stopping it', async () => {

@@ -23,6 +23,7 @@ import {
   COMMITTED_AT,
   consumedEvent,
   DEPLOYMENT,
+  RETIRED_DEPLOYMENT,
   ENDED_TIME,
   HEAD,
   HEAD_TIME,
@@ -382,6 +383,26 @@ describe('a poll of the watched accounts', () => {
       hasSetup: false,
       dormant: false
     })
+  })
+
+  it('counts attempt 1 of this deployment on the badge though attempt 1 of a retired one was dismissed', async () => {
+    const { chain, storage, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 1n, state: 'Waiting', payload: PAYLOAD }))
+    await pollAccounts({
+      reads: chain.reads,
+      deployment: RETIRED_DEPLOYMENT,
+      accounts: [ACCOUNT],
+      chainId: SEPOLIA,
+      storage,
+      now: () => NOW,
+      polledAt: NOW,
+      limitMs: 1_000,
+      scanLimitMs: 1_000
+    })
+    await dismissAttempt(SEPOLIA, ACCOUNT, 1n, storage)
+
+    expect(await poll()).toBe(1)
+    expect((await record())?.dismissed).toEqual([])
   })
 
   it('stops counting a dismissed attempt on the badge, and counts the next attempt', async () => {

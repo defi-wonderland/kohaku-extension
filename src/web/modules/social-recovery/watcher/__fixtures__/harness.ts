@@ -16,6 +16,8 @@ import type {
   Hex,
   LogPosition
 } from '@kohaku-eth/social-recovery'
+import { addressBookOf } from '@web/modules/social-recovery/shared/client/addresses'
+import { WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client/chains'
 import type { AttemptEvents, AttemptScan } from '@web/modules/social-recovery/shared/client/types'
 import type { WatcherStorage } from '@web/modules/social-recovery/watcher'
 
@@ -36,11 +38,17 @@ const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
 const ACTION: Address = getAddress('0x00000000000000000000000000000000000ac710')
 const CODEC = new AmbireActionCodec([ACTION])
 
-/** The manager and the action the scripted chain stands for. */
+/** The manager and the action the scripted chain stands for: the ones this build reads. */
 export const DEPLOYMENT = {
-  manager: getAddress('0x0000000000000000000000000000000000000a9e'),
-  action: ACTION
-} as const
+  manager: addressBookOf(WALLET_RECOVERY_CHAIN).manager,
+  action: addressBookOf(WALLET_RECOVERY_CHAIN).action
+}
+
+/** A manager this build no longer reads, with the build's action. */
+export const RETIRED_DEPLOYMENT = {
+  manager: getAddress('0x00000000000000000000000000000000000dead1'),
+  action: DEPLOYMENT.action
+}
 
 /** The action's payload of a handover from `OLD_KEY` to `newKey`, or from `NEW_KEY` to `OLD_KEY`. */
 export const payloadTo = (newKey: Address): Hex =>

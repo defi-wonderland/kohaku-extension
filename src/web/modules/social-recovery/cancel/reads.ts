@@ -21,7 +21,10 @@ import {
   watchedDeploymentOf,
   watcherConnectionFor
 } from '@web/modules/social-recovery/shared/client/watcher-reads'
-import { recordDeploymentOf } from '@web/modules/social-recovery/shared/records/deployment'
+import {
+  isOfDeployment,
+  recordDeploymentOf
+} from '@web/modules/social-recovery/shared/records/deployment'
 import { extensionRecordStorage } from '@web/modules/social-recovery/shared/records/extensionStorage'
 import { sameHash } from '@web/modules/social-recovery/shared/writes/hashes'
 import {
@@ -72,6 +75,7 @@ const comparableOf = ({ block, attempt, ended, ...rest }: WatcherReading) => ({
 export const attemptReaderOf =
   ({
     reads,
+    deployment,
     account,
     chainId,
     storage,
@@ -88,11 +92,17 @@ export const attemptReaderOf =
     }
     try {
       const record = await readWatcherRecord(storage, chainId, account)
-      const previous = record?.reading
-      const reading = await pollAccount(reads, account, latestBlock, previous, {
-        stateMs: limitMs,
-        scanMs: scanLimitMs
-      })
+      // A reading of another deployment, or one that names none, says nothing of this one.
+      const previous = isOfDeployment(record?.reading?.deployment, deployment)
+        ? record?.reading
+        : undefined
+      const reading: WatcherReading = {
+        ...(await pollAccount(reads, account, latestBlock, previous, {
+          stateMs: limitMs,
+          scanMs: scanLimitMs
+        })),
+        deployment
+      }
       const unchanged =
         !!previous && !record?.failed && isEqual(comparableOf(previous), comparableOf(reading))
       // A reading of a newer block than the page's own stands: the page's node lags.
@@ -109,14 +119,16 @@ export const attemptReaderOf =
           account,
           (current) => {
             const stored = current?.reading
-            if (stored && reading.block.number < stored.block.number) {
+            const ours = isOfDeployment(stored?.deployment, deployment)
+            if (ours && stored && reading.block.number < stored.block.number) {
               newer(stored)
               // A throw inside the update leaves the record untouched, its poll's start time too.
               throw new Error(
                 `The page read block ${reading.block.number}, below the stored ${stored.block.number}.`
               )
             }
-            return { reading, dismissed: current?.dismissed ?? [] }
+            // A new manager numbers its attempts afresh: no dismissal of another deployment holds.
+            return { reading, dismissed: ours ? current?.dismissed ?? [] : [] }
           },
           { now, polledAt }
         ).catch(() => undefined)

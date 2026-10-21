@@ -22,7 +22,7 @@ import type {
   WatcherConnection,
   WatcherReads
 } from '@web/modules/social-recovery/shared/client/types'
-import type { ChainId } from '@web/modules/social-recovery/shared/records/types'
+import type { ChainId, RecordDeployment } from '@web/modules/social-recovery/shared/records/types'
 import type {
   GasCheck,
   RequestHold,
@@ -149,6 +149,8 @@ export interface PollOnceInput {
 /** One fresh reading of an account's attempt, written to its watcher record. */
 export interface AttemptReaderInput {
   reads: WatcherReads
+  /** The manager and the action `reads` go to, written with each reading. */
+  deployment: RecordDeployment
   account: Address
   chainId: ChainId
   storage: WatcherStorage

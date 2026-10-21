@@ -23,6 +23,7 @@ import {
 import type { CancelHold, CancelLog, CancelSteps } from '@web/modules/social-recovery/cancel'
 import {
   ACCOUNT,
+  DEPLOYMENT,
   HEAD,
   NEW_KEY,
   SEPOLIA,
@@ -199,6 +200,7 @@ export const runWorld = (chain: Chain = openChain(), now: () => number = Date.no
   const receiptCancel = jest.fn(async (): Promise<CancelLog | undefined> => undefined)
   const readAttempt = attemptReaderOf({
     reads: chain.reads,
+    deployment: DEPLOYMENT,
     account: ACCOUNT,
     chainId: SEPOLIA,
     storage,
