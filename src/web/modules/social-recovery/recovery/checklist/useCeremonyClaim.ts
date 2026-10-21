@@ -3,8 +3,9 @@
  * ceremony tab: a passkey, a passport and an Aadhaar identity. A claim stores
  * its request, with its method's slug and params, before the tab leaves for
  * the ceremony tab, and the return path carries the request's id back; the
- * stored request names the method whose report the return reads. The report is read and left in place, so a passed claim survives a
- * reload until its reply is added. A report that lands after the mount
+ * stored request names the method whose report the return reads. The report
+ * is read and left in place, so a passed claim survives a reload until its
+ * reply is added. A report that lands after the mount
  * arrives through the subscription. A claim that did not pass loses its
  * request, its report and its id at once; a passed claim waits as `pending`,
  * its request, report and id kept, until the checklist adds its reply to the
