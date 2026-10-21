@@ -5,6 +5,7 @@ import type { Key } from '@ambire-common/interfaces/keystore'
 import type {
   Address,
   Configuration,
+  DeploymentDescriptor,
   Hex,
   IEventManager,
   IRecoveryActionInteractor,
@@ -424,8 +425,9 @@ export interface CondensedGateProps {
 // The readout
 // ---------------------------------------------------------------------------
 
-/** The part of the recovery client the readout reads. */
+/** The part of the recovery client the readout reads, and the deployment it reads. */
 export interface ReadoutKitClient {
+  descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
   setup: Pick<ISetupClient, 'setupState' | 'getSetup'> & {
     events: Pick<IEventManager, 'accountFilter' | 'fetch'>
   }

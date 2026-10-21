@@ -24,6 +24,7 @@
  */
 import type { PreparedBatch, PreparedCall, SetupConfirmation } from '@kohaku-eth/social-recovery'
 import { accountBatchTransactionOf } from '@web/modules/social-recovery/shared/client'
+import { recordDeploymentOf } from '@web/modules/social-recovery/shared/records'
 import {
   assertWriteDoor,
   checkGas,
@@ -159,7 +160,8 @@ export const overviewStepsOf = (input: OverviewStepsInput): SaveSteps => {
             ignoresPause: committed.ignoresPause
           },
           setupNonce: agreed.nonce,
-          setupCommitment: agreed.setupCommitment
+          setupCommitment: agreed.setupCommitment,
+          deployment: recordDeploymentOf(input.client.descriptor)
         })
       }
     }

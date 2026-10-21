@@ -423,16 +423,27 @@ export interface ExecutionClaimResult {
 }
 
 /**
+ * The deployment a record was read under: the manager and the action the reads
+ * went to. A setup nonce counts only against reads of the same deployment.
+ */
+export interface RecordDeployment {
+  readonly manager: Address
+  readonly action: Address
+}
+
+/**
  * The decrypted setup cache: the setup the recovery password unlocked on this
  * device, kept after the recovery executes, with the setup nonce it was read
- * under and, where known, the setup commitment. The chain stays the source: a
- * reader compares the nonce or the commitment with the chain before trusting
- * the cache.
+ * under and, where known, the setup commitment and the deployment it was read
+ * from; a record an earlier build wrote names no deployment. The chain stays
+ * the source: a reader compares the nonce or the commitment with the chain
+ * before trusting the cache.
  */
 export interface DecryptedSetupCacheRecord {
   configuration: Configuration
   setupNonce: bigint
   setupCommitment?: Hex
+  readonly deployment?: RecordDeployment
 }
 
 /** One account's record in a listing of a chain's sessions or countdowns, with its revision. */

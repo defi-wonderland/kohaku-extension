@@ -26,6 +26,7 @@ import type {
 } from '@kohaku-eth/social-recovery'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
+import { recordDeploymentFrom } from './deployment'
 import { isDecimalString, isStoredAddress } from './guards'
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
@@ -1323,8 +1324,9 @@ export const createWalletRecords = ({
 
   /**
    * This device's cache of the setup the recovery password unlocked, with the
-   * setup nonce it was read under. It stays after the recovery executes; no
-   * wipe of these records touches it.
+   * setup nonce and the deployment it was read under. It stays after the
+   * recovery executes; no wipe of these records touches it. Deployment fields
+   * that are not two addresses read as none.
    */
   const decryptedSetupCache = (
     chainId: ChainId,
@@ -1332,7 +1334,14 @@ export const createWalletRecords = ({
   ): RecordAccessor<DecryptedSetupCacheRecord> =>
     accessor<DecryptedSetupCacheRecord>(
       recordKeys.decryptedSetupCache(chainId, account),
-      (value) => ({ ...value, configuration: withWaitAsRead(value.configuration) })
+      ({ deployment, ...value }) => {
+        const read = recordDeploymentFrom(deployment)
+        return {
+          ...value,
+          configuration: withWaitAsRead(value.configuration),
+          ...(read ? { deployment: read } : {})
+        }
+      }
     )
 
   // --- the ceremony request ------------------------------------------------

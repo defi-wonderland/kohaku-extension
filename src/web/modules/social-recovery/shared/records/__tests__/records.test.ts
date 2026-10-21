@@ -1262,6 +1262,32 @@ describe('the decrypted setup cache after execution', () => {
     expect(await records.decryptedSetupCache(1n, ACCOUNT).read()).toBe(ABSENT)
   })
 
+  it('reads back the deployment the setup was read from, and reads a cache that names none', async () => {
+    const { storage, records } = setup()
+    const deployment = { manager: METHOD, action: OTHER_ACCOUNT }
+    await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write({ ...CACHE, deployment })
+    const restarted = createWalletRecords({ storage })
+    const cache = present(await restarted.decryptedSetupCache(CHAIN_ID, ACCOUNT).read())
+    expect(cache.value).toEqual({ ...CACHE, deployment })
+
+    await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)
+    const earlier = present(await restarted.decryptedSetupCache(CHAIN_ID, ACCOUNT).read())
+    expect(earlier.value).toEqual(CACHE)
+    expect('deployment' in earlier.value).toBe(false)
+  })
+
+  it('reads deployment fields that are not two addresses as none, keeping the setup', async () => {
+    const { records } = setup()
+    const malformed = [{ manager: METHOD }, { manager: 'nope', action: 'nope' }, 'x']
+    await malformed.reduce(async (before, deployment) => {
+      await before
+      const cache = records.decryptedSetupCache(CHAIN_ID, ACCOUNT)
+      await cache.write({ ...CACHE, deployment: deployment as never })
+      const read = present(await cache.read())
+      expect(read.value).toEqual(CACHE)
+    }, Promise.resolve())
+  })
+
   it('a re-import from the chain replaces the cache and restamps its age', async () => {
     const { records, clock } = setup()
     await records.decryptedSetupCache(CHAIN_ID, ACCOUNT).write(CACHE)

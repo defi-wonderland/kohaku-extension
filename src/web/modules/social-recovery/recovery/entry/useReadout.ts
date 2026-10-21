@@ -18,7 +18,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { checklistPathOf } from '@web/modules/social-recovery/recovery/checklist/search'
 import type { Address, Configuration, SetupState } from '@kohaku-eth/social-recovery'
 import type { PrivacyLevel } from '@web/modules/social-recovery/shared/client'
-import { setRecoveryPassword } from '@web/modules/social-recovery/shared/records'
+import {
+  recordDeploymentOf,
+  setRecoveryPassword
+} from '@web/modules/social-recovery/shared/records'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
 
 import { continuePathOf, readSetupReading, unlockFailureOf } from './readout'
@@ -115,7 +118,10 @@ export const useReadout = ({
   // The run of the reads whose unlock is being checked; a later run checks its own.
   const checking = useRef<number | null>(null)
 
-  /** Writes the opened setup to the decrypted setup cache of the account being recovered. */
+  /**
+   * Writes the opened setup to the decrypted setup cache of the account being
+   * recovered, with the deployment it was read from.
+   */
   const writeCache = useCallback(
     (configuration: Configuration): Promise<unknown> => {
       const read = state.current
@@ -123,11 +129,12 @@ export const useReadout = ({
         ? records.decryptedSetupCache(chainId, account).write({
             configuration,
             setupNonce: read.setupNonce,
-            setupCommitment: read.setupCommitment
+            setupCommitment: read.setupCommitment,
+            ...(kit ? { deployment: recordDeploymentOf(kit.descriptor) } : {})
           })
         : Promise.resolve()
     },
-    [chainId, account, records]
+    [chainId, account, records, kit]
   )
 
   /**

@@ -11,8 +11,8 @@
  * returned never renders as an answer. An answer from a block below the last
  * one the facts accepted reads as failed with retry, so a lagging provider
  * never shows an older state; so does an answer whose setup nonce is below
- * one this device has seen for the account, so a node that lost its state
- * never shows a setup as gone.
+ * one this device has seen for the account at the same manager and action,
+ * so a node that lost its state never shows a setup as gone.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -24,6 +24,7 @@ import type { EntryRead, UnlockState } from '@web/modules/social-recovery/recove
 import type { Configuration, SetupState } from '@kohaku-eth/social-recovery'
 import {
   readRecoveryPassword,
+  recordDeploymentOf,
   setRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
 import { readWatcherRecord } from '@web/modules/social-recovery/watcher'
@@ -103,7 +104,7 @@ export const useOverviewReads = ({
       watcherStorage
         ? readWatcherRecord(watcherStorage, chainId, account).catch(() => undefined)
         : undefined
-    ]).then(([cached, watched]) => knownSetupNonceOf(cached, watched))
+    ]).then(([cached, watched]) => knownSetupNonceOf(cached, watched, kit.descriptor))
     Promise.all([kit.setup.setupState(), kit.walletReads.attemptState(), known]).then(
       ([state, attempt, seen]) => {
         if (!live) {
@@ -163,7 +164,8 @@ export const useOverviewReads = ({
         .write({
           configuration,
           setupNonce: state.setupNonce,
-          setupCommitment: state.setupCommitment
+          setupCommitment: state.setupCommitment,
+          deployment: recordDeploymentOf(kit.descriptor)
         })
         .catch(() => undefined)
       return true

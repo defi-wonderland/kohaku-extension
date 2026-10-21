@@ -205,7 +205,11 @@ describe('the readout at Private', () => {
     expect(await storedCache()).toEqual({
       configuration: LOST_SETUP,
       setupNonce: state.setupNonce,
-      setupCommitment: state.setupCommitment
+      setupCommitment: state.setupCommitment,
+      deployment: {
+        manager: world.client.descriptor.manager,
+        action: world.client.descriptor.action
+      }
     })
     expect(readRecoveryPassword(CHAIN_ID, BASIC)).toBeUndefined()
     expect(await storedCache(BASIC)).toBeNull()
@@ -365,7 +369,11 @@ describe('the readout at Public', () => {
     expect(await storedCache()).toEqual({
       configuration: LOST_SETUP,
       setupNonce: state.setupNonce,
-      setupCommitment: state.setupCommitment
+      setupCommitment: state.setupCommitment,
+      deployment: {
+        manager: world.client.descriptor.manager,
+        action: world.client.descriptor.action
+      }
     })
     expect(await storedCache(BASIC)).toBeNull()
     expect(readRecoveryPassword(CHAIN_ID, LOST)).toBeUndefined()

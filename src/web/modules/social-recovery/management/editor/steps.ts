@@ -49,6 +49,7 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import {
   SETUP_RECORD_NAMES,
+  recordDeploymentOf,
   setRecoveryPassword,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
@@ -242,7 +243,8 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
           ? cache.write({
               configuration: configurationOfDraft(landed.draft),
               setupNonce: landed.confirmation.nonce,
-              setupCommitment: landed.confirmation.setupCommitment
+              setupCommitment: landed.confirmation.setupCommitment,
+              deployment: recordDeploymentOf(input.client.descriptor)
             })
           : cache.wipe()
       ])

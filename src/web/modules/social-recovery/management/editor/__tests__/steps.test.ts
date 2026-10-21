@@ -245,7 +245,11 @@ describe('the save of the changes', () => {
     expect(cache.status === 'present' && cache.value).toEqual({
       configuration: configurationOfDraft(draft),
       setupNonce: state.setupNonce,
-      setupCommitment: state.setupCommitment
+      setupCommitment: state.setupCommitment,
+      deployment: {
+        manager: world.client.descriptor.manager,
+        action: world.client.descriptor.action
+      }
     })
     // The committed setup now opens with the password it was sealed under.
     expect(await world.client.setup.getSetup({ password: PASSWORD })).toEqual(
