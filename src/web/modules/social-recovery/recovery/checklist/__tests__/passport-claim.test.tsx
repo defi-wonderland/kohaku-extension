@@ -235,7 +235,7 @@ describe('the passport row', () => {
       'material-rejected',
       failed('material-rejected'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.noMatchCause`,
+      `${CEREMONY}.rejectedCause`,
       'notAsked'
     ],
     [

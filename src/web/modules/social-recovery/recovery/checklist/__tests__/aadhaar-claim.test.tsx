@@ -229,7 +229,7 @@ describe('the Aadhaar row', () => {
       'material-rejected',
       failed('material-rejected'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.noMatchCause`,
+      `${CEREMONY}.rejectedCause`,
       'notAsked'
     ],
     [
