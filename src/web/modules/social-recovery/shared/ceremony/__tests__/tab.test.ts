@@ -720,7 +720,8 @@ describe('the ceremony tab for the identity bindings', () => {
       onSuccess: on('success'),
       onReject: on('reject'),
       onError: on('error'),
-      onResult: on('result')
+      onResult: on('result'),
+      onBridgeConnectionLost: on('lost')
     }
     const fire = async (name: string, ...args: unknown[]) => {
       await act(async () => {
@@ -896,6 +897,24 @@ describe('the ceremony tab for the identity bindings', () => {
     expect(page.textContent).toContain(TRY_AGAIN)
     const report = await takeReport('enroll', 'zkpassport')
     expect(report?.outcome).toMatchObject({ verdict: 'failed', cause: 'phone-error', retry: true })
+  })
+
+  it("reads the phone's lost connection as unreachable with Try again", async () => {
+    const phone = phoneRequest()
+    serve('zkpassport', passportMethod(phone, 'external-app'))
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('zkpassport'))
+    const page = await render(`?call=enroll&method=zkpassport&id=${ID}`)
+    await phone.fire('received')
+    await phone.fire('lost')
+
+    expect(page.textContent).toContain(STRINGS.unreachableNote)
+    expect(page.textContent).toContain(TRY_AGAIN)
+    const report = await takeReport('enroll', 'zkpassport')
+    expect(report?.outcome).toMatchObject({
+      verdict: 'unavailable',
+      cause: 'unreachable',
+      retry: true
+    })
   })
 
   it('cancels a request the phone has not answered at Cancel, and ignores a late answer', async () => {

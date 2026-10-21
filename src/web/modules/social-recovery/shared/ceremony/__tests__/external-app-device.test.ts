@@ -37,8 +37,14 @@ const CANCELLED = {
 }
 const REFUSED = { ok: false, stop: { kind: 'dismissed', note: 'refused' } }
 
-/** A request whose callbacks the test fires; `onResult` only where the library offers it. */
-const phoneRequest = ({ withResult = true }: { withResult?: boolean } = {}) => {
+/**
+ * A request whose callbacks the test fires; `onResult` and the bridge's
+ * connection callbacks only where the library offers them.
+ */
+const phoneRequest = ({
+  withResult = true,
+  withBridge = true
+}: { withResult?: boolean; withBridge?: boolean } = {}) => {
   const handlers = new Map<string, Callback[]>()
   const on = (name: string) => (callback: Callback) => {
     handlers.set(name, [...(handlers.get(name) ?? []), callback])
@@ -52,7 +58,8 @@ const phoneRequest = ({ withResult = true }: { withResult?: boolean } = {}) => {
     onSuccess: on('success'),
     onReject: on('reject'),
     onError: on('error'),
-    ...(withResult ? { onResult: on('result') } : {})
+    ...(withResult ? { onResult: on('result') } : {}),
+    ...(withBridge ? { onBridgeConnect: on('connect'), onBridgeConnectionLost: on('lost') } : {})
   }
   const fire = (name: string, ...args: unknown[]) =>
     (handlers.get(name) ?? []).forEach((callback) => callback(...args))
@@ -270,7 +277,18 @@ describe('the external-app device at a claim', () => {
       ],
       ['has an opener that rejects', inputOf(async () => Promise.reject(new Error('no network')))],
       ['opens no request', inputOf(async () => ({ url: URL }))],
-      ['opens a request with no link', inputOf(async () => ({ ...phoneRequest().request, url: 1 }))]
+      [
+        'opens a request with no link',
+        inputOf(async () => ({ ...phoneRequest().request, url: 1 }))
+      ],
+      [
+        'opens a request whose connection callback is no function',
+        inputOf(async () => ({ ...phoneRequest().request, onBridgeConnect: 'connect' }))
+      ],
+      [
+        'opens a request whose connection-lost callback is no function',
+        inputOf(async () => ({ ...phoneRequest().request, onBridgeConnectionLost: {} }))
+      ]
     ]
     UNOPENED.forEach(([what, input]) =>
       it(`reads an input that ${what} as a device that did not answer, with retry`, async () => {
@@ -293,3 +311,72 @@ describe('the external-app device at a claim', () => {
     })
   })
 )
+
+const UNREACHABLE = {
+  ok: false,
+  stop: { kind: 'verdict', verdict: 'unavailable', retry: true, cause: 'unreachable' }
+}
+
+;(['enroll', 'sign'] as const).forEach((call) =>
+  describe(`the external-app device when the phone's connection drops at ${call}`, () => {
+    it('reads a connection lost before any proof as unreachable, with retry, after the steps it showed', async () => {
+      const phone = phoneRequest()
+      const run = await start(call, phone)
+      phone.fire('connect')
+      phone.fire('received')
+      phone.fire('generating')
+      phone.fire('lost')
+      await expect(run.running).resolves.toEqual(UNREACHABLE)
+      expect(run.views).toEqual([{ kind: 'scanCode', url: URL }])
+      expect(run.steps).toEqual(['waitingForPhone', 'requestReceived', 'generating'])
+    })
+
+    it('ignores a connection lost after an abort', async () => {
+      const controller = new AbortController()
+      const phone = phoneRequest()
+      const run = await start(call, phone, { signal: controller.signal })
+      controller.abort()
+      phone.fire('lost')
+      await expect(run.running).resolves.toEqual(CANCELLED)
+    })
+
+    it('ignores a connection lost after the phone answered', async () => {
+      const phone = phoneRequest()
+      const run = await start(call, phone)
+      phone.fire('reject')
+      phone.fire('lost')
+      await expect(run.running).resolves.toEqual(REFUSED)
+    })
+
+    it('keeps waiting on a request that offers no connection callbacks', async () => {
+      const phone = phoneRequest({ withBridge: false })
+      const run = await start(call, phone)
+      phone.fire('lost')
+      await tick()
+      expect(run.outcome()).toBeUndefined()
+      phone.fire('reject')
+      await expect(run.running).resolves.toEqual(REFUSED)
+    })
+  })
+)
+
+describe('the external-app device when the connection drops after the proofs arrived', () => {
+  it('keeps the claim the phone then completes', async () => {
+    const phone = phoneRequest()
+    const run = await start('sign', phone)
+    phone.fire('generated', OUTER)
+    phone.fire('lost')
+    await tick()
+    expect(run.outcome()).toBeUndefined()
+    phone.fire('success', { proofs: [OUTER], result: {} })
+    await expect(run.running).resolves.toEqual({ ok: true, material: { proofs: [OUTER] } })
+  })
+
+  it('keeps a claim the phone already completed', async () => {
+    const phone = phoneRequest()
+    const run = await start('sign', phone)
+    phone.fire('success', { proofs: [OUTER], result: {} })
+    phone.fire('lost')
+    await expect(run.running).resolves.toEqual({ ok: true, material: { proofs: [OUTER] } })
+  })
+})

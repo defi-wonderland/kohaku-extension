@@ -129,6 +129,20 @@ describe('the access test of a method that cannot judge its own proof', () => {
     })
   })
 
+  it('is unavailable with retry where the chain read throws before it returns a promise', async () => {
+    const chainVerdict = jest.fn<Promise<Verdict>, Parameters<ChainVerdict>>(() => {
+      throw new Error('the provider could not be built')
+    })
+    const { outcome } = await run('testAccess', { chainVerdict })
+    expect(outcome).toEqual({
+      kind: 'verdict',
+      verdict: 'unavailable',
+      retry: true,
+      cause: 'service-unanswered'
+    })
+    expect(chainVerdict).toHaveBeenCalledTimes(1)
+  })
+
   it('stays unavailable as not judged where the resolver hands no chain verdict', async () => {
     const { outcome } = await run('testAccess')
     expect(outcome).toEqual({
