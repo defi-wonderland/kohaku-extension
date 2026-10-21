@@ -1,0 +1,73 @@
+/**
+ * An identity row before the slot holds a credential: the action that opens
+ * the ceremony tab, the note a creation that did not pass left with its retry,
+ * or the line that this chain cannot run the method at all.
+ */
+import React from 'react'
+import { View } from 'react-native'
+
+import Button from '@common/components/Button'
+import Text from '@common/components/Text'
+import { useTranslation } from '@common/config/localization'
+import spacings from '@common/styles/spacings'
+import { browserErrorNameOf, noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
+import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+
+import type { IdentityCreateBlockProps } from './types'
+
+const IdentityCreateBlock = ({
+  copy,
+  enrollOutcome,
+  unsupported,
+  canLaunch,
+  create
+}: IdentityCreateBlockProps) => {
+  const { t } = useTranslation()
+  const { row } = copy
+  const enrollNote = enrollOutcome ? noteKeyOfOutcome(enrollOutcome, 'enroll') : null
+  const enrollError = enrollOutcome ? browserErrorNameOf(enrollOutcome) : null
+  const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
+
+  return (
+    <SectionCard tone="muted" spacing="none" testID={`${row}-create`}>
+      <Text testID={`${row}-none-yet`} fontSize={16} weight="medium" style={spacings.mbTy}>
+        {t(copy.noneYet)}
+      </Text>
+      {unsupported ? (
+        <Text testID={`${row}-not-supported`} fontSize={14} appearance="errorText">
+          {t('socialRecovery.ceremony.notSupportedLine')}
+        </Text>
+      ) : (
+        <>
+          {!!enrollNote && (
+            <Text testID={`${row}-enroll-note`} fontSize={14} appearance="errorText">
+              {t(enrollNote)}
+            </Text>
+          )}
+          {!!enrollError && (
+            <Text testID={`${row}-enroll-error`} fontSize={12} appearance="secondaryText">
+              {enrollError}
+            </Text>
+          )}
+          <View style={[spacings.mtSm, spacings.mbTy]}>
+            <Text fontSize={14}>{t(copy.actionLine)}</Text>
+          </View>
+          <ActionsRow
+            primary={
+              <Button
+                testID={enrollRetry ? `${row}-try-again` : `${row}-start`}
+                type="primary"
+                text={t(enrollRetry ? 'socialRecovery.ceremony.tryAgainAction' : copy.action)}
+                disabled={!canLaunch}
+                onPress={create}
+                hasBottomSpacing={false}
+              />
+            }
+          />
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
+export default React.memo(IdentityCreateBlock)

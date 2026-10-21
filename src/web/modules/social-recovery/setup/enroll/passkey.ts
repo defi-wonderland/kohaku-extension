@@ -173,9 +173,9 @@ export const passkeyEnrollmentOf = (
 /**
  * Whether a stored request is this row's own: the requests live under one key
  * for every account, so a request another account or chain stored, or one for
- * another passkey method, is not this row's to take.
+ * another module of the method, is not this row's to take.
  */
-const isRequestFor = (record: CeremonyRequestRecord, target: RowTarget): boolean => {
+export const isRequestFor = (record: CeremonyRequestRecord, target: RowTarget): boolean => {
   if (!sameAddress(record.account, target.account)) {
     return false
   }

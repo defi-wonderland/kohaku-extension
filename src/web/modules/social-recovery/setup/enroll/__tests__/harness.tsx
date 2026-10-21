@@ -348,6 +348,7 @@ export const readyClient = (): FakeClient => {
       client: {
         approving,
         methodFor: (slug: string) => (slug === 'ecdsa' ? ecdsa : undefined),
+        methodParamsFor: () => undefined,
         descriptor: DESCRIPTOR
       }
     },
