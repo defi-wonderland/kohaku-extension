@@ -34,6 +34,16 @@ export const readPollFacts = (
     }
   }, limitMs)
 
+/**
+ * Whether an answer is older than the request: a setup nonce or an attempt
+ * counter below the ones the request was built under. Neither ever goes down
+ * on a chain, so such an answer comes from a node that lags or that lost its
+ * state, and it reads as a failed poll, never as a change.
+ */
+export const behindRequest = (gathering: Gathering, facts: PollFacts): boolean =>
+  facts.setupNonce < BigInt(gathering.request.setupNonce) ||
+  facts.nextAttemptId < BigInt(gathering.request.attemptId)
+
 /** Whether an attempt holds the account's one slot: it waits out its period. */
 export const attemptLive = (attempt: Attempt): boolean => attempt.state === 'Waiting'
 

@@ -536,6 +536,26 @@ describe('the request dies', () => {
         `/${WEB_ROUTES.socialRecoveryRecoveryReadout}?account=${ACCOUNT}`
       )
     })
+
+    const behind: [string, ReturnType<typeof recoveryStateOf>][] = [
+      [
+        'a setup nonce below the request',
+        recoveryStateOf({ setupNonce: BigInt(0), nextAttemptId: BigInt(3) })
+      ],
+      ['an attempt counter below the request', recoveryStateOf({ nextAttemptId: BigInt(2) })]
+    ]
+    behind.forEach(([name, state]) => {
+      it(`reads ${name} as a failed poll and wipes nothing`, async () => {
+        await open(MIXED_PATH, withReplies(gatheringOf(MIXED_PATH, 3), [1]))
+        kit.recoveryState.mockResolvedValue(state)
+
+        await settle(CHECKLIST_POLL_MS)
+
+        expect(wipe).not.toHaveBeenCalled()
+        expect((await storedSession(world.records))?.value.state).toBe('live')
+        expect(view?.byTestId('checklist-poll-failed')).not.toBeNull()
+      })
+    })
   })
 
   describe('the ceremonies of a dead request', () => {
@@ -893,6 +913,8 @@ describe('the request dies', () => {
           validUntil: String(Math.floor(PAST_DEADLINE / 1000) + DAY_SECONDS)
         }
       })
+      // The chain's counter names the attempt the new request predicts.
+      kit.recoveryState.mockResolvedValue(recoveryStateOf({ nextAttemptId: BigInt(2) }))
       await view?.press('checklist-gather-again')
       await settle()
       expect(view?.byTestId('checklist-row-0')).not.toBeNull()
