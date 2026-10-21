@@ -27,7 +27,9 @@ import type {
   EnrollInput,
   Input,
   Material,
-  Params
+  Params,
+  Reply,
+  Verdict
 } from '@kohaku-eth/social-recovery'
 
 import type {
@@ -48,7 +50,8 @@ import {
   outcomeOfCheck,
   outcomeOfMethodFailure,
   outcomeOfThrown,
-  passed
+  passed,
+  unavailable
 } from './verdicts'
 
 const isPlainRecord = (value: Params | Material): value is Params => {
@@ -119,7 +122,9 @@ const deviceContext = (context: HostContext, call: CeremonyCall): DeviceCallCont
   signal: context.signal,
   handOff: context.handOff,
   call,
-  onStep: context.onStep
+  onStep: context.onStep,
+  show: context.show,
+  ask: context.ask
 })
 
 /**
@@ -234,10 +239,34 @@ const signForRequest = async (
 }
 
 /**
+ * The chain's verdict where the method's own check answered not judged and the
+ * context reads one; the method's verdict otherwise. A chain read that throws
+ * is a read the node did not answer.
+ */
+const judgedVerdict = async (
+  context: HostContext & { request: ApproverRequest },
+  local: Verdict,
+  reply: Reply
+): Promise<Verdict | 'unanswered'> => {
+  if (local !== 'not-judged' || !context.chainVerdict) {
+    return local
+  }
+  try {
+    return await context.chainVerdict(context.request, reply)
+  } catch {
+    return 'unanswered'
+  }
+}
+
+/**
  * Test access: sign the test challenge the caller's request carries, then run
  * the local check the wallet never enforces. The caller builds the request
  * whose digest is the test challenge; the host judges the proof through the
- * orchestrator's own verdict member, so no page holds a ctx.
+ * orchestrator's own verdict member, so no page holds a ctx. Where that member
+ * cannot judge the proof, as for a proof only the deployed verifier checks,
+ * the module's own `verify` view on chain judges it, when the context reads
+ * one: satisfied passes, rejected fails, and a read that did not answer is
+ * unavailable with retry.
  */
 export const testAccessHost = async (
   context: HostContext & { request: ApproverRequest; params?: Params }
@@ -248,7 +277,7 @@ export const testAccessHost = async (
   }
   context.onStep?.('checking')
   try {
-    const verdict = await context.orchestrator.verify(
+    const local = await context.orchestrator.verify(
       context.request,
       context.request.place,
       signed.reply.proof
@@ -256,6 +285,14 @@ export const testAccessHost = async (
     const abortedInCheck = cancelledByAbort(context)
     if (abortedInCheck) {
       return abortedInCheck
+    }
+    const verdict = await judgedVerdict(context, local, signed.reply)
+    const abortedInChainCheck = cancelledByAbort(context)
+    if (abortedInChainCheck) {
+      return abortedInChainCheck
+    }
+    if (verdict === 'unanswered') {
+      return unavailable('service-unanswered')
     }
     return outcomeOfCheck(verdict, {
       proof: signed.reply.proof,
