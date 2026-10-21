@@ -181,6 +181,29 @@ describe('the countdown restored from the chain', () => {
     expect(await entryOf(records)).toEqual(EARLIER_ENTRY)
   })
 
+  it('replaces a countdown of a retired manager with an execution in flight, and writes the entry', async () => {
+    const { storage, records } = setup()
+    await storage.set(SESSION_KEY, {
+      value: {
+        state: 'landed',
+        account: ACCOUNT,
+        attemptId: '42',
+        setupNonce: '9',
+        payloadHash: ANOTHER_ATTEMPT.payloadHash,
+        deployment: { ...DEPLOYMENT, manager: EARLIER_RECEIVING },
+        execution: { requestId: 'social-recovery-execute:first', startBlock: 7_000_000, claimedAt: T0 }
+      },
+      savedAt: T0,
+      revision: 'c'.repeat(24)
+    })
+    await records.recoveryEntry(CHAIN_ID, ACCOUNT).write(EARLIER_ENTRY)
+    const result = await restore(records, ANOTHER_ATTEMPT)
+    expect(result.outcome).toBe('written')
+    const countdown = await countdownOf(records)
+    expect(countdown.status === 'present' && countdown.value).toEqual(ANOTHER_COUNTDOWN)
+    expect(await entryOf(records)).toEqual({ account: ACCOUNT, ...ENTRY, deployment: DEPLOYMENT })
+  })
+
   it('replaces a live session of a retired manager with the countdown, and writes the entry', async () => {
     const { records } = setup()
     const old = gathering()

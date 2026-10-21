@@ -1264,12 +1264,14 @@ export const createWalletRecords = ({
    * reads it, so a recoverer whose own session is gone follows the attempt
    * the chain holds. It holds the session's key and then the recovery entry's,
    * the order the recoverer's abandon takes them. A live session is kept and
-   * so is the entry beside it; a landed session with an execution in flight,
-   * of the same attempt (its id, its setup nonce and its payload's hash), or
-   * of a newer attempt (a greater id), is kept, and only the same attempt's
-   * gets the entry. No session, a wiped one or the countdown of an older
-   * attempt is replaced by the chain's, saved
-   * at the attempt's opening, and the entry is written after it.
+   * so is the entry beside it. A landed session of the same deployment is
+   * kept where it holds an execution in flight, where it is of the same
+   * attempt (its id, its setup nonce and its payload's hash) or where it is of
+   * a newer attempt (a greater id), and only the same attempt's gets the
+   * entry. No session, a wiped one, the countdown of an older attempt or a
+   * countdown of another deployment, with an execution in flight or not, is
+   * replaced by the chain's, saved at the attempt's opening, and the entry is
+   * written after it.
    */
   const restoreCountdown = (
     chainId: ChainId,
@@ -1312,7 +1314,7 @@ export const createWalletRecords = ({
         // a greater id is the newer one.
         const newer =
           ours && session.attemptId !== undefined && BigInt(session.attemptId) > restored.attemptId
-        if (same || newer || session.execution) {
+        if (same || newer || (ours && session.execution)) {
           if (same) {
             await writeEntry()
           }
