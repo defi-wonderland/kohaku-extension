@@ -30,6 +30,10 @@ jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
 const mockWorld: ScreensWorld = {} as ScreensWorld
 
 jest.mock('@common/utils/clipboard', () => ({ setStringAsync: async () => true }))
+jest.mock('@web/modules/social-recovery/management/overview/useHeldKeys', () => {
+  const held: string[] = []
+  return { useHeldKeys: () => held }
+})
 jest.mock('@common/hooks/useNavigation', () => ({
   __esModule: true,
   default: () => ({ navigate: jest.fn() })
@@ -716,6 +720,63 @@ describe('the removal around the refusals and other writes', () => {
 
     expect(navigate).toHaveBeenCalledWith('social-recovery/manage')
     expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage/review')
+    view.unmount()
+  })
+})
+
+describe('the review and the removal once a recovery moved control away from this wallet', () => {
+  /** The overview's facts read that an executed attempt left no key this wallet holds signing. */
+  const moveControl = () => {
+    const reads = readsOf(false)
+    mockWorld.reads = {
+      ...reads,
+      facts: { ...reads.facts, value: { ...reads.facts.value, movedBy: 3n } }
+    }
+  }
+
+  it('sends a removal opened by its address to the overview, with nothing of the removal drawn', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    moveControl()
+    const navigate = jest.fn()
+    const view = await mount(
+      React.createElement(RemoveStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+    )
+    expect(navigate).toHaveBeenCalledWith('social-recovery/manage')
+    expect(view.byTestId('manage-remove-reads')).toBeNull()
+    expect(view.byTestId('manage-remove-arrival')).toBeNull()
+    view.unmount()
+  })
+
+  it('sends a review opened by its address to the overview, with no save drawn', async () => {
+    const { records, session } = await given({
+      clauses: [review.group(1, ALICE, BOB)],
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    moveControl()
+    const navigate = jest.fn()
+    const view = await mount(
+      React.createElement(ReviewStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate
+      })
+    )
+    expect(navigate).toHaveBeenCalledWith('social-recovery/manage')
+    expect(view.byTestId('manage-review-reads')).toBeNull()
+    expect(view.byTestId('manage-review-save')).toBeNull()
     view.unmount()
   })
 })
