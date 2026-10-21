@@ -12,8 +12,8 @@
  * follow. A read that runs or failed shows its own state, never an answer.
  * A write another screen stored as in flight keeps the title, and the status
  * line where the facts are read, above its pointer, with no path or action.
- * Once a recovery moved control away from every key this wallet holds for the
- * account, the overview reads that the account is no longer controlled from
+ * Once a recovery moved control away from every key this wallet holds, the
+ * overview reads that the account is no longer controlled from
  * this device, when control moved and to which key where the watcher read
  * them, and the path with no action; no banner, repair or edit is offered.
  */

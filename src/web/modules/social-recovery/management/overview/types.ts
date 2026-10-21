@@ -58,9 +58,9 @@ export type OverviewKind =
    */
   | 'mirror'
   /**
-   * A recovery executed and no key this wallet holds for the account is an
-   * authority of it any longer: the account is no longer controlled from this
-   * device, and nothing here acts on it.
+   * A recovery executed and no key this wallet's keystore holds is an
+   * authority of the account any longer: the account is no longer controlled
+   * from this device, and nothing here acts on it.
    */
   | 'control-moved'
 
@@ -69,9 +69,9 @@ export interface OverviewFacts {
   setup: SetupState
   attemptOpen: boolean
   /**
-   * The executed attempt that left no key this wallet holds for the account
-   * an authority of it; absent where the last attempt did not execute, or a
-   * key this wallet holds still signs for the account.
+   * The executed attempt that left no key this wallet's keystore holds an
+   * authority of the account; absent where the last attempt did not execute,
+   * or a key this wallet holds still signs for the account.
    */
   movedBy?: bigint
 }
@@ -148,9 +148,10 @@ export interface OverviewReadsInput {
   chainId: ChainId
   account: Address
   /**
-   * The account's keys this wallet holds, asked whether they still sign for
-   * the account where its last attempt executed; undefined while the wallet
-   * has not read them, which holds the facts as read until it has.
+   * Every key this wallet's keystore holds, whichever account it was made
+   * for, asked whether it signs for the account where its last attempt
+   * executed; undefined while the keystore is not read, which holds the facts
+   * as read until it is.
    */
   heldKeys?: readonly Address[]
 }

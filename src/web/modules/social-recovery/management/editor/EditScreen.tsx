@@ -60,7 +60,7 @@ import { useCommittedLevel } from './useCommittedLevel'
 export const EditStageView = ({ records, session, chainId, account, navigate }: EditStageProps) => {
   const { t } = useTranslation()
   const clientState = useRecoveryClient(account)
-  const heldKeys = useHeldKeys(account)
+  const heldKeys = useHeldKeys()
   const reads = useOverviewReads({
     client: clientState,
     records,

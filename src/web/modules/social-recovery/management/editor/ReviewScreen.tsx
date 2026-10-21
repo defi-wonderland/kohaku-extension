@@ -82,7 +82,7 @@ export const ReviewStageView = ({
 }: EditStageProps) => {
   const { t } = useTranslation()
   const clientState = useRecoveryClient(account)
-  const heldKeys = useHeldKeys(account)
+  const heldKeys = useHeldKeys()
   const reads = useOverviewReads({
     client: clientState,
     records,

@@ -63,9 +63,10 @@ export const attemptOpenOf = (setup: SetupState, attempt: RecoveryAttemptState):
 
 /**
  * The executed attempt that moved control away from this wallet: the last
- * attempt the manager holds was consumed and no key this wallet holds for the
- * account is an authority of it. A consume whose handover left one of these
- * keys signing, as a recovery into this same wallet does, moved nothing away.
+ * attempt the manager holds was consumed and no key this wallet's keystore
+ * holds is an authority of the account. A consume whose handover left one of
+ * these keys signing, as a recovery into any key of this same wallet does,
+ * moved nothing away.
  */
 export const movedByOf = (
   attempt: RecoveryAttemptState,

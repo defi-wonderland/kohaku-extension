@@ -512,4 +512,39 @@ describe("the overview's screen", () => {
       mockWallet.watched = undefined
     }
   })
+
+  it('stays set up with its actions where the recovery handed control to the key of another account of this wallet', async () => {
+    const storage = makeStorage()
+    mockWallet.storage = storage
+    const world = await worldAt('public', address, storage)
+    // The key of another account the keystore holds, which this account's entry never lists.
+    const other = await armHarness.keyedAccount(seed + 0x1000)
+    expect(account.associatedKeys.map((associated) => associated.toLowerCase())).not.toContain(
+      other.key.addr.toLowerCase()
+    )
+    world.chain.setAuthorities([key.addr])
+    world.chain.openAttempt({
+      handover: { newAuthority: other.key.addr, removedAuthority: key.addr }
+    })
+    world.chain.consume()
+    mockWallet.client = readyOver(world.client)
+    mockState.accounts.accounts = [account, other.account]
+    mockState.keystore.keys = [
+      { addr: key.addr, type: key.type },
+      { addr: other.key.addr, type: other.key.type }
+    ]
+    try {
+      view = await mount(<OverviewScreen />)
+      await harness.settleReads()
+
+      expect(view.byTestId('overview-control-moved-notice')).toBeNull()
+      expect(view.textOf('overview-title')).not.toBe(t(`${O}.controlMoved.title`))
+      expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+      expect(view.byTestId('overview-edit-path')).not.toBeNull()
+      expect(view.byTestId('overview-remove-recovery')).not.toBeNull()
+    } finally {
+      mockState.accounts.accounts = []
+      mockState.keystore.keys = []
+    }
+  })
 })

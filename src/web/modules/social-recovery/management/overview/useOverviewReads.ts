@@ -16,9 +16,9 @@
  * found one, so a node that lags or lost its state never shows a setup as
  * gone. A stored record that cannot be read fails the facts with retry; a
  * record that is absent sets no floor. Where the last attempt executed, the
- * facts also ask whether any key this wallet holds for the account is still
- * an authority of it, and wait for the wallet's keys to ask about; a failed
- * answer fails the facts.
+ * facts also ask whether any key this wallet's keystore holds is an
+ * authority of the account, and wait for the keystore's keys to ask about; a
+ * failed answer fails the facts.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 

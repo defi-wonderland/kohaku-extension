@@ -6,9 +6,9 @@
  * of the overview stored on this device as in flight opens its own step
  * again, so the run follows it instead of sending a second one; a write the
  * management editor stored is left to the editor's screen, and a save of the
- * setup flow to the save screen, and the overview points there. The keys
- * this wallet holds for the account go to the reads, which ask whether they
- * still sign for it once a recovery executed.
+ * setup flow to the save screen, and the overview points there. Every key
+ * this wallet's keystore holds goes to the reads, which ask whether one signs
+ * for the account once a recovery executed.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Linking } from 'react-native'
@@ -63,7 +63,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   const { t } = useTranslation()
   const { networks } = useNetworksControllerState()
   const clientState = useRecoveryClient(account)
-  const heldKeys = useHeldKeys(account)
+  const heldKeys = useHeldKeys()
   const reads = useOverviewReads({
     client: clientState,
     records,
