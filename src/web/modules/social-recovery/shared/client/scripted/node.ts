@@ -31,6 +31,7 @@ import {
   BUILDER_DOMAIN_FIELDS,
   cancellationDigest,
   configurationBody,
+  decodeSetupBody,
   encodeSetupBody,
   FORMATS_CANCEL_BY_PROOFS_ABI,
   FORMATS_CREATION_RUNTIME_HEAD,
@@ -116,6 +117,19 @@ import type {
 
 const BLOCK_TIME = 12
 const DAY = 24 * 3600
+
+/**
+ * The wait an attempt counts from its start: the one the setup body it
+ * carries names, a day where the body does not decode.
+ */
+const waitOfBody = (setupBody: Hex): number => {
+  try {
+    return decodeSetupBody(setupBody).wait
+  } catch {
+    return DAY
+  }
+}
+
 const KEY_VALUE: Hex = pad('0x01', { size: 32 })
 const MANAGER_INTERFACE_ID: Hex = '0x675e6a4a'
 const PROVIDER_READ_NAMES = ['chainId', 'call', 'logs', 'block', 'code', 'transaction'] as const
@@ -1089,7 +1103,7 @@ export class ScriptedNode implements IProvider {
         this.applyStart(
           request,
           {
-            consumableAfter: block.timestamp + DAY,
+            consumableAfter: block.timestamp + waitOfBody(request.setupBody),
             ignoresPause: false,
             usedMethods: request.proofs.map((proof) => proof.method),
             usedPlaces: request.proofs.map((proof) => proof.place)

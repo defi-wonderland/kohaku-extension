@@ -10,10 +10,18 @@ import {
   BUILDER_DIGEST_VERSION_MESSAGE,
   isProviderRevert,
   SocialRecoveryBuilder,
+  configurationBody,
   configurationCommitment,
+  encodeSetupBody,
+  FORMATS_START_ATTEMPT_ABI,
   METHOD_ECDSA_CONFIG_ABI
 } from '@kohaku-eth/social-recovery'
-import type { Address, Configuration, DeploymentDescriptor } from '@kohaku-eth/social-recovery'
+import type {
+  Address,
+  Configuration,
+  DeploymentDescriptor,
+  PreparedCall
+} from '@kohaku-eth/social-recovery'
 import {
   decodeFunctionResult,
   encodeAbiParameters,
@@ -105,6 +113,43 @@ describe('the fake node under the SDK', () => {
     expect(state.hasSetup).toBe(true)
     expect(state.isAuthorized).toBe(true)
     expect((await setupClient.confirmSetup(draft, prepared)).landed).toBe(true)
+  })
+
+  it("lands a start that waits the committed setup's wait, counted from its block", async () => {
+    const node = nodeOf()
+    const { setupClient } = await clientsOver(node)
+    const draft = {
+      ...CONFIGURATION,
+      privacy: { publicMetadata: '0x', backup: 'empty' }
+    } as const
+    node.land(await setupClient.prepareCommitSetup(draft))
+
+    const start = {
+      kind: 'call',
+      target: DESCRIPTOR.manager,
+      value: 0n,
+      sender: 'anyone',
+      data: encodeFunctionData({
+        abi: FORMATS_START_ATTEMPT_ABI,
+        functionName: 'startAttempt',
+        args: [
+          {
+            account: ACCOUNT,
+            action: DESCRIPTOR.action,
+            attemptId: node.manager.nextAttemptId,
+            setupNonce: node.manager.setupNonce,
+            setupBody: encodeSetupBody(configurationBody(CONFIGURATION, ACCOUNT)),
+            payload: '0x',
+            order: { token: zeroAddress, amount: 0n, payee: zeroAddress },
+            validUntil: 1_790_100_000,
+            proofs: []
+          }
+        ]
+      })
+    } as unknown as PreparedCall
+    node.land(start)
+
+    expect(node.manager.attempt?.consumableAfter).toBe(node.head.timestamp + CONFIGURATION.wait)
   })
 
   it('answers a deployment that disagrees with the build as it was seeded, through the SDK', async () => {
