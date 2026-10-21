@@ -58,7 +58,13 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
   const { t } = useTranslation()
   const { networks } = useNetworksControllerState()
   const clientState = useRecoveryClient(account)
-  const reads = useOverviewReads({ client: clientState, records, chainId, account })
+  const reads = useOverviewReads({
+    client: clientState,
+    records,
+    watcherStorage: extensionRecordStorage,
+    chainId,
+    account
+  })
   const watched = useWatchedAttempt(account)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const kit = clientState.status === 'ready' ? clientState.client : null

@@ -238,6 +238,18 @@ export const worldAt = async (
   return { chain, client, records: createWalletRecords({ storage }) }
 }
 
+/** A client over a fake node that starts afresh for the account, as a new page builds it: no setup, nonce zero. */
+export const freshClientOf = async (account: Address = ACCOUNT): Promise<RecoveryKitClient> => {
+  sdkStandIn.reset()
+  const chain = sdkStandIn.nodeFor(descriptorOf(WALLET_RECOVERY_CHAIN, ADDRESS_BOOK), account)
+  return buildRecoveryClient({
+    chain: WALLET_RECOVERY_CHAIN,
+    account,
+    addressBook: ADDRESS_BOOK,
+    provider: sdkStandIn.providerFor(chain)
+  })
+}
+
 /** Fake timers that also follow the real clock, so a render's settle still runs while a test moves time. */
 export const useAdvancingFakeTimers = (): void =>
   (jest as unknown as AdvancingFakeTimers).useFakeTimers({ advanceTimers: true })
@@ -303,7 +315,13 @@ export const storeOverviewWrite = async (
 }
 
 /** The view over the overview's own reads, for one client state. */
-export const ReadsProbe = ({ client, records, chainId, onOpen }: ReadsProbeProps) => {
-  const reads = useOverviewReads({ client, records, chainId, account: ACCOUNT })
+export const ReadsProbe = ({
+  client,
+  records,
+  watcherStorage,
+  chainId,
+  onOpen
+}: ReadsProbeProps) => {
+  const reads = useOverviewReads({ client, records, watcherStorage, chainId, account: ACCOUNT })
   return React.createElement(OverviewView, viewPropsOf({ reads, onOpen }))
 }

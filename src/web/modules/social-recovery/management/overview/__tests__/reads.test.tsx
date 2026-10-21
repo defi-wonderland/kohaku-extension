@@ -38,6 +38,12 @@ const OverviewView: typeof import('@web/modules/social-recovery/management/overv
 const {
   useOverviewReads
 }: typeof import('@web/modules/social-recovery/management/overview/useOverviewReads') = require('@web/modules/social-recovery/management/overview/useOverviewReads')
+const {
+  makeStorage
+}: typeof import('@web/modules/social-recovery/shared/records/__fixtures__/storage') = require('@web/modules/social-recovery/shared/records/__fixtures__/storage')
+const {
+  updateWatcherRecord
+}: typeof import('@web/modules/social-recovery/watcher') = require('@web/modules/social-recovery/watcher')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const {
@@ -45,6 +51,7 @@ const {
   act,
   t,
   worldAt,
+  freshClientOf,
   readyOver,
   viewPropsOf,
   ReadsProbe,
@@ -200,6 +207,57 @@ describe('the overview reads', () => {
     await view.press('overview-read-failed-retry')
     expect(view.byTestId('overview-read-failed')).toBeNull()
     expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+  })
+
+  it('reads a fresh node below the setup this device opened as failed with retry, never as not set up', async () => {
+    const world = await worldAt('public')
+    view = await renderOver(world)
+    expect(view.byTestId('overview-chip-set-up')).not.toBeNull()
+    view.unmount()
+
+    view = await renderOver({ ...world, client: await freshClientOf() })
+
+    expect(view.byTestId('overview-read-failed')).not.toBeNull()
+    expect(view.byTestId('overview-empty')).toBeNull()
+    expect((await world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT).read()).status).toBe(
+      'present'
+    )
+  })
+
+  it('reads a fresh node below the attempt the watcher read as failed with retry, never as not set up', async () => {
+    const storage = makeStorage()
+    const world = await worldAt('private', ACCOUNT, storage)
+    await updateWatcherRecord(storage, CHAIN_ID, ACCOUNT, () => ({
+      reading: {
+        account: ACCOUNT,
+        block: { number: 1000, timestamp: 1 },
+        hasSetup: true,
+        dormant: false,
+        attempt: {
+          attemptId: 1n,
+          setupNonce: 1n,
+          payloadHash: `0x${'11'.repeat(32)}`,
+          consumableAfter: 2,
+          executionDue: false
+        }
+      },
+      dismissed: []
+    }))
+    const client = await freshClientOf()
+
+    view = await mount(
+      <ReadsProbe
+        client={readyOver(client)}
+        records={world.records}
+        watcherStorage={storage}
+        chainId={CHAIN_ID}
+        onOpen={jest.fn()}
+      />
+    )
+    await harness.settleReads()
+
+    expect(view.byTestId('overview-read-failed')).not.toBeNull()
+    expect(view.byTestId('overview-empty')).toBeNull()
   })
 
   it('keeps no opened setup under the nonce of an older facts read where a newer setup was committed before the unlock', async () => {

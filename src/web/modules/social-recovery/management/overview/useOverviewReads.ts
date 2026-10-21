@@ -10,7 +10,9 @@
  * state and its failed state with retry, and a read that failed or has not
  * returned never renders as an answer. An answer from a block below the last
  * one the facts accepted reads as failed with retry, so a lagging provider
- * never shows an older state.
+ * never shows an older state; so does an answer whose setup nonce is below
+ * one this device has seen for the account, so a node that lost its state
+ * never shows a setup as gone.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -24,9 +26,16 @@ import {
   readRecoveryPassword,
   setRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import { readWatcherRecord } from '@web/modules/social-recovery/watcher'
 
 import { COMMITMENT_DISAGREEMENT_LIMIT } from './constants'
-import { attemptOpenOf, isCacheCurrent, isSameSetup, noticesOf } from './readings'
+import {
+  attemptOpenOf,
+  isCacheCurrent,
+  isSameSetup,
+  knownSetupNonceOf,
+  noticesOf
+} from './readings'
 import type {
   OverviewFactsRead,
   OverviewNotices,
@@ -42,6 +51,7 @@ const NONE: PathStep = { kind: 'none' }
 export const useOverviewReads = ({
   client,
   records,
+  watcherStorage,
   chainId,
   account
 }: OverviewReadsInput): OverviewReads => {
@@ -83,12 +93,26 @@ export const useOverviewReads = ({
       return undefined
     }
     let live = true
-    Promise.all([kit.setup.setupState(), kit.walletReads.attemptState()]).then(
-      ([state, attempt]) => {
+    // A record this device cannot read sets no floor; the chain's answer stands.
+    const known = Promise.all([
+      records
+        .decryptedSetupCache(chainId, account)
+        .read()
+        .then((cached) => (cached.status === 'present' ? cached.value : undefined))
+        .catch(() => undefined),
+      watcherStorage
+        ? readWatcherRecord(watcherStorage, chainId, account).catch(() => undefined)
+        : undefined
+    ]).then(([cached, watched]) => knownSetupNonceOf(cached, watched))
+    Promise.all([kit.setup.setupState(), kit.walletReads.attemptState(), known]).then(
+      ([state, attempt, seen]) => {
         if (!live) {
           return
         }
-        if (floor.current !== undefined && state.block.number < floor.current) {
+        if (
+          (floor.current !== undefined && state.block.number < floor.current) ||
+          (seen !== undefined && state.setupNonce < seen)
+        ) {
           setFacts({ status: 'failed' })
           return
         }
@@ -107,7 +131,7 @@ export const useOverviewReads = ({
     return () => {
       live = false
     }
-  }, [client.status, kit, factsRound])
+  }, [client.status, kit, records, watcherStorage, chainId, account, factsRound])
 
   /**
    * Keeps the opened setup on this device where it is the setup the facts read,

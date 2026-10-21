@@ -34,7 +34,7 @@ import type {
 } from '@web/modules/social-recovery/shared/writes'
 import type { ArmRun, SaveWriteKeys } from '@web/modules/social-recovery/setup/arm'
 import type { TrustRow } from '@web/modules/social-recovery/setup/review'
-import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
+import type { AttemptEnding, WatcherStorage } from '@web/modules/social-recovery/watcher'
 
 // ---------------------------------------------------------------------------
 // The chain's reading of the account
@@ -113,6 +113,8 @@ export interface EndedNotice {
 export interface OverviewReadsInput {
   client: RecoveryClientState & { retry: () => void }
   records: Pick<WalletRecords, 'decryptedSetupCache'>
+  /** The storage the watcher keeps its record of each account in; with none, only the cache sets the floor. */
+  watcherStorage?: WatcherStorage
   chainId: ChainId
   account: Address
 }

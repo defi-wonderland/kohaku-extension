@@ -23,7 +23,7 @@ import type {
 import type { DecryptedSetupCacheRecord } from '@web/modules/social-recovery/shared/records'
 import { privacyOfLevel } from '@web/modules/social-recovery/setup/privacy/writes'
 import { methodsOf } from '@web/modules/social-recovery/setup/review'
-import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
+import type { AttemptEnding, WatcherRecord } from '@web/modules/social-recovery/watcher'
 
 import type {
   EndedNotice,
@@ -55,6 +55,22 @@ export const isCacheCurrent = (cache: DecryptedSetupCacheRecord, setup: SetupSta
   cache.setupNonce === setup.setupNonce &&
   (cache.setupCommitment === undefined ||
     cache.setupCommitment.toLowerCase() === setup.setupCommitment.toLowerCase())
+
+/**
+ * The highest setup nonce this device has seen for the account: the one its
+ * opened setup was read under, and the one the attempt the watcher last read
+ * was opened under. A setup nonce never goes down on a chain, so an answer
+ * below it comes from a node that lags or lost its state.
+ */
+export const knownSetupNonceOf = (
+  cache: DecryptedSetupCacheRecord | undefined,
+  watched: WatcherRecord | undefined
+): bigint | undefined =>
+  [cache?.setupNonce, watched?.reading?.attempt?.setupNonce].reduce<bigint | undefined>(
+    (highest, nonce) =>
+      nonce === undefined || (highest !== undefined && highest >= nonce) ? highest : nonce,
+    undefined
+  )
 
 /** Whether two reads of the setup state name the same committed setup: its nonce and its commitment. */
 export const isSameSetup = (read: SetupState, earlier: SetupState): boolean =>

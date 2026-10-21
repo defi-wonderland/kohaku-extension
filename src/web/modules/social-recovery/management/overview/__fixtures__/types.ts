@@ -7,6 +7,7 @@ import type {
 import type { sdkStandIn as StandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 import type { RecoveryClientState } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import type { ChainId, WalletRecords } from '@web/modules/social-recovery/shared/records'
+import type { WatcherStorage } from '@web/modules/social-recovery/watcher'
 
 /** The client state the screen's hook hands back, with its retry. */
 export type ClientState = RecoveryClientState & { retry: () => void }
@@ -21,6 +22,7 @@ export interface World {
 export interface ReadsProbeProps {
   client: ClientState
   records: WalletRecords
+  watcherStorage?: WatcherStorage
   chainId: ChainId
   onOpen: (intent: OverviewIntent) => void
 }
