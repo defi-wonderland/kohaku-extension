@@ -384,6 +384,7 @@
       "smartAccount": "If this address is a smart account, whoever controls it can approve for it.",
       "identity": "This method shows the details on the document, not that you are the one using it now.",
       "passportPublication": "If a recovery ever uses this method, the identifier your passport produces goes on chain in the clear, beside your account. Any later setup with the same passport can be linked to it.",
+      "aadhaarPublication": "If a recovery ever uses this method, the identifier your Aadhaar produces goes on chain in the clear, beside your account. Any later setup with the same Aadhaar can be linked to it.",
       "items": {
         "passkey": "your passkey",
         "passkeys": "your passkeys",
