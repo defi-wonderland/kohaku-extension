@@ -26,7 +26,12 @@ import type {
 } from '@kohaku-eth/social-recovery'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
-import { recordDeploymentFrom } from './deployment'
+import {
+  isOfDeployment,
+  recordDeploymentFrom,
+  recordDeploymentOf,
+  isSessionOfDeployment
+} from './deployment'
 import { isDecimalString, isStoredAddress } from './guards'
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
@@ -182,6 +187,12 @@ const isStoredSession = (stored: unknown): stored is StoredSession => {
   }
   const { revision } = stored as { revision?: unknown }
   return typeof revision === 'string' && revision !== ''
+}
+
+/** An entry as a read hands it out: deployment fields that are not two addresses read as none. */
+const entryAsRead = ({ deployment, ...entry }: RecoveryEntryRecord): RecoveryEntryRecord => {
+  const read = recordDeploymentFrom(deployment)
+  return { ...entry, ...(read ? { deployment: read } : {}) }
 }
 
 /**
@@ -384,14 +395,16 @@ const landedSession = ({
   attemptId,
   setupNonce,
   payloadHash,
-  execution
+  execution,
+  deployment
 }: CountdownRecord): LandedRecoverySession => ({
   state: 'landed',
   account,
   ...(attemptId === undefined ? {} : { attemptId }),
   ...(setupNonce === undefined ? {} : { setupNonce }),
   ...(payloadHash === undefined ? {} : { payloadHash }),
-  ...(execution === undefined ? {} : { execution })
+  ...(execution === undefined ? {} : { execution }),
+  ...(deployment === undefined ? {} : { deployment })
 })
 
 /** The countdown a landed session holds: everything but its state. */
@@ -415,7 +428,8 @@ const landedAsRead = (value: LandedRecoverySession): LandedRecoverySession =>
     attemptId: isDecimalString(value.attemptId) ? value.attemptId : undefined,
     setupNonce: isDecimalString(value.setupNonce) ? value.setupNonce : undefined,
     payloadHash: typeof value.payloadHash === 'string' ? value.payloadHash : undefined,
-    execution: isExecutionInFlight(value.execution) ? value.execution : undefined
+    execution: isExecutionInFlight(value.execution) ? value.execution : undefined,
+    deployment: recordDeploymentFrom(value.deployment)
   })
 
 /**
@@ -430,7 +444,8 @@ const landedFrom = (request: Gathering['request']): LandedRecoverySession =>
     attemptId: request.attemptId,
     setupNonce: request.setupNonce,
     payloadHash:
-      'payload' in request && isHex(request.payload) ? keccak256(request.payload) : undefined
+      'payload' in request && isHex(request.payload) ? keccak256(request.payload) : undefined,
+    deployment: recordDeploymentFrom(request)
   })
 
 /**
@@ -445,7 +460,9 @@ const sessionAsRead = (value: RecoverySessionRecord): RecoverySessionRecord => {
     return landedAsRead(value)
   }
   if (value.state !== 'live') {
-    return value
+    const { deployment, ...wiped } = value
+    const read = recordDeploymentFrom(deployment)
+    return { ...wiped, ...(read ? { deployment: read } : {}) }
   }
   const { gathering } = value
   const submission = isSubmissionInFlight(value.submission) ? value.submission : undefined
@@ -796,18 +813,21 @@ export const createWalletRecords = ({
           throw new Error(`The gathering names chain ${request.chainId}, not ${chainPart(chainId)}`)
         }
         return updateSession(chainId, account, expectedRevision, async (current) => {
-          if (current.status === 'present' && current.value.state === 'landed') {
+          // A session of another deployment, or one that names none, holds
+          // nothing of this request: the write replaces it.
+          const held =
+            current.status === 'present' && isSessionOfDeployment(current.value, request)
+              ? current.value
+              : undefined
+          if (held?.state === 'landed') {
             throw new Error(
               'A landed session holds the countdown: end it once its attempt ends, then gather again'
             )
           }
-          const live =
-            current.status === 'present' && current.value.state === 'live'
-              ? current.value
-              : undefined
+          const live = held?.state === 'live' ? held : undefined
           const notes = live ? notesKept(live.notes, gathering) : undefined
-          if (current.status === 'present' && current.value.state === 'live') {
-            const stored = current.value.gathering
+          if (live) {
+            const stored = live.gathering
             // A new request would replace the gathering: that takes a wipe first.
             if (!sameStoredValue(stored.request, request)) {
               throw new Error(
@@ -951,7 +971,7 @@ export const createWalletRecords = ({
     if (!isStoredRecord(stored) || !isRecoveryEntry(stored.value)) {
       return ABSENT
     }
-    return { status: 'present', value: stored.value, savedAt: stored.savedAt }
+    return { status: 'present', value: entryAsRead(stored.value), savedAt: stored.savedAt }
   }
 
   /**
@@ -971,7 +991,8 @@ export const createWalletRecords = ({
         const entry: RecoveryEntryRecord = {
           account: value.account,
           route: value.route,
-          receivingAccount: value.receivingAccount
+          receivingAccount: value.receivingAccount,
+          ...(value.deployment ? { deployment: recordDeploymentOf(value.deployment) } : {})
         }
         return inQueue(key, () => writeKey<RecoveryEntryRecord>(key, entry))
       },
@@ -995,7 +1016,7 @@ export const createWalletRecords = ({
           ? [
               {
                 account: stored.value.account,
-                record: { value: stored.value, savedAt: stored.savedAt }
+                record: { value: entryAsRead(stored.value), savedAt: stored.savedAt }
               }
             ]
           : []
@@ -1042,11 +1063,13 @@ export const createWalletRecords = ({
         return false
       }
       const { request } = current.value.gathering
+      const deployment = recordDeploymentFrom(request)
       await writeSessionAt(key, {
         state: 'wiped',
         reason: event,
         account: request.account,
-        ...(event === 'deadline-passed' ? { deadline: request.validUntil } : {})
+        ...(event === 'deadline-passed' ? { deadline: request.validUntil } : {}),
+        ...(deployment ? { deployment } : {})
       })
       // The session is written first, so an interruption between the two calls
       // leaves the state every other wipe leaves, never a live session without
@@ -1261,7 +1284,8 @@ export const createWalletRecords = ({
         await writeKey<RecoveryEntryRecord>(entryKey, {
           account,
           route: entry.route,
-          receivingAccount: entry.receivingAccount
+          receivingAccount: entry.receivingAccount,
+          deployment: recordDeploymentOf(restored.deployment)
         })
       }
     }
@@ -1272,7 +1296,10 @@ export const createWalletRecords = ({
       }
       if (current.status === 'present' && current.value.state === 'landed') {
         const session = current.value
+        // A countdown of another deployment, or one that names none, says nothing of this attempt.
+        const ours = isOfDeployment(session.deployment, restored.deployment)
         const same =
+          ours &&
           session.attemptId === restored.attemptId.toString() &&
           session.setupNonce === restored.setupNonce.toString() &&
           session.payloadHash !== undefined &&
@@ -1280,7 +1307,7 @@ export const createWalletRecords = ({
         // The registry's attempt counter only grows, so a stored attempt with
         // a greater id is the newer one.
         const newer =
-          session.attemptId !== undefined && BigInt(session.attemptId) > restored.attemptId
+          ours && session.attemptId !== undefined && BigInt(session.attemptId) > restored.attemptId
         if (same || newer || session.execution) {
           if (same) {
             await writeEntry()
@@ -1294,7 +1321,8 @@ export const createWalletRecords = ({
           account,
           attemptId: restored.attemptId.toString(),
           setupNonce: restored.setupNonce.toString(),
-          payloadHash: restored.payloadHash
+          payloadHash: restored.payloadHash,
+          deployment: recordDeploymentOf(restored.deployment)
         }),
         restored.openedAtMs
       )

@@ -8,7 +8,7 @@ import { isAddressEqual } from 'viem'
 import type { DeploymentDescriptor } from '@kohaku-eth/social-recovery'
 
 import { isStoredAddress } from './guards'
-import type { RecordDeployment } from './types'
+import type { RecordDeployment, RecoverySessionRecord } from './types'
 
 /** The deployment fields a record read through a client of this descriptor carries. */
 export const recordDeploymentOf = ({
@@ -39,3 +39,21 @@ export const isOfDeployment = (
   deployment !== undefined &&
   isAddressEqual(deployment.manager, descriptor.manager) &&
   isAddressEqual(deployment.action, descriptor.action)
+
+/**
+ * Whether a recovery session runs on the descriptor's manager and action: the
+ * ones its live request names, or those a wiped or landed session kept. A
+ * wiped or landed session that names none, one an earlier build wrote, does
+ * not; a live session whose request names none is left to the checks of its
+ * request.
+ */
+export const isSessionOfDeployment = (
+  session: RecoverySessionRecord,
+  descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
+): boolean => {
+  if (session.state !== 'live') {
+    return isOfDeployment(session.deployment, descriptor)
+  }
+  const named = recordDeploymentFrom(session.gathering.request)
+  return named === undefined || isOfDeployment(named, descriptor)
+}

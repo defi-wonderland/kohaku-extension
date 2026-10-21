@@ -305,6 +305,8 @@ export interface WipedRecoverySession {
   reason: DirectWipeEvent
   account: Address
   deadline?: string
+  /** The manager and the action of the wiped request; absent on a line an earlier build wrote. */
+  readonly deployment?: RecordDeployment
 }
 
 /**
@@ -339,6 +341,8 @@ export interface LandedRecoverySession {
   setupNonce?: string
   payloadHash?: Hex
   execution?: ExecutionInFlightRecord
+  /** The manager and the action the attempt was opened on; absent on a session an earlier build wrote. */
+  readonly deployment?: RecordDeployment
 }
 
 export type RecoverySessionRecord =
@@ -395,6 +399,8 @@ export interface ChainCountdown {
   setupNonce: bigint
   payloadHash: Hex
   openedAtMs: number
+  /** The manager and the action the attempt was read from. */
+  deployment: RecordDeployment
 }
 
 /** Whether a restore wrote the countdown, or kept the session it found. */
@@ -472,6 +478,8 @@ export interface RecoveryEntryRecord {
   account: Address
   route: RecoveryRoute
   receivingAccount: Address
+  /** The manager and the action the recovery runs on; absent on an entry an earlier build wrote. */
+  readonly deployment?: RecordDeployment
 }
 
 /** The recovery entry of one account on one chain. */

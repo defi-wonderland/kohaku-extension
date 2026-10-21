@@ -98,7 +98,12 @@ const gathering = (payload: Hex): Gathering => ({
 })
 
 // What the landing of `gathering(PAYLOAD)` keeps beside the account.
-const ATTEMPT = { attemptId: '42', setupNonce: '9', payloadHash: keccak256(PAYLOAD) }
+const ATTEMPT = {
+  attemptId: '42',
+  setupNonce: '9',
+  payloadHash: keccak256(PAYLOAD),
+  deployment: { manager: MANAGER, action: ACTION }
+}
 
 const setup = () => {
   const storage = makeStorage()
@@ -224,7 +229,8 @@ describe('the landed session keeps the attempt of the landed request', () => {
       expect(presentOf(await countdown(records).read()).value).toEqual({
         account: ACCOUNT,
         attemptId: '42',
-        setupNonce: '9'
+        setupNonce: '9',
+        deployment: ATTEMPT.deployment
       })
       expect(storedSession(storage)).not.toContain('payloadHash')
     })

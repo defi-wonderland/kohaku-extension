@@ -322,11 +322,15 @@ const writeAllSetup = async (records: WalletRecords, account: Address = ACCOUNT)
   await six.passwordSet.write(SETUP_SAMPLES.passwordSet)
 }
 
+// The deployment the request of `GATHERING` names, which its wiped and landed sessions keep.
+const DEPLOYMENT = { manager: MANAGER, action: ACTION }
+
 // The attempt the landed session keeps from the request of `GATHERING`.
 const LANDED_ATTEMPT = {
   attemptId: PREDICTED_ATTEMPT_ID.toString(),
   setupNonce: '3',
-  payloadHash: keccak256(PAYLOAD)
+  payloadHash: keccak256(PAYLOAD),
+  deployment: DEPLOYMENT
 }
 
 // The one line a wipe keeps for an event: the reason, the account and, for an
@@ -339,7 +343,8 @@ const wipedLine = (event: RecoveryWipeEvent): RecoverySessionRecord =>
         state: 'wiped',
         reason: event,
         account: ACCOUNT,
-        ...(event === 'deadline-passed' ? { deadline: VALID_UNTIL } : {})
+        ...(event === 'deadline-passed' ? { deadline: VALID_UNTIL } : {}),
+        deployment: DEPLOYMENT
       }
 
 const wipeFor = async (records: WalletRecords, event: RecoveryWipeEvent) => {
