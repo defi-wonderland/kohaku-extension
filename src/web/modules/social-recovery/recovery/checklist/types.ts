@@ -263,7 +263,7 @@ export interface ConfigurationInput {
   records: WalletRecords
   chainId: ChainId
   account: Address
-  client: Pick<ChecklistKitClient, 'setup'>
+  client: Pick<ChecklistKitClient, 'setup' | 'descriptor'>
   password: string | undefined
 }
 

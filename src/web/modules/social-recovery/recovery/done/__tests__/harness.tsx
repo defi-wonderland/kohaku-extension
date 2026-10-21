@@ -501,7 +501,7 @@ export const fakeKit = (account: Address, configuration: Configuration = MIXED_P
   const client = {
     chain: 'sepolia',
     account,
-    descriptor: { deployedAt: DEPLOYED_AT },
+    descriptor: { deployedAt: DEPLOYED_AT, manager: BOOK.manager, action: BOOK.action },
     recovery: {
       recoveryState,
       events: { accountFilter, privilegeFilter, fetch }
@@ -824,7 +824,9 @@ export const openWorld = async ({
     })
   }
   if (cache) {
-    await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
+    await records
+      .decryptedSetupCache(CHAIN_ID, account)
+      .write({ configuration, setupNonce: 1n, deployment: { manager: BOOK.manager, action: BOOK.action } })
   }
   if (countdown) {
     await landCountdown({ records, account, configuration }, { attempt })

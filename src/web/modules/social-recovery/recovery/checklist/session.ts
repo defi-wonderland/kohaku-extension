@@ -17,6 +17,7 @@ import {
   REQUEST_WINDOW_SECONDS
 } from '@web/modules/social-recovery/shared/client'
 import {
+  isOfDeployment,
   isSessionRevisionConflict,
   isSessionOfDeployment
 } from '@web/modules/social-recovery/shared/records'
@@ -32,13 +33,17 @@ import type {
 } from './types'
 
 /**
- * The setup's configuration: the decrypted cache where this device holds it,
- * else the one the recovery password held in memory opens. With neither, the
- * holder unlocks the setup at the readout.
+ * The setup's configuration: the decrypted cache where this device holds it
+ * for the client's deployment, else the one the recovery password held in
+ * memory opens. A cache of another deployment, or one that names none, is not
+ * read. With neither, the holder unlocks the setup at the readout.
  */
 export const configurationOf = async (input: ConfigurationInput): Promise<ConfigurationReading> => {
   const cached = await input.records.decryptedSetupCache(input.chainId, input.account).read()
-  if (cached.status === 'present') {
+  if (
+    cached.status === 'present' &&
+    isOfDeployment(cached.value.deployment, input.client.descriptor)
+  ) {
     return { kind: 'configuration', configuration: cached.value.configuration, source: 'cache' }
   }
   if (input.password === undefined) {

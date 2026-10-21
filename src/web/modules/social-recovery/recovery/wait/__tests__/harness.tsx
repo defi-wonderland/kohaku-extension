@@ -1079,7 +1079,9 @@ export const openWorld = async ({
   }
   await records.recoveryEntry(CHAIN_ID, account).write(entry)
   if (cache) {
-    await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
+    await records
+      .decryptedSetupCache(CHAIN_ID, account)
+      .write({ configuration, setupNonce: 1n, deployment: { manager: BOOK.manager, action: BOOK.action } })
   }
   if (countdown) {
     await landCountdown(records, account, configuration)

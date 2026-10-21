@@ -585,7 +585,7 @@ export const seedRecovery = async (
   await records.recoveryEntry(CHAIN_ID, entry.account).write(entry)
   await records
     .decryptedSetupCache(CHAIN_ID, entry.account)
-    .write({ configuration, setupNonce: 1n })
+    .write({ configuration, setupNonce: 1n, deployment: { manager: BOOK.manager, action: BOOK.action } })
   return records.recoverySession(CHAIN_ID, entry.account).write(gathering, null)
 }
 

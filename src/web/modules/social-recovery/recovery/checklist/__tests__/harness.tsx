@@ -639,7 +639,9 @@ export const seedCache = async (
   configuration: Configuration,
   account: Address = ACCOUNT
 ) => {
-  await records.decryptedSetupCache(CHAIN_ID, account).write({ configuration, setupNonce: 1n })
+  await records
+    .decryptedSetupCache(CHAIN_ID, account)
+    .write({ configuration, setupNonce: 1n, deployment: { manager: BOOK.manager, action: BOOK.action } })
 }
 
 export const seedSession = async (
