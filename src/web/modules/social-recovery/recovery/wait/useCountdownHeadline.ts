@@ -21,6 +21,7 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
+  countdownOfDeployment,
   createWalletRecords,
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
@@ -66,7 +67,8 @@ const useCountdownHeadline = (account: Address): CountdownHeadline | null => {
         setHeadline(null)
         return
       }
-      const [{ attempt, block }, countdown] = answer
+      const [{ attempt, block }, read] = answer
+      const countdown = countdownOfDeployment(read, kit.descriptor)
       const landed = countdown.status === 'present' ? landedAttemptOf(countdown.value) : null
       rounds.current += 1
       if (attempt.state !== 'Waiting' || !landed || !isAttemptOf(attempt, landed)) {

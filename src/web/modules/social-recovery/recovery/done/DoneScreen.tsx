@@ -55,6 +55,7 @@ import {
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import {
+  countdownOfDeployment,
   createWalletRecords,
   extensionRecordStorage,
   readRecoveryPassword,
@@ -119,7 +120,8 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
       .read()
       .then((read) => {
         if (live) {
-          const match = consumeMatchOf(read)
+          // A countdown of another deployment is no recovery of this build.
+          const match = consumeMatchOf(countdownOfDeployment(read, addressBook))
           setLandedRead(match ? { status: 'answered', value: match } : { status: 'failed' })
         }
       })
@@ -131,7 +133,7 @@ const DoneBody = ({ records, account, entry }: DoneBodyProps) => {
     return () => {
       live = false
     }
-  }, [records, account, localAttempt])
+  }, [records, account, addressBook, localAttempt])
   const match = landedRead.status === 'answered' ? landedRead.value : null
 
   const { read: consumeRead, retry: retryRead } = useConsumeRead({ kit, match, blockTime })

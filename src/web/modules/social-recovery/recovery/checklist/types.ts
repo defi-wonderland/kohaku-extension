@@ -26,6 +26,7 @@ import type {
   ChainId,
   DirectWipeEvent,
   LiveRecoverySession,
+  RecordDeployment,
   RecoveryEntryRecord,
   RecoveryRoute,
   RowNote,
@@ -748,6 +749,8 @@ export interface HomeRecoveryLineProps {
 export interface HomeRecoveryBandViewProps {
   records: WalletRecords
   chainId: ChainId
+  /** The manager and the action this build reads; a recovery of another deployment is not listed. */
+  deployment: RecordDeployment
   navigate: Navigate
   timeZone: string
   useHeadline: SessionHeadlineHook

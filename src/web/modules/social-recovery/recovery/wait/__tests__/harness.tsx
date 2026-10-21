@@ -478,7 +478,7 @@ export const fakeKit = (account: Address): Kit => {
   const client = {
     chain: 'sepolia',
     account,
-    descriptor: { deployedAt: 100 },
+    descriptor: { deployedAt: 100, manager: BOOK.manager, action: BOOK.action },
     recovery: {
       recoveryState,
       events: { accountFilter, fetch },
@@ -639,6 +639,28 @@ export const storeCountdownWithoutAttempt = async (
   }
   const { attemptId, setupNonce, payloadHash, ...older } = stored.value
   await storage.set(key, { ...stored, value: older })
+}
+
+/** A manager this build no longer reads. */
+export const RETIRED_MANAGER: Address = '0x00000000000000000000000000000000000Dead1'
+
+/** Moves the stored countdown of the account onto a retired manager, all else kept. */
+export const storeCountdownOnRetiredManager = async (
+  storage: TestStorage,
+  account: Address
+): Promise<void> => {
+  const key = recordKeys.recoverySession(CHAIN_ID, account)
+  const stored = (await storage.get(key)) as StoredSession
+  if (stored.value.state !== 'landed') {
+    throw new Error('no landed session')
+  }
+  await storage.set(key, {
+    ...stored,
+    value: {
+      ...stored.value,
+      deployment: { manager: RETIRED_MANAGER, action: BOOK.action }
+    }
+  })
 }
 
 /** The request id under which another page claims the execution. */
@@ -970,6 +992,7 @@ export const mountBand = (records: WalletRecords): Promise<Mounted> =>
     <HomeRecoveryBandView
       records={records}
       chainId={CHAIN_ID}
+      deployment={{ manager: BOOK.manager, action: BOOK.action }}
       navigate={(path: string) => mockWallet.navigate(path)}
       timeZone="UTC"
       useHeadline={() => null}

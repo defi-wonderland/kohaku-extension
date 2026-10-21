@@ -18,7 +18,8 @@ export {
   recordDeploymentOf,
   recordDeploymentFrom,
   isOfDeployment,
-  isSessionOfDeployment
+  isSessionOfDeployment,
+  countdownOfDeployment
 } from './deployment'
 export { extensionRecordStorage } from './extensionStorage'
 export { readRecoveryPassword, setRecoveryPassword, wipeRecoveryPassword } from './recoveryPassword'

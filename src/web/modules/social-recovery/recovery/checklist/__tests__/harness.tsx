@@ -973,6 +973,7 @@ export const mountBand = (input: {
     <HomeRecoveryBandView
       records={input.records}
       chainId={CHAIN_ID}
+      deployment={{ manager: BOOK.manager, action: BOOK.action }}
       navigate={navigate}
       timeZone={TIME_ZONE}
       useHeadline={headlineHook(

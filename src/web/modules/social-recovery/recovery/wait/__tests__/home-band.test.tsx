@@ -12,6 +12,7 @@ import {
   openWorld,
   resetTab,
   showTab,
+  storeCountdownOnRetiredManager,
   storeCountdownWithoutAttempt,
   t,
   tick,
@@ -91,6 +92,15 @@ describe('the home band for a landed recovery', () => {
       t('socialRecovery.home.recovering', { account: renderShortAddress(world.account) })
     )
     expect(view.byTestId(`home-countdown-${id}-time`)).toBeNull()
+  })
+
+  it('renders no countdown line for a countdown of a retired manager', async () => {
+    const world = await openWorld()
+    await storeCountdownOnRetiredManager(world.storage, world.account)
+    view = await mountBand(world.records)
+
+    expect(view.byTestId(`home-countdown-${world.account.toLowerCase()}`)).toBeNull()
+    expect(view.text()).toBe('')
   })
 
   it('renders no countdown line once the countdown ended', async () => {

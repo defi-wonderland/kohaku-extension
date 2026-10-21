@@ -8,7 +8,8 @@ import { isAddressEqual } from 'viem'
 import type { DeploymentDescriptor } from '@kohaku-eth/social-recovery'
 
 import { isStoredAddress } from './guards'
-import type { RecordDeployment, RecoverySessionRecord } from './types'
+import { ABSENT } from './types'
+import type { CountdownRead, RecordDeployment, RecoverySessionRecord } from './types'
 
 /** The deployment fields a record read through a client of this descriptor carries. */
 export const recordDeploymentOf = ({
@@ -57,3 +58,14 @@ export const isSessionOfDeployment = (
   const named = recordDeploymentFrom(session.gathering.request)
   return named === undefined || isOfDeployment(named, descriptor)
 }
+
+/**
+ * A countdown read as one of the descriptor's deployment: a countdown of
+ * another deployment, or one that names none, reads absent, so no screen shows
+ * or resumes it as a recovery of this build.
+ */
+export const countdownOfDeployment = (
+  read: CountdownRead,
+  descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
+): CountdownRead =>
+  read.status === 'present' && !isOfDeployment(read.value.deployment, descriptor) ? ABSENT : read

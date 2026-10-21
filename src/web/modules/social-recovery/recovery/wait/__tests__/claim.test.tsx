@@ -724,7 +724,8 @@ describe('a countdown another tab replaced with another attempt', () => {
         attemptId: NEXT_ATTEMPT.toString(),
         setupNonce: '1',
         payloadHash: PAYLOAD_HASH,
-        ...(execution ? { execution } : {})
+        ...(execution ? { execution } : {}),
+        ...(stored.value.state === 'landed' ? { deployment: stored.value.deployment } : {})
       }
     })
     const { chain } = world.kit
