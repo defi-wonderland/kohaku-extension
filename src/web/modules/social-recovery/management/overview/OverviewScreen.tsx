@@ -6,9 +6,12 @@
  * of the overview stored on this device as in flight opens its own step
  * again, so the run follows it instead of sending a second one; a write the
  * management editor stored is left to the editor's screen, and a save of the
- * setup flow to the save screen, and the overview points there.
+ * setup flow to the save screen, and the overview points there. The keys
+ * this wallet holds for the account go to the reads, which ask whether they
+ * still sign for it once a recovery executed.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Linking } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
@@ -22,7 +25,7 @@ import { cancelPathOf } from '@web/modules/social-recovery/cancel/search'
 import { useDismissed } from '@web/modules/social-recovery/cancel/useDismissed'
 import { CHAIN_NAMES } from '@web/modules/social-recovery/recovery/entry/constants'
 import type { ReadoutRowContext } from '@web/modules/social-recovery/recovery/entry/types'
-import type { Address } from '@kohaku-eth/social-recovery'
+import type { Address, Hex } from '@kohaku-eth/social-recovery'
 import { relyingPartyOf } from '@web/modules/social-recovery/shared/ceremony'
 import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
@@ -41,6 +44,7 @@ import {
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
 import { intentOfRequest, overviewIntentOf } from '@web/modules/social-recovery/shared/writes'
+import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 import { kindOfMethodIn } from '@web/modules/social-recovery/setup/privacy/exposure'
 import { kindNameOf, trustRowsOf } from '@web/modules/social-recovery/setup/review'
 import { useTrustReads } from '@web/modules/social-recovery/setup/review/useTrustReads'
@@ -52,18 +56,21 @@ import OverviewView from './OverviewView'
 import OverviewWriteStep from './OverviewWriteStep'
 import { clausesOfPath, movedInPath, pathMethodsOf } from './readings'
 import type { ElsewhereLink, OpenStep, OverviewIntent, OverviewStageProps } from './types'
+import { useHeldKeys } from './useHeldKeys'
 import { useOverviewReads } from './useOverviewReads'
 
 const OverviewStage = ({ records, chainId, account, navigate }: OverviewStageProps) => {
   const { t } = useTranslation()
   const { networks } = useNetworksControllerState()
   const clientState = useRecoveryClient(account)
+  const heldKeys = useHeldKeys(account)
   const reads = useOverviewReads({
     client: clientState,
     records,
     watcherStorage: extensionRecordStorage,
     chainId,
-    account
+    account,
+    heldKeys
   })
   const watched = useWatchedAttempt(account)
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
@@ -181,6 +188,15 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [elsewhere, retry])
   const onClose = useCallback(() => setOpen(null), [])
+  const chain = kit?.chain
+  const onTransaction = useCallback(
+    (transactionHash: Hex) => {
+      if (chain) {
+        Linking.openURL(explorerTransactionUrlOf(chain, transactionHash)).catch(() => undefined)
+      }
+    },
+    [chain]
+  )
 
   const onCancel = useCallback((target: Address) => navigate(cancelPathOf(target)), [navigate])
   const onDismiss = useCallback(
@@ -260,6 +276,7 @@ const OverviewStage = ({ records, chainId, account, navigate }: OverviewStagePro
       step={step}
       held={held}
       onOpen={onOpen}
+      onTransaction={onTransaction}
       navigate={navigate}
     />
   )

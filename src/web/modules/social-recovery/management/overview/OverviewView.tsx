@@ -12,6 +12,10 @@
  * follow. A read that runs or failed shows its own state, never an answer.
  * A write another screen stored as in flight keeps the title, and the status
  * line where the facts are read, above its pointer, with no path or action.
+ * Once a recovery moved control away from every key this wallet holds for the
+ * account, the overview reads that the account is no longer controlled from
+ * this device, when control moved and to which key where the watcher read
+ * them, and the path with no action; no banner, repair or edit is offered.
  */
 import React from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -25,6 +29,8 @@ import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFail
 
 import CardEntry from './CardEntry'
 import { OVERVIEW } from './constants'
+import ControlMovedBlock from './ControlMovedBlock'
+import ControlMovedTitle from './ControlMovedTitle'
 import DormantBlock from './DormantBlock'
 import EmptyBlock from './EmptyBlock'
 import MirrorBlock from './MirrorBlock'
@@ -32,7 +38,7 @@ import NoticesBlock from './NoticesBlock'
 import OverviewChips from './OverviewChips'
 import OverviewTitle from './OverviewTitle'
 import PathBlock from './PathBlock'
-import { overviewKindOf } from './readings'
+import { controlMovedNoticeOf, overviewKindOf } from './readings'
 import RecoverEntry from './RecoverEntry'
 import type { OverviewFacts, OverviewKind, OverviewViewProps } from './types'
 
@@ -48,6 +54,7 @@ const OverviewView = ({
   step,
   held,
   onOpen,
+  onTransaction,
   navigate
 }: OverviewViewProps) => {
   const { t } = useTranslation()
@@ -117,8 +124,9 @@ const OverviewView = ({
     )
   }
 
-  const { setup, attemptOpen }: OverviewFacts = facts.value
-  const kind: OverviewKind = overviewKindOf(setup)
+  const { setup, attemptOpen, movedBy }: OverviewFacts = facts.value
+  const kind: OverviewKind = overviewKindOf(setup, movedBy)
+  const notice = movedBy !== undefined ? controlMovedNoticeOf(movedBy, ending) : null
 
   const leadKey = (): string => {
     if (attemptOpen) {
@@ -130,9 +138,14 @@ const OverviewView = ({
   return (
     <TwoColumn testID="overview-columns">
       <View testID={`overview-${kind}`}>
-        <OverviewTitle lead={t(leadKey())} />
-        <OverviewChips kind={kind} path={path} attemptOpen={attemptOpen} />
-        {attemptOpen && <View testID="overview-banner">{banner}</View>}
+        {notice ? (
+          <ControlMovedTitle notice={notice} timeZone={timeZone} onTransaction={onTransaction} />
+        ) : (
+          <OverviewTitle lead={t(leadKey())} />
+        )}
+        <OverviewChips kind={overviewKindOf(setup)} path={path} attemptOpen={attemptOpen} />
+        {!!notice && <ControlMovedBlock notice={notice} />}
+        {attemptOpen && !notice && <View testID="overview-banner">{banner}</View>}
         {kind === 'dormant' && <DormantBlock attemptOpen={attemptOpen} onOpen={onOpen} />}
         {kind === 'mirror' && <MirrorBlock onOpen={onOpen} />}
         {setup.hasSetup && (

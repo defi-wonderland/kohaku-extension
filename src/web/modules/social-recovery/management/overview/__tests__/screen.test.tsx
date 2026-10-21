@@ -25,10 +25,12 @@ const mockWallet: {
   client: unknown
   port: SendPort | null
   storage: unknown
-} = { account: undefined, facts: null, client: null, port: null, storage: null }
+  watched: unknown
+} = { account: undefined, facts: null, client: null, port: null, storage: null, watched: undefined }
 // The wallet's controller states keep their identity between renders, as the real hooks do.
 const mockState = {
   accounts: { accounts: [] as unknown[] },
+  keystore: { keys: [] as unknown[] },
   networks: { networks: [] as unknown[] },
   requests: { userRequests: [] as unknown[] },
   selected: { account: null },
@@ -56,6 +58,10 @@ jest.mock('@common/hooks/useNavigation', () => ({
 jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
   default: () => mockState.accounts
+}))
+jest.mock('@web/hooks/useKeystoreControllerState', () => ({
+  __esModule: true,
+  default: () => mockState.keystore
 }))
 jest.mock('@web/hooks/useNetworksControllerState', () => ({
   __esModule: true,
@@ -91,7 +97,7 @@ jest.mock('@web/modules/social-recovery/cancel/AccountAttemptBanner', () => ({
   default: () => null
 }))
 jest.mock('@web/modules/social-recovery/watcher/useWatchedAttempt', () => ({
-  useWatchedAttempt: () => ({ status: 'unwatched' })
+  useWatchedAttempt: () => mockWallet.watched ?? { status: 'unwatched' }
 }))
 jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
   useRecoveryClient: () => mockWallet.client
@@ -136,6 +142,7 @@ const {
 }: typeof import('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred') = require('@web/modules/social-recovery/shared/chrome/__fixtures__/deferred')
 const OverviewScreen: typeof import('@web/modules/social-recovery/management/overview/OverviewScreen').default =
   require('@web/modules/social-recovery/management/overview/OverviewScreen').default
+const display: typeof import('@web/modules/social-recovery/shared/display') = require('@web/modules/social-recovery/shared/display')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const {
@@ -153,6 +160,8 @@ const {
   CHAIN_ID,
   CONFIGURATION
 } = harness
+
+const O = 'socialRecovery.management.overview'
 
 let seed = 0x5c0
 let account: Account
@@ -451,5 +460,56 @@ describe("the overview's screen", () => {
 
     expect(view.byTestId('overview-write-elsewhere')).toBeNull()
     expect(view.byTestId('overview-dormant')).not.toBeNull()
+  })
+
+  it('reads the account as no longer controlled from here once a recovery executed, with the time the watcher read', async () => {
+    const storage = makeStorage()
+    mockWallet.storage = storage
+    const world = await worldAt('public', address, storage)
+    const controller = '0x00000000000000000000000000000000000000e2' as const
+    world.chain.setAuthorities([key.addr])
+    world.chain.openAttempt({ handover: { newAuthority: controller, removedAuthority: key.addr } })
+    world.chain.consume()
+    const { attempt } = await world.client.walletReads.attemptState()
+    mockWallet.client = readyOver(world.client)
+    mockState.accounts.accounts = [account]
+    mockState.keystore.keys = [{ addr: key.addr, type: key.type }]
+    mockWallet.watched = {
+      status: 'watched',
+      reading: {
+        account: address,
+        block: { number: 300, timestamp: 3_000 },
+        hasSetup: true,
+        dormant: false,
+        ended: {
+          attemptId: attempt.attemptId,
+          road: 'executed',
+          controller,
+          at: 2_500,
+          transactionHash: armHarness.TX_HASH
+        }
+      },
+      attemptDismissed: false
+    }
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    try {
+      view = await mount(<OverviewScreen />)
+      await harness.settleReads()
+
+      expect(view.textOf('overview-title')).toBe(t(`${O}.controlMoved.title`))
+      expect(view.text()).toContain(
+        t(`${O}.controlMoved.lead`, { date: display.renderDateTimeInZone(2_500_000, zone).date })
+      )
+      expect(view.textOf('overview-control-moved-controller')).toBe(
+        display.renderFullAddress(controller)
+      )
+      expect(view.byTestId('overview-control-moved-transaction')).not.toBeNull()
+      expect(view.byTestId('overview-edit-path')).toBeNull()
+      expect(view.byTestId('overview-remove-recovery')).toBeNull()
+    } finally {
+      mockState.accounts.accounts = []
+      mockState.keystore.keys = []
+      mockWallet.watched = undefined
+    }
   })
 })

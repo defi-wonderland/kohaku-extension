@@ -10,6 +10,7 @@ import type {
 import type {
   Address,
   Configuration,
+  Hex,
   LogPosition,
   SetupDraft,
   SetupState
@@ -56,11 +57,23 @@ export type OverviewKind =
    * clear alone leaves it. Repaired by removing the authorization.
    */
   | 'mirror'
+  /**
+   * A recovery executed and no key this wallet holds for the account is an
+   * authority of it any longer: the account is no longer controlled from this
+   * device, and nothing here acts on it.
+   */
+  | 'control-moved'
 
 /** The setup state and whether an attempt is open on the account, pending or ready. */
 export interface OverviewFacts {
   setup: SetupState
   attemptOpen: boolean
+  /**
+   * The executed attempt that left no key this wallet holds for the account
+   * an authority of it; absent where the last attempt did not execute, or a
+   * key this wallet holds still signs for the account.
+   */
+  movedBy?: bigint
 }
 
 /** The chain read of the overview, with the client's own state where it cannot read. */
@@ -100,6 +113,13 @@ export interface OverviewNotices {
   cancelledAttempts: bigint[]
 }
 
+/** What the watcher read of the execution that moved control: when, in seconds, to which key, and in which transaction. */
+export interface ControlMovedNotice {
+  at?: number
+  controller?: Address
+  transactionHash?: Hex
+}
+
 /** The notice after an ended attempt: the road that ended it and when, in seconds. */
 export interface EndedNotice {
   road: 'ownerCancel' | 'setupWrite'
@@ -127,6 +147,12 @@ export interface OverviewReadsInput {
   watcherStorage?: WatcherStorage
   chainId: ChainId
   account: Address
+  /**
+   * The account's keys this wallet holds, asked whether they still sign for
+   * the account where its last attempt executed; undefined while the wallet
+   * has not read them, which holds the facts as read until it has.
+   */
+  heldKeys?: readonly Address[]
 }
 
 export interface OverviewReads {
@@ -236,6 +262,8 @@ export interface OverviewViewProps {
    */
   held: ReactNode
   onOpen: (intent: OverviewIntent) => void
+  /** Opens the explorer page of a transaction on the recovery chain. */
+  onTransaction: (transactionHash: Hex) => void
   navigate: (to: string) => void
 }
 
@@ -276,6 +304,16 @@ export interface OverviewTitleProps {
 
 export interface OverviewNavigateProps {
   navigate: (to: string) => void
+}
+
+export interface ControlMovedBlockProps {
+  notice: ControlMovedNotice
+}
+
+export interface ControlMovedTitleProps extends ControlMovedBlockProps {
+  timeZone: string
+  /** Opens the explorer page of the transaction that moved control. */
+  onTransaction: (transactionHash: Hex) => void
 }
 
 export interface OverviewChipsProps {
