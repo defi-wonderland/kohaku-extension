@@ -10,8 +10,9 @@
  * binding the digest's text.
  *
  * The phone's refusal is the refused note, an error the phone reported is a
- * failure with its message, and a request that does not open is a device that
- * did not answer. The device keeps no timer of its own: the tab's expiry
+ * failure with its message, and a request that does not open, or whose
+ * library offers no result callback at an enrollment, is a device that did not
+ * answer. A page that cannot draw the code runs no request. The device keeps no timer of its own: the tab's expiry
  * rules hold. After an abort no callback is honoured.
  */
 import type { Input, Material, ZkPassportStackProof } from '@kohaku-eth/social-recovery'
@@ -23,12 +24,7 @@ import type {
   DeviceResult,
   ZkPassportRequestWithResult
 } from './types'
-import { dismissed, failed, unavailable } from './verdicts'
-
-const OUTER_EVM_PREFIX = 'outer_evm'
-
-/** How far from the end of the outer proof's public inputs its scoped nullifier sits. */
-const SCOPED_NULLIFIER_FROM_END = 2
+import { dismissed, failed, notSupported, unavailable } from './verdicts'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -53,29 +49,6 @@ const isRequest = (value: unknown): value is ZkPassportRequestWithResult =>
 const openerOf = (input: Input): (() => Promise<unknown>) | undefined => {
   const open = input.openRequest
   return typeof open === 'function' ? () => Promise.resolve(open()) : undefined
-}
-
-/**
- * The unique identifier the outer proof's public inputs carry, as a decimal
- * string, where the proof lists them.
- */
-const identifierOf = (proofs: readonly ZkPassportStackProof[]): string | undefined => {
-  const outer = proofs.find(
-    (proof) => typeof proof.name === 'string' && proof.name.startsWith(OUTER_EVM_PREFIX)
-  )
-  const inputs = outer?.publicInputs
-  if (!Array.isArray(inputs) || inputs.length < SCOPED_NULLIFIER_FROM_END) {
-    return undefined
-  }
-  const word: unknown = inputs[inputs.length - SCOPED_NULLIFIER_FROM_END]
-  if (typeof word !== 'string') {
-    return undefined
-  }
-  try {
-    return BigInt(word).toString()
-  } catch {
-    return undefined
-  }
 }
 
 const cancelled = (): DeviceResult => ({
@@ -165,37 +138,20 @@ const open = async (
 const isDeviceResult = (value: ZkPassportRequestWithResult | DeviceResult): value is DeviceResult =>
   'ok' in value
 
-/**
- * The enrollment's material: the result callback's verified result, or, where
- * the library offers no result callback, a verified result built from the
- * success callback's proofs when their outer proof lists its identifier.
- */
+/** The enrollment's material: the verified result the result callback delivers. */
 const listenForResult =
-  (request: ZkPassportRequestWithResult) =>
+  (onResult: NonNullable<ZkPassportRequestWithResult['onResult']>) =>
   (settle: (result: DeviceResult) => void): void => {
-    if (request.onResult) {
-      request.onResult((response) => {
-        settle(
-          isRecord(response)
-            ? { ok: true, material: { result: response } }
-            : stopped(unavailable('device-unavailable'))
-        )
-      })
-      return
-    }
-    request.onSuccess(({ proofs }) => {
-      const delivered = Array.isArray(proofs) ? proofs : []
-      const uniqueIdentifier = identifierOf(delivered)
+    onResult((response) => {
       settle(
-        uniqueIdentifier
-          ? {
-              ok: true,
-              material: { result: { verified: true, uniqueIdentifier, proofs: delivered } }
-            }
+        isRecord(response)
+          ? { ok: true, material: { result: response } }
           : stopped(unavailable('device-unavailable'))
       )
     })
   }
+
+const noCode = (): DeviceResult => stopped(notSupported('no-implementation'))
 
 /** The signature's material: the proofs the success callback delivers, else those generated. */
 const listenForProofs =
@@ -215,15 +171,24 @@ export const externalAppDevice = (): CeremonyDevice => ({
     if (context.signal?.aborted) {
       return cancelled()
     }
+    if (!context.show) {
+      return noCode()
+    }
     const request = await open(input, context)
     if (isDeviceResult(request)) {
       return request
     }
-    return follow(request, context, listenForResult(request))
+    if (!request.onResult) {
+      return stopped(unavailable('device-unavailable'))
+    }
+    return follow(request, context, listenForResult(request.onResult))
   },
   sign: async (input, context) => {
     if (context.signal?.aborted) {
       return cancelled()
+    }
+    if (!context.show) {
+      return noCode()
     }
     const request = await open(input, context)
     if (isDeviceResult(request)) {

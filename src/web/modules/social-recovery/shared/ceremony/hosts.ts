@@ -241,7 +241,8 @@ const signForRequest = async (
 /**
  * The chain's verdict where the method's own check answered not judged and the
  * context reads one; the method's verdict otherwise. A chain read that throws
- * is a read the node did not answer.
+ * is a read the node did not answer. An abort ends the wait at once, and the
+ * caller reads the cancel.
  */
 const judgedVerdict = async (
   context: HostContext & { request: ApproverRequest },
@@ -251,10 +252,24 @@ const judgedVerdict = async (
   if (local !== 'not-judged' || !context.chainVerdict) {
     return local
   }
+  const read = context.chainVerdict(context.request, reply).catch(() => 'unanswered' as const)
+  const { signal } = context
+  if (!signal) {
+    return read
+  }
+  let onAbort = () => {}
+  const aborted = new Promise<'unanswered'>((resolve) => {
+    onAbort = () => resolve('unanswered')
+    if (signal.aborted) {
+      onAbort()
+    } else {
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+  })
   try {
-    return await context.chainVerdict(context.request, reply)
-  } catch {
-    return 'unanswered'
+    return await Promise.race([read, aborted])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
   }
 }
 
