@@ -6,6 +6,7 @@
 import { getAddress, keccak256, zeroAddress } from 'viem'
 
 import i18n from '@common/config/localization'
+import { walletMethod } from '@kohaku-eth/social-recovery'
 import type { ApproverRequest, Attempt, RequestDescription } from '@kohaku-eth/social-recovery'
 import type { PollFacts } from '@web/modules/social-recovery/recovery/checklist'
 import { approvalLinkOf } from '@web/modules/social-recovery/recovery/checklist'
@@ -14,8 +15,10 @@ import {
   approvalValuesOf,
   deadlineViewOf,
   describedRequestOf,
+  keyReadingOf,
   readingOf,
   readingOfFacts,
+  requestKeyOf,
   signEnabled
 } from '@web/modules/social-recovery/guardian-page'
 import type {
@@ -413,5 +416,31 @@ describe('the sign action', () => {
     closed.forEach((gates) => {
       expect({ gates, enabled: signEnabled(gates) }).toEqual({ gates, enabled: false })
     })
+  })
+})
+
+describe('the key the request names', () => {
+  const METHOD_ECDSA = getAddress('0x5e1a7c0b9d2f3e4a6b8c0d1e2f3a4b5c6d7e8f90')
+  const wallet = walletMethod()
+  const client = {
+    descriptor: { methodEcdsa: METHOD_ECDSA },
+    methodFor: (slug: string) => (slug === 'ecdsa' ? wallet : undefined)
+  } as unknown as Parameters<typeof requestKeyOf>[0]
+  const request = {
+    method: METHOD_ECDSA,
+    config: wallet.codec.encodeConfig({ signer: NEW_KEY })
+  } as ApproverRequest
+
+  it("is the address the SDK's wallet codec decodes from the config", () => {
+    expect(requestKeyOf(client, request)).toBe(NEW_KEY)
+  })
+
+  it('reads as held when the unlocked wallet holds that key', () => {
+    const reading = keyReadingOf(requestKeyOf(client, request), {
+      keys: [{ addr: NEW_KEY, type: 'internal' }],
+      isUnlocked: true,
+      hasPasswordSecret: true
+    })
+    expect(reading).toEqual({ kind: 'held', key: { addr: NEW_KEY, type: 'internal' } })
   })
 })

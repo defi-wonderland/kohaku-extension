@@ -542,14 +542,19 @@ const walletVerdict = async (request: ApproverRequest, proof: Hex): Promise<Verd
   }
 }
 
-/** The wallet method the client's registry hands out under its slug. */
+/**
+ * The wallet method the client's registry hands out under its slug, decoding
+ * a config with the SDK's own wallet codec. The SDK builds a TextEncoder when
+ * it loads, so it loads at the first decode, after the globals are installed.
+ */
 const walletMethod = {
   modules: () => [DESCRIPTOR.methodEcdsa],
   codec: {
-    decodeConfig: (config: Hex) => {
-      const [address] = decodeAbiParameters([{ type: 'address' }], config)
-      return { address }
-    }
+    decodeConfig: (config: Hex) =>
+      // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+      (require('@kohaku-eth/social-recovery') as typeof import('@kohaku-eth/social-recovery'))
+        .walletMethod()
+        .codec.decodeConfig(config)
   }
 }
 
