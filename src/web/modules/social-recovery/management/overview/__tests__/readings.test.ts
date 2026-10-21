@@ -9,6 +9,7 @@ import {
   attemptOpenOf,
   endedNoticeOf,
   goalStands,
+  knownSetupNonceOf,
   movedInPath,
   noticesOf,
   overviewKindOf,
@@ -21,7 +22,7 @@ import type {
   SetupState
 } from '@kohaku-eth/social-recovery'
 import type { RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
-import type { AttemptEnding } from '@web/modules/social-recovery/watcher'
+import type { AttemptEnding, WatcherRecord } from '@web/modules/social-recovery/watcher'
 
 const METHOD_A: Address = '0x00000000000000000000000000000000000000aa'
 const METHOD_B: Address = '0x00000000000000000000000000000000000000bb'
@@ -167,5 +168,65 @@ describe('the overview readings', () => {
     expect(goalStands('clear', setupOf({ hasSetup: true }))).toBe(false)
     expect(goalStands('removeAuthorization', setupOf({ isAuthorized: false }))).toBe(true)
     expect(goalStands('removeAuthorization', setupOf({ isAuthorized: true }))).toBe(false)
+  })
+})
+
+describe('the setup nonce this device has seen', () => {
+  const DEPLOYMENT = { manager: METHOD_A, action: METHOD_B }
+  const RETIRED = {
+    manager: '0x00000000000000000000000000000000000000cc' as Address,
+    action: METHOD_B
+  }
+  const cacheAt = (setupNonce: bigint, deployment?: typeof DEPLOYMENT) => ({
+    configuration: { clauses: [], wait: 1, ignoresPause: false },
+    setupNonce,
+    ...(deployment ? { deployment } : {})
+  })
+  const watchedAt = (setupNonce: bigint, deployment?: typeof DEPLOYMENT): WatcherRecord => ({
+    reading: {
+      account: METHOD_A,
+      block: { number: 1, timestamp: 1 },
+      hasSetup: true,
+      dormant: false,
+      attempt: {
+        attemptId: 1n,
+        setupNonce,
+        payloadHash: HASH,
+        consumableAfter: 2,
+        executionDue: false
+      },
+      ...(deployment ? { deployment } : {})
+    },
+    dismissed: []
+  })
+
+  it('takes the higher nonce of the records read under the same manager and action', () => {
+    expect(knownSetupNonceOf(cacheAt(2n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(
+      3n
+    )
+    expect(knownSetupNonceOf(cacheAt(4n, DEPLOYMENT), watchedAt(3n, DEPLOYMENT), DEPLOYMENT)).toBe(
+      4n
+    )
+  })
+
+  it('matches the deployment whatever the case of its addresses', () => {
+    const upper = {
+      manager: `0x${METHOD_A.slice(2).toUpperCase()}` as Address,
+      action: `0x${METHOD_B.slice(2).toUpperCase()}` as Address
+    }
+    expect(knownSetupNonceOf(cacheAt(2n, upper), undefined, DEPLOYMENT)).toBe(2n)
+  })
+
+  it('gives no floor from a record of another manager or another action', () => {
+    expect(knownSetupNonceOf(cacheAt(2n, RETIRED), watchedAt(2n, RETIRED), DEPLOYMENT)).toBe(
+      undefined
+    )
+    const otherAction = { manager: METHOD_A, action: METHOD_A }
+    expect(knownSetupNonceOf(cacheAt(2n, otherAction), undefined, DEPLOYMENT)).toBe(undefined)
+    expect(knownSetupNonceOf(cacheAt(1n, DEPLOYMENT), watchedAt(5n, RETIRED), DEPLOYMENT)).toBe(1n)
+  })
+
+  it('gives no floor from a record that names no deployment', () => {
+    expect(knownSetupNonceOf(cacheAt(2n), watchedAt(2n), DEPLOYMENT)).toBe(undefined)
   })
 })

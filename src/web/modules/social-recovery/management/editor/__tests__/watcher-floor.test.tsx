@@ -2,8 +2,9 @@
  * @jest-environment jsdom
  *
  * The edit page over a client whose fake node starts afresh, below the setup
- * nonce of the attempt the watcher last read for the account: the page reads
- * the facts as failed with retry, never as no setup.
+ * nonce of the attempt the watcher last read for the account at the same
+ * manager and action: the page reads the facts as failed with retry, never as
+ * no setup.
  */
 import type { RecordStorage } from '@web/modules/social-recovery/shared/records'
 
@@ -60,7 +61,7 @@ const {
 }: typeof import('@web/modules/social-recovery/watcher') = require('@web/modules/social-recovery/watcher')
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
-const { ACCOUNT, freshClientOf, mount, readyOver, settleReads } = harness
+const { ACCOUNT, ADDRESS_BOOK, freshClientOf, mount, readyOver, settleReads } = harness
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 
 describe('the edit page over a fresh node', () => {
@@ -79,7 +80,8 @@ describe('the edit page over a fresh node', () => {
           payloadHash: `0x${'11'.repeat(32)}`,
           consumableAfter: 2,
           executionDue: false
-        }
+        },
+        deployment: { manager: ADDRESS_BOOK.manager, action: ADDRESS_BOOK.action }
       },
       dismissed: []
     }))

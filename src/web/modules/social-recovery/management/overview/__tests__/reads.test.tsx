@@ -58,10 +58,41 @@ const {
   typeInto,
   ACCOUNT,
   PASSWORD,
-  CONFIGURATION
+  CONFIGURATION,
+  ADDRESS_BOOK
 } = harness
 const CHAIN_ID = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
 const O = 'socialRecovery.management.overview'
+// The manager and action the clients read, and a manager this build no longer reads.
+const DEPLOYMENT = { manager: ADDRESS_BOOK.manager, action: ADDRESS_BOOK.action }
+const RETIRED = {
+  manager: '0x00000000000000000000000000000000000Dead1' as const,
+  action: ADDRESS_BOOK.action
+}
+
+/** Stores the watcher's reading of an attempt opened under a setup nonce, read from a deployment. */
+const watchAttemptAt = (
+  storage: ReturnType<typeof makeStorage>,
+  setupNonce: bigint,
+  deployment: typeof DEPLOYMENT
+) =>
+  updateWatcherRecord(storage, CHAIN_ID, ACCOUNT, () => ({
+    reading: {
+      account: ACCOUNT,
+      block: { number: 1000, timestamp: 1 },
+      hasSetup: true,
+      dormant: false,
+      attempt: {
+        attemptId: 1n,
+        setupNonce,
+        payloadHash: `0x${'11'.repeat(32)}`,
+        consumableAfter: 2,
+        executionDue: false
+      },
+      deployment
+    },
+    dismissed: []
+  }))
 
 // The facts read's retry of the last render, which the view offers only after a failed read.
 let retryFacts: () => void = () => {}
@@ -227,22 +258,7 @@ describe('the overview reads', () => {
   it('reads a fresh node below the attempt the watcher read as failed with retry, never as not set up', async () => {
     const storage = makeStorage()
     const world = await worldAt('private', ACCOUNT, storage)
-    await updateWatcherRecord(storage, CHAIN_ID, ACCOUNT, () => ({
-      reading: {
-        account: ACCOUNT,
-        block: { number: 1000, timestamp: 1 },
-        hasSetup: true,
-        dormant: false,
-        attempt: {
-          attemptId: 1n,
-          setupNonce: 1n,
-          payloadHash: `0x${'11'.repeat(32)}`,
-          consumableAfter: 2,
-          executionDue: false
-        }
-      },
-      dismissed: []
-    }))
+    await watchAttemptAt(storage, 1n, DEPLOYMENT)
     const client = await freshClientOf()
 
     view = await mount(
@@ -258,6 +274,52 @@ describe('the overview reads', () => {
 
     expect(view.byTestId('overview-read-failed')).not.toBeNull()
     expect(view.byTestId('overview-empty')).toBeNull()
+  })
+
+  it('reads a new manager at nonce zero as not set up beside a cache of a retired manager at a higher nonce, and keeps the cache', async () => {
+    const world = await worldAt('public')
+    const cache = world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT)
+    await cache.write({ configuration: CONFIGURATION, setupNonce: 2n, deployment: RETIRED })
+
+    view = await renderOver({ ...world, client: await freshClientOf() })
+
+    expect(view.byTestId('overview-read-failed')).toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).not.toBeNull()
+    const kept = await cache.read()
+    expect(kept.status === 'present' && kept.value.setupNonce).toBe(2n)
+  })
+
+  it('reads a fresh node as not set up beside a cache an earlier build wrote with no deployment', async () => {
+    const world = await worldAt('public')
+    await world.records
+      .decryptedSetupCache(CHAIN_ID, ACCOUNT)
+      .write({ configuration: CONFIGURATION, setupNonce: 2n })
+
+    view = await renderOver({ ...world, client: await freshClientOf() })
+
+    expect(view.byTestId('overview-read-failed')).toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).not.toBeNull()
+  })
+
+  it("reads a new manager at nonce zero as not set up beside the watcher's attempt on a retired manager", async () => {
+    const storage = makeStorage()
+    const world = await worldAt('private', ACCOUNT, storage)
+    await watchAttemptAt(storage, 2n, RETIRED)
+    const client = await freshClientOf()
+
+    view = await mount(
+      <ReadsProbe
+        client={readyOver(client)}
+        records={world.records}
+        watcherStorage={storage}
+        chainId={CHAIN_ID}
+        onOpen={jest.fn()}
+      />
+    )
+    await harness.settleReads()
+
+    expect(view.byTestId('overview-read-failed')).toBeNull()
+    expect(view.byTestId('overview-chip-not-set-up')).not.toBeNull()
   })
 
   it('keeps no opened setup under the nonce of an older facts read where a newer setup was committed before the unlock', async () => {
