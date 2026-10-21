@@ -756,6 +756,8 @@ describe('the passkey row', () => {
     expect(claimAskedOf({ ...record, chainId: String(CHAIN_ID) } as never, target)).toEqual({
       place: 0,
       request: requestOf(gathering, 0),
+      method: 'passkey',
+      params: { handOff: true },
       handOff: true
     })
     expect(claimAskedOf({ ...record, chainId: 'not-a-chain' } as never, target)).toBeNull()
