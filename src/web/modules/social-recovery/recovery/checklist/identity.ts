@@ -12,16 +12,13 @@ const CEREMONY = 'socialRecovery.ceremony'
 const NO_NOTES: IdentityNotes = { note: null, cause: null, retry: false }
 
 /**
- * A failure's cause line: the result that did not match the identifier
- * recorded at enrollment, or any other result the method's own check refused.
- * The phone's own error says so in its note and carries no cause line.
+ * A failure's cause line: the result did not pass the method's own check,
+ * whether the proof could not be produced, its local check refused it, or it
+ * did not match what enrollment recorded. The phone's own error says so in
+ * its note and carries no cause line.
  */
-const causeKeyOf = (cause: string): string | null => {
-  if (cause === 'phone-error') {
-    return null
-  }
-  return cause === 'material-rejected' ? `${CEREMONY}.noMatchCause` : `${CEREMONY}.rejectedCause`
-}
+const causeKeyOf = (cause: string): string | null =>
+  cause === 'phone-error' ? null : `${CEREMONY}.rejectedCause`
 
 export const identityNotesOf = (
   held: ClaimOutcome | undefined,
