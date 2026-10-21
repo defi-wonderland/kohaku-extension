@@ -42,6 +42,11 @@ const OPTIONAL_ADDRESSES = ['methodAadhaar', 'methodZkpassport'] as const
 const FIELDS: readonly string[] = [
   ...REQUIRED_ADDRESSES,
   ...OPTIONAL_ADDRESSES,
+  'zkPassportDomain',
+  'zkPassportScope',
+  'zkPassportTestnetTree',
+  'aadhaarNullifierSeed',
+  'aadhaarCertificate',
   'deployedAt',
   'digestVersion',
   'managerVersion',
@@ -87,6 +92,29 @@ const textAt = (value: unknown, field: string): string => {
   return value
 }
 
+const flagAt = (value: unknown, field: string): boolean => {
+  if (typeof value !== 'boolean') {
+    return refuse(`${field} must be true or false`)
+  }
+  return value
+}
+
+// A field element of the proving curve has at most 77 decimal digits.
+const nullifierSeedAt = (value: unknown): string => {
+  if (typeof value !== 'string' || !/^[0-9]{1,77}$/.test(value)) {
+    return refuse('aadhaarNullifierSeed must be a decimal number')
+  }
+  return value
+}
+
+const certificateAt = (value: unknown): string => {
+  const text = textAt(value, 'aadhaarCertificate')
+  if (!text.includes('-----BEGIN CERTIFICATE-----')) {
+    return refuse('aadhaarCertificate must be a PEM certificate')
+  }
+  return text
+}
+
 const isPublisher = (value: unknown): value is Publisher =>
   PUBLISHERS.some((publisher) => publisher === value)
 
@@ -125,8 +153,10 @@ const explorerUrlAt = (value: unknown): string => {
  * The deployment facts a variable's raw value names. Throws, naming the
  * variable and the field, where the value is not a JSON object of exactly the
  * known fields, an address is malformed or zero, the deployment block is not a
- * whole number of zero or more, a version is empty, an audited action names
- * an unknown publisher, or the explorer URL is not an http or https URL.
+ * whole number of zero or more, a version or an identity method's text is
+ * empty, the testnet flag is not a boolean, the Aadhaar nullifier seed is not
+ * a decimal number, the Aadhaar certificate is not PEM, an audited action
+ * names an unknown publisher, or the explorer URL is not an http or https URL.
  */
 export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   let parsed: unknown
@@ -154,6 +184,21 @@ export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
       facts[field] = addressAt(parsed[field], field)
     }
   })
+  if (parsed.zkPassportDomain !== undefined) {
+    facts.zkPassportDomain = textAt(parsed.zkPassportDomain, 'zkPassportDomain')
+  }
+  if (parsed.zkPassportScope !== undefined) {
+    facts.zkPassportScope = textAt(parsed.zkPassportScope, 'zkPassportScope')
+  }
+  if (parsed.zkPassportTestnetTree !== undefined) {
+    facts.zkPassportTestnetTree = flagAt(parsed.zkPassportTestnetTree, 'zkPassportTestnetTree')
+  }
+  if (parsed.aadhaarNullifierSeed !== undefined) {
+    facts.aadhaarNullifierSeed = nullifierSeedAt(parsed.aadhaarNullifierSeed)
+  }
+  if (parsed.aadhaarCertificate !== undefined) {
+    facts.aadhaarCertificate = certificateAt(parsed.aadhaarCertificate)
+  }
   if (parsed.explorerUrl !== undefined) {
     facts.explorerUrl = explorerUrlAt(parsed.explorerUrl)
   }

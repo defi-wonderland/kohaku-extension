@@ -71,6 +71,16 @@ const FACTS = {
   ]
 }
 
+const CERTIFICATE = '-----BEGIN CERTIFICATE-----\nMIIBmade+up\n-----END CERTIFICATE-----\n'
+
+const IDENTITY_FIELDS = {
+  zkPassportDomain: 'wallet.example',
+  zkPassportScope: 'social-recovery',
+  zkPassportTestnetTree: true,
+  aadhaarNullifierSeed: '1234567890',
+  aadhaarCertificate: CERTIFICATE
+}
+
 const json = (value: unknown): string => JSON.stringify(value)
 
 /** A checksummed address with the case of its first letter flipped, so its checksum is wrong. */
@@ -297,6 +307,35 @@ describe('a build with a Sepolia deployment variable', () => {
     )
   })
 
+  it('keeps the identity method fields the variable gives', () => {
+    variable.mockReturnValue(json({ ...FACTS, ...IDENTITY_FIELDS }))
+    const deployment = deploymentOf('sepolia')
+    expect(deployment.kind === 'deployed' && deployment.facts).toMatchObject(IDENTITY_FIELDS)
+  })
+
+  it('leaves each identity method field it lacks undefined', () => {
+    const deployment = deploymentOf('sepolia')
+    const facts = deployment.kind === 'deployed' ? deployment.facts : undefined
+    expect(facts).toBeDefined()
+    expect(facts?.zkPassportDomain).toBeUndefined()
+    expect(facts?.zkPassportScope).toBeUndefined()
+    expect(facts?.zkPassportTestnetTree).toBeUndefined()
+    expect(facts?.aadhaarNullifierSeed).toBeUndefined()
+    expect(facts?.aadhaarCertificate).toBeUndefined()
+  })
+
+  it('takes a testnet tree flag of false', () => {
+    const deployment = deploymentFactsFrom(json({ ...FACTS, zkPassportTestnetTree: false }))
+    expect(deployment.zkPassportTestnetTree).toBe(false)
+  })
+
+  it('takes a nullifier seed of 77 digits', () => {
+    const seed = '9'.repeat(77)
+    expect(
+      deploymentFactsFrom(json({ ...FACTS, aadhaarNullifierSeed: seed })).aadhaarNullifierSeed
+    ).toBe(seed)
+  })
+
   it('takes a new value of the variable at the next call', () => {
     expect(addressBookOf('sepolia').manager).toBe(MANAGER)
     variable.mockReturnValue(json({ ...FACTS, manager: SECOND_ACTION, deployedAt: 7 }))
@@ -412,6 +451,61 @@ describe('a malformed deployment variable', () => {
       'a data explorer address',
       json({ ...FACTS, explorerUrl: 'data:text/html,explorer' }),
       /explorerUrl/
+    ],
+    [
+      'an empty zkPassport domain',
+      json({ ...FACTS, zkPassportDomain: '' }),
+      /zkPassportDomain must be a non-empty string/
+    ],
+    [
+      'a zkPassport domain that is not text',
+      json({ ...FACTS, zkPassportDomain: 7 }),
+      /zkPassportDomain must be a non-empty string/
+    ],
+    [
+      'a blank zkPassport scope',
+      json({ ...FACTS, zkPassportScope: '  ' }),
+      /zkPassportScope must be a non-empty string/
+    ],
+    [
+      'a testnet tree flag as text',
+      json({ ...FACTS, zkPassportTestnetTree: 'true' }),
+      /zkPassportTestnetTree must be true or false/
+    ],
+    [
+      'a nullifier seed as a number',
+      json({ ...FACTS, aadhaarNullifierSeed: 1234 }),
+      /aadhaarNullifierSeed must be a decimal number/
+    ],
+    [
+      'a hexadecimal nullifier seed',
+      json({ ...FACTS, aadhaarNullifierSeed: '0x1234' }),
+      /aadhaarNullifierSeed must be a decimal number/
+    ],
+    [
+      'a negative nullifier seed',
+      json({ ...FACTS, aadhaarNullifierSeed: '-1' }),
+      /aadhaarNullifierSeed must be a decimal number/
+    ],
+    [
+      'an empty nullifier seed',
+      json({ ...FACTS, aadhaarNullifierSeed: '' }),
+      /aadhaarNullifierSeed must be a decimal number/
+    ],
+    [
+      'a nullifier seed of 78 digits',
+      json({ ...FACTS, aadhaarNullifierSeed: '1'.repeat(78) }),
+      /aadhaarNullifierSeed must be a decimal number/
+    ],
+    [
+      'an empty Aadhaar certificate',
+      json({ ...FACTS, aadhaarCertificate: '' }),
+      /aadhaarCertificate must be a non-empty string/
+    ],
+    [
+      'an Aadhaar certificate that is not PEM',
+      json({ ...FACTS, aadhaarCertificate: 'MIIBmade+up' }),
+      /aadhaarCertificate must be a PEM certificate/
     ]
   ]
 
@@ -463,7 +557,8 @@ describe('a malformed deployment variable', () => {
       methodAadhaar: METHOD_AADHAAR,
       methodZkpassport: getAddress(SECOND_ACTION),
       deployedAt: 0,
-      explorerUrl: 'http://localhost:4000/tx/'
+      explorerUrl: 'http://localhost:4000/tx/',
+      ...IDENTITY_FIELDS
     }
     expect(deploymentFactsFrom(json(full))).toEqual(full)
   })
