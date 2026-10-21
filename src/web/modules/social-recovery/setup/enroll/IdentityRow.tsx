@@ -12,10 +12,18 @@ import { View } from 'react-native'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
-import { PageTitle, SectionCard, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
+import flexbox from '@common/styles/utils/flexbox'
+import {
+  PageTitle,
+  SectionCard,
+  StatusChip,
+  TwoColumn
+} from '@web/modules/social-recovery/shared/chrome'
+import { renderChip } from '@web/modules/social-recovery/shared/display'
 
 import IdentityCreateBlock from './IdentityCreateBlock'
 import { IDENTITY_COPY } from './identity'
+import { TEST_CHIPS } from './outcome'
 import IdentityTestBlock from './IdentityTestBlock'
 import RowNotes from './RowNotes'
 import type { IdentityRowProps } from './types'
@@ -57,9 +65,31 @@ const IdentityRow = (props: IdentityRowProps) => {
 
           {!!enrollment && (
             <View testID={`${copy.row}-enrolled`}>
-              <Text testID={`${copy.row}-enrolled-line`} fontSize={14} style={spacings.mbSm}>
-                {t(copy.enrolledLine)}
-              </Text>
+              <View
+                style={[
+                  flexbox.directionRow,
+                  flexbox.alignCenter,
+                  flexbox.justifySpaceBetween,
+                  spacings.mbSm
+                ]}
+              >
+                <Text
+                  testID={`${copy.row}-enrolled-line`}
+                  fontSize={14}
+                  style={[flexbox.flex1, spacings.mrSm]}
+                >
+                  {t(copy.enrolledLine)}
+                </Text>
+                <StatusChip
+                  testID={`${copy.row}-chip`}
+                  text={renderChip('method', TEST_CHIPS[enrollment.test], t)}
+                  tone={
+                    enrollment.test === 'passed' || enrollment.test === 'live'
+                      ? 'success'
+                      : 'default'
+                  }
+                />
+              </View>
               <IdentityTestBlock
                 copy={copy}
                 enrollment={enrollment}

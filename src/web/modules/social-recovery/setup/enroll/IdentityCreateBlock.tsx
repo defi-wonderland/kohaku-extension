@@ -1,7 +1,7 @@
 /**
  * An identity row before the slot holds a credential: the action that opens
  * the ceremony tab, the note a creation that did not pass left with its retry,
- * or the line that this chain cannot run the method at all.
+ * or the line that this network cannot run the method at all.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -34,8 +34,8 @@ const IdentityCreateBlock = ({
         {t(copy.noneYet)}
       </Text>
       {unsupported ? (
-        <Text testID={`${row}-not-supported`} fontSize={14} appearance="errorText">
-          {t('socialRecovery.ceremony.notSupportedLine')}
+        <Text testID={`${row}-not-on-network`} fontSize={14} appearance="errorText">
+          {t('socialRecovery.ceremony.notOnThisNetworkLine')}
         </Text>
       ) : (
         <>
