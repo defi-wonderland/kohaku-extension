@@ -8,7 +8,8 @@
  * stands for the new one. A client rebuilt for the same session drops the
  * round its predecessor had in flight and reads again at once; until that
  * round returns, the poll stands as it was, as for any round in flight. An
- * answer older than the live request is a failed round.
+ * answer older than the live request, from the manager it names, is a failed
+ * round.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -52,7 +53,9 @@ const usePoll = ({ kit, target, deps, after }: PollInput): PollHook => {
     inFlight.current = id
     const answer = await readPollFacts(current, POLL_LIMIT_MS)
     const facts =
-      answer && asked.kind === 'live' && behindRequest(asked.gathering, answer) ? undefined : answer
+      answer && asked.kind === 'live' && behindRequest(asked.gathering, answer, current.descriptor)
+        ? undefined
+        : answer
     if (inFlight.current === id) {
       inFlight.current = null
     }

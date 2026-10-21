@@ -81,6 +81,8 @@ const TWO_ROWS: Configuration = configurationOf([
 
 /** Past the deadline of every gathering the harness opens at the fixed clock. */
 const PAST_DEADLINE = NOW + (DAY_SECONDS + 1) * 1000
+// A manager this build no longer reads.
+const RETIRED_MANAGER = '0x00000000000000000000000000000000000Dead1' as const
 
 describe('the request dies', () => {
   let view: Mounted | undefined
@@ -555,6 +557,26 @@ describe('the request dies', () => {
         expect((await storedSession(world.records))?.value.state).toBe('live')
         expect(view?.byTestId('checklist-poll-failed')).not.toBeNull()
       })
+    })
+
+    it('reads a manager at nonce zero as the setup changed for a request of another manager, never as a failed poll', async () => {
+      const gathering = gatheringOf(MIXED_PATH, 3)
+      const retired = {
+        ...gathering,
+        request: { ...gathering.request, manager: RETIRED_MANAGER }
+      }
+      const seeded = await open(MIXED_PATH, withReplies(retired, [1]))
+      kit.recoveryState.mockResolvedValue(
+        recoveryStateOf({ setupNonce: BigInt(0), nextAttemptId: BigInt(3) })
+      )
+
+      await settle(CHECKLIST_POLL_MS)
+
+      expect(wipe).toHaveBeenCalledWith(CHAIN_ID, ACCOUNT, 'setup-changed', seeded.revision)
+      expect(view?.byTestId('checklist-poll-failed')).toBeNull()
+      expect(view?.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t(`${RECORDS}.setupChangedTitle`)
+      )
     })
   })
 

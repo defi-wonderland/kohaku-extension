@@ -52,11 +52,28 @@ export const overviewKindOf = (setup: SetupState): OverviewKind => {
 export const attemptOpenOf = (setup: SetupState, attempt: RecoveryAttemptState): boolean =>
   setup.attemptActive || attempt.attempt.state === 'Waiting'
 
-/** Whether the opened setup this device keeps is the one the chain holds now. */
-export const isCacheCurrent = (cache: DecryptedSetupCacheRecord, setup: SetupState): boolean =>
-  cache.setupNonce === setup.setupNonce &&
-  (cache.setupCommitment === undefined ||
-    cache.setupCommitment.toLowerCase() === setup.setupCommitment.toLowerCase())
+/**
+ * Whether a setup held on this device was read under the setup the chain
+ * holds now: its nonce, and its commitment where it names one.
+ */
+export const isReadUnder = (
+  held: Pick<DecryptedSetupCacheRecord, 'setupNonce' | 'setupCommitment'>,
+  setup: SetupState
+): boolean =>
+  held.setupNonce === setup.setupNonce &&
+  (held.setupCommitment === undefined ||
+    held.setupCommitment.toLowerCase() === setup.setupCommitment.toLowerCase())
+
+/**
+ * Whether the opened setup this device keeps is the one the chain holds now,
+ * read from the manager and the action the client reads. A cache of another
+ * deployment, or one that names none, is not.
+ */
+export const isCacheCurrent = (
+  cache: DecryptedSetupCacheRecord,
+  setup: SetupState,
+  descriptor: Pick<DeploymentDescriptor, 'manager' | 'action'>
+): boolean => isOfDeployment(cache.deployment, descriptor) && isReadUnder(cache, setup)
 
 /**
  * The highest setup nonce this device has seen for the account at the

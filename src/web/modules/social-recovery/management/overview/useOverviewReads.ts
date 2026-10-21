@@ -191,7 +191,7 @@ export const useOverviewReads = ({
         .decryptedSetupCache(chainId, account)
         .read()
         .catch(() => null)
-      if (cached?.status === 'present' && isCacheCurrent(cached.value, setup)) {
+      if (cached?.status === 'present' && isCacheCurrent(cached.value, setup, kit.descriptor)) {
         return { kind: 'readable', configuration: cached.value.configuration }
       }
       const held = readRecoveryPassword(chainId, account)

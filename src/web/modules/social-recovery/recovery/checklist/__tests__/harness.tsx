@@ -564,7 +564,8 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     setup: { getSetup },
     walletReads: { removedKey },
     action: { isAuthorized },
-    approving: { verify }
+    approving: { verify },
+    descriptor: { manager: BOOK.manager, action: BOOK.action }
   } as unknown as ChecklistKitClient
   return {
     state: { status: 'ready', client },

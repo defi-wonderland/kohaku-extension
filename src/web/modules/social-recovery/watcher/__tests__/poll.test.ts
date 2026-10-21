@@ -137,6 +137,32 @@ describe('a poll of the watched accounts', () => {
     expect(chain.reads.attemptEventsOf).toHaveBeenCalledTimes(1)
   })
 
+  it("reads the opening of a new manager's attempt afresh beside a reading of the same attempt id on a retired manager", async () => {
+    const { chain, storage, poll, record } = setUp()
+    chain.setState(ACCOUNT, stateWith({ attemptId: 1n, state: 'Waiting', payload: PAYLOAD }))
+    chain.setEvents(ACCOUNT, 1n, { started: startedEvent(1n, PAYLOAD) })
+    const retired = { manager: addressOf('retired-manager'), action: DEPLOYMENT.action }
+    await pollAccounts({
+      reads: chain.reads,
+      deployment: retired,
+      accounts: [ACCOUNT],
+      chainId: SEPOLIA,
+      storage,
+      now: () => NOW,
+      limitMs: 1_000,
+      scanLimitMs: 1_000
+    })
+    expect((await record())?.reading?.attempt?.newKey).toBe(NEW_KEY)
+
+    await poll()
+
+    expect(chain.reads.attemptEventsOf).toHaveBeenCalledTimes(2)
+    expect((await record())?.reading).toMatchObject({
+      deployment: DEPLOYMENT,
+      attempt: { attemptId: 1n, newKey: NEW_KEY }
+    })
+  })
+
   it('names no key from an opening whose payload is not the one the attempt committed', async () => {
     const { chain, poll, record } = setUp()
     chain.setState(ACCOUNT, stateWith({ attemptId: 4n, state: 'Waiting', payload: PAYLOAD }))

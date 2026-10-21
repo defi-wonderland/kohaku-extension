@@ -120,7 +120,7 @@ export type UnsatisfiedReading =
 
 export type ChecklistKitClient = Pick<
   RecoveryKitClient,
-  'recovery' | 'setup' | 'walletReads' | 'action' | 'approving'
+  'recovery' | 'setup' | 'walletReads' | 'action' | 'approving' | 'descriptor'
 >
 
 export type ChecklistClient =

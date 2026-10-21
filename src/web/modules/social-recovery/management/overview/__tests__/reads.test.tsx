@@ -301,6 +301,19 @@ describe('the overview reads', () => {
     expect(view.byTestId('overview-chip-not-set-up')).not.toBeNull()
   })
 
+  it('keeps a private path locked beside a cache of a retired manager at the same nonce with no commitment', async () => {
+    const world = await worldAt('private')
+    const { setupNonce } = await world.client.setup.setupState()
+    await world.records
+      .decryptedSetupCache(CHAIN_ID, ACCOUNT)
+      .write({ configuration: CONFIGURATION, setupNonce, deployment: RETIRED })
+
+    view = await renderOver(world)
+
+    expect(view.byTestId('overview-chip-path-locked')).not.toBeNull()
+    expect(view.byTestId('readout-path')).toBeNull()
+  })
+
   it("reads a new manager at nonce zero as not set up beside the watcher's attempt on a retired manager", async () => {
     const storage = makeStorage()
     const world = await worldAt('private', ACCOUNT, storage)

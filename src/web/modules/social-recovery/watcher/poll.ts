@@ -32,6 +32,7 @@ import type {
   AttemptScan,
   WatcherReads
 } from '@web/modules/social-recovery/shared/client/types'
+import { isOfDeployment } from '@web/modules/social-recovery/shared/records/deployment'
 import { sameHash } from '@web/modules/social-recovery/shared/writes/hashes'
 
 import { RESCAN_MARGIN_BLOCKS } from './constants'
@@ -490,7 +491,8 @@ const olderBlockMessage = (block: number, stored: number): string =>
  * write of a poll that outlived its tick never covers a newer poll's. A
  * reading of a block below the stored reading's is written as a failed poll
  * beside the stored reading. Each reading names the deployment it was read
- * from. Answers the number of accounts the badge counts.
+ * from, and only a stored reading of the same deployment lends its scan hints
+ * and its settled ending. Answers the number of accounts the badge counts.
  */
 export const pollAccounts = async ({
   reads,
@@ -512,7 +514,9 @@ export const pollAccounts = async ({
   const records = await Promise.all(
     accounts.map(async (account) => {
       try {
-        const previous = (await readWatcherRecord(storage, chainId, account))?.reading
+        // A reading of another deployment, or one that names none, holds no hint for this one.
+        const stored = (await readWatcherRecord(storage, chainId, account))?.reading
+        const previous = isOfDeployment(stored?.deployment, deployment) ? stored : undefined
         const reading = await pollAccount(reads, account, latestBlock, previous, {
           stateMs: Math.max(deadline - now(), 0),
           scanMs: scanLimitMs

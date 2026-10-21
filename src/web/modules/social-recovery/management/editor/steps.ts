@@ -40,7 +40,7 @@
 import { REMOVAL_DRAFT } from '@web/modules/social-recovery/management/overview/constants'
 import {
   attemptOpenOf,
-  isCacheCurrent
+  isReadUnder
 } from '@web/modules/social-recovery/management/overview/readings'
 import type { SetupConfirmation, SetupState } from '@kohaku-eth/social-recovery'
 import {
@@ -209,7 +209,7 @@ export const editStepsOf = (input: EditStepsInput): SaveSteps => {
   return {
     ...save,
     ...ownRequestSteps('manageEdit', save),
-    hasSetup: async () => !isCacheCurrent(baseline, await input.client.setup.setupState()),
+    hasSetup: async () => !isReadUnder(baseline, await input.client.setup.setupState()),
     async prepare(): Promise<PreparedSave> {
       if (sealed && password === undefined) {
         throw new Error('The save seals the setup and needs the recovery password.')
