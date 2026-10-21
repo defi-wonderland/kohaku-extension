@@ -129,15 +129,15 @@ afterEach(() => {
 })
 
 describe('methodFor', () => {
-  it('serves the two primary methods at the deployment addresses, and no identity method', async () => {
+  it('serves the two primary methods at the deployment addresses, and both identity methods', async () => {
     const world = createDeployedWorld()
     const client = await clientOver(world)
     const modulesOf = (slug: string): Address[] =>
       (client.methodFor(slug)?.modules(client.descriptor) ?? []).map((m) => getAddress(m))
     expect(modulesOf('ecdsa')).toContain(getAddress(DEPLOYED_FACTS.methodEcdsa))
     expect(modulesOf('passkey')).toContain(getAddress(DEPLOYED_FACTS.methodPasskey))
-    expect(client.methodFor('aadhaar')).toBeUndefined()
-    expect(client.methodFor('zkpassport')).toBeUndefined()
+    expect(client.methodFor('aadhaar')?.deviceBinding).toBe('in-browser-prover')
+    expect(client.methodFor('zkpassport')?.deviceBinding).toBe('external-app')
     expect(client.methodFor('unknown')).toBeUndefined()
   })
 

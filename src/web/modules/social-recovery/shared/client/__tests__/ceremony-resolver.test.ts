@@ -38,7 +38,6 @@ import {
   networkRecord,
   recordsInMemory,
   sameAddress,
-  spyOnBuilder,
   thrownBy
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
@@ -63,16 +62,9 @@ afterEach(() => {
   deploymentVariable.mockReset()
 })
 
-const SLUGS = ['ecdsa', 'passkey'] as const
+const SLUGS = ['ecdsa', 'passkey', 'aadhaar', 'zkpassport'] as const
 
 describe("the client's method implementation by slug", () => {
-  ;(['aadhaar', 'zkpassport'] as const).forEach((slug) =>
-    it(`hands out nothing for ${slug}, which this build ships no implementation of`, async () => {
-      const client = await buildRecoveryClient(createWorld().config)
-      expect(client.methodFor(slug)).toBeUndefined()
-    })
-  )
-
   SLUGS.forEach((slug) =>
     it(`hands out for ${slug} the implementation the approving side runs for its module`, async () => {
       const world = createWorld()
@@ -97,29 +89,6 @@ describe("the client's method implementation by slug", () => {
     const methods = SLUGS.map((slug) => client.methodFor(slug))
     expect(new Set(methods).size).toBe(SLUGS.length)
     SLUGS.forEach((slug, i) => expect(client.methodFor(slug)).toBe(methods[i]))
-  })
-
-  it('hands out, for two slugs on one module, the one method the approving side runs for it', async () => {
-    const { addressBook } = createWorld().config
-    const shared = addressBook.methods.passkey
-    const world = createWorld({
-      addressBook: { ...addressBook, methods: { ...addressBook.methods, aadhaar: shared } }
-    })
-    const spies = spyOnBuilder()
-    const client = await buildRecoveryClient(world.config)
-    const serving = spies.withMethod.mock.calls
-      .map(([registered]) => registered as IRecoveryMethod)
-      .filter((registered) =>
-        registered.modules(world.descriptor).some((served) => sameAddress(served, shared))
-      )
-    expect(serving).toHaveLength(1)
-    const [method] = serving
-    expect(client.methodFor('passkey')).toBe(method)
-    expect(client.methodFor('aadhaar')).toBe(method)
-    const input = { kind: 'nothing-to-perform' } as const
-    const enroll = jest.spyOn(method, 'enrollInput').mockReturnValue(input)
-    expect(client.approving.enrollInput(shared, {})).toEqual(input)
-    expect(enroll).toHaveBeenCalledTimes(1)
   })
 
   const UNKNOWN = [
@@ -534,30 +503,6 @@ describe('the client builder the ceremony tab uses', () => {
 })
 
 describe('a request for a method the page serves no device for, on the client the extension builds', () => {
-  ;(['zkpassport', 'aadhaar'] as const).forEach((slug) =>
-    it(`refuses a request for ${slug}, which this build ships no implementation of`, async () => {
-      const world = createWorld()
-      buildProvider.mockReturnValue(world.ethers)
-      const { records } = recordsInMemory()
-      const resolve = createCeremonyResolver({
-        records,
-        clientFor: extensionClientFor(() => [networkRecord('sepolia')])
-      })
-      const module = world.config.addressBook.methods[slug]
-      await records.ceremonyRequest(ID).write({
-        account: world.account,
-        chainId: CHAIN_ID,
-        method: slug,
-        call: 'enroll',
-        methodAddress: module,
-        params: {}
-      })
-      await expect(resolve(routeOf('enroll', slug))).resolves.toEqual({
-        refused: 'no-implementation'
-      })
-    })
-  )
-
   const OTHER_SLUGS = ['ecdsa'] as const
   OTHER_SLUGS.forEach((slug) =>
     (['enroll', 'testAccess'] as const).forEach((call) =>

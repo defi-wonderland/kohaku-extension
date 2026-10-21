@@ -123,6 +123,8 @@ jest.mock('@common/components/Panel', () => {
   }
 })
 jest.mock('@common/components/Spinner', () => ({ __esModule: true, default: () => null }))
+// The QR library ships untranspiled modules.
+jest.mock('react-native-qrcode-svg', () => ({ __esModule: true, default: () => null }))
 jest.mock('@common/components/Text', () => {
   const R = jest.requireActual('react')
   return {
@@ -457,11 +459,7 @@ describe('the ceremony tab with no provider above it', () => {
     expect(page.textContent).not.toContain(TRY_AGAIN)
   })
 
-  const OTHER_BINDINGS: [string, DeviceBinding][] = [
-    ['ecdsa', 'none'],
-    ['zkpassport', 'external-app'],
-    ['aadhaar', 'in-browser-prover']
-  ]
+  const OTHER_BINDINGS: [string, DeviceBinding][] = [['ecdsa', 'none']]
   OTHER_BINDINGS.forEach(([slug, binding]) =>
     it(`ends the ${slug} request as not supported with no retry, since the page serves only the browser authenticator`, async () => {
       const other = fakeMethod({}, binding)

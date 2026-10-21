@@ -88,7 +88,7 @@ describe('buildRecoveryClient', () => {
     expect(inputs.account).toBe(world.account)
   })
 
-  it("hands the builder the SDK's own parts: its policy manager, the action codec and the two shipped methods", async () => {
+  it("hands the builder the SDK's own parts: its policy manager, the action codec and the four methods", async () => {
     const spies = spyOnBuilder()
     const world = createWorld()
     await buildRecoveryClient(world.config)
@@ -97,7 +97,7 @@ describe('buildRecoveryClient', () => {
     expect(lastArg(spies.withPolicyManager)).toBeInstanceOf(PolicyManager)
     expect(spies.withCodec).toHaveBeenCalledTimes(1)
     expect(lastArg(spies.withCodec)).toBeInstanceOf(AmbireActionCodec)
-    expect(spies.withMethod).toHaveBeenCalledTimes(2)
+    expect(spies.withMethod).toHaveBeenCalledTimes(4)
     expect(spies.withEventManager).toHaveBeenCalledWith({
       logChunkSize: clientConfigurationOf(world.config).logChunkSize
     })
