@@ -157,9 +157,9 @@ describe('the overview writes', () => {
     expect(cache.status === 'present' && cache.value.setupNonce).toBe(agreed.nonce)
     const now = await world.client.setup.setupState()
     expect(now.setupNonce).not.toBe(agreed.nonce)
-    expect(cache.status === 'present' && isCacheCurrent(cache.value, now, world.client.descriptor)).toBe(
-      false
-    )
+    expect(
+      cache.status === 'present' && isCacheCurrent(cache.value, now, world.client.descriptor)
+    ).toBe(false)
   })
 
   it('leaves the cache untouched where a re-authorize wipes with no check of its own', async () => {

@@ -515,8 +515,8 @@ export const pollAccounts = async ({
     accounts.map(async (account) => {
       try {
         // A reading of another deployment, or one that names none, holds no hint for this one.
-        const stored = (await readWatcherRecord(storage, chainId, account))?.reading
-        const previous = isOfDeployment(stored?.deployment, deployment) ? stored : undefined
+        const held = (await readWatcherRecord(storage, chainId, account))?.reading
+        const previous = isOfDeployment(held?.deployment, deployment) ? held : undefined
         const reading = await pollAccount(reads, account, latestBlock, previous, {
           stateMs: Math.max(deadline - now(), 0),
           scanMs: scanLimitMs
