@@ -5,8 +5,16 @@
  * the account and chain that request names.
  */
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
-import { passkeyMethod } from '@kohaku-eth/social-recovery'
-import type { ApproverRequest, IRecoveryMethod } from '@kohaku-eth/social-recovery'
+import { approvalDigest, passkeyMethod } from '@kohaku-eth/social-recovery'
+import type {
+  Address,
+  ApproverRequest,
+  Hex,
+  IMethodsOrchestrator,
+  IRecoveryMethod,
+  Reply,
+  Verdict
+} from '@kohaku-eth/social-recovery'
 import {
   CEREMONY_REPORT_CLOCK_SKEW_MS,
   CEREMONY_REPORT_TTL_MS,
@@ -16,7 +24,8 @@ import {
   runCeremony,
   type CeremonyCall,
   type CeremonyParams,
-  type CeremonyResolver
+  type CeremonyResolver,
+  type ChainVerdict
 } from '@web/modules/social-recovery/shared/ceremony'
 import {
   ABSENT,
@@ -34,11 +43,14 @@ import {
   DEPLOYED_FACTS,
   deploymentDescriptor,
   extensionClientFor,
+  failEverything,
   fakeApprovingClient,
   networkRecord,
   recordsInMemory,
   sameAddress,
-  thrownBy
+  sdkStandIn,
+  thrownBy,
+  World
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
@@ -550,4 +562,191 @@ describe('a request for a method the page serves no device for, on the client th
       })
     )
   )
+})
+
+describe("the chain's verdict the resolver hands the tab", () => {
+  const CHAIN_VERDICT: ChainVerdict = async () => 'satisfied'
+
+  const withVerdictWorld = () => {
+    const passkey = passkeyMethod()
+    const { records, clock } = recordsInMemory({ t: T0 })
+    const client = { ...fakeApprovingClient({ passkey }), chainVerdict: CHAIN_VERDICT }
+    const resolve = createCeremonyResolver({
+      records,
+      clientFor: async () => client,
+      now: () => clock.t
+    })
+    return { records, resolve }
+  }
+
+  it('hands it to an access test', async () => {
+    const { records, resolve } = withVerdictWorld()
+    await records.ceremonyRequest(ID).write({ ...target, call: 'testAccess', request: REQUEST })
+    expect(ceremonyOf(await resolve(routeOf('testAccess'))).chainVerdict).toBe(CHAIN_VERDICT)
+  })
+  ;(['enroll', 'createClaim'] as const).forEach((call) =>
+    it(`hands none at ${call}`, async () => {
+      const { records, resolve } = withVerdictWorld()
+      await records
+        .ceremonyRequest(ID)
+        .write(call === 'enroll' ? ENROLL : { ...target, call, request: REQUEST })
+      const resolved = ceremonyOf(await resolve(routeOf(call)))
+      expect(resolved).not.toHaveProperty('chainVerdict')
+    })
+  )
+
+  it('hands none to an access test where the client reads none', async () => {
+    const { records, clock } = recordsInMemory({ t: T0 })
+    const resolve = createCeremonyResolver({
+      records,
+      clientFor: async () => fakeApprovingClient({ passkey: passkeyMethod() }),
+      now: () => clock.t
+    })
+    await records.ceremonyRequest(ID).write({ ...target, call: 'testAccess', request: REQUEST })
+    expect(ceremonyOf(await resolve(routeOf('testAccess')))).not.toHaveProperty('chainVerdict')
+  })
+})
+
+describe("the chain's verdict of the client builder the ceremony tab uses", () => {
+  const SEPOLIA = networkRecord('sepolia')
+  const PROOF: Hex = '0x01'
+
+  /** A request of the world's account and deployment for `method` and `config`, and its reply. */
+  const exchangeFor = (world: World, method: Address, config: Hex) => {
+    const request = {
+      ...REQUEST,
+      chainId: String(world.descriptor.chainId),
+      manager: world.descriptor.manager,
+      action: world.descriptor.action,
+      account: world.account,
+      method,
+      config
+    } as ApproverRequest & { purpose: 'approval' }
+    const digest = approvalDigest(
+      {
+        chainId: Number(request.chainId),
+        manager: request.manager,
+        account: request.account,
+        action: request.action,
+        attemptId: BigInt(request.attemptId),
+        setupNonce: BigInt(request.setupNonce),
+        setupBodyHash: request.setupBodyHash,
+        validUntil: Number(request.validUntil),
+        payload: request.payload,
+        order: { ...request.order, amount: 0n }
+      },
+      request.place
+    )
+    const reply: Reply = {
+      kind: 'recovery-proof-reply',
+      version: 1,
+      chainId: request.chainId,
+      manager: request.manager,
+      account: request.account,
+      action: request.action,
+      attemptId: request.attemptId,
+      purpose: 'approval',
+      place: request.place,
+      method,
+      config,
+      salt: request.salt,
+      digest,
+      proof: PROOF
+    }
+    return { request, reply }
+  }
+
+  /** The access test of a method that cannot judge its proof, judged by `chainVerdict`. */
+  const accessTestOver = (
+    chainVerdict: ChainVerdict | undefined,
+    request: ApproverRequest,
+    reply: Reply
+  ) => {
+    const orchestrator = {
+      signingInput: () => ({}),
+      replyFrom: async () => reply,
+      verify: async (): Promise<Verdict> => 'not-judged'
+    } as unknown as IMethodsOrchestrator
+    const method = { deviceBinding: 'external-app' } as unknown as IRecoveryMethod
+    return runCeremony(
+      routeOf('testAccess', 'zkpassport'),
+      { orchestrator, method, request, ...(chainVerdict ? { chainVerdict } : {}) },
+      {
+        devices: {
+          'external-app': {
+            enroll: async () => ({ ok: true, material: {} }),
+            sign: async () => ({ ok: true, material: {} })
+          }
+        }
+      }
+    )
+  }
+
+  it('reads each verdict on a deployed chain through a provider of its own, destroyed after the read', async () => {
+    deploymentVariable.mockReturnValue(JSON.stringify(DEPLOYED_FACTS))
+    const world = createDeployedWorld()
+    buildProvider.mockReturnValue(world.ethers)
+    const client = await extensionClientFor(() => [SEPOLIA])(world.account, CHAIN_ID)
+    expect(buildProvider).toHaveBeenCalledTimes(1)
+    expect(world.ethers.destroy).toHaveBeenCalledTimes(1)
+    const config: Hex = `0x${'a1'.repeat(96)}`
+    const { request, reply } = exchangeFor(world, world.descriptor.methodZkpassport, config)
+
+    world.chain.setVerdict(config, 'satisfied')
+    expect(await accessTestOver(client.chainVerdict, request, reply)).toMatchObject({
+      verdict: 'passed'
+    })
+    expect(buildProvider).toHaveBeenCalledTimes(2)
+    expect(buildProvider.mock.calls[1][0]).toBe(SEPOLIA)
+    expect(world.ethers.destroy).toHaveBeenCalledTimes(2)
+
+    world.chain.setVerdict(config, 'rejected')
+    expect(await accessTestOver(client.chainVerdict, request, reply)).toEqual({
+      kind: 'verdict',
+      verdict: 'failed',
+      retry: true,
+      cause: 'check-rejected'
+    })
+    expect(buildProvider).toHaveBeenCalledTimes(3)
+    expect(world.ethers.destroy).toHaveBeenCalledTimes(3)
+
+    failEverything(world.ethers, new Error('the node did not answer'))
+    expect(await accessTestOver(client.chainVerdict, request, reply)).toEqual({
+      kind: 'verdict',
+      verdict: 'unavailable',
+      retry: true,
+      cause: 'service-unanswered'
+    })
+    expect(buildProvider).toHaveBeenCalledTimes(4)
+    expect(world.ethers.destroy).toHaveBeenCalledTimes(4)
+  })
+
+  it("reads the same page's fake node on the stand-in chain, through no provider of its own", async () => {
+    deploymentVariable.mockReturnValue(undefined)
+    const world = createWorld({ chain: 'sepolia' })
+    buildProvider.mockReturnValue(world.ethers)
+    const client = await extensionClientFor(() => [SEPOLIA])(world.account, CHAIN_ID)
+    const config: Hex = `0x${'b2'.repeat(96)}`
+    const { request, reply } = exchangeFor(world, world.descriptor.methodPasskey, config)
+
+    sdkStandIn.nodeFor(world.descriptor, world.account).setVerdict(config, 'satisfied')
+    expect(await accessTestOver(client.chainVerdict, request, reply)).toMatchObject({
+      verdict: 'passed'
+    })
+    sdkStandIn.nodeFor(world.descriptor, world.account).setVerdict(config, 'rejected')
+    expect(await accessTestOver(client.chainVerdict, request, reply)).toMatchObject({
+      verdict: 'failed',
+      cause: 'check-rejected'
+    })
+    expect(buildProvider).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a proof the method cannot judge unavailable where the tab holds no chain verdict', async () => {
+    const world = createWorld({ chain: 'sepolia' })
+    const { request, reply } = exchangeFor(world, world.descriptor.methodZkpassport, '0x01')
+    expect(await accessTestOver(undefined, request, reply)).toMatchObject({
+      verdict: 'unavailable',
+      cause: 'not-judged'
+    })
+  })
 })

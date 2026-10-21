@@ -410,3 +410,25 @@ describe('an address book naming another action', () => {
     expect(descriptor.auditedActions).not.toContain(other)
   })
 })
+
+describe('an address book naming one module for two methods', () => {
+  const PAIRS = [
+    ['passkey', 'aadhaar'],
+    ['zkpassport', 'aadhaar'],
+    ['ecdsa', 'zkpassport']
+  ] as const
+  PAIRS.forEach(([kept, moved]) =>
+    it(`refuses to build where ${moved} names the ${kept} module, since no module serves two methods`, async () => {
+      const { addressBook } = createWorld().config
+      const shared = addressBook.methods[kept]
+      const world = createWorld({
+        addressBook: { ...addressBook, methods: { ...addressBook.methods, [moved]: shared } }
+      })
+      const caught = await thrownBy(buildRecoveryClient(world.config))
+      expect(caught).toBeInstanceOf(TypeError)
+      expect(caught).toMatchObject({
+        message: expect.stringMatching(/two registered method implementations claim the module/)
+      })
+    })
+  )
+})
