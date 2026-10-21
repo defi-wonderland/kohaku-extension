@@ -201,11 +201,14 @@ export interface DeviceCallContext {
 
 /**
  * A zkPassport request as the installed app library delivers it: the SDK's
- * request, and the result callback the library still fires, which carries the
- * verified flag and the unique identifier an enrollment needs.
+ * request, the result callback the library still fires, which carries the
+ * verified flag and the unique identifier an enrollment needs, and the
+ * callbacks of the bridge that connects the phone.
  */
 export type ZkPassportRequestWithResult = ZkPassportRequest & {
   onResult?: (callback: (response: unknown) => void) => void
+  onBridgeConnect?: (callback: () => void) => void
+  onBridgeConnectionLost?: (callback: () => void) => void
 }
 
 /** The chain's verdict over a reply: the `verify` view of the reply's method module. */

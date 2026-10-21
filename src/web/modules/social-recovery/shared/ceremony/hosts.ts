@@ -252,7 +252,10 @@ const judgedVerdict = async (
   if (local !== 'not-judged' || !context.chainVerdict) {
     return local
   }
-  const read = context.chainVerdict(context.request, reply).catch(() => 'unanswered' as const)
+  const { chainVerdict } = context
+  const read = Promise.resolve()
+    .then(() => chainVerdict(context.request, reply))
+    .catch(() => 'unanswered' as const)
   const { signal } = context
   if (!signal) {
     return read

@@ -12,8 +12,10 @@
  * The phone's refusal is the refused note, an error the phone reported is a
  * failure with its message, and a request that does not open, or whose
  * library offers no result callback at an enrollment, is a device that did not
- * answer. A page that cannot draw the code runs no request. The device keeps no timer of its own: the tab's expiry
- * rules hold. After an abort no callback is honoured.
+ * answer. A connection to the phone lost before any proof arrived is a phone
+ * that never connected; lost after, it changes nothing. A page that cannot
+ * draw the code runs no request. The device keeps no timer of its own: the
+ * tab's expiry rules hold. After an abort no callback is honoured.
  */
 import type { Input, Material, ZkPassportStackProof } from '@kohaku-eth/social-recovery'
 
@@ -38,12 +40,14 @@ const REQUEST_CALLBACKS = [
   'onError'
 ] as const
 
+const OPTIONAL_CALLBACKS = ['onResult', 'onBridgeConnect', 'onBridgeConnectionLost'] as const
+
 /** Whether the app library's answer is a request this device can follow. */
 const isRequest = (value: unknown): value is ZkPassportRequestWithResult =>
   isRecord(value) &&
   typeof value.url === 'string' &&
   REQUEST_CALLBACKS.every((name) => typeof value[name] === 'function') &&
-  (value.onResult === undefined || typeof value.onResult === 'function')
+  OPTIONAL_CALLBACKS.every((name) => value[name] === undefined || typeof value[name] === 'function')
 
 /** The opener the method's input carries, or undefined where it carries none. */
 const openerOf = (input: Input): (() => Promise<unknown>) | undefined => {
@@ -107,6 +111,13 @@ const follow = (
       whileOpen((message: string) =>
         settle(stopped(failed('phone-error', typeof message === 'string' ? message : undefined)))
       )
+    )
+    request.onBridgeConnectionLost?.(
+      whileOpen(() => {
+        if (generated.length === 0) {
+          settle(stopped(unavailable('unreachable')))
+        }
+      })
     )
     listen(whileOpen(settle), generated)
 
