@@ -307,7 +307,8 @@
       "rejectedCause": "The result did not pass the method's own check. Try again with the same document.",
       "phoneRequestName": "Kohaku",
       "phoneRequestPurposeEnroll": "Enroll your passport as a way to recover your Kohaku account",
-      "phoneRequestPurposeClaim": "Approve the recovery of a Kohaku account"
+      "phoneRequestPurposeClaim": "Approve the recovery of a Kohaku account",
+      "notOnThisNetworkLine": "This method is not available on this network."
     },
     "records": {
       "expiredTitle": "This request expired",
@@ -547,7 +548,7 @@
         "needsApp": "You need the zkPassport app on a phone that can read the chip. The document must be a passport or an identity card with a chip.",
         "noneYet": "No passport enrolled yet",
         "scanAction": "Scan with your phone",
-        "scanLine": "A code appears in a new tab. Scan it with the zkPassport app, read the chip, and approve the request there.",
+        "scanLine": "A code appears on the next screen. Scan it with the zkPassport app, read the chip, and approve the request there.",
         "enrolledLine": "Your passport is enrolled. The wallet stores the identifier, never the document.",
         "testLead": "Run the check once now. Your phone reads the chip again and the chain confirms the result.",
         "testPassed": "The chain confirmed the identifier your passport produces."
