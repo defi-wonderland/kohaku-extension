@@ -332,8 +332,22 @@ describe('a build with a Sepolia deployment variable', () => {
   it('takes a nullifier seed of 77 digits', () => {
     const seed = '9'.repeat(77)
     expect(
-      deploymentFactsFrom(json({ ...FACTS, aadhaarNullifierSeed: seed })).aadhaarNullifierSeed
+      deploymentFactsFrom(
+        json({ ...FACTS, aadhaarNullifierSeed: seed, aadhaarCertificate: CERTIFICATE })
+      ).aadhaarNullifierSeed
     ).toBe(seed)
+  })
+
+  it('takes both identity method pairs together without the testnet flag', () => {
+    const pairs = {
+      zkPassportDomain: IDENTITY_FIELDS.zkPassportDomain,
+      zkPassportScope: IDENTITY_FIELDS.zkPassportScope,
+      aadhaarNullifierSeed: IDENTITY_FIELDS.aadhaarNullifierSeed,
+      aadhaarCertificate: IDENTITY_FIELDS.aadhaarCertificate
+    }
+    const facts = deploymentFactsFrom(json({ ...FACTS, ...pairs }))
+    expect(facts).toMatchObject(pairs)
+    expect(facts.zkPassportTestnetTree).toBeUndefined()
   })
 
   it('takes a new value of the variable at the next call', () => {
@@ -506,6 +520,26 @@ describe('a malformed deployment variable', () => {
       'an Aadhaar certificate that is not PEM',
       json({ ...FACTS, aadhaarCertificate: 'MIIBmade+up' }),
       /aadhaarCertificate must be a PEM certificate/
+    ],
+    [
+      'a zkPassport domain without its scope',
+      json({ ...FACTS, zkPassportDomain: IDENTITY_FIELDS.zkPassportDomain }),
+      /zkPassportDomain and zkPassportScope must be given together/
+    ],
+    [
+      'a zkPassport scope without its domain',
+      json({ ...FACTS, zkPassportScope: IDENTITY_FIELDS.zkPassportScope }),
+      /zkPassportDomain and zkPassportScope must be given together/
+    ],
+    [
+      'an Aadhaar nullifier seed without its certificate',
+      json({ ...FACTS, aadhaarNullifierSeed: IDENTITY_FIELDS.aadhaarNullifierSeed }),
+      /aadhaarNullifierSeed and aadhaarCertificate must be given together/
+    ],
+    [
+      'an Aadhaar certificate without its nullifier seed',
+      json({ ...FACTS, aadhaarCertificate: CERTIFICATE }),
+      /aadhaarNullifierSeed and aadhaarCertificate must be given together/
     ]
   ]
 

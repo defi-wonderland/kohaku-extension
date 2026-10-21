@@ -53,6 +53,11 @@ const FIELDS: readonly string[] = [
   'auditedActions',
   'explorerUrl'
 ]
+// An identity method's request needs both fields of its pair, so a line names both or neither.
+const IDENTITY_PAIRS = [
+  ['zkPassportDomain', 'zkPassportScope'],
+  ['aadhaarNullifierSeed', 'aadhaarCertificate']
+] as const
 const AUDITED_ACTION_FIELDS: readonly string[] = ['action', 'publisher']
 
 const refuse = (reason: string): never => {
@@ -155,8 +160,10 @@ const explorerUrlAt = (value: unknown): string => {
  * known fields, an address is malformed or zero, the deployment block is not a
  * whole number of zero or more, a version or an identity method's text is
  * empty, the testnet flag is not a boolean, the Aadhaar nullifier seed is not
- * a decimal number, the Aadhaar certificate is not PEM, an audited action
- * names an unknown publisher, or the explorer URL is not an http or https URL.
+ * a decimal number, the Aadhaar certificate is not PEM, the line names one
+ * field of the zkPassport domain and scope or of the Aadhaar seed and
+ * certificate without the other, an audited action names an unknown
+ * publisher, or the explorer URL is not an http or https URL.
  */
 export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   let parsed: unknown
@@ -202,6 +209,11 @@ export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   if (parsed.explorerUrl !== undefined) {
     facts.explorerUrl = explorerUrlAt(parsed.explorerUrl)
   }
+  IDENTITY_PAIRS.forEach(([first, second]) => {
+    if ((facts[first] === undefined) !== (facts[second] === undefined)) {
+      refuse(`${first} and ${second} must be given together`)
+    }
+  })
   return facts
 }
 
