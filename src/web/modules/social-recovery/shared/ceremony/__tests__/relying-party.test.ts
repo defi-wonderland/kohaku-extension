@@ -111,7 +111,7 @@ describe('the origin string the method names', () => {
   it('reaches navigator.credentials.create with the SDK passkey method of the wallet', async () => {
     const method = fakeMethod()
     const outcome = await hosts.enroll({ method, orchestrator: fakeOrchestrator(method) })
-    const asked = sdkPasskeyMethod().enrollInput(callerParams()) as {
+    const asked = sdkPasskeyMethod().enrollInput(callerParams()) as unknown as {
       options: CredentialCreationOptions
     }
     expect(creds.create).toHaveBeenCalledTimes(1)
@@ -211,7 +211,9 @@ describe('the origin string the method names', () => {
         const publicKey = real.options.publicKey as PublicKeyCredentialCreationOptions
         return {
           ...real,
-          options: { publicKey: { ...publicKey, rp: { ...publicKey.rp, id: 'https://example.com' } } }
+          options: {
+            publicKey: { ...publicKey, rp: { ...publicKey.rp, id: 'https://example.com' } }
+          }
         }
       }
     ]
@@ -232,10 +234,9 @@ describe('the origin string the method names', () => {
 
   it('refuses request options that name the bare id, before any ceremony', async () => {
     const method = fakeMethod({
-      signingInput: sdkPasskeyMethod().signingInput(
-        { digest: FIXTURE_DIGEST } as Ctx,
-        { relyingPartyId: EXTENSION_ID }
-      )
+      signingInput: sdkPasskeyMethod().signingInput({ digest: FIXTURE_DIGEST } as Ctx, {
+        relyingPartyId: EXTENSION_ID
+      })
     })
     const orchestrator = fakeOrchestrator(method)
     const outcome = await hosts.createClaim({ method, orchestrator })

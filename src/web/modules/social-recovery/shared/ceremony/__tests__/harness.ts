@@ -75,6 +75,12 @@ if (!globalThis.crypto?.subtle) {
 // viem builds a TextEncoder when it loads, so it loads after the globals above
 // and a jsdom test reads its helpers from here.
 const viem = require('viem') as typeof import('viem')
+
+/** The SDK's own passkey method; the SDK builds a TextEncoder when it loads, so it loads late. */
+export const sdkPasskeyMethod = (): IRecoveryMethod =>
+  (
+    require('@kohaku-eth/social-recovery') as typeof import('@kohaku-eth/social-recovery')
+  ).passkeyMethod()
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
 export const { bytesToHex, hexToBytes, zeroHash } = viem
@@ -882,10 +888,6 @@ export const ceremony = (): CeremonyModule =>
 /** The tab's browser defaults: the passkey device over `navigator.credentials` at this page's origin. */
 export const browserDefaults = (): BrowserDefaultsModule =>
   require('@web/modules/social-recovery/shared/ceremony/screen/browserDefaults') as BrowserDefaultsModule
-
-/** The SDK's own passkey method; the SDK builds a TextEncoder when it loads, so it loads late. */
-export const sdkPasskeyMethod = (): IRecoveryMethod =>
-  (require('@kohaku-eth/social-recovery') as typeof import('@kohaku-eth/social-recovery')).passkeyMethod()
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
 const MODULE_VERDICT: Record<string, FourVerdict> = {
