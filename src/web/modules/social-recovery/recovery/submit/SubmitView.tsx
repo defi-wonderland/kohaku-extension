@@ -8,7 +8,7 @@
  * step.
  */
 import React from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
@@ -22,6 +22,7 @@ import {
   SectionCard,
   TwoColumn
 } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import { mayStillLand } from '@web/modules/social-recovery/shared/writes'
 import { DepositStepAside } from '@web/modules/social-recovery/shared/writes/components'
 
@@ -67,7 +68,9 @@ const SubmitView = ({
   if (load.phase === 'loading') {
     return (
       <TwoColumn testID="submit-columns">
-        <ActivityIndicator testID="submit-loading" />
+        <View testID="submit-loading" style={flexbox.flex1}>
+          <LoadingBlock variant="screen" message={t('socialRecovery.loading.session')} />
+        </View>
       </TwoColumn>
     )
   }
