@@ -342,26 +342,30 @@ const CeremonyScreen = () => {
     if (step === 'waitingForPhone') {
       return <ScanBlock step={step} phoneReads={phoneReads} onCancel={cancelRun} />
     }
-    return (
-      <View style={[flexbox.alignCenter]} testID="ceremony-waiting">
-        <LoadingBlock
-          variant="block"
-          message={
-            phase === 'resolving'
-              ? t('socialRecovery.loading.request')
-              : renderChip('method', 'inProgress', t)
-          }
-        />
-        <Button
-          type="secondary"
-          text={t('socialRecovery.ceremony.cancelAction')}
-          onPress={cancelRun}
-          style={spacings.mtLg}
-        />
-      </View>
-    )
+    return null
   }
 
+  // The running wait fills the panel and centres in it, outside the columns.
+  const renderWaiting = () => (
+    <View style={[flexbox.flex1, flexbox.alignCenter]} testID="ceremony-waiting">
+      <LoadingBlock
+        variant="screen"
+        message={
+          phase === 'resolving'
+            ? t('socialRecovery.loading.request')
+            : renderChip('method', 'inProgress', t)
+        }
+      />
+      <Button
+        type="secondary"
+        text={t('socialRecovery.ceremony.cancelAction')}
+        onPress={cancelRun}
+        style={spacings.mtLg}
+      />
+    </View>
+  )
+
+  // Nothing, where the body is the running wait.
   const renderBody = () => {
     if (!mayRun) {
       return <Text>{t('socialRecovery.ceremony.tabOnly')}</Text>
@@ -398,6 +402,8 @@ const CeremonyScreen = () => {
     return renderRunning()
   }
 
+  const body = renderBody()
+
   return (
     <TabLayoutContainer
       backgroundColor={theme.secondaryBackground}
@@ -405,7 +411,11 @@ const CeremonyScreen = () => {
     >
       <TabLayoutWrapperMainContent withScroll={false}>
         <Panel spacingsSize="small">
-          <TwoColumn testID="ceremony-columns">{renderBody()}</TwoColumn>
+          {body === null ? (
+            renderWaiting()
+          ) : (
+            <TwoColumn testID="ceremony-columns">{body}</TwoColumn>
+          )}
         </Panel>
       </TabLayoutWrapperMainContent>
     </TabLayoutContainer>

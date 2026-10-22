@@ -522,9 +522,10 @@ describe('the ceremony tab with no provider above it', () => {
       en.socialRecovery.loading.request
     )
     expect(
-      page.querySelector('[data-testid="ceremony-waiting"] [data-testid="loading-block"]')
+      page.querySelector('[data-testid="ceremony-waiting"] [data-testid="loading-screen"]')
         ?.textContent
     ).toBe(en.socialRecovery.loading.request)
+    expect(page.querySelector('[data-testid="ceremony-columns"]')).toBeNull()
     expect(storageGet).not.toHaveBeenCalled()
     expect(networksState).toHaveBeenCalled()
     expect(buildProvider).not.toHaveBeenCalled()
