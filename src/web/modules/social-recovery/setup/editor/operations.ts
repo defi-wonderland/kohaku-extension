@@ -8,7 +8,7 @@
  * whose method is the zero address, whose config is empty and whose label is
  * its kind; it stands for a method the holder has yet to enroll.
  */
-import { decodeAbiParameters } from 'viem'
+import { decodeAbiParameters, isAddressEqual, zeroAddress } from 'viem'
 
 import type {
   Address,
