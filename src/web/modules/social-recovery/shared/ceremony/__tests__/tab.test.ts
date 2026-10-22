@@ -738,6 +738,7 @@ describe('the ceremony tab for the identity bindings', () => {
     buildClient.mockImplementation(async () => ({
       approving: servedOrchestrator,
       methodFor: (asked: string) => (asked === slug ? served : undefined),
+      methodParamsFor: (asked: string) => (asked === slug ? IDENTITY_PARAMS : undefined),
       descriptor: {},
       ...extra
     }))
@@ -973,6 +974,63 @@ describe('the ceremony tab for the identity bindings', () => {
     expect(servedOrchestrator.replyFrom.mock.calls[0][2]).toMatchObject({ qrData: QR_DATA })
     const report = await takeReport('createClaim', 'aadhaar')
     expect(report?.outcome).toMatchObject({ kind: 'verdict', verdict: 'passed' })
+  })
+
+  it('proves only the image picked last, when an earlier pick decodes after it', async () => {
+    const servedOrchestrator = serve('aadhaar', aadhaarMethod())
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('aadhaar'))
+    const page = await render(`?call=enroll&method=aadhaar&id=${ID}`)
+    const decodes: ((qrData: string | undefined) => void)[] = []
+    decodeImage.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          decodes.push(resolve)
+        })
+    )
+
+    await press(page, STRINGS.chooseImage)
+    await pick(new Blob(['first'], { type: 'image/png' }))
+    await press(page, STRINGS.chooseImage)
+    await pick(new Blob(['second'], { type: 'image/png' }))
+    expect(decodes).toHaveLength(2)
+
+    await act(async () => {
+      decodes[0]('111')
+      await flush(20)
+    })
+    expect(servedOrchestrator.configFrom).not.toHaveBeenCalled()
+    expect(page.textContent).toContain(STRINGS.uploadTitle)
+
+    await act(async () => {
+      decodes[1](QR_DATA)
+      await flush(20)
+    })
+    expect(servedOrchestrator.configFrom).toHaveBeenCalledTimes(1)
+    expect(servedOrchestrator.configFrom.mock.calls[0][2]).toMatchObject({ qrData: QR_DATA })
+  })
+
+  it('shows no missing-code line for an earlier pick that decodes to nothing after a later pick', async () => {
+    const servedOrchestrator = serve('aadhaar', aadhaarMethod())
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('aadhaar'))
+    const page = await render(`?call=enroll&method=aadhaar&id=${ID}`)
+    const decodes: ((qrData: string | undefined) => void)[] = []
+    decodeImage.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          decodes.push(resolve)
+        })
+    )
+
+    await press(page, STRINGS.chooseImage)
+    await pick(new Blob(['first'], { type: 'image/png' }))
+    await press(page, STRINGS.chooseImage)
+    await pick(new Blob(['second'], { type: 'image/png' }))
+    await act(async () => {
+      decodes[0](undefined)
+      await flush(20)
+    })
+    expect(page.textContent).not.toContain(STRINGS.noQrFound)
+    expect(servedOrchestrator.configFrom).not.toHaveBeenCalled()
   })
 
   it('cancels at the upload with nothing proved', async () => {

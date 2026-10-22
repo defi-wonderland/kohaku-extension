@@ -116,6 +116,8 @@ const CeremonyScreen = () => {
   const gate = useRef<VisibilityGate | null>(null)
   // The answer a device's pending ask waits for.
   const answerAsk = useRef<((answer: CeremonyAnswer) => void) | null>(null)
+  // The count of images picked; only the latest pick's decode answers the ask.
+  const imagePicks = useRef(0)
   // The store the gate serves, read each time a report is handed to the gate,
   // so a run that began before a new store arrived writes to the new one.
   const reportStore = useRef<ReportStore>(source.store ?? browserReportStore)
@@ -174,9 +176,12 @@ const CeremonyScreen = () => {
       if (!file) {
         return
       }
+      imagePicks.current += 1
+      const pick = imagePicks.current
+      const current = () => mounted.current && pick === imagePicks.current
       qrDataOfImage(file)
         .then((qrData) => {
-          if (!mounted.current || !answerAsk.current) {
+          if (!current() || !answerAsk.current) {
             return
           }
           if (qrData === undefined) {
@@ -185,7 +190,11 @@ const CeremonyScreen = () => {
           }
           answer({ kind: 'qrData', qrData })
         })
-        .catch(() => setNoQrFound(true))
+        .catch(() => {
+          if (current()) {
+            setNoQrFound(true)
+          }
+        })
     })
     input.click()
   }, [answer])
