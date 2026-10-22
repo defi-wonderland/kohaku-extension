@@ -15,6 +15,18 @@ import { TextDecoder, TextEncoder } from 'util'
 import type { ScreensWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
 import type { Configuration } from '@kohaku-eth/social-recovery'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 Object.assign(globalThis, { TextEncoder, TextDecoder })
 
 jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
