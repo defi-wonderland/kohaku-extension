@@ -365,6 +365,8 @@ export interface ReviewArrivalProps {
   onEditor: () => void
   onOverview: () => void
   backToEditor: ReactNode
+  /** The save on its way, drawn in place of the save's own actions under the same content. */
+  run?: ReactNode
 }
 
 export interface ReviewSetupChangedProps {
@@ -399,6 +401,8 @@ export interface RemoveArrivalProps {
   onRemove: () => void
   onLookAgain: () => void
   keep: ReactNode
+  /** The removal on its way, drawn in place of the removal's own actions under the same content. */
+  run?: ReactNode
 }
 
 export interface RemoveDisagreedProps {

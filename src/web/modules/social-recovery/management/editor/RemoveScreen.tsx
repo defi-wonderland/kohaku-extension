@@ -247,8 +247,7 @@ export const RemoveStageView = ({
             testID="manage-remove-confirming"
           />
         )}
-        {screen === 'run' && <RemoveRun run={run} attemptOpen={attemptOpen} keep={keep} />}
-        {arrives && (
+        {(arrives || screen === 'run') && (
           <RemoveArrival
             heldFailed={held.status === 'failed'}
             onRetryHeld={retryHeld}
@@ -263,6 +262,11 @@ export const RemoveStageView = ({
             onRemove={run.start}
             onLookAgain={run.lookAgain}
             keep={keep}
+            run={
+              screen === 'run' ? (
+                <RemoveRun run={run} attemptOpen={attemptOpen} keep={keep} />
+              ) : undefined
+            }
           />
         )}
       </ReadsGate>

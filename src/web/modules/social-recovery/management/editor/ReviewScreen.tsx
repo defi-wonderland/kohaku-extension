@@ -360,15 +360,7 @@ export const ReviewStageView = ({
             testID="manage-review-confirming"
           />
         )}
-        {screen === 'run' && (
-          <ReviewRun
-            run={run}
-            attemptOpen={attemptOpen}
-            dormantRefused={dormantRefused}
-            backToEditor={backToEditor}
-          />
-        )}
-        {arrives && (
+        {(arrives || screen === 'run') && (
           <ReviewArrival
             held={held}
             load={load}
@@ -397,6 +389,16 @@ export const ReviewStageView = ({
             onEditor={toEditor}
             onOverview={toOverview}
             backToEditor={backToEditor}
+            run={
+              screen === 'run' ? (
+                <ReviewRun
+                  run={run}
+                  attemptOpen={attemptOpen}
+                  dormantRefused={dormantRefused}
+                  backToEditor={backToEditor}
+                />
+              ) : undefined
+            }
           />
         )}
       </ReadsGate>

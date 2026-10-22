@@ -829,6 +829,9 @@ describe('the waits of the review and the removal', () => {
 
   it('keeps the save on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
     const view = await mountReview(CHECKING_GAS)
+    expect(view.byTestId('manage-review-arrival')).not.toBeNull()
+    expect(view.byTestId('manage-review-account')).not.toBeNull()
+    expect(view.byTestId('manage-review-rule-line-0')).not.toBeNull()
     expect(view.textOf('manage-review-run-checkingGas')).toContain(t('socialRecovery.loading.fee'))
     expect(
       view.byTestId('manage-review-run-checkingGas')?.querySelector('[data-testid="loading-row"]')
@@ -861,6 +864,10 @@ describe('the waits of the review and the removal', () => {
 
   it('keeps the removal on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
     const view = await mountRemoval(CHECKING_GAS)
+    expect(view.textOf('manage-remove-body')).toBe(t(`${REMOVE}.body`))
+    const field = view.byTestId('manage-remove-word')
+    const input = field instanceof HTMLInputElement ? field : field?.querySelector('input')
+    expect(input?.readOnly || input?.disabled).toBe(true)
     expect(view.textOf('manage-remove-run-checkingGas')).toContain(t('socialRecovery.loading.fee'))
     expect(
       view.byTestId('manage-remove-run-checkingGas')?.querySelector('[data-testid="loading-row"]')
@@ -942,6 +949,7 @@ describe('the review and the removal once a recovery moved control away from thi
     const { view, navigate } = await followingOwnWrite(RemoveStageView, 'manageRemove')
     expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage')
     expect(view.byTestId('manage-remove-run-submitting')).not.toBeNull()
+    expect(view.textOf('manage-remove-body')).toBe(t(`${REMOVE}.body`))
     view.unmount()
   })
 
@@ -949,6 +957,7 @@ describe('the review and the removal once a recovery moved control away from thi
     const { view, navigate } = await followingOwnWrite(ReviewStageView, 'manageEdit')
     expect(navigate).not.toHaveBeenCalledWith('social-recovery/manage')
     expect(view.byTestId('manage-review-run-submitting')).not.toBeNull()
+    expect(view.byTestId('manage-review-account')).not.toBeNull()
     view.unmount()
   })
 

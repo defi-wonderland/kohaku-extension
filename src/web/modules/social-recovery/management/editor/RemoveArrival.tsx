@@ -3,6 +3,8 @@
  * retry, what the one transaction does, the typed confirmation, the
  * view-only refusal, the line that removing cancels the attempt in progress,
  * and the action once the stored write has been read, with the way back.
+ * Once the removal is on its way, what it does and the typed word stay, the
+ * word no longer editable, and the run takes the place of the rest.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -34,11 +36,12 @@ const RemoveArrival = ({
   lookupFailed,
   onRemove,
   onLookAgain,
-  keep
+  keep,
+  run
 }: RemoveArrivalProps) => {
   const { t } = useTranslation()
 
-  if (heldFailed) {
+  if (heldFailed && !run) {
     return (
       <ReadFailedBlock
         testID="manage-remove-held-failed"
@@ -47,21 +50,9 @@ const RemoveArrival = ({
       />
     )
   }
-  return (
-    <View testID="manage-remove-arrival">
-      <Text fontSize={14} style={spacings.mbSm} testID="manage-remove-body">
-        {t(`${REMOVE}.body`)}
-      </Text>
-      <Input
-        testID="manage-remove-word"
-        label={t(`${REMOVE}.typeToConfirm`, { word })}
-        accessibilityLabel={t(`${REMOVE}.typeToConfirm`, { word })}
-        placeholder={word}
-        value={typed}
-        onChangeText={onType}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
+  // The view-only refusal, the line that removing cancels the attempt, and the action with the way back.
+  const actions = () => (
+    <>
       {facts && !facts.key && (
         <Alert
           testID="manage-remove-view-only"
@@ -98,6 +89,26 @@ const RemoveArrival = ({
           onRetry={onLookAgain}
         />
       )}
+    </>
+  )
+
+  return (
+    <View testID="manage-remove-arrival">
+      <Text fontSize={14} style={spacings.mbSm} testID="manage-remove-body">
+        {t(`${REMOVE}.body`)}
+      </Text>
+      <Input
+        testID="manage-remove-word"
+        label={t(`${REMOVE}.typeToConfirm`, { word })}
+        accessibilityLabel={t(`${REMOVE}.typeToConfirm`, { word })}
+        placeholder={word}
+        value={typed}
+        onChangeText={onType}
+        disabled={!!run}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {run ?? actions()}
     </View>
   )
 }
