@@ -232,6 +232,39 @@ describe('the overview reads', () => {
     expect(view.byTestId('readout-path')).toBeNull()
   })
 
+  it('shows the kept setup beside the refreshing line while the path reads only where it was committed under the nonce the setup state answered', async () => {
+    const world = await worldAt('public')
+    const { setupNonce } = await world.client.setup.setupState()
+    const cache = world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT)
+    // A commitment the chain does not hold, so the path is read again rather than taken from the cache.
+    const otherCommitment = `0x${'22'.repeat(32)}` as const
+    jest.spyOn(world.client.setup, 'getSetup').mockImplementation(() => new Promise(() => {}))
+
+    await cache.write({
+      configuration: CONFIGURATION,
+      setupNonce,
+      setupCommitment: otherCommitment,
+      deployment: DEPLOYMENT
+    })
+    view = await renderOver(world)
+    expect(view.textOf('overview-path-refreshing')).toBe(
+      t('socialRecovery.loading.refreshingSetup')
+    )
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    view.unmount()
+
+    await cache.write({
+      configuration: CONFIGURATION,
+      setupNonce: setupNonce - 1n,
+      setupCommitment: otherCommitment,
+      deployment: DEPLOYMENT
+    })
+    view = await renderOver(world)
+    expect(view.textOf('overview-path-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.byTestId('overview-path-refreshing')).toBeNull()
+    expect(view.byTestId('readout-path')).toBeNull()
+  })
+
   it('shows a public path with no password', async () => {
     const world = await worldAt('public')
     view = await renderOver(world)

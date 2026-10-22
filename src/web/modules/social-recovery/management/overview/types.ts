@@ -97,6 +97,12 @@ export type PathStep =
   | { kind: 'locked'; level: HiddenLevel; shape?: ShapeNote }
   | { kind: 'readable'; configuration: Configuration }
 
+/** A configuration this device opened, with the setup nonce it was committed under. */
+export interface OpenedSetup {
+  configuration: Configuration
+  setupNonce: bigint
+}
+
 // ---------------------------------------------------------------------------
 // The notices
 // ---------------------------------------------------------------------------
@@ -165,7 +171,7 @@ export interface OverviewReads {
   /**
    * The configuration this device last opened for the account at the
    * deployment the client reads, shown while a fresh read runs; null where
-   * it holds none.
+   * it holds none, or where the setup state read names another setup nonce.
    */
   cached: Configuration | null
   /** Reads the setup state and the attempt again, and everything that follows from them. */

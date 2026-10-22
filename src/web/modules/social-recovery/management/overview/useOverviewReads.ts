@@ -20,7 +20,8 @@
  * authority of the account, and wait for the keystore's keys to ask about; a
  * failed answer fails the facts. The configuration this device last opened
  * at the client's deployment is read beside them, for the screen to show
- * while they run; it decides nothing.
+ * while they run, and while the path reads only where it was committed under
+ * the setup nonce they answered; it decides nothing.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -50,6 +51,7 @@ import {
   noticesOf
 } from './readings'
 import type {
+  OpenedSetup,
   OverviewFactsRead,
   OverviewNotices,
   OverviewReads,
@@ -74,7 +76,7 @@ export const useOverviewReads = ({
   const [path, setPath] = useState<PathStep>(NONE)
   const [ask, setAsk] = useState<UnlockState>(IDLE)
   const [notices, setNotices] = useState<EntryRead<OverviewNotices>>(PENDING)
-  const [lastOpened, setLastOpened] = useState<Configuration | null>(null)
+  const [lastOpened, setLastOpened] = useState<OpenedSetup | null>(null)
   const [factsRound, setFactsRound] = useState(0)
   const [pathRound, setPathRound] = useState(0)
   const [noticesRound, setNoticesRound] = useState(0)
@@ -88,6 +90,9 @@ export const useOverviewReads = ({
   const disagreements = useRef(0)
 
   const setup: SetupState | null = facts.status === 'answered' ? facts.value.setup : null
+  // The setup the path is read under, for the path read now to keep its nonce.
+  const pathSetup = useRef<SetupState | null>(setup)
+  pathSetup.current = setup
 
   useEffect(() => {
     floor.current = undefined
@@ -110,7 +115,10 @@ export const useOverviewReads = ({
             read.status === 'present' &&
             isOfDeployment(read.value.deployment, kit.descriptor)
           ) {
-            setLastOpened(read.value.configuration)
+            setLastOpened({
+              configuration: read.value.configuration,
+              setupNonce: read.value.setupNonce
+            })
           }
         },
         () => undefined
@@ -122,8 +130,11 @@ export const useOverviewReads = ({
 
   // A path read now is the one to show while a later read runs.
   useEffect(() => {
-    if (path.kind === 'readable') {
-      setLastOpened(path.configuration)
+    if (path.kind === 'readable' && pathSetup.current) {
+      setLastOpened({
+        configuration: path.configuration,
+        setupNonce: pathSetup.current.setupNonce
+      })
     }
   }, [path])
 
@@ -423,12 +434,17 @@ export const useOverviewReads = ({
 
   const retryNotices = useCallback(() => setNoticesRound((round) => round + 1), [])
 
+  const cached =
+    lastOpened && (!setup || lastOpened.setupNonce === setup.setupNonce)
+      ? lastOpened.configuration
+      : null
+
   return {
     facts,
     path,
     ask,
     notices,
-    cached: lastOpened,
+    cached,
     retry,
     retryPath,
     retryNotices,
