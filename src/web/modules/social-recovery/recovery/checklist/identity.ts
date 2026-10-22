@@ -4,6 +4,7 @@
  * reads nothing here; its row reads collected once the reply is added.
  */
 import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
+import type { DismissedOutcome } from '@web/modules/social-recovery/shared/ceremony'
 
 import type { ClaimOutcome, IdentityClaimSlug, IdentityNotes } from './types'
 
@@ -12,13 +13,30 @@ const CEREMONY = 'socialRecovery.ceremony'
 const NO_NOTES: IdentityNotes = { note: null, cause: null, retry: false }
 
 /**
- * A failure's cause line: the result did not pass the method's own check,
- * whether the proof could not be produced, its local check refused it, or it
- * did not match what enrollment recorded. The phone's own error says so in
- * its note and carries no cause line.
+ * A failure's cause line, only where a result reached the method's own check
+ * and did not pass it: the local check refused the proof, or the material did
+ * not match what enrollment recorded. A failure that produced no result reads
+ * did not answer on its chip and carries no cause line.
  */
 const causeKeyOf = (cause: string): string | null =>
-  cause === 'phone-error' ? null : `${CEREMONY}.rejectedCause`
+  cause === 'check-rejected' || cause === 'material-rejected'
+    ? `${CEREMONY}.rejectedCause`
+    : null
+
+/**
+ * A dismissal's note: the holder stopped the prover or cancelled the phone
+ * request, or the passport app declined; any other refusal reads the refused
+ * note.
+ */
+const dismissalNoteOf = (outcome: DismissedOutcome, slug: IdentityClaimSlug): string | null => {
+  if (outcome.note === 'cancelled') {
+    return `${CEREMONY}.stoppedNote`
+  }
+  if (slug === 'zkpassport') {
+    return `${CEREMONY}.declinedNote`
+  }
+  return noteKeyOfOutcome(outcome, 'createClaim')
+}
 
 export const identityNotesOf = (
   held: ClaimOutcome | undefined,
@@ -29,9 +47,8 @@ export const identityNotesOf = (
   }
   const { outcome } = held
   if (outcome.kind === 'dismissed') {
-    const declined = outcome.note === 'refused' && slug === 'zkpassport'
     return {
-      note: declined ? `${CEREMONY}.declinedNote` : noteKeyOfOutcome(outcome, 'createClaim'),
+      note: dismissalNoteOf(outcome, slug),
       cause: null,
       retry: true
     }

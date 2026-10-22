@@ -6,7 +6,7 @@
  * client's params for a claim, where the holder uploads the QR and the proof
  * runs; a passed report becomes a reply the client adds; a claim that did not
  * pass reads its note, its cause and a retry; a holder who dismissed it leaves
- * the row as it was. The row asks for the same QR as at setup.
+ * the row as it was. The row asks for a fresh QR of the same identity.
  */
 import type { Configuration, Params } from '@kohaku-eth/social-recovery'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
@@ -122,7 +122,7 @@ describe('the Aadhaar row', () => {
     view = undefined
   })
 
-  it('offers the upload with the lead and the line that asks for the same QR', async () => {
+  it('offers the upload with the lead and the line that asks for a fresh QR of the same identity', async () => {
     const mounted = await open()
 
     expect(mounted.byTestId('checklist-row-0-kind')?.textContent).toBe(
@@ -243,21 +243,21 @@ describe('the Aadhaar row', () => {
       'thrown',
       failed('thrown'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.rejectedCause`,
+      null,
       'didNotAnswer'
     ],
     [
       'service-unanswered',
       failed('service-unanswered'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.rejectedCause`,
+      null,
       'didNotAnswer'
     ],
     [
       'device-refused',
       failed('device-refused'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.rejectedCause`,
+      null,
       'didNotAnswer'
     ],
     [
@@ -306,7 +306,7 @@ describe('the Aadhaar row', () => {
   })
 
   each([
-    ['cancelled', dismissed('cancelled'), `${CEREMONY}.cancelledNote`],
+    ['cancelled', dismissed('cancelled'), `${CEREMONY}.stoppedNote`],
     ['refused', dismissed('refused'), `${CEREMONY}.refusedNote`]
   ] as const)(
     'renders a %s ceremony as its note with the row unchanged and a retry',
