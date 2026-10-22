@@ -551,7 +551,9 @@ describe('the key step', () => {
       expect(mockEdge.made).toBe(0)
       expect(dispatched()).toEqual([])
       expect(movesAway()).toEqual([
-        { kind: 'navigate', to: LOGGED_IN_ENTRY.slice(1), replace: true, state: ACKNOWLEDGED }
+        { kind: 'navigate', to: LOGGED_IN_ENTRY.slice(1), replace: true, state: ACKNOWLEDGED },
+        // The entry keeps the acknowledgment and drops it from its history entry.
+        { kind: 'navigate', to: LOGGED_IN_ENTRY, replace: true, state: undefined }
       ])
       expect(where()).toBe(LOGGED_IN_ENTRY)
     })
@@ -589,6 +591,18 @@ describe('the key step', () => {
         false
       )
       expect(visits.filter(({ path }) => path === '/social-recovery/recover')).toHaveLength(1)
+
+      // The entry takes the door's acknowledgment: its warning shows ticked and
+      // continue opens once an account is chosen, with no second tick.
+      expect(byTestId('recovery-warning-acknowledge')?.querySelector('svg')).not.toBeNull()
+      const basicChoice = `entry-owner-choice-${basicAccount.addr.toLowerCase()}`
+      expect(isDisabled(basicChoice)).toBe(false)
+      await press(basicChoice)
+      expect(isDisabled('entry-owner-continue')).toBe(false)
+      await press('entry-owner-continue')
+      expect(where()).toBe(
+        `/social-recovery/recovery/account?route=logged-in&to=${basicAccount.addr}`
+      )
     })
 
     it('meets a direct open with accounts listed with the warning, and sends nothing', async () => {
