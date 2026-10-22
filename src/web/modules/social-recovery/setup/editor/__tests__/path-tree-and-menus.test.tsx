@@ -24,6 +24,7 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 jest.mock('@common/components/Avatar', () => ({ __esModule: true, default: () => null }))
 
 const React = jest.requireActual<typeof import('react')>('react')
+const { zeroAddress } = jest.requireActual<typeof import('viem')>('viem')
 const { createRoot } = jest.requireActual<typeof import('react-dom/client')>('react-dom/client')
 const { act } = jest.requireActual<typeof import('react-dom/test-utils')>('react-dom/test-utils')
 const en = jest.requireActual<typeof import('@common/config/localization/translations/en.json')>(
@@ -61,7 +62,7 @@ const {
 
 /** An empty slot with no label, so the wallet cannot tell which kind it waits for. */
 const UNREAD_SLOT: Credential = {
-  method: '0x0000000000000000000000000000000000000000',
+  method: zeroAddress,
   config: '0x'
 }
 
@@ -287,7 +288,7 @@ describe('a kind whose method this network omits', () => {
   const NOT_ON_THIS_NETWORK = en.socialRecovery.ceremony.notOnThisNetworkLine
   const WITHOUT_PASSPORT = {
     ...BOOK,
-    methods: { ...BOOK.methods, zkpassport: '0x0000000000000000000000000000000000000000' as const }
+    methods: { ...BOOK.methods, zkpassport: zeroAddress }
   }
   const entries = (menu: string) => menuEntries(menu).filter((entry) => !entry.endsWith('-note'))
   const isEntryDisabled = (id: string) => byTestId(id)?.getAttribute('aria-disabled') === 'true'
