@@ -259,6 +259,34 @@ describe("the countdown's record before the first poll answers", () => {
     expect(world.port.send).not.toHaveBeenCalled()
   })
 
+  it('holds execute beside the refreshing line while a later poll reads, and gives it back once that poll answers', async () => {
+    const world = await openWorld()
+    elapse(world.kit)
+    view = await mountWait(world.account)
+    expect(view.isDisabled('wait-execute')).toBe(false)
+    expect(view.byTestId('wait-refreshing')).toBeNull()
+
+    const read = world.kit.recoveryState.getMockImplementation()
+    const answer = deferred<void>()
+    world.kit.recoveryState.mockImplementationOnce(async () => {
+      await answer.promise
+      return read?.()
+    })
+    await tick(POLL_MS)
+
+    expect(view.byTestId('wait-refreshing')).not.toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(true)
+    await view.press('wait-execute')
+    expect(world.kit.prepareExecuteHandover).not.toHaveBeenCalled()
+    expect(world.port.send).not.toHaveBeenCalled()
+
+    answer.resolve()
+    await tick(0)
+
+    expect(view.byTestId('wait-refreshing')).toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(false)
+  })
+
   it("re-anchors the countdown on the chain's first answer, and drops the refreshing line", async () => {
     const world = await openWorld({ countdown: false })
     const live = await world.records
@@ -314,6 +342,7 @@ describe("the countdown's record before the first poll answers", () => {
     expect(
       view.byTestId('wait-loading')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(view.byTestId('wait-columns')).toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
     expect(view.byTestId('wait-refreshing')).toBeNull()
   })

@@ -128,11 +128,9 @@ const WaitView = ({
   if (client.status === 'loading' || keys.status === 'loading' || poll.status === 'pending') {
     if (executableAt === null) {
       return (
-        <TwoColumn testID="wait-columns">
-          <View testID="wait-loading" style={flexbox.flex1}>
-            <LoadingBlock variant="screen" message={t('socialRecovery.loading.countdown')} />
-          </View>
-        </TwoColumn>
+        <View testID="wait-loading" style={flexbox.flex1}>
+          <LoadingBlock variant="screen" message={t('socialRecovery.loading.countdown')} />
+        </View>
       )
     }
     // The record's reading stays on screen, every decision held, until the chain answers.
@@ -170,11 +168,9 @@ const WaitView = ({
   const { phase } = poll
   if (phase.kind === 'consumed') {
     return (
-      <TwoColumn testID="wait-columns">
-        <View testID="wait-consumed" style={flexbox.flex1}>
-          <LoadingBlock variant="screen" message={t('socialRecovery.loading.finishing')} />
-        </View>
-      </TwoColumn>
+      <View testID="wait-consumed" style={flexbox.flex1}>
+        <LoadingBlock variant="screen" message={t('socialRecovery.loading.finishing')} />
+      </View>
     )
   }
   if (phase.kind === 'cancelled') {
@@ -280,7 +276,7 @@ const WaitView = ({
           <ExecuteBlock
             execute={execute}
             sending={sending}
-            ready={due && !!poll.story.started}
+            ready={due && !!poll.story.started && !polling}
             onExecute={onExecute}
           />
         )}

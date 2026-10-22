@@ -71,6 +71,7 @@ describe('where the wait sends the holder on open', () => {
     expect(
       view.byTestId('wait-consumed')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(view.byTestId('wait-columns')).toBeNull()
     expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
     expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
       'present'
