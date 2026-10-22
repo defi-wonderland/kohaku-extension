@@ -795,7 +795,8 @@ describe('a save in progress across remounts', () => {
       await settle()
 
       expect(byTestId(shown)).not.toBeNull()
-      expect(byTestId('arm-save')).toBeNull()
+      // No Save to press: none shows, or the gas check holds it.
+      expect(byTestId('arm-save')?.getAttribute('aria-disabled') ?? 'true').toBe('true')
       expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
 
       await act(async () => {
@@ -1580,6 +1581,20 @@ describe("another page's save that lands during this page's gas check", () => {
     expect(wipes()).toBe(1)
     return firstPort
   }
+
+  it('keeps Save on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
+    const gas = await pressSaveAndHoldGas()
+    expect(pageText()).toContain(t('socialRecovery.loading.fee'))
+    expect(byTestId('arm-save')?.getAttribute('aria-disabled')).toBe('true')
+    await press('arm-save')
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+
+    await act(async () => {
+      gas.resolve(1_000_000_000_000_000_000n)
+    })
+    await settle()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
 
   it('sends nothing, releases its own claim and shows the account as already set up', async () => {
     const gas = await pressSaveAndHoldGas()

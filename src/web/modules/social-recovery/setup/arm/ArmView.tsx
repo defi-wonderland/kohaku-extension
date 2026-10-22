@@ -2,7 +2,8 @@
  * The save over given props: the account the save writes to with the key a
  * recovery would remove, the module that will hold the account's authority,
  * the costs beside them, and below them the save as it stands: the arrival's block or
- * the Save button, the gas blocker naming the shortfall and the controlling
+ * the Save button, held beside the fee line while the gas check runs, the gas
+ * blocker naming the shortfall and the controlling
  * key, the shared submitting and failed states in the save's own words, a
  * save the network dropped with the one way to save again, a setup the run
  * found already there, the check after the landing, then the
@@ -172,6 +173,19 @@ const ArmView = ({
     </View>
   )
 
+  const saveButton = (held: boolean) => (
+    <View style={flexbox.directionRow}>
+      <Button
+        testID="arm-save"
+        type="primary"
+        text={t(`${REVIEW}.save`)}
+        disabled={held}
+        onPress={onSave}
+        hasBottomSpacing={false}
+      />
+    </View>
+  )
+
   const arrivalBlock = () => {
     switch (arrival.kind) {
       case 'unavailable':
@@ -201,19 +215,7 @@ const ArmView = ({
       case 'blocked':
         return blocker(arrival.block)
       case 'ready':
-        return onSave ? (
-          <View style={flexbox.directionRow}>
-            <Button
-              testID="arm-save"
-              type="primary"
-              text={t(`${REVIEW}.save`)}
-              onPress={onSave}
-              hasBottomSpacing={false}
-            />
-          </View>
-        ) : (
-          checking
-        )
+        return onSave ? saveButton(false) : checking
       default:
         return checking
     }
@@ -290,6 +292,7 @@ const ArmView = ({
         onRetry={onRetry}
         testID={`arm-write-${write.status}`}
       >
+        {write.status === 'checkingGas' && saveButton(true)}
         {checksAgain && (
           <Button
             testID="arm-check-again"
