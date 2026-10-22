@@ -604,10 +604,14 @@ export interface RecoveryKitClient {
 }
 
 /**
- * The part of a client a ceremony runs on: the approving side, its methods and
- * the descriptor their modules are read from, and the chain's verdict.
+ * The part of a client a ceremony runs on: the approving side, its methods,
+ * the identity methods' parameters, the descriptor their modules are read
+ * from, and the chain's verdict.
  */
-export type ApprovingClient = Pick<RecoveryKitClient, 'approving' | 'methodFor' | 'descriptor'> & {
+export type ApprovingClient = Pick<
+  RecoveryKitClient,
+  'approving' | 'methodFor' | 'methodParamsFor' | 'descriptor'
+> & {
   /**
    * The chain's verdict over a reply: the `verify` view of the reply's method
    * module, the static call the manager makes at submission. The one read a

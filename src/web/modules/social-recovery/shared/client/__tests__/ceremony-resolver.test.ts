@@ -15,6 +15,7 @@ import type {
   Reply,
   Verdict
 } from '@kohaku-eth/social-recovery'
+import { anonAadhaarMethod } from '@kohaku-eth/social-recovery/recovery-methods'
 import {
   CEREMONY_REPORT_CLOCK_SKEW_MS,
   CEREMONY_REPORT_TTL_MS,
@@ -54,6 +55,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
+import { createScriptedAadhaarStack } from '@web/modules/social-recovery/shared/client/scripted'
 
 jest.mock('@ambire-common/services/provider/getRpcProvider', () => ({
   getRpcProvider: jest.fn()
@@ -564,6 +566,63 @@ describe('a request for a method the page serves no device for, on the client th
   )
 })
 
+describe("an identity method's parameters the resolver hands the tab", () => {
+  const AADHAAR_ADDRESS = addressBookOf('sepolia').methods.aadhaar
+  const STORED = { nullifierSeed: 7n, issuerCertificate: 'stored' }
+  const CURRENT = { nullifierSeed: 1n, issuerCertificate: 'current' }
+  const aadhaarTarget = { account: ACCOUNT, chainId: CHAIN_ID, method: 'aadhaar' }
+  const AADHAAR_REQUEST = { ...REQUEST, method: AADHAAR_ADDRESS }
+  const STORED_BY_CALL: Record<'enroll' | 'testAccess' | 'createClaim', CeremonyRequestRecord> = {
+    enroll: { ...aadhaarTarget, call: 'enroll', methodAddress: AADHAAR_ADDRESS, params: STORED },
+    testAccess: { ...aadhaarTarget, call: 'testAccess', request: AADHAAR_REQUEST, params: STORED },
+    createClaim: { ...aadhaarTarget, call: 'createClaim', request: AADHAAR_REQUEST, params: STORED }
+  }
+
+  const identityWorld = () => {
+    const world = resolverWorld({
+      aadhaar: anonAadhaarMethod({ stack: createScriptedAadhaarStack() })
+    })
+    world.client.methodParamsFor.mockImplementation((slug) =>
+      slug === 'aadhaar' ? CURRENT : undefined
+    )
+    return world
+  }
+  ;(['enroll', 'testAccess', 'createClaim'] as const).forEach((call) => {
+    it(`hands a ${call} the parameters of the client it built, never the ones the request stored`, async () => {
+      const { records, resolve, client } = identityWorld()
+      await records.ceremonyRequest(ID).write(STORED_BY_CALL[call])
+      const resolved = ceremonyOf(await resolve(routeOf(call, 'aadhaar')))
+      expect(resolved.params).toEqual(CURRENT)
+      expect(client.methodParamsFor).toHaveBeenCalledWith('aadhaar', call)
+    })
+
+    it(`refuses a ${call} where the client it built holds no parameters of the method`, async () => {
+      const { records, resolve, client } = identityWorld()
+      client.methodParamsFor.mockReturnValue(undefined)
+      await records.ceremonyRequest(ID).write(STORED_BY_CALL[call])
+      await expect(resolve(routeOf(call, 'aadhaar'))).resolves.toEqual({
+        refused: 'no-implementation'
+      })
+    })
+  })
+
+  it('resolves a health check of an identity method, which takes no parameters', async () => {
+    const { records, resolve, client } = identityWorld()
+    client.methodParamsFor.mockReturnValue(undefined)
+    await records.ceremonyRequest(ID).write({ ...aadhaarTarget, call: 'healthCheck' })
+    expect(ceremonyOf(await resolve(routeOf('healthCheck', 'aadhaar')))).not.toHaveProperty(
+      'params'
+    )
+  })
+
+  it("keeps the passkey's stored parameters, the relying party and the hand-off its caller chose", async () => {
+    const { records, resolve, client } = identityWorld()
+    client.methodParamsFor.mockReturnValue(CURRENT)
+    await records.ceremonyRequest(ID).write(ENROLL)
+    expect(ceremonyOf(await resolve(routeOf('enroll'))).params).toEqual(PARAMS)
+  })
+})
+
 describe("the chain's verdict the resolver hands the tab", () => {
   const CHAIN_VERDICT: ChainVerdict = async () => 'satisfied'
 
@@ -683,7 +742,9 @@ describe("the chain's verdict of the client builder the ceremony tab uses", () =
   }
 
   it('reads each verdict on a deployed chain through a provider of its own, destroyed after the read', async () => {
-    deploymentVariable.mockReturnValue(JSON.stringify(DEPLOYED_FACTS))
+    deploymentVariable.mockReturnValue(
+      JSON.stringify({ ...DEPLOYED_FACTS, methodZkpassport: addressOf('deployed-method-zkpassport') })
+    )
     const world = createDeployedWorld()
     buildProvider.mockReturnValue(world.ethers)
     const client = await extensionClientFor(() => [SEPOLIA])(world.account, CHAIN_ID)
