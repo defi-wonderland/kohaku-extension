@@ -166,6 +166,9 @@ export interface CommittedWorld {
   client: RecoveryKitClient
 }
 
+/** A decision of the running attempt held during a later read: its name, its button, how the test arranges it, and the path it opens. */
+export type HeldDecisionCase = [name: string, button: string, arrange: () => void, path: string]
+
 /** The parts of Jest's modern fake clock the installed typings do not declare. */
 interface LiveFakeTimers {
   useFakeTimers(config: { advanceTimers: boolean }): void

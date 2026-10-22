@@ -39,6 +39,7 @@ import {
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type {
   FakeAttemptReads,
+  HeldDecisionCase,
   Mounted
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
@@ -685,7 +686,7 @@ describe('the running attempt band while it stands', () => {
     page.unmount()
   })
 
-  const decisions: [string, string, () => void, string][] = [
+  const decisions: HeldDecisionCase[] = [
     [
       'cancel',
       'entry-running-cancel',
