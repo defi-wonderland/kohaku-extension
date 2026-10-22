@@ -1,14 +1,17 @@
 /**
- * The report of the ceremony this tab returned from. It is taken once, then
- * its request is wiped and the search loses the id, so a reload waits for
- * nothing. A report that lands after the mount arrives through the listener.
+ * The report of the ceremony this tab returned from. It is read, and removed
+ * only by a row still on the page, which then applies it, wipes its request
+ * and drops the id from the search, so a reload waits for nothing. A report
+ * read by a row that left the page survives, and the next mount applies it
+ * once. A report that lands after the mount arrives through the listener.
  * The stored request gives back what the row forgot when it left the page.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
+  ceremonyResultKey,
   listenForCeremonyReport,
-  takeCeremonyReport
+  readCeremonyReport
 } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyReport, ReportIdentity } from '@web/modules/social-recovery/shared/ceremony'
 
@@ -67,11 +70,12 @@ const useRowReport = <A extends { call: 'enroll' | 'testAccess' }>({
       }
       handlers.current.onAsked?.(asked)
       const identity: ReportIdentity = { id: ceremonyId, call: asked.call, method: slug }
-      const report = await takeCeremonyReport(identity, deps.reportStore, deps.now())
+      const report = await readCeremonyReport(identity, deps.reportStore, deps.now())
       if (!live) {
         return
       }
       if (report) {
+        deps.reportStore.remove(ceremonyResultKey(ceremonyId)).catch(() => undefined)
         done(report, asked)
         return
       }

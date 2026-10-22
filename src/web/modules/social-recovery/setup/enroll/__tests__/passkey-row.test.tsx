@@ -341,6 +341,31 @@ describe('the passkey row', () => {
       expect(await storedRequest(id)).toBeDefined()
     })
 
+    it('keeps a report read after the row left the page, and the next mount applies it once', async () => {
+      await open()
+      await view!.press('passkey-create-here')
+      const id = deps.requestIds[deps.requestIds.length - 1]
+      await deps.channel.report(id, 'enroll', createdWith(SYNCED_ON_GOOGLE))
+      const release = holdReportReads(deps)
+      const left = await open({ ...SEARCH, ceremony: id })
+      left.unmount()
+      view = undefined
+      await outside(async () => release())
+      await settle()
+      expect(deps.channel.has(id)).toBe(true)
+
+      await open({ ...SEARCH, ceremony: id })
+      expect(await storedEnrollments(records)).toHaveLength(1)
+      expect(view!.byTestId('passkey-undelivered')).toBeNull()
+      expect(await storedRequest(id)).toBeUndefined()
+      expect(deps.channel.has(id)).toBe(false)
+      expect(deps.channel.takes).toHaveBeenCalledTimes(1)
+
+      await open({ ...SEARCH, ceremony: id })
+      expect(await storedEnrollments(records)).toHaveLength(1)
+      expect(view!.byTestId('passkey-undelivered')).toBeNull()
+    })
+
     it('applies a report that lands after the return', async () => {
       await open()
       await view!.press('passkey-create-here')

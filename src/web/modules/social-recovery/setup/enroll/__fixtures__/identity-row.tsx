@@ -387,6 +387,31 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         expect(await storedRequest(request)).toBeDefined()
       })
 
+      it('keeps a report read after the row left the page, and the next mount applies it once', async () => {
+        await open()
+        await view!.press(id('start'))
+        const request = lastRequestId()
+        await deps.channel.report(request, 'enroll', passed({ config: CONFIG }), slug)
+        const release = holdReportReads(deps)
+        const left = await open({ ...SEARCH, ceremony: request })
+        left.unmount()
+        view = undefined
+        await outside(async () => release())
+        await settle()
+        expect(deps.channel.has(request)).toBe(true)
+
+        await open({ ...SEARCH, ceremony: request })
+        expect(await storedEnrollments(records)).toHaveLength(1)
+        expect(view!.byTestId(id('undelivered'))).toBeNull()
+        expect(await storedRequest(request)).toBeUndefined()
+        expect(deps.channel.has(request)).toBe(false)
+        expect(deps.channel.takes).toHaveBeenCalledTimes(1)
+
+        await open({ ...SEARCH, ceremony: request })
+        expect(await storedEnrollments(records)).toHaveLength(1)
+        expect(view!.byTestId(id('undelivered'))).toBeNull()
+      })
+
       it('leaves the slot empty where the draft cannot be stored', async () => {
         faults.refuse = [':setupDraft:']
         await createAndReturn(passed({ config: CONFIG }))
