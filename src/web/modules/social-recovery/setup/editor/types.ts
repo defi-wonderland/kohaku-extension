@@ -103,6 +103,12 @@ export interface EditorViewProps {
   navigate: (to: string) => void
   /** Members the path cannot lose: each reads still needed and cannot be removed. */
   stillNeeded?: ReadonlySet<MemberKey>
+  /**
+   * The holder's Remove keeps the group's threshold as typed, and the editor's
+   * refusal judges it. Without it, a Remove brings a threshold above the
+   * remaining members down to fit them.
+   */
+  plainRemoval?: boolean
   heading?: EditorHeading
   continueLabel?: string
   /** What sits between the path and its actions. */
