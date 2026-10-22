@@ -40,8 +40,7 @@ import {
   storedEnrollments,
   t
 } from '@web/modules/social-recovery/setup/enroll/__tests__/harness'
-
-import type { IdentityRowCase } from './types'
+import type { IdentityRowCase } from '@web/modules/social-recovery/setup/enroll/__fixtures__/types'
 
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
