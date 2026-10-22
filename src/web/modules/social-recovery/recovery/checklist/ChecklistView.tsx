@@ -239,19 +239,27 @@ const ChecklistView = ({
   }, [pending, assessment, addReply, settle, deps])
   const isLive = load.phase === 'live'
   // The view's own clock, read when the deadline line reports the pass. Past
-  // the request's deadline the chain read that lands or wipes it still runs;
-  // a first read still in flight is that read, so no second one is asked.
+  // the request's deadline one chain read lands or wipes the request. A first
+  // read that began past the deadline is that read, so no second one is
+  // asked; one that began before it judges by its own earlier clock, so the
+  // round asked here runs on its return.
   const { retryPoll } = checklist
   const { now } = deps
   const [passedAt, setPassedAt] = useState<number | null>(null)
-  const firstReadRunning = useRef(poll.status === 'pending')
-  firstReadRunning.current = poll.status === 'pending'
+  const firstReadFrom = useRef<number | null>(null)
+  if (poll.status !== 'pending') {
+    firstReadFrom.current = null
+  } else if (firstReadFrom.current === null) {
+    firstReadFrom.current = now()
+  }
+  const gathering = live?.session.gathering
   const onDeadlinePassed = useCallback(() => {
     setPassedAt(now())
-    if (!firstReadRunning.current) {
+    const from = firstReadFrom.current
+    if (from === null || !gathering || !deadlinePassed(gathering, from)) {
       retryPoll()
     }
-  }, [now, retryPoll])
+  }, [now, retryPoll, gathering])
   const pastDeadline =
     !!live && passedAt !== null && deadlinePassed(live.session.gathering, passedAt)
   // A poll that has not answered yet, a failed poll, a death being written, or

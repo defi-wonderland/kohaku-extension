@@ -251,6 +251,39 @@ describe('the checklist deadline and poll', () => {
         t('socialRecovery.records.expiredTitle')
       )
     })
+    it('wipes the session on the return of the first poll when the deadline passes while it reads', async () => {
+      const wipe = jest.spyOn(world.records, 'wipeRecoverySession')
+      const read = deferred<ReturnType<typeof recoveryStateOf>>()
+      await seedCache(world.records, TWO_ROWS)
+      await seedSession(world.records, closingIn(TWO_ROWS, 5))
+      kit = fakeKit(TWO_ROWS)
+      kit.recoveryState.mockImplementationOnce(() => read.promise)
+      view = await mountChecklist({
+        records: world.records,
+        client: kit.state,
+        deps: depsOf({ now: () => Date.now(), visibility })
+      })
+
+      await settle(6000)
+      expect(kit.recoveryState).toHaveBeenCalledTimes(1)
+      expect(wipe).not.toHaveBeenCalled()
+      expect(view.byTestId('checklist-rows')).not.toBeNull()
+
+      read.resolve(recoveryStateOf())
+      await settle()
+
+      expect(kit.recoveryState).toHaveBeenCalledTimes(2)
+      expect(wipe).toHaveBeenCalledTimes(1)
+      expect(wipe).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'deadline-passed',
+        expect.anything()
+      )
+      expect(view.byTestId('checklist-wiped-title')?.textContent).toBe(
+        t('socialRecovery.records.expiredTitle')
+      )
+    })
   })
 
   describe('past the deadline, while its one chain read runs', () => {
