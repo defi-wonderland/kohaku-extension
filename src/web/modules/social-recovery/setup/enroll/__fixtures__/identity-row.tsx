@@ -231,6 +231,23 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         expect(deps.requestIds).toEqual([])
         expect(view!.navigate).not.toHaveBeenCalled()
       })
+
+      it('reads that the network cannot run the method, with no action, where the deployment omits it', async () => {
+        const shipped = readyClient().state
+        if (shipped.status !== 'ready') {
+          throw new Error('the client is not ready')
+        }
+        client = readyClient({
+          methodFor: (served) => (served === slug ? undefined : shipped.client.methodFor(served))
+        }).state
+        await open()
+        expect(view!.byTestId(id('not-on-network'))?.textContent).toBe(
+          t(`${CEREMONY}.notOnThisNetworkLine`)
+        )
+        expect(view!.byTestId(id('start'))).toBeNull()
+        expect(deps.requestIds).toEqual([])
+        expect(view!.navigate).not.toHaveBeenCalled()
+      })
     })
 
     describe('a passed creation', () => {

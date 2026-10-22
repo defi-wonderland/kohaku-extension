@@ -1,5 +1,6 @@
 /** An identity row's state, its record writes and the handlers its blocks call. */
 import { useCallback, useRef, useState } from 'react'
+import { isAddressEqual, zeroAddress } from 'viem'
 
 import { failed } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyOutcome, CeremonyReport } from '@web/modules/social-recovery/shared/ceremony'
@@ -177,10 +178,13 @@ const useIdentityRow = ({
 
   const skip = useCallback(() => setSkipped(true), [])
 
-  // A chain whose deployment names no params for the method serves no ceremony
-  // of it, and that answer will not change.
+  // A chain whose deployment omits the method, or names no params for it,
+  // serves no ceremony of it, and that answer will not change.
   const unsupported =
-    client.status === 'ready' && client.client.methodParamsFor(kind, 'enroll') === undefined
+    client.status === 'ready' &&
+    (client.client.methodFor(kind) === undefined ||
+      client.client.methodParamsFor(kind, 'enroll') === undefined ||
+      isAddressEqual(book.methods[kind], zeroAddress))
   const canLaunch = client.status === 'ready' && !unsupported && !busy
 
   return {
