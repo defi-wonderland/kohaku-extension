@@ -267,6 +267,52 @@ describe('the external-app device at a claim', () => {
       expect(phone.listening('success')).toBe(0)
     })
 
+    it('answers cancelled at once for an abort while the opener hangs, and ignores a request that opens later', async () => {
+      const controller = new AbortController()
+      const phone = phoneRequest()
+      let opened: () => void = () => undefined
+      const open = () =>
+        new Promise((resolve) => {
+          opened = () => resolve(phone.request)
+        })
+      const watch = watched({ signal: controller.signal })
+      const running = externalAppDevice()[call](inputOf(open), watch.context)
+      await tick()
+      controller.abort()
+      await expect(running).resolves.toEqual(CANCELLED)
+      opened()
+      await tick()
+      expect(watch.views).toEqual([])
+      expect(watch.steps).toEqual([])
+      expect(phone.listening('success')).toBe(0)
+      expect(phone.listening('result')).toBe(0)
+    })
+
+    it('answers cancelled at once for an abort while the opener hangs, and consumes its later rejection', async () => {
+      const controller = new AbortController()
+      let fail: () => void = () => undefined
+      const open = () =>
+        new Promise((_resolve, reject) => {
+          fail = () => reject(new Error('the bridge did not connect'))
+        })
+      const unhandled = jest.fn()
+      process.on('unhandledRejection', unhandled)
+      try {
+        const running = externalAppDevice()[call](
+          inputOf(open),
+          watched({ signal: controller.signal }).context
+        )
+        await tick()
+        controller.abort()
+        await expect(running).resolves.toEqual(CANCELLED)
+        fail()
+        await tick()
+        expect(unhandled).not.toHaveBeenCalled()
+      } finally {
+        process.off('unhandledRejection', unhandled)
+      }
+    })
+
     const UNOPENED: [string, EnrollInput & Input][] = [
       ['carries no opener', { kind: 'ceremony' } as EnrollInput & Input],
       [

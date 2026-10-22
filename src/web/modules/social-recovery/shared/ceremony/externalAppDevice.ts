@@ -63,6 +63,30 @@ const cancelled = (): DeviceResult => ({
 const stopped = (stop: CeremonyStop): DeviceResult => ({ ok: false, stop })
 
 /**
+ * The opener's answer, or undefined as soon as the signal aborts, so a Cancel
+ * while the request is still opening answers at once. A request that opens
+ * after the abort is dropped, and a rejection that lands after it is
+ * consumed.
+ */
+const untilAborted = (opening: Promise<unknown>, signal: AbortSignal | undefined) =>
+  signal
+    ? new Promise<unknown>((resolve, reject) => {
+        const onAbort = () => resolve(undefined)
+        signal.addEventListener('abort', onAbort, { once: true })
+        opening.then(
+          (value) => {
+            signal.removeEventListener('abort', onAbort)
+            resolve(value)
+          },
+          (error: unknown) => {
+            signal.removeEventListener('abort', onAbort)
+            reject(error)
+          }
+        )
+      })
+    : opening
+
+/**
  * Follows one opened request until the phone answers, refuses or errs, or the
  * signal aborts. `listen` registers the callback whose answer is the material.
  */
@@ -136,7 +160,7 @@ const open = async (
   }
   let request: unknown
   try {
-    request = await opener()
+    request = await untilAborted(opener(), context.signal)
   } catch {
     return context.signal?.aborted ? cancelled() : stopped(unavailable('device-unavailable'))
   }
