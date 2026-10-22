@@ -1,7 +1,8 @@
 /**
  * An identity row before the slot holds a credential: the action that opens
- * the ceremony tab, the note a creation that did not pass left with its retry,
- * or the line that this network cannot run the method at all.
+ * the ceremony tab, the note a creation that did not pass left with its retry
+ * (none for a document the method cannot serve), or the line that this
+ * network cannot run the method at all.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -28,6 +29,8 @@ const IdentityCreateBlock = ({
   const enrollNote = enrollOutcome ? rowNoteKeyOf(enrollOutcome, 'enroll', copy) : null
   const enrollError = enrollOutcome ? browserErrorNameOf(enrollOutcome) : null
   const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
+  // A document the method cannot serve gets no second ceremony: it would be refused again.
+  const notServed = enrollOutcome?.kind === 'verdict' && enrollOutcome.verdict === 'notSupported'
 
   return (
     <SectionCard tone="muted" spacing="none" testID={`${row}-create`}>
@@ -50,21 +53,25 @@ const IdentityCreateBlock = ({
               {enrollError}
             </Text>
           )}
-          <View style={[spacings.mtSm, spacings.mbTy]}>
-            <Text fontSize={14}>{t(copy.actionLine)}</Text>
-          </View>
-          <ActionsRow
-            primary={
-              <Button
-                testID={enrollRetry ? `${row}-try-again` : `${row}-start`}
-                type="primary"
-                text={t(enrollRetry ? 'socialRecovery.ceremony.tryAgainAction' : copy.action)}
-                disabled={!canLaunch}
-                onPress={create}
-                hasBottomSpacing={false}
+          {!notServed && (
+            <>
+              <View style={[spacings.mtSm, spacings.mbTy]}>
+                <Text fontSize={14}>{t(copy.actionLine)}</Text>
+              </View>
+              <ActionsRow
+                primary={
+                  <Button
+                    testID={enrollRetry ? `${row}-try-again` : `${row}-start`}
+                    type="primary"
+                    text={t(enrollRetry ? 'socialRecovery.ceremony.tryAgainAction' : copy.action)}
+                    disabled={!canLaunch}
+                    onPress={create}
+                    hasBottomSpacing={false}
+                  />
+                }
               />
-            }
-          />
+            </>
+          )}
         </>
       )}
     </SectionCard>

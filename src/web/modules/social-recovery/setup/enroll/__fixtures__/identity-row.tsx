@@ -430,6 +430,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
           t(`${CEREMONY}.notSupportedNote`)
         )
         expect(view!.byTestId(id('try-again'))).toBeNull()
+        expect(view!.byTestId(id('start'))).toBeNull()
         expect(await storedClauses(records)).toEqual(TWO_SLOTS)
       })
     })
