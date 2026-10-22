@@ -19,7 +19,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import Button from '@common/components/Button'
 import Panel from '@common/components/Panel'
-import Spinner from '@common/components/Spinner'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import useTheme from '@common/hooks/useTheme'
@@ -32,6 +31,7 @@ import {
 } from '@web/components/TabLayoutWrapper/TabLayoutWrapper'
 import type { DeviceBinding } from '@kohaku-eth/social-recovery'
 import { TwoColumn } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import { renderChip } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
@@ -343,9 +343,15 @@ const CeremonyScreen = () => {
       return <ScanBlock step={step} phoneReads={phoneReads} onCancel={cancelRun} />
     }
     return (
-      <View style={[flexbox.alignCenter]}>
-        <Spinner style={spacings.mbSm} />
-        <Text>{renderChip('method', 'inProgress', t)}</Text>
+      <View style={[flexbox.alignCenter]} testID="ceremony-waiting">
+        <LoadingBlock
+          variant="block"
+          message={
+            phase === 'resolving'
+              ? t('socialRecovery.loading.request')
+              : renderChip('method', 'inProgress', t)
+          }
+        />
         <Button
           type="secondary"
           text={t('socialRecovery.ceremony.cancelAction')}

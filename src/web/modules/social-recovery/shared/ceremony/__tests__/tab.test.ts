@@ -513,11 +513,14 @@ describe('the ceremony tab with no provider above it', () => {
     expect(await storedReports()).toEqual([])
   })
 
-  it('reads no record and builds no provider while the tab is hidden, and runs once it is shown', async () => {
+  it('reads no record and builds no provider while the tab is hidden, saying it opens the request, and runs once it is shown', async () => {
     await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
     storageGet.mockClear()
     setVisibility('hidden', false)
-    await render(ENROLL)
+    const page = await render(ENROLL)
+    expect(page.querySelector('[data-testid="ceremony-waiting"]')?.textContent).toContain(
+      en.socialRecovery.loading.request
+    )
     expect(storageGet).not.toHaveBeenCalled()
     expect(networksState).toHaveBeenCalled()
     expect(buildProvider).not.toHaveBeenCalled()
