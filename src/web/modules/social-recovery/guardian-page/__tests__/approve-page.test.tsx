@@ -205,6 +205,28 @@ describe('the sign action', () => {
     page.unmount()
   })
 
+  it('keeps the last reading beside the refreshing line, sign held, while a later read runs, and opens once it answers', async () => {
+    const page = await mountLive()
+    await page.press('guardian-acknowledge')
+    expect(page.has('guardian-refreshing')).toBe(false)
+    let answer: () => void = () => undefined
+    kit.attemptState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = () => resolve(attemptStateOf())
+        })
+    )
+    await advance(MINUTE)
+    expect(page.textOf('guardian-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    answer()
+    await advance(0)
+    expect(page.has('guardian-refreshing')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(false)
+    page.unmount()
+  })
+
   it('keeps the values and the tick through a failed re-read, and opens again once a read answers', async () => {
     const page = await mountLive()
     await page.press('guardian-acknowledge')

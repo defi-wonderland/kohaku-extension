@@ -154,7 +154,7 @@ const ApproveScreen = () => {
   const described = fresh !== undefined ? fresh : kept?.request === request ? kept : null
   // A death is final on chain: once a read found one, no round runs after it.
   const [diedFor, setDiedFor] = useState<ApproverRequest | null>(null)
-  const { reads, retry } = useApprovalReads({
+  const { reads, refreshing, retry } = useApprovalReads({
     client: kit,
     link: location.search,
     enabled: readable && !declined && !signing.approval,
@@ -255,6 +255,7 @@ const ApproveScreen = () => {
         onClose={closePage}
         onDecline={onDecline}
         onRetry={onRetry}
+        refreshing={refreshing}
       />
     )
   }

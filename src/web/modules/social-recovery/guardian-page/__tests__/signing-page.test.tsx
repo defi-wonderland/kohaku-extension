@@ -349,7 +349,7 @@ describe('the signing step', () => {
     )
     const page = await mountTicked()
     await page.press('guardian-sign')
-    expect(page.has('guardian-sign-busy')).toBe(true)
+    expect(page.textOf('guardian-sign-busy')).toBe(t('socialRecovery.loading.request'))
     expect(page.isDisabled('guardian-sign')).toBe(true)
     await page.press('guardian-sign')
     expect(wallet.signTypedData).toHaveBeenCalledTimes(1)
