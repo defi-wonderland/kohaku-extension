@@ -84,7 +84,8 @@ const EditorView = ({
   plainRemoval,
   heading,
   continueLabel,
-  beforeActions
+  beforeActions,
+  onCheckingChange
 }: EditorViewProps) => {
   const { t } = useTranslation()
   const [load, setLoad] = useState<EditorLoad | null>(null)
@@ -104,6 +105,10 @@ const EditorView = ({
   const mounted = useRef(true)
   const loadRef = useRef<EditorLoad | null>(null)
   const writes = useRef<Promise<void>>(Promise.resolve())
+
+  useEffect(() => {
+    onCheckingChange?.(checking)
+  }, [checking, onCheckingChange])
 
   useEffect(() => {
     mounted.current = true

@@ -231,6 +231,38 @@ describe('the edit page', () => {
     view.unmount()
   })
 
+  it('holds the changes of the values and the cancel while the path is checked, as the editor holds its own', async () => {
+    const { view } = await editPage()
+    const { validateSetup } = (
+      mockWorld.client as unknown as { client: { setup: { validateSetup: jest.Mock } } }
+    ).client.setup
+    let fail: (reason: Error) => void = () => {}
+    validateSetup.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        })
+    )
+    const held = [
+      'manage-value-wait-change',
+      'manage-value-privacy-change',
+      'manage-edit-cancel'
+    ]
+    held.forEach((id) => expect(view.isDisabled(id)).toBe(false))
+
+    await view.press('editor-continue')
+    expect(validateSetup).toHaveBeenCalledTimes(1)
+    expect(view.byTestId('editor-waiting')).not.toBeNull()
+    expect(view.isDisabled('editor-continue')).toBe(true)
+    held.forEach((id) => expect(view.isDisabled(id)).toBe(true))
+
+    await act(async () => fail(new Error('node unavailable')))
+    await settle()
+    expect(view.byTestId('editor-waiting')).toBeNull()
+    held.forEach((id) => expect(view.isDisabled(id)).toBe(false))
+    view.unmount()
+  })
+
   it('marks every member its group cannot lose with the reason, and offers one action in place of its remove', async () => {
     const { view, records } = await editPage()
 
@@ -330,6 +362,7 @@ describe('the edit page', () => {
           addressBook: review.BOOK,
           passwordChanged,
           stale: passwordChanged,
+          disabled: false,
           onStage
         })
       )

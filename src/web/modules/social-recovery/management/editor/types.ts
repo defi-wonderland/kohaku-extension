@@ -283,6 +283,8 @@ export interface ValuesBlockProps {
   addressBook: AddressBook
   passwordChanged: boolean
   stale: boolean
+  /** Holds every change while the path is checked. */
+  disabled: boolean
   onStage: (stage: EditStage) => void
 }
 
@@ -292,6 +294,7 @@ export interface ValueRowProps {
   text: string
   action: string
   stage: EditStage
+  disabled: boolean
   onStage: (stage: EditStage) => void
 }
 
