@@ -1,0 +1,2 @@
+// Returns the page console errors, network failures and worker console lines collected so far.
+return 'PAGE\n' + S.logs.join('\n') + '\nNET\n' + S.net.join('\n') + '\nSW\n' + S.swlogs.join('\n')

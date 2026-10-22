@@ -1,0 +1,8 @@
+// Takes the first tab (closing the others), opens the extension tab, unlocks with the wallet's password if asked, then goes to S.route.
+const p = S.ctx.pages()[0] || await S.ctx.newPage(); S.page = p
+for (const x of S.ctx.pages()) if (x !== p) await x.close()
+await p.goto('chrome-extension://' + S.id + '/tab.html#/keystore-unlock'); await p.waitForTimeout(4000)
+const pw = p.locator('input[type=password]')
+if (await pw.count()) { await pw.first().fill(S.pw); await pw.first().press('Enter'); await p.waitForTimeout(5000) }
+await p.goto('chrome-extension://' + S.id + '/tab.html#/' + S.route); await p.waitForTimeout(5000)
+return p.url().replace(/\?.*/, '') + '\n' + (await S.text()).slice(0, 1500)

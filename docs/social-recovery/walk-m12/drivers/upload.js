@@ -1,0 +1,2 @@
+// The act for tab.body: presses "Choose the image" and sets S.file on the detached input the press creates, through Playwright's file chooser.
+S.upload = async (p) => { await p.waitForTimeout(1500); const fc = p.waitForEvent('filechooser', { timeout: 8000 }); await p.getByTestId('ceremony-choose-image').click(); const c = await fc; await c.setFiles(S.WALK + '/' + S.file); return 'set ' + S.file + ' multiple ' + c.isMultiple() }

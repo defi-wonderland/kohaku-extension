@@ -1,0 +1,1 @@
+S.body = async () => { const t = await S.text(); const i = t.indexOf('Settings › Account recovery'); return S.page.url().replace(/^.*tab\.html#/, '').replace(/\?.*/, '') + '\n' + (i >= 0 ? t.slice(i) : t) }

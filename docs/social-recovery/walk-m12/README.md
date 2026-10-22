@@ -1,0 +1,3 @@
+# The M-12 walk tooling
+
+The visual walks of the identity methods (zkPassport and Anon Aadhaar) of the social recovery feature: a Playwright daemon that loads the extension build into a persistent Chromium profile and serves a command port, the driver bodies of the Aadhaar walk on Sepolia, the plans and the reports of the parts already walked, and a generator of Anon Aadhaar test QR codes. `WALK-PLAN-C-zkpassport.md` is the plan for the passport walk on Sepolia with the ZKPassport app. Everything under `run/` (profiles, wallets, captures, logs) is created by a walk and stays on the machine: never commit it.

@@ -1,0 +1,20 @@
+// Presses S.tab.press (#testid or exact text) on S.page and follows the ceremony route the page navigates to (the same tab):
+// on every change of the text a capture S.tab.prefix-<n>; S.tab.act(page) runs once when S.tab.when shows;
+// ends S.tab.after ms after the url leaves /ceremony, or after S.tab.max ms.
+const o = S.tab; const p = S.page
+const out = []
+if (o.press.startsWith('#')) await p.getByTestId(o.press.slice(1)).click(); else await p.getByText(o.press, { exact: true }).first().click()
+let last = ''; let n = 0; let acted = false; const t0 = Date.now(); let seen = false; let leftAt = 0
+while (Date.now() - t0 < (o.max || 40000)) {
+  let txt = ''; try { txt = await p.evaluate(() => document.body.innerText) } catch (e) { await new Promise(r => setTimeout(r, 300)); continue }
+  const i = txt.indexOf(S.cut || 'Settings › Account recovery'); const body = (i >= 0 ? txt.slice(i) : txt).trim()
+  const u = p.url().replace(/^.*tab\.html#/, '')
+  if (body !== last) { last = body; n++; await S.shot(o.prefix + '-' + n); out.push('--- #' + n + ' +' + (Date.now() - t0) + 'ms ' + u + '\n' + body.slice(0, 1500)) }
+  if (o.act && !acted && o.when && body.includes(o.when)) { acted = true; try { out.push('[act] ' + await o.act(p)) } catch (e) { out.push('[act err] ' + String(e).slice(0, 300)) } }
+  if (u.includes('ceremony')) seen = true
+  if (seen && !u.includes('ceremony') && !leftAt) leftAt = Date.now()
+  if (leftAt && Date.now() - leftAt > (o.after || 2500)) break
+  await new Promise(r => setTimeout(r, 200))
+}
+let log = []; try { log = await p.evaluate(() => window.__walkStacks && window.__walkStacks.log.slice(-6)) } catch (e) {}
+return out.join('\n') + '\nSTACKLOG ' + JSON.stringify(log)

@@ -1,0 +1,28 @@
+// Creates a new wallet in this daemon's profile through the onboarding (new phrase, a generated password, the default picker selection),
+// writes the phrase, the password, the path and both addresses to wallet-<S.wn>.env (mode 600), never returns a secret.
+const fs = process.mainModule.require('fs'); const crypto = process.mainModule.require('crypto')
+const p = S.ctx.pages()[0]; S.page = p; const shot = (n) => S.shot('b/b-' + S.step + '-' + n)
+S.safe = async () => (await S.text()).split('\n').map(l => /^\s*\d*\.?\s*[a-z]+\s*$/.test(l) ? '[w]' : l).join('\n')
+await p.goto('chrome-extension://' + S.id + '/tab.html'); await p.waitForTimeout(4000); await shot(1)
+await p.getByText('Create new account', { exact: true }).click(); await p.waitForTimeout(2500)
+for (const x of S.ctx.pages()) if (x !== p) await x.close()
+for (const t of ['Your recovery phrase is private', 'If your recovery phrase is at risk', 'Use your recovery phrase only']) { await p.getByText(t).first().click(); await p.waitForTimeout(200) }
+await shot(2)
+await p.getByText('Create recovery phrase', { exact: true }).click(); await p.waitForTimeout(2500)
+const lines = (await S.text()).split('\n').map(l => l.trim())
+const words = []; for (let i = 1; i <= 12; i++) { const k = lines.indexOf(i + '.'); words.push(lines[k + 1]) }
+if (words.some(w => !/^[a-z]+$/.test(w || ''))) return 'bad parse'
+const pw = 'Walk-B' + S.wn + '-' + crypto.randomBytes(6).toString('hex')
+const f = S.WALK + '/b/wallet-' + S.wn + '.env'
+fs.writeFileSync(f, 'SEED="' + words.join(' ') + '"\nPASSWORD=' + pw + "\nPATH=m/44'/60'/0'/0/100000\n", { mode: 0o600 }); fs.chmodSync(f, 0o600)
+await p.getByText("I've saved the phrase", { exact: true }).click(); await p.waitForTimeout(2500)
+const ins = p.locator('input[type=password]'); await ins.nth(0).fill(pw); await ins.nth(1).fill(pw)
+await p.getByText('I agree to the').first().click(); await p.waitForTimeout(300)
+await p.getByText('Confirm', { exact: true }).click(); await p.waitForTimeout(6000)
+await p.getByText('Import accounts', { exact: true }).click(); await p.waitForTimeout(6000)
+const acc = await p.evaluate(async () => { const r = await chrome.storage.local.get('accounts'); let a = r.accounts; if (typeof a === 'string') a = JSON.parse(a); return a.map(x => ({ addr: x.addr, creation: !!x.creation, keys: x.associatedKeys })) })
+const sa = acc.find(a => a.creation); const basic = acc.find(a => !a.creation)
+fs.appendFileSync(f, 'BASIC_ADDRESS=' + basic.addr + '\nSMART_ACCOUNT=' + sa.addr + '\n')
+await p.getByText('Complete', { exact: true }).click(); await p.waitForTimeout(4000)
+await p.goto('chrome-extension://' + S.id + '/tab.html#/dashboard'); await p.waitForTimeout(6000); await shot(3)
+return 'accounts ' + acc.length + ' keyOfSA ' + sa.keys.map(k => k.toLowerCase()).includes(basic.addr.toLowerCase()) + ' pages ' + S.ctx.pages().length + ' ' + p.url().replace(/\?.*/, '')
