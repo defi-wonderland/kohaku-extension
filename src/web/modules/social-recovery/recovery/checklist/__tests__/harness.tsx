@@ -197,6 +197,8 @@ export interface TestStorage extends RecordStorage {
   hold: (name: string) => () => void
   /** Every write of a key that holds one of these names fails while listed. */
   refuse: string[]
+  /** Holds every removal until the returned release runs. */
+  holdRemovals: () => () => void
   /** Every stored value by key, as the extension's storage holds it. */
   getAll: NonNullable<RecordStorage['getAll']>
 }
@@ -216,6 +218,7 @@ afterEach(() => {
 export const makeStorage = (): TestStorage => {
   const raw = new Map<string, string>()
   const held = new Map<string, Promise<void>>()
+  let removals: Promise<void> = Promise.resolve()
   const sets: string[] = []
   const refuse: string[] = []
   const refuses = (key: string) => refuse.some((name) => key.includes(name))
@@ -244,6 +247,17 @@ export const makeStorage = (): TestStorage => {
       )
       return () => release()
     },
+    holdRemovals: () => {
+      let release = () => {}
+      removals = new Promise<void>((resolve) => {
+        release = () => {
+          openHolds.delete(release)
+          resolve()
+        }
+        openHolds.add(release)
+      })
+      return () => release()
+    },
     get: async (key, defaultValue) => {
       const stored = key && raw.get(key)
       return stored ? parse(stored) : defaultValue
@@ -266,10 +280,12 @@ export const makeStorage = (): TestStorage => {
       Object.entries(entries).forEach(([key, value]) => put(key, value))
     },
     remove: async (key) => {
+      await removals
       raw.delete(key)
       return null
     },
     removeKeys: async (keys) => {
+      await removals
       keys.forEach((key) => raw.delete(key))
     }
   }

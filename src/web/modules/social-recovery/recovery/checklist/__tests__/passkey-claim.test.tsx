@@ -181,6 +181,71 @@ describe('the passkey row', () => {
     expect(back.byTestId('checklist-undelivered')).toBeNull()
   })
 
+  it('writes one replacement request and opens the ceremony once for a retry pressed again while the old request is removed', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    const navigated = back.navigate.mock.calls.length
+    const release = world.storage.holdRemovals()
+
+    await outside(async () => {
+      back.byTestId('checklist-undelivered-retry')?.click()
+      back.byTestId('checklist-undelivered-retry')?.click()
+    })
+    expect(back.isDisabled('checklist-undelivered-retry')).toBe(true)
+    await back.press('checklist-undelivered-retry')
+    expect(deps.requestIds).toEqual([id])
+
+    release()
+    await settle()
+
+    expect(deps.requestIds).toHaveLength(2)
+    const replacement = deps.requestIds[1]
+    expect(back.navigate.mock.calls.slice(navigated).map(([path]) => path)).toEqual([
+      ceremonyPath({
+        call: 'createClaim',
+        method: 'passkey',
+        id: replacement,
+        handOff: false,
+        returnTo: checklistPathOf(ACCOUNT, replacement)
+      })
+    ])
+    expect((await world.records.ceremonyRequest(id).read()).status).toBe('absent')
+    expect((await world.records.ceremonyRequest(replacement).read()).status).toBe('present')
+  })
+
+  it('lets the claim launch again under the write-failed alert where the replacement request cannot be stored', async () => {
+    const mounted = await open()
+    await mounted.press('checklist-row-0-answer-here')
+    const [id] = deps.requestIds
+    const back = await open({ account: ACCOUNT, ceremony: id })
+    const navigated = back.navigate.mock.calls.length
+    world.storage.refuse.push('ceremonyRequest')
+
+    await back.press('checklist-undelivered-retry')
+
+    expect(back.byTestId('checklist-write-failed')?.textContent).toContain(
+      t('socialRecovery.checklist.writeFailed')
+    )
+    expect(back.navigate.mock.calls.slice(navigated)).toEqual([])
+    expect(back.isDisabled('checklist-row-0-answer-here')).toBe(false)
+
+    world.storage.refuse.splice(0)
+    await back.press('checklist-row-0-answer-here')
+
+    expect(deps.requestIds).toHaveLength(3)
+    expect(back.lastPath()).toBe(
+      ceremonyPath({
+        call: 'createClaim',
+        method: 'passkey',
+        id: deps.requestIds[2],
+        handOff: false,
+        returnTo: checklistPathOf(ACCOUNT, deps.requestIds[2])
+      })
+    )
+  })
+
   it('reads a reply of another attempt as the row failed note, with the row still open and nothing added', async () => {
     const mounted = await open()
     await mounted.press('checklist-row-0-answer-here')

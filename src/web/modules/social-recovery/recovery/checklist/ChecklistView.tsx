@@ -284,7 +284,7 @@ const ChecklistView = ({
   )
   const title = titleOf(false)
 
-  const retryButton = (onPress: () => void, testID: string) => (
+  const retryButton = (onPress: () => void, testID: string, disabled = false) => (
     <View style={spacings.mtTy}>
       <Button
         testID={testID}
@@ -292,6 +292,7 @@ const ChecklistView = ({
         size="small"
         text={t('socialRecovery.writes.tryAgain')}
         onPress={onPress}
+        disabled={disabled}
         hasBottomSpacing={false}
         style={flexbox.alignSelfStart}
       />
@@ -556,9 +557,13 @@ const ChecklistView = ({
             style={spacings.mbSm}
             text={t('socialRecovery.ceremony.undeliveredNote')}
           >
-            {retryButton(() => {
-              claim.retryUndelivered().catch(() => undefined)
-            }, 'checklist-undelivered-retry')}
+            {retryButton(
+              () => {
+                claim.retryUndelivered().catch(() => undefined)
+              },
+              'checklist-undelivered-retry',
+              busy
+            )}
           </Alert>
         )}
         {(claim.launchFailed || checklist.noteFailed || pendingFailed) && (

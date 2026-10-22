@@ -14,7 +14,9 @@
  * that lands after the wipe included, and so does every claim of the account
  * stored for the request that died, one this tab never saw included. No
  * outcome and no undelivered claim outlives the wipe. A landed session leaves
- * no claim behind in the same way.
+ * no claim behind in the same way. One launch writes one request: a press
+ * while a launch or a retry runs does nothing, and a retry of an undelivered
+ * claim writes its one replacement only after the stale request is gone.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -72,7 +74,11 @@ const useCeremonyClaim = ({
   // later is removed in turn and changes nothing on the checklist.
   const forgotten = useRef(new Set<string>())
 
-  const launch = useCallback(
+  // Set from the first press until the write fails or the tab leaves for the
+  // ceremony, so a second press in between writes nothing.
+  const inFlight = useRef(false)
+
+  const start = useCallback(
     async (request: ApproverRequest, { method, params, handOff }: ClaimLaunch) => {
       const id = deps.newRequestId()
       setBusy(true)
@@ -83,6 +89,7 @@ const useCeremonyClaim = ({
           .ceremonyRequest(id)
           .write(claimRequestRecordOf(method, { account, chainId, request }, params))
       } catch {
+        inFlight.current = false
         setLaunchFailed(true)
         setLaunching(null)
         setBusy(false)
@@ -99,6 +106,17 @@ const useCeremonyClaim = ({
       )
     },
     [deps, records, account, chainId, navigate]
+  )
+
+  const launch = useCallback(
+    async (request: ApproverRequest, how: ClaimLaunch) => {
+      if (inFlight.current) {
+        return
+      }
+      inFlight.current = true
+      await start(request, how)
+    },
+    [start]
   )
 
   /**
@@ -212,9 +230,11 @@ const useCeremonyClaim = ({
   // A report that never came back: the stale request goes, the search drops
   // its id, and the same claim runs again under a new one.
   const retryUndelivered = useCallback(async () => {
-    if (!undelivered || !ceremonyId) {
+    if (!undelivered || !ceremonyId || inFlight.current) {
       return
     }
+    inFlight.current = true
+    setBusy(true)
     stopListening.current?.()
     stopListening.current = undefined
     await records
@@ -223,8 +243,8 @@ const useCeremonyClaim = ({
       .catch(() => undefined)
     const asked = undelivered
     setUndelivered(null)
-    await launch(asked.request, asked)
-  }, [undelivered, ceremonyId, records, launch])
+    await start(asked.request, asked)
+  }, [undelivered, ceremonyId, records, start])
 
   // An abandoned session takes its waiting claim with it, and a claim whose
   // report has not come back stops listening and loses its request and any
