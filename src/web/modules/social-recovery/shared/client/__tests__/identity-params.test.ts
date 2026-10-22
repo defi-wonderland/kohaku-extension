@@ -1,7 +1,7 @@
 /**
  * The identity methods' parameters are build data per chain: fixed values on
  * the stand-in chain, the deployment's facts on a deployed one, where a
- * method whose facts are missing has none. The client hands each identity
+ * method whose facts or module address are missing has none. The client hands each identity
  * method its params for one call, the zkPassport ones carrying the name and
  * the purpose the phone shows; the SDK's own methods take them as they are.
  */
@@ -15,6 +15,7 @@ import {
   createWorld,
   DEPLOYED_FACTS
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
+import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
 import {
   identityParamsOf,
@@ -44,6 +45,8 @@ const SEED = '123456789012345678901234567890'
 
 const IDENTITY_FACTS: DeploymentFacts = {
   ...DEPLOYED_FACTS,
+  methodZkpassport: addressOf('deployed-method-zkpassport'),
+  methodAadhaar: addressOf('deployed-method-aadhaar'),
   zkPassportDomain: 'kohaku.example',
   zkPassportScope: 'kohaku-recovery-sepolia',
   zkPassportTestnetTree: true,
@@ -109,6 +112,19 @@ describe('the identity parameters of a chain', () => {
   GAPS.forEach(([what, fields, missing]) =>
     it(`holds no ${missing} params, and keeps the other method's, where the facts omit ${what}`, () => {
       const reading = identityParamsOf('sepolia', without(...fields))
+      expect(reading[missing]).toBeUndefined()
+      const other = missing === 'zkPassport' ? 'aadhaar' : 'zkPassport'
+      expect(reading[other]).toBeDefined()
+    })
+  )
+
+  const UNDEPLOYED: ['zkPassport' | 'aadhaar', keyof DeploymentFacts][] = [
+    ['zkPassport', 'methodZkpassport'],
+    ['aadhaar', 'methodAadhaar']
+  ]
+  UNDEPLOYED.forEach(([missing, address]) =>
+    it(`holds no ${missing} params, though the facts carry them, where the deployment names no ${missing} module`, () => {
+      const reading = identityParamsOf('sepolia', without(address))
       expect(reading[missing]).toBeUndefined()
       const other = missing === 'zkPassport' ? 'aadhaar' : 'zkPassport'
       expect(reading[other]).toBeDefined()
@@ -231,4 +247,20 @@ describe("the client's params for an identity method", () => {
     expect(client.methodParamsFor('zkpassport', 'enroll')).toBeDefined()
     expect(client.methodFor('aadhaar')).toBeDefined()
   })
+  ;(
+    [
+      ['zkpassport', 'methodZkpassport'],
+      ['aadhaar', 'methodAadhaar']
+    ] as const
+  ).forEach(([slug, address]) =>
+    it(`neither serves ${slug} nor hands its params where the deployment names no module for it`, async () => {
+      variable.mockReturnValue(JSON.stringify(without(address)))
+      const client = await buildRecoveryClient(createDeployedWorld().config)
+      CALLS.forEach((call) => expect(client.methodParamsFor(slug, call)).toBeUndefined())
+      expect(client.methodFor(slug)).toBeUndefined()
+      const other = slug === 'zkpassport' ? 'aadhaar' : 'zkpassport'
+      expect(client.methodFor(other)).toBeDefined()
+      expect(client.methodParamsFor(other, 'enroll')).toBeDefined()
+    })
+  )
 })

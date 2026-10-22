@@ -4,9 +4,9 @@
  * scripted stacks, the approving side enrolls and claims through them with
  * the material the ceremony's devices hand over, and the fake node judges
  * their replies through the module's `verify` view as the deployed verifiers
- * would bind them: the zkPassport identifier, the Aadhaar nullifier, seed and
- * digest. The scripted stacks' scripts make the phone and the prover fail in
- * each way a holder meets.
+ * would bind them: the zkPassport identifier, the Aadhaar nullifier, seed,
+ * window, disclosures, digest and the QR code's age. The scripted stacks'
+ * scripts make the phone and the prover fail in each way a holder meets.
  */
 import { approvalDigest } from '@kohaku-eth/social-recovery'
 import type { Address, ApproverRequest, Hex, Material, Reply } from '@kohaku-eth/social-recovery'
@@ -56,6 +56,7 @@ const buildProvider = getRpcProvider as jest.Mock
 const variable = sepoliaDeploymentVariable as jest.MockedFunction<typeof sepoliaDeploymentVariable>
 
 const QR_DATA = '123456789012345678901234567890'
+const DAY_MS = 24 * 3600 * 1000
 
 beforeEach(() => {
   variable.mockReturnValue(undefined)
@@ -371,7 +372,7 @@ describe('an Aadhaar credential from enrollment to a claim the node accepts', ()
     const decoded = anonAadhaarMethod({ stack: createScriptedAadhaarStack() }).codec.decodeConfig(
       config
     )
-    expect(decoded).toEqual({ nullifier: 22n, nullifierSeed: 1n })
+    expect(decoded).toEqual({ nullifier: 22n, nullifierSeed: 1n, freshnessWindow: 86400n })
     expect(steps).toEqual(['fetchingFiles', 'fetchingFiles', 'proving', 'checking'])
   })
 
@@ -388,9 +389,13 @@ describe('an Aadhaar credential from enrollment to a claim the node accepts', ()
     ).resolves.toBe('satisfied')
   })
 
-  const CONFIG_CHANGES: [string, { nullifier: bigint; nullifierSeed: bigint }][] = [
-    ['another nullifier', { nullifier: 23n, nullifierSeed: 1n }],
-    ['another seed', { nullifier: 22n, nullifierSeed: 2n }]
+  const CONFIG_CHANGES: [
+    string,
+    { nullifier: bigint; nullifierSeed: bigint; freshnessWindow: bigint }
+  ][] = [
+    ['another nullifier', { nullifier: 23n, nullifierSeed: 1n, freshnessWindow: 86400n }],
+    ['another seed', { nullifier: 22n, nullifierSeed: 2n, freshnessWindow: 86400n }],
+    ['a window under an hour', { nullifier: 22n, nullifierSeed: 1n, freshnessWindow: 3599n }]
   ]
   CONFIG_CHANGES.forEach(([what, fields]) =>
     it(`rejects the reply against a config of ${what}`, async () => {
@@ -408,6 +413,29 @@ describe('an Aadhaar credential from enrollment to a claim the node accepts', ()
       ).resolves.toBe('rejected')
     })
   )
+
+  it('fails the claim with the material rejected where the QR code was signed more than a day ago', async () => {
+    const identity = await identityWorld()
+    const config = asConfig(await enrollAadhaar(identity, []))
+    const request = requestFor(identity.client, identity.aadhaarModule, config)
+    sdkStandIn.aadhaarStackFor(identity.world.descriptor).script({ stale: true })
+    await expect(claimAadhaar(identity, request)).resolves.toEqual({
+      kind: 'reply-failure',
+      cause: 'material-rejected'
+    })
+  })
+
+  it("rejects on the chain a proof whose QR code is more than a day older than the latest block's time", async () => {
+    jest.setSystemTime(new Date('2026-10-22T12:00:00Z'))
+    const identity = await identityWorld()
+    const config = asConfig(await enrollAadhaar(identity, []))
+    const request = requestFor(identity.client, identity.aadhaarModule, config)
+    const reply = replyOf(await claimAadhaar(identity, request))
+    jest.setSystemTime(Date.now() + DAY_MS - 60_000)
+    await expect(identity.client.walletReads.verifyReply(request, reply)).resolves.toBe('satisfied')
+    jest.setSystemTime(Date.now() + 120_000)
+    await expect(identity.client.walletReads.verifyReply(request, reply)).resolves.toBe('rejected')
+  })
 
   it("rejects a proof bound to another request's digest", async () => {
     const identity = await identityWorld()
@@ -666,13 +694,20 @@ describe('the scripted Aadhaar stack', () => {
   it('reports its states in order and proves the vector under the seed and the signal it was given', async () => {
     const stack = createScriptedAadhaarStack({ stepMs: 1 })
     const signalText = BigInt(DIGEST).toString()
+    const before = Math.floor(Date.now() / 1000)
     const { progress, proving } = await prove(stack, undefined, signalText)
     const pcd: AadhaarPcd = await proving
+    const after = Math.floor(Date.now() / 1000)
     expect(progress).toEqual(['fetching-wasm', 'fetching-zkey', 'proving', 'completed'])
+    expect(Number(pcd.proof.timestamp)).toBeGreaterThanOrEqual(before)
+    expect(Number(pcd.proof.timestamp)).toBeLessThanOrEqual(after)
     expect(pcd.proof).toMatchObject({
       pubkeyHash: '99',
       nullifier: '22',
-      timestamp: '1700000000',
+      ageAbove18: '0',
+      gender: '0',
+      pincode: '0',
+      state: '0',
       nullifierSeed: '5',
       signalHash: (BigInt(keccak256(DIGEST)) / 8n).toString()
     })
@@ -728,6 +763,17 @@ describe('the scripted Aadhaar stack', () => {
     stack.script({ nullifier: 99n })
     const { proving } = await prove(stack)
     expect((await proving).proof).toMatchObject({ nullifier: '99' })
+  })
+
+  it('stamps a QR code signed more than a day ago where scripted stale, and the device clock again after an empty script', async () => {
+    const stack = createScriptedAadhaarStack({ stepMs: 1 })
+    stack.script({ stale: true })
+    const stale = await (await prove(stack)).proving
+    const now = Math.floor(Date.now() / 1000)
+    expect(now - Number(stale.proof.timestamp)).toBeGreaterThan(24 * 3600)
+    stack.script({})
+    const fresh = await (await prove(stack)).proving
+    expect(Number(fresh.proof.timestamp)).toBeGreaterThanOrEqual(now)
   })
 
   it('answers the verifier false or throws where scripted to', async () => {

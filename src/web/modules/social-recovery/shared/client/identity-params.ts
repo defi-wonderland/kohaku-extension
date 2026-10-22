@@ -13,6 +13,9 @@ import type { CeremonyCall } from '@web/modules/social-recovery/shared/ceremony'
 import { deploymentOf } from './deployments'
 import type { DeploymentFacts, IdentityParams, IdentityParamsReading, RecoveryChain } from './types'
 
+/** The slugs of the methods whose parameters are build data rather than the caller's. */
+export const IDENTITY_SLUGS: readonly string[] = ['zkpassport', 'aadhaar']
+
 /** The parameters of the stand-in chain, where the scripted stacks read none of them. */
 export const STAND_IN_IDENTITY_PARAMS: IdentityParams = {
   zkPassport: { domain: 'kohaku.stand-in', scope: 'kohaku-recovery', testnetTree: false },
@@ -29,7 +32,8 @@ const factsOf = (chain: RecoveryChain): DeploymentFacts | undefined => {
 
 /**
  * The identity parameters of a chain: the facts' fields where the chain is
- * deployed, a method whose fields the facts omit having none, and the fixed
+ * deployed, a method whose module address or fields the facts omit having
+ * none, since the deployment does not serve it, and the fixed
  * values of the stand-in chain otherwise. `facts` are the chain's own
  * deployment facts unless given.
  */
@@ -41,14 +45,22 @@ export const identityParamsOf = (
     return STAND_IN_IDENTITY_PARAMS
   }
   const reading: IdentityParamsReading = {}
-  if (facts.zkPassportDomain !== undefined && facts.zkPassportScope !== undefined) {
+  if (
+    facts.methodZkpassport !== undefined &&
+    facts.zkPassportDomain !== undefined &&
+    facts.zkPassportScope !== undefined
+  ) {
     reading.zkPassport = {
       domain: facts.zkPassportDomain,
       scope: facts.zkPassportScope,
       testnetTree: facts.zkPassportTestnetTree ?? false
     }
   }
-  if (facts.aadhaarNullifierSeed !== undefined && facts.aadhaarCertificate !== undefined) {
+  if (
+    facts.methodAadhaar !== undefined &&
+    facts.aadhaarNullifierSeed !== undefined &&
+    facts.aadhaarCertificate !== undefined
+  ) {
     reading.aadhaar = {
       nullifierSeed: BigInt(facts.aadhaarNullifierSeed),
       issuerCertificate: facts.aadhaarCertificate
