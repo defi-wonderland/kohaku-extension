@@ -6,7 +6,6 @@
  * gates of the sign action, the re-read every minute and the decline.
  */
 import type { RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
-import type * as ClientLayer from '@web/modules/social-recovery/shared/client'
 
 import {
   ACCOUNT,
@@ -448,9 +447,9 @@ describe('the states in place of the sign action', () => {
   })
 
   it('draws a centred waiting block that opens the request where the link cannot be described before the client stands', async () => {
-    const clientLayer = jest.requireMock<typeof ClientLayer>(
-      '@web/modules/social-recovery/shared/client'
-    )
+    const clientLayer = jest.requireMock<
+      typeof import('@web/modules/social-recovery/shared/client')
+    >('@web/modules/social-recovery/shared/client')
     const describe = jest.spyOn(clientLayer, 'describeRequestOffline').mockImplementation(() => {
       throw new Error('unknown version')
     })

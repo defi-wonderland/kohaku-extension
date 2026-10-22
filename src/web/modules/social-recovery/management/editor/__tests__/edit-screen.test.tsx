@@ -207,9 +207,7 @@ describe('the edit page', () => {
       })
     )
 
-    expect(view.textOf('manage-edit-reads-reading')).toBe(
-      t('socialRecovery.loading.lookup')
-    )
+    expect(view.textOf('manage-edit-reads-reading')).toBe(t('socialRecovery.loading.lookup'))
     expect(
       view.byTestId('manage-edit-reads-reading')?.querySelector('[data-testid="loading-block"]')
     ).not.toBeNull()
@@ -243,11 +241,7 @@ describe('the edit page', () => {
           fail = reject
         })
     )
-    const held = [
-      'manage-value-wait-change',
-      'manage-value-privacy-change',
-      'manage-edit-cancel'
-    ]
+    const held = ['manage-value-wait-change', 'manage-value-privacy-change', 'manage-edit-cancel']
     held.forEach((id) => expect(view.isDisabled(id)).toBe(false))
 
     await view.press('editor-continue')
