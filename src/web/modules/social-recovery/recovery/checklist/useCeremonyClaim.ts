@@ -22,6 +22,7 @@ import type { ApproverRequest } from '@kohaku-eth/social-recovery'
 import {
   ceremonyPath,
   ceremonyResultKey,
+  failed,
   isCeremonyReport,
   isReportFor,
   readCeremonyReport
@@ -129,13 +130,15 @@ const useCeremonyClaim = ({
       }
       setUndelivered(null)
       const { outcome } = report
-      setOutcomes((held) => ({ ...held, [asked.place]: { outcome, handOff: asked.handOff } }))
-      if (outcome.kind === 'verdict' && outcome.verdict === 'passed') {
-        const passed = claimReplyOf(outcome.value)
-        if (passed) {
-          setPending({ place: asked.place, id: ceremonyId, ...passed })
-          return
-        }
+      const isPassed = outcome.kind === 'verdict' && outcome.verdict === 'passed'
+      const passed = isPassed ? claimReplyOf(outcome.value, asked.request) : null
+      // A passed report that carries no answer to the stored request fills
+      // nothing and reads as refused, so the row stays open with its retry.
+      const held = isPassed && !passed ? failed('check-rejected') : outcome
+      setOutcomes((all) => ({ ...all, [asked.place]: { outcome: held, handOff: asked.handOff } }))
+      if (passed) {
+        setPending({ place: asked.place, id: ceremonyId, ...passed })
+        return
       }
       forget(ceremonyId)
     }

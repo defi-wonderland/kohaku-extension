@@ -181,7 +181,7 @@ describe('the passkey row', () => {
     expect(back.byTestId('checklist-undelivered')).toBeNull()
   })
 
-  it('reads a reply the client refuses as the row failed note, with the row still open', async () => {
+  it('reads a reply of another attempt as the row failed note, with the row still open and nothing added', async () => {
     const mounted = await open()
     await mounted.press('checklist-row-0-answer-here')
     const [id] = deps.requestIds
@@ -189,7 +189,7 @@ describe('the passkey row', () => {
 
     const back = await returnFrom(id, passed({ reply: stale }))
 
-    expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+    expect(kit.addApproverReply).not.toHaveBeenCalled()
     const after = await storedSession(world.records)
     expect(after?.value.state === 'live' && after.value.gathering.replies).toEqual([])
     expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))

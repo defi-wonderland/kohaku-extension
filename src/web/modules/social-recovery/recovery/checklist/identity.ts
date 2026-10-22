@@ -19,9 +19,7 @@ const NO_NOTES: IdentityNotes = { note: null, cause: null, retry: false }
  * did not answer on its chip and carries no cause line.
  */
 const causeKeyOf = (cause: string): string | null =>
-  cause === 'check-rejected' || cause === 'material-rejected'
-    ? `${CEREMONY}.rejectedCause`
-    : null
+  cause === 'check-rejected' || cause === 'material-rejected' ? `${CEREMONY}.rejectedCause` : null
 
 /**
  * A dismissal's note: the holder stopped the prover or cancelled the phone

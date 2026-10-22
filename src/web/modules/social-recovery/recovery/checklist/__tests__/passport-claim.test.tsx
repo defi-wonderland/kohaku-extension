@@ -217,17 +217,31 @@ describe('the passport row', () => {
     expect(await repliesOf()).toEqual([])
   })
 
-  it('reads a reply the client refuses as failed with the check cause and a retry', async () => {
+  it('reads a reply of another attempt as failed with the check cause and a retry, adding nothing', async () => {
     const stale = { ...replyOf(gathering, 0), attemptId: '99' }
 
     const back = await launchAndReturn(passed({ reply: stale }))
 
-    expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+    expect(kit.addApproverReply).not.toHaveBeenCalled()
     expect(await repliesOf()).toEqual([])
     expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
     expect(back.byTestId('checklist-row-0-cause')?.textContent).toBe(t(`${CEREMONY}.rejectedCause`))
     expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
     expect(chipOf(back)).toBe(t(`${COLLECTION}.notAsked`))
+  })
+
+  it('files no reply for another place and leaves the asked row open with a retry', async () => {
+    const other = replyOf(gathering, 1)
+
+    const back = await launchAndReturn(passed({ reply: other }))
+
+    expect(kit.addApproverReply).not.toHaveBeenCalled()
+    expect(await repliesOf()).toEqual([])
+    expect(chipOf(back)).toBe(t(`${COLLECTION}.notAsked`))
+    expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
+    expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
+    expect(back.byTestId('checklist-row-1-chip')?.textContent).not.toBe(t(`${COLLECTION}.complete`))
+    expect((await world.records.ceremonyRequest(deps.requestIds[0]).read()).status).toBe('absent')
   })
 
   each([
@@ -245,13 +259,7 @@ describe('the passport row', () => {
       `${CEREMONY}.rejectedCause`,
       'notAsked'
     ],
-    [
-      'thrown',
-      failed('thrown'),
-      `${CEREMONY}.failedNote`,
-      null,
-      'didNotAnswer'
-    ],
+    ['thrown', failed('thrown'), `${CEREMONY}.failedNote`, null, 'didNotAnswer'],
     [
       'service-unanswered',
       failed('service-unanswered'),

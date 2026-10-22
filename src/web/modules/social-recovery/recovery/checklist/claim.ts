@@ -4,7 +4,7 @@
  * that request and from the tab's report. A stored request and a report are read from storage, so
  * their values are checked here before the row uses them.
  */
-import type { Params, Reply } from '@kohaku-eth/social-recovery'
+import type { ApproverRequest, Params, Reply } from '@kohaku-eth/social-recovery'
 import { AUTHENTICATOR_PLACES } from '@web/modules/social-recovery/shared/ceremony'
 import { sameAddress } from '@web/modules/social-recovery/shared/client'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
@@ -100,17 +100,32 @@ export const claimOfDeadRequest = (
 }
 
 /**
- * A passed claim's reply as the report carries it, with where the
- * authenticator sat, or null where the value carries no reply. The client's
- * add judges the reply itself; this check only keeps a value that is not one
- * away from it.
+ * Whether a reply answers the stored request: the same place, method,
+ * configuration, attempt, account and chain. A reply for any other place
+ * would fill that place while the asked one read answered.
  */
-export const claimReplyOf = (value: unknown): PassedClaim | null => {
+const answersRequest = (reply: Record<string, unknown>, request: ApproverRequest): boolean =>
+  reply.place === request.place &&
+  typeof reply.method === 'string' &&
+  sameAddress(reply.method, request.method) &&
+  reply.config === request.config &&
+  reply.attemptId === request.attemptId &&
+  typeof reply.account === 'string' &&
+  sameAddress(reply.account, request.account) &&
+  reply.chainId === request.chainId
+
+/**
+ * A passed claim's reply as the report carries it, with where the
+ * authenticator sat, or null where the value carries no reply or a reply to
+ * any request but the stored one. The client's add judges the reply itself;
+ * this check only keeps a value that is not this claim's answer away from it.
+ */
+export const claimReplyOf = (value: unknown, request: ApproverRequest): PassedClaim | null => {
   if (!isRecord(value) || !isRecord(value.reply)) {
     return null
   }
   const { reply, facts } = value
-  if (reply.kind !== 'recovery-proof-reply' || typeof reply.place !== 'number') {
+  if (reply.kind !== 'recovery-proof-reply' || !answersRequest(reply, request)) {
     return null
   }
   const place = isRecord(facts)
