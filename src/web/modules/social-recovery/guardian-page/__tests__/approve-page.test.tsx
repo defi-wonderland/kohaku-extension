@@ -527,6 +527,34 @@ describe('the states in place of the sign action', () => {
     page.unmount()
   })
 
+  it("draws the link's values above the failed read, sign held, where the client failed before it stood", async () => {
+    const retry = jest.fn()
+    setClient({ status: 'failed', error: new Error('rpc down'), retry })
+    const page = await mountLive(requestOf({ salt: DESCRIBABLE_SALT }))
+    expect(page.has('guardian-lead')).toBe(true)
+    expect(page.textOf('guardian-value-accountBeingRecovered')).toBe(ACCOUNT)
+    expect(page.has('guardian-details')).toBe(true)
+    expect(page.textOf('guardian-read-failed')).toContain(t(`${PAGE}.readFailed`))
+    expect(page.has('guardian-acknowledge')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    expect(page.has('guardian-request-loading')).toBe(false)
+    await page.press('guardian-read-retry')
+    expect(retry).toHaveBeenCalledTimes(1)
+    page.unmount()
+  })
+
+  it('draws a refused client as another deployment, with no values and sign held, even where the link can be described', async () => {
+    setClient({ status: 'update-the-wallet', refusal: {} as never, retry: () => {} })
+    const page = await mountLive(requestOf({ salt: DESCRIBABLE_SALT }))
+    expect(page.textOf('guardian-other-deployment')).toContain(t(`${PAGE}.otherDeployment`))
+    expect(page.has('guardian-lead')).toBe(false)
+    expect(page.has('guardian-value-accountBeingRecovered')).toBe(false)
+    expect(page.has('guardian-read-retry')).toBe(false)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    expect(page.has('guardian-request-loading')).toBe(false)
+    page.unmount()
+  })
+
   it('refuses a request aimed at another deployment with no retry and no read', async () => {
     const page = await mountLive(requestOf({ digestVersion: '9' }))
     expect(page.textOf('guardian-other-deployment')).toContain(t(`${PAGE}.otherDeployment`))
