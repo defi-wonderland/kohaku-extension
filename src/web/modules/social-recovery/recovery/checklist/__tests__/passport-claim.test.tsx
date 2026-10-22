@@ -8,7 +8,7 @@
  * holder who dismissed it leaves the row as it was. The row says what the
  * phone it reaches reads.
  */
-import type { Configuration, Params } from '@kohaku-eth/social-recovery'
+import type { Configuration, Gathering, Params, Reply } from '@kohaku-eth/social-recovery'
 import type { CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 
 import type { ChecklistSearch } from '@web/modules/social-recovery/recovery/checklist/types'
@@ -242,6 +242,49 @@ describe('the passport row', () => {
     expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
     expect(back.byTestId('checklist-row-1-chip')?.textContent).not.toBe(t(`${COLLECTION}.complete`))
     expect((await world.records.ceremonyRequest(deps.requestIds[0]).read()).status).toBe('absent')
+  })
+
+  each([
+    ['method', (reply: Reply) => ({ ...reply, method: replyOf(gathering, 1).method })],
+    ['configuration', (reply: Reply) => ({ ...reply, config: replyOf(gathering, 1).config })],
+    ['account', (reply: Reply) => ({ ...reply, account: GUARDIANS[0] })],
+    ['chain', (reply: Reply) => ({ ...reply, chainId: String(Number(reply.chainId) + 1) })]
+  ] as const)(
+    'files no reply of another %s and reads the row failed with a retry',
+    async ([, mismatched]) => {
+      const reply = replyOf(gathering, 0)
+      const other = mismatched(reply)
+      expect(other).not.toEqual(reply)
+
+      const back = await launchAndReturn(passed({ reply: other }))
+
+      expect(kit.addApproverReply).not.toHaveBeenCalled()
+      expect(await repliesOf()).toEqual([])
+      expect(chipOf(back)).toBe(t(`${COLLECTION}.notAsked`))
+      expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
+      expect(back.byTestId('checklist-row-0-retry')).not.toBeNull()
+    }
+  )
+
+  it('reads a reply the client refuses as failed with the check cause and a retry, filing nothing', async () => {
+    kit.addApproverReply.mockImplementation((held: Gathering) => ({
+      outcome: 'refused',
+      gathering: held,
+      reason: { kind: 'add-refusal', cause: 'binding-mismatch' }
+    }))
+    const reply = replyOf(gathering, 0)
+
+    const back = await launchAndReturn(passed({ reply }))
+
+    expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+    expect(kit.addApproverReply).toHaveBeenCalledWith(gathering, reply)
+    expect(await repliesOf()).toEqual([])
+    expect(chipOf(back)).toBe(t(`${COLLECTION}.notAsked`))
+    expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
+    expect(back.byTestId('checklist-row-0-cause')?.textContent).toBe(t(`${CEREMONY}.rejectedCause`))
+    expect(back.byTestId('checklist-row-0-retry')?.textContent).toBe(
+      t(`${CEREMONY}.tryAgainAction`)
+    )
   })
 
   each([
