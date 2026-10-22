@@ -224,6 +224,28 @@ describe('the overview reads', () => {
     expect(view.byTestId('overview-chip-set-up')).toBeNull()
   })
 
+  it('shows the kept setup beside the refreshing line, its actions held, before the client is built', async () => {
+    const world = await worldAt('public')
+    view = await renderOver(world)
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    view.unmount()
+
+    view = await mount(
+      <ReadsProbe
+        client={{ status: 'loading', retry: () => {} }}
+        records={world.records}
+        chainId={CHAIN_ID}
+        onOpen={jest.fn()}
+      />
+    )
+    await harness.settleReads()
+    expect(view.textOf('overview-refreshing')).toBe(t('socialRecovery.loading.refreshingSetup'))
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    expect(view.isDisabled('overview-edit-path')).toBe(true)
+    expect(view.isDisabled('overview-remove-recovery')).toBe(true)
+    expect(view.byTestId('overview-chip-set-up')).toBeNull()
+  })
+
   it('says it reads the setup, with no path, while the setup state has not answered and nothing is kept', async () => {
     const world = await worldAt('public')
     jest.spyOn(world.client.setup, 'setupState').mockImplementation(() => new Promise(() => {}))

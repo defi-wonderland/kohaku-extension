@@ -19,9 +19,10 @@
  * facts also ask whether any key this wallet's keystore holds is an
  * authority of the account, and wait for the keystore's keys to ask about; a
  * failed answer fails the facts. The configuration this device last opened
- * at the client's deployment is read beside them, for the screen to show
- * while they run, and while the path reads only where it was committed under
- * the setup nonce they answered; it decides nothing.
+ * at the client's deployment, or at this build's own before the client
+ * stands, is read beside them, for the screen to show while they run, and
+ * while the path reads only where it was committed under the setup nonce
+ * they answered; it decides nothing.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -32,6 +33,11 @@ import {
 import { holdsAuthority } from '@web/modules/social-recovery/recovery/entry/running'
 import type { EntryRead, UnlockState } from '@web/modules/social-recovery/recovery/entry/types'
 import type { Configuration, SetupState } from '@kohaku-eth/social-recovery'
+import {
+  addressBookOf,
+  descriptorOf,
+  WALLET_RECOVERY_CHAIN
+} from '@web/modules/social-recovery/shared/client'
 import {
   isOfDeployment,
   readRecoveryPassword,
@@ -60,6 +66,7 @@ import type {
 } from './types'
 
 const PENDING = { status: 'pending' } as const
+const BUILD_DESCRIPTOR = descriptorOf(WALLET_RECOVERY_CHAIN, addressBookOf(WALLET_RECOVERY_CHAIN))
 const IDLE: UnlockState = { status: 'idle' }
 const NONE: PathStep = { kind: 'none' }
 
@@ -99,11 +106,10 @@ export const useOverviewReads = ({
     disagreements.current = 0
   }, [kit])
 
+  // The cache is read before the client stands, under this build's deployment until the client names its own.
+  const { manager, action } = kit?.descriptor ?? BUILD_DESCRIPTOR
   useEffect(() => {
     setLastOpened(null)
-    if (!kit) {
-      return undefined
-    }
     let live = true
     records
       .decryptedSetupCache(chainId, account)
@@ -113,7 +119,7 @@ export const useOverviewReads = ({
           if (
             live &&
             read.status === 'present' &&
-            isOfDeployment(read.value.deployment, kit.descriptor)
+            isOfDeployment(read.value.deployment, { manager, action })
           ) {
             setLastOpened({
               configuration: read.value.configuration,
@@ -126,7 +132,7 @@ export const useOverviewReads = ({
     return () => {
       live = false
     }
-  }, [kit, records, chainId, account])
+  }, [manager, action, records, chainId, account])
 
   // A path read now is the one to show while a later read runs.
   useEffect(() => {
