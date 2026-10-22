@@ -19,12 +19,13 @@
  * the stored write is read again whenever the tab comes back into view.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Linking, View } from 'react-native'
+import { Linking, View } from 'react-native'
 
 import Button from '@common/components/Button'
 import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import ConfirmingBlock from '@web/modules/social-recovery/management/overview/ConfirmingBlock'
 import { useHeldKeys } from '@web/modules/social-recovery/management/overview/useHeldKeys'
 import { useOverviewReads } from '@web/modules/social-recovery/management/overview/useOverviewReads'
 import { PageTitle } from '@web/modules/social-recovery/shared/chrome'
@@ -353,7 +354,12 @@ export const ReviewStageView = ({
             openUrl={openUrl}
           />
         )}
-        {screen === 'confirming' && <ActivityIndicator testID="manage-review-confirming" />}
+        {screen === 'confirming' && (
+          <ConfirmingBlock
+            transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
+            testID="manage-review-confirming"
+          />
+        )}
         {screen === 'run' && (
           <ReviewRun
             run={run}

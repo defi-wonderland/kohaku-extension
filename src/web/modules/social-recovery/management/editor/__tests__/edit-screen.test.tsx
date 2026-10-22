@@ -141,6 +141,7 @@ const editPage = async (
       path: { kind: 'readable', configuration: COMMITTED },
       ask: { status: 'idle' },
       notices: { status: 'pending' },
+      cached: null,
       retry: jest.fn(),
       retryPath: jest.fn(),
       retryNotices: jest.fn(),
@@ -272,6 +273,7 @@ describe('the edit page', () => {
     })
     const navigate = jest.fn()
     const { view } = await editPage(records, navigate)
+    expect(view.textOf('manage-edit-opening')).toBe(t('socialRecovery.loading.draft'))
 
     view.unmount()
     answer({

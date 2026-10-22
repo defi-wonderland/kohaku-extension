@@ -1,12 +1,14 @@
 /**
  * The notices from the logs since the commit: each method of the path whose
  * trusted keys moved, with its admin where its read answered, and the notice
- * after an attempt a cancel or a setup write ended. The read that runs or
- * failed shows its own state. Where nothing here may act on the account, the
- * notices keep their text and draw no action.
+ * after an attempt a cancel or a setup write ended. While the logs are read,
+ * the notice the watcher's last ending reads as stays on screen beside a
+ * refreshing line, its action held; a failed read shows its own state. Where
+ * nothing here may act on the account, the notices keep their text and draw
+ * no action.
  */
 import React from 'react'
-import { ActivityIndicator } from 'react-native'
+import { View } from 'react-native'
 
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
@@ -15,14 +17,15 @@ import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
+import RefreshingLine from '@web/modules/social-recovery/shared/chrome/RefreshingLine'
 import {
   renderDateTimeInZone,
   renderFullAddress
 } from '@web/modules/social-recovery/shared/display'
 
 import { OVERVIEW } from './constants'
-import { endedNoticeOf, movedInPath, pathMethodsOf } from './readings'
-import type { NoticesBlockProps } from './types'
+import { endedNoticeOf, movedInPath, pathMethodsOf, watchedEndedNoticeOf } from './readings'
+import type { EndedNotice, NoticesBlockProps } from './types'
 
 const NoticesBlock = ({
   reads,
@@ -37,8 +40,44 @@ const NoticesBlock = ({
   const { t } = useTranslation()
   const { notices, path } = reads
 
+  // The ended notice, its replace action held until the logs since the commit answer.
+  const endedBlock = (ended: EndedNotice, canReplace: boolean) => (
+    <SectionCard tone="muted" testID="overview-ended">
+      <Text fontSize={14} style={spacings.mbTy} testID="overview-ended-line">
+        {t(
+          ended.road === 'ownerCancel'
+            ? `${OVERVIEW}.ended.ownerCancel`
+            : `${OVERVIEW}.ended.setupWrite`,
+          { date: renderDateTimeInZone(ended.at * 1000, timeZone).date }
+        )}
+      </Text>
+      {actionable && (
+        <ActionsRow
+          primary={
+            <Button
+              testID="overview-ended-replace"
+              type="secondary"
+              text={t(`${OVERVIEW}.ended.replace`)}
+              disabled={!canReplace}
+              onPress={() => navigate(WEB_ROUTES.socialRecoveryManageEdit)}
+              hasBottomSpacing={false}
+            />
+          }
+        />
+      )}
+    </SectionCard>
+  )
+
   if (notices.status === 'pending') {
-    return <ActivityIndicator testID="overview-notices-reading" style={spacings.mbSm} />
+    const watched = watchedEndedNoticeOf(ending)
+    return (
+      <>
+        <View testID="overview-notices-reading" style={spacings.mbSm}>
+          <RefreshingLine />
+        </View>
+        {!!watched && endedBlock(watched, false)}
+      </>
+    )
   }
   if (notices.status === 'failed') {
     return (
@@ -108,31 +147,7 @@ const NoticesBlock = ({
           </SectionCard>
         )
       })}
-      {!!ended && (
-        <SectionCard tone="muted" testID="overview-ended">
-          <Text fontSize={14} style={spacings.mbTy} testID="overview-ended-line">
-            {t(
-              ended.road === 'ownerCancel'
-                ? `${OVERVIEW}.ended.ownerCancel`
-                : `${OVERVIEW}.ended.setupWrite`,
-              { date: renderDateTimeInZone(ended.at * 1000, timeZone).date }
-            )}
-          </Text>
-          {actionable && (
-            <ActionsRow
-              primary={
-                <Button
-                  testID="overview-ended-replace"
-                  type="secondary"
-                  text={t(`${OVERVIEW}.ended.replace`)}
-                  onPress={() => navigate(WEB_ROUTES.socialRecoveryManageEdit)}
-                  hasBottomSpacing={false}
-                />
-              }
-            />
-          )}
-        </SectionCard>
-      )}
+      {!!ended && endedBlock(ended, true)}
     </>
   )
 }

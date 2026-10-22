@@ -18,7 +18,7 @@
  * stored write is read again whenever the tab comes back into view.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
@@ -26,6 +26,7 @@ import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
+import ConfirmingBlock from '@web/modules/social-recovery/management/overview/ConfirmingBlock'
 import { OVERVIEW } from '@web/modules/social-recovery/management/overview/constants'
 import { useHeldKeys } from '@web/modules/social-recovery/management/overview/useHeldKeys'
 import { useOverviewReads } from '@web/modules/social-recovery/management/overview/useOverviewReads'
@@ -238,7 +239,14 @@ export const RemoveStageView = ({
             onRetry={run.reread}
           />
         )}
-        {screen === 'confirming' && <ActivityIndicator testID="manage-remove-confirming" />}
+        {screen === 'confirming' && (
+          <ConfirmingBlock
+            transactionHash={
+              state.write.status === 'landed' ? state.write.transactionHash : undefined
+            }
+            testID="manage-remove-confirming"
+          />
+        )}
         {screen === 'run' && <RemoveRun run={run} attemptOpen={attemptOpen} keep={keep} />}
         {arrives && (
           <RemoveArrival

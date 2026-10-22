@@ -162,6 +162,12 @@ export interface OverviewReads {
   /** The password ask, shared by the locked path and the re-authorize step. */
   ask: UnlockState
   notices: EntryRead<OverviewNotices>
+  /**
+   * The configuration this device last opened for the account at the
+   * deployment the client reads, shown while a fresh read runs; null where
+   * it holds none.
+   */
+  cached: Configuration | null
   /** Reads the setup state and the attempt again, and everything that follows from them. */
   retry: () => void
   retryPath: () => void
@@ -353,6 +359,16 @@ export type PathBlockProps = PathBodyProps & {
   navigate: (to: string) => void
 }
 
+export interface PathActionsProps {
+  /** Held while a fresh read runs, so neither opens on a path that may be stale. */
+  disabled: boolean
+  navigate: (to: string) => void
+}
+
+export type CachedPathBlockProps = Pick<OverviewViewProps, 'context' | 'navigate'> & {
+  configuration: Configuration
+}
+
 export interface WriteStepUnavailableProps {
   accountFacts: AccountFactsResult
 }
@@ -393,6 +409,8 @@ export interface RunBlockProps {
   droppedLine: string
   /** The screen's own words over a write state, where it carries any. */
   keysOf?: (state: WriteState) => SaveWriteKeys
+  /** The screen's own action, drawn held beside the fee line while the gas check runs. */
+  action?: ReactNode
   testID: string
 }
 
@@ -400,4 +418,10 @@ export interface RunBlockProps {
 export interface OpenStep {
   intent: OverviewIntent
   autoStart: boolean
+}
+
+/** A landed write while the read after its receipt runs: its hash, where known, and the line. */
+export interface ConfirmingBlockProps {
+  transactionHash?: Hex
+  testID: string
 }

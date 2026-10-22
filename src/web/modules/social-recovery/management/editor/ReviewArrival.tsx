@@ -4,18 +4,22 @@
  * edit changes, the new path with its rule lines, what a recovery publishes,
  * the trust list of the rows the edit adds under its expander, the account
  * the save writes to, what holds the save, the line that saving cancels the
- * attempt in progress, and the save with the way back to the editor.
+ * attempt in progress, and the save with the way back to the editor; while
+ * the reads the save waits on run, a line beside the held save says so.
  */
 import React from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
+import flexbox from '@common/styles/utils/flexbox'
 import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
+import RefreshingLine from '@web/modules/social-recovery/shared/chrome/RefreshingLine'
 import { renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { sameCredential } from '@web/modules/social-recovery/shared/records'
 import {
@@ -87,7 +91,11 @@ const ReviewArrival = ({
     )
   }
   if (load.status !== 'loaded' || held.status === 'pending') {
-    return <ActivityIndicator testID="manage-review-loading" />
+    return (
+      <View testID="manage-review-loading">
+        <LoadingBlock variant="block" message={t('socialRecovery.loading.draft')} />
+      </View>
+    )
   }
   const { draft, enrollments, baseline } = load
   const { clauses } = draft
@@ -118,6 +126,9 @@ const ReviewArrival = ({
       .forEach(({ method }) => trust.retry(method))
     accountReads.retry(accountReadsToRetry(accountReads))
   }
+  // Save waits on the client and on reads that have not answered; no block
+  // shows until they settle, so a line beside the held Save says what runs.
+  const checking = rows.length > 0 && (!client || (!gate.canSave && gate.blocked === null))
   const publication = publicationSentenceOf(clauses, addressBook, t)
   const ruleLines = ruleLinesOf(draft, addressBook, t)
 
@@ -221,18 +232,27 @@ const ReviewArrival = ({
         </Text>
       )}
       {lookingUp ? (
-        <ActivityIndicator testID="manage-review-lookup" />
+        <View testID="manage-review-lookup">
+          <LoadingBlock variant="row" message={t('socialRecovery.loading.lookup')} />
+        </View>
       ) : (
         <ActionsRow
           primary={
-            <Button
-              testID="manage-review-save"
-              type="primary"
-              text={t(`${REVIEW}.save`)}
-              disabled={!gate.canSave || dormantRefused || !runReady}
-              onPress={onSave}
-              hasBottomSpacing={false}
-            />
+            <View style={[flexbox.directionRow, flexbox.alignCenter, flexbox.wrap]}>
+              <Button
+                testID="manage-review-save"
+                type="primary"
+                text={t(`${REVIEW}.save`)}
+                disabled={!gate.canSave || dormantRefused || !runReady}
+                onPress={onSave}
+                hasBottomSpacing={false}
+              />
+              {checking && (
+                <View testID="manage-review-save-checking" style={spacings.mlSm}>
+                  <RefreshingLine messageKey="socialRecovery.loading.saveChecks" />
+                </View>
+              )}
+            </View>
           }
           secondary={backToEditor}
         />

@@ -210,6 +210,28 @@ describe('the overview reads', () => {
     expect(view.byTestId('overview-chip-path-locked')).toBeNull()
   })
 
+  it('shows the kept setup beside the refreshing line, its actions held, while the setup state has not answered', async () => {
+    const world = await worldAt('public')
+    view = await renderOver(world)
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    view.unmount()
+
+    jest.spyOn(world.client.setup, 'setupState').mockImplementation(() => new Promise(() => {}))
+    view = await renderOver(world)
+    expect(view.textOf('overview-refreshing')).toBe(t('socialRecovery.loading.refreshingSetup'))
+    expect(view.byTestId('readout-path')).not.toBeNull()
+    expect(view.isDisabled('overview-edit-path')).toBe(true)
+    expect(view.byTestId('overview-chip-set-up')).toBeNull()
+  })
+
+  it('says it reads the setup, with no path, while the setup state has not answered and nothing is kept', async () => {
+    const world = await worldAt('public')
+    jest.spyOn(world.client.setup, 'setupState').mockImplementation(() => new Promise(() => {}))
+    view = await renderOver(world)
+    expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.byTestId('readout-path')).toBeNull()
+  })
+
   it('shows a public path with no password', async () => {
     const world = await worldAt('public')
     view = await renderOver(world)

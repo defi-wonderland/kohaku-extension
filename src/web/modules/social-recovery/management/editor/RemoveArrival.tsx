@@ -5,7 +5,7 @@
  * and the action once the stored write has been read, with the way back.
  */
 import React from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
 import Alert from '@common/components/Alert'
 import Button from '@common/components/Button'
@@ -14,6 +14,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import { ActionsRow } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 
 import { REMOVE } from './constants'
@@ -72,7 +73,9 @@ const RemoveArrival = ({
       )}
       {attemptOpen && <RemoveCancelsLine />}
       {lookingUp ? (
-        <ActivityIndicator testID="manage-remove-lookup" />
+        <View testID="manage-remove-lookup">
+          <LoadingBlock variant="row" message={t('socialRecovery.loading.lookup')} />
+        </View>
       ) : (
         <ActionsRow
           primary={

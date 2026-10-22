@@ -18,7 +18,9 @@
  * record that is absent sets no floor. Where the last attempt executed, the
  * facts also ask whether any key this wallet's keystore holds is an
  * authority of the account, and wait for the keystore's keys to ask about; a
- * failed answer fails the facts.
+ * failed answer fails the facts. The configuration this device last opened
+ * at the client's deployment is read beside them, for the screen to show
+ * while they run; it decides nothing.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -30,6 +32,7 @@ import { holdsAuthority } from '@web/modules/social-recovery/recovery/entry/runn
 import type { EntryRead, UnlockState } from '@web/modules/social-recovery/recovery/entry/types'
 import type { Configuration, SetupState } from '@kohaku-eth/social-recovery'
 import {
+  isOfDeployment,
   readRecoveryPassword,
   recordDeploymentOf,
   setRecoveryPassword
@@ -71,6 +74,7 @@ export const useOverviewReads = ({
   const [path, setPath] = useState<PathStep>(NONE)
   const [ask, setAsk] = useState<UnlockState>(IDLE)
   const [notices, setNotices] = useState<EntryRead<OverviewNotices>>(PENDING)
+  const [lastOpened, setLastOpened] = useState<Configuration | null>(null)
   const [factsRound, setFactsRound] = useState(0)
   const [pathRound, setPathRound] = useState(0)
   const [noticesRound, setNoticesRound] = useState(0)
@@ -89,6 +93,39 @@ export const useOverviewReads = ({
     floor.current = undefined
     disagreements.current = 0
   }, [kit])
+
+  useEffect(() => {
+    setLastOpened(null)
+    if (!kit) {
+      return undefined
+    }
+    let live = true
+    records
+      .decryptedSetupCache(chainId, account)
+      .read()
+      .then(
+        (read) => {
+          if (
+            live &&
+            read.status === 'present' &&
+            isOfDeployment(read.value.deployment, kit.descriptor)
+          ) {
+            setLastOpened(read.value.configuration)
+          }
+        },
+        () => undefined
+      )
+    return () => {
+      live = false
+    }
+  }, [kit, records, chainId, account])
+
+  // A path read now is the one to show while a later read runs.
+  useEffect(() => {
+    if (path.kind === 'readable') {
+      setLastOpened(path.configuration)
+    }
+  }, [path])
 
   useEffect(() => {
     if (client.status === 'update-the-wallet') {
@@ -386,5 +423,16 @@ export const useOverviewReads = ({
 
   const retryNotices = useCallback(() => setNoticesRound((round) => round + 1), [])
 
-  return { facts, path, ask, notices, retry, retryPath, retryNotices, unlock, askAgain }
+  return {
+    facts,
+    path,
+    ask,
+    notices,
+    cached: lastOpened,
+    retry,
+    retryPath,
+    retryNotices,
+    unlock,
+    askAgain
+  }
 }
