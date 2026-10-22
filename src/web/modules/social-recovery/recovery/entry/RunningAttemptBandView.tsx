@@ -12,7 +12,7 @@
  * that ended while the band stood leaves the band saying so.
  */
 import React from 'react'
-import { ActivityIndicator, View } from 'react-native'
+import { View } from 'react-native'
 
 import Button from '@common/components/Button'
 import Text from '@common/components/Text'
@@ -20,6 +20,7 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import {
   renderDateTimeInZone,
@@ -121,7 +122,11 @@ const RunningAttemptBandView = ({
 
   let body: React.ReactNode
   if (attempt.status === 'pending') {
-    body = <ActivityIndicator testID="entry-running-loading" />
+    body = (
+      <View testID="entry-running-loading">
+        <LoadingBlock variant="block" message={t('socialRecovery.loading.attempt')} />
+      </View>
+    )
   } else if (attempt.status === 'failed') {
     body = failed('entry-running-failed')
   } else if (attempt.status === 'ended') {
@@ -146,7 +151,9 @@ const RunningAttemptBandView = ({
           </View>
         )}
         {opening.status === 'answered' && entries.status === 'pending' && (
-          <ActivityIndicator testID="entry-running-entries-loading" />
+          <View testID="entry-running-entries-loading">
+            <LoadingBlock variant="row" message={t('socialRecovery.loading.entries')} />
+          </View>
         )}
         {opening.status === 'answered' &&
           entries.status === 'failed' &&

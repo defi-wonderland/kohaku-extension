@@ -52,6 +52,18 @@ import {
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 // A manager this build no longer reads.
 const RETIRED_MANAGER = '0x00000000000000000000000000000000000Dead1' as const
 const LOGGED_IN = searchOf('logged-in', BASIC)
@@ -668,12 +680,15 @@ describe('the authorization read', () => {
     expect(page.has('entry-continue')).toBe(true)
   })
 
-  it('shows the authorization read running until it returns', async () => {
+  it('shows the authorization read running, named for its stage, until it returns', async () => {
     const held = deferred<boolean>()
     kit.isAuthorized.mockReturnValueOnce(held.promise)
     const page = await open(LOGGED_IN)
     await confirmLost(page)
     expect(page.has('entry-reads-authorization-loading')).toBe(true)
+    expect(page.textOf('entry-reads-authorization-loading')).toBe(
+      t('socialRecovery.entry.confirm.readingAuthorization')
+    )
     expectNoContinue(page)
     await outside(() => held.resolve(true))
     expect(page.has('entry-continue')).toBe(true)

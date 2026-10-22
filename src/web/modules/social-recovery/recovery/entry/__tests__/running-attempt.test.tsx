@@ -43,6 +43,18 @@ import type {
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 // Loaded after the harness, which gives jsdom the `TextEncoder` viem reads when it loads.
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress, keccak256 }: typeof import('viem') = require('viem')
@@ -364,6 +376,15 @@ describe('the running attempt band', () => {
     const page = await openRunning()
     expect(page.has('entry-running-opening-failed')).toBe(true)
     expect(page.has('entry-running-key')).toBe(false)
+    page.unmount()
+  })
+
+  it('says it reads the recovery in progress while the registry read has not answered, with no lead and no continue', async () => {
+    mockReads.stateOf.mockImplementation(() => new Promise<never>(() => {}))
+    const page = await openRunning()
+    expect(page.textOf('entry-running-loading')).toBe(t('socialRecovery.loading.attempt'))
+    expect(page.has('entry-running-lead')).toBe(false)
+    expect(page.has('entry-continue')).toBe(false)
     page.unmount()
   })
 
@@ -847,7 +868,7 @@ describe('whose recovery the running attempt is', () => {
       return getAll()
     })
     const page = await openRunning(FRESH_INSTALL)
-    expect(page.has('entry-running-entries-loading')).toBe(true)
+    expect(page.textOf('entry-running-entries-loading')).toBe(t('socialRecovery.loading.entries'))
     expect(page.has('entry-running-yours')).toBe(false)
     expect(page.has('entry-running-continue')).toBe(false)
     expect(page.has('entry-running-not-yours')).toBe(false)

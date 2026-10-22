@@ -13,6 +13,7 @@ import {
   outside,
   resetEdges,
   searchOf,
+  t,
   useLiveFakeClock
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import type { Mounted } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
@@ -23,6 +24,18 @@ import {
   WALLET_RECOVERY_CHAIN
 } from '@web/modules/social-recovery/shared/client'
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
+
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
 
 const HOUR_MS = 60 * 60 * 1000
 
@@ -88,7 +101,9 @@ describe('the reads after the confirmation have a time limit', () => {
     useLiveFakeClock()
     screen = await mountAccountStep(searchOf('logged-in', BASIC))
     await confirmLost(screen)
-    expect(screen.has('entry-reads-fit-loading')).toBe(true)
+    expect(screen.textOf('entry-reads-fit-loading')).toBe(
+      t('socialRecovery.entry.confirm.readingFit')
+    )
 
     await waitAnHour()
 

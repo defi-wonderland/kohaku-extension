@@ -48,6 +48,18 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 const NO_SETUP_SENTENCES = [
   t('socialRecovery.entry.noSetup.title', { network: NETWORK }),
   t('socialRecovery.writes.causes.NoSetup')
@@ -683,6 +695,18 @@ describe('the values the readout names', () => {
       t('socialRecovery.readout.configuredLine')
     )
     expect(page.textOf('readout-back')).toBe(t('socialRecovery.actions.back'))
+  })
+
+  it('says it opens the recovery while the recovery entry has not been read, with no readout', async () => {
+    await commitLostSetup('public')
+    const get = jest.spyOn(storage, 'get').mockImplementation(() => new Promise<never>(() => {}))
+    const page = await open()
+    expect(page.textOf('readout-entry-reading')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      page.byTestId('readout-entry-reading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
+    expect(page.has('readout')).toBe(false)
+    get.mockRestore()
   })
 
   it('renders a failed read of the recovery entry with its own line and a retry that opens the readout', async () => {
