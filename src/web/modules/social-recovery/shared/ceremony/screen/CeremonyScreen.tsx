@@ -15,7 +15,6 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
-import QRCode from 'react-native-qrcode-svg'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import Button from '@common/components/Button'
@@ -33,13 +32,12 @@ import {
 } from '@web/components/TabLayoutWrapper/TabLayoutWrapper'
 import type { DeviceBinding } from '@kohaku-eth/social-recovery'
 import { TwoColumn } from '@web/modules/social-recovery/shared/chrome'
-import { renderChip, renderHash } from '@web/modules/social-recovery/shared/display'
+import { renderChip } from '@web/modules/social-recovery/shared/display'
 import { getUiType } from '@web/utils/uiType'
 
 import { sendCeremonyReport, sweepCeremonyReports } from '../channel'
 import { externalAppDevice } from '../externalAppDevice'
 import { inBrowserProverDevice } from '../inBrowserProverDevice'
-import { lossLineKeyOf, renderKindLine } from '../kindLine'
 import { qrDataOfImage } from '../qrImage'
 import { parseCeremonySearch } from '../request'
 import { ceremonyMayRun, runCeremony } from '../run'
@@ -56,40 +54,20 @@ import type {
   ResolvedCeremony,
   VisibilityGate
 } from '../types'
-import {
-  browserErrorNameOf,
-  chipOfOutcome,
-  dismissed,
-  lineKeyOfOutcome,
-  notSupported,
-  noteKeyOfOutcome,
-  unavailable
-} from '../verdicts'
+import { dismissed, notSupported, unavailable } from '../verdicts'
 import { createVisibilityGate, whenVisible } from '../visibility'
-import {
-  browserPasskeyDevice,
-  browserReportKeys,
-  browserReportStore,
-  pagePasskeysServed,
-  pagePlatform
-} from './browserDefaults'
+import { browserPasskeyDevice, browserReportKeys, browserReportStore } from './browserDefaults'
 import { useCeremonySource } from './CeremonySource'
+import OutcomeBlock from './OutcomeBlock'
+import ProverBlock from './ProverBlock'
+import ScanBlock from './ScanBlock'
 import type { Phase } from './types'
+import UploadBlock from './UploadBlock'
 
 /** The steps of the in-page prover that show a progress line. */
 const PROVER_STEPS: readonly CeremonyStep[] = ['fetchingFiles', 'proving', 'checking']
 
 const QR_IMAGE_TYPES = 'image/png,image/jpeg'
-
-const hashOfValue = (value: CeremonyValue): string | null => {
-  if ('proof' in value) {
-    return renderHash(value.proof)
-  }
-  if ('reply' in value) {
-    return renderHash(value.reply.proof)
-  }
-  return null
-}
 
 const CeremonyScreen = () => {
   const { t } = useTranslation()
@@ -349,242 +327,31 @@ const CeremonyScreen = () => {
     start()
   }, [start])
 
-  const cancelButton = (text: string) => (
-    <Button type="secondary" text={text} onPress={cancelRun} style={spacings.mtLg} />
-  )
-
-  // The line each of the phone's answers shows under the code. The result's
-  // line stays while the method packages and checks it.
-  const phoneStepLine = () => {
-    switch (step) {
-      case 'requestReceived':
-        return t('socialRecovery.ceremony.requestReceived')
-      case 'generating':
-        return t('socialRecovery.ceremony.generating')
-      case 'resultReceived':
-      case 'packaging':
-      case 'checking':
-        return t('socialRecovery.ceremony.resultReceived')
-      default:
-        return t('socialRecovery.ceremony.waitingForPhone')
-    }
-  }
-
-  // The progress line of each of the in-page prover's steps.
-  const proverStepLine = () => {
-    switch (step) {
-      case 'fetchingFiles':
-        return t('socialRecovery.ceremony.fetchingFiles')
-      case 'proving':
-        return t('socialRecovery.ceremony.proving')
-      default:
-        return t('socialRecovery.ceremony.checkingResult')
-    }
-  }
-
-  const renderUpload = () => (
-    <View style={[flexbox.alignCenter]}>
-      <Text weight="semiBold" fontSize={18} style={spacings.mbSm}>
-        {t('socialRecovery.ceremony.uploadTitle')}
-      </Text>
-      <Text appearance="secondaryText" style={[spacings.mbLg, { textAlign: 'center' }]}>
-        {t('socialRecovery.ceremony.uploadHint')}
-      </Text>
-      <Button
-        type="primary"
-        text={t('socialRecovery.ceremony.chooseImage')}
-        onPress={chooseImage}
-        testID="ceremony-choose-image"
-      />
-      {noQrFound && (
-        <Text appearance="errorText" style={[spacings.mtSm, { textAlign: 'center' }]}>
-          {t('socialRecovery.ceremony.noQrFound')}
-        </Text>
-      )}
-      {cancelButton(t('socialRecovery.ceremony.cancelAction'))}
-    </View>
-  )
-
-  const renderScan = (url: string) => {
-    return (
-      <View style={[flexbox.alignCenter]}>
-        <Text weight="semiBold" fontSize={18} style={spacings.mbSm}>
-          {t('socialRecovery.ceremony.continueOnPhone')}
-        </Text>
-        <Text appearance="secondaryText" style={[spacings.mbLg, { textAlign: 'center' }]}>
-          {t('socialRecovery.ceremony.scanWithApp')}
-        </Text>
-        <View style={spacings.mbLg} testID="ceremony-scan-code">
-          <QRCode value={url} size={200} quietZone={10} />
-        </View>
-        <Spinner style={spacings.mbSm} />
-        <Text style={spacings.mbSm}>{phoneStepLine()}</Text>
-        <Text appearance="secondaryText" style={{ textAlign: 'center' }}>
-          {t('socialRecovery.ceremony.keepTabOpen')}
-        </Text>
-        {parsed.ok && parsed.params.call === 'createClaim' && (
-          <Text appearance="secondaryText" style={[spacings.mtSm, { textAlign: 'center' }]}>
-            {t('socialRecovery.ceremony.phoneReads')}
-          </Text>
-        )}
-        {cancelButton(t('socialRecovery.ceremony.cancelAction'))}
-      </View>
-    )
-  }
-
-  const renderProving = () => (
-    <View style={[flexbox.alignCenter]}>
-      <Spinner style={spacings.mbSm} />
-      <Text style={{ textAlign: 'center' }}>{proverStepLine()}</Text>
-      {cancelButton(t('socialRecovery.ceremony.stopAction'))}
-    </View>
-  )
-
   const renderRunning = () => {
     if (asking?.kind === 'qrImage') {
-      return renderUpload()
+      return <UploadBlock noQrFound={noQrFound} onChoose={chooseImage} onCancel={cancelRun} />
     }
+    const phoneReads =
+      binding === 'external-app' && parsed.ok && parsed.params.call === 'createClaim'
     if (binding === 'external-app' && view?.kind === 'scanCode') {
-      return renderScan(view.url)
+      return <ScanBlock url={view.url} step={step} phoneReads={phoneReads} onCancel={cancelRun} />
     }
     if (binding === 'in-browser-prover' && PROVER_STEPS.includes(step)) {
-      return renderProving()
+      return <ProverBlock step={step} onStop={cancelRun} />
+    }
+    if (step === 'waitingForPhone') {
+      return <ScanBlock step={step} phoneReads={phoneReads} onCancel={cancelRun} />
     }
     return (
       <View style={[flexbox.alignCenter]}>
-        {step === 'waitingForPhone' ? (
-          <>
-            <Text weight="semiBold" fontSize={18} style={spacings.mbSm}>
-              {t('socialRecovery.ceremony.continueOnPhone')}
-            </Text>
-            <Text appearance="secondaryText" style={[spacings.mbLg, { textAlign: 'center' }]}>
-              {t('socialRecovery.ceremony.scanCode')}
-            </Text>
-            <Spinner style={spacings.mbSm} />
-            <Text style={spacings.mbSm}>{t('socialRecovery.ceremony.waitingForPhone')}</Text>
-            <Text appearance="secondaryText" style={{ textAlign: 'center' }}>
-              {t('socialRecovery.ceremony.keepTabOpen')}
-            </Text>
-            {binding === 'external-app' && parsed.ok && parsed.params.call === 'createClaim' && (
-              <Text appearance="secondaryText" style={[spacings.mtSm, { textAlign: 'center' }]}>
-                {t('socialRecovery.ceremony.phoneReads')}
-              </Text>
-            )}
-          </>
-        ) : (
-          <>
-            <Spinner style={spacings.mbSm} />
-            <Text>{renderChip('method', 'inProgress', t)}</Text>
-          </>
-        )}
-        {cancelButton(t('socialRecovery.ceremony.cancelAction'))}
-      </View>
-    )
-  }
-
-  const renderOutcome = (shown: CeremonyOutcome<CeremonyValue>) => {
-    if (!parsed.ok) {
-      return null
-    }
-    const { params } = parsed
-    const { call, returnTo } = params
-    const chip = chipOfOutcome(shown, call)
-    // The holder declined the request on the phone, which the app reports as its refusal.
-    const declined =
-      binding === 'external-app' && shown.kind === 'dismissed' && shown.note === 'refused'
-    const noteKey = declined
-      ? 'socialRecovery.ceremony.declinedNote'
-      : noteKeyOfOutcome(shown, call)
-    const lineKey = lineKeyOfOutcome(shown, call)
-    const passedEnroll = shown.kind === 'verdict' && shown.verdict === 'passed' && call === 'enroll'
-    const facts = passedEnroll ? shown.value.facts : undefined
-    const hash =
-      shown.kind === 'verdict' && shown.verdict === 'passed' ? hashOfValue(shown.value) : null
-    // The one raw cause text a screen shows: the browser's own error name.
-    const errorName = browserErrorNameOf(shown)
-    const mayRetry = shown.kind === 'dismissed' || shown.retry
-    const chromeOnly = binding === 'browser-authenticator' && !pagePasskeysServed()
-    return (
-      <View>
-        {chip && (
-          <Text weight="semiBold" style={spacings.mbSm}>
-            {chip.set === 'method'
-              ? renderChip('method', chip.chip, t)
-              : renderChip('collection', chip.chip, t)}
-          </Text>
-        )}
-        {chromeOnly ? (
-          <Text style={spacings.mbSm}>{t('socialRecovery.ceremony.chromeOnly')}</Text>
-        ) : (
-          noteKey && <Text style={spacings.mbSm}>{t(noteKey, { hash })}</Text>
-        )}
-        {errorName && (
-          <Text appearance="secondaryText" fontSize={12} style={spacings.mbSm}>
-            {errorName}
-          </Text>
-        )}
-        {lineKey && !chromeOnly && (
-          <Text appearance="secondaryText" style={spacings.mbSm}>
-            {t(lineKey)}
-          </Text>
-        )}
-        {facts && (
-          <>
-            <Text weight="medium" style={spacings.mbSm}>
-              {renderKindLine(facts, pagePlatform(), t)}
-            </Text>
-            <Text appearance="secondaryText" style={spacings.mbSm}>
-              {t(lossLineKeyOf(facts))}
-            </Text>
-          </>
-        )}
-        {passedEnroll && binding === 'browser-authenticator' && (
-          <Text appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.ceremony.passkeyOrigin')}
-          </Text>
-        )}
-        {reportHeld && (
-          <Text appearance="secondaryText" style={spacings.mbSm}>
-            {t('socialRecovery.ceremony.keepTabOpen')}
-          </Text>
-        )}
-        {phase === 'undelivered' && (
-          <>
-            <Text style={spacings.mbSm}>{t('socialRecovery.ceremony.undeliveredNote')}</Text>
-            <View style={[flexbox.directionRow, spacings.mtLg]}>
-              <Button
-                type="secondary"
-                text={t('socialRecovery.ceremony.backAction')}
-                onPress={() => navigate(-1)}
-              />
-              <Button
-                type="primary"
-                text={t('socialRecovery.ceremony.tryAgainAction')}
-                // eslint-disable-next-line @typescript-eslint/no-misused-promises
-                onPress={() => deliver(params, shown)}
-                style={spacings.mlSm}
-              />
-            </View>
-          </>
-        )}
-        {phase === 'done' && !returnTo && (
-          <View style={[flexbox.directionRow, spacings.mtLg]}>
-            <Button
-              type="secondary"
-              text={t('socialRecovery.ceremony.backAction')}
-              onPress={() => navigate(-1)}
-            />
-            {mayRetry && (
-              <Button
-                type="primary"
-                text={t('socialRecovery.ceremony.tryAgainAction')}
-                // eslint-disable-next-line @typescript-eslint/no-misused-promises
-                onPress={start}
-                style={spacings.mlSm}
-              />
-            )}
-          </View>
-        )}
+        <Spinner style={spacings.mbSm} />
+        <Text>{renderChip('method', 'inProgress', t)}</Text>
+        <Button
+          type="secondary"
+          text={t('socialRecovery.ceremony.cancelAction')}
+          onPress={cancelRun}
+          style={spacings.mtLg}
+        />
       </View>
     )
   }
@@ -606,7 +373,21 @@ const CeremonyScreen = () => {
       )
     }
     if (outcome) {
-      return renderOutcome(outcome)
+      const { params } = parsed
+      return (
+        <OutcomeBlock
+          outcome={outcome}
+          params={params}
+          binding={binding}
+          phase={phase}
+          reportHeld={reportHeld}
+          onBack={() => navigate(-1)}
+          // eslint-disable-next-line @typescript-eslint/no-misused-promises
+          onDeliverAgain={() => deliver(params, outcome)}
+          // eslint-disable-next-line @typescript-eslint/no-misused-promises
+          onTryAgain={start}
+        />
+      )
     }
     return renderRunning()
   }
