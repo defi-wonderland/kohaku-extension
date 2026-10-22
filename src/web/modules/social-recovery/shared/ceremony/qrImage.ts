@@ -6,7 +6,10 @@
  * unless its longest side passes a cap, where it is scaled down to the cap
  * with its proportions kept. A large photo often fails at that size, so a
  * decode that finds nothing or throws is tried once more with the image
- * scaled to a fixed width.
+ * scaled to a fixed width, its proportions kept. That retry keeps the same
+ * cap on its longest side, so a tall image is drawn at most at the cap's
+ * height, and a retry that would draw the first pass's size again is not made.
+ * A small image is still tried again larger.
  */
 import jsQR from 'jsqr'
 
@@ -69,10 +72,18 @@ export const qrDataOfImage = async (file: Blob): Promise<string | undefined> => 
     const firstHeight =
       longest > QR_FIRST_PASS_MAX_SIDE ? scaled(height, QR_FIRST_PASS_MAX_SIDE, longest) : height
     const found = tryDecodeAt(image, firstWidth, firstHeight)
-    if (found !== undefined || firstWidth === QR_RETRY_WIDTH) {
+    if (found !== undefined) {
       return found
     }
-    return tryDecodeAt(image, QR_RETRY_WIDTH, scaled(height, QR_RETRY_WIDTH, width))
+    const uncappedHeight = scaled(height, QR_RETRY_WIDTH, width)
+    const [retryWidth, retryHeight] =
+      uncappedHeight > QR_FIRST_PASS_MAX_SIDE
+        ? [scaled(width, QR_FIRST_PASS_MAX_SIDE, height), QR_FIRST_PASS_MAX_SIDE]
+        : [QR_RETRY_WIDTH, uncappedHeight]
+    if (retryWidth === firstWidth && retryHeight === firstHeight) {
+      return undefined
+    }
+    return tryDecodeAt(image, retryWidth, retryHeight)
   } finally {
     image.close?.()
   }

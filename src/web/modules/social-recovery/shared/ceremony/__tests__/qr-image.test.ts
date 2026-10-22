@@ -240,6 +240,24 @@ describe('the decoder of an uploaded QR image', () => {
     expect(draws).toEqual([{ width: 1024, height: 800 }])
   })
 
+  it('caps the second try of a tall photo at 2048 high, keeping its proportions', async () => {
+    await expect(qrDataOfImage(fileOf(blankPicture(1080, 20000)))).resolves.toBeUndefined()
+    expect(draws).toEqual([{ width: 111, height: 2048 }])
+  })
+
+  it('makes no second try where the capped retry would draw the first size again', async () => {
+    await expect(qrDataOfImage(fileOf(blankPicture(21, 4096)))).resolves.toBeUndefined()
+    expect(draws).toEqual([{ width: 11, height: 2048 }])
+  })
+
+  it('tries a tall image under the cap once more larger, up to 2048 high', async () => {
+    await expect(qrDataOfImage(fileOf(blankPicture(500, 1500)))).resolves.toBeUndefined()
+    expect(draws).toEqual([
+      { width: 500, height: 1500 },
+      { width: 683, height: 2048 }
+    ])
+  })
+
   it('releases the drawn image whether it read a code or not', async () => {
     await qrDataOfImage(fileOf(codePicture(AADHAAR_NUMBER)))
     await qrDataOfImage(fileOf(blankPicture()))
