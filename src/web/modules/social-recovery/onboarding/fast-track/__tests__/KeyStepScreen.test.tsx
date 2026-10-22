@@ -47,6 +47,7 @@ const OTHER_PHRASE = 'legal winner thank year wave sausage worth useful legal wi
 const LIMIT_MS = 60_000
 const CREATING = 'Creating your new key…'
 const ADD_PENDING = 'The wallet is still adding your key. Wait, or go back and continue again.'
+const ADDING = 'Adding the account to this wallet…'
 
 const types = () => dispatched().map(({ type }) => type)
 const LOGGED_IN_ENTRY = '/social-recovery/recovery'
@@ -126,7 +127,7 @@ describe('the key step', () => {
         },
         { kind: 'dispatch', type: SEND_TEMP_SEED, params: undefined }
       ])
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
     })
 
     it('says the key is being created under the spinner until the words show', async () => {
@@ -431,6 +432,8 @@ describe('the key step', () => {
         jest.advanceTimersByTime(LIMIT_MS - 1)
       })
       expect(byTestId('fast-track-key-pending')).toBeNull()
+      expect(byTestId('fast-track-key-adding-line')?.textContent).toBe(ADDING)
+      expect(isDisabled('fast-track-key-continue')).toBe(true)
 
       await act(async () => {
         jest.advanceTimersByTime(1)
@@ -644,14 +647,14 @@ describe('the key step', () => {
       expect(dispatched()).toEqual([])
       expect(byTestId('fast-track-key-words')).toBeNull()
       expect(text()).not.toContain('junk')
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
       expect(isDisabled('fast-track-key-back')).toBe(true)
     })
 
-    it('shows the spinner with no line saying a key is being created', async () => {
+    it('says the wallet adds the account, with no line saying a key is being created', async () => {
       await atEarlierAdd()
 
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-adding')?.textContent).toBe(ADDING)
       expect(byTestId('fast-track-key-creating')).toBeNull()
       expect(text()).not.toContain(CREATING)
       expect(byTestId('fast-track-key-pending')).toBeNull()
@@ -667,7 +670,7 @@ describe('the key step', () => {
 
       expect(byTestId('fast-track-key-pending')?.textContent).toBe(ADD_PENDING)
       expect(byTestId('fast-track-key-creating')).toBeNull()
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
       expect(dispatched()).toEqual([])
     })
 
@@ -717,7 +720,7 @@ describe('the key step', () => {
 
       expect(dispatched()).toEqual([])
       expect(movesAway()).toEqual([])
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
 
       await setController('picker', { addAccountsStatus: 'SUCCESS' })
 
@@ -825,7 +828,7 @@ describe('the key step', () => {
       expect(dispatched()).toEqual([])
       expect(byTestId('fast-track-key-words')).toBeNull()
       expect(byTestId('fast-track-key-creating')).toBeNull()
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
       expect(isDisabled('fast-track-key-back')).toBe(true)
     })
 
@@ -859,7 +862,7 @@ describe('the key step', () => {
       await setController('picker', { selectNextAccountStatus: 'SUCCESS' })
 
       expect(byTestId('fast-track-key-add-failed')).toBeNull()
-      expect(byTestId('fast-track-key-spinner')).not.toBeNull()
+      expect(byTestId('fast-track-key-waiting')).not.toBeNull()
 
       await setController('picker', { addAccountsStatus: 'LOADING' })
       await walletListsSlot()
