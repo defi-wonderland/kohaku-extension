@@ -339,6 +339,8 @@ export interface FakeClient {
 export interface ReadyClientOptions {
   /** The params the client gives a method for a call; the stand-in chain's by default. */
   methodParamsFor?: (slug: string, call: CeremonyCall) => Params | undefined
+  /** The method the client serves under a slug; the shipped and identity methods by default. */
+  methodFor?: (slug: string) => IRecoveryMethod | undefined
 }
 
 /** The params of the stand-in chain, which every device of the chain shares. */
@@ -386,7 +388,7 @@ export const readyClient = (options: ReadyClientOptions = {}): FakeClient => {
       status: 'ready',
       client: {
         approving,
-        methodFor: (slug: string) => bySlug.get(slug),
+        methodFor: options.methodFor ?? ((slug: string) => bySlug.get(slug)),
         methodParamsFor: options.methodParamsFor ?? standInParamsFor,
         descriptor: DESCRIPTOR
       }

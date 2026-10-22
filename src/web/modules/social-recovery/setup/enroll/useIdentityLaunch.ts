@@ -6,6 +6,7 @@
  * phone scans, or asks for the image, so no route is chosen here.
  */
 import { useCallback } from 'react'
+import { isAddressEqual, zeroAddress } from 'viem'
 
 import { ceremonyPath } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyRequestRecord } from '@web/modules/social-recovery/shared/records'
@@ -31,6 +32,10 @@ const useIdentityLaunch = ({
 }: IdentityLaunchInput): IdentityLaunch => {
   const launch = useCallback(
     async (call: 'enroll' | 'testAccess', record: CeremonyRequestRecord) => {
+      // The zero address is a deployment that omits the method: nothing runs and nothing is stored.
+      if (isAddressEqual(book.methods[kind], zeroAddress)) {
+        return
+      }
       const id = deps.newRequestId()
       setBusy(true)
       try {
@@ -50,7 +55,7 @@ const useIdentityLaunch = ({
         })
       )
     },
-    [deps, records, kind, navigate, search, setBusy, setWriteFailed]
+    [deps, records, book, kind, navigate, search, setBusy, setWriteFailed]
   )
 
   const create = useCallback(async () => {
