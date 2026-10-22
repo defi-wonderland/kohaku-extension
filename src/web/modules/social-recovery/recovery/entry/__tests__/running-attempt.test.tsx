@@ -685,6 +685,57 @@ describe('the running attempt band while it stands', () => {
     page.unmount()
   })
 
+  const decisions: [string, string, () => void, string][] = [
+    [
+      'cancel',
+      'entry-running-cancel',
+      () => {
+        setWallet({
+          accounts: [DAILY, VAULT, smartAccount(LOST, LOST_KEY, 'Lost')],
+          keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(LOST_KEY)]
+        })
+      },
+      cancelPathOf(LOST)
+    ],
+    [
+      'continue',
+      'entry-running-continue',
+      () => {
+        attemptTo(SMART_KEY)
+      },
+      waitPathOf(LOST)
+    ]
+  ]
+  decisions.forEach(([name, button, arrange, path]) => {
+    it(`holds the ${name} while a later read runs, and takes it again once that read answers`, async () => {
+      useLiveFakeClock()
+      arrange()
+      const page = await openRunning()
+      expect(page.isDisabled(button)).toBe(false)
+      const held = deferred<ActionState>()
+      mockReads.stateOf.mockImplementationOnce(() => held.promise)
+      await advanceClock(POLL_MS)
+      expect(page.textOf('entry-running-refreshing')).toBe(
+        t('socialRecovery.loading.refreshingAttempt')
+      )
+      expect(page.isDisabled(button)).toBe(true)
+      const navigations = navigate.mock.calls.length
+      const writes = storage.set.mock.calls.length
+      await page.press(button)
+      await page.press(button)
+      expect(navigate.mock.calls.length).toBe(navigations)
+      expect(storage.set.mock.calls.length).toBe(writes)
+      expect((await records().countdown(CHAIN_ID, LOST).read()).status).toBe('absent')
+      await outside(() => held.resolve(waitingState()))
+      expect(page.has('entry-running-refreshing')).toBe(false)
+      expect(page.isDisabled(button)).toBe(false)
+      expect(navigate).not.toHaveBeenCalledWith(path)
+      await page.press(button)
+      expect(navigate).toHaveBeenCalledWith(path)
+      page.unmount()
+    })
+  })
+
   it('reads a later read from an older block with no attempt as failed, never as the end; a newer block with none ends it', async () => {
     useLiveFakeClock()
     const page = await openRunning()
@@ -783,7 +834,7 @@ describe('the running attempt band while it stands', () => {
     page.unmount()
   })
 
-  it('keeps no countdown where a read already running when continue is pressed finds another attempt in place of the shown one', async () => {
+  it('takes no continue while a later read runs, and keeps no countdown once that read finds another attempt in place of the shown one', async () => {
     useLiveFakeClock()
     attemptTo(SMART_KEY)
     const page = await openRunning()
@@ -792,6 +843,7 @@ describe('the running attempt band while it stands', () => {
     const held = deferred<ActionState>()
     mockReads.stateOf.mockImplementationOnce(() => held.promise)
     await advanceClock(POLL_MS)
+    expect(page.isDisabled('entry-running-continue')).toBe(true)
     await page.press('entry-running-continue')
     await outside(() => held.resolve(nextState))
     expect(mockReads.attemptEventsOf).toHaveBeenLastCalledWith(

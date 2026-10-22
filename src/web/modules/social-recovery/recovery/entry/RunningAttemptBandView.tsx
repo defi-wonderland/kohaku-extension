@@ -83,7 +83,7 @@ const RunningAttemptBandView = ({
                 size="small"
                 text={t(`${RUNNING}.continueWithKey`)}
                 onPress={onContinue}
-                disabled={continueState === 'writing'}
+                disabled={continueState === 'writing' || refreshing}
                 hasBottomSpacing={false}
               />
             </View>
@@ -113,6 +113,7 @@ const RunningAttemptBandView = ({
                 size="small"
                 text={t(`${RUNNING}.cancelExit`)}
                 onPress={onCancel}
+                disabled={refreshing}
                 hasBottomSpacing={false}
               />
             </View>

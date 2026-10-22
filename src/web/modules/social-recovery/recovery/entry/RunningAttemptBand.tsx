@@ -36,7 +36,8 @@ const RunningAttemptBand = ({
       !target ||
       attempt.status !== 'answered' ||
       opening.status !== 'answered' ||
-      continueState === 'writing'
+      continueState === 'writing' ||
+      refreshing
     ) {
       return
     }
@@ -81,6 +82,7 @@ const RunningAttemptBand = ({
     attempt,
     opening,
     continueState,
+    refreshing,
     recheck,
     records,
     chainId,
@@ -89,7 +91,12 @@ const RunningAttemptBand = ({
     navigate
   ])
 
-  const onCancel = useCallback(() => navigate(cancelPathOf(account)), [navigate, account])
+  const onCancel = useCallback(() => {
+    if (refreshing) {
+      return
+    }
+    navigate(cancelPathOf(account))
+  }, [refreshing, navigate, account])
 
   return (
     <RunningAttemptBandView
