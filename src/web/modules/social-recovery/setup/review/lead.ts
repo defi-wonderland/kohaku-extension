@@ -257,7 +257,7 @@ export const publicationItemsOf = (kinds: readonly MethodKind[]): PublicationIte
     items.push('passportIdentifier')
   }
   if (kinds.includes('aadhaar')) {
-    items.push('aadhaar')
+    items.push('aadhaarIdentifier')
   }
   return items
 }
