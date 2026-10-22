@@ -181,6 +181,52 @@ describe('the decoder of an uploaded QR image', () => {
     ])
   })
 
+  it('tries once more at 1024 wide where the first draw throws, and reads the code there', async () => {
+    const code = codePicture(AADHAAR_NUMBER, 1500, 2000)
+    const throwing: FakePicture = {
+      ...code,
+      pixelsAt: (w, h) => {
+        if (w === 1500) {
+          throw new RangeError('The canvas is too large to read.')
+        }
+        return code.pixelsAt(w, h)
+      }
+    }
+    await expect(qrDataOfImage(fileOf(throwing))).resolves.toBe(AADHAAR_NUMBER)
+    expect(draws).toEqual([
+      { width: 1500, height: 2000 },
+      { width: 1024, height: 1365 }
+    ])
+    expect(closed).toBe(1)
+  })
+
+  it('reads nothing, and releases the image, where both draws throw', async () => {
+    const throwing: FakePicture = {
+      ...blankPicture(1500, 2000),
+      pixelsAt: () => {
+        throw new RangeError('The canvas is too large to read.')
+      }
+    }
+    await expect(qrDataOfImage(fileOf(throwing))).resolves.toBeUndefined()
+    expect(draws).toHaveLength(2)
+    expect(closed).toBe(1)
+  })
+
+  it('first draws a photo longer than 2048 on a side at 2048, keeping its proportions', async () => {
+    await expect(
+      qrDataOfImage(fileOf(codePicture(AADHAAR_NUMBER, 3000, 4000)))
+    ).resolves.toBe(AADHAAR_NUMBER)
+    expect(draws).toEqual([{ width: 1536, height: 2048 }])
+  })
+
+  it('tries a wide photo above the cap once more at 1024 wide where the capped draw reads nothing', async () => {
+    await expect(qrDataOfImage(fileOf(blankPicture(4096, 1000)))).resolves.toBeUndefined()
+    expect(draws).toEqual([
+      { width: 2048, height: 500 },
+      { width: 1024, height: 250 }
+    ])
+  })
+
   it('tries a small image once more at 1024 wide too, and reads nothing where neither holds a code', async () => {
     await expect(qrDataOfImage(fileOf(blankPicture(200, 100)))).resolves.toBeUndefined()
     expect(draws).toEqual([
