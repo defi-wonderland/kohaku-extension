@@ -515,8 +515,36 @@ describe('the key step', () => {
   })
 
   describe('a return to the step', () => {
-    it('makes no phrase where the wallet already lists accounts and replaces itself with the logged-in entry', async () => {
+    it('makes no phrase where the fast track already added the slot, and goes on to the account step with that basic account', async () => {
       await walletListsSlot()
+
+      await mount(KEY_STEP, ACKNOWLEDGED)
+
+      expect(mockEdge.made).toBe(0)
+      expect(dispatched()).toEqual([])
+      expect(movesAway()).toEqual([
+        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: ACKNOWLEDGED }
+      ])
+      expect(where()).toBe(ACCOUNT_STEP)
+    })
+
+    it('takes the fast track back from the door to the account step with the slot, never to the logged-in entry', async () => {
+      await walletListsSlot()
+      await mount('/social-recovery/recover')
+
+      await press('recovery-warning-acknowledge')
+      await press('recovery-warning-continue')
+      await flush()
+      await flush()
+
+      expect(mockEdge.made).toBe(0)
+      expect(where()).toBe(ACCOUNT_STEP)
+      expect(visits.some(({ path }) => path === LOGGED_IN_ENTRY)).toBe(false)
+    })
+
+    it('makes no phrase where onboarding is complete with a basic account selected, and replaces itself with the logged-in entry', async () => {
+      await walletListsSlot()
+      await setController('wallet', { isSetupComplete: true })
 
       await mount(KEY_STEP, ACKNOWLEDGED)
 
@@ -574,8 +602,9 @@ describe('the key step', () => {
       expect(movesAway()).toEqual([])
     })
 
-    it('goes on to the logged-in entry once the holder acknowledges that warning', async () => {
+    it('goes on to the logged-in entry once the holder acknowledges that warning, where onboarding is complete', async () => {
       await walletListsSlot()
+      await setController('wallet', { isSetupComplete: true })
       await mount(KEY_STEP)
 
       await press('recovery-warning-acknowledge')
