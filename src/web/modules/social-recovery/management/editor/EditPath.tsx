@@ -1,8 +1,8 @@
 /**
  * The edit's path: the setup's own editor over the setup records, with the
  * committed values above its review action, and the cancel of the edit.
- * While the path is checked, the values' changes and the cancel hold, as the
- * editor's own actions do.
+ * While the path is checked, the values' changes hold, as the editor's own
+ * edits do; the cancel stays, as the editor's own back does.
  */
 import React, { useState } from 'react'
 import { View } from 'react-native'
@@ -60,7 +60,6 @@ const EditPath = ({
             testID="manage-edit-cancel"
             type="outline"
             text={t('socialRecovery.actions.cancel')}
-            disabled={checking}
             onPress={onCancel}
             hasBottomSpacing={false}
           />

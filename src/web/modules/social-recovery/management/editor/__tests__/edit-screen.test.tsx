@@ -229,7 +229,7 @@ describe('the edit page', () => {
     view.unmount()
   })
 
-  it('holds the changes of the values and the cancel while the path is checked, as the editor holds its own', async () => {
+  it('holds the changes of the values while the path is checked, as the editor holds its own edits, and keeps the cancel', async () => {
     const { view } = await editPage()
     const { validateSetup } = (
       mockWorld.client as unknown as { client: { setup: { validateSetup: jest.Mock } } }
@@ -241,7 +241,7 @@ describe('the edit page', () => {
           fail = reject
         })
     )
-    const held = ['manage-value-wait-change', 'manage-value-privacy-change', 'manage-edit-cancel']
+    const held = ['manage-value-wait-change', 'manage-value-privacy-change']
     held.forEach((id) => expect(view.isDisabled(id)).toBe(false))
 
     await view.press('editor-continue')
@@ -249,6 +249,7 @@ describe('the edit page', () => {
     expect(view.byTestId('editor-waiting')).not.toBeNull()
     expect(view.isDisabled('editor-continue')).toBe(true)
     held.forEach((id) => expect(view.isDisabled(id)).toBe(true))
+    expect(view.isDisabled('manage-edit-cancel')).toBe(false)
 
     await act(async () => fail(new Error('node unavailable')))
     await settle()
