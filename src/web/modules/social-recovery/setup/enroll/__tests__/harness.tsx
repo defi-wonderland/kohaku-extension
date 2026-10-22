@@ -482,6 +482,24 @@ export const depsOf = (overrides: Partial<EnrollDeps> = {}): FakeDeps => {
   }
 }
 
+/**
+ * Holds every read of the report store until the returned release is called,
+ * so a row can leave the page while its read is pending.
+ */
+export const holdReportReads = (deps: FakeDeps): (() => void) => {
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const store = deps.reportStore
+  const { get } = store
+  store.get = async (key, defaultValue) => {
+    await held
+    return get(key, defaultValue)
+  }
+  return () => release()
+}
+
 // ---------------------------------------------------------------------------
 // The mount
 // ---------------------------------------------------------------------------

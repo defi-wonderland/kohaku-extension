@@ -28,6 +28,7 @@ import {
   draftOf,
   each,
   emptySlot,
+  holdReportReads,
   mountView,
   NOW,
   outside,
@@ -349,6 +350,25 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
           t('socialRecovery.records.writeFailed')
         )
         expect(view!.byTestId(id('enrolled-line'))).not.toBeNull()
+      })
+
+      it('acts on no report it reads after the row left the page', async () => {
+        await open()
+        await view!.press(id('start'))
+        const request = lastRequestId()
+        await deps.channel.report(request, 'enroll', passed({ config: CONFIG }), slug)
+        const release = holdReportReads(deps)
+        const left = await open({ ...SEARCH, ceremony: request })
+        left.unmount()
+        view = undefined
+
+        await outside(async () => release())
+        await settle()
+
+        expect(left.navigate).not.toHaveBeenCalled()
+        expect(await storedClauses(records)).toEqual(TWO_SLOTS)
+        expect(await storedEnrollments(records)).toEqual([])
+        expect(await storedRequest(request)).toBeDefined()
       })
 
       it('leaves the slot empty where the draft cannot be stored', async () => {
