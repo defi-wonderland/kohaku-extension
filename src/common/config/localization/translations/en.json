@@ -362,7 +362,6 @@
       "trust": "Reading the methods on the chain…",
       "fee": "Checking the fee…",
       "landed": "Landed. Reading the result…",
-      "account": "Reading this account…",
       "key": "Reading the key…",
       "accounts": "Reading your accounts…",
       "entries": "Reading your recoveries…",
@@ -377,7 +376,8 @@
       "request": "Opening the request…",
       "slot": "Reading this method's slot…",
       "balance": "Reading the balance and the fee…",
-      "lookup": "Looking up the recovery setup…"
+      "lookup": "Looking up the recovery setup…",
+      "unfinishedSave": "Checking for an unfinished save…"
     },
     "methodNames": {
       "passkey": "Passkey",

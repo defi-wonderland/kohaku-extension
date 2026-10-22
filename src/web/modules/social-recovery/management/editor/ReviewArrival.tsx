@@ -233,7 +233,7 @@ const ReviewArrival = ({
       )}
       {lookingUp ? (
         <View testID="manage-review-lookup">
-          <LoadingBlock variant="row" message={t('socialRecovery.loading.lookup')} />
+          <LoadingBlock variant="row" message={t('socialRecovery.loading.unfinishedSave')} />
         </View>
       ) : (
         <ActionsRow

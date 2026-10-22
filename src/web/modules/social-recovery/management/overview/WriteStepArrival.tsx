@@ -41,7 +41,7 @@ const WriteStepArrival = ({
       )}
       {reading ? (
         <View testID="overview-step-lookup" style={spacings.mtSm}>
-          <LoadingBlock variant="row" message={t('socialRecovery.loading.lookup')} />
+          <LoadingBlock variant="row" message={t('socialRecovery.loading.unfinishedSave')} />
         </View>
       ) : (
         <ActionsRow primary={startAction} secondary={back} />

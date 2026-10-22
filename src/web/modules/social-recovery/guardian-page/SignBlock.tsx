@@ -5,7 +5,7 @@
  * box is ticked and reads ready once it is. Sign stays disabled until every
  * gate holds; under it, while the box is not ticked, the line that asks for
  * the tick. While a signature is asked for, the action is busy beside a line
- * that says the request opens. A signing that brought no approval reads why,
+ * that says the wallet's sign screen is awaited. A signing that brought no approval reads why,
  * with a retry. The step also offers the offline block and keeps decline
  * open.
  */
@@ -123,7 +123,10 @@ const SignBlock = ({
         />
         {busy && (
           <View testID="guardian-sign-busy" style={spacings.mlSm}>
-            <LoadingBlock variant="row" message={t('socialRecovery.loading.request')} />
+            <LoadingBlock
+              variant="row"
+              message={t('socialRecovery.enroll.guardian.waitingForSignScreen')}
+            />
           </View>
         )}
       </View>

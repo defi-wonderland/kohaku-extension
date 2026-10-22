@@ -792,7 +792,7 @@ describe('the waits of the review and the removal', () => {
 
   it('says it looks up the setup in place of the save while the stored write is read', async () => {
     const view = await mountReview({ lookup: 'reading' })
-    expect(view.textOf('manage-review-lookup')).toBe(t('socialRecovery.loading.lookup'))
+    expect(view.textOf('manage-review-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
     expect(view.byTestId('manage-review-save')).toBeNull()
     view.unmount()
   })
@@ -815,7 +815,7 @@ describe('the waits of the review and the removal', () => {
 
   it('says it looks up the setup in place of the removal while the stored write is read', async () => {
     const view = await mountRemoval({ lookup: 'reading' })
-    expect(view.textOf('manage-remove-lookup')).toBe(t('socialRecovery.loading.lookup'))
+    expect(view.textOf('manage-remove-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
     expect(view.byTestId('manage-remove-action')).toBeNull()
     view.unmount()
   })
