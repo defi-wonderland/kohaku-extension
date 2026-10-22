@@ -324,13 +324,13 @@ describe('the privacy step', () => {
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(UNGUESSABLE)
     })
 
-    it('a guardian beside an Aadhaar identity names the Aadhaar identity alone', async () => {
+    it('a guardian beside an Aadhaar identity names its identifier alone', async () => {
       await h.mount(
         await withDraft({ clauses: [{ threshold: 2, credentials: [guardian, aadhaar] }] })
       )
       expect(h.byTestId('exposure-guardians')?.textContent).toBe(GUARDIANS)
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
-        fill(L.exposure.unguessableOne, { items: S.disclosures.itemsLead.aadhaar })
+        fill(L.exposure.unguessableOne, { items: S.disclosures.itemsLead.aadhaarIdentifier })
       )
     })
 
@@ -378,7 +378,7 @@ describe('the privacy step', () => {
         })
       )
       expect(h.byTestId('exposure-unguessable')?.textContent).toBe(
-        'Your passkey, your passport and your Aadhaar identity cannot be guessed at all and lose nothing before a recovery.'
+        'Your passkey, your passport and the identifier your Aadhaar produces cannot be guessed at all and lose nothing before a recovery.'
       )
     })
 

@@ -35,8 +35,8 @@ const methodKindOf = (credential: Credential, book: AddressBook): MethodKind | u
 
 /**
  * The items of the unguessable line, each an item slug under the disclosures:
- * the passkeys, the passport and the Aadhaar identity of the path. An address
- * row is guessable and is never among them.
+ * the passkeys, the passport and the identifier the Aadhaar identity of the
+ * path produces. An address row is guessable and is never among them.
  */
 const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
   const passkeys = kinds.filter((kind) => kind === 'passkey').length
@@ -51,7 +51,7 @@ const unguessableItemsOf = (kinds: MethodKind[]): string[] => {
     items.push('passport')
   }
   if (kinds.includes('aadhaar')) {
-    items.push('aadhaar')
+    items.push('aadhaarIdentifier')
   }
   return items
 }
