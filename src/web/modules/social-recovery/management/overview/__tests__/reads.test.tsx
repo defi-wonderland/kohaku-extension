@@ -232,6 +232,30 @@ describe('the overview reads', () => {
     expect(view.byTestId('readout-path')).toBeNull()
   })
 
+  it('shows no kept setup of another deployment, nor one an earlier build wrote with none, while the setup state has not answered', async () => {
+    const world = await worldAt('public')
+    const { setupNonce, setupCommitment } = await world.client.setup.setupState()
+    const cache = world.records.decryptedSetupCache(CHAIN_ID, ACCOUNT)
+    jest.spyOn(world.client.setup, 'setupState').mockImplementation(() => new Promise(() => {}))
+    const kept = [
+      { configuration: CONFIGURATION, setupNonce, setupCommitment, deployment: RETIRED },
+      { configuration: CONFIGURATION, setupNonce, setupCommitment }
+    ]
+    const renderBeside = async (record: typeof kept[number]) => {
+      await cache.write(record)
+      view = await renderOver(world)
+      expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
+      expect(view.byTestId('overview-refreshing')).toBeNull()
+      expect(view.byTestId('readout-path')).toBeNull()
+      view.unmount()
+      view = undefined
+    }
+    for (let index = 0; index < kept.length; index += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await renderBeside(kept[index])
+    }
+  })
+
   it('shows the kept setup beside the refreshing line while the path reads only where it was committed under the nonce the setup state answered', async () => {
     const world = await worldAt('public')
     const { setupNonce } = await world.client.setup.setupState()
