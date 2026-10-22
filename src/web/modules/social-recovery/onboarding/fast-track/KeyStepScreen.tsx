@@ -6,14 +6,16 @@
  *
  * A wallet that already lists accounts when the step opens (a Back or a
  * reload after the add, or a logged-in wallet at this URL) makes no new
- * phrase: past the warning, the holder goes on to the account step for the
- * selected basic account. So does a step that opens while the wallet still
- * adds the account of an earlier visit, once that add lists it. Once the
- * wallet lists the slot's basic account, the step closes the wallet's picker
- * session and its newly-added marks, as the wallet's own create flow does,
- * and the holder goes on to the account step on the fresh install's route,
- * with that basic account as the account that receives control. Every
- * move replaces this step in the history, so Back never returns to it.
+ * phrase: past the warning, the holder goes on to the logged-in recovery
+ * entry, where they choose the account that receives control. A step that
+ * opens while the wallet still adds the account of an earlier visit goes on
+ * to the account step for the selected basic account once that add lists
+ * it. Once the wallet lists the slot's basic account, the step closes the
+ * wallet's picker session and its newly-added marks, as the wallet's own
+ * create flow does, and the holder goes on to the account step on the fresh
+ * install's route, with that basic account as the account that receives
+ * control. Every move replaces this step in the history, so Back never
+ * returns to it.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -91,7 +93,6 @@ const KeyStepScreen = () => {
   const acknowledged = useAcknowledgment()
   const { hasPasswordSecret, isUnlocked } = useKeystoreControllerState()
   const { accounts } = useAccountsControllerState()
-  const { account: selected } = useSelectedAccountControllerState()
   // Whether the wallet listed accounts before this step opened.
   const [alreadyListed] = useState(!!accounts?.length)
   const dropping = acknowledgedInState(location.state)
@@ -99,7 +100,7 @@ const KeyStepScreen = () => {
   const away = !acknowledged
     ? null
     : alreadyListed
-    ? accountStepPathOf(selectedBasicAccountOf(selected))
+    ? WEB_ROUTES.socialRecoveryRecovery
     : !hasPasswordSecret
     ? WEB_ROUTES.socialRecoveryFastTrack
     : !isUnlocked

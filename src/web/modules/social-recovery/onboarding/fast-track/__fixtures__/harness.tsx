@@ -308,6 +308,11 @@ jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   default: () => null
 }))
 jest.mock('@common/components/Spinner', () => ({ __esModule: true, default: () => null }))
+jest.mock('@web/modules/settings/components/Sidebar', () => ({
+  __esModule: true,
+  default: () => null
+}))
+jest.mock('@common/components/Avatar', () => ({ __esModule: true, default: () => null }))
 jest.mock('@common/utils/clipboard', () => ({ setStringAsync: async () => true }))
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({
   KeyboardAwareScrollView: jest.requireActual('react-native').ScrollView
@@ -349,6 +354,8 @@ const KeyStepScreen: typeof import('@web/modules/social-recovery/onboarding/fast
   require('@web/modules/social-recovery/onboarding/fast-track/KeyStepScreen').default
 const GasStepScreen: typeof import('@web/modules/social-recovery/onboarding/fast-track/GasStepScreen').default =
   require('@web/modules/social-recovery/onboarding/fast-track/GasStepScreen').default
+const EntryScreen: typeof import('@web/modules/social-recovery/recovery/entry/EntryScreen').default =
+  require('@web/modules/social-recovery/recovery/entry/EntryScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const THEME = Object.fromEntries(
@@ -534,6 +541,7 @@ export const mount = async (path: string, state: unknown = null) => {
               <Route path="/social-recovery/fast-track" element={<FastTrackScreen />} />
               <Route path="/social-recovery/fast-track/key" element={<KeyStepScreen />} />
               <Route path="/social-recovery/fast-track/gas" element={<GasStepScreen />} />
+              <Route path="/social-recovery/recovery" element={<EntryScreen />} />
               <Route path="*" element={null} />
             </Routes>
           </BackgroundServiceContext.Provider>

@@ -49,7 +49,7 @@ const CREATING = 'Creating your new key…'
 const ADD_PENDING = 'The wallet is still adding your key. Wait, or go back and continue again.'
 
 const types = () => dispatched().map(({ type }) => type)
-const ACCOUNT_STEP_WITH_NO_ACCOUNT = '/social-recovery/recovery/account?route=fresh-install'
+const LOGGED_IN_ENTRY = '/social-recovery/recovery'
 
 const visibility = { current: 'visible' as DocumentVisibilityState }
 Object.defineProperty(document, 'visibilityState', {
@@ -515,7 +515,7 @@ describe('the key step', () => {
   })
 
   describe('a return to the step', () => {
-    it('makes no phrase where the wallet already lists accounts and replaces itself with the account step', async () => {
+    it('makes no phrase where the wallet already lists accounts and replaces itself with the logged-in entry', async () => {
       await walletListsSlot()
 
       await mount(KEY_STEP, ACKNOWLEDGED)
@@ -523,12 +523,12 @@ describe('the key step', () => {
       expect(mockEdge.made).toBe(0)
       expect(dispatched()).toEqual([])
       expect(movesAway()).toEqual([
-        { kind: 'navigate', to: ACCOUNT_STEP.slice(1), replace: true, state: ACKNOWLEDGED }
+        { kind: 'navigate', to: LOGGED_IN_ENTRY.slice(1), replace: true, state: ACKNOWLEDGED }
       ])
-      expect(where()).toBe(ACCOUNT_STEP)
+      expect(where()).toBe(LOGGED_IN_ENTRY)
     })
 
-    it('names no receiving account where the selected account is a smart account', async () => {
+    it('sends a wallet whose selected account is a smart account to the logged-in entry', async () => {
       await setController('keystore', { keys: [slotKey, offsetKey] })
       await setController('accounts', { accounts: [basicAccount, smartAccount] })
       await setController('selected', { account: smartAccount })
@@ -537,7 +537,30 @@ describe('the key step', () => {
       await mount(KEY_STEP, ACKNOWLEDGED)
 
       expect(mockEdge.made).toBe(0)
-      expect(where()).toBe(ACCOUNT_STEP_WITH_NO_ACCOUNT)
+      expect(where()).toBe(LOGGED_IN_ENTRY)
+    })
+
+    it('takes a wallet with a smart account selected from the door to the logged-in entry, with no way back to the door', async () => {
+      await setController('keystore', { keys: [slotKey, offsetKey] })
+      await setController('accounts', { accounts: [basicAccount, smartAccount] })
+      await setController('selected', { account: smartAccount })
+      await setController('auth', { authStatus: 'authenticated' })
+      await mount('/social-recovery/recover')
+
+      await press('recovery-warning-acknowledge')
+      await press('recovery-warning-continue')
+      await flush()
+      await flush()
+
+      expect(mockEdge.made).toBe(0)
+      expect(where()).toBe(LOGGED_IN_ENTRY)
+      expect(byTestId('recovery-entry')).not.toBeNull()
+      expect(byTestId('entry-owner')).not.toBeNull()
+      expect(byTestId('recover')).toBeNull()
+      expect(visits.some(({ path }) => path.startsWith('/social-recovery/recovery/account'))).toBe(
+        false
+      )
+      expect(visits.filter(({ path }) => path === '/social-recovery/recover')).toHaveLength(1)
     })
 
     it('meets a direct open with accounts listed with the warning, and sends nothing', async () => {
@@ -551,7 +574,7 @@ describe('the key step', () => {
       expect(movesAway()).toEqual([])
     })
 
-    it('goes on to the account step once the holder acknowledges that warning', async () => {
+    it('goes on to the logged-in entry once the holder acknowledges that warning', async () => {
       await walletListsSlot()
       await mount(KEY_STEP)
 
@@ -561,7 +584,7 @@ describe('the key step', () => {
 
       expect(mockEdge.made).toBe(0)
       expect(dispatched()).toEqual([])
-      expect(where()).toBe(ACCOUNT_STEP)
+      expect(where()).toBe(LOGGED_IN_ENTRY)
     })
   })
 
