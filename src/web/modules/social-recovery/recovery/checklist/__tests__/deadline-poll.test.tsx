@@ -3,16 +3,17 @@
  *
  * The request's deadline and the poll of the account's recovery state, on
  * Jest's fake clock: the deadline line ticks every minute and once more the
- * moment the deadline passes, which wipes the session after one chain read
- * and holds every add, launch and continue while that read runs; it says
- * every approval dies together unless one approval is the whole
- * request; the poll reads at once, on every period and when the tab returns
- * to view; a poll that throws or runs past its limit holds every add, launch
- * and continue under the failed read with a retry, and the rows never render
- * from a poll that has not returned since open. A client rebuilt for the same
- * session keeps the rows and reads with the new client; a new session starts
- * from nothing returned. An account that no longer authorizes the action
- * reads as dormant and keeps every approval.
+ * moment the deadline passes, which wipes the session after one chain read,
+ * on the return of a read already in flight, the first one included, and
+ * holds every add, launch and continue while that read runs; it says every
+ * approval dies together unless one approval is the whole request; the poll
+ * reads at once, on every period and when the tab returns to view; until the
+ * first poll answers, the rows show from the session record and stay held
+ * beside the refreshing line; a poll that throws or runs past its limit holds
+ * every add, launch and continue under the failed read with a retry. A client
+ * rebuilt for the same session keeps the rows and reads with the new client;
+ * a new session starts from nothing returned. An account that no longer
+ * authorizes the action reads as dormant and keeps every approval.
  */
 import type { Configuration } from '@kohaku-eth/social-recovery'
 
