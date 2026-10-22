@@ -136,6 +136,8 @@ export interface ScriptedAadhaarScript {
   prove?: ScriptedProverAnswer
   /** The nullifier the proof carries; 22 by default. */
   nullifier?: bigint
+  /** Stamps the proof with a QR code older than a day instead of the device clock; false by default. */
+  stale?: boolean
   /** The local verifier's answer, or a throw; true by default. */
   verify?: boolean | 'throw'
 }

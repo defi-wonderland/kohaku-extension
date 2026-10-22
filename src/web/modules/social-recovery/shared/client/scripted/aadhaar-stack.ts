@@ -6,9 +6,11 @@
  * The prover reports its states on a timer, honours the abort signal, and
  * returns the known-answer vector's proof with the seed it was given and the
  * signal hash of the signal it was given, computed as the library does, so the
- * proof binds the digest the method signs. Its local verifier answers true.
- * `script` makes the prover fail, hang until aborted or prove another
- * nullifier, and the verifier answer false or throw.
+ * proof binds the digest the method signs. The proof is stamped with the
+ * device clock at prove time and discloses nothing. Its local verifier answers
+ * true. `script` makes the prover fail, hang until aborted, prove another
+ * nullifier or stamp a QR code older than a day, and the verifier answer false
+ * or throw.
  */
 import type {
   AadhaarArgsOptions,
@@ -22,6 +24,8 @@ import type { ScriptedAadhaarOptions, ScriptedAadhaarScript, ScriptedAadhaarStac
 
 const DEFAULT_STEP_MS = 400
 const DEFAULT_NULLIFIER = 22n
+// Older than the one-day window the method enrolls with.
+const STALE_AGE_SECONDS = 2 * 24 * 3600
 const PROGRESS = ['fetching-wasm', 'fetching-zkey', 'proving', 'completed'] as const
 
 /** The circuit's signal hash: keccak256 of the signal as a 32-byte word, shifted right by three. */
@@ -34,7 +38,9 @@ const abortError = (): Error => {
   return error
 }
 
-const pcdOf = (options: AadhaarArgsOptions, nullifier: bigint): AadhaarPcd => ({
+const nowInSeconds = (): number => Math.floor(Date.now() / 1000)
+
+const pcdOf = (options: AadhaarArgsOptions, nullifier: bigint, timestamp: number): AadhaarPcd => ({
   proof: {
     groth16Proof: {
       pi_a: ['1', '2', '1'],
@@ -49,11 +55,11 @@ const pcdOf = (options: AadhaarArgsOptions, nullifier: bigint): AadhaarPcd => ({
     },
     pubkeyHash: '99',
     nullifier: nullifier.toString(),
-    timestamp: '1700000000',
-    ageAbove18: '18',
-    gender: '1',
-    pincode: '110001',
-    state: '7',
+    timestamp: timestamp.toString(),
+    ageAbove18: '0',
+    gender: '0',
+    pincode: '0',
+    state: '0',
     nullifierSeed: options.nullifierSeed.toString(),
     signalHash: signalHashOf(options.signal).toString()
   }
@@ -111,7 +117,8 @@ export const createScriptedAadhaarStack = (
             finish(() => reject(new Error('The QR code did not prove.')))
             return
           }
-          finish(() => resolve(pcdOf(kept, script.nullifier ?? DEFAULT_NULLIFIER)))
+          const timestamp = nowInSeconds() - (script.stale ? STALE_AGE_SECONDS : 0)
+          finish(() => resolve(pcdOf(kept, script.nullifier ?? DEFAULT_NULLIFIER, timestamp)))
         }, stepMs * (states.length + 1))
       )
     })
