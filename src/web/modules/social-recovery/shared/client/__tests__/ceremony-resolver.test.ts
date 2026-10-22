@@ -743,7 +743,10 @@ describe("the chain's verdict of the client builder the ceremony tab uses", () =
 
   it('reads each verdict on a deployed chain through a provider of its own, destroyed after the read', async () => {
     deploymentVariable.mockReturnValue(
-      JSON.stringify({ ...DEPLOYED_FACTS, methodZkpassport: addressOf('deployed-method-zkpassport') })
+      JSON.stringify({
+        ...DEPLOYED_FACTS,
+        methodZkpassport: addressOf('deployed-method-zkpassport')
+      })
     )
     const world = createDeployedWorld()
     buildProvider.mockReturnValue(world.ethers)

@@ -213,9 +213,9 @@ describe('the decoder of an uploaded QR image', () => {
   })
 
   it('first draws a photo longer than 2048 on a side at 2048, keeping its proportions', async () => {
-    await expect(
-      qrDataOfImage(fileOf(codePicture(AADHAAR_NUMBER, 3000, 4000)))
-    ).resolves.toBe(AADHAAR_NUMBER)
+    await expect(qrDataOfImage(fileOf(codePicture(AADHAAR_NUMBER, 3000, 4000)))).resolves.toBe(
+      AADHAAR_NUMBER
+    )
     expect(draws).toEqual([{ width: 1536, height: 2048 }])
   })
 

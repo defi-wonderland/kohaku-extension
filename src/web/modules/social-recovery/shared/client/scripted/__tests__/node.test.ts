@@ -476,7 +476,11 @@ describe("the Aadhaar module's verdict on the fake node", () => {
   })
 
   it('judges nothing at the zero address a deployment gives a method it omits, a seeded verdict included', async () => {
-    const node = nodeAt({ ...DESCRIPTOR, methodAadhaar: zeroAddress, methodZkpassport: zeroAddress })
+    const node = nodeAt({
+      ...DESCRIPTOR,
+      methodAadhaar: zeroAddress,
+      methodZkpassport: zeroAddress
+    })
     const config = configOf()
     await expect(verdictOf(node, zeroAddress, config, proofOf())).resolves.toBe('rejected')
     node.setVerdict(config, 'satisfied')

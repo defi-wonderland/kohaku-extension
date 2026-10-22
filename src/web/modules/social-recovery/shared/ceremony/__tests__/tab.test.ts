@@ -732,6 +732,8 @@ describe('the ceremony tab for the identity bindings', () => {
     return { request, fire }
   }
 
+  const IDENTITY_PARAMS = { domain: 'kohaku.example', scope: 'recovery' }
+
   /** The client of the request's account, serving `served` under `slug`. */
   const serve = (slug: string, served: FakeMethod, extra: Record<string, unknown> = {}) => {
     const servedOrchestrator = fakeOrchestrator(served)
@@ -759,8 +761,6 @@ describe('the ceremony tab for the identity bindings', () => {
       { enrollInput: { kind: 'aadhaar-enroll' } as never, signingInput: { signal: '1' } },
       'in-browser-prover'
     )
-
-  const IDENTITY_PARAMS = { domain: 'kohaku.example', scope: 'recovery' }
 
   const enrollRecord = (slug: string) => ({
     ...recorded.enroll(),

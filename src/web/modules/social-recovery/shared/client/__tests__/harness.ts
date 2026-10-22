@@ -1250,7 +1250,7 @@ export const fakeApprovingClient = (
   return {
     approving: new MethodsOrchestrator(new Map(), new Map(), []),
     methodFor: jest.fn((slug: string) => methods.get(slug)),
-    methodParamsFor: jest.fn(() => undefined),
+    methodParamsFor: jest.fn<Params | undefined, [string, CeremonyCall]>(() => undefined),
     descriptor
   }
 }
