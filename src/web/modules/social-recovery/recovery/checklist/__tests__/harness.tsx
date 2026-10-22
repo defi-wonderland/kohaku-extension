@@ -28,6 +28,7 @@ import type {
   Credential,
   Gathering,
   Hex,
+  Params,
   Reply,
   SerializedPaymentOrder
 } from '@kohaku-eth/social-recovery'
@@ -316,6 +317,12 @@ export const passportCredential = (): Credential => ({
   config: word(9)
 })
 
+export const aadhaarCredential = (label?: string): Credential => ({
+  method: BOOK.methods.aadhaar,
+  config: word(10),
+  ...(label ? { label } : {})
+})
+
 export const configurationOf = (clauses: Clause[]): Configuration => ({
   clauses,
   wait: 172800,
@@ -493,8 +500,21 @@ export const assessmentOf = (configuration: Configuration, gathering: Gathering)
 // The client
 // ---------------------------------------------------------------------------
 
+/**
+ * The identity methods the client serves, by slug: the params each call of
+ * the method takes. A slug listed here is held by the registry; a call it
+ * names no params for has none.
+ */
+export type ServedMethods = Partial<Record<string, Partial<Record<CeremonyCall, Params>>>>
+
 export interface FakeKit {
   state: ChecklistClient
+  /**
+   * The identity methods the client serves. The checklist reads them once per
+   * client, so a test sets them before it mounts.
+   */
+  served: ServedMethods
+  methodParamsFor: jest.Mock
   initRecoveryGathering: jest.Mock
   getApproverRequests: jest.Mock
   addApproverReply: jest.Mock
@@ -513,8 +533,10 @@ export interface FakeKit {
  * under the next attempt number; a reply the gathering does not name is
  * refused as the SDK refuses it.
  */
-export const fakeKit = (configuration: Configuration): FakeKit => {
+export const fakeKit = (configuration: Configuration, served: ServedMethods = {}): FakeKit => {
   let inits = 0
+  const methodFor = jest.fn((slug: string) => (served[slug] ? { slug } : undefined))
+  const methodParamsFor = jest.fn((slug: string, call: CeremonyCall) => served[slug]?.[call])
   const initRecoveryGathering = jest.fn(async () => {
     inits += 1
     return gatheringOf(configuration, inits)
@@ -565,10 +587,14 @@ export const fakeKit = (configuration: Configuration): FakeKit => {
     walletReads: { removedKey },
     action: { isAuthorized },
     approving: { verify },
-    descriptor: { manager: BOOK.manager, action: BOOK.action }
+    descriptor: { manager: BOOK.manager, action: BOOK.action },
+    methodFor,
+    methodParamsFor
   } as unknown as ChecklistKitClient
   return {
     state: { status: 'ready', client },
+    served,
+    methodParamsFor,
     initRecoveryGathering,
     getApproverRequests,
     addApproverReply,
@@ -675,14 +701,16 @@ export interface ReportChannel {
   store: ReportStore
   subscribe: ReportSubscribe
   /**
-   * Writes the report the tab writes for the ceremony `id` at `at` (ms, the
-   * fixed clock by default), and tells the listeners.
+   * Writes the report the tab writes for the ceremony `id` of the method
+   * `method` (a passkey by default) at `at` (ms, the fixed clock by default),
+   * and tells the listeners.
    */
   report: (
     id: string,
     call: CeremonyCall,
     outcome: CeremonyOutcome<unknown>,
-    at?: number
+    at?: number,
+    method?: string
   ) => Promise<void>
 }
 
@@ -709,9 +737,9 @@ export const reportChannel = (): ReportChannel => {
   return {
     store,
     subscribe,
-    report: async (id, call, outcome, at = NOW) => {
+    report: async (id, call, outcome, at = NOW, method = 'passkey') => {
       const key = ceremonyResultKey(id)
-      const value = ceremonyReport({ id, call, method: 'passkey' }, outcome, at)
+      const value = ceremonyReport({ id, call, method }, outcome, at)
       values.set(key, value)
       listeners.get(key)?.forEach((listener) => listener(value))
     }
