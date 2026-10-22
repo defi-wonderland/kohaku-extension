@@ -266,6 +266,9 @@ describe('the fake node under the SDK', () => {
       args: [getAddress(ACCOUNT), getAddress(DESCRIPTOR.action)]
     })
     await expect(recoveryClient.prepareCancelByOwner()).rejects.toBeInstanceOf(KitRefusalError)
+    await expect(recoveryClient.prepareCancelByOwner()).rejects.toMatchObject({
+      findings: { errors: [{ code: 'request.no-active-attempt' }] }
+    })
 
     node.openAttempt()
     const { attemptId } = node.manager.attempt
