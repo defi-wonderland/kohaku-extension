@@ -33,6 +33,7 @@ import {
   draftOf,
   each,
   emptySlot,
+  holdReportReads,
   mountView,
   NOW,
   outside,
@@ -319,6 +320,25 @@ describe('the passkey row', () => {
       await open({ ...SEARCH, ceremony: id })
       expect(await storedEnrollments(records)).toHaveLength(1)
       expect(view!.byTestId('passkey-undelivered')).toBeNull()
+    })
+
+    it('acts on no report it reads after the row left the page', async () => {
+      await open()
+      await view!.press('passkey-create-here')
+      const id = deps.requestIds[deps.requestIds.length - 1]
+      await deps.channel.report(id, 'enroll', createdWith(SYNCED_ON_GOOGLE))
+      const release = holdReportReads(deps)
+      const left = await open({ ...SEARCH, ceremony: id })
+      left.unmount()
+      view = undefined
+
+      await outside(async () => release())
+      await settle()
+
+      expect(left.navigate).not.toHaveBeenCalled()
+      expect(await storedClauses(records)).toEqual(TWO_SLOTS)
+      expect(await storedEnrollments(records)).toEqual([])
+      expect(await storedRequest(id)).toBeDefined()
     })
 
     it('applies a report that lands after the return', async () => {

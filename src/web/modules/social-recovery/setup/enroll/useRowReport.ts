@@ -40,7 +40,9 @@ const useRowReport = <A extends { call: 'enroll' | 'testAccess' }>({
     }
     taking.current = ceremonyId
     let live = true
+    let handled = false
     const done = (report: CeremonyReport, asked: A) => {
+      handled = true
       records
         .ceremonyRequest(ceremonyId)
         .wipe()
@@ -50,9 +52,14 @@ const useRowReport = <A extends { call: 'enroll' | 'testAccess' }>({
       handlers.current.onReport(report, asked)
       navigate(enrollPathOf(search), { replace: true })
     }
+    // A row that left the page while a read was pending acts on nothing it
+    // reads afterwards: its request stays, and it navigates nowhere.
     const take = async () => {
       // A request this row did not store stays where it is for its own row.
       const stored = await records.ceremonyRequest(ceremonyId).read()
+      if (!live) {
+        return
+      }
       const asked = stored.status === 'present' ? handlers.current.askedOf(stored.value) : null
       if (!asked) {
         navigate(enrollPathOf(search), { replace: true })
@@ -61,15 +68,15 @@ const useRowReport = <A extends { call: 'enroll' | 'testAccess' }>({
       handlers.current.onAsked?.(asked)
       const identity: ReportIdentity = { id: ceremonyId, call: asked.call, method: slug }
       const report = await takeCeremonyReport(identity, deps.reportStore, deps.now())
+      if (!live) {
+        return
+      }
       if (report) {
         done(report, asked)
         return
       }
       setUndelivered(true)
       setStale(asked)
-      if (!live) {
-        return
-      }
       stopListening.current = listenForCeremonyReport(
         identity,
         deps.reportSubscribe,
@@ -78,9 +85,17 @@ const useRowReport = <A extends { call: 'enroll' | 'testAccess' }>({
         deps.now
       )
     }
-    take().catch(() => setUndelivered(true))
+    take().catch(() => {
+      if (live) {
+        setUndelivered(true)
+      }
+    })
     return () => {
       live = false
+      // A run stopped before it handled the report leaves it for the next mount.
+      if (!handled) {
+        taking.current = null
+      }
       stopListening.current?.()
       stopListening.current = undefined
     }
