@@ -211,12 +211,12 @@ describe('the Aadhaar row', () => {
     expect(await repliesOf()).toEqual([])
   })
 
-  it('reads a reply the client refuses as failed with the check cause and a retry', async () => {
+  it('reads a reply of another attempt as failed with the check cause and a retry, adding nothing', async () => {
     const stale = { ...replyOf(gathering, 0), attemptId: '99' }
 
     const back = await launchAndReturn(passed({ reply: stale }))
 
-    expect(kit.addApproverReply).toHaveBeenCalledTimes(1)
+    expect(kit.addApproverReply).not.toHaveBeenCalled()
     expect(await repliesOf()).toEqual([])
     expect(back.byTestId('checklist-row-0-note')?.textContent).toBe(t(`${CEREMONY}.failedNote`))
     expect(back.byTestId('checklist-row-0-cause')?.textContent).toBe(t(`${CEREMONY}.rejectedCause`))
@@ -239,13 +239,7 @@ describe('the Aadhaar row', () => {
       `${CEREMONY}.rejectedCause`,
       'notAsked'
     ],
-    [
-      'thrown',
-      failed('thrown'),
-      `${CEREMONY}.failedNote`,
-      null,
-      'didNotAnswer'
-    ],
+    ['thrown', failed('thrown'), `${CEREMONY}.failedNote`, null, 'didNotAnswer'],
     [
       'service-unanswered',
       failed('service-unanswered'),
@@ -253,13 +247,7 @@ describe('the Aadhaar row', () => {
       null,
       'didNotAnswer'
     ],
-    [
-      'device-refused',
-      failed('device-refused'),
-      `${CEREMONY}.failedNote`,
-      null,
-      'didNotAnswer'
-    ],
+    ['device-refused', failed('device-refused'), `${CEREMONY}.failedNote`, null, 'didNotAnswer'],
     [
       'device-unavailable',
       unavailable('device-unavailable'),
