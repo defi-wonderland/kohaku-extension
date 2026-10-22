@@ -1,6 +1,7 @@
 /**
- * An Aadhaar row: the holder uploads the same QR code they enrolled with in
- * the ceremony's full tab, where the proof runs with its progress. A claim
+ * An Aadhaar row: the holder uploads a fresh QR code of the same identity
+ * they enrolled with, in the ceremony's full tab, where the proof runs with
+ * its progress. A claim
  * that did not pass leaves its note, the cause of a failure, and a retry.
  */
 import React from 'react'

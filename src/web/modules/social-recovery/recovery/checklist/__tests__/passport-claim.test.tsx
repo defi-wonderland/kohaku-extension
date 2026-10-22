@@ -249,14 +249,14 @@ describe('the passport row', () => {
       'thrown',
       failed('thrown'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.rejectedCause`,
+      null,
       'didNotAnswer'
     ],
     [
       'service-unanswered',
       failed('service-unanswered'),
       `${CEREMONY}.failedNote`,
-      `${CEREMONY}.rejectedCause`,
+      null,
       'didNotAnswer'
     ],
     [
@@ -313,7 +313,7 @@ describe('the passport row', () => {
   })
 
   each([
-    ['cancelled', dismissed('cancelled'), `${CEREMONY}.cancelledNote`],
+    ['cancelled', dismissed('cancelled'), `${CEREMONY}.stoppedNote`],
     ['refused', dismissed('refused', 'device-refused'), `${CEREMONY}.declinedNote`]
   ] as const)(
     'renders a %s ceremony as its note with the row unchanged and a retry',
