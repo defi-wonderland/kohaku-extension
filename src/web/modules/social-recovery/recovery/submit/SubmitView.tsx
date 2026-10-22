@@ -181,16 +181,18 @@ const SubmitView = ({
   const unlocked = valuesRendered && verify.status === 'verified' && sending.status === 'ready'
   const idle = write.status === 'idle' && !run.refusal
   const canStart = unlocked && idle && run.lookup !== 'reading'
+  // While the fee is checked, Start stays on screen, held.
+  const checkingFee = write.status === 'checkingGas'
   // Back wherever nothing is on its way to the chain, and on the deposit step.
   const showsBack =
     write.status === 'needsDeposit' ||
     (!isLive(run) && !landedOf(run) && !mayStillLand(write) && !run.refusal)
 
-  const actions = (idle || showsBack) && (
+  const actions = (idle || checkingFee || showsBack) && (
     <ActionsRow
       testID="submit-actions"
       primary={
-        idle ? (
+        idle || checkingFee ? (
           <Button
             testID="submit-action"
             type="primary"

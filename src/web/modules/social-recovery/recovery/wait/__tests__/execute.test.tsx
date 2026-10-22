@@ -703,7 +703,8 @@ describe("the execution's gas check and block read", () => {
     view = await mountWait(world.account)
 
     await view.press('wait-execute')
-    expect(view.byTestId('wait-execute-checkingGas')).not.toBeNull()
+    expect(view.textOf('wait-execute-checkingGas')).toBe(t('socialRecovery.loading.fee'))
+    expect(view.isDisabled('wait-execute')).toBe(true)
     expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(1)
     await tick(READ_LIMIT_MS)
     await expectGasReadFailed(world)

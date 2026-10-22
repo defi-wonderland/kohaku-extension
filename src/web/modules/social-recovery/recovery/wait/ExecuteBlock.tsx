@@ -53,7 +53,7 @@ const ExecuteBlock = ({ execute, sending, ready, onExecute }: ExecuteBlockProps)
         </View>
       )
     }
-    if (write.status === 'idle') {
+    if (write.status === 'idle' || write.status === 'checkingGas') {
       return (
         <>
           <Text fontSize={14} appearance="secondaryText" style={spacings.mbSm}>
@@ -68,11 +68,14 @@ const ExecuteBlock = ({ execute, sending, ready, onExecute }: ExecuteBlockProps)
               text={t('socialRecovery.wait.noSendingKey')}
             />
           )}
+          {write.status === 'checkingGas' && (
+            <WriteStateView state={write} testID="wait-execute-checkingGas" />
+          )}
           <Button
             testID="wait-execute"
             type="primary"
             text={t(`${DUE}.action`)}
-            disabled={!ready || sending.status !== 'ready'}
+            disabled={write.status === 'checkingGas' || !ready || sending.status !== 'ready'}
             onPress={onExecute}
             hasBottomSpacing={false}
             style={flexbox.alignSelfStart}
