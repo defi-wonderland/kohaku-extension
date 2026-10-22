@@ -208,7 +208,7 @@ describe('the edit page', () => {
     )
 
     expect(view.textOf('manage-edit-reads-reading')).toBe(
-      t('socialRecovery.management.overview.reads.loading')
+      t('socialRecovery.loading.lookup')
     )
     expect(
       view.byTestId('manage-edit-reads-reading')?.querySelector('[data-testid="loading-block"]')

@@ -45,7 +45,7 @@ const PathBody = ({ reads, context, networkName }: PathBodyProps) => {
         </>
       ) : (
         <View testID="overview-path-reading">
-          <LoadingBlock variant="block" message={t(`${OVERVIEW}.reads.loading`)} />
+          <LoadingBlock variant="block" message={t('socialRecovery.loading.lookup')} />
         </View>
       )
     case 'read-failed':

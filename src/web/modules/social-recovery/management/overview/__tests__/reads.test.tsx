@@ -250,7 +250,7 @@ describe('the overview reads', () => {
     const world = await worldAt('public')
     jest.spyOn(world.client.setup, 'setupState').mockImplementation(() => new Promise(() => {}))
     view = await renderOver(world)
-    expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.textOf('overview-reading')).toBe(t('socialRecovery.loading.lookup'))
     expect(view.byTestId('readout-path')).toBeNull()
   })
 
@@ -266,7 +266,7 @@ describe('the overview reads', () => {
     const renderBeside = async (record: typeof kept[number]) => {
       await cache.write(record)
       view = await renderOver(world)
-      expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
+      expect(view.textOf('overview-reading')).toBe(t('socialRecovery.loading.lookup'))
       expect(view.byTestId('overview-refreshing')).toBeNull()
       expect(view.byTestId('readout-path')).toBeNull()
       view.unmount()
@@ -306,7 +306,7 @@ describe('the overview reads', () => {
       deployment: DEPLOYMENT
     })
     view = await renderOver(world)
-    expect(view.textOf('overview-path-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.textOf('overview-path-reading')).toBe(t('socialRecovery.loading.lookup'))
     expect(view.byTestId('overview-path-refreshing')).toBeNull()
     expect(view.byTestId('readout-path')).toBeNull()
   })

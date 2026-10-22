@@ -1580,7 +1580,6 @@
           "action": "Open the Recovery Card"
         },
         "reads": {
-          "loading": "Reading this account's recovery setup.",
           "failedTitle": "This wallet could not read the setup",
           "failedBody": "The read did not return. The setup on the chain is unchanged. Try again.",
           "noticesFailedTitle": "This wallet could not read the notices",

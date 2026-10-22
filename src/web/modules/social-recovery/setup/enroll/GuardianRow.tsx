@@ -91,7 +91,7 @@ const GuardianRow = (props: RowProps) => {
 
           {!enrollment && row.busy && (
             <View testID="guardian-adding">
-              <LoadingBlock variant="block" message={t('socialRecovery.loading.checks')} />
+              <LoadingBlock variant="block" message={t('socialRecovery.loading.address')} />
             </View>
           )}
 

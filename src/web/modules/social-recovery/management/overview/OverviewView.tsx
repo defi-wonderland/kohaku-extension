@@ -107,7 +107,7 @@ const OverviewView = ({
           )}
           {facts.status === 'pending' && !reads.cached && (
             <View testID="overview-reading">
-              <LoadingBlock variant="block" message={t(`${OVERVIEW}.reads.loading`)} />
+              <LoadingBlock variant="block" message={t('socialRecovery.loading.lookup')} />
             </View>
           )}
           {facts.status === 'failed' && (

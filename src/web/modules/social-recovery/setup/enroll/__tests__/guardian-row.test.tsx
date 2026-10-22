@@ -430,7 +430,7 @@ describe('the guardian row', () => {
       await addGuardian()
       const adding = view!.byTestId('guardian-adding')
       expect(adding?.querySelector('[data-testid="loading-block"]')?.textContent).toBe(
-        t('socialRecovery.loading.checks')
+        t('socialRecovery.loading.address')
       )
       expect(view!.isDisabled('guardian-add')).toBe(true)
 

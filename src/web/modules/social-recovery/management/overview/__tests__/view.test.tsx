@@ -45,14 +45,14 @@ describe('the overview', () => {
 
   it('shows the read running, never not set up, while the setup is read', async () => {
     view = await render(viewPropsOf())
-    expect(view.text()).toContain(t(`${O}.reads.loading`))
+    expect(view.text()).toContain(t('socialRecovery.loading.lookup'))
     expect(view.byTestId('overview-chip-not-set-up')).toBeNull()
     expect(view.byTestId('overview-empty')).toBeNull()
   })
 
   it('says it reads the setup in a waiting block where this device holds no opened setup', async () => {
     view = await render(viewPropsOf())
-    expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.textOf('overview-reading')).toBe(t('socialRecovery.loading.lookup'))
     expect(view.byTestId('overview-refreshing')).toBeNull()
     expect(
       view.byTestId('overview-reading')?.querySelector('[data-testid="loading-block"]')
@@ -100,7 +100,7 @@ describe('the overview', () => {
     view = await render(
       viewPropsOf({ reads: readsOf({ facts: answered({}), path: { kind: 'reading' } }) })
     )
-    expect(view.textOf('overview-path-reading')).toBe(t(`${O}.reads.loading`))
+    expect(view.textOf('overview-path-reading')).toBe(t('socialRecovery.loading.lookup'))
     expect(
       view.byTestId('overview-path-reading')?.querySelector('[data-testid="loading-block"]')
     ).not.toBeNull()
