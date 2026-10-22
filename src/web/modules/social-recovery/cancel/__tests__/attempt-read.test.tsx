@@ -5,6 +5,7 @@
  * reading answers while the fresh read runs, and the fresh read alone
  * answers the read.
  */
+import type { LastReadingRead } from '@web/modules/social-recovery/cancel/__fixtures__/mount'
 import type { Arrival, AttemptReadResult } from '@web/modules/social-recovery/cancel/types'
 import type { WatcherReading } from '@web/modules/social-recovery/watcher'
 
@@ -61,7 +62,7 @@ describe("the cancel's arrival read", () => {
   })
 
   it('answers no last reading where none is stored or its read fails', async () => {
-    const cases: (() => Promise<WatcherReading | undefined>)[] = [
+    const cases: LastReadingRead[] = [
       async () => undefined,
       async () => {
         throw new Error('storage refused')

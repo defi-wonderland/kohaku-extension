@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import type { CancelState, CancelViewProps } from '@web/modules/social-recovery/cancel'
+import type { LastReadingCase } from '@web/modules/social-recovery/cancel/__fixtures__/mount'
 import type { WatcherReading } from '@web/modules/social-recovery/watcher'
 
 jest.mock('viem', () => {
@@ -335,7 +336,7 @@ describe('the cancel screen', () => {
     expect(props.onSend).not.toHaveBeenCalled()
   })
 
-  const UNKNOWN: { name: string; last: CancelViewProps['last'] }[] = [
+  const UNKNOWN: LastReadingCase[] = [
     { name: 'this device holds no reading', last: null },
     {
       name: 'the last reading names no open attempt',

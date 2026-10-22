@@ -33,7 +33,10 @@ import type {
   SubmittedOperation
 } from '@web/modules/social-recovery/shared/client'
 import type { ArmKitClient } from '@web/modules/social-recovery/setup/arm'
-import type { Chain } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
+import type {
+  Chain,
+  RemountedSaveCase
+} from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 Object.assign(globalThis, { TextEncoder, TextDecoder })
@@ -750,37 +753,40 @@ describe('the start of the save', () => {
 })
 
 describe('a save in progress across remounts', () => {
-  const LIVE: [string, string, () => () => void][] = [
-    [
-      'while the gas check runs',
-      'arm-write-checkingGas',
-      () => {
+  const LIVE: RemountedSaveCase[] = [
+    {
+      named: 'while the gas check runs',
+      shown: 'arm-write-checkingGas',
+      save: 'held',
+      hold: () => {
         const gate = deferred<bigint>()
         reads.nativeBalance.mockImplementationOnce(() => gate.promise)
         return () => gate.resolve(1_000_000_000_000_000_000n)
       }
-    ],
-    [
-      'while the batch is submitting',
-      'arm-write-submitting',
-      () => {
+    },
+    {
+      named: 'while the batch is submitting',
+      shown: 'arm-write-submitting',
+      save: 'absent',
+      hold: () => {
         const gate = deferred<`0x${string}`>()
         port.sendAccountBatch.mockImplementationOnce(() => gate.promise)
         return () => gate.resolve(harness.TX_HASH)
       }
-    ],
-    [
-      'while the check after the landing runs',
-      'arm-confirming',
-      () => {
+    },
+    {
+      named: 'while the check after the landing runs',
+      shown: 'arm-confirming',
+      save: 'absent',
+      hold: () => {
         const gate = deferred<SetupConfirmation>()
         confirmSetup.mockImplementationOnce(() => gate.promise)
         return () => gate.resolve(confirmation(true, true))
       }
-    ]
+    }
   ]
 
-  LIVE.forEach(([named, shown, hold]) =>
+  LIVE.forEach(({ named, shown, save, hold }) =>
     it(`takes up the save ${named} on a remount, sends nothing more, and saves once it ends`, async () => {
       await writeRecords(draftOf('encrypted'))
       wireClient('ready')
@@ -795,8 +801,10 @@ describe('a save in progress across remounts', () => {
       await settle()
 
       expect(byTestId(shown)).not.toBeNull()
-      // No Save to press: none shows, or the gas check holds it.
-      expect(byTestId('arm-save')?.getAttribute('aria-disabled') ?? 'true').toBe('true')
+      expect(byTestId('arm-save') === null).toBe(save === 'absent')
+      expect(byTestId('arm-save')?.getAttribute('aria-disabled')).toBe(
+        save === 'held' ? 'true' : undefined
+      )
       expect(prepareCommitSetup).toHaveBeenCalledTimes(1)
 
       await act(async () => {

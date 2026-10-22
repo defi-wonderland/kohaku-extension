@@ -11,6 +11,7 @@ import type { Address } from '@kohaku-eth/social-recovery'
 import type {
   WatchedAttemptSources,
   WatchedAttemptState,
+  WatcherReading,
   WatcherRecord,
   WatcherStorage
 } from '@web/modules/social-recovery/watcher'
@@ -79,6 +80,15 @@ export const settle = () =>
       })
     }
   })
+
+/** What this device last read of the account, named for the test that shows it. */
+export interface LastReadingCase {
+  name: string
+  last: WatcherReading | null
+}
+
+/** A read of the watcher's last reading from storage, as the arrival read takes it. */
+export type LastReadingRead = () => Promise<WatcherReading | undefined>
 
 export interface Mounted {
   unmount: () => void
