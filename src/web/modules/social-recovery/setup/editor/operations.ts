@@ -143,7 +143,10 @@ export const addMember = (
   }
 }
 
-/** Removes one member; a group that loses its last member stays until it is removed. */
+/**
+ * Removes one member, the threshold kept; a group that loses its last member
+ * stays until it is removed.
+ */
 export const removeMember = (
   clauses: readonly Clause[],
   group: number,
@@ -154,6 +157,24 @@ export const removeMember = (
     threshold,
     credentials: credentials.filter((_, i) => i !== member)
   })
+}
+
+/**
+ * The holder's Remove: removes one member, and a threshold the removal leaves
+ * above the members comes down to their count, never below one. A threshold
+ * within the members is kept.
+ */
+export const removeMemberToFit = (
+  clauses: readonly Clause[],
+  group: number,
+  member: number
+): Clause[] => {
+  const removed = removeMember(clauses, group, member)
+  const { threshold, credentials } = removed[group]
+  if (threshold <= credentials.length) {
+    return removed
+  }
+  return replaceAt(removed, group, { threshold: Math.max(1, credentials.length), credentials })
 }
 
 /** Sets a clause's threshold to any integer; the editor's refusals judge its bounds. */

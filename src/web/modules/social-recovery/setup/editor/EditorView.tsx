@@ -47,6 +47,7 @@ import {
   readThreshold,
   removeClause,
   removeMember,
+  removeMemberToFit,
   rolesOf,
   sameAddTarget,
   setThreshold,
@@ -418,7 +419,7 @@ const EditorView = ({
           }}
           onRemoveMember={(index, member) => {
             if (!stillNeeded?.has(`${index}:${member}`)) {
-              commit(removeMember(current(), index, member), currentRoles())
+              commit(removeMemberToFit(current(), index, member), currentRoles())
             }
           }}
           onLowerAndRemove={(index, member) => {
