@@ -72,7 +72,7 @@ const GuardianValues = ({ place, request, block, removed, retryRemoved }: Guardi
       )
     }
     if (name === 'keyBeingRemoved' && removed.status === 'loading') {
-      return <LoadingBlock variant="row" message={t('socialRecovery.loading.account')} />
+      return <LoadingBlock variant="row" message={t('socialRecovery.loading.key')} />
     }
     return null
   }

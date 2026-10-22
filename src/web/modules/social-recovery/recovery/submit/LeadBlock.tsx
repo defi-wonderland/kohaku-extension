@@ -70,7 +70,7 @@ const LeadBlock = ({ route, lead, payment, sendingPlan, onRetryRemoved }: LeadBl
     valueCard(
       label,
       <View testID={testID}>
-        <LoadingBlock variant="row" message={t('socialRecovery.loading.account')} />
+        <LoadingBlock variant="row" message={t('socialRecovery.loading.key')} />
       </View>
     )
 

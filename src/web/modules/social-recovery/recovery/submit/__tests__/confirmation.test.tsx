@@ -415,7 +415,7 @@ describe('the submission confirmation', () => {
       world.kit.removedKey.mockImplementation(() => removed.promise)
       const mounted = await open(world)
       await openDetails(mounted)
-      expect(mounted.textOf('submit-removed-key-loading')).toBe(t('socialRecovery.loading.account'))
+      expect(mounted.textOf('submit-removed-key-loading')).toBe(t('socialRecovery.loading.key'))
       expect(mounted.textOf('submit-removed-key-block')).toContain(
         t('socialRecovery.display.values.keyBeingRemoved')
       )

@@ -162,7 +162,7 @@ describe('the guardian row carriers', () => {
     )
     expect(mounted.byTestId(id(1, 'link'))).toBeNull()
     expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
-      t('socialRecovery.loading.account')
+      t('socialRecovery.loading.key')
     )
     await mounted.press(id(1, 'copy-link'))
     await mounted.press(id(1, 'copy-message'))
@@ -580,7 +580,7 @@ describe('the guardian row carriers', () => {
         t(`${GUARDIAN}.unlockReason`)
       )
       expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
-        t('socialRecovery.loading.account')
+        t('socialRecovery.loading.key')
       )
       expect(mounted.byTestId(id(1, 'link'))).toBeNull()
       expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
@@ -611,7 +611,7 @@ describe('the guardian row carriers', () => {
 
       expect(locked(mounted, 1)).toEqual([true, true, true, true])
       expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
-        t('socialRecovery.loading.account')
+        t('socialRecovery.loading.key')
       )
 
       second.resolve({ kind: 'named', key: OTHER_REMOVED })
@@ -637,7 +637,7 @@ describe('the guardian row carriers', () => {
       expect(kit.removedKey).toHaveBeenCalledTimes(2)
       expect(locked(mounted, 1)).toEqual([true, true, true, true])
       expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
-        t('socialRecovery.loading.account')
+        t('socialRecovery.loading.key')
       )
 
       again.resolve({ kind: 'named', key: OTHER_REMOVED })
