@@ -223,9 +223,9 @@ describe("the manager domain's members", () => {
 })
 
 describe('the fit check the built client runs against the account implementation', () => {
-  const fitFindings = async (world: ReturnType<typeof createWorld>) => {
+  const fitFindings = async (world: ReturnType<typeof createWorld>, hasCode = false) => {
     const client = await buildRecoveryClient(world.config)
-    world.chain.setHasCode(false)
+    world.chain.setHasCode(hasCode)
     const result = await client.setup.validateSetup({
       wait: 432_000,
       clauses: [
@@ -238,9 +238,7 @@ describe('the fit check the built client runs against the account implementation
       privacy: { publicMetadata: '0x', backup: 'encrypted' }
     })
     const codes = (findings: readonly { code: string }[]) =>
-      findings
-        .map((finding) => finding.code)
-        .filter((code) => code === 'action.unsupported' || code === 'action.fit-unchecked')
+      findings.map((finding) => finding.code).filter((code) => code.startsWith('action.'))
     return { errors: codes(result.errors), warnings: codes(result.warnings) }
   }
 
@@ -251,6 +249,15 @@ describe('the fit check the built client runs against the account implementation
   it('refuses an account implementation the action does not serve', async () => {
     const world = createWorld({ accountImplementation: addressOf('other-implementation') })
     await expect(fitFindings(world)).resolves.toEqual({
+      errors: ['action.unsupported'],
+      warnings: []
+    })
+  })
+
+  it('refuses a deployed account the action answers it does not serve, whatever the implementation named', async () => {
+    const world = createWorld()
+    world.chain.supportsAccount = false
+    await expect(fitFindings(world, true)).resolves.toEqual({
       errors: ['action.unsupported'],
       warnings: []
     })
