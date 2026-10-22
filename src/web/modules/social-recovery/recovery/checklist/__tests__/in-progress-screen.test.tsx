@@ -145,6 +145,7 @@ describe('the recovery in progress route', () => {
 
     const waiting = view.byTestId('in-progress-route-loading')
     expect(waiting?.textContent).toBe(t('socialRecovery.loading.entries'))
+    expect(waiting?.querySelector('[data-testid="loading-screen"]')).not.toBeNull()
     expect(waiting?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
     expect(view.byTestId('recovery-stage')?.textContent).toBe('4 of 5')
     expect(view.byTestId('in-progress')).toBeNull()

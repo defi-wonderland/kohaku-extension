@@ -191,6 +191,32 @@ describe('the edit page', () => {
     view.unmount()
   })
 
+  it('says it reads the setup in a waiting block, with no editor, while the setup state has not answered', async () => {
+    const first = await editPage()
+    first.view.unmount()
+    Object.assign(mockWorld, {
+      reads: { ...(mockWorld.reads as object), facts: { status: 'pending' } }
+    })
+    const view = await mount(
+      React.createElement(EditStageView, {
+        records: first.records,
+        session: editSessionOf(makeStorage(), CHAIN_ID, ACCOUNT),
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate: jest.fn()
+      })
+    )
+
+    expect(view.textOf('manage-edit-reads-reading')).toBe(
+      t('socialRecovery.management.overview.reads.loading')
+    )
+    expect(
+      view.byTestId('manage-edit-reads-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
+    expect(view.byTestId('editor-continue')).toBeNull()
+    view.unmount()
+  })
+
   it('shows one title, the values above the review action, and that action in its words', async () => {
     const { view } = await editPage()
 
@@ -274,6 +300,9 @@ describe('the edit page', () => {
     const navigate = jest.fn()
     const { view } = await editPage(records, navigate)
     expect(view.textOf('manage-edit-opening')).toBe(t('socialRecovery.loading.draft'))
+    expect(
+      view.byTestId('manage-edit-opening')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
 
     view.unmount()
     answer({

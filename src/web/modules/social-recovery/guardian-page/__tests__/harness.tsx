@@ -106,6 +106,8 @@ export interface WalletScript {
 export interface Mounted {
   unmount: () => void
   has: (id: string) => boolean
+  /** Whether the element under a test id holds one under another. */
+  hasWithin: (id: string, inner: string) => boolean
   textOf: (id: string) => string
   text: () => string
   press: (id: string) => Promise<void>
@@ -773,6 +775,7 @@ export const mountPage = async (search: string): Promise<Mounted> => {
   return {
     unmount,
     has: (id) => byTestId(id) !== null,
+    hasWithin: (id, inner) => !!byTestId(id)?.querySelector(`[data-testid="${inner}"]`),
     textOf: (id) => byTestId(id)?.textContent ?? '',
     text: () => container.textContent ?? '',
     press: async (id) => {

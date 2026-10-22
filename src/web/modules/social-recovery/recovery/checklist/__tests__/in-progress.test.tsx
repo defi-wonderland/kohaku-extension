@@ -119,6 +119,9 @@ describe('the recovery in progress', () => {
     expect(view.byTestId('in-progress-loading')?.textContent).toBe(
       t('socialRecovery.loading.entries')
     )
+    expect(
+      view.byTestId('in-progress-loading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId(`in-progress-${idOf(ACCOUNT)}`)).toBeNull()
   })
 

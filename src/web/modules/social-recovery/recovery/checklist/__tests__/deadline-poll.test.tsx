@@ -496,6 +496,9 @@ describe('the checklist deadline and poll', () => {
       expect(view.byTestId('checklist-refreshing')?.textContent).toBe(
         t('socialRecovery.loading.refreshingAttempt')
       )
+      expect(
+        view.byTestId('checklist-refreshing')?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(view.byTestId('checklist-rows')).not.toBeNull()
       const held = ['checklist-continue', 'checklist-row-0-answer-here', 'checklist-row-0-phone']
       held.forEach((id) => expect(view?.isDisabled(id)).toBe(true))
@@ -525,6 +528,9 @@ describe('the checklist deadline and poll', () => {
       expect(mounted.byTestId('checklist-refreshing')?.textContent).toBe(
         t('socialRecovery.loading.refreshingAttempt')
       )
+      expect(
+        mounted.byTestId('checklist-refreshing')?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(mounted.byTestId('checklist-rows')).not.toBeNull()
       expect(mounted.isDisabled(action)).toBe(false)
 
@@ -680,6 +686,9 @@ describe('the checklist deadline and poll', () => {
       expect(mounted.byTestId('checklist-loading')?.textContent).toBe(
         t('socialRecovery.loading.session')
       )
+      expect(
+        mounted.byTestId('checklist-loading')?.querySelector('[data-testid="loading-block"]')
+      ).not.toBeNull()
 
       const rebuilt = fakeKit(MIXED_PATH)
       const read = deferred<ReturnType<typeof recoveryStateOf>>()

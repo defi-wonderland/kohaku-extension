@@ -165,6 +165,9 @@ describe('the readout at Private', () => {
     })
     await unlockWith(page, CARD_PASSWORD)
     expect(page.has('readout-unlock-checking')).toBe(true)
+    expect(
+      page.byTestId('readout-unlock-checking')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expectNothingOfTheSetup(page)
     expectConfigured(page)
     await outside(() => held.resolve())
@@ -433,6 +436,9 @@ describe('the reads that fail and the setups this build cannot read', () => {
     const page = await open()
     expect(page.has('readout-reading')).toBe(true)
     expect(page.text()).toContain(t('socialRecovery.readout.reading', { network: NETWORK }))
+    expect(
+      page.byTestId('readout-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(page.has('readout-locked')).toBe(false)
     expectConfigured(page)
     await outside(() => held.resolve())

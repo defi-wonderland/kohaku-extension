@@ -92,6 +92,9 @@ describe('the reads after the confirmation have a time limit', () => {
     expect(screen.textOf('entry-reads-fit-loading')).toBe(
       t('socialRecovery.entry.confirm.readingFit')
     )
+    expect(
+      screen.byTestId('entry-reads-fit-loading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
 
     await waitAnHour()
 

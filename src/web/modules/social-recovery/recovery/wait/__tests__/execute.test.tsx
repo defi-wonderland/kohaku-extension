@@ -203,6 +203,9 @@ describe('execute now', () => {
     // The landed receipt asks the chain at once; the attempt still waits there.
     expect(world.kit.recoveryState.mock.calls.length).toBe(calls + 1)
     expect(view.textOf('wait-execute-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(
+      view.byTestId('wait-execute-confirming')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.textOf('wait-execute-confirming-hash')).toBe(renderHash(TX_HASH))
     expect(view.paths()).toEqual([])
 
@@ -704,6 +707,9 @@ describe("the execution's gas check and block read", () => {
 
     await view.press('wait-execute')
     expect(view.textOf('wait-execute-checkingGas')).toBe(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('wait-execute-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.isDisabled('wait-execute')).toBe(true)
     expect(world.kit.receipts.blockNumber).toHaveBeenCalledTimes(1)
     await tick(READ_LIMIT_MS)

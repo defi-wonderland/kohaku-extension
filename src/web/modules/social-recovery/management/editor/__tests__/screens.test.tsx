@@ -334,6 +334,30 @@ describe('the save of an edit that adds no row', () => {
 })
 
 describe('the review of changes', () => {
+  it('says it opens the draft in a waiting block, with no save, while the stored edit is read', async () => {
+    const { records, session } = await given({
+      clauses: COMMITTED,
+      trustAnswered: true,
+      attemptOpen: false
+    })
+    jest.spyOn(session, 'read').mockImplementation(() => new Promise(() => {}))
+    const view = await mount(
+      React.createElement(ReviewStageView, {
+        records,
+        session,
+        chainId: CHAIN_ID,
+        account: ACCOUNT,
+        navigate: jest.fn()
+      })
+    )
+    expect(view.textOf('manage-review-loading')).toBe(t('socialRecovery.loading.draft'))
+    expect(
+      view.byTestId('manage-review-loading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
+    expect(view.byTestId('manage-review-save')).toBeNull()
+    view.unmount()
+  })
+
   it('holds the save until the trust rows of the added rows answered', async () => {
     const view = await reviewOver({
       clauses: [review.group(1, ALICE, BOB)],
@@ -343,6 +367,9 @@ describe('the review of changes', () => {
     expect(view.byTestId('manage-change-members')).not.toBeNull()
     expect(view.isDisabled('manage-review-save')).toBe(true)
     expect(view.textOf('manage-review-save-checking')).toBe(t('socialRecovery.loading.saveChecks'))
+    expect(
+      view.byTestId('manage-review-save-checking')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     view.unmount()
 
     const answered = await reviewOver({
@@ -793,6 +820,9 @@ describe('the waits of the review and the removal', () => {
   it('says it looks up the setup in place of the save while the stored write is read', async () => {
     const view = await mountReview({ lookup: 'reading' })
     expect(view.textOf('manage-review-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
+    expect(
+      view.byTestId('manage-review-lookup')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.byTestId('manage-review-save')).toBeNull()
     view.unmount()
   })
@@ -800,6 +830,9 @@ describe('the waits of the review and the removal', () => {
   it('keeps the save on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
     const view = await mountReview(CHECKING_GAS)
     expect(view.textOf('manage-review-run-checkingGas')).toContain(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('manage-review-run-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.isDisabled('manage-review-save')).toBe(true)
     await view.press('manage-review-save')
     expect(mockWorld.run.start).not.toHaveBeenCalled()
@@ -809,6 +842,9 @@ describe('the waits of the review and the removal', () => {
   it('keeps the landed hash beside the line that says the result is read after the save lands', async () => {
     const view = await mountReview(CONFIRMING)
     expect(view.textOf('manage-review-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(
+      view.byTestId('manage-review-confirming')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('manage-review-confirming-hash')).not.toBeNull()
     view.unmount()
   })
@@ -816,6 +852,9 @@ describe('the waits of the review and the removal', () => {
   it('says it looks up the setup in place of the removal while the stored write is read', async () => {
     const view = await mountRemoval({ lookup: 'reading' })
     expect(view.textOf('manage-remove-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
+    expect(
+      view.byTestId('manage-remove-lookup')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.byTestId('manage-remove-action')).toBeNull()
     view.unmount()
   })
@@ -823,6 +862,9 @@ describe('the waits of the review and the removal', () => {
   it('keeps the removal on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
     const view = await mountRemoval(CHECKING_GAS)
     expect(view.textOf('manage-remove-run-checkingGas')).toContain(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('manage-remove-run-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.isDisabled('manage-remove-action')).toBe(true)
     await view.press('manage-remove-action')
     expect(mockWorld.run.start).not.toHaveBeenCalled()
@@ -832,6 +874,9 @@ describe('the waits of the review and the removal', () => {
   it('keeps the landed hash beside the line that says the result is read after the removal lands', async () => {
     const view = await mountRemoval(CONFIRMING)
     expect(view.textOf('manage-remove-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(
+      view.byTestId('manage-remove-confirming')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('manage-remove-confirming-hash')).not.toBeNull()
     view.unmount()
   })

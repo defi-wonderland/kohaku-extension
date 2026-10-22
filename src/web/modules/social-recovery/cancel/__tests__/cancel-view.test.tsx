@@ -330,6 +330,9 @@ describe('the cancel screen', () => {
     view = await render({ read: { status: 'loading' }, last: OPEN })
 
     expect(view.textOf('cancel-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(
+      view.byTestId('cancel-refreshing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(NEW_KEY))
     expect(view.isDisabled('cancel-send')).toBe(true)
     await view.press('cancel-send')
@@ -347,6 +350,10 @@ describe('the cancel screen', () => {
     it(`says it reads the recovery in a waiting block while the fresh read runs where ${name}`, async () => {
       view = await render({ read: { status: 'loading' }, last })
       expect(view.textOf('cancel-loading')).toBe(t('socialRecovery.loading.attempt'))
+      expect(
+        view.byTestId('cancel-loading')?.querySelector('[data-testid="loading-block"]')
+      ).not.toBeNull()
+      expect(view.byTestId('cancel-send')).toBeNull()
       expect(view.byTestId('cancel-confirm')).toBeNull()
       expect(view.byTestId('cancel-ended')).toBeNull()
     })
@@ -381,10 +388,27 @@ describe('the cancel screen', () => {
     view = await render({ run: withWrite({ status: 'checkingGas', write: 'cancel', run: 1 }) })
 
     expect(view.textOf('cancel-checkingGas')).toBe(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('cancel-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(NEW_KEY))
     expect(view.isDisabled('cancel-send')).toBe(true)
     await view.press('cancel-send')
     expect(props.onSend).not.toHaveBeenCalled()
+  })
+
+  it('says it checks the fee in a waiting block where no open attempt is read to confirm beside it', async () => {
+    view = await render({
+      read: { status: 'loading' },
+      last: null,
+      run: withWrite({ status: 'checkingGas', write: 'cancel', run: 1 })
+    })
+
+    expect(view.textOf('cancel-loading')).toBe(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('cancel-loading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
+    expect(view.byTestId('cancel-send')).toBeNull()
   })
 
   it('shows the deposit step for the account key with both routes, and checks again on continue', async () => {
@@ -423,6 +447,9 @@ describe('the cancel screen', () => {
     expect(view.byTestId('cancel-landed-unread')).toBeNull()
     expect(view.byTestId('cancel-cancelled')).toBeNull()
     expect(view.textOf('cancel-landed-reading')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(
+      view.byTestId('cancel-landed-reading')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
   })
 
   it('reads landed but unconfirmed, with check again, once the reads did not confirm', async () => {

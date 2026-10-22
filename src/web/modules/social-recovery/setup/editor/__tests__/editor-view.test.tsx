@@ -795,6 +795,7 @@ describe('edits while the path check runs', () => {
     await press('editor-continue')
     expect(validateSetup).toHaveBeenCalledTimes(1)
     expect(byTestId('editor-waiting')?.textContent).toBe(t('socialRecovery.loading.checks'))
+    expect(byTestId('editor-waiting')?.querySelector('[data-testid="loading-row"]')).not.toBeNull()
     expect(isHeld('editor-continue')).toBe(true)
 
     expect(controls.filter((id) => !isHeld(id))).toEqual([])

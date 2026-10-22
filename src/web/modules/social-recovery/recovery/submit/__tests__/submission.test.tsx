@@ -145,6 +145,9 @@ describe('the submission', () => {
       expect(mounted.byTestId('write-checking-fee')?.textContent).toContain(
         t('socialRecovery.loading.fee')
       )
+      expect(
+        mounted.byTestId('write-checking-fee')?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(mounted.isDisabled('submit-action')).toBe(true)
       await mounted.press('submit-action')
       expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
@@ -324,6 +327,9 @@ describe('the submission', () => {
       await mounted.press('submit-action')
       expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
       expect(mounted.textOf('submit-confirming')).toContain(t('socialRecovery.loading.landed'))
+      expect(
+        mounted.byTestId('submit-confirming')?.querySelector('[data-testid="loading-block"]')
+      ).not.toBeNull()
       expect(mounted.byTestId('submit-confirming-hash')?.textContent).toBeTruthy()
       expect((await sessionOf(world.records, world.account))?.state).toBe('live')
       expect(mockWallet.navigate).not.toHaveBeenCalled()

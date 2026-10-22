@@ -375,6 +375,9 @@ describe('the gas step', () => {
       await mount(GAS_STEP)
 
       expect(byTestId('fast-track-gas-waiting')?.textContent).toBe(READING_BALANCE)
+      expect(
+        byTestId('fast-track-gas-waiting')?.querySelector('[data-testid="loading-screen"]')
+      ).not.toBeNull()
 
       await passes(BALANCE_READ_LIMIT_MS)
 

@@ -167,6 +167,9 @@ describe('a read that found no consume, failed or has not answered', () => {
     world.kit.chain.hanging = true
     const screen = await mountDone(world.account)
     expect(screen.textOf('done-loading')).toBe(t('socialRecovery.loading.finishing'))
+    expect(
+      screen.byTestId('done-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(screen.has('done')).toBe(false)
     await tick(POLL_LIMIT_MS + 1)
     expect(screen.has('done-read-failed')).toBe(true)
@@ -261,6 +264,9 @@ describe('the route search and the entry record', () => {
     mockWallet.accounts = undefined
     const screen = await mountDone(world.account)
     expect(screen.textOf('done-entry-loading')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      screen.byTestId('done-entry-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(world.kit.recoveryState).not.toHaveBeenCalled()
     screen.unmount()
   })

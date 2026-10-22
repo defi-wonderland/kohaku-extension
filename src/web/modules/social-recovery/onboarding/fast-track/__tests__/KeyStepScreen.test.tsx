@@ -134,6 +134,9 @@ describe('the key step', () => {
       await mount(KEY_STEP, ACKNOWLEDGED)
 
       expect(byTestId('fast-track-key-creating')?.textContent).toBe(CREATING)
+      expect(
+        byTestId('fast-track-key-creating')?.querySelector('[data-testid="loading-block"]')
+      ).not.toBeNull()
       expect(byTestId('fast-track-key-pending')).toBeNull()
 
       await keystoreSends(PHRASE)
@@ -433,6 +436,9 @@ describe('the key step', () => {
       })
       expect(byTestId('fast-track-key-pending')).toBeNull()
       expect(byTestId('fast-track-key-adding-line')?.textContent).toBe(ADDING)
+      expect(
+        byTestId('fast-track-key-adding-line')?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(isDisabled('fast-track-key-continue')).toBe(true)
 
       await act(async () => {
@@ -655,6 +661,9 @@ describe('the key step', () => {
       await atEarlierAdd()
 
       expect(byTestId('fast-track-key-adding')?.textContent).toBe(ADDING)
+      expect(
+        byTestId('fast-track-key-adding')?.querySelector('[data-testid="loading-block"]')
+      ).not.toBeNull()
       expect(byTestId('fast-track-key-creating')).toBeNull()
       expect(text()).not.toContain(CREATING)
       expect(byTestId('fast-track-key-pending')).toBeNull()

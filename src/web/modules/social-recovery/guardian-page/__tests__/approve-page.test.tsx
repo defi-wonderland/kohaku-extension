@@ -218,6 +218,7 @@ describe('the sign action', () => {
     )
     await advance(MINUTE)
     expect(page.textOf('guardian-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(page.hasWithin('guardian-refreshing', 'loading-row')).toBe(true)
     expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
     expect(page.isDisabled('guardian-sign')).toBe(true)
     answer()

@@ -1593,6 +1593,9 @@ describe("another page's save that lands during this page's gas check", () => {
   it('keeps Save on screen, held, beside the line that says the fee is checked while the gas check runs', async () => {
     const gas = await pressSaveAndHoldGas()
     expect(pageText()).toContain(t('socialRecovery.loading.fee'))
+    expect(
+      byTestId('arm-write-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(byTestId('arm-save')?.getAttribute('aria-disabled')).toBe('true')
     await press('arm-save')
     expect(port.sendAccountBatch).not.toHaveBeenCalled()

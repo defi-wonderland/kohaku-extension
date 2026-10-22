@@ -303,6 +303,9 @@ describe("the overview's write step", () => {
 
     await view.press('overview-step-start')
     expect(view.textOf('overview-step-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(
+      view.byTestId('overview-step-confirming')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('overview-step-confirming-hash')).not.toBeNull()
     expect(onFinished).not.toHaveBeenCalled()
   })
@@ -320,6 +323,9 @@ describe("the overview's write step", () => {
 
     await view.press('overview-step-start')
     expect(view.textOf('overview-step-checkingGas')).toContain(t('socialRecovery.loading.fee'))
+    expect(
+      view.byTestId('overview-step-checkingGas')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.isDisabled('overview-step-start')).toBe(true)
     await view.press('overview-step-start')
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
@@ -329,6 +335,18 @@ describe("the overview's write step", () => {
     })
     await harness.settle()
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('says it checks for an unfinished save in place of the start while the wallet reads the account', async () => {
+    const world = await worldAt('public', address)
+    mockWallet.port = sendPortOver()
+    mockWallet.facts = { status: 'loading' }
+    view = await mount(stepOf(world, await factsOver(world), { receipts: receiptsOver() }))
+    expect(view.textOf('overview-step-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
+    expect(
+      view.byTestId('overview-step-lookup')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
+    expect(view.byTestId('overview-step-start')).toBeNull()
   })
 
   it('says it reads the committed level while the re-authorize has not read it', async () => {
@@ -343,6 +361,9 @@ describe("the overview's write step", () => {
       })
     )
     expect(view.textOf('overview-step-reading')).toBe(t('socialRecovery.loading.level'))
+    expect(
+      view.byTestId('overview-step-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('overview-step-start')).not.toBeNull()
     expect(view.isDisabled('overview-step-start')).toBe(true)
   })

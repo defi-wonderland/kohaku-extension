@@ -416,6 +416,9 @@ describe('the submission confirmation', () => {
       const mounted = await open(world)
       await openDetails(mounted)
       expect(mounted.textOf('submit-removed-key-loading')).toBe(t('socialRecovery.loading.key'))
+      expect(
+        mounted.byTestId('submit-removed-key-loading')?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(mounted.textOf('submit-removed-key-block')).toContain(
         t('socialRecovery.display.values.keyBeingRemoved')
       )

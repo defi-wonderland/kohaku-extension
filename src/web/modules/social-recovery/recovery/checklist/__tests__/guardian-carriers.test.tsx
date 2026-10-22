@@ -188,6 +188,9 @@ describe('the guardian row carriers', () => {
     expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
       t('socialRecovery.loading.key')
     )
+    expect(
+      mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     await mounted.press(id(1, 'copy-link'))
     await mounted.press(id(1, 'copy-message'))
     await mounted.press(id(1, 'show-qr'))

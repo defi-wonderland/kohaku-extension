@@ -238,6 +238,9 @@ describe("the countdown's record before the first poll answers", () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(
+      view.byTestId('wait-refreshing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
     expect(view.textOf('wait-title')).toBe(t('socialRecovery.wait.title'))
     expect(view.byTestId('wait-execute')).toBeNull()
@@ -297,6 +300,9 @@ describe("the countdown's record before the first poll answers", () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-countdown-loading')).toBe(t('socialRecovery.loading.countdown'))
+    expect(
+      view.byTestId('wait-countdown-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
   })
 
@@ -305,6 +311,9 @@ describe("the countdown's record before the first poll answers", () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-loading')).toBe(t('socialRecovery.loading.countdown'))
+    expect(
+      view.byTestId('wait-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
     expect(view.byTestId('wait-refreshing')).toBeNull()
   })
@@ -325,6 +334,9 @@ describe('the entry record read', () => {
     view = await mountWait(world.account)
 
     expect(view.textOf('wait-entry-loading')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      view.byTestId('wait-entry-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('wait-entry-failed')).toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
     expect(view.paths()).toEqual([])

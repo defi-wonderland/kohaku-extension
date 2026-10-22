@@ -158,6 +158,9 @@ describe('the confirmation’s entry record read', () => {
     world.storage.get = () => new Promise<never>(() => {})
     view = await mountSubmit(world.account)
     expect(view.textOf('submit-entry-loading')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      view.byTestId('submit-entry-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('submit-entry-failed')).toBeNull()
     expect(view.byTestId('submit-action')).toBeNull()
     expect(view.paths()).toEqual([])
@@ -168,6 +171,9 @@ describe('the confirmation’s entry record read', () => {
     mockWallet.client = { status: 'loading' }
     view = await mountSubmit(world.account)
     expect(view.textOf('submit-loading')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      view.byTestId('submit-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('submit-lead')).toBeNull()
     expect(view.byTestId('submit-action')).toBeNull()
   })

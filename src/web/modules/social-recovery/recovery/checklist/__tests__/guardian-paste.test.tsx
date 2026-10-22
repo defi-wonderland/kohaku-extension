@@ -520,6 +520,9 @@ describe('the guardian paste', () => {
       expect(view?.byTestId(id(1, 'paste-checking'))?.textContent).toBe(
         t('socialRecovery.loading.signature')
       )
+      expect(
+        view?.byTestId(id(1, 'paste-checking'))?.querySelector('[data-testid="loading-row"]')
+      ).not.toBeNull()
       expect(view?.valueOf(id(1, 'paste-input'))).toBe(line)
       await view?.press(id(1, 'paste-add'))
       expect(kit.verify).toHaveBeenCalledTimes(1)

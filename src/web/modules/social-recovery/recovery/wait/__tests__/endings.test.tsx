@@ -68,6 +68,9 @@ describe('where the wait sends the holder on open', () => {
 
     expect(view.paths()).toEqual([donePath(world)])
     expect(view.textOf('wait-consumed')).toBe(t('socialRecovery.loading.finishing'))
+    expect(
+      view.byTestId('wait-consumed')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
     expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
       'present'

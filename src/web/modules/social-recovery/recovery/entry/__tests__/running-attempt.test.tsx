@@ -371,6 +371,9 @@ describe('the running attempt band', () => {
     mockReads.stateOf.mockImplementation(() => new Promise<never>(() => {}))
     const page = await openRunning()
     expect(page.textOf('entry-running-loading')).toBe(t('socialRecovery.loading.attempt'))
+    expect(
+      page.byTestId('entry-running-loading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(page.has('entry-running-lead')).toBe(false)
     expect(page.has('entry-continue')).toBe(false)
     page.unmount()
@@ -671,6 +674,9 @@ describe('the running attempt band while it stands', () => {
     expect(page.textOf('entry-running-refreshing')).toBe(
       t('socialRecovery.loading.refreshingAttempt')
     )
+    expect(
+      page.byTestId('entry-running-refreshing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(page.textOf('entry-running-lead')).toBe(finishes())
     expect(page.textOf('entry-running-key')).toContain(STRANGER)
     await advanceClock(LIMIT_MS)
@@ -874,6 +880,9 @@ describe('whose recovery the running attempt is', () => {
     })
     const page = await openRunning(FRESH_INSTALL)
     expect(page.textOf('entry-running-entries-loading')).toBe(t('socialRecovery.loading.entries'))
+    expect(
+      page.byTestId('entry-running-entries-loading')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(page.has('entry-running-yours')).toBe(false)
     expect(page.has('entry-running-continue')).toBe(false)
     expect(page.has('entry-running-not-yours')).toBe(false)

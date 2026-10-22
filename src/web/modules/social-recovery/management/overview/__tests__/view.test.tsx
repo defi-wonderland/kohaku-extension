@@ -54,6 +54,9 @@ describe('the overview', () => {
     view = await render(viewPropsOf())
     expect(view.textOf('overview-reading')).toBe(t(`${O}.reads.loading`))
     expect(view.byTestId('overview-refreshing')).toBeNull()
+    expect(
+      view.byTestId('overview-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('readout-path')).toBeNull()
     expect(view.byTestId('overview-edit-path')).toBeNull()
   })
@@ -62,6 +65,9 @@ describe('the overview', () => {
     const props = viewPropsOf({ reads: readsOf({ cached: CONFIGURATION }) })
     view = await render(props)
     expect(view.textOf('overview-refreshing')).toBe(t('socialRecovery.loading.refreshingSetup'))
+    expect(
+      view.byTestId('overview-refreshing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.byTestId('overview-reading')).toBeNull()
     expect(view.byTestId('readout-path')).not.toBeNull()
     expect(view.byTestId('readout-wait-value')).not.toBeNull()
@@ -82,6 +88,9 @@ describe('the overview', () => {
     expect(view.textOf('overview-path-refreshing')).toBe(
       t('socialRecovery.loading.refreshingSetup')
     )
+    expect(
+      view.byTestId('overview-path-refreshing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.byTestId('readout-path')).not.toBeNull()
     expect(view.isDisabled('overview-edit-path')).toBe(true)
     expect(view.isDisabled('overview-remove-recovery')).toBe(true)
@@ -92,8 +101,29 @@ describe('the overview', () => {
       viewPropsOf({ reads: readsOf({ facts: answered({}), path: { kind: 'reading' } }) })
     )
     expect(view.textOf('overview-path-reading')).toBe(t(`${O}.reads.loading`))
+    expect(
+      view.byTestId('overview-path-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
     expect(view.byTestId('readout-path')).toBeNull()
     expect(view.isDisabled('overview-edit-path')).toBe(true)
+  })
+
+  it('says it unlocks the setup in a waiting block, with no field to submit, while the recovery password is checked', async () => {
+    view = await render(
+      viewPropsOf({
+        reads: readsOf({
+          facts: answered({}),
+          path: { kind: 'locked', level: 'private' },
+          ask: { status: 'checking' }
+        })
+      })
+    )
+    expect(view.textOf('overview-locked-checking')).toBe(t('socialRecovery.loading.unlocking'))
+    expect(
+      view.byTestId('overview-locked-checking')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
+    expect(view.byTestId('overview-locked-field')).toBeNull()
+    expect(view.byTestId('overview-locked-unlock')).toBeNull()
   })
 
   it('shows a failed read with its retry, never not set up', async () => {
@@ -328,6 +358,9 @@ describe('the overview', () => {
     })
     view = await render(props)
     expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.refreshing'))
+    expect(
+      view.byTestId('overview-notices-reading')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.textOf('overview-ended-line')).toBe(
       t(`${O}.ended.ownerCancel`, {
         date: display.renderDateTimeInZone(1_700_000_000_000, 'UTC').date
@@ -349,6 +382,9 @@ describe('the overview', () => {
       })
     )
     expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.refreshing'))
+    expect(
+      view.byTestId('overview-notices-reading')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
     expect(view.byTestId('overview-ended')).toBeNull()
   })
 
