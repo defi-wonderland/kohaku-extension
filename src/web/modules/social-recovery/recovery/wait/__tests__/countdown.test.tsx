@@ -36,6 +36,7 @@ import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 import { ruleLinesOf } from '@web/modules/social-recovery/setup/review'
+import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
 const POLL_MS = 30_000
 
@@ -253,6 +254,38 @@ describe("the countdown's record before the first poll answers", () => {
     expect(view.isDisabled('wait-execute')).toBe(true)
     await view.press('wait-execute')
     expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it("re-anchors the countdown on the chain's first answer, and drops the refreshing line", async () => {
+    const world = await openWorld({ countdown: false })
+    const live = await world.records
+      .recoverySession(CHAIN_ID, world.account)
+      .write(submittedGathering(world.account, MIXED_PATH), null)
+    await world.records.landSubmission(
+      CHAIN_ID,
+      world.account,
+      live.revision,
+      Math.floor(DEVICE_NOW / 1000) + 3 * HOUR
+    )
+    world.kit.chain.attempt = { ...world.kit.chain.attempt, consumableAfter: CHAIN_TIME + HOUR }
+    const read = world.kit.recoveryState.getMockImplementation()
+    const answer = deferred<void>()
+    world.kit.recoveryState.mockImplementationOnce(async () => {
+      await answer.promise
+      return read?.()
+    })
+    view = await mountWait(world.account)
+    await tick(5_000)
+    expect(view.textOf('wait-time-left')).toBe(waiting(3 * HOUR - 5))
+    expect(view.byTestId('wait-refreshing')).not.toBeNull()
+
+    answer.resolve()
+    await tick(0)
+
+    expect(view.byTestId('wait-refreshing')).toBeNull()
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
+    await tick(5_000)
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR - 5))
   })
 
   it('says it reads the waiting period while the countdown record has not been read', async () => {

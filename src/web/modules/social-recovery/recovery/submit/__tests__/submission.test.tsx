@@ -135,6 +135,29 @@ describe('the submission', () => {
     })
   })
 
+  describe('the fee check', () => {
+    it('keeps Start on screen and disabled beside the fee line while the fee is checked, and sends once it answers', async () => {
+      const world = await openWorld()
+      const estimate = deferred<bigint>()
+      world.kit.reads.estimateGas.mockImplementation(() => estimate.promise)
+      const mounted = await startOn(world)
+
+      expect(mounted.byTestId('write-checking-fee')?.textContent).toContain(
+        t('socialRecovery.loading.fee')
+      )
+      expect(mounted.isDisabled('submit-action')).toBe(true)
+      await mounted.press('submit-action')
+      expect(world.port.sendAccountBatch).not.toHaveBeenCalled()
+      expect(world.port.send).not.toHaveBeenCalled()
+
+      estimate.resolve(300_000n)
+      await settle()
+
+      expect(world.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+      expect(mounted.byTestId('write-checking-fee')).toBeNull()
+    })
+  })
+
   describe('the failed readings', () => {
     it('reads nothing was sent for a refused send, releases the claim, and offers the retry', async () => {
       const world = await openWorld()
