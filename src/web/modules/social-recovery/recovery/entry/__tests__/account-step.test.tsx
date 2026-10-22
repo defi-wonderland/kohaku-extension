@@ -600,12 +600,19 @@ describe('the confirmation', () => {
     expect(storage.set).toHaveBeenCalledTimes(1)
     expect(kit.isAuthorized).not.toHaveBeenCalled()
     expect(kit.supportsAccount).not.toHaveBeenCalled()
+    expect(page.textOf('entry-confirm-writing')).toBe(t('socialRecovery.loading.session'))
+    expect(
+      page.byTestId('entry-confirm-writing')?.querySelector('[data-testid="loading-row"]')
+    ).not.toBeNull()
+    expect(page.isDisabled('entry-confirm-mine')).toBe(true)
+    expect(page.isDisabled('entry-confirm-not-mine')).toBe(true)
 
     // A second press while the write runs writes nothing more.
     await page.press('entry-confirm-mine')
     expect(storage.set).toHaveBeenCalledTimes(1)
 
     await outside(() => storage.hold?.resolve())
+    expect(page.has('entry-confirm-writing')).toBe(false)
     const entry = await records().recoveryEntry(CHAIN_ID, LOST).read()
     expect(entry.status === 'present' && entry.value).toEqual({
       account: LOST,
