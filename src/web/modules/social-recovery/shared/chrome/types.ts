@@ -178,6 +178,8 @@ export interface TwoColumnProps {
   children: ReactNode
   /** The cards that only inform, drawn in the narrower column beside the main one. */
   aside?: ReactNode
+  /** Grows both the columns and the main one to the height they are given. */
+  grow?: boolean
   testID?: string
 }
 

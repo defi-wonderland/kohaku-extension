@@ -223,6 +223,8 @@ describe('the enroll view', () => {
       deps: depsOf()
     })
     expect(view.byTestId('loading-screen')?.textContent).toBe(t('socialRecovery.loading.slot'))
+    expect(view.byTestId('enroll-loading')?.contains(view.byTestId('loading-screen'))).toBe(true)
+    expect(view.byTestId('enroll-columns')).toBeNull()
     expect(view.byTestId('enroll-passkey')).toBeNull()
 
     gate.resolve()

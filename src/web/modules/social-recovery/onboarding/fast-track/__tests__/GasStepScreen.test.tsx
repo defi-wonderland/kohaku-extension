@@ -378,6 +378,7 @@ describe('the gas step', () => {
       expect(
         byTestId('fast-track-gas-waiting')?.querySelector('[data-testid="loading-screen"]')
       ).not.toBeNull()
+      expect(byTestId('fast-track-gas-columns')).toBeNull()
 
       await passes(BALANCE_READ_LIMIT_MS)
 

@@ -1365,6 +1365,11 @@ describe('what the review cannot read', () => {
     expect(textOf('review-title')).toBe(t('socialRecovery.review.title'))
     expect(textOf('loading-screen')).toBe(t('socialRecovery.loading.draft'))
     expect(byTestId('review-save')).toBeNull()
+    // The columns and the view under the title grow, so the wait centres below the title.
+    const growing = ['review-columns', 'review-columns-main', 'review']
+    growing.forEach((id) => {
+      expect(getComputedStyle(byTestId(id) as HTMLElement).flexGrow).toBe('1')
+    })
 
     await act(async () => {
       release()

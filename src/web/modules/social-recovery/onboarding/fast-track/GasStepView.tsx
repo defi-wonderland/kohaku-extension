@@ -80,7 +80,7 @@ const GasStepView = ({
   }
 
   if (state.kind !== 'deposit') {
-    return columns(
+    return (
       <View testID="fast-track-gas-waiting" style={flexbox.flex1}>
         <LoadingBlock variant="screen" message={t('socialRecovery.loading.balance')} />
       </View>

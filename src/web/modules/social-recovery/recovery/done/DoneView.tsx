@@ -94,11 +94,9 @@ const DoneView = ({
   }
   if (read.status === 'pending' || read.reading.kind === 'none' || !summary) {
     return (
-      <TwoColumn testID="done-columns">
-        <View testID="done-loading" style={flexbox.flex1}>
-          <LoadingBlock variant="screen" message={t('socialRecovery.loading.finishing')} />
-        </View>
-      </TwoColumn>
+      <View testID="done-loading" style={flexbox.flex1}>
+        <LoadingBlock variant="screen" message={t('socialRecovery.loading.finishing')} />
+      </View>
     )
   }
   const { event } = read.reading

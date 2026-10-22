@@ -14,6 +14,7 @@ import Text from '@common/components/Text'
 import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
+import flexbox from '@common/styles/utils/flexbox'
 import {
   addressBookOf,
   recoveryChainOf,
@@ -111,9 +112,9 @@ const EnrollView = ({
 
   if (load.status === 'loading') {
     return (
-      <TwoColumn testID="enroll-columns">
+      <View testID="enroll-loading" style={flexbox.flex1}>
         <LoadingBlock variant="screen" message={t('socialRecovery.loading.slot')} />
-      </TwoColumn>
+      </View>
     )
   }
 

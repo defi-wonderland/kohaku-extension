@@ -168,8 +168,8 @@ const ReviewView = ({
 
   if (!load) {
     return (
-      <TwoColumn testID="review-columns">
-        <View testID="review">
+      <TwoColumn testID="review-columns" grow={!loadFailed}>
+        <View testID="review" style={loadFailed ? undefined : flexbox.flex1}>
           {title}
           {loadFailed ? (
             <>

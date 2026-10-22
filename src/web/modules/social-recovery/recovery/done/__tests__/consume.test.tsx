@@ -170,6 +170,7 @@ describe('a read that found no consume, failed or has not answered', () => {
     expect(
       screen.byTestId('done-loading')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(screen.has('done-columns')).toBe(false)
     expect(screen.has('done')).toBe(false)
     await tick(POLL_LIMIT_MS + 1)
     expect(screen.has('done-read-failed')).toBe(true)
