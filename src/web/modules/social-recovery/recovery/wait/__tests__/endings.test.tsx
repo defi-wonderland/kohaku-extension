@@ -61,12 +61,13 @@ describe('where the wait sends the holder on open', () => {
     view = undefined
   })
 
-  it('goes on to the done screen where the attempt already executed, and changes nothing', async () => {
+  it('says the recovery finishes and goes on to the done screen where the attempt already executed, and changes nothing', async () => {
     const world = await openWorld()
     consume(world.kit, world.account)
     view = await mountWait(world.account)
 
     expect(view.paths()).toEqual([donePath(world)])
+    expect(view.textOf('wait-consumed')).toBe(t('socialRecovery.loading.finishing'))
     expect((await world.records.countdown(CHAIN_ID, world.account).read()).status).toBe('present')
     expect((await world.records.recoveryEntry(CHAIN_ID, world.account).read()).status).toBe(
       'present'

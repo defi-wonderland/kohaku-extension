@@ -5,6 +5,7 @@ import { Linking } from 'react-native'
 
 import {
   BOOK,
+  CHAIN_ID,
   CHAIN_TIME,
   configurationOf,
   dateOf,
@@ -23,6 +24,7 @@ import {
   resetTab,
   showTab,
   START_TX,
+  submittedGathering,
   t,
   tick,
   useWaitClock,
@@ -31,6 +33,7 @@ import {
 import type { Mounted } from '@web/modules/social-recovery/recovery/wait/__tests__/harness'
 import type { Configuration } from '@kohaku-eth/social-recovery'
 import { renderShortAddress } from '@web/modules/social-recovery/shared/display'
+import { recordKeys } from '@web/modules/social-recovery/shared/records'
 import { explorerTransactionUrlOf } from '@web/modules/social-recovery/setup/arm'
 import { ruleLinesOf } from '@web/modules/social-recovery/setup/review'
 
@@ -209,6 +212,71 @@ describe('the countdown', () => {
   })
 })
 
+describe("the countdown's record before the first poll answers", () => {
+  useWaitClock()
+  let view: Mounted | undefined
+
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+  })
+
+  /** Lands the recovery with the time its attempt becomes executable, and holds every poll. */
+  const landedWith = async (executableAt: number | undefined) => {
+    const world = await openWorld({ countdown: false })
+    const live = await world.records
+      .recoverySession(CHAIN_ID, world.account)
+      .write(submittedGathering(world.account, MIXED_PATH), null)
+    await world.records.landSubmission(CHAIN_ID, world.account, live.revision, executableAt)
+    world.kit.recoveryState.mockImplementation(() => new Promise<never>(() => {}))
+    return world
+  }
+
+  it('shows the countdown from the record at once, beside the line that says the chain is read', async () => {
+    const world = await landedWith(Math.floor(DEVICE_NOW / 1000) + HOUR)
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR))
+    expect(view.textOf('wait-title')).toBe(t('socialRecovery.wait.title'))
+    expect(view.byTestId('wait-execute')).toBeNull()
+    await tick(5_000)
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR - 5))
+  })
+
+  it('holds execute where the record says the waiting period ended, until the chain answers', async () => {
+    const world = await landedWith(Math.floor(DEVICE_NOW / 1000) - HOUR)
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-title')).toBe(t('socialRecovery.wait.dueTitle'))
+    expect(view.byTestId('wait-refreshing')).not.toBeNull()
+    expect(view.isDisabled('wait-execute')).toBe(true)
+    await view.press('wait-execute')
+    expect(world.port.send).not.toHaveBeenCalled()
+  })
+
+  it('says it reads the waiting period while the countdown record has not been read', async () => {
+    const world = await openWorld()
+    const countdownKey = recordKeys.recoverySession(CHAIN_ID, world.account)
+    const { get } = world.storage
+    world.storage.get = (key, fallback) =>
+      key === countdownKey ? new Promise<never>(() => {}) : get(key, fallback)
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-countdown-loading')).toBe(t('socialRecovery.loading.countdown'))
+    expect(view.byTestId('wait-time-left')).toBeNull()
+  })
+
+  it('says it reads the waiting period where the record holds no executable time', async () => {
+    const world = await landedWith(undefined)
+    view = await mountWait(world.account)
+
+    expect(view.textOf('wait-loading')).toBe(t('socialRecovery.loading.countdown'))
+    expect(view.byTestId('wait-time-left')).toBeNull()
+    expect(view.byTestId('wait-refreshing')).toBeNull()
+  })
+})
+
 describe('the entry record read', () => {
   useWaitClock()
   let view: Mounted | undefined
@@ -218,12 +286,12 @@ describe('the entry record read', () => {
     view = undefined
   })
 
-  it('shows a spinner and no countdown while the entry record read has not answered', async () => {
+  it('says it opens the recovery, with no countdown, while the entry record read has not answered', async () => {
     const world = await openWorld()
     world.storage.get = () => new Promise<never>(() => {})
     view = await mountWait(world.account)
 
-    expect(view.byTestId('wait-entry-loading')).not.toBeNull()
+    expect(view.textOf('wait-entry-loading')).toBe(t('socialRecovery.loading.session'))
     expect(view.byTestId('wait-entry-failed')).toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
     expect(view.paths()).toEqual([])

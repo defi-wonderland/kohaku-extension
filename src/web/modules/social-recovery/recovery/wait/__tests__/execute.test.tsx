@@ -38,6 +38,7 @@ import type { Mounted, World } from '@web/modules/social-recovery/recovery/wait/
 import type { KitNotification } from '@kohaku-eth/social-recovery'
 import type { ProviderTransactionReceipt } from '@web/modules/social-recovery/shared/client'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
+import { renderHash } from '@web/modules/social-recovery/shared/display'
 
 // The harness sets up the text codecs viem needs before viem loads.
 // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
@@ -201,7 +202,8 @@ describe('execute now', () => {
     await tick(0)
     // The landed receipt asks the chain at once; the attempt still waits there.
     expect(world.kit.recoveryState.mock.calls.length).toBe(calls + 1)
-    expect(view.byTestId('wait-execute-confirming')).not.toBeNull()
+    expect(view.textOf('wait-execute-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(view.textOf('wait-execute-confirming-hash')).toBe(renderHash(TX_HASH))
     expect(view.paths()).toEqual([])
 
     consume(world.kit, world.account)

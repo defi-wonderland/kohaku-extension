@@ -365,8 +365,14 @@ export interface WaitViewProps {
   client: WaitClient
   keys: HandoverKeysReading
   poll: WaitPoll
-  /** The time left from the last poll's anchor, by the view's own clock; null with no answered poll. */
+  /**
+   * The time left from the last poll's anchor, by the view's own clock; until
+   * a poll answers, from the countdown's record where it holds the executable
+   * time; else null.
+   */
   remainingMs: number | null
+  /** When the landed attempt becomes executable, in seconds since epoch, from the countdown's record; null where it lacks it. */
+  executableAt: number | null
   /**
    * When the submission landed on this device, in ms since epoch: the start
    * shown where this device holds no setup to take the chain's start from.
@@ -397,14 +403,22 @@ export interface WaitBodyProps {
   entry: RecoveryEntryRecord
   savedAt: number
   landed: LandedAttempt | null
+  /** When the landed attempt becomes executable, in seconds since epoch; null where the record lacks it. */
+  executableAt: number | null
   /** Reads the countdown's record again, where the run found it names another attempt. */
   onCountdownReplaced: () => void
 }
 
-export type WaitGateProps = Omit<WaitBodyProps, 'savedAt' | 'landed' | 'onCountdownReplaced'>
+export type WaitGateProps = Omit<
+  WaitBodyProps,
+  'savedAt' | 'landed' | 'executableAt' | 'onCountdownReplaced'
+>
 
 export interface CountdownBlockProps {
-  round: WaitRound
+  /** When the attempt becomes executable, in seconds since epoch. */
+  executableAt: number
+  /** Whether execution is due: the waiting period ended. */
+  due: boolean
   account: Address
   networkName: string
   newKey?: Address
