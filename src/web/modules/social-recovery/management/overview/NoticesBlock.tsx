@@ -2,8 +2,9 @@
  * The notices from the logs since the commit: each method of the path whose
  * trusted keys moved, with its admin where its read answered, and the notice
  * after an attempt a cancel or a setup write ended. While the logs are read,
- * the notice the watcher's last ending reads as stays on screen beside a
- * refreshing line, its action held; a failed read shows its own state. Where
+ * the notice the watcher's last ending reads as stays on screen beside a line
+ * that names the read, its action held; with no such notice, a waiting block
+ * names the read; a failed read shows its own state. Where
  * nothing here may act on the account, the notices keep their text and draw
  * no action.
  */
@@ -16,6 +17,7 @@ import { useTranslation } from '@common/config/localization'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
 import spacings from '@common/styles/spacings'
 import { ActionsRow, SectionCard } from '@web/modules/social-recovery/shared/chrome'
+import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
 import RefreshingLine from '@web/modules/social-recovery/shared/chrome/RefreshingLine'
 import {
@@ -70,12 +72,19 @@ const NoticesBlock = ({
 
   if (notices.status === 'pending') {
     const watched = watchedEndedNoticeOf(ending)
+    if (!watched) {
+      return (
+        <View testID="overview-notices-reading">
+          <LoadingBlock variant="block" message={t('socialRecovery.loading.notices')} />
+        </View>
+      )
+    }
     return (
       <>
         <View testID="overview-notices-reading" style={spacings.mbSm}>
-          <RefreshingLine />
+          <RefreshingLine messageKey="socialRecovery.loading.notices" />
         </View>
-        {!!watched && endedBlock(watched, false)}
+        {endedBlock(watched, false)}
       </>
     )
   }

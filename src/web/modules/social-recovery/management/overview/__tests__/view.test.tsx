@@ -357,10 +357,12 @@ describe('the overview', () => {
       ending: { attemptId: 3n, road: 'cancelled', cancelledBy: 'cancelByOwner', at: 1_700_000_000 }
     })
     view = await render(props)
-    expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.refreshing'))
+    expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.notices'))
     expect(
       view.byTestId('overview-notices-reading')?.querySelector('[data-testid="loading-row"]')
     ).not.toBeNull()
+    expect(view.isDisabled('overview-edit-path')).toBe(true)
+    expect(view.isDisabled('overview-remove-recovery')).toBe(true)
     expect(view.textOf('overview-ended-line')).toBe(
       t(`${O}.ended.ownerCancel`, {
         date: display.renderDateTimeInZone(1_700_000_000_000, 'UTC').date
@@ -371,21 +373,39 @@ describe('the overview', () => {
     expect(props.navigate).not.toHaveBeenCalled()
   })
 
-  it('shows the refreshing line alone while the notices are read and the watcher read no ending', async () => {
+  it('shows a waiting block that names the notices read where the watcher read no ending, the path actions held', async () => {
+    const props = viewPropsOf({
+      reads: readsOf({
+        facts: answered({}),
+        path: { kind: 'readable', configuration: CONFIGURATION },
+        notices: { status: 'pending' }
+      })
+    })
+    view = await render(props)
+    expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.notices'))
+    expect(
+      view.byTestId('overview-notices-reading')?.querySelector('[data-testid="loading-block"]')
+    ).not.toBeNull()
+    expect(view.byTestId('overview-ended')).toBeNull()
+    expect(view.isDisabled('overview-edit-path')).toBe(true)
+    expect(view.isDisabled('overview-remove-recovery')).toBe(true)
+    await view.press('overview-edit-path')
+    expect(props.navigate).not.toHaveBeenCalled()
+  })
+
+  it('gives the path actions back once the notices answer', async () => {
     view = await render(
       viewPropsOf({
         reads: readsOf({
           facts: answered({}),
           path: { kind: 'readable', configuration: CONFIGURATION },
-          notices: { status: 'pending' }
+          notices: { status: 'answered', value: { moved: [], cancelledAttempts: [] } }
         })
       })
     )
-    expect(view.textOf('overview-notices-reading')).toBe(t('socialRecovery.loading.refreshing'))
-    expect(
-      view.byTestId('overview-notices-reading')?.querySelector('[data-testid="loading-row"]')
-    ).not.toBeNull()
-    expect(view.byTestId('overview-ended')).toBeNull()
+    expect(view.byTestId('overview-notices-reading')).toBeNull()
+    expect(view.isDisabled('overview-edit-path')).toBe(false)
+    expect(view.isDisabled('overview-remove-recovery')).toBe(false)
   })
 
   it('draws no ended notice where the setup was committed after the ending', async () => {

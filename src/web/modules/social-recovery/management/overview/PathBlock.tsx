@@ -1,7 +1,8 @@
 /**
  * The card of the committed setup's path. A setup the account authorizes
  * carries edit the path and remove recovery, with the overview's line while
- * an attempt is open; both are held while the path is read again.
+ * an attempt is open; both are held while the path or the notices since the
+ * commit are read.
  */
 import React from 'react'
 
@@ -39,7 +40,10 @@ const PathBlock = ({
               {t(`${OVERVIEW}.path.pendingLine`)}
             </Text>
           )}
-          <PathActions disabled={reads.path.kind === 'reading'} navigate={navigate} />
+          <PathActions
+            disabled={reads.path.kind === 'reading' || reads.notices.status === 'pending'}
+            navigate={navigate}
+          />
         </>
       )}
     </SectionCard>
