@@ -72,6 +72,8 @@ const NO_FINDING: ValidationResult = { errors: [], warnings: [] }
 
 const ALL_KINDS: SlotKind[] = ['passkey', 'ecdsa', 'zkpassport', 'aadhaar']
 
+const PRESENT_KINDS: SlotKind[] = ['passkey', 'ecdsa', 'aadhaar']
+
 const KIND_NAMES: Record<SlotKind, string> = {
   passkey: en.socialRecovery.methodNames.passkey,
   ecdsa: en.socialRecovery.display.nouns.guardian,
@@ -144,7 +146,7 @@ const mouseDownOn = async (node: Node) => {
   await settle()
 }
 
-const mount = async (clauses: Clause[], enrollments: Enrollment[] = []) => {
+const mount = async (clauses: Clause[], enrollments: Enrollment[] = [], addressBook = BOOK) => {
   const { storage, records } = makeRecords()
   await records.setupDraft.write(draftOf(clauses))
   await records.path.write(clauses)
@@ -159,7 +161,7 @@ const mount = async (clauses: Clause[], enrollments: Enrollment[] = []) => {
         <EditorView
           records={records}
           client={{ status: 'ready', setup: { validateSetup } }}
-          addressBook={BOOK}
+          addressBook={addressBook}
           navigate={navigate}
         />
       </ThemeContext.Provider>
@@ -279,6 +281,63 @@ describe('"Add a required method"', () => {
       expect(byTestId('editor-add-required-menu')).toBeNull()
     }
   )
+})
+
+describe('a kind whose method this network omits', () => {
+  const NOT_ON_THIS_NETWORK = en.socialRecovery.ceremony.notOnThisNetworkLine
+  const WITHOUT_PASSPORT = {
+    ...BOOK,
+    methods: { ...BOOK.methods, zkpassport: '0x0000000000000000000000000000000000000000' as const }
+  }
+  const entries = (menu: string) => menuEntries(menu).filter((entry) => !entry.endsWith('-note'))
+  const isEntryDisabled = (id: string) => byTestId(id)?.getAttribute('aria-disabled') === 'true'
+
+  it('keeps the entry in its place, disabled, with the line under it', async () => {
+    await mount(presetPath(), [], WITHOUT_PASSPORT)
+    await press('editor-add-required')
+
+    expect(entries('editor-add-required-menu')).toEqual(ALL_KINDS)
+    expect(isEntryDisabled('editor-add-required-menu-zkpassport')).toBe(true)
+    expect(byTestId('editor-add-required-menu-zkpassport-note')?.textContent).toBe(
+      NOT_ON_THIS_NETWORK
+    )
+    PRESENT_KINDS.forEach((kind) => {
+      expect(isEntryDisabled(`editor-add-required-menu-${kind}`)).toBe(false)
+      expect(byTestId(`editor-add-required-menu-${kind}-note`)).toBeNull()
+    })
+  })
+
+  it('adds nothing and opens no enrollment on a press of that entry', async () => {
+    const { navigate, storedClauses } = await mount(presetPath(), [], WITHOUT_PASSPORT)
+    await press('editor-add-required')
+    await press('editor-add-required-menu-zkpassport')
+
+    expect(navigate).not.toHaveBeenCalled()
+    expect(await storedClauses()).toEqual(presetPath())
+  })
+
+  it("disables it in a group's menu too", async () => {
+    await mount(twoGroupPath(), [], WITHOUT_PASSPORT)
+    await press('editor-group-1-add')
+
+    expect(entries('editor-group-1-add-menu')).toEqual(ALL_KINDS)
+    expect(isEntryDisabled('editor-group-1-add-menu-zkpassport')).toBe(true)
+    expect(byTestId('editor-group-1-add-menu-zkpassport-note')?.textContent).toBe(
+      NOT_ON_THIS_NETWORK
+    )
+  })
+
+  it('disables no entry and shows no line where the network has every method', async () => {
+    await mount(presetPath())
+    await press('editor-add-required')
+
+    expect(entries('editor-add-required-menu')).toEqual(ALL_KINDS)
+    ALL_KINDS.forEach((kind) => {
+      expect(isEntryDisabled(`editor-add-required-menu-${kind}`)).toBe(false)
+      expect(byTestId(`editor-add-required-menu-${kind}-note`)).toBeNull()
+    })
+    expect(container.textContent).not.toContain(NOT_ON_THIS_NETWORK)
+  })
 })
 
 describe('a group\'s "Add member"', () => {

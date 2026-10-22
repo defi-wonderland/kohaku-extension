@@ -49,6 +49,10 @@ export { emptySlot as emptySlotOf, isEmptySlot } from '@web/modules/social-recov
 export const methodKindOf = (method: Address, addressBook: AddressBook): SlotKind | undefined =>
   methodKindIn(addressBook.methods, method)
 
+/** Whether the network's deployment ships the kind's method: one it omits is the zero address. */
+export const isKindOnNetwork = (kind: SlotKind, addressBook: AddressBook): boolean =>
+  !isAddressEqual(addressBook.methods[kind], zeroAddress)
+
 /**
  * The kind of a credential: the kind an empty slot waits for, or the address
  * book's method an enrolled credential's method is. A method the address book
