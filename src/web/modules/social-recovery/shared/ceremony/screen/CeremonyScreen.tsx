@@ -342,6 +342,7 @@ const CeremonyScreen = () => {
     if (step === 'waitingForPhone') {
       return <ScanBlock step={step} phoneReads={phoneReads} onCancel={cancelRun} />
     }
+    // Nothing, where the body is the running wait.
     return null
   }
 
@@ -365,7 +366,6 @@ const CeremonyScreen = () => {
     </View>
   )
 
-  // Nothing, where the body is the running wait.
   const renderBody = () => {
     if (!mayRun) {
       return <Text>{t('socialRecovery.ceremony.tabOnly')}</Text>

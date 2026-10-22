@@ -12,7 +12,10 @@
  */
 import { TextDecoder, TextEncoder } from 'util'
 
-import type { ScreensWorld } from '@web/modules/social-recovery/management/editor/__fixtures__/types'
+import type {
+  ScreensWorld,
+  ValidatingClientSeam
+} from '@web/modules/social-recovery/management/editor/__fixtures__/types'
 import type { Configuration } from '@kohaku-eth/social-recovery'
 
 // The spinner's animation needs a native module jsdom lacks; a plain view stands in.
@@ -231,9 +234,7 @@ describe('the edit page', () => {
 
   it('holds the changes of the values while the path is checked, as the editor holds its own edits, and keeps the cancel', async () => {
     const { view } = await editPage()
-    const { validateSetup } = (
-      mockWorld.client as unknown as { client: { setup: { validateSetup: jest.Mock } } }
-    ).client.setup
+    const { validateSetup } = (mockWorld.client as unknown as ValidatingClientSeam).client.setup
     let fail: (reason: Error) => void = () => {}
     validateSetup.mockImplementation(
       () =>
