@@ -351,6 +351,24 @@ describe('the cancel screen', () => {
     })
   )
 
+  it("replaces the watcher's last open attempt with the ended block once the fresh read finds none, the send never open", async () => {
+    view = await render({ read: { status: 'loading' }, last: OPEN })
+    expect(view.textOf('cancel-new-key')).toBe(display.renderFullAddress(NEW_KEY))
+    expect(view.isDisabled('cancel-send')).toBe(true)
+
+    const { attempt, ...none } = OPEN
+    await view.render(
+      <CancelView {...props} read={{ status: 'read', arrival: { reading: none } }} last={OPEN} />
+    )
+
+    expect(view.byTestId('cancel-ended')).not.toBeNull()
+    expect(view.textOf('cancel-ended-line')).toBe(t('socialRecovery.cancel.confirm.ended'))
+    expect(view.byTestId('cancel-refreshing')).toBeNull()
+    expect(view.byTestId('cancel-new-key')).toBeNull()
+    expect(view.byTestId('cancel-send')).toBeNull()
+    expect(props.onSend).not.toHaveBeenCalled()
+  })
+
   it('opens the send once the fresh read answers, over the last reading', async () => {
     view = await render({ last: OPEN })
 
