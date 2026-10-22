@@ -404,6 +404,8 @@ describe('a failed or hanging poll', () => {
 
     world.kit.chain.hanging = true
     await tick(POLL_MS)
+    expect(view.textOf('wait-refreshing')).toBe(t('socialRecovery.loading.refreshingAttempt'))
+    expect(view.textOf('wait-time-left')).toBe(waiting(HOUR - POLL_MS / 1000))
     await tick(15_000)
     expect(view.byTestId('wait-poll-failed')).not.toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()

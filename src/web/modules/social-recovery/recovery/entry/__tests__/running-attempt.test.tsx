@@ -662,6 +662,23 @@ describe('the running attempt band while it stands', () => {
     page.unmount()
   })
 
+  it('keeps the attempt last read beside a line that says it is read again while a later read runs', async () => {
+    useLiveFakeClock()
+    const page = await openRunning()
+    expect(page.has('entry-running-refreshing')).toBe(false)
+    mockReads.stateOf.mockImplementationOnce(() => new Promise<never>(() => {}))
+    await advanceClock(POLL_MS)
+    expect(page.textOf('entry-running-refreshing')).toBe(
+      t('socialRecovery.loading.refreshingAttempt')
+    )
+    expect(page.textOf('entry-running-lead')).toBe(finishes())
+    expect(page.textOf('entry-running-key')).toContain(STRANGER)
+    await advanceClock(LIMIT_MS)
+    expect(page.has('entry-running-refreshing')).toBe(false)
+    expect(page.has('entry-running-refresh-failed')).toBe(true)
+    page.unmount()
+  })
+
   it('reads a later read from an older block with no attempt as failed, never as the end; a newer block with none ends it', async () => {
     useLiveFakeClock()
     const page = await openRunning()

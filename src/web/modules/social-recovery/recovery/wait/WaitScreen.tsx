@@ -197,7 +197,11 @@ const WaitBody = ({
     }
   }, [kit, records, account])
 
-  const { poll, retry: retryPoll } = useWaitPoll({
+  const {
+    poll,
+    polling,
+    retry: retryPoll
+  } = useWaitPoll({
     kit,
     keys: handover,
     landed,
@@ -425,6 +429,7 @@ const WaitBody = ({
       client={client}
       keys={keys}
       poll={poll}
+      polling={polling}
       remainingMs={remainingMs}
       executableAt={executableAt}
       startedAt={savedAt}

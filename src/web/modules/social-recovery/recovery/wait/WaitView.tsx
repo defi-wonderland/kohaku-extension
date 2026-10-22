@@ -3,7 +3,8 @@
  * the countdown's record with a line that says the chain is read, and Execute
  * held; a record without the executable time shows a waiting block. A failed
  * read renders with retry and no number; a failed poll also offers Back to
- * the route's entry. An answered poll renders
+ * the route's entry. An answered poll stays on screen while a later round
+ * reads, with the same line, and renders
  * its phase: the countdown, with the transaction that started it, where its
  * end comes from and the notes that the page can close, that the account's
  * own key can still cancel and who finishes it beside it; execution due under
@@ -42,6 +43,7 @@ const WaitView = ({
   client,
   keys,
   poll,
+  polling,
   remainingMs,
   executableAt,
   startedAt,
@@ -249,6 +251,11 @@ const WaitView = ({
           lead={t(due ? `${WAIT}.dueLead` : `${WAIT}.lead`)}
           titleTestID="wait-title"
         />
+        {polling && (
+          <View testID="wait-refreshing" style={spacings.mbSm}>
+            <RefreshingLine messageKey="socialRecovery.loading.refreshingAttempt" />
+          </View>
+        )}
         {(phase.kind === 'waiting' || phase.kind === 'executionDue') && (
           <CountdownBlock
             executableAt={phase.attempt.consumableAfter}

@@ -441,7 +441,11 @@ const useChecklist = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [die, land]
   )
-  const { poll, retry: retryPoll } = usePoll({
+  const {
+    poll,
+    polling,
+    retry: retryPoll
+  } = usePoll({
     kit,
     target,
     deps,
@@ -505,6 +509,7 @@ const useChecklist = ({
     gatherFailed,
     readSetupAgain,
     poll,
+    polling,
     retryPoll,
     deathFailed,
     dying,

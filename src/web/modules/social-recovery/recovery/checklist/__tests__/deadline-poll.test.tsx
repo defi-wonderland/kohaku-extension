@@ -476,6 +476,29 @@ describe('the checklist deadline and poll', () => {
       expect(view.byTestId('checklist-poll-retry')).not.toBeNull()
     })
 
+    it('keeps the rows and their actions beside the refreshing line while a later poll reads', async () => {
+      const mounted = await open(MIXED_PATH)
+      const action = 'checklist-row-0-answer-here'
+      expect(mounted.byTestId('checklist-refreshing')).toBeNull()
+
+      kit.recoveryState.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(recoveryStateOf()), 5000)
+          })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      expect(mounted.byTestId('checklist-refreshing')?.textContent).toBe(
+        t('socialRecovery.loading.refreshingAttempt')
+      )
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      expect(mounted.isDisabled(action)).toBe(false)
+
+      await settle(5000)
+      expect(mounted.byTestId('checklist-refreshing')).toBeNull()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+    })
+
     it('holds every launch and every row action under a poll that throws, and a retry that succeeds restores them', async () => {
       const mounted = await open(MIXED_PATH)
       const actions = [

@@ -177,6 +177,8 @@ export interface WaitPollInput {
 
 export interface WaitPollHook {
   poll: WaitPoll
+  /** A round is reading; the last answer stays on screen meanwhile. */
+  polling: boolean
   retry: () => void
 }
 
@@ -365,6 +367,8 @@ export interface WaitViewProps {
   client: WaitClient
   keys: HandoverKeysReading
   poll: WaitPoll
+  /** A later round is reading; the answered poll stays on screen with a line that says so. */
+  polling: boolean
   /**
    * The time left from the last poll's anchor, by the view's own clock; until
    * a poll answers, from the countdown's record where it holds the executable

@@ -5,8 +5,9 @@
  * assessment finds the rule satisfied. Until the session opens a waiting block
  * says so. Once it is open its rows show at once, every row and continue held
  * beside a line that says the account's recovery state is read, until that
- * read answers once; a failed read never renders as an empty path, and a
- * failed poll holds every row until a poll succeeds.
+ * read answers once; a later poll keeps the rows with the same line while it
+ * reads. A failed read never renders as an empty path, and a failed poll holds
+ * every row until a poll succeeds.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
@@ -543,7 +544,7 @@ const ChecklistView = ({
           timeZone={deps.timeZone}
           onPassed={onDeadlinePassed}
         />
-        {refreshing && (
+        {(refreshing || checklist.polling) && (
           <View testID="checklist-refreshing" style={spacings.mbSm}>
             <RefreshingLine messageKey="socialRecovery.loading.refreshingAttempt" />
           </View>

@@ -22,6 +22,7 @@ import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard } from '@web/modules/social-recovery/shared/chrome'
 import LoadingBlock from '@web/modules/social-recovery/shared/chrome/LoadingBlock'
 import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFailedBlock'
+import RefreshingLine from '@web/modules/social-recovery/shared/chrome/RefreshingLine'
 import {
   renderDateTimeInZone,
   renderFullAddress,
@@ -35,6 +36,7 @@ const RUNNING = 'socialRecovery.entry.runningAttempt'
 const RunningAttemptBandView = ({
   attempt,
   refreshFailed,
+  refreshing,
   opening,
   entries,
   ownership,
@@ -136,6 +138,11 @@ const RunningAttemptBandView = ({
     body = (
       <>
         {refreshFailed && failed('entry-running-refresh-failed')}
+        {refreshing && (
+          <View testID="entry-running-refreshing" style={spacings.mbTy}>
+            <RefreshingLine messageKey="socialRecovery.loading.refreshingAttempt" />
+          </View>
+        )}
         {line(t(`${RUNNING}.lead`, { date }), 'entry-running-lead')}
         {opening.status === 'pending' &&
           line(t('socialRecovery.watcher.banner.newKeyPending'), 'entry-running-key-pending', true)}

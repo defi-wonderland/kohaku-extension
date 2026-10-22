@@ -26,7 +26,7 @@ const RunningAttemptBand = ({
   records,
   navigate
 }: RunningAttemptBandProps) => {
-  const { attempt, refreshFailed, opening, authority, entries, retry, recheck } = state
+  const { attempt, refreshFailed, refreshing, opening, authority, entries, retry, recheck } = state
   const { ownership, target } = claim
   const [continueState, setContinueState] = useState<ContinueState>('idle')
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
@@ -95,6 +95,7 @@ const RunningAttemptBand = ({
     <RunningAttemptBandView
       attempt={attempt}
       refreshFailed={refreshFailed}
+      refreshing={refreshing}
       opening={opening}
       entries={entries}
       ownership={ownership}
