@@ -191,7 +191,8 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
           account: ACCOUNT,
           chainId: CHAIN_ID,
           methodAddress: BOOK.methods[slug],
-          params: paramsOf(slug, 'enroll')
+          params: paramsOf(slug, 'enroll'),
+          replaces: null
         })
 
         const params = openedCeremony()
@@ -323,6 +324,29 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
         expect(view!.byTestId('enroll-write-failed')).toBeNull()
         expect(await storedClauses(records)).toEqual(
           pathWith(emptySlot(slug), credentialOf(CONFIG))
+        )
+        expect(view!.byTestId(id('enrolled-line'))).not.toBeNull()
+      })
+
+      it('refuses an earlier creation that returns after a later one filled the slot', async () => {
+        await open()
+        await view!.press(id('start'))
+        const earlier = lastRequestId()
+        await open()
+        await view!.press(id('start'))
+        const later = lastRequestId()
+
+        await returnFrom(later, 'enroll', passed({ config: OTHER_CONFIG }))
+        await returnFrom(earlier, 'enroll', passed({ config: CONFIG }))
+
+        expect(await storedClauses(records)).toEqual(
+          pathWith(emptySlot(slug), credentialOf(OTHER_CONFIG))
+        )
+        expect(await storedEnrollments(records)).toEqual([
+          { credential: credentialOf(OTHER_CONFIG), test: 'not-tested' }
+        ])
+        expect(view!.byTestId('enroll-write-failed')?.textContent).toBe(
+          t('socialRecovery.records.writeFailed')
         )
         expect(view!.byTestId(id('enrolled-line'))).not.toBeNull()
       })

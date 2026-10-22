@@ -50,7 +50,7 @@ const useIdentityRow = ({
       const created = identityEnrollmentOf(placing.value, book.methods[kind])
       setBusy(true)
       try {
-        const placed = await placeEnrollment(setup, search, book, created, placing.replaced)
+        const placed = await placeEnrollment(setup, search, book, created, placing.replaces)
         if (placed.status !== 'placed') {
           setPending(null)
           setDuplicate(placed.status === 'duplicate')
@@ -76,7 +76,7 @@ const useIdentityRow = ({
   )
 
   const applyEnroll = useCallback(
-    async (outcome: CeremonyOutcome<unknown>) => {
+    async (outcome: CeremonyOutcome<unknown>, asked: IdentityCeremonyRequest) => {
       if (outcome.kind !== 'verdict' || outcome.verdict !== 'passed') {
         setEnrollOutcome(outcome)
         return
@@ -86,8 +86,10 @@ const useIdentityRow = ({
         setEnrollOutcome(failed('material-rejected'))
         return
       }
-      const replaced = enrollmentRef.current?.credential
-      await place({ value, ...(replaced ? { replaced } : {}) })
+      // The slot as the ceremony found it; a request stored without it reads the slot now.
+      const launched = asked.call === 'enroll' ? asked.replaces : undefined
+      const replaces = launched !== undefined ? launched : enrollmentRef.current?.credential
+      await place({ value, ...(replaces !== undefined ? { replaces } : {}) })
     },
     [place]
   )
@@ -133,7 +135,9 @@ const useIdentityRow = ({
 
   const applyReport = useCallback(
     (report: CeremonyReport, asked: IdentityCeremonyRequest) =>
-      asked.call === 'enroll' ? applyEnroll(report.outcome) : applyTest(report.outcome, asked),
+      asked.call === 'enroll'
+        ? applyEnroll(report.outcome, asked)
+        : applyTest(report.outcome, asked),
     [applyEnroll, applyTest]
   )
 

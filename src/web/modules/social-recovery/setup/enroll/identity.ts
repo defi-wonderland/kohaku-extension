@@ -11,7 +11,7 @@
  */
 import { isHex } from 'viem'
 
-import type { Address, ApproverRequest } from '@kohaku-eth/social-recovery'
+import type { Address, ApproverRequest, Credential } from '@kohaku-eth/social-recovery'
 import type { CeremonyRequestRecord, Enrollment } from '@web/modules/social-recovery/shared/records'
 
 import { isRequestFor } from './passkey'
@@ -66,16 +66,20 @@ export const IDENTITY_COPY: IdentityCopies = {
   }
 }
 
-/** The creation's ceremony request: the method's module and its params on this chain. */
+/**
+ * The creation's ceremony request: the method's module, its params on this
+ * chain, and what the slot holds now.
+ */
 export const enrollRequestOf = (
-  input: IdentityRequestInput & { methodAddress: Address }
+  input: IdentityRequestInput & { methodAddress: Address; replaces: Credential | null }
 ): CeremonyRequestRecord => ({
   call: 'enroll',
   method: input.kind,
   account: input.account,
   chainId: input.chainId,
   methodAddress: input.methodAddress,
-  params: input.params
+  params: input.params,
+  replaces: input.replaces
 })
 
 /** The access test's ceremony request: the test request and the method's params. */
@@ -121,7 +125,10 @@ export const identityRequestOf = (
     return null
   }
   if (record.call === 'enroll') {
-    return { call: 'enroll' }
+    return {
+      call: 'enroll',
+      ...(record.replaces !== undefined ? { replaces: record.replaces } : {})
+    }
   }
   if (record.call === 'testAccess') {
     return { call: 'testAccess', request: record.request }
