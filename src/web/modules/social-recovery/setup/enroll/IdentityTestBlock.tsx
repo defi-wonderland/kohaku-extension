@@ -78,12 +78,7 @@ const IdentityTestBlock = ({
           />
         </>
       )}
-      <TestResultLines
-        row={row}
-        lineKey={lineKey}
-        outcome={testOutcome}
-        refusedNote={copy.refusedNote}
-      >
+      <TestResultLines row={row} lineKey={lineKey} outcome={testOutcome} dismissalNotes={copy}>
         {rejected && (
           <Text testID={`${row}-test-cause`} fontSize={14}>
             {t('socialRecovery.ceremony.rejectedCause')}

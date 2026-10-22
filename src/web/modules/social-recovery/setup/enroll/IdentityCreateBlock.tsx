@@ -25,7 +25,7 @@ const IdentityCreateBlock = ({
 }: IdentityCreateBlockProps) => {
   const { t } = useTranslation()
   const { row } = copy
-  const enrollNote = enrollOutcome ? rowNoteKeyOf(enrollOutcome, 'enroll', copy.refusedNote) : null
+  const enrollNote = enrollOutcome ? rowNoteKeyOf(enrollOutcome, 'enroll', copy) : null
   const enrollError = enrollOutcome ? browserErrorNameOf(enrollOutcome) : null
   const enrollRetry = !!enrollOutcome && (enrollOutcome.kind === 'dismissed' || enrollOutcome.retry)
 

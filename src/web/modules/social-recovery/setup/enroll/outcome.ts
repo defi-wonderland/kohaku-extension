@@ -7,7 +7,7 @@ import { noteKeyOfOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import type { CeremonyCall, CeremonyOutcome } from '@web/modules/social-recovery/shared/ceremony'
 import type { Enrollment, EnrollmentTestVerdict } from '@web/modules/social-recovery/shared/records'
 
-import type { TestChips } from './types'
+import type { DismissalNotes, TestChips } from './types'
 
 const CEREMONY = 'socialRecovery.ceremony'
 
@@ -79,17 +79,23 @@ export const testLineKeyOf = (
 }
 
 /**
- * The note an outcome leaves on a row, where a row whose device is a phone app
- * names a refusal as the holder's own decline on the phone.
+ * The note an outcome leaves on a row. A row may name a dismissal its own way:
+ * a phone app's refusal as the holder's decline on the phone, a cancel of a
+ * flow the holder runs as a step they stopped.
  */
 export const rowNoteKeyOf = (
   outcome: CeremonyOutcome<unknown>,
   call: CeremonyCall,
-  refusedNote?: string
-): string | null =>
-  refusedNote && outcome.kind === 'dismissed' && outcome.note === 'refused'
-    ? refusedNote
-    : noteKeyOfOutcome(outcome, call)
+  notes: DismissalNotes = {}
+): string | null => {
+  if (outcome.kind === 'dismissed' && outcome.note === 'refused' && notes.refusedNote) {
+    return notes.refusedNote
+  }
+  if (outcome.kind === 'dismissed' && outcome.note === 'cancelled' && notes.cancelledNote) {
+    return notes.cancelledNote
+  }
+  return noteKeyOfOutcome(outcome, call)
+}
 
 /**
  * The note a test outcome adds beside the stored verdict's line: a dismissal,
@@ -100,9 +106,9 @@ export const rowNoteKeyOf = (
 export const testNoteKeysOf = (
   outcome: CeremonyOutcome<unknown>,
   lineKey: string | null,
-  refusedNote?: string
+  notes?: DismissalNotes
 ): string[] => {
-  const note = rowNoteKeyOf(outcome, 'testAccess', refusedNote)
+  const note = rowNoteKeyOf(outcome, 'testAccess', notes)
   if (!note || note === lineKey) {
     return []
   }

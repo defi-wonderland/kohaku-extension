@@ -399,7 +399,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
 
     describe('a creation that did not pass', () => {
       each([
-        ['a cancelled ceremony', dismissed('cancelled'), 'cancelledNote'],
+        ['a stopped ceremony', dismissed('cancelled'), 'stoppedNote'],
         ['a refused ceremony', dismissed('refused'), 'refusedNote'],
         ['a failure', failed('thrown'), 'failedNote'],
         ['a service that did not answer', unavailable('service-unanswered'), 'unavailableNote'],
@@ -598,7 +598,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
       })
 
       each([
-        ['a cancelled test', dismissed('cancelled'), 'cancelledNote'],
+        ['a stopped test', dismissed('cancelled'), 'stoppedNote'],
         ['a refused test', dismissed('refused'), 'refusedNote']
       ] as const)(
         'leaves the verdict not tested after %s, with its note',

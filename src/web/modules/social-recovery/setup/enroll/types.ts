@@ -303,14 +303,22 @@ export interface ClientStateProps {
 /** Which row a shared block renders in, the prefix of its test ids. */
 export type RowSlug = 'passkey' | 'guardian' | 'passport' | 'aadhaar'
 
+/** The notes a row reads for a dismissal, where it names one its own way. */
+export interface DismissalNotes {
+  /** The note a refused ceremony reads, where the row's device names the refusal its own way. */
+  refusedNote?: string
+  /** The note a cancelled ceremony reads, where the holder runs the flow as a step of their own. */
+  cancelledNote?: string
+}
+
 export interface TestResultLinesProps {
   row: RowSlug
   /** The stored verdict's lasting line, null where it reads none. */
   lineKey: string | null
   /** The test outcome that just arrived, null where none did. */
   outcome: CeremonyOutcome<unknown> | null
-  /** The note a refused dismissal reads on this row, where it differs from the shared one. */
-  refusedNote?: string
+  /** The notes a dismissal reads on this row, where they differ from the shared ones. */
+  dismissalNotes?: DismissalNotes
   /** What renders between the lasting line and the outcome's notes. */
   children?: ReactNode
 }
@@ -443,7 +451,7 @@ export interface RowNotesProps {
 export type IdentityKind = Extract<SlotKind, 'zkpassport' | 'aadhaar'>
 
 /** The strings an identity row reads, and the prefix of its test ids. */
-export interface IdentityCopy {
+export interface IdentityCopy extends DismissalNotes {
   row: RowSlug
   title: string
   lead: string
@@ -457,8 +465,6 @@ export interface IdentityCopy {
   enrolledLine: string
   testLead: string
   testPassed: string
-  /** The note a refused ceremony reads, where the row's device names the refusal its own way. */
-  refusedNote?: string
 }
 
 export type IdentityCopies = { readonly [K in IdentityKind]: IdentityCopy }

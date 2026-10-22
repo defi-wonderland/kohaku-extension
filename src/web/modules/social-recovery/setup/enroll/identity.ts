@@ -45,7 +45,8 @@ export const IDENTITY_COPY: IdentityCopies = {
     enrolledLine: `${ENROLL}.passport.enrolledLine`,
     testLead: `${ENROLL}.passport.testLead`,
     testPassed: `${ENROLL}.passport.testPassed`,
-    refusedNote: 'socialRecovery.ceremony.declinedNote'
+    refusedNote: 'socialRecovery.ceremony.declinedNote',
+    cancelledNote: 'socialRecovery.ceremony.stoppedNote'
   },
   aadhaar: {
     row: 'aadhaar',
@@ -62,7 +63,8 @@ export const IDENTITY_COPY: IdentityCopies = {
     actionLine: `${ENROLL}.aadhaar.uploadLine`,
     enrolledLine: `${ENROLL}.aadhaar.enrolledLine`,
     testLead: `${ENROLL}.aadhaar.testLead`,
-    testPassed: `${ENROLL}.aadhaar.testPassed`
+    testPassed: `${ENROLL}.aadhaar.testPassed`,
+    cancelledNote: 'socialRecovery.ceremony.stoppedNote'
   }
 }
 
