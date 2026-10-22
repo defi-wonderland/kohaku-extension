@@ -60,6 +60,7 @@ const RunningAttemptBand = ({
           setupNonce: running.setupNonce,
           payloadHash: running.payloadHash,
           openedAtMs: openedAt * 1000,
+          executableAt: running.consumableAfter,
           deployment
         },
         target

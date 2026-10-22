@@ -277,6 +277,7 @@ describe('the submission', () => {
         attemptId: world.gathering.request.attemptId,
         setupNonce: world.gathering.request.setupNonce,
         payloadHash: PAYLOAD_HASH,
+        executableAt: 0,
         deployment: {
           manager: world.gathering.request.manager,
           action: world.gathering.request.action
@@ -308,6 +309,23 @@ describe('the submission', () => {
       expect(mockWallet.navigate).toHaveBeenLastCalledWith(waitPathOf(world.account), {
         replace: true
       })
+    })
+
+    it('keeps when the attempt becomes executable, as the attempt read after the receipt gives it', async () => {
+      const executableAt = 1_700_086_400
+      const world = await openWorld()
+      const mounted = await mountSubmit(world.account)
+      view = mounted
+      world.kit.recoveryState.mockImplementationOnce(async () =>
+        recoveryStateOf(world.kit.chain.attempt)
+      )
+      world.kit.recoveryState.mockImplementationOnce(async () =>
+        recoveryStateOf(attemptOf(world.gathering, { consumableAfter: executableAt }))
+      )
+      await mounted.press('submit-action')
+      await settle()
+      const session = await sessionOf(world.records, world.account)
+      expect(session?.state === 'landed' && session.executableAt).toBe(executableAt)
     })
 
     const DISAGREEMENTS = [

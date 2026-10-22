@@ -630,6 +630,7 @@ export interface ScriptedRecoveryState {
   nextAttemptId?: bigint
   setupNonce?: bigint
   payloadHash?: Hex
+  consumableAfter?: number
 }
 
 /**
@@ -641,9 +642,10 @@ export const recoveryStateOf = ({
   attemptId = BigInt(0),
   nextAttemptId = BigInt(1),
   setupNonce = BigInt(1),
-  payloadHash = zeroHash
+  payloadHash = zeroHash,
+  consumableAfter = 0
 }: ScriptedRecoveryState = {}) => ({
-  attempt: { state, attemptId, setupNonce, payloadHash },
+  attempt: { state, attemptId, setupNonce, payloadHash, consumableAfter },
   nextAttemptId,
   setupNonce
 })

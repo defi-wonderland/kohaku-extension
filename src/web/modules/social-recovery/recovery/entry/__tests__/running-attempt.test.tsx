@@ -404,6 +404,7 @@ describe('the running attempt band', () => {
       attemptId: ATTEMPT_ID.toString(),
       setupNonce: SETUP_NONCE.toString(),
       payloadHash: keccak256(PAYLOAD),
+      executableAt: CONSUMABLE_AFTER,
       deployment: DEPLOYMENT
     })
     expect(countdown.status === 'present' && countdown.savedAt).toBe(OPENED_AT * 1000)

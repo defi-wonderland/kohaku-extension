@@ -68,13 +68,19 @@ export interface LandedAttempt {
 }
 
 /**
- * The countdown's record: the landed session, when it was saved, and the
- * attempt it landed, null where the record was stored without it.
+ * The countdown's record: the landed session, when it was saved, the attempt
+ * it landed, and when that attempt becomes executable in seconds since epoch,
+ * each null where the record was stored without it.
  */
 export type CountdownReading =
   | { status: 'loading' }
   | { status: 'failed' }
-  | { status: 'present'; savedAt: number; landed: LandedAttempt | null }
+  | {
+      status: 'present'
+      savedAt: number
+      landed: LandedAttempt | null
+      executableAt: number | null
+    }
 
 // ---------------------------------------------------------------------------
 // The poll

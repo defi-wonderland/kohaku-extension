@@ -454,7 +454,8 @@ const WaitGate = ({ records, account, entry }: WaitGateProps) => {
         setReading({
           status: 'present',
           savedAt: countdown.savedAt,
-          landed: landedAttemptOf(countdown.value)
+          landed: landedAttemptOf(countdown.value),
+          executableAt: countdown.value.executableAt ?? null
         })
         return
       }
