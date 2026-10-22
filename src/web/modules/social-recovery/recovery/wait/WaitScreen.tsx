@@ -573,6 +573,7 @@ const WaitScreen = () => {
       testPrefix="wait"
       titleKey="socialRecovery.wait.readFailedTitle"
       bodyKey="socialRecovery.wait.readFailedBody"
+      loadingKey="socialRecovery.loading.session"
       failed={reading.status === 'failed'}
       onRetry={retry}
     />

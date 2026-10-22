@@ -26,6 +26,18 @@ import {
   t
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 const mockStorage: { current: RecordStorage | null } = { current: null }
 const mockViewMounts: string[] = []
 
@@ -136,6 +148,20 @@ describe('the recovery in progress route', () => {
       expect(mockViewMounts).toEqual(['mounted'])
     }
   )
+
+  it('says it reads the recoveries under the settings chrome while the first read of the list has not answered', async () => {
+    const storage = makeStorage()
+    mockStorage.current = { ...storage, getAll: () => new Promise<never>(() => {}) }
+
+    view = await mount(() => <InProgressScreen />)
+
+    const waiting = view.byTestId('in-progress-route-loading')
+    expect(waiting?.textContent).toBe(t('socialRecovery.loading.entries'))
+    expect(waiting?.closest('[data-testid="setup-chrome"]')).not.toBeNull()
+    expect(view.byTestId('recovery-stage')?.textContent).toBe('4 of 5')
+    expect(view.byTestId('in-progress')).toBeNull()
+    expect(mockViewMounts).toEqual([])
+  })
 
   it('renders a failed first read under the settings chrome with the failure and its retry', async () => {
     const storage = makeStorage()

@@ -53,6 +53,18 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { keccak256 }: typeof import('viem') = require('viem')
 const {
@@ -321,7 +333,7 @@ describe('the request dies', () => {
 
         await settle(POLL_LIMIT_MS - 1)
         expect(wipe).not.toHaveBeenCalled()
-        expect(view?.byTestId('checklist-loading')).not.toBeNull()
+        expect(view?.byTestId('checklist-refreshing')).not.toBeNull()
 
         await settle(1)
         expect(wipe).toHaveBeenCalledTimes(1)

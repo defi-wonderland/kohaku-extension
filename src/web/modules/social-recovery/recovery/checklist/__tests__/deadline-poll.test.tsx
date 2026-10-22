@@ -52,6 +52,18 @@ import {
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { keccak256 }: typeof import('viem') = require('viem')
 const {
@@ -447,7 +459,7 @@ describe('the checklist deadline and poll', () => {
       expect(lastClock).toBe(NOW_SECONDS + CHECKLIST_POLL_MS / 1000)
     })
 
-    it('renders no row from a poll that has not returned since open, then the failed read past its limit', async () => {
+    it('shows the session rows held beside the refreshing line while the first poll has not returned, then the failed read past its limit', async () => {
       await seedCache(world.records, MIXED_PATH)
       await seedSession(world.records, gatheringOf(MIXED_PATH))
       kit = fakeKit(MIXED_PATH)
@@ -458,15 +470,20 @@ describe('the checklist deadline and poll', () => {
         deps: depsOf({ now: () => Date.now(), visibility })
       })
 
-      expect(view.byTestId('checklist-loading')).not.toBeNull()
-      expect(view.byTestId('checklist-rows')).toBeNull()
-      expect(view.byTestId('checklist-row-0')).toBeNull()
+      expect(view.byTestId('checklist-loading')).toBeNull()
+      expect(view.byTestId('checklist-refreshing')?.textContent).toBe(
+        t('socialRecovery.loading.refreshingAttempt')
+      )
+      expect(view.byTestId('checklist-rows')).not.toBeNull()
+      const held = ['checklist-continue', 'checklist-row-0-answer-here', 'checklist-row-0-phone']
+      held.forEach((id) => expect(view?.isDisabled(id)).toBe(true))
 
       await settle(POLL_LIMIT_MS - 1)
-      expect(view.byTestId('checklist-rows')).toBeNull()
+      expect(view.byTestId('checklist-refreshing')).not.toBeNull()
       expect(view.byTestId('checklist-poll-failed')).toBeNull()
 
       await settle(1)
+      expect(view.byTestId('checklist-refreshing')).toBeNull()
       expect(view.byTestId('checklist-poll-failed')).not.toBeNull()
       expect(view.byTestId('checklist-poll-retry')).not.toBeNull()
     })
@@ -615,19 +632,23 @@ describe('the checklist deadline and poll', () => {
 
       await mounted.swapClient({ status: 'loading' })
       expect(mounted.byTestId('checklist-rows')).toBeNull()
-      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
+      expect(mounted.byTestId('checklist-loading')?.textContent).toBe(
+        t('socialRecovery.loading.session')
+      )
 
       const rebuilt = fakeKit(MIXED_PATH)
       const read = deferred<ReturnType<typeof recoveryStateOf>>()
       rebuilt.recoveryState.mockImplementationOnce(() => read.promise)
       await mounted.swapClient(rebuilt.state)
       expect(rebuilt.recoveryState).toHaveBeenCalledTimes(1)
-      expect(mounted.byTestId('checklist-rows')).toBeNull()
-      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
+      expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      expect(mounted.byTestId('checklist-refreshing')).not.toBeNull()
+      expect(mounted.isDisabled('checklist-continue')).toBe(true)
 
       await outside(async () => read.resolve(recoveryStateOf()))
       await settle()
       expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      expect(mounted.byTestId('checklist-refreshing')).toBeNull()
     })
 
     it('starts again from nothing returned for a new session', async () => {
@@ -650,11 +671,12 @@ describe('the checklist deadline and poll', () => {
       await settle()
 
       expect((await storedSession(world.records))?.value.state).toBe('live')
-      expect(mounted.byTestId('checklist-loading')).not.toBeNull()
-      expect(mounted.byTestId('checklist-rows')).toBeNull()
+      expect(mounted.byTestId('checklist-refreshing')).not.toBeNull()
+      expect(mounted.isDisabled('checklist-continue')).toBe(true)
 
       await outside(async () => read.resolve(recoveryStateOf({ nextAttemptId: BigInt(6) })))
       await settle()
+      expect(mounted.byTestId('checklist-refreshing')).toBeNull()
       expect(mounted.byTestId('checklist-rows')).not.toBeNull()
     })
   })
@@ -726,7 +748,7 @@ describe('the checklist deadline and poll', () => {
       })
       await settle(1000)
 
-      expect(view.byTestId('checklist-loading')).not.toBeNull()
+      expect(view.byTestId('checklist-refreshing')).not.toBeNull()
       expect(kit.addApproverReply).not.toHaveBeenCalled()
       const before = await storedSession(world.records)
       expect(before?.value.state === 'live' && before.value.gathering.replies).toEqual([])

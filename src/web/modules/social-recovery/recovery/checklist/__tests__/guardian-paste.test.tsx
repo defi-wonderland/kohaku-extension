@@ -40,6 +40,18 @@ import {
 import type { AddRefusalCause, Configuration, Gathering, Reply } from '@kohaku-eth/social-recovery'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
   renderDateTimeInZone
@@ -517,6 +529,9 @@ describe('the guardian paste', () => {
 
       expect(input(1)?.readOnly).toBe(true)
       expect(view?.isDisabled(id(1, 'paste-add'))).toBe(true)
+      expect(view?.byTestId(id(1, 'paste-checking'))?.textContent).toBe(
+        t('socialRecovery.loading.signature')
+      )
       expect(view?.valueOf(id(1, 'paste-input'))).toBe(line)
       await view?.press(id(1, 'paste-add'))
       expect(kit.verify).toHaveBeenCalledTimes(1)
@@ -526,6 +541,7 @@ describe('the guardian paste', () => {
 
       expect(await repliesHeld()).toEqual([replyOf(gathering, 1)])
       expectSettled(1, '', 'added')
+      expect(view?.byTestId(id(1, 'paste-checking'))).toBeNull()
     })
 
     it('is editable again after a failure, with the paste kept under its error', async () => {

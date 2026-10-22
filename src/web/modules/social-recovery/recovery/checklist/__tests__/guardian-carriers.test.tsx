@@ -38,6 +38,18 @@ import type { DestinationReading } from '@web/modules/social-recovery/recovery/c
 import type { Address, Gathering } from '@kohaku-eth/social-recovery'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const { getAddress }: typeof import('viem') = require('viem')
 const {
@@ -161,7 +173,9 @@ describe('the guardian row carriers', () => {
       t(`${GUARDIAN}.unlockReason`)
     )
     expect(mounted.byTestId(id(1, 'link'))).toBeNull()
-    expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+    expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+      t('socialRecovery.loading.account')
+    )
     await mounted.press(id(1, 'copy-link'))
     await mounted.press(id(1, 'copy-message'))
     await mounted.press(id(1, 'show-qr'))
@@ -577,7 +591,9 @@ describe('the guardian row carriers', () => {
       expect(mounted.byTestId(id(1, 'unlock-reason'))?.textContent).toBe(
         t(`${GUARDIAN}.unlockReason`)
       )
-      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        t('socialRecovery.loading.account')
+      )
       expect(mounted.byTestId(id(1, 'link'))).toBeNull()
       expect(mounted.byTestId(id(1, 'qr'))).toBeNull()
       expect(qrDouble.drawn.filter(fromRebuilt)).toEqual([])
@@ -606,7 +622,9 @@ describe('the guardian row carriers', () => {
       await settle()
 
       expect(locked(mounted, 1)).toEqual([true, true, true, true])
-      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        t('socialRecovery.loading.account')
+      )
 
       second.resolve({ kind: 'named', key: OTHER_REMOVED })
       await settle()
@@ -630,7 +648,9 @@ describe('the guardian row carriers', () => {
 
       expect(kit.removedKey).toHaveBeenCalledTimes(2)
       expect(locked(mounted, 1)).toEqual([true, true, true, true])
-      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe('')
+      expect(mounted.byTestId(id(1, 'value-keyBeingRemoved'))?.textContent).toBe(
+        t('socialRecovery.loading.account')
+      )
 
       again.resolve({ kind: 'named', key: OTHER_REMOVED })
       await settle()

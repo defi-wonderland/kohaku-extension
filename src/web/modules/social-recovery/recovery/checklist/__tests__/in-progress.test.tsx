@@ -32,6 +32,18 @@ import {
   TIME_ZONE
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 /* eslint-disable @typescript-eslint/no-var-requires, global-require */
 const {
   WEB_ROUTES
@@ -107,6 +119,19 @@ describe('the recovery in progress', () => {
     expect(view.byTestId(`in-progress-${second}-path`)?.textContent).toBe(
       t(`${IN_PROGRESS}.asksPassword`)
     )
+  })
+
+  it('says it reads the recoveries, with the title and no row, while the list has not been read', async () => {
+    await seedThree()
+    jest
+      .spyOn(world.records, 'listRecoverySessions')
+      .mockImplementation(() => new Promise<never>(() => {}))
+    view = await mountInProgress({ records: world.records })
+
+    expect(view.byTestId('in-progress-loading')?.textContent).toBe(
+      t('socialRecovery.loading.entries')
+    )
+    expect(view.byTestId(`in-progress-${idOf(ACCOUNT)}`)).toBeNull()
   })
 
   it('shows no count for a session whose headline cannot be read', async () => {

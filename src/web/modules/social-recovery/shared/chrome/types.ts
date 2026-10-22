@@ -59,6 +59,8 @@ export interface EntryReadFallbackProps {
   /** The string keys of the failed read's title and line. */
   titleKey: string
   bodyKey: string
+  /** The string key of the line that says what the screen opens while the record is read. */
+  loadingKey: string
   failed: boolean
   onRetry: () => void
 }

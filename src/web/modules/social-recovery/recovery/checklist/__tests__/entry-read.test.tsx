@@ -21,6 +21,18 @@ import {
   t
 } from '@web/modules/social-recovery/recovery/checklist/__tests__/harness'
 
+// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
+jest.mock('@common/components/Spinner', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
+  const mockReact: typeof import('react') = require('react')
+  const { View: MockView }: typeof import('react-native') = require('react-native')
+  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
+  return {
+    __esModule: true,
+    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
+  }
+})
+
 const mockStorage: { current: RecordStorage | null } = { current: null }
 const mockNavigate = jest.fn()
 
@@ -108,13 +120,18 @@ describe('the checklist route’s entry record read', () => {
     return storage
   }
 
-  it('shows a spinner and no checklist while the entry record read has not answered', async () => {
+  it('says it opens the recovery, with no checklist, while the entry record read has not answered', async () => {
     const storage = await seeded()
     mockStorage.current = { ...storage, get: () => new Promise<never>(() => {}) }
 
     view = await mountChecklistScreen()
 
-    expect(view.byTestId('checklist-entry-loading')).not.toBeNull()
+    expect(view.byTestId('checklist-entry-loading')?.textContent).toBe(
+      t('socialRecovery.loading.session')
+    )
+    expect(
+      view.byTestId('checklist-entry-loading')?.querySelector('[data-testid="loading-screen"]')
+    ).not.toBeNull()
     expect(view.byTestId('checklist-entry-failed')).toBeNull()
     expect(view.byTestId('checklist-view')).toBeNull()
     expect(mockNavigate).not.toHaveBeenCalled()
