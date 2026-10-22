@@ -18,11 +18,11 @@ const TestResultLines = ({
   row,
   lineKey,
   outcome,
-  refusedNote,
+  dismissalNotes,
   children
 }: TestResultLinesProps) => {
   const { t } = useTranslation()
-  const notes = outcome ? testNoteKeysOf(outcome, lineKey, refusedNote) : []
+  const notes = outcome ? testNoteKeysOf(outcome, lineKey, dismissalNotes) : []
   const error = outcome ? browserErrorNameOf(outcome) : null
 
   return (
