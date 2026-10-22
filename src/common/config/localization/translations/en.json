@@ -377,7 +377,9 @@
       "slot": "Reading this method's slot…",
       "balance": "Reading the balance and the fee…",
       "lookup": "Looking up the recovery setup…",
-      "unfinishedSave": "Checking for an unfinished save…"
+      "unfinishedSave": "Checking for an unfinished save…",
+      "notices": "Reading the changes since the setup…",
+      "address": "Checking this address…"
     },
     "methodNames": {
       "passkey": "Passkey",
