@@ -74,6 +74,20 @@ export interface ReadFailedBlockProps {
   children?: ReactNode
 }
 
+/** Where a wait sits: the whole screen, a card or section, or one line. */
+export type LoadingVariant = 'screen' | 'block' | 'row'
+
+export interface LoadingBlockProps {
+  /** What the screen reads or does, already translated. */
+  message: string
+  variant: LoadingVariant
+}
+
+export interface RefreshingLineProps {
+  /** The string key of the line; the plain refreshing line when none is given. */
+  messageKey?: string
+}
+
 export interface PageTitleProps {
   title: string
   lead?: string
