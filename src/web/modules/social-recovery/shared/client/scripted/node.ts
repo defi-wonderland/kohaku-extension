@@ -237,14 +237,11 @@ export class ScriptedNode implements IProvider {
     this.codec = new AmbireActionCodec([seed.descriptor.action])
     this.mineAt(seed.firstBlock ?? 1000, this.clock())
     const d = seed.descriptor
-    ;[
-      d.manager,
-      d.action,
-      d.methodEcdsa,
-      d.methodPasskey,
-      d.methodAadhaar,
-      d.methodZkpassport
-    ].forEach((address) => this.codes.set(lower(address), CONTRACT_CODE))
+    // A method the descriptor omits is the zero address, where no contract lives.
+    const deployed = (address: Address) => !isAddressEqual(address, zeroAddress)
+    ;[d.manager, d.action, d.methodEcdsa, d.methodPasskey, d.methodAadhaar, d.methodZkpassport]
+      .filter(deployed)
+      .forEach((address) => this.codes.set(lower(address), CONTRACT_CODE))
     this.setHasCode(seed.hasCode ?? true)
     ;(seed.authorities ?? []).forEach((key) => this.privileges.set(lower(key), KEY_VALUE))
     const parties = {
@@ -261,9 +258,11 @@ export class ScriptedNode implements IProvider {
         [d.methodAadhaar, 'method-aadhaar'],
         [d.methodZkpassport, 'method-zkpassport']
       ] as const
-    ).forEach(([address, name]) =>
-      this.methods.set(lower(address), { name, version: '1', paused: false, parties })
     )
+      .filter(([address]) => deployed(address))
+      .forEach(([address, name]) =>
+        this.methods.set(lower(address), { name, version: '1', paused: false, parties })
+      )
   }
 
   // -------------------------------------------------------------------------
