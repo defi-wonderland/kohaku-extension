@@ -63,9 +63,16 @@ const useIdentityLaunch = ({
     }
     await launch(
       'enroll',
-      enrollRequestOf({ kind, account, chainId, methodAddress: book.methods[kind], params })
+      enrollRequestOf({
+        kind,
+        account,
+        chainId,
+        methodAddress: book.methods[kind],
+        params,
+        replaces: enrollment?.credential ?? null
+      })
     )
-  }, [client, kind, account, chainId, book, launch])
+  }, [client, kind, account, chainId, book, enrollment, launch])
 
   const runTest = useCallback(async () => {
     if (client.status !== 'ready' || !enrollment) {

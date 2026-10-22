@@ -256,7 +256,7 @@ export interface RowProps {
  * the ceremony tab.
  */
 export type PasskeyCeremonyRequest =
-  | { call: 'enroll'; userName?: string; handOff?: boolean }
+  | { call: 'enroll'; userName?: string; handOff?: boolean; replaces?: Credential | null }
   | { call: 'testAccess'; request: ApproverRequest; handOff?: boolean }
 
 /** The account, chain and passkey method a row's own ceremony requests name. */
@@ -277,8 +277,11 @@ export interface PendingPlacement {
   value: EnrollValue
   userName: string
   handOff: boolean
-  /** The credential the slot held when the ceremony started, which the placement replaces. */
-  replaced?: Credential
+  /**
+   * What the slot held when the ceremony started: the credential the placement
+   * replaces, or null for an empty slot. Absent where nothing was kept.
+   */
+  replaces?: Credential | null
 }
 
 /** The offline block's challenge: the key test's typed data. */
@@ -462,10 +465,10 @@ export type IdentityCopies = { readonly [K in IdentityKind]: IdentityCopy }
 
 /**
  * What a returned identity ceremony's request carried, read back when its
- * report arrives: nothing for a creation, the request for a test.
+ * report arrives: what the slot held for a creation, the request for a test.
  */
 export type IdentityCeremonyRequest =
-  | { call: 'enroll' }
+  | { call: 'enroll'; replaces?: Credential | null }
   | { call: 'testAccess'; request: ApproverRequest }
 
 /** What an identity ceremony request is built from. */
@@ -485,8 +488,11 @@ export interface IdentityEnrollValue {
 /** A passed identity creation whose enrollment the records have not stored yet. */
 export interface IdentityPendingPlacement {
   value: IdentityEnrollValue
-  /** The credential the slot held when the ceremony started, which the placement replaces. */
-  replaced?: Credential
+  /**
+   * What the slot held when the ceremony started: the credential the placement
+   * replaces, or null for an empty slot. Absent where nothing was kept.
+   */
+  replaces?: Credential | null
 }
 
 /** What an identity row reads: the row's props and its kind. */
