@@ -35,18 +35,6 @@ import type { HiddenLevel } from '@web/modules/social-recovery/recovery/entry/ty
 import { wipeRecoveryPassword } from '@web/modules/social-recovery/shared/records'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
-// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
-jest.mock('@common/components/Spinner', () => {
-  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
-  const mockReact: typeof import('react') = require('react')
-  const { View: MockView }: typeof import('react-native') = require('react-native')
-  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
-  return {
-    __esModule: true,
-    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
-  }
-})
-
 const ACCOUNT_STEP = '/social-recovery/recovery/account'
 const CHECKLIST = `/social-recovery/recovery/checklist?account=${LOST}`
 // A manager this build no longer reads.

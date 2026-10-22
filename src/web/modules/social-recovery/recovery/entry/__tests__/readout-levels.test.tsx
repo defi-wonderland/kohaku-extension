@@ -48,18 +48,6 @@ import {
 } from '@web/modules/social-recovery/shared/records'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
-// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
-jest.mock('@common/components/Spinner', () => {
-  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
-  const mockReact: typeof import('react') = require('react')
-  const { View: MockView }: typeof import('react-native') = require('react-native')
-  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
-  return {
-    __esModule: true,
-    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
-  }
-})
-
 const NO_SETUP_SENTENCES = [
   t('socialRecovery.entry.noSetup.title', { network: NETWORK }),
   t('socialRecovery.writes.causes.NoSetup')

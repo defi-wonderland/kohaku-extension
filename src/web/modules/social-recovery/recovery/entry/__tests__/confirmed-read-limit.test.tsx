@@ -25,18 +25,6 @@ import {
 } from '@web/modules/social-recovery/shared/client'
 import { sdkStandIn } from '@web/modules/social-recovery/shared/client/stand-in'
 
-// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
-jest.mock('@common/components/Spinner', () => {
-  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
-  const mockReact: typeof import('react') = require('react')
-  const { View: MockView }: typeof import('react-native') = require('react-native')
-  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
-  return {
-    __esModule: true,
-    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
-  }
-})
-
 const HOUR_MS = 60 * 60 * 1000
 
 const KEY_A: Address = '0x00000000000000000000000000000000000ca1a1'

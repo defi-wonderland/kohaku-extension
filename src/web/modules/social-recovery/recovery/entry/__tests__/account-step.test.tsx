@@ -52,18 +52,6 @@ import {
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
-// The spinner's animation needs a native module jsdom lacks; a plain view stands in.
-jest.mock('@common/components/Spinner', () => {
-  /* eslint-disable @typescript-eslint/no-var-requires, global-require */
-  const mockReact: typeof import('react') = require('react')
-  const { View: MockView }: typeof import('react-native') = require('react-native')
-  /* eslint-enable @typescript-eslint/no-var-requires, global-require */
-  return {
-    __esModule: true,
-    default: () => mockReact.createElement(MockView, { testID: 'spinner' })
-  }
-})
-
 // A manager this build no longer reads.
 const RETIRED_MANAGER = '0x00000000000000000000000000000000000Dead1' as const
 const LOGGED_IN = searchOf('logged-in', BASIC)
