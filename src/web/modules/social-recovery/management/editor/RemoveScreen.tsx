@@ -239,15 +239,7 @@ export const RemoveStageView = ({
             onRetry={run.reread}
           />
         )}
-        {screen === 'confirming' && (
-          <ConfirmingBlock
-            transactionHash={
-              state.write.status === 'landed' ? state.write.transactionHash : undefined
-            }
-            testID="manage-remove-confirming"
-          />
-        )}
-        {(arrives || screen === 'run') && (
+        {(arrives || screen === 'run' || screen === 'confirming') && (
           <RemoveArrival
             heldFailed={held.status === 'failed'}
             onRetryHeld={retryHeld}
@@ -265,6 +257,13 @@ export const RemoveStageView = ({
             run={
               screen === 'run' ? (
                 <RemoveRun run={run} attemptOpen={attemptOpen} keep={keep} />
+              ) : screen === 'confirming' ? (
+                <ConfirmingBlock
+                  transactionHash={
+                    state.write.status === 'landed' ? state.write.transactionHash : undefined
+                  }
+                  testID="manage-remove-confirming"
+                />
               ) : undefined
             }
           />

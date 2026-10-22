@@ -852,6 +852,21 @@ describe('the waits of the review and the removal', () => {
     view.unmount()
   })
 
+  it('keeps the reviewed changes on screen, with the landed line in place of the save, while the result is read', async () => {
+    const view = await mountReview(CONFIRMING)
+    expect(view.byTestId('manage-review-arrival')).not.toBeNull()
+    expect(view.byTestId('manage-review-account')).not.toBeNull()
+    expect(view.byTestId('manage-review-rule-line-0')).not.toBeNull()
+    expect(
+      view
+        .byTestId('manage-review-arrival')
+        ?.querySelector('[data-testid="manage-review-confirming"]')
+    ).not.toBeNull()
+    expect(view.textOf('manage-review-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(view.byTestId('manage-review-save')).toBeNull()
+    view.unmount()
+  })
+
   it('says it looks up the setup in place of the removal while the stored write is read', async () => {
     const view = await mountRemoval({ lookup: 'reading' })
     expect(view.textOf('manage-remove-lookup')).toBe(t('socialRecovery.loading.unfinishedSave'))
@@ -885,6 +900,22 @@ describe('the waits of the review and the removal', () => {
       view.byTestId('manage-remove-confirming')?.querySelector('[data-testid="loading-block"]')
     ).not.toBeNull()
     expect(view.byTestId('manage-remove-confirming-hash')).not.toBeNull()
+    view.unmount()
+  })
+
+  it('keeps the removal on screen, its word read-only, with the landed line in place of the action, while the result is read', async () => {
+    const view = await mountRemoval(CONFIRMING)
+    expect(view.textOf('manage-remove-body')).toBe(t(`${REMOVE}.body`))
+    const field = view.byTestId('manage-remove-word')
+    const input = field instanceof HTMLInputElement ? field : field?.querySelector('input')
+    expect(input?.readOnly || input?.disabled).toBe(true)
+    expect(
+      view
+        .byTestId('manage-remove-arrival')
+        ?.querySelector('[data-testid="manage-remove-confirming"]')
+    ).not.toBeNull()
+    expect(view.textOf('manage-remove-confirming')).toContain(t('socialRecovery.loading.landed'))
+    expect(view.byTestId('manage-remove-action')).toBeNull()
     view.unmount()
   })
 })

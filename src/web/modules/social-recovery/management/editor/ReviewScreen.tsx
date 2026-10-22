@@ -354,13 +354,7 @@ export const ReviewStageView = ({
             openUrl={openUrl}
           />
         )}
-        {screen === 'confirming' && (
-          <ConfirmingBlock
-            transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
-            testID="manage-review-confirming"
-          />
-        )}
-        {(arrives || screen === 'run') && (
+        {(arrives || screen === 'run' || screen === 'confirming') && (
           <ReviewArrival
             held={held}
             load={load}
@@ -396,6 +390,11 @@ export const ReviewStageView = ({
                   attemptOpen={attemptOpen}
                   dormantRefused={dormantRefused}
                   backToEditor={backToEditor}
+                />
+              ) : screen === 'confirming' ? (
+                <ConfirmingBlock
+                  transactionHash={write.status === 'landed' ? write.transactionHash : undefined}
+                  testID="manage-review-confirming"
                 />
               ) : undefined
             }
