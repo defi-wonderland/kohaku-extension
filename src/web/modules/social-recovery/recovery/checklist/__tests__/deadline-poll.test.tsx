@@ -513,10 +513,11 @@ describe('the checklist deadline and poll', () => {
       expect(view.byTestId('checklist-poll-retry')).not.toBeNull()
     })
 
-    it('keeps the rows and their actions beside the refreshing line while a later poll reads', async () => {
+    it('keeps the rows and holds their actions beside the refreshing line while a later poll reads', async () => {
       const mounted = await open(MIXED_PATH)
       const action = 'checklist-row-0-answer-here'
       expect(mounted.byTestId('checklist-refreshing')).toBeNull()
+      expect(mounted.isDisabled(action)).toBe(false)
 
       kit.recoveryState.mockImplementationOnce(
         () =>
@@ -532,11 +533,31 @@ describe('the checklist deadline and poll', () => {
         mounted.byTestId('checklist-refreshing')?.querySelector('[data-testid="loading-row"]')
       ).not.toBeNull()
       expect(mounted.byTestId('checklist-rows')).not.toBeNull()
-      expect(mounted.isDisabled(action)).toBe(false)
+      expect(mounted.isDisabled(action)).toBe(true)
 
       await settle(5000)
       expect(mounted.byTestId('checklist-refreshing')).toBeNull()
       expect(mounted.byTestId('checklist-rows')).not.toBeNull()
+      expect(mounted.isDisabled(action)).toBe(false)
+    })
+
+    it('holds continue on a satisfied path while a later poll reads, and gives it back once that poll answers', async () => {
+      const mounted = await open(TWO_ROWS, withReplies(gatheringOf(TWO_ROWS), [0, 1]))
+      expect(mounted.isDisabled('checklist-continue')).toBe(false)
+
+      kit.recoveryState.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(recoveryStateOf()), 5000)
+          })
+      )
+      await settle(CHECKLIST_POLL_MS)
+      expect(mounted.byTestId('checklist-refreshing')).not.toBeNull()
+      expect(mounted.isDisabled('checklist-continue')).toBe(true)
+
+      await settle(5000)
+      expect(mounted.byTestId('checklist-refreshing')).toBeNull()
+      expect(mounted.isDisabled('checklist-continue')).toBe(false)
     })
 
     it('holds every launch and every row action under a poll that throws, and a retry that succeeds restores them', async () => {
@@ -687,7 +708,7 @@ describe('the checklist deadline and poll', () => {
         t('socialRecovery.loading.session')
       )
       expect(
-        mounted.byTestId('checklist-loading')?.querySelector('[data-testid="loading-block"]')
+        mounted.byTestId('checklist-loading')?.querySelector('[data-testid="loading-screen"]')
       ).not.toBeNull()
 
       const rebuilt = fakeKit(MIXED_PATH)

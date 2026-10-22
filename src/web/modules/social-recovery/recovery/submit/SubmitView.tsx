@@ -67,11 +67,9 @@ const SubmitView = ({
 
   if (load.phase === 'loading') {
     return (
-      <TwoColumn testID="submit-columns">
-        <View testID="submit-loading" style={flexbox.flex1}>
-          <LoadingBlock variant="screen" message={t('socialRecovery.loading.session')} />
-        </View>
-      </TwoColumn>
+      <View testID="submit-loading" style={flexbox.flex1}>
+        <LoadingBlock variant="screen" message={t('socialRecovery.loading.session')} />
+      </View>
     )
   }
   if (load.phase === 'update-the-wallet') {

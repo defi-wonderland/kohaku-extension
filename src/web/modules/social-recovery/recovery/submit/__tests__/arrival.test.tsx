@@ -161,6 +161,7 @@ describe('the confirmation’s entry record read', () => {
     expect(
       view.byTestId('submit-entry-loading')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(view.byTestId('submit-title')).toBeNull()
     expect(view.byTestId('submit-entry-failed')).toBeNull()
     expect(view.byTestId('submit-action')).toBeNull()
     expect(view.paths()).toEqual([])
@@ -174,6 +175,8 @@ describe('the confirmation’s entry record read', () => {
     expect(
       view.byTestId('submit-loading')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(view.byTestId('submit-title')).toBeNull()
+    expect(view.byTestId('submit-columns')).toBeNull()
     expect(view.byTestId('submit-lead')).toBeNull()
     expect(view.byTestId('submit-action')).toBeNull()
   })

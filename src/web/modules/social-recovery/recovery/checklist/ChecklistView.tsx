@@ -262,12 +262,14 @@ const ChecklistView = ({
   }, [now, retryPoll, gathering])
   const pastDeadline =
     !!live && passedAt !== null && deadlinePassed(live.session.gathering, passedAt)
-  // A poll that has not answered yet, a failed poll, a death being written, or
-  // one the records could not wipe, holds every add, launch and continue until
-  // a poll succeeds; a request past its deadline holds them for good.
+  // A poll that has not answered yet, a later poll still reading, a failed
+  // poll, a death being written, or one the records could not wipe, holds
+  // every add, launch and continue until a poll succeeds; a request past its
+  // deadline holds them for good.
   const refreshing = poll.status === 'pending'
   const held =
     refreshing ||
+    checklist.polling ||
     poll.status === 'failed' ||
     checklist.deathFailed ||
     checklist.dying ||
@@ -420,14 +422,9 @@ const ChecklistView = ({
   // draw the rows, nothing is known to show.
   if (!live || (refreshing && (!layout || !assessment || !states))) {
     return (
-      <TwoColumn testID="checklist-columns">
-        <View testID="checklist">
-          {title}
-          <View testID="checklist-loading">
-            <LoadingBlock variant="block" message={t('socialRecovery.loading.session')} />
-          </View>
-        </View>
-      </TwoColumn>
+      <View testID="checklist-loading" style={flexbox.flex1}>
+        <LoadingBlock variant="screen" message={t('socialRecovery.loading.session')} />
+      </View>
     )
   }
 
