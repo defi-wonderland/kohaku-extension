@@ -331,6 +331,8 @@ describe("the countdown's record before the first poll answers", () => {
     expect(
       view.byTestId('wait-countdown-loading')?.querySelector('[data-testid="loading-screen"]')
     ).not.toBeNull()
+    expect(view.byTestId('wait-columns')).toBeNull()
+    expect(view.byTestId('wait-title')).toBeNull()
     expect(view.byTestId('wait-time-left')).toBeNull()
   })
 
