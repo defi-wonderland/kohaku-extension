@@ -6,6 +6,7 @@
  * gates of the sign action, the re-read every minute and the decline.
  */
 import type { RecoveryAttemptState } from '@web/modules/social-recovery/shared/client'
+import type * as ClientLayer from '@web/modules/social-recovery/shared/client'
 
 import {
   ACCOUNT,
@@ -39,6 +40,8 @@ import {
 } from '@web/modules/social-recovery/guardian-page/__tests__/harness'
 
 const PAGE = 'socialRecovery.guardianPage'
+// A salt of the length the SDK reads, so the link can be described before the client stands.
+const DESCRIBABLE_SALT = `0x${'02'.repeat(32)}` as const
 const MINUTE = 60_000
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 const dateOf = (ms: number) =>
@@ -425,6 +428,43 @@ describe('the states in place of the sign action', () => {
     expect(page.has('guardian-acknowledge')).toBe(false)
     expect(page.isDisabled('guardian-sign')).toBe(true)
     expect(page.has('guardian-dead-expired')).toBe(false)
+    page.unmount()
+  })
+
+  it("draws the link's values beside the reading, sign held, while the client is first built", async () => {
+    setClient({ status: 'loading', retry: () => {} })
+    const page = await mountLive(requestOf({ salt: DESCRIBABLE_SALT }))
+    expect(page.has('guardian-lead')).toBe(true)
+    expect(page.textOf('guardian-value-accountBeingRecovered')).toBe(ACCOUNT)
+    expect(page.has('guardian-details')).toBe(true)
+    expect(page.has('guardian-reading')).toBe(true)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    expect(page.has('guardian-request-loading')).toBe(false)
+
+    setClient(readyClient())
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    expect(page.isDisabled('guardian-sign')).toBe(true)
+    page.unmount()
+  })
+
+  it('draws a centred waiting block that opens the request where the link cannot be described before the client stands', async () => {
+    const clientLayer = jest.requireMock<typeof ClientLayer>(
+      '@web/modules/social-recovery/shared/client'
+    )
+    const describe = jest.spyOn(clientLayer, 'describeRequestOffline').mockImplementation(() => {
+      throw new Error('unknown version')
+    })
+    setClient({ status: 'loading', retry: () => {} })
+    const page = await mountLive()
+    expect(page.textOf('guardian-request-loading')).toBe(t('socialRecovery.loading.request'))
+    expect(page.hasWithin('guardian-request-loading', 'loading-screen')).toBe(true)
+    expect(page.has('guardian-status-columns')).toBe(false)
+    expect(page.has('guardian-lead')).toBe(false)
+
+    setClient(readyClient())
+    expect(page.has('guardian-request-loading')).toBe(false)
+    expect(page.textOf('guardian-value-newKey')).toBe(NEW_KEY)
+    describe.mockRestore()
     page.unmount()
   })
 
