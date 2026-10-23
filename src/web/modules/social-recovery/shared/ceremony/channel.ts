@@ -14,9 +14,10 @@
  * material that must not outlive its use. So a report lives only until taken
  * and never past its expiry, ten minutes from `reportedAt`:
  *
- * - `takeCeremonyReport` and `listenForCeremonyReport` remove the report once
- *   they deliver it, and deliver it only where its id, call and method are the
- *   ones the caller expects and `reportedAt` is within the expiry;
+ * - `readCeremonyReport` and `listenForCeremonyReport` deliver it only where
+ *   its id, call and method are the ones the caller expects and `reportedAt`
+ *   is within the expiry; the listener removes the report once it delivers it,
+ *   and a caller of the read removes it once it has it;
  * - `sweepCeremonyReports` removes every report past its expiry, and every
  *   malformed one; the tab runs it on mount.
  *
@@ -144,32 +145,6 @@ export const readCeremonyReport = async (
 ): Promise<CeremonyReport | null> => {
   const value = await storedReport(expected.id, store)
   return isCeremonyReport(value) && isReportFor(value, expected, now) ? value : null
-}
-
-/**
- * Takes the report for `expected` and removes it, so a row applies an outcome
- * once and no reply stays behind. A report past its expiry is removed and
- * reads null. A report for another call or method stays and reads null.
- */
-export const takeCeremonyReport = async (
-  expected: ReportIdentity,
-  store: ReportStore,
-  now: number = Date.now()
-): Promise<CeremonyReport | null> => {
-  const value = await storedReport(expected.id, store)
-  if (value === null || value === undefined) {
-    return null
-  }
-  const key = ceremonyResultKey(expected.id)
-  if (!isCeremonyReport(value) || !isWithinExpiry(value.reportedAt, now)) {
-    await store.remove(key)
-    return null
-  }
-  if (!isReportFor(value, expected, now)) {
-    return null
-  }
-  await store.remove(key)
-  return value
 }
 
 /**

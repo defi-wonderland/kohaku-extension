@@ -232,13 +232,19 @@ const callerRecords = () => {
 }
 /* eslint-enable global-require, @typescript-eslint/no-var-requires */
 
-/** What the caller takes from the channel under the id, as a row does. */
-const takeReport = (call: CeremonyCall, method = 'passkey') =>
-  ceremony().takeCeremonyReport(
+/** What the caller reads from the channel under the id and then removes, as a row does. */
+const takeReport = async (call: CeremonyCall, method = 'passkey') => {
+  const { browserReportStore } = browserDefaults()
+  const report = await ceremony().readCeremonyReport(
     { id: ID, call, method },
-    browserDefaults().browserReportStore,
+    browserReportStore,
     Date.now()
   )
+  if (report) {
+    await browserReportStore.remove(ceremony().ceremonyResultKey(ID))
+  }
+  return report
+}
 
 /** Every report the extension's storage holds, read as the report store reads it. */
 const storedReports = async () => {
