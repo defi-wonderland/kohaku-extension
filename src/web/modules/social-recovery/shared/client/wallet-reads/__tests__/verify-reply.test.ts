@@ -248,7 +248,7 @@ const VERIFIER_NOT_FOUND = encodeErrorResult({
   args: ['Verifier not found']
 })
 
-describe("the check a ceremony reads, which keeps a revert apart from a refusal", () => {
+describe('the check a ceremony reads, which keeps a revert apart from a refusal', () => {
   const CASES: [string, () => Hex | Error, 'reverted' | 'rejected'][] = [
     ['a revert with a reason', () => reverting(VERIFIER_NOT_FOUND), 'reverted'],
     ['a revert that carries no data', () => reverting('0x'), 'reverted'],

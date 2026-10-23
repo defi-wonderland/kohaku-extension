@@ -49,9 +49,11 @@ const phoneRequest = ({
   const on = (name: string) => (callback: Callback) => {
     handlers.set(name, [...(handlers.get(name) ?? []), callback])
   }
+  const close = jest.fn()
   const request = {
     url: URL,
     requestId: 'request-1',
+    close,
     onRequestReceived: on('received'),
     onGeneratingProof: on('generating'),
     onProofGenerated: on('generated'),
@@ -63,7 +65,12 @@ const phoneRequest = ({
   }
   const fire = (name: string, ...args: unknown[]) =>
     (handlers.get(name) ?? []).forEach((callback) => callback(...args))
-  return { request, fire, listening: (name: string) => (handlers.get(name) ?? []).length }
+  return {
+    request,
+    fire,
+    close,
+    listening: (name: string) => (handlers.get(name) ?? []).length
+  }
 }
 
 const inputOf = (openRequest: () => unknown) =>
@@ -534,6 +541,7 @@ const startOnFakeClock = async (
           ? { ok: true, material: { result: payload } }
           : { ok: true, material: { proofs: [OUTER] } }
       await expect(run.running).resolves.toEqual(expected)
+      jest.advanceTimersByTime(1)
       expect(jest.getTimerCount()).toBe(0)
     })
 
@@ -549,7 +557,70 @@ const startOnFakeClock = async (
       phone.fire('received')
       controller.abort()
       await expect(run.running).resolves.toEqual(CANCELLED)
+      jest.advanceTimersByTime(1)
       expect(jest.getTimerCount()).toBe(0)
+    })
+  })
+)
+;(['enroll', 'sign'] as const).forEach((call) =>
+  describe(`the external-app device closes the request at ${call}`, () => {
+    it('closes it once after a Cancel, a task after the cancel', async () => {
+      const controller = new AbortController()
+      const phone = phoneRequest()
+      const run = await start(call, phone, { signal: controller.signal })
+      phone.fire('received')
+      controller.abort()
+      await expect(run.running).resolves.toEqual(CANCELLED)
+      expect(phone.close).not.toHaveBeenCalled()
+      await tick()
+      expect(phone.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('closes it once after the result, a task after the last callback', async () => {
+      const phone = phoneRequest()
+      const run = await start(call, phone)
+      phone.fire('received')
+      phone.fire('generated', OUTER)
+      phone.fire('success', { proofs: [OUTER], result: {} })
+      phone.fire('result', { verified: true, uniqueIdentifier: '456', proofs: [OUTER] })
+      expect(phone.close).not.toHaveBeenCalled()
+      await run.running
+      await tick()
+      expect(phone.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('closes it once after the phone declined', async () => {
+      const phone = phoneRequest()
+      const run = await start(call, phone)
+      phone.fire('received')
+      phone.fire('reject')
+      await expect(run.running).resolves.toEqual(REFUSED)
+      await tick()
+      expect(phone.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('never closes it twice, whatever arrives after the first answer', async () => {
+      const controller = new AbortController()
+      const phone = phoneRequest()
+      const run = await start(call, phone, { signal: controller.signal })
+      phone.fire('reject')
+      phone.fire('error', 'late')
+      phone.fire('lost')
+      controller.abort()
+      await expect(run.running).resolves.toEqual(REFUSED)
+      await tick()
+      await tick()
+      expect(phone.close).toHaveBeenCalledTimes(1)
+    })
+
+    it('settles as usual where the library offers no close', async () => {
+      const phone = phoneRequest()
+      const { close, ...withoutClose } = phone.request
+      const run = await start(call, { ...phone, request: withoutClose as typeof phone.request })
+      phone.fire('reject')
+      await expect(run.running).resolves.toEqual(REFUSED)
+      await tick()
+      expect(close).not.toHaveBeenCalled()
     })
   })
 )

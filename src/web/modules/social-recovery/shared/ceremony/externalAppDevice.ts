@@ -15,6 +15,8 @@
  * answer. A connection to the phone lost before any proof arrived is a phone
  * that never connected; lost after, it changes nothing. A page that cannot
  * draw the code runs no request. After an abort no callback is honoured.
+ * However the wait ends, the device closes the request once, a task later,
+ * so the phone's connection does not outlive it.
  *
  * Once the phone took the request, the device waits `phoneIdleMs` for its
  * next answer, by default `CEREMONY_TIMEOUT_MS`, the span a passkey hand-off
@@ -49,14 +51,14 @@ const REQUEST_CALLBACKS = [
   'onError'
 ] as const
 
-const OPTIONAL_CALLBACKS = ['onResult', 'onBridgeConnect', 'onBridgeConnectionLost'] as const
+const OPTIONAL_MEMBERS = ['onResult', 'onBridgeConnect', 'onBridgeConnectionLost', 'close'] as const
 
 /** Whether the app library's answer is a request this device can follow. */
 const isRequest = (value: unknown): value is ZkPassportRequestWithResult =>
   isRecord(value) &&
   typeof value.url === 'string' &&
   REQUEST_CALLBACKS.every((name) => typeof value[name] === 'function') &&
-  OPTIONAL_CALLBACKS.every((name) => value[name] === undefined || typeof value[name] === 'function')
+  OPTIONAL_MEMBERS.every((name) => value[name] === undefined || typeof value[name] === 'function')
 
 /** The opener the method's input carries, or undefined where it carries none. */
 const openerOf = (input: Input): (() => Promise<unknown>) | undefined => {
@@ -125,6 +127,8 @@ const follow = (
       stopIdle()
       signal?.removeEventListener('abort', onAbort)
       resolve(result)
+      // The library still reads the request after its last callback returns.
+      setTimeout(() => request.close?.(), 0)
     }
     const restartIdle = () => {
       stopIdle()
