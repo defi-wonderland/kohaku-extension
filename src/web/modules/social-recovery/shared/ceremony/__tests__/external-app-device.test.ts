@@ -426,3 +426,130 @@ describe('the external-app device when the connection drops after the proofs arr
     await expect(run.running).resolves.toEqual({ ok: true, material: { proofs: [OUTER] } })
   })
 })
+
+const PHONE_UNANSWERED = {
+  ok: false,
+  stop: { kind: 'verdict', verdict: 'unavailable', retry: true, cause: 'phone-unanswered' }
+}
+
+/** Lets the device's pending promises run while the clock stands still. */
+const flush = async () => {
+  for (let i = 0; i < 10; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.resolve()
+  }
+}
+
+/** Starts one device call under a fake clock and resolves once the device listens. */
+const startOnFakeClock = async (
+  call: 'enroll' | 'sign',
+  phone: ReturnType<typeof phoneRequest>,
+  options: { phoneIdleMs?: number } = {},
+  extra: Partial<DeviceCallContext> = {}
+) => {
+  const watch = watched(extra)
+  let outcome: DeviceResult | undefined
+  const running = externalAppDevice(options)
+    [call](
+      inputOf(async () => phone.request),
+      watch.context
+    )
+    .then((result) => {
+      outcome = result
+      return result
+    })
+  await flush()
+  return { ...watch, running, outcome: () => outcome }
+}
+
+;(['enroll', 'sign'] as const).forEach((call) =>
+  describe(`the external-app device when the phone stops answering at ${call}`, () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('reads a phone silent past the limit after it took the request as one that stopped answering, with retry', async () => {
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(call, phone, { phoneIdleMs: 1000 })
+      phone.fire('received')
+      jest.advanceTimersByTime(999)
+      await flush()
+      expect(run.outcome()).toBeUndefined()
+      jest.advanceTimersByTime(1)
+      await expect(run.running).resolves.toEqual(PHONE_UNANSWERED)
+      expect(run.steps).toEqual(['waitingForPhone', 'requestReceived'])
+    })
+
+    it('waits the passkey hand-off span by default', async () => {
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(call, phone)
+      phone.fire('received')
+      jest.advanceTimersByTime(179999)
+      await flush()
+      expect(run.outcome()).toBeUndefined()
+      jest.advanceTimersByTime(1)
+      await expect(run.running).resolves.toEqual(PHONE_UNANSWERED)
+    })
+
+    it('runs no limit before the phone takes the request', async () => {
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(call, phone, { phoneIdleMs: 1000 })
+      jest.advanceTimersByTime(24 * 60 * 60 * 1000)
+      await flush()
+      expect(run.outcome()).toBeUndefined()
+      phone.fire('reject')
+      await expect(run.running).resolves.toEqual(REFUSED)
+    })
+
+    it('starts the limit again when the phone prepares the result, and again at a proof', async () => {
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(call, phone, { phoneIdleMs: 1000 })
+      phone.fire('received')
+      jest.advanceTimersByTime(800)
+      phone.fire('generating')
+      jest.advanceTimersByTime(800)
+      phone.fire('generated', OUTER)
+      jest.advanceTimersByTime(800)
+      await flush()
+      expect(run.outcome()).toBeUndefined()
+      jest.advanceTimersByTime(200)
+      await expect(run.running).resolves.toEqual(PHONE_UNANSWERED)
+    })
+
+    it('settles on an answer that comes before the limit, and leaves no limit running', async () => {
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(call, phone, { phoneIdleMs: 1000 })
+      phone.fire('received')
+      jest.advanceTimersByTime(500)
+      phone.fire('generated', OUTER)
+      phone.fire('success', { proofs: [OUTER], result: {} })
+      const payload = { verified: true, uniqueIdentifier: '456', proofs: [OUTER] }
+      phone.fire('result', payload)
+      const expected =
+        call === 'enroll'
+          ? { ok: true, material: { result: payload } }
+          : { ok: true, material: { proofs: [OUTER] } }
+      await expect(run.running).resolves.toEqual(expected)
+      expect(jest.getTimerCount()).toBe(0)
+    })
+
+    it('clears the limit at an abort, which reads cancelled', async () => {
+      const controller = new AbortController()
+      const phone = phoneRequest()
+      const run = await startOnFakeClock(
+        call,
+        phone,
+        { phoneIdleMs: 1000 },
+        { signal: controller.signal }
+      )
+      phone.fire('received')
+      controller.abort()
+      await expect(run.running).resolves.toEqual(CANCELLED)
+      expect(jest.getTimerCount()).toBe(0)
+    })
+  })
+)

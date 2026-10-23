@@ -825,6 +825,7 @@ describe('the ceremony tab for the identity bindings', () => {
 
     expect(page.querySelector('[data-qr]')?.getAttribute('data-qr')).toBe(PHONE_URL)
     expect(page.textContent).toContain(STRINGS.scanWithApp)
+    expect(page.textContent).toContain(STRINGS.scanOnce)
     expect(page.textContent).toContain(STRINGS.keepTabOpen)
     expect(page.textContent).toContain(STRINGS.waitingForPhone)
     expect(page.textContent).not.toContain(STRINGS.phoneReads)

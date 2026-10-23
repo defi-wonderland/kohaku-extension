@@ -254,6 +254,14 @@ export interface CredentialsLike {
   get(options: CredentialRequestOptions): Promise<Credential | null>
 }
 
+export interface ExternalAppDeviceOptions {
+  /**
+   * How long the device waits for the next answer of a phone that took the
+   * request, in milliseconds.
+   */
+  phoneIdleMs?: number
+}
+
 export interface PasskeyDeviceOptions {
   credentials: CredentialsLike
   relyingParty: RelyingParty
