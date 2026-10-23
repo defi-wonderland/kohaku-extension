@@ -211,8 +211,11 @@ export type ZkPassportRequestWithResult = ZkPassportRequest & {
   onBridgeConnectionLost?: (callback: () => void) => void
 }
 
-/** The chain's verdict over a reply: the `verify` view of the reply's method module. */
-export type ChainVerdict = (request: ApproverRequest, reply: Reply) => Promise<Verdict>
+/**
+ * The chain's verdict over a reply: the `verify` view of the reply's method
+ * module, or `reverted` where the module refused to judge the proof.
+ */
+export type ChainVerdict = (request: ApproverRequest, reply: Reply) => Promise<Verdict | 'reverted'>
 
 export type DeviceResult =
   | {

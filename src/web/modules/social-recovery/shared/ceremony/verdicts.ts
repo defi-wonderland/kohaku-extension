@@ -61,10 +61,13 @@ export const DISMISSAL_NOTES = ['cancelled', 'refused'] as const
 
 /**
  * The causes a verdict other than passed names: the method's own five and the
- * host's own nine.
+ * host's own ten.
  *
  * - `thrown`: the method threw a refusal (enrollInput and signingInput throw).
  * - `check-rejected`: the local check answered rejected.
+ * - `check-reverted`: the method module's `verify` view on chain reverted
+ *   instead of judging the proof, as a module that does not accept the
+ *   proof's version does.
  * - `relying-party-mismatch`: the credential or the assertion was minted under a
  *   relying party other than the extension's own origin. At enrollment this is
  *   the provider that refused Kohaku (the 1Password case).
@@ -82,6 +85,7 @@ export const DISMISSAL_NOTES = ['cancelled', 'refused'] as const
 export const HOST_CAUSES = [
   'thrown',
   'check-rejected',
+  'check-reverted',
   'relying-party-mismatch',
   'unreachable',
   'service-unanswered',
@@ -232,9 +236,25 @@ export const noteKeyOfOutcome = (
 }
 
 /**
+ * The line under a failed test, from its cause as an outcome carries it or as
+ * a record stores it with its detail after the cause: a check that did not
+ * match reads the no-match line, a check the module on chain refused to judge
+ * reads the reverted line, and any other failure reads that the method may
+ * never work.
+ */
+export const failedTestLineKeyOf = (cause: string | undefined): string => {
+  if (cause?.startsWith('check-rejected')) {
+    return 'socialRecovery.ceremony.testFailedNoMatch'
+  }
+  return cause?.startsWith('check-reverted')
+    ? 'socialRecovery.ceremony.testFailedReverted'
+    : 'socialRecovery.ceremony.testFailedLine'
+}
+
+/**
  * The line a TEST ACCESS verdict carries under its chip: a failed test reads
- * test failed with its line and never the not-tested line.
- * Every other call carries no test line. An unavailable test carries none
+ * test failed with its line (`failedTestLineKeyOf`) and never the not-tested
+ * line. Every other call carries no test line. An unavailable test carries none
  * either, since its note already reads the test-unavailable line.
  */
 export const lineKeyOfOutcome = (
@@ -246,9 +266,7 @@ export const lineKeyOfOutcome = (
   }
   switch (outcome.verdict) {
     case 'failed':
-      return outcome.cause === 'check-rejected'
-        ? 'socialRecovery.ceremony.testFailedNoMatch'
-        : 'socialRecovery.ceremony.testFailedLine'
+      return failedTestLineKeyOf(outcome.cause)
     case 'notSupported':
       return 'socialRecovery.ceremony.notSupportedLine'
     case 'unavailable':

@@ -593,6 +593,7 @@ export const describeIdentityRow = (kind: IdentityRowCase) => {
 
       each([
         ['a mismatch on chain', failed('check-rejected'), 'testFailedNoMatch'],
+        ['a check the chain refused to judge', failed('check-reverted'), 'testFailedReverted'],
         ['any other failure', failed('thrown'), 'testFailedLine']
       ] as const)('reads %s with its line and no cause line', async ([, outcome, lineKey]) => {
         await testAndReturn(outcome)

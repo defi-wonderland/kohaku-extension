@@ -200,6 +200,12 @@ afterEach(() => restore())
 
 const NOTE = (key: string) => `socialRecovery.ceremony.${key}`
 
+/** The line a failed test reads for the causes that name their own. */
+const FAILED_TEST_LINES: Record<string, string> = {
+  'check-rejected': NOTE('testFailedNoMatch'),
+  'check-reverted': NOTE('testFailedReverted')
+}
+
 /** The chip, note and line a row renders for one verdict of `call`. */
 const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
   const chip = rowChipOf(outcome, call)
@@ -221,9 +227,7 @@ const expectRow = (outcome: Outcome & { type: 'verdict' }, call: Call) => {
       failed: [
         'method:testFailed',
         null,
-        /check-rejected/.test(outcome.cause ?? '')
-          ? NOTE('testFailedNoMatch')
-          : NOTE('testFailedLine')
+        FAILED_TEST_LINES[outcome.cause ?? ''] ?? NOTE('testFailedLine')
       ],
       unavailable: ['method:testUnavailable', unavailableNote, null],
       'not-supported': ['method:notSupported', NOTE('notSupportedNote'), NOTE('notSupportedLine')]
@@ -421,6 +425,11 @@ describe('what a row renders, by call', () => {
       'method:testFailed',
       null,
       NOTE('testFailedNoMatch')
+    ])
+    expect(row(failed('check-reverted'), 'testAccess')).toEqual([
+      'method:testFailed',
+      null,
+      NOTE('testFailedReverted')
     ])
     expect(row(failed('relying-party-mismatch'), 'testAccess')).toEqual([
       'method:testFailed',
