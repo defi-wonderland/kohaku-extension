@@ -167,7 +167,10 @@ export interface EditorStepsInput {
   receipts: ReceiptReads
   port: SendPort
   requests: SendRequestPort
-  records: Pick<WalletRecords, 'saveSetup' | 'saveInFlight' | 'setup' | 'decryptedSetupCache'>
+  records: Pick<
+    WalletRecords,
+    'saveSetup' | 'saveInFlight' | 'setup' | 'decryptedSetupCache' | 'endPastCountdown'
+  >
   session: EditSessionAccessor
   chainId: ChainId
   account: Address

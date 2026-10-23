@@ -27,7 +27,7 @@ import {
 } from '@web/modules/social-recovery/shared/writes'
 
 import { blockOrNone, waitForNewBlock } from './block'
-import type { PreparedSave, SaveSteps, SaveStepsInput } from './types'
+import type { PastCountdownInput, PreparedSave, SaveSteps, SaveStepsInput } from './types'
 
 /** The calls of a prepared write, in order: a batch's own, or the one call. */
 export const callsOf = (prepared: PreparedCall | PreparedBatch): readonly PreparedCall[] =>
@@ -48,6 +48,27 @@ export const committedDraftOf = (draft: SetupDraft): SetupDraft => {
   return publicMetadata === draft.privacy.publicMetadata
     ? draft
     : { ...draft, privacy: { ...draft.privacy, publicMetadata } }
+}
+
+/**
+ * Ends this device's countdown of an attempt the chain shows over, once a
+ * setup write on the account landed: the recovery that brought the account
+ * here is done. A waiting or due attempt's countdown stays, and a read that
+ * fails ends nothing.
+ */
+export const endPastCountdown = async ({
+  client,
+  records,
+  chainId,
+  account
+}: PastCountdownInput): Promise<void> => {
+  const last = await client.walletReads.attemptState().then(
+    (state) => state.attempt,
+    () => undefined
+  )
+  if (last) {
+    await records.endPastCountdown(chainId, account, last).catch(() => false)
+  }
 }
 
 export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
@@ -179,6 +200,9 @@ export const saveStepsOf = (input: SaveStepsInput): SaveSteps => {
     },
     confirm: ({ draft, prepared }) => client.setup.confirmSetup(draft, prepared),
     newBlock: (limitMs) => waitForNewBlock(() => input.receipts.blockNumber(), limitMs),
-    wipe: () => input.records.saveSetup(input.chainId, input.account)
+    async wipe() {
+      await input.records.saveSetup(input.chainId, input.account)
+      await endPastCountdown(input)
+    }
   }
 }

@@ -56,6 +56,7 @@ import type {
   ExpectedRevision,
   LandedRecoverySession,
   LandedStoredSession,
+  LastAttempt,
   ListedRecord,
   ListedRecoveryEntry,
   LiveRecoverySession,
@@ -1178,6 +1179,34 @@ export const createWalletRecords = ({
     expectedRevision: ExpectedRevision
   ): Promise<boolean> => removeSessionIn(chainId, account, 'landed', expectedRevision)
 
+  /**
+   * Removes the landed session of an attempt `last` shows over: one before the
+   * last attempt, or the last one consumed. Runs in the session's queue, so a
+   * countdown written meanwhile is judged as it stands.
+   */
+  const endPastCountdown = (
+    chainId: ChainId,
+    account: Address,
+    last: LastAttempt
+  ): Promise<boolean> =>
+    inSessionQueue(chainId, account, async (current, key) => {
+      if (
+        current.status !== 'present' ||
+        current.value.state !== 'landed' ||
+        current.value.attemptId === undefined
+      ) {
+        return false
+      }
+      const attemptId = BigInt(current.value.attemptId)
+      const over =
+        attemptId < last.attemptId || (attemptId === last.attemptId && last.state === 'Consumed')
+      if (!over) {
+        return false
+      }
+      await storage.remove(key)
+      return true
+    })
+
   // --- the countdown -------------------------------------------------------
 
   const asCountdown = (read: SessionRead): CountdownRead =>
@@ -1512,6 +1541,7 @@ export const createWalletRecords = ({
     landSubmission,
     clearWipedSession,
     endCountdown,
+    endPastCountdown,
     countdown,
     restoreCountdown,
     listCountdowns,

@@ -9,6 +9,7 @@ import type { Storage } from '@ambire-common/interfaces/storage'
 import type {
   Address,
   ApproverRequest,
+  Attempt,
   Configuration,
   Credential,
   Gathering,
@@ -396,6 +397,9 @@ export type SessionRead = AbsentRecord | ({ status: 'present' } & StoredSession)
  * holds them, and the execution in flight where there is one.
  */
 export type CountdownRecord = Omit<LandedRecoverySession, 'state'>
+
+/** The last attempt the manager holds for an account, as far as a countdown's end reads it. */
+export type LastAttempt = Pick<Attempt, 'attemptId' | 'state'>
 
 /** A stored countdown, with the revision of the landed session it reads from. */
 export type StoredCountdown = StoredRecord<CountdownRecord> & { revision: SessionRevision }
@@ -791,6 +795,13 @@ export interface WalletRecords {
     account: Address,
     expectedRevision: ExpectedRevision
   ): Promise<boolean>
+  /**
+   * Ends the countdown of an attempt that is over by `last`, the last attempt
+   * the manager holds: an earlier attempt, or that attempt consumed. A
+   * countdown of a waiting or due attempt, or one that names no attempt,
+   * stays. Returns whether it ended one.
+   */
+  endPastCountdown(chainId: ChainId, account: Address, last: LastAttempt): Promise<boolean>
   countdown(chainId: ChainId, account: Address): CountdownAccessor
   /**
    * Keeps the countdown of an attempt found running on chain, holding the
