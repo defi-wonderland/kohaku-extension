@@ -425,19 +425,15 @@
       "items": {
         "passkey": "your passkey",
         "passkeys": "your passkeys",
-        "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
         "pair": "{{first}} and {{second}}",
-        "aadhaar": "your Aadhaar identity",
         "aadhaarIdentifier": "the identifier your Aadhaar produces",
         "triple": "{{first}}, {{second}} and {{third}}"
       },
       "itemsLead": {
         "passkey": "Your passkey",
         "passkeys": "Your passkeys",
-        "passport": "Your passport",
         "passportIdentifier": "The identifier your passport produces",
-        "aadhaar": "Your Aadhaar identity",
         "aadhaarIdentifier": "The identifier your Aadhaar produces"
       }
     },
