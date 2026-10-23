@@ -40,7 +40,8 @@ import {
 import type {
   FakeAttemptReads,
   HeldDecisionCase,
-  Mounted
+  Mounted,
+  UnreadableCase
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
 
@@ -528,7 +529,7 @@ describe('the running attempt band', () => {
     page.unmount()
   })
 
-  const unreadable: [string, () => void][] = [
+  const unreadable: UnreadableCase[] = [
     [
       'the wallet holds no network for the chain',
       () => {

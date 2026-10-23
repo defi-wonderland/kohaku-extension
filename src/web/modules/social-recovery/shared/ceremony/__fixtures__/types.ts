@@ -1,4 +1,4 @@
-import type { Material, Verdict } from '@kohaku-eth/social-recovery'
+import type { EnrollInput, Input, Material, Verdict } from '@kohaku-eth/social-recovery'
 
 import type {
   CeremonyStep,
@@ -52,3 +52,15 @@ export interface CanvasDraw {
   width: number
   height: number
 }
+
+/** Which of a phone request's optional callbacks the library offers. */
+export interface PhoneRequestOffer {
+  withResult?: boolean
+  withBridge?: boolean
+}
+
+/** The device calls that open a phone request. */
+export type PhoneCall = 'enroll' | 'sign'
+
+/** An enrollment's input that opens no request, and what is wrong with it. */
+export type UnopenedCase = [name: string, input: EnrollInput & Input]

@@ -20,6 +20,9 @@ import type {
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   Callback,
+  PhoneCall,
+  PhoneRequestOffer,
+  UnopenedCase,
   Watched
 } from '@web/modules/social-recovery/shared/ceremony/__fixtures__/types'
 
@@ -42,10 +45,7 @@ const REFUSED = { ok: false, stop: { kind: 'dismissed', note: 'refused' } }
  * A request whose callbacks the test fires; `onResult` and the bridge's
  * connection callbacks only where the library offers them.
  */
-const phoneRequest = ({
-  withResult = true,
-  withBridge = true
-}: { withResult?: boolean; withBridge?: boolean } = {}) => {
+const phoneRequest = ({ withResult = true, withBridge = true }: PhoneRequestOffer = {}) => {
   const handlers = new Map<string, Callback[]>()
   const on = (name: string) => (callback: Callback) => {
     handlers.set(name, [...(handlers.get(name) ?? []), callback])
@@ -99,7 +99,7 @@ const watched = (extra: Partial<DeviceCallContext> = {}): Watched => {
 
 /** Starts one device call over `phone` and resolves once the device listens. */
 const start = async (
-  call: 'enroll' | 'sign',
+  call: PhoneCall,
   phone: ReturnType<typeof phoneRequest>,
   extra: Partial<DeviceCallContext> = {}
 ) => {
@@ -325,7 +325,7 @@ describe('the external-app device at a claim', () => {
       }
     })
 
-    const UNOPENED: [string, EnrollInput & Input][] = [
+    const UNOPENED: UnopenedCase[] = [
       ['carries no opener', { kind: 'ceremony' } as EnrollInput & Input],
       [
         'has an opener that throws',
@@ -454,7 +454,7 @@ const flush = async () => {
 
 /** Starts one device call under a fake clock and resolves once the device listens. */
 const startOnFakeClock = async (
-  call: 'enroll' | 'sign',
+  call: PhoneCall,
   phone: ReturnType<typeof phoneRequest>,
   options: ExternalAppDeviceOptions = {},
   extra: Partial<DeviceCallContext> = {}
