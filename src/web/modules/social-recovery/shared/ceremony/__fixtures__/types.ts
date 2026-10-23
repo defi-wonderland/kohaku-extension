@@ -1,6 +1,7 @@
 import type { EnrollInput, Input, Material, Verdict } from '@kohaku-eth/social-recovery'
 
 import type {
+  CeremonyCall,
   CeremonyStep,
   CeremonyView,
   ChainVerdict,
@@ -64,3 +65,6 @@ export type PhoneCall = 'enroll' | 'sign'
 
 /** An enrollment's input that opens no request, and what is wrong with it. */
 export type UnopenedCase = [name: string, input: EnrollInput & Input]
+
+/** A device call that opens a phone request, and the lifecycle call it serves. */
+export type PhoneErrorCase = [device: PhoneCall, call: CeremonyCall]

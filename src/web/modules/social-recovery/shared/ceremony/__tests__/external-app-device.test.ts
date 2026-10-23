@@ -3,9 +3,10 @@
  * a phone: it opens the request the method's input carries, has the screen
  * draw its link, follows the phone's callbacks as steps, and hands back the
  * verified result at an enrollment and the proofs at a claim. A declined
- * request is the refused note, the phone's error a failure with its message,
- * a request that does not open a device that did not answer, and an abort the
- * cancelled note, after which no callback counts. The request here is a
+ * request is the refused note, the phone's error a failure with its message
+ * (at an access test, a test that could not run), a request that does not
+ * open a device that did not answer, and an abort the cancelled note, after
+ * which no callback counts. The request here is a
  * hand-made one whose callbacks the test fires.
  */
 import type { EnrollInput, Input } from '@kohaku-eth/social-recovery'
@@ -21,6 +22,7 @@ import type {
 import type {
   Callback,
   PhoneCall,
+  PhoneErrorCase,
   PhoneRequestOffer,
   UnopenedCase,
   Watched
@@ -375,6 +377,45 @@ const UNREACHABLE = {
   stop: { kind: 'verdict', verdict: 'unavailable', retry: true, cause: 'unreachable' }
 }
 
+describe("the phone's error by the call the device serves", () => {
+  it('reads an error at an access test as a test that could not run, with its message and retry', async () => {
+    const phone = phoneRequest()
+    const run = await start('sign', phone, { call: 'testAccess' })
+    phone.fire('error', 'The chip did not answer.')
+    await expect(run.running).resolves.toEqual({
+      ok: false,
+      stop: {
+        kind: 'verdict',
+        verdict: 'unavailable',
+        retry: true,
+        cause: 'phone-error',
+        detail: 'The chip did not answer.'
+      }
+    })
+  })
+
+  const FAILING_CALLS: PhoneErrorCase[] = [
+    ['enroll', 'enroll'],
+    ['sign', 'createClaim']
+  ]
+  FAILING_CALLS.forEach(([device, call]) =>
+    it(`reads an error at ${call} as failed`, async () => {
+      const phone = phoneRequest()
+      const run = await start(device, phone, { call })
+      phone.fire('error', 'The chip did not answer.')
+      await expect(run.running).resolves.toEqual({
+        ok: false,
+        stop: {
+          kind: 'verdict',
+          verdict: 'failed',
+          retry: true,
+          cause: 'phone-error',
+          detail: 'The chip did not answer.'
+        }
+      })
+    })
+  )
+})
 ;(['enroll', 'sign'] as const).forEach((call) =>
   describe(`the external-app device when the phone's connection drops at ${call}`, () => {
     it('reads a connection lost before any proof as unreachable, with retry, after the steps it showed', async () => {
