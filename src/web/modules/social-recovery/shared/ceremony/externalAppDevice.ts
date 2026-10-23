@@ -16,7 +16,9 @@
  * that never connected; lost after, it changes nothing. A page that cannot
  * draw the code runs no request. After an abort no callback is honoured.
  * However the wait ends, the device closes the request once, a task later,
- * so the phone's connection does not outlive it.
+ * so the phone's connection does not outlive it; a request it drops without
+ * following, opened after an abort or offering no result at an enrollment,
+ * it closes at once.
  *
  * Once the phone took the request, the device waits `phoneIdleMs` for its
  * next answer, by default `CEREMONY_TIMEOUT_MS`, the span a passkey hand-off
@@ -76,8 +78,8 @@ const stopped = (stop: CeremonyStop): DeviceResult => ({ ok: false, stop })
 /**
  * The opener's answer, or undefined as soon as the signal aborts, so a Cancel
  * while the request is still opening answers at once. A request that opens
- * after the abort is dropped, and a rejection that lands after it is
- * consumed.
+ * after the abort is closed and dropped, and a rejection that lands after it
+ * is consumed.
  */
 const untilAborted = (opening: Promise<unknown>, signal: AbortSignal | undefined) =>
   signal
@@ -87,6 +89,9 @@ const untilAborted = (opening: Promise<unknown>, signal: AbortSignal | undefined
         opening.then(
           (value) => {
             signal.removeEventListener('abort', onAbort)
+            if (signal.aborted && isRequest(value)) {
+              value.close?.()
+            }
             resolve(value)
           },
           (error: unknown) => {
@@ -203,6 +208,9 @@ const open = async (
     return context.signal?.aborted ? cancelled() : stopped(unavailable('device-unavailable'))
   }
   if (context.signal?.aborted) {
+    if (isRequest(request)) {
+      request.close?.()
+    }
     return cancelled()
   }
   return isRequest(request) ? request : stopped(unavailable('device-unavailable'))
@@ -254,6 +262,7 @@ export const externalAppDevice = ({
       return request
     }
     if (!request.onResult) {
+      request.close?.()
       return stopped(unavailable('device-unavailable'))
     }
     return follow(request, context, phoneIdleMs, listenForResult(request.onResult))

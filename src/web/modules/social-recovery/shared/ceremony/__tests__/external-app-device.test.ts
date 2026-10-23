@@ -15,7 +15,8 @@ import type {
   CeremonyStep,
   CeremonyView,
   DeviceCallContext,
-  DeviceResult
+  DeviceResult,
+  ExternalAppDeviceOptions
 } from '@web/modules/social-recovery/shared/ceremony'
 import type {
   Callback,
@@ -152,7 +153,7 @@ describe('the external-app device at an enrollment', () => {
     await expect(run.running).resolves.toEqual({ ok: false, stop: UNAVAILABLE })
   })
 
-  it('reads a request with no result callback as a device that did not answer, right after it opens, and shows nothing', async () => {
+  it('reads a request with no result callback as a device that did not answer, right after it opens, shows nothing and closes it', async () => {
     const phone = phoneRequest({ withResult: false })
     const run = await start('enroll', phone)
     expect(run.open).toHaveBeenCalledTimes(1)
@@ -160,6 +161,7 @@ describe('the external-app device at an enrollment', () => {
     expect(run.views).toEqual([])
     expect(run.steps).toEqual([])
     expect(phone.listening('success')).toBe(0)
+    expect(phone.close).toHaveBeenCalledTimes(1)
   })
 
   it('never builds the result from the success callback, whatever proofs it delivers', async () => {
@@ -256,7 +258,7 @@ describe('the external-app device at a claim', () => {
       expect(open).not.toHaveBeenCalled()
     })
 
-    it('reads an abort while the request opens as cancelled, and shows nothing', async () => {
+    it('reads an abort while the request opens as cancelled, shows nothing and closes the request once', async () => {
       const controller = new AbortController()
       const phone = phoneRequest()
       let opened: () => void = () => undefined
@@ -270,11 +272,13 @@ describe('the external-app device at a claim', () => {
       controller.abort()
       opened()
       await expect(running).resolves.toEqual(CANCELLED)
+      await tick()
       expect(watch.views).toEqual([])
       expect(phone.listening('success')).toBe(0)
+      expect(phone.close).toHaveBeenCalledTimes(1)
     })
 
-    it('answers cancelled at once for an abort while the opener hangs, and ignores a request that opens later', async () => {
+    it('answers cancelled at once for an abort while the opener hangs, and closes a request that opens later without following it', async () => {
       const controller = new AbortController()
       const phone = phoneRequest()
       let opened: () => void = () => undefined
@@ -293,6 +297,7 @@ describe('the external-app device at a claim', () => {
       expect(watch.steps).toEqual([])
       expect(phone.listening('success')).toBe(0)
       expect(phone.listening('result')).toBe(0)
+      expect(phone.close).toHaveBeenCalledTimes(1)
     })
 
     it('answers cancelled at once for an abort while the opener hangs, and consumes its later rejection', async () => {
@@ -451,7 +456,7 @@ const flush = async () => {
 const startOnFakeClock = async (
   call: 'enroll' | 'sign',
   phone: ReturnType<typeof phoneRequest>,
-  options: { phoneIdleMs?: number } = {},
+  options: ExternalAppDeviceOptions = {},
   extra: Partial<DeviceCallContext> = {}
 ) => {
   const watch = watched(extra)

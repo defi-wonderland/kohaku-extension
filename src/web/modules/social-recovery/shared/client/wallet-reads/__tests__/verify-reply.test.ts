@@ -48,6 +48,7 @@ import type {
   ScriptedProvider
 } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
+import type { ReplyCheckCase } from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/types'
 import {
   createReplyCheck,
   createReplyVerify
@@ -249,7 +250,7 @@ const VERIFIER_NOT_FOUND = encodeErrorResult({
 })
 
 describe('the check a ceremony reads, which keeps a revert apart from a refusal', () => {
-  const CASES: [string, () => Hex | Error, 'reverted' | 'rejected'][] = [
+  const CASES: ReplyCheckCase[] = [
     ['a revert with a reason', () => reverting(VERIFIER_NOT_FOUND), 'reverted'],
     ['a revert that carries no data', () => reverting('0x'), 'reverted'],
     ['an answer other than the verdict word', answersWord(OTHER_WORD), 'rejected']
