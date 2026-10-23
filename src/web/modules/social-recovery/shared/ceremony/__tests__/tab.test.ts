@@ -969,6 +969,27 @@ describe('the ceremony tab for the identity bindings', () => {
     expect(page.textContent).not.toContain(STRINGS.cancelledNote)
   })
 
+  it('reads an identity ceremony cancelled while its resolve runs as stopped, before any binding resolves', async () => {
+    let fail: (error: Error) => void = () => undefined
+    buildClient.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        })
+    )
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('zkpassport'))
+    const page = await render(`?call=enroll&method=zkpassport&id=${ID}`)
+    await press(page, STRINGS.cancelAction)
+    await act(async () => {
+      fail(new Error('the provider did not answer'))
+      await flush(20)
+    })
+    expect(page.textContent).toContain(STRINGS.stoppedNote)
+    expect(page.textContent).not.toContain(STRINGS.cancelledNote)
+    const report = await takeReport('enroll', 'zkpassport')
+    expect(report?.outcome).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+  })
+
   it('says it opens the request while the phone request has not opened yet', async () => {
     serve(
       'zkpassport',
