@@ -34,8 +34,11 @@ export const ADD_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa', 'zkpassport',
  */
 export const SECOND_METHOD_KINDS: readonly SlotKind[] = ['passkey', 'ecdsa']
 
-/** The threshold a new group starts with, two of its members. */
-export const NEW_GROUP_THRESHOLD = 2
+/**
+ * The threshold a group of `count` members is suggested: any one of one or
+ * two members, two from three members on.
+ */
+export const suggestedThresholdOf = (count: number): number => (count >= 3 ? 2 : 1)
 
 const DUPLICATE: EditResult = { status: 'refused', reason: 'duplicate' }
 
@@ -120,13 +123,17 @@ export const addRequired = (clauses: readonly Clause[], credential: Credential):
 export const removeClause = (clauses: readonly Clause[], index: number): Clause[] =>
   clauses.filter((_, i) => i !== index)
 
-/** Adds a group with no member and the starting threshold. */
+/** Adds a group with no member and the threshold suggested for none. */
 export const addGroup = (clauses: readonly Clause[]): Clause[] => [
   ...clauses,
-  { threshold: NEW_GROUP_THRESHOLD, credentials: [] }
+  { threshold: suggestedThresholdOf(0), credentials: [] }
 ]
 
-/** Adds a member to a group: an empty slot or an enrolled credential. */
+/**
+ * Adds a member to a group: an empty slot or an enrolled credential. A
+ * threshold still at the suggestion for the members before follows the
+ * suggestion for the members after; a threshold the holder set is kept.
+ */
 export const addMember = (
   clauses: readonly Clause[],
   group: number,
@@ -136,9 +143,16 @@ export const addMember = (
     return DUPLICATE
   }
   const { threshold, credentials } = clauses[group]
+  const next =
+    threshold === suggestedThresholdOf(credentials.length)
+      ? suggestedThresholdOf(credentials.length + 1)
+      : threshold
   return {
     status: 'applied',
-    clauses: replaceAt(clauses, group, { threshold, credentials: [...credentials, credential] }),
+    clauses: replaceAt(clauses, group, {
+      threshold: next,
+      credentials: [...credentials, credential]
+    }),
     at: { clause: group, member: credentials.length }
   }
 }

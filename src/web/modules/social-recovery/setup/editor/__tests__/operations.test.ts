@@ -177,10 +177,27 @@ describe('a required row', () => {
 })
 
 describe('a group', () => {
-  it('is added with no member and a threshold of two', () => {
+  it('is added with no member and a threshold of one', () => {
     const clauses = frozen(presetPath())
-    expect(addGroup(clauses)).toEqual([...presetPath(), { threshold: 2, credentials: [] }])
+    expect(addGroup(clauses)).toEqual([...presetPath(), { threshold: 1, credentials: [] }])
     expect(clauses).toEqual(presetPath())
+  })
+
+  it('suggests any one of one or two members and two of three, as its members are added', () => {
+    const one = applied(addMember(addGroup([]), 0, ALICE))
+    expect(one.clauses[0]).toEqual({ threshold: 1, credentials: [ALICE] })
+    const two = applied(addMember(one.clauses, 0, BOB))
+    expect(two.clauses[0]).toEqual({ threshold: 1, credentials: [ALICE, BOB] })
+    const three = applied(addMember(two.clauses, 0, CAROL))
+    expect(three.clauses[0]).toEqual({ threshold: 2, credentials: [ALICE, BOB, CAROL] })
+  })
+
+  it('keeps a threshold the holder set as its members are added', () => {
+    const set = setThreshold([{ threshold: 1, credentials: [ALICE] }], 0, 2)
+    const two = applied(addMember(set, 0, BOB))
+    expect(two.clauses[0]).toEqual({ threshold: 2, credentials: [ALICE, BOB] })
+    const three = applied(addMember(two.clauses, 0, CAROL))
+    expect(three.clauses[0]).toEqual({ threshold: 2, credentials: [ALICE, BOB, CAROL] })
   })
 
   it('is removed with every member', () => {
@@ -294,7 +311,7 @@ describe('moving a member', () => {
 
   it('moves a row into an empty group', () => {
     const result = applied(moveToGroup(addGroup([{ threshold: 1, credentials: [ALICE] }]), 0, 1))
-    expect(result.clauses).toEqual([{ threshold: 2, credentials: [ALICE] }])
+    expect(result.clauses).toEqual([{ threshold: 1, credentials: [ALICE] }])
     expect(result.clauses[0].credentials[0]).toBe(ALICE)
   })
 

@@ -317,7 +317,7 @@ describe('every edit on screen', () => {
       { threshold: 2, credentials: [BOB] },
       { threshold: 1, credentials: [CAROL] },
       { threshold: 1, credentials: [ALICE] },
-      { threshold: 2, credentials: [] }
+      { threshold: 1, credentials: [] }
     ])
 
     await press('editor-group-1-remove')
@@ -325,14 +325,14 @@ describe('every edit on screen', () => {
       { threshold: 1, credentials: [PASSKEY] },
       { threshold: 1, credentials: [CAROL] },
       { threshold: 1, credentials: [ALICE] },
-      { threshold: 2, credentials: [] }
+      { threshold: 1, credentials: [] }
     ])
 
     await press('editor-row-0-remove')
     await expectPathMatchesDraft(stored, [
       { threshold: 1, credentials: [CAROL] },
       { threshold: 1, credentials: [ALICE] },
-      { threshold: 2, credentials: [] }
+      { threshold: 1, credentials: [] }
     ])
   })
 
@@ -627,7 +627,7 @@ describe('the first edit over no stored draft', () => {
     const { draft, path } = await stored()
     expect(draft).toEqual({
       wait: 48 * 60 * 60,
-      clauses: [{ threshold: 2, credentials: [] }],
+      clauses: [{ threshold: 1, credentials: [] }],
       ignoresPause: true,
       privacy: { publicMetadata: '0x', backup: 'encrypted' }
     })
@@ -834,8 +834,8 @@ describe('a failed read or write of the draft', () => {
     expect(isHeld('editor-continue')).toBe(false)
     await expectPathMatchesDraft(stored, [
       ...presetPath(),
-      { threshold: 2, credentials: [] },
-      { threshold: 2, credentials: [] }
+      { threshold: 1, credentials: [] },
+      { threshold: 1, credentials: [] }
     ])
   })
 
@@ -854,7 +854,7 @@ describe('a failed read or write of the draft', () => {
     await expectPathMatchesDraft(stored, [
       { threshold: 1, credentials: [PASSKEY] },
       { threshold: 2, credentials: [ALICE, BOB] },
-      { threshold: 2, credentials: [] }
+      { threshold: 1, credentials: [] }
     ])
   })
 
