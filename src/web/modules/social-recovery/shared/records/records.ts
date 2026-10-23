@@ -20,7 +20,6 @@ import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type {
   Address,
   ApproverRequest,
-  Credential,
   Gathering,
   GatheringPlace,
   Hex
@@ -33,7 +32,13 @@ import {
   recordDeploymentOf,
   isSessionOfDeployment
 } from './deployment'
-import { isDecimalString, isStoredAddress, isStoredSeconds } from './guards'
+import {
+  isDecimalString,
+  isPlainObject,
+  isStoredAddress,
+  isStoredCredential,
+  isStoredSeconds
+} from './guards'
 import { wipeRecoveryPassword } from './recoveryPassword'
 import { ABSENT, SETUP_RECORD_NAMES } from './types'
 import type {
@@ -211,20 +216,6 @@ const isRecoveryEntry = (value: unknown): value is RecoveryEntryRecord => {
     isStoredAddress(record.receivingAccount)
   )
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/**
- * Whether a stored value is a credential: its method address, its config and,
- * where present, its label and salt.
- */
-const isStoredCredential = (value: unknown): value is Credential =>
-  isPlainObject(value) &&
-  isStoredAddress(value.method) &&
-  isHex(value.config) &&
-  (value.label === undefined || typeof value.label === 'string') &&
-  (value.salt === undefined || isHex(value.salt))
 
 /**
  * Whether a stored value is a ceremony request: its account, chain and method,

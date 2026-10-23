@@ -307,6 +307,7 @@
       "stopAction": "Stop",
       "declinedNote": "Declined · you declined the request on the phone",
       "phoneErrorNote": "Failed · your phone reported an error · Try again",
+      "testPhoneErrorNote": "Could not run · your phone reported an error",
       "noMatchCause": "The result did not match the identifier recorded at setup.",
       "rejectedCause": "The result did not pass the method's own check. Try again with the same document.",
       "phoneRequestName": "Kohaku",
@@ -425,19 +426,15 @@
       "items": {
         "passkey": "your passkey",
         "passkeys": "your passkeys",
-        "passport": "your passport",
         "passportIdentifier": "the identifier your passport produces",
         "pair": "{{first}} and {{second}}",
-        "aadhaar": "your Aadhaar identity",
         "aadhaarIdentifier": "the identifier your Aadhaar produces",
         "triple": "{{first}}, {{second}} and {{third}}"
       },
       "itemsLead": {
         "passkey": "Your passkey",
         "passkeys": "Your passkeys",
-        "passport": "Your passport",
         "passportIdentifier": "The identifier your passport produces",
-        "aadhaar": "Your Aadhaar identity",
         "aadhaarIdentifier": "The identifier your Aadhaar produces"
       }
     },
