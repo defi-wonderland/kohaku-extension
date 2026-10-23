@@ -955,7 +955,8 @@
         "removedUnknown": "This wallet cannot name the key a recovery would remove on this account.",
         "removedNotAuthority": "The key a recovery would remove does not hold control of this account.",
         "malformed": "This wallet could not build a valid recovery request for this account.",
-        "unnamed": "This wallet read a refusal it cannot name."
+        "unnamed": "This wallet read a refusal it cannot name.",
+        "sameAccount": "This is the account being recovered. Choose another account to receive control."
       },
       "destination": {
         "holdsPrivilege": "This key already holds a privilege on the account you are recovering, so this recovery cannot install it. Choose another account.",

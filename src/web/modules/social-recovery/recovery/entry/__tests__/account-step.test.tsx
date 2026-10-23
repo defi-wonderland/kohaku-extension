@@ -10,11 +10,13 @@ import {
   BASIC,
   CHAIN_ID,
   chip,
+  DAILY,
   confirmLost,
   dispatch,
   failedClient,
   forwardedCall,
   historyEntry,
+  keyOf,
   offchainFault,
   readyClient,
   reloadAccountStep,
@@ -39,8 +41,10 @@ import {
   searchOf,
   setClient,
   setupStateOf,
+  setWallet,
   SMART,
   SMART_KEY,
+  smartAccount,
   storage,
   storedEntry,
   storeEndedRecovery,
@@ -48,6 +52,7 @@ import {
   t,
   timedOut,
   valueLabel,
+  VAULT,
   VIEW_ONLY
 } from '@web/modules/social-recovery/recovery/entry/__tests__/harness'
 import { deferred } from '@web/modules/social-recovery/shared/chrome/__fixtures__/deferred'
@@ -831,6 +836,23 @@ describe('the destination key', () => {
     expect(page.textOf('entry-destination-refusal')).toBe(
       t('socialRecovery.entry.destination.alreadyAKey')
     )
+    expectNoContinue(page)
+    await page.press('entry-destination-choose-another')
+    expect(navigate).toHaveBeenLastCalledWith('/social-recovery/recovery')
+  })
+
+  it('refuses the account being recovered as the account that receives control, with continue held', async () => {
+    // A past recovery left the account listed here with its key in the keystore.
+    setWallet({
+      accounts: [DAILY, VAULT, smartAccount(LOST, LOST_KEY, 'Lost')],
+      keys: [keyOf(BASIC), keyOf(SMART_KEY), keyOf(LOST_KEY)]
+    })
+    const page = await open(searchOf('logged-in', LOST))
+    await confirmLost(page)
+    expect(page.textOf('entry-destination-refusal')).toBe(
+      t('socialRecovery.entry.refusal.sameAccount')
+    )
+    expect(page.has('entry-destination-same-account')).toBe(true)
     expectNoContinue(page)
     await page.press('entry-destination-choose-another')
     expect(navigate).toHaveBeenLastCalledWith('/social-recovery/recovery')

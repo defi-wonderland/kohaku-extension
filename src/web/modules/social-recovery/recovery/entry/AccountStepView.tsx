@@ -264,7 +264,10 @@ const AccountStepView = ({
           />
         )}
         <ConfirmedReadsView
-          step={confirmedStepOf(reads, destination)}
+          step={confirmedStepOf(reads, destination, {
+            confirmed: target.address,
+            receiving: search.receivingAccount
+          })}
           route={search.route}
           networkName={networkName}
           attemptActive={found.attemptActive}

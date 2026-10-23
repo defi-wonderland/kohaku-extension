@@ -127,6 +127,12 @@ export interface DestinationAnswers {
 /** The reads after the confirmation, in the order they run. */
 export type ConfirmedStage = 'authorization' | 'fit' | 'destination'
 
+/** The account the holder confirmed and the account the holder chose to receive its control. */
+export interface ConfirmedAccounts {
+  confirmed: Address
+  receiving: Address
+}
+
 /** Each read after the confirmation; a read that has not started yet is absent. */
 export interface ConfirmedReads {
   authorization?: EntryRead<boolean>
@@ -147,7 +153,7 @@ export type RecoverRefusal =
   | 'removed-not-authority'
 
 /** Why the key a recovery installs cannot be installed on the account. */
-export type DestinationRefusal = 'already-a-key' | 'holds-privilege'
+export type DestinationRefusal = 'already-a-key' | 'holds-privilege' | 'same-account'
 
 /** Where the account step stands after the confirmation, the first that applies. */
 export type ConfirmedStep =
