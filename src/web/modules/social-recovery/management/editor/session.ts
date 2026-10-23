@@ -14,10 +14,7 @@ import { isHex } from 'viem'
 
 import { PRIVACY_LEVELS } from '@web/modules/social-recovery/shared/client'
 import type { Address, Clause, Configuration } from '@kohaku-eth/social-recovery'
-import {
-  isStoredCredential,
-  RECORDS_KEY_PREFIX
-} from '@web/modules/social-recovery/shared/records'
+import { isStoredCredential, RECORDS_KEY_PREFIX } from '@web/modules/social-recovery/shared/records'
 import type { ChainId } from '@web/modules/social-recovery/shared/records'
 
 import { PASSWORD_MARKS } from './constants'

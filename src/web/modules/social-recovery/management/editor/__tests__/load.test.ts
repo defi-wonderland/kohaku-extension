@@ -213,7 +213,7 @@ describe('the edit session', () => {
     ).toBeDefined()
   })
 
-  ;[
+  const MALFORMED_CREDENTIALS = [
     {
       name: 'a config that is not hex',
       credential: { method: '0x0000000000000000000000000000000000000002', config: 'zz' }
@@ -224,7 +224,8 @@ describe('the edit session', () => {
       credential: { method: '0x0000000000000000000000000000000000000002', config: '0x02', label: 7 }
     },
     { name: 'an array', credential: ['0x0000000000000000000000000000000000000002', '0x02'] }
-  ].forEach(({ name, credential }) => {
+  ]
+  MALFORMED_CREDENTIALS.forEach(({ name, credential }) => {
     it(`reads a stored session holding a credential with ${name} as none`, () => {
       expect(editSessionFrom(storedSessionWith(credential))).toBeUndefined()
     })
