@@ -191,6 +191,45 @@ describe('the edit session', () => {
     expect(editSessionFrom({ value: { level: 'open' } })).toBeUndefined()
   })
 
+  const storedSessionWith = (credential: unknown) => ({
+    value: {
+      configuration: {
+        ...CONFIGURATION,
+        clauses: [{ threshold: 1, credentials: [credential] }]
+      },
+      setupNonce: 4n,
+      setupCommitment: stateAt(4n).setupCommitment,
+      level: 'public',
+      password: 'kept'
+    },
+    savedAt: 1
+  })
+
+  it('reads a stored session whose credentials are well formed', () => {
+    expect(
+      editSessionFrom(
+        storedSessionWith({ method: '0x0000000000000000000000000000000000000002', config: '0x02' })
+      )
+    ).toBeDefined()
+  })
+
+  ;[
+    {
+      name: 'a config that is not hex',
+      credential: { method: '0x0000000000000000000000000000000000000002', config: 'zz' }
+    },
+    { name: 'a method that is not an address', credential: { method: '0x02', config: '0x02' } },
+    {
+      name: 'a numeric label',
+      credential: { method: '0x0000000000000000000000000000000000000002', config: '0x02', label: 7 }
+    },
+    { name: 'an array', credential: ['0x0000000000000000000000000000000000000002', '0x02'] }
+  ].forEach(({ name, credential }) => {
+    it(`reads a stored session holding a credential with ${name} as none`, () => {
+      expect(editSessionFrom(storedSessionWith(credential))).toBeUndefined()
+    })
+  })
+
   it('wipes the session', async () => {
     const world = worldOf()
     await openEditSession({
