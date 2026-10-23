@@ -102,6 +102,14 @@ export const SLOT_KINDS = ['ecdsa', 'passkey', 'zkpassport', 'aadhaar'] as const
 export type SlotKind = typeof SLOT_KINDS[number]
 
 /**
+ * The kinds of method that prove an identity: a passport through zkPassport
+ * and an Aadhaar identity. Their identifier stays the same across setups, and
+ * their parameters are build data rather than the caller's.
+ */
+export const IDENTITY_KINDS = ['zkpassport', 'aadhaar'] as const
+export type IdentityKind = Extract<SlotKind, typeof IDENTITY_KINDS[number]>
+
+/**
  * The access test verdicts an enrollment carries: passed, one of the four
  * verdict states, or live for a method the committed setup already holds,
  * which no test of this edit has run on.

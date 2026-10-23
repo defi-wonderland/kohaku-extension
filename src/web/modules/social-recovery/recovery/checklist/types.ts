@@ -26,6 +26,7 @@ import type { CollectionChip } from '@web/modules/social-recovery/shared/display
 import type {
   ChainId,
   DirectWipeEvent,
+  IdentityKind,
   LiveRecoverySession,
   RecordDeployment,
   RecoveryEntryRecord,
@@ -390,7 +391,7 @@ export interface PollHook {
 // ---------------------------------------------------------------------------
 
 /** The identity methods a checklist row claims through the ceremony tab. */
-export type IdentityClaimSlug = 'zkpassport' | 'aadhaar'
+export type IdentityClaimSlug = IdentityKind
 
 /** What a claim runs: the method's slug, the params it receives, and whether the holder chose the phone. */
 export interface ClaimLaunch {
