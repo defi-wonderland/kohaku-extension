@@ -497,6 +497,14 @@ describe('the ceremony tab with no provider above it', () => {
     expect(page.textContent).not.toContain(TRY_AGAIN)
   })
 
+  it('reads a passkey prompt the holder dismissed as the cancelled note', async () => {
+    creds.create.mockRejectedValueOnce(new DOMException('dismissed', 'NotAllowedError'))
+    await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
+    const page = await render(ENROLL)
+    expect(page.textContent).toContain(en.socialRecovery.ceremony.cancelledNote)
+    expect(page.textContent).not.toContain(en.socialRecovery.ceremony.stoppedNote)
+  })
+
   it('runs no second ceremony once the request is older than a report may live, as after a reload or in a second tab', async () => {
     await callerRecords().ceremonyRequest(ID).write(recorded.enroll())
     await render(ENROLL)
@@ -943,6 +951,35 @@ describe('the ceremony tab for the identity bindings', () => {
     expect(servedOrchestrator.configFrom).not.toHaveBeenCalled()
     const report = await takeReport('enroll', 'zkpassport')
     expect(report?.outcome).toMatchObject({ kind: 'dismissed', note: 'cancelled' })
+  })
+
+  it('reads an identity ceremony the holder cancelled as stopped, never as a cancelled prompt', async () => {
+    const phone = phoneRequest()
+    serve('zkpassport', passportMethod(phone, 'external-app'))
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('zkpassport'))
+    const page = await render(`?call=enroll&method=zkpassport&id=${ID}`)
+    await press(page, STRINGS.cancelAction)
+    expect(page.textContent).toContain(STRINGS.stoppedNote)
+    expect(page.textContent).not.toContain(STRINGS.cancelledNote)
+  })
+
+  it('says it opens the request while the phone request has not opened yet', async () => {
+    serve(
+      'zkpassport',
+      fakeMethod(
+        {
+          enrollInput: { kind: 'ceremony', openRequest: () => new Promise(() => {}) },
+          signingInput: { openRequest: () => new Promise(() => {}) }
+        },
+        'external-app'
+      )
+    )
+    await callerRecords().ceremonyRequest(ID).write(enrollRecord('zkpassport'))
+    const page = await render(`?call=enroll&method=zkpassport&id=${ID}`)
+    expect(
+      page.querySelector('[data-testid="ceremony-waiting"] [data-testid="loading-screen"]')
+        ?.textContent
+    ).toBe(en.socialRecovery.loading.request)
   })
 
   it('asks for the QR image, proves the decoded data and reads passed', async () => {
