@@ -23,6 +23,7 @@ import {
   thrownBy,
   World
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
+import { isDeploymentRefusal } from '@web/modules/social-recovery/shared/client'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
 
 jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
@@ -31,9 +32,6 @@ jest.mock('@web/modules/social-recovery/shared/client/deployment-env', () => ({
 }))
 
 const variable = sepoliaDeploymentVariable as jest.MockedFunction<typeof sepoliaDeploymentVariable>
-
-const isDeploymentRefusal = (caught: unknown): boolean =>
-  caught instanceof Error && caught.name === 'DeploymentRefusal'
 
 const ARMED: Hex = '0x0000000000000000000000000000000000000000000000000000000000000001'
 const ELSEWHERE: Address = '0x00000000000000000000000000000000000e15e0'
