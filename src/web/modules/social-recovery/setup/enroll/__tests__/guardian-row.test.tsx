@@ -1266,8 +1266,8 @@ describe('the guardian row', () => {
 
     it('asks for no call back and no owner answer, before Add, after Add or after a test', async () => {
       const absent = () => {
-        expect(view!.text()).not.toContain(t(`${GUARDIAN}.callBack`))
-        expect(view!.text()).not.toContain(t(`${GUARDIAN}.ownerAnswer`))
+        expect(view!.text()).not.toContain(t('socialRecovery.checklist.guardian.askCallBack'))
+        expect(view!.text()).not.toContain(t('socialRecovery.checklist.message.callBack'))
       }
       await open()
       await enter(HELD)
