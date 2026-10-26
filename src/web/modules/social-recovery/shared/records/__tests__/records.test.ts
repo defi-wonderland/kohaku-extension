@@ -66,6 +66,7 @@ import {
   WIPE_REASON_STRING_KEYS,
   wipeRecoveryPassword
 } from '@web/modules/social-recovery/shared/records'
+import type { RowNote } from '@web/modules/social-recovery/shared/records'
 import { makeStorage } from '@web/modules/social-recovery/shared/records/__fixtures__/storage'
 import type {
   ApprovalRequest,
@@ -3447,11 +3448,7 @@ describe('the recovery entry', () => {
 
 const NOTE_GATHERING = gathering(ACCOUNT, [])
 
-const setNote = async (
-  records: WalletRecords,
-  place: number,
-  note: 'declined' | 'unanswered' | null
-) =>
+const setNote = async (records: WalletRecords, place: number, note: RowNote | null) =>
   records
     .recoverySession(CHAIN_ID, ACCOUNT)
     .setNote(place, note, await revisionNow(records, ACCOUNT, CHAIN_ID))
