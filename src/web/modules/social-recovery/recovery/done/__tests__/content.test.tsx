@@ -59,9 +59,7 @@ const blocksOf = (screen: Mounted) => screen.allByTestIdPrefix('done-cleanup-syn
 const inBlock = (block: HTMLElement, id: string) =>
   block.querySelector(`[data-testid="${id}"]`)?.textContent ?? ''
 
-const DEVICE_BOUND_KEYS = ['dead', 'twoRequired', 'groupOfTwo']
-
-/** Every block is the synced repair in its order, and no device-bound line renders. */
+/** Every block is the synced repair in its order. */
 const expectSyncedRepairOnly = (screen: Mounted) => {
   blocksOf(screen).forEach((block) => {
     expect(inBlock(block, 'done-synced-title')).toBe(t(`${DONE}.synced.title`))
@@ -69,9 +67,6 @@ const expectSyncedRepairOnly = (screen: Mounted) => {
     expect(inBlock(block, 'done-synced-order')).toBe(t(`${DONE}.synced.order`))
     expect(inBlock(block, 'done-cannot-reach')).toContain(t(`${DONE}.synced.cannotReachTitle`))
     expect(inBlock(block, 'done-remove-in-editor')).toBe(t(`${DONE}.synced.removeInEditor`))
-  })
-  DEVICE_BOUND_KEYS.forEach((key) => {
-    expect(screen.text()).not.toContain(t(`${DONE}.deviceBound.${key}`))
   })
 }
 

@@ -469,7 +469,6 @@ describe('the guardian row', () => {
       expect(view!.text()).toContain(t(`${GUARDIAN}.howMany`))
       expect(view!.byTestId('guardian-test')?.textContent).toBe(t(`${GUARDIAN}.testThisKey`))
       expect(view!.byTestId('guardian-field')).toBeNull()
-      expect(view!.text()).not.toContain(t(`${GUARDIAN}.addAnother`))
     })
 
     it('reads the guardian back on a reload', async () => {

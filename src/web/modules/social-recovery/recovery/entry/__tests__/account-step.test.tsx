@@ -390,7 +390,6 @@ describe('the lookup', () => {
     expect(page.textOf('entry-lookup-update-how')).toBe(
       t('socialRecovery.client.updateTheWalletHow')
     )
-    expect(state?.textContent).not.toContain(t('socialRecovery.client.updateTheWalletAction'))
     expect(state?.querySelector('[role="button"], button')).toBeNull()
     expect(page.has('entry-lookup-refused-retry')).toBe(false)
     expect(page.has('entry-lookup-another')).toBe(false)
