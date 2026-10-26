@@ -127,6 +127,12 @@ export interface DestinationAnswers {
 /** The reads after the confirmation, in the order they run. */
 export type ConfirmedStage = 'authorization' | 'fit' | 'destination'
 
+/**
+ * Why the account step refused the account as its own receiver: the holder
+ * named it, or a stored entry of an earlier build names it.
+ */
+export type SameAccountRefusal = 'asked' | 'stored'
+
 /** The account the holder confirmed and the account the holder chose to receive its control. */
 export interface ConfirmedAccounts {
   confirmed: Address
@@ -270,7 +276,12 @@ export interface ConfirmedReadsViewProps {
 /** The records the account step reads and writes. */
 export type AccountStepRecords = Pick<
   WalletRecords,
-  'recoveryEntry' | 'recoverySession' | 'listRecoveryEntries' | 'restoreCountdown'
+  | 'recoveryEntry'
+  | 'recoverySession'
+  | 'listRecoveryEntries'
+  | 'restoreCountdown'
+  | 'wipeRecoverySession'
+  | 'clearWipedSession'
 >
 
 /** The reads of the registry the running attempt's band makes. */
