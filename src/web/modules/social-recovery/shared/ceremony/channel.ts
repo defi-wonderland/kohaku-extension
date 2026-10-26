@@ -11,19 +11,24 @@
  * background controller is involved.
  *
  * A report of a passed claim carries the reply and its proof, approval
- * material that must not outlive its use. So a report lives only until taken
- * and never past its expiry, ten minutes from `reportedAt`:
+ * material that must not outlive its use. So a report lives only until its
+ * caller has applied it, and never past its expiry, ten minutes from
+ * `reportedAt`:
  *
  * - `readCeremonyReport` and `listenForCeremonyReport` deliver it only where
  *   its id, call and method are the ones the caller expects and `reportedAt`
- *   is within the expiry; the listener removes the report once it delivers it,
- *   and a caller of the read removes it once it has it;
+ *   is within the expiry. The read removes nothing; the listener removes the
+ *   report once it delivers it;
+ * - a caller of the read removes the report once it has applied it, except
+ *   the checklist's claim, which keeps a passed report until the claim
+ *   settles, so a reload finds its reply again, and hears a late report
+ *   through its own subscription;
  * - `sweepCeremonyReports` removes every report past its expiry, and every
  *   malformed one; the tab runs it on mount.
  *
- * The caller (the checklist row) files the reply into its session record at
- * once, which deletes it with the recovery it was gathered for, and keeps no
- * copy of the report.
+ * The checklist files a passed claim's reply into its session record, which
+ * deletes it with the recovery it was gathered for, and then removes the
+ * report.
  *
  * Storage and the listener are parameters, so the channel runs under node.
  * Both hand over values already parsed: the store's `get` reads its own
