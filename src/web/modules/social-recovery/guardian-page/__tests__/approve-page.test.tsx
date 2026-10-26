@@ -528,8 +528,10 @@ describe('the states in place of the sign action', () => {
   })
 
   it('draws a client whose deployment refused its construction checks as another deployment, with no retry', async () => {
-    const refusal = new Error('the action is bound to another manager')
-    refusal.name = 'DeploymentRefusal'
+    const refusal = Object.assign(new Error('the action is bound to another manager'), {
+      name: 'DeploymentRefusal',
+      check: 'action-manager'
+    })
     setClient({ status: 'failed', error: refusal, retry: jest.fn() })
     const page = await mountLive()
     expect(page.textOf('guardian-other-deployment')).toContain(t(`${PAGE}.otherDeployment`))
