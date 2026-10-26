@@ -47,7 +47,12 @@ import { receivingChoicesOf } from './receiving'
 import { confirmedStepOf } from './refusal'
 import { ownKeysOf, runningClaimOf } from './running'
 import RunningAttemptBand from './RunningAttemptBand'
-import type { AccountStepViewProps, ConfirmedStep, SameAccountRefusal } from './types'
+import type {
+  AccountStepViewProps,
+  ConfirmedStep,
+  ResumeJudgement,
+  SameAccountRefusal
+} from './types'
 import { useConfirmedReads } from './useConfirmedReads'
 import { useRunningAttempt } from './useRunningAttempt'
 import { useSetupRead } from './useSetupRead'
@@ -174,7 +179,7 @@ const AccountStepView = ({
     setWriting(true)
     const entry = records.recoveryEntry(chainId, address)
     // An entry or a session of another deployment, or one that names none, is not resumed.
-    const resumes = async (): Promise<'resume' | 'same-account' | 'write'> => {
+    const resumes = async (): Promise<ResumeJudgement> => {
       const held = await entry.read()
       if (
         !ready ||

@@ -133,6 +133,12 @@ export type ConfirmedStage = 'authorization' | 'fit' | 'destination'
  */
 export type SameAccountRefusal = 'asked' | 'stored'
 
+/**
+ * What a confirmation does with the stored entry: resume its live session,
+ * refuse it for naming the account as its own receiver, or write a new one.
+ */
+export type ResumeJudgement = 'resume' | 'same-account' | 'write'
+
 /** The account the holder confirmed and the account the holder chose to receive its control. */
 export interface ConfirmedAccounts {
   confirmed: Address
