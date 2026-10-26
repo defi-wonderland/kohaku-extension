@@ -60,8 +60,14 @@ export const ABSENT: AbsentRecord = Object.freeze({ status: 'absent' as const })
 // The six setup records
 // ---------------------------------------------------------------------------
 
-/** 1. The setup draft: the SDK's own record. */
-export type SetupDraftRecord = SetupDraft
+/**
+ * 1. The setup draft: the SDK's own record, with one flag per clause, aligned
+ * with the clauses, that says whether the holder set that clause's threshold.
+ * A threshold the holder did not set follows the suggestion as members join.
+ * The flags never reach the SDK; a draft stored without them reads with every
+ * flag unset.
+ */
+export type SetupDraftRecord = SetupDraft & { readonly thresholdsSet?: readonly boolean[] }
 
 /**
  * The draft every setup starts from until its later steps overwrite it: a wait

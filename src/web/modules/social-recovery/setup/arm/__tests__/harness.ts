@@ -77,6 +77,7 @@ import type {
   ChainId,
   LastAttempt,
   RecordStorage,
+  SetupDraftRecord,
   SaveInFlightAccessor
 } from '@web/modules/social-recovery/shared/records'
 import { emptySlot } from '@web/modules/social-recovery/shared/records/slots'
@@ -311,6 +312,8 @@ export interface SaveScript {
   password?: string
   /** The last attempt the manager holds; a read that fails where left out. */
   lastAttempt?: LastAttempt
+  /** The editor's threshold flags the stored draft carries, where it carries any. */
+  thresholdsSet?: boolean[]
 }
 
 export const HAPPY: Omit<SaveScript, 'authorized' | 'deployed'> = {
@@ -642,7 +645,10 @@ export const wireSave = (
 ): WiredSave => {
   const address = account.addr as Address
   const facts = factsOf(account, { deployed: script.deployed })
-  const draft = draftOf(script.backup, script.publicMetadata)
+  const draft: SetupDraftRecord = {
+    ...draftOf(script.backup, script.publicMetadata),
+    ...(script.thresholdsSet ? { thresholdsSet: script.thresholdsSet } : {})
+  }
   const prepared = preparedOf(address, script.authorized)
   const prepareCommitSetup = jest.fn(async () => {
     if (script.prepare === 'refuses') {

@@ -22,7 +22,8 @@ import type {
   ApproverRequest,
   Gathering,
   GatheringPlace,
-  Hex
+  Hex,
+  SetupDraft
 } from '@kohaku-eth/social-recovery'
 
 import { RECOVERY_ROUTES, ROW_NOTES } from './constants'
@@ -320,6 +321,27 @@ const withWaitAsRead = <T extends { wait: StoredWait }>(value: T): T & { wait: n
   ...value,
   wait: waitAsRead(value.wait)
 })
+
+/** The SDK's own draft: the setup draft record without the editor's threshold flags. */
+export const sdkDraftOf = ({
+  wait,
+  clauses,
+  ignoresPause,
+  privacy
+}: SetupDraftRecord): SetupDraft => ({ wait, clauses, ignoresPause, privacy })
+
+/**
+ * A stored setup draft as read: its wait as a number, and its threshold flags
+ * only where they are one boolean per clause; any other value reads as none.
+ */
+const draftAsRead = (value: SetupDraftRecord): SetupDraftRecord => {
+  const { thresholdsSet, ...draft } = withWaitAsRead(value)
+  return Array.isArray(thresholdsSet) &&
+    thresholdsSet.length === draft.clauses.length &&
+    thresholdsSet.every((flag) => typeof flag === 'boolean')
+    ? { ...draft, thresholdsSet }
+    : draft
+}
 
 /**
  * Whether a stored credential holds code, read from a value the storage
@@ -666,7 +688,7 @@ export const createWalletRecords = ({
     const draftKey = recordKeys.setup('setupDraft', chainId, account)
     const pathKey = recordKeys.setup('path', chainId, account)
     return {
-      setupDraft: accessor<SetupDraftRecord>(draftKey, withWaitAsRead),
+      setupDraft: accessor<SetupDraftRecord>(draftKey, draftAsRead),
       inventory: accessor(recordKeys.setup('inventory', chainId, account)),
       path: accessor(pathKey),
       enrollments: accessor(recordKeys.setup('enrollments', chainId, account)),

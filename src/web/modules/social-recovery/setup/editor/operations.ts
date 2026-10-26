@@ -4,7 +4,10 @@
  * its object.
  *
  * A required row is a clause of threshold one over one credential; every other
- * clause is a group, an empty group included. An empty slot is a credential
+ * clause is a group, an empty group included. A group's threshold follows the
+ * suggestion for its members as they join until the holder sets it; one flag
+ * per clause, aligned with the clauses the way the roles are, says which
+ * thresholds the holder set. An empty slot is a credential
  * whose method is the zero address, whose config is empty and whose label is
  * its kind; it stands for a method the holder has yet to enroll.
  */
@@ -15,12 +18,11 @@ import type {
   Clause,
   Credential,
   Finding,
-  SetupDraft,
   ValidationResult
 } from '@kohaku-eth/social-recovery'
 import { credentialKindIn, methodKindIn } from '@web/modules/social-recovery/shared/client'
 import type { AddressBook } from '@web/modules/social-recovery/shared/client'
-import type { SlotKind } from '@web/modules/social-recovery/shared/records'
+import type { SetupDraftRecord, SlotKind } from '@web/modules/social-recovery/shared/records'
 import { isEmptySlot, pathHolds } from '@web/modules/social-recovery/shared/records'
 
 import type { AddTarget, ClauseRole, EditorFill, EditResult, SlotPosition } from './types'
@@ -90,6 +92,23 @@ export const rolesOf = (clauses: readonly Clause[]): ClauseRole[] => clauses.map
 export const withoutRole = (roles: readonly ClauseRole[], index: number): ClauseRole[] =>
   roles.filter((_, i) => i !== index)
 
+/** Which thresholds of a draft the holder set; a draft with no flags for its clauses has none set. */
+export const thresholdsSetOf = (draft: SetupDraftRecord): boolean[] =>
+  draft.thresholdsSet?.length === draft.clauses.length
+    ? [...draft.thresholdsSet]
+    : draft.clauses.map(() => false)
+
+/** The threshold flags once one clause is removed. */
+export const withoutThresholdSet = (flags: readonly boolean[], index: number): boolean[] =>
+  flags.filter((_, i) => i !== index)
+
+/** The threshold flags once the holder set one clause's threshold. */
+export const withThresholdSet = (flags: readonly boolean[], index: number): boolean[] =>
+  flags.map((flag, i) => i === index || flag)
+
+/** The threshold flags once a clause was added at the end, its threshold a suggestion. */
+export const withNewClause = (flags: readonly boolean[]): boolean[] => [...flags, false]
+
 /** How many methods the path holds, empty slots counted. */
 export const methodCountOf = (clauses: readonly Clause[]): number =>
   clauses.reduce((sum, clause) => sum + clause.credentials.length, 0)
@@ -131,22 +150,20 @@ export const addGroup = (clauses: readonly Clause[]): Clause[] => [
 
 /**
  * Adds a member to a group: an empty slot or an enrolled credential. A
- * threshold still at the suggestion for the members before follows the
- * suggestion for the members after; a threshold the holder set is kept.
+ * threshold the holder did not set follows the suggestion for the members
+ * after; a threshold the holder set is kept.
  */
 export const addMember = (
   clauses: readonly Clause[],
   group: number,
-  credential: Credential
+  credential: Credential,
+  thresholdSet = false
 ): EditResult => {
   if (pathHolds(clauses, credential)) {
     return DUPLICATE
   }
   const { threshold, credentials } = clauses[group]
-  const next =
-    threshold === suggestedThresholdOf(credentials.length)
-      ? suggestedThresholdOf(credentials.length + 1)
-      : threshold
+  const next = thresholdSet ? threshold : suggestedThresholdOf(credentials.length + 1)
   return {
     status: 'applied',
     clauses: replaceAt(clauses, group, {
@@ -218,14 +235,26 @@ export const fillSlot = (
   }
 }
 
-/** A required row's credential joins a group, and the row goes. */
-export const moveToGroup = (clauses: readonly Clause[], row: number, group: number): EditResult => {
+/**
+ * A required row's credential joins a group, and the row goes. The group's
+ * threshold follows the suggestion for its members after, as an added member's
+ * does, unless the holder set it.
+ */
+export const moveToGroup = (
+  clauses: readonly Clause[],
+  row: number,
+  group: number,
+  thresholdSet = false
+): EditResult => {
   const [credential] = clauses[row].credentials
   if (pathHolds(clauses, credential, { clause: row, member: 0 })) {
     return DUPLICATE
   }
   const { threshold, credentials } = clauses[group]
-  const joined = replaceAt(clauses, group, { threshold, credentials: [...credentials, credential] })
+  const joined = replaceAt(clauses, group, {
+    threshold: thresholdSet ? threshold : suggestedThresholdOf(credentials.length + 1),
+    credentials: [...credentials, credential]
+  })
   return {
     status: 'applied',
     clauses: removeClause(joined, row),
@@ -285,6 +314,20 @@ export const offersMakeItAGroup = (clauses: readonly Clause[]): boolean => {
   return filled.length === 2 && filled.every((clause) => clause.credentials.length === 1)
 }
 
+/** The threshold flags once the required rows became one group in the first row's place, its threshold a suggestion. */
+export const makeItAGroupThresholdsSet = (
+  flags: readonly boolean[],
+  roles: readonly ClauseRole[]
+): boolean[] => {
+  const first = roles.indexOf('required')
+  return flags.flatMap((flag, i) => {
+    if (i === first) {
+      return [false]
+    }
+    return roles[i] === 'required' ? [] : [flag]
+  })
+}
+
 /** The roles once the required rows became one group in the first row's place. */
 export const makeItAGroupRoles = (roles: readonly ClauseRole[]): ClauseRole[] => {
   const first = roles.indexOf('required')
@@ -321,7 +364,8 @@ export const addSecondMethod = (clauses: readonly Clause[], credential: Credenti
 export const placeAt = (
   clauses: readonly Clause[],
   target: AddTarget,
-  credential: Credential
+  credential: Credential,
+  thresholdsSet: readonly boolean[] = []
 ): EditResult => {
   if (target.place === 'required') {
     return addRequired(clauses, credential)
@@ -330,7 +374,7 @@ export const placeAt = (
     return addSecondMethod(clauses, credential)
   }
   if (target.place === 'member') {
-    return addMember(clauses, target.clause, credential)
+    return addMember(clauses, target.clause, credential, thresholdsSet[target.clause] ?? false)
   }
   return fillSlot(clauses, { clause: target.clause, member: target.member }, credential)
 }
@@ -377,10 +421,34 @@ export const placedRoles = (
   return [...roles]
 }
 
-/** The draft with new clauses, every other field kept. */
-export const withClauses = (draft: SetupDraft, clauses: Clause[]): SetupDraft => ({
+/**
+ * The threshold flags once a credential was placed at a position: a new
+ * clause and the second method's clause take a suggested threshold, and a
+ * clause that took a member keeps its flag.
+ */
+export const placedThresholdsSet = (
+  flags: readonly boolean[],
+  target: AddTarget,
+  at: SlotPosition
+): boolean[] => {
+  if (at.clause >= flags.length) {
+    return withNewClause(flags)
+  }
+  if (target.place === 'second') {
+    return flags.map((flag, i) => (i === at.clause ? false : flag))
+  }
+  return [...flags]
+}
+
+/** The draft with new clauses and their threshold flags, every other field kept. */
+export const withClauses = (
+  draft: SetupDraftRecord,
+  clauses: Clause[],
+  thresholdsSet: readonly boolean[]
+): SetupDraftRecord => ({
   ...draft,
-  clauses
+  clauses,
+  thresholdsSet
 })
 
 /** The search string the enroll screen reads: the kind and the slot it fills. */
