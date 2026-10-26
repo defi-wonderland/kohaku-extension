@@ -34,7 +34,13 @@ import {
   usedLine,
   walletAddsIt
 } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
-import type { Mounted } from '@web/modules/social-recovery/recovery/done/__tests__/harness'
+import type {
+  Mounted,
+  ExitShape,
+  MountedWorld,
+  TextQueries,
+  UsedNamesCase
+} from '@web/modules/social-recovery/recovery/done/__tests__/harness'
 import type { Configuration, Credential } from '@kohaku-eth/social-recovery'
 import { renderChip, renderFullAddress } from '@web/modules/social-recovery/shared/display'
 import { kindNameOf } from '@web/modules/social-recovery/setup/review'
@@ -84,16 +90,13 @@ const mountUsing = async (configuration: Configuration, places: number[]) => {
 const mountOver = async (
   configuration: Configuration,
   options: Parameters<typeof openWorld>[0] = {}
-): Promise<{ screen: Mounted; world: Awaited<ReturnType<typeof openWorld>> }> => {
+): Promise<MountedWorld> => {
   const world = await openWorld({ route: 'logged-in', configuration, walletAdds: true, ...options })
   return { world, screen: await mountDone(world.account) }
 }
 
 /** The new key's one limit and what the recovery did sit beside the keys, the limit said once. */
-const expectLimitBeside = (screen: {
-  byTestId: (id: string) => HTMLElement | null
-  text: () => string
-}) => {
+const expectLimitBeside = (screen: TextQueries) => {
   const aside = screen.byTestId('done-columns-aside')
   expect(aside?.querySelector('[data-testid="done-key-limit"]')?.textContent).toBe(
     t(`${DONE}.keyLimit`)
@@ -261,7 +264,7 @@ describe('what this recovery did', () => {
   })
 
   it('names exactly two used members of one group as two members of the path, at the place of the first', async () => {
-    const cases: { configuration: Configuration; places: number[]; names: string[] }[] = [
+    const cases: UsedNamesCase[] = [
       {
         configuration: MIXED_PATH,
         places: [0, 2, 3],
@@ -310,7 +313,7 @@ describe('what this recovery did', () => {
   })
 
   it('names each used row where a group gives other than two of them, or the rows are single-member clauses', async () => {
-    const cases: { configuration: Configuration; places: number[]; names: string[] }[] = [
+    const cases: UsedNamesCase[] = [
       {
         configuration: MIXED_PATH,
         places: [2, 3, 4],
@@ -495,11 +498,7 @@ describe('what comes next', () => {
 })
 
 describe('a device that holds the entry record but no countdown', () => {
-  const shapes: {
-    name: string
-    configuration: Configuration
-    exits: ('add-first' | 'whole-rule' | 'none')[]
-  }[] = [
+  const shapes: ExitShape[] = [
     {
       name: 'the only row',
       configuration: configurationOf([{ threshold: 1, credentials: [LAPTOP] }]),
