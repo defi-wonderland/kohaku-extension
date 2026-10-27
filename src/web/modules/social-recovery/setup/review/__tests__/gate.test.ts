@@ -376,6 +376,140 @@ describe('the save gate', () => {
   })
 })
 
+describe('a basic account, which this release cannot recover', () => {
+  const NOT_SUPPORTED = { kind: 'cannot-recover', reason: 'not-supported' }
+  const EMPTY_PASSKEY = emptySlot('passkey')
+  // What the wallet reads for a key with no smart account: no creation record
+  // to name the removed key, and no code, so the fit is judged on the code to be.
+  const BASIC_READS: Partial<SaveGateInput> = {
+    removedKey: NO_CREATION_RECORD,
+    fitCheck: {
+      status: 'answered',
+      value: {
+        basis: 'code-to-be',
+        implementation: '0x8888888888888888888888888888888888888888',
+        fits: true
+      }
+    }
+  }
+
+  it("reads cannot recover for the unsupported account on the wallet's own reads of a key", () => {
+    expect(gateOf({ ...BASIC_READS, basicAccount: true })).toMatchObject({
+      canSave: false,
+      blocked: NOT_SUPPORTED
+    })
+  })
+
+  it('reads cannot recover for the unsupported account whatever the reads answer', () => {
+    const cases: Partial<SaveGateInput>[] = [
+      {},
+      { removedKey: { status: 'failed' } },
+      { removedKey: REMOVED_KEY_UNNAMED },
+      { removedKey: SEVERAL_KEYS, description: KEY_COUNT },
+      { description: KEY_COUNT },
+      { fitCheck: { status: 'failed' }, setupState: { status: 'failed' } },
+      { trustRows: UNAVAILABLE_ROWS },
+      { setupState: HAS_SETUP },
+      { removedKey: { status: 'pending' }, fitCheck: { status: 'pending' } },
+      { trustRows: PENDING_ROWS }
+    ]
+    cases.forEach((reads) => {
+      expect(gateOf({ ...reads, basicAccount: true })).toMatchObject({
+        canSave: false,
+        blocked: NOT_SUPPORTED
+      })
+    })
+  })
+
+  it('reads cannot recover for the unsupported account before the blocks the records decide', () => {
+    expect(
+      gateOf({ ...BASIC_READS, basicAccount: true, clauses: [required(EMPTY_PASSKEY)] }).blocked
+    ).toEqual(NOT_SUPPORTED)
+    expect(gateOf({ ...BASIC_READS, basicAccount: true, passwordSet: false }).blocked).toEqual(
+      NOT_SUPPORTED
+    )
+  })
+
+  it('reads cannot recover for the unsupported account while the records or the client are not ready', () => {
+    expect(gateOf({ basicAccount: true, recordsLoaded: false })).toMatchObject({
+      canSave: false,
+      blocked: NOT_SUPPORTED
+    })
+    expect(gateOf({ basicAccount: true, clientReady: false })).toMatchObject({
+      canSave: false,
+      blocked: NOT_SUPPORTED
+    })
+  })
+
+  it('never reads the removed key unreadable', () => {
+    expect(gateOf({ ...BASIC_READS, basicAccount: true }).blocked).not.toEqual({
+      kind: 'removed-key-unreadable'
+    })
+    expect(gateOf({ removedKey: { status: 'failed' }, basicAccount: true }).blocked).not.toEqual({
+      kind: 'removed-key-unreadable'
+    })
+  })
+
+  it('leaves the verdicts of an account the wallet does not list as basic as they were', () => {
+    const cases: Partial<SaveGateInput>[] = [
+      {},
+      { removedKey: NO_CREATION_RECORD },
+      { removedKey: REMOVED_KEY_UNNAMED },
+      { fitCheck: DOES_NOT_FIT },
+      { description: KEY_COUNT },
+      { removedKey: SEVERAL_KEYS },
+      { setupState: HAS_SETUP },
+      { trustRows: UNAVAILABLE_ROWS },
+      { passwordSet: false },
+      { removedKey: { status: 'pending' } }
+    ]
+    cases.forEach((reads) => {
+      expect(gateOf({ ...reads, basicAccount: false })).toEqual(gateOf(reads))
+    })
+  })
+})
+
+describe('a cannot-recover answer before the removed key unreadable', () => {
+  const NOT_SUPPORTED = { kind: 'cannot-recover', reason: 'not-supported' }
+
+  it('reads cannot recover where the account has no creation record and the action does not fit it', () => {
+    expect(gateOf({ removedKey: NO_CREATION_RECORD, fitCheck: DOES_NOT_FIT })).toMatchObject({
+      canSave: false,
+      blocked: NOT_SUPPORTED
+    })
+  })
+
+  it('shows the fit refusal before a removed key that could not be named or whose read threw', () => {
+    expect(gateOf({ removedKey: REMOVED_KEY_UNNAMED, fitCheck: DOES_NOT_FIT }).blocked).toEqual(
+      NOT_SUPPORTED
+    )
+    expect(gateOf({ removedKey: { status: 'failed' }, fitCheck: DOES_NOT_FIT }).blocked).toEqual(
+      NOT_SUPPORTED
+    )
+  })
+
+  it('shows the key count before a removed key that could not be named or whose read threw', () => {
+    const KEY_COUNT_BLOCK = { kind: 'cannot-recover', reason: 'key-count', count: 2 }
+
+    expect(gateOf({ removedKey: NO_CREATION_RECORD, description: KEY_COUNT }).blocked).toEqual(
+      KEY_COUNT_BLOCK
+    )
+    expect(gateOf({ removedKey: { status: 'failed' }, description: KEY_COUNT }).blocked).toEqual(
+      KEY_COUNT_BLOCK
+    )
+  })
+
+  it('still shows unavailable before the fit refusal', () => {
+    expect(
+      gateOf({
+        removedKey: NO_CREATION_RECORD,
+        fitCheck: DOES_NOT_FIT,
+        setupState: { status: 'failed' }
+      }).blocked
+    ).toEqual({ kind: 'unavailable' })
+  })
+})
+
 describe('the blocks the setup records decide', () => {
   const EMPTY_PASSKEY = emptySlot('passkey')
 
@@ -609,6 +743,32 @@ describe('the account reads a retry runs again', () => {
 
   it('names the removed key where the account has no creation record', () => {
     expect(accountReadsToRetry({ ...READS, removedKey: NO_CREATION_RECORD })).toEqual([
+      'removedKey'
+    ])
+  })
+
+  it('never names the removed key of a basic account, whatever its read answered', () => {
+    expect(accountReadsToRetry({ ...READS, removedKey: NO_CREATION_RECORD }, true)).toEqual([])
+    expect(accountReadsToRetry({ ...READS, removedKey: REMOVED_KEY_UNNAMED }, true)).toEqual([])
+    expect(accountReadsToRetry({ ...READS, removedKey: { status: 'failed' } }, true)).toEqual([])
+  })
+
+  it('still names the other reads of a basic account that threw', () => {
+    expect(
+      accountReadsToRetry(
+        {
+          removedKey: { status: 'failed' },
+          fitCheck: { status: 'failed' },
+          setupState: { status: 'failed' },
+          description: { status: 'failed' }
+        },
+        true
+      )
+    ).toEqual(['fitCheck', 'setupState', 'description'])
+  })
+
+  it('names the removed key of an account not listed as basic as before', () => {
+    expect(accountReadsToRetry({ ...READS, removedKey: NO_CREATION_RECORD }, false)).toEqual([
       'removedKey'
     ])
   })

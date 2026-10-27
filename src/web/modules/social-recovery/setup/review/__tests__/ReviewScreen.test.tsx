@@ -11,6 +11,7 @@ import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { TextDecoder, TextEncoder } from 'util'
 
+import type { Account } from '@ambire-common/interfaces/account'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
 import type { Address } from '@kohaku-eth/social-recovery'
@@ -31,10 +32,28 @@ const mockOtherAccount = '0x2222222222222222222222222222222222222222'
 const mockSelected: SelectedAccountMock = { state: { account: null }, listeners: new Set() }
 const mockViewRenders: ReviewViewProps[] = []
 const mockViewMounts: MountCount = { count: 0 }
-const mockAccounts = [
-  { addr: mockAccount, preferences: { label: 'Account 1' } },
-  { addr: mockOtherAccount, preferences: { label: 'Account 2' } }
+// The wallet holds a creation record for a smart account and none for a basic one.
+const CREATION: Account['creation'] = {
+  factoryAddr: '0x3333333333333333333333333333333333333333',
+  bytecode: '0x00',
+  salt: '0x0000000000000000000000000000000000000000000000000000000000000000'
+}
+const listedAccount = (addr: string, label: string, smart: boolean): Account => ({
+  addr,
+  associatedKeys: [addr],
+  initialPrivileges: [],
+  creation: smart ? CREATION : null,
+  preferences: { label, pfp: addr }
+})
+const listedPair = (smart: boolean): Account[] => [
+  listedAccount(mockAccount, 'Account 1', smart),
+  listedAccount(mockOtherAccount, 'Account 2', smart)
 ]
+// The accounts the wallet lists, which a test can switch.
+const mockAccounts: Account[] = listedPair(true)
+const listAccounts = (accounts: Account[]) => {
+  mockAccounts.splice(0, mockAccounts.length, ...accounts)
+}
 // The client the wallet builds for the account the screen asks for.
 const mockClients = new Map<string, unknown>()
 
@@ -126,6 +145,7 @@ describe('the review screen while the wallet selects another account', () => {
 
   beforeEach(() => {
     sessionStorage.clear()
+    listAccounts(listedPair(true))
     mockViewRenders.length = 0
     mockViewMounts.count = 0
     mockClients.clear()
@@ -185,5 +205,35 @@ describe('the review screen while the wallet selects another account', () => {
     expect(byTestId('setup-other-account')?.textContent).toContain(
       en.socialRecovery.chrome.otherAccount.title
     )
+  })
+
+  it('tells the review that a listed basic account is a basic account', async () => {
+    listAccounts(listedPair(false))
+    await open(ACCOUNT)
+    expect(lastProps().account).toBe(ACCOUNT)
+    expect(lastProps().basicAccount).toBe(true)
+  })
+
+  it('tells the review that a listed smart account is not a basic account', async () => {
+    await open(ACCOUNT)
+    expect(lastProps().basicAccount).toBe(false)
+  })
+
+  it('tells the review nothing of a basic account where the wallet does not list the account', async () => {
+    listAccounts([listedAccount(mockOtherAccount, 'Account 2', false)])
+    await open(ACCOUNT)
+    expect(lastProps().account).toBe(ACCOUNT)
+    expect(lastProps().basicAccount).toBe(false)
+  })
+
+  it("keeps the tab's account kind when the wallet selects another account of the other kind", async () => {
+    listAccounts([
+      listedAccount(mockAccount, 'Account 1', false),
+      listedAccount(mockOtherAccount, 'Account 2', true)
+    ])
+    await open(ACCOUNT)
+    await selectInWallet(OTHER_ACCOUNT)
+    expect(lastProps().account).toBe(ACCOUNT)
+    expect(lastProps().basicAccount).toBe(true)
   })
 })

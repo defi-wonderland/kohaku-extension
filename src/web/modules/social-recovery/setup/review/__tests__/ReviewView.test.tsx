@@ -233,8 +233,9 @@ const mount = async ({
   describeSetup = async () => descriptionOf(),
   accountLabel,
   storageRefuses = false,
-  storageHeld
-}: MountOptions = {}) => {
+  storageHeld,
+  basicAccount = false
+}: MountOptions & { basicAccount?: boolean } = {}) => {
   const storage = makeStorage(false)
   const records = createWalletRecords({ storage })
   const setup = records.setup(CHAIN_ID, ACCOUNT)
@@ -305,7 +306,7 @@ const mount = async ({
             account={ACCOUNT}
             client={reviewClient}
             accountLabel={label}
-            basicAccount={false}
+            basicAccount={basicAccount}
             navigate={navigate}
           />
         </ThemeContext.Provider>
@@ -1621,6 +1622,49 @@ describe("the wallet's reading of the account's keys", () => {
 
     expect(byTestId('review-blocked-already-set-up')).not.toBeNull()
     expect(isDisabled('review-save')).toBe(true)
+  })
+})
+
+describe('a basic account the wallet lists', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+  // The wallet's reads of a key with no smart account behind it.
+  const keyReads = {
+    removedKey: async (): Promise<RemovedKeyReading> => ({
+      kind: 'unavailable',
+      cause: 'no-source'
+    }),
+    fitCheck: async (): Promise<FitCheckReading> => ({
+      basis: 'code-to-be',
+      implementation: '0x8888888888888888888888888888888888888888',
+      fits: true
+    })
+  }
+
+  it('reads that this release cannot recover it, with the unsupported line and no retry', async () => {
+    await mount({ ...keyReads, basicAccount: true })
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(textOf('review-blocked-chip')).toBe(t('socialRecovery.status.recovery.cannotRecover'))
+    expect(textOf('review-blocked-title')).toBe(t(`${BLOCKED}.cannotRecover.title`))
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))
+    expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
+    expect(pageText()).not.toContain(t(`${BLOCKED}.removedKeyUnreadable.title`))
+    expect(byTestId('review-blocked-retry')).toBeNull()
+    expect(isDisabled('review-save')).toBe(true)
+  })
+
+  it('reads that this release cannot recover it even where every read names a key and fits', async () => {
+    await mount({ basicAccount: true })
+
+    expect(textOf('review-blocked-body')).toBe(t(`${BLOCKED}.cannotRecover.reasonNotSupported`))
+    expect(isDisabled('review-save')).toBe(true)
+  })
+
+  it('reads the same key reads as an unreadable removed key for an account not listed as basic', async () => {
+    await mount({ ...keyReads, basicAccount: false })
+
+    expect(byTestId('review-blocked-removed-key-unreadable')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
   })
 })
 
