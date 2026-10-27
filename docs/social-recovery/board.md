@@ -10,8 +10,8 @@ The state of the work after the QA round of 2026-10-27, which followed milestone
 | Awaiting review too | #150 FU-BJ (the import lists the slot's smart account and its controlling key; the owner's ruling of 2026-10-27 lifting "the import door is unchanged") with kohaku-commons#14; gated green, reviewed, verified, walked. |
 | Awaiting review as well | #151 FU-BK (EFI-1048: the done screen states no lost device as a fact; the copy hedge inside the chapter's decision); gated green, reviewed, verified. |
 | Held | FU-BB (EFI-1039 the scrollbar in the password form), FU-BC (EFI-1040 the Ambire terms), FU-BI (EFI-1046 the Ambire uninstall survey): pre-existing wallet behaviour outside the recovery work on the owner's rule of 2026-10-27; EFI-1039, EFI-1040 and EFI-1046 canceled in Linear; the three lanes are gated and kept locally. |
-| Blocked | The Sepolia checks the fake node cannot reach: FU-BG's Reject timing and the sign window, FU-BH's "Already set up" block on a saved setup, FU-BF's deposit of the asked amount then Continue, and the sign window's fee against the module's estimate; a Sepolia walk on a throwaway profile reaches the first two with no send. |
-| Walked | The consolidated branch `qa/consolidated` (faab32c966, the two commons lanes merged in its submodule) on the headless build over the fake node: FU-BD (the rows, the heights, the one-column wrap near 480 px), FU-BF (the blocker's strings), FU-BE (the refusal at step 1 and on a typed save route), FU-BH's entry read, FU-BJ (with one Kohaku tab the import lists and restores the smart account and its key; with a second tab the known onboarding race finishes the picker early and the stored-seed add restores them). |
+| Blocked | The Sepolia checks that need a send: FU-BF's deposit of the asked amount then Continue, and the sign window's fee against the module's estimate. |
+| Walked | The consolidated branch `qa/consolidated` (faab32c966, the two commons lanes merged in its submodule) on the headless build over the fake node: FU-BD (the rows, the heights, the one-column wrap near 480 px), FU-BF (the blocker's strings), FU-BE (the refusal at step 1 and on a typed save route), FU-BH's entry read, FU-BJ (with one Kohaku tab the import lists and restores the smart account and its key; with a second tab the known onboarding race finishes the picker early and the stored-seed add restores them). The same branch built with the Sepolia deployment in force, walked on a throwaway profile with a standing setup and no send (2026-10-27, `briefs/qa/investigations/WALK-SEPOLIA-REPORT.md`): FU-BG's Reject reaches the failed state in about 0.2 s against about 3.1 s on the pre-fix background, twice, with the cross-icon close at about 6.2 s as expected; FU-BH's "Already set up" block on the setup route after the connecting and lookup lines, with no counter, presets, resume card or chip, and "Open your recovery path" into the overview; the basic key's refusal as on the fake node. The results are in #148's and #149's descriptions. |
 | Merged | Nothing of the round yet. |
 
 ## Rulings of the round (2026-10-27)
@@ -25,10 +25,11 @@ The state of the work after the QA round of 2026-10-27, which followed milestone
 
 | Question | What the code does meanwhile |
 | --- | --- |
-| A Sepolia walk without a send for FU-BG's Reject timing and FU-BH's already-set-up block, and a Sepolia deposit for FU-BF's Continue | Unit tests cover them; the fake node cannot reach them |
+| A Sepolia deposit of the asked amount then Continue for FU-BF's full path (FU-BG's timing and FU-BH's block were walked on Sepolia on 2026-10-27 with no send) | Unit tests cover it; the fake node cannot reach it |
 | The sign window's fee against the module's estimate on Sepolia (if the sign window asks more than cost + 10 %, the failure moves to the sign window and the recheck then asks for the rest) | The module prices with twice the base fee plus the tip |
 | The overview's empty state offers "Set up recovery" to a basic account, which lands on the refusal | As before |
 | The cross-icon close of the action window still takes about 6 s (the wallet keeps a calls request on a window close) | As before |
+| The management save's failed state reads "Nothing changed." where its frame G-05b adds "Your edits are still here." (the shared not-sent string; unchanged by the round) | As before |
 | The done screen's question "did you lose a device" (option (b) of FU-BK) would lift D-393's unconditional block and touch the ruling that defers the question to the cleanup release | The copy hedge of FU-BK |
 | The import's independent switches (a key switched off goes to the keystore with no account row), the stored-seed add now able to remove imported smart-account rows, and the one-smart-account-per-page rule (a smart account at slot 2 to 5 is restored only through the relayer's linked search) | As built by FU-BJ |
 | The create door's one-time relayer failure with no message, and the two-tab onboarding race that finishes the import picker early (upstream) | Recorded |
@@ -80,6 +81,8 @@ The state of the work after the QA round of 2026-10-27, which followed milestone
 - Since 2026-10-23 the Tenderly gateway does not answer a TCP connect from this Mac. The public Sepolia node prunes the manager's logs (code 4444), so the editor's Continue fails; drpc caps a log range at 10,000 blocks, 1rpc and nodies at 50; Alchemy serves the full range.
 - The wallet's Add RPC form checks the node through the background, which waits on a dead node; a walk sets the node by a storage write.
 - A removal on Sepolia costs about 77,371 gas.
+- A Chromium profile copied for a walk keeps its `Default/Service Worker` cache, and the extension runs the old background from it although the preferences name the new build; a walk that reuses a profile on a new build clears that folder first, or it measures the old code.
+- The Tenderly gateway of the walks' credentials file still does not answer from this Mac on 2026-10-27; Alchemy with the worktree's own key does.
 - The gate times out under a machine load (other suites or another worktree's export beside it); a red gate under load is rerun alone before it is read as a defect.
 - In React 18.3 a child's passive effects run before its parent's, so a ref a child reads at mount is written in a layout effect.
 - The permission classifier refuses the train script's merge ("Merge Without Review"); the owner runs it from his terminal, or the one `gh pr merge --squash` runs alone on his word.
