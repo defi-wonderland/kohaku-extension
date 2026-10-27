@@ -26,14 +26,13 @@ The state of the work after the QA round of 2026-10-27, which followed milestone
 
 | Question | What the code does meanwhile |
 | --- | --- |
-| A Sepolia deposit of the asked amount then Continue for FU-BF's full path (FU-BG's timing and FU-BH's block were walked on Sepolia on 2026-10-27 with no send) | Unit tests cover it; the fake node cannot reach it |
-| The sign window's fee against the module's estimate on Sepolia (if the sign window asks more than cost + 10 %, the failure moves to the sign window and the recheck then asks for the rest) | The module prices with twice the base fee plus the tip |
-| The overview's empty state offers "Set up recovery" to a basic account, which lands on the refusal | As before |
-| The cross-icon close of the action window still takes about 6 s (the wallet keeps a calls request on a window close) | As before |
+| A Sepolia deposit of the asked amount then Continue for FU-BF's full path, and the sign window's fee against the module's estimate (the owner, 2026-10-27: skipped; the unit tests cover both; his manual test may run one send) | Unit tests cover it |
+| The overview's empty state offers "Set up recovery" to a basic account, which lands on the refusal (the owner, 2026-10-27: fix it in this round, on the FU-BE lane) | A round of #147 |
+| The cross-icon close of the action window still takes about 6 s (the wallet keeps a calls request on a window close; the owner, 2026-10-27: keep it) | As before |
 | A basic account with a stored save and a client that failed or records that failed to load sees the refusal without a retry (after #147's round 3; theoretical, no basic account can hold a stored save from this wallet) | As built |
 | A seed whose page-1 basic rows are all unused never reaches its smart accounts on later pages (the scan's advance rule, pre-existing; a six-line fix in the picker's page list with one test is available) | As before |
-| The management save's failed state reads "Nothing changed." where its frame G-05b adds "Your edits are still here." (the shared not-sent string; unchanged by the round) | As before |
-| The done screen's question "did you lose a device" (option (b) of FU-BK) would lift D-393's unconditional block and touch the ruling that defers the question to the cleanup release | The copy hedge of FU-BK |
+| The management save's failed state reads "Nothing changed." where its frame G-05b adds "Your edits are still here." (the shared not-sent string, ours from M-11; the owner, 2026-10-27: fix it as FU-BL) | A lane of this round |
+| The done screen's question "did you lose a device" (option (b) of FU-BK) would lift D-393's unconditional block and touch the ruling that defers the question to the cleanup release (the owner, 2026-10-27: the copy hedge stays; the question is a design item of the cleanup release) | The copy hedge of FU-BK |
 | The import's independent switches (a key switched off goes to the keystore with no account row), the stored-seed add now able to remove imported smart-account rows, and the one-smart-account-per-page rule (a smart account at slot 2 to 5 is restored only through the relayer's linked search) | As built by FU-BJ |
 | The create door's one-time relayer failure with no message, and the two-tab onboarding race that finishes the import picker early (upstream) | Recorded |
 | The About screen's Ambire social links, the help.ambire.com links across the wallet, the explorer link, the Trezor manifest; kohaku.xyz is a parked domain | Pre-existing; recorded |
