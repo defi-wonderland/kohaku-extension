@@ -284,6 +284,104 @@ describe('the arrival', () => {
     })
   })
 
+  describe('a basic account, which this release cannot recover', () => {
+    const NOT_SUPPORTED = {
+      kind: 'blocked',
+      block: { kind: 'cannot-recover', reason: 'not-supported' }
+    }
+    // The gate refuses a basic account whatever has been read, so it is read with nothing loaded.
+    const basicGate = (recordsLoaded: boolean, clientReady: boolean) =>
+      saveGateOf({
+        recordsLoaded,
+        clientReady,
+        trustRows: [],
+        untested: false,
+        clauses: [],
+        backup: 'encrypted',
+        passwordSet: false,
+        basicAccount: true,
+        removedKey: { status: 'pending' },
+        fitCheck: { status: 'pending' },
+        setupState: { status: 'pending' },
+        description: { status: 'pending' }
+      })
+    const basic = (input: Partial<ArrivalInput> = {}) =>
+      arrivalOf({
+        facts: factsReadingFor('ready', account),
+        client: 'ready',
+        load: loadedOf(draftOf('encrypted')),
+        gate: basicGate(true, true),
+        setupState: { status: 'pending' },
+        passwordHeld: true,
+        inFlight: 'none',
+        basicAccount: true,
+        ...input
+      })
+
+    it('is refused while the client is still loading', () => {
+      expect(basic({ client: 'loading', gate: basicGate(true, false) })).toEqual(NOT_SUPPORTED)
+    })
+
+    it('is refused while its records are still loading or could not load', () => {
+      expect(basic({ load: { status: 'loading' }, gate: basicGate(false, true) })).toEqual(
+        NOT_SUPPORTED
+      )
+      expect(basic({ load: { status: 'failed' }, gate: basicGate(false, true) })).toEqual(
+        NOT_SUPPORTED
+      )
+    })
+
+    it('is refused where the client cannot be built or the wallet needs an update', () => {
+      expect(basic({ client: 'failed', gate: basicGate(true, false) })).toEqual(NOT_SUPPORTED)
+      expect(basic({ client: 'update-the-wallet', gate: basicGate(true, false) })).toEqual(
+        NOT_SUPPORTED
+      )
+    })
+
+    it('is refused while the read of a stored save is still running or has not started', () => {
+      expect(basic({ inFlight: 'reading' })).toEqual(NOT_SUPPORTED)
+      expect(basic({ inFlight: undefined })).toEqual(NOT_SUPPORTED)
+      expect(
+        basic({ client: 'loading', gate: basicGate(true, false), inFlight: 'reading' })
+      ).toEqual(NOT_SUPPORTED)
+    })
+
+    it('shows a failed read of a stored save as that failure, not as the refusal', () => {
+      expect(basic({ inFlight: 'failed' })).toEqual({ kind: 'load-failed' })
+    })
+
+    it('is refused before a setup on the account is shown', () => {
+      expect(basic({ setupState: { status: 'answered', value: setupStateOf(true) } })).toEqual(
+        NOT_SUPPORTED
+      )
+    })
+
+    it('still reads the account facts first', () => {
+      expect(basic({ facts: factsReadingFor('loading', account) })).toEqual({ kind: 'loading' })
+      expect(basic({ facts: factsReadingFor('view-only', account) })).toEqual({
+        kind: 'unavailable',
+        retry: null,
+        cause: 'view-only'
+      })
+      expect(basic({ facts: factsReadingFor('state-unread', account) })).toEqual({
+        kind: 'unavailable',
+        retry: 'facts'
+      })
+    })
+
+    it('leaves a smart account loading while the client loads, whatever block its gate holds', () => {
+      expect(
+        basic({ basicAccount: false, client: 'loading', gate: gateFor('does-not-fit', false) })
+      ).toEqual({ kind: 'loading' })
+      expect(
+        basic({ basicAccount: false, client: 'loading', gate: gateFor('passes', false) })
+      ).toEqual({ kind: 'loading' })
+      expect(
+        basic({ basicAccount: false, load: { status: 'loading' }, gate: gateFor('key-count') })
+      ).toEqual({ kind: 'loading' })
+    })
+  })
+
   it('waits while a read of the gate has not come back, with no block shown', () => {
     expect(
       arrivalOf({

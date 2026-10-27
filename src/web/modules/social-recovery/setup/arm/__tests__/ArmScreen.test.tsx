@@ -1508,6 +1508,35 @@ describe('a basic account the wallet lists, on the save route with a draft', () 
     expect(prepareCommitSetup).not.toHaveBeenCalled()
   })
 
+  it('refuses it by a typed address while the client is still loading, with no waiting line', async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    mockClient.current = { status: 'loading' }
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-checking')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.loading.saveChecks'))
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('waits for a smart account by a typed address while the client is still loading', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    mockClient.current = { status: 'loading' }
+    await openByAddress()
+
+    expect(byTestId('arm-checking')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+  })
+
   it('still shows the unreadable removed key, with its retry, for the same reads of a listed smart account', async () => {
     chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
     mockAccounts.current = [account]
@@ -1643,6 +1672,48 @@ const anotherPageLeaves = async (withHash: boolean, flush: () => Promise<void>) 
 /** The single-key removals of the stored save in flight: its releases. */
 const releases = () =>
   mockRemovals.filter((keys) => keys.length === 1 && keys[0].includes(':saveInFlight:')).length
+
+describe('a save in flight stored on this device for a basic account the wallet lists', () => {
+  it('follows a save in flight stored on this device once the client is ready, in place of the refusal, and sends nothing', async () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    mockAccounts.current = [{ ...account, creation: null }]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    const ready = mockClient.current
+    const { firstPort, record } = await anotherPageLeaves(true, settle)
+    const prepares = prepareCommitSetup.mock.calls.length
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
+    receipts.wait.mockImplementationOnce(() => receipt.promise)
+    mockClient.current = { status: 'loading' }
+
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('arm-write-submitting')).toBeNull()
+    expect(receipts.wait).not.toHaveBeenCalled()
+
+    mockClient.current = ready
+    await select(address)
+    await settle()
+
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(receipts.wait).toHaveBeenCalledWith(harness.TX_HASH, record.startBlock)
+
+    await act(async () => {
+      receipt.resolve(landedReceipt(harness.TX_HASH))
+    })
+    await settle()
+
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wipes()).toBe(1)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(firstPort.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(prepares)
+  })
+})
 
 describe("another page's save that lands during this page's gas check", () => {
   /** Opens the route with Save offered, presses it, and holds its gas check. */
