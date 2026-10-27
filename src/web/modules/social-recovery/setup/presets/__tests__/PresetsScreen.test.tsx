@@ -10,6 +10,7 @@ import { createRoot, Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { TextDecoder, TextEncoder } from 'util'
 
+import type { Account } from '@ambire-common/interfaces/account'
 import { parse, stringify } from '@ambire-common/libs/richJson/richJson'
 import type { ThemeContextReturnType } from '@common/contexts/themeContext'
 import type { ThemeProps } from '@common/styles/themeConfig'
@@ -24,14 +25,37 @@ Object.assign(globalThis, { TextEncoder, TextDecoder })
 // The selected account as an external store: the screen is memoised, so it
 // renders again only when the store tells it the account changed.
 const mockSelected: SelectedAccountMock = { state: { account: null }, listeners: new Set() }
+// The accounts the wallet lists, which a test can switch. The wallet holds a
+// creation record for a smart account and none for a basic one.
+const mockAccounts: Account[] = []
+const CREATION: Account['creation'] = {
+  factoryAddr: '0x3333333333333333333333333333333333333333',
+  bytecode: '0x00',
+  salt: '0x0000000000000000000000000000000000000000000000000000000000000000'
+}
+const listedAccount = (addr: string, smart: boolean): Account => ({
+  addr,
+  associatedKeys: [addr],
+  initialPrivileges: [],
+  creation: smart ? CREATION : null,
+  preferences: { label: addr, pfp: addr }
+})
+const listAccounts = (accounts: Account[]) => {
+  mockAccounts.splice(0, mockAccounts.length, ...accounts)
+}
 const mockRaw = new Map<string, string>()
+// Every key the records read, so a test can tell whether the screen read a draft at all.
+const mockReads: string[] = []
 const mockStorage: RecordStorage = {
   get: async (key, defaultValue) => {
+    mockReads.push(key ?? '')
     const stored = key && mockRaw.get(key)
     return stored ? parse(stored) : defaultValue
   },
-  getAll: async () =>
-    Object.fromEntries([...mockRaw.entries()].map(([key, stored]) => [key, parse(stored)])),
+  getAll: async () => {
+    mockReads.push('*')
+    return Object.fromEntries([...mockRaw.entries()].map(([key, stored]) => [key, parse(stored)]))
+  },
   set: async (key, value) => {
     mockRaw.set(key, typeof value === 'string' ? value : stringify(value))
     return null
@@ -64,7 +88,7 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
 }))
 jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
-  default: () => ({ accounts: [] })
+  default: () => ({ accounts: mockAccounts })
 }))
 jest.mock('@common/hooks/useNavigation', () => ({
   __esModule: true,
@@ -125,6 +149,8 @@ describe('the presets screen', () => {
 
   beforeEach(() => {
     mockRaw.clear()
+    mockReads.length = 0
+    listAccounts([listedAccount(ACCOUNT, true), listedAccount(OTHER_ACCOUNT, true)])
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -275,5 +301,103 @@ describe('the presets screen', () => {
     await openFrom('second-visit', '/dashboard')
     expect(byTestId('presets-grid')).not.toBeNull()
     expect(byTestId('setup-other-account')?.textContent).toContain(S.chrome.otherAccount.title)
+  })
+
+  describe('for the kind of account the wallet lists', () => {
+    const writeDraft = (account: Address) =>
+      createWalletRecords({ storage: mockStorage })
+        .setup(CHAIN_IDS[WALLET_RECOVERY_CHAIN], account)
+        .setupDraft.write({
+          wait: 172800,
+          clauses: [],
+          ignoresPause: true,
+          privacy: { backup: 'encrypted', publicMetadata: '0x' }
+        })
+
+    const expectPresetsGone = () => {
+      expect(byTestId('presets-screen')).toBeNull()
+      expect(byTestId('presets-grid')).toBeNull()
+      expect(byTestId('presets-resume')).toBeNull()
+      expect(byTestId('presets-load-failed')).toBeNull()
+      expect(byTestId('recovery-status')).toBeNull()
+      expect(byTestId('continue')).toBeNull()
+      expect(byTestId('customize')).toBeNull()
+      expect(byTestId('resume')).toBeNull()
+      expect(byTestId('recover')).toBeNull()
+      expect(container.textContent).not.toContain(S.status.recovery.notSetUp)
+    }
+
+    it('shows a basic account that this release cannot recover it, with the unsupported line', async () => {
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      const refusal = byTestId('presets-cannot-recover')
+      expect(refusal).not.toBeNull()
+      expect(refusal?.contains(byTestId('review-blocked-cannot-recover'))).toBe(true)
+      expect(byTestId('review-blocked-chip')?.textContent).toBe(S.status.recovery.cannotRecover)
+      expect(byTestId('review-blocked-title')?.textContent).toBe(
+        S.review.blocked.cannotRecover.title
+      )
+      expect(byTestId('review-blocked-body')?.textContent).toBe(
+        S.review.blocked.cannotRecover.reasonNotSupported
+      )
+      expect(byTestId('review-blocked-retry')).toBeNull()
+    })
+
+    it('shows a basic account nothing of the presets, and no way into the editor', async () => {
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      expectPresetsGone()
+      expect(container.textContent).not.toContain(S.presets.continueUnlock)
+    })
+
+    it('offers a basic account no draft it left, and reads no record of it', async () => {
+      await writeDraft(ACCOUNT)
+      mockReads.length = 0
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-cannot-recover')).not.toBeNull()
+      expectPresetsGone()
+      expect(mockReads).toEqual([])
+    })
+
+    it('shows a smart account the presets as before', async () => {
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(byTestId('recovery-status')?.textContent).toBe(S.status.recovery.notSetUp)
+      expect(byTestId('presets-cannot-recover')).toBeNull()
+      expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    })
+
+    it('offers a smart account the draft it left, as before, from the records it reads', async () => {
+      await writeDraft(ACCOUNT)
+      mockReads.length = 0
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-resume')).not.toBeNull()
+      expect(mockReads.length).toBeGreaterThan(0)
+      expect(byTestId('presets-cannot-recover')).toBeNull()
+    })
+
+    it('shows the presets for an account the wallet does not list', async () => {
+      listAccounts([listedAccount(OTHER_ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(byTestId('presets-cannot-recover')).toBeNull()
+    })
+
+    it('shows the presets once a tab opens on a smart account after a basic one', async () => {
+      listAccounts([listedAccount(ACCOUNT, false), listedAccount(OTHER_ACCOUNT, true)])
+      await showAccount(ACCOUNT)
+      expect(byTestId('presets-cannot-recover')).not.toBeNull()
+
+      await showAccount(OTHER_ACCOUNT)
+      expect(byTestId('presets-grid')).not.toBeNull()
+      expect(byTestId('presets-cannot-recover')).toBeNull()
+    })
   })
 })
