@@ -241,7 +241,8 @@ const ArmStep = ({ records, chainId, account, navigate }: StepViewProps) => {
     gate,
     setupState: accountReads.setupState,
     passwordHeld: password !== undefined,
-    inFlight: state.lookup
+    inFlight: state.lookup,
+    basicAccount
   })
   // A kept refusal whose operation may still land ends where the arrival's setup read finds it landed.
   const arrivalFoundSetup =

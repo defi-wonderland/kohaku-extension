@@ -3,7 +3,11 @@
  * nothing over, so the save runs the review's gate again over the same reads
  * and shows the same blocks. It also needs the account's facts: an account the
  * wallet cannot read, or one whose key the keystore does not hold, cannot
- * save. Once the account, the client and the records are read, a save in
+ * save. A basic account, which this release cannot recover, is refused right
+ * after those facts, before the client and the records are read; only a failed
+ * read of a save in flight stored on this device still shows as that failure,
+ * and a stored save the run finds is followed in place of the refusal. Once
+ * the account, the client and the records are read, a save in
  * flight stored on this device decides before anything else: the run follows
  * it, so until its read answers none is stored the save is not offered. It
  * ranks above a setup on the account (the stored save may be the one that
@@ -29,7 +33,8 @@ export const arrivalOf = ({
   gate,
   setupState,
   passwordHeld,
-  inFlight
+  inFlight,
+  basicAccount
 }: ArrivalInput): Arrival => {
   if (facts.status === 'loading') {
     return LOADING
@@ -41,6 +46,9 @@ export const arrivalOf = ({
   }
   if (!facts.facts.key) {
     return { kind: 'unavailable', retry: null, cause: 'view-only' }
+  }
+  if (basicAccount && gate.blocked?.kind === 'cannot-recover' && inFlight !== 'failed') {
+    return { kind: 'blocked', block: gate.blocked }
   }
   if (client === 'update-the-wallet') {
     return { kind: 'update-the-wallet' }

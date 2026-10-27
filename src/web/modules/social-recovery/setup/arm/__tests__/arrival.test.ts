@@ -101,7 +101,8 @@ describe('the arrival', () => {
           gate: gateFor('passes'),
           setupState: { status: 'pending' },
           passwordHeld: false,
-          inFlight: 'none'
+          inFlight: 'none',
+          basicAccount: false
         })
       ).toEqual({ kind: 'ready' })
     })
@@ -146,7 +147,8 @@ describe('the arrival', () => {
       gate: gateFor('passes'),
       setupState: { status: 'pending' } as const,
       passwordHeld: true,
-      inFlight: 'none' as const
+      inFlight: 'none' as const,
+      basicAccount: false
     }
     expect(arrivalOf({ ...base, load: { status: 'failed' } })).toEqual({ kind: 'load-failed' })
     expect(arrivalOf({ ...base, load: { status: 'loading' } })).toEqual({ kind: 'loading' })
@@ -162,6 +164,7 @@ describe('the arrival', () => {
         setupState: { status: 'answered', value: setupStateOf(true) },
         passwordHeld: true,
         inFlight: 'none',
+        basicAccount: false,
         ...input
       })
 
@@ -290,7 +293,8 @@ describe('the arrival', () => {
         gate: { canSave: false, blocked: null, notTested: false },
         setupState: { status: 'pending' },
         passwordHeld: true,
-        inFlight: 'none'
+        inFlight: 'none',
+        basicAccount: false
       })
     ).toEqual({ kind: 'loading' })
   })

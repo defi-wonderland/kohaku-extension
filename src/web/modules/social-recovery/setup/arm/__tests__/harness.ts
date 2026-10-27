@@ -1012,7 +1012,8 @@ export const arrivalFor = (
     gate: gateFor(input.gate, input.client === 'ready'),
     setupState: { status: 'answered', value: setupStateOf(input.gate === 'already-set-up') },
     passwordHeld: input.passwordHeld,
-    inFlight
+    inFlight,
+    basicAccount: false
   })
 
 /** Whether the holder starts the save a second time, and what the setup read answers then. */
