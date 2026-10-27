@@ -355,7 +355,7 @@ export const enoughCheck = (write: WriteKind): GasCheck => ({
   kind: 'enough',
   write,
   key: KEY.addr,
-  estimate: { gas: 1n, gasPrice: 1n, cost: 1n, required: 1n },
+  estimate: { gas: 1n, gasPrice: 1n, cost: 1n, asked: 1n, required: 1n },
   balance: 1n
 })
 

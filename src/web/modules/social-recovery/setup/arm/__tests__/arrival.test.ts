@@ -303,7 +303,7 @@ describe('the screen a save shows', () => {
     kind: 'enough' as const,
     write: 'save' as const,
     key: COMMIT.target,
-    estimate: { gas: 1n, gasPrice: 1n, cost: 1n, required: 1n },
+    estimate: { gas: 1n, gasPrice: 1n, cost: 1n, asked: 1n, required: 1n },
     balance: 1n
   }
   const landed = apply([

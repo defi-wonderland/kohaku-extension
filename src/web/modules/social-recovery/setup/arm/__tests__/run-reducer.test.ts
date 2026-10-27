@@ -40,7 +40,7 @@ const LAST_RUN = 3
 
 const SAVE: PreparedSave = { draft: draftOf(), prepared: COMMIT, calls: [COMMIT] }
 
-const ESTIMATE = { gas: 1n, gasPrice: 1n, cost: 1n, required: 2n }
+const ESTIMATE = { gas: 1n, gasPrice: 1n, cost: 1n, asked: 2n, required: 2n }
 const ENOUGH: GasCheck = {
   kind: 'enough',
   write: 'save',

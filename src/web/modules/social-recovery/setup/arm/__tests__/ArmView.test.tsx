@@ -125,6 +125,7 @@ const STEP: DepositStep = {
     gas: 300_000n,
     gasPrice: 2_000_000_000n,
     cost: 600_000_000_000_000n,
+    asked: 720_000_000_000_000n,
     required: 720_000_000_000_000n
   },
   balance: 0n,
@@ -139,6 +140,7 @@ const STEP: DepositStep = {
         gas: 60_000n,
         gasPrice: 2_000_000_000n,
         cost: 120_000_000_000_000n,
+        asked: 144_000_000_000_000n,
         required: 144_000_000_000_000n
       }
     },
