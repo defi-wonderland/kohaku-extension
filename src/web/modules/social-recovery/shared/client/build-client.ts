@@ -105,8 +105,8 @@ const providerOf = (
 
 /**
  * The two identity methods of a chain: over the installed proving libraries
- * where the chain is deployed, the zkPassport request opened against the test
- * certificate tree where its parameters ask for it; over the stand-in's
+ * where the chain is deployed, the zkPassport method in the library's dev mode
+ * where the chain's parameters ask for the test certificate tree; over the stand-in's
  * scripted stacks otherwise.
  */
 const identityMethodsOf = (
@@ -116,7 +116,7 @@ const identityMethodsOf = (
   if (deploymentOf(chain).kind === 'deployed') {
     const testnetTree = identityParamsOf(chain).zkPassport?.testnetTree ?? false
     return [
-      zkPassportMethod({ stack: zkPassportStackFor({ testnetTree }) }),
+      zkPassportMethod({ stack: zkPassportStackFor(), devMode: testnetTree }),
       anonAadhaarMethod({ artifacts: AADHAAR_ARTIFACTS })
     ]
   }
