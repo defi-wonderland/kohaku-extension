@@ -182,7 +182,9 @@ const keyOnPage = (
 const pickerState = ({
   accountsOnPage,
   selectedAccounts = [],
-  shouldSelectSmartAccountAutomatically
+  shouldSelectSmartAccountAutomatically,
+  // The list is mounted for a seed, which lists the smart accounts' keys.
+  shouldListSmartAccountKeys = true
 }: ListProps): AccountPickerController =>
   ({
     isInitialized: true,
@@ -190,6 +192,7 @@ const pickerState = ({
     pageError: null,
     page: 1,
     accountsOnPage,
+    shouldListSmartAccountKeys,
     selectedAccounts: selectedAccounts.map(({ account, isLinked }) => ({
       account,
       isLinked,
@@ -290,18 +293,26 @@ describe('the account picker page list', () => {
   })
 
   describe('on an import', () => {
-    it('lists the basic account and no smart account when the state carries no selection flag', async () => {
-      await mount(pickerState({ accountsOnPage: [onPage(basicAccount), onPage(smartAccount)] }))
+    it('lists the smart account and its key beside the basic account on a seed', async () => {
+      await mount(
+        pickerState({
+          accountsOnPage: [onPage(basicAccount), onPage(smartAccount), keyOnPage(keyAccount)],
+          shouldSelectSmartAccountAutomatically: false
+        })
+      )
 
       expect(row(BASIC)).not.toBeNull()
-      expect(row(SMART)).toBeNull()
+      expect(row(SMART)).not.toBeNull()
+      expect(caption(KEY)?.textContent).toBe(controllingKeyRow(SMART))
+      expect(comesBefore(row(SMART), row(KEY))).toBe(true)
     })
 
-    it('lists no smart account and no key row when the state turns the selection flag off', async () => {
+    it('lists no smart account and no key row when the picker lists no smart account keys', async () => {
       await mount(
         pickerState({
           accountsOnPage: [onPage(basicAccount), onPage(smartAccount)],
-          shouldSelectSmartAccountAutomatically: false
+          shouldSelectSmartAccountAutomatically: false,
+          shouldListSmartAccountKeys: false
         })
       )
 
