@@ -208,9 +208,9 @@ const renderAttemptGone = (
 /**
  * The one line of the not-sent reading, in the write's own words
  * (`NOT_SENT_KEYS`). A replaced transaction was sent: it never ran, but it did
- * not fail to reach the chain. A call that may still
- * reach the chain says so and nothing more, and a call refused for another
- * request of the account names that request.
+ * not fail to reach the chain. A call that may still reach the chain says so
+ * and nothing more, and a call refused for another request of the account
+ * names that request.
  */
 const notSentKeyOf = (state: FailedNotSentState): string => {
   if (state.mayStillLand) {

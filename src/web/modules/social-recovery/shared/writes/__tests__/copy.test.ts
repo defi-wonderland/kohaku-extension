@@ -43,6 +43,7 @@ import {
   UNRESOLVED,
   userRejected,
   WRITE_KINDS,
+  WRITES_KEYS,
   WRITES_MODULE
 } from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
@@ -196,6 +197,15 @@ describe('the not-sent line, rendered through en.json', () => {
   it('the setup save and the removal keep the plain line', () => {
     expect(linesOf('save', userRejected())).toEqual([NOTHING_CHANGED])
     expect(linesOf('ownerWrite', userRejected())).toEqual([NOTHING_CHANGED])
+  })
+
+  it("only the editor's save reads the edits line; every other write reads the plain line", () => {
+    WRITE_KINDS.forEach((write) => {
+      expect({ write, lines: linesOf(write, userRejected()) }).toEqual({
+        write,
+        lines: [i18n.t(write === 'edit' ? WRITES_KEYS.notSentEdit : WRITES_KEYS.notSent)]
+      })
+    })
   })
 
   it("a replaced transaction of the editor's save keeps the replaced line", () => {
