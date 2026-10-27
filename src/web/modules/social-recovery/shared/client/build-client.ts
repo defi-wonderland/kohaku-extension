@@ -116,12 +116,12 @@ const identityMethodsOf = (
   if (deploymentOf(chain).kind === 'deployed') {
     const testnetTree = identityParamsOf(chain).zkPassport?.testnetTree ?? false
     return [
-      zkPassportMethod(zkPassportStackFor({ testnetTree })),
+      zkPassportMethod({ stack: zkPassportStackFor({ testnetTree }) }),
       anonAadhaarMethod({ artifacts: AADHAAR_ARTIFACTS })
     ]
   }
   return [
-    zkPassportMethod(sdkStandIn.zkPassportStackFor(descriptor)),
+    zkPassportMethod({ stack: sdkStandIn.zkPassportStackFor(descriptor) }),
     anonAadhaarMethod({ stack: sdkStandIn.aadhaarStackFor(descriptor) })
   ]
 }

@@ -276,7 +276,9 @@ describe('a zkPassport credential from enrollment to a claim the node accepts', 
     const identity = await identityWorld()
     const followed: Followed = { steps: [], views: [] }
     const config = asConfig(await enrollPassport(identity, followed))
-    const decoded = zkPassportMethod(createScriptedZkPassportStack()).codec.decodeConfig(config)
+    const decoded = zkPassportMethod({ stack: createScriptedZkPassportStack() }).codec.decodeConfig(
+      config
+    )
     expect(BigInt(decoded.uniqueIdentifier as string)).toBe(123n)
     expect(decoded).toMatchObject({ domain: 'kohaku.stand-in', scope: 'kohaku-recovery' })
     expect(followed.steps).toEqual([
@@ -318,7 +320,7 @@ describe('a zkPassport credential from enrollment to a claim the node accepts', 
 
   it('rejects the reply against a config of another identifier', async () => {
     const identity = await identityWorld()
-    const method = zkPassportMethod(createScriptedZkPassportStack())
+    const method = zkPassportMethod({ stack: createScriptedZkPassportStack() })
     const config = asConfig(await enrollPassport(identity, { steps: [], views: [] }))
     const request = requestFor(identity.client, identity.zkModule, config)
     const reply = replyOf(await claimPassport(identity, request, { steps: [], views: [] }))
@@ -337,7 +339,7 @@ describe('a zkPassport credential from enrollment to a claim the node accepts', 
 
   it('rejects a proof whose nullifier is not the non-salted one, and bytes that do not decode', async () => {
     const identity = await identityWorld()
-    const { codec } = zkPassportMethod(createScriptedZkPassportStack())
+    const { codec } = zkPassportMethod({ stack: createScriptedZkPassportStack() })
     const config = asConfig(await enrollPassport(identity, { steps: [], views: [] }))
     const request = requestFor(identity.client, identity.zkModule, config)
     const reply = replyOf(await claimPassport(identity, request, { steps: [], views: [] }))
@@ -626,7 +628,7 @@ describe('the scripted zkPassport stack', () => {
 
 describe('the zkPassport method over a scripted phone that fails', () => {
   const method = (stack: ReturnType<typeof createScriptedZkPassportStack>) =>
-    zkPassportMethod(stack)
+    zkPassportMethod({ stack })
   const PARAMS = { domain: 'kohaku.stand-in', scope: 'kohaku-recovery' }
   /** A screen that draws the request's code, which the device needs to run. */
   const SCREEN = { show: () => undefined }

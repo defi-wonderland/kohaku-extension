@@ -252,7 +252,8 @@ export class ScriptedNode implements IProvider {
 
   private readonly passkeyCodec = passkeyMethod().codec
 
-  private readonly zkPassportCodec = zkPassportMethod(createScriptedZkPassportStack()).codec
+  private readonly zkPassportCodec = zkPassportMethod({ stack: createScriptedZkPassportStack() })
+    .codec
 
   private readonly aadhaarCodec = anonAadhaarMethod({ stack: createScriptedAadhaarStack() }).codec
 

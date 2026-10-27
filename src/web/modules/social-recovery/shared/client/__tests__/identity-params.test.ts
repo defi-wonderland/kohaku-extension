@@ -195,7 +195,7 @@ describe('the params an identity method takes for one call', () => {
   })
 
   it("is taken as it is by the SDK's own zkPassport method, which carries the phone's name and purpose", () => {
-    const method = zkPassportMethod(createScriptedZkPassportStack())
+    const method = zkPassportMethod({ stack: createScriptedZkPassportStack() })
     CALLS.forEach((call) => {
       const params = methodParamsOf(STAND_IN, 'zkpassport', call)
       if (!params) {
