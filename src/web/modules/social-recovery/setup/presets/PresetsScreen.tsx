@@ -51,6 +51,7 @@ const PresetsScreen = () => {
   const entry = useSetupEntry(useRecoveryClient(basicAccount ? undefined : address))
   const opensPresets =
     entry.status === 'answered' && (entry.kind === 'not-set-up' || entry.kind === 'mirror')
+  const refused = basicAccount || (entry.status === 'answered' && !opensPresets)
 
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
@@ -60,9 +61,9 @@ const PresetsScreen = () => {
 
   return (
     <SetupChrome
-      // The refusal is no step of the setup, so it shows no stage counter.
+      // A refusal is no step of the setup, so it shows no stage counter.
       counter={
-        basicAccount
+        refused
           ? undefined
           : {
               labelKey: SETUP_STAGE_COUNTER_KEY,
@@ -83,7 +84,7 @@ const PresetsScreen = () => {
       )}
       {!!address && !basicAccount && !opensPresets && (
         <TwoColumn testID="presets-screen-columns">
-          <SetupEntryBlock entry={entry} onOpen={openPath} />
+          <SetupEntryBlock entry={entry} onOpen={openPath} onRecover={recover} />
         </TwoColumn>
       )}
       {/* Another account or chain mounts a new view, so no state carries across. */}

@@ -98,6 +98,8 @@ export interface SetupEntryBlockProps {
   entry: SetupEntry
   /** Opens the overview of the account's recovery path. */
   onOpen: () => void
+  /** Opens the recovery of another account. */
+  onRecover: () => void
 }
 
 export interface RecoverLinkProps {

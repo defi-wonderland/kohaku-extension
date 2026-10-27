@@ -689,6 +689,65 @@ describe('the presets screen', () => {
 
         expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryManage)
       })
+
+      it(`titles the refusal for ${name} with the recovery title, and counts no step of the setup`, async () => {
+        clientAnswering(ACCOUNT, async () => answer)
+        await showAccount(ACCOUNT)
+        await settle()
+
+        expect(byTestId('presets-entry')?.textContent?.startsWith(S.routes.root)).toBe(true)
+        expect(container.textContent).not.toContain(S.routes.setup)
+        expect(byTestId('presets-stage')).toBeNull()
+        expect(container.textContent).not.toContain('Step 1 of 7')
+      })
+
+      it(`offers, under the refusal for ${name}, the way to recover another account`, async () => {
+        clientAnswering(ACCOUNT, async () => answer)
+        await showAccount(ACCOUNT)
+        await settle()
+
+        expect(byTestId('presets-already-set-up')?.contains(byTestId('recover'))).toBe(true)
+        await press('recover')
+
+        expect(mockNavigate).toHaveBeenCalledTimes(1)
+        expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryRecovery)
+      })
+    })
+
+    it('keeps the setup title and the first step counter while the setup state reads, and after it fails', async () => {
+      const retried = deferred()
+      clientAnswering(
+        ACCOUNT,
+        () => retried.promise,
+        async () => NO_SETUP
+      )
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-entry-reading')).not.toBeNull()
+      expect(byTestId('presets-stage')?.textContent).toBe('Set up · Step 1 of 7')
+      expect(byTestId('presets-entry')?.textContent?.startsWith(S.routes.setup)).toBe(true)
+      expect(byTestId('recover')).toBeNull()
+
+      await act(async () => retried.reject(new Error('the node did not answer')))
+      await settle()
+
+      expect(byTestId('presets-entry-read-failed')).not.toBeNull()
+      expect(byTestId('presets-stage')?.textContent).toBe('Set up · Step 1 of 7')
+      expect(byTestId('presets-entry')?.textContent?.startsWith(S.routes.setup)).toBe(true)
+      expect(byTestId('recover')).toBeNull()
+    })
+
+    it('counts the step again once a tab opens on an account with no setup after one with a setup', async () => {
+      clientAnswering(ACCOUNT, async () => SET_UP)
+      clientAnswering(OTHER_ACCOUNT, async () => NO_SETUP)
+      await showAccount(ACCOUNT)
+      await settle()
+      expect(byTestId('presets-stage')).toBeNull()
+
+      await showAccount(OTHER_ACCOUNT)
+      await settle()
+      expect(byTestId('presets-stage')?.textContent).toBe('Set up · Step 1 of 7')
+      expect(byTestId('presets-grid')).not.toBeNull()
     })
 
     it('draws the presets for an account that authorizes the action but has no setup', async () => {

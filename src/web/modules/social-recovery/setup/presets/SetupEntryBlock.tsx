@@ -2,7 +2,8 @@
  * What step 1 shows in place of the presets while the account's setup state
  * is not answered with no setup: the client connecting, the read running, a
  * read that failed with its retry, a wallet too old for the deployment, or
- * that the account already has a setup to edit instead.
+ * that the account already has a setup to edit instead, with the way to
+ * recover another account.
  */
 import React from 'react'
 import { View } from 'react-native'
@@ -17,16 +18,22 @@ import ReadFailedBlock from '@web/modules/social-recovery/shared/chrome/ReadFail
 import { WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import AlreadySetUpCard from '@web/modules/social-recovery/setup/review/AlreadySetUpCard'
 
+import RecoverLink from './RecoverLink'
 import type { SetupEntryBlockProps } from './types'
 
 const READS = 'socialRecovery.management.overview.reads'
 
-const SetupEntryBlock = ({ entry, onOpen }: SetupEntryBlockProps) => {
+const SetupEntryBlock = ({ entry, onOpen, onRecover }: SetupEntryBlockProps) => {
   const { t } = useTranslation()
 
   return (
     <View testID="presets-entry">
-      <PageTitle title={t('socialRecovery.routes.setup')} />
+      {/* An account that already has a setup is refused, so the title names no setup step. */}
+      <PageTitle
+        title={t(
+          entry.status === 'answered' ? 'socialRecovery.routes.root' : 'socialRecovery.routes.setup'
+        )}
+      />
       {entry.status === 'connecting' && (
         <View testID="presets-entry-connecting">
           <LoadingBlock
@@ -63,6 +70,7 @@ const SetupEntryBlock = ({ entry, onOpen }: SetupEntryBlockProps) => {
       {entry.status === 'answered' && (
         <View testID="presets-already-set-up">
           <AlreadySetUpCard onOpen={onOpen} />
+          <RecoverLink onRecover={onRecover} />
         </View>
       )}
     </View>
