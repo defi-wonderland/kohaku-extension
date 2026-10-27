@@ -55,7 +55,8 @@ const IDENTITY_FACTS: DeploymentFacts = {
   zkPassportScope: 'kohaku-recovery-sepolia',
   zkPassportTestnetTree: true,
   aadhaarNullifierSeed: SEED,
-  aadhaarCertificate: CERTIFICATE
+  aadhaarCertificate: CERTIFICATE,
+  aadhaarTestMode: true
 }
 
 const without = (...fields: (keyof DeploymentFacts)[]): DeploymentFacts => {
@@ -70,7 +71,8 @@ const STAND_IN = {
   zkPassport: { domain: 'kohaku.stand-in', scope: 'kohaku-recovery', testnetTree: false },
   aadhaar: {
     nullifierSeed: 1n,
-    issuerCertificate: '-----BEGIN CERTIFICATE-----\nstand-in\n-----END CERTIFICATE-----'
+    issuerCertificate: '-----BEGIN CERTIFICATE-----\nstand-in\n-----END CERTIFICATE-----',
+    testMode: false
   }
 }
 
@@ -88,13 +90,21 @@ describe('the identity parameters of a chain', () => {
     variable.mockReturnValue(JSON.stringify(IDENTITY_FACTS))
     expect(identityParamsOf('sepolia')).toEqual({
       zkPassport: { domain: 'kohaku.example', scope: 'kohaku-recovery-sepolia', testnetTree: true },
-      aadhaar: { nullifierSeed: BigInt(SEED), issuerCertificate: CERTIFICATE }
+      aadhaar: { nullifierSeed: BigInt(SEED), issuerCertificate: CERTIFICATE, testMode: true }
     })
   })
 
   it('reads the facts it is handed over those of the chain', () => {
     variable.mockReturnValue(undefined)
     expect(identityParamsOf('sepolia', IDENTITY_FACTS).zkPassport?.domain).toBe('kohaku.example')
+  })
+
+  it('reads the Aadhaar test mode as off where the facts do not name it', () => {
+    expect(identityParamsOf('sepolia', without('aadhaarTestMode')).aadhaar).toEqual({
+      nullifierSeed: BigInt(SEED),
+      issuerCertificate: CERTIFICATE,
+      testMode: false
+    })
   })
 
   it('proves against the production tree where the facts do not name the test tree', () => {

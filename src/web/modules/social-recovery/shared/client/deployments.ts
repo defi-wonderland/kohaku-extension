@@ -47,6 +47,7 @@ const FIELDS: readonly string[] = [
   'zkPassportTestnetTree',
   'aadhaarNullifierSeed',
   'aadhaarCertificate',
+  'aadhaarTestMode',
   'deployedAt',
   'digestVersion',
   'managerVersion',
@@ -222,6 +223,9 @@ export const deploymentFactsFrom = (raw: string): DeploymentFacts => {
   }
   if (parsed.aadhaarCertificate !== undefined) {
     facts.aadhaarCertificate = certificateAt(parsed.aadhaarCertificate)
+  }
+  if (parsed.aadhaarTestMode !== undefined) {
+    facts.aadhaarTestMode = flagAt(parsed.aadhaarTestMode, 'aadhaarTestMode')
   }
   if (parsed.explorerUrl !== undefined) {
     facts.explorerUrl = explorerUrlAt(parsed.explorerUrl)

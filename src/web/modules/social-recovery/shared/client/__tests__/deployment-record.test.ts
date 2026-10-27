@@ -98,7 +98,8 @@ const IDENTITY_FIELDS = {
   zkPassportScope: 'social-recovery',
   zkPassportTestnetTree: true,
   aadhaarNullifierSeed: '1234567890',
-  aadhaarCertificate: CERTIFICATE
+  aadhaarCertificate: CERTIFICATE,
+  aadhaarTestMode: true
 }
 
 const json = (value: unknown): string => JSON.stringify(value)
@@ -341,11 +342,17 @@ describe('a build with a Sepolia deployment variable', () => {
     expect(facts?.zkPassportTestnetTree).toBeUndefined()
     expect(facts?.aadhaarNullifierSeed).toBeUndefined()
     expect(facts?.aadhaarCertificate).toBeUndefined()
+    expect(facts?.aadhaarTestMode).toBeUndefined()
   })
 
   it('takes a testnet tree flag of false', () => {
     const deployment = deploymentFactsFrom(json({ ...FACTS, zkPassportTestnetTree: false }))
     expect(deployment.zkPassportTestnetTree).toBe(false)
+  })
+
+  it('takes an Aadhaar test mode flag of false', () => {
+    const deployment = deploymentFactsFrom(json({ ...FACTS, aadhaarTestMode: false }))
+    expect(deployment.aadhaarTestMode).toBe(false)
   })
 
   it('takes the largest nullifier seed below the proving field', () => {
@@ -504,6 +511,11 @@ describe('a malformed deployment variable', () => {
       'a testnet tree flag as text',
       json({ ...FACTS, zkPassportTestnetTree: 'true' }),
       /zkPassportTestnetTree must be true or false/
+    ],
+    [
+      'an Aadhaar test mode flag as text',
+      json({ ...FACTS, aadhaarTestMode: 'true' }),
+      /aadhaarTestMode must be true or false/
     ],
     [
       'a nullifier seed as a number',
