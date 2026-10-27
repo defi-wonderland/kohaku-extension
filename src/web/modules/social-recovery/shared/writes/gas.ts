@@ -40,6 +40,7 @@ import type {
   GasCheck,
   GasCheckInput,
   GasEstimate,
+  GasPassBar,
   WalletAccountRef
 } from './types'
 
@@ -273,6 +274,17 @@ export const holdsEnough = (estimate: GasEstimate, balance: bigint): boolean =>
   balance >= estimate.required
 
 /**
+ * Whether a balance reaches the given bar: the estimate's bar to pass
+ * (`holdsEnough`), or the whole amount asked, the bar after the sign window
+ * read the key short at a fee above the estimate.
+ */
+export const reachesBar = (
+  estimate: GasEstimate,
+  balance: bigint,
+  bar: GasPassBar = 'required'
+): boolean => (bar === 'asked' ? balance >= estimate.asked : holdsEnough(estimate, balance))
+
+/**
  * The deposit step from an estimate and a balance that falls short of its bar
  * to pass. The shortfall is the amount asked less the balance, so a deposit of
  * it leaves room above the bar. Off the fast track it offers the transfer from
@@ -283,10 +295,13 @@ export const holdsEnough = (estimate: GasEstimate, balance: bigint): boolean =>
  * run it now) the step offers the deposit from outside alone. Throws a
  * TypeError where the balance covers the estimate, since such a key skips the
  * step, and where a step off the fast track has no account the key operates.
+ * With `passBar` at `asked` the step stands for a balance between the bar to
+ * pass and the amount asked, and throws only where the balance holds the
+ * amount asked.
  */
 export const depositStepOf = (args: DepositStepInput): DepositStep => {
-  const { write, key, network, estimate, balance, operates, transferFee } = args
-  if (holdsEnough(estimate, balance)) {
+  const { write, key, network, estimate, balance, operates, transferFee, passBar } = args
+  if (reachesBar(estimate, balance, passBar)) {
     throw new TypeError('The key holds enough: the deposit step is skipped.')
   }
   const fastTrack = isRecoveryCall(write) && args.fastTrack === true
@@ -331,7 +346,8 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
  * this transaction, the gas price and the key's balance. A transaction to the
  * account's factory is estimated from the simulation sender (`estimatedCallOf`
  * above); the balance read stays the key's. Answers `enough`
- * where the balance reaches the estimate's bar to pass. Otherwise, off the
+ * where the balance reaches the estimate's bar to pass, or the amount asked
+ * with `passBar` at `asked`. Otherwise, off the
  * fast track, it estimates the transfer route's own transaction through the
  * same provider (`transferEstimateCallOf`) and answers the deposit step.
  *
@@ -359,7 +375,7 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
     input.reads.nativeBalance(input.key.addr)
   ])
   const estimate = gasEstimateOf(gas, gasPrice, input.feeHeadroom)
-  if (holdsEnough(estimate, balance)) {
+  if (reachesBar(estimate, balance, input.passBar)) {
     return { kind: 'enough', write: input.write, key: input.key.addr, estimate, balance }
   }
   let transferFee: GasEstimate | undefined
@@ -386,7 +402,8 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
       balance,
       operates: input.operates,
       transferFee,
-      fastTrack
+      fastTrack,
+      passBar: input.passBar
     })
   }
 }

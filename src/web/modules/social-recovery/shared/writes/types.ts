@@ -369,6 +369,12 @@ export interface GasEstimate {
   required: bigint
 }
 
+/**
+ * The bar a balance must reach to pass the check: `required`, the estimate's
+ * bar to pass, or `asked`, the amount the step asks for.
+ */
+export type GasPassBar = 'required' | 'asked'
+
 /** The two headrooms over an estimated fee, in whole percent; `passPercent` never exceeds `askPercent`. */
 export interface FeeHeadroom {
   askPercent: number
@@ -459,6 +465,8 @@ export interface GasCheckInput {
   fastTrack?: boolean
   /** The headrooms, `ASK_HEADROOM_PERCENT` and `PASS_HEADROOM_PERCENT` by default. */
   feeHeadroom?: FeeHeadroom
+  /** The bar a balance must reach to pass, `required` by default. */
+  passBar?: GasPassBar
 }
 
 /** What the deposit step is built from: the check's estimate and a balance that falls short of it. */
@@ -471,6 +479,8 @@ export interface DepositStepInput {
   operates?: WalletAccountRef
   transferFee?: GasEstimate
   fastTrack?: boolean
+  /** The bar the balance falls short of, `required` by default. */
+  passBar?: GasPassBar
 }
 
 // ---------------------------------------------------------------------------

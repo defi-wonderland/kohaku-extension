@@ -76,6 +76,7 @@ export {
   transferEstimateCallOf,
   transferFeeOf,
   holdsEnough,
+  reachesBar,
   depositStepOf,
   checkGas
 } from './gas'
@@ -127,6 +128,7 @@ export type {
   GasNetwork,
   WalletAccountRef,
   FeeHeadroom,
+  GasPassBar,
   GasEstimate,
   DepositRouteKind,
   DepositRoute,
