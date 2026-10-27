@@ -35,6 +35,7 @@ import {
   NETWORK,
   ONE_FUNDING_COVERS_BOTH,
   renderGasAmount,
+  renderWriteState,
   replacedBy,
   STEP_CASES,
   submittingFor,
@@ -178,6 +179,31 @@ describe('the deposit step, rendered through en.json', () => {
       })
     })
   )
+})
+
+describe('the not-sent line, rendered through en.json', () => {
+  const NOTHING_CHANGED =
+    'The transaction was rejected before it reached the chain. Nothing changed.'
+  const linesOf = (write: Parameters<typeof failBeforeHash>[0], error: unknown) =>
+    renderWriteState(failThrown(write, error)).lines
+
+  it("the editor's save rejected in the sign window says the edits are still here", () => {
+    expect(linesOf('edit', userRejected())).toEqual([
+      `${NOTHING_CHANGED} Your edits are still here.`
+    ])
+  })
+
+  it('the setup save and the removal keep the plain line', () => {
+    expect(linesOf('save', userRejected())).toEqual([NOTHING_CHANGED])
+    expect(linesOf('ownerWrite', userRejected())).toEqual([NOTHING_CHANGED])
+  })
+
+  it("a replaced transaction of the editor's save keeps the replaced line", () => {
+    const replaced = renderWriteState(failThrown('save', replacedBy('cancelled'))).lines
+    expect(replaced).toHaveLength(1)
+    expect(replaced[0]).not.toBe(NOTHING_CHANGED)
+    expect(linesOf('edit', replacedBy('cancelled'))).toEqual(replaced)
+  })
 })
 
 describe('what no string of the module says', () => {

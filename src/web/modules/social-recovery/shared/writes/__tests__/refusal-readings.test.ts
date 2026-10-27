@@ -19,6 +19,7 @@ import {
   canRetry,
   KEY,
   mayStillLand,
+  NOT_SENT_KEYS,
   otherRequestPending,
   renderWriteState,
   submittingFor,
@@ -144,7 +145,7 @@ WRITE_KINDS.forEach((write) =>
           expect(otherRequestPending(failed)).toBe(false)
           expect(canRetry(failed)).toBe(true)
           expect(renderWriteState(failed)).toEqual(renderWriteState(plain))
-          expect(renderWriteState(failed, keyPath).lines).toEqual(['socialRecovery.writes.notSent'])
+          expect(renderWriteState(failed, keyPath).lines).toEqual([NOT_SENT_KEYS[write]])
         })
       )
     })
