@@ -143,8 +143,6 @@ const AccountsOnPageList = ({
             }
           }, Promise.resolve(false))
 
-          console.log({ isUsed, address, acc })
-
           if (isUsed) results[address] = true
         })
       )
