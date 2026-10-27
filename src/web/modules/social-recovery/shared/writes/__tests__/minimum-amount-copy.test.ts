@@ -46,7 +46,9 @@ describe('the strings that name an amount to send', () => {
       ['shortfallSave', gas.shortfallSave],
       ['transferRoute', gas.transferRoute],
       ['outsideRoute', gas.outsideRoute],
-      ['outsideRouteAlone', gas.outsideRouteAlone]
+      ['outsideRouteAlone', gas.outsideRouteAlone],
+      ['submissionAmount', gas.submissionAmount],
+      ['executionAmount', gas.executionAmount]
     ] as const
   ).forEach(([key, text]) =>
     it(`${key} reads "at least" before the amount`, () => {
@@ -107,6 +109,39 @@ describe('a recovery call', () => {
       step.routes.forEach((route, index) =>
         expect(rendered.routes[index].line).toContain(`at least ${amountOf(route.amount)}`)
       )
+      expect(rendered.notes).not.toContain(NOTE)
+    })
+
+    it(`${write} on the fast track: the amount line reads "at least" the shortfall and leaves room for the fee to rise`, async () => {
+      const step = await depositStepFor(write, true)
+      const rendered = renderDepositStep(step, {}, t)
+      const key = write === 'execution' ? GAS_KEYS.executionAmount : GAS_KEYS.submissionAmount
+
+      expect(rendered.routes).toHaveLength(1)
+      expect(rendered.routes[0].line).toBe(t(key, { amount: amountOf(step.shortfall) }))
+      expect(rendered.routes[0].line).toContain(`at least ${amountOf(step.shortfall)}`)
+      expect(rendered.routes[0].line).not.toMatch(/\bat most\b/i)
+      expect(rendered.routes[0].line).toMatch(
+        write === 'execution'
+          ? /\bfee to rise before you execute\.$/
+          : /\bfee to rise before you submit\.$/
+      )
+    })
+
+    it(`${write} on the logged-in route with the deposit from outside alone: the same minimum line`, () => {
+      const step = depositStepOf({
+        write,
+        key: KEY.addr,
+        network: NETWORK,
+        estimate: gasEstimateOf(240_000n, 2n * GWEI),
+        balance: 0n,
+        operates: ACCOUNT_REF
+      })
+      const rendered = renderDepositStep(step, {}, t)
+
+      expect(rendered.routes).toHaveLength(1)
+      expect(rendered.routes[0].line).toContain(`at least ${amountOf(step.shortfall)}`)
+      expect(rendered.routes[0].line).not.toMatch(/\bat most\b/i)
       expect(rendered.notes).not.toContain(NOTE)
     })
 
