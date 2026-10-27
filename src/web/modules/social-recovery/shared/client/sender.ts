@@ -23,7 +23,11 @@
  * comes at once. The port first waits until the wallet neither signs nor
  * broadcasts, then keeps its session open for `SEND_SETTLE_MS`: a broadcast
  * with a key the keystore holds cannot be stopped once it began, so an
- * operation that names the request still answers its hash in that time.
+ * operation that names the request still answers its hash in that time. The
+ * one exception is a request the wallet lists as rejected by the user, which
+ * it does only while nothing was signed or broadcast: that one is `refused`
+ * as soon as the queue shows it gone, unless the wallet or the sign screen
+ * signs at that moment.
  *
  * A request the port withdraws is not gone until the queue shows it gone and
  * the sign screen no longer holds it: the wallet drops a hidden tab's
@@ -963,9 +967,18 @@ export const createSendPort = (port: SendRequestPort, options: SendPortOptions):
           armSettle()
         }
         if (!inQueue && !waiting) {
-          if (seen) {
-            settle(timedOut ? 'timeout' : 'refused', false)
+          if (!seen) {
+            return
           }
+          // The wallet lists a request the user rejected only while it neither
+          // signed nor broadcast anything, so nothing was sent and no settle
+          // period is needed.
+          const rejected = (update.state.rejectedUserRequestIds ?? []).includes(id)
+          if (rejected && !busy && !signing) {
+            fail('refused')
+            return
+          }
+          settle(timedOut ? 'timeout' : 'refused', false)
           return
         }
         seen = true
