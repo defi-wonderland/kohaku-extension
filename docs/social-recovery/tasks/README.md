@@ -97,6 +97,7 @@ A follow-up task is work the cut did not hold: a seam a task or a review found, 
 | FU-BI | The uninstall opens no Ambire survey: the uninstall URL cleared (Linear EFI-1046) | the wallet's background, outside the module | `src/web/extension-services/background` | none (held) | dismissed on the owner's rule of 2026-10-27 (EFI-1046 canceled); the lane `fix/FU-BI-uninstall-url` kept locally |
 | FU-BJ | After a reinstall, a seed import restores neither the smart account nor its controlling key, so funds on the key are unreachable with no warning (Linear EFI-1047; the probe of 2026-10-27 found the import lists basic indices only) | PT-042 | `src/ambire-common/src/controllers/accountPicker`, `src/web/modules/account-picker` | #150, kohaku-commons#14 | open; ruled 2026-10-27 (option 1); reviewed, gated, walked |
 | FU-BK | The done screen's passkey advice is conditional on a device the holder lost; no lost device stated as a fact (Linear EFI-1048) | PT-062 | `recovery/done` | #151 | open; reviewed, gated |
+| FU-BL | The management editor's not-sent line carries the frame's "Your edits are still here." (the owner's ruling of 2026-10-27 on a Low of the Sepolia walk) | PT-068 | `shared/writes`, one string | #154 | open; reviewed, gated |
 
 ## Open questions
 
