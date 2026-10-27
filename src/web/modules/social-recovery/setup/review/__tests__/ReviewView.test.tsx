@@ -305,6 +305,7 @@ const mount = async ({
             account={ACCOUNT}
             client={reviewClient}
             accountLabel={label}
+            basicAccount={false}
             navigate={navigate}
           />
         </ThemeContext.Provider>

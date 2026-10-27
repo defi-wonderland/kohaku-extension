@@ -207,7 +207,7 @@ describe('the save gate', () => {
       ).toEqual({ kind: 'unavailable' })
     })
 
-    it('shows the removed key unreadable before cannot recover and already set up', () => {
+    it('shows cannot recover before the removed key unreadable and already set up', () => {
       expect(
         gateOf({
           removedKey: REMOVED_KEY_UNNAMED,
@@ -215,7 +215,7 @@ describe('the save gate', () => {
           description: KEY_COUNT,
           setupState: HAS_SETUP
         }).blocked
-      ).toEqual({ kind: 'removed-key-unreadable' })
+      ).toEqual({ kind: 'cannot-recover', reason: 'not-supported' })
     })
 
     it('shows the unsupported account before the key count', () => {
@@ -287,7 +287,7 @@ describe('the save gate', () => {
   })
 
   it('reads the removed key unreadable where the account has no creation record', () => {
-    expect(gateOf({ removedKey: NO_CREATION_RECORD, description: KEY_COUNT })).toMatchObject({
+    expect(gateOf({ removedKey: NO_CREATION_RECORD })).toMatchObject({
       canSave: false,
       blocked: { kind: 'removed-key-unreadable' }
     })

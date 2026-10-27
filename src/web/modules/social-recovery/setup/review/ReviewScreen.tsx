@@ -5,6 +5,7 @@
 import React, { useMemo } from 'react'
 import { isAddress, isAddressEqual } from 'viem'
 
+import { isSmartAccount } from '@ambire-common/libs/account/account'
 import useNavigation from '@common/hooks/useNavigation'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import {
@@ -37,6 +38,7 @@ const ReviewScreen = () => {
       )
     : undefined
   const accountLabel = listed?.preferences?.label || undefined
+  const basicAccount = !!listed && !isSmartAccount(listed)
   const clientState = useRecoveryClient(account)
 
   const { status, retry } = clientState
@@ -71,6 +73,7 @@ const ReviewScreen = () => {
           account={account}
           client={client}
           accountLabel={accountLabel}
+          basicAccount={basicAccount}
           navigate={navigate}
         />
       )}
