@@ -1,7 +1,10 @@
 /**
  * The presets in the settings chrome, for the setup tab's account on the
  * recovery chain. A basic account, which this release cannot recover, sees
- * that refusal in their place, before any record of a draft is read.
+ * that refusal in their place, before any client is built or any record of a
+ * draft is read. Any other account sees the presets only once the setup state
+ * answers that no setup is committed; while it reads, where it failed, and
+ * where a setup exists, step 1 shows that state in their place.
  */
 import React, { useCallback, useMemo } from 'react'
 import { View } from 'react-native'
@@ -20,6 +23,7 @@ import {
 import SetupChrome from '@web/modules/social-recovery/shared/chrome/SetupChrome'
 import useSetupAccount from '@web/modules/social-recovery/shared/chrome/useSetupAccount'
 import { CHAIN_IDS, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
+import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 import {
   createWalletRecords,
   extensionRecordStorage
@@ -27,6 +31,8 @@ import {
 import CannotRecoverCard from '@web/modules/social-recovery/setup/review/CannotRecoverCard'
 
 import PresetsView from './PresetsView'
+import SetupEntryBlock from './SetupEntryBlock'
+import { useSetupEntry } from './useSetupEntry'
 
 const PresetsScreen = () => {
   const { t } = useTranslation()
@@ -41,11 +47,15 @@ const PresetsScreen = () => {
       )
     : undefined
   const basicAccount = !!listed && !isSmartAccount(listed)
+  const entry = useSetupEntry(useRecoveryClient(basicAccount ? undefined : address))
+  const opensPresets =
+    entry.status === 'answered' && (entry.kind === 'not-set-up' || entry.kind === 'mirror')
 
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
   const openEditor = useCallback(() => navigate(WEB_ROUTES.socialRecoverySetupEditor), [navigate])
   const recover = useCallback(() => navigate(WEB_ROUTES.socialRecoveryRecovery), [navigate])
+  const openPath = useCallback(() => navigate(WEB_ROUTES.socialRecoveryManage), [navigate])
 
   return (
     <SetupChrome
@@ -64,8 +74,13 @@ const PresetsScreen = () => {
           </View>
         </TwoColumn>
       )}
+      {!!address && !basicAccount && !opensPresets && (
+        <TwoColumn testID="presets-screen-columns">
+          <SetupEntryBlock entry={entry} onOpen={openPath} />
+        </TwoColumn>
+      )}
       {/* Another account or chain mounts a new view, so no state carries across. */}
-      {!!address && !basicAccount && (
+      {!!address && !basicAccount && opensPresets && (
         <PresetsView
           key={`${chainId}:${address}`}
           records={records}

@@ -74,6 +74,22 @@ const mockStorage: RecordStorage = {
   }
 }
 
+// The recovery client: one stable client per account, whose setup state
+// answers that no setup is committed; a basic account is asked for none.
+const mockClients = new Map<string, { setup: { setupState: () => Promise<unknown> } }>()
+jest.mock('@web/modules/social-recovery/shared/client/useRecoveryClient', () => ({
+  useRecoveryClient: (account: string | undefined) => {
+    if (!account) {
+      return { status: 'loading', retry: () => {} }
+    }
+    if (!mockClients.has(account)) {
+      mockClients.set(account, {
+        setup: { setupState: async () => ({ hasSetup: false, isAuthorized: false }) }
+      })
+    }
+    return { status: 'ready', client: mockClients.get(account), retry: () => {} }
+  }
+}))
 jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
   __esModule: true,
   default: () =>
@@ -98,6 +114,7 @@ jest.mock('@web/modules/settings/components/Sidebar', () => ({
   __esModule: true,
   default: () => null
 }))
+jest.mock('@common/components/Spinner', () => ({ __esModule: true, default: () => null }))
 jest.mock('@common/components/AmbireLogoHorizontal', () => ({
   __esModule: true,
   default: () => null
