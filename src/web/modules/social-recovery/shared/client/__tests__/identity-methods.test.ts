@@ -878,6 +878,26 @@ describe('the Aadhaar method over a scripted prover that fails', () => {
     })
   })
 
+  it('refuses a claim over a QR code the script marks stale before proving, and proves a fresh one as before', async () => {
+    const stack = createScriptedAadhaarStack({ stepMs: 1 })
+    const { aadhaar, ctx, signing } = await enrolled(stack)
+    const generateArgs = jest.spyOn(stack, 'generateArgs')
+    const prove = jest.spyOn(stack, 'prove')
+
+    stack.script({ stale: true })
+    await expect(aadhaar.replyFrom(ctx, signing, { qrData: QR_DATA })).resolves.toEqual({
+      kind: 'reply-failure',
+      cause: 'material-rejected'
+    })
+    expect(generateArgs).not.toHaveBeenCalled()
+    expect(prove).not.toHaveBeenCalled()
+
+    stack.script({})
+    const proof = await aadhaar.replyFrom(ctx, signing, { qrData: QR_DATA })
+    expect(typeof proof).toBe('string')
+    expect(prove).toHaveBeenCalledTimes(1)
+  })
+
   it('hands a proof its local verifier could not run, which the method then does not judge', async () => {
     const stack = createScriptedAadhaarStack({ stepMs: 1 })
     const { aadhaar, ctx, signing } = await enrolled(stack)
