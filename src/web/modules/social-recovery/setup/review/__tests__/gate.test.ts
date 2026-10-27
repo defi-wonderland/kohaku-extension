@@ -511,6 +511,104 @@ describe('a cannot-recover answer before the removed key unreadable', () => {
   })
 })
 
+describe('the untested warning beside a cannot-recover answer', () => {
+  const FINAL = [
+    ['a basic account', () => gateOf({ basicAccount: true, untested: UNTESTED })],
+    [
+      'a basic account on the wallet reads of a key',
+      () =>
+        gateOf({
+          basicAccount: true,
+          removedKey: NO_CREATION_RECORD,
+          untested: UNTESTED
+        })
+    ],
+    [
+      'a basic account whose path holds an empty slot',
+      () =>
+        gateOf({
+          basicAccount: true,
+          clauses: [required(emptySlot('passkey'))],
+          untested: UNTESTED
+        })
+    ],
+    [
+      'a basic account whose records are loaded but whose client is not ready',
+      () => gateOf({ basicAccount: true, clientReady: false, untested: UNTESTED })
+    ],
+    ['an action that does not fit', () => gateOf({ fitCheck: DOES_NOT_FIT, untested: UNTESTED })],
+    [
+      'an action that does not fit beside an unreadable removed key',
+      () =>
+        gateOf({ fitCheck: DOES_NOT_FIT, removedKey: REMOVED_KEY_UNNAMED, untested: UNTESTED })
+    ],
+    ['the key count', () => gateOf({ description: KEY_COUNT, untested: UNTESTED })],
+    [
+      'several keys with no count',
+      () =>
+        gateOf({
+          removedKey: SEVERAL_KEYS,
+          description: { status: 'failed' },
+          untested: UNTESTED
+        })
+    ]
+  ] as const
+
+  FINAL.forEach(([named, gate]) =>
+    it(`shows no untested warning for ${named}`, () => {
+      expect(gate().blocked?.kind).toBe('cannot-recover')
+      expect(gate().notTested).toBe(false)
+    })
+  )
+
+  const OTHER = [
+    [
+      'a trust read that did not answer',
+      'unavailable',
+      () => gateOf({ trustRows: UNAVAILABLE_ROWS, untested: UNTESTED })
+    ],
+    [
+      'a removed key the wallet could not name',
+      'removed-key-unreadable',
+      () => gateOf({ removedKey: REMOVED_KEY_UNNAMED, untested: UNTESTED })
+    ],
+    [
+      'an account with no creation record',
+      'removed-key-unreadable',
+      () => gateOf({ removedKey: NO_CREATION_RECORD, untested: UNTESTED })
+    ],
+    [
+      'an account that holds a setup',
+      'already-set-up',
+      () => gateOf({ setupState: HAS_SETUP, untested: UNTESTED })
+    ],
+    [
+      'a path with an empty slot',
+      'empty-slot',
+      () => gateOf({ clauses: [required(emptySlot('passkey'))], untested: UNTESTED })
+    ],
+    [
+      'a hidden setup with no recovery password',
+      'password-missing',
+      () => gateOf({ passwordSet: false, untested: UNTESTED })
+    ]
+  ] as const
+
+  OTHER.forEach(([named, kind, gate]) =>
+    it(`still warns of the untested method beside the block for ${named}`, () => {
+      expect(gate().blocked?.kind).toBe(kind)
+      expect(gate().notTested).toEqual(UNTESTED)
+    })
+  )
+
+  it('still warns beside an enabled Save and beside the unreadable key of an account not listed as basic', () => {
+    expect(gateOf({ basicAccount: false, untested: UNTESTED }).notTested).toEqual(UNTESTED)
+    expect(
+      gateOf({ basicAccount: false, removedKey: NO_CREATION_RECORD, untested: UNTESTED }).notTested
+    ).toEqual(UNTESTED)
+  })
+})
+
 describe('the blocks the setup records decide', () => {
   const EMPTY_PASSKEY = emptySlot('passkey')
 

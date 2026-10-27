@@ -29,6 +29,7 @@ import type { SetupConfirmation, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { KeyHandle, SendRequestAction } from '@web/modules/social-recovery/shared/client'
 import type { ArmKitClient } from '@web/modules/social-recovery/setup/arm'
 import type {
+  AccountsMock,
   Chain,
   RemountedSaveCase,
   ActivityMock,
@@ -57,6 +58,7 @@ const mockSelected: SelectedAccountMock = { current: null, listeners: new Set() 
 const mockFacts = new Map<string, unknown>()
 const mockClient: ClientMock = { current: { status: 'loading' } }
 const mockPort: PortMock = { current: null }
+const mockAccounts: AccountsMock = { current: [] }
 
 jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
   __esModule: true,
@@ -84,7 +86,7 @@ jest.mock('@web/hooks/useKeystoreControllerState', () => ({
 }))
 jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
-  default: () => ({ accounts: [] })
+  default: () => ({ accounts: mockAccounts.current })
 }))
 const mockQueue: QueueMock = {
   current: { userRequests: [] },
@@ -353,6 +355,7 @@ let otherKey: KeyHandle
 let chain: Chain
 let port: ReturnType<typeof sendPortFor>
 let prepareCommitSetup: jest.Mock
+let removedKeyRead: jest.Mock
 let confirmSetup: jest.Mock
 let setupState: jest.Mock
 let reads: ReturnType<typeof chainReadsFor>
@@ -431,6 +434,7 @@ const wireClient = (facts: FactsState, deployed = true) => {
     return chain.confirm
   })
   setupState = jest.fn(async () => chain.setupState)
+  removedKeyRead = jest.fn(async () => chain.removedKey)
   reads = chainReadsFor('enough')
   receipts = receiptsFor('landed')
   const kit = {
@@ -451,7 +455,7 @@ const wireClient = (facts: FactsState, deployed = true) => {
       confirmSetup
     },
     walletReads: {
-      removedKey: async () => chain.removedKey,
+      removedKey: removedKeyRead,
       fitCheck: async () => chain.fitCheck
     }
   }
@@ -546,6 +550,7 @@ beforeEach(async () => {
   mockReadHold.current = null
   mockPortOptions.length = 0
   mockFacts.clear()
+  mockAccounts.current = []
   mockQueue.current = { userRequests: [] }
   activity.current = []
   mockFacts.set('loading', { status: 'loading', retry: jest.fn() })
@@ -1436,6 +1441,85 @@ describe('the blocks on arrival', () => {
     wireClient('ready', false)
     await openByPush()
     expect(byTestId('arm-cost-line')?.textContent).toBe(t('socialRecovery.costLines.saveDeploys'))
+  })
+})
+
+describe('a basic account the wallet lists, on the save route with a draft', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+
+  // The wallet's reads of a key with no smart account behind it: no creation
+  // record to name the removed key, and an action that reads as fitting.
+  const listBasic = () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    chain.fitCheck = { basis: 'deployed-code', fits: true }
+    mockAccounts.current = [{ ...account, creation: null }]
+  }
+
+  const OPENINGS = [
+    ['by a typed address', openByAddress],
+    ['by a reload', reload],
+    ["by the review's push", openByPush]
+  ] as const
+
+  OPENINGS.forEach(([named, open]) =>
+    it(`refuses it ${named} with the unsupported line, not the unreadable removed key, and no retry`, async () => {
+      listBasic()
+      await writeRecords(draftOf('encrypted'))
+      wireClient('ready')
+      await open()
+
+      expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+      expect(byTestId('review-blocked-title')?.textContent).toBe(
+        t(`${BLOCKED}.cannotRecover.title`)
+      )
+      expect(byTestId('review-blocked-body')?.textContent).toBe(
+        t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+      )
+      expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
+      expect(pageText()).not.toContain(t(`${BLOCKED}.removedKeyUnreadable.title`))
+      expect(byTestId('review-blocked-retry')).toBeNull()
+      expect(prepareCommitSetup).not.toHaveBeenCalled()
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+  )
+
+  it('reads the removed key once and never again while the refusal stands', async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+    const readsOnArrival = removedKeyRead.mock.calls.length
+    await settle()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(readsOnArrival).toBeLessThanOrEqual(1)
+    expect(removedKeyRead.mock.calls.length).toBe(readsOnArrival)
+  })
+
+  it('refuses it whatever the reads answer, even where the removed key is named', async () => {
+    mockAccounts.current = [{ ...account, creation: null }]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+  })
+
+  it('still shows the unreadable removed key, with its retry, for the same reads of a listed smart account', async () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    mockAccounts.current = [account]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-removed-key-unreadable')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    const before = removedKeyRead.mock.calls.length
+    await press('review-blocked-retry')
+    expect(removedKeyRead.mock.calls.length).toBe(before + 1)
   })
 })
 

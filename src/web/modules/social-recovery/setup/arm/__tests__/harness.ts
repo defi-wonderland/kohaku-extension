@@ -1112,6 +1112,9 @@ export type SelectedAccountMock = {
   listeners: Set<() => void>
 }
 
+/** The accounts the wallet lists, as the mocked hook answers them. */
+export type AccountsMock = { current: Account[] }
+
 /** The client state the mocked hook answers. */
 export type ClientMock = { current: unknown }
 
