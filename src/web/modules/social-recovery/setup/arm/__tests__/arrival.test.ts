@@ -45,6 +45,7 @@ import {
 } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 import type {
   ArrivalCase,
+  FactsCase,
   SaveRefusal
 } from '@web/modules/social-recovery/setup/arm/__tests__/harness'
 
@@ -356,17 +357,42 @@ describe('the arrival', () => {
       )
     })
 
-    it('still reads the account facts first', () => {
-      expect(basic({ facts: factsReadingFor('loading', account) })).toEqual({ kind: 'loading' })
-      expect(basic({ facts: factsReadingFor('view-only', account) })).toEqual({
-        kind: 'unavailable',
-        retry: null,
-        cause: 'view-only'
+    it('is refused while its facts are still loading', () => {
+      expect(basic({ facts: factsReadingFor('loading', account) })).toEqual(NOT_SUPPORTED)
+      expect(
+        basic({
+          facts: factsReadingFor('loading', account),
+          client: 'loading',
+          gate: basicGate(false, false),
+          inFlight: undefined
+        })
+      ).toEqual(NOT_SUPPORTED)
+    })
+
+    it('is refused where the recovery state of its facts could not be read, with no retry offered', () => {
+      expect(basic({ facts: factsReadingFor('state-unread', account) })).toEqual(NOT_SUPPORTED)
+    })
+
+    it('is refused where the keystore holds no key for it', () => {
+      expect(basic({ facts: factsReadingFor('view-only', account) })).toEqual(NOT_SUPPORTED)
+    })
+
+    it('shows a failed read of a stored save as that failure once its facts are ready', () => {
+      expect(basic({ facts: factsReadingFor('ready', account), inFlight: 'failed' })).toEqual({
+        kind: 'load-failed'
       })
-      expect(basic({ facts: factsReadingFor('state-unread', account) })).toEqual({
-        kind: 'unavailable',
-        retry: 'facts'
-      })
+    })
+
+    it('leaves a smart account on its facts first, whatever block its gate holds', () => {
+      const smart = (facts: FactsCase) =>
+        basic({
+          basicAccount: false,
+          facts: factsReadingFor(facts, account),
+          gate: gateFor('does-not-fit')
+        })
+      expect(smart('loading')).toEqual({ kind: 'loading' })
+      expect(smart('view-only')).toEqual({ kind: 'unavailable', retry: null, cause: 'view-only' })
+      expect(smart('state-unread')).toEqual({ kind: 'unavailable', retry: 'facts' })
     })
 
     it('leaves a smart account loading while the client loads, whatever block its gate holds', () => {

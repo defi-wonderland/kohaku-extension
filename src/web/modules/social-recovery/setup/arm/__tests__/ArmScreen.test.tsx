@@ -1526,6 +1526,46 @@ describe('a basic account the wallet lists, on the save route with a draft', () 
     expect(port.sendAccountBatch).not.toHaveBeenCalled()
   })
 
+  it("refuses it by a typed address while the account's facts still load, with no Save and nothing sent", async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('loading')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-checking')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it("refuses it by a typed address where the account's recovery state could not be read, with no retry of that read", async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('state-unread')
+    const retryFacts = jest.fn()
+    mockFacts.set(address.toLowerCase(), {
+      status: 'unavailable',
+      cause: 'state-unread',
+      retry: retryFacts
+    })
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-arrival-retry')).toBeNull()
+    expect(byTestId('review-blocked-retry')).toBeNull()
+    expect(retryFacts).not.toHaveBeenCalled()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
   it('waits for a smart account by a typed address while the client is still loading', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
