@@ -539,8 +539,7 @@ describe('the untested warning beside a cannot-recover answer', () => {
     ['an action that does not fit', () => gateOf({ fitCheck: DOES_NOT_FIT, untested: UNTESTED })],
     [
       'an action that does not fit beside an unreadable removed key',
-      () =>
-        gateOf({ fitCheck: DOES_NOT_FIT, removedKey: REMOVED_KEY_UNNAMED, untested: UNTESTED })
+      () => gateOf({ fitCheck: DOES_NOT_FIT, removedKey: REMOVED_KEY_UNNAMED, untested: UNTESTED })
     ],
     ['the key count', () => gateOf({ description: KEY_COUNT, untested: UNTESTED })],
     [
