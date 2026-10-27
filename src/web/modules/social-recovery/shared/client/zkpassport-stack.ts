@@ -26,6 +26,7 @@ export const zkPassportStackFor = (): ZkPassportStack => async (domain) => {
   })
   return {
     request: async (args) => closing(await library.request(args)),
-    getSolidityVerifierParameters: (args) => client.getSolidityVerifierParameters(args)
+    getSolidityVerifierParameters: (args) => client.getSolidityVerifierParameters(args),
+    cancelRequest: (requestId) => client.cancelRequest(requestId)
   }
 }

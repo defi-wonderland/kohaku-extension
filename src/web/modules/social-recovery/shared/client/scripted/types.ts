@@ -125,7 +125,7 @@ export interface ScriptedZkPassportOptions {
 export type ScriptedZkPassportStack = ZkPassportStack & {
   /** Sets how every request from now on is answered; an empty script restores the defaults. */
   script(next: ScriptedZkPassportScript): void
-  /** How many times a request of this stack was closed. */
+  /** How many times a request of this stack was cancelled. */
   closes(): number
 }
 
