@@ -962,6 +962,7 @@ export const gateFor = (gate: GateCase, clientReady = true): SaveGate => {
     clauses,
     backup: 'encrypted',
     passwordSet,
+    basicAccount: false,
     ...reads
   })
 }

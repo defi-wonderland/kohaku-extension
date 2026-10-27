@@ -93,6 +93,7 @@ const gateOf = (input: Partial<SaveGateInput> = {}) =>
     clauses: [],
     backup: 'encrypted',
     passwordSet: true,
+    basicAccount: false,
     ...READS,
     ...input
   })
