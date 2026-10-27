@@ -246,7 +246,9 @@ describe('the fit check the built client runs against the account implementation
     world.chain.setHasCode(hasCode)
     const result = await client.setup.validateSetup(draftOf(world))
     const codes = (findings: readonly CodedFinding[]) =>
-      findings.map((finding) => finding.code).filter((code) => code.startsWith('action.'))
+      findings
+        .map((finding) => finding.code)
+        .filter((code) => code.startsWith('action.') || code.startsWith('account.'))
     return { errors: codes(result.errors), warnings: codes(result.warnings) }
   }
 
@@ -254,10 +256,10 @@ describe('the fit check the built client runs against the account implementation
     await expect(fitFindings(createWorld())).resolves.toEqual({ errors: [], warnings: [] })
   })
 
-  it('refuses an account implementation the action does not serve', async () => {
+  it('refuses an account with no code yet whose implementation the action does not serve', async () => {
     const world = createWorld({ accountImplementation: addressOf('other-implementation') })
     await expect(fitFindings(world)).resolves.toEqual({
-      errors: ['action.unsupported'],
+      errors: ['account.not-deployed'],
       warnings: []
     })
   })
@@ -271,10 +273,10 @@ describe('the fit check the built client runs against the account implementation
 
     world.chain.restoreRead('AMBIRE_IMPLEMENTATION')
     const result = await client.setup.validateSetup(draftOf(world))
-    expect(result.errors.map(({ code }) => code)).not.toContain('action.unsupported')
+    expect(result.errors.map(({ code }) => code)).not.toContain('account.not-deployed')
   })
 
-  it('keeps every other error of the draft while it drops the unsupported account of an account with no code yet', async () => {
+  it('keeps every other error of the draft while it drops the missing code of an account with no code yet', async () => {
     const world = createWorld()
     const client = await buildRecoveryClient(world.config)
     world.chain.setHasCode(false)
@@ -283,7 +285,7 @@ describe('the fit check the built client runs against the account implementation
     )
     const codes = result.errors.map(({ code }) => code)
     expect(codes).toContain('clause.empty')
-    expect(codes).not.toContain('action.unsupported')
+    expect(codes).not.toContain('account.not-deployed')
   })
 
   it('refuses a deployed account the action answers it does not serve, whatever the implementation named', async () => {

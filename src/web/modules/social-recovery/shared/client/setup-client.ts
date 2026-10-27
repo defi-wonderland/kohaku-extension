@@ -4,10 +4,12 @@
  * extension's rules.
  *
  * - `validateSetup` judges an account with no code yet by the implementation
- *   it deploys behind its proxy. The action answers `supportsAccount` only
- *   for code that exists, so the `action.unsupported` the SDK raises for such
- *   an account is dropped where the wallet's fit check finds the
- *   implementation to be is the one the action serves, and kept otherwise.
+ *   it deploys behind its proxy, since this wallet deploys the account in the
+ *   transaction that carries the commit. The SDK cannot judge the fit of code
+ *   that does not exist, so the `account.not-deployed` or `action.unsupported`
+ *   it raises for such an account is dropped where the wallet's fit check
+ *   finds the implementation to be is the one the action serves, and kept
+ *   otherwise.
  * - The clear splits into three writes. `prepareClearSetup` is the
  *   manager's clear alone, `prepareRemoveSetup` the clear with the revoke of
  *   the action's authorization where the account still grants it, and both
@@ -110,15 +112,16 @@ export const createRecoverySetupClient = ({
     events: setup.events,
     async validateSetup(draft: SetupDraft): Promise<ValidationResult> {
       const result = await setup.validateSetup(draft)
-      const unsupported = ({ code }: ValidationError) => code === 'action.unsupported'
-      if (!result.errors.some(unsupported)) {
+      const unfit = ({ code }: ValidationError) =>
+        code === 'account.not-deployed' || code === 'action.unsupported'
+      if (!result.errors.some(unfit)) {
         return result
       }
       const fit = await fitCheck()
       if (fit.basis !== 'code-to-be' || !fit.fits) {
         return result
       }
-      return { ...result, errors: result.errors.filter((error) => !unsupported(error)) }
+      return { ...result, errors: result.errors.filter((error) => !unfit(error)) }
     },
     describeSetup: (draft: SetupDraft) => setup.describeSetup(draft),
     prepareCommitSetup: (draft: SetupDraft, password?: string, options?: PrepareOptions) =>
