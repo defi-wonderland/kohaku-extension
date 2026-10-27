@@ -96,7 +96,7 @@ A follow-up task is work the cut did not hold: a seam a task or a review found, 
 | FU-BH | Step 1 of the setup reads the setup state and blocks an account that already has a path with the "Already set up" card; the loading and failed states as the overview's (Linear EFI-1045) | PT-043, PT-050, PT-067 | `setup/presets`, `setup/review` | #149 (stacked on #147) | open |
 | FU-BI | The uninstall opens no Ambire survey: the uninstall URL cleared (Linear EFI-1046) | the wallet's background, outside the module | `src/web/extension-services/background` | none (held) | dismissed on the owner's rule of 2026-10-27 (EFI-1046 canceled); the lane `fix/FU-BI-uninstall-url` kept locally |
 | FU-BJ | After a reinstall, a seed import restores neither the smart account nor its controlling key, so funds on the key are unreachable with no warning (Linear EFI-1047; the probe of 2026-10-27 found the import lists basic indices only) | PT-042 | `src/ambire-common/src/controllers/accountPicker`, `src/web/modules/account-picker` | #150, kohaku-commons#14 | open; ruled 2026-10-27 (option 1); reviewed, gated, walked |
-| FU-BK | The done screen's passkey advice is conditional on a device the holder lost; no lost device stated as a fact (Linear EFI-1048) | PT-062 | `recovery/done` | pending | in progress |
+| FU-BK | The done screen's passkey advice is conditional on a device the holder lost; no lost device stated as a fact (Linear EFI-1048) | PT-062 | `recovery/done` | #151 | open; reviewed, gated |
 
 ## Open questions
 
