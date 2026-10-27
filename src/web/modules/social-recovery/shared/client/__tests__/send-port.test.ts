@@ -672,6 +672,72 @@ SUBJECTS.forEach(({ title: subject, names, sending, expectRefusal }) =>
         await advance(1)
         expectRefusal(send, 'window-closed')
       })
+
+      /** The ways the wallet shows it signs the request once the queue listed it. */
+      const SIGNED_BY: [string, (id: string) => ReturnType<typeof mainStatus>][] = [
+        ['the wallet reads SIGNING', () => mainStatus('SIGNING')],
+        ['the sign screen signs it', (id) => signScreen(id, SigningStatus.InProgress)]
+      ]
+      /** The wallet back at rest after the broadcast: SUCCESS then INITIAL, the sign screen reset. */
+      const atRest = (q: SendWorld) => {
+        q.push(mainStatus('SUCCESS'))
+        q.push(mainStatus('INITIAL'))
+        q.push(signAccountOpPush({}))
+      }
+
+      SIGNED_BY.forEach(([title, signed]) => {
+        it(`keeps the settle period for a request rejected after ${title} and the wallet came back to rest, and answers the hash the activity then lists`, async () => {
+          const { q, send, id } = sending()
+          q.push(queuedWith('open', id))
+          q.push(signed(id))
+          atRest(q)
+          q.push(rejectedPush([id]))
+          await flush()
+          expect(send.status).toBe('pending')
+          await advance(SEND_SETTLE_MS - 1)
+          expect(send.status).toBe('pending')
+          q.push(activityListing(id, operationFor(id, { hash: HASH })))
+          await flush()
+          expect(send).toEqual({ status: 'resolved', value: HASH })
+        })
+
+        it(`refuses as refused only a full settle period after a rejection that came after ${title}, where the activity lists nothing`, async () => {
+          const { q, send, id } = sending()
+          q.push(queuedWith('open', id))
+          q.push(signed(id))
+          atRest(q)
+          q.push(rejectedPush([id]))
+          await advance(SEND_SETTLE_MS - 1)
+          expect(send.status).toBe('pending')
+          await advance(1)
+          expectRefusal(send, 'refused')
+          expect(withdrew(q, id)).toBe(false)
+        })
+      })
+
+      it('refuses at once where the wallet was busy and back at rest before any queue state listed the request', async () => {
+        const { q, send, id } = sending()
+        q.push(mainStatus('SIGNING'))
+        q.push(mainStatus('INITIAL'))
+        q.push(queuedWith('open', id))
+        q.push(rejectedPush([id]))
+        await flush()
+        expectRefusal(send, 'refused')
+      })
+
+      it('keeps the settle period where the sign screen signed the request before any queue state listed it', async () => {
+        const { q, send, id } = sending()
+        q.push(signScreen(id, SigningStatus.InProgress))
+        q.push(signAccountOpPush({}))
+        q.push(queuedWith('open', id))
+        q.push(rejectedPush([id]))
+        await flush()
+        expect(send.status).toBe('pending')
+        await advance(SEND_SETTLE_MS - 1)
+        expect(send.status).toBe('pending')
+        await advance(1)
+        expectRefusal(send, 'refused')
+      })
     })
 
     describe('while the wallet signs or broadcasts', () => {
