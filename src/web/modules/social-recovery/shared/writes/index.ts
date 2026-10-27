@@ -60,7 +60,8 @@ export {
   overviewIntentOf
 } from './claims'
 export {
-  FEE_HEADROOM_PERCENT,
+  ASK_HEADROOM_PERCENT,
+  PASS_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,
   ACCOUNT_FACTORY,
   accountFactoryOf,
@@ -125,6 +126,7 @@ export type {
   AccountBatchDrive,
   GasNetwork,
   WalletAccountRef,
+  FeeHeadroom,
   GasEstimate,
   DepositRouteKind,
   DepositRoute,

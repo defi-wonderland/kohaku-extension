@@ -36,6 +36,7 @@ import type {
   DepositRoute,
   DepositStep,
   DepositStepInput,
+  FeeHeadroom,
   GasCheck,
   GasCheckInput,
   GasEstimate,
@@ -43,12 +44,20 @@ import type {
 } from './types'
 
 /**
- * The headroom the check adds to the fee it estimates, in percent. The step
- * asks for at most that amount and the exact amount follows the network fee
- * at sending, so a fee that rises a little between the check and the send
- * does not bring the step back.
+ * The check keeps two headrooms over the fee it estimates, in percent: the
+ * amount the step asks for, and the lower bar a balance must reach to pass.
+ * The gap between them absorbs a fee that rises while the deposit lands, so a
+ * key funded with the amount asked passes the check run again at the new fee.
  */
-export const FEE_HEADROOM_PERCENT = 20
+export const ASK_HEADROOM_PERCENT = 50
+
+/** The headroom of the bar a balance must reach to pass the check, below the one asked. */
+export const PASS_HEADROOM_PERCENT = 10
+
+const DEFAULT_FEE_HEADROOM: FeeHeadroom = {
+  askPercent: ASK_HEADROOM_PERCENT,
+  passPercent: PASS_HEADROOM_PERCENT
+}
 
 /**
  * The factory the account library deploys a Kohaku account through
@@ -111,17 +120,39 @@ export const roundUpForDisplay = (wei: bigint): bigint => ceilDiv(wei, DISPLAY_U
 /** A balance, rounded down to the step's precision, so the step never shows more than the key holds. */
 export const roundDownForDisplay = (wei: bigint): bigint => (wei / DISPLAY_UNIT) * DISPLAY_UNIT
 
-/** The estimate of a transaction from its gas and the gas price, with the fee headroom. */
+const withHeadroom = (cost: bigint, percent: number): bigint =>
+  ceilDiv(cost * BigInt(100 + percent), 100n)
+
+/**
+ * The estimate of a transaction from its gas and the gas price, with both
+ * headrooms: `asked`, what the step asks the key to hold, and `required`, the
+ * bar a balance must reach to pass. The bar never exceeds the amount asked.
+ */
 export const gasEstimateOf = (
   gas: bigint,
   gasPrice: bigint,
-  feeHeadroomPercent: number = FEE_HEADROOM_PERCENT
+  headroom: FeeHeadroom = DEFAULT_FEE_HEADROOM
 ): GasEstimate => {
-  if (!Number.isInteger(feeHeadroomPercent) || feeHeadroomPercent < 0) {
-    throw new RangeError(`The fee headroom is a whole percent from zero: ${feeHeadroomPercent}`)
+  const { askPercent, passPercent } = headroom
+  const notWhole = [askPercent, passPercent].find(
+    (percent) => !Number.isInteger(percent) || percent < 0
+  )
+  if (notWhole !== undefined) {
+    throw new RangeError(`The fee headroom is a whole percent from zero: ${notWhole}`)
+  }
+  if (passPercent > askPercent) {
+    throw new RangeError(
+      `The headroom to pass (${passPercent}) exceeds the headroom asked (${askPercent}).`
+    )
   }
   const cost = gas * gasPrice
-  return { gas, gasPrice, cost, required: ceilDiv(cost * BigInt(100 + feeHeadroomPercent), 100n) }
+  return {
+    gas,
+    gasPrice,
+    cost,
+    asked: withHeadroom(cost, askPercent),
+    required: withHeadroom(cost, passPercent)
+  }
 }
 
 /**
@@ -230,22 +261,24 @@ export const transferEstimateCallOf = (
   return { ...transferTransaction }
 }
 
-/** The fee of the transfer route from its estimated gas, with the value's own cost and the headroom. */
+/** The fee of the transfer route from its estimated gas, with the value's own cost and the headrooms. */
 export const transferFeeOf = (
   gas: bigint,
   gasPrice: bigint,
-  feeHeadroomPercent: number = FEE_HEADROOM_PERCENT
-): GasEstimate => gasEstimateOf(gas + VALUE_TRANSFER_GAS, gasPrice, feeHeadroomPercent)
+  headroom: FeeHeadroom = DEFAULT_FEE_HEADROOM
+): GasEstimate => gasEstimateOf(gas + VALUE_TRANSFER_GAS, gasPrice, headroom)
 
-/** Whether a balance covers the step's estimate, so the step skips itself. */
+/** Whether a balance reaches the estimate's bar to pass, so the step skips itself. */
 export const holdsEnough = (estimate: GasEstimate, balance: bigint): boolean =>
   balance >= estimate.required
 
 /**
- * The deposit step from an estimate and a balance that falls short of it.
- * Off the fast track it offers the transfer from the account the key operates,
- * whose amount is the shortfall plus `transferFee`, the transfer's own fee
- * (`transferFeeOf`), and the deposit from outside, the shortfall alone. With
+ * The deposit step from an estimate and a balance that falls short of its bar
+ * to pass. The shortfall is the amount asked less the balance, so a deposit of
+ * it leaves room above the bar. Off the fast track it offers the transfer from
+ * the account the key operates, whose amount is the shortfall plus
+ * `transferFee`, the transfer's own fee asked (`transferFeeOf`), and the
+ * deposit from outside, the shortfall alone. With
  * no `transferFee` (the transfer's estimate reverted, so the account cannot
  * run it now) the step offers the deposit from outside alone. Throws a
  * TypeError where the balance covers the estimate, since such a key skips the
@@ -262,7 +295,7 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
       'Off the fast track the step offers the transfer from the account the key operates: pass that account.'
     )
   }
-  const shortfall = estimate.required - balance
+  const shortfall = estimate.asked - balance
   const outside: DepositRoute = { kind: 'outside', to: key, amount: roundUpForDisplay(shortfall) }
   const routes: DepositRoute[] =
     !fastTrack && operates && transferFee
@@ -271,7 +304,7 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
             kind: 'transfer',
             from: { ...operates },
             to: key,
-            amount: roundUpForDisplay(shortfall + transferFee.required),
+            amount: roundUpForDisplay(shortfall + transferFee.asked),
             fee: transferFee
           },
           outside
@@ -298,7 +331,7 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
  * this transaction, the gas price and the key's balance. A transaction to the
  * account's factory is estimated from the simulation sender (`estimatedCallOf`
  * above); the balance read stays the key's. Answers `enough`
- * where the balance covers the estimate with its headroom. Otherwise, off the
+ * where the balance reaches the estimate's bar to pass. Otherwise, off the
  * fast track, it estimates the transfer route's own transaction through the
  * same provider (`transferEstimateCallOf`) and answers the deposit step.
  *
@@ -325,7 +358,7 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
     input.reads.gasPrice(),
     input.reads.nativeBalance(input.key.addr)
   ])
-  const estimate = gasEstimateOf(gas, gasPrice, input.feeHeadroomPercent)
+  const estimate = gasEstimateOf(gas, gasPrice, input.feeHeadroom)
   if (holdsEnough(estimate, balance)) {
     return { kind: 'enough', write: input.write, key: input.key.addr, estimate, balance }
   }
@@ -335,7 +368,7 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
       transferFee = transferFeeOf(
         await input.reads.estimateGas(estimatedCallOf(transferCall, factory)),
         gasPrice,
-        input.feeHeadroomPercent
+        input.feeHeadroom
       )
     } catch (thrown) {
       if (!isRevertedCall(thrown)) {
