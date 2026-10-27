@@ -27,6 +27,7 @@ import {
 import CannotRecoverCard from '@web/modules/social-recovery/setup/review/CannotRecoverCard'
 
 import PresetsView from './PresetsView'
+import RecoverLink from './RecoverLink'
 
 const PresetsScreen = () => {
   const { t } = useTranslation()
@@ -49,18 +50,24 @@ const PresetsScreen = () => {
 
   return (
     <SetupChrome
-      counter={{
-        labelKey: SETUP_STAGE_COUNTER_KEY,
-        step: 1,
-        total: SETUP_STAGES,
-        testID: 'presets-stage'
-      }}
+      // The refusal is no step of the setup, so it shows no stage counter.
+      counter={
+        basicAccount
+          ? undefined
+          : {
+              labelKey: SETUP_STAGE_COUNTER_KEY,
+              step: 1,
+              total: SETUP_STAGES,
+              testID: 'presets-stage'
+            }
+      }
     >
       {!!address && basicAccount && (
         <TwoColumn testID="presets-screen-columns">
           <View testID="presets-cannot-recover">
-            <PageTitle title={t('socialRecovery.routes.setup')} />
+            <PageTitle title={t('socialRecovery.routes.root')} />
             <CannotRecoverCard blocked={{ kind: 'cannot-recover', reason: 'not-supported' }} />
+            <RecoverLink onRecover={recover} />
           </View>
         </TwoColumn>
       )}

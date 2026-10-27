@@ -323,7 +323,7 @@ describe('the presets screen', () => {
       expect(byTestId('continue')).toBeNull()
       expect(byTestId('customize')).toBeNull()
       expect(byTestId('resume')).toBeNull()
-      expect(byTestId('recover')).toBeNull()
+      expect(byTestId('recover')).not.toBeNull()
       expect(container.textContent).not.toContain(S.status.recovery.notSetUp)
     }
 
