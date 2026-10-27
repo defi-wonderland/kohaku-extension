@@ -62,6 +62,10 @@ jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
       () => mockSelected.state
     )
 }))
+jest.mock('@web/hooks/useAccountsControllerState', () => ({
+  __esModule: true,
+  default: () => ({ accounts: [] })
+}))
 jest.mock('@common/hooks/useNavigation', () => ({
   __esModule: true,
   default: () => ({ navigate: () => {} })

@@ -1,11 +1,18 @@
 /**
  * The presets in the settings chrome, for the setup tab's account on the
- * recovery chain.
+ * recovery chain. A basic account, which this release cannot recover, sees
+ * that refusal in their place, before any record of a draft is read.
  */
 import React, { useCallback, useMemo } from 'react'
+import { View } from 'react-native'
+import { isAddress, isAddressEqual } from 'viem'
 
+import { isSmartAccount } from '@ambire-common/libs/account/account'
+import { useTranslation } from '@common/config/localization'
 import useNavigation from '@common/hooks/useNavigation'
 import { WEB_ROUTES } from '@common/modules/router/constants/common'
+import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
+import { PageTitle, TwoColumn } from '@web/modules/social-recovery/shared/chrome'
 import {
   SETUP_STAGE_COUNTER_KEY,
   SETUP_STAGES
@@ -17,12 +24,23 @@ import {
   createWalletRecords,
   extensionRecordStorage
 } from '@web/modules/social-recovery/shared/records'
+import CannotRecoverCard from '@web/modules/social-recovery/setup/review/CannotRecoverCard'
 
 import PresetsView from './PresetsView'
 
 const PresetsScreen = () => {
+  const { t } = useTranslation()
   const { navigate } = useNavigation()
   const { account: address } = useSetupAccount()
+  const { accounts } = useAccountsControllerState()
+
+  // The wallet's own record of the tab's account, from the background's state push.
+  const listed = address
+    ? accounts?.find(
+        (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, address)
+      )
+    : undefined
+  const basicAccount = !!listed && !isSmartAccount(listed)
 
   const chainId = CHAIN_IDS[WALLET_RECOVERY_CHAIN]
   const records = useMemo(() => createWalletRecords({ storage: extensionRecordStorage }), [])
@@ -38,8 +56,16 @@ const PresetsScreen = () => {
         testID: 'presets-stage'
       }}
     >
+      {!!address && basicAccount && (
+        <TwoColumn testID="presets-screen-columns">
+          <View testID="presets-cannot-recover">
+            <PageTitle title={t('socialRecovery.routes.setup')} />
+            <CannotRecoverCard blocked={{ kind: 'cannot-recover', reason: 'not-supported' }} />
+          </View>
+        </TwoColumn>
+      )}
       {/* Another account or chain mounts a new view, so no state carries across. */}
-      {!!address && (
+      {!!address && !basicAccount && (
         <PresetsView
           key={`${chainId}:${address}`}
           records={records}
