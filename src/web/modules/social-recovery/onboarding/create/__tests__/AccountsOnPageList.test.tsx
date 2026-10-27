@@ -332,6 +332,132 @@ describe('the account picker page list', () => {
         params: { account: basicAccount }
       })
     })
+
+    // The page an imported seed lists: two basic accounts, the smart account of
+    // the first slot, then its key.
+    const SECOND_BASIC: Address = '0x8888888888888888888888888888888888888888'
+    const secondBasicAccount = basic(SECOND_BASIC, 'Account 3')
+    const importedSeedPage = (
+      selectedAccounts: AccountOnPage[] = [],
+      { page = 1, shouldListSmartAccountKeys = true } = {}
+    ) =>
+      ({
+        ...pickerState({
+          accountsOnPage: [
+            onPage(basicAccount),
+            onPage(secondBasicAccount, { slot: 2 }),
+            onPage(smartAccount),
+            keyOnPage(keyAccount)
+          ],
+          selectedAccounts,
+          shouldListSmartAccountKeys
+        }),
+        page
+      } as AccountPickerController)
+    const selectionsOf = (addresses: Address[]) =>
+      addresses.map((address) => ({
+        type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_SELECT_ACCOUNT',
+        params: {
+          account: [basicAccount, secondBasicAccount, smartAccount, keyAccount].find(
+            (account) => account.addr === address
+          )
+        }
+      }))
+
+    it('draws the key once, under the smart account and apart from the basic accounts', async () => {
+      await mount(importedSeedPage())
+
+      expect(rows(KEY)).toHaveLength(1)
+      expect(rows(SMART)).toHaveLength(1)
+      expect(caption(KEY)?.textContent).toBe(controllingKeyRow(SMART))
+      expect(container.querySelectorAll('[data-testid^="account-caption-"]')).toHaveLength(1)
+      expect(comesBefore(row(SMART), row(KEY))).toBe(true)
+      expect(caption(BASIC)).toBeNull()
+      expect(caption(SECOND_BASIC)).toBeNull()
+    })
+
+    it('selects a used smart account and then its key', async () => {
+      mockChain.usedAddrs = [SMART]
+      const onScanComplete = jest.fn()
+      await mount(importedSeedPage(), { isScanComplete: false, onScanComplete })
+
+      expect(dispatchedSelections()).toEqual(selectionsOf([SMART, KEY]))
+      expect(onScanComplete).toHaveBeenCalledTimes(1)
+    })
+
+    it('selects the smart account with its key when only the key is used', async () => {
+      mockChain.usedAddrs = [KEY]
+      await mount(importedSeedPage())
+
+      expect(dispatchedSelections()).toEqual(selectionsOf([SMART, KEY]))
+    })
+
+    it('leaves an unused smart account and its key unselected', async () => {
+      const onScanComplete = jest.fn()
+      await mount(importedSeedPage(), { isScanComplete: false, onScanComplete })
+
+      expect(dispatchedSelections()).toEqual([])
+      expect(isSwitchOn(SMART)).toBe(false)
+      expect(isSwitchOn(KEY)).toBe(false)
+      expect(onScanComplete).toHaveBeenCalledTimes(1)
+    })
+
+    it('selects only the key when the used smart account is already selected', async () => {
+      mockChain.usedAddrs = [SMART]
+      await mount(importedSeedPage([onPage(smartAccount)]))
+
+      expect(dispatchedSelections()).toEqual(selectionsOf([KEY]))
+    })
+
+    it('selects the basic accounts of the page, not the key, when a basic account is used', async () => {
+      mockChain.usedAddrs = [BASIC]
+      await mount(importedSeedPage())
+
+      expect(dispatchedSelections()).toEqual(selectionsOf([BASIC, SECOND_BASIC]))
+    })
+
+    it('does not count a used key as a used basic account', async () => {
+      mockChain.usedAddrs = [KEY]
+      await mount(importedSeedPage())
+
+      const selected = dispatchedSelections().map(({ params }) => params.account.addr)
+      expect(selected).not.toContain(BASIC)
+      expect(selected).not.toContain(SECOND_BASIC)
+    })
+
+    it('keeps the unused key of a used smart account selected when the scan trims the basic accounts after the last used one', async () => {
+      mockChain.usedAddrs = [BASIC, SMART]
+      await mount(importedSeedPage())
+      mockChain.usedAddrs = []
+      await mount(importedSeedPage([], { page: 2 }))
+      mockChain.usedAddrs = [BASIC, SMART]
+      mockDispatch.mockClear()
+      await mount(
+        importedSeedPage([
+          onPage(basicAccount),
+          onPage(secondBasicAccount, { slot: 2 }),
+          onPage(smartAccount),
+          keyOnPage(keyAccount)
+        ])
+      )
+
+      expect(dispatchedSelections()).toEqual([
+        {
+          type: 'MAIN_CONTROLLER_ACCOUNT_PICKER_DESELECT_ACCOUNT',
+          params: { account: secondBasicAccount }
+        }
+      ])
+    })
+
+    it('selects neither a used smart account nor its key when the picker lists no smart account keys', async () => {
+      mockChain.usedAddrs = [SMART, KEY]
+      await mount(importedSeedPage([], { shouldListSmartAccountKeys: false }))
+
+      const selected = dispatchedSelections().map(({ params }) => params.account.addr)
+      expect(selected).not.toContain(SMART)
+      expect(row(SMART)).toBeNull()
+      expect(caption(KEY)).toBeNull()
+    })
   })
 
   describe('on a newly created seed', () => {
