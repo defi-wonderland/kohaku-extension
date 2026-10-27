@@ -116,6 +116,7 @@ jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
   default: () => ({ accounts: mockAccounts })
 }))
+// Every route the screen navigates to, in order.
 const mockNavigate = jest.fn()
 jest.mock('@common/hooks/useNavigation', () => ({
   __esModule: true,
@@ -140,6 +141,9 @@ const React: typeof import('react') = require('react')
 const { MemoryRouter }: typeof import('react-router-dom') = require('react-router-dom')
 const en: typeof import('@common/config/localization/translations/en.json') = require('@common/config/localization/translations/en.json')
 const {
+  WEB_ROUTES
+}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
+const {
   ThemeContext
 }: typeof import('@common/contexts/themeContext') = require('@common/contexts/themeContext')
 const themeConfig: typeof import('@common/styles/themeConfig') = require('@common/styles/themeConfig')
@@ -150,9 +154,6 @@ const {
 const {
   createWalletRecords
 }: typeof import('@web/modules/social-recovery/shared/records') = require('@web/modules/social-recovery/shared/records')
-const {
-  WEB_ROUTES
-}: typeof import('@common/modules/router/constants/common') = require('@common/modules/router/constants/common')
 const PresetsScreen: typeof import('../PresetsScreen').default = require('../PresetsScreen').default
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
@@ -359,7 +360,7 @@ describe('the presets screen', () => {
       expect(byTestId('continue')).toBeNull()
       expect(byTestId('customize')).toBeNull()
       expect(byTestId('resume')).toBeNull()
-      expect(byTestId('recover')).toBeNull()
+      expect(byTestId('recover')).not.toBeNull()
       expect(container.textContent).not.toContain(S.status.recovery.notSetUp)
     }
 
@@ -424,6 +425,66 @@ describe('the presets screen', () => {
 
       expect(byTestId('presets-grid')).not.toBeNull()
       expect(byTestId('presets-cannot-recover')).toBeNull()
+    })
+
+    it('offers a basic account, under the refusal, the way to recover another account', async () => {
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      const refusal = byTestId('presets-cannot-recover')
+      const recover = byTestId('recover')
+      expect(refusal?.contains(recover)).toBe(true)
+      expect(recover?.textContent).toContain(S.routes.recover)
+      expect(recover?.textContent).toContain(S.presets.recoverLine)
+      expect(
+        byTestId('review-blocked-cannot-recover')?.compareDocumentPosition(recover as Node)
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    })
+
+    it('opens the recovery of another account when a basic account presses the way to it', async () => {
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      await press('recover')
+
+      expect(mockNavigate).toHaveBeenCalledTimes(1)
+      expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryRecovery)
+    })
+
+    it('titles the refusal with the recovery title, and counts no step of the setup', async () => {
+      listAccounts([listedAccount(ACCOUNT, false)])
+      await showAccount(ACCOUNT)
+
+      const refusal = byTestId('presets-cannot-recover')
+      expect(refusal?.textContent?.startsWith(S.routes.root)).toBe(true)
+      expect(container.textContent).not.toContain(S.routes.setup)
+      expect(byTestId('presets-stage')).toBeNull()
+      expect(container.textContent).not.toContain('Step 1 of 7')
+    })
+
+    it('keeps the setup title and the first step counter for a smart account', async () => {
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-stage')?.textContent).toBe('Set up · Step 1 of 7')
+      expect(byTestId('presets-screen')?.textContent).toContain(S.routes.setup)
+    })
+
+    it('keeps the way to recover another account for a smart account, opening the recovery', async () => {
+      await showAccount(ACCOUNT)
+
+      expect(byTestId('presets-screen')?.contains(byTestId('recover'))).toBe(true)
+      await press('recover')
+
+      expect(mockNavigate).toHaveBeenCalledWith(WEB_ROUTES.socialRecoveryRecovery)
+    })
+
+    it('counts the step again once a tab opens on a smart account after a basic one', async () => {
+      listAccounts([listedAccount(ACCOUNT, false), listedAccount(OTHER_ACCOUNT, true)])
+      await showAccount(ACCOUNT)
+      expect(byTestId('presets-stage')).toBeNull()
+
+      await showAccount(OTHER_ACCOUNT)
+      expect(byTestId('presets-stage')?.textContent).toBe('Set up · Step 1 of 7')
     })
 
     it('shows the presets once a tab opens on a smart account after a basic one', async () => {

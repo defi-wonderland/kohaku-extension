@@ -188,6 +188,7 @@ describe('the arrival', () => {
             clauses: wiped.clauses,
             backup: wiped.privacy.backup,
             passwordSet: false,
+            basicAccount: false,
             removedKey: { status: 'answered', value: { kind: 'named', key: REMOVED_KEY } },
             fitCheck: { status: 'answered', value: { basis: 'deployed-code', fits: true } },
             setupState: { status: 'answered', value: setupStateOf(true) },

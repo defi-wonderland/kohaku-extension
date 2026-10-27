@@ -199,9 +199,9 @@ export interface SaveGateInput extends AccountReads {
   /**
    * Whether the wallet lists the account as a basic account, with no smart
    * account behind it: this release cannot recover one, whatever the reads
-   * answer. Absent where the caller does not know the account's kind.
+   * answer. False where the wallet does not list the account.
    */
-  basicAccount?: boolean
+  basicAccount: boolean
 }
 
 export interface SaveGate {

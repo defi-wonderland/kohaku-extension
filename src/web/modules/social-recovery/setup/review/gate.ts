@@ -10,7 +10,8 @@
  * or it holds more than one key, the removed key unreadable, a setup that
  * already exists). A cannot-recover answer is final, so it comes before the
  * unreadable removed key, whose retry could not change it. An untested method
- * warns beside Save and never disables it.
+ * warns beside Save and never disables it, and never shows beside a
+ * cannot-recover answer.
  */
 import type { Address, Clause, SetupDescription } from '@kohaku-eth/social-recovery'
 import type { Enrollment } from '@web/modules/social-recovery/shared/records'
@@ -151,7 +152,10 @@ export const saveGateOf = (input: SaveGateInput): SaveGate => {
     canSave: recordsLoaded && clientReady && everyRead && blocked === null,
     blocked,
     notTested:
-      recordsLoaded && input.untested !== false && input.untested.length > 0
+      recordsLoaded &&
+      blocked?.kind !== 'cannot-recover' &&
+      input.untested !== false &&
+      input.untested.length > 0
         ? input.untested
         : false
   }

@@ -962,6 +962,7 @@ export const gateFor = (gate: GateCase, clientReady = true): SaveGate => {
     clauses,
     backup: 'encrypted',
     passwordSet,
+    basicAccount: false,
     ...reads
   })
 }
@@ -1110,6 +1111,9 @@ export type SelectedAccountMock = {
   current: { addr: string; preferences: { label: string } } | null
   listeners: Set<() => void>
 }
+
+/** The accounts the wallet lists, as the mocked hook answers them. */
+export type AccountsMock = { current: Account[] }
 
 /** The client state the mocked hook answers. */
 export type ClientMock = { current: unknown }
