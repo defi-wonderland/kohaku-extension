@@ -7,7 +7,6 @@
 import type { ZkPassportRequestArgs } from '@kohaku-eth/social-recovery'
 import { __importStar } from 'tslib'
 
-import type { ZkPassportRequestWithResult } from '@web/modules/social-recovery/shared/ceremony'
 import { zkPassportStackFor } from '@web/modules/social-recovery/shared/client/zkpassport-stack'
 
 const mockLibrary = {
@@ -95,26 +94,22 @@ describe('the installed zkPassport stack', () => {
     ])
   })
 
-  it("hands back the library's own request, whose close cancels that request in the library", async () => {
+  it("hands back the library's own request, and cancels a request in the library", async () => {
     const client = await zkPassportStackFor()('kohaku.example')
-    const request: ZkPassportRequestWithResult = (await client.request(ARGS)).done()
+    const request = (await client.request(ARGS)).done()
     expect(request).toMatchObject({
       url: 'https://zkpassport.example/r?id=request-1',
       requestId: 'request-1'
     })
     expect(mockLibrary.cancelled).toEqual([])
-    request.close?.()
+    client.cancelRequest(request.requestId)
     expect(mockLibrary.cancelled).toEqual([{ domain: 'kohaku.example', requestId: 'request-1' }])
   })
 
-  it('keeps the close on a request built after a bind, and passes the bind through', async () => {
+  it('passes the bind through', async () => {
     const client = await zkPassportStackFor()('kohaku.example')
-    const request: ZkPassportRequestWithResult = (await client.request(ARGS))
-      .bind('custom_data', '0xabc')
-      .done()
+    ;(await client.request(ARGS)).bind('custom_data', '0xabc').done()
     expect(mockLibrary.bound).toEqual([['custom_data', '0xabc']])
-    request.close?.()
-    expect(mockLibrary.cancelled).toEqual([{ domain: 'kohaku.example', requestId: 'request-1' }])
   })
   ;[true, false].forEach((devMode) =>
     it(`passes the verifier parameters through unchanged with dev mode ${devMode}`, async () => {

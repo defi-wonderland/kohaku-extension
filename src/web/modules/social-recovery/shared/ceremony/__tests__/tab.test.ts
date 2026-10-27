@@ -752,7 +752,8 @@ describe('the ceremony tab for the identity bindings', () => {
       onReject: on('reject'),
       onError: on('error'),
       onResult: on('result'),
-      onBridgeConnectionLost: on('lost')
+      onBridgeConnectionLost: on('lost'),
+      cancel: () => undefined
     }
     const fire = async (name: string, ...args: unknown[]) => {
       await act(async () => {

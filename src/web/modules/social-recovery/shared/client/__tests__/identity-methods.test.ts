@@ -18,8 +18,7 @@ import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import type {
   CeremonyStep,
   CeremonyView,
-  DeviceResult,
-  ZkPassportRequestWithResult
+  DeviceResult
 } from '@web/modules/social-recovery/shared/ceremony'
 import { externalAppDevice } from '@web/modules/social-recovery/shared/ceremony/externalAppDevice'
 import { inBrowserProverDevice } from '@web/modules/social-recovery/shared/ceremony/inBrowserProverDevice'
@@ -606,12 +605,13 @@ describe('the scripted zkPassport stack', () => {
     expect(restored.heard.results).toEqual([expect.objectContaining({ uniqueIdentifier: '123' })])
   })
 
-  it('stops the answers still to come once a request is closed, and counts each close', async () => {
+  it('stops the answers still to come once a request is cancelled, and counts each cancel', async () => {
     const stack = createScriptedZkPassportStack({ stepMs: 20 })
     const { request, heard } = await listen(stack)
     expect(stack.closes()).toBe(0)
     await waitFor(30)
-    ;(request as ZkPassportRequestWithResult).close?.()
+    const client = await stack('kohaku.stand-in')
+    client.cancelRequest(request.requestId)
     await waitFor(100)
     expect(heard.events).toEqual(['received'])
     expect(stack.closes()).toBe(1)

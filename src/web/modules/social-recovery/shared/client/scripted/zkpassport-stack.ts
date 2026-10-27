@@ -50,7 +50,7 @@ const callbackLists = () => ({
   generating: [] as (() => void)[],
   generated: [] as ((proof: ZkPassportStackProof) => void)[],
   success: [] as ((response: { proofs: ZkPassportStackProof[]; result: unknown }) => unknown)[],
-  result: [] as ((response: unknown) => void)[],
+  result: [] as Parameters<ZkPassportRequest['onResult']>[0][],
   reject: [] as (() => void)[],
   error: [] as ((error: string) => void)[],
   bridgeConnect: [] as (() => void)[],
@@ -151,7 +151,7 @@ export const createScriptedZkPassportStack = (
       onError: (callback: (error: string) => void) => {
         callbacks.error.push(callback)
       },
-      onResult: (callback: (response: unknown) => void) => {
+      onResult: (callback: Parameters<ZkPassportRequest['onResult']>[0]) => {
         callbacks.result.push(callback)
       },
       onBridgeConnect: (callback: () => void) => {
@@ -159,8 +159,7 @@ export const createScriptedZkPassportStack = (
       },
       onBridgeConnectionLost: (callback: () => void) => {
         callbacks.bridgeLost.push(callback)
-      },
-      close: () => cancelRequest(requestId)
+      }
     }
     return request
   }
