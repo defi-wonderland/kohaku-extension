@@ -13,6 +13,15 @@
  * or read a QR code signed two days ago, which the method then refuses before
  * proving, and the verifier answer false or throw.
  */
+import {
+  METHOD_AADHAAR_FRESHNESS_WINDOW,
+  METHOD_AADHAAR_G1_PROJECTIVE,
+  METHOD_AADHAAR_G2_PROJECTIVE,
+  METHOD_AADHAAR_GROTH16_CURVE,
+  METHOD_AADHAAR_GROTH16_PROTOCOL,
+  METHOD_AADHAAR_MILLISECONDS_PER_SECOND,
+  METHOD_AADHAAR_SIGNAL_HASH_SHIFT
+} from '@kohaku-eth/social-recovery/recovery-methods'
 import type {
   AadhaarArgsOptions,
   AadhaarPcd,
@@ -25,13 +34,16 @@ import type { ScriptedAadhaarOptions, ScriptedAadhaarScript, ScriptedAadhaarStac
 
 const DEFAULT_STEP_MS = 400
 const DEFAULT_NULLIFIER = 22n
-// Older than the one-day window the method enrolls with.
-const STALE_AGE_SECONDS = 2 * 24 * 3600
+// Older than the window the method enrolls with.
+const STALE_AGE_SECONDS = 2 * Number(METHOD_AADHAAR_FRESHNESS_WINDOW)
 const PROGRESS = ['fetching-wasm', 'fetching-zkey', 'proving', 'completed'] as const
 
-/** The circuit's signal hash: keccak256 of the signal as a 32-byte word, shifted right by three. */
-const signalHashOf = (signal: string | undefined): bigint =>
-  BigInt(keccak256(numberToHex(BigInt(signal ?? '1'), { size: 32 }))) / 8n
+/** The circuit's signal hash: keccak256 of the signal as a 32-byte word, shifted right into the field. */
+const signalHashOf = (signal: string | undefined): bigint => {
+  const hash = BigInt(keccak256(numberToHex(BigInt(signal ?? '1'), { size: 32 })))
+  // eslint-disable-next-line no-bitwise
+  return hash >> METHOD_AADHAAR_SIGNAL_HASH_SHIFT
+}
 
 const abortError = (): Error => {
   const error = new Error('The proof was stopped.')
@@ -39,7 +51,7 @@ const abortError = (): Error => {
   return error
 }
 
-const nowInSeconds = (): number => Math.floor(Date.now() / 1000)
+const nowInSeconds = (): number => Math.floor(Date.now() / METHOD_AADHAAR_MILLISECONDS_PER_SECOND)
 
 /** The time the scripted QR code was signed at, in Unix seconds. */
 const signedAtOf = (script: ScriptedAadhaarScript): number =>
@@ -48,15 +60,11 @@ const signedAtOf = (script: ScriptedAadhaarScript): number =>
 const pcdOf = (options: AadhaarArgsOptions, nullifier: bigint, timestamp: number): AadhaarPcd => ({
   proof: {
     groth16Proof: {
-      pi_a: ['1', '2', '1'],
-      pi_b: [
-        ['3', '4'],
-        ['5', '6'],
-        ['1', '0']
-      ],
-      pi_c: ['7', '8', '1'],
-      protocol: 'groth16',
-      curve: 'bn128'
+      pi_a: ['1', '2', METHOD_AADHAAR_G1_PROJECTIVE],
+      pi_b: [['3', '4'], ['5', '6'], [...METHOD_AADHAAR_G2_PROJECTIVE]],
+      pi_c: ['7', '8', METHOD_AADHAAR_G1_PROJECTIVE],
+      protocol: METHOD_AADHAAR_GROTH16_PROTOCOL,
+      curve: METHOD_AADHAAR_GROTH16_CURVE
     },
     pubkeyHash: '99',
     nullifier: nullifier.toString(),

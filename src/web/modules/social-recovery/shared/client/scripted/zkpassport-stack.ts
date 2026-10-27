@@ -14,6 +14,10 @@
  * library drops a cancelled request's callbacks, and counts the cancel. The
  * bridge callbacks are kept and never fired: the stand-in has no bridge.
  */
+import {
+  METHOD_ZKPASSPORT_CUSTOM_DATA_KEY,
+  METHOD_ZKPASSPORT_NON_SALTED_NULLIFIER
+} from '@kohaku-eth/social-recovery'
 import type {
   ZkPassportClient,
   ZkPassportQueryBuilder,
@@ -36,13 +40,14 @@ const DEFAULT_STEP_MS = 400
 const PHONE_ERROR = 'The phone could not read the document.'
 const OUTER_PROOF_NAME = 'outer_evm_count_4'
 const VALIDITY_SECONDS = 86400
-const CUSTOM_DATA_KEY = 'custom_data'
 
 const word = (value: bigint): Hex => numberToHex(value, { size: 32 })
 
 /** The outer proof's public inputs: the vector's words, the non-salted type, the identifier. */
 const publicInputsOf = (identifier: bigint): Hex[] =>
-  [0x0an, 0x0bn, 0x0cn, 0x0dn, 0x0en, 0n, identifier, 0n].map(word)
+  [0x0an, 0x0bn, 0x0cn, 0x0dn, 0x0en, METHOD_ZKPASSPORT_NON_SALTED_NULLIFIER, identifier, 0n].map(
+    word
+  )
 
 /** The callbacks one request holds, each a list the phone fires in order. */
 const callbackLists = () => ({
@@ -168,7 +173,8 @@ export const createScriptedZkPassportStack = (
     args: ZkPassportRequestArgs,
     customData?: string
   ): ZkPassportQueryBuilder => ({
-    bind: (key, value) => builderFor(args, key === CUSTOM_DATA_KEY ? value : customData),
+    bind: (key, value) =>
+      builderFor(args, key === METHOD_ZKPASSPORT_CUSTOM_DATA_KEY ? value : customData),
     done: () => open(args, customData)
   })
 
