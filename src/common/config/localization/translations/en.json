@@ -1314,7 +1314,7 @@
         "title": "If you lost a device: your synced passkey",
         "follows": "This passkey may still follow the account that syncs it. If a device signed into that account is lost, whoever holds it can start a recovery while it stays signed in.",
         "order": "If you lost one, secure the account that syncs this passkey first, by signing that device out of it. Then add a fresh method that does not sync to it. Then remove the old row.",
-        "stillHeld": "If you still hold every device signed into that account, you do not need to remove this row.",
+        "stillHeld": "If you never lost or gave away a device that had this passkey, you do not need to remove this row.",
         "cannotReachTitle": "If you cannot reach the account that syncs it",
         "cannotReachBody": "Remove that row in the editor.",
         "removeInEditor": "Remove the row in the editor",
