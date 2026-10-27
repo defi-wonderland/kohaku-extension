@@ -4560,8 +4560,8 @@ Every string of every live frame of `surfaces/social-wireframes.pen` at commit 1
 - MacBook passkey
 - Not tested
 - On the device you lost
-- If so, secure your Apple account first by signing that device out. Then add a fresh method that does not sync to it. Then remove the old row.
-- If you still hold every device signed into that account, this row still works. Leave it as it is.
+- If you lost one, secure your Apple account first by signing that device out. Then add a fresh method that does not sync to it. Then remove the old row.
+- If you still hold every device signed into that account, you do not need to remove this row.
 - Add a fresh method
 - Remove this row
 - 0x8Ab3…19Ce
