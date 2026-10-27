@@ -6,11 +6,12 @@
  * The prover reports its states on a timer, honours the abort signal, and
  * returns the known-answer vector's proof with the seed it was given and the
  * signal hash of the signal it was given, computed as the library does, so the
- * proof binds the digest the method signs. The proof is stamped with the
- * device clock at prove time and discloses nothing. Its local verifier answers
- * true. `script` makes the prover fail, hang until aborted, prove another
- * nullifier or stamp a QR code older than a day, and the verifier answer false
- * or throw.
+ * proof binds the digest the method signs. The QR code is signed at the
+ * device clock's time, which `signedAt` reads before proving and the proof
+ * carries, and the proof discloses nothing. Its local verifier answers true.
+ * `script` makes the prover fail, hang until aborted, prove another nullifier
+ * or read a QR code signed two days ago, which the method then refuses before
+ * proving, and the verifier answer false or throw.
  */
 import type {
   AadhaarArgsOptions,
@@ -39,6 +40,10 @@ const abortError = (): Error => {
 }
 
 const nowInSeconds = (): number => Math.floor(Date.now() / 1000)
+
+/** The time the scripted QR code was signed at, in Unix seconds. */
+const signedAtOf = (script: ScriptedAadhaarScript): number =>
+  nowInSeconds() - (script.stale ? STALE_AGE_SECONDS : 0)
 
 const pcdOf = (options: AadhaarArgsOptions, nullifier: bigint, timestamp: number): AadhaarPcd => ({
   proof: {
@@ -117,8 +122,9 @@ export const createScriptedAadhaarStack = (
             finish(() => reject(new Error('The QR code did not prove.')))
             return
           }
-          const timestamp = nowInSeconds() - (script.stale ? STALE_AGE_SECONDS : 0)
-          finish(() => resolve(pcdOf(kept, script.nullifier ?? DEFAULT_NULLIFIER, timestamp)))
+          finish(() =>
+            resolve(pcdOf(kept, script.nullifier ?? DEFAULT_NULLIFIER, signedAtOf(script)))
+          )
         }, stepMs * (states.length + 1))
       )
     })
@@ -131,6 +137,7 @@ export const createScriptedAadhaarStack = (
       return args
     },
     prove,
+    signedAt: async () => BigInt(signedAtOf(current)),
     verify: async () => {
       const { verify = true } = current
       if (verify === 'throw') {
