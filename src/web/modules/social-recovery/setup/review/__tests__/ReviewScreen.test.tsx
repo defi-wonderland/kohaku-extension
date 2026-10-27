@@ -62,7 +62,8 @@ const mockNavigate = jest.fn()
 // Whether the route mounts the real view in place of the recording stub.
 const mockRealView = { on: false }
 // How the record storage answers: with nothing stored, with a refusal, or never.
-const mockStorageAnswer = { mode: 'empty' as 'empty' | 'refuses' | 'never' }
+type StorageAnswerMode = 'empty' | 'refuses' | 'never'
+const mockStorageAnswer: { mode: StorageAnswerMode } = { mode: 'empty' }
 const mockStorageCall = jest.fn()
 const mockStorageRead = (defaultValue?: unknown): Promise<unknown> => {
   mockStorageCall()

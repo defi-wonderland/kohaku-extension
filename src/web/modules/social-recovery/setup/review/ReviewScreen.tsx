@@ -48,7 +48,8 @@ const ReviewScreen = () => {
     : undefined
   const accountLabel = listed?.preferences?.label || undefined
   const basicAccount = !!listed && !isSmartAccount(listed)
-  const clientState = useRecoveryClient(account)
+  // Only the review reads through the client, so a refused basic account builds none.
+  const clientState = useRecoveryClient(basicAccount ? undefined : account)
 
   const { status, retry } = clientState
   const kit = clientState.status === 'ready' ? clientState.client : null
