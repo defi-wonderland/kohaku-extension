@@ -256,10 +256,10 @@ describe('the fit check the built client runs against the account implementation
     await expect(fitFindings(createWorld())).resolves.toEqual({ errors: [], warnings: [] })
   })
 
-  it('refuses an account with no code yet whose implementation the action does not serve', async () => {
+  it('refuses an account with no code yet whose implementation the action does not serve as one this release cannot recover', async () => {
     const world = createWorld({ accountImplementation: addressOf('other-implementation') })
     await expect(fitFindings(world)).resolves.toEqual({
-      errors: ['account.not-deployed'],
+      errors: ['action.unsupported'],
       warnings: []
     })
   })
@@ -286,6 +286,17 @@ describe('the fit check the built client runs against the account implementation
     const codes = result.errors.map(({ code }) => code)
     expect(codes).toContain('clause.empty')
     expect(codes).not.toContain('account.not-deployed')
+  })
+
+  it('keeps the missing code of an account with no code where the wallet knows no implementation to be', async () => {
+    const world = createWorld()
+    const client = await buildRecoveryClient(world.config)
+    world.chain.setHasCode(false)
+    jest.spyOn(client.walletReads, 'fitCheck').mockResolvedValue({ basis: 'no-code', fits: false })
+    const result = await client.setup.validateSetup(draftOf(world))
+    expect(
+      result.errors.filter(({ code }) => code.startsWith('account.') || code.startsWith('action.'))
+    ).toEqual([expect.objectContaining({ code: 'account.not-deployed', subject: 'account' })])
   })
 
   it('refuses a deployed account the action answers it does not serve, whatever the implementation named', async () => {

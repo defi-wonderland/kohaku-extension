@@ -8,8 +8,10 @@
  *   transaction that carries the commit. The SDK cannot judge the fit of code
  *   that does not exist, so the `account.not-deployed` or `action.unsupported`
  *   it raises for such an account is dropped where the wallet's fit check
- *   finds the implementation to be is the one the action serves, and kept
- *   otherwise.
+ *   finds the implementation to be is the one the action serves. Where that
+ *   implementation is not served, deploying the account cannot help, so a
+ *   `account.not-deployed` reads as `action.unsupported`. Where the wallet
+ *   knows no implementation to be, the findings stay as the SDK wrote them.
  * - The clear splits into three writes. `prepareClearSetup` is the
  *   manager's clear alone, `prepareRemoveSetup` the clear with the revoke of
  *   the action's authorization where the account still grants it, and both
@@ -118,8 +120,18 @@ export const createRecoverySetupClient = ({
         return result
       }
       const fit = await fitCheck()
-      if (fit.basis !== 'code-to-be' || !fit.fits) {
+      if (fit.basis !== 'code-to-be') {
         return result
+      }
+      if (!fit.fits) {
+        return {
+          ...result,
+          errors: result.errors.map((error) =>
+            error.code === 'account.not-deployed'
+              ? { ...error, code: 'action.unsupported', subject: 'action' }
+              : error
+          )
+        }
       }
       return { ...result, errors: result.errors.filter((error) => !unfit(error)) }
     },
