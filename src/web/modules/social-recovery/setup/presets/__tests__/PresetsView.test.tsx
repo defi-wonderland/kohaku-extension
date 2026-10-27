@@ -287,7 +287,7 @@ describe('the presets view', () => {
       )
     })
 
-    it('offers customize alone, with no guided setup and no line that names it', async () => {
+    it('offers customize with no guided setup and no line that names it', async () => {
       await mount()
       expect(byTestId('customize')?.textContent).toBe(S.presets.customize)
       expect(text()).not.toMatch(GUIDE_ME)
@@ -341,12 +341,22 @@ describe('the presets view', () => {
       expect(row?.contains(byTestId('continue'))).toBe(true)
       expect(row?.contains(byTestId('customize'))).toBe(true)
       expect(drawnSideBySide('continue', 'customize')).toBe(true)
+      expect(byTestId('continue-unlock')).not.toBeNull()
       const ids = idsInOrder()
       expect(ids.indexOf('continue')).toBeLessThan(ids.indexOf('customize'))
       expect(ids.indexOf('customize')).toBeLessThan(ids.indexOf('continue-unlock'))
       expect(sharedParent('continue', 'customize')?.contains(byTestId('continue-unlock'))).toBe(
         false
       )
+    })
+
+    it('drops the note once a card is picked, and keeps continue and customize in the actions row', async () => {
+      await mount()
+      await press('preset-eitherOne')
+      expect(byTestId('continue-unlock')).toBeNull()
+      const row = byTestId('presets-actions')
+      expect(row?.contains(byTestId('continue'))).toBe(true)
+      expect(row?.contains(byTestId('customize'))).toBe(true)
     })
 
     it('keeps the actions row after every card', async () => {
