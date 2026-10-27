@@ -1313,9 +1313,9 @@
       "synced": {
         "title": "If you lost a device: your synced passkey",
         "follows": "This passkey may still follow the account that syncs it. If a device signed into that account is lost, whoever holds it can start a recovery while it stays signed in.",
-        "order": "If so, secure the account that syncs this passkey first, by signing that device out of it. Then add a fresh method that does not sync to it. Then remove the old row.",
-        "stillHeld": "If you still hold every device signed into that account, this row still works. Leave it as it is.",
-        "cannotReachTitle": "You cannot reach the account that syncs it",
+        "order": "If you lost one, secure the account that syncs this passkey first, by signing that device out of it. Then add a fresh method that does not sync to it. Then remove the old row.",
+        "stillHeld": "If you still hold every device signed into that account, you do not need to remove this row.",
+        "cannotReachTitle": "If you cannot reach the account that syncs it",
         "cannotReachBody": "Remove that row in the editor.",
         "removeInEditor": "Remove the row in the editor",
         "editorShows": "The editor shows what changes, then one transaction you sign.",

@@ -96,7 +96,6 @@ const mountOver = async (
   return { world, screen: await mountDone(world.account) }
 }
 
-/** The new key's one limit and what the recovery did sit beside the keys, the limit said once. */
 /** The phrases that would tell a holder who lost no device that one was lost. */
 const LOST_DEVICE_PHRASES = ['lost device', 'the lost']
 
@@ -118,6 +117,7 @@ const ADVICE_KEYS = [
   `${DONE}.synced.stillHeld`
 ]
 
+/** The new key's one limit and what the recovery did sit beside the keys, the limit said once. */
 const expectLimitBeside = (screen: TextQueries) => {
   const aside = screen.byTestId('done-columns-aside')
   expect(aside?.querySelector('[data-testid="done-key-limit"]')?.textContent).toBe(
@@ -517,7 +517,7 @@ describe('the passkey advice for a holder who may still hold every device', () =
     screen.unmount()
   })
 
-  it('names the removed key without a lost device, and says the password change only for a card on a device the holder lost', async () => {
+  it('names the removed key and the password change in their new texts', async () => {
     const { screen } = await mountOver(MIXED_PATH)
     expect(screen.textOf('done-removed-line-0')).toBe(t(`${DONE}.removedLine`))
     expect(screen.textOf('done-password-change')).toBe(t(`${DONE}.passwordChange`))
@@ -561,7 +561,7 @@ describe('the passkey advice for a holder who may still hold every device', () =
     screen.unmount()
   })
 
-  it('says no device was lost on any passkey path, on either route, with or without a path on this device', async () => {
+  it('never states that a device was lost on any passkey path, on either route, with or without a path on this device', async () => {
     const fastTrack = await openWorld({ route: 'fresh-install' })
     const fresh = await mountDone(fastTrack.account)
     await walletAddsIt()
