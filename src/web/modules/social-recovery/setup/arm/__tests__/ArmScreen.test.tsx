@@ -29,6 +29,7 @@ import type { SetupConfirmation, SetupDraft } from '@kohaku-eth/social-recovery'
 import type { KeyHandle, SendRequestAction } from '@web/modules/social-recovery/shared/client'
 import type { ArmKitClient } from '@web/modules/social-recovery/setup/arm'
 import type {
+  AccountsMock,
   Chain,
   RemountedSaveCase,
   ActivityMock,
@@ -57,6 +58,7 @@ const mockSelected: SelectedAccountMock = { current: null, listeners: new Set() 
 const mockFacts = new Map<string, unknown>()
 const mockClient: ClientMock = { current: { status: 'loading' } }
 const mockPort: PortMock = { current: null }
+const mockAccounts: AccountsMock = { current: [] }
 
 jest.mock('@web/hooks/useSelectedAccountControllerState', () => ({
   __esModule: true,
@@ -84,7 +86,7 @@ jest.mock('@web/hooks/useKeystoreControllerState', () => ({
 }))
 jest.mock('@web/hooks/useAccountsControllerState', () => ({
   __esModule: true,
-  default: () => ({ accounts: [] })
+  default: () => ({ accounts: mockAccounts.current })
 }))
 const mockQueue: QueueMock = {
   current: { userRequests: [] },
@@ -202,7 +204,8 @@ const {
 /** Ten minutes: far past any wait of a follow, for a screen that is away. */
 const FAR_MS = 10 * 60_000
 const {
-  DROPPED_AFTER_MS
+  DROPPED_AFTER_MS,
+  renderGasAmount
 }: typeof import('@web/modules/social-recovery/shared/writes') = require('@web/modules/social-recovery/shared/writes')
 const {
   providerReadFailure
@@ -353,6 +356,7 @@ let otherKey: KeyHandle
 let chain: Chain
 let port: ReturnType<typeof sendPortFor>
 let prepareCommitSetup: jest.Mock
+let removedKeyRead: jest.Mock
 let confirmSetup: jest.Mock
 let setupState: jest.Mock
 let reads: ReturnType<typeof chainReadsFor>
@@ -431,6 +435,7 @@ const wireClient = (facts: FactsState, deployed = true) => {
     return chain.confirm
   })
   setupState = jest.fn(async () => chain.setupState)
+  removedKeyRead = jest.fn(async () => chain.removedKey)
   reads = chainReadsFor('enough')
   receipts = receiptsFor('landed')
   const kit = {
@@ -451,7 +456,7 @@ const wireClient = (facts: FactsState, deployed = true) => {
       confirmSetup
     },
     walletReads: {
-      removedKey: async () => chain.removedKey,
+      removedKey: removedKeyRead,
       fitCheck: async () => chain.fitCheck
     }
   }
@@ -546,6 +551,7 @@ beforeEach(async () => {
   mockReadHold.current = null
   mockPortOptions.length = 0
   mockFacts.clear()
+  mockAccounts.current = []
   mockQueue.current = { userRequests: [] }
   activity.current = []
   mockFacts.set('loading', { status: 'loading', retry: jest.fn() })
@@ -1290,6 +1296,74 @@ describe('a save the wallet did not send', () => {
     expect(port.sendAccountBatch).toHaveBeenCalledTimes(2)
     expect(byTestId('arm-saved')).not.toBeNull()
   })
+
+  // The default reads: a fee of 0.0006 ETH, a bar to pass of 0.00066 ETH and an amount asked of 0.0009 ETH.
+  it('after the sign screen read the key short, a key above the bar to pass but under the amount asked gets the blocker for the rest of the amount asked', async () => {
+    chain.send = 'refused'
+    chain.estimation = feeReading({ error: true })
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance
+      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
+      .mockResolvedValueOnce(700_000_000_000_000n)
+    await openByPush()
+
+    expect(byTestId('arm-gas-blocker')).not.toBeNull()
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(byTestId('arm-gas-route-outside')?.textContent).toContain(
+      `at least ${renderGasAmount(200_000_000_000_000n, 'ETH')}`
+    )
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('after the sign screen read the key short, a key that holds the amount asked stays on not sent with no blocker', async () => {
+    chain.send = 'refused'
+    chain.estimation = feeReading({ error: true })
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance
+      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
+      .mockResolvedValueOnce(900_000_000_000_000n)
+    await openByPush()
+
+    expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
+    expect(byTestId('arm-gas-blocker')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the bar a key must reach on the normal path', () => {
+  it('a key above the bar to pass but under the amount asked sends on Continue', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance.mockResolvedValueOnce(0n).mockResolvedValueOnce(700_000_000_000_000n)
+    await openByPush()
+    expect(byTestId('arm-gas-blocker')).not.toBeNull()
+    expect(byTestId('arm-gas-route-outside')?.textContent).toContain(
+      `at least ${renderGasAmount(900_000_000_000_000n, 'ETH')}`
+    )
+
+    await press('arm-gas-continue')
+
+    expect(byTestId('arm-gas-blocker')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(byTestId('arm-saved')).not.toBeNull()
+  })
+
+  it('a key one wei under the bar to pass gets the blocker again on Continue, for the amount asked less what it holds', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    reads.nativeBalance.mockResolvedValueOnce(0n).mockResolvedValueOnce(659_999_999_999_999n)
+    await openByPush()
+
+    await press('arm-gas-continue')
+
+    expect(byTestId('arm-gas-blocker')).not.toBeNull()
+    expect(byTestId('arm-gas-route-outside')?.textContent).toContain(
+      `at least ${renderGasAmount(240_000_000_000_001n, 'ETH')}`
+    )
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
 })
 
 describe("the deposit step's Continue", () => {
@@ -1439,6 +1513,154 @@ describe('the blocks on arrival', () => {
   })
 })
 
+describe('a basic account the wallet lists, on the save route with a draft', () => {
+  const BLOCKED = 'socialRecovery.review.blocked'
+
+  // The wallet's reads of a key with no smart account behind it: no creation
+  // record to name the removed key, and an action that reads as fitting.
+  const listBasic = () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    chain.fitCheck = { basis: 'deployed-code', fits: true }
+    mockAccounts.current = [{ ...account, creation: null }]
+  }
+
+  const OPENINGS = [
+    ['by a typed address', openByAddress],
+    ['by a reload', reload],
+    ["by the review's push", openByPush]
+  ] as const
+
+  OPENINGS.forEach(([named, open]) =>
+    it(`refuses it ${named} with the unsupported line, not the unreadable removed key, and no retry`, async () => {
+      listBasic()
+      await writeRecords(draftOf('encrypted'))
+      wireClient('ready')
+      await open()
+
+      expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+      expect(byTestId('review-blocked-title')?.textContent).toBe(
+        t(`${BLOCKED}.cannotRecover.title`)
+      )
+      expect(byTestId('review-blocked-body')?.textContent).toBe(
+        t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+      )
+      expect(byTestId('review-blocked-removed-key-unreadable')).toBeNull()
+      expect(pageText()).not.toContain(t(`${BLOCKED}.removedKeyUnreadable.title`))
+      expect(byTestId('review-blocked-retry')).toBeNull()
+      expect(prepareCommitSetup).not.toHaveBeenCalled()
+      expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    })
+  )
+
+  it('reads the removed key once and never again while the refusal stands', async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+    const readsOnArrival = removedKeyRead.mock.calls.length
+    await settle()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(readsOnArrival).toBeLessThanOrEqual(1)
+    expect(removedKeyRead.mock.calls.length).toBe(readsOnArrival)
+  })
+
+  it('refuses it whatever the reads answer, even where the removed key is named', async () => {
+    mockAccounts.current = [{ ...account, creation: null }]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+  })
+
+  it('refuses it by a typed address while the client is still loading, with no waiting line', async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    mockClient.current = { status: 'loading' }
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-checking')).toBeNull()
+    expect(pageText()).not.toContain(t('socialRecovery.loading.saveChecks'))
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it("refuses it by a typed address while the account's facts still load, with no Save and nothing sent", async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('loading')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-checking')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it("refuses it by a typed address where the account's recovery state could not be read, with no retry of that read", async () => {
+    listBasic()
+    await writeRecords(draftOf('encrypted'))
+    wireClient('state-unread')
+    const retryFacts = jest.fn()
+    mockFacts.set(address.toLowerCase(), {
+      status: 'unavailable',
+      cause: 'state-unread',
+      retry: retryFacts
+    })
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('review-blocked-body')?.textContent).toBe(
+      t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
+    )
+    expect(byTestId('arm-arrival-retry')).toBeNull()
+    expect(byTestId('review-blocked-retry')).toBeNull()
+    expect(retryFacts).not.toHaveBeenCalled()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(prepareCommitSetup).not.toHaveBeenCalled()
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+  })
+
+  it('waits for a smart account by a typed address while the client is still loading', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    mockClient.current = { status: 'loading' }
+    await openByAddress()
+
+    expect(byTestId('arm-checking')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+  })
+
+  it('still shows the unreadable removed key, with its retry, for the same reads of a listed smart account', async () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    mockAccounts.current = [account]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    await openByAddress()
+
+    expect(byTestId('review-blocked-removed-key-unreadable')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    const before = removedKeyRead.mock.calls.length
+    await press('review-blocked-retry')
+    expect(removedKeyRead.mock.calls.length).toBe(before + 1)
+  })
+})
+
 describe('a reload of the save route after it ended', () => {
   it('after a saved setup: sends nothing again and shows the already-set-up block, not the saved screen', async () => {
     await writeRecords(draftOf('encrypted'))
@@ -1559,6 +1781,48 @@ const anotherPageLeaves = async (withHash: boolean, flush: () => Promise<void>) 
 /** The single-key removals of the stored save in flight: its releases. */
 const releases = () =>
   mockRemovals.filter((keys) => keys.length === 1 && keys[0].includes(':saveInFlight:')).length
+
+describe('a save in flight stored on this device for a basic account the wallet lists', () => {
+  it('follows a save in flight stored on this device once the client is ready, in place of the refusal, and sends nothing', async () => {
+    chain.removedKey = { kind: 'unavailable', cause: 'no-source' }
+    mockAccounts.current = [{ ...account, creation: null }]
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    const ready = mockClient.current
+    const { firstPort, record } = await anotherPageLeaves(true, settle)
+    const prepares = prepareCommitSetup.mock.calls.length
+    const receipt = deferred<ReturnType<typeof landedReceipt>>()
+    receipts.wait.mockImplementationOnce(() => receipt.promise)
+    mockClient.current = { status: 'loading' }
+
+    await openByAddress()
+
+    expect(byTestId('review-blocked-cannot-recover')).not.toBeNull()
+    expect(byTestId('arm-write-submitting')).toBeNull()
+    expect(receipts.wait).not.toHaveBeenCalled()
+
+    mockClient.current = ready
+    await select(address)
+    await settle()
+
+    expect(byTestId('arm-write-submitting')).not.toBeNull()
+    expect(byTestId('review-blocked-cannot-recover')).toBeNull()
+    expect(byTestId('arm-save')).toBeNull()
+    expect(receipts.wait).toHaveBeenCalledWith(harness.TX_HASH, record.startBlock)
+
+    await act(async () => {
+      receipt.resolve(landedReceipt(harness.TX_HASH))
+    })
+    await settle()
+
+    expect(byTestId('arm-saved')).not.toBeNull()
+    expect(confirmSetup).toHaveBeenCalledTimes(1)
+    expect(wipes()).toBe(1)
+    expect(port.sendAccountBatch).not.toHaveBeenCalled()
+    expect(firstPort.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(prepareCommitSetup).toHaveBeenCalledTimes(prepares)
+  })
+})
 
 describe("another page's save that lands during this page's gas check", () => {
   /** Opens the route with Save offered, presses it, and holds its gas check. */
