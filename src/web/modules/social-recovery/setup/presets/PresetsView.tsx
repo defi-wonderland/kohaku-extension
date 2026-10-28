@@ -247,6 +247,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
         </Text>
       </RadioCard>
       <ActionsRow
+        testID="presets-actions"
         primary={
           <Button
             testID="continue"
@@ -256,17 +257,18 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
             hasBottomSpacing={false}
           />
         }
+        secondary={
+          <Button
+            testID="customize"
+            type="secondary"
+            text={t('socialRecovery.presets.customize')}
+            disabled={busy}
+            onPress={() => open('fromScratch')}
+            hasBottomSpacing={false}
+          />
+        }
         note={picked ? undefined : t('socialRecovery.presets.continueUnlock')}
-      />
-      <Button
-        testID="customize"
-        type="secondary"
-        size="small"
-        text={t('socialRecovery.presets.customize')}
-        disabled={busy}
-        onPress={() => open('fromScratch')}
-        hasBottomSpacing={false}
-        style={{ alignSelf: 'flex-start', ...spacings.mtSm }}
+        noteTestID="continue-unlock"
       />
     </View>
   )
@@ -318,6 +320,7 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
       )}
       {notStartedRows.map(renderResumeRow)}
       <ActionsRow
+        testID="resume-actions"
         primary={
           <Button
             testID="resume"
@@ -331,7 +334,6 @@ const PresetsView = ({ records, chainId, account, onOpenEditor, onRecover }: Pre
           <Button
             testID="start-over"
             type="secondary"
-            size="small"
             text={t('socialRecovery.presets.resume.startOver')}
             disabled={busy}
             onPress={startOver}
