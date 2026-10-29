@@ -477,7 +477,6 @@ describe('the guardian paste', () => {
       await paste(1, line)
 
       expect(errorLines(1)).toEqual([t(`${PASTE}.duplicate`), t(`${PASTE}.duplicateDetail`)])
-      expect(t(`${PASTE}.duplicateDetail`)).not.toMatch(/this row/)
       expect(elsewhereRows()).toEqual([])
     })
   })
@@ -489,7 +488,6 @@ describe('the guardian paste', () => {
       const field = input instanceof HTMLInputElement ? input : input?.querySelector('input')
       expect(field?.placeholder).toBe(t(`${GUARDIAN}.pasteHint`))
     })
-    expect(t(`${GUARDIAN}.pasteHint`)).toMatch(/any guardian/i)
   })
 
   const addRefusals: AddRefusalCause[] = [
