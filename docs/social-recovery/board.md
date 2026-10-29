@@ -38,12 +38,11 @@ Nothing is open with the contracts team: the key move and the deployment are don
 - `ceremony.noMatchCause` has no caller until the SDK gives a separate mismatch cause.
 - The two identity walks on the committed deployment: not needed now by the owner's word; the README is how they run.
 - The submodule URL move back to ethereum/kohaku-commons after ethereum/kohaku-commons#81 merges.
-- The `.env-sample` and the README now say an empty variable means the committed deployment.
 
 ## Facts the next session should not rediscover
 
 - The committed Sepolia deployment (`shared/client/deployments-sepolia.ts`) holds the six contracts of ethereum/kohaku-contracts#15 (deployed 2026-10-29, the zkPassport method's trusted keys at circuit 0.21.1, the Aadhaar method trusting UIDAI's current "DS UIDAI 06" key; read back from the chain the same day; the manager at block 12019037, version 1.0.0, typed-data domain version 1) and this wallet's own identity parameters (the zkPassport domain `social-recovery.kohaku.test` and scope `kohaku-social-recovery` on the testnet certificate tree, the Aadhaar nullifier seed 11155111, the DS UIDAI 06 certificate whose public-key hash a unit test checks against the module's key).
-- A build with no variable runs Sepolia on the committed deployment and mainnet on the stand-in; the variable `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` is an override.
+- A build with no variable runs Sepolia on the committed deployment and mainnet on the stand-in; the variable `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` is an override, and the `.env-sample` and the README say an empty variable means the committed deployment.
 - The contracts team moved the zkPassport route to 0.21.1 in ethereum/kohaku-contracts (its #6) and deployed Sepolia again (#15, every address new, the implementation unchanged). The record ships no test-only Aadhaar module; the 2026-10-21 test-only module is standalone, and a test build names it through the override variable with `aadhaarTestMode: true`. Every setup of the earlier walks lives on a retired manager.
 - `docs/social-recovery/manual-test/gen-test-qr.js` turns the official UIDAI V1 sample into a fresh V2 code signed with Anon Aadhaar's public test key pair, taken by path, with one fixed other identity for the mismatch test. The previous fixture through the peer's helper made codes the circuit refuses (a double `V2` prefix), which walk B had hit on 2026-10-22; CodeRabbit found it again and it is fixed.
 - The peer `@anon-aadhaar/core` 2.4.3 knows UIDAI's 2021 key only, so a real QR signed by the current key reads `not-judged` locally and the chain decides; the SDK's local verdict is `satisfied` only in test mode with a test QR.
@@ -103,7 +102,7 @@ The state of the work after the QA round of 2026-10-27, which followed milestone
 | 8. A `default` condition on both entries of the exports map | sdk team | Landed in c3cf8dd and e762781; the Jest module mapper for the package gone since #153 |
 | 9. The publish of 0.0.2-alpha.0 from `wonderland/dev` at 08480f5, with a date | sdk team | Answered by alpha.0 (2026-10-28) without EXT-1; the pin at 616efa1; the alpha swap (FU-AN) waits for an alpha that carries `wonderland/dev` |
 | The part C rerun after the Safe move (the access test, the save, the claim, the submission and the execution with a real passport; whether a testnet-tree request passes the Sepolia verifier) | sdk owner | Closed by the owner's word of 2026-10-29 (no walks) |
-| The freeze `dev-wonderland-m12` (at b51e7f0498) and ethereum/kohaku-commons#81 (at c163fd9fb2) moved to the new heads, aca263344b and 5cf1d8d9f6 | owner | Done: `dev-wonderland-m12` at 191bd8dccc (2026-10-29) |
+| The freeze `dev-wonderland-m12` (at b51e7f0498) and ethereum/kohaku-commons#81 (at c163fd9fb2) moved to the new heads, aca263344b and 5cf1d8d9f6 | owner | Done: `dev-wonderland-m12` at 191bd8dccc (2026-10-29); ethereum/kohaku-commons#81's head `dev-wonderland` at 211a00f526, which equals the fork's current commons head (the pointer `dev/wonderland` carries), so the commons part is moved too; its review by the ethereum team stays open (the first row) |
 
 ## Recorded, not started
 
