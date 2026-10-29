@@ -21,10 +21,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { ApproverRequest, Hex, Reply, Verdict } from '@kohaku-eth/social-recovery'
+import type { ApproverRequest, Hex } from '@kohaku-eth/social-recovery'
 import { replyLineOf } from '@web/modules/social-recovery/recovery/checklist'
 import { signatureOf } from '@web/modules/social-recovery/setup/enroll/guardian'
-import { ACCOUNT_CHECK_LIMIT_MS } from '@web/modules/social-recovery/shared/client'
+import { ACCOUNT_CHECK_LIMIT_MS, within } from '@web/modules/social-recovery/shared/client'
 import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
 import { offlineVerdictFailure, signingFailureOf, walletVerdictFailure } from './signing'
@@ -33,36 +33,10 @@ import type {
   GuardianSigning,
   GuardianSigningInput,
   OfflineFailure,
-  ReplyChainVerdict,
   SignedApproval,
   SigningFailure,
   SigningState
 } from './types'
-
-/**
- * The chain's verdict, bounded in time: undefined where the read failed or
- * did not answer in time. It settles once, so a late answer changes nothing.
- */
-const chainVerdictWithin = (
-  chainVerdict: ReplyChainVerdict,
-  request: ApproverRequest,
-  reply: Reply
-): Promise<Verdict | undefined> =>
-  new Promise((resolve) => {
-    const limit = setTimeout(() => resolve(undefined), ACCOUNT_CHECK_LIMIT_MS)
-    Promise.resolve()
-      .then(() => chainVerdict(request, reply))
-      .then(
-        (verdict) => {
-          clearTimeout(limit)
-          resolve(verdict)
-        },
-        () => {
-          clearTimeout(limit)
-          resolve(undefined)
-        }
-      )
-  })
 
 const idleFor = (request: ApproverRequest | null): SigningState => ({
   request,
@@ -224,7 +198,10 @@ const useGuardianSigning = ({
             return walletVerdictFailure(outcome.verdict) ?? outcome.approval
           }
           // The chain decides here: only its satisfied keeps the approval.
-          const onChain = await chainVerdictWithin(chainVerdict, owner, outcome.reply)
+          const onChain = await within(
+            () => chainVerdict(owner, outcome.reply),
+            ACCOUNT_CHECK_LIMIT_MS
+          )
           if (onChain === 'satisfied') {
             return outcome.approval
           }

@@ -62,8 +62,8 @@ import type {
 import type { Address, Hex } from '@kohaku-eth/social-recovery'
 
 import { sameAddress } from './addresses'
+import { within } from './limits'
 import type {
-  AccountSignatureCheck,
   KeyHandle,
   ListedAccount,
   SignerFacade,
@@ -281,31 +281,6 @@ const digestOf = (content: PlainTextMessage | TypedMessage): Hex =>
     : hashMessage({ raw: content.message as Hex })
 
 /**
- * The account's own check of a signature, bounded in time: true where the
- * account accepts it, false where it refuses it, undefined where the check
- * did not answer.
- */
-const accountAccepts = (
-  check: AccountSignatureCheck,
-  account: Address,
-  digest: Hex,
-  signature: Hex
-): Promise<boolean | undefined> =>
-  new Promise((resolve) => {
-    const limit = setTimeout(() => resolve(undefined), ACCOUNT_CHECK_LIMIT_MS)
-    check(account, digest, signature).then(
-      (accepted) => {
-        clearTimeout(limit)
-        resolve(accepted)
-      },
-      () => {
-        clearTimeout(limit)
-        resolve(undefined)
-      }
-    )
-  })
-
-/**
  * The sign request the facade adds to the queue for one key and one content.
  * `meta.keyType` carries the handle's key type beside the account address, so
  * the key type travels with the request. Today the action window does not read
@@ -499,7 +474,10 @@ export const createSignerFacade = (
           if (smart && check) {
             // Verified on chain: the smart account itself must accept the
             // signature over the facade's own digest.
-            accountAccepts(check, smart.addr as Address, digestOf(content), signature).then(
+            within(
+              () => check(smart.addr as Address, digestOf(content), signature),
+              ACCOUNT_CHECK_LIMIT_MS
+            ).then(
               (accepted) => {
                 if (accepted === undefined) {
                   fail('unverified')
