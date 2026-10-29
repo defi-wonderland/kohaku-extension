@@ -1,7 +1,7 @@
 // Makes a fresh Anon Aadhaar test QR code for a manual walk on the test-only Aadhaar module.
 //
-// It takes the official UIDAI sample data in dataInput.json, re-timestamps it to now with the
-// core's createCustomV2TestData, signs it with Anon Aadhaar's published test key pair, checks the
+// It takes the official UIDAI V1 sample data in dataInput.json (the sample anon-aadhaar's own
+// generator uses), turns it into V2 data timestamped now with the core's createCustomV2TestData, signs it with Anon Aadhaar's published test key pair, checks the
 // signature against the test certificate, and writes <out>.txt (the decimal string the upload field
 // takes) and <out>.png (the QR image).
 //
@@ -54,8 +54,11 @@ if (!keyPath || !certificatePath) {
   process.exit(1)
 }
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'dataInput.json'), 'utf8')).testQRData
+const data = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'dataInput.json'), 'utf8')
+).testQRDataV1
 const decoded = core.decompressByteArray(core.convertBigIntToByteArray(BigInt(data)))
+// The last 256 bytes of the sample are its own signature.
 const dataToSign = core.createCustomV2TestData({
   signedData: decoded.slice(0, decoded.length - 256),
   ...(other ? { photo: true } : {})
@@ -92,6 +95,6 @@ QR.toFile(`${out}.png`, [{ data: qr, mode: 'numeric' }], {
 }).then(() => {
   // The reference id is the last four digits of the number, then the signing time as YYYYMMDDhhmmssSSS.
   console.log(
-    `digits ${qr.length}, reference ${fields[3]}, name ${fields[4]}, wrote ${out}.txt and ${out}.png`
+    `digits ${qr.length}, reference ${fields[2]}, name ${fields[3]}, wrote ${out}.txt and ${out}.png`
   )
 })
