@@ -7,10 +7,10 @@ import { useTranslation } from '@common/config/localization'
 import spacings from '@common/styles/spacings'
 import flexbox from '@common/styles/utils/flexbox'
 import { SectionCard, StatusChip } from '@web/modules/social-recovery/shared/chrome'
-import { chipKey } from '@web/modules/social-recovery/shared/display'
-import type { Translate } from '@web/modules/social-recovery/shared/display'
 
-import type { CannotRecoverBlock, SaveBlock, SaveBlockCopy, SaveBlockerProps } from './types'
+import AlreadySetUpCard from './AlreadySetUpCard'
+import CannotRecoverCard from './CannotRecoverCard'
+import type { SaveBlock, SaveBlockCopy, SaveBlockerProps } from './types'
 
 const BLOCKED = 'socialRecovery.review.blocked'
 
@@ -21,7 +21,10 @@ const RETRY = {
 } as const
 
 /** What each block renders, in order: its chip, its title, its body and its action. */
-const BLOCKS: Record<SaveBlock['kind'], SaveBlockCopy> = {
+const BLOCKS: Record<
+  Exclude<SaveBlock['kind'], 'cannot-recover' | 'already-set-up'>,
+  SaveBlockCopy
+> = {
   'empty-slot': {
     body: `${BLOCKED}.emptySlot`,
     action: {
@@ -48,31 +51,7 @@ const BLOCKS: Record<SaveBlock['kind'], SaveBlockCopy> = {
     title: `${BLOCKED}.removedKeyUnreadable.title`,
     body: `${BLOCKED}.removedKeyUnreadable.body`,
     action: RETRY
-  },
-  // The body names the reason the block carries.
-  'cannot-recover': {
-    chip: chipKey('recovery', 'cannotRecover'),
-    title: `${BLOCKED}.cannotRecover.title`
-  },
-  'already-set-up': {
-    chip: `${BLOCKED}.alreadySetUp.chip`,
-    title: `${BLOCKED}.alreadySetUp.title`,
-    body: `${BLOCKED}.alreadySetUp.body`,
-    action: {
-      label: `${BLOCKED}.alreadySetUp.open`,
-      handler: 'onOpen',
-      testID: 'review-blocked-open'
-    }
   }
-}
-
-const reasonOf = (blocked: CannotRecoverBlock, t: Translate): string => {
-  if (blocked.reason === 'not-supported') {
-    return t(`${BLOCKED}.cannotRecover.reasonNotSupported`)
-  }
-  return blocked.count === undefined
-    ? t(`${BLOCKED}.cannotRecover.reasonSeveralKeys`)
-    : t(`${BLOCKED}.cannotRecover.reasonKeyCount`, { count: blocked.count })
 }
 
 const titleOf = (text: string) => (
@@ -103,6 +82,12 @@ const actionOf = (text: string, onPress: () => void, testID: string) => (
 /** Why Save cannot run, on screen beside it, with the action that clears it where one does. */
 const SaveBlocker = ({ blocked, ...handlers }: SaveBlockerProps) => {
   const { t } = useTranslation()
+  if (blocked.kind === 'cannot-recover') {
+    return <CannotRecoverCard blocked={blocked} />
+  }
+  if (blocked.kind === 'already-set-up') {
+    return <AlreadySetUpCard onOpen={handlers.onOpen} />
+  }
   const { chip, title, body, action } = BLOCKS[blocked.kind]
 
   return (
@@ -121,7 +106,6 @@ const SaveBlocker = ({ blocked, ...handlers }: SaveBlockerProps) => {
         </View>
       )}
       {body !== undefined && bodyOf(t(body))}
-      {blocked.kind === 'cannot-recover' && bodyOf(reasonOf(blocked, t))}
       {action !== undefined && actionOf(t(action.label), handlers[action.handler], action.testID)}
     </SectionCard>
   )

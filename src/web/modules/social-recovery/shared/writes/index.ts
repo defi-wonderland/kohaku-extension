@@ -60,7 +60,8 @@ export {
   overviewIntentOf
 } from './claims'
 export {
-  FEE_HEADROOM_PERCENT,
+  ASK_HEADROOM_PERCENT,
+  PASS_HEADROOM_PERCENT,
   GAS_DISPLAY_DECIMALS,
   ACCOUNT_FACTORY,
   accountFactoryOf,
@@ -75,6 +76,7 @@ export {
   transferEstimateCallOf,
   transferFeeOf,
   holdsEnough,
+  reachesBar,
   depositStepOf,
   checkGas
 } from './gas'
@@ -82,6 +84,7 @@ export {
   WRITES_KEYS,
   GAS_KEYS,
   REVERTED_KEYS,
+  NOT_SENT_KEYS,
   revertedKeyOf,
   UNNAMED_CAUSE_KEY,
   causeKey,
@@ -125,6 +128,8 @@ export type {
   AccountBatchDrive,
   GasNetwork,
   WalletAccountRef,
+  FeeHeadroom,
+  GasPassBar,
   GasEstimate,
   DepositRouteKind,
   DepositRoute,
