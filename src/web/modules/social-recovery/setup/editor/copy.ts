@@ -64,6 +64,7 @@ const SETUP_ERROR_KEYS: Record<SetupErrorCode, string> = {
   'clause.threshold-too-wide': REFUSAL_KEYS.thresholdAboveField,
   'rule.too-wide': REFUSAL_KEYS.tooLarge,
   'credential.duplicate': 'socialRecovery.editor.duplicate',
+  'credential.config-malformed': 'socialRecovery.editor.refusals.credentialConfigMalformed',
   'wait.field-width': REFUSAL_KEYS.waitFieldWidth,
   'wait.above-maximum': REFUSAL_KEYS.waitCeiling,
   'action.unsupported': 'socialRecovery.editor.refusals.actionUnsupported',

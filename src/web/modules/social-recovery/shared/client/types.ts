@@ -32,7 +32,6 @@ import type {
   BlockTag,
   BlockTags,
   Configuration,
-  CreationRecord,
   DeploymentDescriptor,
   Handover,
   Hex,
@@ -182,6 +181,14 @@ export type IdentityParamsReading = Partial<IdentityParams>
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
+
+/** How and in which block a smart account was created: its factory, bytecode and salt. */
+export interface CreationRecord {
+  readonly factory: Address
+  readonly bytecode: Hex
+  readonly salt: Hex
+  readonly block: number
+}
 
 /** The account facts the client configuration carries where the wallet has them. */
 export interface AccountFacts {

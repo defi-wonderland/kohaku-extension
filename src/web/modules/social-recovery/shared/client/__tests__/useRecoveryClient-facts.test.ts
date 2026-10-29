@@ -16,7 +16,8 @@ import { getBasicAccount, getSmartAccount } from '@ambire-common/libs/account/ac
 import { getRpcProvider } from '@ambire-common/services/provider/getRpcProvider'
 import useAccountsControllerState from '@web/hooks/useAccountsControllerState'
 import useNetworksControllerState from '@web/hooks/useNetworksControllerState'
-import type { Address, CreationRecord } from '@kohaku-eth/social-recovery'
+import type { Address } from '@kohaku-eth/social-recovery'
+import type { CreationRecord } from '@web/modules/social-recovery/shared/client'
 import * as buildClient from '@web/modules/social-recovery/shared/client/build-client'
 import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/useRecoveryClient'
 

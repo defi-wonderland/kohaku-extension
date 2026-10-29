@@ -130,7 +130,6 @@ export const MAINNET = 1
 export const CLIENT_CONFIGURATION_KEYS: (keyof ClientConfiguration)[] = [
   'tokens',
   'candidateKeys',
-  'creation',
   'accountImplementation',
   'blockTags',
   'logChunkSize',
