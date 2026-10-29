@@ -91,7 +91,7 @@ An unknown field, a zero or malformed address, or one field of a pair without th
 
 - Make two wallets from throwaway seeds, never a real one: the holder, who sets up recovery, and the recoverer, a second profile that claims the account back. Use one Chromium profile for each.
 - In the holder wallet, pick the smart account when the account picker opens at creation; the recovery setup is for that smart account.
-- Fund the holder's controlling key with Sepolia ETH yourself: the save, the submission of the claim and the execution pay gas. Send it from a faucet or another Sepolia wallet; the walks use no balance override on the node.
+- Fund both wallets with Sepolia ETH yourself. The holder's controlling key pays the save. The recoverer's key pays the submission of the claim and the execution, so give it enough for two transactions. Send it from a faucet or another Sepolia wallet; the walks use no balance override on the node.
 - What the screens show and how long it took on the earlier walks: the save lands about 15 s after you press Sign, then the setup card reads saved; the submission and the execution each land in one block; the waiting period of 5 minutes runs on the wait screen with its countdown, and Execute opens when it ends.
 
 ### 4. The zkPassport walk
