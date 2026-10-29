@@ -13,8 +13,9 @@
 // Usage, from the repository root:
 //   node docs/social-recovery/manual-test/gen-test-qr.js --key <testPrivateKey.pem> --cert <testCertificate.pem> [--out <basename>] [--other]
 // or with AADHAAR_TEST_PRIVATE_KEY and AADHAAR_TEST_CERTIFICATE set to the two paths.
-// --out defaults to ./test-qr. --other makes a QR code of another identity (the core replaces the
-// photo, so the nullifier differs).
+// --out defaults to ./test-qr. --other makes the QR code of one fixed other identity, for the
+// mismatch test: the photo bytes are flipped the same way on every run, so the nullifier differs
+// from the plain code's and stays the same across runs.
 const crypto = require('crypto')
 const fs = require('fs')
 const { createRequire } = require('module')
@@ -35,7 +36,7 @@ const USAGE = [
   '  node docs/social-recovery/manual-test/gen-test-qr.js --key <testPrivateKey.pem> --cert <testCertificate.pem> [--out <basename>] [--other]',
   'or with AADHAAR_TEST_PRIVATE_KEY and AADHAAR_TEST_CERTIFICATE set to the two paths.',
   '  --out    the base name of the .txt and .png it writes (default ./test-qr)',
-  '  --other  a QR code of another identity, whose nullifier differs',
+  '  --other  the QR code of one fixed other identity, for the mismatch test',
   'The test files are in anon-aadhaar/anon-aadhaar under packages/circuits/assets/.'
 ].join('\n')
 
@@ -59,10 +60,24 @@ const data = JSON.parse(
 ).testQRDataV1
 const decoded = core.decompressByteArray(core.convertBigIntToByteArray(BigInt(data)))
 // The last 256 bytes of the sample are its own signature.
-const dataToSign = core.createCustomV2TestData({
-  signedData: decoded.slice(0, decoded.length - 256),
-  ...(other ? { photo: true } : {})
+const sampleData = core.createCustomV2TestData({
+  signedData: decoded.slice(0, decoded.length - 256)
 })
+
+// The other identity: the photo's bytes each with the low bit flipped, the same on every run.
+// 0xfe and 0xff stay as they are, so no field delimiter appears or disappears in the photo.
+const otherIdentity = (signed) => {
+  const { begin, dataLength } = core.extractPhoto(Array.from(signed), signed.length)
+  const fixed = signed.slice(begin + 1, dataLength).map((byte) => {
+    if (byte >= 0xfe) {
+      return byte
+    }
+    return byte % 2 === 0 ? byte + 1 : byte - 1
+  })
+  return core.replaceBytesBetween(signed, fixed, begin + 1, dataLength - 1)
+}
+
+const dataToSign = other ? otherIdentity(sampleData) : sampleData
 
 const signer = crypto.createSign('sha256')
 signer.update(Buffer.from(dataToSign))

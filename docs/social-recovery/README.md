@@ -135,7 +135,7 @@ The test key files live in the [anon-aadhaar/anon-aadhaar](https://github.com/an
 node docs/social-recovery/manual-test/gen-test-qr.js --key <path>/testPrivateKey.pem --cert <path>/testCertificate.pem --out /tmp/qr-enroll
 ```
 
-It writes `/tmp/qr-enroll.txt`, the number the upload field takes, and `/tmp/qr-enroll.png`, the image. `--other` makes the code of another identity, whose nullifier differs. `AADHAAR_TEST_PRIVATE_KEY` and `AADHAAR_TEST_CERTIFICATE` can name the two paths instead of the flags.
+It writes `/tmp/qr-enroll.txt`, the number the upload field takes, and `/tmp/qr-enroll.png`, the image. `--other` makes the code of one fixed other identity, for the mismatch test: its nullifier differs from the plain code's and stays the same on every run. `AADHAAR_TEST_PRIVATE_KEY` and `AADHAAR_TEST_CERTIFICATE` can name the two paths instead of the flags.
 
 The method refuses a QR code signed more than 24 hours before the chain's latest block. Make a fresh code for the enrollment, and another fresh one at recovery, since the holder presents a fresh code at every claim. The steps are those of the zkPassport walk, with the Aadhaar row and the code in place of the phone.
 
