@@ -109,6 +109,7 @@ export type {
   DeploymentFacts,
   DeploymentAddresses,
   Deployment,
+  CreationRecord,
   AccountFacts,
   RecoveryClientConfiguration,
   AdapterProvider,
