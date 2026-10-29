@@ -115,12 +115,12 @@ const badChecksum = (address: Address): string => {
 }
 
 const SEPOLIA_ADDRESSES = {
-  manager: SEPOLIA_DEPLOYMENT.manager,
-  methodEcdsa: SEPOLIA_DEPLOYMENT.methodEcdsa,
-  methodPasskey: SEPOLIA_DEPLOYMENT.methodPasskey,
+  manager: '0xF7Fd795C47025abda8dC4264Bf4Cdec22aC56A62',
+  methodEcdsa: '0x87AcC5584c2aAd5Ede60c2a4730765C0d015b907',
+  methodPasskey: '0x342B1e6CeB3f6ADD8122862FA3095D127DDecAc9',
   methodAadhaar: '0x12982d4764ecc891c846088Dc6e9ce5fDb81e7b3',
   methodZkpassport: '0x7eFbe568CAc60CDa42E3e2B978e13aeA66cEca1D',
-  action: SEPOLIA_DEPLOYMENT.action
+  action: '0x445C094570362885dE43aD8FeDE2bA25C04B8A7a'
 } as const
 
 const SEPOLIA_COMMITTED_DESCRIPTOR = {
