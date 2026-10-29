@@ -6,7 +6,6 @@
  */
 import { X509Certificate } from 'crypto'
 
-import { splitToWords } from '@anon-aadhaar/core'
 import { poseidon } from 'maci-crypto/build/ts/hashing'
 
 import { SEPOLIA_DEPLOYMENT } from '@web/modules/social-recovery/shared/client/deployments-sepolia'
@@ -14,10 +13,11 @@ import { SEPOLIA_DEPLOYMENT } from '@web/modules/social-recovery/shared/client/d
 const TRUSTED_KEY_HASH =
   19770349258225098911243612275321727303641256718510179842211794623059325011884n
 
-const WORD_BITS = 121n
-const WORD_COUNT = 17n
-// Two to the power of the word width, the factor that packs the second word above the first.
-const WORD_SCALE = BigInt(`0b1${'0'.repeat(Number(WORD_BITS))}`)
+const WORD_BITS = 121
+const WORD_COUNT = 17
+// Two to the power of the word width: the base of the word split, and the factor that packs the
+// second word of a pair above the first.
+const WORD_SCALE = BigInt(`0b1${'0'.repeat(WORD_BITS)}`)
 
 const modulusOf = (pem: string): bigint => {
   const { n } = new X509Certificate(pem).publicKey.export({ format: 'jwk' })
@@ -25,7 +25,13 @@ const modulusOf = (pem: string): bigint => {
 }
 
 const publicKeyHashOf = (pem: string): bigint => {
-  const words = splitToWords(modulusOf(pem), WORD_BITS, WORD_COUNT).map((word) => BigInt(word))
+  // The modulus in 121-bit words, least significant first, as the peer's `splitToWords` gives them.
+  const words: bigint[] = []
+  let rest = modulusOf(pem)
+  for (let at = 0; at < WORD_COUNT; at += 1) {
+    words.push(rest % WORD_SCALE)
+    rest /= WORD_SCALE
+  }
   const packed: bigint[] = []
   for (let at = 0; at < words.length; at += 2) {
     packed.push(at + 1 < words.length ? words[at] + words[at + 1] * WORD_SCALE : words[at])
