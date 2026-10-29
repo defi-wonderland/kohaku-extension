@@ -207,7 +207,7 @@ export interface RecoveryClientConfiguration extends AccountFacts {
   chain: RecoveryChain
   /** The account the client binds. */
   account: Address
-  /** The deployed manager, methods and action (placeholders until deployment). */
+  /** The deployed manager, methods and action (placeholders on the stand-in). */
   addressBook: AddressBook
   /** The provider adapter over the extension's own provider (`createProviderAdapter`). */
   provider: IProvider
