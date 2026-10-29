@@ -4,8 +4,11 @@
  * either way the approving side packages it into the reply and judges it
  * before the page keeps the approval line. One signing runs at a time, so a
  * second press while one runs does nothing, and nothing runs once the
- * approval exists. The state belongs to the request the page shows: another
- * link opened in the same tab starts with none, the sign request of the
+ * approval exists. Where the approving side cannot judge the wallet's own
+ * signature, as for a smart account's, the chain's verdict decides, and a
+ * chain read that fails reads as unread with a retry; a pasted signature is
+ * judged by the approving side alone. The state belongs to the request the
+ * page shows: another link opened in the same tab starts with none, the sign request of the
  * request it replaced is withdrawn from the request queue, as it is when the
  * page goes away, and an answer for a replaced request is dropped. The page
  * withdraws the signing of a request the guardian declined or that ended:
@@ -42,6 +45,7 @@ const idleFor = (request: ApproverRequest | null): SigningState => ({
 
 const useGuardianSigning = ({
   approving,
+  chainVerdict,
   request,
   signTypedData,
   ended
@@ -98,7 +102,7 @@ const useGuardianSigning = ({
         return 'unpackaged'
       }
       const verdict = await approving.verify(owner, owner.place, reply.proof)
-      return { approval: { line: replyLineOf(reply), proof: reply.proof }, verdict }
+      return { approval: { line: replyLineOf(reply), proof: reply.proof }, verdict, reply }
     },
     [approving]
   )
@@ -178,20 +182,29 @@ const useGuardianSigning = ({
               withdrawal.current = null
             }
           }
+          let outcome: ApprovalOutcome
           try {
-            const outcome = await outcomeOf(owner, typedData, signature)
-            if (outcome === 'unpackaged') {
-              return 'failed'
-            }
-            return walletVerdictFailure(outcome.verdict) ?? outcome.approval
+            outcome = await outcomeOf(owner, typedData, signature)
           } catch {
             return 'failed'
           }
+          if (outcome === 'unpackaged') {
+            return 'failed'
+          }
+          let { verdict } = outcome
+          if (verdict === 'not-judged' && chainVerdict) {
+            try {
+              verdict = await chainVerdict(owner, outcome.reply)
+            } catch {
+              return 'unread'
+            }
+          }
+          return walletVerdictFailure(verdict) ?? outcome.approval
         },
         (failure) => ({ failure })
       )
     },
-    [idle, update, signTypedData, outcomeOf, runOnce]
+    [idle, update, signTypedData, outcomeOf, chainVerdict, runOnce]
   )
 
   const addSignature = useCallback(
