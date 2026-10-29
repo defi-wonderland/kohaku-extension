@@ -14,6 +14,8 @@ export {
   addressBookOf,
   credentialKindIn,
   deploymentAddressesOf,
+  isBasicAccount,
+  listedAccountOf,
   methodKindIn,
   sameAddress
 } from './addresses'
@@ -110,6 +112,7 @@ export type {
   DeploymentFacts,
   DeploymentAddresses,
   Deployment,
+  CreationRecord,
   AccountFacts,
   RecoveryClientConfiguration,
   AdapterProvider,
