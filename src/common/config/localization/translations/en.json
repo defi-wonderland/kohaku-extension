@@ -1409,13 +1409,15 @@
         "hardwareNote": "A hardware wallet without a descriptor for this request shows two hashes and asks for blind signing. Compare the new key on this page with the one the owner read to you. If you are the owner, compare the fields on this page with your own checklist row instead.",
         "refused": "Your wallet refused to sign. Nothing was created.",
         "failed": "This wallet could not sign. Nothing was created.",
-        "wrongKey": "The approval was not made by the key this request names. Nothing was kept."
+        "wrongKey": "The approval was not made by the key this request names. Nothing was kept.",
+        "unread": "The page could not check this approval on chain. Nothing was kept. Try again."
       },
       "offline": {
         "open": "Open the offline block",
         "openHint": "Copy the payload, sign it on a device that never goes online, then bring it back here.",
         "title": "Sign offline",
         "lead": "Carry the payload to a device that never goes online, sign it there, and bring the signature back.",
+        "smartAccountOnPage": "A smart account cannot sign offline. Its holder signs on this page, from the wallet that controls it.",
         "payloadHeading": "The payload · carry it by QR or file",
         "saveFile": "Save as a file",
         "copyPayload": "Copy the payload",
