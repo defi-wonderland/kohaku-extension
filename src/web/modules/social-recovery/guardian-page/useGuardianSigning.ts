@@ -5,8 +5,10 @@
  * before the page keeps the approval line. One signing runs at a time, so a
  * second press while one runs does nothing, and nothing runs once the
  * approval exists. Where the approving side cannot judge the wallet's own
- * signature, as for a smart account's, the chain's verdict decides, and a
- * chain read that fails reads as unread with a retry; a pasted signature is
+ * signature, as for a smart account's, the chain's verdict decides: only its
+ * satisfied keeps the approval, its rejected reads as the wrong key, and any
+ * other answer, a read that fails or one that does not answer in time reads
+ * as unread with a retry; a pasted signature is
  * judged by the approving side alone. The state belongs to the request the
  * page shows: another link opened in the same tab starts with none, the sign request of the
  * request it replaced is withdrawn from the request queue, as it is when the
@@ -19,9 +21,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { ApproverRequest, Hex } from '@kohaku-eth/social-recovery'
+import type { ApproverRequest, Hex, Reply, Verdict } from '@kohaku-eth/social-recovery'
 import { replyLineOf } from '@web/modules/social-recovery/recovery/checklist'
 import { signatureOf } from '@web/modules/social-recovery/setup/enroll/guardian'
+import { ACCOUNT_CHECK_LIMIT_MS } from '@web/modules/social-recovery/shared/client'
 import type { KeyHandle, TypedDataToSign } from '@web/modules/social-recovery/shared/client'
 
 import { offlineVerdictFailure, signingFailureOf, walletVerdictFailure } from './signing'
@@ -30,10 +33,36 @@ import type {
   GuardianSigning,
   GuardianSigningInput,
   OfflineFailure,
+  ReplyChainVerdict,
   SignedApproval,
   SigningFailure,
   SigningState
 } from './types'
+
+/**
+ * The chain's verdict, bounded in time: undefined where the read failed or
+ * did not answer in time. It settles once, so a late answer changes nothing.
+ */
+const chainVerdictWithin = (
+  chainVerdict: ReplyChainVerdict,
+  request: ApproverRequest,
+  reply: Reply
+): Promise<Verdict | undefined> =>
+  new Promise((resolve) => {
+    const limit = setTimeout(() => resolve(undefined), ACCOUNT_CHECK_LIMIT_MS)
+    Promise.resolve()
+      .then(() => chainVerdict(request, reply))
+      .then(
+        (verdict) => {
+          clearTimeout(limit)
+          resolve(verdict)
+        },
+        () => {
+          clearTimeout(limit)
+          resolve(undefined)
+        }
+      )
+  })
 
 const idleFor = (request: ApproverRequest | null): SigningState => ({
   request,
@@ -191,15 +220,15 @@ const useGuardianSigning = ({
           if (outcome === 'unpackaged') {
             return 'failed'
           }
-          let { verdict } = outcome
-          if (verdict === 'not-judged' && chainVerdict) {
-            try {
-              verdict = await chainVerdict(owner, outcome.reply)
-            } catch {
-              return 'unread'
-            }
+          if (outcome.verdict !== 'not-judged' || !chainVerdict) {
+            return walletVerdictFailure(outcome.verdict) ?? outcome.approval
           }
-          return walletVerdictFailure(verdict) ?? outcome.approval
+          // The chain decides here: only its satisfied keeps the approval.
+          const onChain = await chainVerdictWithin(chainVerdict, owner, outcome.reply)
+          if (onChain === 'satisfied') {
+            return outcome.approval
+          }
+          return onChain === 'rejected' ? 'wrongKey' : 'unread'
         },
         (failure) => ({ failure })
       )

@@ -338,6 +338,51 @@ describe('the signing step', () => {
     page.unmount()
   })
 
+  it('keeps nothing where the chain cannot judge the approval either, and reads it as unread', async () => {
+    wallet.signTypedData.mockImplementation((_key, typedData) =>
+      signatureBy(STRANGER_ACCOUNT, typedData)
+    )
+    kit.verifyReply.mockResolvedValueOnce('not-judged')
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(kit.verifyReply).toHaveBeenCalledTimes(1)
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.textOf('guardian-sign-unread')).toContain(t(`${SIGNING}.unread`))
+    expect(page.has('guardian-sign-retry')).toBe(true)
+    page.unmount()
+  })
+
+  it('reads a chain verdict that never answers as unread once the wait passes, and a late answer changes nothing', async () => {
+    wallet.signTypedData.mockImplementation((_key, typedData) =>
+      signatureBy(STRANGER_ACCOUNT, typedData)
+    )
+    const answers: ((verdict: 'satisfied') => void)[] = []
+    kit.verifyReply.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answers.push(resolve)
+        })
+    )
+    const page = await mountTicked()
+    await page.press('guardian-sign')
+    await finish()
+    expect(kit.verifyReply).toHaveBeenCalledTimes(1)
+    await advance(ACCOUNT_CHECK_LIMIT_MS - 1)
+    expect(page.has('guardian-sign-busy')).toBe(true)
+    expect(page.has('guardian-sign-unread')).toBe(false)
+    await advance(1)
+    await finish()
+    expect(page.textOf('guardian-sign-unread')).toContain(t(`${SIGNING}.unread`))
+    expect(page.has('guardian-sign-busy')).toBe(false)
+
+    answers[0]('satisfied')
+    await finish()
+    expect(page.has('guardian-signed')).toBe(false)
+    expect(page.has('guardian-sign-unread')).toBe(true)
+    page.unmount()
+  })
+
   it('keeps nothing for bytes the approving side rejects and reads that the key is wrong', async () => {
     wallet.signTypedData.mockImplementation(async (_key, typedData) =>
       malformedSignature(await signatureBy(GUARDIAN_ACCOUNT, typedData))
