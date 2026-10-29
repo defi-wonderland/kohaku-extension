@@ -48,7 +48,7 @@ Round is the half-day in which the task can start, from `depends_on` alone. With
 
 A follow-up task is work the cut did not hold: a seam a task or a review found, an owner's ruling, or a library change a task needs. It has an id `FU-<letter>`, one pull request of its own (or one in `kohaku-commons` where the change is in the library), and the same method as a task. The coordinator adds a row here when a follow-up is named and updates it when its pull request opens and merges. Pull request numbers are those of `defi-wonderland/kohaku-extension` unless a row says `kohaku-commons`.
 
-| Id | Follow-up | Follows | Where the code lives | Pull request | State on 2026-10-05 |
+| Id | Follow-up | Follows | Where the code lives | Pull request | State |
 | --- | --- | --- | --- | --- | --- |
 | (M-6) | The ceremony tab resolves a recorded request through the client | PT-041, PT-038 | `shared/ceremony`, `shared/client` | #15 | merged |
 | (M-6) | A send path for the writes through the request queue | PT-039, PT-038 | `shared/client`, `shared/writes` | #16 | merged |
