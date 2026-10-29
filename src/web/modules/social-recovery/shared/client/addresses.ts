@@ -4,17 +4,20 @@
  *
  * `servedImplementation` is the one real address: it is the implementation
  * the account library already deploys behind every account proxy, so no
- * deployment of the kit changes it. Every other address is a placeholder, and
- * no contract is deployed at any of them. A chain whose deployment record
- * (deployments.ts) names a deployed kit reads that deployment's addresses
- * instead. Each placeholder reads as `c7`, one byte for the chain (`01`
+ * deployment of the kit changes it. Every other address is a placeholder the
+ * stand-in reads, and no contract is deployed at any of them. A chain whose
+ * deployment record (deployments.ts) names a deployed kit, Sepolia in the
+ * committed table, reads that deployment's addresses instead. Each placeholder reads as `c7`, one byte for the chain (`01`
  * Sepolia, `02` mainnet) and one byte for the field, behind seventeen zero
  * bytes, so nobody mistakes one for a deployment.
  */
 import { isAddress, isAddressEqual, zeroAddress } from 'viem'
+import type { Address } from 'viem'
 
 import type { Credential } from '@kohaku-eth/social-recovery'
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
+import type { Account } from '@ambire-common/interfaces/account'
+import { isSmartAccount } from '@ambire-common/libs/account/account'
 import { isEmptySlot, slotKindOf } from '@web/modules/social-recovery/shared/records/slots'
 import { SLOT_KINDS } from '@web/modules/social-recovery/shared/records/types'
 import type { SlotKind } from '@web/modules/social-recovery/shared/records/types'
@@ -22,7 +25,7 @@ import type { SlotKind } from '@web/modules/social-recovery/shared/records/types
 import { deploymentOf } from './deployments'
 import type { AddressBook, DeploymentAddresses, RecoveryChain } from './types'
 
-/** Both deployments' addresses by chain: placeholders to replace once deployed, and the real served implementation. */
+/** The stand-in's addresses by chain: placeholders, and the real served implementation. */
 export const PLACEHOLDER_ADDRESSES = {
   sepolia: {
     // Placeholder: the Sepolia policy manager.
@@ -108,6 +111,24 @@ export const sameAddress = (a: string | undefined, b: string | undefined): boole
   isAddress(a, { strict: false }) &&
   isAddress(b, { strict: false }) &&
   isAddressEqual(a, b)
+
+/**
+ * The wallet's own record of an account, found by its address. A listed
+ * address in mixed case with a bad checksum matches nothing.
+ */
+export const listedAccountOf = <A extends Account>(
+  accounts: readonly A[] | undefined,
+  address: Address | undefined
+): A | undefined =>
+  address
+    ? accounts?.find(
+        (candidate) => isAddress(candidate.addr) && isAddressEqual(candidate.addr, address)
+      )
+    : undefined
+
+/** A listed account that is a basic account, not a smart account. */
+export const isBasicAccount = (listed: Account | undefined): boolean =>
+  !!listed && !isSmartAccount(listed)
 
 /**
  * The kind of method a module address serves among a deployment's method
