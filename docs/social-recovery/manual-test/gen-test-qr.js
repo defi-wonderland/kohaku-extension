@@ -30,15 +30,27 @@ const argumentOf = (name) => {
   return at === -1 ? undefined : process.argv[at + 1]
 }
 
+const USAGE = [
+  'Usage, from the repository root:',
+  '  node docs/social-recovery/manual-test/gen-test-qr.js --key <testPrivateKey.pem> --cert <testCertificate.pem> [--out <basename>] [--other]',
+  'or with AADHAAR_TEST_PRIVATE_KEY and AADHAAR_TEST_CERTIFICATE set to the two paths.',
+  '  --out    the base name of the .txt and .png it writes (default ./test-qr)',
+  '  --other  a QR code of another identity, whose nullifier differs',
+  'The test files are in anon-aadhaar/anon-aadhaar under packages/circuits/assets/.'
+].join('\n')
+
+if (process.argv.includes('--help')) {
+  console.log(USAGE)
+  process.exit(0)
+}
+
 const keyPath = argumentOf('--key') ?? process.env.AADHAAR_TEST_PRIVATE_KEY
 const certificatePath = argumentOf('--cert') ?? process.env.AADHAAR_TEST_CERTIFICATE
 const out = argumentOf('--out') ?? 'test-qr'
 const other = process.argv.includes('--other')
 
 if (!keyPath || !certificatePath) {
-  console.error(
-    'Give the test private key and the test certificate: --key <path> --cert <path>, or AADHAAR_TEST_PRIVATE_KEY and AADHAAR_TEST_CERTIFICATE.'
-  )
+  console.error(`Give the test private key and the test certificate.\n\n${USAGE}`)
   process.exit(1)
 }
 
