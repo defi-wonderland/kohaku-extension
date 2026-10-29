@@ -66,26 +66,25 @@ const HomeRecoveryBandView = ({
     return null
   }
   return (
-    <View
-      style={[spacings.phSm, spacings.mbSm, commonWebStyles.contentContainer]}
-      testID="home-recovery-band"
-    >
-      {items.map((item) => (
-        <HomeRecoveryLine
-          key={item.account}
-          item={item}
-          timeZone={timeZone}
-          useHeadline={useHeadline}
-          onOpen={() => navigate(inProgressPath())}
-        />
-      ))}
-      {countdowns.map((account) => (
-        <WaitHomeLine
-          key={account}
-          account={account}
-          onOpen={() => navigate(waitPathOf(account))}
-        />
-      ))}
+    <View style={[spacings.phSm, spacings.mbSm]} testID="home-recovery-band">
+      <View style={commonWebStyles.contentContainer} testID="home-recovery-band-content">
+        {items.map((item) => (
+          <HomeRecoveryLine
+            key={item.account}
+            item={item}
+            timeZone={timeZone}
+            useHeadline={useHeadline}
+            onOpen={() => navigate(inProgressPath())}
+          />
+        ))}
+        {countdowns.map((account) => (
+          <WaitHomeLine
+            key={account}
+            account={account}
+            onOpen={() => navigate(waitPathOf(account))}
+          />
+        ))}
+      </View>
     </View>
   )
 }
