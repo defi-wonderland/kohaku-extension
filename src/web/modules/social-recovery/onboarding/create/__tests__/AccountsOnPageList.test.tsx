@@ -426,6 +426,46 @@ describe('the account picker page list', () => {
       expect(onScanComplete).toHaveBeenCalledTimes(1)
     })
 
+    it('scans past a first page used only through its smart account to a later used basic account, and finishes back on that page', async () => {
+      const onScanComplete = jest.fn()
+      const setPage = jest.fn()
+      mockChain.usedAddrs = [SMART]
+      await mount(importedSeedPage(), { isScanComplete: false, onScanComplete, setPage })
+      expect(dispatchedSelections()).toEqual(selectionsOf([SMART, KEY]))
+      expect(setPage).toHaveBeenLastCalledWith(2)
+
+      mockChain.usedAddrs = [BASIC]
+      mockDispatch.mockClear()
+      await mount(importedSeedPage([], { page: 2 }), {
+        isScanComplete: false,
+        onScanComplete,
+        setPage
+      })
+      expect(selectedAddresses()).toContain(BASIC)
+      expect(setPage).toHaveBeenLastCalledWith(3)
+
+      mockChain.usedAddrs = []
+      await mount(importedSeedPage([], { page: 3 }), {
+        isScanComplete: false,
+        onScanComplete,
+        setPage
+      })
+      expect(setPage).toHaveBeenLastCalledWith(2)
+      expect(onScanComplete).not.toHaveBeenCalled()
+
+      mockChain.usedAddrs = [BASIC]
+      mockDispatch.mockClear()
+      await mount(importedSeedPage([], { page: 2 }), {
+        isScanComplete: false,
+        onScanComplete,
+        setPage
+      })
+
+      expect(dispatchedSelections()).toEqual(selectionsOf([BASIC]))
+      expect(setPage).toHaveBeenCalledTimes(3)
+      expect(onScanComplete).toHaveBeenCalledTimes(1)
+    })
+
     it('scans past a page used only through its smart account, then finishes back on it with the pair selected and no basic account', async () => {
       const onScanComplete = jest.fn()
       const setPage = jest.fn()
