@@ -1581,6 +1581,7 @@
           "body": "This wallet cannot show your setup on this device yet. Enter the recovery password from your Recovery Card.",
           "action": "Enter the recovery password",
           "field": "Recovery password",
+          "passwordPlaceholder": "Recovery password",
           "wrong": "That is not the recovery password of this setup.",
           "unlock": "Show the path"
         },
