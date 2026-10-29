@@ -11,6 +11,7 @@ import spacings from '@common/styles/spacings'
 import type { Address } from '@kohaku-eth/social-recovery'
 import { isOfDeployment, isSessionOfDeployment } from '@web/modules/social-recovery/shared/records'
 import WaitHomeLine from '@web/modules/social-recovery/recovery/wait/WaitHomeLine'
+import commonWebStyles from '@web/styles/utils/common'
 
 import HomeRecoveryLine from './HomeRecoveryLine'
 import { inProgressItemsOf } from './inProgress'
@@ -65,7 +66,10 @@ const HomeRecoveryBandView = ({
     return null
   }
   return (
-    <View style={[spacings.phSm, spacings.mbSm]} testID="home-recovery-band">
+    <View
+      style={[spacings.phSm, spacings.mbSm, commonWebStyles.contentContainer]}
+      testID="home-recovery-band"
+    >
       {items.map((item) => (
         <HomeRecoveryLine
           key={item.account}
