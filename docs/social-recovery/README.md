@@ -69,7 +69,7 @@ The identity parameters are this wallet's own and never change on a chain that h
 - zkPassport domain `social-recovery.kohaku.test`, scope `kohaku-social-recovery`, on the testnet certificate tree (the Sepolia root registry accepts that tree, which holds every real certificate).
 - Aadhaar nullifier seed `11155111`, and UIDAI's offline e-KYC signing certificate "DS UIDAI 06" (valid 2026-02-03 to 2029-02-03), whose key the Aadhaar method trusts.
 
-To point a build at another deployment, set `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` in `.env` to one JSON object on one line, and build again. The fields:
+To point a build at another deployment, set `SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT` in `.env` to one JSON object on one line, and build again. Write the value unquoted or in single quotes, never in double quotes: in double quotes the env loader turns each `\n` into a line break and the JSON no longer parses, so the build refuses the variable as malformed. Part 5 shows one complete line. The fields:
 
 | Field | Type | Required |
 | --- | --- | --- |
@@ -117,6 +117,18 @@ For a test with no real Aadhaar, point the build at the test-only module with th
 - `aadhaarTestMode`: `true`.
 - `aadhaarCertificate`: Anon Aadhaar's test certificate, `testCertificate.pem`, as one JSON string.
 
+The complete line for `.env`, in single quotes, with the test certificate already in it:
+
+```
+SOCIAL_RECOVERY_SEPOLIA_DEPLOYMENT='{"manager":"0xF7Fd795C47025abda8dC4264Bf4Cdec22aC56A62","methodEcdsa":"0x87AcC5584c2aAd5Ede60c2a4730765C0d015b907","methodPasskey":"0x342B1e6CeB3f6ADD8122862FA3095D127DDecAc9","action":"0x445C094570362885dE43aD8FeDE2bA25C04B8A7a","methodAadhaar":"0xFc9D2C88C6F1050F520F67081aa982F86D11D2C4","methodZkpassport":"0x7eFbe568CAc60CDa42E3e2B978e13aeA66cEca1D","zkPassportDomain":"social-recovery.kohaku.test","zkPassportScope":"kohaku-social-recovery","zkPassportTestnetTree":true,"aadhaarNullifierSeed":"11155111","aadhaarCertificate":"-----BEGIN CERTIFICATE-----\r\nMIID6jCCAtKgAwIBAgIBATANBgkqhkiG9w0BAQsFADBpMRQwEgYDVQQDEwtleGFt\r\ncGxlLm9yZzELMAkGA1UEBhMCVVMxETAPBgNVBAgTCFZpcmdpbmlhMRMwEQYDVQQH\r\nEwpCbGFja3NidXJnMQ0wCwYDVQQKEwRUZXN0MQ0wCwYDVQQLEwRUZXN0MB4XDTI0\r\nMDMwMTE2MTc0MFoXDTI1MDMwMTE2MTc0MFowaTEUMBIGA1UEAxMLZXhhbXBsZS5v\r\ncmcxCzAJBgNVBAYTAlVTMREwDwYDVQQIEwhWaXJnaW5pYTETMBEGA1UEBxMKQmxh\r\nY2tzYnVyZzENMAsGA1UEChMEVGVzdDENMAsGA1UECxMEVGVzdDCCASIwDQYJKoZI\r\nhvcNAQEBBQADggEPADCCAQoCggEBAJXoH3UGWVzCYq3c/d012AQFWyrfRtxxnFa1\r\nju4ZmZXvoaMlRxBiCseAHpdvROO+RU2w8ZDj99TjWYlyEXNE3lL894JvhJSIqVmn\r\ns9Iett0DRRZi6og+7u/eiJoUmbmkf5UExfCWwmK5bSPRl1AzLZ6X62FB0mHel5lN\r\nTEFjypy+PgdyIbRCU9z4FglCi2g1HuPptg0rNR/apu6MKKhFI5+X3nzA/l0UTkdI\r\nE/tD7Fg/gbTuMowiFnM0iY0hC6AXom7GiUDwXfIr2cyGu8OkNUOSNy1WYWd2m3Nb\r\noSyjWA+RnBvYunDEwqsKzysJvC+umB88ApWm4enySPUAcwlP+vECAwEAAaOBnDCB\r\nmTAMBgNVHRMEBTADAQH/MAsGA1UdDwQEAwIC9DA7BgNVHSUENDAyBggrBgEFBQcD\r\nAQYIKwYBBQUHAwIGCCsGAQUFBwMDBggrBgEFBQcDBAYIKwYBBQUHAwgwEQYJYIZI\r\nAYb4QgEBBAQDAgD3MCwGA1UdEQQlMCOGG2h0dHA6Ly9leGFtcGxlLm9yZy93ZWJp\r\nZCNtZYcEfwAAATANBgkqhkiG9w0BAQsFAAOCAQEAjDnIK8R7ruSiJpdUeZ2ZxaGI\r\newf020sAc0ENw6x3jaKKFINNLnMqEKLntZzIg7WbjnKLhtUhb/SLHP59mfT2OJVS\r\nYMW7uRmnajfEd0MzfrXIUKBwCeWTCyP/bcdlJOT4u24ngFnkUyWaEKnqH3YuI8cw\r\nBKWQ26Lq7ODq6e6Otxf0KOtWTeVSzlCL66MGBvQ36LF1g8PLEZ9hvvX06ieaE99W\r\nHDK9/pGSuobx6Fi7ufzqymirT/GOuxslquB4mleCu4ArCg2qAVC2wDjQymgvq8FS\r\nbVukYnC6XdwqYhvIuTPnEys4gGdeirY+UPGQeqxMrNm+ZpKPTS0NwzxHwlhutw==\r\n-----END CERTIFICATE-----","aadhaarTestMode":true,"deployedAt":12019037,"digestVersion":"1","managerVersion":"1.0.0","auditedActions":[{"action":"0x445C094570362885dE43aD8FeDE2bA25C04B8A7a","publisher":"ethereumFoundation"}],"explorerUrl":"https://sepolia.etherscan.io"}'
+```
+
+To turn another PEM file into a JSON string for the line, print it with node (the anon-aadhaar files have CRLF line breaks, which the parser accepts):
+
+```
+node -e "process.stdout.write(JSON.stringify(require('fs').readFileSync(process.argv[1], 'utf8').trim()))" <path>/testCertificate.pem
+```
+
 The test key files live in the [anon-aadhaar/anon-aadhaar](https://github.com/anon-aadhaar/anon-aadhaar) repository under `packages/circuits/assets/`: `testPrivateKey.pem`, `testPublicKey.pem` and `testCertificate.pem`. Download them outside this repository. Make a fresh test QR code with the generator in this folder:
 
 ```
@@ -130,5 +142,3 @@ The method refuses a QR code signed more than 24 hours before the chain's latest
 ### 6. What to record
 
 For each step, record the screen you saw (a screenshot), the time from Sign to the landed state, and the block of each landed transaction as the explorer shows it. Record any line that differs from the steps above, with the build's commit and the SDK's commit. Keep the wallets' secrets out of the report.
-
-The facts of the earlier walks (parts A to E of M-12: the timings, the findings and how each was settled) are in the M-12 rows of `board.md` in this folder.
