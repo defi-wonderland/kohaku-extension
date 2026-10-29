@@ -162,9 +162,9 @@ describe('the account field', () => {
 
   it('shows what the account field takes before anything is typed', async () => {
     const page = await open(LOGGED_IN)
-    const node = page.byTestId('entry-account-input')
-    const input = node instanceof HTMLInputElement ? node : node?.querySelector('input')
-    expect(input?.placeholder).toBe(t('socialRecovery.entry.account.placeholder'))
+    expect(page.inputOf('entry-account-input')?.placeholder).toBe(
+      t('socialRecovery.entry.account.placeholder')
+    )
   })
 
   it('names the one network with no switch', async () => {
