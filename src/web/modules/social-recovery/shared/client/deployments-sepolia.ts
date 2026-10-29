@@ -1,10 +1,9 @@
 /**
  * The Sepolia contracts of the published deployment record
- * ethereum/kohaku-contracts#15 of 2026-10-29, read back from the chain on
- * 2026-10-29. The identity parameters are this wallet's own: a different
- * zkPassport domain or scope derives a different identifier for the same
- * document, and a different Aadhaar seed a different nullifier, so they must
- * never change on a chain that holds credentials.
+ * ethereum/kohaku-contracts#15. The identity parameters are this wallet's
+ * own: a different zkPassport domain or scope derives a different identifier
+ * for the same document, and a different Aadhaar seed a different nullifier,
+ * so they must never change on a chain that holds credentials.
  */
 import type { DeploymentFacts } from './types'
 
