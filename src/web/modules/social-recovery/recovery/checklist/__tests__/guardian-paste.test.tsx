@@ -425,7 +425,7 @@ describe('the guardian paste', () => {
       expect(view?.valueOf(id(1, 'paste-input'))).toBe('x')
     })
 
-    it('clears the line on the next add, which reads its own outcome', async () => {
+    it('leaves no line after an edit and a new add, which reads its own outcome', async () => {
       await open()
       await paste(1, lineOf(replyOf(gathering, 2)))
 
