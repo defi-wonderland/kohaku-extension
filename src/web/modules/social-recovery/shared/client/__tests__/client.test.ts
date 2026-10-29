@@ -188,7 +188,7 @@ describe('buildRecoveryClient', () => {
 
   it('binds the one chain the configuration names and refuses a node on another', async () => {
     const world = createWorld()
-    world.chain.setChainId(1)
+    world.chain.setChainId(CHAIN_IDS.sepolia)
     const caught = await thrownBy(buildRecoveryClient(world.config))
     expect(caught).toBeInstanceOf(Error)
     expect(isDigestVersionRefusal(caught)).toBe(false)

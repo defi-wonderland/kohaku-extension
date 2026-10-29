@@ -17,6 +17,7 @@ import {
 } from '@web/modules/social-recovery/shared/client/__tests__/harness'
 import { addressOf } from '@web/modules/social-recovery/shared/client/__fixtures__/addresses'
 import { sepoliaDeploymentVariable } from '@web/modules/social-recovery/shared/client/deployment-env'
+import { SEPOLIA_DEPLOYMENT } from '@web/modules/social-recovery/shared/client/deployments-sepolia'
 import {
   identityParamsOf,
   methodParamsOf
@@ -98,12 +99,26 @@ const STAND_IN = {
 const CALLS: CeremonyCall[] = ['enroll', 'testAccess', 'createClaim', 'healthCheck']
 
 describe('the identity parameters of a chain', () => {
-  ;(['sepolia', 'mainnet'] as const).forEach((chain) =>
-    it(`reads the fixed stand-in values on ${chain} while it runs the stand-in`, () => {
-      variable.mockReturnValue(undefined)
-      expect(identityParamsOf(chain)).toEqual(STAND_IN)
+  it('reads the fixed stand-in values on mainnet, which runs the stand-in', () => {
+    variable.mockReturnValue(undefined)
+    expect(identityParamsOf('mainnet')).toEqual(STAND_IN)
+  })
+
+  it("reads the committed Sepolia deployment's values where no variable is set", () => {
+    variable.mockReturnValue(undefined)
+    expect(identityParamsOf('sepolia')).toEqual({
+      zkPassport: {
+        domain: 'social-recovery.kohaku.test',
+        scope: 'kohaku-social-recovery',
+        testnetTree: true
+      },
+      aadhaar: {
+        nullifierSeed: 11155111n,
+        issuerCertificate: SEPOLIA_DEPLOYMENT.aadhaarCertificate,
+        testMode: false
+      }
     })
-  )
+  })
 
   it("reads a deployed chain's facts, the seed as a number", () => {
     variable.mockReturnValue(JSON.stringify(IDENTITY_FACTS))
@@ -253,7 +268,7 @@ describe('the params an identity method takes for one call', () => {
 describe("the client's params for an identity method", () => {
   it('hands the stand-in values on a chain with no deployment', async () => {
     variable.mockReturnValue(undefined)
-    const client = await buildRecoveryClient(createWorld({ chain: 'sepolia' }).config)
+    const client = await buildRecoveryClient(createWorld({ chain: 'mainnet' }).config)
     expect(client.methodParamsFor('zkpassport', 'createClaim')).toEqual({
       domain: 'kohaku.stand-in',
       scope: 'kohaku-recovery',
@@ -336,7 +351,7 @@ describe('the identity methods a built client constructs', () => {
 
   it('hands neither mode on the stand-in chain, only its scripted stacks', async () => {
     variable.mockReturnValue(undefined)
-    await buildRecoveryClient(createWorld({ chain: 'sepolia' }).config)
+    await buildRecoveryClient(createWorld({ chain: 'mainnet' }).config)
     const { zkPassport, aadhaar } = lastOptions()
     expect(zkPassport?.stack).toBeDefined()
     expect(zkPassport).not.toHaveProperty('devMode')

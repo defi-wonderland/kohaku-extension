@@ -168,7 +168,7 @@ const deviceContext = (call: IdentityCall, followed: Followed) => ({
 })
 
 const identityWorld = async (): Promise<IdentityWorld> => {
-  const world = createWorld({ chain: 'sepolia' })
+  const world = createWorld({ chain: 'mainnet' })
   const client = await buildRecoveryClient(world.config)
   return {
     world,
@@ -909,7 +909,7 @@ describe('the Aadhaar method over a scripted prover that fails', () => {
 })
 
 describe('the chain verdict the ceremony tab reads', () => {
-  const SEPOLIA = networkRecord('sepolia')
+  const MAINNET = networkRecord('mainnet')
 
   it('judges a reply on the fake node where the chain runs the stand-in', async () => {
     jest.useFakeTimers()
@@ -919,9 +919,9 @@ describe('the chain verdict the ceremony tab reads', () => {
     const request = requestFor(identity.client, identity.zkModule, config)
     const reply = replyOf(await claimPassport(identity, request, { steps: [], views: [] }))
 
-    const approving = await extensionClientFor(() => [SEPOLIA])(
+    const approving = await extensionClientFor(() => [MAINNET])(
       identity.world.account,
-      CHAIN_IDS.sepolia
+      CHAIN_IDS.mainnet
     )
     if (!approving.chainVerdict) {
       throw new Error('no chain verdict')

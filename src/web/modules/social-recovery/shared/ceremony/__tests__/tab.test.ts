@@ -122,6 +122,15 @@ jest.mock('@ambire-common/services/provider/getRpcProvider', () => ({
 jest.mock('@web/modules/social-recovery/shared/client/build-client', () => ({
   buildRecoveryClient: jest.fn()
 }))
+// Sepolia runs the stand-in here, so the chain verdict is the client's own fake node read.
+jest.mock('@web/modules/social-recovery/shared/client/deployments', () => {
+  const actual = jest.requireActual('@web/modules/social-recovery/shared/client/deployments')
+  return {
+    ...actual,
+    deploymentOf: (chain: string) =>
+      chain === 'sepolia' ? { kind: 'stand-in' } : actual.deploymentOf(chain)
+  }
+})
 jest.mock('@common/components/Button', () => {
   const R = jest.requireActual('react')
   return {

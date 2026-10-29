@@ -23,7 +23,7 @@ import { useRecoveryClient } from '@web/modules/social-recovery/shared/client/us
 
 import {
   CONTROLLING_KEY,
-  createWorld,
+  createDeployedWorld,
   creationRecordOf,
   HookState,
   lastArg,
@@ -82,10 +82,10 @@ const Probe = ({ account, facts }: FactsProbeProps) => {
   return null
 }
 
-/** Renders the hook for `account`, the stand-in's chain for it holding one key entry: the controlling key. */
+/** Renders the hook for `account`, the deployed chain's node for it holding one key entry: the controlling key. */
 const render = async (account: Address, facts?: Parameters<typeof useRecoveryClient>[1]) => {
   if (!world || world.account !== account) {
-    world = createWorld({ account })
+    world = createDeployedWorld({ account })
     world.chain.setPrivilege(CONTROLLING_KEY)
   }
   await act(async () => {
