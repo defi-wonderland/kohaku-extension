@@ -21,6 +21,7 @@ import {
   getAddress,
   type Hex,
   pad,
+  slice,
   toFunctionSelector,
   zeroHash
 } from 'viem'
@@ -57,6 +58,8 @@ export const ENTRY_POINT = getAddress(ERC_4337_ENTRYPOINT)
 export const HOLDS: Hex = pad('0x01')
 export const CREATION = { factoryAddr: ACTION_HOLDER, bytecode: '0x60', salt: zeroHash }
 const COMMITMENT: Hex = `0x${'5a'.repeat(32)}`
+
+const PRIVILEGES_SELECTOR = toFunctionSelector('privileges(address)')
 
 export const [PRIVILEGE_TOPIC] = encodeEventTopics({
   abi: ACCOUNT_EVENTS_ABI,
@@ -131,10 +134,10 @@ export const worldOf = ({
   node.setCode(ACCOUNT, code, createdAt)
   node.setCode(ACTION, CONTRACT_CODE)
   logs.forEach((log) => node.addLog(log))
-  senders.forEach(([hash, sender]) =>
-    node.setSender(hash, sender instanceof Error ? sender : getAddress(sender))
+  senders.forEach(([hash, sender, shape]) =>
+    node.setSender(hash, sender instanceof Error ? sender : getAddress(sender), shape)
   )
-  node.answerWith(ACCOUNT, toFunctionSelector('privileges(address)'), (data) => {
+  node.answerWith(ACCOUNT, PRIVILEGES_SELECTOR, (data) => {
     const {
       args: [key]
     } = decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data })
@@ -183,7 +186,7 @@ export const worldOf = ({
   })
   const askedPrivileges = () =>
     node.calls
-      .filter(({ to }) => same(to, ACCOUNT))
+      .filter(({ to, data }) => same(to, ACCOUNT) && same(slice(data, 0, 4), PRIVILEGES_SELECTOR))
       .map(({ data }) => lower(decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data }).args[0]))
   const askedAuthority = () =>
     node.calls

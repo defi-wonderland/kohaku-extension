@@ -35,7 +35,13 @@ import {
 import { PROXY_AMBIRE_ACCOUNT } from '@ambire-common/consts/deploy'
 import { revertedCall } from '@web/modules/social-recovery/shared/client/provider-adapter'
 
-import type { CommittedFields, ProviderCall, ScriptedProvider, ScriptedState } from './types'
+import type {
+  CommittedFields,
+  ProviderCall,
+  ScriptedProvider,
+  ScriptedState,
+  TransactionShape
+} from './types'
 
 export const ACCOUNT: Address = '0x1111111111111111111111111111111111111111'
 export const MANAGER: Address = '0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
@@ -84,6 +90,7 @@ export const scriptedProvider = (): ScriptedProvider => {
   const codes = new Map<string, { code: Hex; from: number }>()
   const logs: RawLog[] = []
   const senders = new Map<string, Address | Error>()
+  const shapes = new Map<string, TransactionShape>()
   const calls: ProviderCall[] = []
   const head = { number: HEAD, timestamp: HEAD_TIMESTAMP, hash: pad(`0x${HEAD.toString(16)}`) }
   const keyOf = (to: Address, data: Hex) => `${to.toLowerCase()}:${data.toLowerCase()}`
@@ -135,7 +142,8 @@ export const scriptedProvider = (): ScriptedProvider => {
         to: MANAGER,
         input: '0x',
         blockNumber: head.number,
-        blockHash: head.hash
+        blockHash: head.hash,
+        ...shapes.get(hash.toLowerCase())
       }
     })
   }
@@ -154,8 +162,9 @@ export const scriptedProvider = (): ScriptedProvider => {
     addLog: (log) => {
       logs.push(log)
     },
-    setSender: (hash, sender) => {
+    setSender: (hash, sender, shape = {}) => {
       senders.set(hash.toLowerCase(), sender)
+      shapes.set(hash.toLowerCase(), shape)
     },
     calls
   }

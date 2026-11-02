@@ -6,6 +6,7 @@ import type {
   RawLog,
   Reply
 } from '@kohaku-eth/social-recovery'
+import type { TransactionShape } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
 import type { PrivilegeAccount } from '@web/modules/social-recovery/shared/client/types'
 import type { worldOf } from '@web/modules/social-recovery/shared/client/wallet-reads/__fixtures__/world'
 
@@ -20,8 +21,11 @@ export interface AccountWorldOptions {
   /** The block the manager was deployed at; the harness's by default. */
   deployedAt?: number
   logs?: RawLog[]
-  /** The sender each transaction hash names, or the error its read rejects with. */
-  senders?: [Hex, Address | Error][]
+  /**
+   * The sender each transaction hash names, or the error its read rejects
+   * with, and where given what else the transaction carries.
+   */
+  senders?: [Hex, Address | Error, TransactionShape?][]
   /** The keys the account's `privileges` view answers a value for. */
   holders?: Address[]
   /** The keys the action's `isAuthority` answers true for. */
