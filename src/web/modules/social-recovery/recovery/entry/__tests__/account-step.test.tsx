@@ -768,7 +768,11 @@ describe('the fit reads', () => {
       script()
       const page = await open(LOGGED_IN)
       await confirmLost(page)
-      expect(page.textOf('entry-cannot-recover-title')).toBe(CANNOT_RECOVER)
+      expect(page.textOf('entry-cannot-recover-title')).toBe(
+        reason === t('socialRecovery.entry.refusal.removedUnknown')
+          ? t('socialRecovery.entry.refusal.removedUnknownTitle')
+          : CANNOT_RECOVER
+      )
       expect(page.textOf('entry-cannot-recover-reason')).toBe(reason)
       expectNoContinue(page)
       expect(kit.holdsAnyPrivilege).not.toHaveBeenCalled()
@@ -779,7 +783,9 @@ describe('the fit reads', () => {
     kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'no-source' })
     const page = await open(LOGGED_IN)
     await confirmLost(page)
-    expect(page.textOf('entry-cannot-recover-title')).toBe(CANNOT_RECOVER)
+    expect(page.textOf('entry-cannot-recover-title')).toBe(
+      t('socialRecovery.entry.refusal.removedUnknownTitle')
+    )
     expect(page.textOf('entry-cannot-recover-reason')).toBe(
       t('socialRecovery.entry.refusal.removedUnknown')
     )
