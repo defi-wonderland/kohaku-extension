@@ -152,6 +152,26 @@ describe('a relayed deployment of the account', () => {
     ).resolves.toBe(SIGNER)
   })
 
+  it('names the key that signed the bare operation hash with no mode byte', async () => {
+    const { provider } = scriptedProvider()
+    const batch = await signedBatch(SIGNING_KEY, account.addr, 0n, 'plain')
+    const recovery = Number(slice(batch.signature, 64))
+    expect([27, 28]).toContain(recovery)
+    const transaction = relayed(account.factory, deployAndExecuteInput(account, batch))
+    await expect(
+      recoveredSignersOf(transaction, account.addr, RELAYED_CHAIN_ID, provider)
+    ).resolves.toEqual([SIGNER])
+  })
+
+  it('names the key of a plain signature on a deployed account, at the nonce read before', async () => {
+    const { provider } = deployedNode(account.addr, 4n)
+    const batch = await signedBatch(SIGNING_KEY, account.addr, 4n, 'plain')
+    const transaction = relayed(account.addr, executeInput(batch))
+    await expect(
+      recoverSigner(transaction, account.addr, RELAYED_CHAIN_ID, provider)
+    ).resolves.toBe(SIGNER)
+  })
+
   it('is what the signer recovery handed to the SDK names', async () => {
     const { provider } = scriptedProvider()
     const batch = await signedBatch(SIGNING_KEY, account.addr, 0n)
@@ -233,18 +253,40 @@ describe('a relayed call to the deployed account', () => {
 })
 
 describe('a transaction whose signatures name nobody', () => {
-  it('answers the sender for a signature without its mode byte', async () => {
+  it('never names the signer for a typed signature stripped of its mode byte', async () => {
     const { provider } = scriptedProvider()
     const batch = await signedBatch(SIGNING_KEY, account.addr, 0n)
     const bare = { ...batch, signature: slice(batch.signature, 0, 65) }
     const transaction = relayed(account.factory, deployAndExecuteInput(account, bare))
     await expect(
       recoveredSignersOf(transaction, account.addr, RELAYED_CHAIN_ID, provider)
-    ).resolves.toEqual([])
+    ).resolves.not.toContain(SIGNER)
     await expect(
       recoverSigner(transaction, account.addr, RELAYED_CHAIN_ID, provider)
-    ).resolves.toBe(RELAYER)
+    ).resolves.not.toBe(SIGNER)
   })
+
+  eachIt<[string, Hex]>([
+    ['00', '0x00'],
+    ['01', '0x01']
+  ])(
+    'answers the sender for a 65-byte signature whose last byte is %s, no recovery value',
+    async (_, last) => {
+      const { provider } = scriptedProvider()
+      const batch = await signedBatch(SIGNING_KEY, account.addr, 0n, 'plain')
+      const signature: Hex = `${slice(batch.signature, 0, 64)}${last.slice(2)}`
+      const transaction = relayed(
+        account.factory,
+        deployAndExecuteInput(account, { ...batch, signature })
+      )
+      await expect(
+        recoveredSignersOf(transaction, account.addr, RELAYED_CHAIN_ID, provider)
+      ).resolves.toEqual([])
+      await expect(
+        recoverSigner(transaction, account.addr, RELAYED_CHAIN_ID, provider)
+      ).resolves.toBe(RELAYER)
+    }
+  )
 
   it('answers the sender for a signature in a mode other than the standard or the unprotected one', async () => {
     const { provider } = scriptedProvider()

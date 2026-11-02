@@ -396,5 +396,8 @@ export interface RelayedAccount {
   salt: bigint
 }
 
-/** How a key signs an account's batch: the typed operation, or the bare hash. */
-export type SignatureMode = 'standard' | 'unprotected'
+/**
+ * How a key signs an account's batch: the typed operation, the bare hash with
+ * the mode byte `00`, or the bare hash with no mode byte.
+ */
+export type SignatureMode = 'standard' | 'unprotected' | 'plain'

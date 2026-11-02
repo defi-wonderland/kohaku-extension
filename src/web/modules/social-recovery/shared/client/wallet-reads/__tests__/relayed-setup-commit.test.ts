@@ -102,6 +102,27 @@ describe('a setup commit a relayer sent in the deployment of the account', () =>
     expect(askedPrivileges()).toEqual(expect.arrayContaining([RELAYER.toLowerCase()]))
   })
 
+  it('names the key that signed the bare operation hash with no mode byte', async () => {
+    const batch = await signedBatch(SIGNING_KEY, relayed.addr, 0n, 'plain')
+    const { reads } = relayedWorld(relayed.factory, deployAndExecuteInput(relayed, batch), [SIGNER])
+    await expect(reads.removedKey()).resolves.toEqual(named(SIGNER))
+  })
+
+  it('drops the stranger a typed signature stripped of its mode byte recovers, naming no key', async () => {
+    const batch = await signedBatch(SIGNING_KEY, relayed.addr, 0n)
+    const bare = { ...batch, signature: slice(batch.signature, 0, 65) }
+    const { reads, askedPrivileges } = relayedWorld(
+      relayed.factory,
+      deployAndExecuteInput(relayed, bare),
+      [SIGNER]
+    )
+    const reading = await reads.removedKey()
+    expect(reading.kind).toBe('unavailable')
+    const asked = askedPrivileges()
+    expect(asked).not.toContain(SIGNER.toLowerCase())
+    expect(asked.some((key) => !same(key, RELAYER) && !same(key, kitSlot(ACTION)))).toBe(true)
+  })
+
   it('leaves the key unnamed where the transaction carries no signature to read', async () => {
     const { reads } = relayedWorld(relayed.factory, '0x', [SIGNER])
     const reading = await reads.removedKey()

@@ -2,7 +2,8 @@
  * The transactions a relayer sends for a smart account, signed the way the
  * wallet signs an account operation: the hash of the account, the chain, the
  * nonce and the calls, signed as the typed `AmbireOperation` with the mode
- * byte `01`, or signed as it is with the mode byte `00`. The keys are
+ * byte `01`, or signed as it is with the mode byte `00` or with none, its
+ * last byte then the recovery value 27 or 28. The keys are
  * throwaway; no test reaches a network.
  */
 import { Wallet } from 'ethers'
@@ -68,6 +69,9 @@ export const signedBatch = async (
   const hash = getSignableHash(account, BigInt(chainId), nonce, calls.map(callToTuple))
   if (mode === 'unprotected') {
     return { calls, signature: wrapUnprotected(key.signingKey.sign(hash).serialized) as Hex }
+  }
+  if (mode === 'plain') {
+    return { calls, signature: key.signingKey.sign(hash).serialized as Hex }
   }
   const typed = getTypedData(BigInt(chainId), account, bytesToHex(hash))
   // ethers derives the domain's type itself and refuses it among the types.
