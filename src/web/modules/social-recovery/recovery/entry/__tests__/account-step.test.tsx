@@ -794,6 +794,19 @@ describe('the fit reads', () => {
     expectNoContinue(page)
   })
 
+  it('heads an unnamed removed key with a title of its own, never the shared one', async () => {
+    kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'not-a-key' })
+    const page = await open(LOGGED_IN)
+    await confirmLost(page)
+    const title = page.textOf('entry-cannot-recover-title')
+    expect(title).toBe(t('socialRecovery.entry.refusal.removedUnknownTitle'))
+    expect(title).not.toBe(CANNOT_RECOVER)
+    expect(title).not.toBe('socialRecovery.entry.refusal.removedUnknownTitle')
+    expect(page.textOf('entry-cannot-recover-reason')).toBe(
+      t('socialRecovery.entry.refusal.removedUnknown')
+    )
+  })
+
   it('refuses an account with no code and no creation record under its full address, with no retry', async () => {
     kit.fitCheck.mockResolvedValueOnce({ basis: 'no-code', fits: false })
     kit.removedKey.mockResolvedValueOnce({ kind: 'unavailable', cause: 'no-source' })
