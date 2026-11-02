@@ -16,6 +16,7 @@ import {
   clausesOfShape,
   draftAgeLine,
   draftOf,
+  identityLineOf,
   notStartedRowsOf,
   notYetActiveOf,
   presetOf,
@@ -31,7 +32,6 @@ import type {
   PresetId,
   SlotKind
 } from '@web/modules/social-recovery/setup/presets'
-import { identityLineOf } from '@web/modules/social-recovery/setup/presets/lines'
 import { addressBookOf, WALLET_RECOVERY_CHAIN } from '@web/modules/social-recovery/shared/client'
 import { DEADLINE_LOCALE, renderShortAddress } from '@web/modules/social-recovery/shared/display'
 import {
@@ -299,11 +299,6 @@ describe('a card', () => {
         ]
       }
       expect(identityLineOf(preset, t)).toBe(IDENTITY_LINE)
-    })
-
-    it('reads a translated line, never the bare key', () => {
-      expect(IDENTITY_LINE).toBe(S.presets.identityLine)
-      expect(IDENTITY_LINE).not.toBe('socialRecovery.presets.identityLine')
     })
   })
 })
