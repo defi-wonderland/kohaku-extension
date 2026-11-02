@@ -481,7 +481,7 @@ describe('the guardian paste', () => {
     })
   })
 
-  it("tells the holder that any guardian's approval can go in any field", async () => {
+  it('shows the short placeholder in every field', async () => {
     await open()
     ;[1, 2, 3, 4].forEach((row) => {
       const input = view?.byTestId(id(row, 'paste-input'))
@@ -493,21 +493,27 @@ describe('the guardian paste', () => {
   describe('the helper line under the field', () => {
     const helper = (place: number) => view?.byTestId(id(place, 'paste-help'))
 
-    /** Where a node falls in document order. */
-    const orderOf = (node: Element | null | undefined) =>
-      node ? Array.from(document.querySelectorAll('*')).indexOf(node) : -1
-
     /** The helper sits after the field and before every line the paste leaves under it. */
     const expectHelperUnderField = (place: number, below: string[] = []) => {
       const node = helper(place)
       expect(node?.textContent).toBe(t(`${GUARDIAN}.pasteHelp`))
       const field = view?.byTestId(id(place, 'paste-input'))
-      expect(orderOf(field)).toBeGreaterThanOrEqual(0)
-      expect(orderOf(node)).toBeGreaterThan(orderOf(field))
+      expect(field).not.toBeNull()
+      expect(
+        field &&
+          node &&
+          // eslint-disable-next-line no-bitwise
+          field.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
       below.forEach((name) => {
         const line = view?.byTestId(id(place, name))
         expect(line).not.toBeNull()
-        expect(orderOf(line)).toBeGreaterThan(orderOf(node))
+        expect(
+          node &&
+            line &&
+            // eslint-disable-next-line no-bitwise
+            node.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
       })
     }
 
