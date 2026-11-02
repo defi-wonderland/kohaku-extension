@@ -12,6 +12,8 @@ import type { worldOf } from '@web/modules/social-recovery/shared/client/wallet-
 
 /** An account scripted on the provider, deployed unless its code is empty, with no creation record unless one is given. */
 export interface AccountWorldOptions {
+  /** The account's address on the chain; the scripted provider's account by default. */
+  account?: Address
   /** The account record's address as the wallet stores it; the world's account by default. */
   addr?: string
   /** The account's code; deployed code by default. */

@@ -76,10 +76,16 @@ export const named = (key: Address) => ({
 const listed = (keys: readonly Address[], key: Address) => keys.some((held) => same(held, key))
 
 let logIndex = 0
-export const privilegeLog = (addr: Address, priv: Hex, blockNumber: number, removed = false) => {
+export const privilegeLog = (
+  addr: Address,
+  priv: Hex,
+  blockNumber: number,
+  removed = false,
+  account: Address = ACCOUNT
+) => {
   logIndex += 1
   return {
-    address: ACCOUNT,
+    address: account,
     topics: encodeEventTopics({
       abi: ACCOUNT_EVENTS_ABI,
       eventName: 'LogPrivilegeChanged',
@@ -94,8 +100,11 @@ export const privilegeLog = (addr: Address, priv: Hex, blockNumber: number, remo
   }
 }
 
-export const commitAt = (blockNumber: number, action: Address = ACTION) =>
-  committedLog({ action, nonce: 1n, setupCommitment: COMMITMENT }, blockNumber)
+export const commitAt = (
+  blockNumber: number,
+  action: Address = ACTION,
+  account: Address = ACCOUNT
+) => committedLog({ action, account, nonce: 1n, setupCommitment: COMMITMENT }, blockNumber)
 
 /** The action's payload of a handover to `newAuthority`. */
 export const handoverTo = (newAuthority: Address): Hex =>
@@ -114,7 +123,8 @@ export const chunksFrom = (from: number) => {
 }
 
 export const worldOf = ({
-  addr = ACCOUNT,
+  account = ACCOUNT,
+  addr = account,
   code = ACCOUNT_CODE,
   deployedAt = DEPLOYED_AT,
   createdAt = deployedAt,
@@ -131,13 +141,13 @@ export const worldOf = ({
   supportsAccount = true
 }: AccountWorldOptions = {}) => {
   const node = scriptedProvider()
-  node.setCode(ACCOUNT, code, createdAt)
+  node.setCode(account, code, createdAt)
   node.setCode(ACTION, CONTRACT_CODE)
   logs.forEach((log) => node.addLog(log))
   senders.forEach(([hash, sender, shape]) =>
     node.setSender(hash, sender instanceof Error ? sender : getAddress(sender), shape)
   )
-  node.answerWith(ACCOUNT, PRIVILEGES_SELECTOR, (data) => {
+  node.answerWith(account, PRIVILEGES_SELECTOR, (data) => {
     const {
       args: [key]
     } = decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data })
@@ -176,17 +186,17 @@ export const worldOf = ({
     descriptor,
     blockTags,
     logChunkSize: LOG_CHUNK_BLOCKS,
-    policyManager: new PolicyManager(provider, descriptor, ACCOUNT, ACTION, blockTags),
-    action: new AmbireRecoveryAction(provider, descriptor, ACCOUNT, ACTION, codec, blockTags),
+    policyManager: new PolicyManager(provider, descriptor, account, ACTION, blockTags),
+    action: new AmbireRecoveryAction(provider, descriptor, account, ACTION, codec, blockTags),
     actionViews: createActionViews(provider, ACTION),
-    events: new EventManager(provider, descriptor, ACCOUNT, ACTION, new Map(), {
+    events: new EventManager(provider, descriptor, account, ACTION, new Map(), {
       logChunkSize: LOG_CHUNK_BLOCKS
     }),
     codec
   })
   const askedPrivileges = () =>
     node.calls
-      .filter(({ to, data }) => same(to, ACCOUNT) && same(slice(data, 0, 4), PRIVILEGES_SELECTOR))
+      .filter(({ to, data }) => same(to, account) && same(slice(data, 0, 4), PRIVILEGES_SELECTOR))
       .map(({ data }) => lower(decodeFunctionData({ abi: ACCOUNT_PRIVILEGES_ABI, data }).args[0]))
   const askedAuthority = () =>
     node.calls

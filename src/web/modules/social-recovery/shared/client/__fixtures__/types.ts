@@ -105,6 +105,8 @@ export interface ScriptedState {
 /** What a setup commit log carries; the action is the world's by default. */
 export interface CommittedFields {
   action?: Address
+  /** The account the commit is for; the world's by default. */
+  account?: Address
   nonce: bigint
   setupCommitment: Hex
   publicMetadata?: Hex

@@ -29,7 +29,10 @@ import {
   signedBatch
 } from '@web/modules/social-recovery/shared/client/__fixtures__/relayed-save'
 import type { RelayedAccount } from '@web/modules/social-recovery/shared/client/__fixtures__/types'
-import { providerReadFailure } from '@web/modules/social-recovery/shared/client/provider-adapter'
+import {
+  callFailureOf,
+  providerReadFailure
+} from '@web/modules/social-recovery/shared/client/provider-adapter'
 import {
   createSignerRecovery,
   recoveredSignersOf,
@@ -54,12 +57,13 @@ const relayed = (to: Address | null, input: Hex): RawTransaction => ({
 /**
  * A node that holds the deployed account and answers its `nonce()` by the
  * block asked: `before` at the block before the transaction, one more at the
- * transaction's own block, and what `fail` returns where it returns anything.
+ * transaction's own block, and what `odd` returns where it returns anything:
+ * an error the read rejects with, or bytes it answers.
  */
 const deployedNode = (
   account: Address,
   before: bigint,
-  fail?: (block: BlockTag) => Error | undefined
+  odd?: (block: BlockTag) => Error | Hex | undefined
 ) => {
   const node = scriptedProvider()
   const askedAt: BlockTag[] = []
@@ -67,9 +71,12 @@ const deployedNode = (
   node.provider.call.mockImplementation(
     async (to: Address, data: Hex, _from: Address, block: BlockTag) => {
       askedAt.push(block)
-      const failure = fail?.(block)
-      if (failure) {
-        throw failure
+      const answer = odd?.(block)
+      if (answer instanceof Error) {
+        throw answer
+      }
+      if (answer !== undefined) {
+        return answer
       }
       if (to.toLowerCase() !== account.toLowerCase() || slice(data, 0, 4) !== NONCE_SELECTOR) {
         throw new Error(`No answer for ${data} to ${to}.`)
@@ -178,12 +185,32 @@ describe('a relayed call to the deployed account', () => {
     ).resolves.toEqual([SIGNER, OTHER_SIGNER])
   })
 
-  eachIt<[string, () => Error]>([
+  eachIt<[string, () => Error | Hex]>([
     ['the node refuses the old block', () => new Error('missing trie node')],
     ['the node answers the history code', () => Object.assign(new Error('gone'), { code: 4444 })],
-    ['the nonce read reverts', () => reverting()]
-  ])('falls back to the sender where %s', async (_, failure) => {
-    const { provider } = deployedNode(account.addr, 7n, () => failure())
+    [
+      'the node has no historical state, as ethers wraps the call error',
+      () =>
+        callFailureOf(
+          'call',
+          Object.assign(new Error('missing revert data'), {
+            code: 'CALL_EXCEPTION',
+            action: 'call',
+            data: null,
+            reason: null,
+            info: {
+              error: {
+                code: -32000,
+                message: `historical state 0x${'73'.repeat(32)} is not available`
+              }
+            }
+          })
+        )
+    ],
+    ['the nonce read reverts', () => reverting()],
+    ['the nonce read answers no bytes', () => '0x']
+  ])('falls back to the sender where %s', async (_, odd) => {
+    const { provider } = deployedNode(account.addr, 7n, () => odd())
     const batch = await signedBatch(SIGNING_KEY, account.addr, 7n)
     const transaction = relayed(account.addr, executeInput(batch))
     await expect(

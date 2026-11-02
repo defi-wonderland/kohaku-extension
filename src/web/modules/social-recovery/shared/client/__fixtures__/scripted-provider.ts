@@ -240,19 +240,20 @@ const logAt = (topics: Hex[], data: Hex, blockNumber: number): RawLog => {
 
 const managerTopics = (
   eventName: 'SetupCommitted' | 'AttemptStarted' | 'AttemptConsumed',
-  action: Address
+  action: Address,
+  account: Address = ACCOUNT
 ): Hex[] =>
   encodeEventTopics({
     abi: MANAGER_EVENTS_ABI,
     eventName,
-    args: { account: ACCOUNT, action }
+    args: { account, action }
   }) as Hex[]
 
 const [, , ATTEMPT_STARTED] = MANAGER_EVENTS_ABI
 
 export const committedLog = (fields: CommittedFields, blockNumber: number): RawLog =>
   logAt(
-    managerTopics('SetupCommitted', fields.action ?? ACTION),
+    managerTopics('SetupCommitted', fields.action ?? ACTION, fields.account),
     encodeAbiParameters(
       [{ type: 'uint64' }, { type: 'bytes32' }, { type: 'bytes' }, { type: 'bytes' }],
       [
