@@ -161,6 +161,10 @@ const nonceAt = async (
       zeroAddress,
       block
     )
+    // An empty answer: the account had no code yet at that block.
+    if (size(answer) === 0) {
+      return undefined
+    }
     const nonce = decodeFunctionResult({ abi: ACCOUNT_ABI, functionName: 'nonce', data: answer })
     return typeof nonce === 'bigint' ? nonce : undefined
   } catch (thrown) {
