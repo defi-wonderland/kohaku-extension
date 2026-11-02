@@ -196,30 +196,38 @@ const signedBatchesOf = async (
   return first === undefined ? [] : withNonces(batches, first)
 }
 
+const unprotectedSignerOf = async (hash: Hex, signature: Hex): Promise<Address | undefined> => {
+  try {
+    return await recoverAddress({ hash, signature })
+  } catch {
+    return undefined
+  }
+}
+
 const batchSignerOf = async (
   batch: NoncedBatch,
   account: Address,
   chainId: number
 ): Promise<Address | undefined> => {
+  const hash = bytesToHex(
+    getSignableHash(account, BigInt(chainId), batch.nonce, batch.calls.map(callToTuple))
+  )
+  // The account reads a bare 65-byte signature ending in its recovery value 27 or 28 as unprotected.
+  if (size(batch.signature) === SIGNATURE_SIZE) {
+    const recovery = hexToNumber(slice(batch.signature, SIGNATURE_SIZE - 1))
+    return recovery === 27 || recovery === 28
+      ? unprotectedSignerOf(hash, batch.signature)
+      : undefined
+  }
   if (size(batch.signature) !== WRAPPED_SIGNATURE_SIZE) {
     return undefined
   }
   const mode = hexToNumber(slice(batch.signature, SIGNATURE_SIZE))
   const signature = slice(batch.signature, 0, SIGNATURE_SIZE)
-  const hash = bytesToHex(
-    getSignableHash(account, BigInt(chainId), batch.nonce, batch.calls.map(callToTuple))
-  )
   if (mode === STANDARD_MODE) {
     return recoveredSignerOf(getTypedData(BigInt(chainId), account, hash), signature)
   }
-  if (mode === UNPROTECTED_MODE) {
-    try {
-      return await recoverAddress({ hash, signature })
-    } catch {
-      return undefined
-    }
-  }
-  return undefined
+  return mode === UNPROTECTED_MODE ? unprotectedSignerOf(hash, signature) : undefined
 }
 
 /**
