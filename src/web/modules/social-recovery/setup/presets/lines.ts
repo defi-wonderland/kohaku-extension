@@ -1,3 +1,4 @@
+import { IDENTITY_KINDS } from '@web/modules/social-recovery/shared/records'
 import {
   getRuleLines,
   renderRuleLines,
@@ -23,11 +24,11 @@ export const cardRuleLines = (preset: Preset, t: Translate): string[] =>
     t
   )
 
-const IDENTITY_KINDS: readonly SlotKind[] = ['zkpassport', 'aadhaar']
-
 /** The card's line that the ID details stay on the device, for a shape that holds an identity method. */
 export const identityLineOf = (preset: Preset, t: Translate): string | null =>
-  preset.shape.some(({ slots }) => slots.some((kind) => IDENTITY_KINDS.includes(kind)))
+  preset.shape.some(({ slots }) =>
+    slots.some((kind) => IDENTITY_KINDS.some((identity) => identity === kind))
+  )
     ? t('socialRecovery.presets.identityLine')
     : null
 
