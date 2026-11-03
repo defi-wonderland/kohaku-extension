@@ -1540,7 +1540,8 @@ export const startSave = async (
  * meanwhile, by another tab, ends the run with nothing checked or sent.
  * A step that read the key alone, since the account could not pay when the
  * wallet tried to send, keeps that reading: the check again reads the key
- * alone too and passes only once the key holds enough.
+ * alone too and passes only once the key holds enough, and a setup read that
+ * fails keeps it for the retry.
  */
 export const recheckGas = async (
   store: ArmStore,
@@ -1554,7 +1555,7 @@ export const recheckGas = async (
   const accountPays = write.step.accountPays ? undefined : false
   writeEvent(store)({ type: 'recheck' })
   const { run } = store.state().write
-  if (!(await noSetupYet(store, steps, run))) {
+  if (!(await noSetupYet(store, steps, run, accountPays))) {
     return
   }
   await checkAndSend(store, steps, run, options, accountPays)
