@@ -1333,13 +1333,14 @@ const yieldClaim = async (
  * The gas check of the run's prepared save; where the key or the account
  * holds enough, the claim of the save in flight, then the send under the claim's id, or, where
  * another page's save is stored, that save followed with nothing sent; then
- * the check.
+ * the check. With `accountPays` at `false` the check reads the key alone.
  */
 const checkAndSend = async (
   store: ArmStore,
   steps: SaveSteps,
   run: number,
-  options: ConfirmReadOptions
+  options: ConfirmReadOptions,
+  accountPays?: boolean
 ): Promise<void> => {
   const { prepared } = store.state()
   if (!prepared || !inRun(store.state(), run) || store.state().write.status !== 'checkingGas') {
@@ -1347,7 +1348,7 @@ const checkAndSend = async (
   }
   const dispatch = writeEvent(store)
   try {
-    const check = await steps.checkGas(prepared)
+    const check = await steps.checkGas(prepared, undefined, accountPays)
     dispatch({ type: 'gasChecked', run, check })
   } catch (error: unknown) {
     dispatch({ type: 'error', run, error })
@@ -1511,21 +1512,26 @@ export const startSave = async (
  * From the deposit blocker: the account's setup read again, then the gas check
  * again on the same prepared save, then the claim and the send. A setup found
  * meanwhile, by another tab, ends the run with nothing checked or sent.
+ * A step that read the key alone, since the account could not pay when the
+ * wallet tried to send, keeps that reading: the check again reads the key
+ * alone too and passes only once the key holds enough.
  */
 export const recheckGas = async (
   store: ArmStore,
   steps: SaveSteps,
   options: ConfirmReadOptions = {}
 ): Promise<void> => {
-  if (store.state().write.status !== 'needsDeposit') {
+  const { write } = store.state()
+  if (write.status !== 'needsDeposit') {
     return
   }
+  const accountPays = write.step.accountPays ? undefined : false
   writeEvent(store)({ type: 'recheck' })
   const { run } = store.state().write
   if (!(await noSetupYet(store, steps, run))) {
     return
   }
-  await checkAndSend(store, steps, run, options)
+  await checkAndSend(store, steps, run, options, accountPays)
 }
 
 /**

@@ -116,7 +116,11 @@ export const GAS_KEYS = {
   /** The owner write's note under its amounts: the fee can rise before the send. */
   feeMayChange: `${GAS}.feeMayChange`,
   /** The owner write's note: the account can pay the fee itself once it holds the amount asked. */
-  accountCanPay: `${GAS}.accountCanPay`
+  accountCanPay: `${GAS}.accountCanPay`,
+  /** The owner write's title where the check read the key alone: the account could not pay at signing. */
+  notEnoughGasKeyAlone: `${GAS}.notEnoughGasKeyAlone`,
+  /** The owner write's lead where the check read the key alone. */
+  shortfallKeyAlone: `${GAS}.shortfallKeyAlone`
 } as const
 
 /**
@@ -286,8 +290,10 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
  * The copy of the deposit step, by variant:
  *
  * - An owner write (a save, another setup write, the owner's cancel) reads:
- *   not enough gas on the account's key, the shortfall, the key's address,
- *   both routes, that the network fee can change before the send, that the
+ *   not enough gas on the account or its key, and the shortfall; where the
+ *   check read the key alone, since the account could not pay when the wallet
+ *   tried to send, not enough gas on the account's key and that shortfall
+ *   instead. Then the key's address, both routes, that the network fee can change before the send, that the
  *   account can pay the fee itself once it holds the amount asked, that the
  *   transfer is itself an operation that key must send and pay for, and the
  *   network.
@@ -346,8 +352,13 @@ export const renderDepositStep = (
 
   const { write } = step
   if (isOwnerWrite(write)) {
-    const shortfall = t(OWNER_SHORTFALL_KEYS[write], { amount })
-    const title = t(GAS_KEYS.notEnoughGasAccountKey)
+    const shortfall = t(
+      step.accountPays ? OWNER_SHORTFALL_KEYS[write] : GAS_KEYS.shortfallKeyAlone,
+      { amount }
+    )
+    const title = t(
+      step.accountPays ? GAS_KEYS.notEnoughGasAccountKey : GAS_KEYS.notEnoughGasKeyAlone
+    )
     return {
       ...(write === 'save' ? { eyebrow: t(GAS_KEYS.notEnoughGas) } : {}),
       title,

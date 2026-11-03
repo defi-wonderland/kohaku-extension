@@ -196,7 +196,9 @@
         "outsideRouteAlone": "Send at least {{amount}} to this key from outside this wallet.",
         "copyFailed": "Could not copy. Select the address by hand.",
         "feeMayChange": "The network fee can change before the send, so the key may need a little more.",
-        "accountCanPay": "Your account can pay the fee itself once it holds {{amount}}."
+        "accountCanPay": "Your account can pay the fee itself once it holds {{amount}}.",
+        "notEnoughGasKeyAlone": "Not enough gas on your account's key",
+        "shortfallKeyAlone": "Your account could not pay the fee when the wallet tried to send this. Its key needs at least {{amount}} more."
       },
       "revertedSave": "The transaction reached the chain and reverted. {{cause}} Nothing was saved, your recovery path is not active yet, and the gas it spent is gone. Everything you enrolled is still here.",
       "revertedSubmit": "The transaction reached the chain and reverted. {{cause}} No waiting period has started and the gas it spent is gone. Everything you collected is still here.",
