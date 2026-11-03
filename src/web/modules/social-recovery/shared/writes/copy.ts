@@ -293,10 +293,11 @@ export const OWNER_SHORTFALL_KEYS: { readonly [W in OwnerWrite]: string } = {
  *   not enough gas on the account or its key, and the shortfall; where the
  *   check read the key alone, since the account could not pay when the wallet
  *   tried to send, not enough gas on the account's key and that shortfall
- *   instead. Then the key's address, both routes, that the network fee can change before the send, that the
- *   account can pay the fee itself once it holds the amount asked, that the
- *   transfer is itself an operation that key must send and pay for, and the
- *   network.
+ *   instead. Then the key's address, both routes, that the network fee can
+ *   change before the send, that the account can pay the fee itself once it
+ *   holds the amount asked (only where the check read the account's balance
+ *   too), that the transfer is itself an operation that key must send and pay
+ *   for, and the network.
  * - A recovery call on the fast track reads: the key that sends the recovery
  *   pays its gas and the account cannot pay for itself until it is recovered;
  *   the key's address; the amount to send from outside; the network; and the

@@ -1331,9 +1331,10 @@ const yieldClaim = async (
 
 /**
  * The gas check of the run's prepared save; where the key or the account
- * holds enough, the claim of the save in flight, then the send under the claim's id, or, where
- * another page's save is stored, that save followed with nothing sent; then
- * the check. With `accountPays` at `false` the check reads the key alone.
+ * holds enough, the claim of the save in flight, then the send under the
+ * claim's id, or, where another page's save is stored, that save followed
+ * with nothing sent; then the check. With `accountPays` at `false` the check
+ * reads the key alone.
  */
 const checkAndSend = async (
   store: ArmStore,
