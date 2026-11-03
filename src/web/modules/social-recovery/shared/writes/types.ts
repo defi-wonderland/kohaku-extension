@@ -52,7 +52,10 @@ export interface IdleState {
   write: WriteKind
 }
 
-/** The gas check runs: the estimate, the gas price and the sending key's balance. */
+/**
+ * The gas check runs: the estimate, the gas price, the sending key's balance
+ * and, for a write the key sends on the account's behalf, the account's balance.
+ */
 export interface CheckingGasState {
   status: 'checkingGas'
   write: WriteKind
