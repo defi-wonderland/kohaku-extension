@@ -31,6 +31,7 @@ import { etherUnits, parseUnits } from 'viem'
 import { AMBIRE_ACCOUNT_FACTORY, DEPLOYLESS_SIMULATION_FROM } from '@ambire-common/consts/deploy'
 import type { Address, Hex } from '@kohaku-eth/social-recovery'
 import type {
+  FeeReading,
   GasEstimateCall,
   ListedAccountFacts
 } from '@web/modules/social-recovery/shared/client'
@@ -288,6 +289,14 @@ export const reachesBar = (
   balance: bigint,
   bar: GasPassBar = 'required'
 ): boolean => (bar === 'asked' ? balance >= estimate.asked : holdsEnough(estimate, balance))
+
+/**
+ * Whether the sign screen's estimation read no fee option the payer could
+ * cover, or an error: the wallet could not pay the write at its own fee.
+ */
+export const shortAtSigning = (reading: FeeReading | undefined): boolean =>
+  !!reading &&
+  (reading.error !== undefined || !reading.options.some(({ available }) => available === true))
 
 /**
  * The deposit step from an estimate and a balance that falls short of its bar
