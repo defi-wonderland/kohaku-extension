@@ -1311,6 +1311,27 @@ describe('a save the wallet did not send', () => {
     expect(byTestId('arm-saved')).not.toBeNull()
   })
 
+  it("names the key alone in the blocker's title and lead where the account paid the first check and the sign screen read it short", async () => {
+    chain.send = 'refused'
+    chain.estimation = feeReading({ error: true })
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    balancesOf([0n], [RICH])
+    await openByPush()
+
+    const blocker = byTestId('arm-gas-blocker')?.textContent ?? ''
+    expect(blocker).toContain(t('socialRecovery.writes.gas.notEnoughGasKeyAlone'))
+    // The amount asked, 0.0009 ETH by the default reads, with the key at zero.
+    expect(blocker).toContain(
+      t('socialRecovery.writes.gas.shortfallKeyAlone', {
+        amount: renderGasAmount(900_000_000_000_000n, 'ETH')
+      })
+    )
+    expect(blocker).not.toContain(t('socialRecovery.writes.gas.notEnoughGasAccountKey'))
+    expect(byTestId('arm-write-failedNotSent')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
   // The default reads: a fee of 0.0006 ETH, a bar to pass of 0.00066 ETH and an amount asked of 0.0009 ETH.
   it('after the sign screen read the key short, a key above the bar to pass but under the amount asked gets the blocker for the rest of the amount asked', async () => {
     chain.send = 'refused'

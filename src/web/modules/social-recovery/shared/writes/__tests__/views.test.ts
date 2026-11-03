@@ -31,6 +31,7 @@ import {
   mockReads,
   NETWORK,
   NOT_SENT_KEYS,
+  OWNER_SHORTFALL_KEYS,
   renderDepositStep,
   renderGasAmount,
   renderGasBalance,
@@ -139,6 +140,11 @@ describe('DepositStepView: what renderDepositStep answers', () => {
       const step = await depositStepFor(write, false)
       const r = renderDepositStep(step)
       expect(r.title).toBe(t(GAS_KEYS.notEnoughGasAccountKey))
+      expect(r.lead).toEqual([
+        t(OWNER_SHORTFALL_KEYS[write], {
+          amount: renderGasAmount(step.shortfall, NETWORK.nativeAssetSymbol)
+        })
+      ])
       expect(r.eyebrow).toBe(write === 'save' ? t(GAS_KEYS.notEnoughGas) : undefined)
       expect(r.keyAddress.toLowerCase()).toBe(KEY.addr.toLowerCase())
       expect(r.copyLabel).toBe(t(GAS_KEYS.copy))
@@ -159,7 +165,7 @@ describe('DepositStepView: what renderDepositStep answers', () => {
     })
   )
   ;(['save', 'edit', 'ownerWrite', 'cancel'] as const).forEach((write) =>
-    it(`${write}: no line that the account can pay itself where the check read the key alone`, async () => {
+    it(`${write}: the key alone in the title and the lead, and no line that the account can pay itself, where the check read the key alone`, async () => {
       const step = stepOf(
         await runGasCheck({
           write,
@@ -172,7 +178,14 @@ describe('DepositStepView: what renderDepositStep answers', () => {
         })
       )
       const r = renderDepositStep(step)
-      expect(r.title).toBe(t(GAS_KEYS.notEnoughGasAccountKey))
+      expect(r.title).toBe(t(GAS_KEYS.notEnoughGasKeyAlone))
+      expect(r.lead).toEqual([
+        t(GAS_KEYS.shortfallKeyAlone, {
+          amount: renderGasAmount(step.shortfall, NETWORK.nativeAssetSymbol)
+        })
+      ])
+      expect(r.blocker).toEqual({ title: r.title, line: r.lead[0] })
+      expect(r.eyebrow).toBe(write === 'save' ? t(GAS_KEYS.notEnoughGas) : undefined)
       expect(r.notes).toEqual([
         t(GAS_KEYS.feeMayChange),
         t(GAS_KEYS.transferIsAnOperation),

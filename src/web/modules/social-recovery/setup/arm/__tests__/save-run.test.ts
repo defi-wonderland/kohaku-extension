@@ -1590,6 +1590,42 @@ describe("the sign screen's estimation before a save never sent", () => {
 
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(2)
     expect(isSaved(store.state())).toBe(true)
+    // Continue's check reads the key alone, as the step it continues from did.
+    expect(balanceReadsOf(wired.reads)).toEqual([
+      KEY.addr.toLowerCase(),
+      wired.account.toLowerCase(),
+      KEY.addr.toLowerCase(),
+      KEY.addr.toLowerCase()
+    ])
+  })
+
+  it("stays on the key's deposit step with nothing claimed or sent where Continue finds the key still empty, however much the account holds", async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    balancesOf(wired, [0n], [RICH])
+    const store = await runSave(wired.steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+    const balances = wired.reads.nativeBalance.mock.calls.length
+    const setupReads = wired.setupState.mock.calls.length
+    const writes = jest.spyOn(wired.storage, 'set')
+
+    await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+    const { write } = store.state()
+
+    expect(write.status).toBe('needsDeposit')
+    if (write.status !== 'needsDeposit') {
+      return
+    }
+    expect(write.step.balance).toBe(0n)
+    expect(write.step.accountPays).toBe(false)
+    expect(showsAccountNote(write.step)).toBe(false)
+    expect(balanceReadsOf(wired.reads).slice(balances)).toEqual([KEY.addr.toLowerCase()])
+    // The setup read before the check, and none after a claim.
+    expect(wired.setupState).toHaveBeenCalledTimes(setupReads + 1)
+    expect(writes).not.toHaveBeenCalled()
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
   it("shows the key's deposit step in a new run where the account passed the first check but holds less than the amount asked", async () => {
