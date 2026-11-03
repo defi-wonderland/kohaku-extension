@@ -603,7 +603,9 @@ const watchOwnSend = (
  * shows the deposit step with the shortfall to it; where the key holds it, the
  * not-sent state stays as it was. A read of that check that fails is never
  * shown as the not-sent state: a new run shows the read error, and its retry
- * reads the key alone.
+ * reads the key alone. The new run reads the attempt first, since it may have
+ * ended while the check ran: an attempt no longer open shows that reading and
+ * nothing else, and a read of it that fails shows the read error.
  */
 const recheckAfterShortSigning = async (
   store: CancelStore,
@@ -613,10 +615,37 @@ const recheckAfterShortSigning = async (
   prepared: PreparedCall
 ): Promise<void> => {
   const notSent = () => inRun(store, run) && store.state().write.status === 'failedNotSent'
-  const nextRun = (): number | undefined => {
+  const nextRun = async (): Promise<number | undefined> => {
     store.update((state) => ({ ...applyWrite(state, { type: 'start' }), target }))
     const next = store.state().write.run
-    return next === run + 1 ? next : undefined
+    if (next !== run + 1) {
+      return undefined
+    }
+    let reading: WatcherReading
+    try {
+      reading = await steps.readAttempt()
+    } catch (error: unknown) {
+      dispatchTo(store)({
+        type: 'error',
+        run: next,
+        error: asReadFailure(error),
+        accountPays: false
+      })
+      return undefined
+    }
+    if (!inRun(store, next)) {
+      return undefined
+    }
+    const standing = standingOf(reading, target)
+    if (standing.kind !== 'open') {
+      changeInRun(store, next, (state) => ({
+        ...applyWrite(state, { type: 'reset' }),
+        gone: reading
+      }))
+      return undefined
+    }
+    changeInRun(store, next, (state) => ({ ...state, targetAttempt: standing.attempt }))
+    return next
   }
   let check: GasCheck
   try {
@@ -625,7 +654,7 @@ const recheckAfterShortSigning = async (
     if (!isProviderReadFailure(error) || !notSent()) {
       return
     }
-    const next = nextRun()
+    const next = await nextRun()
     if (next !== undefined) {
       dispatchTo(store)({ type: 'error', run: next, error, accountPays: false })
     }
@@ -634,7 +663,7 @@ const recheckAfterShortSigning = async (
   if (check.kind !== 'deposit' || !notSent()) {
     return
   }
-  const next = nextRun()
+  const next = await nextRun()
   if (next !== undefined) {
     dispatchTo(store)({ type: 'gasChecked', run: next, check })
   }

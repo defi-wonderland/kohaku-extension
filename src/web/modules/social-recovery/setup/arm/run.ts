@@ -520,15 +520,25 @@ const storedSaveWithin = <T>(read: () => Promise<T>, limitMs: number): Promise<T
     () => new Error(`The stored save read did not answer in ${limitMs} ms.`)
   )
 
-/** Reads the account's setup at the start of a run; a setup found ends the run with nothing prepared. */
-const noSetupYet = async (store: ArmStore, steps: SaveSteps, run: number): Promise<boolean> => {
+/**
+ * Reads the account's setup at the start of a run; a setup found ends the run
+ * with nothing prepared. In a run whose gas check reads the key alone
+ * (`accountPays` at `false`), a read that fails keeps that, so its retry
+ * reads the key alone too.
+ */
+const noSetupYet = async (
+  store: ArmStore,
+  steps: SaveSteps,
+  run: number,
+  accountPays?: boolean
+): Promise<boolean> => {
   try {
     if (await steps.hasSetup()) {
       store.dispatch({ type: 'alreadySetUp', run })
       return false
     }
   } catch (error: unknown) {
-    writeEvent(store)({ type: 'error', run, error })
+    writeEvent(store)({ type: 'error', run, error, accountPays })
     return false
   }
   return inRun(store.state(), run) && store.state().write.status === 'checkingGas'
@@ -1199,7 +1209,7 @@ const recheckAfterShortSigning = async (
   const nextRun = async (): Promise<number | undefined> => {
     writeEvent(store)({ type: 'start' })
     const next = store.state().write.run
-    if (next !== run + 1 || !(await noSetupYet(store, steps, next))) {
+    if (next !== run + 1 || !(await noSetupYet(store, steps, next, false))) {
       return undefined
     }
     store.dispatch({ type: 'prepared', run: next, prepared })
@@ -1511,7 +1521,7 @@ export const startSave = async (
   const before = write.run
   writeEvent(store)({ type: 'start' })
   const { run } = store.state().write
-  if (run === before || !(await noSetupYet(store, steps, run))) {
+  if (run === before || !(await noSetupYet(store, steps, run, accountPays))) {
     return
   }
   try {
