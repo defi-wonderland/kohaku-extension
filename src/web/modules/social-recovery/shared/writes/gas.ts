@@ -7,10 +7,12 @@
  * and its provider answers no balance. A key that holds enough skips the step.
  * A write the key sends on the account's behalf also reads the account's
  * balance, since the account may pay that fee itself: an account that holds
- * enough skips the step too.
- * A key that holds too little gets the deposit step rather than a failed
- * transaction: the key's address, the estimated amount, the network the key
- * must be funded on and the routes that fill it.
+ * enough skips the step too. The check run again after the sign screen read
+ * the account short at its fee reads the key alone.
+ * A key that holds too little, where the account cannot pay either, gets the
+ * deposit step rather than a failed transaction: the key's address, the
+ * estimated amount, the network the key must be funded on and the routes that
+ * fill it.
  *
  * The routes: a transfer from another account this wallet holds, the account
  * the key operates, and a deposit from outside into the address the step
@@ -300,10 +302,14 @@ export const reachesBar = (
  * step, and where a step off the fast track has no account the key operates.
  * With `passBar` at `asked` the step stands for a balance between the bar to
  * pass and the amount asked, and throws only where the balance holds the
- * amount asked.
+ * amount asked. The step carries `accountPays`, whether the account may still
+ * pay this fee itself, so its words say so: true only where the check read the
+ * account's balance too, false for a recovery call and for the check that
+ * read the key alone.
  */
 export const depositStepOf = (args: DepositStepInput): DepositStep => {
-  const { write, key, network, estimate, balance, operates, transferFee, passBar } = args
+  const { write, key, network, estimate, balance, operates, transferFee, passBar, accountPays } =
+    args
   if (reachesBar(estimate, balance, passBar)) {
     throw new TypeError('The key holds enough: the deposit step is skipped.')
   }
@@ -338,7 +344,8 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
     balance,
     shortfall,
     routes,
-    ...(!fastTrack && operates ? { operates: { ...operates } } : {})
+    ...(!fastTrack && operates ? { operates: { ...operates } } : {}),
+    accountPays: accountPays === true
   }
 }
 
@@ -349,13 +356,15 @@ export const depositStepOf = (args: DepositStepInput): DepositStep => {
  * this transaction, the gas price and the key's balance. A write the key sends
  * on the account's behalf adds a fourth, the balance of the account the key
  * operates, since the wallet lets that account pay the fee from its own
- * balance. A transaction to the account's factory is estimated from the
+ * balance; with `accountPays` at `false` it does not, and the check reads the
+ * key alone. A transaction to the account's factory is estimated from the
  * simulation sender (`estimatedCallOf` above). Answers `enough` where the
  * key's balance or the account's reaches the estimate's bar to pass, or the
  * amount asked with `passBar` at `asked`; the answer carries the key's
  * balance. Otherwise, off the fast track, it estimates the transfer route's
  * own transaction through the same provider (`transferEstimateCallOf`) and
- * answers the deposit step, built from the key's balance.
+ * answers the deposit step, built from the key's balance, which says whether
+ * the account may still pay the fee itself.
  *
  * A read that could not run rejects with its `ProviderReadFailure`, which the
  * machine reads as `gasReadError`. An estimate of the write that would revert
@@ -375,12 +384,13 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
   const transaction = gasTransactionOf(input)
   const transferCall = fastTrack ? undefined : transferEstimateCallOf(input)
   const factory = accountFactoryOf(input.operates)
-  const accountPays = isOwnerWrite(input.write) ? input.operates : undefined
+  const payingAccount =
+    isOwnerWrite(input.write) && input.accountPays !== false ? input.operates : undefined
   const [gas, gasPrice, balance, accountBalance] = await Promise.all([
     input.reads.estimateGas(estimatedCallOf(transaction, factory)),
     input.reads.gasPrice(),
     input.reads.nativeBalance(input.key.addr),
-    accountPays ? input.reads.nativeBalance(accountPays.address) : undefined
+    payingAccount ? input.reads.nativeBalance(payingAccount.address) : undefined
   ])
   const estimate = gasEstimateOf(gas, gasPrice, input.feeHeadroom)
   if (
@@ -414,7 +424,8 @@ export const checkGas = async (input: GasCheckInput): Promise<GasCheck> => {
       operates: input.operates,
       transferFee,
       fastTrack,
-      passBar: input.passBar
+      passBar: input.passBar,
+      accountPays: accountBalance !== undefined
     })
   }
 }

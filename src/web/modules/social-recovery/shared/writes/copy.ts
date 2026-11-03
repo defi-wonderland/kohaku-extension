@@ -358,7 +358,9 @@ export const renderDepositStep = (
       routes,
       notes: [
         t(GAS_KEYS.feeMayChange),
-        t(GAS_KEYS.accountCanPay, { amount: renderGasAmount(step.estimate.asked, symbol) }),
+        ...(step.accountPays
+          ? [t(GAS_KEYS.accountCanPay, { amount: renderGasAmount(step.estimate.asked, symbol) })]
+          : []),
         ...transferSentence,
         t(GAS_KEYS.networkOwner, { network })
       ],

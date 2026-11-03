@@ -1322,7 +1322,7 @@
       "otherDoors": "Other ways to control this account may exist outside the recovery module. This wallet cannot see them all.",
       "survived": "Your setup survived the recovery and the wallet refuses a second one. Edit it, or replace it.",
       "editOrReplace": "Edit or replace your recovery path",
-      "passwordChange": "If your Recovery Card was on a device you lost, change the recovery password in the editor. That is one transaction this account's key signs and pays for.",
+      "passwordChange": "If your Recovery Card was on a device you lost, change the recovery password in the editor. That is one transaction this account's key signs. Your account pays the fee, or its key does.",
       "synced": {
         "title": "If you lost a device: your synced passkey",
         "follows": "This passkey may still follow the account that syncs it. If a device signed into that account is lost, whoever holds it can start a recovery while it stays signed in.",

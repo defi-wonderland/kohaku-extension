@@ -54,7 +54,8 @@ export interface IdleState {
 
 /**
  * The gas check runs: the estimate, the gas price, the sending key's balance
- * and, for a write the key sends on the account's behalf, the account's balance.
+ * and, for a write the key sends on the account's behalf where the account may
+ * pay the fee, the account's balance.
  */
 export interface CheckingGasState {
   status: 'checkingGas'
@@ -421,6 +422,12 @@ export interface DepositStep {
   routes: DepositRoute[]
   /** The account this wallet holds that the key operates, off the fast track. */
   operates?: WalletAccountRef
+  /**
+   * Whether the account the key operates may still pay this fee itself, once
+   * it holds the amount asked: true where the check read the account's balance
+   * too, false for a recovery call and for the check that read the key alone.
+   */
+  accountPays: boolean
 }
 
 /** What the gas check answers: enough, so the step is skipped, or the deposit step. */
@@ -470,6 +477,14 @@ export interface GasCheckInput {
   feeHeadroom?: FeeHeadroom
   /** The bar a balance must reach to pass, `required` by default. */
   passBar?: GasPassBar
+  /**
+   * Whether the account the key operates may pay the fee itself. By default an
+   * owner write off the fast track reads the account's balance too, and passes
+   * where it reaches the bar. The check run again after the sign screen read
+   * the account short at its fee passes `false`, and the check then reads the
+   * key's balance alone.
+   */
+  accountPays?: boolean
 }
 
 /** What the deposit step is built from: the check's estimate and a balance that falls short of it. */
@@ -484,6 +499,8 @@ export interface DepositStepInput {
   fastTrack?: boolean
   /** The bar the balance falls short of, `required` by default. */
   passBar?: GasPassBar
+  /** Whether the account the key operates may still pay this fee itself, false by default. */
+  accountPays?: boolean
 }
 
 // ---------------------------------------------------------------------------
