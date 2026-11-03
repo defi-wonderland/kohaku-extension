@@ -132,7 +132,7 @@ describe('WriteStateView: what renderWriteState answers', () => {
 
 describe('DepositStepView: what renderDepositStep answers', () => {
   ;(['save', 'edit', 'ownerWrite', 'cancel'] as const).forEach((write) =>
-    it(`${write}: the account key's blocker, the key in full, both routes, the transfer sentence and the network`, async () => {
+    it(`${write}: the blocker for the account and its key, the key in full, both routes, the amount the account can pay itself, the transfer sentence and the network`, async () => {
       const step = await depositStepFor(write, false)
       const r = renderDepositStep(step)
       expect(r.title).toBe(t(GAS_KEYS.notEnoughGasAccountKey))
@@ -142,6 +142,9 @@ describe('DepositStepView: what renderDepositStep answers', () => {
       expect(r.routes.map((route) => route.kind)).toEqual(['transfer', 'outside'])
       expect(r.notes).toEqual([
         t(GAS_KEYS.feeMayChange),
+        t(GAS_KEYS.accountCanPay, {
+          amount: renderGasAmount(step.estimate.asked, NETWORK.nativeAssetSymbol)
+        }),
         t(GAS_KEYS.transferIsAnOperation),
         t(GAS_KEYS.networkOwner, { network: NETWORK.name })
       ])

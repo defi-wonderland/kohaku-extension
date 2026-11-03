@@ -280,7 +280,7 @@ describe('before the save is sent', () => {
     expect(textOf('arm-costs')).toContain(t('socialRecovery.costLines.recovery'))
     expect(textOf('arm-costs')).toContain(t('socialRecovery.costLines.cancel'))
     const page = byTestId('arm-columns')?.textContent ?? ''
-    expect(page.split("Saving is one transaction your account's key pays.")).toHaveLength(2)
+    expect(page.split(t('socialRecovery.costLines.save'))).toHaveLength(2)
     expect(page).not.toContain('One confirmation')
     expect(byTestId('arm-columns-main')?.contains(byTestId('arm-account'))).toBe(true)
   })

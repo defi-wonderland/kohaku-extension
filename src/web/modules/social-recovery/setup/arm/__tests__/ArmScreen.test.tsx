@@ -218,6 +218,7 @@ const harness: typeof import('@web/modules/social-recovery/setup/arm/__tests__/h
 /* eslint-enable @typescript-eslint/no-var-requires, global-require */
 
 const {
+  answerBalances,
   CHAIN_ID,
   chainReadsFor,
   confirmation,
@@ -424,6 +425,19 @@ const writeRecords = async (draft: SetupDraft, passwordSet = true, owner: string
   }
 }
 
+/** A balance far above any save's gas. */
+const RICH = 1_000_000_000_000_000_000n
+
+/** Scripts the controlling key's balance reads, each in turn, and the account's, at zero unless given. */
+const balancesOf = (
+  keyBalances: readonly (bigint | Error)[],
+  accountBalances: readonly (bigint | Error)[] = [0n]
+) =>
+  answerBalances(reads, [
+    { address: key.addr, balances: keyBalances },
+    { address, balances: accountBalances }
+  ])
+
 const wireClient = (facts: FactsState, deployed = true) => {
   port = sendPortFor(chain.send === 'sent' ? 'sent' : chain.send, address, chain.estimation)
   mockPort.current = port
@@ -436,7 +450,7 @@ const wireClient = (facts: FactsState, deployed = true) => {
   })
   setupState = jest.fn(async () => chain.setupState)
   removedKeyRead = jest.fn(async () => chain.removedKey)
-  reads = chainReadsFor('enough')
+  reads = chainReadsFor('enough', address)
   receipts = receiptsFor('landed')
   const kit = {
     chain: 'sepolia',
@@ -894,7 +908,7 @@ describe('a save in progress across remounts', () => {
     {
       named: 'short of gas',
       arrange: () => {
-        reads.nativeBalance.mockResolvedValueOnce(0n)
+        balancesOf([0n, RICH])
       },
       ended: 'arm-gas-blocker',
       setUp: false,
@@ -1283,7 +1297,7 @@ describe('a save the wallet did not send', () => {
     chain.estimation = feeReading({ error: true })
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(1_000_000_000_000_000_000n).mockResolvedValueOnce(0n)
+    balancesOf([RICH, 0n, RICH])
     await openByPush()
 
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
@@ -1303,9 +1317,7 @@ describe('a save the wallet did not send', () => {
     chain.estimation = feeReading({ error: true })
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance
-      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
-      .mockResolvedValueOnce(700_000_000_000_000n)
+    balancesOf([RICH, 700_000_000_000_000n])
     await openByPush()
 
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
@@ -1321,9 +1333,7 @@ describe('a save the wallet did not send', () => {
     chain.estimation = feeReading({ error: true })
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance
-      .mockResolvedValueOnce(1_000_000_000_000_000_000n)
-      .mockResolvedValueOnce(900_000_000_000_000n)
+    balancesOf([RICH, 900_000_000_000_000n])
     await openByPush()
 
     expect(byTestId('arm-write-failedNotSent')).not.toBeNull()
@@ -1333,10 +1343,21 @@ describe('a save the wallet did not send', () => {
 })
 
 describe('the bar a key must reach on the normal path', () => {
+  it('sends the save with the key at zero where the account holds enough, and shows no blocker', async () => {
+    await writeRecords(draftOf('encrypted'))
+    wireClient('ready')
+    balancesOf([0n], [RICH])
+    await openByPush()
+
+    expect(byTestId('arm-gas-blocker')).toBeNull()
+    expect(port.sendAccountBatch).toHaveBeenCalledTimes(1)
+    expect(byTestId('arm-saved')).not.toBeNull()
+  })
+
   it('a key above the bar to pass but under the amount asked sends on Continue', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(0n).mockResolvedValueOnce(700_000_000_000_000n)
+    balancesOf([0n, 700_000_000_000_000n])
     await openByPush()
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
     expect(byTestId('arm-gas-route-outside')?.textContent).toContain(
@@ -1353,7 +1374,7 @@ describe('the bar a key must reach on the normal path', () => {
   it('a key one wei under the bar to pass gets the blocker again on Continue, for the amount asked less what it holds', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(0n).mockResolvedValueOnce(659_999_999_999_999n)
+    balancesOf([0n, 659_999_999_999_999n])
     await openByPush()
 
     await press('arm-gas-continue')
@@ -1370,7 +1391,7 @@ describe("the deposit step's Continue", () => {
   it('reads the setup first and, where another tab saved meanwhile, ends as already set up with no gas check and nothing sent', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(0n)
+    balancesOf([0n, RICH])
     await openByPush()
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
     const balances = reads.nativeBalance.mock.calls.length
@@ -1393,7 +1414,7 @@ describe("the deposit step's Continue", () => {
   it('reads the setup first and, where none is there, checks the gas again and sends once', async () => {
     await writeRecords(draftOf('encrypted'))
     wireClient('ready')
-    reads.nativeBalance.mockResolvedValueOnce(0n)
+    balancesOf([0n, RICH])
     await openByPush()
     expect(byTestId('arm-gas-blocker')).not.toBeNull()
     const setupReads = setupState.mock.calls.length
@@ -1403,7 +1424,8 @@ describe("the deposit step's Continue", () => {
 
     // Once before the gas check, and once after the claim and before the send.
     expect(setupState).toHaveBeenCalledTimes(setupReads + 2)
-    expect(reads.nativeBalance).toHaveBeenCalledTimes(balances + 1)
+    // The key's balance and the account's.
+    expect(reads.nativeBalance).toHaveBeenCalledTimes(balances + 2)
     expect(setupState.mock.invocationCallOrder[setupReads]).toBeLessThan(
       reads.nativeBalance.mock.invocationCallOrder[balances]
     )
